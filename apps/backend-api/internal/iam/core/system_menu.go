@@ -284,8 +284,7 @@ func (s *Service) systemMenuService(ctx context.Context) (*Service, guid.ID, err
 	if err != nil {
 		return nil, 0, err
 	}
-	var root struct{ ID guid.ID }
-	err = repo.writer().WithContext(ctx).Table(tables.Tenants.String()).Select("id").Where("slug = ? AND scope_kind = ? AND status = ?", SystemRootSlug, "system", "active").Take(&root).Error
+	owner, err := systemRootID(ctx, repo.writer(), tables.Tenants.String())
 	if err != nil {
 		return nil, 0, fmt.Errorf("resolve system menu owner: %w", err)
 	}
@@ -295,8 +294,8 @@ func (s *Service) systemMenuService(ctx context.Context) (*Service, guid.ID, err
 		if event.Detail == nil {
 			event.Detail = map[string]any{}
 		}
-		event.Detail["scope_kind"], event.Detail["scope_id"] = "system", root.ID.String()
+		event.Detail["scope_kind"], event.Detail["scope_id"] = "system", owner.String()
 		return s.writes.audit(ctx, db, event)
 	})
-	return &clone, root.ID, nil
+	return &clone, owner, nil
 }

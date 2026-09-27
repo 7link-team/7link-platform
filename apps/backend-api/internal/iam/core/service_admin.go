@@ -83,7 +83,6 @@ func (s *Service) putRootMember(ctx context.Context, kind string, tenantID, prin
 			}
 		}
 		var verify func() error
-		err = nil
 		if status == MemberDisabled {
 			verify, err = s.administrators.Protect(ctx, repo.writer(), tenantID)
 			if err != nil {
@@ -193,7 +192,6 @@ func (s *Service) setRootMemberStatus(ctx context.Context, kind string, tenantID
 			}
 		}
 		var verify func() error
-		err = nil
 		if status == MemberDisabled {
 			verify, err = s.administrators.Protect(ctx, repo.writer(), tenantID)
 			if err != nil {

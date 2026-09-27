@@ -194,7 +194,7 @@ func TestAccountResourceLifecycleBindsReadsAndReleases(t *testing.T) {
 
 func TestAccountResourceAuditPreservesAccountViewOperator(t *testing.T) {
 	h := newAccountResourceHarness(t)
-	ctx := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70, AccountView: &authn.AccountViewIdentity{PrincipalID: 71}})
+	ctx := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70, AccountView: &authn.AccountViewIdentity{ActorID: 71}})
 	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
 		return h.resource.appendAudit(ctx, tx, 70, "file_resource_bound", 1, map[string]any{"principal_id": guid.ID(70)})
 	}))

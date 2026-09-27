@@ -249,3 +249,8 @@ func TestErasureLedgerPutRefusesToRepublishOverAFaultyPriorObject(t *testing.T) 
 	assert.ErrorIs(t, err, ErrErasureLedgerUnavailable)
 	assert.NotContains(t, fixture.objects, refused, "a refused write must leave no obligation behind")
 }
+
+func TestErasureObligationRecordsTheAccountViewOperator(t *testing.T) {
+	obligation := NewErasureObligation(accountViewContext(t), 9001, 4, auditTestNow)
+	assert.EqualValues(t, 7, obligation.RequestedBy)
+}

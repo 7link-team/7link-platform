@@ -137,3 +137,56 @@ func TestSystemReservedFullRoleCannotCreateFullAuthority(t *testing.T) {
 		require.Equal(t, name == "Ordinary", allowed)
 	}
 }
+
+// A standalone permission read must not become a writer: D55 keeps reads off
+// mutation fences, and the system checker once took the global policy fence on
+// every restricted administrator's GET. Inside a caller's transaction the fence
+// is still required, because mutations rely on it to serialize with revocation.
+func TestSystemPermissionReadsWriteOnlyInsideMutationTransactions(t *testing.T) {
+	h := seedSystemMenuHarness(t)
+	seedSystemPermissions(t, h, 11, "system_menu_view")
+	writes := 0
+	count := func(*gorm.DB) { writes++ }
+	require.NoError(t, h.db.Callback().Create().After("gorm:create").Register("probe:count_create", count))
+	require.NoError(t, h.db.Callback().Update().After("gorm:update").Register("probe:count_update", count))
+	require.NoError(t, h.db.Callback().Delete().After("gorm:delete").Register("probe:count_delete", count))
+
+	for _, code := range []string{"system_menu_view", "system_role_view"} {
+		writes = 0
+		_, err := h.authorizer.CheckPlatform(t.Context(), code, 11)
+		require.NoError(t, err)
+		require.Zero(t, writes, "standalone %s check must not write", code)
+	}
+
+	writes = 0
+	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+		pinned := *h.authorizer
+		pinned.db = tx
+		allowed, err := pinned.CheckPlatform(t.Context(), "system_menu_view", 11)
+		require.True(t, allowed)
+		return err
+	}))
+	require.NotZero(t, writes, "a check inside a mutation transaction must take the system fence")
+}
+
+// The fenced and plain paths must agree on every declared system permission;
+// they share one reader, and this keeps a future edit from splitting them.
+func TestSystemPermissionFencedAndPlainReadsAgree(t *testing.T) {
+	h := seedSystemMenuHarness(t)
+	seedSystemPermissions(t, h, 11, "system_menu_view", "account_view_create")
+	for _, action := range h.service.registry.All() {
+		if action.Scope != "platform" {
+			continue
+		}
+		plain, err := h.authorizer.CheckPlatform(t.Context(), action.Code, 11)
+		require.NoError(t, err)
+		var fenced bool
+		require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+			pinned := *h.authorizer
+			pinned.db = tx
+			fenced, err = pinned.CheckPlatform(t.Context(), action.Code, 11)
+			return err
+		}))
+		require.Equal(t, fenced, plain, action.Code)
+	}
+}

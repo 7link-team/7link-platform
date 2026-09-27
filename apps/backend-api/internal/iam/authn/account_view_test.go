@@ -36,7 +36,7 @@ func TestOrganizationViewPreservesVisitorAndImmutableObject(t *testing.T) {
 			claims, err := s.AuthenticateAccountView(t.Context(), created.Token)
 			require.NoError(t, err)
 			require.Equal(t, guid.ID(101), claims.PrincipalID)
-			require.Equal(t, guid.ID(101), claims.AccountView.PrincipalID)
+			require.Equal(t, guid.ID(101), claims.AccountView.ActorID)
 			require.Equal(t, kind, claims.AccountView.TargetType)
 			require.True(t, claims.AccountView.OrganizationView())
 			require.Equal(t, 1, claims.ACR)
@@ -161,7 +161,7 @@ func TestAccountViewPersonalReadsNeverSubstituteCookieOwner(t *testing.T) {
 	require.NoError(t, h.db.Table(h.repository.names.Sessions.String()).Order("id_hash").Find(&after).Error)
 	assert.Equal(t, before, after)
 	invalid := *claims
-	invalid.AccountView = &authnext.AccountViewIdentity{ID: 50, PrincipalID: 101, ScopeType: "tenant", ScopeID: 1}
+	invalid.AccountView = &authnext.AccountViewIdentity{ID: 50, ActorID: 101, ScopeType: "tenant", ScopeID: 1}
 	_, err = s.ListSessions(authnext.WithClaims(t.Context(), &invalid), "", "session=browser-101")
 	assert.ErrorIs(t, err, authnext.ErrInvalidToken, "invalid personal scope cannot fall back to the operator cookie")
 }
@@ -239,7 +239,7 @@ func TestAccountViewServiceIssuesVerifiesAndRevokesWithoutSessions(t *testing.T)
 				require.NoError(t, err)
 				assert.Equal(t, guid.ID(202), claims.PrincipalID)
 				assert.Equal(t, "target", claims.PreferredUsername)
-				assert.Equal(t, guid.ID(101), claims.AccountView.PrincipalID)
+				assert.Equal(t, guid.ID(101), claims.AccountView.ActorID)
 				assert.Equal(t, "personal", claims.AccountView.ScopeType)
 				assert.Equal(t, guid.ID(202), claims.AccountView.ScopeID)
 				assert.Equal(t, mode == "", claims.AccountView.ReadOnly)
@@ -287,7 +287,7 @@ func TestAccountViewServiceBoundsAndNestedDenial(t *testing.T) {
 		_, err := s.CreateAccountView(t.Context(), "session=browser-101", input)
 		assert.ErrorIs(t, err, authnext.ErrInvalidToken)
 	}
-	ctx := authnext.WithClaims(t.Context(), &authnext.Claims{PrincipalID: 202, AccountView: &authnext.AccountViewIdentity{ID: 501, PrincipalID: 101, ScopeType: "personal", ScopeID: 202}})
+	ctx := authnext.WithClaims(t.Context(), &authnext.Claims{PrincipalID: 202, AccountView: &authnext.AccountViewIdentity{ID: 501, ActorID: 101, ScopeType: "personal", ScopeID: 202}})
 	_, err := s.CreateAccountView(ctx, "session=browser-101", request)
 	assert.ErrorIs(t, err, authnext.ErrInvalidCredentials)
 	assert.ErrorIs(t, s.RevokeAccountView(ctx, "session=browser-101", 501), authnext.ErrInvalidCredentials)

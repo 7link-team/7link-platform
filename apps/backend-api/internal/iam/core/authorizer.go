@@ -152,37 +152,8 @@ func (a *Authorizer) CheckPlatform(ctx context.Context, permission string, subje
 	if _, transaction := a.db.Statement.ConnPool.(gorm.TxCommitter); transaction {
 		return a.checkSystemPermission(ctx, permission, subject)
 	}
-	var allowed bool
-	// Complete the probe before acquiring the system fence: an absent MySQL
-	// administrator row may hold a gap lock needed by a concurrent grant.
-	err = a.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		names, err := a.authorizationTables()
-		if err != nil {
-			return err
-		}
-		var principal struct{ ID guid.ID }
-		err = systemCurrentRead(tx.WithContext(ctx)).Table(names.Principal.String()).Select("id").
-			Where("id = ? AND status = ?", subject, "active").Take(&principal).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		allowed, err = systemFullAdministrator(ctx, tx, names.Tables.PlatformAdministrators.String(), subject)
-		return err
-	})
-	if err != nil || allowed {
-		return allowed, err
-	}
-	err = a.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		pinned := *a
-		pinned.db = tx
-		var err error
-		allowed, err = pinned.checkSystemPermission(ctx, permission, subject)
-		return err
-	})
-	return allowed, err
+	full, codes, err := a.systemPermissions(ctx, false, subject)
+	return full || codes[permission], err
 }
 
 // CheckBulk evaluates declared permissions for one tenant subject. Unknown

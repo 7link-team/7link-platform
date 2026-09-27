@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/audit/model"
+	"7link.com/platform/internal/infra/guid"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -192,4 +193,14 @@ func TestArchiveJobsRejectInvalidRequestsAndCorruptPersistedSnapshots(t *testing
 	assert.Equal(t, "integrity_failed", jobs[0].ErrorCode)
 	_, err = archiveJobView(model.ArchiveJob{State: "complete", Object: "{}"})
 	assert.ErrorIs(t, err, ErrArchiveIntegrity)
+}
+
+func TestArchiveRequestAttributesTheAccountViewOperator(t *testing.T) {
+	h, _ := archiveJobFixture(t)
+	_, err := h.service.RequestArchive(accountViewContext(t), 11)
+	require.NoError(t, err)
+	events, _, err := h.service.List(t.Context(), Filter{TenantID: 11, EventType: "audit_archive_requested", Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, guid.ID(7), events[0].PrincipalID)
 }

@@ -3,7 +3,6 @@ package audit
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -41,7 +40,7 @@ func TestSystemAuditRoutesEnforceExactPartitionAndPermissions(t *testing.T) {
 			checker := &systemAuditChecker{grants: map[string]bool{}}
 			verifier := systemAuditVerifier{}
 			if mode != "normal" {
-				verifier.view = &authnext.AccountViewIdentity{ID: 50, PrincipalID: 7, ScopeType: "system", ScopeID: 1, ReadOnly: mode == "read_only"}
+				verifier.view = &authnext.AccountViewIdentity{ID: 50, ActorID: 7, ScopeType: "system", ScopeID: 1, ReadOnly: mode == "read_only"}
 			}
 			_, api := humatest.New(t)
 			RegisterHTTP(api, h.service, authz.NewRegistrar(authz.DefaultRegistry(), verifier, checker, auditMembershipChecker{}))
@@ -86,7 +85,7 @@ func TestSystemAuditRoutesEnforceExactPartitionAndPermissions(t *testing.T) {
 					continue
 				}
 				for _, parameter := range op.Get.Parameters {
-					require.NotEqual(t, "tenant_id", parameter.Name, fmt.Sprintf("system schema %s", path))
+					require.NotEqual(t, "tenant_id", parameter.Name, "system schema %s", path)
 				}
 			}
 		})
@@ -96,7 +95,7 @@ func TestSystemAuditRoutesEnforceExactPartitionAndPermissions(t *testing.T) {
 func TestSystemAuditRejectsNonSystemAccountView(t *testing.T) {
 	h, _ := newAuditHTTPHarness(t)
 	_, api := humatest.New(t)
-	verifier := systemAuditVerifier{view: &authnext.AccountViewIdentity{ID: 50, PrincipalID: 7, ScopeType: "tenant", ScopeID: 11}}
+	verifier := systemAuditVerifier{view: &authnext.AccountViewIdentity{ID: 50, ActorID: 7, ScopeType: "tenant", ScopeID: 11}}
 	checker := &systemAuditChecker{grants: map[string]bool{"system_audit_event_view": true, "system_audit_event_export": true}}
 	RegisterHTTP(api, h.service, authz.NewRegistrar(authz.DefaultRegistry(), verifier, checker, auditMembershipChecker{}))
 	for _, path := range []string{"/system/audit/events", "/system/audit/exports", "/system/audit/integrity-verifications"} {

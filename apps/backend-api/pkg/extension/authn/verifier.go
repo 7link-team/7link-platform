@@ -266,16 +266,16 @@ type Claims struct {
 
 // AccountViewIdentity preserves the operator independently of the viewed subject.
 type AccountViewIdentity struct {
-	ID          guid.ID
-	PrincipalID guid.ID
-	ReadOnly    bool
-	ScopeType   string
-	ScopeID     guid.ID
-	TargetType  string
+	ID         guid.ID
+	ActorID    guid.ID
+	ReadOnly   bool
+	ScopeType  string
+	ScopeID    guid.ID
+	TargetType string
 }
 
 func (v *AccountViewIdentity) Valid() bool {
-	if v == nil || v.ID <= 0 || v.PrincipalID <= 0 || v.ScopeID <= 0 {
+	if v == nil || v.ID <= 0 || v.ActorID <= 0 || v.ScopeID <= 0 {
 		return false
 	}
 	if v.TargetType != "" && v.TargetType != "account" &&

@@ -223,22 +223,37 @@ func TestNodeAuthorizerValidatesRootScopeAndReferences(t *testing.T) {
 // owner row in a tenant space grants nothing and the organization's own
 // subjects decide.
 func TestTenantSpaceGrantsNoOwnerSubject(t *testing.T) {
-	h := newOperationServiceHarness(t)
-	q := query.Bind(h.db, h.tree.prefix)
-	_, err := q.NodeACL.WithContext(t.Context()).Where(q.NodeACL.SpaceID.Eq(guid.ID(1)), q.NodeACL.NodeID.Eq(guid.ID(2))).Delete()
-	require.NoError(t, err)
-	require.NoError(t, q.NodeACL.WithContext(t.Context()).Create(&model.NodeACL{
-		ID: 9992, SpaceID: 1, NodeID: 2, SubjectKind: "owner", SubjectID: 70, Effect: "allow", Action: "read", Applies: "self_and_descendants", CreatedBy: 70, CreatedAt: time.Now().UnixMilli(),
-	}))
-	policy := nodeAuthorizationPolicy(map[string]authz.DataConstraint{"file_read": {OwnerIDs: []string{"70"}}})
-	claimant, err := newNodeAuthorizer(h.tree, policy, nodeAuthorizationReferences(true, nil), 90, 80, 70, core.AuthorizationSubjects{PrincipalID: 70, Revision: 1})
-	require.NoError(t, err)
-	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
-		require.ErrorIs(t, claimant.access(t.Context(), tx, 1, 70, 30, "read"), errOperationForbidden,
-			"an owner row in a tenant space applies to nobody")
-		return nil
-	}))
-
+	// The data constraint admits the root, so the decision is left to the ACL
+	// layers; each case replaces node 2's rules with one deny row.
+	policy := nodeAuthorizationPolicy(map[string]authz.DataConstraint{"file_read": {AllowAll: true}})
+	for _, tc := range []struct {
+		subject string
+		denied  bool
+	}{
+		{subject: "owner"},
+		{subject: "principal", denied: true}, // control: node 2's rules are evaluated
+	} {
+		t.Run(tc.subject, func(t *testing.T) {
+			h := newOperationServiceHarness(t)
+			q := query.Bind(h.db, h.tree.prefix)
+			_, err := q.NodeACL.WithContext(t.Context()).Where(q.NodeACL.SpaceID.Eq(guid.ID(1)), q.NodeACL.NodeID.Eq(guid.ID(2))).Delete()
+			require.NoError(t, err)
+			require.NoError(t, q.NodeACL.WithContext(t.Context()).Create(&model.NodeACL{
+				ID: 9992, SpaceID: 1, NodeID: 2, SubjectKind: tc.subject, SubjectID: 70, Effect: "deny", Action: "read", Applies: "self_and_descendants", CreatedBy: 70, CreatedAt: time.Now().UnixMilli(),
+			}))
+			claimant, err := newNodeAuthorizer(h.tree, policy, nodeAuthorizationReferences(true, nil), 90, 80, 70, core.AuthorizationSubjects{PrincipalID: 70, Revision: 1})
+			require.NoError(t, err)
+			require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+				err := claimant.access(t.Context(), tx, 1, 70, 30, "read")
+				if tc.denied {
+					require.ErrorIs(t, err, errOperationForbidden)
+				} else {
+					require.NoError(t, err, "an owner row in a tenant space applies to nobody")
+				}
+				return nil
+			}))
+		})
+	}
 }
 
 func TestNodeAuthorizerRejectsMalformedSubjectsAndChangedPolicy(t *testing.T) {

@@ -10,7 +10,6 @@ import (
 
 	"7link.com/platform/internal/iam/audit/model"
 	"7link.com/platform/internal/infra/guid"
-	"7link.com/platform/pkg/extension/authn"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/minio/minio-go/v7"
 )
@@ -104,10 +103,7 @@ func (s *Service) retryArchive(ctx context.Context, tenantID, id guid.ID) (Archi
 		if updated.RowsAffected != 1 {
 			return ErrArchiveBusy
 		}
-		_, err = s.appendTo(ctx, db, EventInput{
-			TenantID: tenantID, PrincipalID: authn.PrincipalIDFromContext(ctx), EventType: "audit_archive_retry_requested",
-			TargetType: "audit_archive", TargetID: id, Outcome: "success",
-		})
+		_, err = s.appendTo(ctx, db, contextEventInput(ctx, tenantID, "audit_archive_retry_requested", "audit_archive", id, nil))
 		if err != nil {
 			return err
 		}
@@ -153,10 +149,7 @@ func (s *Service) requestArchiveDownload(ctx context.Context, tenantID, id guid.
 	if err != nil {
 		return ArchiveObject{}, err
 	}
-	_, err = s.Append(ctx, EventInput{
-		TenantID: tenantID, PrincipalID: authn.PrincipalIDFromContext(ctx), EventType: "audit_archive_download_requested",
-		TargetType: "audit_archive", TargetID: id, Outcome: "success",
-	})
+	_, err = s.Append(ctx, contextEventInput(ctx, tenantID, "audit_archive_download_requested", "audit_archive", id, nil))
 	return object, err
 }
 

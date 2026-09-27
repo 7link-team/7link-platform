@@ -654,7 +654,7 @@ await waitFor(
 )
 
 const groupDelete = await apiRaw(
-  `/groups/${encodeURIComponent(group.id)}?version=${group.version}`,
+  `/principal-groups/${encodeURIComponent(group.id)}?version=${group.version}`,
   { method: "DELETE" }
 )
 const secondGroupDelete = await apiRaw(

@@ -266,7 +266,7 @@ func accountViewAuthorizationTarget(kind string, principal guid.ID) guid.ID {
 
 func accountViewAudit(ctx context.Context, row *model.AccountViewToken, eventType string) audit.DomainEvent {
 	claims := &authnext.Claims{PrincipalID: row.PrincipalID, AccountView: &authnext.AccountViewIdentity{
-		ID: row.ID, PrincipalID: row.ActorID, ReadOnly: row.Mode == "read_only", ScopeType: row.ScopeType, ScopeID: row.ScopeID, TargetType: row.TargetType}}
+		ID: row.ID, ActorID: row.ActorID, ReadOnly: row.Mode == "read_only", ScopeType: row.ScopeType, ScopeID: row.ScopeID, TargetType: row.TargetType}}
 	event := audit.NewDomainEvent(authnext.WithClaims(ctx, claims), 0, eventType, "account_view", row.ID)
 	event.Detail["scope_type"], event.Detail["scope_id"] = row.ScopeType, row.ScopeID.String()
 	return event
@@ -336,7 +336,7 @@ func (s *Service) AuthenticateAccountView(ctx context.Context, raw string) (*aut
 		claims = &authnext.Claims{Issuer: s.cfg.Issuer, Subject: target.ID.String(), SubjectType: authnext.SubjectTypePrincipal,
 			PrincipalID: target.ID, PreferredUsername: target.LoginName, Email: target.Email, EmailVerified: target.EmailVerified,
 			CredentialVersion: targetVersion, IssuedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt,
-			AccountView: &authnext.AccountViewIdentity{ID: row.ID, PrincipalID: row.ActorID, ReadOnly: row.Mode == "read_only", ScopeType: row.ScopeType, ScopeID: row.ScopeID, TargetType: row.TargetType}}
+			AccountView: &authnext.AccountViewIdentity{ID: row.ID, ActorID: row.ActorID, ReadOnly: row.Mode == "read_only", ScopeType: row.ScopeType, ScopeID: row.ScopeID, TargetType: row.TargetType}}
 		if claims.AccountView.OrganizationView() {
 			claims.ACR, claims.AMR, claims.AuthTime = session.ACR, strings.Fields(session.AMR), session.AuthTime
 		}

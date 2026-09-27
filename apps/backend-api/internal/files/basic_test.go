@@ -20,7 +20,7 @@ import (
 
 func TestWritableAccountViewFileMetadataRecordsOperator(t *testing.T) {
 	h := newOperationServiceHarness(t)
-	ctx := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70, AccountView: &authn.AccountViewIdentity{ID: 1, PrincipalID: 71, ScopeType: "personal", ScopeID: 70}})
+	ctx := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70, AccountView: &authn.AccountViewIdentity{ID: 1, ActorID: 71, ScopeType: "personal", ScopeID: 70}})
 	root, err := h.service.ensureOwnedRoot(ctx)
 	require.NoError(t, err)
 	file, err := h.service.uploadFile(ctx, root.ID, "view.txt", "text/plain", strings.NewReader("abc"), 3)
@@ -529,4 +529,125 @@ func TestDownloadRefusesToServeBytesItCannotRecord(t *testing.T) {
 	require.ErrorIs(t, err, recordFailure)
 	require.Nil(t, refused.Reader, "a download that cannot be recorded hands back nothing")
 	require.Zero(t, refused.Size)
+}
+
+// TestFileWritesFailWholeWhenIDsRunOut starves each write of identifiers at
+// every allocation it makes. Each starved run must fail and leave the tree,
+// the stored versions and the audit record exactly as they were: a write that
+// had created its node but not its version, or its version but not its
+// record, would be a half-applied change nobody asked for.
+func TestFileWritesFailWholeWhenIDsRunOut(t *testing.T) {
+	type write struct {
+		name string
+		call func(t *testing.T, h operationServiceHarness) error
+	}
+	writes := []write{
+		{"ensure root", func(_ *testing.T, h operationServiceHarness) error {
+			_, err := h.service.ensureOwnedRoot(h.ownCtx)
+			return err
+		}},
+		{"create directory", func(_ *testing.T, h operationServiceHarness) error {
+			_, err := h.service.createDirectory(h.ctx, 2, "made-here")
+			return err
+		}},
+		{"upload", func(_ *testing.T, h operationServiceHarness) error {
+			_, err := h.service.uploadFile(h.ctx, 2, "uploaded.txt", "text/plain", strings.NewReader("abc"), 3)
+			return err
+		}},
+		{"trash", func(t *testing.T, h operationServiceHarness) error {
+			_, err := h.service.trashNode(h.ctx, 32, treeNode(t, h.db, h.tree.prefix, 32).Version)
+			return err
+		}},
+		{"immediate operation", func(_ *testing.T, h operationServiceHarness) error {
+			_, err := h.service.run(h.ctx, "starved", h.input)
+			return err
+		}},
+	}
+	// Staged upload bytes are deliberately left to expire, so the snapshot is
+	// the tree, its versions and the audit record rather than every table.
+	snapshot := func(t *testing.T, h operationServiceHarness) [4]int64 {
+		t.Helper()
+		q := query.Bind(h.db, h.tree.prefix)
+		nodes, err := q.Node.WithContext(t.Context()).Count()
+		require.NoError(t, err)
+		versions, err := q.Version.WithContext(t.Context()).Count()
+		require.NoError(t, err)
+		_, own, err := h.audit.List(t.Context(), audit.Filter{Limit: 1})
+		require.NoError(t, err)
+		_, tenant, err := h.audit.List(t.Context(), audit.Filter{TenantID: 90, Limit: 1})
+		require.NoError(t, err)
+		return [4]int64{nodes, versions, own, tenant}
+	}
+	for _, point := range writes {
+		completed := false
+		for remaining := int64(0); remaining < 24 && !completed; remaining++ {
+			t.Run(fmt.Sprintf("%s/ids%d", point.name, remaining), func(t *testing.T) {
+				h := newOperationServiceHarness(t)
+				before := snapshot(t, h)
+				ids := &failingIDs{}
+				ids.remaining.Store(remaining)
+				ids.next.Store(20000)
+				h.service.ids = ids
+				err := point.call(t, h)
+				if err == nil {
+					completed = true
+					return
+				}
+				require.ErrorIs(t, err, ErrUnsupported, "the allocator failure is what surfaces")
+				require.Equal(t, before, snapshot(t, h), "a starved %s left a partial change", point.name)
+			})
+		}
+		require.True(t, completed, "%s never completed; the starvation sweep no longer reaches its success path", point.name)
+	}
+}
+
+func TestFileWritesRefuseStaleOrMalformedRequestsWithoutChangingTheTree(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	before := immediateDatabaseSnapshot(t, h.db, h.tree)
+
+	_, err := h.service.restoreNodeAs(h.ctx, 0, 1, "")
+	require.ErrorIs(t, err, errOperationInput)
+	_, err = h.service.restoreNodeAs(h.ctx, 32, 0, "")
+	require.ErrorIs(t, err, errOperationInput)
+	err = h.service.mutateNode(h.ctx, 0, "rename", func(context.Context, *gorm.DB, *authn.Claims, directoryTree, *model.Node, *nodeAuthorizer) error {
+		return nil
+	})
+	require.ErrorIs(t, err, errOperationInput)
+	_, err = h.service.uploadFile(h.ctx, 2, "bad/name.txt", "text/plain", strings.NewReader("x"), 1)
+	require.Error(t, err, "a name that is not portable is refused")
+	_, err = h.service.downloadFile(h.ctx, 10)
+	require.ErrorIs(t, err, ErrNotFound, "a directory has no content to download")
+	budget := h.service.budget
+	h.service.budget.Nodes = 1
+	_, err = h.service.trashNode(h.ctx, 10, treeNode(t, h.db, h.tree.prefix, 10).Version)
+	require.ErrorIs(t, err, errHierarchy, "a subtree over the node budget is not trashed in part")
+	h.service.budget = budget
+	require.Equal(t, before, immediateDatabaseSnapshot(t, h.db, h.tree))
+
+	file := treeNode(t, h.db, h.tree.prefix, 32)
+	_, err = h.service.trashNode(h.ctx, 32, file.Version)
+	require.NoError(t, err)
+	trashed := treeNode(t, h.db, h.tree.prefix, 32)
+	_, err = h.service.restoreNode(h.ctx, 32, trashed.Version+1)
+	require.ErrorIs(t, err, errTreeConflict, "a restore against a stale revision is refused")
+	withoutRecord := *h.service
+	withoutRecord.appender = nil
+	_, err = withoutRecord.restoreNode(h.ctx, 32, trashed.Version)
+	require.ErrorIs(t, err, errOperationUnavailable, "a restore that cannot be recorded does not run")
+	require.Equal(t, "trashed", treeNode(t, h.db, h.tree.prefix, 32).State)
+	restored, err := h.service.restoreNode(h.ctx, 32, trashed.Version)
+	require.NoError(t, err)
+	require.Equal(t, "root.txt", restored.Name)
+}
+
+func TestEnsureOwnedRootIsNotCreatedWithoutItsAuditRecord(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	recordFailure := errors.New("audit unavailable")
+	h.service.appender = func(context.Context, *gorm.DB, audit.DomainEvent) error { return recordFailure }
+	_, err := h.service.ensureOwnedRoot(h.ownCtx)
+	require.ErrorIs(t, err, recordFailure)
+	q := query.Bind(h.db, h.tree.prefix)
+	count, err := q.Space.WithContext(t.Context()).Where(q.Space.ScopeKind.Eq(spaceAccount)).Count()
+	require.NoError(t, err)
+	require.Zero(t, count, "an unrecorded personal root was rolled back")
 }

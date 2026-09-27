@@ -459,7 +459,7 @@ func TestIntrospectionIsBoundToTenantAndClient(t *testing.T) {
 	for _, readOnly := range []bool{true, false} {
 		viewToken, _, issueErr := harness.web.issueToken(&authnext.Claims{
 			Subject: "101", PrincipalID: 101, OrganizationID: "7", ClientID: clientA.ID,
-			AccountView: &authnext.AccountViewIdentity{ID: 50, PrincipalID: 7, ReadOnly: readOnly, ScopeType: "personal", ScopeID: 101},
+			AccountView: &authnext.AccountViewIdentity{ID: 50, ActorID: 7, ReadOnly: readOnly, ScopeType: "personal", ScopeID: 101},
 		})
 		require.NoError(t, issueErr)
 		form.Set("token", viewToken)

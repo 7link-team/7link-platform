@@ -3,6 +3,7 @@ package authn
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -67,7 +68,7 @@ func registerAccountViewHTTP(api huma.API, service *Service) {
 		}
 		created, err := service.CreateAccountView(ctx, in.Cookie, in.Body)
 		if err != nil {
-			return nil, accountViewHTTPError(err)
+			return nil, accountViewHTTPError(ctx, err)
 		}
 		return respx.OK(ctx, created), nil
 	})
@@ -83,14 +84,21 @@ func registerAccountViewHTTP(api huma.API, service *Service) {
 			return nil, huma.Error422UnprocessableEntity("invalid_account_view_id")
 		}
 		if err := service.RevokeAccountView(ctx, in.Cookie, id); err != nil {
-			return nil, accountViewHTTPError(err)
+			return nil, accountViewHTTPError(ctx, err)
 		}
 		return respx.OK(ctx, map[string]bool{"revoked": true}), nil
 	})
 }
 
-func accountViewHTTPError(err error) error {
+// An unavailable dependency is logged here, where the cause is still known; the
+// response deliberately carries only the stable code.
+func accountViewHTTPError(ctx context.Context, err error) error {
 	if errors.Is(err, authnext.ErrUnavailable) {
+		if ctx.Err() != nil {
+			slog.DebugContext(ctx, "account view abandoned by the caller", "error", err)
+		} else {
+			slog.ErrorContext(ctx, "account view unavailable", "error", err)
+		}
 		return huma.Error503ServiceUnavailable("authentication_unavailable")
 	}
 	return authenticationError(err)

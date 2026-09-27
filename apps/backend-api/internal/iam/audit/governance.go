@@ -73,11 +73,8 @@ func (s *Service) setRetentionPolicy(ctx context.Context, tenantID guid.ID, minD
 		if err := repo.setRetentionPolicy(ctx, row); err != nil {
 			return err
 		}
-		_, err := s.appendTo(ctx, repo.writer(), EventInput{
-			TenantID: tenantID, EventType: "audit_retention_policy_updated",
-			TargetType: "audit_retention_policy", TargetID: tenantID, Outcome: "success",
-			Detail: map[string]any{"min_days": minDays, "archive_after_days": archiveAfterDays},
-		})
+		_, err := s.appendTo(ctx, repo.writer(), contextEventInput(ctx, tenantID, "audit_retention_policy_updated",
+			"audit_retention_policy", tenantID, map[string]any{"min_days": minDays, "archive_after_days": archiveAfterDays}))
 		if err != nil {
 			return fmt.Errorf("audit retention policy change: %w", err)
 		}

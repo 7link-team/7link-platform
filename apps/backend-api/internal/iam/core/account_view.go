@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -40,6 +41,11 @@ func registerAccountViewWorkspaceHTTP(api huma.API, svc *Service, registrar *aut
 			return nil, huma.Error403Forbidden(respx.Forbidden)
 		}
 		workspace, err := svc.accountViewWorkspace(ctx, claims.AccountView.ScopeType, claims.AccountView.ScopeID)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// The view's scope no longer resolves to an active root of its kind,
+			// so the view admits nothing, as when there is no view at all.
+			return nil, huma.Error403Forbidden(respx.Forbidden)
+		}
 		if err != nil {
 			return nil, apiError("account view workspace", err)
 		}
@@ -137,15 +143,7 @@ func (m *Module) authorizeAccountView(ctx context.Context, tx *gorm.DB, actor, t
 	case "system":
 		allowed = false
 		if id == systemScopeID {
-			for _, action := range m.registrar.Registry().All() {
-				if action.Scope != "platform" {
-					continue
-				}
-				allowed, err = checker.CheckPlatform(ctx, action.Code, target)
-				if err != nil || allowed {
-					break
-				}
-			}
+			allowed, err = m.systemViewWithinOperatorAuthority(ctx, &checker, actor, target)
 		}
 	case "platform":
 		allowed, err = m.members.IsOperatingPlatformMemberActiveOn(ctx, tx, id, target)
@@ -154,7 +152,7 @@ func (m *Module) authorizeAccountView(ctx context.Context, tx *gorm.DB, actor, t
 	case "entity":
 		var entity struct{ TenantID guid.ID }
 		err = tx.WithContext(ctx).Table(checker.names.Entities.String()).Select("tenant_id").Where("id = ? AND status = ?", id, EntityActive).Take(&entity).Error
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = nil
 			allowed = false
 		} else if err == nil {
@@ -170,4 +168,32 @@ func (m *Module) authorizeAccountView(ctx context.Context, tx *gorm.DB, actor, t
 		return authnext.ErrInvalidCredentials
 	}
 	return nil
+}
+
+// A system view borrows the target's system authority, so it must never exceed
+// the operator's own: a full administrator is viewable only by another, and any
+// other target's platform permissions must all be held by the operator.
+func (m *Module) systemViewWithinOperatorAuthority(ctx context.Context, checker *Authorizer, actor, target guid.ID) (bool, error) {
+	targetFull, targetCodes, err := checker.systemPermissions(ctx, true, target)
+	if err != nil {
+		return false, err
+	}
+	actorFull, actorCodes, err := checker.systemPermissions(ctx, true, actor)
+	if err != nil {
+		return false, err
+	}
+	if targetFull {
+		return actorFull, nil
+	}
+	held := false
+	for _, action := range m.registrar.Registry().All() {
+		if action.Scope != "platform" || !targetCodes[action.Code] {
+			continue
+		}
+		if !actorFull && !actorCodes[action.Code] {
+			return false, nil
+		}
+		held = true
+	}
+	return held, nil
 }

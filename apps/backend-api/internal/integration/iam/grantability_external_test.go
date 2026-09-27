@@ -147,13 +147,32 @@ func TestGrantabilityExternalDatabase(t *testing.T) {
 			})
 		}()
 		waitForLocalFenceAttempt(t, ctx, attempted, localResult)
-		globalResult := make(chan iamHTTPResponse, 1)
+		// Assertions stay on the test goroutine; this one only reports.
+		type outcome struct {
+			status int
+			err    error
+		}
+		globalResult := make(chan outcome, 1)
 		go func() {
-			globalResult <- f.request(t, http.MethodPatch, "/system/tenants/"+iamTenantB.String()+"/members/"+f.requesterB.ID.String(), 0, "", map[string]any{"display_name": "Managed requester"}, headers)
+			request, err := http.NewRequestWithContext(ctx, http.MethodPatch, f.server.URL+"/system/tenants/"+iamTenantB.String()+"/members/"+f.requesterB.ID.String(), strings.NewReader(`{"display_name":"Managed requester"}`))
+			if err != nil {
+				globalResult <- outcome{err: err}
+				return
+			}
+			request.Header.Set("Content-Type", "application/json")
+			for name, value := range headers {
+				request.Header.Set(name, value)
+			}
+			response, err := f.client.Do(request)
+			if err != nil {
+				globalResult <- outcome{err: err}
+				return
+			}
+			globalResult <- outcome{status: response.StatusCode, err: response.Body.Close()}
 		}()
 		select {
 		case response := <-globalResult:
-			t.Fatalf("global mutation passed actor principal fence: %d", response.StatusCode)
+			t.Fatalf("global mutation passed actor principal fence: %d %v", response.status, response.err)
 		case <-time.After(150 * time.Millisecond):
 		}
 		require.NoError(t, mutation.Commit().Error)
@@ -165,7 +184,8 @@ func TestGrantabilityExternalDatabase(t *testing.T) {
 		}
 		select {
 		case response := <-globalResult:
-			requireStatus(t, http.StatusOK, response)
+			require.NoError(t, response.err)
+			require.Equal(t, http.StatusOK, response.status)
 		case <-ctx.Done():
 			t.Fatal("global member mutation deadlocked")
 		}

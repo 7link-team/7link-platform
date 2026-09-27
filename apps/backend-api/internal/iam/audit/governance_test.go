@@ -301,3 +301,13 @@ func TestGovernanceReportsAnAnchorStoreOutage(t *testing.T) {
 	_, err = h.service.Governance(t.Context(), tenantID)
 	assert.ErrorIs(t, err, ErrAnchorUnavailable)
 }
+
+func TestRetentionPolicyChangeRecordsItsOperator(t *testing.T) {
+	h := newAuditHarness(t, "sl_")
+	_, err := h.service.SetRetentionPolicy(accountViewContext(t), 201, 90, 180)
+	require.NoError(t, err)
+	events, _, err := h.service.List(t.Context(), Filter{TenantID: 201, EventType: "audit_retention_policy_updated", Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, guid.ID(7), events[0].PrincipalID)
+}

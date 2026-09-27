@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"7link.com/platform/internal/infra/guid"
@@ -34,7 +37,7 @@ func TestNewDomainEventUsesVerifiedPrincipal(t *testing.T) {
 func TestNewDomainEventPreservesAccountViewOperator(t *testing.T) {
 	ctx := authn.WithClaims(t.Context(), &authn.Claims{
 		PrincipalID: guid.ID(9),
-		AccountView: &authn.AccountViewIdentity{ID: guid.ID(50), PrincipalID: guid.ID(7), ReadOnly: true},
+		AccountView: &authn.AccountViewIdentity{ID: guid.ID(50), ActorID: guid.ID(7), ReadOnly: true},
 	})
 	event := NewDomainEvent(ctx, guid.ID(3), "changed", "role", guid.ID(4))
 	assert.Equal(t, guid.ID(7), event.PrincipalID)
@@ -103,4 +106,38 @@ func TestVerifyAndExportSurfaceRepositoryFailures(t *testing.T) {
 	assert.ErrorContains(t, h.service.WriteExport(t.Context(), snapshot, &written), "read audit export")
 	assert.NotContains(t, written.String(), `"type":"complete"`,
 		"a truncated export must not be signed off as complete")
+}
+
+func accountViewContext(t *testing.T) context.Context {
+	t.Helper()
+	return authn.WithClaims(t.Context(), &authn.Claims{
+		PrincipalID: guid.ID(9),
+		AccountView: &authn.AccountViewIdentity{ID: guid.ID(50), ActorID: guid.ID(7)},
+	})
+}
+
+func TestContextEventInputAttributesTheAccountViewOperator(t *testing.T) {
+	input := contextEventInput(accountViewContext(t), 3, "changed", "role", 4, map[string]any{"after_sequence": int64(2)})
+	assert.Equal(t, guid.ID(7), input.PrincipalID)
+	assert.Equal(t, "50", input.Detail["account_view_id"])
+	assert.Equal(t, "9", input.Detail["viewed_principal_id"])
+	assert.Equal(t, int64(2), input.Detail["after_sequence"])
+	assert.Equal(t, "success", input.Outcome)
+}
+
+// Under an account view the claims' principal is the viewed account, not the
+// operator. Four audit events once read it directly and recorded the viewed
+// account as the actor, and one recorded nobody. Every event must reach the
+// operator through NewDomainEvent or contextEventInput instead.
+func TestAuditSourcesNeverReadTheViewedPrincipalAsActor(t *testing.T) {
+	sources, err := filepath.Glob("*.go")
+	require.NoError(t, err)
+	for _, source := range sources {
+		if strings.HasSuffix(source, "_test.go") {
+			continue
+		}
+		content, err := os.ReadFile(source)
+		require.NoError(t, err)
+		assert.NotContains(t, string(content), "PrincipalIDFromContext", source)
+	}
 }

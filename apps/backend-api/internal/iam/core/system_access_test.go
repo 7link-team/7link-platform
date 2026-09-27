@@ -363,7 +363,7 @@ func TestSystemAccessHTTPDirectRolesAndProtectedSuperadministrator(t *testing.T)
 	verifier.principal = 22
 	require.Equal(t, http.StatusForbidden, client.Put("/system/roles/"+role.ID.String()+"/permissions/system_account_create", "Authorization: Bearer test").Code)
 	require.Equal(t, http.StatusForbidden, client.Put("/system/roles/"+full.ID.String()+"/members/33", "Authorization: Bearer test").Code)
-	verifier.view = &authn.AccountViewIdentity{ID: 44, PrincipalID: 11, ScopeType: "system", ScopeID: 1, ReadOnly: true}
+	verifier.view = &authn.AccountViewIdentity{ID: 44, ActorID: 11, ScopeType: "system", ScopeID: 1, ReadOnly: true}
 	require.Equal(t, http.StatusForbidden, client.Post("/system/roles", "Authorization: Bearer test", map[string]any{"name": "Read only"}).Code)
 	verifier.view.ReadOnly = false
 	response = client.Post("/system/roles", "Authorization: Bearer test", map[string]any{"name": "Viewed role"})
@@ -372,4 +372,22 @@ func TestSystemAccessHTTPDirectRolesAndProtectedSuperadministrator(t *testing.T)
 	require.Equal(t, guid.ID(0), event.TenantID)
 	require.Equal(t, guid.ID(11), event.PrincipalID)
 	require.Equal(t, "22", event.Detail["viewed_principal_id"])
+}
+
+// Startup reruns this upgrade. A full administrator's legacy rows are never
+// imported and stay behind, so validating them made one retired code stop every
+// later startup; codes that would be imported are still refused.
+func TestSystemAccessUpgradeValidatesOnlyImportedLegacyCodes(t *testing.T) {
+	h := seedSystemMenuHarness(t)
+	seedHTTPPrincipal(t, h.repositoryHarness, 22)
+	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_platform_administrators(principal_id,created_at) VALUES (11,?)", repositoryTestTime).Error)
+	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_platform_grants(principal_id,permission_code,created_at) VALUES (11,'retired_permission',?)", repositoryTestTime).Error)
+	bootstrapSystemTestAccess(t, h)
+	bootstrapSystemTestAccess(t, h)
+
+	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_platform_grants(principal_id,permission_code,created_at) VALUES (22,'retired_permission',?)", repositoryTestTime).Error)
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		return h.repository.withDB(tx).bootstrapSystemAccess(t.Context(), 99, repositoryTestTime, h.service.registry, h.service.writes.audit)
+	})
+	require.ErrorIs(t, err, ErrInvalidArgument)
 }

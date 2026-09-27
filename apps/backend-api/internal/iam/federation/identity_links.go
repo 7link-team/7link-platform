@@ -123,7 +123,7 @@ func (s *Service) ListLinkableProviders(ctx context.Context, cookieHeader string
 
 func (s *Service) personalReadClaims(ctx context.Context, cookieHeader string) (*authnext.Claims, error) {
 	if claims, ok := authnext.FromContext(ctx); ok && claims != nil && claims.AccountView != nil {
-		if claims.PrincipalID.Zero() || claims.AccountView.ID.Zero() || claims.AccountView.PrincipalID.Zero() {
+		if claims.PrincipalID.Zero() || claims.AccountView.ID.Zero() || claims.AccountView.ActorID.Zero() {
 			return nil, authnext.ErrInvalidSession
 		}
 		return claims, nil

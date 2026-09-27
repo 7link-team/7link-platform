@@ -55,7 +55,7 @@ func TestMeUsesAlreadyVerifiedAccountViewIdentity(t *testing.T) {
 	_, web, principalID := newAuthenticationService(t)
 	verifier := &singleAuthenticationVerifier{claims: &authnext.Claims{
 		Subject: principalID, PrincipalID: parseGUID(principalID),
-		AccountView: &authnext.AccountViewIdentity{ID: 50, PrincipalID: 7, ReadOnly: true, ScopeType: "personal", ScopeID: parseGUID(principalID)},
+		AccountView: &authnext.AccountViewIdentity{ID: 50, ActorID: 7, ReadOnly: true, ScopeType: "personal", ScopeID: parseGUID(principalID)},
 	}}
 	_, api := humatest.New(t)
 	RegisterHTTP(api, verifier, web)

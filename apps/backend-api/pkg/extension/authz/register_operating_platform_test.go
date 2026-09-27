@@ -50,7 +50,7 @@ func TestOperatingPlatformRouteBoundary(t *testing.T) {
 			_, api := humatest.New(t)
 			claims := &authn.Claims{PrincipalID: 9}
 			if tc.scope != "" {
-				claims.AccountView = &authn.AccountViewIdentity{ID: 50, PrincipalID: 7, ReadOnly: true, ScopeType: tc.scope, ScopeID: tc.id}
+				claims.AccountView = &authn.AccountViewIdentity{ID: 50, ActorID: 7, ReadOnly: true, ScopeType: tc.scope, ScopeID: tc.id}
 			}
 			checker := &operatingPlatformChecker{fakeChecker: fakeChecker{allowed: tc.allowed}}
 			members := &operatingPlatformMembers{fakeMembership: fakeMembership{active: tc.active}}

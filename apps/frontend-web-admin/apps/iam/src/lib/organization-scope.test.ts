@@ -1,4 +1,7 @@
 import { expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { organizationRouteURL } from "./organization-scope"
 
 it("selects operating collection routes while preserving owned and tenant boundaries", () => {
   const result = Bun.spawnSync(
@@ -37,4 +40,45 @@ it("selects operating collection routes while preserving owned and tenant bounda
   )
   expect(result.stderr.toString()).toBe("")
   expect(result.exitCode).toBe(0)
+})
+
+// Every tenant address the platform workspace rewrites must exist for operating
+// platforms with the same methods. Walking the published contract keeps a new
+// tenant-only route from being silently sent to an address that does not exist.
+it("rewrites tenant addresses only to published operating-platform twins", () => {
+  const spec = JSON.parse(
+    readFileSync(
+      join(import.meta.dir, "../../../../../backend-api/docs/openapi.json"),
+      "utf8"
+    )
+  ) as { paths: Record<string, Record<string, unknown>> }
+  const concrete = (template: string) =>
+    template
+      .replace("{platform_id}", "42")
+      .replace(/\{[^}]+\}/g, "5")
+  const previous = globalThis.window
+  globalThis.window = Object.assign(new EventTarget(), {
+    location: { pathname: "/platform/42/roles" },
+  }) as unknown as Window & typeof globalThis
+  try {
+    let rewritten = 0
+    for (const [template, operations] of Object.entries(spec.paths)) {
+      if (!template.startsWith("/tenants/{tenant_id}/")) continue
+      const url = concrete(template)
+      const result = organizationRouteURL(url)
+      if (result === url) continue
+      rewritten++
+      const twin = template.replace(
+        "/tenants/{tenant_id}/",
+        "/operating-platforms/{platform_id}/"
+      )
+      expect(Object.keys(spec.paths[twin] ?? {}), template).toEqual(
+        expect.arrayContaining(Object.keys(operations))
+      )
+      expect(result).toBe(concrete(twin))
+    }
+    expect(rewritten).toBeGreaterThan(0)
+  } finally {
+    globalThis.window = previous
+  }
 })

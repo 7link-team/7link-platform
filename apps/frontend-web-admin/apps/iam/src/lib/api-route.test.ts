@@ -13,18 +13,33 @@ function contractErrors() {
   apiRoute("get", "/files/{file_id}", { path: { id: "1" } })
   // @ts-expect-error wrong parameter type
   apiRoute("get", "/files/{file_id}", { path: { file_id: 1 } })
-  // @ts-expect-error unknown query parameter
-  apiRoute("get", "/me/files", { query: { offset: 0 } })
-  // @ts-expect-error numeric queries must be numbers
-  apiRoute("get", "/me/files", { query: { limit: "100" } })
-  // @ts-expect-error query enum
-  apiRoute("get", "/me/files", { query: { state: "deleted" } })
+  // Positive control: the template below must stay published, or each error
+  // after it would only prove that the address is missing.
+  apiRoute("get", "/principals/{principal_id}/files", {
+    path: { principal_id: "1" },
+    query: { after: "1", limit: 100, state: "active" },
+  })
+  apiRoute("get", "/principals/{principal_id}/files", {
+    path: { principal_id: "1" },
+    // @ts-expect-error unknown query parameter
+    query: { offset: 0 },
+  })
+  apiRoute("get", "/principals/{principal_id}/files", {
+    path: { principal_id: "1" },
+    // @ts-expect-error numeric queries must be numbers
+    query: { limit: "100" },
+  })
+  apiRoute("get", "/principals/{principal_id}/files", {
+    path: { principal_id: "1" },
+    // @ts-expect-error query enum
+    query: { state: "deleted" },
+  })
   // @ts-expect-error required query parameters
   apiRoute("delete", "/tenants/{tenant_id}/authorization-relationships", {
     path: { tenant_id: "1" },
   })
   // @ts-expect-error cursor routes cannot use offset pagination
-  pagedRoute("/me/files")
+  pagedRoute("/principals/{principal_id}/files")
   // @ts-expect-error operations without queries cannot use offset pagination
   pagedRoute("/me")
   // @ts-expect-error strings cannot enter the transport

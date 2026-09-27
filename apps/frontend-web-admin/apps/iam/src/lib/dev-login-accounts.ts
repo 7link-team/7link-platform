@@ -51,9 +51,13 @@ export function parseDevLoginAccounts(
   }
 }
 
-export const devLoginAccounts = parseDevLoginAccounts(
-  import.meta.env.VITE_DEV_LOGIN_ACCOUNTS
-)
+// The environment is read only inside the development branch, so a production
+// build folds the branch away with the credential literal Vite inlined into it.
+export const devLoginAccounts =
+  import.meta.env.DEV &&
+  import.meta.env.VITE_DEV_LOGIN_ACCOUNTS_ENABLED === "true"
+    ? parseDevLoginAccounts(import.meta.env.VITE_DEV_LOGIN_ACCOUNTS)
+    : []
 
 export function devAccountsForEntrance(
   entry: AuthEntrance | null,

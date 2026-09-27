@@ -213,7 +213,6 @@ func registerSystemAccessHTTP(api huma.API, svc *Service, registrar *authz.Regis
 		return respx.OK(ctx, rolePermissionGrantsFromDomain(grants)), nil
 	})
 	for _, method := range []string{http.MethodPut, http.MethodDelete} {
-		method := method
 		verb := "grant"
 		if method == http.MethodDelete {
 			verb = "revoke"
@@ -272,7 +271,6 @@ func registerSystemAccessHTTP(api huma.API, svc *Service, registrar *authz.Regis
 		return respx.List(ctx, ids, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
 	for _, method := range []string{http.MethodPut, http.MethodDelete} {
-		method := method
 		verb := "add"
 		if method == http.MethodDelete {
 			verb = "remove"

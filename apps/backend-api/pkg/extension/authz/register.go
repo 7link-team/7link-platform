@@ -793,6 +793,9 @@ func (r *Registrar) authenticate(api huma.API, ctx huma.Context) (*authn.Claims,
 	}
 	slog.Debug("authn token rejected", "operation", ctx.Operation().OperationID, "err", err)
 	if errors.Is(err, authn.ErrUnavailable) {
+		if requestContext := ctx.Context(); requestContext == nil || requestContext.Err() == nil {
+			slog.Error("authentication unavailable", "operation", ctx.Operation().OperationID, "err", err)
+		}
 		_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthenticationUnavailable)
 		return nil, false
 	}

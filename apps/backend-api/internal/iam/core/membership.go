@@ -190,7 +190,7 @@ func organizationViewFullAdministrator(ctx context.Context, db *gorm.DB, names q
 	claims, ok := authnext.FromContext(ctx)
 	if !ok || claims == nil || !claims.AccountView.OrganizationView() ||
 		claims.AccountView.TargetType != kind || claims.AccountView.ScopeID != owner ||
-		claims.AccountView.PrincipalID != subject || claims.PrincipalID != subject {
+		claims.AccountView.ActorID != subject || claims.PrincipalID != subject {
 		return false, nil
 	}
 	return systemFullAdministrator(ctx, db, names.Tables.PlatformAdministrators.String(), subject)

@@ -61,7 +61,7 @@ func TestAccountViewExternalDatabase(t *testing.T) {
 	claims, err := service.Authenticate(ctx, "Bearer "+created.Token, "")
 	require.NoError(t, err, "actual authority callback must execute its locked queries on this dialect")
 	require.Equal(t, f.requesterB.ID, claims.PrincipalID)
-	require.Equal(t, f.adminA.ID, claims.AccountView.PrincipalID)
+	require.Equal(t, f.adminA.ID, claims.AccountView.ActorID)
 	require.Zero(t, claims.ACR)
 	require.Empty(t, claims.AMR)
 	require.True(t, claims.AuthTime.IsZero())

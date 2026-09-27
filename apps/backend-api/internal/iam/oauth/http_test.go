@@ -664,8 +664,8 @@ func TestOAuthUserInfoRequiresPrincipalAccessTokenWithOpenIDScope(t *testing.T) 
 		"valid":      {Subject: "101", SubjectType: authnext.SubjectTypePrincipal, Raw: map[string]any{"scope": "openid profile"}},
 		"client":     {Subject: "client:7", SubjectType: authnext.SubjectTypeOAuthClient, Raw: map[string]any{"scope": "openid"}},
 		"no-openid":  {Subject: "101", SubjectType: authnext.SubjectTypePrincipal, Raw: map[string]any{"scope": "profile"}},
-		"view-read":  {Subject: "101", SubjectType: authnext.SubjectTypePrincipal, Raw: map[string]any{"scope": "openid profile"}, AccountView: &authnext.AccountViewIdentity{ID: 50, PrincipalID: 7, ReadOnly: true, ScopeType: "personal", ScopeID: 101}},
-		"view-write": {Subject: "101", SubjectType: authnext.SubjectTypePrincipal, Raw: map[string]any{"scope": "openid profile"}, AccountView: &authnext.AccountViewIdentity{ID: 51, PrincipalID: 7, ScopeType: "personal", ScopeID: 101}},
+		"view-read":  {Subject: "101", SubjectType: authnext.SubjectTypePrincipal, Raw: map[string]any{"scope": "openid profile"}, AccountView: &authnext.AccountViewIdentity{ID: 50, ActorID: 7, ReadOnly: true, ScopeType: "personal", ScopeID: 101}},
+		"view-write": {Subject: "101", SubjectType: authnext.SubjectTypePrincipal, Raw: map[string]any{"scope": "openid profile"}, AccountView: &authnext.AccountViewIdentity{ID: 51, ActorID: 7, ScopeType: "personal", ScopeID: 101}},
 	} {
 		harness.web.mu.Lock()
 		harness.web.tokens[token] = claims

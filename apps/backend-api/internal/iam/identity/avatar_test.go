@@ -332,7 +332,7 @@ func TestAvatarHTTPAccountViewCannotChangeForeignTenantSelector(t *testing.T) {
 			api := humax.New(chi.NewRouter(), humax.DefaultConfig("avatar-view-test", "1"))
 			RegisterHTTP(api, h.service, authz.NewRegistrar(authz.DefaultRegistry(), avatarTokenVerifier{
 				principalID: h.principal.ID,
-				accountView: &authnext.AccountViewIdentity{ID: 1, PrincipalID: h.other.ID, ScopeType: scope.kind, ScopeID: scope.id, ReadOnly: readOnly},
+				accountView: &authnext.AccountViewIdentity{ID: 1, ActorID: h.other.ID, ScopeType: scope.kind, ScopeID: scope.id, ReadOnly: readOnly},
 			}, identityRouteAuthorizer{userUpdateAllowed: true}, identityMembershipChecker{}))
 			viewAPI := humatest.Wrap(t, api)
 			authorization := "Authorization: Bearer avt_view"
@@ -420,7 +420,7 @@ func TestAvatarHTTPAccountViewReadsTargetWithoutCookie(t *testing.T) {
 		api := humax.New(chi.NewRouter(), humax.DefaultConfig("avatar-view-read", "1"))
 		RegisterHTTP(api, h.service, authz.NewRegistrar(authz.DefaultRegistry(), avatarTokenVerifier{
 			principalID: h.principal.ID,
-			accountView: &authnext.AccountViewIdentity{ID: 1, PrincipalID: h.other.ID, ScopeType: "personal", ScopeID: h.principal.ID, ReadOnly: readOnly},
+			accountView: &authnext.AccountViewIdentity{ID: 1, ActorID: h.other.ID, ScopeType: "personal", ScopeID: h.principal.ID, ReadOnly: readOnly},
 		}, identityRouteAuthorizer{userUpdateAllowed: true}, identityMembershipChecker{}))
 		viewAPI := humatest.Wrap(t, api)
 		path := "/principals/" + h.principal.ID.String() + "/avatar"
@@ -609,7 +609,7 @@ func TestAccountViewAvatarKeepsTargetOwnerAndOperatorCreator(t *testing.T) {
 	h.seedTenant(t, 7, "active")
 	principal, err := h.service.Create(t.Context(), 7, "avatar-target", testPassword, "Target", "")
 	require.NoError(t, err)
-	ctx := authnext.WithClaims(t.Context(), &authnext.Claims{PrincipalID: principal.ID, AccountView: &authnext.AccountViewIdentity{PrincipalID: 900, ScopeType: "personal", ScopeID: principal.ID}})
+	ctx := authnext.WithClaims(t.Context(), &authnext.Claims{PrincipalID: principal.ID, AccountView: &authnext.AccountViewIdentity{ActorID: 900, ScopeType: "personal", ScopeID: principal.ID}})
 	_, err = h.service.SetMyAvatar(ctx, principal.ID, avatarInput{Style: "robot"})
 	require.NoError(t, err)
 	var owner struct{ PrincipalID guid.ID }

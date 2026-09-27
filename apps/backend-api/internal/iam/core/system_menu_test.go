@@ -106,7 +106,7 @@ func TestSystemMenuMutationsRejectForeignOwnershipAndAttributeOperator(t *testin
 		_, err = s.CreateMenu(t.Context(), menu)
 		require.ErrorIs(t, err, ErrInvalidArgument)
 	}
-	ctx := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 11, AccountView: &authn.AccountViewIdentity{ID: 44, PrincipalID: 22, ScopeType: "system", ScopeID: 1}})
+	ctx := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 11, AccountView: &authn.AccountViewIdentity{ID: 44, ActorID: 22, ScopeType: "system", ScopeID: 1}})
 	before, err := h.repository.revisions.Current(t.Context(), h.db, owner)
 	require.NoError(t, err)
 	created, err := s.CreateMenu(ctx, Menu{TenantID: owner, Label: "Custom", Route: "/system/custom", PermissionCode: "system_menu_view", Status: MenuActive})

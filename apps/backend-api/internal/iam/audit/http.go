@@ -98,7 +98,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		if err != nil || validateFilter(filter, false) != nil {
 			return nil, huma.Error422UnprocessableEntity(auditi18n.InvalidTime)
 		}
-		snapshot, err := service.RequestExport(ctx, filter, authnext.PrincipalIDFromContext(ctx))
+		snapshot, err := service.RequestExport(ctx, filter, authnext.ActorIDFromContext(ctx))
 		if err != nil {
 			return nil, auditAPIError(err)
 		}

@@ -9,7 +9,6 @@ import (
 
 	"7link.com/platform/internal/iam/audit/model"
 	"7link.com/platform/internal/infra/guid"
-	"7link.com/platform/pkg/extension/authn"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -180,10 +179,8 @@ func (s *Service) requestArchive(ctx context.Context, tenantID guid.ID) (Archive
 			}
 			return read.Take(&result).Error
 		}
-		_, err = s.appendTo(ctx, db, EventInput{
-			TenantID: tenantID, PrincipalID: authn.PrincipalIDFromContext(ctx), EventType: "audit_archive_requested", TargetType: "audit_archive", TargetID: id, Outcome: "success",
-			Detail: map[string]any{"after_sequence": after, "head_sequence": head.Sequence},
-		})
+		_, err = s.appendTo(ctx, db, contextEventInput(ctx, tenantID, "audit_archive_requested", "audit_archive", id,
+			map[string]any{"after_sequence": after, "head_sequence": head.Sequence}))
 		return err
 	})
 	if err != nil {

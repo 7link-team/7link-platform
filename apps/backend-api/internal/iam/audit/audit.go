@@ -39,6 +39,20 @@ type DomainEvent struct {
 	Detail      map[string]any
 }
 
+// contextEventInput attributes a successful event to the operator in ctx and
+// carries the account-view detail, exactly as NewDomainEvent does. Events built
+// directly as EventInput must start here rather than read the principal.
+func contextEventInput(ctx context.Context, tenantID guid.ID, eventType, targetType string, targetID guid.ID, detail map[string]any) EventInput {
+	event := NewDomainEvent(ctx, tenantID, eventType, targetType, targetID)
+	for key, value := range detail {
+		event.Detail[key] = value
+	}
+	return EventInput{
+		TenantID: event.TenantID, PrincipalID: event.PrincipalID, EventType: event.EventType,
+		TargetType: event.TargetType, TargetID: event.TargetID, Outcome: "success", Detail: event.Detail,
+	}
+}
+
 // Appender writes an event through db. Callers pass their active transaction
 // so the state change and its audit event commit or roll back together.
 type Appender func(ctx context.Context, db *gorm.DB, event DomainEvent) error

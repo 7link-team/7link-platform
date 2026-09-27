@@ -82,7 +82,7 @@ func ActorIDFromContext(ctx context.Context) guid.ID {
 		return 0
 	}
 	if claims.AccountView != nil {
-		return claims.AccountView.PrincipalID
+		return claims.AccountView.ActorID
 	}
 	return claims.PrincipalID
 }

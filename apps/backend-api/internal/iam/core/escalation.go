@@ -39,10 +39,6 @@ func (s *Service) requireGrantablePermissions(ctx context.Context, tenantID guid
 	return nil
 }
 
-func (s *Service) requireGrantableRole(ctx context.Context, tenantID, roleID guid.ID) error {
-	return s.requireGrantableRoleWithRepository(ctx, s.repo, tenantID, roleID)
-}
-
 func (s *Service) requireGrantableRoleWithRepository(
 	ctx context.Context,
 	repo *Repository,

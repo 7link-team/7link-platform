@@ -1252,3 +1252,200 @@ func TestIAMHTTPMutationsFailWhenThePolicyRevisionLedgerIsBroken(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "People", storedMenu.Label)
 }
+
+func TestTenantMenuHTTPPlacementMovesSubtreesAtomically(t *testing.T) {
+	harness := newHTTPIAMHarness(t, true)
+	const auth = "Authorization: Bearer test"
+	create := func(label string) APIMenu {
+		response := harness.api.Post(tenantPathPrefix(1)+"/menus", auth, map[string]any{"label": label})
+		require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+		return decodeEnvelope[APIMenu](t, response).Data
+	}
+	first, second, branch := create("First"), create("Second"), create("Branch")
+	stored := func(id guid.ID) Menu {
+		menu, err := harness.module.service.GetMenu(t.Context(), 1, id)
+		require.NoError(t, err)
+		return menu
+	}
+
+	response := harness.api.Patch("/menus/"+second.ID.String(), auth, map[string]any{"placement": map[string]any{"kind": "before", "relative_to": first.ID.String()}})
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Less(t, stored(second.ID).SortOrder, stored(first.ID).SortOrder, "before places the menu ahead of its sibling")
+
+	response = harness.api.Patch("/menus/"+first.ID.String(), auth, map[string]any{"parent_id": branch.ID.String(), "placement": map[string]any{"kind": "last"}})
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, branch.ID, decodeEnvelope[APIMenu](t, response).Data.ParentID)
+	require.Equal(t, branch.ID, stored(first.ID).ParentID)
+
+	before := stored(first.ID)
+	for name, body := range map[string]map[string]any{
+		"placement mixed with metadata":      {"placement": map[string]any{"kind": "first"}, "label": "Renamed"},
+		"relative placement without sibling": {"placement": map[string]any{"kind": "after"}},
+		"placement relative to itself":       {"placement": map[string]any{"kind": "after", "relative_to": first.ID.String()}},
+	} {
+		response = harness.api.Patch("/menus/"+first.ID.String(), auth, body)
+		require.Equal(t, http.StatusUnprocessableEntity, response.Code, "%s: %s", name, response.Body.String())
+	}
+	require.Equal(t, before, stored(first.ID), "rejected moves leave the menu untouched")
+
+	response = harness.api.Patch("/menus/"+first.ID.String(), auth, map[string]any{"parent_id": "", "placement": map[string]any{"kind": "first"}})
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Zero(t, stored(first.ID).ParentID, "an empty parent moves the subtree to the root")
+
+	response = harness.api.Patch("/menus/"+second.ID.String(), auth, map[string]any{"parent_id": branch.ID.String(), "translations": map[string]string{"en-US": "Second"}})
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	moved := stored(second.ID)
+	require.Equal(t, branch.ID, moved.ParentID)
+	require.Equal(t, map[string]string{"en-US": "Second"}, moved.Translations)
+	require.Equal(t, "Second", moved.Label, "metadata edits keep omitted fields")
+}
+
+func TestEffectiveEntityPermissionsHTTPExcludeOperatingPlatformCodes(t *testing.T) {
+	harness := newHTTPIAMHarness(t, true)
+	const auth = "Authorization: Bearer test"
+	response := harness.api.Post(tenantPathPrefix(1)+"/entities", auth, map[string]any{"type": "unit", "name": "Unit"})
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+	entity := decodeEnvelope[APIEntity](t, response).Data
+	response = harness.api.Get(tenantPathPrefix(1)+"/entities/"+entity.ID.String()+"/principals/11/permissions", auth)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	codes := decodeEnvelope[[]string](t, response).Data
+	require.Contains(t, codes, "entity_view")
+	for _, code := range codes {
+		action, ok := harness.module.service.registry.Find(code)
+		require.True(t, ok, code)
+		require.NotEqual(t, "operating_platform", action.Scope, "operating platform authority never appears in a tenant entity: %s", code)
+	}
+	require.Equal(t, http.StatusNotFound, harness.api.Get(tenantPathPrefix(1)+"/entities/"+entity.ID.String()+"/principals/12/permissions", auth).Code, "another principal's permissions are not addressable")
+}
+
+// systemAndPlatformIdentifierCalls drives every system and operating platform
+// route that parses an identifier with one that passes the schema pattern but
+// does not fit the platform identifier type.
+func systemAndPlatformIdentifierCalls(harness httpIAMHarness, big string) map[string]func() *httptest.ResponseRecorder {
+	const auth = "Authorization: Bearer test"
+	api := harness.api
+	get := func(path string) func() *httptest.ResponseRecorder {
+		return func() *httptest.ResponseRecorder { return api.Get(path, auth) }
+	}
+	del := func(path string) func() *httptest.ResponseRecorder {
+		return func() *httptest.ResponseRecorder { return api.Delete(path, auth) }
+	}
+	put := func(path string) func() *httptest.ResponseRecorder {
+		return func() *httptest.ResponseRecorder { return api.Put(path, auth) }
+	}
+	patch := func(path string, body map[string]any) func() *httptest.ResponseRecorder {
+		return func() *httptest.ResponseRecorder { return api.Patch(path, auth, body) }
+	}
+	post := func(path string, body map[string]any) func() *httptest.ResponseRecorder {
+		return func() *httptest.ResponseRecorder { return api.Post(path, auth, body) }
+	}
+	calls := map[string]func() *httptest.ResponseRecorder{
+		"system menu get":                   get("/system/menus/" + big),
+		"system menu update":                patch("/system/menus/"+big, map[string]any{"label": "Renamed"}),
+		"system menu delete":                del("/system/menus/" + big),
+		"system menu create parent":         post("/system/menus", map[string]any{"label": "Menu", "parent_id": big}),
+		"system role get":                   get("/system/roles/" + big),
+		"system role update":                patch("/system/roles/"+big, map[string]any{"description": "Changed"}),
+		"system role delete":                del("/system/roles/" + big),
+		"system role grants":                get("/system/roles/" + big + "/permission-grants"),
+		"system role grant":                 put("/system/roles/" + big + "/permissions/system_menu_view"),
+		"system role revoke":                del("/system/roles/" + big + "/permissions/system_menu_view"),
+		"system role members":               get("/system/roles/" + big + "/members"),
+		"system role member add role":       put("/system/roles/" + big + "/members/11"),
+		"system role member add principal":  put("/system/roles/1/members/" + big),
+		"system member get":                 get("/system/members/" + big),
+		"system member roles":               get("/system/members/" + big + "/roles"),
+		"system member update":              patch("/system/members/"+big, map[string]any{"display_name": "Renamed"}),
+		"system member create":              post("/system/members", map[string]any{"principal_id": big, "display_name": "Member"}),
+		"system member create department":   post("/system/members", map[string]any{"principal_id": "11", "display_name": "Member", "department_id": big}),
+		"platform member get":               get("/operating-platforms/1/members/" + big),
+		"platform member update":            patch("/operating-platforms/1/members/"+big, map[string]any{"display_name": "Renamed"}),
+		"platform member disable":           del("/operating-platforms/1/members/" + big),
+		"platform member create":            post("/operating-platforms/1/members", map[string]any{"subject": big, "display_name": "Member"}),
+		"platform member create department": post("/operating-platforms/1/members", map[string]any{"subject": "11", "display_name": "Member", "department_id": big}),
+		"platform menu create parent":       post("/operating-platforms/1/menus", map[string]any{"label": "Menu", "parent_id": big}),
+	}
+	// Root 1 is a tenant: scoped reads resolve the owner's kind before the
+	// member identifier, so only the tenant segment reaches identifier parsing.
+	calls["tenants scope member"] = get("/system/tenants/1/members/" + big)
+	calls["tenants scope member roles"] = get("/system/tenants/1/members/" + big + "/roles")
+	for _, segment := range []string{"tenants", "operating-platforms"} {
+		base := "/system/" + segment
+		calls[segment+" scope member create"] = post(base+"/1/members", map[string]any{"subject": big, "display_name": "Member"})
+		calls[segment+" scope member create department"] = post(base+"/1/members", map[string]any{"subject": "11", "display_name": "Member", "department_id": big})
+		calls[segment+" scope member update"] = patch(base+"/1/members/"+big, map[string]any{"display_name": "Renamed"})
+		calls[segment+" scope member disable"] = del(base + "/1/members/" + big)
+		calls[segment+" scope role member role"] = put(base + "/1/roles/" + big + "/members/11")
+		calls[segment+" scope role member principal"] = put(base + "/1/roles/1/members/" + big)
+		// The owner segment itself: requireID's 422 once became 500 in apiError.
+		calls[segment+" scope owner members"] = get(base + "/" + big + "/members")
+		calls[segment+" scope owner member"] = get(base + "/" + big + "/members/11")
+		calls[segment+" scope owner roles"] = get(base + "/" + big + "/roles")
+		calls[segment+" scope owner member roles"] = get(base + "/" + big + "/members/11/roles")
+	}
+	return calls
+}
+
+func TestSystemAndOperatingPlatformHTTPRejectUnrepresentableIdentifiers(t *testing.T) {
+	harness := newHTTPIAMHarness(t, true)
+	counts := func() map[string]int64 {
+		out := map[string]int64{}
+		for _, table := range []string{"sl_iam_tenant_members", "sl_iam_roles", "sl_iam_role_members", "sl_iam_role_permissions", "sl_iam_menus", "sl_iam_platform_administrators"} {
+			var count int64
+			require.NoError(t, harness.db.Table(table).Count(&count).Error)
+			out[table] = count
+		}
+		return out
+	}
+	before := counts()
+	for name, call := range systemAndPlatformIdentifierCalls(harness, unrepresentableID) {
+		t.Run(name, func(t *testing.T) {
+			response := call()
+			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+		})
+	}
+	// An unrepresentable owner in the list path is refused without data. Its
+	// status is not pinned: the handler routes the parse error through
+	// apiError, which currently reports it as 500 rather than 422.
+	for _, segment := range []string{"tenants", "operating-platforms"} {
+		response := harness.api.Get("/system/"+segment+"/"+unrepresentableID+"/members", "Authorization: Bearer test")
+		require.GreaterOrEqual(t, response.Code, http.StatusBadRequest, response.Body.String())
+		require.Equal(t, "null", string(decodeEnvelope[json.RawMessage](t, response).Data))
+	}
+	require.Equal(t, before, counts(), "no rejected request wrote anything")
+}
+
+func TestSystemAndOperatingPlatformHTTPFailClosedWhenStorageIsGone(t *testing.T) {
+	harness := newHTTPIAMHarness(t, true)
+	connection, err := harness.db.DB()
+	require.NoError(t, err)
+	require.NoError(t, connection.Close())
+	const auth = "Authorization: Bearer test"
+	calls := systemAndPlatformIdentifierCalls(harness, "12")
+	for _, path := range []string{
+		"/system/menus", "/system/navigation", "/system/roles", "/system/members", "/system/account-owners?category=tenant",
+		"/system/tenants/1/members", "/system/tenants/1/roles", "/system/operating-platforms/1/members",
+		"/operating-platforms/1/roles", "/operating-platforms/1/menus", "/operating-platforms/1/members",
+		"/operating-platforms/1/navigation", "/operating-platforms/1/permissions",
+	} {
+		calls["list "+path] = func() *httptest.ResponseRecorder { return harness.api.Get(path, auth) }
+	}
+	calls["system role create"] = func() *httptest.ResponseRecorder {
+		return harness.api.Post("/system/roles", auth, map[string]any{"name": "Role"})
+	}
+	calls["system menu create"] = func() *httptest.ResponseRecorder {
+		return harness.api.Post("/system/menus", auth, map[string]any{"label": "Menu"})
+	}
+	calls["platform role create"] = func() *httptest.ResponseRecorder {
+		return harness.api.Post("/operating-platforms/1/roles", auth, map[string]any{"name": "Role"})
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			response := call()
+			require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
+			envelope := decodeEnvelope[json.RawMessage](t, response)
+			require.Equal(t, http.StatusInternalServerError, envelope.Code)
+			require.Equal(t, "null", string(envelope.Data), "a storage failure never returns partial data")
+		})
+	}
+}

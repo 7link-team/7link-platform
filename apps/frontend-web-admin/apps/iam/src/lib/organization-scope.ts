@@ -14,9 +14,13 @@ export function operatingPlatformID(): string {
   return match ? decodeURIComponent(match[1] ?? "") : ""
 }
 
+// Member role and authorization-source reads exist only for tenants.
+const tenantOnlyMemberReads =
+  /^\/tenants\/[^/]+\/members\/[^/]+\/(roles|authorization-sources)(?=\/|\?|$)/
+
 export function organizationRouteURL(url: string): string {
   const platform = operatingPlatformID()
-  if (!platform) return url
+  if (!platform || tenantOnlyMemberReads.test(url)) return url
   return url.replace(
     /^\/tenants\/[^/]+\/(roles|menus|permission-catalog|members|departments|principal-groups)(?=\/|\?|$)/,
     `/operating-platforms/${encodeURIComponent(platform)}/$1`

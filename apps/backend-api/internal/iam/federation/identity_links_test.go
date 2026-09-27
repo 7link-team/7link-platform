@@ -117,7 +117,7 @@ func TestAccountViewPersonalIdentityReadsUseTargetWithoutTouchingSessions(t *tes
 	require.NoError(t, env.db.Order("id_hash").Find(&before).Error)
 	ctx := authnext.WithClaims(t.Context(), &authnext.Claims{
 		PrincipalID: targetID,
-		AccountView: &authnext.AccountViewIdentity{ID: 50, PrincipalID: operatorID, ReadOnly: true},
+		AccountView: &authnext.AccountViewIdentity{ID: 50, ActorID: operatorID, ReadOnly: true},
 	})
 	for _, rawCookie := range []string{cookie, "invalid", ""} {
 		links, err := env.service.ListPersonalIdentityLinks(ctx, rawCookie)
@@ -131,7 +131,7 @@ func TestAccountViewPersonalIdentityReadsUseTargetWithoutTouchingSessions(t *tes
 	}
 	require.NoError(t, env.db.Order("id_hash").Find(&after).Error)
 	assert.Equal(t, before, after)
-	for _, view := range []*authnext.AccountViewIdentity{{ID: 50}, {PrincipalID: operatorID}} {
+	for _, view := range []*authnext.AccountViewIdentity{{ID: 50}, {ActorID: operatorID}} {
 		invalid := authnext.WithClaims(t.Context(), &authnext.Claims{PrincipalID: targetID, AccountView: view})
 		_, err := env.service.ListPersonalIdentityLinks(invalid, cookie)
 		assert.ErrorIs(t, err, authnext.ErrInvalidSession)

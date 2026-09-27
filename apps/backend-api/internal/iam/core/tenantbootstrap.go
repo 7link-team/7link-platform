@@ -160,17 +160,6 @@ func (r *Repository) grantAdministratorRole(
 	return nil
 }
 
-// createDefaultMenus writes the tenant's navigation metadata. These are per
-// tenant rows rather than a global catalog, because an administrator may
-// disable, reorder, or extend them afterwards.
-func (r *Repository) createDefaultMenus(
-	ctx context.Context,
-	tenantID guid.ID,
-	now time.Time,
-) (int, error) {
-	return r.createMenus(ctx, tenantID, DefaultMenus(), now)
-}
-
 func bootstrapMenus(kind string) []Menu {
 	if kind != "platform" {
 		return DefaultMenus()

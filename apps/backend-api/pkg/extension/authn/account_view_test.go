@@ -13,7 +13,7 @@ func TestAccountViewIdentityCannotBeSuppliedByJSON(t *testing.T) {
 	var claims Claims
 	require.NoError(t, json.Unmarshal([]byte(`{"principal_id":"9","AccountView":{"ID":"50","PrincipalID":"7"},"account_view":{"ID":"50","PrincipalID":"7"}}`), &claims))
 	assert.Nil(t, claims.AccountView)
-	claims.AccountView = &AccountViewIdentity{ID: guid.ID(50), PrincipalID: guid.ID(7), ReadOnly: true}
+	claims.AccountView = &AccountViewIdentity{ID: guid.ID(50), ActorID: guid.ID(7), ReadOnly: true}
 	encoded, err := json.Marshal(claims)
 	require.NoError(t, err)
 	assert.NotContains(t, string(encoded), "AccountView")
@@ -26,7 +26,7 @@ func TestActorIdentityIsSeparateFromViewedPrincipal(t *testing.T) {
 	assert.Equal(t, guid.ID(9), ActorIDFromContext(ctx))
 	ctx = WithClaims(t.Context(), &Claims{
 		PrincipalID: guid.ID(9),
-		AccountView: &AccountViewIdentity{ID: guid.ID(50), PrincipalID: guid.ID(7), ReadOnly: true},
+		AccountView: &AccountViewIdentity{ID: guid.ID(50), ActorID: guid.ID(7), ReadOnly: true},
 	})
 	assert.Equal(t, guid.ID(7), ActorIDFromContext(ctx))
 	assert.Equal(t, guid.ID(9), PrincipalIDFromContext(ctx))

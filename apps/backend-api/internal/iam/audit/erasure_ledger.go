@@ -57,7 +57,7 @@ type ErasureRecorder func(context.Context, ErasureObligation) error
 func NewErasureObligation(ctx context.Context, principalID guid.ID, lifecycleVersion int64, recordedAt time.Time) ErasureObligation {
 	return ErasureObligation{
 		Schema: erasureObligationSchema, PrincipalID: principalID, LifecycleVersion: lifecycleVersion,
-		RequestedBy: authn.PrincipalIDFromContext(ctx), RecordedAt: recordedAt.UTC().Truncate(time.Millisecond),
+		RequestedBy: authn.ActorIDFromContext(ctx), RecordedAt: recordedAt.UTC().Truncate(time.Millisecond),
 	}
 }
 

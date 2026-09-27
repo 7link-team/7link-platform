@@ -1221,3 +1221,39 @@ func TestAuthorizationFailureSeparatesABrokenDependencyFromADepartedCaller(t *te
 		})
 	}
 }
+
+// An unavailable token store once answered 503 with only a debug record, so a
+// real authentication outage left nothing in the error log.
+func TestAuthenticationUnavailableLogsUnlessTheCallerLeft(t *testing.T) {
+	for name, testCase := range map[string]struct {
+		canceled   bool
+		wantErrors int
+	}{
+		"a dependency that broke": {wantErrors: 1},
+		"a caller that went away": {canceled: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			capture := &logCapture{}
+			previous := slog.Default()
+			slog.SetDefault(slog.New(capture))
+			t.Cleanup(func() { slog.SetDefault(previous) })
+
+			_, api := humatest.New(t)
+			registrar := authz.NewRegistrar(testRegistry(), &fakeVerifier{err: authn.ErrUnavailable},
+				&fakeChecker{allowed: true}, &fakeMembership{active: true})
+			authz.Register(registrar, api, huma.Operation{
+				OperationID: "store-view", Method: http.MethodGet, Path: "/stores", Tags: []string{"tenants"},
+			}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
+
+			ctx := t.Context()
+			if testCase.canceled {
+				cancellable, cancel := context.WithCancel(ctx)
+				cancel()
+				ctx = cancellable
+			}
+			response := api.DoCtx(ctx, http.MethodGet, "/tenants/11/stores", "Authorization: Bearer test")
+			assert.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+			assert.Equal(t, testCase.wantErrors, capture.levels(slog.LevelError), "error records")
+		})
+	}
+}

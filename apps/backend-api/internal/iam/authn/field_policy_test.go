@@ -53,7 +53,7 @@ func TestPersonalAccountViewUsesTargetBrowserProfilePolicy(t *testing.T) {
 		return output
 	}
 	viewClaims := *claims
-	viewClaims.AccountView = &authnext.AccountViewIdentity{ID: 50, PrincipalID: 7, ReadOnly: true, ScopeType: "personal", ScopeID: 11}
+	viewClaims.AccountView = &authnext.AccountViewIdentity{ID: 50, ActorID: 7, ReadOnly: true, ScopeType: "personal", ScopeID: 11}
 	for _, masked := range []bool{false, true} {
 		if masked {
 			fields.Fields["login_name"] = authz.FieldDecision{Read: "omit"}

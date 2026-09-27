@@ -116,3 +116,34 @@ func TestMemberTenantResolutionNeverGuessesOrUsesInactiveMemberships(t *testing.
 	_, err = m.ResolveTenant(t.Context(), 11, 0)
 	require.ErrorContains(t, err, "resolve active member tenant")
 }
+
+func TestOperatingPlatformMembershipIsActiveOnlyOnPlatformRoots(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	seedOperatingPlatform(t, h, 1, 11)
+	h.seedMember(t, 2, 22, MemberActive)
+	seedHTTPPrincipal(t, h.repositoryHarness, 33)
+	_, err := h.service.PutOperatingPlatformMember(t.Context(), 1, 33, "Disabled", "", 0, MemberDisabled)
+	require.NoError(t, err)
+	checker := NewMembershipChecker(h.runtime)
+	require.NoError(t, checker.BindForeignTables(publishedDirectoryTables("sl_"), publishedPrincipalTable("sl_")))
+	for _, tc := range []struct {
+		name            string
+		root, principal guid.ID
+		active          bool
+	}{
+		{"active platform member", 1, 11, true},
+		{"disabled platform member", 1, 33, false},
+		{"tenant member is not a platform member", 2, 22, false},
+		{"not a member", 1, 22, false},
+		{"unknown root", 987654321, 11, false},
+	} {
+		active, err := checker.IsOperatingPlatformMemberActive(t.Context(), tc.root, tc.principal)
+		require.NoError(t, err, tc.name)
+		require.Equal(t, tc.active, active, tc.name)
+	}
+	for name, unwired := range map[string]*MembershipChecker{"nil checker": nil, "no runtime": {}} {
+		active, err := unwired.IsOperatingPlatformMemberActive(t.Context(), 1, 11)
+		require.ErrorIs(t, err, ErrUnavailable, name)
+		require.False(t, active, name)
+	}
+}

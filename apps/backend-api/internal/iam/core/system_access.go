@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -172,6 +173,11 @@ func (r *Repository) bootstrapSystemAccess(ctx context.Context, owner guid.ID, n
 	}
 	byPrincipal := map[guid.ID][]string{}
 	for _, grant := range legacy {
+		// Full administrators' legacy rows are never imported, so a code retired
+		// since they were written must not stop every later startup.
+		if slices.Contains(fullPrincipals, grant.PrincipalID) {
+			continue
+		}
 		action, ok := registry.Find(grant.PermissionCode)
 		if !ok || action.Scope != "platform" {
 			return fmt.Errorf("%w: legacy system permission %s", ErrInvalidArgument, grant.PermissionCode)
@@ -183,7 +189,6 @@ func (r *Repository) bootstrapSystemAccess(ctx context.Context, owner guid.ID, n
 		if !ok {
 			continue
 		}
-		delete(byPrincipal, principal)
 		if err := r.ensureSystemAdministratorMember(ctx, owner, principal); err != nil {
 			return err
 		}
