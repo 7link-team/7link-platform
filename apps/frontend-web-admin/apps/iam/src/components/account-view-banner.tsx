@@ -1,8 +1,21 @@
 import { useCallback, useEffect, useState } from "react"
-import { LogOut, Eye } from "lucide-react"
+import { LogOut, Eye, X } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { exitAccountView, type ActiveAccountView } from "../lib/account-view"
+
+export function ClosedAccountView() {
+  const t = useTranslations("iam")
+  return (
+    <main className="flex min-h-svh flex-col items-center justify-center gap-4 p-6">
+      <h1 className="text-xl font-semibold">{t("accountViewEnded")}</h1>
+      <Button onClick={() => window.close()}>
+        <X className="size-4" />
+        {t("accountViewCloseTab")}
+      </Button>
+    </main>
+  )
+}
 
 export function AccountViewBanner({ view }: { view: ActiveAccountView }) {
   const t = useTranslations("iam")

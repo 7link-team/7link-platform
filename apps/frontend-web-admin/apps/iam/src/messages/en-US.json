@@ -63,6 +63,8 @@
   "accountViewExit": "Exit view",
   "accountViewExitFailed": "Unable to close account view. Retry.",
   "accountViewOpenFailed": "Unable to open this account view.",
+  "accountViewEnded": "Account view closed",
+  "accountViewCloseTab": "Close tab",
   "accountViewScope": "Workspace",
   "accountViewScopeID": "Workspace ID",
   "accountViewTenantID": "Tenant ID",

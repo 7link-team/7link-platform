@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useLocation, useNavigate } from "react-router"
+import { useLocation } from "react-router"
 import { Eye, Loader2 } from "lucide-react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
@@ -14,8 +14,7 @@ import { Label } from "@workspace/ui/components/label"
 import { SimpleSelect } from "@workspace/ui/components/select"
 import { Alert } from "./alert"
 import {
-  activateAccountView,
-  issueAccountView,
+  openAccountViewTab,
   type AccountViewScope,
   type AccountViewMode,
 } from "../lib/account-view"
@@ -24,12 +23,15 @@ import { iamApi } from "../lib/iam-api"
 export function AccountViewDialog({
   principalID,
   label,
+  preferredScope,
+  preferredOwner,
 }: {
   principalID: string
   label: string
+  preferredScope?: AccountViewScope
+  preferredOwner?: string
 }) {
   const t = useTranslations("iam")
-  const navigate = useNavigate()
   const location = useLocation()
   const [open, setOpen] = useState(false)
   const [scope, setScope] = useState<AccountViewScope>("personal")
@@ -52,25 +54,12 @@ export function AccountViewDialog({
         scope_id: scopeID,
         mode,
       }
-      const issued = await issueAccountView(selection)
-      activateAccountView(
+      await openAccountViewTab(
         selection,
-        issued,
         location.pathname + location.search,
         scope === "tenant" ? scopeID : scope === "entity" ? tenantID : ""
       )
       setOpen(false)
-      const path =
-        scope === "personal"
-          ? "/me/profile"
-          : scope === "system"
-            ? "/system"
-            : scope === "platform"
-              ? `/operating-platforms/${encodeURIComponent(scopeID)}`
-              : scope === "entity"
-                ? `/tenants/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(scopeID)}/overview`
-                : `/tenants/${encodeURIComponent(scopeID)}`
-      void navigate(path)
     } catch {
       setError(t("accountViewOpenFailed"))
     } finally {
@@ -89,15 +78,34 @@ export function AccountViewDialog({
           setError("")
           setOpen(true)
           setLoading(true)
+          setWorkspaces([])
           setScope("personal")
           setScopeID(principalID)
           setTenantID("")
           void iamApi
             .accountViewWorkspaces(principalID)
-            .then(setWorkspaces, () => {
-              setWorkspaces([])
-              setError(t("accountViewOpenFailed"))
-            })
+            .then(
+              (next) => {
+                setWorkspaces(next)
+                const selected =
+                  next.find(
+                    (item) =>
+                      item.scope_type === preferredScope &&
+                      item.scope_id === preferredOwner
+                  ) ??
+                  next.find((item) => item.scope_type === preferredScope) ??
+                  next.find((item) => item.scope_type !== "personal") ??
+                  next.find((item) => item.scope_type === "personal")
+                if (!selected) return
+                setScope(selected.scope_type)
+                setScopeID(selected.scope_id)
+                setTenantID(selected.tenant_id ?? "")
+              },
+              () => {
+                setWorkspaces([])
+                setError(t("accountViewOpenFailed"))
+              }
+            )
             .finally(() => setLoading(false))
         }}
       >

@@ -62,7 +62,8 @@ function launch(command, args, cwd, name, env = {}) {
   const child = spawn(command, args, {
     cwd,
     env: { ...process.env, ...env },
-    detached: true,
+    detached: process.platform !== "win32",
+    windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
   })
   child.stdout.pipe(log, { end: false })
@@ -81,7 +82,7 @@ function terminate(child, force) {
   if (process.platform === "win32") {
     const args = ["/pid", String(child.pid), "/T"]
     if (force) args.push("/F")
-    spawnSync("taskkill", args, { stdio: "ignore" })
+    spawnSync("taskkill", args, { stdio: "ignore", windowsHide: true })
     return
   }
   try {
@@ -204,8 +205,10 @@ async function login(loginName, password, width = 1440) {
   await context.addCookies([
     { name: "NEXT_LOCALE", value: "en-US", url: webURL },
   ])
+  context.on("page", (page) =>
+    page.on("pageerror", (error) => pageErrors.push(error.message))
+  )
   const page = await context.newPage()
-  page.on("pageerror", (error) => pageErrors.push(error.message))
   await page.goto("/login")
   await page.locator("#login-name").fill(loginName)
   await page.locator("#password").fill(password)
@@ -432,7 +435,7 @@ try {
   const inventory = spawnSync(
     binary,
     ["iam", "external-identity-inventory", "--config", configPath],
-    { cwd: backend, encoding: "utf8" }
+    { cwd: backend, encoding: "utf8", windowsHide: true }
   )
   assert.equal(inventory.status, 0, "empty legacy inventory release gate")
   assert.deepEqual(

@@ -2,6 +2,44 @@
 
 ## Current Delivery - 2026-09-27
 
+### Account View Tab Isolation - 2026-09-27
+
+- Phase: ACCEPTANCE. Implementation, review and engineering acceptance PASS.
+  User requires default target workspace and independent new tabs;
+  each account-view token is memory-only in its tab, never persisted/shared.
+  URL transfer is allowed, but current handoff uses verified postMessage instead.
+- Implemented: synchronous unique popup, exact source/origin/nonce handoff with
+  acknowledgement, fresh issued token per tab, detached opener, unchanged parent,
+  nonpersonal workspace defaults matching account category and explicit owner.
+- Main defers router import until authorization; marked tabs without token block
+  request transport and display closed screen. Exit clears memory immediately,
+  revokes own row and closes child. Pagehide/BFCache clears local authorization.
+- Architecture/security reviews PASS after storage-failure correction: independent
+  noncredential window.name marker and storage-read exceptions fail closed.
+- PASS: final four workspace gates (IAM152 + shared UI85 =237 tests) and four
+  focused credential/handoff/failure tests. Final real popup E2E uQLJF4 PASS26/26,
+  zero mocks/pageErrors,95 screenshots; ordinary/storage-disabled refresh and
+  duplicate/copied-handoff cases verified. Full lifecycle AYHWwN PASS47/47,
+  zero mocks/pageErrors,102 screenshots. All owned test processes cleaned.
+- User reported visible Windows command flashes; execution stopped for correction.
+  SQLite launch/cleanup/inventory now windowsHide:true;
+  Windows launches no longer detached. Account-view unit subprocesses use Node
+  spawnSync windowsHide:true. Root switched exec to tty:true/login:false (ConPTY)
+  for subsequent commands; durable CLAUDE rule added. User has not provided visual
+  confirmation of desktop behavior. Final gates and browser use virtual terminals.
+- Retained demo13 Chinese pages PASS again, no page errors/alerts/overflow.
+- Root reviewed writable workspace and storage-disabled closed mobile screenshots;
+  operator/readonly/writable identities and closed state verified. Original target
+  session assertions preserved. Self-review and original-requirement acceptance
+  PASS. No backend contract, credential persistence or dependency changes.
+- Delivery gate: commit/push scoped source/docs/tests, verify remote HEAD and clean
+  worktree before final response. No engineering work remains. User manual
+  acceptance at http://127.0.0.1:8091/login, select admin@example.test; Account view
+  opens a new tab in the selected admitted workspace. Each tab retains only its
+  own token in memory; refresh/duplicate requires opening a fresh account view.
+  Token must not enter storage, URL/history or shared session Cookies. No backend
+  changes needed: existing issue/ownership/revoke/live checks are reused.
+
 ### System Administration Correction - 2026-09-27
 
 - Phase: ACCEPTANCE. Implementation and engineering acceptance PASS; user manual
@@ -59,8 +97,8 @@
   run after the view-only snapshot assertions to avoid idle renewal contamination.
 - Staged deliverables reviewed: source/docs/regressions/generated contracts only;
   no temporary artifacts, secrets, binaries or historical migration changes.
-- Delivery gate: commit/push IAM and verify remote HEAD plus clean worktree before
-  reporting delivery. No implementation work remains. Next user action is manual
+- Delivered:211e2d4 pushed to IAM, remote HEAD matched and worktree was clean.
+  No system-administration implementation work remains. Next user action is manual
   acceptance at http://127.0.0.1:8091/login, select admin@example.test. No additional
   product decisions or optional refactors are pending.
 

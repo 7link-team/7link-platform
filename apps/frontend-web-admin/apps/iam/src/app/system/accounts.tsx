@@ -397,6 +397,8 @@ export default function SystemAccountsPage({
                       <AccountViewDialog
                         principalID={item.id}
                         label={item.display_name || item.login_name || item.id}
+                        preferredScope={category === "user" ? undefined : category}
+                        preferredOwner={owner || undefined}
                       />
                     )}
                   </div>

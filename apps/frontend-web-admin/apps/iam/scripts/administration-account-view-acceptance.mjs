@@ -3,6 +3,7 @@ import { DatabaseSync } from "node:sqlite"
 import { join } from "node:path"
 import { writeFile } from "node:fs/promises"
 import { systemAdministrationAcceptance } from "./system-administration-acceptance.mjs"
+import { accountViewTabsAcceptance } from "./account-view-tabs-acceptance.mjs"
 
 export async function administrationAccountViewAcceptance({
   admin,
@@ -20,6 +21,8 @@ export async function administrationAccountViewAcceptance({
   })
   db.exec("PRAGMA busy_timeout = 10000")
   const contexts = []
+  const operatorPage = admin.page
+  const viewPages = new Set()
   const issued = []
   const failedResponses = []
   const recordResponse = (response) => {
@@ -407,6 +410,11 @@ export async function administrationAccountViewAcceptance({
     )
 
     const openUI = async (target, workspace, writable = false) => {
+      assert.equal(
+        admin.page,
+        operatorPage,
+        "open account views from operator tab"
+      )
       await admin.page.setViewportSize({ width: 1440, height: 1000 })
       if (new URL(admin.page.url()).pathname !== "/system/accounts") {
         await admin.page.goto("/system/accounts")
@@ -430,9 +438,16 @@ export async function administrationAccountViewAcceptance({
           .getByRole("option", { name: "Writable", exact: true })
           .click()
       }
-      await admin.page
+      const operatorURL = operatorPage.url()
+      const popupPromise = operatorPage.waitForEvent("popup")
+      await operatorPage
         .getByRole("button", { name: "Open view", exact: true })
         .click()
+      const popup = await popupPromise
+      viewPages.add(popup)
+      popup.on("response", recordResponse)
+      admin.page = popup
+      await popup.setViewportSize({ width: 1440, height: 1000 })
       await admin.page
         .getByRole("status")
         .filter({ hasText: writable ? "Writable" : "Read-only" })
@@ -450,6 +465,18 @@ export async function administrationAccountViewAcceptance({
               () => false
             ),
         "target subject verified"
+      )
+      assert.equal(
+        operatorPage.url(),
+        operatorURL,
+        "operator tab remains in place"
+      )
+      assert.equal(
+        await operatorPage
+          .getByRole("button", { name: "Exit view", exact: true })
+          .count(),
+        0,
+        "operator tab is not converted to a view"
       )
     }
     const captureUI = async (name) => {
@@ -508,10 +535,15 @@ export async function administrationAccountViewAcceptance({
       )
     }
     const exitUI = async () => {
+      const popup = admin.page
+      assert.notEqual(popup, operatorPage)
+      const closed = popup.waitForEvent("close")
       await admin.page
         .getByRole("button", { name: "Exit view", exact: true })
         .click()
-      await admin.page.waitForURL((url) => url.pathname === "/system/accounts")
+      await closed
+      viewPages.delete(popup)
+      admin.page = operatorPage
       await admin.page
         .getByRole("heading", { name: "User accounts", exact: true })
         .waitFor()
@@ -597,7 +629,7 @@ export async function administrationAccountViewAcceptance({
         )
       }
       if (name !== "personal")
-        assert.equal(await admin.page.getByTitle("Account").count(), 0)
+        assert.equal(await admin.page.getByTitle("Account", { exact: true }).count(), 0)
       if (name === "platform") {
         await admin.page
           .getByRole("navigation")
@@ -659,6 +691,20 @@ export async function administrationAccountViewAcceptance({
     pass(
       "real writable platform UI mutation succeeds and restores operator after exit; ordinary member view shows no authorized pages"
     )
+    await accountViewTabsAcceptance({
+      admin,
+      operator,
+      systemTarget,
+      ownerA,
+      platformA,
+      tenantB,
+      request,
+      eventually,
+      pass,
+      issued,
+      viewPages,
+      directory,
+    })
     await systemAdministrationAcceptance({
       admin,
       directory,
@@ -698,7 +744,9 @@ export async function administrationAccountViewAcceptance({
     )
     throw cause
   } finally {
-    admin.page.off("response", recordResponse)
+    admin.page = operatorPage
+    operatorPage.off("response", recordResponse)
+    for (const popup of viewPages) await popup.close().catch(() => {})
     for (const view of issued)
       await request(`/account-views/${view.id}`, "DELETE").catch(() => {})
     for (const context of contexts) await context.close()

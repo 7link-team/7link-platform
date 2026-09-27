@@ -63,6 +63,8 @@
   "accountViewExit": "Keluar paparan",
   "accountViewExitFailed": "Tidak dapat menutup paparan akaun. Cuba lagi.",
   "accountViewOpenFailed": "Tidak dapat membuka paparan akaun ini.",
+  "accountViewEnded": "Paparan akaun ditutup",
+  "accountViewCloseTab": "Tutup tab",
   "accountViewScope": "Ruang kerja",
   "accountViewScopeID": "ID ruang kerja",
   "accountViewTenantID": "ID penyewa",

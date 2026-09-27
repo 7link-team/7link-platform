@@ -63,6 +63,8 @@
   "accountViewExit": "退出视图",
   "accountViewExitFailed": "无法关闭账号视图，请重试。",
   "accountViewOpenFailed": "无法打开此账号视图。",
+  "accountViewEnded": "账号视图已关闭",
+  "accountViewCloseTab": "关闭标签页",
   "accountViewScope": "工作空间",
   "accountViewScopeID": "工作空间 ID",
   "accountViewTenantID": "租户 ID",

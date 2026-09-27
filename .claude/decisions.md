@@ -3088,3 +3088,40 @@ with zero mocked business responses or page errors; frontend234 tests and all
 four workspace gates PASS. Normal MySQL/PostgreSQL gates preserve original
 performance budgets and246 published migrations. Retained demo refreshed; user
 manual acceptance is available. Delivery requires verified commit/push.
+
+## Account View Tab Isolation - 2026-09-27
+
+Decision: every UI account view opens a fresh independent tab with a fresh scoped
+credential; only child module memory stores it. Default selection is an admitted
+nonpersonal workspace, matching management scope/owner when available. Personal
+is a fallback only when no admitted workspace exists. Original tab stays operator.
+Reason: user requires concurrent target views without shared tokens or identity
+collision, and explicitly prohibits credential persistence. URL propagation is
+allowed but unnecessary for the chosen one-shot verified window handoff.
+Alternatives considered: shared storage/cookies, same-tab replacement, credential
+URL transport, persistence to survive reload. Shared/persistent authorization
+violates the requirement; same-tab replacement does not provide parallel views.
+Tradeoffs: reload/duplicate/back-forward loses memory authority and fails closed;
+noncredential tab markers identify that state. Router and API transport both guard
+against operator-cookie fallback. Every view retains live backend permission,
+original operator-session, scope, expiry and audited attribution checks.
+Scope: frontend handoff/startup/dialog and real browser acceptance; existing
+backend issue/revoke contract retained. No credential in storage or URL/history.
+Status: IMPLEMENTED and VERIFIED. Architecture/security review PASS, including
+independent reload detection when storage reads fail. Final frontend237 tests and
+all four workspace gates PASS. Real focused26/26 and full47/47 browser flows PASS
+with zero mocked business responses or page errors. Ordinary/storage-disabled
+refresh, duplicate/copied handoff, concurrent read/write scopes and individual
+exit/revocation verified. Root self-review and requirement acceptance PASS.
+
+## Quiet Windows Execution - 2026-09-27
+
+Decision: use ConPTY (`exec_command tty:true/login:false`) for agent commands and
+explicit hidden Windows child-process creation for test/build helpers. Preserve
+headless browsers and hidden background services. The user requires no flashing
+command windows while using other desktop applications.
+Reason: hidden script children alone did not address the execution host console;
+ordinary piped shell calls continued to flash. Virtual-terminal mode is available
+in the existing tool and does not require a new launcher or dependency.
+Scope: repository execution rules and touched test launcher options; no product
+behavior changes. Status: APPLIED; all subsequent commands use virtual terminals.

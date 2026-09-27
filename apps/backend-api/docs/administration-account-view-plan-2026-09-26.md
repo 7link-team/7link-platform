@@ -408,3 +408,58 @@ Retained web: `http://127.0.0.1:8091/login`; Swagger:
 administrator. `system-admin@example.test` intentionally has restricted authority.
 Six demo accounts are selectable; the real system shared root is initialized.
 Next step is user manual acceptance after verified IAM commit/push.
+
+## Independent account-view tabs - 2026-09-27
+
+User requires target workspaces as the default, new tabs for every view, and
+credentials exclusively in the authorized tab's memory. URL propagation is
+allowed; the implemented handoff instead avoids credentials in URLs/history.
+Each open synchronously reserves a unique tab, issues a fresh existing backend
+account-view credential, and delivers it through a one-shot source/origin/nonce
+verified ready/transfer/ack exchange. The child detaches its opener after handoff;
+the parent keeps its operator session and drops the transferred token reference.
+
+Default selection prefers the exact account category/explicit owner, then the
+category, then an admitted nonpersonal workspace. Personal is the fallback only
+when the target has no admitted nonpersonal workspace. Every view still names one
+explicit scope and respects existing live backend authorization and audit rules.
+
+The router is imported only after child bootstrap verifies handoff. No token is
+stored in localStorage, sessionStorage, cookies, window.name or history. Only
+noncredential tab markers persist. Missing memory authorization blocks the API
+transport and displays a closed state, including ordinary refresh, copied tabs,
+storage-disabled refresh, copied handoff URLs and pagehide/BFCache disposal.
+Storage exceptions fail closed; the independent window-name marker preserves tab
+intent. Exit clears memory immediately, revokes its own view and closes its tab;
+it never navigates the child into the operator's cookie-authenticated console.
+
+Architecture/security design and implementation reviews PASS. The concrete
+storage-failure fallback finding was repaired and covered before final delivery.
+Existing target-session equality, scope/readonly checks and operator attribution
+assertions remain intact. No backend API or migration changes were required.
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Workspace typecheck/lint/test/build | PASS | IAM152 + shared UI85 =237 tests; package `.turbo/turbo-*.log` |
+| Handoff/isolation/failure regressions | PASS4/4 | `src/lib/account-view.test.ts`; wrong source/origin/nonce, blocked/failed popup, storage failure and memory disposal |
+| Final focused real browser | PASS26/26 | `.temp/sqlite-lifecycle-uQLJF4/report.json`;95 screenshots |
+| Final full lifecycle | PASS47/47 | `.temp/sqlite-lifecycle-AYHWwN/report.json`;102 screenshots |
+| Retained Chinese demo | PASS13/13 | `.temp/dev/system-review.json`;no errors/alerts/viewport overflow |
+
+Both browser runs have zero mocked business responses and zero page errors,
+including newly created tabs. Actual concurrent system/operating-platform/tenant
+views prove independent view IDs and tokens, correct target subjects, readonly403,
+real writable operations, scope403, individual exit/revocation and unaffected
+siblings/operator. Normal and storage-disabled reloads, duplicated tabs and copied
+handoff URLs have no successful operator-cookie API fallback. Desktop/mobile
+screenshots inspected; test services cleaned after exit.
+
+User also requires quiet Windows execution. Agent commands now use ConPTY with
+profiles disabled; touched test subprocess launches explicitly hide console
+windows and avoid Windows detachment. CLAUDE.md records the execution rule.
+The user has not supplied a visual desktop confirmation; the launch configuration
+and successful virtual-terminal test execution are the verified facts.
+
+Retained demo remains `http://127.0.0.1:8091/login`, with `admin@example.test` in
+the account selector. Implementation and engineering acceptance are complete;
+next user action is manual acceptance after verified commit/push.

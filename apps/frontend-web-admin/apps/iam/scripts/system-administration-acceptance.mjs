@@ -13,8 +13,8 @@ export async function systemAdministrationAcceptance({
   contexts,
   eventually,
   pass,
-  openUI,
-  exitUI,
+  openUI: openAccountView,
+  exitUI: exitAccountView,
   viewRequest,
   open,
   statement,
@@ -24,7 +24,15 @@ export async function systemAdministrationAcceptance({
   tenantB,
   ownerContext,
 }) {
-  const page = admin.page
+  let page = admin.page
+  const openUI = async (...args) => {
+    await openAccountView(...args)
+    page = admin.page
+  }
+  const exitUI = async () => {
+    await exitAccountView()
+    page = admin.page
+  }
   const client = (method, ...args) =>
     page.evaluate(
       async ({ method, args }) => {

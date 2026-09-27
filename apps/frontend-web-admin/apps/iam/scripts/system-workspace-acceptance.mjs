@@ -9,8 +9,8 @@ export async function systemWorkspaceAcceptance({
   contexts,
   eventually,
   pass,
-  openUI,
-  exitUI,
+  openUI: openAccountView,
+  exitUI: exitAccountView,
   statement,
   operator,
   ownerA,
@@ -20,7 +20,15 @@ export async function systemWorkspaceAcceptance({
   capture,
   client,
 }) {
-  const page = admin.page
+  let page = admin.page
+  const openUI = async (...args) => {
+    await openAccountView(...args)
+    page = admin.page
+  }
+  const exitUI = async () => {
+    await exitAccountView()
+    page = admin.page
+  }
   const select = async (id, name) => {
     await page.locator(id).click()
     await page.getByRole("option", { name, exact: true }).click()
