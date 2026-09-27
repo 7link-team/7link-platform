@@ -29,16 +29,12 @@ type systemDepartmentCreateInput struct {
 	}
 }
 
+// System routes name the selected root owner_id, as core's system scope routes
+// do: a tenant_id path parameter would read as tenant-gated admission.
 type systemOwnerDepartmentsInput struct {
-	TenantID string `path:"tenant_id"`
-	Offset   int    `query:"offset" minimum:"0" default:"0"`
-	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
-}
-
-type systemPlatformDepartmentsInput struct {
-	PlatformID string `path:"platform_id"`
-	Offset     int    `query:"offset" minimum:"0" default:"0"`
-	Limit      int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
+	OwnerID string `path:"owner_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Offset  int    `query:"offset" minimum:"0" default:"0"`
+	Limit   int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 func registerSystemOwnerDepartmentsHTTP(api huma.API, svc *Service, registrar *authz.Registrar) {
@@ -64,11 +60,11 @@ func registerSystemOwnerDepartmentsHTTP(api huma.API, svc *Service, registrar *a
 		}
 		return respx.List(ctx, items, respx.Page{Offset: offset, Limit: limit, Total: total}), nil
 	}
-	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "organization-system-tenant-departments", Method: http.MethodGet, Path: "/system/tenants/{tenant_id}/departments", Summary: "List departments of an explicitly selected tenant", Tags: []string{"system"}}, authz.Guard{Resource: "system_account", Verb: "view"}, func(ctx context.Context, in *systemOwnerDepartmentsInput) (*respx.Body[[]Department], error) {
-		return list(ctx, in.TenantID, ScopeTenant, in.Offset, in.Limit)
+	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "organization-system-tenant-departments", Method: http.MethodGet, Path: "/system/tenants/{owner_id}/departments", Summary: "List departments of an explicitly selected tenant", Tags: []string{"system"}}, authz.Guard{Resource: "system_account", Verb: "view"}, func(ctx context.Context, in *systemOwnerDepartmentsInput) (*respx.Body[[]Department], error) {
+		return list(ctx, in.OwnerID, ScopeTenant, in.Offset, in.Limit)
 	})
-	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "organization-system-platform-departments", Method: http.MethodGet, Path: "/system/operating-platforms/{platform_id}/departments", Summary: "List departments of an explicitly selected operating platform", Tags: []string{"system"}}, authz.Guard{Resource: "system_account", Verb: "view"}, func(ctx context.Context, in *systemPlatformDepartmentsInput) (*respx.Body[[]Department], error) {
-		return list(ctx, in.PlatformID, ScopePlatform, in.Offset, in.Limit)
+	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "organization-system-platform-departments", Method: http.MethodGet, Path: "/system/operating-platforms/{owner_id}/departments", Summary: "List departments of an explicitly selected operating platform", Tags: []string{"system"}}, authz.Guard{Resource: "system_account", Verb: "view"}, func(ctx context.Context, in *systemOwnerDepartmentsInput) (*respx.Body[[]Department], error) {
+		return list(ctx, in.OwnerID, ScopePlatform, in.Offset, in.Limit)
 	})
 }
 

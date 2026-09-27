@@ -21597,7 +21597,8 @@
             "name": "platform_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           },
@@ -21716,7 +21717,8 @@
             "name": "platform_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -21815,7 +21817,8 @@
             "name": "platform_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -46905,6 +46908,121 @@
         ]
       }
     },
+    "/system/operating-platforms/{owner_id}/departments": {
+      "get": {
+        "operationId": "organization-system-platform-departments",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "owner_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeListDepartment"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List departments of an explicitly selected operating platform",
+        "tags": [
+          "system"
+        ],
+        "x-authz-permission": "system_account_view"
+      }
+    },
     "/system/operating-platforms/{owner_id}/members": {
       "get": {
         "operationId": "iam-system-platform-members",
@@ -47716,7 +47834,7 @@
     },
     "/system/operating-platforms/{owner_id}/roles/{role_id}/members/{principal_id}": {
       "delete": {
-        "operationId": "iam-system-platform-role-member-DELETE",
+        "operationId": "iam-system-platform-role-member-remove",
         "parameters": [
           {
             "in": "path",
@@ -47826,7 +47944,7 @@
         "x-authz-permission": "platform_administer"
       },
       "put": {
-        "operationId": "iam-system-platform-role-member-PUT",
+        "operationId": "iam-system-platform-role-member-add",
         "parameters": [
           {
             "in": "path",
@@ -47934,119 +48052,6 @@
           "system"
         ],
         "x-authz-permission": "platform_administer"
-      }
-    },
-    "/system/operating-platforms/{platform_id}/departments": {
-      "get": {
-        "operationId": "organization-system-platform-departments",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "platform_id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "offset",
-            "schema": {
-              "default": 0,
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "default": 50,
-              "format": "int64",
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeListDepartment"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "sessionCookie": []
-          }
-        ],
-        "summary": "List departments of an explicitly selected operating platform",
-        "tags": [
-          "system"
-        ],
-        "x-authz-permission": "system_account_view"
       }
     },
     "/system/permission-catalog": {
@@ -50681,6 +50686,121 @@
         "x-authz-permission": "platform_administer"
       }
     },
+    "/system/tenants/{owner_id}/departments": {
+      "get": {
+        "operationId": "organization-system-tenant-departments",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "owner_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeListDepartment"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List departments of an explicitly selected tenant",
+        "tags": [
+          "system"
+        ],
+        "x-authz-permission": "system_account_view"
+      }
+    },
     "/system/tenants/{owner_id}/members": {
       "get": {
         "operationId": "iam-system-tenant-members",
@@ -51492,7 +51612,7 @@
     },
     "/system/tenants/{owner_id}/roles/{role_id}/members/{principal_id}": {
       "delete": {
-        "operationId": "iam-system-tenant-role-member-DELETE",
+        "operationId": "iam-system-tenant-role-member-remove",
         "parameters": [
           {
             "in": "path",
@@ -51602,7 +51722,7 @@
         "x-authz-permission": "platform_administer"
       },
       "put": {
-        "operationId": "iam-system-tenant-role-member-PUT",
+        "operationId": "iam-system-tenant-role-member-add",
         "parameters": [
           {
             "in": "path",
@@ -51710,119 +51830,6 @@
           "system"
         ],
         "x-authz-permission": "platform_administer"
-      }
-    },
-    "/system/tenants/{tenant_id}/departments": {
-      "get": {
-        "operationId": "organization-system-tenant-departments",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "tenant_id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "offset",
-            "schema": {
-              "default": 0,
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "default": 50,
-              "format": "int64",
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeListDepartment"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "sessionCookie": []
-          }
-        ],
-        "summary": "List departments of an explicitly selected tenant",
-        "tags": [
-          "system"
-        ],
-        "x-authz-permission": "system_account_view"
       }
     },
     "/tenant-registrations": {

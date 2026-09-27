@@ -47,8 +47,8 @@ iam-system-tenant-member-update|PATCH|/system/tenants/{owner_id}/members/{princi
 iam-system-tenant-member-disable|DELETE|/system/tenants/{owner_id}/members/{principal_id}
 iam-system-tenant-roles|GET|/system/tenants/{owner_id}/roles
 iam-system-tenant-member-roles|GET|/system/tenants/{owner_id}/members/{principal_id}/roles
-iam-system-tenant-role-member-PUT|PUT|/system/tenants/{owner_id}/roles/{role_id}/members/{principal_id}
-iam-system-tenant-role-member-DELETE|DELETE|/system/tenants/{owner_id}/roles/{role_id}/members/{principal_id}
+iam-system-tenant-role-member-add|PUT|/system/tenants/{owner_id}/roles/{role_id}/members/{principal_id}
+iam-system-tenant-role-member-remove|DELETE|/system/tenants/{owner_id}/roles/{role_id}/members/{principal_id}
 iam-system-platform-members|GET|/system/operating-platforms/{owner_id}/members
 iam-system-platform-member|GET|/system/operating-platforms/{owner_id}/members/{principal_id}
 iam-system-platform-member-create|POST|/system/operating-platforms/{owner_id}/members
@@ -56,8 +56,8 @@ iam-system-platform-member-update|PATCH|/system/operating-platforms/{owner_id}/m
 iam-system-platform-member-disable|DELETE|/system/operating-platforms/{owner_id}/members/{principal_id}
 iam-system-platform-roles|GET|/system/operating-platforms/{owner_id}/roles
 iam-system-platform-member-roles|GET|/system/operating-platforms/{owner_id}/members/{principal_id}/roles
-iam-system-platform-role-member-PUT|PUT|/system/operating-platforms/{owner_id}/roles/{role_id}/members/{principal_id}
-iam-system-platform-role-member-DELETE|DELETE|/system/operating-platforms/{owner_id}/roles/{role_id}/members/{principal_id}
+iam-system-platform-role-member-add|PUT|/system/operating-platforms/{owner_id}/roles/{role_id}/members/{principal_id}
+iam-system-platform-role-member-remove|DELETE|/system/operating-platforms/{owner_id}/roles/{role_id}/members/{principal_id}
 iam-platform-roles|GET|/operating-platforms/{platform_id}/roles
 iam-platform-role-create|POST|/operating-platforms/{platform_id}/roles
 iam-platform-permissions|GET|/operating-platforms/{platform_id}/permission-catalog

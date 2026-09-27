@@ -1608,12 +1608,11 @@ export function createIamApi(
     systemOwnerDepartments: (scope: SystemOwnerScope) =>
       requestAllPages<Department>(
         scope.kind === "platform"
-          ? pagedRoute(
-              "/system/operating-platforms/{platform_id}/departments",
-              { path: { platform_id: scope.id } }
-            )
-          : pagedRoute("/system/tenants/{tenant_id}/departments", {
-              path: { tenant_id: scope.id },
+          ? pagedRoute("/system/operating-platforms/{owner_id}/departments", {
+              path: { owner_id: scope.id },
+            })
+          : pagedRoute("/system/tenants/{owner_id}/departments", {
+              path: { owner_id: scope.id },
             })
       ),
     systemOwnerRoles: (scope: SystemOwnerScope) =>

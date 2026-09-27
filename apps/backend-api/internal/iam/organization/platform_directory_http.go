@@ -11,13 +11,13 @@ import (
 )
 
 type platformPageSelector struct {
-	PlatformID string `path:"platform_id"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset     int    `query:"offset" minimum:"0" default:"0"`
 	Limit      int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type createPlatformDepartmentInput struct {
-	PlatformID string `path:"platform_id"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body       struct {
 		ParentID  string `json:"parent_id,omitempty" maxLength:"19"`
 		Name      string `json:"name" minLength:"1" maxLength:"128"`
@@ -27,7 +27,7 @@ type createPlatformDepartmentInput struct {
 }
 
 type createPlatformGroupInput struct {
-	PlatformID string `path:"platform_id"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body       struct {
 		Name        string         `json:"name" minLength:"1" maxLength:"128"`
 		Type        string         `json:"type,omitempty" enum:"static,dynamic" default:"static"`

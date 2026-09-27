@@ -2967,6 +2967,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/system/operating-platforms/{owner_id}/departments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List departments of an explicitly selected operating platform */
+        get: operations["organization-system-platform-departments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/system/operating-platforms/{owner_id}/members": {
         parameters: {
             query?: never;
@@ -3047,27 +3064,10 @@ export interface paths {
         };
         get?: never;
         /** Manage scoped account memberships */
-        put: operations["iam-system-platform-role-member-PUT"];
+        put: operations["iam-system-platform-role-member-add"];
         post?: never;
         /** Manage scoped account memberships */
-        delete: operations["iam-system-platform-role-member-DELETE"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/system/operating-platforms/{platform_id}/departments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List departments of an explicitly selected operating platform */
-        get: operations["organization-system-platform-departments"];
-        put?: never;
-        post?: never;
-        delete?: never;
+        delete: operations["iam-system-platform-role-member-remove"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3402,6 +3402,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/system/tenants/{owner_id}/departments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List departments of an explicitly selected tenant */
+        get: operations["organization-system-tenant-departments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/system/tenants/{owner_id}/members": {
         parameters: {
             query?: never;
@@ -3482,27 +3499,10 @@ export interface paths {
         };
         get?: never;
         /** Manage scoped account memberships */
-        put: operations["iam-system-tenant-role-member-PUT"];
+        put: operations["iam-system-tenant-role-member-add"];
         post?: never;
         /** Manage scoped account memberships */
-        delete: operations["iam-system-tenant-role-member-DELETE"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/system/tenants/{tenant_id}/departments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List departments of an explicitly selected tenant */
-        get: operations["organization-system-tenant-departments"];
-        put?: never;
-        post?: never;
-        delete?: never;
+        delete: operations["iam-system-tenant-role-member-remove"];
         options?: never;
         head?: never;
         patch?: never;
@@ -29615,6 +29615,76 @@ export interface operations {
             };
         };
     };
+    "organization-system-platform-departments": {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                owner_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListDepartment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     "iam-system-platform-members": {
         parameters: {
             query?: {
@@ -30109,7 +30179,7 @@ export interface operations {
             };
         };
     };
-    "iam-system-platform-role-member-PUT": {
+    "iam-system-platform-role-member-add": {
         parameters: {
             query?: never;
             header?: never;
@@ -30178,7 +30248,7 @@ export interface operations {
             };
         };
     };
-    "iam-system-platform-role-member-DELETE": {
+    "iam-system-platform-role-member-remove": {
         parameters: {
             query?: never;
             header?: never;
@@ -30198,76 +30268,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvelopeMutationResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    "organization-system-platform-departments": {
-        parameters: {
-            query?: {
-                offset?: number;
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                platform_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvelopeListDepartment"];
                 };
             };
             /** @description Unauthorized */
@@ -32199,6 +32199,76 @@ export interface operations {
             };
         };
     };
+    "organization-system-tenant-departments": {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                owner_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListDepartment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     "iam-system-tenant-members": {
         parameters: {
             query?: {
@@ -32693,7 +32763,7 @@ export interface operations {
             };
         };
     };
-    "iam-system-tenant-role-member-PUT": {
+    "iam-system-tenant-role-member-add": {
         parameters: {
             query?: never;
             header?: never;
@@ -32762,7 +32832,7 @@ export interface operations {
             };
         };
     };
-    "iam-system-tenant-role-member-DELETE": {
+    "iam-system-tenant-role-member-remove": {
         parameters: {
             query?: never;
             header?: never;
@@ -32782,76 +32852,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvelopeMutationResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    "organization-system-tenant-departments": {
-        parameters: {
-            query?: {
-                offset?: number;
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                tenant_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvelopeListDepartment"];
                 };
             };
             /** @description Unauthorized */

@@ -2,6 +2,7 @@ package organization
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -36,8 +37,8 @@ organization-system-department-create|POST|/system/departments
 organization-system-department|GET|/system/departments/{department_id}
 organization-system-department-update|PATCH|/system/departments/{department_id}
 organization-system-department-delete|DELETE|/system/departments/{department_id}
-organization-system-tenant-departments|GET|/system/tenants/{tenant_id}/departments
-organization-system-platform-departments|GET|/system/operating-platforms/{platform_id}/departments
+organization-system-tenant-departments|GET|/system/tenants/{owner_id}/departments
+organization-system-platform-departments|GET|/system/operating-platforms/{owner_id}/departments
 organization-platform-departments|GET|/operating-platforms/{platform_id}/departments
 organization-platform-department-create|POST|/operating-platforms/{platform_id}/departments
 organization-platform-groups|GET|/operating-platforms/{platform_id}/principal-groups
@@ -552,4 +553,70 @@ func TestOrganizationHTTPRejectsInvalidReferencesAndStorageFailures(t *testing.T
 	for _, response := range failingRequests {
 		assert.GreaterOrEqual(t, response.Code, http.StatusBadRequest, response.Body.String())
 	}
+}
+
+func TestOrganizationHTTPMapsDirectoryDomainErrorsWithoutWriting(t *testing.T) {
+	h := newOrganizationHTTPHarness(t)
+	auth := "Authorization: Bearer test"
+	departments := func() []Department {
+		items, err := h.service.List(t.Context(), 1)
+		require.NoError(t, err)
+		return items
+	}
+
+	for _, body := range []map[string]any{
+		{"entity_id": "bad", "name": "Engineering"},
+		{"entity_id": "10", "parent_id": "bad", "name": "Engineering"},
+	} {
+		response := h.api.Post("/tenants/1/departments", auth, body)
+		assert.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+	}
+	assert.Equal(t, http.StatusNotFound, h.api.Post("/tenants/1/departments", auth, map[string]any{"entity_id": "20", "name": "Foreign entity"}).Code, "an entity of another tenant is not found")
+	assert.Empty(t, departments())
+
+	created := func(body map[string]any) Department {
+		response := h.api.Post("/tenants/1/departments", auth, body)
+		require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+		var envelope struct {
+			Data Department `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &envelope))
+		return envelope.Data
+	}
+	root := created(map[string]any{"entity_id": "10", "name": "Engineering"})
+	child := created(map[string]any{"entity_id": "10", "parent_id": root.ID.String(), "name": "Platform"})
+	rootPath := "/departments/" + root.ID.String()
+	assert.Equal(t, http.StatusConflict, h.api.Post("/tenants/1/departments", auth, map[string]any{"entity_id": "10", "name": "engineering"}).Code, "sibling names are unique case-insensitively")
+	assert.Equal(t, http.StatusUnprocessableEntity, h.api.Patch(rootPath, auth, map[string]any{"parent_id": "bad", "version": 1}).Code)
+	assert.Equal(t, http.StatusConflict, h.api.Patch(rootPath, auth, map[string]any{"parent_id": child.ID.String(), "version": 1}).Code, "a department cannot move under its descendant")
+	assert.Equal(t, http.StatusConflict, h.api.Patch(rootPath, auth, map[string]any{"name": "Stale", "version": 9}).Code)
+	assert.Equal(t, http.StatusConflict, h.api.Delete(rootPath+"?version=1", auth).Code, "a department with children cannot be deleted")
+	stored := departments()
+	require.Len(t, stored, 2)
+	for _, item := range stored {
+		assert.Equal(t, int64(1), item.Version, "rejected writes must leave %s untouched", item.Name)
+		if item.ID == root.ID {
+			assert.Equal(t, "Engineering", item.Name)
+			assert.Zero(t, item.ParentID)
+		}
+	}
+
+	require.Equal(t, http.StatusCreated, h.api.Post("/tenants/1/principal-groups", auth, map[string]any{"name": "Operators"}).Code)
+	assert.Equal(t, http.StatusConflict, h.api.Post("/tenants/1/principal-groups", auth, map[string]any{"name": "OPERATORS"}).Code)
+	assert.Equal(t, http.StatusConflict, h.api.Patch("/principal-groups/401", auth, map[string]any{"description": "Stale", "version": 9}).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, h.api.Put("/principal-groups/401/members/bad", auth, map[string]any{}).Code)
+	assert.Equal(t, http.StatusConflict, h.api.Put("/principal-groups/401/members/2", auth, map[string]any{}).Code, "only active tenant members can join a group")
+	require.Equal(t, http.StatusOK, h.api.Put("/principal-groups/401/members/10", auth, map[string]any{}).Code)
+	assert.Equal(t, http.StatusConflict, h.api.Delete("/principal-groups/401?version=1", auth).Code, "a group with members cannot be deleted")
+	assert.Equal(t, http.StatusUnprocessableEntity, h.api.Delete("/principal-groups/401/members/bad", auth).Code)
+
+	var groups []groupRow
+	require.NoError(t, h.db.Table(h.table("iam_groups")).Where("tenant_id = 1").Find(&groups).Error)
+	require.Len(t, groups, 1)
+	assert.Equal(t, "Operators", groups[0].Name)
+	assert.Empty(t, groups[0].Description)
+	assert.Equal(t, int64(1), groups[0].Version)
+	var members int64
+	require.NoError(t, h.db.Table(h.table("iam_group_members")).Where("tenant_id = 1 AND group_id = 401").Count(&members).Error)
+	assert.Equal(t, int64(1), members)
 }

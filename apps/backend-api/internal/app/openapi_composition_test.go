@@ -152,6 +152,14 @@ func TestComposedIAMOpenAPIHasExactMappedOperationSet(t *testing.T) {
 				t.Errorf("duplicate OperationID %q at %s and %s", operation.OperationID, previous, location)
 			}
 			operationIDs[operation.OperationID] = location
+			assert.Equal(t, strings.ToLower(operation.OperationID), operation.OperationID, "OperationIDs are lowercase: %s", location)
+			// Under /system a tenant_id path parameter would read as tenant-gated
+			// admission, so system routes name the root they select owner_id.
+			if authz.IsPlatformOperation(operation) && strings.HasPrefix(path, "/system/") {
+				for _, parameter := range operation.Parameters {
+					assert.False(t, parameter.In == "path" && parameter.Name == "tenant_id", "%s is system-scoped but declares path tenant_id", location)
+				}
+			}
 			if !isIAMOperation(operation.OperationID) {
 				continue
 			}

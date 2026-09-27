@@ -11,11 +11,11 @@ import (
 )
 
 type platformIDInput struct {
-	ID string `path:"platform_id" maxLength:"128"`
+	ID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type updatePlatformInput struct {
-	ID   string `path:"platform_id" maxLength:"128"`
+	ID   string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body struct {
 		Name    *string `json:"name,omitempty" minLength:"1" maxLength:"128"`
 		Status  *string `json:"status,omitempty" enum:"active,suspended"`
@@ -24,7 +24,7 @@ type updatePlatformInput struct {
 }
 
 type deletePlatformInput struct {
-	ID      string `path:"platform_id" maxLength:"128"`
+	ID      string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Version int64  `query:"version" minimum:"1"`
 }
 

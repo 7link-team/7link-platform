@@ -311,9 +311,9 @@ func registerSystemScopeHTTP(api huma.API, svc *Service, registrar *authz.Regist
 			}
 			return respx.List(ctx, guidStrings(roles), respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 		})
-		for _, method := range []string{http.MethodPut, http.MethodDelete} {
-			method := method
-			authz.RegisterPlatform(registrar, api, op("role-member-"+method, method, "/roles/{role_id}/members/{principal_id}"), write, func(ctx context.Context, in *systemScopeRoleMemberInput) (*respx.Body[MutationResult], error) {
+		for _, route := range []struct{ method, action string }{{http.MethodPut, "add"}, {http.MethodDelete, "remove"}} {
+			method := route.method
+			authz.RegisterPlatform(registrar, api, op("role-member-"+route.action, method, "/roles/{role_id}/members/{principal_id}"), write, func(ctx context.Context, in *systemScopeRoleMemberInput) (*respx.Body[MutationResult], error) {
 				subject, err := requireID(in.PrincipalID)
 				if err != nil {
 					return nil, err
