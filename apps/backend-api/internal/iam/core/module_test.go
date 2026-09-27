@@ -281,3 +281,71 @@ func TestModuleMigrationSourceRemainsSelfDescribing(t *testing.T) {
 		{Name: "retire-positions", Version: 17, Dependencies: []module.MigrationMilestoneRef{{Module: "organization", Name: "retire-positions"}}},
 	}, (&Module{}).MigrationMilestones())
 }
+
+func TestModulePrincipalLockConnectorBindsTheIdentityLock(t *testing.T) {
+	harness := newCoreServiceHarness(t)
+	instance := NewModule(harness.runtime, enabledModuleConfig())
+	services := module.NewServices()
+	require.NoError(t, instance.ProvideServices(services))
+	require.NoError(t, services.Seal())
+	connector, err := module.Resolve[PrincipalLockConnector](services)
+	require.NoError(t, err)
+	require.ErrorIs(t, connector.Bind(nil), ErrUnavailable, "a missing lock is refused rather than silently disabling serialization")
+	require.Nil(t, instance.lockPrincipal)
+	var locked guid.ID
+	require.NoError(t, connector.Bind(func(_ context.Context, _ *gorm.DB, id guid.ID) error {
+		locked = id
+		return nil
+	}))
+	require.NotNil(t, instance.lockPrincipal)
+	require.NoError(t, instance.lockPrincipal(t.Context(), harness.db, 42))
+	require.Equal(t, guid.ID(42), locked, "the module serializes principals through the bound identity lock")
+
+	permissionOn, err := module.Resolve[PlatformPermissionOn](services)
+	require.NoError(t, err)
+	_, err = permissionOn(t.Context(), harness.db, "system_menu_view", 11)
+	require.ErrorIs(t, err, ErrUnavailable, "system authority is unavailable before the service is wired")
+}
+
+// duplicateCapability re-provides one capability the module publishes, so the
+// module's own Provide of it collides.
+func duplicateCapability[T any](t *testing.T, published *module.Services) *module.Services {
+	t.Helper()
+	value, err := module.Resolve[T](published)
+	require.NoError(t, err)
+	duplicate := module.NewServices()
+	require.NoError(t, module.Provide[T](duplicate, value))
+	return duplicate
+}
+
+func TestModuleReportsEveryDuplicateCapabilityByName(t *testing.T) {
+	harness := newCoreServiceHarness(t)
+	instance := NewModule(harness.runtime, enabledModuleConfig())
+	published := module.NewServices()
+	require.NoError(t, instance.ProvideServices(published))
+	require.NoError(t, published.Seal())
+	for message, duplicate := range map[string]*module.Services{
+		"provide IAM active member checker":                    duplicateCapability[ActiveMemberChecker](t, published),
+		"provide IAM principal lock connector":                 duplicateCapability[PrincipalLockConnector](t, published),
+		"provide IAM administrator guard":                      duplicateCapability[AdministratorGuard](t, published),
+		"provide IAM role grant store":                         duplicateCapability[RoleGrantStore](t, published),
+		"provide IAM platform administrator store":             duplicateCapability[PlatformAdministratorStore](t, published),
+		"provide IAM tenant bootstrapper":                      duplicateCapability[TenantBootstrapper](t, published),
+		"provide authorization registrar":                      duplicateCapability[*authz.Registrar](t, published),
+		"provide IAM transaction system authorization":         duplicateCapability[PlatformPermissionOn](t, published),
+		"provide IAM entity owner resolver":                    duplicateCapability[EntityOwnerResolver](t, published),
+		"provide IAM transaction tenant authorization":         duplicateCapability[TenantConstraintOn](t, published),
+		"provide IAM member department reader":                 duplicateCapability[MemberDepartmentReader](t, published),
+		"provide IAM member tenant resolver":                   duplicateCapability[MemberTenantResolver](t, published),
+		"provide IAM directory authorization source connector": duplicateCapability[DirectoryAuthorizationSourceConnector](t, published),
+		"provide IAM directory table names connector":          duplicateCapability[DirectoryTableNamesConnector](t, published),
+		"provide IAM principal table names connector":          duplicateCapability[PrincipalTableNamesConnector](t, published),
+		"provide IAM access table names":                       duplicateCapability[AccessTableNames](t, published),
+	} {
+		err := instance.ProvideServices(duplicate)
+		require.ErrorIs(t, err, module.ErrServiceDuplicate, message)
+		require.ErrorContains(t, err, message)
+	}
+	duplicate := duplicateCapability[PrincipalPlatformAccessGuard](t, published)
+	require.ErrorIs(t, instance.ProvideServices(duplicate), module.ErrServiceDuplicate)
+}

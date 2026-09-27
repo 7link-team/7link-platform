@@ -3219,3 +3219,32 @@ E2E55/55 (.temp/sqlite-lifecycle-pZ98rn) and final entrance6/6
 Chinese retained demo selector, registration policy and desktop/mobile smoke PASS.
 No database migrations or dependencies introduced. No further implementation
 or product decision is pending for these entrances.
+
+## System Account Views Never Exceed The Operator - 2026-09-27
+
+Decision: a system-scope account view is admitted only when the operator's own
+system authority covers the target's: a full administrator is viewable only by a
+full administrator, and every platform permission the target holds must be held
+by the operator. Tenant and platform account views keep "target authority" as
+decided in Unified Access View Objects.
+Reason: review of 346a809..HEAD proved account_view_create alone admitted a
+read_write system view of a full administrator, i.e. full authority.
+Alternatives: requiring full administrators for all views (rejected: changes the
+confirmed support workflow for tenant/platform views).
+Scope: core authorizeAccountView (issuance and every use). Status: IMPLEMENTED,
+TestSystemAccountViewNeverExceedsOperatorAuthority, mutation-verified.
+
+## Standalone System Permission Reads Take No Fence - 2026-09-27
+
+Decision: CheckPlatform outside a caller transaction reads without the policy
+revision fence or FOR UPDATE; inside a mutation transaction it keeps the fence.
+One reader (systemPermissions) serves both. Extends D55 to system authority.
+Status: IMPLEMENTED; zero-write and fenced/plain agreement tests.
+
+## System Routes Name Their Root owner_id - 2026-09-27
+
+Decision: routes under /system/ that select a tenant or operating platform use
+path owner_id, never tenant_id, because tenant_id reads as tenant-gated admission.
+The composed-spec test enforces it for every module, plus lowercase OperationIDs.
+Organization's two system department routes were renamed accordingly.
+Status: IMPLEMENTED.

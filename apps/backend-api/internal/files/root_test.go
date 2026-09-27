@@ -564,3 +564,68 @@ func TestOrganizationRootOperationsPropagateEveryReachedStatementFailure(t *test
 		})
 	}
 }
+
+func TestOrganizationRootProvisioningCreatesTheTenantSpaceOnFirstUse(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	m := fileOwnerModule(t, h, nil, nil)
+	input := core.FileRootProvisionInput{Scope: "tenant", TenantID: 91, OwnerID: 91}
+	q := query.Bind(h.db, h.tree.prefix)
+	_, err := q.Space.WithContext(t.Context()).Where(q.Space.ScopeKind.Eq(spaceTenant), q.Space.TenantID.Eq(guid.ID(91))).Take()
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound, "tenant 91 starts without a file space")
+
+	first := provisionRoot(t, h, m, input)
+	second := provisionRoot(t, h, m, input)
+	require.Equal(t, first, second, "the first-use space is created once")
+	row := treeNode(t, h.db, h.tree.prefix, first)
+	space, err := q.Space.WithContext(t.Context()).Where(q.Space.ID.Eq(row.SpaceID)).Take()
+	require.NoError(t, err)
+	require.Equal(t, spaceTenant, space.ScopeKind)
+	require.NotNil(t, space.TenantID)
+	require.Equal(t, guid.ID(91), *space.TenantID)
+	require.Nil(t, space.PrincipalID)
+	require.NotNil(t, row.RootOwnerID)
+	require.Equal(t, guid.ID(91), *row.RootOwnerID)
+	count, err := q.Space.WithContext(t.Context()).Where(q.Space.TenantID.Eq(guid.ID(91))).Count()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, count)
+
+	// With identifiers exhausted before the space exists, nothing is created.
+	for remaining := int64(0); remaining < 2; remaining++ {
+		ids := &failingIDs{}
+		ids.remaining.Store(remaining)
+		ids.next.Store(30000)
+		starved := fileOwnerModule(t, h, nil, nil)
+		starved.ids = ids
+		err := h.db.Transaction(func(tx *gorm.DB) error {
+			_, err := starved.provisionOrganizationRoot(t.Context(), tx, core.FileRootProvisionInput{Scope: "tenant", TenantID: 92, OwnerID: 92}, time.Now())
+			return err
+		})
+		require.ErrorIs(t, err, errOperationInput, "remaining=%d", remaining)
+		count, err := q.Space.WithContext(t.Context()).Where(q.Space.TenantID.Eq(guid.ID(92))).Count()
+		require.NoError(t, err)
+		require.Zero(t, count, "remaining=%d", remaining)
+	}
+}
+
+func TestResolveFileOwnerRefusesRootBindingsThatContradictTheirSpace(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	trusted := staticOwner(authz.ResourceOwner{TenantID: 90, EntityID: 80})
+	m := fileOwnerModule(t, h, trusted, core.DepartmentOwnerResolver(trusted))
+	q := query.Bind(h.db, h.tree.prefix)
+
+	// A tenant root that names a tenant other than its space's.
+	_, err := q.Node.WithContext(t.Context()).Where(q.Node.ID.Eq(guid.ID(2))).UpdateSimple(q.Node.RootOwnerID.Value(guid.ID(91)))
+	require.NoError(t, err)
+	_, found, err := m.resolveFileOwner(t.Context(), 2)
+	require.ErrorIs(t, err, errFileACL)
+	require.False(t, found)
+
+	// An account root that names a person other than the space's owner.
+	require.NoError(t, h.tree.createSpace(t.Context(), h.db, 100, 101, 71, "account", time.Now()))
+	bindRootFixture(t, h.db, h.tree, 101, rootBinding{scope: "account", ownerID: 71})
+	_, err = q.Node.WithContext(t.Context()).Where(q.Node.ID.Eq(guid.ID(101))).UpdateSimple(q.Node.RootOwnerID.Value(guid.ID(72)))
+	require.NoError(t, err)
+	_, found, err = m.resolveFileOwner(t.Context(), 101)
+	require.ErrorIs(t, err, errFileACL)
+	require.False(t, found)
+}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -171,4 +172,161 @@ func TestGlobalAccountCategoriesOverlapAndPaginateBeforeProjection(t *testing.T)
 	require.Empty(t, items)
 	_, _, err = h.service.ListGlobalCategory(t.Context(), "", 20, 0, "system", 7, "")
 	require.ErrorIs(t, err, ErrInvalid)
+}
+
+func TestListGlobalListsHumanAccountsAcrossTenantsWithBoundedPages(t *testing.T) {
+	h := newIdentityHarness(t, "sl_")
+	tenantMember, err := h.service.Create(t.Context(), 7, "alpha.member", testPassword, "Alpha Member", "")
+	require.NoError(t, err)
+	global, err := h.service.CreateGlobal(t.Context(), "beta.global", testPassword, "Beta Global", "")
+	require.NoError(t, err)
+	_, err = h.service.CreateGlobal(t.Context(), "gamma.global", testPassword, "Gamma Global", "")
+	require.NoError(t, err)
+
+	items, total, err := h.service.ListGlobal(t.Context(), "", 2, 0)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, total, "a tenant-created account is still a global identity")
+	require.Len(t, items, 2)
+	rest, restTotal, err := h.service.ListGlobal(t.Context(), "", 2, 2)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, restTotal)
+	require.Len(t, rest, 1)
+	seen := map[guid.ID]bool{}
+	for _, item := range append(items, rest...) {
+		require.False(t, seen[item.ID], "an account appeared on two pages")
+		seen[item.ID] = true
+	}
+	require.True(t, seen[tenantMember.ID])
+	require.True(t, seen[global.ID])
+	beyond, beyondTotal, err := h.service.ListGlobal(t.Context(), "", 2, 3)
+	require.NoError(t, err)
+	require.Empty(t, beyond, "an offset past the end is an empty page, not an error")
+	require.EqualValues(t, 3, beyondTotal)
+
+	found, foundTotal, err := h.service.ListGlobal(t.Context(), "BETA", 200, 0)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, foundTotal)
+	require.Len(t, found, 1)
+	require.Equal(t, global.ID, found[0].ID)
+
+	for name, call := range map[string]func() error{
+		"zero limit":      func() error { _, _, err := h.service.ListGlobal(t.Context(), "", 0, 0); return err },
+		"oversized limit": func() error { _, _, err := h.service.ListGlobal(t.Context(), "", 201, 0); return err },
+		"negative offset": func() error { _, _, err := h.service.ListGlobal(t.Context(), "", 1, -1); return err },
+		"long search": func() error {
+			_, _, err := h.service.ListGlobal(t.Context(), strings.Repeat("s", 201), 1, 0)
+			return err
+		},
+		"unknown category": func() error {
+			_, _, err := h.service.ListGlobalCategory(t.Context(), "", 1, 0, "robot", 0, "")
+			return err
+		},
+		"negative owner": func() error {
+			_, _, err := h.service.ListGlobalCategory(t.Context(), "", 1, 0, "tenant", -1, "")
+			return err
+		},
+		"unknown status": func() error {
+			_, _, err := h.service.ListGlobalCategory(t.Context(), "", 1, 0, "user", 0, "archived")
+			return err
+		},
+	} {
+		require.ErrorIs(t, call(), ErrInvalid, name)
+	}
+
+	// An empty category is the human-account default, and status narrows it.
+	require.NoError(t, h.db.Table(h.table("iam_principals")).Where("id = ?", global.ID).Update("status", "disabled").Error)
+	active, activeTotal, err := h.service.ListGlobalCategory(t.Context(), "", 200, 0, "", 0, "active")
+	require.NoError(t, err)
+	require.EqualValues(t, 2, activeTotal)
+	for _, item := range active {
+		require.NotEqual(t, global.ID, item.ID)
+	}
+	disabled, disabledTotal, err := h.service.ListGlobalCategory(t.Context(), "", 200, 0, "user", 0, "disabled")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, disabledTotal)
+	require.Equal(t, global.ID, disabled[0].ID)
+
+	require.NoError(t, h.db.Migrator().DropTable(h.table("iam_principals")))
+	_, _, err = h.service.ListGlobal(t.Context(), "", 1, 0)
+	require.Error(t, err, "a storage failure is reported, not answered as an empty list")
+}
+
+func TestGlobalAccountLookupsRefuseMissingAndUnusableTargets(t *testing.T) {
+	h := newIdentityHarness(t, "sl_")
+	_, err := h.service.GetGlobal(t.Context(), 0)
+	require.ErrorIs(t, err, ErrInvalid)
+	_, err = h.service.GetGlobal(t.Context(), 424242)
+	require.ErrorIs(t, err, ErrNotFound)
+	_, err = h.service.AccountWorkspaces(t.Context(), 424242)
+	require.ErrorIs(t, err, ErrNotFound)
+
+	account, err := h.service.CreateGlobal(t.Context(), "workspace.target", testPassword, "Workspace Target", "")
+	require.NoError(t, err)
+	h.service.avatarPermissions = nil
+	_, err = h.service.AccountWorkspaces(t.Context(), account.ID)
+	require.ErrorIs(t, err, ErrUnavailable, "without platform grants the system workspace cannot be decided")
+
+	unreadable := errors.New("platform grants unreadable")
+	h.service.avatarPermissions = failingWorkspaceChecker{err: unreadable}
+	_, err = h.service.AccountWorkspaces(t.Context(), account.ID)
+	require.ErrorIs(t, err, unreadable)
+
+	// A disabled account keeps only its personal workspace, and that answer
+	// needs no grant lookup at all.
+	require.NoError(t, h.db.Table(h.table("iam_principals")).Where("id = ?", account.ID).Update("status", "disabled").Error)
+	items, err := h.service.AccountWorkspaces(t.Context(), account.ID)
+	require.NoError(t, err)
+	require.Equal(t, []AccountWorkspace{{ScopeType: "personal", ScopeID: account.ID, Name: "Workspace Target"}}, items)
+}
+
+type failingWorkspaceChecker struct {
+	identityRouteAuthorizer
+	err error
+}
+
+func (c failingWorkspaceChecker) CheckPlatform(context.Context, string, guid.ID) (bool, error) {
+	return false, c.err
+}
+
+func TestSystemAccountHTTPRejectsMalformedAndUnknownTargets(t *testing.T) {
+	h := newIdentityHTTPHarnessWithPlatform(t, true, true)
+	auth := "Authorization: Bearer session"
+	account, err := h.service.CreateGlobal(t.Context(), "known.account", testPassword, "Known", "")
+	require.NoError(t, err)
+
+	for name, response := range map[string]int{
+		"workspaces bad id": h.api.Get("/system/principals/not-an-id/workspaces", auth).Code,
+		"get bad id":        h.api.Get("/system/principals/not-an-id", auth).Code,
+		"patch bad id":      h.api.Patch("/system/principals/not-an-id", auth, map[string]any{"display_name": "X"}).Code,
+		"list bad owner":    h.api.Get("/system/principals?category=tenant&owner_id=not-an-id", auth).Code,
+		"owner on users":    h.api.Get("/system/principals?category=user&owner_id=7", auth).Code,
+	} {
+		require.Equal(t, http.StatusUnprocessableEntity, response, name)
+	}
+	for name, response := range map[string]int{
+		"workspaces unknown": h.api.Get("/system/principals/424242/workspaces", auth).Code,
+		"get unknown":        h.api.Get("/system/principals/424242", auth).Code,
+	} {
+		require.Equal(t, http.StatusNotFound, response, name)
+	}
+
+	require.NoError(t, h.db.Exec("ALTER TABLE sl_iam_tenants ADD COLUMN scope_kind TEXT NOT NULL DEFAULT 'tenant'").Error)
+	member, err := h.service.Create(t.Context(), 7, "tenant.member", testPassword, "Tenant Member", "")
+	require.NoError(t, err)
+	owned := h.api.Get("/system/principals?category=tenant&owner_id=7&limit=5", auth)
+	require.Equal(t, http.StatusOK, owned.Code, owned.Body.String())
+	var page struct {
+		Data principalListData `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(owned.Body.Bytes(), &page))
+	require.EqualValues(t, 1, page.Data.Total, "only tenant 7's member is listed; the global account belongs to no tenant")
+	require.Len(t, page.Data.Items, 1)
+	require.Equal(t, member.ID, page.Data.Items[0].ID)
+
+	duplicate := h.api.Post("/system/principals", auth, map[string]any{"login_name": "known.account", "password": testPassword})
+	require.Equal(t, http.StatusConflict, duplicate.Code, duplicate.Body.String())
+	after, err := h.service.GetGlobal(t.Context(), account.ID)
+	require.NoError(t, err)
+	require.Equal(t, "Known", after.DisplayName, "a refused duplicate left the existing account unchanged")
+	require.EqualValues(t, 2, h.principalCount(t), "the refused duplicate created no account")
 }

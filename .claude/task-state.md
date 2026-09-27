@@ -1,5 +1,69 @@
 # Task State
 
+## Active: Review Fixes for 346a809..HEAD - 2026-09-27
+
+- Phase: ACCEPTANCE (complete, uncommitted). User asked: re-verify every finding, plan fixes for all,
+  review the plan, then execute. Plan below passed self-review.
+- Re-review outcome: F1 system-view escalation TRUE (tenant/platform account views
+  keep target authority by design, D"Unified Access View Objects"); F2 audit actor
+  TRUE at 4 sites (export was a misdiagnosis: NewDomainEvent already uses actor);
+  F7 SAML key fingerprint FALSE (plan doc: trust-material replacement requires
+  explicit rebind); per-use view audit is by design; LOWER non-ASCII TRUE (low).
+- Work units (all small; [ ] = pending):
+  - [x] U1 core: system-scope account view requires actor full if target full, else
+    target platform codes subset of actor's; one-query systemPermissions helper.
+  - [x] U2 audit: archive x3 + erasure RequestedBy use ActorIDFromContext + view detail.
+  - [x] U3 core: standalone CheckPlatform reads without revision fence/FOR UPDATE.
+  - [x] U4 core: bootstrapSystemAccess validates only codes it imports.
+  - [x] U5 frontend: role audit /principal-groups; api-route.test.ts live paths;
+    organizationRouteURL excludes paths without platform twin + spec-driven test;
+    dev login env read inside DEV gate.
+  - [x] U6 files test: TestTenantSpaceGrantsNoOwnerSubject reaches ACL evaluation.
+  - [x] U7 OpenAPI: {tenant_id}/{platform_id} names, lowercase -add/-remove ids,
+    snowflake constraints on platform/department params; sync testdata+generated.
+  - [x] U8 gates: lint 11; arch allowlist AccountViewAuthorizerConnector + 5 test
+    renames; mysql 00017 split ALTER (not in schema.lock yet); milestone test;
+    schema.lock; coverage >=90% in core/org/files/identity (subagents, tests only).
+  - [x] U9 small: ErrUnavailable logged in account view HTTP; ActorID rename;
+    dedupe core system-root queries; SQLite name_key via new migration NOT done
+    (unreleased branch, contrived trigger; editing applied lock-frozen 00011 barred).
+- Done+mutation-verified: U1 (authorizer_system systemPermissions, account_view
+  systemViewWithinOperatorAuthority), U3, U4, U2 (+governance retention event had
+  no actor; contextEventInput helper; source guard test). system_authorization_test
+  renamed authorizer_system_test.
+- Done+verified: U5 (bundle had real demo password before fix, 0 after), U6, and
+  platform-owner rows in authz register_account_view_test (renamed; also
+  register_operating_platform_test).
+- U7 re-review CORRECTION: owner_id on /system routes is a deliberate rule
+  (core contract test forbids path tenant_id on system ops). Fixed the other side:
+  organization /system/{tenants|operating-platforms}/{owner_id}/departments; kept
+  core owner_id; role-member ops now -add/-remove; snowflake pattern on 8 new
+  platform/system params; composed-spec test asserts lowercase opIDs and no
+  path tenant_id under /system. Frontend regenerated; FE gates PASS.
+- U8 so far: lint CLEAN; arch PASS (AccountViewAuthorizerConnector allowlisted,
+  tests renamed: service_admin_operating_platform_test, tenant_scope_kind_test);
+  mysql 00017 up AND down split into single-purpose ALTERs; milestone test ->
+  access-view-targets; tests/migration 3 previously failing PASS. schema.lock
+  check PASS (00017 not yet locked; extend only after real MySQL8 gate).
+- U9 done: account view + authn ErrUnavailable logged (test+mutation);
+  system_menu uses systemRootID; AccountViewIdentity.PrincipalID -> ActorID.
+- Coverage via 3 subagents (tests only; spot mutation-checked): core 91.1,
+  org 91.0, files 90.8, identity 90.8 (package-local numbers).
+- Subagent-found bugs fixed+verified: apiError now passes huma.StatusError
+  through (owner_id 422 had become 500); stale account-view workspace -> 403.
+  Same structural gap in 13 pre-existing mappers in other modules: reported only,
+  no reachable path found.
+- First full ci: lint/coverage PASS (91.3%); perf plan signatures changed as U3
+  intends (authorization: -2 locked, +3 plain reads). Updated via
+  IAM_PERFORMANCE_UPDATE=plans for postgres+mysql; baseline diff = plans only.
+  scim_bulk_25 postgres exceeds 8ms frozen threshold on this machine ALSO at
+  pre-fix HEAD (A/B worktree: 8.4-8.9ms, removed) -> machine, not regression.
+- FINAL: make ci exit 0 (.temp/final-ci2.log; coverage 91.3%, openapi matches,
+  gofmt clean); make test-mysql8-run exit 0 (.temp/final-mysql8b.log); schema.lock
+  extended with authn 00017 x3 only (249 unchanged); frontend typecheck/lint/
+  155 tests/check:api-types PASS. 98 paths changed, all LF, no artifacts.
+- Next: user reviews and decides on commit (not committed; user did not ask).
+
 ## Current Delivery - 2026-09-27
 
 ### Demo-Only Entrance Switching and Matching Accounts - 2026-09-27

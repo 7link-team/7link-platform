@@ -118,3 +118,43 @@ func TestOperatingPlatformHTTPCRUDAndOwnerKindIsolation(t *testing.T) {
 		assert.Contains(t, []string{"operating_platform_create", "operating_platform_view", "operating_platform_update", "operating_platform_delete"}, code)
 	}
 }
+
+func TestOperatingPlatformHTTPRejectsInvalidInputsAndReportsStorageFailures(t *testing.T) {
+	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+	require.NoError(t, respx.NewModule(nil).Initialize(t.Context()))
+	require.NoError(t, organizationi18n.Register())
+	h := newOrganizationHarness(t, "platform_http_")
+	h.seedTenant(t, 2, TenantActive)
+	bootstrap, owners := newTenantBootstrapStub(), newTenantOwnerStub()
+	service := NewPlatformService(h.runtime, h.appender, newOrganizationTestIDs(1500), bootstrap.capability(), owners.capability())
+	bindForeignTables(t, service.repo, h.prefix)
+	registrar := authz.NewRegistrar(authz.DefaultRegistry(), organizationHTTPTokenVerifier{}, &operatingPlatformHTTPChecker{allow: true}, organizationHTTPMembershipChecker{})
+	api := humax.New(chi.NewRouter(), humax.DefaultConfig("operating-platform-http", "1.0.0"))
+	registerPlatformHTTP(api, service, registrar)
+	client := humatest.Wrap(t, api)
+	auth := "Authorization: Bearer test"
+	roots := func() int64 {
+		var count int64
+		require.NoError(t, h.db.Table(h.table("iam_tenants")).Count(&count).Error)
+		return count
+	}
+
+	assert.Equal(t, http.StatusUnprocessableEntity, client.Post("/operating-platforms", auth, map[string]any{"slug": "operator", "name": "Operator", "owner_principal_id": "not-a-snowflake"}).Code)
+	assert.Equal(t, http.StatusConflict, client.Post("/operating-platforms", auth, map[string]any{"slug": "tenant-2", "name": "Taken", "owner_principal_id": organizationTestOwnerID.String()}).Code, "platform slugs share the root namespace with tenants")
+	assert.Equal(t, http.StatusUnprocessableEntity, client.Patch("/operating-platforms/bad", auth, map[string]any{"name": "Renamed", "version": 1}).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, client.Delete("/operating-platforms/bad?version=1", auth).Code)
+	assert.Equal(t, int64(1), roots(), "rejected creates must not add a root")
+	assert.Empty(t, bootstrap.inputs, "no root was bootstrapped")
+
+	sqlDB, err := h.db.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+	for _, response := range []int{
+		client.Get("/principals/1/operating-platforms", auth).Code,
+		client.Get("/operating-platforms", auth).Code,
+		client.Post("/operating-platforms", auth, map[string]any{"slug": "offline", "name": "Offline", "owner_principal_id": organizationTestOwnerID.String()}).Code,
+		client.Get("/operating-platforms/2", auth).Code,
+	} {
+		assert.Equal(t, http.StatusInternalServerError, response)
+	}
+}

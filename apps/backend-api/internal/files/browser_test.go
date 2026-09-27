@@ -617,3 +617,42 @@ func TestFileBrowserRootPageReportsExhaustion(t *testing.T) {
 	assert.Empty(t, empty.Items)
 	assert.Nil(t, empty.NextAfter)
 }
+
+func TestFileBrowserPagesTheTrashAndRefusesForeignCollections(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	collection := testFileCollection(h.ctx)
+	for _, id := range []guid.ID{30, 31, 32} {
+		_, err := h.service.trashNode(h.ctx, id, treeNode(t, h.db, h.tree.prefix, id).Version)
+		require.NoError(t, err)
+	}
+
+	first, err := h.service.listTrash(h.ctx, collection, browserPageRequest{Limit: 2})
+	require.NoError(t, err)
+	require.Len(t, first.Items, 2)
+	require.NotNil(t, first.NextAfter, "a third trashed entry is announced by a cursor")
+	require.Equal(t, first.Items[1].ID, *first.NextAfter)
+	second, err := h.service.listTrash(h.ctx, collection, browserPageRequest{After: *first.NextAfter, Limit: 2})
+	require.NoError(t, err)
+	require.Len(t, second.Items, 1)
+	require.Nil(t, second.NextAfter, "the last page carries no cursor")
+	seen := map[guid.ID]bool{}
+	for _, item := range append(first.Items, second.Items...) {
+		require.False(t, seen[item.ID], "an entry appeared on two pages")
+		seen[item.ID] = true
+	}
+	require.Equal(t, map[guid.ID]bool{30: true, 31: true, 32: true}, seen)
+
+	// A caller inside a tenant cannot read the system collection, and a
+	// collection naming another tenant is refused rather than answered empty.
+	for name, foreign := range map[string]fileCollection{
+		"system from tenant": {scope: ownerSystem},
+		"other tenant":       {scope: ownerTenant, tenantID: 91, ownerID: 91},
+	} {
+		_, err := h.service.listRoots(h.ctx, foreign, browserPageRequest{})
+		require.ErrorIs(t, err, errOperationForbidden, name)
+		_, err = h.service.listTrash(h.ctx, foreign, browserPageRequest{})
+		require.ErrorIs(t, err, errOperationForbidden, name)
+	}
+	_, err = h.service.listRoots(h.ctx, fileCollection{scope: "unknown", ownerID: 90}, browserPageRequest{})
+	require.ErrorIs(t, err, errOperationInput)
+}

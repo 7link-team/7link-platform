@@ -287,3 +287,60 @@ func TestDirectoryTreePropagatesEveryReachedStatementFailure(t *testing.T) {
 		})
 	}
 }
+
+// TestDirectoryTreeWritePrimitivesRequireValidInputAndACallerTransaction pins
+// the contract of the transaction-scoped write primitives: malformed input is
+// refused before any statement, and a handle that is not inside the caller's
+// transaction is refused so a partial write can never commit on its own.
+func TestDirectoryTreeWritePrimitivesRequireValidInputAndACallerTransaction(t *testing.T) {
+	db, tree, _ := newOperationTree(t)
+	now := time.Now()
+	before := treeSpaceRevision(t, db, tree.prefix, 1)
+	for name, call := range map[string]func(*gorm.DB) error{
+		"create space": func(tx *gorm.DB) error {
+			return tree.createSpaceOn(t.Context(), tx, 500, 501, 95, spaceTenant, now)
+		},
+		"create system space": func(tx *gorm.DB) error {
+			return tree.createSystemSpaceOn(t.Context(), tx, 510, 511, now)
+		},
+		"create node": func(tx *gorm.DB) error {
+			_, err := tree.createNodeOn(t.Context(), tx, 1, 520, 2, "directory", "Outside", now)
+			return err
+		},
+		"rename node": func(tx *gorm.DB) error {
+			_, err := tree.renameNodeOn(t.Context(), tx, 1, 10, treeNode(t, db, tree.prefix, 10).Version, "Renamed", now)
+			return err
+		},
+	} {
+		require.ErrorIs(t, call(db), ErrAccountTransaction, name)
+	}
+	for name, err := range map[string]error{
+		"space without owner":       tree.createSpaceOn(t.Context(), db, 500, 501, 0, spaceTenant, now),
+		"space of system scope":     tree.createSpaceOn(t.Context(), db, 500, 501, 95, spaceSystem, now),
+		"system space without root": tree.createSystemSpaceOn(t.Context(), db, 510, 0, now),
+		"node of unknown kind": func() error {
+			_, err := tree.createNodeOn(t.Context(), db, 1, 520, 2, "link", "Outside", now)
+			return err
+		}(),
+		"rename without revision": func() error {
+			_, err := tree.renameNodeOn(t.Context(), db, 1, 10, 0, "Renamed", now)
+			return err
+		}(),
+	} {
+		require.ErrorIs(t, err, errHierarchy, name)
+	}
+	require.ErrorIs(t, tree.appendVersion(t.Context(), db, model.Version{ID: 1}, 1, now), errVersionConflict)
+	require.Equal(t, before, treeSpaceRevision(t, db, tree.prefix, 1), "no refused primitive touched the space")
+	require.Equal(t, "Shared", treeNode(t, db, tree.prefix, 10).Name)
+}
+
+func TestDirectoryTreeResolvePathStopsAtFilesAndTheDepthLimit(t *testing.T) {
+	db, tree, _ := newOperationTree(t)
+	found, err := tree.resolvePath(t.Context(), db, 1, "/Source/Shared/root.txt")
+	require.NoError(t, err)
+	require.Equal(t, guid.ID(32), found.ID)
+	_, err = tree.resolvePath(t.Context(), db, 1, "/Source/Shared/root.txt/inside")
+	require.ErrorIs(t, err, ErrNotFound, "a file has no children to walk into")
+	_, err = tree.resolvePath(t.Context(), db, 1, "/"+strings.Repeat("d/", maxNodeDepth+1))
+	require.ErrorIs(t, err, errHierarchy)
+}

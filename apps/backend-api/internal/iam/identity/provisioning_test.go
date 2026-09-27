@@ -331,3 +331,51 @@ func TestNormalizeProvisionedInputTrimsAndValidates(t *testing.T) {
 	_, _, err = normalizeProvisionedInput(7, ProvisionedPrincipalInput{LoginName: "scim.user"}, false)
 	assert.NoError(t, err, "replacement carries no password hash")
 }
+
+// TestReplaceProvisionedToDeactivationFailsWholeWhenTenantAccessCannotBeRevoked
+// pins that a membership is only disabled together with revoking the tenant's
+// tokens and OAuth grants: a disabled member who keeps a live token would
+// still act inside the tenant.
+func TestReplaceProvisionedToDeactivationFailsWholeWhenTenantAccessCannotBeRevoked(t *testing.T) {
+	harness := newIdentityHarness(t, "sl_")
+	principal, err := harness.service.CreateProvisionedTo(t.Context(), harness.db, 7, provisionedInput("scim.user"))
+	require.NoError(t, err)
+	input := provisionedInput("scim.user")
+	input.Active = false
+	deactivate := func() error {
+		return harness.db.Transaction(func(tx *gorm.DB) error {
+			_, err := harness.service.ReplaceProvisionedTo(t.Context(), tx, 7, principal.ID, input)
+			return err
+		})
+	}
+
+	harness.service.revokeTenantTokens, harness.service.revokeTenantOAuth = nil, nil
+	require.ErrorIs(t, deactivate(), ErrUnavailable)
+	assert.Equal(t, "active", harness.member(t, 7, principal.ID).Status)
+
+	tokenFailure := errors.New("token store unavailable")
+	oauthCalled := false
+	harness.service.revokeTenantTokens = func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return tokenFailure }
+	harness.service.revokeTenantOAuth = func(context.Context, *gorm.DB, guid.ID, guid.ID) error {
+		oauthCalled = true
+		return nil
+	}
+	require.ErrorIs(t, deactivate(), tokenFailure)
+	assert.False(t, oauthCalled, "OAuth grants are not revoked after the token revocation failed")
+	assert.Equal(t, "active", harness.member(t, 7, principal.ID).Status)
+	assert.Equal(t, int64(1), harness.revision(t, 7), "the failed deactivation bumped no policy revision")
+}
+
+func TestGetProvisionedIsTenantScoped(t *testing.T) {
+	harness := newIdentityHarness(t, "sl_")
+	principal, err := harness.service.CreateProvisionedTo(t.Context(), harness.db, 7, provisionedInput("scim.user"))
+	require.NoError(t, err)
+	projection, err := harness.service.GetProvisioned(t.Context(), 7, principal.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "active", projection.MembershipStatus)
+
+	_, err = harness.service.GetProvisioned(t.Context(), 7, 424242)
+	require.ErrorIs(t, err, ErrNotFound)
+	_, err = harness.service.GetProvisioned(t.Context(), 8, principal.ID)
+	require.ErrorIs(t, err, ErrNotFound, "another tenant cannot read this tenant's provisioned member")
+}

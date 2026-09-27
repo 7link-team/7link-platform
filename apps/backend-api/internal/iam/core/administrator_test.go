@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestAdministratorGuardRollsBackLastDurableAdministratorRemoval(t *testing.T) {
@@ -182,4 +184,54 @@ func TestConcurrentPlatformAdministratorDeletesSerializeBeforeLastAdministratorC
 	count, err := repository.CountFullPlatformAdministrators(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
+}
+
+func TestAdministratorGuardGrantabilityFollowsTheActorsOwnAuthority(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	seedTenantAndPrincipal(t, h.db, "sl_", 1, 11)
+	h.seedAdditionalMember(t, 1, 22, MemberActive)
+	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_tenants (id, scope_kind, slug, name, status, version, created_at, updated_at) VALUES (99,'system',?,'System','active',1,?,?)", SystemRootSlug, repositoryTestTime, repositoryTestTime).Error)
+	role := func(name string, codes ...string) guid.ID {
+		created, err := h.repository.CreateRole(t.Context(), 1, name, "")
+		require.NoError(t, err)
+		for _, code := range codes {
+			_, err = h.repository.GrantPermission(t.Context(), 1, created.ID, code)
+			require.NoError(t, err)
+		}
+		return created.ID
+	}
+	held := role("Held", "menu_create")
+	_, err := h.repository.AddMember(t.Context(), 1, held, 22)
+	require.NoError(t, err)
+	sameAuthority := role("Same authority", "menu_create")
+	broader := role("Broader", "menu_create", "role_create")
+	foreign, err := h.repository.CreateRole(t.Context(), 99, "System role", "")
+	require.NoError(t, err)
+
+	guard := boundGuard(t, h.runtime, "sl_")
+	guard.registry = h.service.registry
+	actor := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 22})
+	check := func(ctx context.Context, owner guid.ID, roles ...guid.ID) error {
+		return h.db.Transaction(func(tx *gorm.DB) error { return guard.RequireGrantableRoles(ctx, tx, owner, roles) })
+	}
+
+	assert.NoError(t, check(actor, 1, sameAuthority), "a role within the actor's authority is grantable")
+	assert.ErrorIs(t, check(actor, 1, sameAuthority, broader), ErrPrivilegeEscalation, "one ungrantable role refuses the whole set")
+	assert.ErrorIs(t, check(actor, 1, 987654321), ErrRoleNotFound)
+	assert.ErrorIs(t, check(actor, 1, foreign.ID), ErrRoleNotFound, "a role of another owner is not addressable")
+	assert.ErrorIs(t, check(actor, 99, sameAuthority), ErrPrivilegeEscalation, "directory grants never reach the system root")
+	assert.ErrorIs(t, check(actor, 987654321), ErrInvalidArgument, "an unknown owner is refused")
+	assert.NoError(t, check(t.Context(), 1, broader), "system callers without an actor are not escalation-checked")
+	assert.NoError(t, h.db.Transaction(func(tx *gorm.DB) error { return guard.PrepareGrantableRoles(actor, tx, 1) }))
+	assert.ErrorIs(t, h.db.Transaction(func(tx *gorm.DB) error { return guard.PrepareGrantableRoles(actor, tx, 99) }), ErrPrivilegeEscalation)
+	assert.ErrorIs(t, (*tenantAdministratorGuard)(nil).RequireGrantableRoles(actor, h.db, 1, nil), ErrUnavailable)
+	assert.ErrorIs(t, guard.RequireGrantableRoles(actor, nil, 1, nil), ErrUnavailable)
+
+	withoutRegistry := boundGuard(t, h.runtime, "sl_")
+	assert.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+		return withoutRegistry.RequireGrantableRoles(actor, tx, 1, []guid.ID{sameAuthority})
+	}), "an unset registry falls back to the default catalog")
+	members, err := h.repository.ListMembers(t.Context(), 1, broader)
+	require.NoError(t, err)
+	assert.Empty(t, members, "grantability checks never assign roles")
 }

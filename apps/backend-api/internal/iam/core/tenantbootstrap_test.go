@@ -319,3 +319,52 @@ func TestBumpPolicyRevisionRefusesWhatItCannotInvalidate(t *testing.T) {
 		harness.repository.BumpPolicyRevisionOn(t.Context(), harness.db, 1, repositoryTestTime),
 		"an unwritable revision table must not read as an invalidated cache")
 }
+
+// TestTenantBootstrapperSystemCapabilitiesGuardWiringAndReachTheSystemRoot
+// covers the three system-root closures the organization module calls while it
+// creates and upgrades the system root.
+func TestTenantBootstrapperSystemCapabilitiesGuardWiringAndReachTheSystemRoot(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	seedTenantAndPrincipal(t, h.db, "sl_", 1, 11)
+	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_tenants (id, scope_kind, slug, name, status, version, created_at, updated_at) VALUES (99,'system',?,'System','active',1,?,?)", SystemRootSlug, repositoryTestTime, repositoryTestTime).Error)
+	for name, unwired := range map[string]*Module{"nil module": nil, "no repository": {}} {
+		capability := unwired.tenantBootstrapper()
+		_, err := capability.SystemPermissionOn(t.Context(), h.db, "system_menu_view", 11)
+		assert.ErrorIs(t, err, ErrUnavailable, name)
+		assert.ErrorIs(t, capability.UpgradeSystem(t.Context(), h.db, 99, repositoryTestTime), ErrUnavailable, name)
+		assert.ErrorIs(t, capability.SeedSystemMenus(t.Context(), h.db, 99, repositoryTestTime), ErrUnavailable, name)
+	}
+	capability := (&Module{repository: h.repository, service: h.service, appender: h.service.writes.audit}).tenantBootstrapper()
+	assert.ErrorIs(t, capability.UpgradeSystem(t.Context(), nil, 99, repositoryTestTime), ErrUnavailable)
+	assert.ErrorIs(t, capability.SeedSystemMenus(t.Context(), h.db, 0, repositoryTestTime), ErrUnavailable)
+	assert.Zero(t, countBootstrapRows(t, h.db, "sl_", "iam_menus", 99), "refused calls seed nothing")
+
+	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+		return capability.SeedSystemMenus(t.Context(), tx, 99, repositoryTestTime)
+	}))
+	assert.EqualValues(t, len(SystemDefaultMenus()), countBootstrapRows(t, h.db, "sl_", "iam_menus", 99))
+	revision, err := h.repository.revisions.Current(t.Context(), h.db, 99)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, revision, "seeding menus invalidates cached navigation")
+
+	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_platform_administrators(principal_id,created_at) VALUES(11,?)", repositoryTestTime).Error)
+	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+		return capability.UpgradeSystem(t.Context(), tx, 99, repositoryTestTime)
+	}))
+	roles, err := h.repository.ListRoles(t.Context(), 99)
+	require.NoError(t, err)
+	require.Len(t, roles, 1)
+	assert.Equal(t, SystemSuperadministratorRoleName, roles[0].Name, "the upgrade installs the builtin full-authority role")
+	_, err = capability.SystemPermissionOn(t.Context(), h.db, "system_menu_view", 11)
+	assert.ErrorIs(t, err, ErrInvalidArgument, "system authority is only evaluated inside the caller's transaction")
+	permission := func(subject guid.ID) (allowed bool) {
+		require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+			var err error
+			allowed, err = capability.SystemPermissionOn(t.Context(), tx, "system_menu_view", subject)
+			return err
+		}))
+		return allowed
+	}
+	assert.True(t, permission(11), "a full administrator holds every system permission")
+	assert.False(t, permission(33))
+}

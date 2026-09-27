@@ -102,6 +102,10 @@
       "sha256": "c7f5121043b736f7dc43ae9d891b0c37cd577f148de4a4605af7e61e2fde5f3e"
     },
     {
+      "path": "authn/sql/mysql/00017_access_view_targets.sql",
+      "sha256": "6327c4b53d2e8927cd56e4c5a107a4227ae481e0d6cd3c4ac1171191ce170e23"
+    },
+    {
       "path": "authn/sql/postgres/00001_credentials.sql",
       "sha256": "6205f24b9ee17a83d86bab761386e461a2e2150fb154131aacd498fb216c14b0"
     },
@@ -166,6 +170,10 @@
       "sha256": "a5f15efed1a75c068050b939c01d1ffa4db3548ae0a2e1b6f152930ad1a06c83"
     },
     {
+      "path": "authn/sql/postgres/00017_access_view_targets.sql",
+      "sha256": "ed1d25d8a07c60e3c0d6fde7209773470ca7c65ba18a6c3a601a5559d0fa79d5"
+    },
+    {
       "path": "authn/sql/sqlite/00001_credentials.sql",
       "sha256": "33756998bd13bafdd590831b996036473cadfd0dc57605dfa04b00b6321493e4"
     },
@@ -228,6 +236,10 @@
     {
       "path": "authn/sql/sqlite/00016_account_view_tokens.sql",
       "sha256": "2d331d93a5d6d984195f5bd516e17abb85f1d45353576ee490ab6e20ec0ffafb"
+    },
+    {
+      "path": "authn/sql/sqlite/00017_access_view_targets.sql",
+      "sha256": "abb35be31efcb4a94d7179013ccddb85453b68dab57b755b4001dd051f0d7934"
     },
     {
       "path": "core/sql/mysql/00001_authorization.sql",

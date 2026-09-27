@@ -134,3 +134,13 @@ func TestPlatformRecordKindRankPutsGrantsBeforeTheFullRow(t *testing.T) {
 	assert.Equal(t, 1, platformRecordKindRank("full"))
 	assert.Less(t, platformRecordKindRank("grant"), platformRecordKindRank("full"))
 }
+
+func TestPlatformAdministratorMutationLockFailsClosedWithoutStorage(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	require.NoError(t, h.repository.lockPlatformAdministratorMutations(t.Context()), "locking an empty administrator set succeeds")
+	connection, err := h.db.DB()
+	require.NoError(t, err)
+	require.NoError(t, connection.Close())
+	err = h.repository.lockPlatformAdministratorMutations(t.Context())
+	require.ErrorContains(t, err, "lock platform administrators", "a failed lock must stop the mutation it serializes")
+}

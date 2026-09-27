@@ -574,7 +574,8 @@ func isStableWiringCapability(expression ast.Expr, aliases map[string]string) bo
 			// like TokenVerifier; an authn lifecycle edge would create a
 			// core -> authn -> core initialization cycle.
 			if importPath == "7link.com/platform/pkg/extension/authn" {
-				return selector.Sel.Name == "BrowserSessionSecurity" || selector.Sel.Name == "ReauthenticationConsumer"
+				return selector.Sel.Name == "BrowserSessionSecurity" || selector.Sel.Name == "ReauthenticationConsumer" ||
+					selector.Sel.Name == "AccountViewAuthorizerConnector"
 			}
 			return importPath == iamImportPrefix+"/identity" && selector.Sel.Name == "RegistrationPrincipalCreator"
 		}
