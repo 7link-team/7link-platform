@@ -29,6 +29,49 @@ func allowProfileFields(context.Context, guid.ID, guid.ID, string, guid.ID) (aut
 	return fields, nil
 }
 
+func TestPersonalAccountViewUsesTargetBrowserProfilePolicy(t *testing.T) {
+	fields, err := allowProfileFields(t.Context(), 101, 0, authz.ProfileResource, 11)
+	require.NoError(t, err)
+	service := &Service{
+		memberTenant: func(_ context.Context, principal, requested guid.ID) (guid.ID, error) {
+			require.EqualValues(t, 11, principal)
+			require.Zero(t, requested)
+			return 101, nil
+		},
+		fields: profileCheckerFunc(func(_ context.Context, tenant, entity guid.ID, resource string, principal guid.ID) (authz.FieldConstraint, error) {
+			require.EqualValues(t, 101, tenant)
+			require.EqualValues(t, 11, principal)
+			return fields, nil
+		}),
+	}
+	claims := &authnext.Claims{PrincipalID: 11, Subject: "11", PreferredUsername: "alice", Email: "alice@example.test", EmailVerified: true}
+	read := func(input *meInput, identity *authnext.Claims) meOutput {
+		resolved, err := sessionTenant(t.Context(), service, input, identity)
+		require.NoError(t, err)
+		output, err := sessionView(t.Context(), service, input, resolved)
+		require.NoError(t, err)
+		return output
+	}
+	viewClaims := *claims
+	viewClaims.AccountView = &authnext.AccountViewIdentity{ID: 50, PrincipalID: 7, ReadOnly: true, ScopeType: "personal", ScopeID: 11}
+	for _, masked := range []bool{false, true} {
+		if masked {
+			fields.Fields["login_name"] = authz.FieldDecision{Read: "omit"}
+			fields.Fields["email"] = authz.FieldDecision{Read: "redact"}
+		}
+		ordinary := read(&meInput{Cookie: "session=target"}, claims)
+		view := read(&meInput{Authorization: "Bearer avt_view"}, &viewClaims)
+		require.Equal(t, ordinary, view)
+		if masked {
+			require.Nil(t, view.PreferredUsername)
+			require.Equal(t, "[REDACTED]", *view.Email)
+		} else {
+			require.Equal(t, "alice", *view.PreferredUsername)
+			require.Equal(t, "alice@example.test", *view.Email)
+		}
+	}
+}
+
 func TestProfileProjectionScopesMaskingAndFailClosed(t *testing.T) {
 	claims := &authnext.Claims{PrincipalID: 11, OrganizationID: "101", PreferredUsername: "alice", Email: "alice@example.test", EmailVerified: true}
 	fields, err := allowProfileFields(t.Context(), 101, 0, authz.ProfileResource, 11)

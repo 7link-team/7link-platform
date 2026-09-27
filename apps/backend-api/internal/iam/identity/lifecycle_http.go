@@ -20,7 +20,7 @@ import (
 // global. authz.RegisterPlatform is what enforces it -- no tenant permission
 // reaches these operations, which is the property the audit asked to be made
 // structural rather than conventional.
-const platformPrincipalLifecyclePath = "/platform/principals/{principal_id}/lifecycle"
+const platformPrincipalLifecyclePath = "/system/principals/{principal_id}/lifecycle"
 
 type platformLifecycleInput struct {
 	PrincipalID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`

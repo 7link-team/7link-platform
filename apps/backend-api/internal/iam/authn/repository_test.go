@@ -159,7 +159,7 @@ func initializeAuthnRepositoryDatabase(t *testing.T, dsn, prefix string) {
 	statements := []string{
 		"CREATE TABLE " + prefix + "iam_refresh_tokens (id_hash TEXT PRIMARY KEY, principal_id BIGINT NOT NULL, revoked_at DATETIME NULL)",
 		"CREATE TABLE " + prefix + "iam_oauth_clients (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL, status TEXT NOT NULL)",
-		"CREATE TABLE " + prefix + "iam_tenants (id BIGINT PRIMARY KEY, status TEXT NOT NULL)",
+		"CREATE TABLE " + prefix + "iam_tenants (id BIGINT PRIMARY KEY, status TEXT NOT NULL, scope_kind TEXT NOT NULL DEFAULT 'tenant')",
 		"CREATE TABLE " + prefix + "iam_tenant_members (tenant_id BIGINT NOT NULL, principal_id BIGINT NOT NULL, status TEXT NOT NULL, PRIMARY KEY (tenant_id, principal_id))",
 	}
 	for _, statement := range statements {
@@ -199,7 +199,8 @@ func TestModuleMigrationContract(t *testing.T) {
 	module := &Module{}
 	assert.Equal(t, Name, module.ModuleName())
 	assert.Equal(t, "goose_authn", module.MigrationSource().TableName)
-	require.Len(t, module.MigrationMilestones(), 8)
+	require.Len(t, module.MigrationMilestones(), 9)
+	assert.Equal(t, "account-view-tokens", module.MigrationMilestones()[8].Name)
 	assert.Equal(t, "reauthentication", module.MigrationMilestones()[6].Name)
 	assert.Equal(t, []string{"base", "constraints", "indexes", "verification-attempts", "notification-principals", "principal-erasure"}, []string{
 		module.MigrationMilestones()[0].Name,

@@ -381,6 +381,9 @@ func (s *Service) ServeSAMLMetadata(api huma.API, ctx huma.Context, tenantID gui
 // ServeSAMLSSO processes an AuthnRequest and responds with a signed assertion
 // through the HTTP-POST binding.
 func (s *Service) ServeSAMLSSO(api huma.API, ctx huma.Context, tenantID guid.ID) {
+	if rejectAccountViewBrowser(api, ctx) {
+		return
+	}
 	if s.samlKey == nil || !s.samlCfg.Enabled {
 		writeSAMLError(api, ctx, http.StatusServiceUnavailable, federationi18n.SAMLUnavailable)
 		return
@@ -434,6 +437,9 @@ func (s *Service) ServeSAMLSSO(api huma.API, ctx huma.Context, tenantID guid.ID)
 // ServeSAMLSLO validates a LogoutRequest, revokes the local browser session,
 // and returns a signed LogoutResponse to the service provider.
 func (s *Service) ServeSAMLSLO(api huma.API, ctx huma.Context, tenantID guid.ID) {
+	if rejectAccountViewBrowser(api, ctx) {
+		return
+	}
 	if s.samlKey == nil || !s.samlCfg.Enabled {
 		writeSAMLError(api, ctx, http.StatusServiceUnavailable, federationi18n.SAMLUnavailable)
 		return

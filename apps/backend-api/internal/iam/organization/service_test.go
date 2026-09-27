@@ -74,8 +74,16 @@ func newOrganizationHarness(t *testing.T, prefix string) *organizationHarness {
 	return harness
 }
 
+func newOrganizationDirectoryHarness(t *testing.T, prefix string) *organizationHarness {
+	t.Helper()
+	h := newOrganizationHarness(t, prefix)
+	h.seedTenant(t, 1, TenantActive)
+	h.seedTenant(t, 2, TenantActive)
+	return h
+}
+
 func TestCreateDepartmentProvisionsOrganizationOwnedFileRootInTransaction(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
+	h := newOrganizationDirectoryHarness(t, "sl_")
 	called := 0
 	h.service.roots = func(ctx context.Context, tx *gorm.DB, input core.FileRootProvisionInput, _ time.Time) (guid.ID, error) {
 		called++
@@ -94,7 +102,7 @@ func TestCreateDepartmentProvisionsOrganizationOwnedFileRootInTransaction(t *tes
 }
 
 func TestCreateDepartmentRollsBackWhenFileRootProvisioningFails(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
+	h := newOrganizationDirectoryHarness(t, "sl_")
 	want := errors.New("root unavailable")
 	h.service.roots = func(context.Context, *gorm.DB, core.FileRootProvisionInput, time.Time) (guid.ID, error) {
 		return 0, want
@@ -107,7 +115,7 @@ func TestCreateDepartmentRollsBackWhenFileRootProvisioningFails(t *testing.T) {
 }
 
 func TestDeleteDepartmentRefusesRetainedFileContent(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
+	h := newOrganizationDirectoryHarness(t, "sl_")
 	created, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
 	require.NoError(t, err)
 	called := 0
@@ -137,6 +145,7 @@ func initializeOrganizationDatabase(t *testing.T, dsn, prefix string) {
 	source := (&Module{}).MigrationSource()
 	source.Prefix = prefix
 	require.NoError(t, goosex.MigrateUpTo(t.Context(), sqlDB, source, "sqlite", 7))
+	require.NoError(t, goosex.Migrate(t.Context(), sqlDB, scopeFoundationSource(t, prefix), "sqlite"))
 	require.NoError(t, db.Exec("CREATE TABLE "+prefix+"iam_policy_revisions (tenant_id BIGINT PRIMARY KEY, revision BIGINT NOT NULL, updated_at DATETIME NOT NULL)").Error)
 	require.NoError(t, db.Exec("CREATE TABLE "+prefix+"iam_entities (tenant_id BIGINT NOT NULL, id BIGINT NOT NULL, status TEXT NOT NULL, PRIMARY KEY (tenant_id, id))").Error)
 	require.NoError(t, db.Exec("ALTER TABLE "+prefix+"iam_departments ADD COLUMN entity_id BIGINT NULL").Error)
@@ -160,7 +169,7 @@ func (h *organizationHarness) revision(t *testing.T, tenantID guid.ID) int64 {
 }
 
 func TestDepartmentLifecycleAndTenantIsolation(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
+	h := newOrganizationDirectoryHarness(t, "sl_")
 	rootA, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering", SortOrder: 10})
 	require.NoError(t, err)
 	rootB, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Operations", SortOrder: 5})
@@ -203,7 +212,7 @@ func TestDepartmentLifecycleAndTenantIsolation(t *testing.T) {
 }
 
 func TestDepartmentEntityBoundary(t *testing.T) {
-	h := newOrganizationHarness(t, "")
+	h := newOrganizationDirectoryHarness(t, "")
 	root, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
 	require.NoError(t, err)
 	other, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: 11, Name: "Operations"})
@@ -221,7 +230,7 @@ func TestDepartmentEntityBoundary(t *testing.T) {
 }
 
 func TestDepartmentAuditFailureRollsBackStateAndRevision(t *testing.T) {
-	h := newOrganizationHarness(t, "")
+	h := newOrganizationDirectoryHarness(t, "")
 	h.auditErr = errors.New("audit unavailable")
 	_, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
 	assert.ErrorContains(t, err, "audit unavailable")
@@ -252,7 +261,7 @@ func TestDepartmentRepositoryFailureAndValidation(t *testing.T) {
 // view of the directory is stale, so a write that committed without it would
 // leave the deployment authorizing against a hierarchy that no longer exists.
 func TestDepartmentWritesAbortWhenThePolicyRevisionCannotAdvance(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
+	h := newOrganizationDirectoryHarness(t, "sl_")
 	created, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
 	require.NoError(t, err)
 	require.NoError(t, h.db.Exec("DROP TABLE sl_iam_policy_revisions").Error)
@@ -277,7 +286,7 @@ func TestDepartmentWritesAbortWhenThePolicyRevisionCannotAdvance(t *testing.T) {
 // guard that keeps the hierarchy from being re-parented onto a department
 // that is not there.
 func TestDepartmentUpdateAppliesStatusAndOrderAndRefusesAMissingParent(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
+	h := newOrganizationDirectoryHarness(t, "sl_")
 	created, err := h.service.Create(t.Context(), 1, CreateDepartment{
 		EntityID: organizationEntityOne, Name: "Engineering", SortOrder: 3,
 	})

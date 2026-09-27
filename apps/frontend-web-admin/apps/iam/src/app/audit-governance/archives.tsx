@@ -64,7 +64,7 @@ export function ArchiveJobs({
 
   const t = useTranslations("iam")
   const allowed = useAllowed()
-  // The platform scope of this screen reaches /platform/... routes, which
+  // The platform scope of this screen reaches /system/... routes, which
   // are guarded by platform_administer rather than the tenant audit verbs.
   const scopedCode = (tenantCode: string) =>
     scope === "platform" ? "platform_administer" : tenantCode
@@ -182,6 +182,13 @@ export function ArchiveJobs({
               loading
             }
             onClick={() => void requestArchive()}
+            title={
+              !status.enabled
+                ? t("archiveStorageDisabled")
+                : status.pending_events === 0
+                  ? t("noEligibleArchiveEvents")
+                  : undefined
+            }
           >
             {busy === "request" ? (
               <LoaderCircle className="animate-spin" />
@@ -217,7 +224,11 @@ export function ArchiveJobs({
         </p>
       ) : jobs.length === 0 ? (
         <p className="py-6 text-sm text-muted-foreground">
-          {t("noArchiveJobs")}
+          {!status.enabled
+            ? t("archiveStorageDisabled")
+            : status.eligible_events === 0
+              ? t("noEligibleArchiveEvents")
+              : t("noArchiveJobs")}
         </p>
       ) : (
         <Table className="min-w-[880px]">

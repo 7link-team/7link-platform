@@ -46,6 +46,10 @@ func (organizationPermissionChecker) CheckPlatform(context.Context, string, guid
 	return true, nil
 }
 
+func (organizationPermissionChecker) CheckOperatingPlatform(context.Context, guid.ID, string, guid.ID) (bool, error) {
+	return true, nil
+}
+
 type organizationDependencyProvider struct {
 	name    string
 	provide func(*module.Services) error
@@ -152,6 +156,9 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 	assert.Same(t, instance, provisioner)
 	require.NoError(t, registry.Initialize(t.Context()))
 	require.NoError(t, instance.CheckHealth(t.Context()))
+	require.NotNil(t, instance.Platforms())
+	assert.NotSame(t, instance.tenants, instance.Platforms().TenantService)
+	assert.Equal(t, ScopePlatform, instance.Platforms().kind())
 	created, err := instance.CreateProvisionedTo(t.Context(), h.db, 1, ProvisionedGroupInput{DisplayName: "Provisioned", Active: true})
 	require.NoError(t, err)
 	stored, err := instance.Get(t.Context(), 1, created.ID)
@@ -168,7 +175,7 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 	assert.Equal(t, StatusDisabled, disabled.Status)
 	_, api = humatest.New(t)
 	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
-	assert.Len(t, organizationOperationManifest(api.OpenAPI()), 24)
+	assert.Len(t, organizationOperationManifest(api.OpenAPI()), 34)
 }
 
 func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
@@ -367,7 +374,7 @@ func TestOrganizationModuleProvisionerUnavailableBeforeInitialize(t *testing.T) 
 // keeps an identifier from another tenant from being probed, and an error must
 // stay an error rather than collapse into either of the other two.
 func TestDepartmentOwnerResolverPublishesTheOwningTenantAndEntity(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
+	h := newOrganizationDirectoryHarness(t, "sl_")
 	created, err := h.service.Create(t.Context(), 1, CreateDepartment{
 		EntityID: organizationEntityOne, Name: "Engineering",
 	})

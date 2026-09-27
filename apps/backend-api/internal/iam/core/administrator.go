@@ -8,6 +8,7 @@ import (
 	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authz"
 	"gorm.io/gorm"
 )
 
@@ -23,6 +24,27 @@ type tenantAdministratorGuard struct {
 	revisions *RevisionStore
 	now       func() time.Time
 	foreign   *foreignTables
+	registry  *authz.Registry
+}
+
+// RequireGrantableRoles checks indirect directory grants on the mutation transaction.
+func (guard *tenantAdministratorGuard) RequireGrantableRoles(ctx context.Context, db *gorm.DB, ownerID guid.ID, roleIDs []guid.ID) error {
+	if guard == nil || db == nil {
+		return ErrUnavailable
+	}
+	registry := guard.registry
+	if registry == nil {
+		registry = authz.DefaultRegistry()
+	}
+	checker := &Authorizer{db: db, repositoryTables: repositoryTables{names: guard.names}, registry: registry, revisions: guard.revisions, now: guard.now, foreign: guard.foreign}
+	repo := &Repository{db: db, repositoryTables: repositoryTables{names: guard.names}, foreign: guard.foreign}
+	service := &Service{repo: repo, checker: checker}
+	for _, roleID := range roleIDs {
+		if err := service.requireGrantableRoleWithRepository(ctx, repo, ownerID, roleID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // NewAdministratorGuard creates the tenant-administrator safety capability.
@@ -80,12 +102,20 @@ func (guard *tenantAdministratorGuard) hasDurableAdministrator(
 	if err != nil {
 		return false, err
 	}
+	var root struct{ ScopeKind string }
+	if err := db.WithContext(ctx).Table(tables.Directory.Tenants.String()).Select("scope_kind").Where("id = ?", tenantID).Take(&root).Error; err != nil {
+		return false, err
+	}
+	permission, globalPermission := tenantAdministratorPermission, platformAdministratorPermission
+	if root.ScopeKind == "platform" {
+		permission, globalPermission = "operating_platform_administer", "operating_platform_administer"
+	}
 	count, err := query.CountDurableAdministrators(ctx, db, query.DurableAdministratorParams{
 		AuthorizationTables:     tables,
 		TenantID:                tenantID,
 		Now:                     now,
-		AdministratorPermission: tenantAdministratorPermission,
-		PlatformPermission:      platformAdministratorPermission,
+		AdministratorPermission: permission,
+		PlatformPermission:      globalPermission,
 	})
 	if err != nil {
 		return false, err

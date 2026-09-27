@@ -26,6 +26,7 @@ type CredentialTableNames struct {
 	StepUpChallenges           gormx.TableName
 	ReauthenticationChallenges gormx.TableName
 	PersonalTokens             gormx.TableName
+	AccountViewTokens          gormx.TableName
 }
 
 // PublishedCredentialTableNames binds every name authn owns to one deployment prefix. It
@@ -50,6 +51,7 @@ func PublishedCredentialTableNames(prefix string) CredentialTableNames {
 		StepUpChallenges:           names.StepUpChallenges,
 		ReauthenticationChallenges: names.ReauthenticationChallenges,
 		PersonalTokens:             names.PersonalTokens,
+		AccountViewTokens:          names.AccountViewTokens,
 	}
 }
 

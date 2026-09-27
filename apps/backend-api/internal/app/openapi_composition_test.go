@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const iamHTTPMappingCount = 256
+const iamHTTPMappingCount = 287
 
 type iamHTTPMapping struct {
 	sourceOperation string
@@ -47,16 +47,20 @@ func TestIAMAuthorizationClassifierDistinguishesGuardBoundaries(t *testing.T) {
 	authz.RegisterAuthenticated(registrar, api, huma.Operation{OperationID: "authenticated", Method: http.MethodGet, Path: "/authenticated"}, handler)
 	authz.RegisterTenantMember(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "tenant-member", Method: http.MethodGet, Path: "/tenant-member"}, handler)
 	authz.Register(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "tenant", Method: http.MethodGet, Path: "/tenant"}, authz.Guard{Resource: "store", Verb: "view"}, handler)
-	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "platform", Method: http.MethodGet, Path: "/platform"}, authz.Guard{Resource: "tenant", Verb: "view"}, handler)
+	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "platform", Method: http.MethodGet, Path: "/system"}, authz.Guard{Resource: "tenant", Verb: "view"}, handler)
+	authz.RegisterOperatingPlatform(registrar, api, huma.Operation{OperationID: "operating-platform", Method: http.MethodGet, Path: "/roles", Tags: []string{"operating-platforms"}}, authz.Guard{Resource: "role", Verb: "view"}, handler)
+	authz.RegisterOperatingPlatformMember(registrar, api, huma.Operation{OperationID: "operating-platform-member", Method: http.MethodGet, Path: "/navigation", Tags: []string{"operating-platforms"}}, handler)
 	authz.RegisterEntity(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "entity-header", Method: http.MethodGet, Path: "/entity-header"}, authz.Guard{Resource: "store", Verb: "view"}, handler)
 	authz.RegisterEntityAdapter(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "entity-query", Method: http.MethodGet, Path: "/entity-query"}, authz.Guard{Resource: "store", Verb: "view"}, func(huma.Context) {})
 
 	expected := map[string]iamHTTPAuthorization{
-		"/public":                            {class: "public"},
-		"/authenticated":                     {class: "authenticated"},
-		"/tenants/{tenant_id}/tenant-member": {class: "tenant-member"},
-		"/tenants/{tenant_id}/tenant":        {class: "tenant", permission: "store_view"},
-		"/platform":                          {class: "platform", permission: "tenant_view"},
+		"/public":                                                 {class: "public"},
+		"/authenticated":                                          {class: "authenticated"},
+		"/tenants/{tenant_id}/tenant-member":                      {class: "tenant-member"},
+		"/tenants/{tenant_id}/tenant":                             {class: "tenant", permission: "store_view"},
+		"/system":                                               {class: "platform", permission: "tenant_view"},
+		"/operating-platforms/{platform_id}/roles":                {class: "operating-platform", permission: "role_view"},
+		"/operating-platforms/{platform_id}/navigation":           {class: "operating-platform-member"},
 		"/tenants/{tenant_id}/entities/{entity_id}/entity-header": {class: "entity-path", permission: "store_view"},
 		"/tenants/{tenant_id}/entities/{entity_id}/entity-query":  {class: "entity-path", permission: "store_view"},
 	}
@@ -186,12 +190,15 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 	if operation == nil {
 		return iamHTTPAuthorization{}, fmt.Errorf("nil operation")
 	}
+	operatingPlatform := authz.IsOperatingPlatformOperation(operation)
 	markers := []struct {
 		class   string
 		present bool
 	}{
 		{class: "public", present: authz.IsPublicOperation(operation)},
-		{class: "authenticated", present: authz.IsAuthenticatedOperation(operation)},
+		{class: "authenticated", present: authz.IsAuthenticatedOperation(operation) && !operatingPlatform},
+		{class: "operating-platform", present: operatingPlatform && !authz.IsAuthenticatedOperation(operation)},
+		{class: "operating-platform-member", present: operatingPlatform && authz.IsAuthenticatedOperation(operation)},
 		{class: "tenant-member", present: authz.IsTenantMemberOperation(operation)},
 		{class: "platform", present: authz.IsPlatformOperation(operation)},
 	}
@@ -214,8 +221,9 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 
 	selectors := map[string]bool{}
 	authorizationSelectors := map[string]string{
-		"path|" + authz.TenantPath: "Tenant resource identifier",
-		"path|" + authz.EntityPath: "Entity resource identifier",
+		"path|" + authz.OperatingPlatformPath: "Operating platform identifier",
+		"path|" + authz.TenantPath:            "Tenant resource identifier",
+		"path|" + authz.EntityPath:            "Entity resource identifier",
 	}
 	for _, parameter := range operation.Parameters {
 		if parameter == nil {
@@ -236,11 +244,20 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 	}
 
 	tenantPath := selectors["path|"+authz.TenantPath]
+	platformPath := selectors["path|"+authz.OperatingPlatformPath]
 	entityPath := selectors["path|"+authz.EntityPath]
 	selectorCount := len(selectors)
 	ownedResource := authz.IsOwnedResourceOperation(operation)
 
 	switch markedClass {
+	case "operating-platform":
+		if !guarded || selectorCount != 1 || !platformPath {
+			return iamHTTPAuthorization{}, fmt.Errorf("operating-platform operation requires one guard and platform path selector")
+		}
+	case "operating-platform-member":
+		if guarded || selectorCount != 1 || !platformPath {
+			return iamHTTPAuthorization{}, fmt.Errorf("operating-platform-member operation requires exactly one platform path selector and no guard")
+		}
 	case "public", "authenticated":
 		if guarded || selectorCount != 0 {
 			return iamHTTPAuthorization{}, fmt.Errorf("%s operation has a guard or authorization selector", markedClass)
@@ -321,8 +338,8 @@ func loadIAMHTTPAuthorizations(t *testing.T) map[string]iamHTTPAuthorization {
 		parts := strings.SplitN(line, " => ", 2)
 		require.Len(t, parts, 2, "line %d", lineNumber+1)
 		fields := strings.Split(parts[1], "|")
-		require.Contains(t, []string{"public", "authenticated", "session-only", "tenant-member", "owned-tenant-member", "tenant", "platform", "entity-path", "owned-resource"}, fields[0], "line %d", lineNumber+1)
-		permissionRequired := fields[0] == "tenant" || fields[0] == "platform" || fields[0] == "owned-resource" || strings.HasPrefix(fields[0], "entity-")
+		require.Contains(t, []string{"public", "authenticated", "session-only", "tenant-member", "owned-tenant-member", "tenant", "platform", "operating-platform", "operating-platform-member", "entity-path", "owned-resource"}, fields[0], "line %d", lineNumber+1)
+		permissionRequired := fields[0] == "tenant" || fields[0] == "platform" || fields[0] == "operating-platform" || fields[0] == "owned-resource" || strings.HasPrefix(fields[0], "entity-")
 		if permissionRequired {
 			require.Len(t, fields, 2, "line %d", lineNumber+1)
 			require.NotEmpty(t, fields[1], "line %d", lineNumber+1)

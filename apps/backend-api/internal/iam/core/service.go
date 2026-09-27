@@ -95,7 +95,7 @@ func (s *Service) PermissionCatalog(context.Context) []authz.Action {
 	actions := s.registry.All()
 	tenantActions := make([]authz.Action, 0, len(actions))
 	for _, action := range actions {
-		if action.Scope != "platform" {
+		if action.Scope != "platform" && action.Scope != "operating_platform" {
 			tenantActions = append(tenantActions, action)
 		}
 	}
@@ -105,16 +105,17 @@ func (s *Service) PermissionCatalog(context.Context) []authz.Action {
 // ScopeModel returns the stable hierarchy used by authorization clients.
 func (s *Service) ScopeModel(context.Context) []ScopeNode {
 	return []ScopeNode{
-		{Type: "platform", Relation: "owns", Label: "Platform"},
-		{Type: "tenant", ParentType: "platform", Relation: "contains", Label: "Tenant"},
-		{Type: "entity", ParentType: "tenant", Relation: "parent", Label: "Company / enterprise / merchant / store"},
+		{Type: "system", Relation: "administers", Label: "System administration"},
+		{Type: "platform", ParentType: "system", Relation: "administers", Label: "Independently operated platform"},
+		{Type: "tenant", Relation: "isolates", Label: "Tenant"},
+		{Type: "entity", ParentType: "tenant", Relation: "contains", Label: "Business entity"},
 		{Type: "business_resource", ParentType: "entity", Relation: "owner", Label: "Business resource"},
 	}
 }
 
 func (s *Service) resolveRoleOwner(ctx context.Context, roleID guid.ID) (authz.ResourceOwner, bool, error) {
 	tenantID, found, err := s.repo.ResolveRoleTenant(ctx, roleID)
-	return authz.ResourceOwner{TenantID: tenantID}, found, err
+	return s.resolveRootOwner(ctx, tenantID, found, err)
 }
 
 func (s *Service) resolveEntityOwner(ctx context.Context, entityID guid.ID) (authz.ResourceOwner, bool, error) {
@@ -127,7 +128,22 @@ func (s *Service) resolveEntityOwner(ctx context.Context, entityID guid.ID) (aut
 
 func (s *Service) resolveMenuOwner(ctx context.Context, menuID guid.ID) (authz.ResourceOwner, bool, error) {
 	tenantID, found, err := s.repo.ResolveMenuTenant(ctx, menuID)
-	return authz.ResourceOwner{TenantID: tenantID}, found, err
+	return s.resolveRootOwner(ctx, tenantID, found, err)
+}
+
+func (s *Service) resolveRootOwner(ctx context.Context, ownerID guid.ID, found bool, err error) (authz.ResourceOwner, bool, error) {
+	owner := authz.ResourceOwner{TenantID: ownerID}
+	if err != nil || !found {
+		return owner, found, err
+	}
+	kind, err := s.repo.rootKind(ctx, ownerID)
+	if err != nil {
+		return owner, false, err
+	}
+	if kind != "tenant" {
+		owner.ScopeType = kind
+	}
+	return owner, true, nil
 }
 
 // MenuCatalog returns the built-in IAM navigation declaration.
@@ -294,8 +310,8 @@ func (s *Service) SetPermissionCondition(
 	if !ok {
 		return RolePermissionGrant{}, false, fmt.Errorf("%w: %s", ErrPermissionNotFound, code)
 	}
-	if action.Scope == "platform" {
-		return RolePermissionGrant{}, false, fmt.Errorf("%w: platform permissions cannot be granted to tenant roles", ErrInvalidArgument)
+	if err := s.permissionAllowedForRoot(ctx, tenantID, action); err != nil {
+		return RolePermissionGrant{}, false, err
 	}
 	if err := s.requireGrantablePermissions(ctx, tenantID, code); err != nil {
 		return RolePermissionGrant{}, false, err
@@ -315,7 +331,7 @@ func (s *Service) SetPermissionCondition(
 	var changed bool
 	err = s.writes.Run(ctx, record, func(repo *Repository) error {
 		verify := func() error { return nil }
-		if isAdministratorPermission(code) {
+		if isAdministratorPermission(code) || code == "operating_platform_administer" {
 			var err error
 			verify, err = s.administrators.Protect(ctx, repo.writer(), tenantID)
 			if err != nil {
@@ -367,8 +383,8 @@ func (s *Service) changePermission(
 	if !ok {
 		return false, fmt.Errorf("%w: %s", ErrPermissionNotFound, code)
 	}
-	if action.Scope == "platform" {
-		return false, fmt.Errorf("%w: platform permissions cannot be granted to tenant roles", ErrInvalidArgument)
+	if err := s.permissionAllowedForRoot(ctx, tenantID, action); err != nil {
+		return false, err
 	}
 	if grant {
 		if err := s.requireGrantablePermissions(ctx, tenantID, code); err != nil {

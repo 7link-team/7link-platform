@@ -43,7 +43,7 @@ async function call(context, path, method = "GET", data, tenant) {
     path = path.replace("{principal_id}", (await identity.json()).data.subject)
   }
   const requestPath =
-    tenant && !path.startsWith("/login") && !path.startsWith("/platform/")
+    tenant && !path.startsWith("/login") && !path.startsWith("/system/")
       ? `/tenants/${tenant}${path}`
       : path
   return context.request.fetch("/api" + requestPath, {
@@ -221,7 +221,7 @@ try {
         const review = await reviewer.newPage()
         review.on("pageerror", (e) => errors.push(e.message))
         review.setDefaultTimeout(15000)
-        await review.goto("/platform/closure-requests")
+        await review.goto("/system/closure-requests")
         const row = review.getByRole("listitem").filter({
           has: review.getByRole("heading", {
             name: principal.id,
@@ -262,7 +262,7 @@ try {
         )
         const requests = await ok(
           reviewer,
-          "/platform/closure-requests?status=processing"
+          "/system/closure-requests?status=processing"
         )
         assert(
           requests.items.some(
@@ -277,7 +277,7 @@ try {
           review.waitForResponse(
             (r) =>
               new URL(r.url()).pathname ===
-                `/api/platform/principals/${principal.id}/lifecycle` &&
+                `/api/system/principals/${principal.id}/lifecycle` &&
               r.request().method() === "GET"
           ),
           row

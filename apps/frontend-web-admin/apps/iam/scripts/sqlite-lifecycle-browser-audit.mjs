@@ -9,6 +9,7 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
 import { externalIdentityAcceptance } from "./external-identity-acceptance.mjs"
+import { administrationAccountViewAcceptance } from "./administration-account-view-acceptance.mjs"
 
 const backend = fileURLToPath(
   new URL("../../../../backend-api/", import.meta.url)
@@ -513,7 +514,7 @@ try {
   )
   assert(platformCodes.includes("tenant_create"))
   assert(!platformCodes.includes("user_create"))
-  await admin.page.goto("/platform/tenants")
+  await admin.page.goto("/system/tenants")
   await admin.page
     .getByRole("button", { name: "Create tenant", exact: true })
     .click()
@@ -526,6 +527,8 @@ try {
     })
   )[0]
   assert.equal(tenant.name, "First Business")
+	await admin.page.getByRole("button", { name: "Open First Business", exact: true }).click()
+	await admin.page.waitForURL((url) => url.pathname === `/tenants/${tenant.id}`)
   await eventually(
     async () =>
       (await admin.page.evaluate(() => localStorage.getItem("iam.tenant"))) ===
@@ -558,6 +561,7 @@ try {
   pass(
     "browser creates the first real tenant without a pre-existing membership; owner, role and menus initialized"
   )
+  if (process.env.IAM_ACCOUNT_VIEW_ONLY !== "1") {
   await externalIdentityAcceptance({
     browser,
     admin,
@@ -1524,13 +1528,15 @@ try {
     "membership invitation rotation, anonymous acceptance, revoked credentials and retired resource addresses"
   )
 
+  }
+  await administrationAccountViewAcceptance({ admin, browser, tenant, webURL, directory, login, eventually, pass, notifications })
   const audit = await call(admin.context, "/audit/events?limit=200")
-  for (const event of [
+  for (const event of (process.env.IAM_ACCOUNT_VIEW_ONLY === "1" ? ["tenant_bootstrapped"] : [
     "tenant_bootstrapped",
     "role_permission_granted",
     "role_permission_revoked",
     "entity_role_binding_deleted",
-  ]) {
+  ])) {
     assert(
       audit.some((row) => row.event_type === event),
       `missing audit event ${event}`

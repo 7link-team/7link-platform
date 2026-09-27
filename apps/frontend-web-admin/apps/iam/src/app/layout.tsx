@@ -34,6 +34,7 @@ import {
 } from "../lib/iam-api"
 import { appName } from "../lib/branding"
 import { isPlatformRoute } from "../lib/navigation"
+import { getAccountView } from "../lib/account-view"
 import type { EffectivePermissions } from "../lib/permissions"
 import { LanguageSwitcher } from "@workspace/ui/components/i18n/language-switcher"
 import { useClientLocale } from "@workspace/ui/i18n/intl-provider"
@@ -42,11 +43,15 @@ export default function AppLayout() {
   const t = useTranslations("iam")
 
   const { session, status } = useAuth()
+  const accountView = getAccountView()
+  const location = useLocation()
+  const platformView = isPlatformRoute(location.pathname)
   const [menuCatalog, setMenuCatalog] = useState<{
     subject: string
     tenant: string
     items: EffectiveMenu[] | null
     permissions: EffectivePermissions
+    platform: boolean
     error: string
   } | null>(null)
   const routeParams = useParams<{ tenantID?: string; entityID?: string }>()
@@ -58,7 +63,7 @@ export default function AppLayout() {
   const subject = session?.subject ?? ""
   const [tenantCatalog, setTenantCatalog] = useState<{
     subject: string
-    items: Tenant[]
+    items: Pick<Tenant, "id" | "slug" | "name" | "status">[]
     platformAccess: boolean
     error: string
   } | null>(null)
@@ -69,7 +74,9 @@ export default function AppLayout() {
     directoryReady && Boolean(currentTenants?.platformAccess)
   const availableTenants = currentTenants?.items ?? null
   const currentMenus =
-    menuCatalog?.subject === subject && menuCatalog?.tenant === tenantValue
+    menuCatalog?.subject === subject &&
+    menuCatalog?.tenant === tenantValue &&
+    menuCatalog.platform === platformView
       ? menuCatalog
       : null
   const menus = currentMenus?.items ?? null
@@ -80,16 +87,32 @@ export default function AppLayout() {
   const menuError = currentMenus?.error ?? ""
   const [fieldPolicyAccess, setFieldPolicyAccess] = useState("")
   const { locale: menuLanguage } = useClientLocale()
-  const location = useLocation()
+  const platformPath = platformTenantAccess
+    ? "/system/tenants"
+    : permissions?.has("platform_administer")
+      ? "/system/audit-governance"
+      : ""
   // The navigation panel overlays the page on a small screen, so choosing a
   // destination has to dismiss it; leaving it open hides the page the person
   // just asked for behind the menu they used to ask.
   const [navOpen, setNavOpen] = useState(false)
+  const [operatingPlatforms, setOperatingPlatforms] = useState<Tenant[]>([])
+  useEffect(() => {
+    if (status !== "authenticated" || getAccountView()) return
+    let active = true
+    void iamApi.myOperatingPlatforms().then(
+      (items) => {
+        if (active) setOperatingPlatforms(items)
+      },
+      () => {}
+    )
+    return () => {
+      active = false
+    }
+  }, [status, subject])
 
   const navigate = useNavigate()
-  const entityMatch = useMatch(
-    "/tenants/:tenantID/entities/:entityID/:view"
-  )
+  const entityMatch = useMatch("/tenants/:tenantID/entities/:entityID/:view")
   const entityID = routeParams.entityID ?? entityMatch?.params.entityID ?? ""
   const entityFileRoute =
     Boolean(entityID) && location.pathname.endsWith("/files")
@@ -135,17 +158,24 @@ export default function AppLayout() {
 
   useEffect(() => {
     if (
+      accountView?.scope_type === "entity" ||
       status !== "authenticated" ||
       !tenantValue ||
       !directoryReady ||
-      !permissionsResolved
+      !permissionsResolved ||
+      platformView
     )
       return
     let active = true
     if (permissionsResolved && !permissions?.has("entity_view")) {
       void Promise.resolve().then(() => {
         if (active)
-          setEntityCatalog({ subject, tenant: tenantValue, items: [], error: "" })
+          setEntityCatalog({
+            subject,
+            tenant: tenantValue,
+            items: [],
+            error: "",
+          })
       })
       return () => {
         active = false
@@ -181,14 +211,12 @@ export default function AppLayout() {
     directoryReady,
     permissions,
     permissionsResolved,
+    platformView,
+    accountView?.scope_type,
   ])
 
   useEffect(() => {
-    if (
-      status !== "authenticated" ||
-      !tenantValue ||
-      entityID
-    )
+    if (status !== "authenticated" || !tenantValue || entityID || platformView)
       return
     let active = true
     void iamApi.departments().then(
@@ -221,7 +249,7 @@ export default function AppLayout() {
     return () => {
       active = false
     }
-  }, [status, tenantValue, entityID, subject])
+  }, [status, tenantValue, entityID, subject, platformView])
   const loginState = useMemo(
     () => ({ from: location.pathname }),
     [location.pathname]
@@ -232,7 +260,9 @@ export default function AppLayout() {
       status !== "authenticated" ||
       !tenantValue ||
       !session ||
-      !directoryReady
+      !directoryReady ||
+      accountView?.scope_type === "entity" ||
+      platformView
     )
       return
     let active = true
@@ -247,7 +277,14 @@ export default function AppLayout() {
     return () => {
       active = false
     }
-  }, [status, tenantValue, session, directoryReady])
+  }, [
+    status,
+    tenantValue,
+    session,
+    directoryReady,
+    platformView,
+    accountView?.scope_type,
+  ])
 
   useEffect(() => {
     let active = true
@@ -256,8 +293,13 @@ export default function AppLayout() {
       if (status === "authenticated" && directoryReady) {
         const request = ++generation
         void Promise.allSettled([
-          tenantValue ? iamApi.effectiveMenus(tenantValue) : Promise.resolve([]),
-          iamApi.myPermissions(tenantValue || undefined, entityID || undefined),
+          tenantValue && !platformView && accountView?.scope_type !== "entity"
+            ? iamApi.effectiveMenus(tenantValue)
+            : Promise.resolve([]),
+          iamApi.myPermissions(
+            platformView ? undefined : tenantValue || undefined,
+            platformView ? undefined : entityID || undefined
+          ),
         ]).then(([menuResult, permissionResult]) => {
           if (!active || request !== generation) return
           // Failed permission reads remain unknown and protected actions stay
@@ -267,6 +309,7 @@ export default function AppLayout() {
               ? new Set(permissionResult.value)
               : null
           setMenuCatalog({
+            platform: platformView,
             subject,
             tenant: tenantValue,
             items: menuResult.status === "fulfilled" ? menuResult.value : null,
@@ -292,7 +335,15 @@ export default function AppLayout() {
       window.removeEventListener("menu-catalog-change", refresh)
       window.removeEventListener("focus", refresh)
     }
-  }, [status, tenantValue, entityID, subject, directoryReady])
+  }, [
+    status,
+    tenantValue,
+    entityID,
+    subject,
+    directoryReady,
+    platformView,
+    accountView?.scope_type,
+  ])
 
   useEffect(() => {
     if (status !== "authenticated" || !subject) return
@@ -300,6 +351,48 @@ export default function AppLayout() {
     let generation = 0
     const refresh = () => {
       const request = ++generation
+      if (accountView) {
+        void iamApi.accountViewWorkspace().then(
+          (metadata) => {
+            if (!active || request !== generation) return
+            const tenant = metadata.tenant
+            if (!tenant) {
+              setTenantCatalog({
+                subject,
+                items: [],
+                platformAccess: false,
+                error: t("identityUnavailable"),
+              })
+              return
+            }
+            setTenant(tenant.id)
+            setTenantValue(tenant.id)
+            setTenantCatalog({
+              subject,
+              items: [tenant],
+              platformAccess: false,
+              error: "",
+            })
+            if (metadata.scope_kind === "entity")
+              setEntityCatalog({
+                subject,
+                tenant: tenant.id,
+                items: metadata.entity ? [metadata.entity] : [],
+                error: "",
+              })
+          },
+          (cause: Error) => {
+            if (active && request === generation)
+              setTenantCatalog({
+                subject,
+                items: [],
+                platformAccess: false,
+                error: cause.message,
+              })
+          }
+        )
+        return
+      }
       void Promise.all([
         iamApi.myTenants(),
         iamApi.tenants().catch((cause: unknown) => {
@@ -349,7 +442,7 @@ export default function AppLayout() {
       active = false
       window.removeEventListener("tenant-catalog-change", refresh)
     }
-  }, [status, subject, session?.organization_id, routeTenantID])
+  }, [status, subject, session?.organization_id, routeTenantID, accountView, t])
 
   useEffect(() => {
     const sync = () => {
@@ -364,12 +457,7 @@ export default function AppLayout() {
   if (!session) return <Navigate to="/login" replace state={loginState} />
 
   const commitTenant = (next: string) => {
-    if (
-      !next ||
-      next === tenantValue ||
-      !availableTenants?.some((tenant) => tenant.id === next)
-    )
-      return
+    if (!next || !availableTenants?.some((tenant) => tenant.id === next)) return
     setMenuCatalog(null)
     setTenant(next)
     setTenantValue(next)
@@ -439,25 +527,35 @@ export default function AppLayout() {
             </span>
             <span className="hidden truncate lg:inline">{appName}</span>
           </div>
-          <WorkspaceSwitcher
-            tenantID={tenantValue}
-            entityID={entityID}
-            tenants={availableTenants}
-            tenantError={currentTenants?.error ?? ""}
-            onRetryTenants={() =>
-              window.dispatchEvent(new Event("tenant-catalog-change"))
-            }
-            entities={catalog?.items ?? null}
-            error={entityFileRoute ? "" : (catalog?.error ?? "")}
-            onTenant={commitTenant}
-            onEntity={(id) => {
-              navigate(
-                id
-                  ? `/tenants/${encodeURIComponent(tenantValue)}/entities/${encodeURIComponent(id)}/overview`
-                  : `/tenants/${encodeURIComponent(tenantValue)}`
-              )
-            }}
-          />
+          {!accountView && (
+            <WorkspaceSwitcher
+              operatingPlatforms={operatingPlatforms}
+              onOperatingPlatform={(id) =>
+                navigate(`/operating-platforms/${encodeURIComponent(id)}`)
+              }
+              platformPath={platformPath}
+              platformView={platformView}
+              onPlatform={() => navigate(platformPath)}
+              onPersonal={() => navigate("/me/profile")}
+              tenantID={tenantValue}
+              entityID={entityID}
+              tenants={availableTenants}
+              tenantError={currentTenants?.error ?? ""}
+              onRetryTenants={() =>
+                window.dispatchEvent(new Event("tenant-catalog-change"))
+              }
+              entities={catalog?.items ?? null}
+              error={entityFileRoute ? "" : (catalog?.error ?? "")}
+              onTenant={commitTenant}
+              onEntity={(id) => {
+                navigate(
+                  id
+                    ? `/tenants/${encodeURIComponent(tenantValue)}/entities/${encodeURIComponent(id)}/overview`
+                    : `/tenants/${encodeURIComponent(tenantValue)}`
+                )
+              }}
+            />
+          )}
           <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
             <LanguageSwitcher />
             <ThemeModeButton />
@@ -477,21 +575,28 @@ export default function AppLayout() {
       >
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Building2 className="size-4 shrink-0 text-muted-foreground" />
-          <span className="text-muted-foreground">{t("currentTenant")}</span>
-          <strong className="break-words">
-            {availableTenants?.find((tenant) => tenant.id === tenantValue)
-              ?.name ?? (tenantValue ? t("tenantWorkspace") : t("notSelected"))}
-          </strong>
-          <span className="font-mono text-xs text-muted-foreground">
-            {tenantValue}
+          <span className="text-muted-foreground">
+            {t(platformView ? "platformManagement" : "currentTenant")}
           </span>
-          {entityID && (
+          {!platformView && (
             <>
-              <span aria-hidden="true">/</span>
-              <span>{t("entityPerspective")}</span>
-              <strong className="break-all">
-                {selectedEntity?.name ?? entityID}
+              <strong className="break-words">
+                {availableTenants?.find((tenant) => tenant.id === tenantValue)
+                  ?.name ??
+                  (tenantValue ? t("tenantWorkspace") : t("notSelected"))}
               </strong>
+              <span className="font-mono text-xs text-muted-foreground">
+                {tenantValue}
+              </span>
+              {entityID && (
+                <>
+                  <span aria-hidden="true">/</span>
+                  <span>{t("entityPerspective")}</span>
+                  <strong className="break-all">
+                    {selectedEntity?.name ?? entityID}
+                  </strong>
+                </>
+              )}
             </>
           )}
         </div>
@@ -555,6 +660,11 @@ export default function AppLayout() {
                   menus,
                   permissions,
                   permissionsResolved,
+                  platformTenantAccess,
+                  fieldPolicyAccess:
+                    Boolean(tenantValue) &&
+                    fieldPolicyAccess === `${tenantValue}:${session.subject}`,
+                  scopedFileEntityID,
                   tenantID: tenantValue,
                   tenantName,
                   entityID,

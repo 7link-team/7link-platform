@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/mail"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 	"golang.org/x/text/language"
 
 	"7link.com/platform/internal/infra/guid"
+	"gorm.io/gorm"
 )
 
 // PutTenantMember creates or replaces one tenant-qualified membership and its
@@ -24,6 +26,18 @@ func (s *Service) PutTenantMember(
 	departmentID guid.ID,
 	status MemberStatus,
 ) (TenantMember, error) {
+	return s.putRootMember(ctx, "tenant", tenantID, principalID, displayName, email, departmentID, status, false)
+}
+
+func (s *Service) PutOperatingPlatformMember(ctx context.Context, platformID, principalID guid.ID, displayName, email string, departmentID guid.ID, status MemberStatus) (TenantMember, error) {
+	return s.putRootMember(ctx, "platform", platformID, principalID, displayName, email, departmentID, status, false)
+}
+
+func (s *Service) CreateOperatingPlatformMember(ctx context.Context, platformID, principalID guid.ID, displayName, email string, departmentID guid.ID, status MemberStatus) (TenantMember, error) {
+	return s.putRootMember(ctx, "platform", platformID, principalID, displayName, email, departmentID, status, true)
+}
+
+func (s *Service) putRootMember(ctx context.Context, kind string, tenantID, principalID guid.ID, displayName, email string, departmentID guid.ID, status MemberStatus, createOnly bool) (TenantMember, error) {
 	if err := validateTenant(tenantID); err != nil {
 		return TenantMember{}, err
 	}
@@ -38,11 +52,18 @@ func (s *Service) PutTenantMember(
 		}
 	}
 	var member TenantMember
-	record := newAuditRecord(ctx, tenantID, "tenant_member_upserted", "tenant_member", principalID)
+	record := newAuditRecord(ctx, tenantID, kind+"_member_upserted", kind+"_member", principalID)
 	record.Detail["status"] = status
 	record.Detail["has_department"] = !departmentID.Zero()
 	record.PolicyChanged = true
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
+		actualKind, err := repo.rootKind(ctx, tenantID)
+		if err != nil {
+			return err
+		}
+		if actualKind != kind {
+			return fmt.Errorf("%w: membership owner kind mismatch", ErrInvalidArgument)
+		}
 		if s.lockPrincipal == nil {
 			return ErrUnavailable
 		}
@@ -62,17 +83,17 @@ func (s *Service) PutTenantMember(
 			}
 		}
 		var verify func() error
-		var err error
+		err = nil
 		if status == MemberDisabled {
 			verify, err = s.administrators.Protect(ctx, repo.writer(), tenantID)
 			if err != nil {
 				return err
 			}
 		}
-		member, err = repo.PutMember(ctx, TenantMember{
+		member, err = repo.putMember(ctx, TenantMember{
 			TenantID: tenantID, PrincipalID: principalID,
 			DisplayName: displayName, Email: email, Status: status,
-		})
+		}, createOnly)
 		if err != nil {
 			return err
 		}
@@ -80,8 +101,10 @@ func (s *Service) PutTenantMember(
 			return err
 		}
 		if verify != nil {
-			if err = s.revokeTenantMemberCredentials(ctx, repo, tenantID, principalID); err != nil {
-				return err
+			if kind == "tenant" {
+				if err = s.revokeTenantMemberCredentials(ctx, repo, tenantID, principalID); err != nil {
+					return err
+				}
 			}
 			if err = verify(); err != nil {
 				return err
@@ -132,6 +155,14 @@ func (s *Service) SetTenantMemberStatus(
 }
 
 func (s *Service) setTenantMemberStatus(ctx context.Context, tenantID, principalID guid.ID, status MemberStatus, prepare func(*Repository) error) (TenantMember, error) {
+	return s.setRootMemberStatus(ctx, "tenant", tenantID, principalID, status, prepare)
+}
+
+func (s *Service) SetOperatingPlatformMemberStatus(ctx context.Context, platformID, principalID guid.ID, status MemberStatus) (TenantMember, error) {
+	return s.setRootMemberStatus(ctx, "platform", platformID, principalID, status, nil)
+}
+
+func (s *Service) setRootMemberStatus(ctx context.Context, kind string, tenantID, principalID guid.ID, status MemberStatus, prepare func(*Repository) error) (TenantMember, error) {
 	if err := validateMemberRef(tenantID, principalID); err != nil {
 		return TenantMember{}, err
 	}
@@ -139,10 +170,17 @@ func (s *Service) setTenantMemberStatus(ctx context.Context, tenantID, principal
 		return TenantMember{}, fmt.Errorf("%w: invalid member status", ErrInvalidArgument)
 	}
 	var member TenantMember
-	record := newAuditRecord(ctx, tenantID, "tenant_member_status_changed", "tenant_member", principalID)
+	record := newAuditRecord(ctx, tenantID, kind+"_member_status_changed", kind+"_member", principalID)
 	record.Detail["status"] = status
 	record.PolicyChanged = true
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
+		actualKind, err := repo.rootKind(ctx, tenantID)
+		if err != nil {
+			return err
+		}
+		if actualKind != kind {
+			return fmt.Errorf("%w: membership owner kind mismatch", ErrInvalidArgument)
+		}
 		if s.lockPrincipal == nil {
 			return ErrUnavailable
 		}
@@ -155,7 +193,7 @@ func (s *Service) setTenantMemberStatus(ctx context.Context, tenantID, principal
 			}
 		}
 		var verify func() error
-		var err error
+		err = nil
 		if status == MemberDisabled {
 			verify, err = s.administrators.Protect(ctx, repo.writer(), tenantID)
 			if err != nil {
@@ -166,8 +204,10 @@ func (s *Service) setTenantMemberStatus(ctx context.Context, tenantID, principal
 		if err != nil || verify == nil {
 			return err
 		}
-		if err := s.revokeTenantMemberCredentials(ctx, repo, tenantID, principalID); err != nil {
-			return err
+		if kind == "tenant" {
+			if err := s.revokeTenantMemberCredentials(ctx, repo, tenantID, principalID); err != nil {
+				return err
+			}
 		}
 		return verify()
 	})
@@ -279,6 +319,112 @@ func (s *Service) DeleteMenu(ctx context.Context, tenantID, menuID guid.ID) erro
 	})
 }
 
+// MoveMenu changes a subtree's parent and position under the tenant policy lock.
+// A nil parent preserves the current parent; relativeTo identifies a sibling.
+func (s *Service) MoveMenu(ctx context.Context, tenantID, menuID guid.ID, parentID *guid.ID, placement string, relativeTo guid.ID) (Menu, error) {
+	if err := validateMenuRef(tenantID, menuID); err != nil {
+		return Menu{}, err
+	}
+	if (placement != "first" && placement != "last" && placement != "before" && placement != "after") ||
+		((placement == "before" || placement == "after") != !relativeTo.Zero()) || relativeTo == menuID {
+		return Menu{}, fmt.Errorf("%w: invalid menu placement", ErrInvalidArgument)
+	}
+	var moved Menu
+	record := newAuditRecord(ctx, tenantID, "menu_moved", "menu", menuID)
+	record.PolicyChanged = true
+	err := s.writes.Run(ctx, record, func(repo *Repository) error {
+		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
+			return err
+		}
+		menus, err := repo.ListMenus(ctx, tenantID, false)
+		if err != nil {
+			return err
+		}
+		byID := make(map[guid.ID]Menu, len(menus))
+		for _, menu := range menus {
+			byID[menu.ID] = menu
+		}
+		current, found := byID[menuID]
+		if !found {
+			return ErrMenuNotFound
+		}
+		moved = current
+		if parentID != nil {
+			moved.ParentID = *parentID
+		}
+		seen := map[guid.ID]bool{menuID: true}
+		depth := 0
+		for id := moved.ParentID; !id.Zero(); {
+			parent, ok := byID[id]
+			if !ok || seen[id] || depth >= 99 {
+				return fmt.Errorf("%w: invalid menu hierarchy", ErrInvalidArgument)
+			}
+			seen[id] = true
+			depth++
+			id = parent.ParentID
+		}
+		// Descendants retain their links and must still fit the hierarchy limit.
+		var checkDepth func(guid.ID, int) bool
+		checkDepth = func(id guid.ID, depth int) bool {
+			if depth >= 100 {
+				return false
+			}
+			for _, child := range menus {
+				if child.ParentID == id && !checkDepth(child.ID, depth+1) {
+					return false
+				}
+			}
+			return true
+		}
+		if !checkDepth(menuID, depth) {
+			return fmt.Errorf("%w: menu hierarchy too deep", ErrInvalidArgument)
+		}
+		siblings := make([]Menu, 0)
+		for _, menu := range menus {
+			if menu.ParentID == moved.ParentID && menu.ID != menuID {
+				siblings = append(siblings, menu)
+			}
+		}
+		index := 0
+		if placement == "last" {
+			index = len(siblings)
+		}
+		if !relativeTo.Zero() {
+			index = -1
+			for i, sibling := range siblings {
+				if sibling.ID == relativeTo {
+					index = i
+					break
+				}
+			}
+			if index < 0 {
+				return fmt.Errorf("%w: target is not a sibling", ErrInvalidArgument)
+			}
+			if placement == "after" {
+				index++
+			}
+		}
+		siblings = append(siblings, Menu{})
+		copy(siblings[index+1:], siblings[index:])
+		siblings[index] = moved
+		if len(siblings) > 100001 {
+			return fmt.Errorf("%w: too many menus", ErrInvalidArgument)
+		}
+		for i, menu := range siblings {
+			menu.SortOrder = i
+			updated, err := repo.UpdateMenu(ctx, menu)
+			if err != nil {
+				return err
+			}
+			if menu.ID == menuID {
+				moved = updated
+			}
+		}
+		return nil
+	})
+	return moved, err
+}
+
 // EffectiveMenus returns the visible menu tree for one tenant principal after
 // evaluating every referenced permission.
 func (s *Service) EffectiveMenus(
@@ -296,6 +442,15 @@ func (s *Service) EffectiveMenus(
 	routePermissions := map[string]string{}
 	for _, menu := range DefaultMenus() {
 		routePermissions[menu.Route] = menu.PermissionCode
+	}
+	kind, err := s.repo.rootKind(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if kind == "platform" {
+		for _, menu := range bootstrapMenus(kind) {
+			routePermissions[menu.Route] = menu.PermissionCode
+		}
 	}
 	pagePermissions := map[guid.ID]string{}
 	for _, menu := range menus {
@@ -326,7 +481,7 @@ func (s *Service) EffectiveMenus(
 	allowed := map[string]bool{}
 	for start := 0; start < len(codes); start += 100 {
 		end := min(start+100, len(codes))
-		result, err := s.checker.CheckBulk(ctx, tenantID, codes[start:end], principalID)
+		result, err := s.checkRootPermissions(ctx, tenantID, codes[start:end], principalID)
 		if err != nil {
 			return nil, fmt.Errorf("check effective menu permissions: %w", err)
 		}
@@ -351,6 +506,9 @@ func (s *Service) EffectiveMenus(
 			}
 			next[menu.ID] = true
 			nodes := build(menu.ID, next)
+			if kind == "platform" && menu.Route == "" && len(nodes) == 0 {
+				continue
+			}
 			accessible := (menu.PermissionCode == "" || allowed[menu.PermissionCode]) &&
 				(pagePermissions[menu.ID] == "" || allowed[pagePermissions[menu.ID]])
 			if !accessible && len(nodes) == 0 {
@@ -390,13 +548,24 @@ func (s *Service) EffectivePermissions(
 	if principalID.Zero() {
 		return nil, fmt.Errorf("%w: invalid principal", ErrInvalidArgument)
 	}
+	if !tenantID.Zero() {
+		kind, err := s.repo.rootKind(ctx, tenantID)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+		if kind == "platform" {
+			return s.EffectiveOperatingPlatformPermissions(ctx, tenantID, principalID)
+		}
+	}
 	tenantCodes, platformCodes := []string{}, []string{}
 	for _, action := range s.registry.All() {
 		if action.Scope == "platform" {
 			platformCodes = append(platformCodes, action.Code)
 			continue
 		}
-		tenantCodes = append(tenantCodes, action.Code)
+		if action.Scope != "operating_platform" {
+			tenantCodes = append(tenantCodes, action.Code)
+		}
 	}
 	sort.Strings(tenantCodes)
 	sort.Strings(platformCodes)
@@ -448,6 +617,9 @@ func (s *Service) EffectiveEntityPermissions(
 	}
 	granted := make([]string, 0)
 	for _, action := range s.registry.All() {
+		if action.Scope == "operating_platform" {
+			continue
+		}
 		if action.Scope == "platform" {
 			allowed, err := s.checker.CheckPlatform(ctx, action.Code, principalID)
 			if err != nil {
@@ -518,8 +690,12 @@ func (s *Service) validateMenu(ctx context.Context, repo *Repository, menu *Menu
 		return fmt.Errorf("%w: invalid menu route", ErrInvalidArgument)
 	}
 	if menu.PermissionCode != "" {
-		if _, ok := s.registry.Find(menu.PermissionCode); !ok {
+		action, ok := s.registry.Find(menu.PermissionCode)
+		if !ok {
 			return fmt.Errorf("%w: %s", ErrPermissionNotFound, menu.PermissionCode)
+		}
+		if err := s.permissionAllowedForRoot(ctx, menu.TenantID, action); err != nil {
+			return err
 		}
 	}
 	if !menu.ParentID.Zero() {

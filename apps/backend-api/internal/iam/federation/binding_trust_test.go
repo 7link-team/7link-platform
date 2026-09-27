@@ -75,7 +75,7 @@ func TestLegacyBindingRequiresReviewedOwnershipAndIndependentRepair(t *testing.T
 
 func TestLegacyQuarantineInvalidatesOnceAndPreservesSource(t *testing.T) {
 	env, authenticator, principalID, cookie := newIdentityLinkEnvironment(t)
-	require.NoError(t, env.db.AutoMigrate(&authnmodel.PersonalToken{}, &authnmodel.MFAChallenge{}, &authnmodel.PasskeyChallenge{}, &authnmodel.StepUpChallenge{}, &authnmodel.PasswordRecoveryToken{}, &authnmodel.EmailVerificationToken{}))
+	require.NoError(t, env.db.AutoMigrate(&authnmodel.PersonalToken{}, &authnmodel.AccountViewToken{}, &authnmodel.MFAChallenge{}, &authnmodel.PasskeyChallenge{}, &authnmodel.StepUpChallenge{}, &authnmodel.PasswordRecoveryToken{}, &authnmodel.EmailVerificationToken{}))
 	instance := authn.NewModule(env.runtime, authn.Config{})
 	instance.Service = authenticator
 	services := module.NewServices()
@@ -91,14 +91,22 @@ func TestLegacyQuarantineInvalidatesOnceAndPreservesSource(t *testing.T) {
 	link := model.IdentityLink{ProviderID: provider.ID, TenantID: provider.TenantID, PrincipalID: principalID,
 		ExternalSubject: "legacy", CreatedAt: now, UpdatedAt: now, LastLoginAt: now}
 	require.NoError(t, env.db.Create(&link).Error)
+	view := authnmodel.AccountViewToken{ID: 501, TokenHash: strings.Repeat("a", 64), ActorID: principalID, PrincipalID: principalID,
+		ActorSessionHash: strings.Repeat("b", 64), ScopeType: "personal", ScopeID: principalID,
+		CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+	require.NoError(t, env.db.Create(&view).Error)
 	proof := identityPasswordProof(t, authenticator, cookie, authn.ReauthenticationIdentityLink, provider.ID.String())
 	assert.ErrorIs(t, env.service.recoveryEligible(t.Context(), env.db, principalID), authnext.ErrInvalidRecovery)
 	env.auditErr = assert.AnError
 	assert.ErrorIs(t, env.service.QuarantineLegacyIdentityLinks(t.Context()), assert.AnError)
+	require.NoError(t, env.db.Take(&view, view.ID).Error)
+	assert.Nil(t, view.RevokedAt, "a failed quarantine must roll back view-token revocation")
 	_, err = authenticator.Authenticate(t.Context(), "", cookie)
 	require.NoError(t, err)
 	env.auditErr = nil
 	require.NoError(t, env.service.QuarantineLegacyIdentityLinks(t.Context()))
+	require.NoError(t, env.db.Take(&view, view.ID).Error)
+	assert.NotNil(t, view.RevokedAt)
 	_, err = authenticator.Authenticate(t.Context(), "", cookie)
 	assert.Error(t, err)
 	require.NoError(t, env.db.Take(&link).Error)
@@ -228,7 +236,7 @@ func (s *pausedFederationSessionWriter) CreateSessionOn(ctx context.Context, tx 
 
 func TestSourceReplacementRacingSessionIssuanceLeavesNoUsableOldSession(t *testing.T) {
 	env, authenticator, principalID, _ := newIdentityLinkEnvironment(t)
-	require.NoError(t, env.db.AutoMigrate(&authnmodel.PersonalToken{}, &authnmodel.MFAChallenge{}, &authnmodel.PasskeyChallenge{}, &authnmodel.StepUpChallenge{}, &authnmodel.PasswordRecoveryToken{}, &authnmodel.EmailVerificationToken{}))
+	require.NoError(t, env.db.AutoMigrate(&authnmodel.PersonalToken{}, &authnmodel.AccountViewToken{}, &authnmodel.MFAChallenge{}, &authnmodel.PasskeyChallenge{}, &authnmodel.StepUpChallenge{}, &authnmodel.PasswordRecoveryToken{}, &authnmodel.EmailVerificationToken{}))
 	instance := authn.NewModule(env.runtime, authn.Config{})
 	instance.Service = authenticator
 	services := module.NewServices()

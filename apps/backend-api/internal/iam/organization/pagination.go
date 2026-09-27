@@ -64,13 +64,17 @@ func (r *Repository) listTenantsPage(
 	includeDeleted bool,
 	offset, limit int,
 ) ([]model.Tenant, int64, error) {
+	return r.listRootsPage(ctx, ScopeTenant, includeDeleted, offset, limit)
+}
+
+func (r *Repository) listRootsPage(ctx context.Context, kind string, includeDeleted bool, offset, limit int) ([]model.Tenant, int64, error) {
 	tables, _, err := r.tables()
 	if err != nil {
 		return nil, 0, err
 	}
 	name := tables.Tenants.TableName()
 	matching := func() *gorm.DB {
-		db := r.writer().WithContext(ctx).Table(name)
+		db := r.writer().WithContext(ctx).Table(name).Where("scope_kind = ?", kind)
 		if !includeDeleted {
 			db = db.Where("status <> ?", TenantDeleted)
 		}
@@ -207,7 +211,7 @@ func (s *TenantService) ListPage(
 	if err != nil {
 		return nil, 0, err
 	}
-	rows, total, err := repo.listTenantsPage(ctx, includeDeleted, offset, limit)
+	rows, total, err := repo.listRootsPage(ctx, s.kind(), includeDeleted, offset, limit)
 	if err != nil {
 		return nil, 0, err
 	}

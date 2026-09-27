@@ -462,14 +462,14 @@ func TestListEndpointsBoundTheDefaultPage(t *testing.T) {
 		"/roles",
 		"/authorization-relationships",
 		"/field-policies",
-		"/platform/administrators",
+		"/system/administrators",
 		"/members/11/roles",
 		"/entities/" + entity.ID.String() + "/role-bindings",
 		"/roles/" + role.ID.String() + "/directory-bindings",
 	} {
 		t.Run(route, func(t *testing.T) {
 			path := route
-			if !strings.HasPrefix(route, "/platform/") &&
+			if !strings.HasPrefix(route, "/system/") &&
 				!strings.HasPrefix(route, "/entities/") && !strings.HasPrefix(route, "/roles/") {
 				path = tenant + route
 			}

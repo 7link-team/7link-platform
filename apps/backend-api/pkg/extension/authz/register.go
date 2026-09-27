@@ -17,24 +17,27 @@ import (
 )
 
 const (
-	guardMetadataKey         = "authz.guard"
-	tenantMemberMetadataKey  = "authz.tenant-member"
-	authenticatedMetadataKey = "authz.authenticated"
-	sessionOnlyMetadataKey   = "authz.session-only"
-	principalSelfMetadataKey = "authz.principal-self"
-	platformMetadataKey      = "authz.platform"
-	publicMetadataKey        = "authz.public"
-	ownedResourceMetadataKey = "authz.owned-resource"
-	GuardExtensionKey        = "x-authz-permission"
-	DataFilterExtensionKey   = "x-authz-data-filter"
-	TenantPath               = "tenant_id"
-	EntityPath               = "entity_id"
-	PrincipalPath            = "principal_id"
-	BearerScheme             = "bearerAuth"
-	SessionScheme            = "sessionCookie"
-	ClientBasicScheme        = "clientBasic"
-	guidTextPattern          = `^[1-9][0-9]*$`
-	guidTextMaxLength        = 19
+	guardMetadataKey             = "authz.guard"
+	tenantMemberMetadataKey      = "authz.tenant-member"
+	authenticatedMetadataKey     = "authz.authenticated"
+	sessionOnlyMetadataKey       = "authz.session-only"
+	principalSelfMetadataKey     = "authz.principal-self"
+	platformMetadataKey          = "authz.platform"
+	operatingPlatformMetadataKey = "authz.operating-platform"
+	publicMetadataKey            = "authz.public"
+	ownedResourceMetadataKey     = "authz.owned-resource"
+	accountViewDeniedMetadataKey = "authz.account-view-denied"
+	GuardExtensionKey            = "x-authz-permission"
+	DataFilterExtensionKey       = "x-authz-data-filter"
+	TenantPath                   = "tenant_id"
+	OperatingPlatformPath        = "platform_id"
+	EntityPath                   = "entity_id"
+	PrincipalPath                = "principal_id"
+	BearerScheme                 = "bearerAuth"
+	SessionScheme                = "sessionCookie"
+	ClientBasicScheme            = "clientBasic"
+	guidTextPattern              = `^[1-9][0-9]*$`
+	guidTextMaxLength            = 19
 )
 
 // PermissionChecker is the narrow local authorization capability needed on the request path.
@@ -47,6 +50,14 @@ type PermissionChecker interface {
 // implemented by the IAM owner and consumed by entity-scoped business routes.
 type EntityPermissionChecker interface {
 	CheckEntity(ctx context.Context, tenantID, entityID guid.ID, permission string, subject guid.ID) (bool, error)
+}
+
+type OperatingPlatformPermissionChecker interface {
+	CheckOperatingPlatform(context.Context, guid.ID, string, guid.ID) (bool, error)
+}
+
+type OperatingPlatformMembershipChecker interface {
+	IsOperatingPlatformMemberActive(context.Context, guid.ID, guid.ID) (bool, error)
 }
 
 // EntityDataPermissionChecker supplies filters for one active tenant entity.
@@ -72,6 +83,7 @@ type MembershipChecker interface {
 // ResourceOwner identifies the authorization boundary of a globally addressed
 // resource. EntityID is zero for resources authorized at tenant scope.
 type ResourceOwner struct {
+	ScopeType   string
 	TenantID    guid.ID
 	EntityID    guid.ID
 	PrincipalID guid.ID
@@ -451,6 +463,30 @@ func (r *Registrar) authenticatedOnly(api huma.API) func(huma.Context, func(huma
 		if !ok {
 			return
 		}
+		if self, _ := ctx.Operation().Metadata[principalSelfMetadataKey].(bool); self {
+			owner := ResourceOwner{PrincipalID: claims.PrincipalID}
+			if strings.Contains(ctx.Operation().Path, "/tenants/{tenant_id}/entities/{entity_id}/") {
+				var err error
+				owner.TenantID, err = guid.Parse(ctx.Param(TenantPath))
+				if err != nil || owner.TenantID.Zero() {
+					_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, "invalid_tenant_id")
+					return
+				}
+				owner.EntityID, err = guid.Parse(ctx.Param(EntityPath))
+				if err != nil || owner.EntityID.Zero() {
+					_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, "invalid_entity_id")
+					return
+				}
+			}
+			if !allowAccountViewScope(api, ctx, claims, owner, false) {
+				return
+			}
+		}
+		if claims.AccountView != nil && ctx.Method() != http.MethodGet && ctx.Method() != http.MethodHead {
+			if !allowAccountViewScope(api, ctx, claims, ResourceOwner{PrincipalID: claims.PrincipalID}, false) {
+				return
+			}
+		}
 		trusted := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
 			ACR: claims.ACR, AMR: claims.AMR, ClientID: claims.ClientID, NetworkZone: claims.NetworkZone,
 		})
@@ -490,6 +526,66 @@ func RegisterPlatform[I, O any](r *Registrar, api huma.API, op huma.Operation, g
 	huma.Register(api, op, handler)
 }
 
+// RegisterOperatingPlatform authorizes inside one independently operated root.
+func RegisterOperatingPlatform[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Guard, handler func(context.Context, *I) (*O, error)) {
+	if r == nil || r.registry == nil {
+		panic("operating platform operation requires registrar")
+	}
+	action, ok := r.registry.Find(guard.Code())
+	if !ok || !IsOperatingPlatformPermission(action) || guard.FilterData {
+		panic("operating platform operation uses unsupported permission: " + guard.Code())
+	}
+	if op.OperationID == "" {
+		panic("operating platform operation requires operation id")
+	}
+	if op.Metadata == nil {
+		op.Metadata = map[string]any{}
+	}
+	op.Metadata[guardMetadataKey] = guard.Code()
+	op.Metadata[operatingPlatformMetadataKey] = true
+	if op.Extensions == nil {
+		op.Extensions = map[string]any{}
+	}
+	op.Extensions[GuardExtensionKey] = guard.Code()
+	r.prepareAuthenticated(api, &op, false)
+	op.Path = "/operating-platforms/{" + OperatingPlatformPath + "}" + op.Path
+	op.Parameters = append(op.Parameters, pathSelector(OperatingPlatformPath, "Operating platform identifier"))
+	requireResourceTag(&op)
+	if r.verifier != nil {
+		checker, checkerOK := r.checker.(OperatingPlatformPermissionChecker)
+		members, membersOK := r.members.(OperatingPlatformMembershipChecker)
+		if !checkerOK || !membersOK {
+			panic("operating platform operation requires scoped authorization capabilities")
+		}
+		op.Middlewares = append(op.Middlewares, r.operatingPlatformMiddleware(api, guard, checker, members))
+	}
+	huma.Register(api, op, handler)
+}
+
+func RegisterOperatingPlatformMember[I, O any](r *Registrar, api huma.API, op huma.Operation, handler func(context.Context, *I) (*O, error)) {
+	if r == nil || op.OperationID == "" {
+		panic("operating platform member operation requires registrar and operation id")
+	}
+	if op.Metadata == nil {
+		op.Metadata = map[string]any{}
+	}
+	op.Metadata[authenticatedMetadataKey] = true
+	op.Metadata[operatingPlatformMetadataKey] = true
+	r.prepareAuthenticated(api, &op, false)
+	op.Path = "/operating-platforms/{" + OperatingPlatformPath + "}" + op.Path
+	op.Parameters = append(op.Parameters, pathSelector(OperatingPlatformPath, "Operating platform identifier"))
+	requireResourceTag(&op)
+	if r.verifier != nil {
+		checker, checkerOK := r.checker.(OperatingPlatformPermissionChecker)
+		members, membersOK := r.members.(OperatingPlatformMembershipChecker)
+		if !checkerOK || !membersOK {
+			panic("operating platform member operation requires scoped capabilities")
+		}
+		op.Middlewares = append(op.Middlewares, r.operatingPlatformMiddleware(api, Guard{}, checker, members))
+	}
+	huma.Register(api, op, handler)
+}
+
 // RegisterPublic registers an operation that intentionally bypasses the
 // authorization Guard gateway. It may still perform authentication in its handler.
 func RegisterPublic[I, O any](api huma.API, op huma.Operation, handler func(context.Context, *I) (*O, error)) {
@@ -516,7 +612,7 @@ func (r *Registrar) prepare(api huma.API, op *huma.Operation, guard Guard) {
 	// is never granted. The route then answers only to whoever happens to hold
 	// it, and the tenant administrator loses an operation on their own tenant
 	// while the declaration still reads as if it were guarded correctly.
-	if action.Scope == "platform" {
+	if action.Scope == "platform" || action.Scope == "operating_platform" {
 		panic("tenant operation uses platform permission: " + guard.Code())
 	}
 	if op.Metadata == nil {
@@ -671,6 +767,20 @@ func (r *Registrar) authenticate(api huma.API, ctx huma.Context) (*authn.Claims,
 	}
 	claims, err := r.verifier.Authenticate(ctx.Context(), ctx.Header("Authorization"), ctx.Header("Cookie"))
 	if err == nil {
+		if claims != nil && claims.AccountView != nil {
+			if denied, _ := ctx.Operation().Metadata[accountViewDeniedMetadataKey].(bool); denied {
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+				return nil, false
+			}
+			if !claims.AccountView.Valid() || claims.PrincipalID.Zero() {
+				_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, respx.Unauthorized)
+				return nil, false
+			}
+			if claims.AccountView.ReadOnly && ctx.Method() != http.MethodGet && ctx.Method() != http.MethodHead {
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+				return nil, false
+			}
+		}
 		return claims, true
 	}
 	slog.Debug("authn token rejected", "operation", ctx.Operation().OperationID, "err", err)
@@ -719,6 +829,9 @@ func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, fu
 		tenantID, tenantErr := guid.Parse(tenantText)
 		if tenantErr != nil || tenantID.Zero() || claims.PrincipalID.Zero() {
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+			return
+		}
+		if !allowAccountViewScope(api, ctx, claims, ResourceOwner{TenantID: tenantID}, false) {
 			return
 		}
 		active, err := r.members.IsMemberActive(requestContext, tenantID, claims.PrincipalID)
@@ -782,7 +895,8 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 		}
 		personalOwner := !owner.PrincipalID.Zero() && owner.TenantID.Zero() && owner.EntityID.Zero()
 		tenantOwner := owner.PrincipalID.Zero() && !owner.TenantID.Zero()
-		if !found || (!personalOwner && !tenantOwner) {
+		platformOwner := owner.ScopeType == "platform" && tenantOwner && owner.EntityID.Zero()
+		if !found || (!personalOwner && !tenantOwner) || (owner.ScopeType != "" && owner.ScopeType != "tenant" && !platformOwner) {
 			_ = huma.WriteErr(api, ctx, http.StatusNotFound, respx.NotFound)
 			return
 		}
@@ -792,6 +906,9 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 		}
 		if parseErr != nil || principalID.Zero() {
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+			return
+		}
+		if !allowAccountViewScope(api, ctx, claims, owner, false) {
 			return
 		}
 		if personalOwner {
@@ -809,7 +926,18 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 		requestContext := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
 			ACR: claims.ACR, AMR: claims.AMR, ClientID: claims.ClientID, NetworkZone: claims.NetworkZone,
 		})
-		active, err := r.members.IsMemberActive(requestContext, owner.TenantID, principalID)
+		var active bool
+		var err error
+		if platformOwner {
+			members, ok := r.members.(OperatingPlatformMembershipChecker)
+			if !ok {
+				authorizationFailed(api, ctx, "operating platform membership capability unavailable")
+				return
+			}
+			active, err = members.IsOperatingPlatformMemberActive(requestContext, owner.TenantID, principalID)
+		} else {
+			active, err = r.members.IsMemberActive(requestContext, owner.TenantID, principalID)
+		}
 		if err != nil {
 			authorizationFailed(api, ctx, "resource membership check failed", "err", err)
 			return
@@ -820,7 +948,14 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 		}
 		if guard != nil {
 			var allowed bool
-			if owner.EntityID.Zero() {
+			if platformOwner {
+				checker, ok := r.checker.(OperatingPlatformPermissionChecker)
+				if !ok {
+					authorizationFailed(api, ctx, "operating platform authorization capability unavailable")
+					return
+				}
+				allowed, err = checker.CheckOperatingPlatform(requestContext, owner.TenantID, guard.Code(), principalID)
+			} else if owner.EntityID.Zero() {
 				allowed, err = r.checker.Check(requestContext, owner.TenantID, guard.Code(), principalID)
 			} else {
 				allowed, err = r.checkEntityAccess(requestContext, owner.TenantID, owner.EntityID, *guard, principalID)
@@ -859,6 +994,9 @@ func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors fun
 		}
 		if tenantErr != nil || entityErr != nil || err != nil || tenantID.Zero() || entityID.Zero() || principalID.Zero() {
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+			return
+		}
+		if !allowAccountViewScope(api, ctx, claims, ResourceOwner{TenantID: tenantID, EntityID: entityID}, false) {
 			return
 		}
 		requestContext := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
@@ -912,6 +1050,9 @@ func (r *Registrar) platformMiddleware(api huma.API, guard Guard) func(huma.Cont
 		if !ok {
 			return
 		}
+		if !allowAccountViewScope(api, ctx, claims, ResourceOwner{}, true) {
+			return
+		}
 		requestContext := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
 			ACR: claims.ACR, AMR: claims.AMR, ClientID: claims.ClientID, NetworkZone: claims.NetworkZone,
 		})
@@ -928,6 +1069,86 @@ func (r *Registrar) platformMiddleware(api huma.API, guard Guard) func(huma.Cont
 	}
 }
 
+func (r *Registrar) operatingPlatformMiddleware(api huma.API, guard Guard, checker OperatingPlatformPermissionChecker, members OperatingPlatformMembershipChecker) func(huma.Context, func(huma.Context)) {
+	return func(ctx huma.Context, next func(huma.Context)) {
+		claims, ok := r.authenticate(api, ctx)
+		if !ok {
+			return
+		}
+		text := ctx.Param(OperatingPlatformPath)
+		id, err := guid.Parse(text)
+		if err != nil || id <= 0 || id.String() != text || claims.PrincipalID <= 0 {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+			return
+		}
+		if view := claims.AccountView; view != nil && (view.ScopeType != "platform" || view.ScopeID != id) {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+			return
+		}
+		requestContext := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
+			ACR: claims.ACR, AMR: claims.AMR, ClientID: claims.ClientID, NetworkZone: claims.NetworkZone,
+		})
+		active, err := members.IsOperatingPlatformMemberActive(requestContext, id, claims.PrincipalID)
+		if err != nil {
+			authorizationFailed(api, ctx, "operating platform membership check failed", "err", err)
+			return
+		}
+		if !active {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+			return
+		}
+		allowed := true
+		if guard.Resource != "" {
+			allowed, err = checker.CheckOperatingPlatform(requestContext, id, guard.Code(), claims.PrincipalID)
+		}
+		if err != nil {
+			authorizationFailed(api, ctx, "operating platform authorization failed", "err", err)
+			return
+		}
+		if !allowed {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+			return
+		}
+		trusted := *claims
+		trusted.TenantID, trusted.EntityID = id, 0
+		next(huma.WithContext(ctx, authn.WithClaims(requestContext, &trusted)))
+	}
+}
+
+func IsOperatingPlatformOperation(op *huma.Operation) bool {
+	if op == nil || op.Metadata == nil {
+		return false
+	}
+	value, _ := op.Metadata[operatingPlatformMetadataKey].(bool)
+	return value
+}
+
+// Resolve the resource's real owner before comparing a view's immutable scope.
+// Existing platform routes are deployment-global system operations.
+func allowAccountViewScope(api huma.API, ctx huma.Context, claims *authn.Claims, owner ResourceOwner, system bool) bool {
+	v := claims.AccountView
+	if v == nil {
+		return true
+	}
+	allowed := false
+	switch v.ScopeType {
+	case "system":
+		allowed = system
+	case "tenant":
+		allowed = !system && owner.ScopeType != "platform" && owner.TenantID == v.ScopeID
+	case "entity":
+		allowed = !system && owner.ScopeType != "platform" && owner.EntityID == v.ScopeID
+	case "platform":
+		allowed = !system && owner.ScopeType == "platform" && owner.TenantID == v.ScopeID
+	case "personal":
+		allowed = !system && owner.TenantID.Zero() && owner.EntityID.Zero() && owner.PrincipalID == claims.PrincipalID && v.ScopeID == claims.PrincipalID
+	}
+	if !allowed {
+		_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+	}
+	return allowed
+}
+
 // Public marks an operation as intentionally outside the authorization Guard gateway.
 // The route may still authenticate using another flow, such as /authn/me.
 func Public(op *huma.Operation) {
@@ -935,6 +1156,15 @@ func Public(op *huma.Operation) {
 		op.Metadata = map[string]any{}
 	}
 	op.Metadata[publicMetadataKey] = true
+}
+
+// DenyAccountView protects authentication callbacks and other operations that
+// require the account holder's own authenticated session, including GET writes.
+func DenyAccountView(op *huma.Operation) {
+	if op.Metadata == nil {
+		op.Metadata = map[string]any{}
+	}
+	op.Metadata[accountViewDeniedMetadataKey] = true
 }
 
 func appendUniqueStatus(existing []int, values ...int) []int {

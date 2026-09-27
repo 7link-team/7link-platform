@@ -70,7 +70,7 @@ func TestPersonalTokenRealRegistrarPreservesAllRouteBoundaries(t *testing.T) {
 	authz.RegisterTenantMember(r, api, op("/member"), handler)
 	for _, action := range s.personalRegistry.All() {
 		if action.Scope == "platform" {
-			authz.RegisterPlatform(r, api, op("/platform"), authz.Guard{Resource: action.Resource, Verb: action.Verb}, handler)
+			authz.RegisterPlatform(r, api, op("/system"), authz.Guard{Resource: action.Resource, Verb: action.Verb}, handler)
 			break
 		}
 	}
@@ -81,7 +81,7 @@ func TestPersonalTokenRealRegistrarPreservesAllRouteBoundaries(t *testing.T) {
 		status int
 	}{
 		{"/tenants/71/guarded", 200}, {"/tenants/72/guarded", 401}, {"/guarded", 404},
-		{"/tenants/71/write-scope", 401}, {"/authenticated", 401}, {"/tenants/71/member", 401}, {"/platform", 401},
+		{"/tenants/71/write-scope", 401}, {"/authenticated", 401}, {"/tenants/71/member", 401}, {"/system", 401},
 		{"/tenants/71/entities/5/entity", 200}, {"/tenants/72/entities/5/entity", 401}, {"/tenants/71/entity", 404},
 		{"/tenants/71/entities/5/adapter", 200}, {"/tenants/72/entities/5/adapter", 401},
 	} {

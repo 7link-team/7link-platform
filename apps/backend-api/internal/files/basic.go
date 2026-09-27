@@ -16,6 +16,13 @@ import (
 
 const defaultUploadLifetime = 30 * time.Minute
 
+func storageActorID(ctx context.Context, fallback guid.ID) guid.ID {
+	if actor := authn.ActorIDFromContext(ctx); !actor.Zero() {
+		return actor
+	}
+	return fallback
+}
+
 type fileTrashResult struct {
 	BatchID guid.ID `json:"batch_id"`
 }

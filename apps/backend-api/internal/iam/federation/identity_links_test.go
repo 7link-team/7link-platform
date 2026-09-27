@@ -98,6 +98,48 @@ func identityPasswordProof(t *testing.T, service *authn.Service, cookie, purpose
 	return options.Proof
 }
 
+func TestAccountViewPersonalIdentityReadsUseTargetWithoutTouchingSessions(t *testing.T) {
+	env, _, operatorID, cookie := newIdentityLinkEnvironment(t)
+	operatorProvider := env.createProvider(t, testID("tenant-a"), env.providerInput("Operator provider", env.idp.issuer))
+	targetProvider := env.createProvider(t, testID("tenant-b"), env.providerInput("Target provider", env.idp.issuer))
+	targetID := guid.ID(202)
+	now := time.Now().UTC()
+	require.NoError(t, env.db.Create(&identitymodel.Principal{ID: targetID, LoginName: "target", Status: "active", CreatedAt: now, UpdatedAt: now}).Error)
+	require.NoError(t, env.db.Exec("UPDATE iam_tenants SET status = 'active' WHERE id = ?", targetProvider.TenantID).Error)
+	require.NoError(t, env.db.Table("iam_tenant_members").Create(&federationMember{TenantID: targetProvider.TenantID, PrincipalID: targetID, Status: "active", CreatedAt: now, UpdatedAt: now}).Error)
+	for _, link := range []model.IdentityLink{
+		{ProviderID: operatorProvider.ID, TenantID: operatorProvider.TenantID, ExternalSubject: "operator-subject", PrincipalID: operatorID, CreatedAt: now, UpdatedAt: now},
+		{ProviderID: targetProvider.ID, TenantID: targetProvider.TenantID, ExternalSubject: "target-subject", PrincipalID: targetID, CreatedAt: now, UpdatedAt: now},
+	} {
+		require.NoError(t, env.db.Create(&link).Error)
+	}
+	var before, after []authnmodel.Session
+	require.NoError(t, env.db.Order("id_hash").Find(&before).Error)
+	ctx := authnext.WithClaims(t.Context(), &authnext.Claims{
+		PrincipalID: targetID,
+		AccountView: &authnext.AccountViewIdentity{ID: 50, PrincipalID: operatorID, ReadOnly: true},
+	})
+	for _, rawCookie := range []string{cookie, "invalid", ""} {
+		links, err := env.service.ListPersonalIdentityLinks(ctx, rawCookie)
+		require.NoError(t, err)
+		require.Len(t, links, 1)
+		assert.Equal(t, "target-subject", links[0].ExternalSubject)
+		providers, err := env.service.ListLinkableProviders(ctx, rawCookie)
+		require.NoError(t, err)
+		require.Len(t, providers, 1)
+		assert.Equal(t, targetProvider.ID, providers[0].ID)
+	}
+	require.NoError(t, env.db.Order("id_hash").Find(&after).Error)
+	assert.Equal(t, before, after)
+	for _, view := range []*authnext.AccountViewIdentity{{ID: 50}, {PrincipalID: operatorID}} {
+		invalid := authnext.WithClaims(t.Context(), &authnext.Claims{PrincipalID: targetID, AccountView: view})
+		_, err := env.service.ListPersonalIdentityLinks(invalid, cookie)
+		assert.ErrorIs(t, err, authnext.ErrInvalidSession)
+		_, err = env.service.ListLinkableProviders(invalid, cookie)
+		assert.ErrorIs(t, err, authnext.ErrInvalidSession)
+	}
+}
+
 func verifyIdentityOIDC(t *testing.T, env *federationEnvironment, provider Provider, start LoginStart) string {
 	t.Helper()
 	state, code := issueIdentityOIDC(t, env, start)

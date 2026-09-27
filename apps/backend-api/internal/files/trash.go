@@ -104,7 +104,7 @@ func (t directoryTree) trash(ctx context.Context, tx *gorm.DB, spaceID, batchID,
 			affected = append(affected, row.ID)
 		}
 	}
-	batch := model.TrashBatch{ID: batchID, SpaceID: spaceID, DeletedBy: actorID, DeletedAt: now.UnixMilli(), State: "active", NodeCount: len(affected), RootCount: len(roots)}
+	batch := model.TrashBatch{ID: batchID, SpaceID: spaceID, DeletedBy: storageActorID(ctx, actorID), DeletedAt: now.UnixMilli(), State: "active", NodeCount: len(affected), RootCount: len(roots)}
 	if err := q.TrashBatch.WithContext(ctx).Create(&batch); err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func (t directoryTree) restoreOriginalAs(ctx context.Context, tx *gorm.DB, space
 			return errTreeConflict
 		}
 	}
-	result, err := q.TrashBatch.WithContext(ctx).Where(q.TrashBatch.ID.Eq(batchID), q.TrashBatch.SpaceID.Eq(spaceID), q.TrashBatch.State.Eq("active")).UpdateSimple(q.TrashBatch.State.Value("restored"), q.TrashBatch.RestoredBy.Value(actorID), q.TrashBatch.RestoredAt.Value(now.UnixMilli()))
+	result, err := q.TrashBatch.WithContext(ctx).Where(q.TrashBatch.ID.Eq(batchID), q.TrashBatch.SpaceID.Eq(spaceID), q.TrashBatch.State.Eq("active")).UpdateSimple(q.TrashBatch.State.Value("restored"), q.TrashBatch.RestoredBy.Value(storageActorID(ctx, actorID)), q.TrashBatch.RestoredAt.Value(now.UnixMilli()))
 	if err != nil {
 		return err
 	}

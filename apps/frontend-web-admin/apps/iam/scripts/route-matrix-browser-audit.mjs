@@ -35,7 +35,7 @@ const routes = [
   ],
 
   ["groups", "/groups", "groupManagement", "/principal-groups", "group"],
-  ["roles", "/roles", "rolePermissions", "/roles", "role"],
+  ["roles", "/roles", "tenantRolePermissions", "/roles", "role"],
   [
     "field-policies",
     "/field-policies",
@@ -224,7 +224,7 @@ const fixtures = []
 const actors = {}
 async function call(context, path, method = "GET", data, tenant) {
   const requestPath =
-    tenant && !path.startsWith("/login") && !path.startsWith("/platform/")
+    tenant && !path.startsWith("/login") && !path.startsWith("/system/")
       ? `/tenants/${tenant}${path}`
       : path
   return context.request.fetch("/api" + requestPath, {

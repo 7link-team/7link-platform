@@ -213,7 +213,7 @@ func TestArchiveManagementHTTPPermissionsAndTenantPaths(t *testing.T) {
 		for _, invalid := range []string{"0", "invalid", "-1"} {
 			assert.Equal(t, http.StatusForbidden, route.call("/tenants/"+invalid+"/audit"+route.path, "Authorization: Bearer test").Code, path)
 		}
-		platformPath := "/platform/audit" + route.path
+		platformPath := "/system/audit" + route.path
 		assert.Equal(t, http.StatusForbidden, route.call(platformPath, "Authorization: Bearer test").Code, platformPath)
 		checker.platform = true
 		platformResult := route.call(platformPath, "Authorization: Bearer test")
@@ -351,14 +351,14 @@ func TestArchiveManagementHTTPHandlerValidationAndPlatformRetention(t *testing.T
 	checker := &archivePermissionChecker{platform: true}
 	secured := archiveManagementHTTP(t, h, checker)
 	body := map[string]any{"min_days": 30, "archive_after_days": 60}
-	response := secured.Put("/platform/audit/retention-policy", "Authorization: Bearer test", body)
+	response := secured.Put("/system/audit/retention-policy", "Authorization: Bearer test", body)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-	response = secured.Get("/platform/audit/archive-status", "Authorization: Bearer test")
+	response = secured.Get("/system/audit/archive-status", "Authorization: Bearer test")
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Contains(t, response.Body.String(), `"archive_after_days":60`)
-	assert.Equal(t, http.StatusUnprocessableEntity, secured.Put("/platform/audit/retention-policy", "Authorization: Bearer test", map[string]any{"min_days": 60, "archive_after_days": 30}).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, secured.Put("/system/audit/retention-policy", "Authorization: Bearer test", map[string]any{"min_days": 60, "archive_after_days": 30}).Code)
 	checker.platform = false
-	assert.Equal(t, http.StatusForbidden, secured.Put("/platform/audit/retention-policy", "Authorization: Bearer test", body).Code)
+	assert.Equal(t, http.StatusForbidden, secured.Put("/system/audit/retention-policy", "Authorization: Bearer test", body).Code)
 	h.service.archive = nil
 	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/tenants/11/audit/archives").Code)
 	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/tenants/11/audit/archives/1/attempts").Code)

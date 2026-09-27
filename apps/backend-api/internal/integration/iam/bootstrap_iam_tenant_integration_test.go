@@ -20,10 +20,12 @@ import (
 
 	iamauthn "7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/core"
+	coremodel "7link.com/platform/internal/iam/core/model"
 	"7link.com/platform/internal/iam/federation"
 	"7link.com/platform/internal/iam/governance"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization"
+	organizationmodel "7link.com/platform/internal/iam/organization/model"
 	"7link.com/platform/internal/iam/provisioning"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
@@ -79,6 +81,80 @@ func TestComposedIAMTenantIsolationAcrossModules(t *testing.T) {
 	fixture.assertIAMAuthorizationCannotCrossTenants(t, role, entity)
 	fixture.assertFederationCallbackCannotCrossTenants(t)
 	fixture.assertTenantBAuditTargetsNeverAppearInTenantA(t, invitation.ID, group.ID, request.ID, entity.ID.String())
+}
+
+func TestComposedGroupMutationsCannotGrantUnheldRoles(t *testing.T) {
+	for _, kind := range []string{"tenant", "platform"} {
+		t.Run(kind, func(t *testing.T) {
+			f := newIAMTenantFixture(t)
+			owner := iamTenantB
+			adminPermission := "tenant_administer"
+			if kind == "platform" {
+				owner = 91003
+				adminPermission = "operating_platform_administer"
+				require.NoError(t, f.db.Exec("INSERT INTO "+f.table("iam_tenants")+" (id, scope_kind, slug, name, status, version, created_at, updated_at) VALUES (?, 'platform', 'group-platform', 'Group Platform', 'active', 1, ?, ?)", owner, time.Now(), time.Now()).Error)
+				for _, principal := range []identity.Principal{f.adminB, f.requesterB} {
+					require.NoError(t, f.db.Table(f.table("iam_tenant_members")).Create(&coremodel.TenantMember{TenantID: owner, PrincipalID: principal.ID, DisplayName: principal.DisplayName, Email: principal.Email, Status: "active", CreatedAt: time.Now(), UpdatedAt: time.Now()}).Error)
+				}
+			}
+			stamp := time.Now().UTC()
+			for _, id := range []guid.ID{101, 102} {
+				require.NoError(t, f.db.Table(f.table("iam_roles")).Create(&coremodel.Role{TenantID: owner, ID: id, Name: "Role " + id.String(), NameKey: "role-" + id.String(), CreatedAt: stamp, UpdatedAt: stamp}).Error)
+			}
+			for _, grant := range []coremodel.RolePermission{
+				{TenantID: owner, RoleID: 101, PermissionCode: adminPermission, CreatedAt: stamp},
+				{TenantID: owner, RoleID: 102, PermissionCode: "group_manage_member", CreatedAt: stamp},
+				{TenantID: owner, RoleID: 102, PermissionCode: "group_update", CreatedAt: stamp},
+			} {
+				require.NoError(t, f.db.Table(f.table("iam_role_permissions")).Create(&grant).Error)
+			}
+			for _, member := range []coremodel.RoleMember{{TenantID: owner, RoleID: 101, PrincipalID: f.adminB.ID, CreatedAt: stamp}, {TenantID: owner, RoleID: 102, PrincipalID: f.requesterB.ID, CreatedAt: stamp}} {
+				require.NoError(t, f.db.Table(f.table("iam_role_members")).Create(&member).Error)
+			}
+			rule := func(emails ...string) json.RawMessage {
+				raw, err := json.Marshal(map[string]any{"version": 1, "match": "all", "conditions": []map[string]any{{"field": "member.email", "operator": "in", "values": emails}}})
+				require.NoError(t, err)
+				return raw
+			}
+			for _, group := range []organizationmodel.Group{
+				{TenantID: owner, ID: 201, Name: "Static", NameKey: "static", GroupType: "static", Status: "active", Version: 1, CreatedAt: stamp, UpdatedAt: stamp},
+				{TenantID: owner, ID: 202, Name: "Dynamic", NameKey: "dynamic", GroupType: "dynamic", RuleJSON: string(rule(f.adminB.Email, f.adminA.Email)), Status: "active", Version: 1, CreatedAt: stamp, UpdatedAt: stamp},
+				{TenantID: owner, ID: 203, Name: "Disabled", NameKey: "disabled", GroupType: "static", Status: "disabled", Version: 1, CreatedAt: stamp, UpdatedAt: stamp},
+			} {
+				require.NoError(t, f.db.Table(f.table("iam_groups")).Create(&group).Error)
+				require.NoError(t, f.db.Table(f.table("iam_group_role_bindings")).Create(&organizationmodel.GroupRoleBinding{TenantID: owner, GroupID: group.ID, RoleID: 101, CreatedAt: stamp}).Error)
+			}
+			memberPath := "/principal-groups/201/members/" + f.requesterB.ID.String()
+			response := f.request(t, http.MethodPut, memberPath, 0, f.requester, map[string]any{}, nil)
+			requireStatus(t, http.StatusForbidden, response)
+			require.Zero(t, f.count(t, "iam_group_members", "tenant_id = ? AND group_id = 201", owner))
+			require.NoError(t, f.db.Table(f.table("iam_group_members")).Create(&organizationmodel.GroupMember{TenantID: owner, GroupID: 201, PrincipalID: f.adminB.ID, CreatedAt: stamp, UpdatedAt: stamp}).Error)
+			end := stamp.Add(time.Hour)
+			response = f.request(t, http.MethodPut, "/principal-groups/201/members/"+f.adminB.ID.String(), 0, f.requester, map[string]any{"ends_at": end}, nil)
+			requireStatus(t, http.StatusOK, response)
+			response = f.request(t, http.MethodPut, "/principal-groups/201/members/"+f.adminB.ID.String(), 0, f.requester, map[string]any{"ends_at": end.Add(time.Hour)}, nil)
+			requireStatus(t, http.StatusForbidden, response)
+			response = f.request(t, http.MethodPatch, "/principal-groups/202", 0, f.requester, map[string]any{"membership_rule": rule(f.adminB.Email, f.adminA.Email, f.requesterB.Email), "version": 1}, nil)
+			requireStatus(t, http.StatusForbidden, response)
+			response = f.request(t, http.MethodPatch, "/principal-groups/202", 0, f.requester, map[string]any{"membership_rule": rule(f.adminB.Email, f.adminA.Email, "future@example.test"), "version": 1}, nil)
+			requireStatus(t, http.StatusForbidden, response)
+			response = f.request(t, http.MethodPatch, "/principal-groups/203", 0, f.requester, map[string]any{"status": "active", "version": 1}, nil)
+			requireStatus(t, http.StatusForbidden, response)
+			// Narrowing a rule and removing a membership remain available to the group manager.
+			response = f.request(t, http.MethodPatch, "/principal-groups/202", 0, f.requester, map[string]any{"membership_rule": rule(f.adminB.Email), "version": 1}, nil)
+			requireStatus(t, http.StatusOK, response)
+			response = f.request(t, http.MethodDelete, "/principal-groups/201/members/"+f.adminB.ID.String(), 0, f.requester, nil, nil)
+			requireStatus(t, http.StatusOK, response)
+			// The last durable administrator remains protected through a static group.
+			require.NoError(t, f.db.Table(f.table("iam_group_members")).Create(&organizationmodel.GroupMember{TenantID: owner, GroupID: 201, PrincipalID: f.adminB.ID, CreatedAt: stamp, UpdatedAt: stamp}).Error)
+			require.NoError(t, f.db.Exec("DELETE FROM "+f.table("iam_role_members")+" WHERE tenant_id = ? AND role_id = 101", owner).Error)
+			require.NoError(t, f.db.Exec("DELETE FROM "+f.table("iam_platform_administrators")+" WHERE principal_id = ?", f.adminB.ID).Error)
+			response = f.request(t, http.MethodDelete, "/principal-groups/201/members/"+f.adminB.ID.String(), 0, f.requester, nil, nil)
+			requireStatus(t, http.StatusConflict, response)
+			response = f.request(t, http.MethodPut, memberPath, 0, f.tokenB, map[string]any{}, nil)
+			requireStatus(t, http.StatusOK, response)
+		})
+	}
 }
 
 func TestComposedSCIMTenantLifecycle(t *testing.T) {
@@ -747,7 +823,7 @@ func (f *iamTenantFixture) request(t *testing.T, method, path string, tenantID g
 }
 
 func tenantFixturePathUsesResourceContext(path string) bool {
-	for _, prefix := range []string{"/login", "/oauth/", "/me", "/platform/", "/tenants"} {
+	for _, prefix := range []string{"/login", "/oauth/", "/me", "/system/", "/tenants"} {
 		if path == prefix || strings.HasPrefix(path, prefix+"/") {
 			return false
 		}

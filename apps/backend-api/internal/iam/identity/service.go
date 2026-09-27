@@ -81,10 +81,21 @@ func (s *Service) Create(
 	tenantID guid.ID,
 	loginName, password, displayName, email string,
 ) (Principal, error) {
+	if tenantID.Zero() {
+		return Principal{}, ErrInvalid
+	}
+	return s.createPrincipal(ctx, tenantID, loginName, password, displayName, email)
+}
+
+func (s *Service) CreateGlobal(ctx context.Context, loginName, password, displayName, email string) (Principal, error) {
+	return s.createPrincipal(ctx, 0, loginName, password, displayName, email)
+}
+
+func (s *Service) createPrincipal(ctx context.Context, tenantID guid.ID, loginName, password, displayName, email string) (Principal, error) {
 	loginName = normalizeLogin(loginName)
 	email = strings.ToLower(strings.TrimSpace(email))
 	displayName = strings.TrimSpace(displayName)
-	if tenantID.Zero() || loginName == "" || len(loginName) > 200 || len(password) < 12 ||
+	if loginName == "" || len(loginName) > 200 || len(password) < 12 ||
 		len(password) > 1024 || len(displayName) > 128 || len(email) > 320 {
 		return Principal{}, ErrInvalid
 	}
@@ -105,7 +116,7 @@ func (s *Service) Create(
 		Status: "active", CreatedAt: now, UpdatedAt: now,
 	}
 	event := audit.NewDomainEvent(ctx, tenantID, "principal_created", "principal", id)
-	event.Detail["membership_created"] = true
+	event.Detail["membership_created"] = !tenantID.Zero()
 	event.Detail["status"] = "active"
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
 		if err := repo.insertPrincipal(ctx, &row); err != nil {
@@ -114,14 +125,16 @@ func (s *Service) Create(
 		if err := repo.createCredential(ctx, id, passwordHash, now); err != nil {
 			return err
 		}
-		if err := repo.insertTenantMember(ctx, tenantMemberRecord{
-			TenantID: tenantID, PrincipalID: id, DisplayName: displayName, Email: email,
-			Status: "active", CreatedAt: now, UpdatedAt: now,
-		}); err != nil {
-			return err
-		}
-		if err := repo.bumpPolicyRevision(ctx, tenantID, now); err != nil {
-			return err
+		if !tenantID.Zero() {
+			if err := repo.insertTenantMember(ctx, tenantMemberRecord{
+				TenantID: tenantID, PrincipalID: id, DisplayName: displayName, Email: email,
+				Status: "active", CreatedAt: now, UpdatedAt: now,
+			}); err != nil {
+				return err
+			}
+			if err := repo.bumpPolicyRevision(ctx, tenantID, now); err != nil {
+				return err
+			}
 		}
 		return repo.appendAudit(ctx, event)
 	})
@@ -321,7 +334,18 @@ func (s *Service) Update(
 	tenantID, id guid.ID,
 	displayName, email *string,
 ) (Principal, error) {
-	if tenantID.Zero() || id.Zero() || displayName == nil && email == nil {
+	if tenantID.Zero() {
+		return Principal{}, ErrInvalid
+	}
+	return s.updateProfile(ctx, tenantID, id, displayName, email)
+}
+
+func (s *Service) UpdateGlobal(ctx context.Context, id guid.ID, displayName, email *string) (Principal, error) {
+	return s.updateProfile(ctx, 0, id, displayName, email)
+}
+
+func (s *Service) updateProfile(ctx context.Context, tenantID, id guid.ID, displayName, email *string) (Principal, error) {
+	if id.Zero() || displayName == nil && email == nil {
 		return Principal{}, ErrInvalid
 	}
 	var requestedDisplay, requestedEmail *string
@@ -347,7 +371,11 @@ func (s *Service) Update(
 		if s.avatarPermissions == nil {
 			return Principal{}, ErrUnavailable
 		}
-		allowed, err := s.avatarPermissions.CheckPlatform(ctx, "platform_administer", actor)
+		permission := "platform_administer"
+		if tenantID.Zero() {
+			permission = "system_account_update"
+		}
+		allowed, err := s.avatarPermissions.CheckPlatform(ctx, permission, actor)
 		if err != nil {
 			return Principal{}, err
 		}
@@ -508,6 +536,9 @@ func (r *Repository) insertTenantMember(ctx context.Context, member tenantMember
 }
 
 func (r *Repository) getPrincipal(ctx context.Context, tenantID, id guid.ID) (*model.Principal, error) {
+	if tenantID.Zero() {
+		return r.lifecyclePrincipal(ctx, id, r.inTx)
+	}
 	tables, db, err := r.tables()
 	if err != nil {
 		return nil, err
@@ -539,12 +570,13 @@ func (r *Repository) listPrincipals(
 	if err != nil {
 		return nil, 0, err
 	}
-	members := r.foreign.access.TenantMembers.String()
 	query := db.WithContext(ctx).Table(tables.Principals.TableName()+" AS principal").
-		Joins("JOIN "+members+" AS member ON member.principal_id = principal.id").
-		Where("member.tenant_id = ?", tenantID).
 		Where("NOT EXISTS (?)", db.Table(tables.ServiceAccounts.TableName()+" AS service_account").
 			Select("1").Where("service_account.principal_id = principal.id"))
+	if !tenantID.Zero() {
+		members := r.foreign.access.TenantMembers.String()
+		query = query.Joins("JOIN "+members+" AS member ON member.principal_id = principal.id").Where("member.tenant_id = ?", tenantID)
+	}
 	search = strings.ToLower(strings.TrimSpace(search))
 	if search != "" {
 		pattern := "%" + search + "%"

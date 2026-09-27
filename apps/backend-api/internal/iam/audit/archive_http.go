@@ -59,7 +59,7 @@ func registerArchiveOperation[I, O any](api huma.API, registrar *authz.Registrar
 	op.Errors = []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusServiceUnavailable, http.StatusInternalServerError}
 	if platform {
 		op.OperationID = strings.Replace(op.OperationID, "audit-", "audit-platform-", 1)
-		op.Path = "/platform" + op.Path
+		op.Path = "/system" + op.Path
 		op.Summary = "Platform: " + op.Summary
 		op.Tags = []string{"audit"}
 		authz.RegisterPlatform(registrar, api, op, authz.Guard{Resource: "platform", Verb: "administer"}, handler)

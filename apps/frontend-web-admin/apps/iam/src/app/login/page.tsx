@@ -55,8 +55,11 @@ export default function LoginPage() {
     setError("")
     const data = new FormData(event.currentTarget)
     const devTenantID = String(data.get("dev_tenant_id") ?? "")
+    const devPlatformID = String(data.get("dev_platform_id") ?? "")
     const previousTenantID = devTenantID ? getTenant() : ""
-    const requested = (location.state as { from?: string } | null)?.from ?? "/"
+    const requested = devPlatformID
+      ? `/operating-platforms/${encodeURIComponent(devPlatformID)}`
+      : ((location.state as { from?: string } | null)?.from ?? "/")
     try {
       if (devTenantID) setTenant(devTenantID)
       const result = await login(
@@ -205,6 +208,7 @@ function PasswordForm({
   const [loginName, setLoginName] = useState(defaultAccount?.loginName ?? "")
   const [password, setPassword] = useState(defaultAccount?.password ?? "")
   const [tenantID, setTenantID] = useState(defaultAccount?.tenantID ?? "")
+  const [platformID, setPlatformID] = useState(defaultAccount?.platformID ?? "")
 
   const selectAccount = (id: string) => {
     const account = devLoginAccounts.find((candidate) => candidate.id === id)
@@ -213,11 +217,13 @@ function PasswordForm({
     setLoginName(account.loginName)
     setPassword(account.password)
     setTenantID(account.tenantID ?? "")
+    setPlatformID(account.platformID ?? "")
   }
 
   const editCredential = (setter: (value: string) => void, value: string) => {
     setSelectedAccount("")
     setTenantID("")
+    setPlatformID("")
     setter(value)
   }
 
@@ -228,6 +234,7 @@ function PasswordForm({
       aria-labelledby="login-title"
     >
       <input type="hidden" name="dev_tenant_id" value={tenantID} />
+      <input type="hidden" name="dev_platform_id" value={platformID} />
       <BrandHeader />
       {devLoginAccounts.length > 0 && (
         <div className="space-y-2 rounded-md border border-dashed bg-muted/40 p-3">

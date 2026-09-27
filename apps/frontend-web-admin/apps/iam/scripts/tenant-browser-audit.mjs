@@ -215,7 +215,7 @@ async function login(loginName, loginPassword) {
 }
 
 async function api(path, init = {}, tenant = tenantID) {
-  const requestPath = tenant && !path.startsWith("/tenants") && !path.startsWith("/platform/")
+  const requestPath = tenant && !path.startsWith("/tenants") && !path.startsWith("/system/")
     ? `/tenants/${tenant}${path}`
     : path
   return evaluate(`

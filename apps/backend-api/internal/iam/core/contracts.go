@@ -120,6 +120,8 @@ type PlatformAdministratorStore struct {
 // order to be reachable at all. Every tenant route requires an active
 // membership, so a tenant created without one can be administered by nobody.
 type TenantBootstrapInput struct {
+	// ScopeKind defaults to tenant for existing bootstrap callers.
+	ScopeKind   string
 	TenantID    guid.ID
 	OwnerID     guid.ID
 	DisplayName string

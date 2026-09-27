@@ -79,7 +79,7 @@ func TestClosureCredentialRevocationIsAtomicAndSupportsPasswordlessPrincipals(t 
 }
 
 func TestClosureCredentialRevocationRollsBackEveryFailedWrite(t *testing.T) {
-	for _, table := range []string{"iam_credentials", "iam_sessions", "iam_personal_tokens", "iam_reauth_challenges", "iam_mfa_challenges", "iam_passkey_challenges", "iam_stepup_challenges"} {
+	for _, table := range []string{"iam_credentials", "iam_sessions", "iam_account_view_tokens", "iam_personal_tokens", "iam_reauth_challenges", "iam_mfa_challenges", "iam_passkey_challenges", "iam_stepup_challenges"} {
 		t.Run(table, func(t *testing.T) {
 			s, h, cookie, in := personalTokenService(t)
 			principal := createdPrincipal(t, s, cookie)

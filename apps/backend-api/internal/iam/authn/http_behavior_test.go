@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/iam/authn/model"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"github.com/danielgtaylor/huma/v2"
@@ -35,6 +36,55 @@ type fixedTokenVerifier struct{ claims *authnext.Claims }
 
 func (verifier fixedTokenVerifier) Authenticate(context.Context, string, string) (*authnext.Claims, error) {
 	return verifier.claims, nil
+}
+
+type singleAuthenticationVerifier struct {
+	claims *authnext.Claims
+	calls  int
+}
+
+func (verifier *singleAuthenticationVerifier) Authenticate(context.Context, string, string) (*authnext.Claims, error) {
+	verifier.calls++
+	if verifier.calls > 1 {
+		return nil, errors.New("request authenticated more than once")
+	}
+	return verifier.claims, nil
+}
+
+func TestMeUsesAlreadyVerifiedAccountViewIdentity(t *testing.T) {
+	_, web, principalID := newAuthenticationService(t)
+	verifier := &singleAuthenticationVerifier{claims: &authnext.Claims{
+		Subject: principalID, PrincipalID: parseGUID(principalID),
+		AccountView: &authnext.AccountViewIdentity{ID: 50, PrincipalID: 7, ReadOnly: true, ScopeType: "personal", ScopeID: parseGUID(principalID)},
+	}}
+	_, api := humatest.New(t)
+	RegisterHTTP(api, verifier, web)
+	response := api.Get("/me", "Authorization: Bearer view-token")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, 1, verifier.calls)
+	assert.Contains(t, response.Body.String(), `"subject":"`+principalID+`"`)
+	assert.NotContains(t, response.Body.String(), "account_view")
+}
+
+func TestBearerLogoutCannotConsumeBrowserCookie(t *testing.T) {
+	db, web, principalID := newAuthenticationService(t)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+	token, err := web.CreateSession(t.Context(), parseGUID(principalID), time.Now().UTC(), authnext.Assurance{Level: 1, Methods: []string{"pwd"}})
+	require.NoError(t, err)
+	var before, after []model.Session
+	require.NoError(t, db.Table(web.repo.names.Sessions.String()).Order("id_hash").Find(&before).Error)
+	for _, bearer := range []string{"avt_read", "avt_write", "invalid", "ordinary-access-token"} {
+		response := api.Delete("/sessions/current", "Cookie: "+web.SessionCookie(token), "Authorization: Bearer "+bearer)
+		status := http.StatusUnauthorized
+		if strings.HasPrefix(bearer, "avt_") {
+			status = http.StatusForbidden
+		}
+		require.Equal(t, status, response.Code, response.Body.String())
+		assert.Empty(t, response.Header().Values("Set-Cookie"))
+	}
+	require.NoError(t, db.Table(web.repo.names.Sessions.String()).Order("id_hash").Find(&after).Error)
+	assert.Equal(t, before, after, "bearer logout must not revoke or touch the cookie owner's session")
 }
 
 func TestLogoutStorageFailurePreservesSessionUntilRetry(t *testing.T) {

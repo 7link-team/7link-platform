@@ -14,6 +14,20 @@ import (
 )
 
 const coreRouteManifest = `
+iam-account-view-workspace|GET|/account-views/workspace
+iam-platform-roles|GET|/operating-platforms/{platform_id}/roles
+iam-platform-role-create|POST|/operating-platforms/{platform_id}/roles
+iam-platform-permissions|GET|/operating-platforms/{platform_id}/permission-catalog
+iam-platform-menus|GET|/operating-platforms/{platform_id}/menus
+iam-platform-menu-create|POST|/operating-platforms/{platform_id}/menus
+iam-platform-navigation|GET|/operating-platforms/{platform_id}/navigation
+iam-platform-my-permissions|GET|/operating-platforms/{platform_id}/permissions
+iam-platform-members|GET|/operating-platforms/{platform_id}/members
+iam-platform-member|GET|/operating-platforms/{platform_id}/members/{subject}
+iam-platform-member-create|POST|/operating-platforms/{platform_id}/members
+iam-platform-member-update|PATCH|/operating-platforms/{platform_id}/members/{subject}
+iam-platform-member-delete|DELETE|/operating-platforms/{platform_id}/members/{subject}
+iam-system-my-permissions|GET|/system/permissions
 iam-my-memberships|GET|/principals/{principal_id}/memberships
 iam-leave-membership|DELETE|/principals/{principal_id}/memberships/{tenant_id}
 iam-field-catalog|GET|/tenants/{tenant_id}/field-catalog
@@ -25,10 +39,10 @@ iam-list-relationships|GET|/tenants/{tenant_id}/authorization-relationships
 iam-put-relationship|POST|/tenants/{tenant_id}/authorization-relationships
 iam-delete-relationship|DELETE|/tenants/{tenant_id}/authorization-relationships
 iam-check-authorization|POST|/tenants/{tenant_id}/authorization-checks
-iam-platform-permission-catalog|GET|/platform/permission-catalog
-iam-list-platform-administrators|GET|/platform/administrators
-iam-put-platform-administrator|PUT|/platform/administrators/{principal_id}
-iam-delete-platform-administrator|DELETE|/platform/administrators/{principal_id}
+iam-platform-permission-catalog|GET|/system/permission-catalog
+iam-list-platform-administrators|GET|/system/administrators
+iam-put-platform-administrator|PUT|/system/administrators/{principal_id}
+iam-delete-platform-administrator|DELETE|/system/administrators/{principal_id}
 iam-permission-catalog|GET|/tenants/{tenant_id}/permission-catalog
 iam-scope-model|GET|/authorization-scope-model
 iam-menu-catalog|GET|/tenants/{tenant_id}/menu-catalog
@@ -88,7 +102,7 @@ func TestCoreRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 61)
+	require.Len(t, got, 75)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -125,7 +139,14 @@ func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 			}
 
 			tenantKey := "path\x00tenant_id"
-			if authz.IsPlatformOperation(operation) {
+			if authz.IsOperatingPlatformOperation(operation) {
+				assert.NotContains(t, parameters, tenantKey, location)
+				platform := parameters["path\x00platform_id"]
+				require.NotNil(t, platform, location)
+				assert.True(t, platform.Required, location)
+				assert.Equal(t, `^[1-9][0-9]*$`, platform.Schema.Pattern, location)
+				assert.Equal(t, authz.BearerSecurity(), operation.Security, location)
+			} else if authz.IsPlatformOperation(operation) {
 				assert.NotContains(t, parameters, tenantKey, "%s is platform-scoped", location)
 			} else if authz.IsAuthenticatedOperation(operation) {
 				if operation.OperationID == "iam-effective-entity-permissions" {
@@ -137,7 +158,7 @@ func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 				} else {
 					assert.NotContains(t, parameters, tenantKey, location)
 					scheme := authz.SessionScheme
-					if operation.OperationID == "iam-effective-platform-permissions" {
+					if operation.OperationID == "iam-effective-platform-permissions" || operation.OperationID == "iam-system-my-permissions" || operation.OperationID == "iam-account-view-workspace" {
 						scheme = authz.BearerScheme
 					}
 					assert.Equal(t, []map[string][]string{{scheme: {}}}, operation.Security, location)

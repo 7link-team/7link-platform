@@ -51,6 +51,10 @@ func (authorizer httpRouteAuthorizer) CheckPlatform(context.Context, string, gui
 	return authorizer.platformAllowed, nil
 }
 
+func (authorizer httpRouteAuthorizer) CheckOperatingPlatform(context.Context, guid.ID, string, guid.ID) (bool, error) {
+	return authorizer.platformAllowed, nil
+}
+
 type httpMembershipChecker struct {
 	tenantID    guid.ID
 	principalID guid.ID
@@ -58,6 +62,10 @@ type httpMembershipChecker struct {
 
 func (checker httpMembershipChecker) IsMemberActive(_ context.Context, tenantID, principalID guid.ID) (bool, error) {
 	return tenantID == checker.tenantID && principalID == checker.principalID, nil
+}
+
+func (checker httpMembershipChecker) IsOperatingPlatformMemberActive(ctx context.Context, platformID, principalID guid.ID) (bool, error) {
+	return checker.IsMemberActive(ctx, platformID, principalID)
 }
 
 type httpAuthorizationEvaluator struct{}
@@ -83,6 +91,10 @@ func (httpAuthorizationEvaluator) Check(context.Context, guid.ID, string, guid.I
 }
 
 func (httpAuthorizationEvaluator) CheckPlatform(context.Context, string, guid.ID) (bool, error) {
+	return true, nil
+}
+
+func (httpAuthorizationEvaluator) CheckOperatingPlatform(context.Context, guid.ID, string, guid.ID) (bool, error) {
 	return true, nil
 }
 
@@ -117,6 +129,10 @@ func (e httpFailingAuthorizationEvaluator) Check(context.Context, guid.ID, strin
 }
 
 func (e httpFailingAuthorizationEvaluator) CheckPlatform(context.Context, string, guid.ID) (bool, error) {
+	return false, e.err
+}
+
+func (e httpFailingAuthorizationEvaluator) CheckOperatingPlatform(context.Context, guid.ID, string, guid.ID) (bool, error) {
 	return false, e.err
 }
 
@@ -357,13 +373,13 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 	seedHTTPPrincipal(t, harness.repositoryHarness, 44)
 	_, err := harness.module.service.SetPlatformAdministrator(t.Context(), 11, true, nil)
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, harness.api.Get("/platform/permission-catalog", "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Get("/platform/administrators", "Authorization: Bearer test").Code)
-	putPlatform := harness.api.Put("/platform/administrators/44", "Authorization: Bearer test", map[string]any{
+	assert.Equal(t, http.StatusOK, harness.api.Get("/system/permission-catalog", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/system/administrators", "Authorization: Bearer test").Code)
+	putPlatform := harness.api.Put("/system/administrators/44", "Authorization: Bearer test", map[string]any{
 		"full_administrator": false, "permissions": []string{"tenant_view"},
 	})
 	require.Equal(t, http.StatusOK, putPlatform.Code, putPlatform.Body.String())
-	assert.Equal(t, http.StatusOK, harness.api.Delete("/platform/administrators/44", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Delete("/system/administrators/44", "Authorization: Bearer test").Code)
 
 	seedTenantAndPrincipal(t, harness.db, "sl_", 2, 22)
 	_, err = harness.module.service.PutTenantMember(t.Context(), 2, 22, "Tenant B member", "b@example.test", 0, MemberActive)
@@ -551,9 +567,9 @@ func TestCreatingARootAcceptsTheClearedFormFieldTheUpdateAccepts(t *testing.T) {
 func TestPlatformRoutesRejectPrincipalWithoutPlatformGrant(t *testing.T) {
 	harness := newHTTPIAMHarness(t, false)
 	for _, response := range []*httptest.ResponseRecorder{
-		harness.api.Get("/platform/permission-catalog", "Authorization: Bearer test"),
-		harness.api.Get("/platform/administrators", "Authorization: Bearer test"),
-		harness.api.Delete("/platform/administrators/11", "Authorization: Bearer test"),
+		harness.api.Get("/system/permission-catalog", "Authorization: Bearer test"),
+		harness.api.Get("/system/administrators", "Authorization: Bearer test"),
+		harness.api.Delete("/system/administrators/11", "Authorization: Bearer test"),
 	} {
 		assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
 	}
@@ -722,13 +738,13 @@ func TestIAMHTTPInternalFailuresUseUniformEnvelope(t *testing.T) {
 			return harness.api.Delete(header+"/authorization-relationships?subject_type=principal&subject_id=2&relation=viewer&resource_type=store&resource_id=1", "Authorization: Bearer test")
 		}},
 		{name: "list platform administrators", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get("/platform/administrators", "Authorization: Bearer test")
+			return harness.api.Get("/system/administrators", "Authorization: Bearer test")
 		}},
 		{name: "put platform administrator", call: func() *httptest.ResponseRecorder {
-			return harness.api.Put("/platform/administrators/2", "Authorization: Bearer test", map[string]any{"full_administrator": false, "permissions": []string{"tenant_view"}})
+			return harness.api.Put("/system/administrators/2", "Authorization: Bearer test", map[string]any{"full_administrator": false, "permissions": []string{"tenant_view"}})
 		}},
 		{name: "delete platform administrator", call: func() *httptest.ResponseRecorder {
-			return harness.api.Delete("/platform/administrators/2", "Authorization: Bearer test")
+			return harness.api.Delete("/system/administrators/2", "Authorization: Bearer test")
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -771,7 +787,7 @@ func TestIAMHTTPFailsClosedWhenStorageIsGone(t *testing.T) {
 	// they keep answering while storage is gone.
 	for _, path := range []string{
 		"/authorization-scope-model", tenant + "/permission-catalog", tenant + "/menu-catalog",
-		"/platform/permission-catalog", tenant + "/field-catalog",
+		"/system/permission-catalog", tenant + "/field-catalog",
 	} {
 		response := harness.api.Get(path, auth)
 		require.Equal(t, http.StatusOK, response.Code, "%s: %s", path, response.Body.String())
@@ -810,15 +826,15 @@ func TestIAMHTTPFailsClosedWhenStorageIsGone(t *testing.T) {
 				"/authorization-relationships?subject_type=principal&subject_id=12&relation=owner&resource_type=company&resource_id="+entityID, auth)
 		},
 		"list platform administrators": func() *httptest.ResponseRecorder {
-			return harness.api.Get("/platform/administrators", auth)
+			return harness.api.Get("/system/administrators", auth)
 		},
 		"put platform administrator": func() *httptest.ResponseRecorder {
-			return harness.api.Put("/platform/administrators/12", auth, map[string]any{
+			return harness.api.Put("/system/administrators/12", auth, map[string]any{
 				"full_administrator": false, "permissions": []string{"tenant_view"},
 			})
 		},
 		"delete platform administrator": func() *httptest.ResponseRecorder {
-			return harness.api.Delete("/platform/administrators/12", auth)
+			return harness.api.Delete("/system/administrators/12", auth)
 		},
 		"list entities": func() *httptest.ResponseRecorder { return harness.api.Get(tenant+"/entities", auth) },
 		"create entity": func() *httptest.ResponseRecorder {
@@ -1036,12 +1052,12 @@ func TestIAMHTTPRejectsUnrepresentableIdentifiers(t *testing.T) {
 			})
 		},
 		"put platform administrator": func() *httptest.ResponseRecorder {
-			return harness.api.Put("/platform/administrators/"+big, auth, map[string]any{
+			return harness.api.Put("/system/administrators/"+big, auth, map[string]any{
 				"full_administrator": false, "permissions": []string{"tenant_view"},
 			})
 		},
 		"delete platform administrator": func() *httptest.ResponseRecorder {
-			return harness.api.Delete("/platform/administrators/"+big, auth)
+			return harness.api.Delete("/system/administrators/"+big, auth)
 		},
 		"effective entity permissions": func() *httptest.ResponseRecorder {
 			return harness.api.Get(tenant+"/entities/"+big+"/principals/"+"11"+"/permissions", auth)

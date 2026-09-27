@@ -4,12 +4,12 @@ export interface DevLoginAccount {
   loginName: string
   password: string
   tenantID?: string
+  platformID?: string
 }
 
 export function parseDevLoginAccounts(
   raw: string | undefined,
-  enabled =
-    import.meta.env.DEV &&
+  enabled = import.meta.env.DEV &&
     import.meta.env.VITE_DEV_LOGIN_ACCOUNTS_ENABLED === "true"
 ): DevLoginAccount[] {
   if (!enabled || !raw) return []
@@ -31,7 +31,11 @@ export function parseDevLoginAccounts(
         typeof account.password === "string" &&
         account.password.length > 0 &&
         (account.tenantID === undefined ||
-          (typeof account.tenantID === "string" && account.tenantID.length > 0))
+          (typeof account.tenantID === "string" &&
+            account.tenantID.length > 0)) &&
+        (account.platformID === undefined ||
+          (typeof account.platformID === "string" &&
+            account.platformID.length > 0))
     )
   } catch {
     return []

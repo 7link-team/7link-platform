@@ -12,7 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-const platformPrincipalSuspensionPath = "/platform/principals/{principal_id}/suspension"
+const platformPrincipalSuspensionPath = "/system/principals/{principal_id}/suspension"
 
 // SetPlatformStatus suspends or restores one principal without naming a tenant.
 //

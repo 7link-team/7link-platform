@@ -1,13 +1,63 @@
 package organization
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
+	"7link.com/platform/pkg/extension/policyx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMemberRuleNarrowingNeverAdmitsNewFacts(t *testing.T) {
+	condition := func(field, operator string, values ...string) policyx.MemberCondition {
+		return policyx.MemberCondition{Field: field, Operator: operator, Values: values}
+	}
+	emailA := condition("member.email", "in", "a@example.test")
+	emailAB := condition("member.email", "in", "a@example.test", "b@example.test")
+	notA := condition("member.email", "not_in", "a@example.test")
+	notAB := condition("member.email", "not_in", "a@example.test", "b@example.test")
+	active := condition("member.status", "in", "active")
+	rule := func(match string, conditions ...policyx.MemberCondition) string {
+		value, err := json.Marshal(policyx.MemberRule{Version: 1, Match: match, Conditions: conditions})
+		require.NoError(t, err)
+		return string(value)
+	}
+	for _, test := range []struct {
+		name, before, after string
+		narrows             bool
+	}{
+		{"include subset", rule("all", emailAB), rule("all", emailA), true},
+		{"include expansion", rule("all", emailA), rule("all", emailAB), false},
+		{"exclude expansion", rule("all", notA), rule("all", notAB), true},
+		{"exclude reduction", rule("all", notAB), rule("all", notA), false},
+		{"add conjunction", rule("all", emailAB), rule("all", emailA, active), true},
+		{"remove conjunction", rule("all", emailA, active), rule("all", emailA), false},
+		{"remove alternative", rule("any", emailA, active), rule("any", emailA), true},
+		{"add alternative", rule("any", emailA), rule("any", emailA, active), false},
+		{"all implies any", rule("any", emailA, active), rule("all", emailA, active), true},
+		{"any does not imply all", rule("all", emailA, active), rule("any", emailA, active), false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.narrows, memberRuleNarrows(test.before, test.after))
+			if !test.narrows {
+				return
+			}
+			for _, email := range []string{"a@example.test", "b@example.test", "future@example.test"} {
+				for _, status := range []string{"active", "disabled"} {
+					facts := policyx.MemberFacts{Email: email, Status: status}
+					before, err := policyx.EvaluateMemberRule([]byte(test.before), facts)
+					require.NoError(t, err)
+					after, err := policyx.EvaluateMemberRule([]byte(test.after), facts)
+					require.NoError(t, err)
+					require.False(t, after && !before, "new facts must not gain group membership")
+				}
+			}
+		})
+	}
+}
 
 func TestGroupNormalization(t *testing.T) {
 	t.Parallel()

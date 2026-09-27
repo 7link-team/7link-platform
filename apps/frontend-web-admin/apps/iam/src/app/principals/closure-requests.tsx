@@ -76,7 +76,7 @@ export default function ClosureRequestsPage() {
     <>
       <PageHeader
         title={t("closureRequests")}
-        description={t("accountClosureDescription")}
+        description={t("closureRequestsDescription")}
       />
       <label className="mb-4 flex items-center gap-3">
         {t("status")}

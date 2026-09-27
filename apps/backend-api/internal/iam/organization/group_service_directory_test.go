@@ -18,6 +18,10 @@ type organizationMemberChecker struct {
 	err    error
 }
 
+func (c *organizationMemberChecker) IsOperatingPlatformMemberActive(ctx context.Context, platformID, principalID guid.ID) (bool, error) {
+	return c.IsMemberActive(ctx, platformID, principalID)
+}
+
 func (c *organizationMemberChecker) IsMemberActive(ctx context.Context, tenantID, principalID guid.ID) (bool, error) {
 	return false, errors.New("transactional check required")
 }
@@ -57,7 +61,7 @@ func (h *organizationHarness) seedMember(t *testing.T, tenantID, principalID gui
 }
 
 func TestGroupLifecycleMembersAndTenantIsolation(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
+	h := newOrganizationDirectoryHarness(t, "sl_")
 	h.seedMember(t, 1, 10, "Alice")
 	h.seedMember(t, 2, 20, "Bob")
 	guard := &organizationAdministratorGuard{}
@@ -179,7 +183,7 @@ func TestGroupUpdateFieldsGuardsAndReferenceChecks(t *testing.T) {
 }
 
 func TestGroupAndPositionMembershipFailuresRollback(t *testing.T) {
-	h := newOrganizationHarness(t, "")
+	h := newOrganizationDirectoryHarness(t, "")
 	h.seedMember(t, 1, 10, "Alice")
 	h.seedMember(t, 1, 11, "Bob")
 	checker := &organizationMemberChecker{}
@@ -265,7 +269,7 @@ func TestDirectoryServicesRejectStaleVersions(t *testing.T) {
 // that answer with these memberships, so a membership change that committed
 // without it would keep granting access the directory no longer records.
 func TestGroupWritesAbortWhenThePolicyRevisionCannotAdvance(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
+	h := newOrganizationDirectoryHarness(t, "sl_")
 	h.seedMember(t, 1, 10, "Alice")
 	service := newBoundGroupService(t,
 		h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix},
@@ -306,7 +310,7 @@ func TestGroupWritesAbortWhenThePolicyRevisionCannotAdvance(t *testing.T) {
 // revision, while still running the administrator guard that protects the
 // last administrator.
 func TestGroupPutMemberIsANoOpForAnUnchangedWindow(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
+	h := newOrganizationDirectoryHarness(t, "sl_")
 	h.seedMember(t, 1, 10, "Alice")
 	guard := &organizationAdministratorGuard{}
 	service := newBoundGroupService(t,

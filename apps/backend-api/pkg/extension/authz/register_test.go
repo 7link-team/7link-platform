@@ -335,7 +335,7 @@ func TestRegistrarRejectsInvalidConstructionAndDeclarations(t *testing.T) {
 	})
 	assert.Panics(t, func() {
 		_, api := humatest.New(t)
-		authz.RegisterPlatform(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{Method: http.MethodGet, Path: "/platform"}, authz.Guard{Resource: "tenant", Verb: "view"}, okRoute)
+		authz.RegisterPlatform(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{Method: http.MethodGet, Path: "/system"}, authz.Guard{Resource: "tenant", Verb: "view"}, okRoute)
 	})
 	assert.Panics(t, func() {
 		_, api := humatest.New(t)
@@ -884,8 +884,8 @@ func TestPlatformAuthorizationFailurePaths(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, api := humatest.New(t)
 			registrar := authz.NewRegistrar(testRegistry(), test.verifier, test.checker, &fakeMembership{active: true})
-			authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "platform", Method: http.MethodGet, Path: "/platform"}, authz.Guard{Resource: "tenant", Verb: "view"}, okRoute)
-			assert.Equal(t, test.want, api.Get("/platform").Code)
+			authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "platform", Method: http.MethodGet, Path: "/system"}, authz.Guard{Resource: "tenant", Verb: "view"}, okRoute)
+			assert.Equal(t, test.want, api.Get("/system").Code)
 		})
 	}
 }

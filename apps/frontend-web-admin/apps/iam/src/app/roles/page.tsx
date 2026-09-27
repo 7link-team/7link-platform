@@ -41,6 +41,7 @@ import {
 } from "@workspace/ui/components/tabs"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
+import { operatingPlatformID } from "../../lib/organization-scope"
 import {
   iamApi,
   type Group,
@@ -444,8 +445,16 @@ export default function RolesPage() {
   return (
     <>
       <PageHeader
-        title={t("rolePermissions")}
-        description={t("rolesDescription")}
+        title={t(
+          operatingPlatformID()
+            ? "platformRolePermissions"
+            : "tenantRolePermissions"
+        )}
+        description={t(
+          operatingPlatformID()
+            ? "platformRolesDescription"
+            : "rolesDescription"
+        )}
         action={
           allowed("role_create") && (
             <Button
@@ -803,7 +812,10 @@ export default function RolesPage() {
                                 >
                                   <Checkbox
                                     aria-label={t("grantNamed", {
-                                      permission: permission.summary,
+                                      permission:
+                                        permission.code === "tenant_administer"
+                                          ? t("tenantAdministration")
+                                          : permission.summary,
                                     })}
                                     checked={Boolean(grant)}
                                     disabled={
@@ -820,7 +832,9 @@ export default function RolesPage() {
                                   />
                                   <span className="min-w-0 flex-1">
                                     <strong className="block text-sm">
-                                      {permission.summary}
+                                      {permission.code === "tenant_administer"
+                                        ? t("tenantAdministration")
+                                        : permission.summary}
                                     </strong>
                                     <small className="mt-1 block font-mono text-xs text-muted-foreground">
                                       {permission.code}
@@ -885,7 +899,7 @@ export default function RolesPage() {
             <DialogTitle>{t("permissionConditions")}</DialogTitle>
             <DialogDescription>
               {conditionPermission
-                ? `${conditionPermission.summary} (${conditionPermission.code})`
+                ? `${conditionPermission.code === "tenant_administer" ? t("tenantAdministration") : conditionPermission.summary} (${conditionPermission.code})`
                 : t("permissionConditionsDescription")}
               {conditionGrant?.condition && (
                 <span className="mt-1 block" data-current-condition-summary>
@@ -905,23 +919,37 @@ export default function RolesPage() {
           >
             <div className="grid gap-2">
               <Label htmlFor="permission-minimum-acr">{t("minimumAcr")}</Label>
-              <Input
+              <SimpleSelect
                 id="permission-minimum-acr"
-                type="number"
-                min="1"
-                max="99"
                 value={conditionDraft.minimumAcr}
-                onChange={(event) =>
+                onValueChange={(value) =>
                   setConditionDraft((current) => ({
                     ...current,
-                    minimumAcr: event.target.value,
+                    minimumAcr: value,
                   }))
                 }
-                placeholder={t("unrestricted")}
+                options={[
+                  { value: "", label: t("unrestricted") },
+                  { value: "1", label: t("basicAuthentication") },
+                  { value: "2", label: t("strongAuthentication") },
+                  ...(conditionDraft.minimumAcr &&
+                  !["1", "2"].includes(conditionDraft.minimumAcr)
+                    ? [
+                        {
+                          value: conditionDraft.minimumAcr,
+                          label: t("authenticationLevel", {
+                            level: conditionDraft.minimumAcr,
+                          }),
+                        },
+                      ]
+                    : []),
+                ]}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="permission-client-id">{t("oauthClients")}</Label>
+              <Label htmlFor="permission-client-id">
+                {t("oauthClientIdentifier")}
+              </Label>
               <Input
                 id="permission-client-id"
                 value={conditionDraft.clientID}
@@ -937,7 +965,7 @@ export default function RolesPage() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="permission-network-zone">
-                {t("networkZone")}
+                {t("trustedNetworkZone")}
               </Label>
               <Input
                 id="permission-network-zone"
@@ -957,6 +985,7 @@ export default function RolesPage() {
               <Input
                 id="permission-timezone"
                 value={conditionDraft.timezone}
+                disabled={!conditionDraft.timeStart && !conditionDraft.timeEnd}
                 onChange={(event) =>
                   setConditionDraft((current) => ({
                     ...current,
@@ -998,6 +1027,51 @@ export default function RolesPage() {
                 }
                 required={Boolean(conditionDraft.timeStart)}
               />
+            </div>
+            <div
+              className="space-y-2 border-t pt-3 text-sm md:col-span-2"
+              data-permission-condition-effect
+            >
+              <strong>{t("conditionEffect")}</strong>
+              {condition ? (
+                <ul className="list-inside list-disc space-y-1">
+                  {conditionDraft.minimumAcr && (
+                    <li>
+                      {t("requiresAuthenticationLevel", {
+                        level: conditionDraft.minimumAcr,
+                      })}
+                    </li>
+                  )}
+                  {conditionDraft.clientID.trim() && (
+                    <li>
+                      {t("requiresOAuthClient", {
+                        client: conditionDraft.clientID.trim(),
+                      })}
+                    </li>
+                  )}
+                  {conditionDraft.networkZone.trim() && (
+                    <li>
+                      {t("requiresNetworkZone", {
+                        zone: conditionDraft.networkZone.trim(),
+                      })}
+                    </li>
+                  )}
+                  {conditionDraft.timeStart && conditionDraft.timeEnd && (
+                    <li>
+                      {t("requiresTimeWindow", {
+                        start: conditionDraft.timeStart,
+                        end: conditionDraft.timeEnd,
+                        timezone: conditionDraft.timezone,
+                      })}
+                    </li>
+                  )}
+                </ul>
+              ) : (
+                <p>{t("noAdditionalConditions")}</p>
+              )}
+              <p className="text-muted-foreground">
+                {t("conditionGrantBoundary")}
+              </p>
             </div>
           </form>
           <DialogFooter>

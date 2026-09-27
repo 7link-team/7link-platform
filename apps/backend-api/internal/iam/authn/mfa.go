@@ -83,7 +83,7 @@ func (s *Service) MFAStatus(
 	ctx context.Context,
 	authorization, cookieHeader string,
 ) (authnext.MFAStatus, error) {
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.personalReadClaims(ctx, authorization, cookieHeader)
 	if err != nil {
 		return authnext.MFAStatus{}, err
 	}
@@ -214,7 +214,7 @@ func (s *Service) authenticateMFAEnrollment(
 	authorization, cookieHeader string,
 ) (*authnext.Claims, error) {
 	if strings.TrimSpace(authorization) != "" {
-		return s.Authenticate(ctx, authorization, cookieHeader)
+		return s.authenticateAccountHolder(ctx, authorization, cookieHeader)
 	}
 	return s.authenticateBrowserSession(ctx, cookieHeader, true)
 }
@@ -290,7 +290,7 @@ func (s *Service) RegenerateRecoveryCodes(
 	ctx context.Context,
 	authorization, cookieHeader, currentPassword, code string,
 ) (authnext.MFAConfirmation, error) {
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateAccountHolder(ctx, authorization, cookieHeader)
 	if err != nil {
 		return authnext.MFAConfirmation{}, err
 	}
@@ -343,7 +343,7 @@ func (s *Service) DisableTOTP(
 	ctx context.Context,
 	authorization, cookieHeader, currentPassword, code string,
 ) error {
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateAccountHolder(ctx, authorization, cookieHeader)
 	if err != nil {
 		return err
 	}

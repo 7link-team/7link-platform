@@ -372,7 +372,7 @@ func (t directoryTree) replaceNodeACL(ctx context.Context, tx *gorm.DB, spaceID 
 			if len(seen) > maxNodeACLRules {
 				return errFileACL
 			}
-			rows = append(rows, &model.NodeACL{SpaceID: spaceID, NodeID: node.ID, SubjectKind: rule.subject.kind, SubjectID: rule.subject.id, Effect: rule.effect, Action: action, Applies: rule.applies, CreatedBy: actor, CreatedAt: now.UnixMilli()})
+			rows = append(rows, &model.NodeACL{SpaceID: spaceID, NodeID: node.ID, SubjectKind: rule.subject.kind, SubjectID: rule.subject.id, Effect: rule.effect, Action: action, Applies: rule.applies, CreatedBy: storageActorID(ctx, actor), CreatedAt: now.UnixMilli()})
 		}
 	}
 	permissions, err := t.loadNodePermissions(ctx, tx, spaceID, node.ID)

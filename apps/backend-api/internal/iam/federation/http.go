@@ -145,6 +145,9 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 	start.Responses = browserResponses(api.OpenAPI().Components.Schemas)
 	api.OpenAPI().AddOperation(&start)
 	api.Adapter().Handle(&start, func(ctx huma.Context) {
+		if rejectAccountViewBrowser(api, ctx) {
+			return
+		}
 		providerID, err := parseFederationID(ctx.Param("provider_id"))
 		if err != nil {
 			writeFederationError(api, ctx, err)
@@ -173,6 +176,9 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 	callback.Responses = browserResponses(api.OpenAPI().Components.Schemas)
 	api.OpenAPI().AddOperation(&callback)
 	api.Adapter().Handle(&callback, func(ctx huma.Context) {
+		if rejectAccountViewBrowser(api, ctx) {
+			return
+		}
 		providerID, err := parseFederationID(ctx.Param("provider_id"))
 		if err != nil {
 			writeFederationError(api, ctx, err)
@@ -211,6 +217,9 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 	samlCallback.Responses = browserResponses(api.OpenAPI().Components.Schemas)
 	api.OpenAPI().AddOperation(&samlCallback)
 	api.Adapter().Handle(&samlCallback, func(ctx huma.Context) {
+		if rejectAccountViewBrowser(api, ctx) {
+			return
+		}
 		providerID, err := parseFederationID(ctx.Param("provider_id"))
 		if err != nil {
 			writeFederationError(api, ctx, err)
@@ -246,6 +255,16 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 		ctx.SetHeader("Location", returnURL)
 		ctx.SetStatus(http.StatusFound)
 	})
+}
+
+func rejectAccountViewBrowser(api huma.API, ctx huma.Context) bool {
+	claims, _ := authnext.FromContext(ctx.Context())
+	scheme, raw, bearer := strings.Cut(strings.TrimSpace(ctx.Header("Authorization")), " ")
+	if (bearer && strings.EqualFold(scheme, "Bearer") && strings.HasPrefix(raw, "avt_")) || (claims != nil && claims.AccountView != nil) {
+		_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+		return true
+	}
+	return false
 }
 
 func browserResponses(schemas huma.Registry) map[string]*huma.Response {

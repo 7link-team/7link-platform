@@ -11,7 +11,9 @@ import (
 	"7link.com/platform/internal/iam/organization/model"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/policyx"
+	"gorm.io/gorm"
 )
 
 type GroupService struct {
@@ -26,6 +28,51 @@ func NewGroupService(runtime *appenv.Runtime, appender audit.Appender, members c
 		panic("group service requires runtime, audit appender, active member checker, administrator guard, and id generator")
 	}
 	return &GroupService{repo: NewRepository(runtime, ids, appender), members: members, administrators: administrators, now: time.Now}
+}
+
+func (s *GroupService) memberActiveOn(ctx context.Context, repo *Repository, ownerID, principalID guid.ID) (bool, error) {
+	kind, err := repo.rootKind(ctx, ownerID)
+	if err != nil {
+		return false, err
+	}
+	if kind == ScopeTenant {
+		return s.members.IsMemberActiveOn(ctx, repo.writer(), ownerID, principalID)
+	}
+	if kind != ScopePlatform {
+		return false, nil
+	}
+	checker, ok := s.members.(interface {
+		IsOperatingPlatformMemberActiveOn(context.Context, *gorm.DB, guid.ID, guid.ID) (bool, error)
+	})
+	if !ok {
+		return false, ErrUnavailable
+	}
+	return checker.IsOperatingPlatformMemberActiveOn(ctx, repo.writer(), ownerID, principalID)
+}
+
+func (s *GroupService) requireGrantableGroupRoles(ctx context.Context, repo *Repository, ownerID, groupID guid.ID) error {
+	if authn.PrincipalIDFromContext(ctx).Zero() {
+		return nil
+	}
+	var roles []guid.ID
+	if err := repo.writer().WithContext(ctx).Table(repo.names.GroupRoleBindings.String()).Where("tenant_id = ? AND group_id = ?", ownerID, groupID).Pluck("role_id", &roles).Error; err != nil {
+		return err
+	}
+	if len(roles) == 0 {
+		return nil
+	}
+	checker, ok := s.administrators.(interface {
+		RequireGrantableRoles(context.Context, *gorm.DB, guid.ID, []guid.ID) error
+	})
+	if !ok {
+		return ErrUnavailable
+	}
+	return checker.RequireGrantableRoles(ctx, repo.writer(), ownerID, roles)
+}
+
+func membershipWindowNarrows(current *groupMemberRow, input GroupMemberWindow) bool {
+	return (current.StartsAt == nil || input.StartsAt != nil && !input.StartsAt.Before(*current.StartsAt)) &&
+		(current.EndsAt == nil || input.EndsAt != nil && !input.EndsAt.After(*current.EndsAt))
 }
 
 func (s *GroupService) List(ctx context.Context, tenantID guid.ID) ([]Group, error) {
@@ -99,6 +146,9 @@ func (s *GroupService) Update(ctx context.Context, tenantID, id guid.ID, input U
 	var updated *groupRow
 	event := audit.NewDomainEvent(ctx, tenantID, "group_updated", "group", id)
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
+			return err
+		}
 		current, err := repo.getGroup(ctx, tenantID, id)
 		if err != nil {
 			return err
@@ -130,8 +180,17 @@ func (s *GroupService) Update(ctx context.Context, tenantID, id guid.ID, input U
 		if !changed {
 			return nil
 		}
+		addsAuthority := current.Status != StatusActive && updated.Status == StatusActive
+		if updated.Status == StatusActive && updated.RuleJSON != current.RuleJSON {
+			addsAuthority = addsAuthority || !memberRuleNarrows(current.RuleJSON, updated.RuleJSON)
+		}
+		if addsAuthority {
+			if err := s.requireGrantableGroupRoles(ctx, repo, tenantID, id); err != nil {
+				return err
+			}
+		}
 		var verify func() error
-		if current.Status == StatusActive && updated.Status == StatusDisabled {
+		if current.Status == StatusActive && updated.Status == StatusDisabled || current.RuleJSON != updated.RuleJSON {
 			verify, err = s.administrators.Protect(ctx, repo.writer(), tenantID)
 			if err != nil {
 				return err
@@ -238,6 +297,9 @@ func (s *GroupService) PutMember(ctx context.Context, tenantID, groupID, princip
 	event := audit.NewDomainEvent(ctx, tenantID, "group_member_assigned", "group", groupID)
 	event.Detail["principal_id"] = principalID
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
+			return err
+		}
 		group, err := repo.getGroup(ctx, tenantID, groupID)
 		if err != nil {
 			return err
@@ -249,7 +311,7 @@ func (s *GroupService) PutMember(ctx context.Context, tenantID, groupID, princip
 		if err != nil {
 			return err
 		}
-		active, err := s.members.IsMemberActiveOn(ctx, repo.writer(), tenantID, principalID)
+		active, err := s.memberActiveOn(ctx, repo, tenantID, principalID)
 		if err != nil {
 			return fmt.Errorf("check group member: %w", err)
 		}
@@ -263,6 +325,11 @@ func (s *GroupService) PutMember(ctx context.Context, tenantID, groupID, princip
 		}
 		if getErr != nil && !errors.Is(getErr, ErrGroupMemberNotFound) {
 			return getErr
+		}
+		if getErr != nil || !membershipWindowNarrows(current, input) {
+			if err := s.requireGrantableGroupRoles(ctx, repo, tenantID, groupID); err != nil {
+				return err
+			}
 		}
 		createdAt := now
 		if getErr == nil {

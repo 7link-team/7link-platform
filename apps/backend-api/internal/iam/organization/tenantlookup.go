@@ -46,7 +46,7 @@ func (r *Repository) FindTenantBySlugOn(
 	}
 	var row model.Tenant
 	err = repo.writer().WithContext(ctx).Table(tables.Tenants.TableName()).
-		Where("slug = ?", slug).Take(&row).Error
+		Where("slug = ? AND scope_kind = ?", slug, ScopeTenant).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return Tenant{}, false, nil
 	}

@@ -128,7 +128,7 @@ try {
         response
           .url()
           .endsWith(
-            `/api/platform/principals/${targetID}/lifecycle/retention`
+            `/api/system/principals/${targetID}/lifecycle/retention`
           ) &&
         response.request().method() === "PUT" &&
         response.status() === 200
@@ -154,7 +154,7 @@ try {
         response
           .url()
           .endsWith(
-            `/api/platform/principals/${targetID}/lifecycle/anonymization`
+            `/api/system/principals/${targetID}/lifecycle/anonymization`
           ) &&
         response.request().method() === "POST" &&
         response.status() === 200
@@ -177,7 +177,7 @@ try {
   })
 
   const lifecycleResponse = await context.request.get(
-    baseURL + `/api/platform/principals/${targetID}/lifecycle`,
+    baseURL + `/api/system/principals/${targetID}/lifecycle`,
     { headers: { Origin: baseURL } }
   )
   assert.equal(lifecycleResponse.status(), 200, await lifecycleResponse.text())

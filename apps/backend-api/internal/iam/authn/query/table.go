@@ -22,6 +22,7 @@ type (
 	StepUpChallenges           = stepUpChallenge
 	ReauthenticationChallenges = reauthenticationChallenge
 	PersonalTokens             = personalToken
+	AccountViewTokens          = accountViewToken
 )
 
 // Tables is the complete generated query set bound to one deployment prefix.
@@ -41,6 +42,7 @@ type Tables struct {
 	StepUpChallenges           *StepUpChallenges
 	ReauthenticationChallenges *ReauthenticationChallenges
 	PersonalTokens             *PersonalTokens
+	AccountViewTokens          *AccountViewTokens
 }
 
 // TableNames is the physical name of every table authn owns under one
@@ -61,6 +63,7 @@ type TableNames struct {
 	StepUpChallenges           gormx.TableName
 	ReauthenticationChallenges gormx.TableName
 	PersonalTokens             gormx.TableName
+	AccountViewTokens          gormx.TableName
 }
 
 // BindNames returns the physical name of every table authn owns. It is the only
@@ -83,6 +86,7 @@ func BindNames(prefix string) TableNames {
 		StepUpChallenges:           gormx.NewTableName(prefix, model.StepUpChallenge{}.TableName()),
 		ReauthenticationChallenges: gormx.NewTableName(prefix, model.ReauthenticationChallenge{}.TableName()),
 		PersonalTokens:             gormx.NewTableName(prefix, model.PersonalToken{}.TableName()),
+		AccountViewTokens:          gormx.NewTableName(prefix, model.AccountViewToken{}.TableName()),
 	}
 }
 
@@ -107,6 +111,7 @@ func BindWithNames(db *gorm.DB, names TableNames) *Tables {
 		StepUpChallenges:           q.StepUpChallenge.Table(names.StepUpChallenges.String()),
 		ReauthenticationChallenges: q.ReauthenticationChallenge.Table(names.ReauthenticationChallenges.String()),
 		PersonalTokens:             q.PersonalToken.Table(names.PersonalTokens.String()),
+		AccountViewTokens:          q.AccountViewToken.Table(names.AccountViewTokens.String()),
 	}
 }
 

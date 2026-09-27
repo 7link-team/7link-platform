@@ -94,6 +94,30 @@ func newOAuthHTTPHarness(t *testing.T) oauthHTTPHarness {
 	return oauthHTTPHarness{oauthHarness: harness, api: api, router: router}
 }
 
+func TestAccountViewCannotUseOperatorCookieForOAuthConsent(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	client := createBrowserClient(t, harness.oauthHarness)
+	challenge := startConsentOverHTTP(t, harness, client)
+	for _, token := range []string{"avt_read", "avt_write"} {
+		headers := map[string]string{"Authorization": "Bearer " + token, "Cookie": "session"}
+		for _, path := range []string{
+			"/oauth/authorize?client_id=" + client.ID,
+			"/oauth/consent?consent_challenge=" + challenge,
+			"/oauth/consent/request?consent_challenge=" + challenge,
+		} {
+			response := harness.request(http.MethodGet, path, "", nil, headers)
+			require.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+			assert.Empty(t, response.Header().Values("Set-Cookie"))
+		}
+		decision := harness.form(http.MethodPost, "/oauth/consent", url.Values{"consent_challenge": {challenge}, "decision": {"allow"}}, headers)
+		require.Equal(t, http.StatusForbidden, decision.Code, decision.Body.String())
+		assert.Empty(t, decision.Header().Get("Location"))
+	}
+	pending, err := harness.service.PendingConsent(t.Context(), "session", challenge)
+	require.NoError(t, err, "a view cannot consume the operator's pending consent")
+	assert.Equal(t, challenge, pending.Challenge)
+}
+
 func (h oauthHTTPHarness) request(
 	method, target, contentType string,
 	body io.Reader,
@@ -637,16 +661,18 @@ func TestOAuthIntrospectionAndProtocolErrors(t *testing.T) {
 func TestOAuthUserInfoRequiresPrincipalAccessTokenWithOpenIDScope(t *testing.T) {
 	harness := newOAuthHTTPHarness(t)
 	for token, claims := range map[string]*authnext.Claims{
-		"valid":     {Subject: "101", SubjectType: authnext.SubjectTypePrincipal, Raw: map[string]any{"scope": "openid profile"}},
-		"client":    {Subject: "client:7", SubjectType: authnext.SubjectTypeOAuthClient, Raw: map[string]any{"scope": "openid"}},
-		"no-openid": {Subject: "101", SubjectType: authnext.SubjectTypePrincipal, Raw: map[string]any{"scope": "profile"}},
+		"valid":      {Subject: "101", SubjectType: authnext.SubjectTypePrincipal, Raw: map[string]any{"scope": "openid profile"}},
+		"client":     {Subject: "client:7", SubjectType: authnext.SubjectTypeOAuthClient, Raw: map[string]any{"scope": "openid"}},
+		"no-openid":  {Subject: "101", SubjectType: authnext.SubjectTypePrincipal, Raw: map[string]any{"scope": "profile"}},
+		"view-read":  {Subject: "101", SubjectType: authnext.SubjectTypePrincipal, Raw: map[string]any{"scope": "openid profile"}, AccountView: &authnext.AccountViewIdentity{ID: 50, PrincipalID: 7, ReadOnly: true, ScopeType: "personal", ScopeID: 101}},
+		"view-write": {Subject: "101", SubjectType: authnext.SubjectTypePrincipal, Raw: map[string]any{"scope": "openid profile"}, AccountView: &authnext.AccountViewIdentity{ID: 51, PrincipalID: 7, ScopeType: "personal", ScopeID: 101}},
 	} {
 		harness.web.mu.Lock()
 		harness.web.tokens[token] = claims
 		harness.web.mu.Unlock()
 	}
 	assert.Equal(t, http.StatusOK, harness.request(http.MethodGet, "/oauth/userinfo", "", nil, map[string]string{"Authorization": "Bearer valid"}).Code)
-	for _, token := range []string{"client", "missing"} {
+	for _, token := range []string{"client", "missing", "view-read", "view-write"} {
 		response := harness.request(http.MethodGet, "/oauth/userinfo", "", nil, map[string]string{"Authorization": "Bearer " + token})
 		assert.Equal(t, http.StatusUnauthorized, response.Code, token+": "+response.Body.String())
 		assert.Equal(t, "invalid_token", decodeProtocolError(t, response).Code)

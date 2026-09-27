@@ -20,7 +20,7 @@ const browser = await chromium.launch({
 const admin = await browser.newContext({ baseURL })
 async function api(context, path, method = "GET", body, tenant = "") {
   const requestPath =
-    tenant && !path.startsWith("/login") && !path.startsWith("/platform/")
+    tenant && !path.startsWith("/login") && !path.startsWith("/system/")
       ? `/tenants/${tenant}${path}`
       : path
   const response = await context.request.fetch("/api" + requestPath, {

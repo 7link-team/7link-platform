@@ -46,6 +46,9 @@ func (s *Service) revokePrincipalCredentialsOn(ctx context.Context, tx *gorm.DB,
 	if _, err := repo.revokeSessions(ctx, principalID, "", now); err != nil {
 		return err
 	}
+	if err := repo.revokePrincipalAccountViews(ctx, principalID, now); err != nil {
+		return err
+	}
 	p := tables.PersonalTokens
 	if _, err := p.WithContext(ctx).Where(p.PrincipalID.Eq(principalID), p.RevokedAt.IsNull()).Update(p.RevokedAt, now); err != nil {
 		return err
@@ -97,6 +100,10 @@ func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid
 	}
 	if count != 0 {
 		return ErrNotificationInFlight
+	}
+	if err := tx.WithContext(ctx).Table(names.AccountViewTokens.String()).
+		Where("actor_id = ? OR principal_id = ?", id, id).Delete(map[string]any{}).Error; err != nil {
+		return fmt.Errorf("erase authentication account views: %w", err)
 	}
 	for _, table := range []gormx.TableName{
 		names.ReauthenticationChallenges, names.PersonalTokens,

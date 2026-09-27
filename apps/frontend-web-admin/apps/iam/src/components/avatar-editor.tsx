@@ -13,7 +13,7 @@ import {
 } from "@workspace/ui/components/dialog"
 import { Alert } from "./alert"
 import { UserAvatar } from "./user-avatar"
-import { iamApi, type AvatarSettings } from "../lib/iam-api"
+import { ApiError, iamApi, type AvatarSettings } from "../lib/iam-api"
 
 const styles = ["robot", "pixel", "monster", "geometric"] as const
 
@@ -37,7 +37,14 @@ export function AvatarEditor({ id }: { id: string }) {
         if (active) setAvatar(next)
       },
       (cause: Error) => {
-        if (active) setError(cause.message)
+        if (active) {
+          setAvatar(null)
+          setError(
+            cause instanceof ApiError && cause.status === 404
+              ? ""
+              : cause.message
+          )
+        }
       }
     )
     return () => {

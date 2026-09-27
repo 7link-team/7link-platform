@@ -11,11 +11,42 @@ import (
 	"7link.com/platform/internal/files/model"
 	"7link.com/platform/internal/files/query"
 	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestWritableAccountViewFileMetadataRecordsOperator(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	ctx := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70, AccountView: &authn.AccountViewIdentity{ID: 1, PrincipalID: 71, ScopeType: "personal", ScopeID: 70}})
+	root, err := h.service.ensureOwnedRoot(ctx)
+	require.NoError(t, err)
+	file, err := h.service.uploadFile(ctx, root.ID, "view.txt", "text/plain", strings.NewReader("abc"), 3)
+	require.NoError(t, err)
+	q := query.Bind(h.db, h.tree.prefix)
+	version, err := q.Version.WithContext(ctx).Where(q.Version.NodeID.Eq(file.ID)).Take()
+	require.NoError(t, err)
+	require.Equal(t, guid.ID(71), version.CreatedBy)
+	acl, err := q.NodeACL.WithContext(ctx).Where(q.NodeACL.NodeID.Eq(root.ID)).Take()
+	require.NoError(t, err)
+	require.Equal(t, guid.ID(70), acl.SubjectID)
+	require.Equal(t, guid.ID(71), acl.CreatedBy)
+	trashed, err := h.service.trashNode(ctx, file.ID, file.Revision)
+	require.NoError(t, err)
+	batch, err := q.TrashBatch.WithContext(ctx).Where(q.TrashBatch.ID.Eq(trashed.BatchID)).Take()
+	require.NoError(t, err)
+	require.Equal(t, guid.ID(71), batch.DeletedBy)
+	node, err := q.Node.WithContext(ctx).Where(q.Node.ID.Eq(file.ID)).Take()
+	require.NoError(t, err)
+	_, err = h.service.restoreNode(ctx, file.ID, node.Version)
+	require.NoError(t, err)
+	batch, err = q.TrashBatch.WithContext(ctx).Where(q.TrashBatch.ID.Eq(trashed.BatchID)).Take()
+	require.NoError(t, err)
+	require.NotNil(t, batch.RestoredBy)
+	require.Equal(t, guid.ID(71), *batch.RestoredBy)
+}
 
 func TestBasicFileLifecycleUsesTheOwnRootAndImmutableContent(t *testing.T) {
 	h := newOperationServiceHarness(t)

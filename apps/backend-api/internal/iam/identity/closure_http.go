@@ -84,7 +84,7 @@ func registerClosureHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		return respx.OK(ctx, result), nil
 	})
 	guard := authz.Guard{Resource: "platform", Verb: "administer"}
-	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "identity-update-closure-request", Method: http.MethodPatch, Path: "/platform/principals/{principal_id}/closure-request", Summary: "Move a closure request to processing or rejected", Tags: []string{"platform"}, Errors: []int{404, 409, 503}}, guard, func(ctx context.Context, in *closureUpdateInput) (*respx.Body[ClosureRequest], error) {
+	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "identity-update-closure-request", Method: http.MethodPatch, Path: "/system/principals/{principal_id}/closure-request", Summary: "Move a closure request to processing or rejected", Tags: []string{"platform"}, Errors: []int{404, 409, 503}}, guard, func(ctx context.Context, in *closureUpdateInput) (*respx.Body[ClosureRequest], error) {
 		id, err := requireID(in.PrincipalID)
 		if err != nil {
 			return nil, err
@@ -100,7 +100,7 @@ func registerClosureHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, result), nil
 	})
-	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "identity-list-closure-requests", Method: http.MethodGet, Path: "/platform/closure-requests", Summary: "Track account closure requests and derived erasure completion", Tags: []string{"platform"}}, guard, func(ctx context.Context, in *closureListInput) (*respx.Body[closurePage], error) {
+	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "identity-list-closure-requests", Method: http.MethodGet, Path: "/system/closure-requests", Summary: "Track account closure requests and derived erasure completion", Tags: []string{"platform"}}, guard, func(ctx context.Context, in *closureListInput) (*respx.Body[closurePage], error) {
 		items, total, err := s.ListClosureRequests(ctx, in.Status, in.Offset, in.Limit)
 		if err != nil {
 			return nil, closureError(err)

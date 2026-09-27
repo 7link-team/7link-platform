@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	corei18n "7link.com/platform/internal/iam/core/i18n"
 	"7link.com/platform/internal/iam/core/model"
 	"7link.com/platform/internal/infra/guid"
 	gormx "7link.com/platform/pkg/extension/gorm"
@@ -51,19 +52,26 @@ func (r *Repository) BootstrapTenantOn(
 		return TenantBootstrapResult{}, err
 	}
 	repo := r.withDB(db)
+	kind, err := repo.rootKind(ctx, input.TenantID)
+	if err != nil {
+		return TenantBootstrapResult{}, err
+	}
+	if kind != input.ScopeKind {
+		return TenantBootstrapResult{}, fmt.Errorf("%w: bootstrap owner kind mismatch", ErrInvalidArgument)
+	}
 	stamp := now.UTC().Truncate(time.Millisecond)
 
 	if err := repo.createTenantOwnerMember(ctx, input, stamp); err != nil {
 		return TenantBootstrapResult{}, err
 	}
-	roleID, err := repo.createAdministratorRole(ctx, input.TenantID, stamp)
+	roleID, err := repo.createAdministratorRole(ctx, input.TenantID, input.ScopeKind, stamp)
 	if err != nil {
 		return TenantBootstrapResult{}, err
 	}
 	if err := repo.grantAdministratorRole(ctx, input, roleID, stamp); err != nil {
 		return TenantBootstrapResult{}, err
 	}
-	menus, err := repo.createDefaultMenus(ctx, input.TenantID, stamp)
+	menus, err := repo.createMenus(ctx, input.TenantID, bootstrapMenus(input.ScopeKind), stamp)
 	if err != nil {
 		return TenantBootstrapResult{}, err
 	}
@@ -98,6 +106,7 @@ func (r *Repository) createTenantOwnerMember(
 func (r *Repository) createAdministratorRole(
 	ctx context.Context,
 	tenantID guid.ID,
+	kind string,
 	now time.Time,
 ) (guid.ID, error) {
 	tables, _, err := r.tables()
@@ -108,10 +117,14 @@ func (r *Repository) createAdministratorRole(
 	if err != nil {
 		return 0, fmt.Errorf("generate administrator role id: %w", err)
 	}
+	description := administratorRoleDescription
+	if kind == "platform" {
+		description = "Built-in role created with the platform. Grants full administration of this platform."
+	}
 	row := model.Role{
 		TenantID: tenantID, ID: roleID,
 		Name: administratorRoleName, NameKey: roleNameKey(administratorRoleName),
-		Description: administratorRoleDescription,
+		Description: description,
 		CreatedAt:   now, UpdatedAt: now,
 	}
 	if err := tables.Roles.WithContext(ctx).Create(&row); err != nil {
@@ -132,7 +145,7 @@ func (r *Repository) grantAdministratorRole(
 	}
 	permission := model.RolePermission{
 		TenantID: input.TenantID, RoleID: roleID,
-		PermissionCode: tenantAdministerPermission, CreatedAt: now,
+		PermissionCode: administratorPermission(input.ScopeKind), CreatedAt: now,
 	}
 	if err := tables.RolePermissions.WithContext(ctx).Create(&permission); err != nil {
 		return fmt.Errorf("grant administrator role permission: %w", err)
@@ -155,18 +168,69 @@ func (r *Repository) createDefaultMenus(
 	tenantID guid.ID,
 	now time.Time,
 ) (int, error) {
+	return r.createMenus(ctx, tenantID, DefaultMenus(), now)
+}
+
+func bootstrapMenus(kind string) []Menu {
+	if kind != "platform" {
+		return DefaultMenus()
+	}
+	const organizationID, accessID guid.ID = 1, 2
+	items := []Menu{
+		{ID: organizationID, Label: "Organization", Translations: corei18n.Translations("menu_organization"), SortOrder: 10, Status: MenuActive},
+		{ID: accessID, Label: "Access", Translations: corei18n.Translations("menu_access"), SortOrder: 20, Status: MenuActive},
+	}
+	for _, menu := range DefaultMenus() {
+		switch menu.PermissionCode {
+		case "user_view":
+			menu.PermissionCode, menu.Route = "platform_member_view", "/members"
+			menu.ParentID = organizationID
+			items = append(items, menu)
+		case "dept_view", "group_view":
+			menu.ParentID = organizationID
+			items = append(items, menu)
+		case "role_view", "menu_view":
+			menu.ParentID = accessID
+			items = append(items, menu)
+		}
+	}
+	return items
+}
+
+func administratorPermission(kind string) string {
+	if kind == "platform" {
+		return "operating_platform_administer"
+	}
+	return tenantAdministerPermission
+}
+
+func (r *Repository) createMenus(ctx context.Context, tenantID guid.ID, defaults []Menu, now time.Time) (int, error) {
 	tables, _, err := r.tables()
 	if err != nil {
 		return 0, err
 	}
-	defaults := DefaultMenus()
 	rows := make([]*model.Menu, 0, len(defaults))
-	for _, menu := range defaults {
+	ids := make([]guid.ID, len(defaults))
+	declarationIDs := make(map[guid.ID]guid.ID)
+	for index, menu := range defaults {
 		id, err := r.nextID()
 		if err != nil {
 			return 0, fmt.Errorf("generate menu id: %w", err)
 		}
-		menu.TenantID, menu.ID = tenantID, id
+		ids[index] = id
+		if !menu.ID.Zero() {
+			declarationIDs[menu.ID] = id
+		}
+	}
+	for index, menu := range defaults {
+		if !menu.ParentID.Zero() {
+			parentID, ok := declarationIDs[menu.ParentID]
+			if !ok {
+				return 0, fmt.Errorf("%w: missing default menu parent", ErrInvalidArgument)
+			}
+			menu.ParentID = parentID
+		}
+		menu.TenantID, menu.ID = tenantID, ids[index]
 		row := menuToRow(menu)
 		row.CreatedAt, row.UpdatedAt = now, now
 		rows = append(rows, &row)
@@ -233,6 +297,12 @@ func (r *Repository) BumpPolicyRevisionOn(
 }
 
 func normalizeTenantBootstrap(input TenantBootstrapInput) (TenantBootstrapInput, error) {
+	if input.ScopeKind == "" {
+		input.ScopeKind = "tenant"
+	}
+	if input.ScopeKind != "tenant" && input.ScopeKind != "platform" {
+		return TenantBootstrapInput{}, fmt.Errorf("%w: unsupported bootstrap owner kind", ErrInvalidArgument)
+	}
 	if input.TenantID.Zero() {
 		return TenantBootstrapInput{}, fmt.Errorf("%w: tenant is required", ErrInvalidArgument)
 	}

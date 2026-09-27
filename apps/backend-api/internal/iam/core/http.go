@@ -378,15 +378,21 @@ type createMenuInput struct {
 type updateMenuInput struct {
 	MenuID string `path:"menu_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body   struct {
-		Translations   *map[string]string `json:"translations,omitempty" doc:"replace translations; an empty object clears them; omitted preserves existing translations"`
-		ParentID       *string            `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent menu ID, or an empty string to move this menu to the root; omitted leaves it where it is"`
-		Label          *string            `json:"label,omitempty" minLength:"1" maxLength:"128"`
-		Route          *string            `json:"route,omitempty" maxLength:"512"`
-		Icon           *string            `json:"icon,omitempty" maxLength:"64"`
-		SortOrder      *int               `json:"sort_order,omitempty" minimum:"-100000" maximum:"100000"`
-		PermissionCode *string            `json:"permission_code,omitempty" maxLength:"128"`
-		Status         *MenuStatus        `json:"status,omitempty" enum:"active,disabled"`
+		Placement      *menuPlacementInput `json:"placement,omitempty" doc:"atomically reparent and order this subtree; cannot be combined with metadata edits"`
+		Translations   *map[string]string  `json:"translations,omitempty" doc:"replace translations; an empty object clears them; omitted preserves existing translations"`
+		ParentID       *string             `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent menu ID, or an empty string to move this menu to the root; omitted leaves it where it is"`
+		Label          *string             `json:"label,omitempty" minLength:"1" maxLength:"128"`
+		Route          *string             `json:"route,omitempty" maxLength:"512"`
+		Icon           *string             `json:"icon,omitempty" maxLength:"64"`
+		SortOrder      *int                `json:"sort_order,omitempty" minimum:"-100000" maximum:"100000"`
+		PermissionCode *string             `json:"permission_code,omitempty" maxLength:"128"`
+		Status         *MenuStatus         `json:"status,omitempty" enum:"active,disabled"`
 	}
+}
+
+type menuPlacementInput struct {
+	Kind       string `json:"kind" enum:"first,last,before,after"`
+	RelativeTo string `json:"relative_to,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"required sibling menu ID for before/after; omitted for first/last"`
 }
 
 type entityInput struct {
@@ -460,10 +466,12 @@ type authorizationExplanationInput struct {
 
 // RegisterHTTP registers all core IAM HTTP operations.
 func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
+	registerAccountViewWorkspaceHTTP(a, svc, registrar)
 	registerMemberExitHTTP(a, svc, registrar)
 	registerFieldPolicyHTTP(a, svc, registrar)
 	registerRelationshipHTTP(a, svc, registrar)
 	registerPlatformHTTP(a, svc, registrar)
+	registerOperatingPlatformHTTP(a, svc, registrar)
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-permission-catalog",
 		Method:      http.MethodGet,
@@ -1146,6 +1154,28 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, err
 		}
+		if in.Body.Placement != nil {
+			if in.Body.Label != nil || in.Body.Translations != nil || in.Body.Route != nil || in.Body.Icon != nil || in.Body.SortOrder != nil || in.Body.PermissionCode != nil || in.Body.Status != nil {
+				return nil, huma.Error422UnprocessableEntity("respx.invalid_argument")
+			}
+			var parentID *guid.ID
+			if in.Body.ParentID != nil {
+				id, err := optionalID(*in.Body.ParentID)
+				if err != nil {
+					return nil, err
+				}
+				parentID = &id
+			}
+			relativeTo, err := optionalID(in.Body.Placement.RelativeTo)
+			if err != nil {
+				return nil, err
+			}
+			menu, err := svc.MoveMenu(ctx, tenantID, menuID, parentID, in.Body.Placement.Kind, relativeTo)
+			if err != nil {
+				return nil, apiError("move menu", err)
+			}
+			return respx.OK(ctx, menuFromDomain(menu)), nil
+		}
 		menu, err := svc.GetMenu(ctx, tenantID, menuID)
 		if err != nil {
 			return nil, apiError("get menu", err)
@@ -1385,6 +1415,9 @@ func menusFromDomain(menus []Menu) []APIMenu {
 }
 
 func apiError(operation string, err error) error {
+	if errors.Is(err, ErrMemberConflict) {
+		return huma.Error409Conflict("membership_already_exists")
+	}
 	switch {
 	case errors.Is(err, ErrFieldPolicyConflict):
 		return huma.Error409Conflict(corei18n.ResourceConflict)

@@ -129,7 +129,24 @@ func (r *Repository) resolveDepartmentOwner(ctx context.Context, id guid.ID) (au
 	if err != nil {
 		return authz.ResourceOwner{}, false, fmt.Errorf("resolve department owner: %w", err)
 	}
-	return authz.ResourceOwner{TenantID: row.TenantID, EntityID: row.EntityID}, true, nil
+	owner, found, err := r.resolveRootOwner(ctx, row.TenantID, true, nil)
+	owner.EntityID = row.EntityID
+	return owner, found, err
+}
+
+func (r *Repository) resolveRootOwner(ctx context.Context, id guid.ID, found bool, err error) (authz.ResourceOwner, bool, error) {
+	owner := authz.ResourceOwner{TenantID: id}
+	if err != nil || !found {
+		return owner, found, err
+	}
+	kind, err := r.rootKind(ctx, id)
+	if err != nil {
+		return owner, false, err
+	}
+	if kind != ScopeTenant {
+		owner.ScopeType = kind
+	}
+	return owner, true, nil
 }
 
 func (r *Repository) resolveGroupTenant(ctx context.Context, id guid.ID) (guid.ID, bool, error) {
@@ -282,22 +299,34 @@ func (r *Repository) insertDepartment(ctx context.Context, row *departmentRow) e
 	if err != nil {
 		return err
 	}
-	if row.EntityID == nil {
-		return ErrInvalid
-	}
-	exists, err := r.entityExists(ctx, row.TenantID, *row.EntityID)
+	kind, err := r.rootKind(ctx, row.TenantID)
 	if err != nil {
 		return err
 	}
-	if !exists {
-		return ErrNotFound
+	if kind == ScopePlatform {
+		if row.EntityID != nil {
+			return ErrEntityMismatch
+		}
+	} else if kind == ScopeTenant {
+		if row.EntityID == nil {
+			return ErrInvalid
+		}
+		exists, err := r.entityExists(ctx, row.TenantID, *row.EntityID)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return ErrNotFound
+		}
+	} else {
+		return ErrInvalid
 	}
 	if row.ParentID != nil {
 		parent, err := r.getDepartment(ctx, row.TenantID, *row.ParentID)
 		if err != nil {
 			return err
 		}
-		if parent.EntityID == nil || *parent.EntityID != *row.EntityID {
+		if !sameDepartmentEntity(kind, row.EntityID, parent.EntityID) {
 			return ErrEntityMismatch
 		}
 	}

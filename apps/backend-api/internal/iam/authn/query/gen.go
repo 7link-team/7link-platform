@@ -17,6 +17,7 @@ import (
 
 var (
 	Q                         = new(Query)
+	AccountViewToken          *accountViewToken
 	Credential                *credential
 	EmailVerificationToken    *emailVerificationToken
 	MFAChallenge              *mFAChallenge
@@ -36,6 +37,7 @@ var (
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
+	AccountViewToken = &Q.AccountViewToken
 	Credential = &Q.Credential
 	EmailVerificationToken = &Q.EmailVerificationToken
 	MFAChallenge = &Q.MFAChallenge
@@ -56,6 +58,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
 		db:                        db,
+		AccountViewToken:          newAccountViewToken(db, opts...),
 		Credential:                newCredential(db, opts...),
 		EmailVerificationToken:    newEmailVerificationToken(db, opts...),
 		MFAChallenge:              newMFAChallenge(db, opts...),
@@ -77,6 +80,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 type Query struct {
 	db *gorm.DB
 
+	AccountViewToken          accountViewToken
 	Credential                credential
 	EmailVerificationToken    emailVerificationToken
 	MFAChallenge              mFAChallenge
@@ -101,6 +105,7 @@ func (q *Query) UnderlyingDB() *gorm.DB { return q.db }
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
 		db:                        db,
+		AccountViewToken:          q.AccountViewToken.clone(db),
 		Credential:                q.Credential.clone(db),
 		EmailVerificationToken:    q.EmailVerificationToken.clone(db),
 		MFAChallenge:              q.MFAChallenge.clone(db),
@@ -130,6 +135,7 @@ func (q *Query) WriteDB() *Query {
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
 		db:                        db,
+		AccountViewToken:          q.AccountViewToken.replaceDB(db),
 		Credential:                q.Credential.replaceDB(db),
 		EmailVerificationToken:    q.EmailVerificationToken.replaceDB(db),
 		MFAChallenge:              q.MFAChallenge.replaceDB(db),
@@ -149,6 +155,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 }
 
 type queryCtx struct {
+	AccountViewToken          IAccountViewTokenDo
 	Credential                ICredentialDo
 	EmailVerificationToken    IEmailVerificationTokenDo
 	MFAChallenge              IMFAChallengeDo
@@ -168,6 +175,7 @@ type queryCtx struct {
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
+		AccountViewToken:          q.AccountViewToken.WithContext(ctx),
 		Credential:                q.Credential.WithContext(ctx),
 		EmailVerificationToken:    q.EmailVerificationToken.WithContext(ctx),
 		MFAChallenge:              q.MFAChallenge.WithContext(ctx),

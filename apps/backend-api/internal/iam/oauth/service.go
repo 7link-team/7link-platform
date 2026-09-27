@@ -1043,7 +1043,7 @@ func (s *Service) Introspect(
 			return nil, err
 		}
 	}
-	if claims == nil || claims.ClientID != client.ID.String() || claims.OrganizationID != client.TenantID.String() {
+	if claims == nil || claims.AccountView != nil || claims.ClientID != client.ID.String() || claims.OrganizationID != client.TenantID.String() {
 		return map[string]any{"active": false}, nil
 	}
 	return map[string]any{

@@ -3,6 +3,8 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
+  Fragment,
   type ReactNode,
 } from "react"
 import {
@@ -14,10 +16,23 @@ import {
 } from "../lib/iam-api"
 import { getPasskeyCredential } from "../lib/webauthn"
 import { AuthContext, sessionFailureStatus, type AuthStatus } from "./auth"
+import {
+  getAccountView,
+  subscribeAccountView,
+  exitAccountView,
+} from "../lib/account-view"
+import { AccountViewBanner } from "./account-view-banner"
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [status, setStatus] = useState<AuthStatus>("loading")
+  const view = useSyncExternalStore(
+    subscribeAccountView,
+    getAccountView,
+    () => null
+  )
+  const viewID = view?.id ?? ""
+  const [verifiedViewID, setVerifiedViewID] = useState(viewID)
 
   const refresh = useCallback(async () => {
     setStatus("loading")
@@ -25,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const next = await iamApi.session()
       adoptSessionTenant(next)
       setSession(next)
+      setVerifiedViewID(getAccountView()?.id ?? "")
       setStatus("authenticated")
     } catch (cause) {
       setSession(null)
@@ -40,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!active) return
         adoptSessionTenant(next)
         setSession(next)
+        setVerifiedViewID(viewID)
         setStatus("authenticated")
       },
       (cause: unknown) => {
@@ -51,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false
     }
-  }, [])
+  }, [viewID])
 
   const finishLogin = useCallback(
     async (result: LoginResult) => {
@@ -98,6 +115,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const logout = useCallback(async () => {
+    if (getAccountView()) {
+      await exitAccountView()
+      return
+    }
     const result = await iamApi.logout()
     setTenant("")
     setSession(null)
@@ -107,15 +128,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      session,
-      status,
+      session: verifiedViewID === viewID ? session : null,
+      status: verifiedViewID === viewID ? status : ("loading" as AuthStatus),
       login,
       verifyLoginMfa,
       loginWithPasskey,
       logout,
       refresh,
     }),
-    [session, status, login, verifyLoginMfa, loginWithPasskey, logout, refresh]
+    [
+      session,
+      status,
+      verifiedViewID,
+      viewID,
+      login,
+      verifyLoginMfa,
+      loginWithPasskey,
+      logout,
+      refresh,
+    ]
   )
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={value}>
+      {view ? (
+        <div className="flex h-svh flex-col">
+          <AccountViewBanner view={view} />
+          <div className="min-h-0 flex-1 [&>div]:h-full">
+            <Fragment key={viewID}>{children}</Fragment>
+          </div>
+        </div>
+      ) : (
+        <Fragment key={viewID}>{children}</Fragment>
+      )}
+    </AuthContext.Provider>
+  )
 }

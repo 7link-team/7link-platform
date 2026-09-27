@@ -49,6 +49,7 @@ import {
   type Member,
 } from "../../lib/iam-api"
 import { useAllowed } from "../../lib/permissions"
+import { operatingPlatformID } from "../../lib/organization-scope"
 
 interface RuleConditionDraft {
   field: GroupRuleField
@@ -260,7 +261,11 @@ export default function GroupsPage() {
     <>
       <PageHeader
         title={t("groupManagement")}
-        description={t("groupsDescription")}
+        description={t(
+          operatingPlatformID()
+            ? "platformGroupsDescription"
+            : "groupsDescription"
+        )}
         action={
           allowed("group_create") && (
             <Button onClick={openCreate}>

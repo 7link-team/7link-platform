@@ -75,6 +75,7 @@ func NewModule(runtime *appenv.Runtime, config Config) *Module {
 	instance.members.foreign = &instance.foreign
 	guard := NewAdministratorGuard(runtime)
 	guard.foreign = &instance.foreign
+	guard.registry = registry
 	instance.administrators = guard
 	return instance
 }
@@ -203,6 +204,18 @@ func (m *Module) InjectServices(services *module.Services) error {
 	m.checker.foreign = &m.foreign
 	if err := m.registrar.Bind(verifier, m.checker, m.members); err != nil {
 		return fmt.Errorf("bind authorization registrar: %w", err)
+	}
+	viewConnector, err := module.Resolve[authnext.AccountViewAuthorizerConnector](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return fmt.Errorf("resolve account view authorizer connector: %w", err)
+	}
+	if err == nil {
+		if viewConnector.Bind == nil {
+			return ErrUnavailable
+		}
+		if err := viewConnector.Bind(m.authorizeAccountView); err != nil {
+			return fmt.Errorf("bind account view authorizer: %w", err)
+		}
 	}
 	m.service = NewService(m.registrar.Registry(), repository, m.checker, appender)
 	m.service.roots = roots

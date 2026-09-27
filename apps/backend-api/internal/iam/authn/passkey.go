@@ -34,7 +34,7 @@ func (s *Service) ListPasskeys(
 	if err := s.requirePasskeys(); err != nil {
 		return nil, err
 	}
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.personalReadClaims(ctx, authorization, cookieHeader)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (s *Service) BeginPasskeyRegistration(
 	if err := s.requirePasskeys(); err != nil {
 		return authnext.PasskeyOptions{}, err
 	}
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateAccountHolder(ctx, authorization, cookieHeader)
 	if err != nil {
 		return authnext.PasskeyOptions{}, err
 	}
@@ -103,7 +103,7 @@ func (s *Service) FinishPasskeyRegistration(
 	if err := s.requirePasskeys(); err != nil {
 		return authnext.Passkey{}, err
 	}
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateAccountHolder(ctx, authorization, cookieHeader)
 	if err != nil {
 		return authnext.Passkey{}, err
 	}
@@ -363,7 +363,7 @@ func (s *Service) RenamePasskey(
 	if err := s.requirePasskeys(); err != nil {
 		return authnext.Passkey{}, err
 	}
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateAccountHolder(ctx, authorization, cookieHeader)
 	if err != nil {
 		return authnext.Passkey{}, err
 	}
@@ -400,7 +400,7 @@ func (s *Service) DeletePasskey(
 	if err := s.requirePasskeys(); err != nil {
 		return err
 	}
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateAccountHolder(ctx, authorization, cookieHeader)
 	if err != nil {
 		return err
 	}

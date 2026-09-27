@@ -107,6 +107,7 @@ func (PositionRoleBinding) TableName() string { return "iam_position_role_bindin
 
 type Tenant struct {
 	ID        guid.ID   `gorm:"column:id;primaryKey;autoIncrement:false"`
+	ScopeKind string    `gorm:"column:scope_kind;size:16;not null;default:tenant"`
 	Slug      string    `gorm:"column:slug;size:63;not null"`
 	Name      string    `gorm:"column:name;size:128;not null"`
 	Status    string    `gorm:"column:status;size:16;not null"`

@@ -54,6 +54,7 @@ type Anchor struct {
 
 type AnchorStatus struct {
 	Enabled        bool      `json:"enabled"`
+	SigningEnabled bool      `json:"signing_enabled"`
 	Sequence       int64     `json:"sequence,omitempty"`
 	Hash           string    `json:"hash,omitempty"`
 	AnchoredAt     time.Time `json:"anchored_at,omitempty"`
@@ -362,6 +363,12 @@ func (s *Service) Anchor(ctx context.Context, tenantID guid.ID) (Anchor, error) 
 }
 
 func (s *Service) SignRoot(ctx context.Context, tenantID guid.ID) (Anchor, error) {
+	if s == nil || s.anchor == nil {
+		return Anchor{}, ErrAnchorDisabled
+	}
+	if s.signer == nil {
+		return Anchor{}, ErrRootSigningDisabled
+	}
 	anchor, err := s.Anchor(ctx, tenantID)
 	if err != nil {
 		return Anchor{}, err
@@ -377,7 +384,7 @@ func (s *Service) verifyAnchors(ctx context.Context, repo *Repository, tenantID 
 	if err != nil {
 		return AnchorStatus{}, anchorStoreError(err)
 	}
-	status := AnchorStatus{Enabled: true, Valid: true}
+	status := AnchorStatus{Enabled: true, SigningEnabled: s.signer != nil, Valid: true}
 	if len(anchors) == 0 {
 		return status, nil
 	}

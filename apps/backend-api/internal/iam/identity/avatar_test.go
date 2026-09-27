@@ -294,7 +294,10 @@ func (c avatarFieldChecker) FieldConstraint(
 
 // avatarTokenVerifier refuses a request that carries no credential at all, so
 // the image route's own rejection can be told apart from a missing image.
-type avatarTokenVerifier struct{ principalID guid.ID }
+type avatarTokenVerifier struct {
+	principalID guid.ID
+	accountView *authnext.AccountViewIdentity
+}
 
 func (v avatarTokenVerifier) Authenticate(_ context.Context, authorization, cookie string) (*authnext.Claims, error) {
 	if authorization == "" && cookie == "" {
@@ -303,7 +306,42 @@ func (v avatarTokenVerifier) Authenticate(_ context.Context, authorization, cook
 	return &authnext.Claims{
 		PrincipalID: v.principalID, SubjectType: authnext.SubjectTypePrincipal,
 		ACR: 1, AMR: []string{"password"},
+		AccountView: v.accountView,
 	}, nil
+}
+
+func TestAvatarHTTPAccountViewCannotChangeForeignTenantSelector(t *testing.T) {
+	h := newAvatarHTTPHarness(t)
+	for _, principal := range []Principal{h.principal, h.other} {
+		_, err := h.service.SetMyAvatar(t.Context(), principal.ID, avatarInput{Style: "pixel"})
+		require.NoError(t, err)
+	}
+	for _, readOnly := range []bool{true, false} {
+		for _, scope := range []struct {
+			kind          string
+			id            guid.ID
+			foreignStatus int
+		}{
+			{"tenant", 7, http.StatusOK},
+			{"tenant", 8, http.StatusForbidden},
+			{"personal", h.principal.ID, http.StatusForbidden},
+			{"entity", 7, http.StatusForbidden},
+			{"platform", 7, http.StatusForbidden},
+			{"system", 1, http.StatusForbidden},
+		} {
+			api := humax.New(chi.NewRouter(), humax.DefaultConfig("avatar-view-test", "1"))
+			RegisterHTTP(api, h.service, authz.NewRegistrar(authz.DefaultRegistry(), avatarTokenVerifier{
+				principalID: h.principal.ID,
+				accountView: &authnext.AccountViewIdentity{ID: 1, PrincipalID: h.other.ID, ScopeType: scope.kind, ScopeID: scope.id, ReadOnly: readOnly},
+			}, identityRouteAuthorizer{userUpdateAllowed: true}, identityMembershipChecker{}))
+			viewAPI := humatest.Wrap(t, api)
+			authorization := "Authorization: Bearer avt_view"
+			own := viewAPI.Get("/principals/"+h.principal.ID.String()+"/avatar/content", authorization)
+			require.Equal(t, http.StatusOK, own.Code, "%s own: %s", scope.kind, own.Body.String())
+			foreign := viewAPI.Get("/principals/"+h.other.ID.String()+"/avatar/content?tenant_id=7", authorization, "Cookie: session=operator")
+			require.Equal(t, scope.foreignStatus, foreign.Code, "%s foreign: %s", scope.kind, foreign.Body.String())
+		}
+	}
 }
 
 type avatarHTTPHarness struct {
@@ -372,6 +410,26 @@ func TestAvatarHTTPPersonalRoutesRequireABrowserSessionAndATrustedOrigin(t *test
 	invalid := h.api.Put("/principals/"+h.principal.ID.String()+"/avatar", cookie, origin, map[string]any{"style": "custom", "image_data": "not-a-data-url"})
 	require.Equal(t, http.StatusUnprocessableEntity, invalid.Code, invalid.Body.String())
 	require.Equal(t, written, decodeIdentityEnvelope[Avatar](t, h.api.Get("/principals/"+h.principal.ID.String()+"/avatar", cookie)).Data)
+}
+
+func TestAvatarHTTPAccountViewReadsTargetWithoutCookie(t *testing.T) {
+	h := newAvatarHTTPHarness(t)
+	_, err := h.service.SetMyAvatar(t.Context(), h.principal.ID, avatarInput{Style: "robot"})
+	require.NoError(t, err)
+	for _, readOnly := range []bool{true, false} {
+		api := humax.New(chi.NewRouter(), humax.DefaultConfig("avatar-view-read", "1"))
+		RegisterHTTP(api, h.service, authz.NewRegistrar(authz.DefaultRegistry(), avatarTokenVerifier{
+			principalID: h.principal.ID,
+			accountView: &authnext.AccountViewIdentity{ID: 1, PrincipalID: h.other.ID, ScopeType: "personal", ScopeID: h.principal.ID, ReadOnly: readOnly},
+		}, identityRouteAuthorizer{userUpdateAllowed: true}, identityMembershipChecker{}))
+		viewAPI := humatest.Wrap(t, api)
+		path := "/principals/" + h.principal.ID.String() + "/avatar"
+		response := viewAPI.Get(path, "Authorization: Bearer avt_view")
+		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+		require.Equal(t, "robot", decodeIdentityEnvelope[Avatar](t, response).Data.Style)
+		require.Equal(t, http.StatusNotFound, viewAPI.Get("/principals/"+h.other.ID.String()+"/avatar", "Authorization: Bearer avt_view").Code)
+		require.Equal(t, http.StatusUnauthorized, viewAPI.Put(path, "Authorization: Bearer avt_view", map[string]any{"style": "pixel"}).Code)
+	}
 }
 
 func TestAvatarHTTPCandidatesStayPrivateToTheirOwner(t *testing.T) {
@@ -544,6 +602,27 @@ func TestSetMyAvatarValidatesCandidateSelection(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnavailable)
 	_, _, _, err = h.repository.prepareAvatarFile(t.Context(), principal.ID, []byte("x"), "robot")
 	require.ErrorIs(t, err, ErrUnavailable)
+}
+
+func TestAccountViewAvatarKeepsTargetOwnerAndOperatorCreator(t *testing.T) {
+	h := newIdentityHarness(t, "avataractor_")
+	h.seedTenant(t, 7, "active")
+	principal, err := h.service.Create(t.Context(), 7, "avatar-target", testPassword, "Target", "")
+	require.NoError(t, err)
+	ctx := authnext.WithClaims(t.Context(), &authnext.Claims{PrincipalID: principal.ID, AccountView: &authnext.AccountViewIdentity{PrincipalID: 900, ScopeType: "personal", ScopeID: principal.ID}})
+	_, err = h.service.SetMyAvatar(ctx, principal.ID, avatarInput{Style: "robot"})
+	require.NoError(t, err)
+	var owner struct{ PrincipalID guid.ID }
+	require.NoError(t, h.db.Table(h.prefix+"file_spaces").Select("principal_id").Where("scope_kind = 'account'").Take(&owner).Error)
+	require.Equal(t, principal.ID, owner.PrincipalID)
+	var version struct{ CreatedBy guid.ID }
+	require.NoError(t, h.db.Table(h.prefix+"file_versions").Select("created_by").Take(&version).Error)
+	require.Equal(t, guid.ID(900), version.CreatedBy)
+	for _, event := range h.events() {
+		if event.EventType == "file_resource_bound" || event.EventType == "principal_avatar_updated" {
+			require.Equal(t, guid.ID(900), event.PrincipalID)
+		}
+	}
 }
 
 func TestMigrateUngovernedAvatarsRefusesUnusableReferences(t *testing.T) {

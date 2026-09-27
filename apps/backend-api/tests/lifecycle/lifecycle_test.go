@@ -21,6 +21,28 @@ type lifecycleEngine struct {
 	open func(*testing.T) string
 }
 
+func TestAccountViewOnPostgres(t *testing.T) {
+	_, dsn := testdb.OpenPostgresWithDSN(t)
+	backendRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	require.NoError(t, err)
+	for _, prefix := range []string{"", "av_"} {
+		name := "plain"
+		if prefix != "" {
+			name = "prefixed"
+		}
+		t.Run(name, func(t *testing.T) {
+			command := exec.CommandContext(t.Context(), "go", "test", "7link.com/platform/internal/integration/iam",
+				"-run", "^TestAccountViewExternalDatabase$", "-count=1", "-v")
+			command.Dir = backendRoot
+			command.Env = append(os.Environ(), lifecycleDatabaseType+"=postgres", lifecycleDatabaseDSN+"="+dsn, lifecycleTablePrefix+"="+prefix)
+			output, err := command.CombinedOutput()
+			require.NoError(t, err, string(output))
+			require.Contains(t, string(output), "--- PASS: TestAccountViewExternalDatabase")
+			t.Log(string(output))
+		})
+	}
+}
+
 func TestPrincipalErasureOnPostgres(t *testing.T) {
 	_, dsn := testdb.OpenPostgresWithDSN(t)
 	backendRoot, err := filepath.Abs(filepath.Join("..", ".."))

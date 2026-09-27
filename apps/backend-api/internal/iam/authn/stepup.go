@@ -18,7 +18,7 @@ func (s *Service) BeginStepUp(
 	ctx context.Context,
 	authorization, cookieHeader string,
 ) (authnext.StepUpOptions, error) {
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateAccountHolder(ctx, authorization, cookieHeader)
 	if err != nil {
 		return authnext.StepUpOptions{}, err
 	}
@@ -59,7 +59,7 @@ func (s *Service) VerifyStepUp(
 	ctx context.Context,
 	authorization, cookieHeader, challengeID, code string,
 ) (authnext.StepUpResult, error) {
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateAccountHolder(ctx, authorization, cookieHeader)
 	if err != nil {
 		return authnext.StepUpResult{}, err
 	}

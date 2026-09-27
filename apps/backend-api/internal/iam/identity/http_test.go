@@ -28,6 +28,11 @@ import (
 // plan: 14 operations covering the source module's 14 principal and
 // service-account capabilities.
 const identityRouteManifest = `
+identity-system-list-principals|GET|/system/principals
+identity-system-create-principal|POST|/system/principals
+identity-system-get-principal|GET|/system/principals/{principal_id}
+identity-system-update-principal|PATCH|/system/principals/{principal_id}
+identity-system-principal-workspaces|GET|/system/principals/{principal_id}/workspaces
 identity-avatar-candidates|POST|/principals/{principal_id}/avatar-candidates
 identity-avatar-candidate-image|GET|/principals/{principal_id}/avatar-candidates/{candidate_id}
 identity-my-avatar|GET|/principals/{principal_id}/avatar
@@ -36,8 +41,8 @@ identity-avatar-image|GET|/principals/{principal_id}/avatar/content
 identity-my-closure-request|GET|/principals/{principal_id}/closure-request
 identity-submit-closure-request|POST|/principals/{principal_id}/closure-request
 identity-cancel-closure-request|DELETE|/principals/{principal_id}/closure-request
-identity-list-closure-requests|GET|/platform/closure-requests
-identity-update-closure-request|PATCH|/platform/principals/{principal_id}/closure-request
+identity-list-closure-requests|GET|/system/closure-requests
+identity-update-closure-request|PATCH|/system/principals/{principal_id}/closure-request
 identity-list-principals|GET|/tenants/{tenant_id}/principals
 identity-create-principal|POST|/tenants/{tenant_id}/principals
 identity-get-principal|GET|/tenants/{tenant_id}/principals/{principal_id}
@@ -52,11 +57,11 @@ identity-delete-service-account|DELETE|/service-accounts/{service_account_id}
 identity-list-service-account-credentials|GET|/service-accounts/{service_account_id}/credentials
 identity-create-service-account-credential|POST|/service-accounts/{service_account_id}/credentials
 identity-delete-service-account-credential|DELETE|/service-accounts/{service_account_id}/credentials/{credential_id}
-identity-platform-get-principal-lifecycle|GET|/platform/principals/{principal_id}/lifecycle
-identity-platform-set-principal-retention|PUT|/platform/principals/{principal_id}/lifecycle/retention-policy
-identity-platform-anonymize-principal|PUT|/platform/principals/{principal_id}/lifecycle/anonymization
-identity-platform-suspend-principal|PUT|/platform/principals/{principal_id}/suspension
-identity-platform-restore-principal|DELETE|/platform/principals/{principal_id}/suspension`
+identity-platform-get-principal-lifecycle|GET|/system/principals/{principal_id}/lifecycle
+identity-platform-set-principal-retention|PUT|/system/principals/{principal_id}/lifecycle/retention-policy
+identity-platform-anonymize-principal|PUT|/system/principals/{principal_id}/lifecycle/anonymization
+identity-platform-suspend-principal|PUT|/system/principals/{principal_id}/suspension
+identity-platform-restore-principal|DELETE|/system/principals/{principal_id}/suspension`
 
 // identityGuards is the permission code each operation must carry. Editing a
 // profile and suspending or restoring an account are changes to a user inside
@@ -65,6 +70,11 @@ identity-platform-restore-principal|DELETE|/platform/principals/{principal_id}/s
 // is deployed. They were declared platform_administer until 10.3, which put
 // them out of reach of the only role that should hold them.
 var identityGuards = map[string]string{
+	"identity-system-list-principals":            "system_account_view",
+	"identity-system-create-principal":           "system_account_create",
+	"identity-system-get-principal":              "system_account_view",
+	"identity-system-update-principal":           "system_account_update",
+	"identity-system-principal-workspaces":       "system_account_view",
 	"identity-list-closure-requests":             "platform_administer",
 	"identity-update-closure-request":            "platform_administer",
 	"identity-list-principals":                   "user_view",
@@ -235,7 +245,7 @@ func TestIdentityRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 29)
+	require.Len(t, got, 34)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -264,17 +274,17 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 			operationIDs[operation.OperationID] = location
 			// Identity owns the principal record, the principal's own view of
 			// it, and the platform-wide lifecycle over it.
-			assert.Contains(t, []string{"directory", "account", "platform"},
+			assert.Contains(t, []string{"directory", "account", "platform", "system"},
 				operation.Tags[0], location)
 			assert.NotEmpty(t, operation.Security, location)
 
 			guard, declared := identityGuards[operation.OperationID]
 			switch operation.OperationID {
-			case "identity-my-closure-request", "identity-submit-closure-request", "identity-cancel-closure-request", "identity-my-avatar", "identity-set-my-avatar", "identity-avatar-candidates", "identity-avatar-candidate-image":
+			case "identity-my-closure-request", "identity-submit-closure-request", "identity-cancel-closure-request", "identity-set-my-avatar", "identity-avatar-candidates", "identity-avatar-candidate-image":
 				assert.True(t, authz.IsAuthenticatedOperation(operation), location)
 				assert.Equal(t, []map[string][]string{{authz.SessionScheme: {}}}, operation.Security, location)
 				assert.NotContains(t, operation.Metadata, "authz.guard", location)
-			case "identity-avatar-image":
+			case "identity-avatar-image", "identity-my-avatar":
 				assert.True(t, authz.IsAuthenticatedOperation(operation), location)
 				assert.NotContains(t, operation.Metadata, "authz.guard", location)
 			default:
@@ -305,7 +315,7 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, operationIDs, 29)
+	require.Len(t, operationIDs, 34)
 }
 
 func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {

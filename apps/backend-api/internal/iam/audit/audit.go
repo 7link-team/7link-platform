@@ -43,13 +43,18 @@ type DomainEvent struct {
 // so the state change and its audit event commit or roll back together.
 type Appender func(ctx context.Context, db *gorm.DB, event DomainEvent) error
 
-// NewDomainEvent initializes an event and copies the verified principal from
-// the authentication context when one is present.
+// NewDomainEvent records the operator while retaining the viewed identity.
 func NewDomainEvent(ctx context.Context, tenantID guid.ID, eventType, targetType string, targetID guid.ID) DomainEvent {
-	return DomainEvent{
-		TenantID: tenantID, PrincipalID: authn.PrincipalIDFromContext(ctx),
+	event := DomainEvent{
+		TenantID: tenantID, PrincipalID: authn.ActorIDFromContext(ctx),
 		EventType: eventType, TargetType: targetType, TargetID: targetID, Detail: map[string]any{},
 	}
+	if claims, ok := authn.FromContext(ctx); ok && claims != nil && claims.AccountView != nil {
+		event.Detail["account_view_id"] = claims.AccountView.ID.String()
+		event.Detail["viewed_principal_id"] = claims.PrincipalID.String()
+		event.Detail["account_view_read_only"] = claims.AccountView.ReadOnly
+	}
+	return event
 }
 
 type EventInput struct {

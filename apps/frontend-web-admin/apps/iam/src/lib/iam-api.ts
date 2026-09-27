@@ -1,4 +1,13 @@
 import type { components } from "./api-schema"
+import { operatingPlatformID, organizationRouteURL } from "./organization-scope"
+import {
+  accountViewRequest,
+  accountViewResponse,
+  getAccountView,
+  getAccountViewRevision,
+  getViewTenant,
+  setViewTenant,
+} from "./account-view"
 import {
   apiRoute,
   pagedRoute,
@@ -966,6 +975,7 @@ export interface AuditAnchor {
 
 export interface AuditAnchorStatus {
   enabled: boolean
+  signing_enabled: boolean
   sequence?: number
   hash?: string
   anchored_at?: string
@@ -1091,6 +1101,7 @@ export class ApiError extends Error {
  * means "not resolved yet" and no tenant resource request can be constructed.
  */
 export function getTenant(): string {
+  if (getAccountView()) return getViewTenant()
   const stored =
     typeof localStorage === "undefined" ? null : localStorage.getItem(tenantKey)
   return stored ?? import.meta.env.VITE_DEFAULT_TENANT ?? ""
@@ -1107,6 +1118,7 @@ export function getTenant(): string {
 export function adoptSessionTenant(
   session: Pick<Session, "organization_id"> & Partial<Pick<Session, "subject">>
 ) {
+  if (getAccountView()) return
   if (session.subject && typeof localStorage !== "undefined") {
     const ownerKey = `${tenantKey}:subject`
     if (localStorage.getItem(ownerKey) !== session.subject) {
@@ -1120,7 +1132,8 @@ export function adoptSessionTenant(
 }
 
 export function setTenant(value: string): void {
-  localStorage.setItem(tenantKey, value.trim())
+  if (getAccountView()) setViewTenant(value.trim())
+  else localStorage.setItem(tenantKey, value.trim())
   window.dispatchEvent(new Event("tenant-change"))
 }
 
@@ -1147,7 +1160,7 @@ export function shouldNotifyMenuCatalogChange(
 
 async function requestWithBase<T>(
   apiBase: string,
-  route: ApiRoute,
+  route: Pick<ApiRoute, "url" | "method">,
   init: Omit<RequestInit, "method"> = {}
 ): Promise<T> {
   return (await requestEnvelopeWithBase<T>(apiBase, route, init)).data
@@ -1155,10 +1168,15 @@ async function requestWithBase<T>(
 
 async function requestEnvelopeWithBase<T>(
   apiBase: string,
-  route: ApiRoute,
+  route: Pick<ApiRoute, "url" | "method">,
   init: Omit<RequestInit, "method"> = {}
 ): Promise<Envelope<T>> {
   const headers = new Headers(init.headers)
+  const viewRevision = getAccountViewRevision()
+  const identity = accountViewRequest(route.method)
+  new Headers(identity.headers).forEach((value, name) =>
+    headers.set(name, value)
+  )
   if (
     typeof document !== "undefined" &&
     document.documentElement.lang &&
@@ -1170,12 +1188,15 @@ async function requestEnvelopeWithBase<T>(
     (typeof FormData === "undefined" || !(init.body instanceof FormData))
   )
     headers.set("Content-Type", "application/json")
-  const response = await fetch(`${apiBase}${route.url}`, {
+  const response = await fetch(`${apiBase}${organizationRouteURL(route.url)}`, {
     ...init,
     method: route.method,
     headers,
-    credentials: "include",
+    credentials: identity.credentials,
   })
+  accountViewResponse(response.status, viewRevision)
+  if (viewRevision !== getAccountViewRevision())
+    throw new ApiError(401, "unauthorized")
   if (
     response.ok &&
     shouldNotifyMenuCatalogChange(route.url, route.method) &&
@@ -1197,11 +1218,16 @@ async function requestFileDownloadWithBase(
   route: ApiRoute,
   options: { maxBytes?: number; signal?: AbortSignal } = {}
 ): Promise<Blob> {
+  const viewRevision = getAccountViewRevision()
+  const identity = accountViewRequest(route.method)
   const response = await fetch(`${apiBase}${route.url}`, {
+    ...identity,
     method: route.method,
-    credentials: "include",
     signal: options.signal,
   })
+  accountViewResponse(response.status, viewRevision)
+  if (viewRevision !== getAccountViewRevision())
+    throw new ApiError(401, "unauthorized")
   if (!response.ok) {
     const body = (await response
       .json()
@@ -1228,10 +1254,15 @@ async function requestAuditDownloadWithBase(
   apiBase: string,
   route: ApiRoute
 ): Promise<AuditExportDownload> {
+  const viewRevision = getAccountViewRevision()
+  const identity = accountViewRequest(route.method)
   const response = await fetch(`${apiBase}${route.url}`, {
+    ...identity,
     method: route.method,
-    credentials: "include",
   })
+  accountViewResponse(response.status, viewRevision)
+  if (viewRevision !== getAccountViewRevision())
+    throw new ApiError(401, "unauthorized")
   if (!response.ok) {
     const body = (await response
       .json()
@@ -1340,9 +1371,10 @@ function auditExportFilename(disposition: string | null): string {
 
 export function createIamApi(
   apiBase = baseUrl,
-  tenantID: () => string = getTenant,
+  selectedTenantID: () => string = getTenant,
   explicitPrincipalID?: () => string
 ) {
+  const tenantID = () => operatingPlatformID() || selectedTenantID()
   const request = async <T>(
     route: ApiRoute | Promise<ApiRoute>,
     init: Omit<RequestInit, "method"> = {}
@@ -1350,12 +1382,17 @@ export function createIamApi(
   let subject: string | undefined
   let discovery: Promise<Session> | undefined
   let identityEpoch = 0
+  let viewRevision = getAccountViewRevision()
   const resetPrincipal = () => {
     identityEpoch++
     subject = undefined
     discovery = undefined
   }
   const discoverSession = async () => {
+    if (viewRevision !== getAccountViewRevision()) {
+      viewRevision = getAccountViewRevision()
+      resetPrincipal()
+    }
     const epoch = identityEpoch
     const session = await request<Session>(apiRoute("get", "/me"))
     if (epoch !== identityEpoch) throw new ApiError(401, "unauthorized")
@@ -1363,6 +1400,10 @@ export function createIamApi(
     return session
   }
   const principalID = async () => {
+    if (viewRevision !== getAccountViewRevision()) {
+      viewRevision = getAccountViewRevision()
+      resetPrincipal()
+    }
     const epoch = identityEpoch
     const explicit = explicitPrincipalID?.()
     if (explicit) return explicit
@@ -1452,6 +1493,137 @@ export function createIamApi(
     return items
   }
   return {
+    systemPrincipals: (search = "", offset = 0) =>
+      request<{ items: Principal[]; total: number }>(
+        apiRoute("get", "/system/principals", {
+          query: { search, offset, limit: 50 },
+        })
+      ),
+    systemPermissions: () =>
+      request<string[]>(apiRoute("get", "/system/permissions")),
+    systemAdministrators: () =>
+      request<components["schemas"]["PlatformAdministratorView"][]>(
+        apiRoute("get", "/system/administrators", { query: { limit: 200 } })
+      ),
+    systemPermissionCatalog: () =>
+      request<Permission[]>(apiRoute("get", "/system/permission-catalog")),
+    setSystemAdministrator: (
+      id: string,
+      full: boolean,
+      permissions: string[]
+    ) =>
+      request<components["schemas"]["PlatformAdministratorView"]>(
+        apiRoute("put", "/system/administrators/{principal_id}", {
+          path: { principal_id: id },
+        }),
+        { body: JSON.stringify({ full_administrator: full, permissions }) }
+      ),
+    revokeSystemAdministrator: (id: string) =>
+      request<unknown>(
+        apiRoute("delete", "/system/administrators/{principal_id}", {
+          path: { principal_id: id },
+        })
+      ),
+    myOperatingPlatforms: async () =>
+      request<Tenant[]>(
+        apiRoute("get", "/principals/{principal_id}/operating-platforms", {
+          path: { principal_id: await principalID() },
+        })
+      ),
+    createSystemPrincipal: (body: {
+      login_name: string
+      password: string
+      display_name?: string
+      email?: string
+    }) =>
+      request<Principal>(apiRoute("post", "/system/principals"), {
+        body: JSON.stringify(body),
+      }),
+    updateSystemPrincipal: (
+      id: string,
+      body: { display_name?: string; email?: string; status?: string }
+    ) =>
+      request<Principal>(
+        apiRoute("patch", "/system/principals/{principal_id}", {
+          path: { principal_id: id },
+        }),
+        { body: JSON.stringify(body) }
+      ),
+    operatingPlatforms: () =>
+      request<Tenant[]>(
+        apiRoute("get", "/operating-platforms", { query: { limit: 200 } })
+      ),
+    createOperatingPlatform: (body: {
+      slug: string
+      name: string
+      owner_principal_id: string
+    }) =>
+      request<Tenant>(apiRoute("post", "/operating-platforms"), {
+        body: JSON.stringify(body),
+      }),
+    updateOperatingPlatform: (id: string, body: TenantUpdate) =>
+      request<Tenant>(
+        apiRoute("patch", "/operating-platforms/{platform_id}", {
+          path: { platform_id: id },
+        }),
+        { body: JSON.stringify(body) }
+      ),
+    deleteOperatingPlatform: (id: string, version: number) =>
+      request<{ deleted: boolean }>(
+        apiRoute("delete", "/operating-platforms/{platform_id}", {
+          path: { platform_id: id },
+          query: { version },
+        })
+      ),
+    addOperatingMember: (
+      id: string,
+      body: { subject: string; display_name?: string; email?: string }
+    ) =>
+      request<Member>(
+        apiRoute("post", "/operating-platforms/{platform_id}/members", {
+          path: { platform_id: id },
+        }),
+        { body: JSON.stringify(body) }
+      ),
+    accountViewWorkspace: () =>
+      request<{
+        scope_kind: import("./account-view").AccountViewScope
+        scope_id: string
+        tenant?: Pick<Tenant, "id" | "slug" | "name" | "status">
+        entity?: Entity
+        operating_platform?: Pick<Tenant, "id" | "slug" | "name" | "status">
+      }>(apiRoute("get", "/account-views/workspace")),
+    accountViewWorkspaces: (id: string) =>
+      request<
+        {
+          scope_type: import("./account-view").AccountViewScope
+          scope_id: string
+          name: string
+          tenant_id?: string
+        }[]
+      >(
+        apiRoute("get", "/system/principals/{principal_id}/workspaces", {
+          path: { principal_id: id },
+        })
+      ),
+    operatingPlatform: (id: string) =>
+      request<Tenant>(
+        apiRoute("get", "/operating-platforms/{platform_id}", {
+          path: { platform_id: id },
+        })
+      ),
+    operatingPermissions: (id: string) =>
+      request<string[]>(
+        apiRoute("get", "/operating-platforms/{platform_id}/permissions", {
+          path: { platform_id: id },
+        })
+      ),
+    operatingNavigation: (id: string) =>
+      request<EffectiveMenu[]>(
+        apiRoute("get", "/operating-platforms/{platform_id}/navigation", {
+          path: { platform_id: id },
+        })
+      ),
     files: (entityID?: string | null, after = "") =>
       request<FilePage>(
         fileCollectionRoute(entityID, "get", {
@@ -1771,6 +1943,14 @@ export function createIamApi(
           path: { principal_id: await principalID() },
         })
       ),
+    avatarContent: (id: string, tenant?: string) =>
+      requestFileDownloadWithBase(
+        apiBase,
+        apiRoute("get", "/principals/{principal_id}/avatar/content", {
+          path: { principal_id: id },
+          query: { tenant_id: tenant },
+        })
+      ),
     avatarCandidates: async (style?: AvatarSettings["style"]) =>
       request<AvatarSettings[]>(
         apiRoute("post", "/principals/{principal_id}/avatar-candidates", {
@@ -1815,30 +1995,26 @@ export function createIamApi(
       offset = 0,
       limit = 50,
       status: NonNullable<
-        RouteQuery<"/platform/closure-requests">["status"]
+        RouteQuery<"/system/closure-requests">["status"]
       > = "pending"
     ) =>
       request<{ items: ClosureRequest[]; total: number }>(
-        apiRoute("get", "/platform/closure-requests", {
+        apiRoute("get", "/system/closure-requests", {
           query: { status, offset: offset, limit: limit },
         })
       ),
     rejectClosureRequest: (id: string, version: number) =>
       request<ClosureRequest>(
-        apiRoute(
-          "patch",
-          "/platform/principals/{principal_id}/closure-request",
-          { path: { principal_id: id } }
-        ),
+        apiRoute("patch", "/system/principals/{principal_id}/closure-request", {
+          path: { principal_id: id },
+        }),
         { body: JSON.stringify({ status: "rejected", version }) }
       ),
     processClosureRequest: (id: string, version: number) =>
       request<ClosureRequest>(
-        apiRoute(
-          "patch",
-          "/platform/principals/{principal_id}/closure-request",
-          { path: { principal_id: id } }
-        ),
+        apiRoute("patch", "/system/principals/{principal_id}/closure-request", {
+          path: { principal_id: id },
+        }),
         { body: JSON.stringify({ status: "processing", version }) }
       ),
     oauthConsents: async () =>
@@ -2102,7 +2278,7 @@ export function createIamApi(
     // 生命周期是平台级操作，租户权限不可达；后端以 platform 守卫强制。
     principalLifecycle: (id: string) =>
       request<PrincipalLifecycleStatus>(
-        apiRoute("get", "/platform/principals/{principal_id}/lifecycle", {
+        apiRoute("get", "/system/principals/{principal_id}/lifecycle", {
           path: { principal_id: id },
         })
       ),
@@ -2118,7 +2294,7 @@ export function createIamApi(
       request<PrincipalLifecycle>(
         apiRoute(
           "put",
-          "/platform/principals/{principal_id}/lifecycle/retention-policy",
+          "/system/principals/{principal_id}/lifecycle/retention-policy",
           { path: { principal_id: id } }
         ),
         { body: JSON.stringify(body) }
@@ -2130,7 +2306,7 @@ export function createIamApi(
       request<PrincipalLifecycle>(
         apiRoute(
           "put",
-          "/platform/principals/{principal_id}/lifecycle/anonymization",
+          "/system/principals/{principal_id}/lifecycle/anonymization",
           { path: { principal_id: id } }
         ),
         { body: JSON.stringify(body) }
@@ -2490,7 +2666,11 @@ export function createIamApi(
         apiRoute("post", "/tenants/{tenant_id}/departments", {
           path: { tenant_id: tenantID() },
         }),
-        { body: JSON.stringify(body) }
+        {
+          body: JSON.stringify(
+            operatingPlatformID() ? { ...body, entity_id: undefined } : body
+          ),
+        }
       ),
     updateDepartment: (
       id: string,
@@ -2918,7 +3098,15 @@ export function createIamApi(
         }),
         { body: JSON.stringify(body) }
       ),
-    updateMenu: (id: string, body: Partial<MenuInput>) =>
+    updateMenu: (
+      id: string,
+      body: Partial<MenuInput> & {
+        placement?: {
+          kind: "first" | "last" | "before" | "after"
+          relative_to?: string
+        }
+      }
+    ) =>
       request<Menu>(
         apiRoute("patch", "/menus/{menu_id}", { path: { menu_id: id } }),
         { body: JSON.stringify(body) }
@@ -3101,7 +3289,7 @@ export function createIamApi(
     auditArchiveStatus: (scope: AuditScope = "tenant") =>
       request<AuditArchiveStatus>(
         scope === "platform"
-          ? apiRoute("get", "/platform/audit/archive-status")
+          ? apiRoute("get", "/system/audit/archive-status")
           : apiRoute("get", "/tenants/{tenant_id}/audit/archive-status", {
               path: { tenant_id: tenantID() },
             })
@@ -3114,7 +3302,7 @@ export function createIamApi(
       const query = { offset, limit }
       const envelope = await requestEnvelope<AuditArchiveJob[]>(
         scope === "platform"
-          ? apiRoute("get", "/platform/audit/archives", { query })
+          ? apiRoute("get", "/system/audit/archives", { query })
           : apiRoute("get", "/tenants/{tenant_id}/audit/archives", {
               path: { tenant_id: tenantID() },
               query,
@@ -3128,7 +3316,7 @@ export function createIamApi(
     requestAuditArchive: (scope: AuditScope = "tenant") =>
       request<AuditArchiveJob>(
         scope === "platform"
-          ? apiRoute("post", "/platform/audit/archives")
+          ? apiRoute("post", "/system/audit/archives")
           : apiRoute("post", "/tenants/{tenant_id}/audit/archives", {
               path: { tenant_id: tenantID() },
             })
@@ -3136,7 +3324,7 @@ export function createIamApi(
     retryAuditArchive: (id: string, scope: AuditScope = "tenant") =>
       request<AuditArchiveJob>(
         scope === "platform"
-          ? apiRoute("post", "/platform/audit/archives/{archive_id}/attempts", {
+          ? apiRoute("post", "/system/audit/archives/{archive_id}/attempts", {
               path: { archive_id: id },
             })
           : apiRoute(
@@ -3150,7 +3338,7 @@ export function createIamApi(
         scope === "platform"
           ? apiRoute(
               "post",
-              "/platform/audit/archives/{archive_id}/verifications",
+              "/system/audit/archives/{archive_id}/verifications",
               { path: { archive_id: id } }
             )
           : apiRoute(
@@ -3163,7 +3351,7 @@ export function createIamApi(
       requestAuditDownloadWithBase(
         apiBase,
         scope === "platform"
-          ? apiRoute("get", "/platform/audit/archives/{archive_id}/content", {
+          ? apiRoute("get", "/system/audit/archives/{archive_id}/content", {
               path: { archive_id: id },
             })
           : apiRoute(
@@ -3184,11 +3372,17 @@ export function createIamApi(
     ) =>
       request<AuditRetentionPolicy>(
         scope === "platform"
-          ? apiRoute("put", "/platform/audit/retention-policy")
+          ? apiRoute("put", "/system/audit/retention-policy")
           : apiRoute("put", "/tenants/{tenant_id}/audit/retention-policy", {
               path: { tenant_id: tenantID() },
             }),
         { body: JSON.stringify(body) }
+      ),
+    auditAnchor: () =>
+      request<AuditAnchor>(
+        apiRoute("post", "/tenants/{tenant_id}/audit/anchors", {
+          path: { tenant_id: tenantID() },
+        })
       ),
     auditSignRoot: () =>
       request<AuditAnchor>(

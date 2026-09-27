@@ -59,6 +59,7 @@ func (t directoryTree) appendVersion(ctx context.Context, tx *gorm.DB, input mod
 		return ErrNotFound
 	}
 	input.NodeKind, input.CreatedAt = "file", now.UnixMilli()
+	input.CreatedBy = storageActorID(ctx, input.CreatedBy)
 	if err := q.Version.WithContext(ctx).Create(&input); err != nil {
 		return err
 	}

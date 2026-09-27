@@ -33,7 +33,7 @@ type iamMigrationContract struct {
 
 func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 	contracts := iamMigrationContracts()
-	owners := make(map[string]string, 72)
+	owners := make(map[string]string, 73)
 	versionTables := make(map[string]string, len(contracts))
 	for _, contract := range contracts {
 		t.Run(contract.name, func(t *testing.T) {
@@ -61,7 +61,7 @@ func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 			}
 		})
 	}
-	assert.Len(t, owners, 72)
+	assert.Len(t, owners, 73)
 }
 
 func iamMigrationContracts() []iamMigrationContract {
@@ -72,6 +72,7 @@ func iamMigrationContracts() []iamMigrationContract {
 			"iam_role_members", "iam_role_permissions", "iam_roles", "iam_temporary_role_grants", "iam_tenant_members",
 		}, module: &iamcore.Module{}},
 		{name: "authn", tables: []string{
+			"iam_account_view_tokens",
 			"iam_credentials", "iam_email_verification_tokens", "iam_mfa_challenges", "iam_mfa_enrollments",
 			"iam_notification_outbox", "iam_passkey_challenges", "iam_passkey_users", "iam_passkeys",
 			"iam_password_history", "iam_password_recovery_tokens", "iam_personal_tokens", "iam_reauth_challenges", "iam_recovery_codes", "iam_sessions",

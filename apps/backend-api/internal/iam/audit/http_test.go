@@ -36,13 +36,13 @@ audit-request-archive|POST|/tenants/{tenant_id}/audit/archives
 audit-retry-archive|POST|/tenants/{tenant_id}/audit/archives/{archive_id}/attempts
 audit-verify-archive|POST|/tenants/{tenant_id}/audit/archives/{archive_id}/verifications
 audit-download-archive|GET|/tenants/{tenant_id}/audit/archives/{archive_id}/content
-audit-platform-archive-status|GET|/platform/audit/archive-status
-audit-platform-list-archives|GET|/platform/audit/archives
-audit-platform-request-archive|POST|/platform/audit/archives
-audit-platform-retry-archive|POST|/platform/audit/archives/{archive_id}/attempts
-audit-platform-verify-archive|POST|/platform/audit/archives/{archive_id}/verifications
-audit-platform-download-archive|GET|/platform/audit/archives/{archive_id}/content
-audit-platform-set-retention|PUT|/platform/audit/retention-policy`
+audit-platform-archive-status|GET|/system/audit/archive-status
+audit-platform-list-archives|GET|/system/audit/archives
+audit-platform-request-archive|POST|/system/audit/archives
+audit-platform-retry-archive|POST|/system/audit/archives/{archive_id}/attempts
+audit-platform-verify-archive|POST|/system/audit/archives/{archive_id}/verifications
+audit-platform-download-archive|GET|/system/audit/archives/{archive_id}/content
+audit-platform-set-retention|PUT|/system/audit/retention-policy`
 
 var auditGuards = map[string]string{
 	"audit-anchor-current":            "audit_event_anchor",
@@ -128,7 +128,7 @@ func TestAuditRouteManifestAndOpenAPIContract(t *testing.T) {
 			// Platform routes have no tenant path parameter; tenant routes require
 			// exactly one so their authorization context is explicit in the URL.
 			wantTenantPaths := 1
-			if strings.HasPrefix(path, "/platform/") {
+			if strings.HasPrefix(path, "/system/") {
 				wantTenantPaths = 0
 			}
 			assert.Equal(t, wantTenantPaths, tenantPaths, location)

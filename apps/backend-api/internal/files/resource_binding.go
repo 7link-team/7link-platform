@@ -169,7 +169,7 @@ func (r *ResourceBindings) Bind(ctx context.Context, tx *gorm.DB, input Resource
 		ID: input.ID, SpaceID: input.SpaceID, FileID: input.FileID, FileKind: "file",
 		VersionID: input.VersionID, Purpose: input.Purpose, ResourceKind: input.ResourceKind,
 		ResourceID: input.ResourceID, Slot: input.Slot, State: "active", LiveSlot: &live,
-		Version: 1, CreatedBy: input.ActorID, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli(),
+		Version: 1, CreatedBy: storageActorID(ctx, input.ActorID), CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli(),
 	}
 	if input.ExpiresAt != nil {
 		expiresAt := input.ExpiresAt.UnixMilli()

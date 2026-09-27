@@ -1,7 +1,18 @@
 import { useTranslations, useLocale } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type DragEvent,
+} from "react"
 import {
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  FolderTree,
+  GripVertical,
   Boxes,
   ChevronDown,
   ChevronRight,
@@ -35,7 +46,14 @@ import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { iamApi, type Menu, type MenuInput } from "../../lib/iam-api"
 import { useAllowed } from "../../lib/permissions"
-import { menuLabel, menuRows } from "../../lib/navigation"
+import { operatingPlatformID } from "../../lib/organization-scope"
+import {
+  menuLabel,
+  menuRows,
+  adjacentMenuMove,
+  droppedMenuMove,
+  type MenuMove,
+} from "../../lib/navigation"
 import { defaultLocale, locales, localeNames } from "@workspace/ui/i18n/config"
 
 const rootMenu = "__root__"
@@ -56,6 +74,13 @@ export default function MenusPage() {
     { locale: string; label: string }[]
   >([])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [listCollapsed, setListCollapsed] = useState<Set<string>>(new Set())
+  const [selectedID, setSelectedID] = useState("")
+  const [dragging, setDragging] = useState("")
+  const [dropTarget, setDropTarget] = useState<{
+    id: string
+    position: "before" | "inside" | "after"
+  } | null>(null)
   const [previewLanguage, setPreviewLanguage] = useState<string | null>(null)
   const loadGeneration = useRef(0)
   const [loading, setLoading] = useState(true)
@@ -66,7 +91,12 @@ export default function MenusPage() {
     setLoadError("")
     try {
       const next = await iamApi.menus()
-      if (generation === loadGeneration.current) setMenus(next)
+      if (generation === loadGeneration.current) {
+        setMenus(next)
+        setSelectedID((id) =>
+          next.some((menu) => menu.parent_id === id) ? id : ""
+        )
+      }
     } catch (cause) {
       if (generation === loadGeneration.current) {
         setMenus([])
@@ -89,7 +119,7 @@ export default function MenusPage() {
 
   const openCreate = () => {
     setEditing(null)
-    setParentID(rootMenu)
+    setParentID(selectedID || rootMenu)
     setStatus("active")
     setTranslations(locales.map((locale) => ({ locale, label: "" })))
     setOpen(true)
@@ -163,6 +193,99 @@ export default function MenusPage() {
   }
 
   const rows = menuRows(loading || loadError ? [] : menus)
+  const branchIDs = new Set(
+    menus.flatMap((menu) => (menu.parent_id ? [menu.parent_id] : []))
+  )
+  const selected = rows.find(({ menu }) => menu.id === selectedID)
+  const visibleRows = rows.filter(({ ancestors }) => {
+    if (selectedID && !ancestors.includes(selectedID)) return false
+    const visibleAncestors = selectedID
+      ? ancestors.slice(ancestors.indexOf(selectedID) + 1)
+      : ancestors
+    return !visibleAncestors.some((id) => listCollapsed.has(id))
+  })
+  const selectBranch = (id: string) => {
+    setSelectedID(id)
+    setListCollapsed(id ? new Set(branchIDs) : new Set())
+  }
+  const toggleListBranch = (id: string) => {
+    setListCollapsed((previous) => {
+      const next = new Set(previous)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const displayLanguage = previewLanguage ?? locale
+  const move = async (id: string, destination: MenuMove | null) => {
+    if (!destination || busy || !allowed("menu_update")) return
+    setBusy(true)
+    setError("")
+    try {
+      await iamApi.updateMenu(id, destination)
+      await refresh()
+      window.dispatchEvent(new Event("menu-catalog-change"))
+    } catch (cause) {
+      setError((cause as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const dragProps = (id: string) => ({
+    draggable: Boolean(id && allowed("menu_update") && !busy),
+    onDragStart: (event: DragEvent<HTMLElement>) => {
+      if (!id || busy || !allowed("menu_update")) {
+        event.preventDefault()
+        return
+      }
+      event.dataTransfer.setData("application/x-menu-id", id)
+      event.dataTransfer.effectAllowed = "move"
+      setDragging(id)
+    },
+    onDragOver: (event: DragEvent<HTMLElement>) => {
+      if (!dragging || busy || !allowed("menu_update")) return
+      const rect = event.currentTarget.getBoundingClientRect()
+      const ratio = (event.clientY - rect.top) / rect.height
+      const position =
+        !id || (ratio >= 0.3 && ratio <= 0.7)
+          ? "inside"
+          : ratio < 0.3
+            ? "before"
+            : "after"
+      if (!droppedMenuMove(menus, dragging, id, position)) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = "move"
+      setDropTarget({ id, position })
+    },
+    onDrop: (event: DragEvent<HTMLElement>) => {
+      event.preventDefault()
+      const source =
+        dragging || event.dataTransfer.getData("application/x-menu-id")
+      const rect = event.currentTarget.getBoundingClientRect()
+      const ratio = (event.clientY - rect.top) / rect.height
+      const position =
+        !id || (ratio >= 0.3 && ratio <= 0.7)
+          ? "inside"
+          : ratio < 0.3
+            ? "before"
+            : "after"
+      setDragging("")
+      setDropTarget(null)
+      void move(source, droppedMenuMove(menus, source, id, position))
+    },
+    onDragEnd: () => {
+      setDragging("")
+      setDropTarget(null)
+    },
+  })
+  const dropClass = (id: string) =>
+    dropTarget?.id !== id
+      ? ""
+      : dropTarget.position === "inside"
+        ? "bg-accent outline outline-2 outline-primary"
+        : dropTarget.position === "before"
+          ? "border-t-2 border-t-primary"
+          : "border-b-2 border-b-primary"
   const parentOptions = [
     { value: rootMenu, label: t("rootMenu") },
     ...rows
@@ -179,7 +302,11 @@ export default function MenusPage() {
   return (
     <>
       <PageHeader
-        title={t("menuManagement")}
+        title={t(
+          operatingPlatformID()
+            ? "platformMenuManagement"
+            : "tenantMenuManagement"
+        )}
         action={
           allowed("menu_create") && (
             <Button onClick={openCreate}>
@@ -199,60 +326,90 @@ export default function MenusPage() {
         </Alert>
       )}
       {loading && <p role="status">{t("loading")}</p>}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-        <span className="text-sm text-muted-foreground">
-          {!loading &&
-            !loadError &&
-            t("menuCounts", {
-              roots: menus.filter((menu) => !menu.parent_id).length,
-              total: menus.length,
-            })}
-        </span>
-        <label className="flex items-center gap-2 text-sm">
-          <Languages className="size-4" />
-          {t("displayLanguage")}
-          <select
-            aria-label={t("menuPreviewLanguage")}
-            className="h-9 rounded-md border bg-background px-2"
-            value={previewLanguage ?? locale}
-            onChange={(event) => setPreviewLanguage(event.target.value)}
+      {!loadError && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+          <span className="text-sm text-muted-foreground">
+            {!loading &&
+              !loadError &&
+              t("menuCounts", {
+                roots: menus.filter((menu) => !menu.parent_id).length,
+                total: menus.length,
+              })}
+          </span>
+          <label className="flex items-center gap-2 text-sm">
+            <Languages className="size-4" />
+            {t("displayLanguage")}
+            <select
+              aria-label={t("menuPreviewLanguage")}
+              className="h-9 rounded-md border bg-background px-2"
+              value={previewLanguage ?? locale}
+              onChange={(event) => setPreviewLanguage(event.target.value)}
+            >
+              {locales.map((locale) => (
+                <option key={locale} value={locale}>
+                  {localeNames[locale]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+      {!loadError && (
+        <div className="grid min-w-0 gap-4 md:grid-cols-[240px_minmax(0,1fr)]">
+          <nav
+            aria-label={t("menuTree")}
+            className="min-w-0 border-b pb-4 md:border-e md:border-b-0 md:pe-4"
           >
-            {locales.map((locale) => (
-              <option key={locale} value={locale}>
-                {localeNames[locale]}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="overflow-hidden rounded-md border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("menu")}</TableHead>
-              <TableHead>{t("route")}</TableHead>
-              <TableHead>{t("permissionCode")}</TableHead>
-              <TableHead>{t("sortOrder")}</TableHead>
-              <TableHead>{t("status")}</TableHead>
-              <TableHead className="w-24 text-right">{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows
-              .filter((row) => !row.ancestors.some((id) => collapsed.has(id)))
-              .map(({ menu, depth }) => (
-                <TableRow key={menu.id}>
-                  <TableCell>
-                    <span
-                      className="flex items-center gap-2 font-medium"
-                      style={{ paddingInlineStart: Math.min(depth, 8) * 20 }}
+            <button
+              type="button"
+              className={`mb-2 flex min-h-10 w-full items-center gap-2 rounded px-2 text-start text-sm font-medium ${selectedID ? "hover:bg-accent" : "bg-accent"} ${dropClass("")}`}
+              onClick={() => selectBranch("")}
+              {...dragProps("")}
+              data-menu-root
+            >
+              <FolderTree className="size-4 shrink-0" />
+              {t("allMenus")}
+            </button>
+            <div
+              role="tree"
+              aria-label={t("menuTree")}
+              className="max-h-64 overflow-auto md:max-h-[calc(100vh-260px)]"
+            >
+              {rows
+                .filter(
+                  (row) =>
+                    branchIDs.has(row.menu.id) &&
+                    !row.ancestors.some((id) => collapsed.has(id))
+                )
+                .map(({ menu, depth }) => {
+                  const children = menus.some(
+                    (child) =>
+                      child.parent_id === menu.id && branchIDs.has(child.id)
+                  )
+                  return (
+                    <div
+                      key={menu.id}
+                      role="treeitem"
+                      aria-level={depth + 1}
+                      aria-selected={selectedID === menu.id}
+                      aria-expanded={
+                        children ? !collapsed.has(menu.id) : undefined
+                      }
+                      className={`flex min-h-10 min-w-0 items-center rounded text-sm ${selectedID === menu.id ? "bg-accent" : "hover:bg-accent"} ${dropClass(menu.id)}`}
+                      style={{ paddingInlineStart: Math.min(depth, 12) * 14 }}
+                      data-menu-tree-id={menu.id}
+                      {...dragProps(menu.id)}
                     >
-                      {menus.some((child) => child.parent_id === menu.id) ? (
+                      {children ? (
                         <button
                           type="button"
-                          className="grid size-8 shrink-0 place-items-center rounded hover:bg-muted"
-                          aria-label={`${collapsed.has(menu.id) ? t("expand") : t("collapse")}${menu.label}`}
-                          aria-expanded={!collapsed.has(menu.id)}
+                          className="grid size-8 shrink-0 place-items-center"
+                          aria-label={t(
+                            collapsed.has(menu.id)
+                              ? "expandNamed"
+                              : "collapseNamed",
+                            { name: menuLabel(menu, displayLanguage) }
+                          )}
                           onClick={() =>
                             setCollapsed((previous) => {
                               const next = new Set(previous)
@@ -271,76 +428,231 @@ export default function MenusPage() {
                       ) : (
                         <span className="w-8 shrink-0" />
                       )}
-                      <Boxes className="size-4 text-primary" />
-                      <span>
-                        {menuLabel(menu, previewLanguage ?? locale)}
-                        <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                          {Object.keys(menu.translations ?? {}).join(" · ") ||
-                            t("defaultLabel")}
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-2 py-2 pe-2 text-start"
+                        onClick={() => selectBranch(menu.id)}
+                      >
+                        <Boxes className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="break-words">
+                          {menuLabel(menu, displayLanguage)}
                         </span>
-                      </span>
-                    </span>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {menu.route || "-"}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {menu.permission_code || "-"}
-                  </TableCell>
-                  <TableCell>
-                    <span className="flex items-center gap-1 text-xs">
-                      <ArrowUpDown size={13} />
-                      {menu.sort_order}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        menu.status === "active" ? "secondary" : "destructive"
-                      }
-                    >
-                      {menu.status === "active" ? t("active") : t("disable")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      {allowed("menu_update") && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={busy}
-                          onClick={() => openEdit(menu)}
-                          aria-label={t("editNamed", { name: menu.label })}
-                          title={t("editMenu")}
-                        >
-                          <Pencil />
-                        </Button>
-                      )}
-                      {allowed("menu_delete") && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={busy}
-                          onClick={() => void remove(menu.id)}
-                          aria-label={t("deleteNamed", { name: menu.label })}
-                          title={t("deleteMenu")}
-                        >
-                          <Trash2 className="text-destructive" />
-                        </Button>
-                      )}
+                      </button>
                     </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-          </TableBody>
-        </Table>
-        {!loading && !loadError && menus.length === 0 && (
-          <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
-            <Boxes className="mb-2 size-7" />
-            {t("noMenus")}
-          </div>
-        )}
-      </div>
+                  )
+                })}
+            </div>
+          </nav>
+          <section className="min-w-0" aria-label={t("menuChildren")}>
+            <div className="mb-3 flex min-h-10 flex-wrap items-center justify-between gap-2 border-b pb-2">
+              <h2 className="min-w-0 text-sm font-semibold break-words">
+                {selected
+                  ? [
+                      ...selected.ancestors.map((id) =>
+                        menuLabel(
+                          menus.find((menu) => menu.id === id)!,
+                          displayLanguage
+                        )
+                      ),
+                      menuLabel(selected.menu, displayLanguage),
+                    ].join(" / ")
+                  : t("allMenus")}
+              </h2>
+              <span className="text-xs text-muted-foreground">
+                {visibleRows.length}
+              </span>
+            </div>
+            <div className="max-h-[calc(100dvh-320px)] min-h-40 overflow-auto border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("menu")}</TableHead>
+                    <TableHead>{t("route")}</TableHead>
+                    <TableHead>{t("permissionCode")}</TableHead>
+                    <TableHead>{t("sortOrder")}</TableHead>
+                    <TableHead>{t("status")}</TableHead>
+                    <TableHead className="w-24 text-right">
+                      {t("actions")}
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visibleRows.map(({ menu, depth }) => (
+                    <TableRow
+                      key={menu.id}
+                      data-menu-row-id={menu.id}
+                      className={dropClass(menu.id)}
+                      {...dragProps(menu.id)}
+                    >
+                      <TableCell>
+                        <span
+                          className="flex items-center gap-2 font-medium"
+                          style={{
+                            paddingInlineStart:
+                              Math.min(
+                                depth - (selected ? selected.depth + 1 : 0),
+                                8
+                              ) * 20,
+                          }}
+                        >
+                          {menus.some(
+                            (child) => child.parent_id === menu.id
+                          ) ? (
+                            <button
+                              type="button"
+                              className="grid size-8 shrink-0 place-items-center rounded hover:bg-muted"
+                              aria-expanded={!listCollapsed.has(menu.id)}
+                              aria-label={t(
+                                listCollapsed.has(menu.id)
+                                  ? "expandNamed"
+                                  : "collapseNamed",
+                                { name: menuLabel(menu, displayLanguage) }
+                              )}
+                              title={t(
+                                listCollapsed.has(menu.id)
+                                  ? "expandNamed"
+                                  : "collapseNamed",
+                                { name: menuLabel(menu, displayLanguage) }
+                              )}
+                              onClick={() => toggleListBranch(menu.id)}
+                            >
+                              {listCollapsed.has(menu.id) ? (
+                                <ChevronRight className="size-4" />
+                              ) : (
+                                <ChevronDown className="size-4" />
+                              )}
+                            </button>
+                          ) : (
+                            <span className="w-8 shrink-0" />
+                          )}
+                          {allowed("menu_update") ? (
+                            <GripVertical className="size-4 shrink-0 text-muted-foreground" />
+                          ) : (
+                            <Boxes className="size-4 text-primary" />
+                          )}
+                          <span>
+                            {menuLabel(menu, previewLanguage ?? locale)}
+                            <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                              {Object.keys(menu.translations ?? {}).join(
+                                " · "
+                              ) || t("defaultLabel")}
+                            </span>
+                          </span>
+                        </span>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {menu.route || "-"}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {menu.permission_code || "-"}
+                      </TableCell>
+                      <TableCell>
+                        <span className="flex items-center gap-1 text-xs">
+                          <ArrowUpDown size={13} />
+                          {menu.sort_order}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            menu.status === "active"
+                              ? "secondary"
+                              : "destructive"
+                          }
+                        >
+                          {menu.status === "active"
+                            ? t("active")
+                            : t("disable")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {allowed("menu_update") && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                disabled={
+                                  busy ||
+                                  !adjacentMenuMove(menus, menu.id, "up")
+                                }
+                                onClick={() =>
+                                  void move(
+                                    menu.id,
+                                    adjacentMenuMove(menus, menu.id, "up")
+                                  )
+                                }
+                                aria-label={t("moveMenuUp", {
+                                  name: menu.label,
+                                })}
+                                title={t("moveMenuUp", { name: menu.label })}
+                              >
+                                <ArrowUp />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                disabled={
+                                  busy ||
+                                  !adjacentMenuMove(menus, menu.id, "down")
+                                }
+                                onClick={() =>
+                                  void move(
+                                    menu.id,
+                                    adjacentMenuMove(menus, menu.id, "down")
+                                  )
+                                }
+                                aria-label={t("moveMenuDown", {
+                                  name: menu.label,
+                                })}
+                                title={t("moveMenuDown", { name: menu.label })}
+                              >
+                                <ArrowDown />
+                              </Button>
+                            </>
+                          )}
+                          {allowed("menu_update") && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              disabled={busy}
+                              onClick={() => openEdit(menu)}
+                              aria-label={t("editNamed", { name: menu.label })}
+                              title={t("editMenu")}
+                            >
+                              <Pencil />
+                            </Button>
+                          )}
+                          {allowed("menu_delete") && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              disabled={busy}
+                              onClick={() => void remove(menu.id)}
+                              aria-label={t("deleteNamed", {
+                                name: menu.label,
+                              })}
+                              title={t("deleteMenu")}
+                            >
+                              <Trash2 className="text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {!loading && !loadError && visibleRows.length === 0 && (
+                <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
+                  <Boxes className="mb-2 size-7" />
+                  {t("noMenus")}
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
       <Dialog
         open={open}
         onOpenChange={(nextOpen) => {

@@ -15,8 +15,15 @@ import {
 } from "@workspace/ui/components/dropdown-menu"
 import { useAuth } from "./auth"
 import { iamApi, type AvatarSettings, type Session } from "../lib/iam-api"
+import { getAccountView } from "../lib/account-view"
 
-export function UserMenu({
+export function UserMenu(props: Parameters<typeof AccountUserMenu>[0]) {
+  const view = getAccountView()
+  if (view && view.scope_type !== "personal") return null
+  return <AccountUserMenu {...props} />
+}
+
+function AccountUserMenu({
   tenantID,
   platformTenantAccess = false,
   platformAuditAccess = false,
@@ -150,16 +157,14 @@ export function UserMenu({
             <>
               <DropdownMenuLabel>{t("platformManagement")}</DropdownMenuLabel>
               {platformTenantAccess && (
-                <DropdownMenuItem onClick={() => navigate("/platform/tenants")}>
+                <DropdownMenuItem onClick={() => navigate("/system/tenants")}>
                   <Landmark className="mr-2 size-4" />
                   {t("tenantManagement")}
                 </DropdownMenuItem>
               )}
               {platformAuditAccess && (
                 <DropdownMenuItem
-                  onClick={() =>
-                    navigate("/platform/audit-governance")
-                  }
+                  onClick={() => navigate("/system/audit-governance")}
                 >
                   <FileClock className="mr-2 size-4" />
                   {t("platformAudit")}

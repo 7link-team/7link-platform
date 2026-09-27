@@ -38,6 +38,7 @@ import {
 } from "@workspace/ui/components/table"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
+import { operatingPlatformID } from "../../lib/organization-scope"
 import {
   iamApi,
   type Department,
@@ -73,7 +74,7 @@ export default function DepartmentsPage() {
     try {
       const [nextDepartments, nextEntities] = await Promise.all([
         iamApi.departments(),
-        iamApi.entities(),
+        operatingPlatformID() ? Promise.resolve([]) : iamApi.entities(),
       ])
       if (generation === loadGeneration.current) {
         setDepartments(nextDepartments)
@@ -133,7 +134,8 @@ export default function DepartmentsPage() {
       ...departments
         .filter(
           (candidate) =>
-            candidate.entity_id === entityID &&
+            (Boolean(operatingPlatformID()) ||
+              candidate.entity_id === entityID) &&
             candidate.id !== editing?.id &&
             !isDescendantOf(candidate, editing?.id, departmentByID)
         )
@@ -228,10 +230,17 @@ export default function DepartmentsPage() {
     <>
       <PageHeader
         title={t("departmentManagement")}
-        description={t("departmentsDescription")}
+        description={t(
+          operatingPlatformID()
+            ? "platformDepartmentsDescription"
+            : "departmentsDescription"
+        )}
         action={
           allowed("dept_create") && (
-            <Button onClick={openCreate} disabled={entities.length === 0}>
+            <Button
+              onClick={openCreate}
+              disabled={!operatingPlatformID() && entities.length === 0}
+            >
               <Plus />
               {t("createDepartment")}
             </Button>
@@ -396,22 +405,24 @@ export default function DepartmentsPage() {
             className="grid gap-4"
             onSubmit={submit}
           >
-            <div className="grid gap-2">
-              <Label htmlFor="department-entity">{t("entity")}</Label>
-              <SimpleSelect
-                id="department-entity"
-                options={entities.map((entity) => ({
-                  value: entity.id,
-                  label: entity.name,
-                }))}
-                value={entityID}
-                onValueChange={(value) => {
-                  setEntityID(value)
-                  setParentID(rootDepartment)
-                }}
-                disabled={editing !== null}
-              />
-            </div>
+            {!operatingPlatformID() && (
+              <div className="grid gap-2">
+                <Label htmlFor="department-entity">{t("entity")}</Label>
+                <SimpleSelect
+                  id="department-entity"
+                  options={entities.map((entity) => ({
+                    value: entity.id,
+                    label: entity.name,
+                  }))}
+                  value={entityID}
+                  onValueChange={(value) => {
+                    setEntityID(value)
+                    setParentID(rootDepartment)
+                  }}
+                  disabled={editing !== null}
+                />
+              </div>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="department-name">{t("departmentName")}</Label>
               <Input
@@ -464,7 +475,7 @@ export default function DepartmentsPage() {
             <Button
               type="submit"
               form="department-form"
-              disabled={busy || entityID === ""}
+              disabled={busy || (!operatingPlatformID() && entityID === "")}
             >
               {busy ? t("saving") : editing ? t("save") : t("create")}
             </Button>

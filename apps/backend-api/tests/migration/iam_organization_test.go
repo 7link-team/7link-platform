@@ -77,7 +77,7 @@ func assertOrganizationUp(t *testing.T, db *gorm.DB, modules []module.Module, pr
 	}
 	assert.Equal(t, "retire-positions", milestones[iamcore.Name])
 	assert.Equal(t, "avatars", milestones[identity.Name])
-	assert.Equal(t, "retire-positions", milestones[organization.Name])
+	assert.Equal(t, "administration-scopes", milestones[organization.Name])
 	assert.Equal(t, "grant-incarnation", milestones[oauth.Name])
 }
 
@@ -282,7 +282,7 @@ func verifyOrganizationRollbackGraph(
 	_, err := app.ExecuteModuleMigrations(t.Context(), db, modules, app.MigrationRequest{
 		Action: app.MigrationDownTo, Module: organization.Name, To: 0,
 	}, prefix)
-	assert.ErrorContains(t, err, `cannot roll back migration milestones "organization.base", "organization.constraints"`)
+	assert.ErrorContains(t, err, `cannot roll back migration milestones "organization.administration-scopes", "organization.base", "organization.constraints"`)
 	assert.ErrorContains(t, err, `"oauth.constraints"`)
 
 	_, err = app.ExecuteModuleMigrations(t.Context(), db, modules, app.MigrationRequest{

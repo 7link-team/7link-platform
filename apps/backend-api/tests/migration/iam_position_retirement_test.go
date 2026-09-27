@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -26,12 +28,21 @@ type beforePositionRetirement struct{ module.Module }
 
 func (m beforePositionRetirement) MigrationSource() goosex.Source {
 	source := m.Module.(module.MigrationSourceProvider).MigrationSource()
+	cutoff := m.retirementVersion()
 	files := fstest.MapFS{}
 	err := fs.WalkDir(source.FS, "sql", func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !entry.IsDir() && !strings.HasSuffix(path, "_retire_positions.sql") {
+		if !entry.IsDir() {
+			versionText, _, _ := strings.Cut(filepath.Base(path), "_")
+			version, parseErr := strconv.ParseInt(versionText, 10, 64)
+			if parseErr != nil {
+				return parseErr
+			}
+			if cutoff > 0 && version >= cutoff {
+				return nil
+			}
 			data, readErr := fs.ReadFile(source.FS, path)
 			if readErr != nil {
 				return readErr
@@ -40,17 +51,31 @@ func (m beforePositionRetirement) MigrationSource() goosex.Source {
 		}
 		return nil
 	})
-	if err != nil { panic(err) }
+	if err != nil {
+		panic(err)
+	}
 	source.FS = files
 	return source
 }
 
 func (m beforePositionRetirement) MigrationMilestones() []module.MigrationMilestone {
 	all := m.Module.(module.MigrationMilestoneProvider).MigrationMilestones()
-	if all[len(all)-1].Name == "retire-positions" {
-		return all[:len(all)-1]
+	cutoff := m.retirementVersion()
+	for index, milestone := range all {
+		if cutoff > 0 && milestone.Version >= cutoff {
+			return all[:index]
+		}
 	}
 	return all
+}
+
+func (m beforePositionRetirement) retirementVersion() int64 {
+	for _, milestone := range m.Module.(module.MigrationMilestoneProvider).MigrationMilestones() {
+		if milestone.Name == "retire-positions" {
+			return milestone.Version
+		}
+	}
+	return 0
 }
 
 func TestIAMPositionRetirementUpgrade(t *testing.T) {

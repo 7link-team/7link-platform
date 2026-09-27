@@ -41,8 +41,8 @@ func TestClosureHTTPPersonalAndPlatformBoundaries(t *testing.T) {
 	require.Equal(t, http.StatusOK, created.Code, created.Body.String())
 	require.Contains(t, created.Body.String(), `"status":"pending"`)
 	require.Equal(t, http.StatusConflict, httpAPI.Post(path, cookie, origin, map[string]any{"proof": "verified", "version": 0}).Code)
-	require.Equal(t, http.StatusOK, httpAPI.Get("/platform/closure-requests?status=pending&limit=1", cookie).Code)
-	base := "/platform/principals/" + p.ID.String() + "/closure-request"
+	require.Equal(t, http.StatusOK, httpAPI.Get("/system/closure-requests?status=pending&limit=1", cookie).Code)
+	base := "/system/principals/" + p.ID.String() + "/closure-request"
 	require.Equal(t, http.StatusConflict, httpAPI.Patch(base, cookie, origin, map[string]any{"version": 99, "status": "processing"}).Code)
 	rejected := httpAPI.Patch(base, cookie, origin, map[string]any{"version": 1, "status": "rejected"})
 	require.Equal(t, http.StatusOK, rejected.Code, rejected.Body.String())
@@ -64,9 +64,9 @@ func TestClosureHTTPPersonalAndPlatformBoundaries(t *testing.T) {
 
 func TestClosureHTTPPlatformPermissionAndUnavailableProof(t *testing.T) {
 	h := newIdentityHTTPHarness(t, false)
-	require.Equal(t, http.StatusForbidden, h.api.Get("/platform/closure-requests", "Cookie: session=browser").Code)
-	require.Equal(t, http.StatusForbidden, h.api.Patch("/platform/principals/11/closure-request", "Cookie: session=browser", map[string]any{"version": 1, "status": "processing"}).Code)
-	require.Equal(t, http.StatusForbidden, h.api.Patch("/platform/principals/11/closure-request", "Cookie: session=browser", map[string]any{"version": 1, "status": "rejected"}).Code)
+	require.Equal(t, http.StatusForbidden, h.api.Get("/system/closure-requests", "Cookie: session=browser").Code)
+	require.Equal(t, http.StatusForbidden, h.api.Patch("/system/principals/11/closure-request", "Cookie: session=browser", map[string]any{"version": 1, "status": "processing"}).Code)
+	require.Equal(t, http.StatusForbidden, h.api.Patch("/system/principals/11/closure-request", "Cookie: session=browser", map[string]any{"version": 1, "status": "rejected"}).Code)
 	for _, test := range []struct {
 		err    error
 		status int
@@ -90,7 +90,7 @@ func TestClosureHTTPUnavailableAndStorageFailures(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, h.api.Post(path, cookie, proof).Code)
 	require.Equal(t, http.StatusNotFound, h.api.Get(path, cookie).Code)
 	require.Equal(t, http.StatusNotFound, h.api.Delete(path, cookie, map[string]any{"version": 1}).Code)
-	require.Equal(t, http.StatusNotFound, h.api.Patch("/platform/principals/999/closure-request", cookie, map[string]any{"version": 1, "status": "rejected"}).Code)
+	require.Equal(t, http.StatusNotFound, h.api.Patch("/system/principals/999/closure-request", cookie, map[string]any{"version": 1, "status": "rejected"}).Code)
 	require.NoError(t, h.db.Exec("DROP TABLE sl_iam_closure_requests").Error)
-	require.Equal(t, http.StatusInternalServerError, h.api.Get("/platform/closure-requests", cookie).Code)
+	require.Equal(t, http.StatusInternalServerError, h.api.Get("/system/closure-requests", cookie).Code)
 }

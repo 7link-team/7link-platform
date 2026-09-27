@@ -259,6 +259,30 @@ type Claims struct {
 	OAuthGrantID      string         `json:"oauth_grant_id,omitempty"`
 	NetworkZone       string         `json:"network_zone,omitempty"`
 	Raw               map[string]any `json:"raw,omitempty"`
+	// AccountView is attached only after validating a dedicated server record.
+	// Ordinary JWT claims cannot supply this identity.
+	AccountView *AccountViewIdentity `json:"-"`
+}
+
+// AccountViewIdentity preserves the operator independently of the viewed subject.
+type AccountViewIdentity struct {
+	ID          guid.ID
+	PrincipalID guid.ID
+	ReadOnly    bool
+	ScopeType   string
+	ScopeID     guid.ID
+}
+
+func (v *AccountViewIdentity) Valid() bool {
+	if v == nil || v.ID <= 0 || v.PrincipalID <= 0 || v.ScopeID <= 0 {
+		return false
+	}
+	switch v.ScopeType {
+	case "system", "platform", "tenant", "entity", "personal":
+		return true
+	default:
+		return false
+	}
 }
 
 type Assurance struct {

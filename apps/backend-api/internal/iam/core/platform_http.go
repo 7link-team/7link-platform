@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	corei18n "7link.com/platform/internal/iam/core/i18n"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 )
@@ -42,16 +43,30 @@ type listPlatformAdministratorsInput struct {
 }
 
 func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
+	authz.RegisterAuthenticated(registrar, a, huma.Operation{OperationID: "iam-system-my-permissions", Method: http.MethodGet, Path: "/system/permissions", Summary: "Return my system permission codes", Tags: []string{"system"}}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]string], error) {
+		claims, ok := authnext.FromContext(ctx)
+		if !ok || claims == nil {
+			return nil, huma.Error401Unauthorized("unauthorized")
+		}
+		if view := claims.AccountView; view != nil && (view.ScopeType != "system" || view.ScopeID != systemScopeID) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		codes, err := svc.EffectivePermissions(ctx, 0, claims.PrincipalID)
+		if err != nil {
+			return nil, platformAPIError("effective system permissions", err)
+		}
+		return respx.OK(ctx, codes), nil
+	})
 	authz.RegisterPlatform(registrar, a, huma.Operation{
-		OperationID: "iam-platform-permission-catalog", Method: http.MethodGet, Path: "/platform/permission-catalog",
-		Summary: "List declared platform permissions", Tags: []string{"access-control"},
+		OperationID: "iam-platform-permission-catalog", Method: http.MethodGet, Path: "/system/permission-catalog",
+		Summary: "List declared system permissions", Tags: []string{"system"},
 	}, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]authz.Action], error) {
 		return respx.OK(ctx, svc.PlatformPermissionCatalog(ctx)), nil
 	})
 
 	authz.RegisterPlatform(registrar, a, huma.Operation{
-		OperationID: "iam-list-platform-administrators", Method: http.MethodGet, Path: "/platform/administrators",
-		Summary: "List platform administrators and their platform permissions", Tags: []string{"platform"},
+		OperationID: "iam-list-platform-administrators", Method: http.MethodGet, Path: "/system/administrators",
+		Summary: "List system administrators and their permissions", Tags: []string{"system"},
 	}, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, in *listPlatformAdministratorsInput) (*respx.Body[[]PlatformAdministratorView], error) {
 		administrators, total, err := svc.ListPlatformAdministratorsPage(ctx, in.Offset, in.Limit)
 		if err != nil {
@@ -61,8 +76,8 @@ func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) 
 	})
 
 	authz.RegisterPlatform(registrar, a, huma.Operation{
-		OperationID: "iam-put-platform-administrator", Method: http.MethodPut, Path: "/platform/administrators/{principal_id}",
-		Summary: "Grant or restrict platform authorization for a principal", Tags: []string{"platform"},
+		OperationID: "iam-put-platform-administrator", Method: http.MethodPut, Path: "/system/administrators/{principal_id}",
+		Summary: "Grant or restrict system authorization for an account", Tags: []string{"system"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, in *putPlatformAdministratorInput) (*respx.Body[PlatformAdministratorView], error) {
 		principalID, err := requireID(in.PrincipalID)
@@ -77,8 +92,8 @@ func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) 
 	})
 
 	authz.RegisterPlatform(registrar, a, huma.Operation{
-		OperationID: "iam-delete-platform-administrator", Method: http.MethodDelete, Path: "/platform/administrators/{principal_id}",
-		Summary: "Revoke every platform grant for a principal", Tags: []string{"platform"},
+		OperationID: "iam-delete-platform-administrator", Method: http.MethodDelete, Path: "/system/administrators/{principal_id}",
+		Summary: "Revoke system authorization for an account", Tags: []string{"system"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, in *platformPrincipalInput) (*respx.Body[MutationResult], error) {
 		principalID, err := requireID(in.PrincipalID)

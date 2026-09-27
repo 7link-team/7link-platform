@@ -14,6 +14,7 @@ import (
 	"7link.com/platform/internal/files/query"
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -189,6 +190,17 @@ func TestAccountResourceLifecycleBindsReadsAndReleases(t *testing.T) {
 	assert.False(t, present)
 	_, err = h.resource.Open(t.Context(), h.db, 70, PrincipalAvatarPurpose, "current", h.now)
 	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestAccountResourceAuditPreservesAccountViewOperator(t *testing.T) {
+	h := newAccountResourceHarness(t)
+	ctx := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70, AccountView: &authn.AccountViewIdentity{PrincipalID: 71}})
+	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+		return h.resource.appendAudit(ctx, tx, 70, "file_resource_bound", 1, map[string]any{"principal_id": guid.ID(70)})
+	}))
+	require.Len(t, h.events, 1)
+	require.Equal(t, guid.ID(71), h.events[0].PrincipalID)
+	require.Equal(t, guid.ID(70), h.events[0].Detail["principal_id"])
 }
 
 func TestAccountResourceReplaceRetiresThePreviousSlotOnly(t *testing.T) {

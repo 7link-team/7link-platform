@@ -1,4 +1,6 @@
 {
+  "menu_organization": "组织",
+  "menu_access": "访问",
   "entity_has_files": "实体文件根中仍有保留的文件或目录，无法删除实体。请先删除或转移这些内容。",
   "menu_users": "账号与成员",
   "menu_invitations": "邀请管理",

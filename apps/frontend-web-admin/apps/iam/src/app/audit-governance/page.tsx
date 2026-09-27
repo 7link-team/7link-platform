@@ -10,6 +10,7 @@ import {
 import { useLocation, useNavigate, useParams } from "react-router"
 import {
   CheckCircle2,
+  Anchor as AnchorIcon,
   FileClock,
   Fingerprint,
   LoaderCircle,
@@ -53,14 +54,17 @@ import { ArchiveJobs } from "./archives"
 
 export default function AuditGovernancePage() {
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   const location = useLocation()
   const navigate = useNavigate()
   const { tenantID = "" } = useParams<{ tenantID?: string }>()
   const [tenant, setTenantValue] = useState(() => tenantID || getTenant())
-  const scope: AuditScope = location.pathname.startsWith("/platform/")
-    ? "platform"
-    : "tenant"
+  const scope: AuditScope =
+    location.pathname.startsWith("/system/") ||
+    location.pathname.startsWith("/system/")
+      ? "platform"
+      : "tenant"
   useEffect(() => {
     const sync = () => setTenantValue(getTenant())
     window.addEventListener("tenant-change", sync)
@@ -73,7 +77,7 @@ export default function AuditGovernancePage() {
         onValueChange={(value) =>
           navigate(
             value === "platform"
-              ? "/platform/audit-governance"
+              ? "/system/audit-governance"
               : `/tenants/${encodeURIComponent(tenant)}/audit-governance`
           )
         }
@@ -82,9 +86,11 @@ export default function AuditGovernancePage() {
           <TabsTrigger variant="line" value="tenant">
             {t("currentTenant")}
           </TabsTrigger>
-          <TabsTrigger variant="line" value="platform">
-            {t("platform")}
-          </TabsTrigger>
+          {allowed("platform_administer") && (
+            <TabsTrigger variant="line" value="platform">
+              {t("platform")}
+            </TabsTrigger>
+          )}
         </TabsList>
       </Tabs>
       <ScopedAuditGovernance
@@ -105,7 +111,7 @@ function ScopedAuditGovernance({
 }) {
   const t = useTranslations("iam")
   const allowed = useAllowed()
-  // The platform tab reaches /platform/... routes, which are guarded by
+  // The platform tab reaches /system/... routes, which are guarded by
   // platform_administer instead of the tenant audit verbs.
   const scopedCode = (tenantCode: string) =>
     scope === "platform" ? "platform_administer" : tenantCode
@@ -230,6 +236,19 @@ function ScopedAuditGovernance({
     }
   }
 
+  const anchorRoot = async () => {
+    setBusy(true)
+    setError("")
+    try {
+      await iamApi.auditAnchor()
+      await refresh()
+    } catch (cause) {
+      if (active.current) setError((cause as Error).message)
+    } finally {
+      if (active.current) setBusy(false)
+    }
+  }
+
   const policy = archiveStatus?.policy
   const integrity = governance?.integrity
   const anchor = integrity?.anchor
@@ -269,13 +288,49 @@ function ScopedAuditGovernance({
                 {t("updateRetentionPolicy")}
               </Button>
             )}
+            {scope === "tenant" && allowed("audit_event_anchor") && (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => void anchorRoot()}
+                disabled={
+                  busy ||
+                  integrity?.valid !== true ||
+                  !anchor?.enabled ||
+                  integrity.head_sequence < 1
+                }
+                title={!anchor?.enabled ? t("anchoringDisabled") : undefined}
+                data-audit-anchor
+              >
+                <AnchorIcon />
+                {t("anchorCurrentRoot")}
+              </Button>
+            )}
             {scope === "tenant" && allowed("audit_event_manage") && (
               <Button
                 type="button"
                 size="sm"
                 variant="secondary"
                 onClick={() => void signRoot()}
-                disabled={busy || integrity?.valid !== true}
+                disabled={
+                  busy ||
+                  integrity?.valid !== true ||
+                  !anchor?.enabled ||
+                  !anchor.signing_enabled ||
+                  integrity.head_sequence < 1 ||
+                  (anchor.sequence === integrity.head_sequence &&
+                    !anchor.signed)
+                }
+                title={
+                  !anchor?.signing_enabled
+                    ? t("rootSigningDisabled")
+                    : anchor.sequence === integrity?.head_sequence &&
+                        !anchor.signed
+                      ? t("immutableUnsignedRoot")
+                      : undefined
+                }
+                data-audit-sign
               >
                 {busy ? (
                   <LoaderCircle className="animate-spin" />
@@ -326,7 +381,10 @@ function ScopedAuditGovernance({
               onChanged={refresh}
             />
             {scope === "tenant" && (
-              <AnchorsTable anchors={governance?.anchors ?? []} />
+              <AnchorsTable
+                anchors={governance?.anchors ?? []}
+                enabled={anchor?.enabled ?? false}
+              />
             )}
           </div>
         )
@@ -408,7 +466,7 @@ function PolicyCard({
         value={
           updatedAt && new Date(updatedAt).getUTCFullYear() > 1
             ? new Date(updatedAt).toLocaleString(locale)
-            : t("platformDefault")
+            : t("systemDefault")
         }
       />
     </Card>
@@ -447,6 +505,10 @@ function IntegrityCard({
             {anchor?.enabled ? t("enabled") : t("notEnabled")}
           </Badge>
         }
+      />
+      <Stat
+        label={t("rootSigningCapability")}
+        value={anchor?.signing_enabled ? t("enabled") : t("notEnabled")}
       />
       <Stat
         label={t("signatureStatus")}
@@ -492,7 +554,13 @@ function StatsCard({
   )
 }
 
-function AnchorsTable({ anchors }: { anchors: AuditAnchor[] }) {
+function AnchorsTable({
+  anchors,
+  enabled,
+}: {
+  anchors: AuditAnchor[]
+  enabled: boolean
+}) {
   const locale = useLocale()
 
   const t = useTranslations("iam")
@@ -505,7 +573,7 @@ function AnchorsTable({ anchors }: { anchors: AuditAnchor[] }) {
       </div>
       {anchors.length === 0 ? (
         <p className="px-4 py-6 text-sm text-muted-foreground">
-          {t("noAnchors")}
+          {enabled ? t("noAnchors") : t("anchoringDisabled")}
         </p>
       ) : (
         <Table>

@@ -221,7 +221,7 @@ func (s *Service) ListPersonalTokens(ctx context.Context, cookie string, offset,
 	if offset < 0 || limit < 1 || limit > 100 {
 		return nil, 0, errPersonalTokenInput
 	}
-	claims, err := s.Authenticate(ctx, "", cookie)
+	claims, err := s.personalReadClaims(ctx, "", cookie)
 	if err != nil {
 		return nil, 0, err
 	}

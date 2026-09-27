@@ -646,7 +646,7 @@ describe("IAM API client", () => {
     expect(requests[10]?.method).toBe("DELETE")
     expect(JSON.parse(requests[10]!.body)).toEqual({ version: 4 })
     expect(requests[11]?.path).toBe(
-      "/platform/closure-requests?status=processing&offset=50&limit=50"
+      "/system/closure-requests?status=processing&offset=50&limit=50"
     )
     expect(JSON.parse(requests[12]!.body)).toEqual({
       status: "processing",
@@ -885,7 +885,7 @@ describe("IAM API client", () => {
     ]
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       ...expected.map((entry) => entry.replace(" /", " /tenants/tenant-a/")),
-      ...expected.map((entry) => entry.replace(" /", " /platform/")),
+      ...expected.map((entry) => entry.replace(" /", " /system/")),
     ])
     expect(
       requests.slice(0, 7).every(({ headers }) => !headers.has("x-tenant-id"))
@@ -2183,7 +2183,7 @@ describe("IAM API client", () => {
     })
     expect(requests[0]?.method).toBe("PUT")
     expect(requests[0]?.path).toBe(
-      "/platform/principals/principal%2Fa/lifecycle/anonymization"
+      "/system/principals/principal%2Fa/lifecycle/anonymization"
     )
     expect(JSON.parse(requests[0]?.body ?? "{}")).toEqual({
       version: 3,

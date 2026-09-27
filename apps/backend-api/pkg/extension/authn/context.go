@@ -73,3 +73,16 @@ func PrincipalIDFromContext(ctx context.Context) guid.ID {
 	}
 	return claims.PrincipalID
 }
+
+// ActorIDFromContext identifies who performed an operation, including account views.
+// Resource ownership and permission checks continue to use PrincipalIDFromContext.
+func ActorIDFromContext(ctx context.Context) guid.ID {
+	claims, _ := FromContext(ctx)
+	if claims == nil {
+		return 0
+	}
+	if claims.AccountView != nil {
+		return claims.AccountView.PrincipalID
+	}
+	return claims.PrincipalID
+}

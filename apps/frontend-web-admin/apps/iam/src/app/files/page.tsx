@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useOutletContext, useSearchParams } from "react-router"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
+import { getAccountView } from "../../lib/account-view"
 import {
   Dialog,
   DialogContent,
@@ -317,6 +318,20 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
     URL.revokeObjectURL(url)
   }
   const openFileInNewTab = (node: FileBrowserNode) => {
+    if (getAccountView()) {
+      const tab = window.open("", "_blank")
+      if (!tab) return
+      tab.opener = null
+      void iamApi.downloadFile(fileEntityID, node.id).then(
+        (blob) => {
+          const url = URL.createObjectURL(blob)
+          tab.location.replace(url)
+          window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+        },
+        () => tab.close()
+      )
+      return
+    }
     window.open(
       iamApi.fileContentURL(fileEntityID, node.id),
       "_blank",

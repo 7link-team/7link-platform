@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/core"
+	corei18n "7link.com/platform/internal/iam/core/i18n"
 	organizationi18n "7link.com/platform/internal/iam/organization/i18n"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -174,11 +175,13 @@ func tenantOwner(tenantID guid.ID, found bool, err error) (authz.ResourceOwner, 
 }
 
 func (s *Service) resolveDepartmentOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
-	return tenantOwner(s.repo.resolveDepartmentTenant(ctx, id))
+	ownerID, found, err := s.repo.resolveDepartmentTenant(ctx, id)
+	return s.repo.resolveRootOwner(ctx, ownerID, found, err)
 }
 
 func (s *GroupService) resolveGroupOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
-	return tenantOwner(s.repo.resolveGroupTenant(ctx, id))
+	ownerID, found, err := s.repo.resolveGroupTenant(ctx, id)
+	return s.repo.resolveRootOwner(ctx, ownerID, found, err)
 }
 
 func (s *InvitationService) resolveInvitationOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
@@ -760,6 +763,8 @@ func departmentError(err error) error {
 
 func groupError(err error) error {
 	switch {
+	case errors.Is(err, core.ErrPrivilegeEscalation):
+		return huma.Error403Forbidden(corei18n.PrivilegeEscalationDenied)
 	case errors.Is(err, ErrGroupNotFound):
 		return huma.Error404NotFound(organizationi18n.GroupNotFound)
 	case errors.Is(err, ErrGroupNameConflict):

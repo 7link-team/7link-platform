@@ -95,7 +95,7 @@ try {
       assert.equal(request.headers()["x-tenant-id"], undefined)
       const url = new URL(request.url())
       const path = url.pathname.slice(4)
-      const platform = path.startsWith("/platform/")
+      const platform = path.startsWith("/system/")
       const tenant = /^\/tenants\/([^/]+)/.exec(path)?.[1]
       calls.push({ path, method: request.method(), tenant })
       if (platform)

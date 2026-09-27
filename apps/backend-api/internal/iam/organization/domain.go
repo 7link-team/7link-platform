@@ -65,11 +65,18 @@ type MembershipWindow struct {
 }
 
 func normalizeCreate(tenantID guid.ID, input CreateDepartment) (guid.ID, CreateDepartment, error) {
+	if !validID(input.EntityID) {
+		return 0, CreateDepartment{}, ErrInvalid
+	}
+	return normalizeDepartmentCreate(tenantID, input)
+}
+
+func normalizeDepartmentCreate(tenantID guid.ID, input CreateDepartment) (guid.ID, CreateDepartment, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	if input.Status == "" {
 		input.Status = StatusActive
 	}
-	if tenantID.Zero() || !validID(input.EntityID) || !validOptionalID(input.ParentID) || !validName(input.Name) || !validStatus(input.Status) || !validSortOrder(input.SortOrder) {
+	if tenantID.Zero() || !validOptionalID(input.EntityID) || !validOptionalID(input.ParentID) || !validName(input.Name) || !validStatus(input.Status) || !validSortOrder(input.SortOrder) {
 		return 0, CreateDepartment{}, ErrInvalid
 	}
 	return tenantID, input, nil

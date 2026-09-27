@@ -31,55 +31,74 @@ import (
 )
 
 const organizationRouteManifest = `
+organization-platform-departments|GET|/operating-platforms/{platform_id}/departments
+organization-platform-department-create|POST|/operating-platforms/{platform_id}/departments
+organization-platform-groups|GET|/operating-platforms/{platform_id}/principal-groups
+organization-platform-group-create|POST|/operating-platforms/{platform_id}/principal-groups
 organization-accept-invitation|POST|/membership-invitations/acceptances
 organization-create-department|POST|/tenants/{tenant_id}/departments
 organization-create-group|POST|/tenants/{tenant_id}/principal-groups
 organization-create-invitation|POST|/tenants/{tenant_id}/membership-invitations
 organization-create-tenant|POST|/tenants
+organization-create-operating-platform|POST|/operating-platforms
 organization-delete-department|DELETE|/departments/{department_id}
 organization-delete-group|DELETE|/principal-groups/{group_id}
 organization-delete-group-member|DELETE|/principal-groups/{group_id}/members/{principal_id}
 organization-delete-tenant|DELETE|/tenants/{tenant_id}
+organization-delete-operating-platform|DELETE|/operating-platforms/{platform_id}
 organization-get-department|GET|/departments/{department_id}
 organization-get-group|GET|/principal-groups/{group_id}
 organization-get-tenant|GET|/tenants/{tenant_id}
+organization-get-operating-platform|GET|/operating-platforms/{platform_id}
 organization-list-departments|GET|/tenants/{tenant_id}/departments
 organization-list-group-members|GET|/principal-groups/{group_id}/members
 organization-list-groups|GET|/tenants/{tenant_id}/principal-groups
 organization-list-invitations|GET|/tenants/{tenant_id}/membership-invitations
 organization-list-tenants|GET|/tenants
+organization-list-operating-platforms|GET|/operating-platforms
 organization-my-tenants|GET|/principals/{principal_id}/tenants
+organization-my-operating-platforms|GET|/principals/{principal_id}/operating-platforms
 organization-put-group-member|PUT|/principal-groups/{group_id}/members/{principal_id}
 organization-resend-invitation|POST|/membership-invitations/{invitation_id}/deliveries
 organization-revoke-invitation|DELETE|/membership-invitations/{invitation_id}
 organization-update-department|PATCH|/departments/{department_id}
 organization-update-group|PATCH|/principal-groups/{group_id}
-organization-update-tenant|PATCH|/tenants/{tenant_id}`
+organization-update-tenant|PATCH|/tenants/{tenant_id}
+organization-update-operating-platform|PATCH|/operating-platforms/{platform_id}`
 
 var organizationGuards = map[string]string{
-	"organization-list-departments":  "dept_view",
-	"organization-create-department": "dept_create",
-	"organization-get-department":    "dept_view",
-	"organization-update-department": "dept_update",
-	"organization-delete-department": "dept_delete",
+	"organization-platform-departments":       "dept_view",
+	"organization-platform-department-create": "dept_create",
+	"organization-platform-groups":            "group_view",
+	"organization-platform-group-create":      "group_create",
+	"organization-list-departments":           "dept_view",
+	"organization-create-department":          "dept_create",
+	"organization-get-department":             "dept_view",
+	"organization-update-department":          "dept_update",
+	"organization-delete-department":          "dept_delete",
 
-	"organization-list-groups":         "group_view",
-	"organization-create-group":        "group_create",
-	"organization-get-group":           "group_view",
-	"organization-update-group":        "group_update",
-	"organization-delete-group":        "group_delete",
-	"organization-list-group-members":  "group_view",
-	"organization-put-group-member":    "group_manage_member",
-	"organization-delete-group-member": "group_manage_member",
-	"organization-list-tenants":        "tenant_view",
-	"organization-create-tenant":       "tenant_create",
-	"organization-get-tenant":          "tenant_view",
-	"organization-update-tenant":       "tenant_update",
-	"organization-delete-tenant":       "tenant_delete",
-	"organization-list-invitations":    "invitation_view",
-	"organization-create-invitation":   "invitation_create",
-	"organization-revoke-invitation":   "invitation_revoke",
-	"organization-resend-invitation":   "invitation_resend",
+	"organization-list-groups":               "group_view",
+	"organization-create-group":              "group_create",
+	"organization-get-group":                 "group_view",
+	"organization-update-group":              "group_update",
+	"organization-delete-group":              "group_delete",
+	"organization-list-group-members":        "group_view",
+	"organization-put-group-member":          "group_manage_member",
+	"organization-delete-group-member":       "group_manage_member",
+	"organization-list-tenants":              "tenant_view",
+	"organization-create-tenant":             "tenant_create",
+	"organization-get-tenant":                "tenant_view",
+	"organization-update-tenant":             "tenant_update",
+	"organization-delete-tenant":             "tenant_delete",
+	"organization-list-operating-platforms":  "operating_platform_view",
+	"organization-create-operating-platform": "operating_platform_create",
+	"organization-get-operating-platform":    "operating_platform_view",
+	"organization-update-operating-platform": "operating_platform_update",
+	"organization-delete-operating-platform": "operating_platform_delete",
+	"organization-list-invitations":          "invitation_view",
+	"organization-create-invitation":         "invitation_create",
+	"organization-revoke-invitation":         "invitation_revoke",
+	"organization-resend-invitation":         "invitation_resend",
 }
 
 func organizationDeclarationAPI(t *testing.T) huma.API {
@@ -152,7 +171,7 @@ func TestOrganizationRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 24)
+	require.Len(t, got, 34)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -166,14 +185,15 @@ func TestOrganizationOpenAPIGuardsScopesAndSchemas(t *testing.T) {
 			location := method + " " + path
 			// Organization publishes the directory record, plus the invitation
 			// a new member redeems before they have one.
-			assert.Contains(t, []string{"directory", "authentication", "account"},
+			assert.Contains(t, []string{"directory", "authentication", "account", "operating-platforms"},
 				operation.Tags[0], location)
 			if guard, ok := organizationGuards[operation.OperationID]; ok {
 				assert.Equal(t, guard, operation.Extensions[authz.GuardExtensionKey], location)
 				assert.NotEmpty(t, operation.Security, location)
 			}
-			platform := strings.Contains(operation.OperationID, "tenant") && operation.OperationID != "organization-my-tenants"
+			platform := (strings.Contains(operation.OperationID, "tenant") && operation.OperationID != "organization-my-tenants") || (strings.Contains(operation.OperationID, "operating-platform") && operation.OperationID != "organization-my-operating-platforms")
 			assert.Equal(t, platform, authz.IsPlatformOperation(operation), location)
+			assert.Equal(t, strings.HasPrefix(operation.OperationID, "organization-platform-"), authz.IsOperatingPlatformOperation(operation), location)
 		}
 	}
 	accept := spec.Paths["/membership-invitations/acceptances"].Post
@@ -273,6 +293,10 @@ func TestParseOrganizationIDs(t *testing.T) {
 type organizationHTTPMembershipChecker struct{}
 
 func (organizationHTTPMembershipChecker) IsMemberActive(context.Context, guid.ID, guid.ID) (bool, error) {
+	return true, nil
+}
+
+func (organizationHTTPMembershipChecker) IsOperatingPlatformMemberActive(context.Context, guid.ID, guid.ID) (bool, error) {
 	return true, nil
 }
 

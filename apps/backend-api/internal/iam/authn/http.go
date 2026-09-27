@@ -37,7 +37,8 @@ type meInput struct {
 // Session tenancy is a validated request context, not a mutation of the global
 // login session. Token tenancy remains exclusively the signed token's choice.
 func sessionTenant(ctx context.Context, web *Service, in *meInput, claims *authnext.Claims) (*authnext.Claims, error) {
-	if strings.TrimSpace(in.Authorization) != "" {
+	personalView := claims.AccountView != nil && claims.AccountView.ScopeType == "personal"
+	if strings.TrimSpace(in.Authorization) != "" && !personalView {
 		return claims, nil
 	}
 	if web == nil || web.memberTenant == nil {
@@ -361,6 +362,7 @@ type mfaConfirmationOutput struct {
 
 // RegisterHTTP registers the authn module's HTTP operations.
 func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
+	registerAccountViewBoundary(a)
 	web.registerSharedSecurity(a)
 	defer documentSharedSecurity(a)
 	authenticated := authz.NewAuthenticationOnlyRegistrar(authenticator)
@@ -372,11 +374,11 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Tags:        []string{"account"},
 		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *meInput) (*respx.Body[meOutput], error) {
-		claims, err := authenticator.Authenticate(ctx, in.Authorization, in.Cookie)
-		if err != nil {
+		claims, ok := authnext.FromContext(ctx)
+		if !ok || claims == nil {
 			return nil, huma.Error401Unauthorized("unauthorized")
 		}
-		claims, err = sessionTenant(ctx, web, in, claims)
+		claims, err := sessionTenant(ctx, web, in, claims)
 		if err != nil {
 			return nil, err
 		}
@@ -392,6 +394,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	}
 	registerReauthenticationHTTP(a, web)
 	registerPersonalTokenHTTP(a, web)
+	registerAccountViewHTTP(a, web)
 	authz.RegisterPublic(a, huma.Operation{
 		OperationID: "authn-login-options", Method: http.MethodGet, Path: "/login/options",
 		Summary: "Return enabled public authentication methods", Tags: []string{"authentication"},
@@ -560,8 +563,11 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	authz.RegisterPublic(a, huma.Operation{
 		OperationID: "authn-delete-current-session", Method: http.MethodDelete, Path: "/sessions/current",
 		Summary: "Destroy the current browser session", Tags: []string{"account"},
-		Errors: []int{http.StatusForbidden, http.StatusServiceUnavailable},
+		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *logoutInput) (*logoutOutput, error) {
+		if strings.TrimSpace(in.Authorization) != "" {
+			return nil, huma.Error401Unauthorized("unauthorized")
+		}
 		if err := web.ValidateCSRF(http.MethodDelete, in.Origin, in.Cookie, in.Authorization); err != nil {
 			return nil, huma.Error403Forbidden("csrf_rejected")
 		}

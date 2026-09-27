@@ -24,18 +24,19 @@ import (
 // browser authentication HTTP operations, and their worker lifecycle.
 type Module struct {
 	*Service
-	runtime             *appenv.Runtime
-	config              Config
-	registrationCreator RegistrationPrincipalCreator
-	ids                 guid.Source
-	appender            audit.Appender
-	memberTenant        core.MemberTenantResolver
-	fields              authz.FieldPermissionChecker
-	oauthGrants         OAuthGrantValidator
-	personalPermissions func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
-	personalRegistry    *authz.Registry
-	recoveryEligibility func(context.Context, *gorm.DB, guid.ID) error
-	federatedProofTrust func(context.Context, *gorm.DB, guid.ID, string, string) error
+	runtime               *appenv.Runtime
+	config                Config
+	registrationCreator   RegistrationPrincipalCreator
+	ids                   guid.Source
+	appender              audit.Appender
+	memberTenant          core.MemberTenantResolver
+	fields                authz.FieldPermissionChecker
+	oauthGrants           OAuthGrantValidator
+	personalPermissions   func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
+	personalRegistry      *authz.Registry
+	recoveryEligibility   func(context.Context, *gorm.DB, guid.ID) error
+	federatedProofTrust   func(context.Context, *gorm.DB, guid.ID, string, string) error
+	accountViewAuthorizer AccountViewAuthorizer
 
 	// foreign is the one holder of the table names the modules that own them
 	// publish to authn. The connectors below bind it, and every repository the
@@ -78,6 +79,15 @@ func (m *Module) ProvideServices(services *module.Services) error {
 		}
 		return m.Service.revokePrincipalCredentialsOn(ctx, tx, principalID)
 	}); err != nil {
+		return err
+	}
+	if err := module.Provide[AccountViewAuthorizerConnector](services, AccountViewAuthorizerConnector{Bind: func(check AccountViewAuthorizer) error {
+		m.accountViewAuthorizer = check
+		if m.Service != nil {
+			m.Service.accountViewAuthorizer = check
+		}
+		return nil
+	}}); err != nil {
 		return err
 	}
 	if err := module.Provide[core.TenantPersonalTokenRevoker](services, func(ctx context.Context, tx *gorm.DB, tenantID, principalID guid.ID) error {
@@ -327,6 +337,7 @@ func (m *Module) Initialize(context.Context) error {
 		WithRegistrationPrincipalCreator(m.registrationCreator),
 		WithMemberTenantResolver(m.memberTenant),
 		WithFieldPermissionChecker(m.fields),
+		WithAccountViewAuthorizer(m.accountViewAuthorizer),
 	)
 	if err != nil {
 		return fmt.Errorf("initialize authn service: %w", err)

@@ -51,7 +51,7 @@ func (s *Service) BeginEmailVerification(
 	if !s.EmailVerificationEnabled() {
 		return authnext.ErrEmailVerificationDisabled
 	}
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateAccountHolder(ctx, authorization, cookieHeader)
 	if err != nil {
 		return err
 	}

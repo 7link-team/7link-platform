@@ -3,6 +3,7 @@ package organization
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -58,6 +59,61 @@ type UpdateGroup struct {
 }
 
 type GroupMemberWindow = MembershipWindow
+
+// memberRuleNarrows proves that every future match also matched the old rule.
+// Unproven implications require the caller's role grant authority.
+func memberRuleNarrows(beforeJSON, afterJSON string) bool {
+	var before, after policyx.MemberRule
+	if json.Unmarshal([]byte(beforeJSON), &before) != nil || json.Unmarshal([]byte(afterJSON), &after) != nil {
+		return false
+	}
+	implies := func(after, before policyx.MemberCondition) bool {
+		if after.Field != before.Field {
+			return false
+		}
+		if after.Operator == "in" {
+			for _, value := range after.Values {
+				found := slices.Contains(before.Values, value)
+				if before.Operator == "in" && !found || before.Operator == "not_in" && found {
+					return false
+				}
+			}
+			return true
+		}
+		if before.Operator != "not_in" {
+			return false
+		}
+		for _, value := range before.Values {
+			if !slices.Contains(after.Values, value) {
+				return false
+			}
+		}
+		return true
+	}
+	if after.Match == "all" && before.Match == "all" {
+		for _, oldCondition := range before.Conditions {
+			if !slices.ContainsFunc(after.Conditions, func(condition policyx.MemberCondition) bool { return implies(condition, oldCondition) }) {
+				return false
+			}
+		}
+		return true
+	}
+	for _, newCondition := range after.Conditions {
+		matched := false
+		if before.Match == "any" {
+			matched = slices.ContainsFunc(before.Conditions, func(condition policyx.MemberCondition) bool { return implies(newCondition, condition) })
+		} else {
+			matched = !slices.ContainsFunc(before.Conditions, func(condition policyx.MemberCondition) bool { return !implies(newCondition, condition) })
+		}
+		if after.Match == "all" && matched {
+			return true
+		}
+		if after.Match == "any" && !matched {
+			return false
+		}
+	}
+	return after.Match == "any"
+}
 
 func normalizeGroupCreate(tenantID guid.ID, input CreateGroup) (guid.ID, CreateGroup, error) {
 	input.Name = strings.TrimSpace(input.Name)

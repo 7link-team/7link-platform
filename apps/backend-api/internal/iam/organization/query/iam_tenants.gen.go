@@ -29,6 +29,7 @@ func newTenant(db *gorm.DB, opts ...gen.DOOption) tenant {
 	tableName := _tenant.tenantDo.TableName()
 	_tenant.ALL = field.NewAsterisk(tableName)
 	_tenant.ID = field.NewField(tableName, "id")
+	_tenant.ScopeKind = field.NewString(tableName, "scope_kind")
 	_tenant.Slug = field.NewString(tableName, "slug")
 	_tenant.Name = field.NewString(tableName, "name")
 	_tenant.Status = field.NewString(tableName, "status")
@@ -46,6 +47,7 @@ type tenant struct {
 
 	ALL       field.Asterisk
 	ID        field.Field
+	ScopeKind field.String
 	Slug      field.String
 	Name      field.String
 	Status    field.String
@@ -69,6 +71,7 @@ func (t tenant) As(alias string) *tenant {
 func (t *tenant) updateTableName(table string) *tenant {
 	t.ALL = field.NewAsterisk(table)
 	t.ID = field.NewField(table, "id")
+	t.ScopeKind = field.NewString(table, "scope_kind")
 	t.Slug = field.NewString(table, "slug")
 	t.Name = field.NewString(table, "name")
 	t.Status = field.NewString(table, "status")
@@ -99,8 +102,9 @@ func (t *tenant) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (t *tenant) fillFieldMap() {
-	t.fieldMap = make(map[string]field.Expr, 7)
+	t.fieldMap = make(map[string]field.Expr, 8)
 	t.fieldMap["id"] = t.ID
+	t.fieldMap["scope_kind"] = t.ScopeKind
 	t.fieldMap["slug"] = t.Slug
 	t.fieldMap["name"] = t.Name
 	t.fieldMap["status"] = t.Status

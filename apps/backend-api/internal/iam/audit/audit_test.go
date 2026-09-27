@@ -31,6 +31,23 @@ func TestNewDomainEventUsesVerifiedPrincipal(t *testing.T) {
 	assert.Equal(t, guid.ID(4), event.TargetID)
 }
 
+func TestNewDomainEventPreservesAccountViewOperator(t *testing.T) {
+	ctx := authn.WithClaims(t.Context(), &authn.Claims{
+		PrincipalID: guid.ID(9),
+		AccountView: &authn.AccountViewIdentity{ID: guid.ID(50), PrincipalID: guid.ID(7), ReadOnly: true},
+	})
+	event := NewDomainEvent(ctx, guid.ID(3), "changed", "role", guid.ID(4))
+	assert.Equal(t, guid.ID(7), event.PrincipalID)
+	assert.Equal(t, guid.ID(9), authn.PrincipalIDFromContext(ctx))
+	assert.Equal(t, guid.ID(4), event.TargetID)
+	assert.Equal(t, "50", event.Detail["account_view_id"])
+	assert.Equal(t, "9", event.Detail["viewed_principal_id"])
+	assert.Equal(t, true, event.Detail["account_view_read_only"])
+	other := NewDomainEvent(ctx, guid.ID(3), "changed", "role", guid.ID(5))
+	event.Detail["viewed_principal_id"] = "altered"
+	assert.Equal(t, "9", other.Detail["viewed_principal_id"])
+}
+
 func TestModuleMigrationContract(t *testing.T) {
 	module := &Module{}
 	assert.Equal(t, Name, module.ModuleName())

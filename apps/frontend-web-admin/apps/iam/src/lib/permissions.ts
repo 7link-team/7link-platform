@@ -15,6 +15,8 @@ import { useCallback } from "react"
 import { useOutletContext } from "react-router"
 
 import type { EffectiveMenu } from "./iam-api"
+import { getAccountView } from "./account-view"
+import { operatingPlatformID } from "./organization-scope"
 
 // Unknown permission reads cannot authorize a protected action. The shell
 // surfaces failed reads and offers a retry instead of exposing forbidden verbs.
@@ -26,9 +28,17 @@ export interface ConsoleOutletContext {
   // False while the first read is still in flight. Unresolved is not the same as
   // unavailable: protected actions wait for a successful answer in either case.
   permissionsResolved: boolean
+  tenantID?: string
+  platformTenantAccess?: boolean
+  fieldPolicyAccess?: boolean
+  scopedFileEntityID?: string
 }
 
 export function can(permissions: EffectivePermissions, code: string): boolean {
+  if (operatingPlatformID() && code === "user_view")
+    code = "platform_member_view"
+  if (getAccountView()?.mode === "read_only" && !code.endsWith("_view"))
+    return false
   return permissions?.has(code) ?? false
 }
 

@@ -54,26 +54,27 @@ type RegistrationPrincipalCreator func(
 // Service coordinates local credentials, sessions, tokens, MFA, passkeys, and
 // account recovery through the authn module's repository.
 type Service struct {
-	cfg                 authnext.Config
-	web                 authnext.WebConfig
-	repo                *Repository
-	signingKeys         *signingKeyring
-	mfaKeys             *keyringx.Keyring
-	returnURLs          returnURLAllowlist
-	captcha             *captchaOffering
-	sharedSecurity      *sharedSecurity
-	oauthGrants         OAuthGrantValidator
-	personalPermissions func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
-	personalRegistry    *authz.Registry
-	passkeys            *webauthnx.Adapter
-	now                 func() time.Time
-	enricher            claimEnricher
-	registrationCreator RegistrationPrincipalCreator
-	memberTenant        core.MemberTenantResolver
-	fields              authz.FieldPermissionChecker
-	verifiedHook        func(context.Context, *gorm.DB, guid.ID, string, time.Time) error
-	recoveryEligibility func(context.Context, *gorm.DB, guid.ID) error
-	federatedProofTrust func(context.Context, *gorm.DB, guid.ID, string, string) error
+	cfg                   authnext.Config
+	web                   authnext.WebConfig
+	repo                  *Repository
+	signingKeys           *signingKeyring
+	mfaKeys               *keyringx.Keyring
+	returnURLs            returnURLAllowlist
+	captcha               *captchaOffering
+	sharedSecurity        *sharedSecurity
+	oauthGrants           OAuthGrantValidator
+	personalPermissions   func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
+	personalRegistry      *authz.Registry
+	passkeys              *webauthnx.Adapter
+	now                   func() time.Time
+	enricher              claimEnricher
+	registrationCreator   RegistrationPrincipalCreator
+	memberTenant          core.MemberTenantResolver
+	fields                authz.FieldPermissionChecker
+	verifiedHook          func(context.Context, *gorm.DB, guid.ID, string, time.Time) error
+	recoveryEligibility   func(context.Context, *gorm.DB, guid.ID) error
+	federatedProofTrust   func(context.Context, *gorm.DB, guid.ID, string, string) error
+	accountViewAuthorizer AccountViewAuthorizer
 
 	notificationAuthorization string
 	notificationClient        *http.Client
@@ -344,7 +345,13 @@ func (s *Service) Authenticate(
 	ctx context.Context,
 	authorization, cookieHeader string,
 ) (*authnext.Claims, error) {
+	if claims, ok := authnext.FromContext(ctx); ok && claims != nil && claims.AccountView != nil {
+		return nil, authnext.ErrInvalidCredentials
+	}
 	if strings.TrimSpace(authorization) != "" {
+		if scheme, raw, ok := strings.Cut(strings.TrimSpace(authorization), " "); ok && strings.EqualFold(scheme, "Bearer") && strings.HasPrefix(raw, "avt_") {
+			return s.AuthenticateAccountView(ctx, raw)
+		}
 		if scheme, raw, ok := strings.Cut(strings.TrimSpace(authorization), " "); ok && strings.EqualFold(scheme, "Bearer") && strings.HasPrefix(raw, "pat_") {
 			return s.authenticatePersonalToken(ctx, raw)
 		}
@@ -365,6 +372,9 @@ func (s *Service) authenticateBrowserSession(
 	cookieHeader string,
 	allowMFAEnrollment bool,
 ) (*authnext.Claims, error) {
+	if claims, ok := authnext.FromContext(ctx); ok && claims != nil && claims.AccountView != nil {
+		return nil, authnext.ErrInvalidCredentials
+	}
 	if !s.Enabled() || s.repo == nil {
 		return nil, authnext.ErrMissingBearer
 	}
@@ -509,6 +519,9 @@ func (s *Service) ValidateLoginOrigin(origin string) error {
 }
 
 func (s *Service) Logout(ctx context.Context, cookieHeader string) (string, error) {
+	if claims, ok := authnext.FromContext(ctx); ok && claims != nil && claims.AccountView != nil {
+		return "", authnext.ErrInvalidCredentials
+	}
 	if s == nil {
 		return "", authnext.ErrDisabled
 	}
@@ -527,11 +540,14 @@ func (s *Service) ListSessions(
 	ctx context.Context,
 	authorization, cookieHeader string,
 ) ([]authnext.BrowserSession, error) {
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.personalReadClaims(ctx, authorization, cookieHeader)
 	if err != nil {
 		return nil, err
 	}
 	current := currentSessionHash(cookieHeader, s.web.CookieName)
+	if claims.AccountView != nil {
+		current = ""
+	}
 	rows, err := s.repo.listActiveSessions(ctx, claims.PrincipalID, s.now().UTC())
 	if err != nil {
 		return nil, fmt.Errorf("list browser sessions: %w", err)
@@ -566,7 +582,7 @@ func (s *Service) RevokeSession(
 	ctx context.Context,
 	authorization, cookieHeader, id string,
 ) error {
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateAccountHolder(ctx, authorization, cookieHeader)
 	if err != nil {
 		return err
 	}
@@ -590,7 +606,7 @@ func (s *Service) RevokeSession(
 }
 
 func (s *Service) LogoutAll(ctx context.Context, authorization, cookieHeader string) error {
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateAccountHolder(ctx, authorization, cookieHeader)
 	if err != nil {
 		return err
 	}
@@ -617,7 +633,7 @@ func (s *Service) ChangePassword(
 	if currentPassword == "" || len(newPassword) < 12 || len(newPassword) > 1024 {
 		return ErrInvalidPassword
 	}
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateAccountHolder(ctx, authorization, cookieHeader)
 	if err != nil {
 		return err
 	}
@@ -710,6 +726,9 @@ func (s *Service) insertSession(
 	now time.Time,
 	assurance authnext.Assurance,
 ) (string, error) {
+	if claims, ok := authnext.FromContext(ctx); ok && claims != nil && claims.AccountView != nil {
+		return "", authnext.ErrInvalidCredentials
+	}
 	token, err := randomToken(32)
 	if err != nil {
 		return "", err
@@ -845,6 +864,9 @@ func (s *Service) issueSubjectToken(
 	emailVerified bool,
 	assurance authnext.Assurance,
 ) (string, int64, error) {
+	if claims, ok := authnext.FromContext(ctx); ok && claims != nil && claims.AccountView != nil {
+		return "", 0, authnext.ErrInvalidCredentials
+	}
 	if s == nil || !s.cfg.Enabled || !s.signingKeys.usable() {
 		return "", 0, authnext.ErrDisabled
 	}
@@ -937,6 +959,9 @@ func (s *Service) IssueTenantIDTokenWithAssurance(
 	tenantID, clientID, nonce, scope string,
 	assurance authnext.Assurance,
 ) (string, error) {
+	if claims, ok := authnext.FromContext(ctx); ok && claims != nil && claims.AccountView != nil {
+		return "", authnext.ErrInvalidCredentials
+	}
 	if s == nil || !s.cfg.Enabled || !s.signingKeys.usable() {
 		return "", authnext.ErrDisabled
 	}

@@ -25,7 +25,7 @@ func (s *Service) requireGrantablePermissions(ctx context.Context, tenantID guid
 	if len(wanted) == 0 {
 		return nil
 	}
-	allowed, err := s.checker.CheckBulk(ctx, tenantID, wanted, claims.PrincipalID)
+	allowed, err := s.checkRootPermissions(ctx, tenantID, wanted, claims.PrincipalID)
 	if err != nil {
 		return err
 	}

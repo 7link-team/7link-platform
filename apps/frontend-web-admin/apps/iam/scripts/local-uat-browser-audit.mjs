@@ -500,7 +500,7 @@ try {
           )
           await capture("denied")
           for (const [path, empty, screenshot] of [
-            ["/platform/tenants", "暂无租户", "tenants-denied"],
+            ["/system/tenants", "暂无租户", "tenants-denied"],
             [
               `/tenants/${tenant}/oauth-clients`,
               "尚未登记 OAuth 客户端",

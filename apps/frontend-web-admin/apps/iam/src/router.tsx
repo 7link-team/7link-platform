@@ -3,19 +3,49 @@ import { AuthProvider } from "./components/auth-provider"
 import { PendingRoute } from "./components/pending-route"
 import { RouteError } from "./components/route-error"
 import { getTenant, iamApi, setTenant } from "./lib/iam-api"
-import { workspacePath } from "./lib/navigation"
+import { defaultWorkspacePath } from "./lib/navigation"
+import { getAccountView } from "./lib/account-view"
 
 async function workspaceHomeLoader() {
-  try {
-    const tenants = (await iamApi.myTenants()).filter(
-      (tenant) => tenant.status === "active"
+  const view = getAccountView()
+  if (view)
+    return redirect(
+      view.scope_type === "system"
+        ? "/system/accounts"
+        : view.scope_type === "platform"
+          ? `/operating-platforms/${encodeURIComponent(view.scope_id)}`
+          : view.scope_type === "personal"
+            ? "/me/profile"
+            : view.scope_type === "entity"
+              ? `/tenants/${encodeURIComponent(getTenant())}/entities/${encodeURIComponent(view.scope_id)}/overview`
+              : `/tenants/${encodeURIComponent(view.scope_id)}`
     )
+  try {
+    const [memberships, permissions, platforms, systemPermissions] =
+      await Promise.all([
+        iamApi.myTenants(),
+        iamApi.myPermissions(),
+        iamApi.myOperatingPlatforms(),
+        iamApi.systemPermissions(),
+      ])
+    if (systemPermissions.includes("system_account_view"))
+      return redirect("/system/accounts")
+    if (
+      platforms.length &&
+      !memberships.some(
+        (tenant) => tenant.status === "active" && tenant.id === getTenant()
+      )
+    )
+      return redirect(
+        `/operating-platforms/${encodeURIComponent(platforms[0]!.id)}`
+      )
+    const tenants = memberships.filter((tenant) => tenant.status === "active")
     const selected = getTenant()
     const tenantID = tenants.some((tenant) => tenant.id === selected)
       ? selected
       : (tenants[0]?.id ?? "")
     if (tenantID) setTenant(tenantID)
-    return redirect(workspacePath(tenantID))
+    return redirect(defaultWorkspacePath(tenantID, new Set(permissions)))
   } catch {
     return redirect("/me")
   }
@@ -58,6 +88,91 @@ export const router = createBrowserRouter([
           </AuthProvider>
         ),
         children: [
+          {
+            lazy: async () => ({
+              Component: (await import("./app/system/layout")).default,
+            }),
+            children: [
+              {
+                path: "/system/administrators",
+                lazy: async () => ({
+                  Component: (await import("./app/system/administrators"))
+                    .default,
+                }),
+              },
+              {
+                path: "/system/accounts",
+                lazy: async () => ({
+                  Component: (await import("./app/system/accounts")).default,
+                }),
+              },
+              {
+                path: "/system/operating-platforms",
+                lazy: async () => ({
+                  Component: (await import("./app/system/operating-platforms"))
+                    .default,
+                }),
+              },
+              {
+                path: "/system/tenants",
+                lazy: async () => ({
+                  Component: (await import("./app/tenants/page")).default,
+                }),
+              },
+              {
+                path: "/system/audit-governance",
+                lazy: async () => ({
+                  Component: (await import("./app/audit-governance/page"))
+                    .default,
+                }),
+              },
+              {
+                path: "/system/closure-requests",
+                lazy: async () => ({
+                  Component: (await import("./app/principals/closure-requests"))
+                    .default,
+                }),
+              },
+              {
+                path: "/operating-platforms/:platformID",
+                lazy: async () => ({
+                  Component: (await import("./app/system/layout"))
+                    .OperatingWorkspaceHome,
+                }),
+              },
+              {
+                path: "/operating-platforms/:platformID/roles",
+                lazy: async () => ({
+                  Component: (await import("./app/roles/page")).default,
+                }),
+              },
+              {
+                path: "/operating-platforms/:platformID/menus",
+                lazy: async () => ({
+                  Component: (await import("./app/menus/page")).default,
+                }),
+              },
+              {
+                path: "/operating-platforms/:platformID/departments",
+                lazy: async () => ({
+                  Component: (await import("./app/departments/page")).default,
+                }),
+              },
+              {
+                path: "/operating-platforms/:platformID/groups",
+                lazy: async () => ({
+                  Component: (await import("./app/groups/page")).default,
+                }),
+              },
+              {
+                path: "/operating-platforms/:platformID/members",
+                lazy: async () => ({
+                  Component: (await import("./app/system/platform-members"))
+                    .default,
+                }),
+              },
+            ],
+          },
           {
             index: true,
             loader: workspaceHomeLoader,
@@ -149,13 +264,6 @@ export const router = createBrowserRouter([
                 }),
               },
               {
-                path: "/platform/closure-requests",
-                lazy: async () => ({
-                  Component: (await import("./app/principals/closure-requests"))
-                    .default,
-                }),
-              },
-              {
                 path: "/tenants/:tenantID/invitations",
                 lazy: async () => ({
                   Component: (await import("./app/invitations/page")).default,
@@ -166,12 +274,6 @@ export const router = createBrowserRouter([
                 lazy: async () => ({
                   Component: (await import("./app/service-accounts/page"))
                     .default,
-                }),
-              },
-              {
-                path: "/platform/tenants",
-                lazy: async () => ({
-                  Component: (await import("./app/tenants/page")).default,
                 }),
               },
               {
@@ -258,13 +360,6 @@ export const router = createBrowserRouter([
               },
               {
                 path: "/tenants/:tenantID/audit-governance",
-                lazy: async () => ({
-                  Component: (await import("./app/audit-governance/page"))
-                    .default,
-                }),
-              },
-              {
-                path: "/platform/audit-governance",
                 lazy: async () => ({
                   Component: (await import("./app/audit-governance/page"))
                     .default,

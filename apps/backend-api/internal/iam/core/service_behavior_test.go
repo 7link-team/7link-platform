@@ -237,6 +237,73 @@ func TestDeletingEntityDenyRequiresGrantableRole(t *testing.T) {
 	assert.True(t, changed)
 }
 
+func TestServiceMenuMovePreservesSubtreeAndRejectsInvalidTargets(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	h.seedMember(t, 1, 11, MemberActive)
+	h.seedMember(t, 2, 22, MemberActive)
+	create := func(tenant, parent guid.ID, label string) Menu {
+		menu, err := h.service.CreateMenu(t.Context(), Menu{TenantID: tenant, ParentID: parent, Label: label, Status: MenuActive})
+		require.NoError(t, err)
+		return menu
+	}
+	a := create(1, 0, "A")
+	b := create(1, 0, "B")
+	child := create(1, a.ID, "child")
+	leaf := create(1, child.ID, "leaf")
+	other := create(2, 0, "other tenant")
+	parent := b.ID
+	moved, err := h.service.MoveMenu(t.Context(), 1, child.ID, &parent, "first", 0)
+	require.NoError(t, err)
+	assert.Equal(t, b.ID, moved.ParentID)
+	retained, err := h.service.GetMenu(t.Context(), 1, leaf.ID)
+	require.NoError(t, err)
+	assert.Equal(t, child.ID, retained.ParentID)
+	parent = 0
+	_, err = h.service.MoveMenu(t.Context(), 1, child.ID, &parent, "before", b.ID)
+	require.NoError(t, err)
+	_, err = h.service.MoveMenu(t.Context(), 1, child.ID, nil, "after", b.ID)
+	require.NoError(t, err)
+	_, err = h.service.MoveMenu(t.Context(), 1, a.ID, nil, "last", 0)
+	require.NoError(t, err)
+	before, err := h.service.ListMenus(t.Context(), 1)
+	require.NoError(t, err)
+	var roots []guid.ID
+	for _, menu := range before {
+		if menu.ParentID.Zero() {
+			roots = append(roots, menu.ID)
+		}
+	}
+	assert.Equal(t, []guid.ID{b.ID, child.ID, a.ID}, roots)
+	for _, attempt := range []struct {
+		name   string
+		parent guid.ID
+		kind   string
+		anchor guid.ID
+	}{
+		{"self", child.ID, "last", 0},
+		{"descendant", leaf.ID, "last", 0},
+		{"foreign parent", other.ID, "last", 0},
+		{"foreign anchor", 0, "before", other.ID},
+		{"nested anchor", 0, "before", leaf.ID},
+		{"missing anchor", 0, "before", 0},
+		{"self anchor", 0, "after", child.ID},
+		{"unexpected anchor", 0, "last", b.ID},
+		{"unknown kind", 0, "invalid", 0},
+	} {
+		t.Run(attempt.name, func(t *testing.T) {
+			_, err := h.service.MoveMenu(t.Context(), 1, child.ID, &attempt.parent, attempt.kind, attempt.anchor)
+			assert.ErrorIs(t, err, ErrInvalidArgument)
+			after, err := h.service.ListMenus(t.Context(), 1)
+			require.NoError(t, err)
+			assert.Equal(t, before, after, "rejected moves must preserve the entire tree and order")
+		})
+	}
+	_, err = h.service.MoveMenu(t.Context(), 2, child.ID, nil, "last", 0)
+	assert.ErrorIs(t, err, ErrMenuNotFound)
+	_, err = h.service.MoveMenu(t.Context(), 0, child.ID, nil, "last", 0)
+	assert.ErrorIs(t, err, ErrInvalidArgument)
+}
+
 func TestServiceMenuEntityAndAuthorizationLifecycle(t *testing.T) {
 	harness := newCoreServiceHarness(t)
 	tenantID, principalID := guid.ID(1), guid.ID(11)
@@ -704,7 +771,10 @@ func TestServiceCatalogsAndConstructors(t *testing.T) {
 	for _, action := range tenantCatalog {
 		assert.NotEqual(t, "platform", action.Scope)
 	}
-	assert.Len(t, harness.service.ScopeModel(t.Context()), 4)
+	model := harness.service.ScopeModel(t.Context())
+	assert.Len(t, model, 5)
+	assert.Equal(t, "system", model[0].Type)
+	assert.Equal(t, "", model[2].ParentType, "no operating-platform to tenant cardinality is imposed")
 	menuCatalog := harness.service.MenuCatalog(t.Context())
 	require.Len(t, menuCatalog, 1)
 	assert.NotEmpty(t, menuCatalog[0].Children)

@@ -86,7 +86,7 @@ func (s *Service) tokenProfile(ctx context.Context, payload map[string]any, prin
 
 func sessionView(ctx context.Context, service *Service, in *meInput, claims *authnext.Claims) (meOutput, error) {
 	scope := "profile email"
-	if strings.TrimSpace(in.Authorization) != "" {
+	if strings.TrimSpace(in.Authorization) != "" && (claims.AccountView == nil || claims.AccountView.ScopeType != "personal") {
 		scope, _ = claims.Raw["scope"].(string)
 	}
 	profile, err := service.ProjectProfile(ctx, claims, scope)

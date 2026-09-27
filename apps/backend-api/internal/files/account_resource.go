@@ -494,7 +494,9 @@ func (r *AccountResourceFiles) appendAudit(ctx context.Context, tx *gorm.DB, act
 		return ErrUnsupported
 	}
 	event := audit.NewDomainEvent(ctx, 0, eventType, "file_node", fileID)
-	event.PrincipalID = actorID
+	if event.PrincipalID.Zero() {
+		event.PrincipalID = actorID
+	}
 	for key, value := range detail {
 		event.Detail[key] = value
 	}

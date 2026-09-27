@@ -1,12 +1,40 @@
 package core
 
 import (
+	"fmt"
 	"testing"
 
 	"7link.com/platform/internal/infra/guid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAdministrativeRootsCannotEnterTenantAdmission(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	h.seedMember(t, 1, 11, MemberActive)
+	m := boundChecker(t, h.runtime, "sl_")
+	for index, kind := range []string{"system", "platform"} {
+		id := guid.ID(index + 2)
+		require.NoError(t, h.db.Exec(`INSERT INTO sl_iam_tenants
+			(id, slug, name, scope_kind, status, version, created_at, updated_at)
+			VALUES (?, ?, ?, ?, 'active', 1, ?, ?)`, id, fmt.Sprintf("admin-%d", id), kind, kind, repositoryTestTime, repositoryTestTime).Error)
+		require.NoError(t, h.db.Exec(`INSERT INTO sl_iam_tenant_members
+			(tenant_id, principal_id, display_name, email, status, created_at, updated_at)
+			VALUES (?, 11, 'Member', '', 'active', ?, ?)`, id, repositoryTestTime, repositoryTestTime).Error)
+		active, err := m.IsMemberActive(t.Context(), id, 11)
+		require.NoError(t, err)
+		assert.False(t, active, kind)
+		selected, err := m.ResolveTenant(t.Context(), 11, id)
+		require.NoError(t, err)
+		assert.Zero(t, selected, kind)
+		allowed, err := h.authorizer.Check(t.Context(), id, "role_view", 11)
+		require.NoError(t, err)
+		assert.False(t, allowed, kind)
+	}
+	selected, err := m.ResolveTenant(t.Context(), 11, 0)
+	require.NoError(t, err)
+	assert.Equal(t, guid.ID(1), selected, "administrative memberships must not make the ordinary tenant choice ambiguous")
+}
 
 func TestActiveMemberDepartmentIsTenantScopedAndWriterBacked(t *testing.T) {
 	h := newCoreServiceHarness(t)

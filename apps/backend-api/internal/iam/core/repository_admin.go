@@ -21,6 +21,10 @@ type tenantMemberRecord struct {
 }
 
 func (r *Repository) PutMember(ctx context.Context, member TenantMember) (TenantMember, error) {
+	return r.putMember(ctx, member, false)
+}
+
+func (r *Repository) putMember(ctx context.Context, member TenantMember, createOnly bool) (TenantMember, error) {
 	repo, err := r.pinWriter()
 	if err != nil {
 		return TenantMember{}, err
@@ -45,13 +49,20 @@ func (r *Repository) PutMember(ctx context.Context, member TenantMember) (Tenant
 		DisplayName: member.DisplayName, Email: member.Email, Status: string(member.Status),
 		CreatedAt: now, UpdatedAt: now, DisabledAt: disabledAt,
 	}
-	result := db.WithContext(ctx).Table(tables.TenantMembers.TableName()).Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "tenant_id"}, {Name: "principal_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"display_name", "email", "status", "updated_at", "disabled_at",
-		}),
-	}).Create(&row)
+	statement := db.WithContext(ctx).Table(tables.TenantMembers.TableName())
+	if !createOnly {
+		statement = statement.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "tenant_id"}, {Name: "principal_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"display_name", "email", "status", "updated_at", "disabled_at",
+			}),
+		})
+	}
+	result := statement.Create(&row)
 	if result.Error != nil {
+		if createOnly && errors.Is(result.Error, gorm.ErrDuplicatedKey) {
+			return TenantMember{}, ErrMemberConflict
+		}
 		return TenantMember{}, fmt.Errorf("upsert tenant member: %w", result.Error)
 	}
 	return repo.GetMember(ctx, member.TenantID, member.PrincipalID)

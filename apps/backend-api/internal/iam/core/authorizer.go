@@ -151,16 +151,38 @@ func (a *Authorizer) CheckPlatform(ctx context.Context, permission string, subje
 	if err != nil {
 		return false, err
 	}
-	var count int64
+	var principal struct{ ID guid.ID }
 	err = a.db.WithContext(ctx).Table(names.Principal.String()+" AS p").
+		Select("p.id").
 		Where("p.id = ? AND p.status = 'active'", subject).
-		Where("(EXISTS (SELECT 1 FROM "+names.Tables.PlatformAdministrators.String()+" AS pa WHERE pa.principal_id = p.id)"+
-			" OR EXISTS (SELECT 1 FROM "+names.Tables.PlatformGrants.String()+" AS pg WHERE pg.principal_id = p.id AND pg.permission_code = ?))", permission).
-		Count(&count).Error
+		Take(&principal).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
 	if err != nil {
 		return false, fmt.Errorf("evaluate platform permission: %w", err)
 	}
-	return count == 1, nil
+	// Direct reads inherit transaction locks, including current-read semantics on MySQL.
+	var administrator struct{ PrincipalID guid.ID }
+	err = a.db.WithContext(ctx).Table(names.Tables.PlatformAdministrators.String()).
+		Select("principal_id").Where("principal_id = ?", subject).Take(&administrator).Error
+	if err == nil {
+		return true, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, fmt.Errorf("evaluate platform administrator: %w", err)
+	}
+	var grant struct{ PrincipalID guid.ID }
+	err = a.db.WithContext(ctx).Table(names.Tables.PlatformGrants.String()).
+		Select("principal_id").Where("principal_id = ? AND permission_code = ?", subject, permission).
+		Take(&grant).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("evaluate platform grant: %w", err)
+	}
+	return true, nil
 }
 
 // CheckBulk evaluates declared permissions for one tenant subject. Unknown
@@ -187,7 +209,7 @@ func (a *Authorizer) CheckBulk(
 		if permission == "" {
 			return nil, errors.New("permission is empty")
 		}
-		if action, ok := a.registry.Find(permission); ok && action.Scope != "platform" {
+		if action, ok := a.registry.Find(permission); ok && action.Scope != "platform" && action.Scope != "operating_platform" {
 			tenantPermissions = append(tenantPermissions, permission)
 		}
 	}
@@ -223,6 +245,8 @@ func (a *Authorizer) CheckBulk(
 		action, known := a.registry.Find(permission)
 		if !known {
 			allowed[permission] = false
+		} else if action.Scope == "operating_platform" {
+			allowed[permission] = false
 		} else if action.Scope == "platform" {
 			allowed[permission] = platformAdministrator
 		} else {
@@ -230,6 +254,43 @@ func (a *Authorizer) CheckBulk(
 		}
 	}
 	return allowed, nil
+}
+
+// CheckOperatingPlatform uses the shared scoped RBAC engine and admits only
+// active platform roots and their own members. Global grants do not override it.
+func (a *Authorizer) CheckOperatingPlatform(ctx context.Context, platformID guid.ID, permission string, subject guid.ID) (bool, error) {
+	pinned, err := a.pinWriter()
+	if err != nil {
+		return false, err
+	}
+	if pinned != a {
+		return pinned.CheckOperatingPlatform(ctx, platformID, permission, subject)
+	}
+	if err := validateAuthorizationRequest(platformID, permission, subject); err != nil {
+		return false, err
+	}
+	action, ok := a.registry.Find(permission)
+	if !ok || !authz.IsOperatingPlatformPermission(action) {
+		return false, nil
+	}
+	names, err := a.authorizationTables()
+	if err != nil {
+		return false, err
+	}
+	_, active, err := ownerMembershipState(ctx, a.db, names, platformID, subject, "platform")
+	if err != nil || !active {
+		return false, err
+	}
+	grants, err := a.loadTenantGrants(ctx, platformID, subject, []string{permission, "operating_platform_administer"}, policyx.TrustedFromContext(ctx, a.now()))
+	if err != nil {
+		return false, err
+	}
+	for _, grant := range grants {
+		if grant.PermissionCode == permission || grant.PermissionCode == "operating_platform_administer" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Constraint compiles one data-scoped permission into concrete entity,

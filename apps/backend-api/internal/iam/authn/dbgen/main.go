@@ -23,5 +23,6 @@ func main() {
 		model.StepUpChallenge{},
 		model.ReauthenticationChallenge{},
 		model.PersonalToken{},
+		model.AccountViewToken{},
 	)
 }

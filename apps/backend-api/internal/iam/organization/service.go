@@ -60,7 +60,7 @@ func (s *Service) Get(ctx context.Context, tenantID, id guid.ID) (Department, er
 }
 
 func (s *Service) Create(ctx context.Context, tenantID guid.ID, input CreateDepartment) (Department, error) {
-	tenantID, input, err := normalizeCreate(tenantID, input)
+	tenantID, input, err := normalizeDepartmentCreate(tenantID, input)
 	if err != nil {
 		return Department{}, err
 	}
@@ -77,7 +77,7 @@ func (s *Service) Create(ctx context.Context, tenantID guid.ID, input CreateDepa
 		if err := repo.insertDepartment(ctx, &row); err != nil {
 			return err
 		}
-		if s.roots != nil {
+		if s.roots != nil && row.EntityID != nil {
 			if _, err := s.roots(ctx, repo.writer(), core.FileRootProvisionInput{
 				Scope: "department", TenantID: tenantID, EntityID: input.EntityID, OwnerID: id,
 			}, now); err != nil {
@@ -136,7 +136,11 @@ func (s *Service) Update(ctx context.Context, tenantID, id guid.ID, input Update
 			if err != nil {
 				return err
 			}
-			if current.EntityID == nil || parent.EntityID == nil || *parent.EntityID != *current.EntityID {
+			kind, err := repo.rootKind(ctx, tenantID)
+			if err != nil {
+				return err
+			}
+			if !sameDepartmentEntity(kind, current.EntityID, parent.EntityID) {
 				return ErrEntityMismatch
 			}
 			cycle, err := repo.isDepartmentDescendant(ctx, tenantID, id, *updated.ParentID)
@@ -195,10 +199,7 @@ func (s *Service) Delete(ctx context.Context, tenantID, id guid.ID, version int6
 		if current.Version != version {
 			return ErrVersionConflict
 		}
-		if s.rootContent != nil {
-			if current.EntityID == nil {
-				return ErrEntityMismatch
-			}
+		if s.rootContent != nil && current.EntityID != nil {
 			hasContent, err := s.rootContent(ctx, repo.writer(), core.FileRootProvisionInput{
 				Scope: "department", TenantID: tenantID, EntityID: *current.EntityID, OwnerID: id,
 			})

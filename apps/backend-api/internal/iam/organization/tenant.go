@@ -22,6 +22,10 @@ import (
 )
 
 const (
+	ScopeTenant   = "tenant"
+	ScopePlatform = "platform"
+	ScopeSystem   = "system"
+
 	TenantActive    = "active"
 	TenantSuspended = "suspended"
 	TenantDeleted   = "deleted"
@@ -68,11 +72,19 @@ type UpdateTenant struct {
 }
 
 type TenantService struct {
+	scopeKind string
 	repo      *Repository
 	now       func() time.Time
 	bootstrap core.TenantBootstrapper
 	roots     core.FileRootProvisioner
 	owners    identity.TenantOwnerLookup
+}
+
+func (s *TenantService) kind() string {
+	if s.scopeKind == "" {
+		return ScopeTenant
+	}
+	return s.scopeKind
 }
 
 // NewTenantService builds the tenant service. The bootstrapper and owner
@@ -110,10 +122,18 @@ func EnsureTenant(ctx context.Context, runtime *appenv.Runtime, id guid.ID) erro
 		return fmt.Errorf("ensure tenant: %w", err)
 	}
 	now := organizationTime(time.Now())
-	row := model.Tenant{ID: id, Slug: tenantSlugForID(id.String()), Name: id.String(), Status: TenantActive, Version: 1, CreatedAt: now, UpdatedAt: now}
-	err := runtime.Database().Write().WithContext(ctx).Table(query.BindNames(runtime.TablePrefix()).Tenants.String()).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
+	row := model.Tenant{ID: id, ScopeKind: ScopeTenant, Slug: tenantSlugForID(id.String()), Name: id.String(), Status: TenantActive, Version: 1, CreatedAt: now, UpdatedAt: now}
+	database := runtime.Database().Write().WithContext(ctx).Table(query.BindNames(runtime.TablePrefix()).Tenants.String())
+	err := database.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
 	if err != nil {
 		return fmt.Errorf("ensure tenant: %w", err)
+	}
+	var count int64
+	if err := database.Where("id = ? AND scope_kind = ?", id, ScopeTenant).Count(&count).Error; err != nil {
+		return fmt.Errorf("ensure tenant: %w", err)
+	}
+	if count != 1 {
+		return ErrTenantNotFound
 	}
 	return nil
 }
@@ -128,7 +148,7 @@ func (s *TenantService) List(ctx context.Context, includeDeleted bool) ([]Tenant
 		return nil, err
 	}
 	var rows []model.Tenant
-	db := repo.writer().WithContext(ctx).Table(tables.Tenants.TableName())
+	db := repo.writer().WithContext(ctx).Table(tables.Tenants.TableName()).Where("scope_kind = ?", s.kind())
 	if !includeDeleted {
 		db = db.Where("status <> ?", TenantDeleted)
 	}
@@ -159,7 +179,7 @@ func (s *TenantService) ListByMember(ctx context.Context, subject guid.ID) ([]Te
 	tenantTable := tables.Tenants.TableName()
 	err = repo.writer().WithContext(ctx).Table(tenantTable+" AS t").Select("t.*").
 		Joins("JOIN "+memberTable+" AS m ON m.tenant_id = t.id AND m.principal_id = ?", subject).
-		Where("t.status <> ? AND m.status = ?", TenantDeleted, StatusActive).Order("t.name ASC, t.id ASC").Scan(&rows).Error
+		Where("t.scope_kind = ? AND t.status <> ? AND m.status = ?", s.kind(), TenantDeleted, StatusActive).Order("t.name ASC, t.id ASC").Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("list member tenants: %w", err)
 	}
@@ -178,7 +198,7 @@ func (s *TenantService) Get(ctx context.Context, id guid.ID) (Tenant, error) {
 	if err != nil {
 		return Tenant{}, err
 	}
-	row, err := getTenantRow(ctx, repo, id)
+	row, err := getRootRow(ctx, repo, id, s.kind())
 	if err != nil {
 		return Tenant{}, err
 	}
@@ -195,8 +215,8 @@ func (s *TenantService) Create(ctx context.Context, input CreateTenant) (Tenant,
 		return Tenant{}, fmt.Errorf("generate tenant id: %w", err)
 	}
 	now := organizationTime(s.now())
-	row := model.Tenant{ID: id, Slug: input.Slug, Name: input.Name, Status: TenantActive, Version: 1, CreatedAt: now, UpdatedAt: now}
-	event := audit.NewDomainEvent(ctx, 0, "tenant_created", "tenant", id)
+	row := model.Tenant{ID: id, ScopeKind: s.kind(), Slug: input.Slug, Name: input.Name, Status: TenantActive, Version: 1, CreatedAt: now, UpdatedAt: now}
+	event := audit.NewDomainEvent(ctx, 0, s.kind()+"_created", s.kind(), id)
 	event.Detail["slug"] = input.Slug
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
 		tables, _, err := repo.tables()
@@ -225,13 +245,13 @@ func (s *TenantService) Create(ctx context.Context, input CreateTenant) (Tenant,
 			return ErrTenantOwnerInactive
 		}
 		result, err := s.bootstrap.Bootstrap(ctx, repo.writer(), core.TenantBootstrapInput{
-			TenantID: id, OwnerID: owner.ID,
+			TenantID: id, OwnerID: owner.ID, ScopeKind: s.kind(),
 			DisplayName: owner.DisplayName, Email: owner.Email,
 		}, now)
 		if err != nil {
 			return fmt.Errorf("bootstrap tenant: %w", err)
 		}
-		if s.roots != nil {
+		if s.roots != nil && s.kind() == ScopeTenant {
 			if _, err := s.roots(ctx, repo.writer(), core.FileRootProvisionInput{
 				Scope: "tenant", TenantID: id, OwnerID: id,
 			}, now); err != nil {
@@ -244,7 +264,7 @@ func (s *TenantService) Create(ctx context.Context, input CreateTenant) (Tenant,
 		if err := repo.appendAudit(ctx, event); err != nil {
 			return err
 		}
-		bootstrapped := audit.NewDomainEvent(ctx, id, "tenant_bootstrapped", "tenant", id)
+		bootstrapped := audit.NewDomainEvent(ctx, id, s.kind()+"_bootstrapped", s.kind(), id)
 		bootstrapped.Detail["owner_principal_id"] = owner.ID.String()
 		bootstrapped.Detail["administrator_role_id"] = result.AdministratorRoleID.String()
 		bootstrapped.Detail["permission_count"] = result.PermissionCount
@@ -264,13 +284,13 @@ func (s *TenantService) Update(ctx context.Context, id guid.ID, input UpdateTena
 	}
 	now := organizationTime(s.now())
 	var updated *model.Tenant
-	event := audit.NewDomainEvent(ctx, 0, "tenant_updated", "tenant", id)
+	event := audit.NewDomainEvent(ctx, 0, s.kind()+"_updated", s.kind(), id)
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
 		tables, _, err := repo.tables()
 		if err != nil {
 			return err
 		}
-		current, err := getTenantRow(ctx, repo, id)
+		current, err := getRootRow(ctx, repo, id, s.kind())
 		if err != nil {
 			return err
 		}
@@ -289,7 +309,7 @@ func (s *TenantService) Update(ctx context.Context, id guid.ID, input UpdateTena
 			return nil
 		}
 		updated.Version, updated.UpdatedAt = current.Version+1, now
-		result := repo.writer().WithContext(ctx).Table(tables.Tenants.TableName()).Where("id = ? AND version = ?", id, current.Version).
+		result := repo.writer().WithContext(ctx).Table(tables.Tenants.TableName()).Where("id = ? AND scope_kind = ? AND version = ?", id, s.kind(), current.Version).
 			Select("name", "status", "version", "updated_at").Updates(updated)
 		if result.Error != nil {
 			return fmt.Errorf("update tenant: %w", result.Error)
@@ -314,20 +334,20 @@ func (s *TenantService) Delete(ctx context.Context, id guid.ID, version int64) e
 		return ErrInvalidTenant
 	}
 	now := organizationTime(s.now())
-	event := audit.NewDomainEvent(ctx, 0, "tenant_deleted", "tenant", id)
+	event := audit.NewDomainEvent(ctx, 0, s.kind()+"_deleted", s.kind(), id)
 	err := s.repo.runInTx(ctx, func(repo *Repository) error {
 		tables, _, err := repo.tables()
 		if err != nil {
 			return err
 		}
-		current, err := getTenantRow(ctx, repo, id)
+		current, err := getRootRow(ctx, repo, id, s.kind())
 		if err != nil {
 			return err
 		}
 		if current.Status == TenantDeleted || current.Version != version {
 			return ErrTenantVersionConflict
 		}
-		result := repo.writer().WithContext(ctx).Table(tables.Tenants.TableName()).Where("id = ? AND version = ?", id, version).
+		result := repo.writer().WithContext(ctx).Table(tables.Tenants.TableName()).Where("id = ? AND scope_kind = ? AND version = ?", id, s.kind(), version).
 			Updates(map[string]any{"status": TenantDeleted, "version": gorm.Expr("version + 1"), "updated_at": now})
 		if result.Error != nil {
 			return fmt.Errorf("delete tenant: %w", result.Error)
@@ -347,6 +367,10 @@ func (s *TenantService) Delete(ctx context.Context, id guid.ID, version int64) e
 }
 
 func getTenantRow(ctx context.Context, repo *Repository, id guid.ID) (*model.Tenant, error) {
+	return getRootRow(ctx, repo, id, ScopeTenant)
+}
+
+func getRootRow(ctx context.Context, repo *Repository, id guid.ID, kind string) (*model.Tenant, error) {
 	if repo == nil || id.Zero() {
 		return nil, ErrInvalidTenant
 	}
@@ -355,7 +379,7 @@ func getTenantRow(ctx context.Context, repo *Repository, id guid.ID) (*model.Ten
 		return nil, err
 	}
 	var row model.Tenant
-	err = repo.writer().WithContext(ctx).Table(tables.Tenants.TableName()).Where("id = ?", id).Take(&row).Error
+	err = repo.writer().WithContext(ctx).Table(tables.Tenants.TableName()).Where("id = ? AND scope_kind = ?", id, kind).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrTenantNotFound
 	}

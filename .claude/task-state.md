@@ -1,5 +1,286 @@
 # Task State
 
+## Current Delivery - 2026-09-26
+
+- Task: separate system/operating-platform/tenant/entity/account administration,
+  dedicated read-only/writable target views, reliable E2E and runnable demo.
+- Phase: ACCEPTANCE. Implementation, self-review and independent architecture,
+  security and acceptance reviews PASS. Ready for manual user acceptance.
+- Verified: exact scoped target authority, live transaction-bound operator checks,
+  actual operator audit attribution, unchanged target sessions/credentials/PATs/
+  notifications, security/protocol conversion denial, expiry/revocation.
+- Workspaces, stored operating menu hierarchy, metadata discovery, personal field
+  policy, avatar reads/absence, frontend identity race and scope labels repaired.
+  Group additions/widening/rule expansion/reactivation prevent indirect escalation.
+- PASS: affected backend suites; final core/audit/app, identity and full authn reruns.
+  Frontend typecheck/lint/build,145 IAM tests and generated contracts PASS.
+- Real MySQL8 full gate PASS: .temp/account-view-mysql-verified-20260926.log.
+  PostgreSQL16 runtime/signatures/enforced frozen budgets PASS; SCIM median7.47ms
+  and max7.69ms below8ms. Earlier concurrent failure retained as test history.
+  Only SQL plans updated; original samples/budgets unchanged.
+- Full real browser35/35 PASS: .temp/sqlite-lifecycle-owjvLZ/report.json.
+  Final scoped browser14/14 PASS: .temp/sqlite-lifecycle-aS3pWI/report.json.
+  Zero uncaught errors;21 desktop/mobile screenshots inspected; owned tests stopped.
+- Retained demo hidden supervisor29724: Web http://127.0.0.1:8091/login,
+  Swagger http://127.0.0.1:8080/docs. Six selector logins verified expected scopes,
+  no alerts. Use make dev-status/dev-stop; data retained.
+- Evidence and acceptance steps: apps/backend-api/docs/
+  administration-account-view-plan-2026-09-26.md. D88/D89 reconciled.
+- Confirmed boundaries: global accounts, independent memberships; no business
+  quotas or forced platform/tenant relationship; target permissions determine
+  view access, actual operator determines audit; writable business changes real.
+- Next: manual user acceptance via the account selector. Delivery reports actual
+  Git HEAD and remote verification; generated logs/binaries/screenshots excluded.
+
+## Historical Checkpoints
+
+## System / Platform / Tenant Administration and Account Views - 2026-09-26
+
+- Active user goal: distinct system/platform/tenant management; system admins
+  manage all administrator/account categories and open dedicated-token target
+  views, read-only by default with selectable write mode and no target session
+  or login notification changes. User clarified operating scopes; work resumed.
+- Phase: DESIGN / IMPLEMENTATION / TESTING. Hybrid execution: root integrates;
+  existing architecture/security/acceptance reviewers performed bounded reviews,
+  architecture implemented owner-kind foundation and security token services.
+- Evidence-based plan/review:
+  apps/backend-api/docs/administration-account-view-plan-2026-09-26.md.
+- Implemented foundation: non-JSON AccountView identity in verified claims,
+  separate ActorIDFromContext, actor/view/target correlation in NewDomainEvent,
+  shared registrar rejects malformed view identities and read-only unsafe methods.
+  Ordinary JWT/JSON cannot attach server-owned AccountView identity.
+- PASS: go test ./pkg/extension/authz ./pkg/extension/authn ./internal/iam/audit;
+  git diff --check. An initial fixture used a missing principal path and panicked;
+  corrected it to the real principal self mount, then reran successfully.
+- No view token can be issued yet. No system grant/workspace exists. No account
+  view E2E has run. Method gating does not prove every read has no side effects.
+- Targeted auth-path inventory completed: personal read services reauthenticate
+  raw cookies; authn /me authenticates twice; session-only reads need explicit
+  view handling; GET identity-continuation writes links/reauthentication state;
+  OAuth/federation have authentication outside the registrar. Plan contains
+  source-grounded route treatments. Token issuance must not precede these repairs.
+- Further implementation: /me consumes the registrar's verified identity once;
+  DenyAccountView metadata protects the identity-continuation GET callback in
+  both view modes; identity/provider service reads use the trusted view target
+  rather than the operator cookie. Session-only bearer rules are still intact.
+- PASS: go test ./pkg/extension/authn ./pkg/extension/authz ./internal/iam/authn
+  ./internal/iam/federation ./internal/iam/audit; git diff --check. Real SQLite
+  service test proves operator/invalid/absent cookies cannot change the viewed
+  principal and all browser-session rows remain identical before/after reads.
+  This is not dedicated-token HTTP or browser E2E acceptance.
+- Clarification supersedes the blocker: one deployment can contain independently
+  operated platform scopes with different menus/views and department/role control.
+  Dedicated writable tokens retain real operator attribution and do not create
+  target login sessions. Match the target account's logged-in view using its
+  current scope permissions; keep system administrative authority separate.
+- Implemented authn AccountViewToken model, migration16 for SQLite/MySQL/Postgres,
+  generated queries, physical-name publication, actor/target/session/mode/scope
+  binding, read-only default, immutable authorization, expiry/last-use/revocation.
+  Credential revocation and erasure cover both actor and target. No issuance API
+  or view-token authentication dispatch is enabled yet.
+- PASS: full authn/query/federation/IAM integration/authz package tests; latest
+  .temp/account-view-storage-20260926.log. Real SQLite tests cover plaintext lookup
+  denial, unchanged browser sessions, default/explicit modes, retarget/extend/mode
+  rejection, pre-issuance/expiry/session revocation/owner mismatch, monotonic use,
+  actor/target revocation rollback, erasure and anonymized-principal insert denial.
+  Fixed publication drift and two federation fixtures needing the new authn table;
+  quarantine regression now also verifies view revocation rollback/commit.
+- MySQL/PostgreSQL SQL written but not executed: docker absent from PATH/default
+  install location; WSL reports not installed. No database-pass claim for them.
+- Next action: review the shared department/role owner model for distinct system,
+  operating-platform and tenant scopes, then implement grants, management APIs,
+  dedicated-token issuance/authentication and corresponding browser workspaces.
+  Full goal and E2E acceptance remain outstanding. Preserve D88 and dirty work.
+
+### Continuation Checkpoint - 2026-09-26
+
+- Independent architecture/security reviews adopted the D89 implementation
+  contract recorded in the plan. Reuse immutable scope_kind on organization roots;
+  preserve partition IDs and shared directory/RBAC engine; no platform/tenant
+  cardinality is imposed. Global legacy platform grants mean system authority.
+- Implemented organization migration12 (three dialects), generated query and
+  ordinary tenant Get/List/Page/count/member lookup/Ensure/Create/Update/Delete
+  filtering. Core membership/admission/default tenant/department attribution
+  require kind=tenant. Admin-root creation remains disabled pending full boundary.
+- Implemented dedicated token Create/Authenticate/Revoke services with required
+  live authority callback, sorted principal locks/current reads, status/version
+  checks, max30min/session-clipped expiry, read-only default, independent immutable
+  mode/scope, transactional creation/use/revocation audit and nested-view denial.
+  General Authenticate dispatch and public issuance are still inactive.
+- Server view identity now carries scope type/id. Registrar checks tenant/entity/
+  personal/system bounds and resolved owners before target permission checks.
+  Cross-tenant/entity/parent/system and malformed/negative-bound regressions added.
+- Personal authn reads select verified target for sessions/MFA/passkeys/PAT list,
+  ignore all cookie substitutions and mark no target session current. Real SQLite
+  tests compare entire session tables. Real-token actual personal HTTP handler
+  integration proves target subject/session reads, foreign principal404,
+  read-only403, cookie logout401 and post-revocation401.
+- OAuth userinfo/introspection explicitly reject views in both modes; cookie
+  logout rejects Authorization before consuming cookies. OpenAPI/frontend types
+  regenerated. Frontend typecheck and focused Go vet PASS.
+- PASS combined authn/core/organization/oauth/federation/IAM integration/authz/
+  authn-extension suites: .temp/account-view-combined-20260926.log. Focused new
+  actual-HTTP test PASS after that combined run; git diff --check PASS.
+- Isolated existing real Chrome desktop/mobile browser regression PASS:
+  .temp/sqlite-lifecycle-ySfbf3/report.json, zero mocked business responses.
+  This covers existing login/federation/SCIM/lifecycle/tenant/session flows,
+  NOT full new account-view or system/operating-platform browser acceptance.
+- Remote Docker configured in .temp/iam-env.mk is reachable; local Docker/WSL
+  absence is not a testing blocker. First actual MySQL run found invalid column
+  CHECK referencing created_at; changed new migration16 to a named table CHECK.
+  Further embedded-MySQL migration12 failure fixed by separate ADD COLUMN/CHECK.
+  Old position-retirement fixture now caps both files/milestones at retirement
+  instead of assuming retirement is the last migration. No tests skipped/weakened.
+- Table/FK inventory updated73/36, ownership includes account-view tokens.
+  Static schema checker PASS preserving219 historical hashes; lock extension
+  pending completion of actual MySQL gate. Current full migration and MySQL gates
+  are running; collect final results before claiming either PASS.
+- Remaining required work: distinct system/operating-platform authority, root
+  bootstrap and APIs, exact-kind grant/catalog checks and legacy migration; public
+  dedicated-token controls/dispatch plus audited route admission and security
+  mutation rejection; corresponding frontend menus/account views; full isolated
+  per-role new-feature E2E and runnable user acceptance. Overall NOT READY.
+- Next concrete action: collect running migration/MySQL gate results, repair any
+  introduced regressions, review next scoped-platform CRUD/bootstrap contract,
+  then implement authority/API/UI integration. No user clarification is pending.
+
+## Audit Governance Usability Review - 2026-09-26
+
+- User asked what governance metrics mean and whether unavailable operations
+  are configuration requirements or incomplete workflows.
+- Current demo has no configured anchor/archive capabilities. User authorized
+  continuation of the reviewed fixes. No demo retention/events were modified.
+- Confirmed defects: misleading platform-default label (no inheritance), signer
+  button missing capability gates, unsigned external write before signing failure,
+  missing unsigned anchor UI action, unguarded platform tab visibility.
+- Review and bounded repair/acceptance plan:
+  apps/frontend-web-admin/docs/audit-governance-review-2026-09-26.md.
+- Implemented: signer capability flag, pre-write rejection without signer,
+  immutable unsigned-root preservation, capability/empty-chain action gates,
+  unsigned anchor UI, permission-gated platform tab, accurate defaults/retention
+  labels and disabled/age-based empty states. Existing archive worker preserved.
+- Role UI correction: explicit tenant role heading/admin permission name; named
+  authentication-strength choices and live condition effect/boundary summary.
+  No backend role/grant semantics changed. Platform permissions stay outside the
+  editable tenant catalog; unconditional tenant-admin guard remains intact.
+- Phase: ACCEPTANCE. Backend audit tests and core/audit race PASS; frontend
+  typecheck/lint/tests (142 IAM)/build/API type drift PASS. Mobile screenshots
+  viewed; audit/condition self-review and final scoped acceptance PASS.
+- Enabled isolated real SQLite/worker/MinIO/Chrome E2E PASS desktop/mobile:
+  storage outage/retry, segmented archive, object verification/exact download,
+  signed anchoring, root signing, foreign-tenant404 and unauthorized403.
+  Evidence: apps/backend-api/.temp/audit-governance-e2e-20260926.log,
+  archive-live screenshot directory1790477244077. Test container removed.
+- Latest disabled-capability/condition Chrome E2E PASS desktop/mobile and tenant
+  auditor: actual condition save/reload, ordinary member denial403, immutable
+  platform authority/correct scope catalog, no unauthorized platform tab/actions.
+  Evidence: .temp/audit-governance-disabled-e2e-20260926.log,
+  archive-live screenshot directory1790477722464.
+- Development supervisor restarted with retained data; final read-only Chrome
+  runtime check FAILED because its Chinese locator became question marks and
+  timed out. This is not evidence of a runtime acceptance pass; repair the test
+  locator and rerun before claiming live backend corrections delivered.
+  Do not claim original menu task accepted or a new superadmin membership policy.
+- Original menu/sidebar correspondence task remains incomplete below.
+
+## Confirmed Generic IAM Layers - 2026-09-26
+
+- User clarified compatibility requirements, not authorization to implement
+  e-commerce/accounting modules or tenant-creation quotas now.
+- Global account may participate in multiple tenants with independent roles.
+  Tenant is the isolation boundary; entity is a tenant-owned business unit.
+  Business examples are merchant/stores or headquarters/companies, not fixed
+  IAM types. Entity type validation already accepts business-neutral identifiers.
+- Platform administrator is fixed platform authority, not an editable tenant
+  role. Tenant administrator is tenant-scoped authority, not a global account type.
+- Creation limits (one/many, per business) and membership limits are different
+  business policies; do not enforce one tenant per principal in generic IAM.
+- Inspection: tenants schema has no owner/principal uniqueness; membership keys
+  permit multiple tenants. Creation currently requires declared platform authority;
+  ordinary registration does not by itself grant tenant creation. Tenant routes
+  also currently require active membership, including platform administrators.
+- Menu visibility does not grant authority; platform/tenant/entity/personal
+  workspace catalogs must follow ownership and server guards, and management
+  must correspond to the actual selected workspace's sidebar.
+- Entities own business resources; departments represent organization structure
+  and roles represent authority. Menus use the selected workspace and effective
+  permissions, not a permanent account-wide tenant-admin classification.
+- Business-specific tenant creation limits are explicitly deferred by the user;
+  this clarification records architectural constraints, not new business features.
+
+## Menu Tree Management - 2026-09-26
+
+- User requested tree/list menu management, root showing every hierarchy, drag and
+  up/down moves for branches/leaves across parents, grouped navigation for every
+  role view, and actual per-role browser E2E before acceptance.
+- Phase: DESIGN; user rejected remaining sidebar/manager mismatch after removing
+  the lower read-only list and authorized resolution with plan review.
+  Existing parent_id, cycle guards, policy lock, menu_update
+  authority and recursive sidebar retained. No new permission or role semantics.
+- Design: left selectable tree/right direct children (root all rows), native drag
+  with before/inside/after targets, up/down across adjacent branches/parent edges.
+  Existing PATCH gains structured placement for atomic subtree reparent/reorder.
+- Persisted tenant tree is rendered directly without an extra current-tenant
+  wrapper. Platform/entity/personal fixed groups retain existing route guards.
+- Implemented: atomic placement on existing PATCH, subtree preservation, bounded
+  tree/list panes, drag before/inside/after/root, cross-level arrow movement,
+  creation under selection, grouped tenant/platform/entity/personal sidebars.
+  Empty inaccessible navigation groups are omitted.
+- Latest acceptance corrections: left directory tree contains branches only;
+  right list expands/collapses in place independently of left selection. Root
+  starts with all levels; selecting a branch starts with direct children.
+  Regression checks include leaf omission, right-leaf drop becoming a branch,
+  root/branch list expansion and left selection preservation.
+- Navigation correction: unified switcher includes platform/personal entries;
+  global permission reads select platform home, preserving explicit deep links.
+  Platform header and permission/catalog loads no longer imply tenant scope.
+  Configured access-request placement is preserved without duplication. Shared
+  platform/entity/personal/tenant supplement catalogs are reused in sidebars.
+  Lower read-only system-entry list removed on user authorization; its imports,
+  list assembly and unused navigationScope messages removed. Actual entries and
+  server authority remain intact. Typecheck/lint/build PASS; removal E2E20 cases
+  PASS with no mocks/page errors. This does not accept built-in correspondence.
+  No platform menu schema or authorization change; existing API guards retained.
+- Verification: backend make ci exit0 (overall91.1%, core90.9%), focused core race,
+  frontend typecheck/lint/test/build and generated API drift all PASS.
+- User acceptance found corrupted Chinese demo labels; previous E2E covered
+  English only and did not assert menu-link visibility. Four demo translations
+  were repaired (PowerShell pipe had replaced Unicode with question marks).
+  Audit now uses actual NEXT_LOCALE cookies and asserts document language.
+- Final actual Chrome E2E PASS: five roles x widths1440/390 in English plus
+  ten Chinese tenant/menu cases (20 combinations), tenant and personal
+  views for all, authorized platform/entity views, admin movement and persistence,
+  unauthorized mutation403 and descendant cycle422. Chinese labels and exact
+  permission-based menu-link visibility checked. Denied page hides preview
+  controls. Zero mocks/page errors. Frontend typecheck/lint/build rerun PASS.
+  Report: apps/backend-api/.temp/dev/browser/menu-tree/report.json; screenshots
+  alongside it. Fixtures cleaned and original hierarchy restored by the audit.
+- Expanded navigation E2E PASS: actual default home, catalog/sidebar path and
+  parentage correspondence, read-only system catalog, real switcher round trips,
+  platform audit/closure pages HTTP200 and system-admin closure403. Waits verify
+  rendered data/active links and dismissed mobile drawer before screenshots.
+  Four final clean-demo Chinese platform switcher cases PASS after last UI fix;
+  no unresolved platform entity loader or incorrect selected-tenant checkmark.
+  Final frontend typecheck/lint/test(142 IAM tests)/build PASS; screenshots viewed.
+- Retained demo: Web8091/API8080, selectable five accounts; 14 existing builtin
+  menus grouped under four persisted demo branches without changing grants/routes.
+- Delivery record: apps/frontend-web-admin/docs/menu-tree-acceptance-2026-09-26.md.
+- Latest requirement: menu management must fully correspond to actual sidebar,
+  including System entries. Existing manager still edits tenant DB rows only.
+  Resolution authorized: review built-in grouping/level/order persistence with
+  necessary entries retained and existing workspace authority protected.
+  A separate lower read-only catalog does not meet the correspondence requirement.
+- User saw Branch test fixture during acceptance: existing E2E uses live demo
+  tenant. Audit finally cleanup finished; actual API confirms18 official menus,
+  four root groups, zero temporary nodes. Do not create new
+  test menu fixtures in the acceptance tenant; future mutation audits must use
+  isolated test data/runtime. Earlier PASS is technical evidence, not acceptance
+  of full navigation correspondence.
+- Next: design/review full sidebar/manager correspondence by scope and implement
+  the authorized fix; use isolated runtime/data for all mutation audits.
+  Changes remain uncommitted;
+  no commit/push requested for this menu task.
+
 ## External Identity Remediation Plan - 2026-09-26
 
 - Latest authorization: user requested another plan review and implementation

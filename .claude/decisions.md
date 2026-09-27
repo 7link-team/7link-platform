@@ -2889,6 +2889,133 @@ OpenAPI/client drift PASS; real SQLite/Chrome lifecycle E2E 18/18 PASS in
 .temp/sqlite-lifecycle-QXgwdq/report.json. Live retired GET 404, GUID reads 200.
 Status: accepted; self-review and requirement acceptance PASS. No further deletion.
 
+## D87 - Navigation Scope And Source Consistency (2026-09-26)
+
+Decision: user authorized continuation of the proposed correction. Add platform
+and personal entries to the existing workspace switcher. Choose the home route
+from global permissions: tenant_view -> platform tenants; platform_administer ->
+platform audit; otherwise selected tenant/personal. Explicit login return URLs
+are preserved. Platform shell reads global permissions and omits tenant menu
+reads/context labels. Render tenant catalog hierarchy directly; retain configured
+access-request placement and supplement missing self-service links once.
+Reason: tenant menu management did not reflect hardcoded sidebar wrappers or
+fallback placement; platform authority was obscured by tenant-first navigation.
+Alternatives considered: new platform menu persistence/API or role-name routing.
+Rejected because existing fixed routes and global permission APIs suffice.
+Tradeoffs: platform/entity/personal and tenant supplemental entries remain shared
+fixed catalogs. A lower read-only manager list was added, then removed following
+explicit user authorization because it was not actionable menu management.
+Tenant administrators cannot mutate platform navigation. Existing server guards
+remain authoritative; discoverability changes do not grant extra permissions.
+Scope: current sidebar, workspace switcher, home routing, menu manager boundary
+and actual role browser regression. Existing closure tracking page gets an entry
+under its verified platform_administer guard; no new business page/API/schema.
+Status: IMPLEMENTED and acceptance/self-review PASS. Frontend gates PASS; actual
+20-case Chrome audit plus four final Chinese platform-switcher cases PASS. The
+platform switcher omits tenant entity loading until tenant scope is entered.
+Existing closure page copy corrected to its administrative review purpose.
+Reopened: user requires full sidebar/manager correspondence including built-ins.
+Built-in editability choice pending; do not treat the removal as completion of
+that requirement. Future mutation E2E must be isolated from user acceptance data.
+
+## D88 - Business-Neutral IAM Ownership (2026-09-26)
+
+Decision: global principals, tenant memberships and tenant/entity role assignments
+are distinct. Tenant is the isolation boundary; entity is a business unit within
+one tenant. Platform administrator authority is not an editable tenant role.
+Reason: user requires the same IAM foundation for multiple business domains,
+including merchant/stores and headquarters/companies, without implementing
+these domain modules now.
+Alternatives considered: account types per tenant/business; one-tenant-per-account
+uniqueness; representing platform administrators as ordinary tenant roles.
+Tradeoffs: tenant creation quotas belong to the eventual business admission policy,
+separately from joining tenants. Registration is not an implicit creation grant.
+Current tenant routes require active membership even for a platform administrator;
+do not silently change that admission boundary while correcting UI scope labels.
+Scope: generic identity/authorization invariants and workspace ownership; no new
+business module, creation quota or per-business database schema is authorized.
+Workspace requirements: personal views manage the global account; platform views
+manage platform resources; tenant views manage the selected tenant; entity views
+manage a selected entity within that tenant. Menus reflect those resource scopes
+and effective server permissions, never an account-wide tenant-admin label.
+Entity is not a department or role: departments describe organization structure,
+roles describe authority, and entities own business resources. A tenant grant
+must not implicitly become an all-entity grant without an explicit policy.
+Creation policy may vary by business domain (one or many tenants per account);
+it must remain separate from membership and from generic IAM identity constraints.
+Status: CONFIRMED BY USER and IMPLEMENTED. Generic account/tenant/entity
+cardinality preserved; distinct workspaces and scoped navigation verified.
+
+## D89 - Operating Platforms and Dedicated Account Views (2026-09-26)
+
+Decision: the same deployment may contain separately operated platform scopes,
+each with different menus/views and department/role authorization. Separate system
+administration from operating-platform and tenant administration. Principals remain
+global; scoped grants do not turn into permanent account types.
+Reason: user explicitly clarified the operating-platform requirement and reaffirmed
+dedicated view tokens with real operator attribution and target-account invisibility.
+Implementation interpretation: match the selected account's logged-in workspace
+using its current permissions and data scope. The dedicated token carries the
+operator separately; it does not silently add operator grants to the target.
+System-level management is a separate authority and workflow.
+Alternatives considered: one global platform label; ordinary target browser login;
+overwriting target cookies; silently applying system privileges to a target view.
+Tradeoffs: default views are read-only, explicit writable selection uses a new
+immutable record, and actual mutations remain visible in business data. No target
+login session/notification is created. View records belong to system management,
+not the target's personal/session/token catalog.
+Scope: original administration/account-view goal; no business module or quota.
+Status: IMPLEMENTED; engineering acceptance PASS. System/operating grants,
+dedicated token lifecycle, frontend scopes and target views are active. Real
+MySQL8 full gate, PostgreSQL16 runtime and frozen performance budgets, migrations,
+35-flow lifecycle and14-flow desktop/mobile views PASS. Ready for user acceptance.
+
+### D89 Implementation Review Contract
+
+Decision: reuse existing owner partitions with immutable organization-root
+scope_kind tenant/platform/system. Existing rows remain tenants; shared physical
+tenant_id keys preserve the existing directory/RBAC engine. Separate explicit
+system and selected-platform checkers/routes from ordinary tenant admission.
+Current global platform administrator storage represents legacy system authority;
+never fan those grants out into operating platforms.
+Reason: independent architecture/security review confirmed global CheckPlatform
+and tenant authority expansion cannot implement operating-platform isolation.
+Alternatives considered: duplicate organization engines; representing platforms
+as customer tenants; imposing a single platform parent for every business tenant.
+Tradeoffs: migration preserves IDs and storage relationships, but every admission,
+catalog and role write must verify the owner kind. No business tenant/platform
+association or quota is introduced by this change.
+View boundary: scope is immutable and checked against resolved resource owners.
+Tenant views can reach their own entity descendants; entity views cannot reach
+parent management; system views cannot bypass tenant authority; personal views
+bind the target. Operator assurance is never copied into target grants.
+Status: review contract implemented; architecture/security and final acceptance
+reviews PASS. Scope admission and actual actor attribution gates are verified.
+Evidence: administration-account-view-plan-2026-09-26.md. Token issuance active.
+
+## D86 - Hierarchical Menu Management (2026-09-26)
+
+Decision: extend existing menu PATCH with structured atomic placement; retain
+parent_id, existing tenant policy lock, audit runner and menu_update authority.
+Left directory tree omits leaves. Root selection initially lists every hierarchy;
+branch selection initially lists immediate children. Right-hand rows expand and
+collapse descendants in place without changing the selected left directory.
+Drag supports before/inside/after/root for leaves and complete subtrees. Up/down
+enters an adjacent branch at its last/first child and exits before/after its
+parent at the sibling boundary. Root boundaries are disabled.
+Reason: requested cross-level movement must preserve descendants and commit
+parent/order together; independent metadata writes can produce partial movement.
+Alternatives considered: extra movement endpoint/permission or target dialog.
+Tradeoffs: sibling orders are renumbered under one transaction; arrow movement
+follows tree adjacency. Existing metadata edits remain a separate PATCH mode.
+Scope: management UI/API, grouped role-view navigation and real role browser E2E.
+View-context groups reuse sidebar components; persisted menu hierarchy remains
+authoritative. No schema migration or authorization expansion. Four retained
+demo groups organize existing IDs/routes/grants only in the local demo tenant.
+Status: IMPLEMENTED; final self-review and acceptance review PASS. Five personas
+on desktop/mobile, platform/entity/personal contexts, movement persistence and
+actual denied mutations verified. Evidence: menu-tree acceptance record.
+
 ## D85 - External Identity Ownership Remediation (2026-09-26)
 
 Decision: ADOPTED and implemented following user authorization. Preserve global principals and

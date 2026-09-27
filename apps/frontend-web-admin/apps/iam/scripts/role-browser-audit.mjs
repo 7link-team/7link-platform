@@ -503,7 +503,13 @@ if (
 
 await click('[data-edit-permission-condition="menu_view"]')
 await waitFor(`document.querySelector("#role-permission-condition-form")`)
-await setInput("#permission-minimum-acr", "2")
+await click("#permission-minimum-acr")
+await waitFor(
+  `document.querySelector('[role="option"][data-value="2"]') || [...document.querySelectorAll('[role="option"]')].some(item => /2/.test(item.textContent))`
+)
+await clickElement(
+  `[...document.querySelectorAll('[role="option"]')].find(item => /2/.test(item.textContent))`
+)
 await setInput("#permission-client-id", "admin-console")
 await setInput("#permission-network-zone", "corporate")
 await setInput("#permission-time-start", "08:00")

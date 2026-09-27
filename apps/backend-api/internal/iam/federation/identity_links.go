@@ -80,7 +80,7 @@ func (s *Service) accountSessionHash(cookieHeader string) (string, error) {
 }
 
 func (s *Service) ListPersonalIdentityLinks(ctx context.Context, cookieHeader string) ([]PersonalIdentityLink, error) {
-	claims, err := s.authn.Authenticate(ctx, "", cookieHeader)
+	claims, err := s.personalReadClaims(ctx, cookieHeader)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func (s *Service) ListPersonalIdentityLinks(ctx context.Context, cookieHeader st
 }
 
 func (s *Service) ListLinkableProviders(ctx context.Context, cookieHeader string) ([]LinkableProvider, error) {
-	claims, err := s.authn.Authenticate(ctx, "", cookieHeader)
+	claims, err := s.personalReadClaims(ctx, cookieHeader)
 	if err != nil {
 		return nil, err
 	}
@@ -119,6 +119,16 @@ func (s *Service) ListLinkableProviders(ctx context.Context, cookieHeader string
 		Joins("JOIN "+tenants+" AS tenant ON tenant.id = provider.tenant_id AND tenant.status = ?", "active").
 		Where("provider.status = ?", ProviderActive).Order("provider.name, provider.id").Scan(&rows).Error
 	return rows, err
+}
+
+func (s *Service) personalReadClaims(ctx context.Context, cookieHeader string) (*authnext.Claims, error) {
+	if claims, ok := authnext.FromContext(ctx); ok && claims != nil && claims.AccountView != nil {
+		if claims.PrincipalID.Zero() || claims.AccountView.ID.Zero() || claims.AccountView.PrincipalID.Zero() {
+			return nil, authnext.ErrInvalidSession
+		}
+		return claims, nil
+	}
+	return s.authn.Authenticate(ctx, "", cookieHeader)
 }
 
 // StartIdentityOperation starts only linking or proof verification. It never

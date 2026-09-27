@@ -327,7 +327,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       }
       return send(state.closure)
     }
-    if (path === "/platform/closure-requests") {
+    if (path === "/system/closure-requests") {
       const status = new URL(request.url()).searchParams.get("status")
       const items = (state.closureQueue ?? []).filter(
         (item) => item.status === status
@@ -335,7 +335,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       return send({ items, total: items.length })
     }
     if (
-      path.startsWith("/platform/principals/") &&
+      path.startsWith("/system/principals/") &&
       path.endsWith("/closure-request") &&
       request.method() === "PATCH"
     ) {
@@ -980,7 +980,7 @@ try {
     async (page, state) => {
       state.mine = []
       state.platform = [tenant("platform-only")]
-      await page.goto("/platform/tenants")
+      await page.goto("/system/tenants")
       await page.waitForFunction(
         () => localStorage.getItem("iam.tenant") === "platform-only"
       )
@@ -1364,7 +1364,7 @@ try {
     },
     {
       name: "tenants",
-      path: "/platform/tenants",
+      path: "/system/tenants",
       api: "/tenants",
       empty: "No tenants",
       emptyData: [],
@@ -1693,7 +1693,7 @@ try {
             { principal_id: "requester-one", status: "pending", version: 1 },
             { principal_id: "requester-two", status: "pending", version: 3 },
           ]
-          await page.goto("/platform/closure-requests")
+          await page.goto("/system/closure-requests")
           await visible(page, "requester-one")
           await button("rejectClosureRequest").first().click()
           state.actionConflict = true
@@ -1740,7 +1740,7 @@ try {
           )
           for (const request of state.requests.filter(
             (item) =>
-              item.path.startsWith("/platform/") ||
+              item.path.startsWith("/system/") ||
               item.path.startsWith(`/principals/${state.subject}/`)
           )) {
             assert.equal(request.tenant, undefined)

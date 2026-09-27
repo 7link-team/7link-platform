@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/i18n"
 	"github.com/danielgtaylor/huma/v2"
@@ -44,6 +45,38 @@ func newManagementAPI(t *testing.T, env *federationEnvironment) (*http.Client, *
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 	return server.Client(), server
+}
+
+func TestAccountViewCannotConvertOrRevokeOperatorBrowserThroughFederation(t *testing.T) {
+	env := newFederationEnvironment(t)
+	_, cookie := samlSessionCookie(t, env)
+	router := chi.NewRouter()
+	api := humachi.New(router, huma.DefaultConfig("view-protocol-test", "1"))
+	RegisterHTTP(api, env.service, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
+	for _, token := range []string{"avt_read", "avt_write"} {
+		for _, route := range []struct{ method, path string }{
+			{http.MethodGet, "/identity-providers/1/authorization"},
+			{http.MethodGet, "/identity-providers/1/callback?code=code&state=state"},
+			{http.MethodPost, "/identity-providers/1/callback"},
+			{http.MethodGet, "/saml/7/sso"},
+			{http.MethodPost, "/saml/7/sso"},
+			{http.MethodGet, "/saml/7/slo"},
+			{http.MethodPost, "/saml/7/slo"},
+		} {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(route.method, route.path, strings.NewReader("SAMLRequest=payload"))
+			request.Header.Set("Authorization", "Bearer "+token)
+			request.Header.Set("Cookie", cookie)
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			router.ServeHTTP(recorder, request)
+			require.Equal(t, http.StatusForbidden, recorder.Code, "%s %s: %s", route.method, route.path, recorder.Body.String())
+			assert.Empty(t, recorder.Header().Values("Set-Cookie"))
+			assert.Empty(t, recorder.Header().Get("Location"))
+		}
+	}
+	_, err := env.web.Authenticate(t.Context(), "", cookie)
+	require.NoError(t, err, "protocol views cannot revoke the operator's cookie session")
+	assert.Len(t, env.web.sessions, 1, "protocol views cannot create an ordinary login")
 }
 
 // federationAdminVerifier authenticates the administrative HTTP tests. The

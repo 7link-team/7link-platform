@@ -22,40 +22,42 @@ import { SessionVerification } from "../../components/session-verification"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { UserMenu } from "../../components/user-menu"
 import { getTenant } from "../../lib/iam-api"
+import { NavigationGroup } from "../../components/navigation-group"
+import { personalNavigation } from "../../lib/navigation"
+import { getAccountView } from "../../lib/account-view"
 
 export function AccountNavigation({ onNavigate }: { onNavigate?: () => void }) {
   const t = useTranslations("iam")
 
   return (
     <nav aria-label={t("accountNav")} className="space-y-1 p-3">
-      <h2 className="px-3 py-3 text-sm font-semibold">{t("account")}</h2>
-      {[
-        { path: "profile", label: t("profile"), Icon: UserRound },
-        { path: "security", label: t("security"), Icon: ShieldCheck },
-        { path: "mfa", label: t("twoFactor"), Icon: Smartphone },
-        { path: "tokens", label: t("personalTokens"), Icon: KeyRound },
-        { path: "files", label: t("myFiles"), Icon: Folder },
-        { path: "memberships", label: t("myMemberships"), Icon: UserRound },
-        { path: "identities", label: t("linkedIdentities"), Icon: UserRound },
-        { path: "closure", label: t("accountClosure"), Icon: ShieldCheck },
-        {
-          path: "applications",
-          label: t("authorizedApplications"),
-          Icon: KeyRound,
-        },
-      ].map(({ path, label, Icon }) => (
-        <NavLink
-          key={path}
-          to={`/me/${path}`}
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            `flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring ${isActive ? "bg-sidebar-primary font-medium text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`
-          }
-        >
-          <Icon className="size-4 shrink-0" aria-hidden="true" />
-          {label}
-        </NavLink>
-      ))}
+      <NavigationGroup label={t("account")}>
+        {personalNavigation.map(({ path, label }) => {
+          const Icon =
+            path === "/me/mfa"
+              ? Smartphone
+              : path === "/me/files"
+                ? Folder
+                : ["/me/tokens", "/me/applications"].includes(path)
+                  ? KeyRound
+                  : ["/me/security", "/me/closure"].includes(path)
+                    ? ShieldCheck
+                    : UserRound
+          return (
+            <NavLink
+              key={path}
+              to={path}
+              onClick={onNavigate}
+              className={({ isActive }) =>
+                `flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring ${isActive ? "bg-sidebar-primary font-medium text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`
+              }
+            >
+              <Icon className="size-4 shrink-0" aria-hidden="true" />
+              {t(label)}
+            </NavLink>
+          )
+        })}
+      </NavigationGroup>
     </nav>
   )
 }
@@ -117,7 +119,16 @@ export default function AccountLayout() {
         </aside>
         <main className="min-w-0 flex-1 overflow-auto">
           <AccountContent pathname={location.pathname}>
-            <Outlet key={location.pathname} />
+            <fieldset
+              className="contents"
+              disabled={
+                Boolean(getAccountView()) &&
+                (getAccountView()?.mode === "read_only" ||
+                  location.pathname !== "/me/files")
+              }
+            >
+              <Outlet key={location.pathname} />
+            </fieldset>
           </AccountContent>
         </main>
       </div>

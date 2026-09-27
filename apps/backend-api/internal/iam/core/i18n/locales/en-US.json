@@ -1,4 +1,6 @@
 {
+  "menu_organization": "Organization",
+  "menu_access": "Access",
   "entity_has_files": "The entity cannot be deleted while its file root contains retained files or folders. Remove or transfer them first.",
   "menu_users": "Accounts and members",
   "menu_invitations": "Invitations",

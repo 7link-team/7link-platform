@@ -123,7 +123,9 @@ func registerPersonalIdentityHTTP(api huma.API, service *Service) {
 		}
 		return respx.OK(ctx, map[string]bool{"unlinked": true}), nil
 	})
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-complete-personal-identity-transaction", Method: http.MethodGet, Path: "/identity-providers/{provider_id}/identity-continuation", Tags: []string{"applications"}, Summary: "Complete a verified callback in its original browser session", DefaultStatus: http.StatusSeeOther, Errors: []int{401, 403, 409, 500}}, func(ctx context.Context, in *identityContinuationInput) (*identityContinuationOutput, error) {
+	continuation := huma.Operation{OperationID: "federation-complete-personal-identity-transaction", Method: http.MethodGet, Path: "/identity-providers/{provider_id}/identity-continuation", Tags: []string{"applications"}, Summary: "Complete a verified callback in its original browser session", DefaultStatus: http.StatusSeeOther, Errors: []int{401, 403, 409, 500}}
+	authz.DenyAccountView(&continuation)
+	authz.RegisterSessionAuthenticated(registrar, api, continuation, func(ctx context.Context, in *identityContinuationInput) (*identityContinuationOutput, error) {
 		if in.Authorization != "" {
 			return nil, huma.Error401Unauthorized("unauthorized")
 		}

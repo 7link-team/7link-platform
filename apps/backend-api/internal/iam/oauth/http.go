@@ -256,6 +256,18 @@ type clientDeleteData struct {
 // RegisterHTTP publishes the OAuth/OIDC protocol and tenant client-management
 // operations.
 func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
+	api.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
+		switch ctx.Operation().OperationID {
+		case "oauth-authorize", "oauth-consent-page", "oauth-consent-request", "oauth-consent-decision":
+			claims, _ := authnext.FromContext(ctx.Context())
+			scheme, raw, bearer := strings.Cut(strings.TrimSpace(ctx.Header("Authorization")), " ")
+			if (bearer && strings.EqualFold(scheme, "Bearer") && strings.HasPrefix(raw, "avt_")) || (claims != nil && claims.AccountView != nil) {
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "invalid_request")
+				return
+			}
+		}
+		next(ctx)
+	})
 	// GET /oauth/authorize is a public operation that nevertheless reads the
 	// browser session cookie, so it is the one route whose documented cookie
 	// name cannot be resolved from its own registration. Declaring the scheme
@@ -505,7 +517,7 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 		Security: authz.BearerSecurity(), Tags: []string{"oauth"},
 	}, func(ctx context.Context, in *userInfoInput) (*userInfoOutput, error) {
 		claims, err := service.authn.Authenticate(ctx, in.Authorization, "")
-		if err != nil || claims == nil || claims.SubjectType != authnext.SubjectTypePrincipal {
+		if err != nil || claims == nil || claims.AccountView != nil || claims.SubjectType != authnext.SubjectTypePrincipal {
 			return nil, oauthError(ctx, http.StatusUnauthorized, "invalid_token")
 		}
 		if !claimHasScope(claims, "openid") {

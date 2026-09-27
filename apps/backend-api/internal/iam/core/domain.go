@@ -16,6 +16,7 @@ var (
 	ErrRolePermissionNotGranted       = errors.New("iam role permission is not granted")
 	ErrInvalidRolePermissionCondition = errors.New("invalid iam role permission condition")
 	ErrMemberNotFound                 = errors.New("iam tenant member not found")
+	ErrMemberConflict                 = errors.New("iam member already exists")
 	ErrMemberInactive                 = errors.New("iam tenant member inactive")
 	ErrMenuNotFound                   = errors.New("iam menu not found")
 	ErrMenuConflict                   = errors.New("iam menu route already exists")

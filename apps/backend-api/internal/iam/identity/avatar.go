@@ -45,6 +45,13 @@ type avatarInput struct {
 
 var avatarStyles = []string{"robot", "pixel", "monster", "geometric"}
 
+func avatarActorID(ctx context.Context, fallback guid.ID) guid.ID {
+	if actor := authnext.ActorIDFromContext(ctx); !actor.Zero() {
+		return actor
+	}
+	return fallback
+}
+
 func (s *Service) backfillMissingAvatars(ctx context.Context) error {
 	if s.repo.writer() == nil {
 		return nil
@@ -180,7 +187,7 @@ func (s *Service) migrateUngovernedAvatars(ctx context.Context) error {
 				}
 				if _, err := repo.resourceFiles.Create(ctx, repo.writer(), files.AccountResourceInput{
 					Prepared: prepared, PrincipalID: row.ID, Purpose: files.PrincipalAvatarPurpose,
-					Slot: "current", Name: name, ActorID: row.ID, Replace: true,
+					Slot: "current", Name: name, ActorID: avatarActorID(ctx, row.ID), Replace: true,
 				}, time.Now()); err != nil {
 					return err
 				}
@@ -403,10 +410,10 @@ func (s *Service) setMyAvatar(ctx context.Context, id guid.ID, in avatarInput, o
 		if prepared != nil {
 			_, err = repo.resourceFiles.Create(ctx, repo.writer(), files.AccountResourceInput{
 				Prepared: prepared, PrincipalID: id, Purpose: files.PrincipalAvatarPurpose,
-				Slot: "current", Name: token + ".png", ActorID: id, Replace: true,
+				Slot: "current", Name: token + ".png", ActorID: avatarActorID(ctx, id), Replace: true,
 			}, time.Now())
 		} else {
-			err = repo.resourceFiles.Promote(ctx, repo.writer(), id, "candidate-"+token, files.PrincipalAvatarPurpose, "current", id, time.Now())
+			err = repo.resourceFiles.Promote(ctx, repo.writer(), id, "candidate-"+token, files.PrincipalAvatarPurpose, "current", avatarActorID(ctx, id), time.Now())
 		}
 		if errors.Is(err, files.ErrNotFound) {
 			return ErrNotFound
@@ -479,7 +486,7 @@ func (s *Service) AvatarCandidates(ctx context.Context, id guid.ID, requestedSty
 		for i, prepared := range preparedFiles {
 			if _, err := repo.resourceFiles.Create(ctx, repo.writer(), files.AccountResourceInput{
 				Prepared: prepared, PrincipalID: id, Purpose: files.PrincipalAvatarCandidatePurpose,
-				Slot: "candidate-" + tokens[i], Name: tokens[i] + ".png", ExpiresAt: &expiry, ActorID: id,
+				Slot: "candidate-" + tokens[i], Name: tokens[i] + ".png", ExpiresAt: &expiry, ActorID: avatarActorID(ctx, id),
 			}, time.Now()); err != nil {
 				return err
 			}
@@ -493,8 +500,8 @@ func (s *Service) AvatarCandidates(ctx context.Context, id guid.ID, requestedSty
 }
 
 func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
-	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-my-avatar", Method: http.MethodGet, Path: "/principals/{principal_id}/avatar", Summary: "Read my avatar", Tags: []string{"account"}}, func(ctx context.Context, in *ClosureBrowserInput) (*respx.Body[Avatar], error) {
-		id, err := closurePrincipal(ctx, in.Cookie, in.Authorization)
+	authz.RegisterPrincipalAuthenticated(registrar, api, huma.Operation{OperationID: "identity-my-avatar", Method: http.MethodGet, Path: "/principals/{principal_id}/avatar", Summary: "Read my avatar", Tags: []string{"account"}}, func(ctx context.Context, in *ClosureBrowserInput) (*respx.Body[Avatar], error) {
+		id, err := avatarReadPrincipal(ctx, in.Cookie, in.Authorization)
 		if err != nil {
 			return nil, err
 		}
@@ -545,6 +552,9 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		if id != claims.PrincipalID {
 			tenantID, err := requireID(in.TenantID)
 			if err != nil || s.avatarPermissions == nil {
+				return nil, huma.Error403Forbidden("respx.forbidden")
+			}
+			if view := claims.AccountView; view != nil && (view.ScopeType != "tenant" || view.ScopeID != tenantID) {
 				return nil, huma.Error403Forbidden("respx.forbidden")
 			}
 			allowed, err := s.avatarPermissions.Check(ctx, tenantID, "user_view", claims.PrincipalID)
@@ -617,4 +627,15 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, candidates), nil
 	})
+}
+
+func avatarReadPrincipal(ctx context.Context, cookie, authorization string) (guid.ID, error) {
+	if claims, ok := authnext.FromContext(ctx); ok && claims != nil && claims.AccountView != nil {
+		view := claims.AccountView
+		if !view.Valid() || view.ScopeType != "personal" || view.ScopeID != claims.PrincipalID {
+			return 0, huma.Error403Forbidden("respx.forbidden")
+		}
+		return claims.PrincipalID, nil
+	}
+	return closurePrincipal(ctx, cookie, authorization)
 }

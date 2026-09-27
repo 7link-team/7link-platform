@@ -92,7 +92,7 @@ func TestPageWindowArithmetic(t *testing.T) {
 // The page is taken after the tree is ordered, so this also pins that a page
 // carries the same order and the same Depth the unpaged listing reports.
 func TestDepartmentListPageBoundsTheHierarchy(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
+	h := newOrganizationDirectoryHarness(t, "sl_")
 	roots := make([]Department, 0, 5)
 	for _, name := range []string{"Alpha", "Bravo", "Charlie", "Delta", "Echo"} {
 		department, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: name})
@@ -187,7 +187,7 @@ func newGroupServiceForPaging(t *testing.T, h *organizationHarness) *GroupServic
 // group's rule verdict, which only Go can decide. Both have to come back
 // bounded, and both have to report the unpaged total.
 func TestGroupListPageAndMembersPageBoundTheirListings(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
+	h := newOrganizationDirectoryHarness(t, "sl_")
 	principals := []guid.ID{10, 11, 12, 13, 14}
 	for index, principal := range principals {
 		h.seedMember(t, 1, principal, fmt.Sprintf("Member %d", index))

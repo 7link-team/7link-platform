@@ -232,7 +232,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
             {allowed("platform_administer") && (
               <Link
                 className="inline-flex min-h-11 items-center rounded-md border px-3 text-sm"
-                to="/platform/closure-requests"
+                to="/system/closure-requests"
               >
                 {t("closureRequests")}
               </Link>

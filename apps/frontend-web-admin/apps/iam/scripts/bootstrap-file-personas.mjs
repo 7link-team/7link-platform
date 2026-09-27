@@ -268,7 +268,7 @@ for (const definition of definitions) {
       tenant: false,
     })
   if (definition.platformPermissions)
-    await call(`/platform/administrators/${principal.id}`, {
+    await call(`/system/administrators/${principal.id}`, {
       method: "PUT",
       tenant: false,
       body: {
@@ -286,6 +286,36 @@ for (const definition of definitions) {
 }
 
 accounts[0].tenantID = tenantID
+
+const platformCredential = passwordFor("operating-admin")
+const platformLogin = "operating-admin@example.test"
+const systemAccounts = await call(
+  "/system/principals?limit=200&search=" + encodeURIComponent(platformLogin),
+  { tenant: false }
+)
+const platformOwner = systemAccounts.items.find(
+  (item) => item.login_name === platformLogin
+) ?? await call("/system/principals", {
+  method: "POST", tenant: false,
+  body: {
+    login_name: platformLogin, display_name: "Development Platform Administrator",
+    email: platformLogin, password: platformCredential.password,
+  },
+})
+const operatingPlatforms = await call("/operating-platforms?limit=200", { tenant: false })
+const operatingPlatform = operatingPlatforms.find(
+  (item) => item.slug === "development-operations"
+) ?? await call("/operating-platforms", {
+  method: "POST", tenant: false,
+  body: {
+    slug: "development-operations", name: "Development Operations",
+    owner_principal_id: platformOwner.id,
+  },
+})
+accounts.push({
+  id: "operating-admin", role: "运营平台管理员", loginName: platformLogin,
+  password: platformCredential.password, platformID: operatingPlatform.id,
+})
 
 process.stdout.write(
   JSON.stringify({ accounts, tenantID, entityID: entity.id, departments }) +

@@ -159,6 +159,20 @@ func DefaultRegistry() *Registry {
 // these same codes.
 func DefaultActions() []Action {
 	return []Action{
+		{Resource: "account_view", Verb: "create", Scope: "platform", Summary: "open a scoped account view"},
+		{Resource: "system_account", Verb: "create", Scope: "platform", Summary: "create global accounts"},
+		{Resource: "system_account", Verb: "view", Scope: "platform", Summary: "view global accounts"},
+		{Resource: "system_account", Verb: "update", Scope: "platform", Summary: "update global account profiles"},
+		{Resource: "system_account", Verb: "delete", Scope: "platform", Summary: "suspend global accounts"},
+		{Resource: "operating_platform", Verb: "administer", Scope: "operating_platform", Summary: "administer an operating platform"},
+		{Resource: "operating_platform", Verb: "create", Scope: "platform", Summary: "create operating platforms"},
+		{Resource: "operating_platform", Verb: "view", Scope: "platform", Summary: "view operating platforms"},
+		{Resource: "operating_platform", Verb: "update", Scope: "platform", Summary: "update operating platforms"},
+		{Resource: "operating_platform", Verb: "delete", Scope: "platform", Summary: "delete operating platforms"},
+		{Resource: "platform_member", Verb: "create", Scope: "operating_platform", Summary: "attach existing principals to an operating platform"},
+		{Resource: "platform_member", Verb: "view", Scope: "operating_platform", Summary: "view operating platform members", Menu: true},
+		{Resource: "platform_member", Verb: "update", Scope: "operating_platform", Summary: "update operating platform memberships"},
+		{Resource: "platform_member", Verb: "delete", Scope: "operating_platform", Summary: "disable operating platform memberships"},
 		{Resource: "field_policy", Verb: "view", Scope: "tenant", Summary: "view field policies"},
 		{Resource: "field_policy", Verb: "update", Scope: "tenant", Summary: "manage field read and write policies"},
 		{Resource: "todo", Verb: "create", Scope: "tenant", Summary: "create tasks", DataScoped: true},
@@ -251,5 +265,21 @@ func DefaultActions() []Action {
 		{Resource: "audit_event", Verb: "export", Scope: "tenant", Summary: "export tenant audit events"},
 		{Resource: "audit_event", Verb: "anchor", Scope: "tenant", Summary: "anchor tenant audit heads into the external WORM store"},
 		{Resource: "audit_event", Verb: "manage", Scope: "tenant", Summary: "configure audit retention policy and sign WORM root commitments"},
+	}
+}
+
+// IsOperatingPlatformPermission is the shared grant and route boundary for
+// independently operated platforms. New tenant actions are excluded by default.
+func IsOperatingPlatformPermission(action Action) bool {
+	switch action.Code {
+	case "operating_platform_administer",
+		"platform_member_create", "platform_member_view", "platform_member_update", "platform_member_delete",
+		"role_create", "role_view", "role_update", "role_delete", "role_grant_permission", "role_manage_member", "role_manage_assignee",
+		"menu_create", "menu_view", "menu_update", "menu_delete", "menu_bind_permission",
+		"dept_create", "dept_view", "dept_update", "dept_delete",
+		"group_create", "group_view", "group_update", "group_delete", "group_manage_member":
+		return true
+	default:
+		return false
 	}
 }

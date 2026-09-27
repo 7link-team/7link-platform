@@ -607,7 +607,7 @@ async function scimAcceptance({
     assert.deepEqual(await certificates(metadataTenant.id), beforeRotation)
     await call(
       operator,
-      "/platform/saml-signing-keys",
+      "/system/saml-signing-keys",
       "POST",
       {},
       { tenant: false, status: 403 }
@@ -621,7 +621,7 @@ async function scimAcceptance({
     assert.deepEqual(await certificates(metadataTenant.id), beforeRotation)
     await call(
       admin.context,
-      "/platform/saml-signing-keys",
+      "/system/saml-signing-keys",
       "POST",
       {},
       { tenant: false }

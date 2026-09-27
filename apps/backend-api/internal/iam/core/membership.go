@@ -74,7 +74,7 @@ func (m *MembershipChecker) ResolveTenant(ctx context.Context, principalID, requ
 		return 0, err
 	}
 	db := m.runtime.Database().Write().WithContext(ctx).Table(names.Tables.TenantMembers.String()+" AS tm").
-		Joins("JOIN "+names.Directory.Tenants.String()+" AS t ON t.id = tm.tenant_id AND t.status = 'active'").
+		Joins("JOIN "+names.Directory.Tenants.String()+" AS t ON t.id = tm.tenant_id AND t.status = 'active' AND t.scope_kind = 'tenant'").
 		Where("tm.principal_id = ? AND tm.status = ?", principalID, MemberActive)
 	if requested > 0 {
 		db = db.Where("tm.tenant_id = ?", requested)
@@ -106,7 +106,7 @@ func (m *MembershipChecker) ActiveDepartment(ctx context.Context, tenantID, prin
 		Select("md.department_id").
 		Joins("JOIN "+names.Directory.Departments.String()+" AS d ON d.tenant_id = md.tenant_id AND d.id = md.department_id AND d.status = 'active'").
 		Joins("JOIN "+names.Tables.TenantMembers.String()+" AS tm ON tm.tenant_id = md.tenant_id AND tm.principal_id = md.principal_id AND tm.status = 'active'").
-		Joins("JOIN "+names.Directory.Tenants.String()+" AS t ON t.id = md.tenant_id AND t.status = 'active'").
+		Joins("JOIN "+names.Directory.Tenants.String()+" AS t ON t.id = md.tenant_id AND t.status = 'active' AND t.scope_kind = 'tenant'").
 		Where("md.tenant_id = ? AND md.principal_id = ?", tenantID, principalID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return 0, nil
@@ -141,16 +141,18 @@ func tenantMembershipState(
 	names query.AuthorizationTables,
 	tenantID, principalID guid.ID,
 ) (tenantActive, memberActive bool, err error) {
+	return ownerMembershipState(ctx, db, names, tenantID, principalID, "tenant")
+}
+
+func ownerMembershipState(ctx context.Context, db *gorm.DB, names query.AuthorizationTables, tenantID, principalID guid.ID, kind string) (tenantActive, memberActive bool, err error) {
 	if db == nil {
 		return false, false, ErrUnavailable
 	}
 	var state tenantAdmission
 	err = db.WithContext(ctx).Table(names.Directory.Tenants.String()+" AS t").
-		Select("t.status, COUNT(tm.principal_id) AS member_count").
-		Joins("LEFT JOIN "+names.Tables.TenantMembers.String()+" AS tm ON tm.tenant_id = t.id AND tm.principal_id = ? AND tm.status = ?",
-			principalID, MemberActive).
-		Where("t.id = ?", tenantID).
-		Group("t.status").Take(&state).Error
+		Select("t.status").
+		Where("t.id = ? AND t.scope_kind = ?", tenantID, kind).
+		Take(&state).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, false, nil
 	}
@@ -158,7 +160,41 @@ func tenantMembershipState(
 		return false, false, fmt.Errorf("check active tenant membership: %w", err)
 	}
 	tenantActive = state.Status == "active"
-	return tenantActive, tenantActive && state.MemberCount == 1, nil
+	if !tenantActive {
+		return false, false, nil
+	}
+	// Direct reads inherit transaction locking; nested subqueries may use an older MySQL snapshot.
+	statement := db.WithContext(ctx).Table(names.Tables.TenantMembers.String()+" AS tm").
+		Select("tm.principal_id").
+		Where("tm.tenant_id = ? AND tm.principal_id = ? AND tm.status = ?", tenantID, principalID, MemberActive)
+	if kind == "platform" {
+		statement = statement.Joins("INNER JOIN " + names.Principal.String() + " AS p ON p.id = tm.principal_id AND p.status = 'active'")
+	}
+	var member struct{ PrincipalID guid.ID }
+	err = statement.Take(&member).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return true, false, nil
+	}
+	if err != nil {
+		return true, false, fmt.Errorf("check active tenant membership: %w", err)
+	}
+	return true, true, nil
+}
+
+func (m *MembershipChecker) IsOperatingPlatformMemberActive(ctx context.Context, platformID, principalID guid.ID) (bool, error) {
+	if m == nil || m.runtime == nil || m.runtime.Database() == nil {
+		return false, ErrUnavailable
+	}
+	return m.IsOperatingPlatformMemberActiveOn(ctx, m.runtime.Database().Write(), platformID, principalID)
+}
+
+func (m *MembershipChecker) IsOperatingPlatformMemberActiveOn(ctx context.Context, db *gorm.DB, platformID, principalID guid.ID) (bool, error) {
+	names, err := m.authorizationTables()
+	if err != nil {
+		return false, err
+	}
+	_, active, err := ownerMembershipState(ctx, db, names, platformID, principalID, "platform")
+	return active, err
 }
 
 var _ ActiveMemberChecker = (*MembershipChecker)(nil)

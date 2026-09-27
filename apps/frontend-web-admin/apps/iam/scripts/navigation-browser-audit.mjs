@@ -32,7 +32,7 @@ try {
       uploadThroughput: 1024 * 1024,
       connectionType: "cellular3g",
     })
-    await page.goto("/platform/tenants")
+    await page.goto("/system/tenants")
     await page.locator("#login-name").waitFor()
     assert.equal(new URL(page.url()).pathname, "/login")
     assert.deepEqual(

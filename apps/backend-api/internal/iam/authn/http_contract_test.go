@@ -20,6 +20,8 @@ import (
 )
 
 const authnRouteManifest = `
+authn-create-account-view|POST|/account-views
+authn-delete-account-view|DELETE|/account-views/{account_view_id}
 authn-create-personal-token-preparation|POST|/principals/{principal_id}/personal-token-preparations
 authn-create-personal-token|POST|/principals/{principal_id}/personal-tokens
 authn-delete-personal-token|DELETE|/principals/{principal_id}/personal-tokens/{token_id}
@@ -76,7 +78,7 @@ func TestAuthnRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 39)
+	require.Len(t, got, 41)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -97,6 +99,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 		"authn-delete-passkey": true,
 	}
 	sessionOnly := map[string]bool{
+		"authn-create-account-view": true, "authn-delete-account-view": true,
 		"authn-get-current-session":               true,
 		"authn-create-reauthentication-challenge": true, "authn-create-reauthentication-verification": true,
 		"authn-list-reauthentication-methods": true, "authn-create-personal-token-preparation": true,
@@ -154,7 +157,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, operationIDs, 39)
+	require.Len(t, operationIDs, 41)
 	assert.Equal(t, "session", spec.Components.SecuritySchemes[authz.SessionScheme].Name)
 	for _, path := range []string{"/sessions/{session_id}", "/principals/{principal_id}/passkeys/{passkey_id}"} {
 		name := "session_id"

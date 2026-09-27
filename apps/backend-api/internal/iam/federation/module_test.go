@@ -339,7 +339,7 @@ func approvedFederationOperations() map[string]string {
 		"federation-create-identity-provider": "POST /tenants/{tenant_id}/identity-providers", "federation-create-saml-service-provider": "POST /tenants/{tenant_id}/saml-service-providers",
 		"federation-delete-identity-provider": "DELETE /identity-providers/{provider_id}", "federation-delete-saml-service-provider": "DELETE /saml-service-providers/{sp_id}",
 		"federation-list-identity-providers": "GET /tenants/{tenant_id}/identity-providers", "federation-list-saml-service-providers": "GET /tenants/{tenant_id}/saml-service-providers",
-		"federation-rotate-saml-signing-key": "POST /platform/saml-signing-keys", "federation-saml-metadata": "GET /saml/{tenant_id}/metadata",
+		"federation-rotate-saml-signing-key": "POST /system/saml-signing-keys", "federation-saml-metadata": "GET /saml/{tenant_id}/metadata",
 		"federation-saml-slo": "GET /saml/{tenant_id}/slo", "federation-saml-slo-post": "POST /saml/{tenant_id}/slo",
 		"federation-saml-sso": "GET /saml/{tenant_id}/sso", "federation-saml-sso-post": "POST /saml/{tenant_id}/sso",
 		"federation-start-login": "GET /identity-providers/{provider_id}/authorization", "federation-update-identity-provider": "PUT /identity-providers/{provider_id}",

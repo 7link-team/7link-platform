@@ -113,7 +113,7 @@ func TestSAMLSigningKeyRotationHTTP(t *testing.T) {
 	client, server := newSAMLAdminAPI(t, env)
 	firstCert := env.service.samlCert.Raw
 
-	response := adminRequest(t, client, http.MethodPost, server.URL+"/platform/saml-signing-keys", "", nil, nil)
+	response := adminRequest(t, client, http.MethodPost, server.URL+"/system/saml-signing-keys", "", nil, nil)
 	assert.Equal(t, http.StatusCreated, response.StatusCode)
 	var envelope federationEnvelope
 	decodeHTTPBody(t, response, &envelope)
@@ -141,9 +141,9 @@ func TestSAMLSigningKeyRotationRejectsTenantAuthority(t *testing.T) {
 	firstCert := env.service.samlCert.Raw
 	registrar := authz.NewRegistrar(authz.DefaultRegistry(), federationAdminVerifier{}, tenantOnlySAMLPermissionChecker{}, federationMembershipChecker{})
 	client, server := newSAMLAdminAPI(t, env, registrar)
-	for _, path := range []string{"/platform/saml-signing-keys", "/tenants/" + wireID("tenant-a") + "/saml-signing-keys"} {
+	for _, path := range []string{"/system/saml-signing-keys", "/tenants/" + wireID("tenant-a") + "/saml-signing-keys"} {
 		response := adminRequest(t, client, http.MethodPost, server.URL+path, "", nil, nil)
-		if strings.HasPrefix(path, "/platform/") {
+		if strings.HasPrefix(path, "/system/") {
 			assert.Equal(t, http.StatusForbidden, response.StatusCode)
 		} else {
 			assert.Equal(t, http.StatusNotFound, response.StatusCode)
@@ -186,7 +186,7 @@ func TestSAMLSigningKeyRotationFileBackedConflict(t *testing.T) {
 	require.NoError(t, env.service.StartSAML(t.Context(), SAMLConfig{Enabled: true, SigningKeyFile: keyFile, CertificateFile: certFile}))
 	client, server := newSAMLAdminAPI(t, env)
 
-	response := adminRequest(t, client, http.MethodPost, server.URL+"/platform/saml-signing-keys", "", nil, nil)
+	response := adminRequest(t, client, http.MethodPost, server.URL+"/system/saml-signing-keys", "", nil, nil)
 	assert.Equal(t, http.StatusConflict, response.StatusCode)
 	var envelope federationEnvelope
 	decodeHTTPBody(t, response, &envelope)
@@ -196,7 +196,7 @@ func TestSAMLSigningKeyRotationFileBackedConflict(t *testing.T) {
 func TestSAMLRotationUnavailableWhenDisabled(t *testing.T) {
 	env := newFederationEnvironment(t)
 	client, server := newSAMLAdminAPI(t, env)
-	response := adminRequest(t, client, http.MethodPost, server.URL+"/platform/saml-signing-keys", "", nil, nil)
+	response := adminRequest(t, client, http.MethodPost, server.URL+"/system/saml-signing-keys", "", nil, nil)
 	assert.Equal(t, http.StatusConflict, response.StatusCode)
 	var envelope federationEnvelope
 	decodeHTTPBody(t, response, &envelope)

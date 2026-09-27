@@ -33,6 +33,7 @@ type Module struct {
 	config           Config
 	service          *Service
 	tenants          *TenantService
+	platforms        *PlatformService
 	groups           *GroupService
 	invitations      *InvitationService
 	runtime          *appenv.Runtime
@@ -217,21 +218,30 @@ func (m *Module) Initialize(context.Context) error {
 	}
 	m.service = NewService(m.runtime, m.appender, m.ids)
 	m.tenants = NewTenantService(m.runtime, m.appender, m.ids, m.bootstrap, m.owners)
+	m.platforms = NewPlatformService(m.runtime, m.appender, m.ids, m.bootstrap, m.owners)
 	m.service.roots, m.tenants.roots = m.roots, m.roots
 	m.service.rootContent = m.rootContent
 	m.groups = NewGroupService(m.runtime, m.appender, m.members, m.administrators, m.ids)
 	m.invitations = NewInvitationService(m.runtime, m.appender, m.ids, m.credentials, m.createPrincipal)
 	for _, repo := range []*Repository{
-		m.service.repo, m.tenants.repo, m.groups.repo, m.invitations.repo,
+		m.service.repo, m.tenants.repo, m.platforms.repo, m.groups.repo, m.invitations.repo,
 	} {
 		repo.foreign = &m.foreign
 	}
 	return nil
 }
 
+// Platforms returns the concrete service owned and initialized by organization.
+func (m *Module) Platforms() *PlatformService {
+	if m == nil {
+		return nil
+	}
+	return m.platforms
+}
+
 func (m *Module) CheckHealth(context.Context) error {
 	if m == nil || m.service == nil || m.service.repo == nil || m.service.repo.writer() == nil ||
-		m.tenants == nil || m.groups == nil || m.invitations == nil {
+		m.tenants == nil || m.platforms == nil || m.groups == nil || m.invitations == nil {
 		return ErrUnavailable
 	}
 	return nil
@@ -241,10 +251,12 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	if m == nil || m.registrar == nil {
 		return errors.New("register organization: module is unavailable")
 	}
-	if m.service == nil || m.tenants == nil || m.groups == nil || m.invitations == nil {
+	if m.service == nil || m.tenants == nil || m.platforms == nil || m.groups == nil || m.invitations == nil {
 		return errors.New("register organization: services are unavailable")
 	}
 	RegisterHTTP(api, m.service, m.tenants, m.groups, m.invitations, m.registrar)
+	registerPlatformHTTP(api, m.platforms, m.registrar)
+	registerPlatformDirectoryHTTP(api, m.service, m.groups, m.registrar)
 	return nil
 }
 

@@ -6,20 +6,22 @@ import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { iamApi, type EffectiveMenu } from "../../lib/iam-api"
 import { effectiveMenuPaths } from "../../lib/navigation"
+import { getAccountView } from "../../lib/account-view"
 
 interface Metrics {
   principals?: number
   roles?: number
   menus?: number
-  sessions: number
+  sessions?: number
 }
 
 export default function DashboardPage() {
   const t = useTranslations("iam")
+  const accountView = getAccountView()
 
   const { menus } = useOutletContext<{ menus: EffectiveMenu[] | null }>()
   const [metrics, setMetrics] = useState<Metrics>({
-    sessions: 0,
+    sessions: accountView ? undefined : 0,
   })
   const [error, setError] = useState("")
   useEffect(() => {
@@ -36,7 +38,9 @@ export default function DashboardPage() {
       paths.has("/menus")
         ? iamApi.menus().then((result) => result.length)
         : undefined,
-      iamApi.sessions().then((result) => result.length),
+      accountView
+        ? undefined
+        : iamApi.sessions().then((result) => result.length),
     ])
       .then(([principals, roles, menuCount, sessions]) => {
         if (active) {
@@ -50,7 +54,7 @@ export default function DashboardPage() {
     return () => {
       active = false
     }
-  }, [menus])
+  }, [menus, accountView])
   return (
     <>
       <PageHeader
@@ -80,11 +84,13 @@ export default function DashboardPage() {
             value={metrics.menus}
           />
         )}
-        <Metric
-          icon={<MonitorSmartphone />}
-          label={t("mySessions")}
-          value={metrics.sessions}
-        />
+        {metrics.sessions !== undefined && (
+          <Metric
+            icon={<MonitorSmartphone />}
+            label={t("mySessions")}
+            value={metrics.sessions}
+          />
+        )}
       </div>
       <section className="mt-6 flex min-h-24 flex-wrap items-center justify-between gap-4 rounded-md border bg-card px-5 py-4">
         <div>
