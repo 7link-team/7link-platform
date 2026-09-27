@@ -5,6 +5,7 @@ import { RouteError } from "./components/route-error"
 import { getTenant, iamApi, setTenant } from "./lib/iam-api"
 import { defaultWorkspacePath } from "./lib/navigation"
 import { getAccountView } from "./lib/account-view"
+import { authEntrances } from "./lib/auth-entrance"
 
 async function workspaceHomeLoader() {
   const view = getAccountView()
@@ -56,6 +57,20 @@ export const router = createBrowserRouter([
     hydrateFallbackElement: <PendingRoute />,
     errorElement: <RouteError />,
     children: [
+      ...["tenant", "user"].flatMap((entry) => [
+        {
+          path: `/register/${entry}`,
+          lazy: async () => ({
+            Component: (await import("./app/register/page")).default,
+          }),
+        },
+        {
+          path: `/recover/${entry}`,
+          lazy: async () => ({
+            Component: (await import("./app/recover/page")).default,
+          }),
+        },
+      ]),
       {
         path: "/register",
         lazy: async () => ({
@@ -87,6 +102,18 @@ export const router = createBrowserRouter([
           </AuthProvider>
         ),
         children: [
+          ...authEntrances.map((entry) => ({
+            path: `/login/${entry}`,
+            lazy: async () => ({
+              Component: (await import("./app/login/page")).default,
+            }),
+          })),
+          ...authEntrances.map((entry) => ({
+            path: `/workspaces/${entry}`,
+            lazy: async () => ({
+              Component: (await import("./app/login/workspaces")).default,
+            }),
+          })),
           {
             lazy: async () => ({
               Component: (await import("./app/system/layout")).default,

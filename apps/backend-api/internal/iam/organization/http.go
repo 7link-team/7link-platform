@@ -538,6 +538,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 }
 
 func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.Registrar) {
+	registerTenantRegistrationHTTP(api, service, registrar)
 	authz.RegisterPrincipalAuthenticated(registrar, api, huma.Operation{
 		OperationID: "organization-my-tenants", Method: http.MethodGet, Path: "/principals/{principal_id}/tenants",
 		Summary: "List the caller's tenants", Tags: []string{"account"},

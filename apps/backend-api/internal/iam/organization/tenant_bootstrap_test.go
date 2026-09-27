@@ -101,6 +101,23 @@ func newTenantForTest(slug, name string) CreateTenant {
 	return CreateTenant{Slug: slug, Name: name, OwnerPrincipalID: organizationTestOwnerID}
 }
 
+func TestTenantSelfRegistrationRechecksOwnerProofAndRollsBack(t *testing.T) {
+	h := newOrganizationHarness(t, "self_")
+	service, _, owners := newTenantServiceForTest(t, h, newOrganizationTestIDs(30000))
+	input := newTenantForTest("registered-tenant", "Registered tenant")
+	input.requireVerifiedOwner = true
+	_, err := service.Create(t.Context(), input)
+	require.ErrorIs(t, err, ErrTenantOwnerInactive)
+	items, err := service.List(t.Context(), false)
+	require.NoError(t, err)
+	require.Empty(t, items, "failed proof must not leave a tenant shell")
+	owner := owners.principals[organizationTestOwnerID]
+	owner.EmailVerified = true
+	owners.principals[organizationTestOwnerID] = owner
+	_, err = service.Create(t.Context(), input)
+	require.NoError(t, err)
+}
+
 func TestCreateTenantBootstrapsItsFirstAdministrator(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
 	service, bootstrap, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(2400))

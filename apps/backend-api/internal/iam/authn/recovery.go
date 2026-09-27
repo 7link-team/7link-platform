@@ -120,6 +120,10 @@ func (s *Service) RecoveryEnabled() bool {
 // BeginPasswordRecovery intentionally returns nil for missing, ambiguous,
 // disabled, and notification-ineligible principals to prevent enumeration.
 func (s *Service) BeginPasswordRecovery(ctx context.Context, identifier string) error {
+	return s.BeginPasswordRecoveryForEntry(ctx, identifier, "")
+}
+
+func (s *Service) BeginPasswordRecoveryForEntry(ctx context.Context, identifier, entry string) error {
 	if !s.RecoveryEnabled() {
 		return authnext.ErrRecoveryDisabled
 	}
@@ -142,7 +146,7 @@ func (s *Service) BeginPasswordRecovery(ctx context.Context, identifier string) 
 	token := recoveryTokenPrefix + secret
 	now := s.now().UTC()
 	expiresAt := now.Add(s.cfg.Recovery.TokenTTL)
-	resetURL, err := credentialURL(s.cfg.Recovery.ResetURL, token)
+	resetURL, err := publicEntranceCredentialURL(s.cfg.Recovery.ResetURL, token, entry)
 	if err != nil {
 		return err
 	}
@@ -187,6 +191,22 @@ func credentialURL(base, token string) (string, error) {
 	query.Set("token", token)
 	target.RawQuery = query.Encode()
 	return target.String(), nil
+}
+
+func publicEntranceCredentialURL(base, token, entry string) (string, error) {
+	if entry != "" && entry != "user" && entry != "tenant" {
+		return "", authnext.ErrInvalidRegistration
+	}
+	target, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	if entry != "" {
+		query := target.Query()
+		query.Set("entry", entry)
+		target.RawQuery = query.Encode()
+	}
+	return credentialURL(target.String(), token)
 }
 
 func (s *Service) CompletePasswordRecovery(ctx context.Context, token, newPassword string) error {

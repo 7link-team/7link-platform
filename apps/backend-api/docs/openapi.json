@@ -7968,6 +7968,47 @@
         ],
         "type": "object"
       },
+      "EnvelopeStruct { Enabled bool \"json:\\\"enabled\\\"\" }": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/EnvelopeStruct { Enabled bool \"json:\\\"enabled\\\"\" }DataStruct",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeStruct { Enabled bool \"json:\\\"enabled\\\"\" }DataStruct": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
       "EnvelopeTarget": {
         "additionalProperties": false,
         "properties": {
@@ -10143,6 +10184,26 @@
         ],
         "type": "object"
       },
+      "Organization-register-tenantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "slug": {
+            "maxLength": 63,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name"
+        ],
+        "type": "object"
+      },
       "Page": {
         "additionalProperties": false,
         "properties": {
@@ -10380,6 +10441,14 @@
       "PasswordRecoveryStartInputBody": {
         "additionalProperties": false,
         "properties": {
+          "entry": {
+            "description": "Public entrance to resume after password recovery",
+            "enum": [
+              "user",
+              "tenant"
+            ],
+            "type": "string"
+          },
           "identifier": {
             "description": "Login name or verified primary email",
             "maxLength": 320,
@@ -11524,6 +11593,14 @@
           "email": {
             "format": "email",
             "maxLength": 320,
+            "type": "string"
+          },
+          "entry": {
+            "description": "Public entrance to resume after email verification",
+            "enum": [
+              "user",
+              "tenant"
+            ],
             "type": "string"
           },
           "password": {
@@ -51746,6 +51823,174 @@
           "system"
         ],
         "x-authz-permission": "system_account_view"
+      }
+    },
+    "/tenant-registrations": {
+      "post": {
+        "operationId": "organization-register-tenant",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Organization-register-tenantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeTenant"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Register a tenant owned by the authenticated principal",
+        "tags": [
+          "tenant-registrations"
+        ]
+      }
+    },
+    "/tenant-registrations/options": {
+      "get": {
+        "operationId": "organization-tenant-registration-policy",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeStruct { Enabled bool \"json:\\\"enabled\\\"\" }"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get tenant self-registration availability",
+        "tags": [
+          "tenant-registrations"
+        ]
       }
     },
     "/tenants": {

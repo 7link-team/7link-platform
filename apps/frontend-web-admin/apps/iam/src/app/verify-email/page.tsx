@@ -12,11 +12,15 @@ import { Button } from "@workspace/ui/components/button"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi } from "../../lib/iam-api"
 import { appName, copyrightLine } from "../../lib/branding"
+import { entranceLoginPath, publicAuthEntrance } from "../../lib/auth-entrance"
 
 type VerificationState = "pending" | "success" | "invalid" | "unavailable"
 
 export default function VerifyEmailPage() {
   const t = useTranslations("iam")
+  const [entry] = useState(() =>
+    publicAuthEntrance(new URLSearchParams(window.location.search).get("entry"))
+  )
 
   const [token] = useState(
     () => new URLSearchParams(window.location.search).get("token") ?? ""
@@ -29,7 +33,11 @@ export default function VerifyEmailPage() {
   useEffect(() => {
     if (started.current) return
     started.current = true
-    window.history.replaceState(null, "", "/verify-email")
+    window.history.replaceState(
+      null,
+      "",
+      entry ? `/verify-email?entry=${entry}` : "/verify-email"
+    )
     if (!token) return
     void iamApi.completeEmailVerification(token).then(
       () => setState("success"),
@@ -40,7 +48,7 @@ export default function VerifyEmailPage() {
             : "unavailable"
         )
     )
-  }, [token])
+  }, [token, entry])
 
   return (
     <div className="relative flex min-h-svh flex-col items-center justify-center bg-muted/30 px-4 py-10">
@@ -65,7 +73,7 @@ export default function VerifyEmailPage() {
 
           {state !== "pending" && (
             <Button className="mt-5 w-full" asChild>
-              <Link to="/login">
+              <Link to={entranceLoginPath(entry)}>
                 <ArrowLeft />
                 {t("backSignIn")}
               </Link>

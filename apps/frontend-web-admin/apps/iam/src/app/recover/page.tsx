@@ -8,11 +8,15 @@ import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi } from "../../lib/iam-api"
 import { appName, copyrightLine } from "../../lib/branding"
+import { entranceLoginPath, publicAuthEntrance } from "../../lib/auth-entrance"
 
 export default function RecoverPage() {
   const t = useTranslations("iam")
 
   const location = useLocation()
+  const entry =
+    publicAuthEntrance(location.pathname.split("/")[2]) ??
+    publicAuthEntrance(new URLSearchParams(location.search).get("entry"))
   const token = new URLSearchParams(location.search).get("token") ?? ""
   const [busy, setBusy] = useState(false)
   const [complete, setComplete] = useState(false)
@@ -26,7 +30,8 @@ export default function RecoverPage() {
     try {
       if (!token) {
         await iamApi.startPasswordRecovery(
-          String(data.get("identifier") ?? "").trim()
+          String(data.get("identifier") ?? "").trim(),
+          entry ?? undefined
         )
       } else {
         const password = String(data.get("new_password") ?? "")
@@ -95,7 +100,7 @@ export default function RecoverPage() {
           )}
 
           <Button variant="ghost" className="mt-4 w-full" asChild>
-            <Link to="/login">
+            <Link to={entranceLoginPath(entry)}>
               <ArrowLeft />
               {t("backSignIn")}
             </Link>

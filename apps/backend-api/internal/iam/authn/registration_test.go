@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -111,6 +112,19 @@ func TestRegistrationLifecycle(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, requested)
+}
+
+func TestRegistrationEntranceSurvivesVerifiedEmailDelivery(t *testing.T) {
+	service, _, recorder := newRegistrationService(t)
+	require.NoError(t, service.RegisterForEntry(t.Context(), "tenant@example.test", "correct registration password", "Tenant", "tenant"))
+	require.NoError(t, service.deliverPendingNotifications(t.Context()))
+	payload := recorder.last(t)
+	target, err := url.Parse(payload.VerificationURL)
+	require.NoError(t, err)
+	assert.Equal(t, "tenant", target.Query().Get("entry"))
+	require.NoError(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, payload), "", ""))
+	_, err = publicEntranceCredentialURL("https://app.example.test/verify", "secret", "system")
+	assert.Error(t, err, "registration continuation must not accept privileged or arbitrary destinations")
 }
 
 func TestRegistrationValidationAndConfiguration(t *testing.T) {

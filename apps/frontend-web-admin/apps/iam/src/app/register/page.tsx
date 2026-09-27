@@ -8,16 +8,19 @@ import {
   RefreshCw,
   ShieldCheck,
 } from "lucide-react"
-import { Link } from "react-router"
+import { Link, useLocation } from "react-router"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi, type Captcha } from "../../lib/iam-api"
 import { appName, copyrightLine } from "../../lib/branding"
+import { entranceLoginPath, publicAuthEntrance } from "../../lib/auth-entrance"
 
 export default function RegisterPage() {
   const t = useTranslations("iam")
+  const location = useLocation()
+  const entry = publicAuthEntrance(location.pathname.split("/")[2])
 
   const [busy, setBusy] = useState(false)
   const [complete, setComplete] = useState(false)
@@ -54,6 +57,7 @@ export default function RegisterPage() {
     }
     try {
       await iamApi.register({
+        ...(entry ? { entry } : {}),
         email: String(data.get("email") ?? "").trim(),
         password,
         display_name: String(data.get("display_name") ?? "").trim(),
@@ -89,7 +93,9 @@ export default function RegisterPage() {
               </span>
             </div>
             <h1 className="text-xl font-semibold tracking-tight">
-              {t("createAccount")}
+              {t(
+                entry === "tenant" ? "registerTenantAccount" : "createAccount"
+              )}
             </h1>
             <p className="text-sm text-muted-foreground">
               {t("verifyEmailToSignIn")}
@@ -196,7 +202,7 @@ export default function RegisterPage() {
           )}
 
           <Button variant="ghost" className="mt-4 w-full" asChild>
-            <Link to="/login">
+            <Link to={entranceLoginPath(entry)}>
               <ArrowLeft />
               {t("backSignIn")}
             </Link>

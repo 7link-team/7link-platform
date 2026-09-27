@@ -2,6 +2,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
+  appendFileSync,
   createWriteStream,
   existsSync,
   mkdirSync,
@@ -10,6 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:net";
+import { createServer as createHTTPServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
@@ -90,6 +92,9 @@ function print(settings) {
   console.log(
     `Web: ${settings.webURL}/login\nSwagger: ${settings.apiURL}/docs\nAPI: ${settings.apiURL}\nDatabase: SQLite (${join(directory, "dev.sqlite")})\nDemo account selector: ${settings.demoAccounts ? "enabled" : "disabled"}\nAccount: admin@example.test\nPassword file: ${join(directory, "admin-password")}\nCtrl+C stops both services; data and credentials are retained.`,
   );
+  for (const entry of ["system", "platform", "tenant", "user"])
+    console.log(`${entry} login: ${settings.webURL}/login/${entry}`);
+  console.log(`Local development mail: ${join(directory, "mailbox.jsonl")}`);
 }
 async function availablePort(preferred) {
   return new Promise((resolvePort, reject) => {
@@ -185,6 +190,34 @@ if (options.has("--stop")) {
       randomBytes(24).toString("base64url") + "aA1!\n",
       { mode: 0o600 },
     );
+  const mailboxPath = join(directory, "mailbox.jsonl");
+  const mailbox = createHTTPServer(async (request, response) => {
+    if (request.method !== "POST") {
+      response.writeHead(405).end();
+      return;
+    }
+    try {
+      const chunks = [];
+      let size = 0;
+      for await (const chunk of request) {
+        size += chunk.length;
+        if (size > 65536) throw new Error("notification too large");
+        chunks.push(chunk);
+      }
+      const message = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      appendFileSync(mailboxPath, JSON.stringify(message) + "\n", {
+        mode: 0o600,
+      });
+      response.writeHead(204).end();
+    } catch {
+      response.writeHead(400).end();
+    }
+  });
+  await new Promise((resolveMailbox, reject) => {
+    mailbox.once("error", reject);
+    mailbox.listen(0, "127.0.0.1", resolveMailbox);
+  });
+  const notificationURL = `http://127.0.0.1:${mailbox.address().port}/notifications`;
   writeFileSync(
     configPath,
     JSON.stringify(
@@ -202,11 +235,19 @@ if (options.has("--stop")) {
           },
         },
         files: { local_root: join(directory, "files") },
+        iam: { tenant_registration_enabled: true },
         authn: {
           enabled: true,
           issuer: settings.apiURL,
           signing_key_file: join(directory, "signing-key"),
           mfa: { encryption_key_file: join(directory, "mfa-key") },
+          registration: { enabled: true },
+          notification: { url: notificationURL },
+          email_verification: {
+            enabled: true,
+            verify_url: settings.webURL + "/verify-email",
+          },
+          recovery: { enabled: true, reset_url: settings.webURL + "/recover" },
           web: {
             enabled: true,
             cookie_name: "dev_session",
@@ -268,6 +309,7 @@ if (options.has("--stop")) {
     );
     for (const child of [...children].reverse()) terminate(child, false);
     await Promise.all(children.map((child) => child.finished));
+    await new Promise((resolveMailbox) => mailbox.close(resolveMailbox));
     clearTimeout(deadline);
     settings.running = false;
     writeFileSync(statePath, JSON.stringify(settings, null, 2) + "\n", {

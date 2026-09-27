@@ -63,7 +63,8 @@ type CreateTenant struct {
 	// OwnerPrincipalID is the principal that becomes the tenant's first
 	// administrator. It is required: every tenant route demands an active
 	// membership, so a tenant created without an owner is unreachable.
-	OwnerPrincipalID guid.ID
+	OwnerPrincipalID     guid.ID
+	requireVerifiedOwner bool
 }
 type UpdateTenant struct {
 	Name    *string
@@ -72,12 +73,13 @@ type UpdateTenant struct {
 }
 
 type TenantService struct {
-	scopeKind string
-	repo      *Repository
-	now       func() time.Time
-	bootstrap core.TenantBootstrapper
-	roots     core.FileRootProvisioner
-	owners    identity.TenantOwnerLookup
+	registrationEnabled bool
+	scopeKind           string
+	repo                *Repository
+	now                 func() time.Time
+	bootstrap           core.TenantBootstrapper
+	roots               core.FileRootProvisioner
+	owners              identity.TenantOwnerLookup
 }
 
 func (s *TenantService) kind() string {
@@ -242,6 +244,9 @@ func (s *TenantService) Create(ctx context.Context, input CreateTenant) (Tenant,
 			return ErrTenantOwnerNotFound
 		}
 		if owner.Status != tenantOwnerActiveStatus {
+			return ErrTenantOwnerInactive
+		}
+		if input.requireVerifiedOwner && !owner.EmailVerified {
 			return ErrTenantOwnerInactive
 		}
 		result, err := s.bootstrap.Bootstrap(ctx, repo.writer(), core.TenantBootstrapInput{

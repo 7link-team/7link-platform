@@ -23,12 +23,15 @@ import {
 import { useAuth } from "../../components/auth"
 import { SessionVerification } from "../../components/session-verification"
 import { ThemeModeButton } from "../../components/theme-mode-button"
+import { AuthEntranceLinks } from "../../components/auth-entrance-links"
+import { authEntrance, publicAuthEntrance } from "../../lib/auth-entrance"
 
 export default function LoginPage() {
   const t = useTranslations("iam")
 
   const { status, login, verifyLoginMfa, loginWithPasskey } = useAuth()
   const location = useLocation()
+  const entry = authEntrance(location.pathname.split("/")[2])
   const [visible, setVisible] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(() =>
@@ -47,7 +50,8 @@ export default function LoginPage() {
       .then(setCapabilities, () => setCapabilities(null))
   }, [])
   if (status === "loading" || status === "error") return <SessionVerification />
-  if (status === "authenticated") return <Navigate to="/" replace />
+  if (status === "authenticated")
+    return <Navigate to={entry ? `/workspaces/${entry}` : "/"} replace />
 
   const submitPassword = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -57,9 +61,11 @@ export default function LoginPage() {
     const devTenantID = String(data.get("dev_tenant_id") ?? "")
     const devPlatformID = String(data.get("dev_platform_id") ?? "")
     const previousTenantID = devTenantID ? getTenant() : ""
-    const requested = devPlatformID
-      ? `/operating-platforms/${encodeURIComponent(devPlatformID)}`
-      : ((location.state as { from?: string } | null)?.from ?? "/")
+    const requested = entry
+      ? `/workspaces/${entry}`
+      : devPlatformID
+        ? `/operating-platforms/${encodeURIComponent(devPlatformID)}`
+        : ((location.state as { from?: string } | null)?.from ?? "/")
     try {
       if (devTenantID) setTenant(devTenantID)
       const result = await login(
@@ -104,7 +110,9 @@ export default function LoginPage() {
   const submitPasskey = async () => {
     setBusy(true)
     setError("")
-    const requested = (location.state as { from?: string } | null)?.from ?? "/"
+    const requested = entry
+      ? `/workspaces/${entry}`
+      : ((location.state as { from?: string } | null)?.from ?? "/")
     try {
       await loginWithPasskey(`${window.location.origin}${requested}`)
     } catch (cause) {
@@ -127,6 +135,7 @@ export default function LoginPage() {
       </div>
       <main className="w-full max-w-[400px]">
         <div className="rounded-xl border border-border/70 bg-card p-8 shadow-lg">
+          <AuthEntranceLinks entry={entry} />
           {challenge ? (
             <MfaForm
               challenge={challenge}
@@ -160,6 +169,8 @@ export default function LoginPage() {
 
 function BrandHeader({ mfa = false }: { mfa?: boolean }) {
   const t = useTranslations("iam")
+  const location = useLocation()
+  const entry = authEntrance(location.pathname.split("/")[2])
 
   return (
     <div className="space-y-2.5">
@@ -172,7 +183,11 @@ function BrandHeader({ mfa = false }: { mfa?: boolean }) {
         </span>
       </div>
       <h1 id="login-title" className="text-xl font-semibold tracking-tight">
-        {mfa ? t("completeVerification") : t("welcomeBack")}
+        {mfa
+          ? t("completeVerification")
+          : entry
+            ? t(`authLogin_${entry}`)
+            : t("welcomeBack")}
       </h1>
       <p className="text-sm text-muted-foreground">
         {mfa ? t("enterMfaCode") : t("signInConsole")}
@@ -199,6 +214,9 @@ function PasswordForm({
   capabilities: AuthnCapabilities | null
 }) {
   const t = useTranslations("iam")
+  const location = useLocation()
+  const entry = authEntrance(location.pathname.split("/")[2])
+  const selfService = !entry || publicAuthEntrance(entry) !== null
   const defaultAccount = prefillDevLoginAccount
     ? devLoginAccounts[0]
     : undefined
@@ -296,10 +314,10 @@ function PasswordForm({
             )}
           </button>
         </div>
-        {capabilities?.password_recovery && (
+        {selfService && capabilities?.password_recovery && (
           <div className="flex justify-end">
             <Link
-              to="/recover"
+              to={entry ? `/recover/${entry}` : "/recover"}
               className="text-sm font-medium text-primary hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               {t("forgotPassword")}
@@ -328,12 +346,12 @@ function PasswordForm({
           </Button>
         </>
       )}
-      {capabilities?.registration && (
+      {selfService && capabilities?.registration && (
         <p className="text-center text-sm text-muted-foreground">
           {t("noAccount")}{" "}
           <Link
             className="font-medium text-primary hover:underline"
-            to="/register"
+            to={entry ? `/register/${entry}` : "/register"}
           >
             {t("createAccount")}
           </Link>

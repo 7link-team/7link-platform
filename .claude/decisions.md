@@ -3146,3 +3146,35 @@ system. Refresh loses memory credentials and fails closed without cookie fallbac
 Status: IMPLEMENTED and VERIFIED. Full real E2E50/50, affected backend tests,
 MySQL8/PostgreSQL16 integration and frontend workspace gates PASS. Plan/review:
 apps/backend-api/docs/access-view-implementation-plan-2026-09-27.md.
+
+## Separate Authentication Entrances - 2026-09-27
+
+Decision: expose /login/system, /login/platform, /login/tenant and /login/user.
+System/platform expose login only; tenant/user expose registration and password
+recovery. Reuse one global principal and existing password/MFA/passkey/session
+flows. Selecting an entrance never grants administrator authority or organization
+membership. Resolve live permissions/memberships; choose among multiple admitted
+organizations, enter a single admitted workspace, deny unassigned privileged entry.
+
+Tenant registration first verifies the personal email, then creates a caller-owned
+tenant through existing atomic bootstrap (membership, roles, menus, files, audit).
+Deployment iam.tenant_registration_enabled defaults false. No client-selected
+owner; all access-view tokens are refused, including writable views. Existing
+invitations handle joining; business-specific tenant-count policies are not added.
+The user entrance opens the personal file workspace. Public recovery resets the
+same global identity and revokes its sessions; it does not manufacture a different
+account or administrative identity. Public entrance query values only preserve UI
+continuation in verification/recovery messages and accept tenant/user values.
+
+Development enables these flows and captures delivered messages in the ignored
+local .temp/dev/mailbox.jsonl; it does not send external email. Production retains
+its existing configured delivery and explicit registration policy.
+
+Status: IMPLEMENTED and VERIFIED. Direct architecture/security self-review and
+requirement acceptance PASS. Affected backend suites and app composition PASS;
+OpenAPI generation/drift and frontend types/lint/237 tests/build PASS. Full real
+E2E55/55 (.temp/sqlite-lifecycle-pZ98rn) and final entrance6/6
+(.temp/sqlite-lifecycle-yiHcTz) PASS, no mocked business responses/page errors.
+Chinese retained demo selector, registration policy and desktop/mobile smoke PASS.
+No database migrations or dependencies introduced. No further implementation
+or product decision is pending for these entrances.

@@ -157,6 +157,10 @@ func TestIAMModuleConfigsMapEverySetting(t *testing.T) {
 	assert.True(t, iamCoreConfig(config).Enabled)
 	assert.True(t, iamIdentityConfig(config).Enabled)
 	assert.True(t, iamOrganizationConfig(config).Enabled)
+	assert.False(t, iamOrganizationConfig(AppConfig{}).TenantRegistrationEnabled)
+	registrationConfig := config
+	registrationConfig.IAM.TenantRegistrationEnabled = true
+	assert.True(t, iamOrganizationConfig(registrationConfig).TenantRegistrationEnabled)
 	assert.True(t, iamOAuthConfig(config).Enabled)
 	assert.True(t, iamGovernanceConfig(config).Enabled)
 }

@@ -126,7 +126,7 @@ func iamIdentityConfig(c AppConfig) identity.Config {
 }
 
 func iamOrganizationConfig(c AppConfig) organization.Config {
-	return organization.Config{Config: iamActivationConfig(c)}
+	return organization.Config{Config: iamActivationConfig(c), TenantRegistrationEnabled: c.IAM.TenantRegistrationEnabled}
 }
 
 func iamOAuthConfig(c AppConfig) oauth.Config {

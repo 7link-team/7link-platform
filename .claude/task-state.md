@@ -2,6 +2,55 @@
 
 ## Current Delivery - 2026-09-27
 
+### Separate Authentication Entrances - 2026-09-27
+
+- VERIFIED. User approved separate system/platform login-only entrances and
+  tenant/user login, registration and password recovery. One shared principal
+  remains; an entrance never grants a system/platform identity or membership.
+- Design/review: reuse password/MFA/passkey, email activation, recovery and live
+  workspace APIs. Explicit entrance routes select only admitted workspaces; multiple
+  organizations require a choice. Preserve legacy generic routes and login returns.
+- Tenant onboarding follows email activation/login, then existing atomic tenant
+  bootstrap with the verified caller as owner. Self-registration is deployment
+  configurable and disabled by default; no owner selector or platform creation.
+  Existing invitations remain the controlled join mechanism. Different business
+  tenant-count policies are not implemented by this entrance change.
+- Architecture/security self-review PASS: destination is not an authorization
+  grant; restricted entrances have no registration/recovery links; no new identity,
+  credential store or shared view token. Execute directly due coupled routes/API.
+- Acceptance required: four entrances desktop/mobile, success and denied scope,
+  multiple workspace choice, verified registration and recovery with real delivery,
+  tenant bootstrap and unauthorized owner/system/platform mutation refusals,
+  existing account-view regression, builds/types/tests.
+- Implemented four explicit login/workspace routes and tenant/user registration/
+  recovery continuations. Self-onboarding uses iam.tenant_registration_enabled
+  (default false), verified active caller ownership and existing atomic bootstrap;
+  every access-view token is refused. App config transfer and frozen route/guard
+  manifests updated. Dev enables flows with a local notification mailbox.
+- PASS affected Go suites including full internal/app; OpenAPI consistency,
+  frontend typecheck/lint/build and API drift. Focused real E2E6/6 PASS:
+  backend .temp/sqlite-lifecycle-jSOTeN/report.json, no mocked responses/errors.
+  Includes four desktop/mobile entrances, actual activation/recovery delivery,
+  multiple tenants/platforms, owner spoof refusal and writable-view refusal.
+- Full real E2E55/55 PASS, backend .temp/sqlite-lifecycle-pZ98rn/report.json:
+  zero mocked business responses, zero page errors. Existing OIDC/SAML/SCIM,
+  role/menu/system management and concurrent readonly/writable organization and
+  account views retain scope, real actor audits and memory-only token isolation.
+- Corrected workspace translation keys to existing logout/identifier labels and
+  handled logout errors. Final focused E2E6/6 PASS after label correction:
+  .temp/sqlite-lifecycle-yiHcTz/report.json. Frontend237 tests and final build PASS.
+  Source whitespace checks PASS; no dependencies or SQL migrations added.
+- Retained demo restarted hidden with real captcha, local notification mailbox
+  and demo-account selection: http://127.0.0.1:8091/login/{system,platform,tenant,user}.
+  Swagger http://127.0.0.1:8080/docs. Chinese four-entrance desktop/mobile smoke,
+  actual selector login as admin@example.test and self-registration policy PASS;
+  translated identifier and screenshots inspected; zero browser page errors.
+- Self-review and final requirement acceptance PASS: scope/reuse/architecture,
+  privilege separation, atomic verified onboarding and existing regression.
+  Reviews performed directly; no independent reviewer claim.
+- Next: commit/push scoped deliverables under standing authorization and verify
+  remote HEAD/clean worktree. Implementation complete; only user acceptance remains.
+
 ### Organization Entry Clarification and Tab Isolation - 2026-09-27
 
 - DELIVERED. User requested clearer organization menus and separate tabs for

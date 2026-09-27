@@ -42,6 +42,10 @@ func (s *Service) Capabilities() authnext.Capabilities {
 }
 
 func (s *Service) Register(ctx context.Context, email, password, displayName string) error {
+	return s.RegisterForEntry(ctx, email, password, displayName, "")
+}
+
+func (s *Service) RegisterForEntry(ctx context.Context, email, password, displayName, entry string) error {
 	if !s.RegistrationEnabled() {
 		return authnext.ErrRegistrationDisabled
 	}
@@ -61,7 +65,7 @@ func (s *Service) Register(ctx context.Context, email, password, displayName str
 		return fmt.Errorf("generate registration verification credential: %w", err)
 	}
 	token := emailVerificationTokenPrefix + secret
-	verificationURL, err := credentialURL(s.cfg.EmailVerification.VerifyURL, token)
+	verificationURL, err := publicEntranceCredentialURL(s.cfg.EmailVerification.VerifyURL, token, entry)
 	if err != nil {
 		return err
 	}
@@ -97,7 +101,7 @@ func (s *Service) Register(ctx context.Context, email, password, displayName str
 		return repository.appendAudit(ctx, event)
 	})
 	if errors.Is(err, authnext.ErrRegistrationConflict) {
-		return s.resendRegistrationCode(ctx, email)
+		return s.resendRegistrationCode(ctx, email, entry)
 	}
 	if errors.Is(err, authnext.ErrInvalidRegistration) {
 		return err
@@ -108,7 +112,11 @@ func (s *Service) Register(ctx context.Context, email, password, displayName str
 	return nil
 }
 
-func (s *Service) resendRegistrationCode(ctx context.Context, email string) error {
+func (s *Service) resendRegistrationCode(ctx context.Context, email string, entries ...string) error {
+	entry := ""
+	if len(entries) > 0 {
+		entry = entries[0]
+	}
 	secret, err := randomToken(32)
 	if err != nil {
 		return fmt.Errorf("generate resend credential: %w", err)
@@ -120,7 +128,7 @@ func (s *Service) resendRegistrationCode(ctx context.Context, email string) erro
 	}
 	now := s.now().UTC()
 	expiresAt := now.Add(s.cfg.EmailVerification.TokenTTL)
-	verificationURL, err := credentialURL(s.cfg.EmailVerification.VerifyURL, token)
+	verificationURL, err := publicEntranceCredentialURL(s.cfg.EmailVerification.VerifyURL, token, entry)
 	if err != nil {
 		return err
 	}

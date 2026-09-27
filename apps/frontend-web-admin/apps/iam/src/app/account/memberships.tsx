@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { Link } from "react-router"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
 import { Alert } from "../../components/alert"
@@ -21,6 +22,19 @@ export default function MembershipsPage() {
   const [offset, setOffset] = useState(0)
   const [reload, setReload] = useState(0)
   const [error, setError] = useState("")
+  const [registration, setRegistration] = useState(false)
+  useEffect(() => {
+    let active = true
+    void iamApi.tenantRegistrationPolicy().then(
+      (policy) => {
+        if (active) setRegistration(policy.enabled)
+      },
+      () => {}
+    )
+    return () => {
+      active = false
+    }
+  }, [])
   const [selected, setSelected] = useState<string | null>(() => {
     try {
       const saved = JSON.parse(sessionStorage.getItem(pendingKey) ?? "null")
@@ -73,6 +87,11 @@ export default function MembershipsPage() {
         title={t("myMemberships")}
         description={t("myMembershipsDescription")}
       />
+      {registration && (
+        <Button variant="outline" asChild>
+          <Link to="/workspaces/tenant?create=1">{t("registerTenant")}</Link>
+        </Button>
+      )}
       {error && (
         <Alert>
           <p>{t.has(error) ? t(error) : error}</p>

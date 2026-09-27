@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
 import { externalIdentityAcceptance } from "./external-identity-acceptance.mjs"
 import { administrationAccountViewAcceptance } from "./administration-account-view-acceptance.mjs"
+import { authEntrancesAcceptance } from "./auth-entrances-acceptance.mjs"
 
 const backend = fileURLToPath(
   new URL("../../../../backend-api/", import.meta.url)
@@ -371,11 +372,13 @@ try {
             readable: true,
           },
         },
+        iam: { tenant_registration_enabled: true },
         authn: {
           enabled: true,
           issuer: apiURL,
           signing_key_file: join(directory, "signing-key"),
           mfa: { encryption_key_file: join(directory, "mfa-key") },
+          registration: { enabled: true, captcha: { test_answer: "12345678" } },
           notification: { url: notificationURL, poll_interval: "100ms" },
           email_verification: {
             enabled: true,
@@ -502,6 +505,9 @@ try {
   )
   await anonymous.close()
   const admin = await login(adminLogin, adminPassword)
+  if (process.env.IAM_AUTH_ENTRANCES_ONLY === "1") {
+    await authEntrancesAcceptance({ admin, browser, webURL, directory, notifications, eventually, pass, adminLogin, adminPassword })
+  } else {
   assert.deepEqual(
     await call(admin.context, "/tenants", "GET", undefined, {
       tenant: false,
@@ -1546,6 +1552,7 @@ try {
 
   }
   await administrationAccountViewAcceptance({ admin, browser, tenant, webURL, directory, login, eventually, pass, notifications })
+  await authEntrancesAcceptance({ admin, browser, webURL, directory, notifications, eventually, pass, adminLogin, adminPassword })
   const audit = await call(admin.context, "/audit/events?limit=200")
   for (const event of (process.env.IAM_ACCOUNT_VIEW_ONLY === "1" ? ["tenant_bootstrapped"] : [
     "tenant_bootstrapped",
@@ -1560,6 +1567,7 @@ try {
   }
   assert.deepEqual(pageErrors, [], "uncaught browser errors")
   pass("lifecycle modifications are audited; no uncaught browser errors")
+  }
 } catch (error) {
   results.push({ flow: "failure", status: "FAIL", message: error.message })
   throw error

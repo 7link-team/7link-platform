@@ -64,6 +64,8 @@ organization-list-invitations|GET|/tenants/{tenant_id}/membership-invitations
 organization-list-tenants|GET|/tenants
 organization-list-operating-platforms|GET|/operating-platforms
 organization-my-tenants|GET|/principals/{principal_id}/tenants
+organization-tenant-registration-policy|GET|/tenant-registrations/options
+organization-register-tenant|POST|/tenant-registrations
 organization-my-operating-platforms|GET|/principals/{principal_id}/operating-platforms
 organization-put-group-member|PUT|/principal-groups/{group_id}/members/{principal_id}
 organization-resend-invitation|POST|/membership-invitations/{invitation_id}/deliveries
@@ -185,7 +187,7 @@ func TestOrganizationRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 41)
+	require.Len(t, got, 43)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -199,13 +201,13 @@ func TestOrganizationOpenAPIGuardsScopesAndSchemas(t *testing.T) {
 			location := method + " " + path
 			// Organization publishes the directory record, plus the invitation
 			// a new member redeems before they have one.
-			assert.Contains(t, []string{"directory", "authentication", "account", "operating-platforms", "system"},
+			assert.Contains(t, []string{"directory", "authentication", "account", "operating-platforms", "system", "tenant-registrations"},
 				operation.Tags[0], location)
 			if guard, ok := organizationGuards[operation.OperationID]; ok {
 				assert.Equal(t, guard, operation.Extensions[authz.GuardExtensionKey], location)
 				assert.NotEmpty(t, operation.Security, location)
 			}
-			platform := strings.HasPrefix(operation.OperationID, "organization-system-") || (strings.Contains(operation.OperationID, "tenant") && operation.OperationID != "organization-my-tenants") || (strings.Contains(operation.OperationID, "operating-platform") && operation.OperationID != "organization-my-operating-platforms")
+			platform := strings.HasPrefix(operation.OperationID, "organization-system-") || (strings.Contains(operation.OperationID, "tenant") && operation.OperationID != "organization-my-tenants" && operation.OperationID != "organization-tenant-registration-policy" && operation.OperationID != "organization-register-tenant") || (strings.Contains(operation.OperationID, "operating-platform") && operation.OperationID != "organization-my-operating-platforms")
 			assert.Equal(t, platform, authz.IsPlatformOperation(operation), location)
 			assert.Equal(t, strings.HasPrefix(operation.OperationID, "organization-platform-"), authz.IsOperatingPlatformOperation(operation), location)
 		}
@@ -362,6 +364,15 @@ func newOrganizationHTTPHarness(t *testing.T) organizationHTTPHarness {
 }
 
 type organizationHTTPTokenVerifier struct{}
+
+func TestTenantSelfRegistrationIsDisabledByDefault(t *testing.T) {
+	h := newOrganizationHTTPHarness(t)
+	options := h.api.Get("/tenant-registrations/options", "Authorization: Bearer test")
+	require.Equal(t, http.StatusOK, options.Code)
+	assert.Contains(t, options.Body.String(), `"enabled":false`)
+	created := h.api.Post("/tenant-registrations", "Authorization: Bearer test", map[string]any{"slug": "disabled-registration", "name": "Disabled"})
+	require.Equal(t, http.StatusForbidden, created.Code)
+}
 
 func (organizationHTTPTokenVerifier) Authenticate(context.Context, string, string) (*authnext.Claims, error) {
 	return &authnext.Claims{

@@ -201,6 +201,8 @@ export const publishedRoutes: readonly string[] = [
   "/system/tenants/{owner_id}/roles",
   "/system/tenants/{owner_id}/roles/{role_id}/members/{principal_id}",
   "/system/tenants/{tenant_id}/departments",
+  "/tenant-registrations",
+  "/tenant-registrations/options",
   "/tenants",
   "/tenants/{tenant_id}",
   "/tenants/{tenant_id}/audit/anchors",

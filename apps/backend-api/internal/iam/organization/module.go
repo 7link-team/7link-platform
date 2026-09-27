@@ -27,6 +27,7 @@ var ErrUnavailable = errors.New("organization service unavailable")
 // the GroupProvisioner capability consumed by provisioning.
 type Config struct {
 	module.Config
+	TenantRegistrationEnabled bool `mapstructure:"tenant_registration_enabled" description:"allow authenticated principals to register their own tenants" default:"false"`
 }
 
 type Module struct {
@@ -219,6 +220,7 @@ func (m *Module) Initialize(context.Context) error {
 	m.service = NewService(m.runtime, m.appender, m.ids)
 	m.service.systemPermissions = m.bootstrap.SystemPermissionOn
 	m.tenants = NewTenantService(m.runtime, m.appender, m.ids, m.bootstrap, m.owners)
+	m.tenants.registrationEnabled = m.config.TenantRegistrationEnabled
 	m.platforms = NewPlatformService(m.runtime, m.appender, m.ids, m.bootstrap, m.owners)
 	m.service.roots, m.tenants.roots = m.roots, m.roots
 	m.service.rootContent = m.rootContent

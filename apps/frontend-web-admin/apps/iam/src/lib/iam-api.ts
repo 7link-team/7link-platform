@@ -2124,9 +2124,16 @@ export function createIamApi(
       }),
     capabilities: () =>
       request<AuthnCapabilities>(apiRoute("get", "/login/options")),
+    tenantRegistrationPolicy: () =>
+      request<{ enabled: boolean }>(apiRoute("get", "/tenant-registrations/options")),
+    registerTenant: (body: { name: string; slug: string }) =>
+      request<Tenant>(apiRoute("post", "/tenant-registrations"), {
+        body: JSON.stringify(body),
+      }),
     createCaptcha: () =>
       request<Captcha>(apiRoute("post", "/registrations/captchas")),
     register: (body: {
+      entry?: "tenant" | "user"
       email: string
       password: string
       display_name?: string
@@ -2461,10 +2468,10 @@ export function createIamApi(
           body: JSON.stringify(body),
         }
       ),
-    startPasswordRecovery: (identifier: string) =>
+    startPasswordRecovery: (identifier: string, entry?: "tenant" | "user") =>
       request<{ accepted: boolean }>(
         apiRoute("post", "/password-recoveries/requests"),
-        { body: JSON.stringify({ identifier }) }
+        { body: JSON.stringify({ identifier, ...(entry ? { entry } : {}) }) }
       ),
     completePasswordRecovery: (body: { token: string; new_password: string }) =>
       request<{ changed: boolean }>(apiRoute("post", "/password-recoveries"), {

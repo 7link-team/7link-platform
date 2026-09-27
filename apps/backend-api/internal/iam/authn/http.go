@@ -74,6 +74,7 @@ type loginInput struct {
 type registrationInput struct {
 	Origin string `header:"Origin" hidden:"true"`
 	Body   struct {
+		Entry         string `json:"entry,omitempty" enum:"user,tenant" doc:"Public entrance to resume after email verification"`
 		Email         string `json:"email" format:"email" maxLength:"320"`
 		Password      string `json:"password" minLength:"8" maxLength:"1024"`
 		DisplayName   string `json:"display_name,omitempty" maxLength:"128"`
@@ -116,6 +117,7 @@ type passwordChangeInput struct {
 type passwordRecoveryStartInput struct {
 	Origin string `header:"Origin" hidden:"true"`
 	Body   struct {
+		Entry      string `json:"entry,omitempty" enum:"user,tenant" doc:"Public entrance to resume after password recovery"`
 		Identifier string `json:"identifier" minLength:"1" maxLength:"320" doc:"Login name or verified primary email"`
 	}
 }
@@ -429,7 +431,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		if !web.VerifyCaptcha(in.Body.CaptchaType, in.Body.CaptchaID, in.Body.CaptchaAnswer) {
 			return nil, huma.Error422UnprocessableEntity("captcha_invalid")
 		}
-		if err := web.Register(ctx, in.Body.Email, in.Body.Password, in.Body.DisplayName); err != nil {
+		if err := web.RegisterForEntry(ctx, in.Body.Email, in.Body.Password, in.Body.DisplayName, in.Body.Entry); err != nil {
 			switch {
 			case errors.Is(err, authnext.ErrInvalidRegistration):
 				return nil, huma.Error422UnprocessableEntity("invalid_registration")
@@ -636,7 +638,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
 			return nil, huma.Error403Forbidden("recovery_request_rejected")
 		}
-		if err := web.BeginPasswordRecovery(ctx, in.Body.Identifier); err != nil {
+		if err := web.BeginPasswordRecoveryForEntry(ctx, in.Body.Identifier, in.Body.Entry); err != nil {
 			switch {
 			case errors.Is(err, authnext.ErrRecoveryDisabled):
 				return nil, huma.Error503ServiceUnavailable("password_recovery_unavailable")
