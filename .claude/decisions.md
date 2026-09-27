@@ -3063,3 +3063,28 @@ isolation, relevant race checks and five demo-persona menu audits PASS. SQL plan
 fixtures reflect approved queries; existing performance budgets remain unchanged.
 Evidence: apps/backend-api/docs/external-identity-scope-review-2026-09-26.md and
 apps/backend-api/docs/external-identity-remediation-plan-2026-09-26.md.
+# System Role Administration Correction - 2026-09-27
+
+Decision: Replace restricted system direct grants with direct system role
+assignments on the reserved real system root. Present full superadmin through a
+protected role while retaining immutable full authority in administrator records.
+Departments organize membership and never automatically grant roles. System role
+permissions initially have no conditions or group/directory inheritance.
+Reason: user requires comprehensible account, department and role administration;
+moving the old grant editor does not supply those relationships or revocation.
+Alternatives considered: navigation-only changes, permanent union with direct
+grants, tenant-derived system roles. These leave conflicting authority sources.
+Tradeoffs: preserve existing restricted grants through transactional conversion;
+ordinary new roles cannot grant the legacy platform_administer tenant override.
+System authority blocks suspension/erasure until explicitly revoked, including
+disabled memberships. Account categories overlap over global human identities.
+System shared files have independent singleton ownership and global file actions.
+Scope: approved system administration correction, preserving customized menus,
+scoped identities and account-view operator attribution. No business-specific
+tenant quotas or permanent principal account types.
+Status: IMPLEMENTED and VERIFIED. Independent architecture/security reviews and
+engineering acceptance PASS. Real browser lifecycle45/45 and focused24/24 PASS
+with zero mocked business responses or page errors; frontend234 tests and all
+four workspace gates PASS. Normal MySQL/PostgreSQL gates preserve original
+performance budgets and246 published migrations. Retained demo refreshed; user
+manual acceptance is available. Delivery requires verified commit/push.

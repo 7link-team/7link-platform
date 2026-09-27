@@ -29,7 +29,7 @@ func (s *Service) AccountWorkspaces(ctx context.Context, target guid.ID) ([]Acco
 	if s.avatarPermissions == nil {
 		return nil, ErrUnavailable
 	}
-	for _, action := range authz.DefaultRegistry().All() {
+	for _, action := range s.permissionRegistry.All() {
 		if action.Scope != "platform" {
 			continue
 		}
@@ -84,14 +84,30 @@ func (s *Service) AccountWorkspaces(ctx context.Context, target guid.ID) ([]Acco
 }
 
 func (s *Service) ListGlobal(ctx context.Context, search string, limit, offset int) ([]Principal, int64, error) {
+	return s.ListGlobalCategory(ctx, search, limit, offset, "user", 0, "")
+}
+
+func (s *Service) ListGlobalCategory(ctx context.Context, search string, limit, offset int, category string, ownerID guid.ID, status string) ([]Principal, int64, error) {
 	if limit < 1 || limit > 200 || offset < 0 || len(search) > 200 {
+		return nil, 0, ErrInvalid
+	}
+	if category == "" {
+		category = "user"
+	}
+	if category != "user" && category != "system" && category != "platform" && category != "tenant" {
+		return nil, 0, ErrInvalid
+	}
+	if ownerID < 0 || (ownerID > 0 && category != "platform" && category != "tenant") {
+		return nil, 0, ErrInvalid
+	}
+	if status != "" && status != "active" && status != "disabled" {
 		return nil, 0, ErrInvalid
 	}
 	repo, err := s.repo.pinWriter()
 	if err != nil {
 		return nil, 0, err
 	}
-	rows, total, err := repo.listPrincipals(ctx, 0, search, limit, offset)
+	rows, total, err := repo.listPrincipalsFiltered(ctx, 0, search, limit, offset, category, ownerID, status)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -128,9 +144,12 @@ func systemPrincipalView(principal Principal) PrincipalView {
 }
 
 type systemPrincipalListInput struct {
-	Search string `query:"search" maxLength:"200"`
-	Limit  int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
-	Offset int    `query:"offset" default:"0" minimum:"0"`
+	Category string `query:"category" enum:"system,platform,tenant,user" default:"user" doc:"overlapping account relationship category; user lists all human identities"`
+	OwnerID  string `query:"owner_id" doc:"optional explicit operating-platform or tenant owner for category filtering"`
+	Status   string `query:"status" enum:"active,disabled" doc:"global account status; omitted includes disabled accounts"`
+	Search   string `query:"search" maxLength:"200"`
+	Limit    int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
+	Offset   int    `query:"offset" default:"0" minimum:"0"`
 }
 
 type systemPrincipalIDInput struct {
@@ -173,7 +192,15 @@ func registerSystemPrincipalHTTP(api huma.API, service *Service, registrar *auth
 		OperationID: "identity-system-list-principals", Method: http.MethodGet, Path: "/system/principals",
 		Summary: "List global accounts", Tags: []string{"system"},
 	}, authz.Guard{Resource: "system_account", Verb: "view"}, func(ctx context.Context, in *systemPrincipalListInput) (*respx.Body[principalListData], error) {
-		items, total, err := service.ListGlobal(ctx, in.Search, in.Limit, in.Offset)
+		var ownerID guid.ID
+		if in.OwnerID != "" {
+			var err error
+			ownerID, err = requireID(in.OwnerID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		items, total, err := service.ListGlobalCategory(ctx, in.Search, in.Limit, in.Offset, in.Category, ownerID, in.Status)
 		if err != nil {
 			return nil, identityError(err)
 		}

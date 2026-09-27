@@ -53,7 +53,10 @@ export async function administrationAccountViewAcceptance({
       `${method} ${path}`
     )
     if (status && status >= 400) return
-    assert(response.ok(), `${method} ${path}: HTTP ${response.status()}`)
+    assert(
+      response.ok(),
+      `${method} ${path}: HTTP ${response.status()}${response.ok() ? "" : ` ${await response.text()}`}`
+    )
     return (await response.json()).data
   }
   const viewRequest = async (
@@ -409,7 +412,7 @@ export async function administrationAccountViewAcceptance({
         await admin.page.goto("/system/accounts")
       }
       await admin.page
-        .getByRole("heading", { name: "Global accounts", exact: true })
+        .getByRole("heading", { name: "User accounts", exact: true })
         .waitFor()
       await admin.page.waitForLoadState("networkidle")
       await admin.page
@@ -510,7 +513,7 @@ export async function administrationAccountViewAcceptance({
         .click()
       await admin.page.waitForURL((url) => url.pathname === "/system/accounts")
       await admin.page
-        .getByRole("heading", { name: "Global accounts", exact: true })
+        .getByRole("heading", { name: "User accounts", exact: true })
         .waitFor()
       await admin.page.waitForLoadState("networkidle")
       assert.equal((await request("/me")).subject, operator.subject)
@@ -520,8 +523,8 @@ export async function administrationAccountViewAcceptance({
         "system",
         systemTarget,
         /System administration/,
-        "/system/accounts",
-        "Global accounts",
+        "/system/accounts/system",
+        "System accounts",
       ],
       [
         "platform",
@@ -617,23 +620,6 @@ export async function administrationAccountViewAcceptance({
         `real desktop/mobile ${name} view resolves target UI, exact workspace, secret isolation and restores operator`
       )
     }
-    await systemAdministrationAcceptance({
-      admin,
-      directory,
-      request,
-      createAccount,
-      systemTarget,
-      login,
-      contexts,
-      eventually,
-      pass,
-      openUI,
-      exitUI,
-      viewRequest,
-      open,
-      statement,
-      operator,
-    })
     await openUI(ordinary, /Operating platform.*Platform A/)
     await admin.page
       .getByText("You have no available permissions in this workspace.", {
@@ -673,6 +659,27 @@ export async function administrationAccountViewAcceptance({
     pass(
       "real writable platform UI mutation succeeds and restores operator after exit; ordinary member view shows no authorized pages"
     )
+    await systemAdministrationAcceptance({
+      admin,
+      directory,
+      request,
+      createAccount,
+      systemTarget,
+      login,
+      contexts,
+      eventually,
+      pass,
+      openUI,
+      exitUI,
+      viewRequest,
+      open,
+      statement,
+      operator,
+      ownerA,
+      platformA,
+      tenantB,
+      ownerContext: targetLogin.context,
+    })
   } catch (cause) {
     await admin.page
       .screenshot({

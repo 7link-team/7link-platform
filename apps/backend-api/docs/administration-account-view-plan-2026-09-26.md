@@ -301,3 +301,110 @@ Account views start from System administration / Global accounts. Select a targe
 and its named workspace. Read-only is the default; writable requires explicit
 selection. Exit restores the operator. Writable business changes are real, while
 target sessions, credentials, personal tokens and login notifications stay intact.
+# System administration correction - 2026-09-27
+
+## Authorized implementation
+
+Provide account management (system, platform, tenant, user, closure requests),
+permission management (departments, roles), basic management (menus, shared
+files), operations (platforms, tenants), and audit (events, governance).
+Account categories are overlapping relationships over global human identities.
+Management queries include disabled records and paginate on the server.
+Platform and tenant membership mutations always name their owner explicitly.
+
+Reuse the real reserved system root, existing membership/department/role tables,
+mutation coordinator, file storage and shared frontend components. System roles
+grant global actions through direct assignments only; editable grants are
+unconditional. Departments organize members without assigning roles. Full
+superadmin authority remains backed by protected administrator records and is
+presented through an immutable role. Ordinary new grants exclude the legacy
+platform_administer override; existing authority is preserved during conversion.
+
+Startup atomically converts restricted direct grants to equivalent system roles
+and removes their old authority source. Compatibility endpoints use role-backed
+authority. Preserve customized menus while upgrading built-in navigation.
+System shared files use their singleton system space, independently of personal
+or tenant files, with explicit global file permissions and partition-zero audits.
+
+## Review and implementation boundaries
+
+Architecture, security and acceptance reviews identified the missing system
+authority, incomplete account filters, absent shared-file browser, transactional
+grantability races and current-read risks. The plan resolves these with a direct
+system-role evaluator inside policy transactions and genuine system adapters.
+Architecture owns services/organization/bootstrap/navigation; security owns
+authorization and guards; acceptance owns frontend and browser scenarios; root
+owns account filters, shared files, generated contracts and final acceptance.
+No historical migrations are edited. No business-specific account quotas or
+automatic department-to-role inheritance are introduced.
+
+## Delivery gates
+
+Run affected backend and frontend suites and builds, generated contract checks,
+real MySQL/PostgreSQL role revocation/account-view checks, migration equivalence,
+and actual browser workflows on desktop/mobile. Verify account categories,
+department/role assignment, immutable superadmin, permission removal, shared-file
+isolation, menu/sidebar consistency and read-only/writable target views. Refresh
+the retained demo with account selection, record evidence, review scoped changes,
+commit/push and verify the remote head. Implementation and engineering acceptance
+are complete; the following execution evidence supports manual acceptance.
+
+Security verification: complete core/authn/organization suites passed; real
+PostgreSQL account-view checks passed with plain and prefixed tables, including
+role permission and direct role membership revocation while authentication
+waits on principal locks. System file ACL subjects currently resolve principals;
+unresolved department/group/role deny rules fail closed when their action and
+inheritance apply. There is no public ACL editing endpoint for system files.
+
+Global authority precedes local owner revision fences in tenant grantability
+and group mutations. Standalone full-administrator checks lock the active
+principal and protected full row; restricted checks and mutation callbacks
+retain the system fence. PostgreSQL quiet performance plans gate passed with
+the original samples and budgets retained: authorization 0.426ms/0.8ms and SCIM
+bulk 7.40ms/8ms. Normal PostgreSQL fingerprints and enforced budgets passed;
+full MySQL plans gate passed. Normal MySQL grantability regressions passed for
+actor permission/assignment/membership revocation while fences wait, scoped
+mutation lock ordering, and system administrator guard principal lock ordering.
+Final normal MySQL full gate passed with unchanged frozen budgets (authorization
+5.699ms/7ms; SCIM bulk 119.193ms/154ms) and 246 migration locks. PostgreSQL
+grantability matrix passed in 17.645s with plain/prefixed tables and all five cases.
+
+## Final execution evidence
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Eight affected backend suites | PASS | `.temp/system-final-backend.log` |
+| Final core/organization/app and vet | PASS | Full suites12.362s/1.730s/5.966s; metadata and scoped-list regressions included |
+| Final files suite and vet | PASS | `go test ./internal/files`59.659s; named directory/restore paths covered |
+| Normal MySQL full gate | PASS | `.temp/system-mysql8-quiet-normal.log`;246 migration locks unchanged |
+| Normal PostgreSQL signatures/budgets | PASS | `.temp/system-postgres-quiet-normal.log`44.272s |
+| Frontend workspace | PASS | typecheck/lint/test/build; IAM149 + shared UI85 =234 tests; package `.turbo/turbo-*.log` |
+| Published API contract | PASS | `make openapi-check`; `bun scripts/generate-api-types.mjs --check`;388 live operations |
+| Focused real browser | PASS24/24 | `.temp/sqlite-lifecycle-dzl42E/report.json`;91 screenshots |
+| Full real lifecycle | PASS45/45 | `.temp/sqlite-lifecycle-1EvIwZ/report.json`;98 screenshots |
+| Retained Chinese demo | PASS | `.temp/dev/system-review.json`;13 pages, no alerts/page errors/viewport overflow |
+
+Both final browser runs have zero mocked business responses and zero uncaught
+page errors. They exercise all five scoped role views on desktop/mobile, account
+categories, department placement, direct role assignment and immediate revocation,
+protected full administrators, imported-role metadata edits, scoped member role
+display, persistent menu/sidebar changes, actual shared-folder/upload/download
+operations and personal-space isolation. Read-only file writes receive actual
+HTTP403; writable view events identify the real operator and viewed principal.
+Original target-session equality assertions remain unchanged and pass. Fixture
+operations using target sessions run after those assertions to avoid normal idle
+renewal contaminating the view-only evidence.
+
+Real acceptance findings repaired: department submit eligibility, role-ID response
+shape, permission-refresh dialog resets, account-category active navigation,
+imported role labels/unchanged-name edits, scoped list assigned roles, and unnamed
+system directory/restore paths. Script locator/cleanup corrections use published
+routes and retain original business assertions. Architecture/security review,
+root self-review and original-requirement acceptance PASS; no implementation
+work remains. Temporary artifacts are excluded from the delivery commit.
+
+Retained web: `http://127.0.0.1:8091/login`; Swagger:
+`http://127.0.0.1:8080/docs`. Select `admin@example.test` for the full system
+administrator. `system-admin@example.test` intentionally has restricted authority.
+Six demo accounts are selectable; the real system shared root is initialized.
+Next step is user manual acceptance after verified IAM commit/push.

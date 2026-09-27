@@ -18,6 +18,7 @@ import (
 // one the group keeps.
 func TestListPlatformAdministratorsMergesBothArmsInStatementOrder(t *testing.T) {
 	harness := newRepositoryHarness(t, "sl_")
+	owner := seedSystemAccessFixture(t, harness.db, "sl_", 11, 22, 33)
 	repository := harness.repository
 
 	// Inserted highest principal first, and with its permissions in reverse
@@ -40,10 +41,13 @@ func TestListPlatformAdministratorsMergesBothArmsInStatementOrder(t *testing.T) 
 	// was a UNION ALL, so it emitted one row per hold and the caller grouped
 	// them. The grant is deliberately older than the full row, so which
 	// timestamp survives the group is observable.
-	require.NoError(t, harness.db.Exec(
-		"INSERT INTO sl_iam_platform_grants (principal_id, permission_code, created_at) VALUES (11, 'zz_administer', ?)",
-		repositoryTestTime.Add(-30*24*time.Hour),
-	).Error)
+	role, err := repository.CreateRole(t.Context(), owner, "Additional authority", "")
+	require.NoError(t, err)
+	_, err = repository.GrantPermission(t.Context(), owner, role.ID, "zz_administer")
+	require.NoError(t, err)
+	_, err = repository.AddMember(t.Context(), owner, role.ID, 11)
+	require.NoError(t, err)
+	require.NoError(t, harness.db.Table("sl_iam_role_members").Where("tenant_id = ? AND role_id = ?", owner, role.ID).Update("created_at", repositoryTestTime.Add(-30*24*time.Hour)).Error)
 
 	administrators, err := repository.ListPlatformAdministrators(t.Context())
 	require.NoError(t, err)
@@ -91,6 +95,7 @@ func TestListPlatformAdministratorsIsEmptyRatherThanAbsent(t *testing.T) {
 // can decide against exactly the state it is about to write over.
 func TestListPlatformAdministratorsReadsBothArmsInTheCallersTransaction(t *testing.T) {
 	harness := newRepositoryHarness(t, "sl_")
+	seedSystemAccessFixture(t, harness.db, "sl_", 11, 22)
 	repository := harness.repository
 
 	rolledBack := errors.New("roll back")

@@ -31,6 +31,13 @@ import (
 )
 
 const organizationRouteManifest = `
+organization-system-departments|GET|/system/departments
+organization-system-department-create|POST|/system/departments
+organization-system-department|GET|/system/departments/{department_id}
+organization-system-department-update|PATCH|/system/departments/{department_id}
+organization-system-department-delete|DELETE|/system/departments/{department_id}
+organization-system-tenant-departments|GET|/system/tenants/{tenant_id}/departments
+organization-system-platform-departments|GET|/system/operating-platforms/{platform_id}/departments
 organization-platform-departments|GET|/operating-platforms/{platform_id}/departments
 organization-platform-department-create|POST|/operating-platforms/{platform_id}/departments
 organization-platform-groups|GET|/operating-platforms/{platform_id}/principal-groups
@@ -67,15 +74,22 @@ organization-update-tenant|PATCH|/tenants/{tenant_id}
 organization-update-operating-platform|PATCH|/operating-platforms/{platform_id}`
 
 var organizationGuards = map[string]string{
-	"organization-platform-departments":       "dept_view",
-	"organization-platform-department-create": "dept_create",
-	"organization-platform-groups":            "group_view",
-	"organization-platform-group-create":      "group_create",
-	"organization-list-departments":           "dept_view",
-	"organization-create-department":          "dept_create",
-	"organization-get-department":             "dept_view",
-	"organization-update-department":          "dept_update",
-	"organization-delete-department":          "dept_delete",
+	"organization-platform-departments":        "dept_view",
+	"organization-system-departments":          "system_department_view",
+	"organization-system-department-create":    "system_department_create",
+	"organization-system-department":           "system_department_view",
+	"organization-system-department-update":    "system_department_update",
+	"organization-system-department-delete":    "system_department_delete",
+	"organization-system-tenant-departments":   "system_account_view",
+	"organization-system-platform-departments": "system_account_view",
+	"organization-platform-department-create":  "dept_create",
+	"organization-platform-groups":             "group_view",
+	"organization-platform-group-create":       "group_create",
+	"organization-list-departments":            "dept_view",
+	"organization-create-department":           "dept_create",
+	"organization-get-department":              "dept_view",
+	"organization-update-department":           "dept_update",
+	"organization-delete-department":           "dept_delete",
 
 	"organization-list-groups":               "group_view",
 	"organization-create-group":              "group_create",
@@ -171,7 +185,7 @@ func TestOrganizationRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 34)
+	require.Len(t, got, 41)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -185,13 +199,13 @@ func TestOrganizationOpenAPIGuardsScopesAndSchemas(t *testing.T) {
 			location := method + " " + path
 			// Organization publishes the directory record, plus the invitation
 			// a new member redeems before they have one.
-			assert.Contains(t, []string{"directory", "authentication", "account", "operating-platforms"},
+			assert.Contains(t, []string{"directory", "authentication", "account", "operating-platforms", "system"},
 				operation.Tags[0], location)
 			if guard, ok := organizationGuards[operation.OperationID]; ok {
 				assert.Equal(t, guard, operation.Extensions[authz.GuardExtensionKey], location)
 				assert.NotEmpty(t, operation.Security, location)
 			}
-			platform := (strings.Contains(operation.OperationID, "tenant") && operation.OperationID != "organization-my-tenants") || (strings.Contains(operation.OperationID, "operating-platform") && operation.OperationID != "organization-my-operating-platforms")
+			platform := strings.HasPrefix(operation.OperationID, "organization-system-") || (strings.Contains(operation.OperationID, "tenant") && operation.OperationID != "organization-my-tenants") || (strings.Contains(operation.OperationID, "operating-platform") && operation.OperationID != "organization-my-operating-platforms")
 			assert.Equal(t, platform, authz.IsPlatformOperation(operation), location)
 			assert.Equal(t, strings.HasPrefix(operation.OperationID, "organization-platform-"), authz.IsOperatingPlatformOperation(operation), location)
 		}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/internal/infra/migrationstatus"
@@ -22,6 +23,13 @@ func (app *App) provideCrossCutting(services *module.Services) error {
 	anonymize := identity.PrincipalAnonymizer(func(ctx context.Context, tx *gorm.DB, principal identity.Principal, now time.Time) error {
 		if app.runtime == nil {
 			return identity.ErrUnavailable
+		}
+		guard, err := module.Resolve[core.PrincipalPlatformAccessGuard](services)
+		if err != nil {
+			return identity.ErrUnavailable
+		}
+		if err := guard(ctx, tx, principal.ID); err != nil {
+			return err
 		}
 		return principallifecycle.AnonymizePrincipalData(ctx, tx, app.runtime.TablePrefix(), principal, now)
 	})

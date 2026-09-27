@@ -413,6 +413,7 @@ func TestServiceDataScopeDirectoryBindingAndPlatformAdministration(t *testing.T)
 	assert.True(t, changed)
 
 	platformPrincipal := guid.ID(21)
+	seedSystemAccessFixture(t, harness.db, "sl_")
 	require.NoError(t, harness.db.Exec(
 		"INSERT INTO sl_iam_principals (id, login_name, display_name, status, created_at, updated_at) VALUES (?, 'platform', 'Platform', 'active', ?, ?)",
 		platformPrincipal, now, now,
@@ -708,6 +709,7 @@ func TestServiceEntityCRUDValidationAndBindings(t *testing.T) {
 
 func TestServicePlatformRestrictedPermissionsAndLifecycle(t *testing.T) {
 	harness := newCoreServiceHarness(t)
+	seedSystemAccessFixture(t, harness.db, "sl_")
 	seedTenantAndPrincipal(t, harness.db, "sl_", 1, 21)
 	harness.seedAdditionalMember(t, 1, 22, MemberActive)
 
@@ -1398,6 +1400,7 @@ func TestServiceEntityConflictsMetadataRelationshipsAndBindingValidation(t *test
 
 func TestServicePlatformAdministratorPromotionDemotionAndRepositoryHelpers(t *testing.T) {
 	harness := newCoreServiceHarness(t)
+	seedSystemAccessFixture(t, harness.db, "sl_")
 	seedTenantAndPrincipal(t, harness.db, "sl_", 1, 21)
 	harness.seedAdditionalMember(t, 1, 22, MemberActive)
 	first, err := harness.service.SetPlatformAdministrator(t.Context(), 21, true, nil)

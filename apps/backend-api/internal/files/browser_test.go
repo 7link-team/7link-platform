@@ -427,9 +427,9 @@ func TestBrowserNodeNameFallsBackToTheRootScope(t *testing.T) {
 
 	// The path variant renders a root through its display name rather than the
 	// bare scope token, and otherwise matches browserNodeName.
-	assert.Equal(t, rootDisplayName(root), browserPathName(root))
-	assert.Equal(t, "reports", browserPathName(named))
-	assert.Empty(t, browserPathName(nil))
+	assert.Equal(t, rootDisplayName(root), browserPathName(root, nil))
+	assert.Equal(t, "reports", browserPathName(named, nil))
+	assert.Empty(t, browserPathName(nil, nil))
 }
 
 func TestFileBrowserEntryPointsPropagateAuthorizationFailure(t *testing.T) {

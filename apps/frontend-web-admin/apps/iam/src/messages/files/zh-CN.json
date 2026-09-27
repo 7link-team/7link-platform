@@ -1,4 +1,7 @@
 {
+  "rootScopeSystem": "系统",
+  "rootNameSystem": "系统共享文件",
+  "createSystemRoot": "创建系统共享文件",
   "emptyRecycleBin": "回收站为空",
   "rootScopePersonal": "个人",
   "rootScopeAccount": "账号",

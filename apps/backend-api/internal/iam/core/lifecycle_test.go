@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authz"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -94,6 +95,35 @@ func TestCoreErasePrincipalDataRefusesWhilePlatformAccessRemains(t *testing.T) {
 			assert.Equal(t, "active", status)
 		})
 	}
+}
+
+func TestPrincipalLifecycleRequiresSystemRoleRevocation(t *testing.T) {
+	for _, code := range []string{"system_account_view", "system_file_read"} {
+		t.Run(code, func(t *testing.T) {
+			h := newRepositoryHarness(t, "sl_")
+			seedCoreMembership(t, h, "sl_", 201, 21, "Target", "target@example.test")
+			role, err := h.repository.CreateRole(t.Context(), 201, "System reader", "")
+			require.NoError(t, err)
+			require.NoError(t, h.db.Exec("INSERT INTO sl_iam_role_members (tenant_id, role_id, principal_id, created_at) VALUES (201, ?, 21, ?)", role.ID, coreErasureTime).Error)
+			require.NoError(t, h.db.Exec("INSERT INTO sl_iam_role_permissions (tenant_id, role_id, permission_code, created_at) VALUES (201, ?, ?, ?)", role.ID, code, coreErasureTime).Error)
+			require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21), ErrPrincipalHasPlatformAccess)
+			require.ErrorIs(t, ErasePrincipalData(t.Context(), h.db, "sl_", 21, coreErasureTime), ErrPrincipalHasPlatformAccess)
+			require.NoError(t, h.db.Exec("DELETE FROM sl_iam_role_members WHERE principal_id = 21").Error)
+			require.NoError(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21))
+		})
+	}
+}
+
+func TestPrincipalLifecycleProtectsModuleDeclaredGlobalRolePermissions(t *testing.T) {
+	h := newRepositoryHarness(t, "sl_")
+	seedCoreMembership(t, h, "sl_", 201, 21, "Target", "target@example.test")
+	role, err := h.repository.CreateRole(t.Context(), 201, "Extension operator", "")
+	require.NoError(t, err)
+	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_role_members (tenant_id, role_id, principal_id, created_at) VALUES (201, ?, 21, ?)", role.ID, coreErasureTime).Error)
+	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_role_permissions (tenant_id, role_id, permission_code, created_at) VALUES (201, ?, 'extension_manage', ?)", role.ID, coreErasureTime).Error)
+	registry := authz.DefaultRegistry()
+	require.NoError(t, registry.Register(authz.Action{Resource: "extension", Verb: "manage", Scope: "platform"}))
+	require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, registry), ErrPrincipalHasPlatformAccess)
 }
 
 func seedCoreMembership(t *testing.T, harness repositoryHarness, prefix string, tenant, principal guid.ID, name, email string) {

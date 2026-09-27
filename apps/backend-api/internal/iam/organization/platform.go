@@ -38,7 +38,7 @@ func (r *Repository) rootKind(ctx context.Context, id guid.ID) (string, error) {
 }
 
 func sameDepartmentEntity(kind string, current, parent *guid.ID) bool {
-	if kind == ScopePlatform {
+	if kind == ScopePlatform || kind == ScopeSystem {
 		return current == nil && parent == nil
 	}
 	return kind == ScopeTenant && current != nil && parent != nil && *current == *parent

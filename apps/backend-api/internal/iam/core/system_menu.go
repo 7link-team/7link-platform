@@ -3,7 +3,9 @@ package core
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
+	"time"
 
 	"7link.com/platform/internal/iam/audit"
 	corei18n "7link.com/platform/internal/iam/core/i18n"
@@ -14,7 +16,7 @@ import (
 // SystemRootSlug cannot be supplied through ordinary organization creation.
 const SystemRootSlug = "__system__"
 
-func SystemDefaultMenus() []Menu {
+func legacySystemDefaultMenus() []Menu {
 	menus := []Menu{
 		{ID: 1, Label: "Organization", Icon: "building-2", SortOrder: 10, Status: MenuActive},
 		{ParentID: 1, Label: "Global accounts", Route: "/system/accounts", Icon: "users", SortOrder: 10, PermissionCode: "system_account_view", Status: MenuActive},
@@ -33,9 +35,225 @@ func SystemDefaultMenus() []Menu {
 		if menus[i].Route == "" {
 			key = "menu_system_" + strings.ToLower(menus[i].Label)
 		}
+		if menus[i].Route == "/system/accounts" {
+			key = "menu_system_legacy_accounts"
+		}
 		menus[i].Translations = corei18n.Translations(key)
 	}
 	return menus
+}
+
+func SystemDefaultMenus() []Menu {
+	menus := []Menu{
+		{ID: 1, Label: "Account management", Icon: "users", SortOrder: 10, Status: MenuActive},
+		{ParentID: 1, Label: "System accounts", Route: "/system/accounts/system", Icon: "shield-check", SortOrder: 10, PermissionCode: "system_account_view", Status: MenuActive},
+		{ParentID: 1, Label: "Platform accounts", Route: "/system/accounts/platform", Icon: "network", SortOrder: 20, PermissionCode: "system_account_view", Status: MenuActive},
+		{ParentID: 1, Label: "Tenant accounts", Route: "/system/accounts/tenant", Icon: "building-2", SortOrder: 30, PermissionCode: "system_account_view", Status: MenuActive},
+		{ParentID: 1, Label: "User accounts", Route: "/system/accounts", Icon: "users", SortOrder: 40, PermissionCode: "system_account_view", Status: MenuActive},
+		{ParentID: 1, Label: "Closure requests", Route: "/system/closure-requests", Icon: "clipboard-check", SortOrder: 50, PermissionCode: "platform_administer", Status: MenuActive},
+		{ID: 2, Label: "Permission management", Icon: "key-round", SortOrder: 20, Status: MenuActive},
+		{ParentID: 2, Label: "Departments", Route: "/system/departments", Icon: "building-2", SortOrder: 10, PermissionCode: "system_department_view", Status: MenuActive},
+		{ParentID: 2, Label: "Roles and permissions", Route: "/system/roles", Icon: "key-round", SortOrder: 20, PermissionCode: "system_role_view", Status: MenuActive},
+		{ID: 3, Label: "Basic management", Icon: "boxes", SortOrder: 30, Status: MenuActive},
+		{ParentID: 3, Label: "Menus", Route: "/system/menus", Icon: "boxes", SortOrder: 10, PermissionCode: "system_menu_view", Status: MenuActive},
+		{ParentID: 3, Label: "File management", Route: "/system/files", Icon: "folder", SortOrder: 20, PermissionCode: "system_file_view", Status: MenuActive},
+		{ID: 4, Label: "Operations management", Icon: "network", SortOrder: 40, Status: MenuActive},
+		{ParentID: 4, Label: "Operating platforms", Route: "/system/operating-platforms", Icon: "network", SortOrder: 10, PermissionCode: "operating_platform_view", Status: MenuActive},
+		{ParentID: 4, Label: "Tenants", Route: "/system/tenants", Icon: "building-2", SortOrder: 20, PermissionCode: "tenant_view", Status: MenuActive},
+		{ID: 5, Label: "Audit", Icon: "file-clock", SortOrder: 50, Status: MenuActive},
+		{ParentID: 5, Label: "Audit events", Route: "/system/audit/events", Icon: "file-clock", SortOrder: 10, PermissionCode: "system_audit_event_view", Status: MenuActive},
+		{ParentID: 5, Label: "Audit governance", Route: "/system/audit-governance", Icon: "shield-check", SortOrder: 20, PermissionCode: "platform_administer", Status: MenuActive},
+	}
+	for i := range menus {
+		key := "menu_system_" + strings.NewReplacer("-", "_", "/", "_", " ", "_").Replace(strings.TrimPrefix(menus[i].Route, "/system/"))
+		if menus[i].Route == "" {
+			key = "menu_system_" + strings.ReplaceAll(strings.ToLower(menus[i].Label), " ", "_")
+		}
+		menus[i].Translations = corei18n.Translations(key)
+	}
+	return menus
+}
+
+func (r *Repository) upgradeSystemMenus(ctx context.Context, owner guid.ID, _ time.Time) (bool, error) {
+	stored, err := r.ListMenus(ctx, owner, false)
+	if err != nil {
+		return false, err
+	}
+	accountBranch, permissionBranch, localized := false, false, false
+	for _, menu := range stored {
+		if menu.Route == "" && menu.ParentID.Zero() {
+			accountBranch = accountBranch || menu.Label == "Account management"
+			permissionBranch = permissionBranch || menu.Label == "Permission management"
+		}
+	}
+	if accountBranch && permissionBranch {
+		for i, menu := range stored {
+			if menu.Route == "/system/accounts" && menu.Label == "User accounts" && reflect.DeepEqual(menu.Translations, corei18n.Translations("menu_system_legacy_accounts")) {
+				menu.Translations = corei18n.Translations("menu_system_accounts")
+				updated, err := r.UpdateMenu(ctx, menu)
+				if err != nil {
+					return false, err
+				}
+				stored[i], localized = updated, true
+			}
+		}
+	}
+	var oldAccess Menu
+	var accessParent guid.ID
+	for _, menu := range legacySystemDefaultMenus() {
+		if menu.Route == "/system/administrators" {
+			oldAccess = menu
+		}
+	}
+	for _, menu := range stored {
+		if menu.Route == "" && menu.ParentID.Zero() && menu.Label == "Access" {
+			accessParent = menu.ID
+			break
+		}
+	}
+	pristineLegacyAccess := func(menu Menu) bool {
+		return !accessParent.Zero() && menu.ParentID == accessParent && menu.Route == oldAccess.Route && menu.Label == oldAccess.Label && menu.Icon == oldAccess.Icon && menu.SortOrder == oldAccess.SortOrder && menu.PermissionCode == oldAccess.PermissionCode && menu.Status == oldAccess.Status && reflect.DeepEqual(menu.Translations, oldAccess.Translations)
+	}
+	legacy := false
+	for _, menu := range stored {
+		if menu.Route == "" && (menu.Label == "Organization" || menu.Label == "Access") {
+			legacy = true
+		}
+		if pristineLegacyAccess(menu) {
+			legacy = true
+		}
+	}
+	if !legacy {
+		return localized, nil
+	}
+	defaults := SystemDefaultMenus()
+	parents := map[guid.ID]guid.ID{}
+	oldDefaults := map[string]Menu{}
+	oldBranches := map[string]Menu{}
+	oldParents := map[guid.ID]guid.ID{}
+	for _, menu := range legacySystemDefaultMenus() {
+		if menu.Route != "" {
+			oldDefaults[menu.Route] = menu
+		} else {
+			oldBranches[menu.Label] = menu
+			for _, storedMenu := range stored {
+				if storedMenu.Route == "" && storedMenu.ParentID.Zero() && storedMenu.Label == menu.Label {
+					oldParents[menu.ID] = storedMenu.ID
+					break
+				}
+			}
+		}
+	}
+	for _, branch := range defaults {
+		if !branch.ParentID.Zero() {
+			continue
+		}
+		oldLabel := branch.Label
+		if branch.ID == 1 {
+			oldLabel = "Organization"
+		}
+		if branch.ID == 2 {
+			oldLabel = "Access"
+		}
+		var match *Menu
+		for i := range stored {
+			if stored[i].Route == "" && stored[i].ParentID.Zero() && (stored[i].Label == branch.Label || stored[i].Label == oldLabel) {
+				match = &stored[i]
+				break
+			}
+		}
+		if match != nil {
+			updated := *match
+			old, wasDefault := oldBranches[oldLabel]
+			if wasDefault {
+				updated.Label = branch.Label
+				if reflect.DeepEqual(updated.Translations, old.Translations) {
+					updated.Translations = branch.Translations
+				}
+				if updated.Icon == old.Icon {
+					updated.Icon = branch.Icon
+				}
+				if updated.SortOrder == old.SortOrder {
+					updated.SortOrder = branch.SortOrder
+				}
+			}
+			if _, err := r.UpdateMenu(ctx, updated); err != nil {
+				return false, err
+			}
+			parents[branch.ID] = updated.ID
+		} else {
+			branch.ID = 0
+			branch.TenantID = owner
+			created, err := r.CreateMenu(ctx, branch)
+			if err != nil {
+				return false, err
+			}
+			parents[defaultsBranchID(defaults, branch.Label)] = created.ID
+		}
+	}
+	for _, leaf := range defaults {
+		if leaf.ParentID.Zero() {
+			continue
+		}
+		var match *Menu
+		for i := range stored {
+			if stored[i].Route == leaf.Route {
+				match = &stored[i]
+				break
+			}
+		}
+		if match != nil {
+			old, wasDefault := oldDefaults[match.Route]
+			if wasDefault && match.Label == old.Label && match.PermissionCode == old.PermissionCode && match.Status == MenuActive {
+				updated := *match
+				updated.Label = leaf.Label
+				if originalParent := oldParents[old.ParentID]; !originalParent.Zero() && updated.ParentID == originalParent {
+					updated.ParentID = parents[leaf.ParentID]
+				}
+				if reflect.DeepEqual(updated.Translations, old.Translations) {
+					updated.Translations = leaf.Translations
+				}
+				if updated.SortOrder == old.SortOrder {
+					updated.SortOrder = leaf.SortOrder
+				}
+				if _, err := r.UpdateMenu(ctx, updated); err != nil {
+					return false, err
+				}
+			}
+			continue
+		}
+		leaf.TenantID = owner
+		leaf.ParentID = parents[leaf.ParentID]
+		if _, err := r.CreateMenu(ctx, leaf); err != nil {
+			return false, err
+		}
+	}
+	for _, menu := range stored {
+		if !pristineLegacyAccess(menu) {
+			continue
+		}
+		hasChildren := false
+		for _, child := range stored {
+			if child.ParentID == menu.ID {
+				hasChildren = true
+			}
+		}
+		if !hasChildren {
+			if err := r.DeleteMenu(ctx, owner, menu.ID); err != nil {
+				return false, err
+			}
+		}
+	}
+	return true, nil
+}
+
+func defaultsBranchID(defaults []Menu, label string) guid.ID {
+	for _, menu := range defaults {
+		if menu.ParentID.Zero() && menu.Label == label {
+			return menu.ID
+		}
+	}
+	return 0
 }
 
 func (s *Service) SystemMenuCatalog(context.Context) []MenuDeclaration {

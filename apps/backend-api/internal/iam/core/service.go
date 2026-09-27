@@ -313,9 +313,6 @@ func (s *Service) SetPermissionCondition(
 	if err := s.permissionAllowedForRoot(ctx, tenantID, action); err != nil {
 		return RolePermissionGrant{}, false, err
 	}
-	if err := s.requireGrantablePermissions(ctx, tenantID, code); err != nil {
-		return RolePermissionGrant{}, false, err
-	}
 	canonical, err := policyx.CanonicalCondition(condition)
 	if err != nil {
 		return RolePermissionGrant{}, false, fmt.Errorf("%w: %w", ErrInvalidRolePermissionCondition, err)
@@ -330,6 +327,9 @@ func (s *Service) SetPermissionCondition(
 	var grant RolePermissionGrant
 	var changed bool
 	err = s.writes.Run(ctx, record, func(repo *Repository) error {
+		if err := s.requireGrantablePermissionsOn(ctx, repo, tenantID, code); err != nil {
+			return err
+		}
 		verify := func() error { return nil }
 		if isAdministratorPermission(code) || code == "operating_platform_administer" {
 			var err error
@@ -386,11 +386,6 @@ func (s *Service) changePermission(
 	if err := s.permissionAllowedForRoot(ctx, tenantID, action); err != nil {
 		return false, err
 	}
-	if grant {
-		if err := s.requireGrantablePermissions(ctx, tenantID, code); err != nil {
-			return false, err
-		}
-	}
 	eventType := "role_permission_revoked"
 	if grant {
 		eventType = "role_permission_granted"
@@ -401,6 +396,9 @@ func (s *Service) changePermission(
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
 		var err error
 		if grant {
+			if err := s.requireGrantablePermissionsOn(ctx, repo, tenantID, code); err != nil {
+				return err
+			}
 			changed, err = repo.GrantPermission(ctx, tenantID, roleID, code)
 		} else {
 			verify, protectErr := s.administrators.Protect(ctx, repo.writer(), tenantID)
@@ -455,11 +453,6 @@ func (s *Service) changeMember(
 	if principalID.Zero() {
 		return false, fmt.Errorf("%w: invalid principal subject", ErrInvalidArgument)
 	}
-	if add {
-		if err := s.requireGrantableRole(ctx, tenantID, roleID); err != nil {
-			return false, err
-		}
-	}
 	eventType := "role_member_removed"
 	if add {
 		eventType = "role_member_added"
@@ -470,6 +463,9 @@ func (s *Service) changeMember(
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
 		var err error
 		if add {
+			if err := s.requireGrantableRoleWithRepository(ctx, repo, tenantID, roleID); err != nil {
+				return err
+			}
 			active, activeErr := repo.IsMemberActive(ctx, tenantID, principalID)
 			if activeErr != nil {
 				return activeErr

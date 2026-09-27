@@ -384,9 +384,9 @@ func TestResolveFileOwnerHandlesAccountAndSystemRoots(t *testing.T) {
 		return h.tree.createSystemSpaceOn(t.Context(), tx, 200, 201, time.Now())
 	}))
 	owner, found, err = m.resolveFileOwner(t.Context(), 201)
-	require.ErrorIs(t, err, errFileACL)
-	require.False(t, found)
-	require.Equal(t, authz.ResourceOwner{}, owner)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, authz.ResourceOwner{ScopeType: "system"}, owner)
 }
 
 func TestResolveFileOwnerPropagatesDepartmentResolverOutcomes(t *testing.T) {

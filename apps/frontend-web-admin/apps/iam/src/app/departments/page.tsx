@@ -49,9 +49,45 @@ import { useAllowed } from "../../lib/permissions"
 
 const rootDepartment = "__root__"
 
-export default function DepartmentsPage() {
+export function SystemDepartmentsPage() {
+  return <DepartmentsPage system />
+}
+
+export default function DepartmentsPage({
+  system = false,
+}: {
+  system?: boolean
+}) {
   const t = useTranslations("iam")
-  const allowed = useAllowed()
+  const scopeAllowed = useAllowed()
+  const allowed = useCallback(
+    (code: string) =>
+      scopeAllowed(
+        system ? code.replace(/^dept_/, "system_department_") : code
+      ),
+    [scopeAllowed, system]
+  )
+  const api = useMemo(
+    () =>
+      system
+        ? {
+            ...iamApi,
+            departments: iamApi.systemDepartments,
+            createDepartment: (body: DepartmentInput) => {
+              const { name, parent_id, sort_order, status } = body
+              return iamApi.createSystemDepartment({
+                name,
+                parent_id,
+                sort_order,
+                status,
+              })
+            },
+            updateDepartment: iamApi.updateSystemDepartment,
+            deleteDepartment: iamApi.deleteSystemDepartment,
+          }
+        : iamApi,
+    [system]
+  )
 
   const [departments, setDepartments] = useState<Department[]>([])
   const [entities, setEntities] = useState<Entity[]>([])
@@ -73,8 +109,10 @@ export default function DepartmentsPage() {
     setLoadError("")
     try {
       const [nextDepartments, nextEntities] = await Promise.all([
-        iamApi.departments(),
-        operatingPlatformID() ? Promise.resolve([]) : iamApi.entities(),
+        api.departments(),
+        system || operatingPlatformID()
+          ? Promise.resolve([])
+          : iamApi.entities(),
       ])
       if (generation === loadGeneration.current) {
         setDepartments(nextDepartments)
@@ -89,7 +127,7 @@ export default function DepartmentsPage() {
     } finally {
       if (generation === loadGeneration.current) setLoading(false)
     }
-  }, [])
+  }, [api, system])
 
   useEffect(() => {
     let active = true
@@ -134,7 +172,8 @@ export default function DepartmentsPage() {
       ...departments
         .filter(
           (candidate) =>
-            (Boolean(operatingPlatformID()) ||
+            (system ||
+              Boolean(operatingPlatformID()) ||
               candidate.entity_id === entityID) &&
             candidate.id !== editing?.id &&
             !isDescendantOf(candidate, editing?.id, departmentByID)
@@ -144,7 +183,7 @@ export default function DepartmentsPage() {
           label: `${"　".repeat(department.depth)}${department.name}`,
         })),
     ],
-    [departmentByID, departments, editing?.id, entityID, t]
+    [departmentByID, departments, editing?.id, entityID, system, t]
   )
 
   const openCreate = () => {
@@ -180,12 +219,12 @@ export default function DepartmentsPage() {
     }
     try {
       if (editing)
-        await iamApi.updateDepartment(editing.id, {
+        await api.updateDepartment(editing.id, {
           ...values,
           version: editing.version,
         })
       else
-        await iamApi.createDepartment({
+        await api.createDepartment({
           ...values,
           entity_id: entityID,
         })
@@ -203,7 +242,7 @@ export default function DepartmentsPage() {
     setBusy(true)
     setError("")
     try {
-      await iamApi.deleteDepartment(department.id, department.version)
+      await api.deleteDepartment(department.id, department.version)
       setCollapsed((current) => {
         const next = new Set(current)
         next.delete(department.id)
@@ -231,15 +270,19 @@ export default function DepartmentsPage() {
       <PageHeader
         title={t("departmentManagement")}
         description={t(
-          operatingPlatformID()
-            ? "platformDepartmentsDescription"
-            : "departmentsDescription"
+          system
+            ? "systemDepartmentsDescription"
+            : operatingPlatformID()
+              ? "platformDepartmentsDescription"
+              : "departmentsDescription"
         )}
         action={
           allowed("dept_create") && (
             <Button
               onClick={openCreate}
-              disabled={!operatingPlatformID() && entities.length === 0}
+              disabled={
+                !system && !operatingPlatformID() && entities.length === 0
+              }
             >
               <Plus />
               {t("createDepartment")}
@@ -262,7 +305,7 @@ export default function DepartmentsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>{t("department")}</TableHead>
-              <TableHead>{t("entity")}</TableHead>
+              {!system && <TableHead>{t("entity")}</TableHead>}
               <TableHead>{t("parentDepartment")}</TableHead>
               <TableHead>{t("sortOrder")}</TableHead>
               <TableHead>{t("status")}</TableHead>
@@ -277,7 +320,10 @@ export default function DepartmentsPage() {
                 ? departmentByID.get(department.parent_id)
                 : undefined
               return (
-                <TableRow key={department.id}>
+                <TableRow
+                  key={department.id}
+                  data-department-id={department.id}
+                >
                   <TableCell>
                     <div
                       className="flex min-w-0 items-center gap-1"
@@ -313,9 +359,11 @@ export default function DepartmentsPage() {
                       </strong>
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm">
-                    {entityByID.get(department.entity_id)?.name ?? "-"}
-                  </TableCell>
+                  {!system && (
+                    <TableCell className="text-sm">
+                      {entityByID.get(department.entity_id)?.name ?? "-"}
+                    </TableCell>
+                  )}
                   <TableCell className="text-sm text-muted-foreground">
                     {parent?.name ?? "-"}
                   </TableCell>
@@ -405,7 +453,7 @@ export default function DepartmentsPage() {
             className="grid gap-4"
             onSubmit={submit}
           >
-            {!operatingPlatformID() && (
+            {!system && !operatingPlatformID() && (
               <div className="grid gap-2">
                 <Label htmlFor="department-entity">{t("entity")}</Label>
                 <SimpleSelect
@@ -475,7 +523,9 @@ export default function DepartmentsPage() {
             <Button
               type="submit"
               form="department-form"
-              disabled={busy || (!operatingPlatformID() && entityID === "")}
+              disabled={
+                busy || (!system && !operatingPlatformID() && entityID === "")
+              }
             >
               {busy ? t("saving") : editing ? t("save") : t("create")}
             </Button>

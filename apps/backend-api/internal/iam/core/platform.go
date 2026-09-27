@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"7link.com/platform/internal/iam/core/model"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -20,6 +22,7 @@ type platformAdministratorRow struct {
 	PrincipalID    guid.ID   `gorm:"column:principal_id"`
 	RecordKind     string    `gorm:"column:record_kind"`
 	PermissionCode string    `gorm:"column:permission_code"`
+	RoleName       string    `gorm:"column:role_name"`
 	CreatedAt      time.Time `gorm:"column:created_at"`
 }
 
@@ -81,30 +84,42 @@ func (r *Repository) listPlatformAdministrators(
 		}
 		fullQuery := tables.PlatformAdministrators.WithContext(ctx).
 			Select(tables.PlatformAdministrators.PrincipalID, tables.PlatformAdministrators.CreatedAt)
-		grantQuery := tables.PlatformGrants.WithContext(ctx).
-			Select(
-				tables.PlatformGrants.PrincipalID, tables.PlatformGrants.PermissionCode,
-				tables.PlatformGrants.CreatedAt,
-			)
+		names, err := repo.authorizationTables()
+		if err != nil {
+			return err
+		}
+		grantQuery := repo.writer().WithContext(ctx).Table(repo.names.RoleMembers.String()+" AS rm").
+			Select("rm.principal_id, rp.permission_code, rm.created_at, r.name AS role_name").
+			Joins("JOIN "+repo.names.Roles.String()+" AS r ON r.tenant_id = rm.tenant_id AND r.id = rm.role_id").
+			Joins("JOIN "+repo.names.RolePermissions.String()+" AS rp ON rp.tenant_id = rm.tenant_id AND rp.role_id = rm.role_id").
+			Joins("JOIN "+repo.names.TenantMembers.String()+" AS m ON m.tenant_id = rm.tenant_id AND m.principal_id = rm.principal_id").
+			Joins("JOIN "+names.Principal.String()+" AS p ON p.id = rm.principal_id").
+			Joins("JOIN "+names.Directory.Tenants.String()+" AS root ON root.id = rm.tenant_id").
+			Where("root.slug = ? AND root.scope_kind = ? AND root.status = ? AND m.status = ? AND p.status = ?", SystemRootSlug, "system", "active", "active", "active").
+			Where("r.name <> ? AND (rp.condition_json = ? OR rp.condition_json = ?)", SystemSuperadministratorRoleName, "", "null")
 		if principalID != nil {
 			fullQuery = fullQuery.Where(tables.PlatformAdministrators.PrincipalID.Eq(*principalID))
-			grantQuery = grantQuery.Where(tables.PlatformGrants.PrincipalID.Eq(*principalID))
+			grantQuery = grantQuery.Where("rm.principal_id = ?", *principalID)
 		}
 		fullRows := make([]platformAdministratorRow, 0)
 		if err := fullQuery.Scan(&fullRows); err != nil {
 			return err
 		}
 		grantRows := make([]platformAdministratorRow, 0)
-		if err := grantQuery.Scan(&grantRows); err != nil {
+		if err := grantQuery.Scan(&grantRows).Error; err != nil {
 			return err
 		}
 		for index := range fullRows {
 			fullRows[index].RecordKind = "full"
 		}
-		for index := range grantRows {
-			grantRows[index].RecordKind = "grant"
+		rows = append(rows, fullRows...)
+		for _, row := range grantRows {
+			if row.PermissionCode == "platform_administer" && !strings.HasPrefix(row.RoleName, SystemLegacyRolePrefix) {
+				continue
+			}
+			row.RecordKind = "grant"
+			rows = append(rows, row)
 		}
-		rows = append(append(rows, fullRows...), grantRows...)
 		return nil
 	})
 	if err != nil {
@@ -121,7 +136,10 @@ func (r *Repository) listPlatformAdministrators(
 		if rows[i].RecordKind != rows[j].RecordKind {
 			return platformRecordKindRank(rows[i].RecordKind) < platformRecordKindRank(rows[j].RecordKind)
 		}
-		return rows[i].PermissionCode < rows[j].PermissionCode
+		if rows[i].PermissionCode != rows[j].PermissionCode {
+			return rows[i].PermissionCode < rows[j].PermissionCode
+		}
+		return rows[i].CreatedAt.Before(rows[j].CreatedAt)
 	})
 
 	result := make([]PlatformAdministrator, 0, len(rows))
@@ -136,7 +154,10 @@ func (r *Repository) listPlatformAdministrators(
 			administrator.FullAdministrator = true
 			administrator.CreatedAt = row.CreatedAt.UTC()
 		} else {
-			administrator.Permissions = append(administrator.Permissions, row.PermissionCode)
+			codes := administrator.Permissions
+			if len(codes) == 0 || codes[len(codes)-1] != row.PermissionCode {
+				administrator.Permissions = append(codes, row.PermissionCode)
+			}
 		}
 	}
 	return result, nil
@@ -180,14 +201,21 @@ func (r *Repository) SetPlatformAdministrator(
 		if err != nil {
 			return err
 		}
+		owner, err := repo.lockSystemAuthorization(ctx, principalID)
+		if err != nil {
+			return err
+		}
+		if err := repo.ensureSystemAdministratorMember(ctx, owner, principalID); err != nil {
+			return err
+		}
 		if !full {
 			if err := repo.lockPlatformAdministratorMutations(ctx); err != nil {
 				return err
 			}
 		}
-		if result := db.WithContext(ctx).Table(tables.PlatformGrants.TableName()).
-			Where("principal_id = ?", principalID).Delete(&model.PlatformGrant{}); result.Error != nil {
-			return fmt.Errorf("clear platform grants: %w", result.Error)
+		if result := db.WithContext(ctx).Table(repo.names.RoleMembers.String()).
+			Where("tenant_id = ? AND principal_id = ?", owner, principalID).Delete(&model.RoleMember{}); result.Error != nil {
+			return fmt.Errorf("clear system role assignments: %w", result.Error)
 		}
 		now := repo.now().UTC().Truncate(time.Millisecond)
 		if full {
@@ -208,12 +236,28 @@ func (r *Repository) SetPlatformAdministrator(
 		if len(permissions) == 0 {
 			return ErrPlatformAdministratorNotFound
 		}
-		rows := make([]model.PlatformGrant, len(permissions))
-		for index, code := range permissions {
-			rows[index] = model.PlatformGrant{PrincipalID: principalID, PermissionCode: code, CreatedAt: now}
+		var role model.Role
+		name := SystemLegacyRolePrefix + principalID.String()
+		err = db.WithContext(ctx).Table(repo.names.Roles.String()).Where("tenant_id = ? AND name_key = ?", owner, roleNameKey(name)).Take(&role).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			created, createErr := repo.CreateRole(ctx, owner, name, "Legacy system permissions")
+			if createErr != nil {
+				return createErr
+			}
+			role.ID = created.ID
+		} else if err != nil {
+			return err
 		}
-		if result := db.WithContext(ctx).Table(tables.PlatformGrants.TableName()).Create(&rows); result.Error != nil {
-			return fmt.Errorf("insert platform grants: %w", result.Error)
+		if err := db.WithContext(ctx).Table(repo.names.RolePermissions.String()).Where("tenant_id = ? AND role_id = ?", owner, role.ID).Delete(&model.RolePermission{}).Error; err != nil {
+			return err
+		}
+		for _, code := range permissions {
+			if _, err := repo.GrantPermission(ctx, owner, role.ID, code); err != nil {
+				return err
+			}
+		}
+		if _, err := repo.AddMember(ctx, owner, role.ID, principalID); err != nil {
+			return err
 		}
 		if result.RowsAffected > 0 {
 			if err := repo.assertPlatformAdministratorRemains(ctx); err != nil {
@@ -239,6 +283,10 @@ func (r *Repository) DeletePlatformAdministrator(ctx context.Context, principalI
 		if err != nil {
 			return err
 		}
+		owner, err := repo.lockSystemAuthorization(ctx, principalID)
+		if err != nil {
+			return err
+		}
 		if err := repo.lockPlatformAdministratorMutations(ctx); err != nil {
 			return err
 		}
@@ -247,8 +295,8 @@ func (r *Repository) DeletePlatformAdministrator(ctx context.Context, principalI
 		if administrator.Error != nil {
 			return fmt.Errorf("revoke platform administrator: %w", administrator.Error)
 		}
-		grants := db.WithContext(ctx).Table(tables.PlatformGrants.TableName()).
-			Where("principal_id = ?", principalID).Delete(&model.PlatformGrant{})
+		grants := db.WithContext(ctx).Table(repo.names.RoleMembers.String()).
+			Where("tenant_id = ? AND principal_id = ?", owner, principalID).Delete(&model.RoleMember{})
 		if grants.Error != nil {
 			return fmt.Errorf("revoke platform grants: %w", grants.Error)
 		}
@@ -312,6 +360,28 @@ func (r *Repository) assertPlatformAdministratorRemains(ctx context.Context) err
 	return nil
 }
 
+func (s *Service) lockPlatformAccessMutation(ctx context.Context, repo *Repository, target guid.ID) (guid.ID, error) {
+	actor := authn.PrincipalIDFromContext(ctx)
+	owner, err := repo.lockSystemAuthorization(ctx, actor, target)
+	if err != nil {
+		return 0, err
+	}
+	if !actor.Zero() {
+		names, err := repo.authorizationTables()
+		if err != nil {
+			return 0, err
+		}
+		full, err := systemFullAdministrator(ctx, repo.writer(), names.Tables.PlatformAdministrators.String(), actor)
+		if err != nil {
+			return 0, err
+		}
+		if !full {
+			return 0, ErrPrivilegeEscalation
+		}
+	}
+	return owner, nil
+}
+
 // PlatformPermissionCatalog returns all declared platform permissions in
 // stable code order.
 func (s *Service) PlatformPermissionCatalog(context.Context) []authz.Action {
@@ -353,7 +423,14 @@ func (s *Service) SetPlatformAdministrator(
 	record.Detail["permissions"] = normalized
 	var administrator PlatformAdministrator
 	err = s.writes.Run(ctx, record, func(repo *Repository) error {
+		owner, lockErr := s.lockPlatformAccessMutation(ctx, repo, principalID)
+		if lockErr != nil {
+			return lockErr
+		}
 		administrator, err = repo.SetPlatformAdministrator(ctx, principalID, full, normalized)
+		if err == nil {
+			err = repo.bumpPolicyRevision(ctx, owner)
+		}
 		return err
 	})
 	return administrator, err
@@ -370,6 +447,10 @@ func (s *Service) DeletePlatformAdministrator(ctx context.Context, principalID g
 	record.PolicyChanged = true
 	var changed bool
 	err = s.writes.Run(ctx, record, func(repo *Repository) error {
+		owner, lockErr := s.lockPlatformAccessMutation(ctx, repo, principalID)
+		if lockErr != nil {
+			return lockErr
+		}
 		changed, err = repo.DeletePlatformAdministrator(ctx, principalID)
 		if err != nil {
 			return err
@@ -378,7 +459,7 @@ func (s *Service) DeletePlatformAdministrator(ctx context.Context, principalID g
 		if !changed {
 			return ErrPlatformAdministratorNotFound
 		}
-		return nil
+		return repo.bumpPolicyRevision(ctx, owner)
 	})
 	return changed, err
 }

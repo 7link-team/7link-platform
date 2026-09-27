@@ -12,10 +12,11 @@ import (
 )
 
 type Service struct {
-	repo        *Repository
-	now         func() time.Time
-	roots       core.FileRootProvisioner
-	rootContent core.FileRootContentChecker
+	systemPermissions core.PlatformPermissionOn
+	repo              *Repository
+	now               func() time.Time
+	roots             core.FileRootProvisioner
+	rootContent       core.FileRootContentChecker
 }
 
 func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Source) *Service {

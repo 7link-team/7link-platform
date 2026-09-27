@@ -1,4 +1,5 @@
-import { useTranslations } from "@workspace/ui/i18n/intl-provider"
+import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
+import { systemRoleLabel } from "../../lib/membership-presentation"
 import { Link, useSearchParams } from "react-router"
 import {
   useCallback,
@@ -62,13 +63,58 @@ import {
   type TrustedContextConditionDraft,
 } from "../../lib/policy-condition"
 
-export default function RolesPage() {
-  const t = useTranslations("iam")
-  const allowed = useAllowed()
-  const [params, setParams] = useSearchParams()
-  const view = roleWorkspaceView(params.get("view"))
+export function SystemRolesPage() {
+  return <RolesPage system />
+}
 
-  const [roles, setRoles] = useState<Role[]>([])
+type WorkspaceRole = Role & { builtin?: boolean }
+type WorkspaceMember = Member & { protected?: boolean }
+
+export default function RolesPage({ system = false }: { system?: boolean }) {
+  const t = useTranslations("iam")
+  const locale = useLocale()
+  const scopeAllowed = useAllowed()
+  const allowed = useCallback(
+    (code: string) =>
+      scopeAllowed(
+        system
+          ? code === "user_view"
+            ? "system_member_view"
+            : code === "dept_view"
+              ? "system_department_view"
+              : `system_${code}`
+          : code
+      ),
+    [scopeAllowed, system]
+  )
+  const api = useMemo(
+    () =>
+      system
+        ? {
+            ...iamApi,
+            roles: iamApi.systemRoles,
+            permissions: iamApi.systemRolePermissionCatalog,
+            createRole: iamApi.createSystemRole,
+            updateRole: iamApi.updateSystemRole,
+            deleteRole: iamApi.deleteSystemRole,
+            rolePermissionGrants: iamApi.systemRolePermissionGrants,
+            grantPermission: iamApi.grantSystemRolePermission,
+            revokePermission: iamApi.revokeSystemRolePermission,
+            roleMembers: iamApi.systemRoleMembers,
+            addRoleMember: iamApi.addSystemRoleMember,
+            removeRoleMember: iamApi.removeSystemRoleMember,
+            members: iamApi.systemMembers,
+            departments: iamApi.systemDepartments,
+          }
+        : iamApi,
+    [system]
+  )
+  const [params, setParams] = useSearchParams()
+  const requestedView = roleWorkspaceView(params.get("view"))
+  const view =
+    system && requestedView === "scope" ? "permissions" : requestedView
+
+  const [roles, setRoles] = useState<WorkspaceRole[]>([])
   const [catalog, setCatalog] = useState<Permission[]>([])
   const selected =
     roles.find((role) => role.id === params.get("role")) ?? roles[0] ?? null
@@ -76,7 +122,7 @@ export default function RolesPage() {
     roleID: string
     grants: RolePermissionGrant[]
     boundMembers: string[]
-    members: Member[]
+    members: WorkspaceMember[]
     bindings: RoleDirectoryBinding[]
     groups: Group[]
 
@@ -94,7 +140,7 @@ export default function RolesPage() {
     departments: [],
   })
   const [open, setOpen] = useState(false)
-  const [editing, setEditing] = useState<Role | null>(null)
+  const [editing, setEditing] = useState<WorkspaceRole | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [loadError, setLoadError] = useState("")
@@ -112,19 +158,19 @@ export default function RolesPage() {
   // read keeps the error next to a retry, a refused write next to the form.
   const refresh = useCallback(
     () =>
-      Promise.all([iamApi.roles(), iamApi.permissions()])
+      Promise.all([api.roles(), api.permissions()])
         .then(([nextRoles, nextCatalog]) => {
           setRoles(nextRoles)
           setCatalog(nextCatalog)
           setLoadError("")
         })
         .catch((cause: Error) => setLoadError(cause.message)),
-    []
+    [api]
   )
 
   useEffect(() => {
     void refresh()
-  }, [refresh])
+  }, [refresh, locale])
 
   useEffect(() => {
     if (!selected) return
@@ -136,14 +182,20 @@ export default function RolesPage() {
     // any one refusal empty the whole role workspace, so the assignable lists
     // degrade on their own and the role's own data still arrives.
     void Promise.allSettled([
-      iamApi.rolePermissionGrants(selected.id),
-      iamApi.roleMembers(selected.id),
-      allowed("user_view") ? iamApi.members() : Promise.resolve([]),
-      iamApi.roleDirectoryBindings(selected.id),
-      allowed("group_view") ? iamApi.groups() : Promise.resolve([]),
+      api.rolePermissionGrants(selected.id),
+      api.roleMembers(selected.id),
+      allowed("user_view") ? api.members() : Promise.resolve([]),
+      system ? Promise.resolve([]) : iamApi.roleDirectoryBindings(selected.id),
+      !system && allowed("group_view") ? iamApi.groups() : Promise.resolve([]),
 
-      iamApi.roleDataScope(selected.id),
-      allowed("dept_view") ? iamApi.departments() : Promise.resolve([]),
+      system
+        ? Promise.resolve({
+            role_id: selected.id,
+            scope: "all" as const,
+            department_ids: [],
+          })
+        : iamApi.roleDataScope(selected.id),
+      allowed("dept_view") ? api.departments() : Promise.resolve([]),
     ]).then(
       ([
         nextGrants,
@@ -195,7 +247,7 @@ export default function RolesPage() {
     return () => {
       current = false
     }
-  }, [selected, allowed])
+  }, [selected, allowed, api, system])
 
   const loadingDetails = details.roleID !== selected?.id
   const grants = loadingDetails ? [] : details.grants
@@ -254,8 +306,8 @@ export default function RolesPage() {
     }
     try {
       const role = editing
-        ? await iamApi.updateRole(editing.id, body)
-        : await iamApi.createRole(body)
+        ? await api.updateRole(editing.id, body)
+        : await api.createRole(body)
       setOpen(false)
       setEditing(null)
       const next = new URLSearchParams(params)
@@ -274,9 +326,9 @@ export default function RolesPage() {
     setBusy(true)
     setError("")
     try {
-      if (checked) await iamApi.grantPermission(selected.id, code)
-      else await iamApi.revokePermission(selected.id, code)
-      const nextGrants = await iamApi.rolePermissionGrants(selected.id)
+      if (checked) await api.grantPermission(selected.id, code)
+      else await api.revokePermission(selected.id, code)
+      const nextGrants = await api.rolePermissionGrants(selected.id)
       setDetails((current) =>
         current.roleID === selected.id
           ? { ...current, grants: nextGrants }
@@ -354,9 +406,9 @@ export default function RolesPage() {
     setBusy(true)
     setError("")
     try {
-      if (checked) await iamApi.addRoleMember(selected.id, subject)
-      else await iamApi.removeRoleMember(selected.id, subject)
-      const nextBoundMembers = await iamApi.roleMembers(selected.id)
+      if (checked) await api.addRoleMember(selected.id, subject)
+      else await api.removeRoleMember(selected.id, subject)
+      const nextBoundMembers = await api.roleMembers(selected.id)
       setDetails((current) =>
         current.roleID === selected.id
           ? { ...current, boundMembers: nextBoundMembers }
@@ -408,7 +460,7 @@ export default function RolesPage() {
     setBusy(true)
     setError("")
     try {
-      await iamApi.deleteRole(selected.id)
+      await api.deleteRole(selected.id)
       const next = new URLSearchParams(params)
       next.delete("role")
       setParams(next)
@@ -446,14 +498,18 @@ export default function RolesPage() {
     <>
       <PageHeader
         title={t(
-          operatingPlatformID()
-            ? "platformRolePermissions"
-            : "tenantRolePermissions"
+          system
+            ? "systemRolePermissions"
+            : operatingPlatformID()
+              ? "platformRolePermissions"
+              : "tenantRolePermissions"
         )}
         description={t(
-          operatingPlatformID()
-            ? "platformRolesDescription"
-            : "rolesDescription"
+          system
+            ? "systemRolesDescription"
+            : operatingPlatformID()
+              ? "platformRolesDescription"
+              : "rolesDescription"
         )}
         action={
           allowed("role_create") && (
@@ -489,6 +545,7 @@ export default function RolesPage() {
           {roles.map((role) => (
             <button
               key={role.id}
+              data-role-id={role.id}
               className={`grid min-h-16 w-full grid-cols-[34px_minmax(0,1fr)] items-center gap-3 border-b px-3 text-left hover:bg-muted/40 ${selected?.id === role.id ? "bg-primary/5 shadow-[inset_3px_0_var(--primary)]" : ""}`}
               onClick={() => selectRole(role)}
               aria-current={selected?.id === role.id ? "true" : undefined}
@@ -498,10 +555,18 @@ export default function RolesPage() {
               </span>
               <span className="min-w-0">
                 <strong className="block text-sm break-words">
-                  {role.name}
+                  {system
+                    ? systemRoleLabel(
+                        role,
+                        t("fullSystemAdministrator"),
+                        t("importedSystemPermissions")
+                      )
+                    : role.name}
                 </strong>
                 <small className="mt-1 block text-xs break-words text-muted-foreground">
-                  {role.description || role.id}
+                  {role.builtin
+                    ? t("protectedSuperadminAuthority")
+                    : role.description || role.id}
                 </small>
               </span>
             </button>
@@ -512,13 +577,23 @@ export default function RolesPage() {
             <>
               <header className="flex min-h-20 flex-wrap items-center justify-between gap-4 border-b px-5 py-3">
                 <div className="min-w-0">
-                  <h2 className="font-semibold break-words">{selected.name}</h2>
+                  <h2 className="font-semibold break-words">
+                    {system
+                      ? systemRoleLabel(
+                          selected,
+                          t("fullSystemAdministrator"),
+                          t("importedSystemPermissions")
+                        )
+                      : selected.name}
+                  </h2>
                   <p className="mt-1 text-xs break-words text-muted-foreground">
-                    {selected.description || t("noDescription")}
+                    {selected.builtin
+                      ? t("protectedSuperadminAuthority")
+                      : selected.description || t("noDescription")}
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  {allowed("role_update") && (
+                  {!selected.builtin && allowed("role_update") && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -532,7 +607,7 @@ export default function RolesPage() {
                       {t("edit")}
                     </Button>
                   )}
-                  {allowed("role_delete") && (
+                  {!selected.builtin && allowed("role_delete") && (
                     <Button
                       variant="destructive"
                       size="sm"
@@ -545,6 +620,11 @@ export default function RolesPage() {
                   )}
                 </div>
               </header>
+              {selected.builtin && (
+                <p className="border-b px-5 py-3 text-sm text-muted-foreground">
+                  {t("protectedSuperadminAuthority")}
+                </p>
+              )}
               <Tabs value={view} onValueChange={selectView}>
                 <TabsList
                   variant="line"
@@ -582,15 +662,17 @@ export default function RolesPage() {
                       {loadingDetails ? "..." : assignmentCount}
                     </span>
                   </TabsTrigger>
-                  <TabsTrigger
-                    variant="line"
-                    value="scope"
-                    className="min-w-0 gap-1.5"
-                    data-role-view="scope"
-                  >
-                    <Database className="size-4" />
-                    {t("dataScope")}
-                  </TabsTrigger>
+                  {!system && (
+                    <TabsTrigger
+                      variant="line"
+                      value="scope"
+                      className="min-w-0 gap-1.5"
+                      data-role-view="scope"
+                    >
+                      <Database className="size-4" />
+                      {t("dataScope")}
+                    </TabsTrigger>
+                  )}
                 </TabsList>
                 <TabsContent
                   value="scope"
@@ -709,7 +791,10 @@ export default function RolesPage() {
                         {t("roleMembers")}
                       </h3>
                       <Button variant="ghost" size="sm" asChild>
-                        <Link to="../users" data-role-directory-link="account">
+                        <Link
+                          to={system ? "/system/accounts" : "../users"}
+                          data-role-directory-link="account"
+                        >
                           <ExternalLink />
                           {t("openAccountDirectory")}
                         </Link>
@@ -736,6 +821,8 @@ export default function RolesPage() {
                               disabled={
                                 busy ||
                                 !allowed("role_manage_member") ||
+                                (system &&
+                                  (selected.builtin || member.protected)) ||
                                 member.status !== "active"
                               }
                               onCheckedChange={(value) =>
@@ -763,25 +850,27 @@ export default function RolesPage() {
                       </div>
                     )}
                   </section>
-                  <DirectoryBindingsSection
-                    title={t("groups")}
-                    href="../groups"
-                    linkLabel={t("openGroupDirectory")}
-                    kind="group"
-                    icon={<UsersRound size={15} />}
-                    loading={loadingDetails}
-                    busy={busy || !allowed("role_manage_assignee")}
-                    items={directoryGroups.map((group) => ({
-                      id: group.id,
-                      name: group.name,
-                      detail: group.description || t("staticGroup"),
-                      status: group.status,
-                    }))}
-                    boundIDs={directoryBindings
-                      .filter((binding) => binding.assignee_type === "group")
-                      .map((binding) => binding.assignee_id)}
-                    onToggle={toggleDirectoryBinding}
-                  />
+                  {!system && (
+                    <DirectoryBindingsSection
+                      title={t("groups")}
+                      href="../groups"
+                      linkLabel={t("openGroupDirectory")}
+                      kind="group"
+                      icon={<UsersRound size={15} />}
+                      loading={loadingDetails}
+                      busy={busy || !allowed("role_manage_assignee")}
+                      items={directoryGroups.map((group) => ({
+                        id: group.id,
+                        name: group.name,
+                        detail: group.description || t("staticGroup"),
+                        status: group.status,
+                      }))}
+                      boundIDs={directoryBindings
+                        .filter((binding) => binding.assignee_type === "group")
+                        .map((binding) => binding.assignee_id)}
+                      onToggle={toggleDirectoryBinding}
+                    />
+                  )}
                 </TabsContent>
                 <TabsContent
                   value="permissions"
@@ -796,7 +885,9 @@ export default function RolesPage() {
                       ([resource, permissions]) => (
                         <section key={resource} className="mb-6">
                           <h4 className="mb-3 text-xs font-semibold text-muted-foreground uppercase">
-                            {resource}
+                            {t.has(`permissionResource_${resource}`)
+                              ? t(`permissionResource_${resource}`)
+                              : resource}
                           </h4>
                           <div className="grid gap-2 md:grid-cols-2">
                             {permissions.map((permission) => {
@@ -820,6 +911,7 @@ export default function RolesPage() {
                                     checked={Boolean(grant)}
                                     disabled={
                                       busy ||
+                                      selected.builtin ||
                                       loadingDetails ||
                                       !allowed("role_grant_permission")
                                     }
@@ -851,7 +943,8 @@ export default function RolesPage() {
                                       </small>
                                     )}
                                   </span>
-                                  {grant &&
+                                  {!system &&
+                                    grant &&
                                     allowed("role_grant_permission") && (
                                       <Button
                                         type="button"

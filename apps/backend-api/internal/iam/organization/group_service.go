@@ -55,7 +55,7 @@ func (s *GroupService) requireGrantableGroupRoles(ctx context.Context, repo *Rep
 		return nil
 	}
 	var roles []guid.ID
-	if err := repo.writer().WithContext(ctx).Table(repo.names.GroupRoleBindings.String()).Where("tenant_id = ? AND group_id = ?", ownerID, groupID).Pluck("role_id", &roles).Error; err != nil {
+	if err := groupPolicyRead(repo.writer()).WithContext(ctx).Table(repo.names.GroupRoleBindings.String()).Where("tenant_id = ? AND group_id = ?", ownerID, groupID).Pluck("role_id", &roles).Error; err != nil {
 		return err
 	}
 	if len(roles) == 0 {
@@ -68,6 +68,18 @@ func (s *GroupService) requireGrantableGroupRoles(ctx context.Context, repo *Rep
 		return ErrUnavailable
 	}
 	return checker.RequireGrantableRoles(ctx, repo.writer(), ownerID, roles)
+}
+
+func (s *GroupService) prepareGrantableGroupRoles(ctx context.Context, repo *Repository, ownerID guid.ID) error {
+	if authn.PrincipalIDFromContext(ctx).Zero() {
+		return nil
+	}
+	if checker, ok := s.administrators.(interface {
+		PrepareGrantableRoles(context.Context, *gorm.DB, guid.ID) error
+	}); ok {
+		return checker.PrepareGrantableRoles(ctx, repo.writer(), ownerID)
+	}
+	return nil
 }
 
 func membershipWindowNarrows(current *groupMemberRow, input GroupMemberWindow) bool {
@@ -146,6 +158,9 @@ func (s *GroupService) Update(ctx context.Context, tenantID, id guid.ID, input U
 	var updated *groupRow
 	event := audit.NewDomainEvent(ctx, tenantID, "group_updated", "group", id)
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		if err := s.prepareGrantableGroupRoles(ctx, repo, tenantID); err != nil {
+			return err
+		}
 		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
 			return err
 		}
@@ -297,6 +312,9 @@ func (s *GroupService) PutMember(ctx context.Context, tenantID, groupID, princip
 	event := audit.NewDomainEvent(ctx, tenantID, "group_member_assigned", "group", groupID)
 	event.Detail["principal_id"] = principalID
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		if err := s.prepareGrantableGroupRoles(ctx, repo, tenantID); err != nil {
+			return err
+		}
 		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
 			return err
 		}

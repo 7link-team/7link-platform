@@ -15,6 +15,7 @@ import (
 
 const coreRouteManifest = `
 iam-account-view-workspace|GET|/account-views/workspace
+iam-system-account-owners|GET|/system/account-owners
 iam-system-menus|GET|/system/menus
 iam-system-menu-create|POST|/system/menus
 iam-system-menu|GET|/system/menus/{menu_id}
@@ -22,6 +23,41 @@ iam-system-menu-update|PATCH|/system/menus/{menu_id}
 iam-system-menu-delete|DELETE|/system/menus/{menu_id}
 iam-system-menu-catalog|GET|/system/menu-catalog
 iam-system-navigation|GET|/system/navigation
+iam-system-roles|GET|/system/roles
+iam-system-role-create|POST|/system/roles
+iam-system-role|GET|/system/roles/{role_id}
+iam-system-role-update|PATCH|/system/roles/{role_id}
+iam-system-role-delete|DELETE|/system/roles/{role_id}
+iam-system-role-permission-catalog|GET|/system/role-permission-catalog
+iam-system-role-permission-grants|GET|/system/roles/{role_id}/permission-grants
+iam-system-role-permission-grant|PUT|/system/roles/{role_id}/permissions/{permission_code}
+iam-system-role-permission-revoke|DELETE|/system/roles/{role_id}/permissions/{permission_code}
+iam-system-role-members|GET|/system/roles/{role_id}/members
+iam-system-role-member-add|PUT|/system/roles/{role_id}/members/{principal_id}
+iam-system-role-member-remove|DELETE|/system/roles/{role_id}/members/{principal_id}
+iam-system-members|GET|/system/members
+iam-system-member-create|POST|/system/members
+iam-system-member|GET|/system/members/{principal_id}
+iam-system-member-update|PATCH|/system/members/{principal_id}
+iam-system-member-roles|GET|/system/members/{principal_id}/roles
+iam-system-tenant-members|GET|/system/tenants/{owner_id}/members
+iam-system-tenant-member|GET|/system/tenants/{owner_id}/members/{principal_id}
+iam-system-tenant-member-create|POST|/system/tenants/{owner_id}/members
+iam-system-tenant-member-update|PATCH|/system/tenants/{owner_id}/members/{principal_id}
+iam-system-tenant-member-disable|DELETE|/system/tenants/{owner_id}/members/{principal_id}
+iam-system-tenant-roles|GET|/system/tenants/{owner_id}/roles
+iam-system-tenant-member-roles|GET|/system/tenants/{owner_id}/members/{principal_id}/roles
+iam-system-tenant-role-member-PUT|PUT|/system/tenants/{owner_id}/roles/{role_id}/members/{principal_id}
+iam-system-tenant-role-member-DELETE|DELETE|/system/tenants/{owner_id}/roles/{role_id}/members/{principal_id}
+iam-system-platform-members|GET|/system/operating-platforms/{owner_id}/members
+iam-system-platform-member|GET|/system/operating-platforms/{owner_id}/members/{principal_id}
+iam-system-platform-member-create|POST|/system/operating-platforms/{owner_id}/members
+iam-system-platform-member-update|PATCH|/system/operating-platforms/{owner_id}/members/{principal_id}
+iam-system-platform-member-disable|DELETE|/system/operating-platforms/{owner_id}/members/{principal_id}
+iam-system-platform-roles|GET|/system/operating-platforms/{owner_id}/roles
+iam-system-platform-member-roles|GET|/system/operating-platforms/{owner_id}/members/{principal_id}/roles
+iam-system-platform-role-member-PUT|PUT|/system/operating-platforms/{owner_id}/roles/{role_id}/members/{principal_id}
+iam-system-platform-role-member-DELETE|DELETE|/system/operating-platforms/{owner_id}/roles/{role_id}/members/{principal_id}
 iam-platform-roles|GET|/operating-platforms/{platform_id}/roles
 iam-platform-role-create|POST|/operating-platforms/{platform_id}/roles
 iam-platform-permissions|GET|/operating-platforms/{platform_id}/permission-catalog
@@ -109,7 +145,7 @@ func TestCoreRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 82)
+	require.Len(t, got, 118)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 

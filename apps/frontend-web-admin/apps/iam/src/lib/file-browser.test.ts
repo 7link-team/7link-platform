@@ -319,6 +319,35 @@ describe("file browser presentation", () => {
       ).map((root) => root.ownerName)
     ).toEqual(["UAT", "Finance"])
   })
+  it("accepts the singleton system root without borrowing a tenant or account owner", () => {
+    const root = {
+      id: "8",
+      name: "System shared files",
+      kind: "directory",
+      scope: "system",
+      revision: 1,
+      updated_at: "2026-09-18T12:00:00Z",
+    }
+    expect(fileBrowserRoots({ items: [root] })).toEqual([
+      {
+        id: "8",
+        name: "System shared files",
+        scope: "system",
+        ownerID: "8",
+        tenantID: undefined,
+      },
+    ])
+    for (const owner of [
+      "tenant_id",
+      "principal_id",
+      "entity_id",
+      "department_id",
+    ]) {
+      expect(() =>
+        fileBrowserRoots({ items: [{ ...root, [owner]: "90" }] })
+      ).toThrow("invalid_response")
+    }
+  })
   it("rejects malformed or unbounded API snapshots", () => {
     expect(() =>
       fileBrowserEntries({

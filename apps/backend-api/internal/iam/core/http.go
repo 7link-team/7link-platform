@@ -473,6 +473,8 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	registerPlatformHTTP(a, svc, registrar)
 	registerOperatingPlatformHTTP(a, svc, registrar)
 	registerSystemMenuHTTP(a, svc, registrar)
+	registerSystemAccessHTTP(a, svc, registrar)
+	registerSystemScopeHTTP(a, svc, registrar)
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-permission-catalog",
 		Method:      http.MethodGet,

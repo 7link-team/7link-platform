@@ -10,6 +10,7 @@ import (
 
 	"7link.com/platform/internal/app"
 	iamauthn "7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"github.com/stretchr/testify/require"
@@ -69,17 +70,34 @@ func TestAccountViewExternalDatabase(t *testing.T) {
 	}))
 	require.NoError(t, f.db.Table(f.table("iam_tenant_members")).Where("tenant_id = ? AND principal_id = ?", iamTenantB, f.requesterB.ID).
 		Update("status", "active").Error)
-	// A restricted system operator exercises the direct permission-grant read.
+	// Restricted authority is a direct role assignment on the real system root.
 	require.NoError(t, f.db.Table(f.table("iam_platform_administrators")).Where("principal_id = ?", f.adminA.ID).Delete(&struct{}{}).Error)
-	require.NoError(t, f.db.Table(f.table("iam_platform_grants")).Create(map[string]any{
-		"principal_id": f.adminA.ID, "permission_code": "account_view_create", "created_at": time.Now().UTC().Truncate(time.Millisecond),
+	var root struct{ ID guid.ID }
+	require.NoError(t, f.db.Table(f.table("iam_tenants")).Select("id").Where("slug = ? AND scope_kind = ?", core.SystemRootSlug, "system").Take(&root).Error)
+	roleID := guid.ID(987654321)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	require.NoError(t, f.db.Table(f.table("iam_tenant_members")).Create(map[string]any{
+		"tenant_id": root.ID, "principal_id": f.adminA.ID, "display_name": "System operator", "email": "", "status": "active", "created_at": now, "updated_at": now,
 	}).Error)
+	require.NoError(t, f.db.Table(f.table("iam_roles")).Create(map[string]any{"tenant_id": root.ID, "id": roleID, "name": "Account view operator", "name_key": "account view operator", "description": "", "created_at": now, "updated_at": now}).Error)
+	permission := map[string]any{"tenant_id": root.ID, "role_id": roleID, "permission_code": "account_view_create", "condition_json": "", "created_at": now}
+	member := map[string]any{"tenant_id": root.ID, "role_id": roleID, "principal_id": f.adminA.ID, "created_at": now}
+	require.NoError(t, f.db.Table(f.table("iam_role_permissions")).Create(permission).Error)
+	require.NoError(t, f.db.Table(f.table("iam_role_members")).Create(member).Error)
 	_, err = service.Authenticate(ctx, "Bearer "+active.Token, "")
 	require.NoError(t, err)
-	require.True(t, t.Run("operator-grant-revoked-while-use-waits", func(t *testing.T) {
+	require.True(t, t.Run("operator-role-permission-revoked-while-use-waits", func(t *testing.T) {
 		f.accountViewUseAfterLockedMutation(t, service, active.Token, func(tx *gorm.DB) error {
-			return tx.Table(f.table("iam_platform_grants")).Where("principal_id = ? AND permission_code = ?", f.adminA.ID, "account_view_create").
+			return tx.Table(f.table("iam_role_permissions")).Where("tenant_id = ? AND role_id = ? AND permission_code = ?", root.ID, roleID, "account_view_create").
 				Delete(&struct{}{}).Error
+		})
+	}))
+	require.NoError(t, f.db.Table(f.table("iam_role_permissions")).Create(permission).Error)
+	_, err = service.Authenticate(ctx, "Bearer "+active.Token, "")
+	require.NoError(t, err)
+	require.True(t, t.Run("operator-role-member-revoked-while-use-waits", func(t *testing.T) {
+		f.accountViewUseAfterLockedMutation(t, service, active.Token, func(tx *gorm.DB) error {
+			return tx.Table(f.table("iam_role_members")).Where("tenant_id = ? AND role_id = ? AND principal_id = ?", root.ID, roleID, f.adminA.ID).Delete(&struct{}{}).Error
 		})
 	}))
 	require.Equal(t, targetSessions, f.count(t, "iam_sessions", "principal_id = ?", f.requesterB.ID))

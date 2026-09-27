@@ -35,6 +35,21 @@ describe("FileBrowser", () => {
       en.createPersonalRoot
     )
   })
+  it("labels system shared files independently of personal file root creation", () => {
+    expect(render({ onEnsureSystemRoot: async () => true })).toContain(
+      en.createSystemRoot
+    )
+    expect(render({ onEnsureSystemRoot: async () => true })).not.toContain(
+      en.createPersonalRoot
+    )
+    const html = render({
+      roots: [
+        { id: "8", name: "System shared files", scope: "system", ownerID: "8" },
+      ],
+    })
+    expect(html).toContain(en.rootNameSystem)
+    expect(html).not.toContain(en.rootNameAccount)
+  })
   it("fills its parent without introducing a nested viewport height", () => {
     const html = render()
     expect(html).toContain("h-full min-h-0 min-w-0")

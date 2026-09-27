@@ -217,6 +217,7 @@ func (m *Module) Initialize(context.Context) error {
 		return errors.New("initialize organization: the core module must publish the table names organization joins")
 	}
 	m.service = NewService(m.runtime, m.appender, m.ids)
+	m.service.systemPermissions = m.bootstrap.SystemPermissionOn
 	m.tenants = NewTenantService(m.runtime, m.appender, m.ids, m.bootstrap, m.owners)
 	m.platforms = NewPlatformService(m.runtime, m.appender, m.ids, m.bootstrap, m.owners)
 	m.service.roots, m.tenants.roots = m.roots, m.roots
@@ -264,6 +265,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	RegisterHTTP(api, m.service, m.tenants, m.groups, m.invitations, m.registrar)
 	registerPlatformHTTP(api, m.platforms, m.registrar)
 	registerPlatformDirectoryHTTP(api, m.service, m.groups, m.registrar)
+	registerSystemDepartmentHTTP(api, m.service, m.registrar)
 	return nil
 }
 

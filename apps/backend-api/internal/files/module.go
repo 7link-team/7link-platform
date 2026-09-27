@@ -143,6 +143,10 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve files transaction tenant policy: %w", err)
 	}
+	systemPolicy, err := module.Resolve[core.PlatformPermissionOn](services)
+	if err != nil {
+		return fmt.Errorf("resolve files transaction system policy: %w", err)
+	}
 	subjects, err := module.Resolve[core.AuthorizationSubjectsOn](services)
 	if err != nil {
 		return fmt.Errorf("resolve files authorization subjects: %w", err)
@@ -187,7 +191,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 		}
 	}
 	m.operations = &operationService{
-		runtime: m.runtime, driver: m.driver, objects: m.accounts, ids: ids, policy: policy, tenantPolicy: tenantPolicy, subjects: subjects, references: references,
+		runtime: m.runtime, driver: m.driver, objects: m.accounts, ids: ids, policy: policy, tenantPolicy: tenantPolicy, systemPolicy: systemPolicy, subjects: subjects, references: references,
 		appender: appender, budget: operationBudget{Nodes: 1000, ClosureRows: 100000}, timeout: 30 * time.Second,
 		uploadTimeout: 15 * time.Minute, maxUploadBytes: 100 << 20,
 	}

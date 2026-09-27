@@ -22,6 +22,7 @@ func newReadinessModule(t *testing.T, prefix string, gated bool) (*Module, repos
 		Config:                       modulepkg.Config{Enabled: true},
 		RequirePlatformAdministrator: gated,
 	})
+	bindModuleTables(t, module, prefix)
 	services := modulepkg.NewServices()
 	require.NoError(t, modulepkg.Provide[guid.Source](services, database.repository.ids))
 	require.NoError(t, modulepkg.Provide[audit.Appender](

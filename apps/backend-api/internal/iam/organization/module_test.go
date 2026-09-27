@@ -175,7 +175,7 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 	assert.Equal(t, StatusDisabled, disabled.Status)
 	_, api = humatest.New(t)
 	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
-	assert.Len(t, organizationOperationManifest(api.OpenAPI()), 34)
+	assert.Len(t, organizationOperationManifest(api.OpenAPI()), 41)
 }
 
 func TestOrganizationModuleReportsMissingWiring(t *testing.T) {

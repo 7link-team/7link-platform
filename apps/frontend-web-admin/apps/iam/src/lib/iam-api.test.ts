@@ -20,6 +20,137 @@ interface RecordedRequest {
 }
 
 describe("IAM API client", () => {
+  it("uses explicit system owner routes and walks every assignment page", async () => {
+    const requests: RecordedRequest[] = []
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({
+          method: request.method,
+          path: url.pathname + url.search,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        const offset = Number(url.searchParams.get("offset") ?? 0)
+        return Response.json({
+          code: 0,
+          data:
+            request.method === "GET"
+              ? offset === 0
+                ? Array.from({ length: 200 }, (_, index) => `role-${index}`)
+                : ["last"]
+              : {},
+          meta: { page: { total: 201 } },
+        })
+      },
+    })
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "unrelated-tenant",
+      () => "unrelated-principal"
+    )
+    for (const kind of ["platform", "tenant"] as const) {
+      const scope = { kind, id: "explicit-owner", name: "Owner" }
+      const assigned = await client.systemOwnerMemberRoles(
+        scope,
+        "selected-account"
+      )
+      expect(assigned).toHaveLength(201)
+      expect(assigned[0]).toBe("role-0")
+      expect(assigned[200]).toBe("last")
+      await client.createSystemOwnerMember(scope, {
+        subject: "selected-account",
+        display_name: "Named account",
+      })
+      await client.addSystemOwnerRoleMember(
+        scope,
+        "selected-role",
+        "selected-account"
+      )
+      await client.removeSystemOwnerRoleMember(
+        scope,
+        "selected-role",
+        "selected-account"
+      )
+    }
+    expect(requests).toHaveLength(10)
+    for (const request of requests) {
+      expect(request.path).toMatch(
+        /^\/system\/(operating-platforms|tenants)\/explicit-owner\//
+      )
+      expect(request.path).not.toContain("unrelated")
+      expect(request.headers.has("x-tenant-id")).toBe(false)
+    }
+    expect(requests[1]?.path).toContain("offset=200")
+    expect(JSON.parse(requests[2]?.body ?? "{}").subject).toBe(
+      "selected-account"
+    )
+  })
+  it("keeps system role, department and shared file transports independent of selected tenant and principal", async () => {
+    const requests: RecordedRequest[] = []
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({
+          method: request.method,
+          path: url.pathname + url.search,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        return Response.json({ code: 0, data: {} })
+      },
+    })
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "90",
+      () => "101"
+    )
+    await client.systemPrincipals("Alex", 50, {
+      category: "platform",
+      owner_id: "80",
+      status: "active",
+    })
+    await client.systemRoles()
+    await client.systemDepartments()
+    await client.files("80", "", true)
+    await client.createSystemFileRoot()
+    await client.createDirectory("80", "201", "Shared", true)
+    await client.createFileOperation(
+      "80",
+      { action: "copy", destination_id: "201", sources: ["202"] },
+      "system-operation",
+      true
+    )
+    expect(
+      requests.map(
+        (request) => `${request.method} ${request.path.split("?")[0]}`
+      )
+    ).toEqual([
+      "GET /system/principals",
+      "GET /system/roles",
+      "GET /system/departments",
+      "GET /system/files",
+      "POST /system/files",
+      "POST /system/files",
+      "POST /system/file-operations",
+    ])
+    const query = new URL(`http://local${requests[0]!.path}`).searchParams
+    expect(Object.fromEntries(query)).toEqual({
+      search: "Alex",
+      offset: "50",
+      limit: "50",
+      category: "platform",
+      owner_id: "80",
+      status: "active",
+    })
+    expect(requests[4]!.body).toContain('name="scope"')
+    expect(requests[4]!.body).toContain("system")
+    expect(requests[6]!.headers.get("Idempotency-Key")).toBe("system-operation")
+    expect(JSON.parse(requests[6]!.body)).not.toHaveProperty("tenant_id")
+    expect(JSON.parse(requests[6]!.body)).not.toHaveProperty("principal_id")
+  })
   it("separates identity, current browser session and session item addresses", async () => {
     const requests: string[] = []
     server = Bun.serve({

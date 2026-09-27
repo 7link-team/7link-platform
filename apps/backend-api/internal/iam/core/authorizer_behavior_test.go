@@ -917,6 +917,7 @@ func TestAuthorizerScopedAdministratorDenyAndPlatformExpansion(t *testing.T) {
 	assert.Equal(t, "administrator_scope_denied", explanation.Reason)
 
 	platformID := guid.ID(21)
+	seedSystemAccessFixture(t, harness.db, "sl_")
 	harness.seedAdditionalMember(t, tenantID, platformID, MemberActive)
 	_, err = harness.service.SetPlatformAdministrator(t.Context(), platformID, true, nil)
 	require.NoError(t, err)

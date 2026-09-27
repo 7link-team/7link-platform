@@ -41,6 +41,7 @@ func TestEffectivePermissionsReportOnlyWhatTheCallerHolds(t *testing.T) {
 
 func TestEffectivePermissionsCarryPlatformAuthorityWithoutMembership(t *testing.T) {
 	harness := newCoreServiceHarness(t)
+	seedSystemAccessFixture(t, harness.db, "sl_")
 	tenantID, principalID := guid.ID(1), guid.ID(11)
 	harness.seedMember(t, tenantID, principalID, MemberActive)
 	_, err := harness.repository.SetPlatformAdministrator(

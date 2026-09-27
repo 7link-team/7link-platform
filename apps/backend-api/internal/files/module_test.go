@@ -25,6 +25,7 @@ func TestFileModuleWiresItsAuthorizationCatalog(t *testing.T) {
 	instance := NewModule(runtime, Config{})
 	registry := authz.MustRegistry()
 	services := module.NewServices()
+	require.NoError(t, module.Provide[core.PlatformPermissionOn](services, func(context.Context, *gorm.DB, string, guid.ID) (bool, error) { return false, nil }))
 	require.NoError(t, module.Provide[*authz.Registrar](services, authz.NewUnboundRegistrar(registry)))
 	require.NoError(t, module.Provide[core.EntityConstraintOn](services, func(context.Context, *gorm.DB, guid.ID, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
 		return authz.DataConstraint{}, nil
@@ -232,6 +233,7 @@ func fileModuleDependencyServices(t *testing.T, omit string) *module.Services {
 			return authz.DataConstraint{}, nil
 		}))
 	}
+	require.NoError(t, module.Provide[core.PlatformPermissionOn](services, func(context.Context, *gorm.DB, string, guid.ID) (bool, error) { return false, nil }))
 	if omit != "subjects" {
 		require.NoError(t, module.Provide[core.AuthorizationSubjectsOn](services, func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (core.AuthorizationSubjects, error) {
 			return core.AuthorizationSubjects{}, nil

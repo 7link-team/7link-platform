@@ -20,8 +20,9 @@
 // (`bun run generate:api-types`), then decide whether the client or the service
 // is the one that is wrong.
 
-import type { components } from "./api-schema"
+import type { components, operations } from "./api-schema"
 import type {
+  iamApi,
   AccessRequest,
   AccessReview,
   AccessReviewItem,
@@ -178,6 +179,17 @@ export type _IssuedInvitation = Agreed<
 >
 export type _LoginResult = Agreed<Compare<LoginResult, S["LoginResult"]>>
 export type _Member = Agreed<Compare<Member, S["APITenantMember"]>>
+export type _SystemMemberRoleIDs = Agreed<
+  Awaited<
+    ReturnType<typeof iamApi.systemMemberRoles>
+  >[number] extends NonNullable<
+    NonNullable<
+      operations["iam-system-member-roles"]["responses"][200]["content"]["application/json"]["data"]
+    >[number]
+  >
+    ? true
+    : false
+>
 export type _Menu = Agreed<Compare<Menu, S["APIMenu"]>>
 export type _MfaConfirmation = Agreed<
   Compare<MfaConfirmation, S["MFAConfirmation"]>

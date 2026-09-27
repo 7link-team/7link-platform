@@ -45,6 +45,7 @@ type Service struct {
 	administrators      core.AdministratorGuard
 	fields              authz.FieldPermissionChecker
 	avatarPermissions   authz.PermissionChecker
+	permissionRegistry  *authz.Registry
 	anonymizer          PrincipalAnonymizer
 	erasureRecorder     audit.ErasureRecorder
 	privacyBrowser      authnext.BrowserSessionSecurity
@@ -67,7 +68,7 @@ func NewService(
 		panic("identity service requires runtime, audit appender, administrator guard, and id generator")
 	}
 	return &Service{
-		repo: NewRepository(runtime, ids, appender), administrators: administrators, now: time.Now,
+		repo: NewRepository(runtime, ids, appender), administrators: administrators, permissionRegistry: authz.DefaultRegistry(), now: time.Now,
 	}
 }
 
@@ -566,6 +567,10 @@ func (r *Repository) listPrincipals(
 	search string,
 	limit, offset int,
 ) ([]*model.Principal, int64, error) {
+	return r.listPrincipalsFiltered(ctx, tenantID, search, limit, offset, "", 0, "")
+}
+
+func (r *Repository) listPrincipalsFiltered(ctx context.Context, tenantID guid.ID, search string, limit, offset int, category string, ownerID guid.ID, status string) ([]*model.Principal, int64, error) {
 	tables, db, err := r.tables()
 	if err != nil {
 		return nil, 0, err
@@ -576,6 +581,26 @@ func (r *Repository) listPrincipals(
 	if !tenantID.Zero() {
 		members := r.foreign.access.TenantMembers.String()
 		query = query.Joins("JOIN "+members+" AS member ON member.principal_id = principal.id").Where("member.tenant_id = ?", tenantID)
+	}
+	if status != "" {
+		query = query.Where("principal.status = ?", status)
+	}
+	if category == "system" || category == "platform" || category == "tenant" {
+		if r.foreign == nil || !r.foreign.directory.Bound() || !r.foreign.access.Bound() {
+			return nil, 0, errRepositoryUnavailable
+		}
+		membership := db.Table(r.foreign.access.TenantMembers.String()+" AS membership").Select("1").
+			Joins("JOIN "+r.foreign.directory.Tenants.String()+" AS owner ON owner.id = membership.tenant_id").
+			Where("membership.principal_id = principal.id AND owner.scope_kind = ?", category)
+		if ownerID > 0 {
+			membership = membership.Where("owner.id = ?", ownerID)
+		}
+		if category == "system" {
+			full := db.Table(r.foreign.access.PlatformAdministrators.String() + " AS administrator").Select("1").Where("administrator.principal_id = principal.id")
+			query = query.Where("EXISTS (?) OR EXISTS (?)", membership, full)
+		} else {
+			query = query.Where("EXISTS (?)", membership)
+		}
 	}
 	search = strings.ToLower(strings.TrimSpace(search))
 	if search != "" {

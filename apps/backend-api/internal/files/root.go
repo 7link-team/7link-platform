@@ -38,6 +38,11 @@ func (m *Module) resolveFileOwner(ctx context.Context, fileID guid.ID) (authz.Re
 		return authz.ResourceOwner{}, false, err
 	}
 	switch owner.Scope {
+	case ownerSystem:
+		if space.ScopeKind != spaceSystem || space.SystemSlot == nil || *space.SystemSlot != 1 || space.TenantID != nil || space.PrincipalID != nil || owner.ID != 0 {
+			return authz.ResourceOwner{}, false, errFileACL
+		}
+		return authz.ResourceOwner{ScopeType: "system"}, true, nil
 	case ownerAccount:
 		if owner.ID <= 0 || space.PrincipalID == nil || *space.PrincipalID != owner.ID {
 			return authz.ResourceOwner{}, false, errFileACL

@@ -184,6 +184,7 @@ func newHTTPIAMHarness(t *testing.T, platformAllowed bool) httpIAMHarness {
 	database := newRepositoryHarness(t, "sl_")
 	actorID := guid.ID(11)
 	seedTenantAndPrincipal(t, database.db, "sl_", 1, actorID)
+	seedSystemAccessFixture(t, database.db, "sl_")
 
 	registry := authz.DefaultRegistry()
 	registrar := authz.NewRegistrar(

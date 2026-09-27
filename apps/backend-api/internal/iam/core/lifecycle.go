@@ -7,6 +7,7 @@ import (
 
 	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authz"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
@@ -19,7 +20,7 @@ var ErrPrincipalHasPlatformAccess = errors.New("remove principal platform access
 // global suspension, using the caller's principal-locked transaction.
 type PrincipalPlatformAccessGuard func(context.Context, *gorm.DB, guid.ID) error
 
-func requireNoPrincipalPlatformAccess(ctx context.Context, tx *gorm.DB, prefix string, id guid.ID) error {
+func requireNoPrincipalPlatformAccess(ctx context.Context, tx *gorm.DB, prefix string, id guid.ID, registries ...*authz.Registry) error {
 	names := query.BindNames(prefix)
 	for _, table := range []gormx.TableName{names.PlatformAdministrators, names.PlatformGrants} {
 		var count int64
@@ -29,6 +30,29 @@ func requireNoPrincipalPlatformAccess(ctx context.Context, tx *gorm.DB, prefix s
 		if count != 0 {
 			return ErrPrincipalHasPlatformAccess
 		}
+	}
+	// Global actions cannot be granted by tenant or operating-platform roles.
+	// Keep protected authority removal mandatory even for disabled memberships.
+	codes := make([]string, 0)
+	registry := authz.DefaultRegistry()
+	if len(registries) > 0 && registries[0] != nil {
+		registry = registries[0]
+	}
+	for _, action := range registry.All() {
+		if action.Scope == "platform" {
+			codes = append(codes, action.Code)
+		}
+	}
+	var count int64
+	err := tx.WithContext(ctx).Table(names.RoleMembers.String()+" AS member").
+		Joins("JOIN "+names.Roles.String()+" AS role ON role.tenant_id = member.tenant_id AND role.id = member.role_id").
+		Joins("JOIN "+names.RolePermissions.String()+" AS permission ON permission.tenant_id = member.tenant_id AND permission.role_id = member.role_id").
+		Where("member.principal_id = ? AND (permission.permission_code IN ? OR substr(permission.permission_code, 1, 12) = ?)", id, codes, "system_file_").Count(&count).Error
+	if err != nil {
+		return err
+	}
+	if count != 0 {
+		return ErrPrincipalHasPlatformAccess
 	}
 	return nil
 }

@@ -367,6 +367,7 @@ func TestListTenantMemberRolesPageBoundsTheUnion(t *testing.T) {
 func TestListPlatformAdministratorsPageBoundsTheResult(t *testing.T) {
 	harness := newCoreServiceHarness(t)
 	principals := []guid.ID{11, 22, 33, 44, 55}
+	seedSystemAccessFixture(t, harness.db, "sl_", principals...)
 	for _, principal := range principals {
 		_, err := harness.repository.SetPlatformAdministrator(
 			t.Context(), principal, false, []string{"platform_read", "platform_write"},

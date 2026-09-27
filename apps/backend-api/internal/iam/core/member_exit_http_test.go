@@ -54,6 +54,7 @@ func TestMemberExitHTTPUsesCookieAndExplicitTenant(t *testing.T) {
 
 func TestPrincipalPlatformAccessGuardRejectsRetainedPlatformAuthority(t *testing.T) {
 	h := newCoreServiceHarness(t)
+	seedSystemAccessFixture(t, h.db, "sl_")
 	h.seedMember(t, 1, 11, MemberActive)
 	require.NoError(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 11))
 	_, err := h.repository.SetPlatformAdministrator(t.Context(), 11, true, nil)

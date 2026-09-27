@@ -117,6 +117,7 @@ export type FileBrowserProps = {
   recycleBin?: boolean
   onOpenRecycleBin?: () => void
   onEnsurePersonalRoot?: () => Promise<boolean>
+  onEnsureSystemRoot?: () => Promise<boolean>
   onCreateDirectory?: (name: string) => Promise<boolean>
   onCreateFile?: (name: string, mimeType: string) => Promise<boolean>
   onUploadEntries?: (entries: readonly DroppedEntry[]) => Promise<boolean>
@@ -147,6 +148,7 @@ export type FileBrowserProps = {
 }
 
 const rootScopeOrder: readonly FileBrowserRootScope[] = [
+  "system",
   "personal",
   "account",
   "tenant",
@@ -156,6 +158,8 @@ const rootScopeOrder: readonly FileBrowserRootScope[] = [
 
 function rootScopeMessage(scope: FileBrowserRootScope) {
   switch (scope) {
+    case "system":
+      return "rootScopeSystem"
     case "personal":
       return "rootScopePersonal"
     case "account":
@@ -171,6 +175,8 @@ function rootScopeMessage(scope: FileBrowserRootScope) {
 
 function rootNameMessage(scope: FileBrowserRootScope) {
   switch (scope) {
+    case "system":
+      return "rootNameSystem"
     case "personal":
       return "rootNamePersonal"
     case "account":
@@ -269,6 +275,7 @@ function FileBrowserBody({
   recycleBin = false,
   onOpenRecycleBin,
   onEnsurePersonalRoot,
+  onEnsureSystemRoot,
   onCreateDirectory,
   onCreateFile,
   onUploadEntries,
@@ -952,20 +959,28 @@ function FileBrowserBody({
                     )}
                   </>
                 )}
-                {ready && !roots.length && onEnsurePersonalRoot && (
-                  <Button
-                    className="min-h-11"
-                    disabled={busy}
-                    onClick={() => void onEnsurePersonalRoot()}
-                  >
-                    {busy ? (
-                      <LoaderCircle className="animate-spin" />
-                    ) : (
-                      <FolderPlus />
-                    )}
-                    {tf("createPersonalRoot")}
-                  </Button>
-                )}
+                {ready &&
+                  !roots.length &&
+                  (onEnsurePersonalRoot || onEnsureSystemRoot) && (
+                    <Button
+                      className="min-h-11"
+                      disabled={busy}
+                      onClick={() =>
+                        void (onEnsureSystemRoot ?? onEnsurePersonalRoot)?.()
+                      }
+                    >
+                      {busy ? (
+                        <LoaderCircle className="animate-spin" />
+                      ) : (
+                        <FolderPlus />
+                      )}
+                      {tf(
+                        onEnsureSystemRoot
+                          ? "createSystemRoot"
+                          : "createPersonalRoot"
+                      )}
+                    </Button>
+                  )}
                 {ready && visiblePath.length > 0 && (
                   <>
                     <Tool

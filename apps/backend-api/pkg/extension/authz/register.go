@@ -94,6 +94,14 @@ type ResourceOwner struct {
 // Implementations belong to the module that owns the resource and its storage.
 type ResourceOwnerResolver func(context.Context, guid.ID) (owner ResourceOwner, found bool, err error)
 
+type resourceOwnerContextKey struct{}
+
+// ResolvedResourceOwner exposes only the owner verified by owned-route middleware.
+func ResolvedResourceOwner(ctx context.Context) ResourceOwner {
+	owner, _ := ctx.Value(resourceOwnerContextKey{}).(ResourceOwner)
+	return owner
+}
+
 type sessionCookieNamer interface {
 	SessionCookieName() string
 }
@@ -896,7 +904,8 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 		personalOwner := !owner.PrincipalID.Zero() && owner.TenantID.Zero() && owner.EntityID.Zero()
 		tenantOwner := owner.PrincipalID.Zero() && !owner.TenantID.Zero()
 		platformOwner := owner.ScopeType == "platform" && tenantOwner && owner.EntityID.Zero()
-		if !found || (!personalOwner && !tenantOwner) || (owner.ScopeType != "" && owner.ScopeType != "tenant" && !platformOwner) {
+		systemOwner := owner.ScopeType == "system" && owner.TenantID.Zero() && owner.EntityID.Zero() && owner.PrincipalID.Zero()
+		if !found || (!personalOwner && !tenantOwner && !systemOwner) || (owner.ScopeType != "" && owner.ScopeType != "tenant" && !platformOwner && !systemOwner) {
 			_ = huma.WriteErr(api, ctx, http.StatusNotFound, respx.NotFound)
 			return
 		}
@@ -908,7 +917,32 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
 			return
 		}
-		if !allowAccountViewScope(api, ctx, claims, owner, false) {
+		if !allowAccountViewScope(api, ctx, claims, owner, systemOwner) {
+			return
+		}
+		if systemOwner {
+			if guard == nil {
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+				return
+			}
+			permission := "system_" + guard.Code()
+			if action, exists := r.registry.Find(permission); !exists || action.Scope != "platform" {
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+				return
+			}
+			allowed, err := r.checker.CheckPlatform(ctx.Context(), permission, principalID)
+			if err != nil {
+				authorizationFailed(api, ctx, "system resource authorization failed", "err", err)
+				return
+			}
+			if !allowed {
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+				return
+			}
+			trustedClaims := *claims
+			trustedClaims.PrincipalID, trustedClaims.TenantID, trustedClaims.EntityID = principalID, 0, 0
+			requestContext := context.WithValue(ctx.Context(), resourceOwnerContextKey{}, owner)
+			next(huma.WithContext(ctx, authn.WithClaims(requestContext, &trustedClaims)))
 			return
 		}
 		if personalOwner {

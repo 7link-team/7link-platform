@@ -31,6 +31,7 @@ type Authorizer struct {
 	now              func() time.Time
 	directorySources DirectoryAuthorizationSourceStore
 	foreign          *foreignTables
+	currentRead      bool
 }
 
 // The persistence shapes live in the query package, which owns the statements
@@ -147,42 +148,40 @@ func (a *Authorizer) CheckPlatform(ctx context.Context, permission string, subje
 	if action, ok := a.registry.Find(permission); !ok || action.Scope != "platform" {
 		return false, nil
 	}
-	names, err := a.authorizationTables()
-	if err != nil {
-		return false, err
+	if _, transaction := a.db.Statement.ConnPool.(gorm.TxCommitter); transaction {
+		return a.checkSystemPermission(ctx, permission, subject)
 	}
-	var principal struct{ ID guid.ID }
-	err = a.db.WithContext(ctx).Table(names.Principal.String()+" AS p").
-		Select("p.id").
-		Where("p.id = ? AND p.status = 'active'", subject).
-		Take(&principal).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, nil
+	var allowed bool
+	// Complete the probe before acquiring the system fence: an absent MySQL
+	// administrator row may hold a gap lock needed by a concurrent grant.
+	err = a.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		names, err := a.authorizationTables()
+		if err != nil {
+			return err
+		}
+		var principal struct{ ID guid.ID }
+		err = systemCurrentRead(tx.WithContext(ctx)).Table(names.Principal.String()).Select("id").
+			Where("id = ? AND status = ?", subject, "active").Take(&principal).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		allowed, err = systemFullAdministrator(ctx, tx, names.Tables.PlatformAdministrators.String(), subject)
+		return err
+	})
+	if err != nil || allowed {
+		return allowed, err
 	}
-	if err != nil {
-		return false, fmt.Errorf("evaluate platform permission: %w", err)
-	}
-	// Direct reads inherit transaction locks, including current-read semantics on MySQL.
-	var administrator struct{ PrincipalID guid.ID }
-	err = a.db.WithContext(ctx).Table(names.Tables.PlatformAdministrators.String()).
-		Select("principal_id").Where("principal_id = ?", subject).Take(&administrator).Error
-	if err == nil {
-		return true, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, fmt.Errorf("evaluate platform administrator: %w", err)
-	}
-	var grant struct{ PrincipalID guid.ID }
-	err = a.db.WithContext(ctx).Table(names.Tables.PlatformGrants.String()).
-		Select("principal_id").Where("principal_id = ? AND permission_code = ?", subject, permission).
-		Take(&grant).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("evaluate platform grant: %w", err)
-	}
-	return true, nil
+	err = a.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		pinned := *a
+		pinned.db = tx
+		var err error
+		allowed, err = pinned.checkSystemPermission(ctx, permission, subject)
+		return err
+	})
+	return allowed, err
 }
 
 // CheckBulk evaluates declared permissions for one tenant subject. Unknown
@@ -221,7 +220,11 @@ func (a *Authorizer) CheckBulk(
 	if err != nil {
 		return nil, err
 	}
-	_, memberActive, err := tenantMembershipState(ctx, a.db, names, tenantID, subject)
+	readDB := a.db
+	if a.currentRead {
+		readDB = systemCurrentRead(readDB)
+	}
+	_, memberActive, err := tenantMembershipState(ctx, readDB, names, tenantID, subject)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +280,11 @@ func (a *Authorizer) CheckOperatingPlatform(ctx context.Context, platformID guid
 	if err != nil {
 		return false, err
 	}
-	_, active, err := ownerMembershipState(ctx, a.db, names, platformID, subject, "platform")
+	readDB := a.db
+	if a.currentRead {
+		readDB = systemCurrentRead(readDB)
+	}
+	_, active, err := ownerMembershipState(ctx, readDB, names, platformID, subject, "platform")
 	if err != nil || !active {
 		return false, err
 	}
@@ -904,13 +911,17 @@ func (a *Authorizer) loadTenantGrants(
 	if err != nil {
 		return nil, err
 	}
-	dynamicGroupIDs, err := matchingDynamicGroupIDs(ctx, a.db, names, tenantID, subject)
+	dynamicReadDB := a.db
+	if a.currentRead {
+		dynamicReadDB = systemCurrentRead(dynamicReadDB)
+	}
+	dynamicGroupIDs, err := matchingDynamicGroupIDs(ctx, dynamicReadDB, names, tenantID, subject)
 	if err != nil {
 		return nil, err
 	}
 	if len(dynamicGroupIDs) > 0 {
 		dynamicGrants := make([]tenantGrant, 0)
-		err = a.db.WithContext(ctx).Table(names.Directory.GroupRoleBindings.String()+" AS b").
+		err = dynamicReadDB.WithContext(ctx).Table(names.Directory.GroupRoleBindings.String()+" AS b").
 			Select("rp.permission_code, b.role_id, 'group' AS source_type, b.group_id AS source_id, "+
 				"COALESCE(ds.scope_type, 'all') AS data_scope, rp.condition_json").
 			Joins("JOIN "+names.Tables.RolePermissions.String()+" AS rp ON rp.tenant_id = b.tenant_id AND rp.role_id = b.role_id").
@@ -939,6 +950,7 @@ func (a *Authorizer) effectiveRolesParams(tenantID, subject guid.ID, now time.Ti
 		Subject:             subject,
 		Now:                 now,
 		MemberStatus:        string(MemberActive),
+		CurrentRead:         a.currentRead && a.db.Dialector.Name() == "mysql",
 	}, nil
 }
 

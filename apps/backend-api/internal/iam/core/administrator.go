@@ -10,6 +10,7 @@ import (
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // The two permission codes that make a principal a durable administrator.
@@ -37,14 +38,32 @@ func (guard *tenantAdministratorGuard) RequireGrantableRoles(ctx context.Context
 		registry = authz.DefaultRegistry()
 	}
 	checker := &Authorizer{db: db, repositoryTables: repositoryTables{names: guard.names}, registry: registry, revisions: guard.revisions, now: guard.now, foreign: guard.foreign}
-	repo := &Repository{db: db, repositoryTables: repositoryTables{names: guard.names}, foreign: guard.foreign}
+	repo := &Repository{db: db, repositoryTables: repositoryTables{names: guard.names}, foreign: guard.foreign, revisions: guard.revisions}
+	kind, err := repo.rootKind(ctx, ownerID)
+	if err != nil {
+		return err
+	}
+	if kind == "system" {
+		return ErrPrivilegeEscalation
+	}
 	service := &Service{repo: repo, checker: checker}
+	if err := service.requireGrantablePermissionsOn(ctx, repo, ownerID); err != nil {
+		return err
+	}
+	if err := guard.revisions.Lock(ctx, db, ownerID); err != nil {
+		return err
+	}
 	for _, roleID := range roleIDs {
 		if err := service.requireGrantableRoleWithRepository(ctx, repo, ownerID, roleID); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// PrepareGrantableRoles acquires global authority before the local policy fence.
+func (guard *tenantAdministratorGuard) PrepareGrantableRoles(ctx context.Context, db *gorm.DB, ownerID guid.ID) error {
+	return guard.RequireGrantableRoles(ctx, db, ownerID, nil)
 }
 
 // NewAdministratorGuard creates the tenant-administrator safety capability.
@@ -109,6 +128,22 @@ func (guard *tenantAdministratorGuard) hasDurableAdministrator(
 	permission, globalPermission := tenantAdministratorPermission, platformAdministratorPermission
 	if root.ScopeKind == "platform" {
 		permission, globalPermission = "operating_platform_administer", "operating_platform_administer"
+	}
+	if root.ScopeKind == "system" {
+		var rows []struct{ PrincipalID guid.ID }
+		protected := tables.Tables.PlatformAdministrators.String()
+		read := db.WithContext(ctx)
+		if db.Dialector.Name() == "mysql" {
+			protected = "(SELECT principal_id FROM " + protected + " FOR UPDATE)"
+		} else if db.Dialector.Name() == "postgres" {
+			read = read.Clauses(clause.Locking{Strength: "UPDATE", Table: clause.Table{Name: "pa"}})
+		}
+		// Lifecycle guards prohibit disabling principals that retain full authority.
+		// Lock protected rows only: other principal mutexes precede the system fence.
+		err := read.Table(protected+" AS pa").
+			Select("pa.principal_id").Joins("JOIN "+tables.Principal.String()+" AS p ON p.id = pa.principal_id").
+			Where("p.status = ?", "active").Find(&rows).Error
+		return len(rows) > 0, err
 	}
 	count, err := query.CountDurableAdministrators(ctx, db, query.DurableAdministratorParams{
 		AuthorizationTables:     tables,

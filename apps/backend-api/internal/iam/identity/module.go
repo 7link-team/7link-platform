@@ -353,6 +353,7 @@ func (m *Module) Initialize(ctx context.Context) error {
 	m.Service.repo.credentials = m.credentials
 	m.Service.fields = m.fields
 	m.Service.avatarPermissions = m.avatarPermissions
+	m.Service.permissionRegistry = m.registrar.Registry()
 	m.Service.anonymizer = m.anonymizer
 	m.Service.erasureRecorder = m.erasureRecorder
 	m.Service.privacyBrowser, m.Service.reauthenticate = m.privacyBrowser, m.reauthenticate

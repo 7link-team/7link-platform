@@ -2,6 +2,8 @@ package identity
 
 import (
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authz"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -69,12 +71,23 @@ func TestSystemAccountWorkspacesReflectOnlyActiveTargetMemberships(t *testing.T)
 	for _, item := range items {
 		require.NotEqual(t, "system", item.ScopeType)
 	}
+	require.NoError(t, h.service.permissionRegistry.Register(authz.Action{Resource: "system_file", Verb: "view", Scope: "platform", Summary: "View system files"}))
+	h.service.avatarPermissions = systemFileWorkspaceChecker{}
+	items, err = h.service.AccountWorkspaces(t.Context(), account.ID)
+	require.NoError(t, err)
+	require.Contains(t, items, AccountWorkspace{ScopeType: "system", ScopeID: 1, Name: "System"})
 	require.NoError(t, h.db.Table(h.table("iam_tenant_members")).Where("principal_id = ? AND tenant_id = 9", account.ID).Update("status", "disabled").Error)
 	items, err = h.service.AccountWorkspaces(t.Context(), account.ID)
 	require.NoError(t, err)
 	for _, item := range items {
 		require.NotEqual(t, "platform", item.ScopeType)
 	}
+}
+
+type systemFileWorkspaceChecker struct{ identityRouteAuthorizer }
+
+func (systemFileWorkspaceChecker) CheckPlatform(_ context.Context, permission string, _ guid.ID) (bool, error) {
+	return permission == "system_file_view", nil
 }
 
 func TestSystemAccountHTTPUsesGlobalProfilesAndSystemAuthority(t *testing.T) {
@@ -120,4 +133,42 @@ func TestSystemAccountHTTPUsesGlobalProfilesAndSystemAuthority(t *testing.T) {
 	} {
 		require.Equal(t, http.StatusForbidden, response)
 	}
+}
+
+func TestGlobalAccountCategoriesOverlapAndPaginateBeforeProjection(t *testing.T) {
+	h := newIdentityHTTPHarnessWithPlatform(t, true, true)
+	require.NoError(t, h.db.Exec("ALTER TABLE sl_iam_tenants ADD COLUMN scope_kind TEXT NOT NULL DEFAULT 'tenant'").Error)
+	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_tenants (id, status, scope_kind) VALUES (9, 'active', 'platform'), (10, 'active', 'system')").Error)
+	a, err := h.service.Create(t.Context(), 7, "a.shared", testPassword, "Shared", "")
+	require.NoError(t, err)
+	b, err := h.service.CreateGlobal(t.Context(), "b.personal", testPassword, "Personal", "")
+	require.NoError(t, err)
+	for _, owner := range []guid.ID{9, 10} {
+		require.NoError(t, h.db.Table(h.table("iam_tenant_members")).Create(map[string]any{
+			"tenant_id": owner, "principal_id": a.ID, "display_name": "Shared", "email": "", "status": "disabled", "created_at": identityTestNow, "updated_at": identityTestNow,
+		}).Error)
+	}
+	require.NoError(t, h.db.Exec("CREATE TABLE sl_iam_platform_administrators (principal_id BIGINT PRIMARY KEY, created_at BIGINT NOT NULL)").Error)
+	require.NoError(t, h.db.Table(h.table("iam_platform_administrators")).Create(map[string]any{"principal_id": b.ID, "created_at": identityTestNow}).Error)
+	for _, category := range []string{"system", "platform", "tenant"} {
+		items, total, err := h.service.ListGlobalCategory(t.Context(), "", 1, 0, category, 0, "")
+		require.NoError(t, err)
+		require.Len(t, items, 1)
+		require.Equal(t, a.ID, items[0].ID)
+		if category == "system" {
+			require.EqualValues(t, 2, total)
+		} else {
+			require.EqualValues(t, 1, total)
+		}
+	}
+	items, total, err := h.service.ListGlobalCategory(t.Context(), "", 1, 1, "system", 0, "")
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total)
+	require.Equal(t, b.ID, items[0].ID)
+	items, total, err = h.service.ListGlobalCategory(t.Context(), "", 20, 0, "platform", 7, "")
+	require.NoError(t, err)
+	require.Zero(t, total)
+	require.Empty(t, items)
+	_, _, err = h.service.ListGlobalCategory(t.Context(), "", 20, 0, "system", 7, "")
+	require.ErrorIs(t, err, ErrInvalid)
 }

@@ -18,6 +18,15 @@ import {
 
 export type GrantedConsent = components["schemas"]["GrantedConsent"]
 export type FilePage = components["schemas"]["FilePage"]
+export interface SystemOwnerScope {
+  kind: "platform" | "tenant"
+  id: string
+  name: string
+}
+export type SystemAccountOwner = Omit<
+  components["schemas"]["APISystemAccountOwner"],
+  "id"
+> & { id: string }
 export type FileChildrenPage = components["schemas"]["FileChildrenPage"]
 export type FileEntryView = components["schemas"]["FileEntryView"]
 export type FileTrashResult = components["schemas"]["FileTrashResult"]
@@ -454,6 +463,11 @@ export interface Role {
   created_at: string
   updated_at: string
 }
+
+export type SystemRole = Role &
+  Pick<components["schemas"]["APISystemRole"], "builtin">
+export type SystemMember = Member &
+  Pick<components["schemas"]["APISystemMember"], "protected">
 
 export interface RolePermissionGrant {
   permission_code: string
@@ -1430,25 +1444,35 @@ export function createIamApi(
   }
   const requestEnvelope = <T>(route: ApiRoute) =>
     requestEnvelopeWithBase<T>(apiBase, route)
-  const fileOperationRoute = async (entityID: string | null | undefined) =>
-    entityID
-      ? apiRoute(
-          "post",
-          "/tenants/{tenant_id}/entities/{entity_id}/file-operations",
-          { path: { tenant_id: tenantID(), entity_id: entityID } }
-        )
-      : entityID === null
-        ? apiRoute("post", "/principals/{principal_id}/file-operations", {
-            path: { principal_id: await principalID() },
-          })
-        : apiRoute("post", "/tenants/{tenant_id}/file-operations", {
-            path: { tenant_id: tenantID() },
-          })
+  const fileOperationRoute = async (
+    entityID: string | null | undefined,
+    system = false
+  ) =>
+    system
+      ? apiRoute("post", "/system/file-operations")
+      : entityID
+        ? apiRoute(
+            "post",
+            "/tenants/{tenant_id}/entities/{entity_id}/file-operations",
+            { path: { tenant_id: tenantID(), entity_id: entityID } }
+          )
+        : entityID === null
+          ? apiRoute("post", "/principals/{principal_id}/file-operations", {
+              path: { principal_id: await principalID() },
+            })
+          : apiRoute("post", "/tenants/{tenant_id}/file-operations", {
+              path: { tenant_id: tenantID() },
+            })
   const fileCollectionRoute = async (
     entityID: string | null | undefined,
     method: "get" | "post",
-    query?: RouteQuery<"/principals/{principal_id}/files">
+    query?: RouteQuery<"/principals/{principal_id}/files">,
+    system = false
   ) => {
+    if (system)
+      return method === "post"
+        ? apiRoute("post", "/system/files")
+        : apiRoute("get", "/system/files", { query })
     if (method === "post")
       return entityID
         ? apiRoute("post", "/entities/{entity_id}/files", {
@@ -1501,10 +1525,297 @@ export function createIamApi(
     return items
   }
   return {
-    systemPrincipals: (search = "", offset = 0) =>
+    systemAccountOwners: async (
+      category: "platform" | "tenant"
+    ): Promise<SystemAccountOwner[]> => {
+      const owners = await requestAllPages<
+        components["schemas"]["APISystemAccountOwner"]
+      >(pagedRoute("/system/account-owners", { query: { category } }))
+      return owners.map((owner) => {
+        if (!owner.id) throw new Error("invalid_response")
+        return { ...owner, id: owner.id }
+      })
+    },
+    systemOwnerMembers: (scope: SystemOwnerScope) =>
+      requestAllPages<Member>(
+        scope.kind === "platform"
+          ? pagedRoute("/system/operating-platforms/{owner_id}/members", {
+              path: { owner_id: scope.id },
+            })
+          : pagedRoute("/system/tenants/{owner_id}/members", {
+              path: { owner_id: scope.id },
+            })
+      ),
+    systemOwnerMember: (scope: SystemOwnerScope, subject: string) =>
+      request<Member>(
+        scope.kind === "platform"
+          ? apiRoute(
+              "get",
+              "/system/operating-platforms/{owner_id}/members/{principal_id}",
+              { path: { owner_id: scope.id, principal_id: subject } }
+            )
+          : apiRoute(
+              "get",
+              "/system/tenants/{owner_id}/members/{principal_id}",
+              { path: { owner_id: scope.id, principal_id: subject } }
+            )
+      ),
+    createSystemOwnerMember: (
+      scope: SystemOwnerScope,
+      body: Pick<Member, "subject" | "display_name"> &
+        Partial<Pick<Member, "email" | "department_id" | "status">>
+    ) =>
+      request<Member>(
+        scope.kind === "platform"
+          ? apiRoute("post", "/system/operating-platforms/{owner_id}/members", {
+              path: { owner_id: scope.id },
+            })
+          : apiRoute("post", "/system/tenants/{owner_id}/members", {
+              path: { owner_id: scope.id },
+            }),
+        { body: JSON.stringify(body) }
+      ),
+    updateSystemOwnerMember: (
+      scope: SystemOwnerScope,
+      subject: string,
+      body: Partial<
+        Pick<Member, "display_name" | "email" | "department_id" | "status">
+      >
+    ) =>
+      request<Member>(
+        scope.kind === "platform"
+          ? apiRoute(
+              "patch",
+              "/system/operating-platforms/{owner_id}/members/{principal_id}",
+              { path: { owner_id: scope.id, principal_id: subject } }
+            )
+          : apiRoute(
+              "patch",
+              "/system/tenants/{owner_id}/members/{principal_id}",
+              { path: { owner_id: scope.id, principal_id: subject } }
+            ),
+        { body: JSON.stringify(body) }
+      ),
+    systemOwnerDepartments: (scope: SystemOwnerScope) =>
+      requestAllPages<Department>(
+        scope.kind === "platform"
+          ? pagedRoute(
+              "/system/operating-platforms/{platform_id}/departments",
+              { path: { platform_id: scope.id } }
+            )
+          : pagedRoute("/system/tenants/{tenant_id}/departments", {
+              path: { tenant_id: scope.id },
+            })
+      ),
+    systemOwnerRoles: (scope: SystemOwnerScope) =>
+      requestAllPages<Role>(
+        scope.kind === "platform"
+          ? pagedRoute("/system/operating-platforms/{owner_id}/roles", {
+              path: { owner_id: scope.id },
+            })
+          : pagedRoute("/system/tenants/{owner_id}/roles", {
+              path: { owner_id: scope.id },
+            })
+      ),
+    systemOwnerMemberRoles: (scope: SystemOwnerScope, subject: string) =>
+      requestAllPages<string>(
+        scope.kind === "platform"
+          ? pagedRoute(
+              "/system/operating-platforms/{owner_id}/members/{principal_id}/roles",
+              { path: { owner_id: scope.id, principal_id: subject } }
+            )
+          : pagedRoute(
+              "/system/tenants/{owner_id}/members/{principal_id}/roles",
+              { path: { owner_id: scope.id, principal_id: subject } }
+            )
+      ),
+    addSystemOwnerRoleMember: (
+      scope: SystemOwnerScope,
+      role: string,
+      subject: string
+    ) =>
+      request<unknown>(
+        scope.kind === "platform"
+          ? apiRoute(
+              "put",
+              "/system/operating-platforms/{owner_id}/roles/{role_id}/members/{principal_id}",
+              {
+                path: {
+                  owner_id: scope.id,
+                  role_id: role,
+                  principal_id: subject,
+                },
+              }
+            )
+          : apiRoute(
+              "put",
+              "/system/tenants/{owner_id}/roles/{role_id}/members/{principal_id}",
+              {
+                path: {
+                  owner_id: scope.id,
+                  role_id: role,
+                  principal_id: subject,
+                },
+              }
+            )
+      ),
+    removeSystemOwnerRoleMember: (
+      scope: SystemOwnerScope,
+      role: string,
+      subject: string
+    ) =>
+      request<unknown>(
+        scope.kind === "platform"
+          ? apiRoute(
+              "delete",
+              "/system/operating-platforms/{owner_id}/roles/{role_id}/members/{principal_id}",
+              {
+                path: {
+                  owner_id: scope.id,
+                  role_id: role,
+                  principal_id: subject,
+                },
+              }
+            )
+          : apiRoute(
+              "delete",
+              "/system/tenants/{owner_id}/roles/{role_id}/members/{principal_id}",
+              {
+                path: {
+                  owner_id: scope.id,
+                  role_id: role,
+                  principal_id: subject,
+                },
+              }
+            )
+      ),
+    systemPrincipals: (
+      search = "",
+      offset = 0,
+      filters: {
+        category?: "system" | "platform" | "tenant" | "user"
+        owner_id?: string
+        status?: "active" | "disabled"
+      } = {}
+    ) =>
       request<{ items: Principal[]; total: number }>(
         apiRoute("get", "/system/principals", {
-          query: { search, offset, limit: 50 },
+          query: { search, offset, limit: 50, ...filters },
+        })
+      ),
+    systemRoles: () => request<SystemRole[]>(apiRoute("get", "/system/roles")),
+    createSystemRole: (body: Pick<Role, "name" | "description">) =>
+      request<SystemRole>(apiRoute("post", "/system/roles"), {
+        body: JSON.stringify(body),
+      }),
+    updateSystemRole: (id: string, body: Pick<Role, "name" | "description">) =>
+      request<SystemRole>(
+        apiRoute("patch", "/system/roles/{role_id}", { path: { role_id: id } }),
+        { body: JSON.stringify(body) }
+      ),
+    deleteSystemRole: (id: string) =>
+      request<unknown>(
+        apiRoute("delete", "/system/roles/{role_id}", { path: { role_id: id } })
+      ),
+    systemRolePermissionCatalog: () =>
+      request<Permission[]>(apiRoute("get", "/system/role-permission-catalog")),
+    systemRolePermissionGrants: (id: string) =>
+      request<RolePermissionGrant[]>(
+        apiRoute("get", "/system/roles/{role_id}/permission-grants", {
+          path: { role_id: id },
+        })
+      ),
+    grantSystemRolePermission: (id: string, code: string) =>
+      request<unknown>(
+        apiRoute(
+          "put",
+          "/system/roles/{role_id}/permissions/{permission_code}",
+          { path: { role_id: id, permission_code: code } }
+        )
+      ),
+    revokeSystemRolePermission: (id: string, code: string) =>
+      request<unknown>(
+        apiRoute(
+          "delete",
+          "/system/roles/{role_id}/permissions/{permission_code}",
+          { path: { role_id: id, permission_code: code } }
+        )
+      ),
+    systemRoleMembers: (id: string) =>
+      request<string[]>(
+        apiRoute("get", "/system/roles/{role_id}/members", {
+          path: { role_id: id },
+        })
+      ),
+    addSystemRoleMember: (id: string, subject: string) =>
+      request<unknown>(
+        apiRoute("put", "/system/roles/{role_id}/members/{principal_id}", {
+          path: { role_id: id, principal_id: subject },
+        })
+      ),
+    removeSystemRoleMember: (id: string, subject: string) =>
+      request<unknown>(
+        apiRoute("delete", "/system/roles/{role_id}/members/{principal_id}", {
+          path: { role_id: id, principal_id: subject },
+        })
+      ),
+    systemDepartments: () =>
+      request<Department[]>(apiRoute("get", "/system/departments")),
+    createSystemDepartment: (body: Omit<DepartmentInput, "entity_id">) =>
+      request<Department>(apiRoute("post", "/system/departments"), {
+        body: JSON.stringify(body),
+      }),
+    updateSystemDepartment: (
+      id: string,
+      body: Partial<Omit<DepartmentInput, "entity_id">> & { version: number }
+    ) =>
+      request<Department>(
+        apiRoute("patch", "/system/departments/{department_id}", {
+          path: { department_id: id },
+        }),
+        { body: JSON.stringify(body) }
+      ),
+    deleteSystemDepartment: (id: string, version: number) =>
+      request<unknown>(
+        apiRoute("delete", "/system/departments/{department_id}", {
+          path: { department_id: id },
+          query: { version },
+        })
+      ),
+    systemMembers: () =>
+      request<SystemMember[]>(apiRoute("get", "/system/members")),
+    systemMember: (subject: string) =>
+      request<SystemMember>(
+        apiRoute("get", "/system/members/{principal_id}", {
+          path: { principal_id: subject },
+        })
+      ),
+    createSystemMember: (body: {
+      principal_id: string
+      display_name: string
+      email?: string
+      department_id?: string
+      status?: "active" | "disabled"
+    }) =>
+      request<SystemMember>(apiRoute("post", "/system/members"), {
+        body: JSON.stringify(body),
+      }),
+    updateSystemMember: (
+      subject: string,
+      body: Partial<
+        Pick<Member, "display_name" | "email" | "department_id" | "status">
+      >
+    ) =>
+      request<SystemMember>(
+        apiRoute("patch", "/system/members/{principal_id}", {
+          path: { principal_id: subject },
+        }),
+        { body: JSON.stringify(body) }
+      ),
+    systemMemberRoles: (subject: string) =>
+      request<string[]>(
+        apiRoute("get", "/system/members/{principal_id}/roles", {
+          path: { principal_id: subject },
         })
       ),
     systemPermissions: () =>
@@ -1632,21 +1943,40 @@ export function createIamApi(
           path: { platform_id: id },
         })
       ),
-    files: (entityID?: string | null, after = "") =>
+    files: (entityID?: string | null, after = "", system = false) =>
       request<FilePage>(
-        fileCollectionRoute(entityID, "get", {
-          limit: 100,
-          after: after || undefined,
-        })
+        fileCollectionRoute(
+          entityID,
+          "get",
+          {
+            limit: 100,
+            after: after || undefined,
+          },
+          system
+        )
       ),
-    trashedFiles: (entityID?: string | null, after = "") =>
+    trashedFiles: (entityID?: string | null, after = "", system = false) =>
       request<FilePage>(
-        fileCollectionRoute(entityID, "get", {
-          limit: 100,
-          state: "trashed",
-          after: after || undefined,
-        })
+        fileCollectionRoute(
+          entityID,
+          "get",
+          {
+            limit: 100,
+            state: "trashed",
+            after: after || undefined,
+          },
+          system
+        )
       ),
+    createSystemFileRoot: () => {
+      const body = new FormData()
+      body.set("kind", "directory")
+      body.set("scope", "system")
+      return request<FileEntryView>(
+        fileCollectionRoute(undefined, "post", undefined, true),
+        { body }
+      )
+    },
     createAccountFileRoot: () => {
       const body = new FormData()
       body.set("kind", "directory")
@@ -1667,28 +1997,36 @@ export function createIamApi(
     createDirectory: (
       entityID: string | null | undefined,
       parentID: string,
-      name: string
+      name: string,
+      system = false
     ) => {
       const body = new FormData()
       body.set("parent_id", parentID)
       body.set("kind", "directory")
       body.set("name", name)
-      return request<FileEntryView>(fileCollectionRoute(entityID, "post"), {
-        body,
-      })
+      return request<FileEntryView>(
+        fileCollectionRoute(entityID, "post", undefined, system),
+        {
+          body,
+        }
+      )
     },
     uploadFile: (
       entityID: string | null | undefined,
       parentID: string,
-      file: File
+      file: File,
+      system = false
     ) => {
       const body = new FormData()
       body.set("parent_id", parentID)
       body.set("kind", "file")
       body.set("file", file)
-      return request<FileEntryView>(fileCollectionRoute(entityID, "post"), {
-        body,
-      })
+      return request<FileEntryView>(
+        fileCollectionRoute(entityID, "post", undefined, system),
+        {
+          body,
+        }
+      )
     },
     fileByPath: (
       _entityID: string | null | undefined,
@@ -1761,9 +2099,10 @@ export function createIamApi(
     createFileOperation: (
       entityID: string | null | undefined,
       input: FileOperationInput,
-      idempotencyKey: string = crypto.randomUUID()
+      idempotencyKey: string = crypto.randomUUID(),
+      system = false
     ) =>
-      request<FileOperationResult>(fileOperationRoute(entityID), {
+      request<FileOperationResult>(fileOperationRoute(entityID, system), {
         headers: {
           "Idempotency-Key": idempotencyKey,
         },

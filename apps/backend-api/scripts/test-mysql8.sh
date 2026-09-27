@@ -106,6 +106,11 @@ IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_ho
 IAM_LIFECYCLE_TABLE_PREFIX=av_mysql_ \
   run_named_tests go test ./internal/integration/iam -run '^TestAccountViewExternalDatabase$' -count=1 -v
 
+IAM_LIFECYCLE_DATABASE_TYPE=mysql \
+IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
+IAM_LIFECYCLE_TABLE_PREFIX=grant_mysql_ \
+  run_named_tests go test ./internal/integration/iam -run '^TestGrantabilityExternalDatabase$' -count=1 -v
+
 MYSQL8_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
 MYSQL8_EXPECTED_SQL_MODE="${mysql_sql_mode}" \
   run_named_tests go -C tests test ./migration -run '^(TestIAMMigrationsOnRealMySQL8|TestIAMPrincipalErasureOwnerMigrations|TestIAMDefaultMenuTranslationUpgrade|TestIAMPersonalTokenMigrations|TestIAMPositionRetirementUpgrade)$' -count=1 -v

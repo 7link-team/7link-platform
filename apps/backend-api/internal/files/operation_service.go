@@ -28,6 +28,7 @@ type operationService struct {
 	ids            guid.Source
 	policy         core.EntityConstraintOn
 	tenantPolicy   core.TenantConstraintOn
+	systemPolicy   core.PlatformPermissionOn
 	subjects       core.AuthorizationSubjectsOn
 	references     core.AuthorizationReferencesOn
 	appender       audit.Appender
@@ -78,7 +79,8 @@ func (s *operationService) run(ctx context.Context, key string, input immediateO
 		if err != nil {
 			return err
 		}
-		if (claims.TenantID == 0 && (space.ScopeKind != spaceAccount || space.PrincipalID == nil || *space.PrincipalID != claims.PrincipalID)) ||
+		if (authorizer.system != nil && space.ScopeKind != spaceSystem) ||
+			(authorizer.system == nil && claims.TenantID == 0 && (space.ScopeKind != spaceAccount || space.PrincipalID == nil || *space.PrincipalID != claims.PrincipalID)) ||
 			(claims.TenantID > 0 && (space.ScopeKind != spaceTenant || space.TenantID == nil || *space.TenantID != claims.TenantID)) {
 			// A caller must not be able to distinguish an absent destination
 			// from an active node owned by another account or tenant.
@@ -114,6 +116,19 @@ func (s *operationService) run(ctx context.Context, key string, input immediateO
 func (s *operationService) authorize(ctx context.Context, tx *gorm.DB, claims *authn.Claims, tree directoryTree) (*nodeAuthorizer, error) {
 	if s == nil || tx == nil || claims == nil || claims.PrincipalID <= 0 {
 		return nil, errOperationUnavailable
+	}
+	if systemFileScope(ctx) {
+		if claims.TenantID != 0 || claims.EntityID != 0 || s.systemPolicy == nil {
+			return nil, errOperationForbidden
+		}
+		allowed, err := s.systemPolicy(ctx, tx, "system_file_view", claims.PrincipalID)
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			return nil, errOperationForbidden
+		}
+		return &nodeAuthorizer{tree: tree, system: s.systemPolicy, actorID: claims.PrincipalID, acl: map[aclSubject]struct{}{{kind: "principal", id: claims.PrincipalID}: {}}}, nil
 	}
 	if claims.TenantID == 0 && claims.EntityID == 0 {
 		return newAccountNodeAuthorizer(tree, claims.PrincipalID)

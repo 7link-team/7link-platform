@@ -28,6 +28,9 @@ import (
 )
 
 const fileRouteManifest = `
+list-system-files|GET|/system/files
+create-system-file|POST|/system/files
+create-system-file-operation|POST|/system/file-operations
 create-file-operation-self|POST|/principals/{principal_id}/file-operations
 create-file-operation-tenant|POST|/tenants/{tenant_id}/file-operations
 create-file-operation|POST|/tenants/{tenant_id}/entities/{entity_id}/file-operations
@@ -81,8 +84,15 @@ func TestFileHTTPContract(t *testing.T) {
 			// File routes are served under five different owners, so deriving
 			// the section from the path scattered one module across five of
 			// them. The module publishes one section.
-			require.Equal(t, []string{"files"}, operation.Tags)
-			if operation.OperationID == "list-entity-files" {
+			if strings.HasPrefix(path, "/system/") {
+				require.Equal(t, []string{"system"}, operation.Tags)
+				require.True(t, authz.IsPlatformOperation(operation))
+			} else {
+				require.Equal(t, []string{"files"}, operation.Tags)
+			}
+			if strings.HasPrefix(path, "/system/") {
+				require.Contains(t, operation.Extensions[authz.GuardExtensionKey], "system_file_")
+			} else if operation.OperationID == "list-entity-files" {
 				require.True(t, authz.IsTenantMemberOperation(operation))
 				require.True(t, authz.IsOwnedResourceOperation(operation))
 			} else if strings.HasPrefix(path, "/principals/{principal_id}/") {
@@ -245,6 +255,8 @@ func newFileHTTPAPI(t *testing.T, service *operationService, selected ...guid.ID
 			return authz.ResourceOwner{}, false, err
 		}
 		switch resolved.Scope {
+		case "system":
+			return authz.ResourceOwner{ScopeType: "system"}, true, nil
 		case "account":
 			return authz.ResourceOwner{PrincipalID: resolved.ID}, true, nil
 		case "tenant":

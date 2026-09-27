@@ -246,12 +246,13 @@ func TestRepositoryPropagatesPolicyTableFailures(t *testing.T) {
 		assert.Error(t, err)
 	})
 
-	t.Run("platform grants", func(t *testing.T) {
+	t.Run("system role assignments", func(t *testing.T) {
 		harness := newRepositoryHarness(t, "sl_")
+		seedSystemAccessFixture(t, harness.db, "sl_")
 		seedTenantAndPrincipal(t, harness.db, "sl_", 1, 11)
 		_, err := harness.repository.SetPlatformAdministrator(t.Context(), 11, true, nil)
 		require.NoError(t, err)
-		require.NoError(t, harness.db.Exec("DROP TABLE sl_iam_platform_grants").Error)
+		require.NoError(t, harness.db.Exec("DROP TABLE sl_iam_role_members").Error)
 		_, err = harness.repository.ListPlatformAdministrators(t.Context())
 		assert.Error(t, err)
 		_, err = harness.repository.SetPlatformAdministrator(t.Context(), 11, true, nil)

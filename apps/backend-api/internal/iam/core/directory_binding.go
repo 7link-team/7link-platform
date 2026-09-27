@@ -191,11 +191,6 @@ func (s *Service) changeDirectoryBinding(
 	if err := validateDirectoryBindingRef(tenantID, roleID, assigneeType, assigneeID); err != nil {
 		return false, err
 	}
-	if add {
-		if err := s.requireGrantableRole(ctx, tenantID, roleID); err != nil {
-			return false, err
-		}
-	}
 	eventType := "role_directory_binding_removed"
 	if add {
 		eventType = "role_directory_binding_added"
@@ -205,6 +200,18 @@ func (s *Service) changeDirectoryBinding(
 	record.Detail["assignee_id"] = assigneeID
 	var changed bool
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
+		kind, kindErr := repo.rootKind(ctx, tenantID)
+		if kindErr != nil {
+			return kindErr
+		}
+		if kind == "system" {
+			return ErrPrivilegeEscalation
+		}
+		if add {
+			if err := s.requireGrantableRoleWithRepository(ctx, repo, tenantID, roleID); err != nil {
+				return err
+			}
+		}
 		var verify func() error
 		var err error
 		if !add {

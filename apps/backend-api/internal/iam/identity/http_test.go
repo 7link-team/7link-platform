@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"7link.com/platform/internal/iam/core"
 	identityi18n "7link.com/platform/internal/iam/identity/i18n"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -523,6 +524,7 @@ func TestIdentityErrorMapsEveryDomainSentinelOnce(t *testing.T) {
 		{ErrServiceAccountConflict, http.StatusConflict, identityi18n.ServiceAccountVersionConflict},
 		{ErrCredentialLimit, http.StatusConflict, identityi18n.ServiceAccountCredentialLimit},
 		{ErrPrincipalInactive, http.StatusConflict, identityi18n.InvalidPrincipal},
+		{core.ErrPrincipalHasPlatformAccess, http.StatusConflict, identityi18n.PlatformAccessBlocksClosure},
 		{ErrServiceAccountInvalid, http.StatusUnprocessableEntity, identityi18n.InvalidServiceAccount},
 		{ErrInvalid, http.StatusUnprocessableEntity, identityi18n.InvalidPrincipal},
 		{errRepositoryUnavailable, http.StatusInternalServerError, identityi18n.IdentityUnavailable},

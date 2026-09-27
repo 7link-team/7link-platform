@@ -303,7 +303,7 @@ func (r *Repository) insertDepartment(ctx context.Context, row *departmentRow) e
 	if err != nil {
 		return err
 	}
-	if kind == ScopePlatform {
+	if kind == ScopePlatform || kind == ScopeSystem {
 		if row.EntityID != nil {
 			return ErrEntityMismatch
 		}

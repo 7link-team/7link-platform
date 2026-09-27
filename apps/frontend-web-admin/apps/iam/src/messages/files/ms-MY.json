@@ -1,4 +1,7 @@
 {
+  "rootScopeSystem": "Sistem",
+  "rootNameSystem": "Fail dikongsi sistem",
+  "createSystemRoot": "Cipta fail dikongsi sistem",
   "emptyRecycleBin": "Tong kitar semula kosong",
   "rootScopePersonal": "Peribadi",
   "rootScopeAccount": "Akaun",

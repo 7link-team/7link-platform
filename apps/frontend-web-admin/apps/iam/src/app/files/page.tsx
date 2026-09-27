@@ -3,6 +3,7 @@ import { useOutletContext, useSearchParams } from "react-router"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
 import { getAccountView } from "../../lib/account-view"
+import { useAllowed } from "../../lib/permissions"
 import {
   Dialog,
   DialogContent,
@@ -76,24 +77,42 @@ function actionMessage(cause: unknown): string {
   return clientErrorMessage("invalid_response")
 }
 
-export default function FilesPage({ account = false }: { account?: boolean }) {
+export function SystemFilesPage() {
+  return <FilesPage system />
+}
+
+export default function FilesPage({
+  account = false,
+  system = false,
+}: {
+  account?: boolean
+  system?: boolean
+}) {
   const tf = useTranslations("files")
+  const allowed = useAllowed()
+  const writable = getAccountView()?.mode !== "read_only"
   const outlet = useOutletContext<{
     tenantID: string
     tenantName?: string
     entityID: string
     entityNames?: Record<string, string>
+    permissions?: ReadonlySet<string> | null
   } | null>()
-  const tenantID = account ? "" : (outlet?.tenantID ?? "")
-  const tenantName = account ? "" : (outlet?.tenantName ?? "")
-  const entityID = account ? "" : (outlet?.entityID ?? "")
-  const entityNames = account ? undefined : outlet?.entityNames
+  const fileAllowed = (verb: string) =>
+    !system ||
+    (["read", "download", "list", "traverse"].includes(verb)
+      ? outlet?.permissions?.has(`system_file_${verb}`) === true
+      : allowed(`system_file_${verb}`))
+  const tenantID = account || system ? "" : (outlet?.tenantID ?? "")
+  const tenantName = account || system ? "" : (outlet?.tenantName ?? "")
+  const entityID = account || system ? "" : (outlet?.entityID ?? "")
+  const entityNames = account || system ? undefined : outlet?.entityNames
   const fileEntityID = account ? null : entityID || undefined
   const [searchParams, setSearchParams] = useSearchParams()
   const [state, setState] = useState<BrowserState>(emptyState)
   const [recycleBin, setRecycleBin] = useState(false)
   const [locationScope, setLocationScope] = useState(
-    account ? "account" : `${tenantID}:${entityID}`
+    system ? "system" : account ? "account" : `${tenantID}:${entityID}`
   )
   const currentNodeID = useRef<string | null>(null)
   const [recycleReturn, setRecycleReturn] = useState<{
@@ -117,7 +136,11 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
     identity: string
     idempotencyKey: string
   } | null>(null)
-  const scopeKey = account ? "account" : `${tenantID}:${entityID}`
+  const scopeKey = system
+    ? "system"
+    : account
+      ? "account"
+      : `${tenantID}:${entityID}`
   const queryID = /^[1-9][0-9]{0,18}$/u
   const requestedDirectoryID = searchParams.get("directory")
   const requestedPreviewID = searchParams.get("preview")
@@ -147,7 +170,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
     reload,
   ].join(":")
   const visibleState: BrowserState =
-    !account && !tenantID
+    !account && !system && !tenantID
       ? { ...emptyState, status: "selectEntity" }
       : state.requestKey === requestKey
         ? state
@@ -160,19 +183,20 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
   useEffect(() => {
     const request = ++generation.current
     let active = true
-    if (!account && !tenantID) return
+    if (!account && !system && !tenantID) return
     void iamApi
-      .files(fileEntityID)
+      .files(fileEntityID, "", system)
       .then(async (rootPage) => {
-        const departmentIDs = account
-          ? []
-          : [
-              ...new Set(
-                (rootPage.items ?? []).flatMap((root) =>
-                  root.department_id ? [root.department_id] : []
-                )
-              ),
-            ]
+        const departmentIDs =
+          account || system
+            ? []
+            : [
+                ...new Set(
+                  (rootPage.items ?? []).flatMap((root) =>
+                    root.department_id ? [root.department_id] : []
+                  )
+                ),
+              ]
         const departments = (
           await Promise.all(
             departmentIDs.map((id) => iamApi.department(id).catch(() => null))
@@ -187,7 +211,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
         })
         if (recycleBin) {
           const trash = fileBrowserEntries(
-            await iamApi.trashedFiles(fileEntityID, pageAfter)
+            await iamApi.trashedFiles(fileEntityID, pageAfter, system)
           )
           if (!active || request !== generation.current) return
           currentNodeID.current = null
@@ -234,6 +258,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
     }
   }, [
     account,
+    system,
     tenantID,
     tenantName,
     entityID,
@@ -384,7 +409,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
     try {
       const result = await executeFileOperation(
         (request, key) =>
-          iamApi.createFileOperation(fileEntityID, request, key),
+          iamApi.createFileOperation(fileEntityID, request, key, system),
         input,
         idempotencyKey
       )
@@ -442,17 +467,21 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
             { replace: true }
           )
         }
-        onOpenNewTab={(node) => {
-          if (node.kind === "directory") {
-            const target = new URL(window.location.href)
-            target.searchParams.delete("preview")
-            target.searchParams.set("directory", node.id)
-            target.searchParams.delete("after")
-            window.open(target, "_blank", "noopener,noreferrer")
-            return
-          }
-          openFileInNewTab(node)
-        }}
+        onOpenNewTab={
+          fileAllowed("read")
+            ? (node) => {
+                if (node.kind === "directory") {
+                  const target = new URL(window.location.href)
+                  target.searchParams.delete("preview")
+                  target.searchParams.set("directory", node.id)
+                  target.searchParams.delete("after")
+                  window.open(target, "_blank", "noopener,noreferrer")
+                  return
+                }
+                openFileInNewTab(node)
+              }
+            : undefined
+        }
         recycleBin={recycleBin}
         onOpenRecycleBin={
           visibleState.status === "ready"
@@ -503,7 +532,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
         }
         onRefresh={refresh}
         onEnsurePersonalRoot={
-          !recycleBin && account
+          !recycleBin && account && writable
             ? () =>
                 run(async () => {
                   const root = await iamApi.createAccountFileRoot()
@@ -514,19 +543,31 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
                 })
             : undefined
         }
+        onEnsureSystemRoot={
+          !recycleBin && system && writable && allowed("system_file_create")
+            ? () =>
+                run(async () => {
+                  const root = await iamApi.createSystemFileRoot()
+                  if (!root.id) throw new Error("invalid_response")
+                  setLocationScope(scopeKey)
+                  setDirectoryLocation(root.id)
+                  refresh()
+                })
+            : undefined
+        }
         onCreateDirectory={
-          !recycleBin
+          !recycleBin && writable && fileAllowed("create")
             ? (name) =>
                 run(async () => {
                   const id = parentID()
                   if (!id) throw new Error("invalid_response")
-                  await iamApi.createDirectory(fileEntityID, id, name)
+                  await iamApi.createDirectory(fileEntityID, id, name, system)
                   refresh()
                 })
             : undefined
         }
         onCreateFile={
-          !recycleBin
+          !recycleBin && writable && fileAllowed("create")
             ? (name, mimeType) =>
                 run(async () => {
                   const id = parentID()
@@ -534,14 +575,15 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
                   await iamApi.uploadFile(
                     fileEntityID,
                     id,
-                    new File([], name, { type: mimeType })
+                    new File([], name, { type: mimeType }),
+                    system
                   )
                   refresh()
                 })
             : undefined
         }
         onUploadEntries={
-          !recycleBin
+          !recycleBin && writable && fileAllowed("create")
             ? (entries) =>
                 run(async () => {
                   const id = parentID()
@@ -554,13 +596,19 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
                         const directory = await iamApi.createDirectory(
                           fileEntityID,
                           targetID,
-                          name
+                          name,
+                          system
                         )
                         if (!directory.id) throw new Error("invalid_response")
                         return directory.id
                       },
                       async (targetID, file) => {
-                        await iamApi.uploadFile(fileEntityID, targetID, file)
+                        await iamApi.uploadFile(
+                          fileEntityID,
+                          targetID,
+                          file,
+                          system
+                        )
                       }
                     )
                   } finally {
@@ -570,16 +618,16 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
             : undefined
         }
         onDownload={
-          !recycleBin
+          !recycleBin && fileAllowed("download")
             ? (node) =>
                 run(async () => {
                   await download(node)
                 })
             : undefined
         }
-        onPreview={!recycleBin ? preview : undefined}
+        onPreview={!recycleBin && fileAllowed("read") ? preview : undefined}
         onDownloadSelected={
-          !recycleBin
+          !recycleBin && fileAllowed("download")
             ? (nodes) =>
                 run(async () => {
                   for (const node of nodes) await download(node)
@@ -587,7 +635,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
             : undefined
         }
         onRename={
-          !recycleBin
+          !recycleBin && writable && fileAllowed("rename")
             ? (node, name) =>
                 run(async () => {
                   await iamApi.renameFileEntry(
@@ -601,7 +649,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
             : undefined
         }
         onTrash={
-          !recycleBin
+          !recycleBin && writable && fileAllowed("delete")
             ? (node) =>
                 run(async () => {
                   await iamApi.trashFileEntry(
@@ -614,7 +662,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
             : undefined
         }
         onTrashSelected={
-          !recycleBin
+          !recycleBin && writable && fileAllowed("delete")
             ? (nodes) =>
                 run(async () => {
                   try {
@@ -630,16 +678,27 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
                 })
             : undefined
         }
-        onRestore={recycleBin ? restore : undefined}
+        onRestore={
+          recycleBin && writable && fileAllowed("restore") ? restore : undefined
+        }
         onCopy={
-          !recycleBin ? (nodes) => setFileClipboard("copy", nodes) : undefined
+          !recycleBin &&
+          writable &&
+          fileAllowed("read") &&
+          fileAllowed("create")
+            ? (nodes) => setFileClipboard("copy", nodes)
+            : undefined
         }
         onCut={
-          !recycleBin ? (nodes) => setFileClipboard("move", nodes) : undefined
+          !recycleBin && writable && fileAllowed("move")
+            ? (nodes) => setFileClipboard("move", nodes)
+            : undefined
         }
         onPaste={
           !recycleBin &&
+          writable &&
           clipboard?.scopeKey === scopeKey &&
+          fileAllowed(clipboard.action === "move" ? "move" : "create") &&
           !(
             clipboard.action === "move" &&
             clipboard.sourceParentID === currentDirectoryID
@@ -657,7 +716,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
             : undefined
         }
         onMoveTo={
-          !recycleBin
+          !recycleBin && writable && fileAllowed("move")
             ? (nodes, destination) => {
                 if (!nodes.length || destination.kind !== "directory")
                   return Promise.resolve(false)

@@ -3,6 +3,7 @@ package authz_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -255,6 +256,38 @@ func TestOwnedResourcePublishesResolvedBoundary(t *testing.T) {
 				require.Len(t, checker.entityCalls, 1)
 				assert.Equal(t, guid.ID(21), checker.entityCalls[0].entityID)
 			}
+		})
+	}
+}
+
+func TestSystemOwnedResourceUsesGlobalPermissionAndVerifiedScope(t *testing.T) {
+	for _, allowed := range []bool{true, false} {
+		t.Run(fmt.Sprint(allowed), func(t *testing.T) {
+			_, api := humatest.New(t)
+			registry := testRegistry()
+			require.NoError(t, registry.Register(authz.Action{Code: "system_store_view", Resource: "system_store", Verb: "view", Scope: "platform"}))
+			checker := &fakeChecker{allowed: allowed}
+			registrar := authz.NewRegistrar(registry, validVerifier(), checker, &fakeMembership{})
+			called := false
+			authz.RegisterOwned(registrar, api, huma.Operation{OperationID: "system-owned", Method: http.MethodGet, Path: "/stores/{store_id}", Tags: []string{"stores"}}, "store_id", func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+				return authz.ResourceOwner{ScopeType: "system"}, true, nil
+			}, authz.Guard{Resource: "store", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+				called = true
+				require.Equal(t, "system", authz.ResolvedResourceOwner(ctx).ScopeType)
+				claims, _ := authn.FromContext(ctx)
+				require.Zero(t, claims.TenantID)
+				require.Zero(t, claims.EntityID)
+				return &routeOutput{Body: "ok"}, nil
+			})
+			response := api.Get("/stores/41")
+			if allowed {
+				require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			} else {
+				require.Equal(t, http.StatusForbidden, response.Code)
+			}
+			require.Equal(t, allowed, called)
+			require.Empty(t, checker.tenantCalls)
+			require.Empty(t, checker.entityCalls)
 		})
 	}
 }

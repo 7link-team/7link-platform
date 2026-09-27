@@ -3,6 +3,17 @@ export interface MembershipDates {
   ends_at?: string
 }
 
+export function systemRoleLabel(
+  role: { name: string; builtin?: boolean },
+  fullAdministrator: string,
+  importedPermissions: string
+): string {
+  if (role.builtin) return fullAdministrator
+  return /^__system_legacy_[1-9][0-9]*$/u.test(role.name)
+    ? importedPermissions
+    : role.name
+}
+
 export function membershipState(
   member: MembershipDates,
   now = Date.now()

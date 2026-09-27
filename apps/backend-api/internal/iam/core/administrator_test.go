@@ -101,6 +101,7 @@ func TestRoleGrantStoreRollsBackLastDirectoryAdministratorRemoval(t *testing.T) 
 
 func TestPlatformAdministratorRepositoryPreservesLastFullAdministrator(t *testing.T) {
 	harness := newRepositoryHarness(t, "sl_")
+	seedSystemAccessFixture(t, harness.db, "sl_", 11, 22, 33)
 	repository := harness.repository
 	first, err := repository.SetPlatformAdministrator(t.Context(), 11, true, nil)
 	require.NoError(t, err)
@@ -131,6 +132,7 @@ func TestPlatformAdministratorRepositoryPreservesLastFullAdministrator(t *testin
 
 func TestConcurrentPlatformAdministratorDeletesSerializeBeforeLastAdministratorCheck(t *testing.T) {
 	harness := newRepositoryHarness(t, "sl_")
+	seedSystemAccessFixture(t, harness.db, "sl_", 11, 22)
 	repository := harness.repository
 	_, err := repository.SetPlatformAdministrator(t.Context(), 11, true, nil)
 	require.NoError(t, err)

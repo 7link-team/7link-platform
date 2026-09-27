@@ -15,7 +15,7 @@ export type FileBrowserNode = {
 
 export type FileBrowserLocation = { id: string; name: string }
 export type FileBrowserRootScope =
-  "account" | "personal" | "tenant" | "entity" | "department"
+  "account" | "personal" | "tenant" | "entity" | "department" | "system"
 export type FileBrowserRoot = FileBrowserLocation & {
   scope: FileBrowserRootScope
   ownerID: string
@@ -514,6 +514,10 @@ export function fileBrowserRoots(
       throw new Error("invalid_response")
     let ownerID: string | undefined
     switch (item.scope) {
+      case "system":
+        if (identifiers.length) throw new Error("invalid_response")
+        ownerID = item.id
+        break
       case "account":
         if (item.tenant_id || item.entity_id || item.department_id)
           throw new Error("invalid_response")

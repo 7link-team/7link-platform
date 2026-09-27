@@ -30,6 +30,9 @@ func fileAuthorizationActions() []authz.Action {
 	for index := range actions {
 		actions[index].Code = authz.PermissionCode(actions[index].Resource, actions[index].Verb)
 	}
+	for _, verb := range []string{"view", "list", "traverse", "read", "download", "create", "update", "rename", "move", "delete", "restore", "purge", "share", "manage_acl"} {
+		actions = append(actions, authz.Action{Code: "system_file_" + verb, Resource: "system_file", Verb: verb, Scope: "platform", Summary: verb + " system shared files", Menu: verb == "view"})
+	}
 	return actions
 }
 
@@ -151,6 +154,7 @@ func evaluateNodeACL(action string, subjects map[aclSubject]struct{}, layers []n
 
 type nodeAuthorizer struct {
 	tree         directoryTree
+	system       core.PlatformPermissionOn
 	account      bool
 	policy       core.EntityConstraintOn
 	tenantPolicy core.TenantConstraintOn
@@ -247,7 +251,7 @@ func (a *nodeAuthorizer) accessMany(
 		return nil, errOperationForbidden
 	}
 	var constraint, management authz.DataConstraint
-	if !a.account {
+	if !a.account && a.system == nil {
 		var err error
 		constraint, err = a.constraint(ctx, tx, filePermissionPrefix+action)
 		if err != nil {
@@ -297,6 +301,34 @@ func (a *nodeAuthorizer) authorizeLoaded(
 ) (bool, error) {
 	if permissions.managementMode != "user" {
 		return false, errOperationForbidden
+	}
+	if a.system != nil {
+		if permissions.space.ScopeKind != spaceSystem || permissions.space.SystemSlot == nil || *permissions.space.SystemSlot != 1 || permissions.space.TenantID != nil || permissions.space.PrincipalID != nil || permissions.root.scope != ownerSystem {
+			return false, errOperationForbidden
+		}
+		allowed, err := a.system(ctx, tx, "system_file_"+action, a.actorID)
+		if err != nil || !allowed {
+			return false, err
+		}
+		layers := append([]nodeACLLayer(nil), permissions.layers...)
+		if len(layers) == 0 {
+			return false, errFileACL
+		}
+		layers[0].rules = append([]nodeACLRule{{subject: aclSubject{kind: "principal", id: a.actorID}, effect: "allow", actions: []string{action}, applies: "self_and_descendants"}}, layers[0].rules...)
+		subjects := make(map[aclSubject]struct{}, len(a.acl))
+		for subject := range a.acl {
+			subjects[subject] = struct{}{}
+		}
+		// System ACLs resolve principals only. An unresolved deny must still be enforced.
+		for _, layer := range layers {
+			for _, rule := range layer.rules {
+				if rule.effect == "deny" && rule.subject.kind != "principal" {
+					subjects[rule.subject] = struct{}{}
+				}
+			}
+		}
+		decision, err := evaluateNodeACL(action, subjects, layers)
+		return decision.allowed, err
 	}
 	if a.account {
 		if permissions.space.ScopeKind != spaceAccount || permissions.space.PrincipalID == nil ||

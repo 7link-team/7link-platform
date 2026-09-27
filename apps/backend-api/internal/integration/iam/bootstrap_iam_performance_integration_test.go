@@ -722,6 +722,13 @@ func iamPerformancePlanError(databaseType string, plan iamPerformancePlan) error
 		if scope == "" {
 			continue
 		}
+		// Tenant slugs have a global UNIQUE constraint on every supported engine.
+		// Small root tables may still use a sequential scan for this single-row lookup.
+		if strings.TrimPrefix(strings.ToLower(scan.table), "sl_") == "iam_tenants" &&
+			!regexp.MustCompile(`(?i)\b(?:or|not)\b`).MatchString(scan.condition) &&
+			regexp.MustCompile("(?i)(?:^|\\bAND\\s+)[\\s(]*(?:[\"`]?[a-z_][a-z0-9_]*[\"`]?\\.)?[\"`]?slug[\"`]?(?:\\)|::text)*\\s*=\\s*'[^']*'").MatchString(scan.condition) {
+			continue
+		}
 		if !regexp.MustCompile(`\b` + regexp.QuoteMeta(scope) + `\b`).MatchString(strings.ToLower(scan.condition)) {
 			return fmt.Errorf("unscoped full scan of %s in %s", scan.table, plan.Path)
 		}
@@ -730,6 +737,37 @@ func iamPerformancePlanError(databaseType string, plan iamPerformancePlan) error
 		}
 	}
 	return nil
+}
+
+func TestIAMPerformancePlanAllowsOnlyUniqueTenantSlugEquality(t *testing.T) {
+	for _, tc := range []struct {
+		filter  string
+		allowed bool
+	}{
+		{`((slug)::text = '__system__'::text)`, true},
+		{`tenant.slug = '__system__'`, true},
+		{`(status = 'active')`, false},
+		{`(slug ~~ '%system%')`, false},
+		{`(slug <> '__system__')`, false},
+		{`(slug = other_slug)`, false},
+		{`(display_slug = '__system__')`, false},
+		{`(slug = '__system__' OR status = 'active')`, false},
+		{`NOT (slug = '__system__')`, false},
+		{`lower(slug) = '__system__'`, false},
+		{`slug::citext = '__system__'`, false},
+	} {
+		encoded, err := json.Marshal([]any{map[string]any{"Plan": map[string]any{"Node Type": "Seq Scan", "Relation Name": "iam_tenants", "Filter": tc.filter}}})
+		require.NoError(t, err)
+		err = iamPerformancePlanError("postgres", iamPerformancePlan{Path: "authorization", SQLTemplate: "SELECT id FROM iam_tenants", Plan: encoded})
+		if tc.allowed {
+			require.NoError(t, err, tc.filter)
+		} else {
+			require.ErrorContains(t, err, "unscoped full scan", tc.filter)
+		}
+	}
+	encoded, err := json.Marshal([]any{map[string]any{"Plan": map[string]any{"Node Type": "Seq Scan", "Relation Name": "iam_role_permissions", "Filter": `slug = '__system__'`}}})
+	require.NoError(t, err)
+	require.ErrorContains(t, iamPerformancePlanError("postgres", iamPerformancePlan{Path: "authorization", SQLTemplate: "SELECT * FROM iam_role_permissions", Plan: encoded}), "unscoped full scan")
 }
 
 func iamPerformanceRequiresIndex(path, table string) bool {

@@ -328,6 +328,18 @@ func normalizeTenantBootstrap(input TenantBootstrapInput) (TenantBootstrapInput,
 // than assuming the repository has arrived.
 func (m *Module) tenantBootstrapper() TenantBootstrapper {
 	return TenantBootstrapper{
+		SystemPermissionOn: func(ctx context.Context, db *gorm.DB, code string, subject guid.ID) (bool, error) {
+			if m == nil || m.service == nil {
+				return false, ErrUnavailable
+			}
+			return m.service.CheckPlatformOn(ctx, db, code, subject)
+		},
+		UpgradeSystem: func(ctx context.Context, db *gorm.DB, ownerID guid.ID, now time.Time) error {
+			if m == nil || m.repository == nil || db == nil || ownerID.Zero() {
+				return ErrUnavailable
+			}
+			return m.repository.withDB(db).bootstrapSystemAccess(ctx, ownerID, now, m.service.registry, m.appender)
+		},
 		SeedSystemMenus: func(ctx context.Context, db *gorm.DB, ownerID guid.ID, now time.Time) error {
 			if m == nil || m.repository == nil || db == nil || ownerID.Zero() {
 				return ErrUnavailable

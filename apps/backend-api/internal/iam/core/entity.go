@@ -472,16 +472,16 @@ func (s *Service) PutEntityRoleBinding(
 	if err := validateEntityBinding(tenantID, entityID, roleID, principalID, effect, expiresAt); err != nil {
 		return EntityRoleBinding{}, false, err
 	}
-	if effect == BindingAllow {
-		if err := s.requireGrantableRole(ctx, tenantID, roleID); err != nil {
-			return EntityRoleBinding{}, false, err
-		}
-	}
 	record := newAuditRecord(ctx, tenantID, "entity_role_binding_put", "entity", entityID)
 	record.Detail["role_id"], record.Detail["principal_id"], record.Detail["effect"] = roleID, principalID, effect
 	var binding EntityRoleBinding
 	var changed bool
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
+		if effect == BindingAllow {
+			if err := s.requireGrantableRoleWithRepository(ctx, repo, tenantID, roleID); err != nil {
+				return err
+			}
+		}
 		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
 			return err
 		}
@@ -523,6 +523,9 @@ func (s *Service) DeleteEntityRoleBinding(
 	var changed bool
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
 		if _, err := repo.GetEntity(ctx, tenantID, entityID); err != nil {
+			return err
+		}
+		if err := s.requireGrantablePermissionsOn(ctx, repo, tenantID); err != nil {
 			return err
 		}
 		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {

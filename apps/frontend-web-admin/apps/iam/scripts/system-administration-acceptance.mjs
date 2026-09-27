@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
+import { systemWorkspaceAcceptance } from "./system-workspace-acceptance.mjs"
 
 export async function systemAdministrationAcceptance({
   admin,
@@ -18,6 +19,10 @@ export async function systemAdministrationAcceptance({
   open,
   statement,
   operator,
+  ownerA,
+  platformA,
+  tenantB,
+  ownerContext,
 }) {
   const page = admin.page
   const client = (method, ...args) =>
@@ -70,9 +75,11 @@ export async function systemAdministrationAcceptance({
     }
   }
   const original = await list()
-  assert.equal(original.length, 11)
-  assert.equal(original.filter((menu) => !menu.parent_id).length, 3)
-  const organization = original.find((menu) => menu.label === "Organization")
+  assert.equal(original.length, 18)
+  assert.equal(original.filter((menu) => !menu.parent_id).length, 5)
+  const organization = original.find(
+    (menu) => menu.label === "Account management"
+  )
   assert(organization)
   const created = []
   try {
@@ -82,7 +89,7 @@ export async function systemAdministrationAcceptance({
       .getByRole("heading", { name: "System menu management", exact: true })
       .waitFor()
     await page.locator("[data-menu-row-id]").first().waitFor()
-    assert.equal(await page.locator("[data-menu-row-id]").count(), 11)
+    assert.equal(await page.locator("[data-menu-row-id]").count(), 18)
     await page.getByRole("button", { name: "Create menu", exact: true }).click()
     await page.locator("#menu-label").fill("System acceptance branch")
     await page.locator('button[type="submit"][form="menu-form"]').click()
@@ -201,8 +208,29 @@ export async function systemAdministrationAcceptance({
       .getByRole("heading", { name: "System menu management", exact: true })
       .waitFor()
     pass(
-      "system menu manager and actual sidebar share persisted11-node bootstrap; real create, subtree drag, arrows, rename and disable survive reload"
+      "system menu manager and actual sidebar share persisted18-node bootstrap; real create, subtree drag, arrows, rename and disable survive reload"
     )
+    await systemWorkspaceAcceptance({
+      admin,
+      directory,
+      request,
+      createAccount,
+      systemTarget,
+      login,
+      contexts,
+      eventually,
+      pass,
+      openUI,
+      exitUI,
+      statement,
+      operator,
+      ownerA,
+      platformA,
+      tenantB,
+      ownerContext,
+      capture,
+      client,
+    })
 
     const menuViewer = await createAccount("system-menu-viewer")
     const auditViewer = await createAccount("system-audit-viewer")
@@ -214,6 +242,52 @@ export async function systemAdministrationAcceptance({
       full_administrator: false,
       permissions: ["system_audit_event_view", "system_audit_event_export"],
     })
+    await page.goto("/system/accounts/system")
+    for (const target of [menuViewer, auditViewer]) {
+      await page
+        .locator(`[data-account-id="${target.id}"]`)
+        .getByRole("cell", { name: "Imported system permissions", exact: true })
+        .waitFor()
+    }
+    await page.goto("/system/roles")
+    await page
+      .getByText("Imported system permissions", { exact: true })
+      .first()
+      .waitFor()
+    assert.equal(
+      await page
+        .locator("[data-role-id]")
+        .filter({ hasText: /^__system_legacy_/ })
+        .count(),
+      0
+    )
+    const importedRole = (await request("/system/roles")).find(
+      (role) => role.name === `__system_legacy_${menuViewer.id}`
+    )
+    assert(importedRole)
+    await page.locator(`[data-role-id="${importedRole.id}"]`).click()
+    await page
+      .getByRole("heading", {
+        name: "Imported system permissions",
+        exact: true,
+      })
+      .waitFor()
+    await page.getByRole("button", { name: "Edit", exact: true }).click()
+    await page
+      .locator("#role-description")
+      .fill("Edited imported system permission metadata")
+    await page.locator('[form="role-form"][type="submit"]').click()
+    await page.getByRole("dialog").waitFor({ state: "hidden" })
+    const importedAfter = (await request("/system/roles")).find(
+      (role) => role.id === importedRole.id
+    )
+    assert.equal(importedAfter.name, importedRole.name)
+    assert.equal(
+      importedAfter.description,
+      "Edited imported system permission metadata"
+    )
+    await capture(page, "system-imported-role")
+    await page.setViewportSize({ width: 1440, height: 1000 })
     for (const [target, path, heading] of [
       [menuViewer, "/system/menus", "System menu management"],
       [auditViewer, "/system/audit/events", "System audit events"],
@@ -226,7 +300,7 @@ export async function systemAdministrationAcceptance({
         .waitFor()
       assert.equal(
         await signed.page
-          .getByRole("link", { name: "Global accounts", exact: true })
+          .getByRole("link", { name: "User accounts", exact: true })
           .count(),
         0
       )

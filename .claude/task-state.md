@@ -2,7 +2,69 @@
 
 ## Current Delivery - 2026-09-27
 
-### Reopened System Foundation - 2026-09-26
+### System Administration Correction - 2026-09-27
+
+- Phase: ACCEPTANCE. Implementation and engineering acceptance PASS; user manual
+  acceptance is available in the retained demo. All delivery checks completed.
+- Navigation: account management (system/platform/tenant/user/closure), permission
+  management (departments/roles), basic management (menus/files), operations
+  (platforms/tenants), audit (events/governance). Five branches, thirteen leaves.
+- Reuse real __system__ root and existing organization/RBAC/files engines.
+  Global identities overlap across account categories; explicit owner selectors.
+  System, operating-platform, tenant and entity authority remain independent.
+  Departments do not grant roles. System roles use unconditional direct grants;
+  full superadmin is immutable and backed by protected administrator records.
+- Restricted old grants convert atomically to roles, with old authority removed.
+  Custom menus/metadata and deliberate deletions survive upgrade and restart.
+  System files reuse independent singleton space with global actions and audits.
+- System-console owner adapters support global superadmin without local membership.
+  Reads system_account_view; writes require current full-admin authority.
+  Named owner catalogs use matching permissions and include suspended owners.
+- Core118 + organization41; composed IAM341, whole live API388. Generated schema
+  and frontend types reconciled; no historical migrations changed.
+- Fixed: lazy provider binding; module-only global permission workspace discovery;
+  runtime-registry lifecycle guard; retained-authority erasure conflict409;
+  local/global lock ordering; MySQL current-read actor grants/group widening;
+  system durability guard locking only protected records; historical default menu
+  translations; system member role_ids; system department submit scope; role-ID
+  frontend response contract; exact account-category navigation highlighting;
+  unchanged imported-role metadata edits; scoped member list assigned role IDs;
+  system file directory and restore path display names.
+- Verification PASS: affected eight backend suites (.temp/system-final-backend.log);
+  latest core/query/organization/app (.temp/system-final-integration.log), vet,
+  openapi-check, generated type check. Final frontend typecheck/lint/test/build
+  PASS (IAM149 and shared UI85 tests). Final genuine browser lifecycle45/45 PASS
+  (.temp/sqlite-lifecycle-1EvIwZ/report.json); focused24/24 PASS
+  (.temp/sqlite-lifecycle-dzl42E/report.json). Both zero mocks and pageErrors;
+  full98/focused91 screenshots. Actual desktop/mobile screenshots inspected.
+  Final core/organization/app suites and vet PASS; files suite PASS59.659s/vet.
+- Real normal MySQL full gate PASS (.temp/system-mysql8-quiet-normal.log):
+  account-view revoke, five grantability/lock-order cases, migrations, replay,
+  provisioning, lifecycle, schema246. Frozen budgets auth5.699/7ms,
+  SCIM119.193/154ms. Normal PostgreSQL signatures/budgets PASS44.272s;
+  account-view and grantability plain/prefixed PASS (five new cases17.645s).
+  Original stored samples/budgets unchanged; reviewed SQL plans regenerated.
+- Root Chrome retained demo: thirteen Chinese pages, no alerts/page errors or
+  viewport overflow PASS; six account-selector/session/identity-link flows PASS;
+  live Swagger388 operations match published path-prefix tags PASS.
+  Retained supervisor28908; web8091/login, API8080/docs; selector enabled.
+  Full superadmin admin@example.test; system-admin@example.test is restricted.
+- Known limit: system file ACL resolves principal subjects; unresolved other
+  deny subjects fail closed. No public system ACL editor.
+- Architecture/security independent review and root self-review PASS. Final E2E
+  verifies department placement, role assignment/live revocation, protected full
+  admin, imported-role edits, scoped role names, system-file upload/download and
+  isolation, readonly403 and writable operator/target audit. Original target
+  session deepEqual retained and PASS; fixture operations using target sessions
+  run after the view-only snapshot assertions to avoid idle renewal contamination.
+- Staged deliverables reviewed: source/docs/regressions/generated contracts only;
+  no temporary artifacts, secrets, binaries or historical migration changes.
+- Delivery gate: commit/push IAM and verify remote HEAD plus clean worktree before
+  reporting delivery. No implementation work remains. Next user action is manual
+  acceptance at http://127.0.0.1:8091/login, select admin@example.test. No additional
+  product decisions or optional refactors are pending.
+
+### Previous System Foundation Delivery - 73a631b
 
 - User correction: system superadmin needs foundational menu and audit management,
   in addition to global accounts/views. System administrators means system grants;

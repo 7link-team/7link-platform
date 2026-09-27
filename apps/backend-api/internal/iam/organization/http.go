@@ -740,6 +740,8 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 
 func departmentError(err error) error {
 	switch {
+	case errors.Is(err, core.ErrPrivilegeEscalation):
+		return huma.Error403Forbidden(corei18n.PrivilegeEscalationDenied)
 	case errors.Is(err, ErrNotFound):
 		return huma.Error404NotFound(organizationi18n.DepartmentNotFound)
 	case errors.Is(err, ErrNameConflict):

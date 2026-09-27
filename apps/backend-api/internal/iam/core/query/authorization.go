@@ -35,6 +35,13 @@ type EffectiveRolesParams struct {
 	// principal. Every branch of the CTE filters on it, so a status that does
 	// not exist yields no roles rather than every role.
 	MemberStatus string
+	CurrentRead  bool
+}
+
+// CurrentTenantSource locks base rows inside derived queries. Locking the outer
+// UNION/CTE does not make its sources current reads on MySQL.
+func CurrentTenantSource(table gormx.TableName, owner guid.ID) string {
+	return fmt.Sprintf("(SELECT * FROM %s WHERE tenant_id = %d FOR UPDATE)", table.String(), owner)
 }
 
 // TenantGrantParams parameterizes the statement that reads the permissions a
@@ -222,28 +229,34 @@ func CountDurableAdministrators(ctx context.Context, db *gorm.DB, params Durable
 func effectiveRolesCTE(params EffectiveRolesParams) (string, []any) {
 	tables := params.Tables
 	directory := params.Directory
+	source := func(table gormx.TableName) string {
+		if params.CurrentRead {
+			return CurrentTenantSource(table, params.TenantID)
+		}
+		return table.String()
+	}
 	return `
 WITH effective_roles(role_id, source_type, source_id) AS (
     SELECT m.role_id, 'role_member', m.principal_id
-    FROM ` + tables.RoleMembers.String() + ` m
-    JOIN ` + tables.TenantMembers.String() + ` tm
+    FROM ` + source(tables.RoleMembers) + ` m
+    JOIN ` + source(tables.TenantMembers) + ` tm
       ON tm.tenant_id = m.tenant_id AND tm.principal_id = m.principal_id AND tm.status = ?
     WHERE m.tenant_id = ? AND m.principal_id = ?
     UNION
     SELECT grants.role_id, 'temporary_role', grants.id
-    FROM ` + tables.TemporaryRoleGrants.String() + ` grants
-    JOIN ` + tables.TenantMembers.String() + ` tm
+    FROM ` + source(tables.TemporaryRoleGrants) + ` grants
+    JOIN ` + source(tables.TenantMembers) + ` tm
       ON tm.tenant_id = grants.tenant_id AND tm.principal_id = grants.principal_id AND tm.status = ?
     WHERE grants.tenant_id = ? AND grants.principal_id = ?
       AND grants.starts_at <= ? AND grants.ends_at > ?
     UNION
     SELECT b.role_id, 'group', b.group_id
-    FROM ` + directory.GroupRoleBindings.String() + ` b
-    JOIN ` + directory.Groups.String() + ` g
+    FROM ` + source(directory.GroupRoleBindings) + ` b
+    JOIN ` + source(directory.Groups) + ` g
       ON g.tenant_id = b.tenant_id AND g.id = b.group_id AND g.status = 'active' AND g.group_type = 'static'
-    JOIN ` + directory.GroupMembers.String() + ` gm
+    JOIN ` + source(directory.GroupMembers) + ` gm
       ON gm.tenant_id = b.tenant_id AND gm.group_id = b.group_id
-    JOIN ` + tables.TenantMembers.String() + ` tm
+    JOIN ` + source(tables.TenantMembers) + ` tm
       ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id AND tm.status = ?
     WHERE b.tenant_id = ? AND gm.principal_id = ?
       AND (gm.starts_at IS NULL OR gm.starts_at <= ?)
@@ -260,12 +273,18 @@ func tenantGrantStatement(params TenantGrantParams) (string, []any) {
 	cte, args := effectiveRolesCTE(params.EffectiveRolesParams)
 	tables := params.Tables
 	directory := params.Directory
+	source := func(table gormx.TableName) string {
+		if params.CurrentRead {
+			return CurrentTenantSource(table, params.TenantID)
+		}
+		return table.String()
+	}
 	return cte + `
 SELECT DISTINCT rp.permission_code, er.role_id, er.source_type, er.source_id,
        COALESCE(ds.scope_type, 'all') AS data_scope, rp.condition_json
-FROM ` + tables.RolePermissions.String() + ` rp
+FROM ` + source(tables.RolePermissions) + ` rp
 JOIN effective_roles er ON er.role_id = rp.role_id
-LEFT JOIN ` + directory.RoleDataScopes.String() + ` ds
+LEFT JOIN ` + source(directory.RoleDataScopes) + ` ds
   ON ds.tenant_id = rp.tenant_id AND ds.role_id = rp.role_id
 WHERE rp.tenant_id = ? AND rp.permission_code IN ?`,
 		append(args, params.TenantID, params.Requested)

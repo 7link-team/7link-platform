@@ -527,6 +527,8 @@ func identityError(err error) error {
 		return huma.Error409Conflict(identityi18n.ServiceAccountCredentialLimit)
 	case errors.Is(err, core.ErrLastTenantAdministrator):
 		return huma.Error409Conflict(identityi18n.LastTenantAdministrator)
+	case errors.Is(err, core.ErrPrincipalHasPlatformAccess):
+		return huma.Error409Conflict(identityi18n.PlatformAccessBlocksClosure)
 	case errors.Is(err, ErrPrincipalInactive):
 		return huma.Error409Conflict(identityi18n.InvalidPrincipal)
 	case errors.Is(err, ErrServiceAccountInvalid):

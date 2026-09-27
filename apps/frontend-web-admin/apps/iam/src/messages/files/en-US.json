@@ -1,4 +1,7 @@
 {
+  "rootScopeSystem": "System",
+  "rootNameSystem": "System shared files",
+  "createSystemRoot": "Create system shared files",
   "emptyRecycleBin": "Recycle bin is empty",
   "rootScopePersonal": "Personal",
   "rootScopeAccount": "Account",

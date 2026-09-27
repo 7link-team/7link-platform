@@ -28,6 +28,9 @@ func (m *Module) ensureSystemRoot(ctx context.Context) error {
 			if root.ScopeKind != ScopeSystem || root.Status != TenantActive {
 				return fmt.Errorf("invalid reserved system root")
 			}
+			if m.bootstrap.UpgradeSystem != nil {
+				return m.bootstrap.UpgradeSystem(ctx, tx, root.ID, organizationTime(time.Now()))
+			}
 			return nil
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -53,10 +56,18 @@ func (m *Module) ensureSystemRoot(ctx context.Context) error {
 			return err
 		}
 		if stored.ID != root.ID {
+			if m.bootstrap.UpgradeSystem != nil {
+				return m.bootstrap.UpgradeSystem(ctx, tx, stored.ID, now)
+			}
 			return nil
 		}
 		if err := m.bootstrap.SeedSystemMenus(ctx, tx, root.ID, now); err != nil {
 			return err
+		}
+		if m.bootstrap.UpgradeSystem != nil {
+			if err := m.bootstrap.UpgradeSystem(ctx, tx, root.ID, now); err != nil {
+				return err
+			}
 		}
 		event := audit.NewDomainEvent(ctx, 0, "system_menu_bootstrapped", "system", root.ID)
 		event.Detail["scope_kind"], event.Detail["scope_id"] = ScopeSystem, root.ID.String()

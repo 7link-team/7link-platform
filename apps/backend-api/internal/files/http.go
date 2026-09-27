@@ -61,7 +61,7 @@ type fileCreateForm struct {
 	ParentID string        `form:"parent_id" required:"false"`
 	Kind     string        `form:"kind" enum:"file,directory" required:"true"`
 	Name     string        `form:"name" maxLength:"255" required:"false"`
-	Scope    string        `form:"scope" enum:"account" required:"false"`
+	Scope    string        `form:"scope" enum:"account,system" required:"false"`
 	File     huma.FormFile `form:"file" contentType:"application/octet-stream" required:"false"`
 }
 
@@ -132,6 +132,7 @@ func (e *fileConflictHTTPError) Error() string  { return e.Message }
 func (e *fileConflictHTTPError) GetStatus() int { return e.status }
 
 func registerFileHTTP(api huma.API, service *operationService, registrar *authz.Registrar, fileOwner, entityOwner, departmentOwner authz.ResourceOwnerResolver) {
+	registerSystemFileHTTP(api, service, registrar)
 	authz.RegisterPrincipalAuthenticated(registrar, api, huma.Operation{
 		OperationID: "list-my-files", Method: http.MethodGet, Path: "/principals/{principal_id}/files",
 		Summary: "List my file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},

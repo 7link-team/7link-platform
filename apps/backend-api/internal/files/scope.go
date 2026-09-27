@@ -14,6 +14,7 @@ package files
 const (
 	spaceAccount = "account"
 	spaceTenant  = "tenant"
+	spaceSystem  = "system"
 )
 
 // ownerScope names what a file root belongs to. A browsable collection uses
@@ -25,6 +26,7 @@ const (
 // that they can, one person has one space again.
 const (
 	ownerAccount    = "account"
+	ownerSystem     = "system"
 	ownerTenant     = "tenant"
 	ownerEntity     = "entity"
 	ownerDepartment = "department"

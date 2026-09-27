@@ -105,10 +105,14 @@ func (s *operationService) listRoots(ctx context.Context, collection fileCollect
 }
 
 func (collection fileCollection) validate(claims *authn.Claims) error {
-	if claims == nil || collection.ownerID <= 0 {
+	if claims == nil || (collection.ownerID <= 0 && collection.scope != ownerSystem) {
 		return errOperationInput
 	}
 	switch collection.scope {
+	case ownerSystem:
+		if collection.ownerID != 0 || collection.tenantID != 0 || claims.TenantID != 0 || claims.EntityID != 0 {
+			return errOperationForbidden
+		}
 	case ownerAccount:
 		if collection.tenantID != 0 || claims.TenantID != 0 || claims.EntityID != 0 || collection.ownerID != claims.PrincipalID {
 			return errOperationForbidden
@@ -302,12 +306,14 @@ func (s *operationService) browserClaims(ctx context.Context) (*authn.Claims, er
 func (t directoryTree) authorizedRoots(ctx context.Context, tx *gorm.DB, authorizer *nodeAuthorizer, collection fileCollection, request browserPageRequest) (filePage, error) {
 	result := filePage{Items: []fileEntryView{}}
 	q := query.Bind(tx, t.prefix)
-	if collection.ownerID <= 0 {
+	if collection.ownerID <= 0 && collection.scope != ownerSystem {
 		return filePage{}, errOperationInput
 	}
 	spaceQuery := q.Space.WithContext(ctx)
 	if collection.scope == ownerAccount {
 		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(collection.ownerID))
+	} else if collection.scope == ownerSystem {
+		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq(spaceSystem), q.Space.SystemSlot.Eq(1))
 	} else {
 		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq(spaceTenant), q.Space.TenantID.Eq(collection.tenantID))
 	}
@@ -321,10 +327,13 @@ func (t directoryTree) authorizedRoots(ctx context.Context, tx *gorm.DB, authori
 	after, scanned, exhausted := request.After, 0, false
 	for len(result.Items) <= request.Limit && scanned < maxBrowserScan {
 		batch := min(100, maxBrowserScan-scanned)
-		rows, err := q.Node.WithContext(ctx).Where(
-			q.Node.SpaceID.Eq(space.ID), q.Node.RootScope.Eq(collection.scope),
-			q.Node.RootOwnerID.Eq(collection.ownerID), q.Node.State.Eq("active"), q.Node.ID.Gt(after),
-		).Order(q.Node.ID.Asc()).Limit(batch).Find()
+		rootQuery := q.Node.WithContext(ctx).Where(q.Node.SpaceID.Eq(space.ID), q.Node.State.Eq("active"), q.Node.ID.Gt(after))
+		if collection.scope == ownerSystem {
+			rootQuery = rootQuery.Where(q.Node.ParentID.IsNull(), q.Node.RootSlot.Eq(1))
+		} else {
+			rootQuery = rootQuery.Where(q.Node.RootScope.Eq(collection.scope), q.Node.RootOwnerID.Eq(collection.ownerID))
+		}
+		rows, err := rootQuery.Order(q.Node.ID.Asc()).Limit(batch).Find()
 		if err != nil {
 			return filePage{}, err
 		}
@@ -380,12 +389,14 @@ func (t directoryTree) authorizedRoots(ctx context.Context, tx *gorm.DB, authori
 func (t directoryTree) authorizedTrash(ctx context.Context, tx *gorm.DB, authorizer *nodeAuthorizer, collection fileCollection, request browserPageRequest) (filePage, error) {
 	result := filePage{Items: []fileEntryView{}}
 	q := query.Bind(tx, t.prefix)
-	if collection.ownerID <= 0 {
+	if collection.ownerID <= 0 && collection.scope != ownerSystem {
 		return filePage{}, errOperationInput
 	}
 	spaceQuery := q.Space.WithContext(ctx)
 	if collection.scope == ownerAccount {
 		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(collection.ownerID))
+	} else if collection.scope == ownerSystem {
+		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq(spaceSystem), q.Space.SystemSlot.Eq(1))
 	} else {
 		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq(spaceTenant), q.Space.TenantID.Eq(collection.tenantID))
 	}
@@ -453,7 +464,7 @@ func (t directoryTree) authorizedTrash(ctx context.Context, tx *gorm.DB, authori
 		if err != nil {
 			return filePage{}, err
 		}
-		if err := t.attachAuthorizedRestorePaths(ctx, tx, authorizer, space.ID, visible, views); err != nil {
+		if err := t.attachAuthorizedRestorePaths(ctx, tx, authorizer, space, visible, views); err != nil {
 			return filePage{}, err
 		}
 		result.Items = append(result.Items, views...)
@@ -475,6 +486,12 @@ func (t directoryTree) authorizedTrash(ctx context.Context, tx *gorm.DB, authori
 func (t directoryTree) resourceOwners(ctx context.Context, tx *gorm.DB, space *model.Space, nodeIDs []guid.ID) (map[guid.ID]ResourceOwner, error) {
 	result := make(map[guid.ID]ResourceOwner, len(nodeIDs))
 	if tx == nil || space == nil || len(nodeIDs) == 0 {
+		return result, nil
+	}
+	if space.ScopeKind == spaceSystem {
+		for _, id := range nodeIDs {
+			result[id] = ResourceOwner{Scope: ownerSystem}
+		}
 		return result, nil
 	}
 	type ownerRow struct {
@@ -506,16 +523,17 @@ func (t directoryTree) attachAuthorizedRestorePaths(
 	ctx context.Context,
 	tx *gorm.DB,
 	authorizer *nodeAuthorizer,
-	spaceID guid.ID,
+	space *model.Space,
 	rows []*model.Node,
 	views []fileEntryView,
 ) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	if tx == nil || authorizer == nil || spaceID <= 0 || len(rows) != len(views) || len(rows) > maxBrowserPage {
+	if tx == nil || authorizer == nil || space == nil || space.ID <= 0 || len(rows) != len(views) || len(rows) > maxBrowserPage {
 		return errFileACL
 	}
+	spaceID := space.ID
 	targetIDs := make([]guid.ID, 0, len(rows))
 	for _, row := range rows {
 		if row == nil || row.SpaceID != spaceID || row.State != "trashed" || row.TrashBatchID == nil {
@@ -619,7 +637,7 @@ func (t directoryTree) attachAuthorizedRestorePaths(
 				valid = false
 				break
 			}
-			if node.RootScope != nil {
+			if node.RootScope != nil || (space.ScopeKind == spaceSystem && node.ParentID == nil) {
 				rootIndex = index
 			}
 		}
@@ -661,7 +679,7 @@ func (t directoryTree) attachAuthorizedRestorePaths(
 				segments = nil
 				break
 			}
-			segments = append(segments, filePathView{ID: node.ID, Name: browserPathName(node)})
+			segments = append(segments, filePathView{ID: node.ID, Name: browserPathName(node, space)})
 		}
 		if len(segments) > 0 {
 			views[index].RestorePath = segments
@@ -712,7 +730,7 @@ func (t directoryTree) authorizedChildren(ctx context.Context, tx *gorm.DB, auth
 		if !traversable[row.ID] {
 			return fileChildrenPage{}, errOperationForbidden
 		}
-		result.Path = append(result.Path, filePathView{ID: row.ID, Name: browserPathName(row)})
+		result.Path = append(result.Path, filePathView{ID: row.ID, Name: browserPathName(row, permissions.space)})
 	}
 	q := query.Bind(tx, t.prefix)
 	after, scanned, exhausted := request.After, 0, false
@@ -771,7 +789,7 @@ func (t directoryTree) authorizedChildren(ctx context.Context, tx *gorm.DB, auth
 
 func fileEntryViewOf(ctx context.Context, q *query.Query, row *model.Node) (fileEntryView, error) {
 	var space *model.Space
-	if row != nil && row.RootScope != nil {
+	if row != nil && (row.RootScope != nil || row.ParentID == nil) {
 		var err error
 		space, err = q.Space.WithContext(ctx).Where(q.Space.ID.Eq(row.SpaceID)).Take()
 		if err != nil {
@@ -809,6 +827,12 @@ func fileEntryViewsOf(ctx context.Context, q *query.Query, rows []*model.Node, s
 			if err := setRootOwnership(&views[index], space, row); err != nil {
 				return nil, err
 			}
+		}
+		if space != nil && space.ScopeKind == spaceSystem && row.ParentID == nil {
+			if !validRootBinding(space, row, rootBinding{scope: ownerSystem}) {
+				return nil, errFileACL
+			}
+			views[index].Scope, views[index].Name = ownerSystem, "System shared files"
 		}
 		if row.Kind == "file" && row.CurrentVersionID != nil {
 			versionIDs = append(versionIDs, *row.CurrentVersionID)
@@ -891,7 +915,10 @@ func browserNodeName(row *model.Node) string {
 	return ""
 }
 
-func browserPathName(row *model.Node) string {
+func browserPathName(row *model.Node, space *model.Space) string {
+	if row != nil && space != nil && space.ScopeKind == spaceSystem && row.ParentID == nil {
+		return "System shared files"
+	}
 	if row != nil && row.RootScope != nil {
 		return rootDisplayName(row)
 	}

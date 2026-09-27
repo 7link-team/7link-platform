@@ -42,6 +42,9 @@ type EntityConstraintOn func(context.Context, *gorm.DB, guid.ID, guid.ID, string
 // caller's transaction and fences concurrent policy changes.
 type TenantConstraintOn func(context.Context, *gorm.DB, guid.ID, string, guid.ID) (authz.DataConstraint, error)
 
+// PlatformPermissionOn evaluates global authority in the caller's active transaction.
+type PlatformPermissionOn func(context.Context, *gorm.DB, string, guid.ID) (bool, error)
+
 // AuthorizationSubjects is the current IAM identity set a business module may
 // match against its own ACL. IDs remain tenant-scoped and policy-revision fenced.
 type AuthorizationSubjects struct {
@@ -161,8 +164,10 @@ type FileRootContentChecker func(context.Context, *gorm.DB, FileRootProvisionInp
 // able to administer it commit together or not at all. Organization must never
 // write these tables itself.
 type TenantBootstrapper struct {
-	SeedSystemMenus func(context.Context, *gorm.DB, guid.ID, time.Time) error
-	Bootstrap       func(context.Context, *gorm.DB, TenantBootstrapInput, time.Time) (TenantBootstrapResult, error)
+	SystemPermissionOn PlatformPermissionOn
+	UpgradeSystem      func(context.Context, *gorm.DB, guid.ID, time.Time) error
+	SeedSystemMenus    func(context.Context, *gorm.DB, guid.ID, time.Time) error
+	Bootstrap          func(context.Context, *gorm.DB, TenantBootstrapInput, time.Time) (TenantBootstrapResult, error)
 	// IsUnclaimed reports whether a tenant still has no member and no role. It
 	// is what keeps the repair path create-only: a tenant somebody already
 	// administers must never be handed a second owner by a recovery command.

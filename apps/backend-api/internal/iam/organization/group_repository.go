@@ -15,6 +15,15 @@ import (
 
 type groupRow = model.Group
 
+func groupPolicyRead(db *gorm.DB) *gorm.DB {
+	if db.Dialector.Name() == "mysql" {
+		if _, transaction := db.Statement.ConnPool.(gorm.TxCommitter); transaction {
+			return db.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+	}
+	return db
+}
+
 type groupMemberRow struct {
 	TenantID     guid.ID    `gorm:"column:tenant_id"`
 	GroupID      guid.ID    `gorm:"column:group_id"`
@@ -49,7 +58,7 @@ func (r *Repository) getGroup(ctx context.Context, tenantID, id guid.ID) (*group
 		return nil, err
 	}
 	var row groupRow
-	err = r.writer().WithContext(ctx).Table(tables.Groups.TableName()).Where("tenant_id = ? AND id = ?", tenantID, id).Take(&row).Error
+	err = groupPolicyRead(r.writer()).WithContext(ctx).Table(tables.Groups.TableName()).Where("tenant_id = ? AND id = ?", tenantID, id).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrGroupNotFound
 	}
@@ -172,7 +181,7 @@ func (r *Repository) getGroupMember(ctx context.Context, tenantID, groupID, prin
 	tm := r.foreign.access.TenantMembers.String()
 	var row groupMemberRow
 	gm := tables.GroupMembers.TableName()
-	err = r.writer().WithContext(ctx).Table(gm+" AS gm").Select("gm.*, tm.display_name, tm.email").
+	err = groupPolicyRead(r.writer()).WithContext(ctx).Table(gm+" AS gm").Select("gm.*, tm.display_name, tm.email").
 		Joins("JOIN "+tm+" AS tm ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id").
 		Where("gm.tenant_id = ? AND gm.group_id = ? AND gm.principal_id = ?", tenantID, groupID, principalID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {

@@ -272,7 +272,11 @@ function SideLink({
   return (
     <NavLink
       to={to}
-      end={to === "/" || /^\/tenants\/[^/]+$/u.test(to)}
+      end={
+        to === "/" ||
+        to === "/system/accounts" ||
+        /^\/tenants\/[^/]+$/u.test(to)
+      }
       aria-current={scopeMatches ? undefined : false}
       className={({ isActive }) =>
         `flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${isActive && scopeMatches ? "sidebar-active-item bg-sidebar-primary font-medium text-sidebar-primary-foreground" : "text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`

@@ -105,7 +105,7 @@ func (m *Module) ProvideServices(services *module.Services) error {
 		if tx == nil || id <= 0 {
 			return ErrInvalidArgument
 		}
-		return requireNoPrincipalPlatformAccess(ctx, tx, m.runtime.TablePrefix(), id)
+		return requireNoPrincipalPlatformAccess(ctx, tx, m.runtime.TablePrefix(), id, m.registrar.Registry())
 	}); err != nil {
 		return err
 	}
@@ -126,6 +126,14 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}
 	if err := module.Provide[AuthorizationEvaluator](services, m.checker); err != nil {
 		return fmt.Errorf("provide IAM authorization evaluator: %w", err)
+	}
+	if err := module.Provide[PlatformPermissionOn](services, PlatformPermissionOn(func(ctx context.Context, tx *gorm.DB, code string, subject guid.ID) (bool, error) {
+		if m == nil || m.service == nil {
+			return false, ErrUnavailable
+		}
+		return m.service.CheckPlatformOn(ctx, tx, code, subject)
+	})); err != nil {
+		return fmt.Errorf("provide IAM transaction system authorization: %w", err)
 	}
 	entityOwner := EntityOwnerResolver(func(ctx context.Context, entityID guid.ID) (authz.ResourceOwner, bool, error) {
 		if m == nil || m.service == nil || m.service.repo == nil {

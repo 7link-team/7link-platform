@@ -113,10 +113,61 @@ export const router = createBrowserRouter([
                 }),
               },
               {
-                path: "/system/administrators",
+                path: "/system/departments",
                 lazy: async () => ({
-                  Component: (await import("./app/system/administrators"))
-                    .default,
+                  Component: (await import("./app/departments/page"))
+                    .SystemDepartmentsPage,
+                }),
+              },
+              {
+                path: "/system/roles",
+                lazy: async () => ({
+                  Component: (await import("./app/roles/page")).SystemRolesPage,
+                }),
+              },
+              {
+                path: "/system/files",
+                lazy: async () => ({
+                  Component: (await import("./app/files/page")).SystemFilesPage,
+                }),
+              },
+              {
+                path: "/system/administrators",
+                element: <Navigate to="/system/accounts/system" replace />,
+              },
+              {
+                path: "/system/accounts/system",
+                lazy: async () => ({
+                  Component: (await import("./app/system/accounts"))
+                    .SystemMemberAccountsPage,
+                }),
+              },
+              {
+                path: "/system/accounts/platform",
+                lazy: async () => ({
+                  Component: (await import("./app/system/accounts"))
+                    .PlatformAccountsPage,
+                }),
+              },
+              {
+                path: "/system/accounts/tenant",
+                lazy: async () => ({
+                  Component: (await import("./app/system/accounts"))
+                    .TenantAccountsPage,
+                }),
+              },
+              {
+                path: "/system/accounts/platform/:ownerID",
+                lazy: async () => ({
+                  Component: (await import("./app/system/owner-members"))
+                    .PlatformOwnerMembersPage,
+                }),
+              },
+              {
+                path: "/system/accounts/tenant/:ownerID",
+                lazy: async () => ({
+                  Component: (await import("./app/system/owner-members"))
+                    .TenantOwnerMembersPage,
                 }),
               },
               {

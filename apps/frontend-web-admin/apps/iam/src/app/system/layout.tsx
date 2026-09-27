@@ -146,6 +146,7 @@ export default function AdministrationLayout() {
       <div key={item.id}>
         {item.path ? (
           <NavLink
+            end={item.path === "/system/accounts"}
             onClick={() => setOpen(false)}
             to={
               item.path.startsWith(base)
