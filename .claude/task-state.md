@@ -2,6 +2,16 @@
 
 ## Current Delivery - 2026-09-27
 
+### Department Empty-State Scope Correction - 2026-09-27
+
+- User found system departments incorrectly say "current tenant" when empty.
+  System page already uses /system/departments; the shared translation was wrong.
+- Fixed noDepartments to scope-neutral text in zh-CN/en-US/ms-MY. No data or API
+  behavior changed. Build PASS; retained real Chrome13-page audit PASS with exact
+  system empty-label and live system department API assertions, zero page errors.
+- Self-review and requirement acceptance PASS. Delivery gate: commit/push scoped
+  translations/state and verify remote plus clean tree; next is user acceptance.
+
 ### Account View Tab Isolation - 2026-09-27
 
 - Phase: ACCEPTANCE. Implementation, review and engineering acceptance PASS.

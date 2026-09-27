@@ -519,7 +519,7 @@
   "collapseDepartments": "Collapse child departments",
   "editDepartment": "Edit department",
   "deleteEmptyDepartment": "Delete empty department",
-  "noDepartments": "No departments in this tenant",
+  "noDepartments": "No departments",
   "departmentName": "Department name",
   "code": "Code",
   "manageMembers": "Manage members",

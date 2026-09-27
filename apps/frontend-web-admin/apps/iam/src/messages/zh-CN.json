@@ -519,7 +519,7 @@
   "collapseDepartments": "收起子部门",
   "editDepartment": "编辑部门",
   "deleteEmptyDepartment": "删除空部门",
-  "noDepartments": "当前租户暂无部门",
+  "noDepartments": "暂无部门",
   "departmentName": "部门名称",
   "code": "编码",
   "manageMembers": "管理成员",
