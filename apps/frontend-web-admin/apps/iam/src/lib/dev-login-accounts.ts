@@ -1,3 +1,5 @@
+import { authEntrances, type AuthEntrance } from "./auth-entrance"
+
 export interface DevLoginAccount {
   id: string
   role: string
@@ -5,6 +7,7 @@ export interface DevLoginAccount {
   password: string
   tenantID?: string
   platformID?: string
+  entrances?: AuthEntrance[]
 }
 
 export function parseDevLoginAccounts(
@@ -30,6 +33,12 @@ export function parseDevLoginAccounts(
         account.loginName.length > 0 &&
         typeof account.password === "string" &&
         account.password.length > 0 &&
+        (account.entrances === undefined ||
+          (Array.isArray(account.entrances) &&
+            account.entrances.length > 0 &&
+            account.entrances.every((entry: unknown) =>
+              authEntrances.includes(entry as AuthEntrance)
+            ))) &&
         (account.tenantID === undefined ||
           (typeof account.tenantID === "string" &&
             account.tenantID.length > 0)) &&
@@ -45,6 +54,15 @@ export function parseDevLoginAccounts(
 export const devLoginAccounts = parseDevLoginAccounts(
   import.meta.env.VITE_DEV_LOGIN_ACCOUNTS
 )
+
+export function devAccountsForEntrance(
+  entry: AuthEntrance | null,
+  accounts = devLoginAccounts
+): DevLoginAccount[] {
+  return accounts.filter((account) =>
+    account.entrances?.includes(entry ?? "user")
+  )
+}
 
 export const prefillDevLoginAccount =
   import.meta.env.DEV && import.meta.env.VITE_DEV_LOGIN_PREFILL === "true"

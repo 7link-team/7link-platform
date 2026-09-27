@@ -10,27 +10,78 @@ const runtime = JSON.parse(
   readFileSync(resolve(directory, "runtime.json"), "utf8")
 )
 const browser = await chromium.launch({ channel: "chrome", headless: true })
+const accounts = runtime.demoAccounts
+  ? JSON.parse(readFileSync(resolve(directory, "demo-accounts.json"), "utf8"))
+      .accounts
+  : []
 try {
   const context = await browser.newContext({ baseURL: runtime.webURL })
   const page = await context.newPage()
-  await page.goto("/user/login")
-  await page.locator("#login-name").waitFor()
-  assert.equal(
-    await page.getByRole("combobox").count(),
-    runtime.demoAccounts ? 1 : 0
-  )
+  for (const prefix of ["system", "platform", "admin", "user"]) {
+    const entry = prefix === "admin" ? "tenant" : prefix
+    const expected = accounts.filter((account) =>
+      account.entrances.includes(entry)
+    )
+    await page.goto(`/${prefix}/login`)
+    await page.locator("#login-name").waitFor()
+    assert.equal(
+      await page.getByRole("combobox").count(),
+      expected.length ? 1 : 0
+    )
+    assert.equal(
+      await page.locator('nav a[href$="/login"]').count(),
+      runtime.demoAccounts ? 4 : 0,
+      "entrance switching must share the demo account selector boundary"
+    )
+    if (expected.length) {
+      await page.getByRole("combobox").click()
+      await page.getByRole("option").first().waitFor()
+      assert.deepEqual(
+        await page.getByRole("option").allTextContents(),
+        expected.map((account) => `${account.role} · ${account.loginName}`)
+      )
+      for (const width of [1440, 390]) {
+        const preview = await context.newPage()
+        await preview.setViewportSize({ width, height: width === 390 ? 844 : 1000 })
+        await preview.goto(`/${prefix}/login`)
+        await preview.getByRole("combobox").click()
+        await preview.getByRole("option").first().waitFor()
+        await preview.waitForFunction(() => {
+          const popup = document.querySelector('[role="listbox"]')
+          return popup && getComputedStyle(popup).opacity === "1"
+        })
+        await preview.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth)
+        await preview.screenshot({ path: resolve(directory, `login-options-${prefix}-${width}.png`), fullPage: true })
+        await preview.close()
+      }
+      await page.getByRole("option").first().click()
+      const other = prefix === "system" ? "user" : "system"
+      await page.locator(`nav a[href="/${other}/login"]`).click()
+      await page.waitForURL((url) => url.pathname === `/${other}/login`)
+      await page.locator("#login-name").waitFor()
+      assert.equal(await page.locator("#login-name").inputValue(), "")
+      assert.equal(await page.locator("#password").inputValue(), "")
+      assert.equal(
+        await page.locator('[name="dev_tenant_id"]').inputValue(),
+        ""
+      )
+      assert.equal(
+        await page.locator('[name="dev_platform_id"]').inputValue(),
+        ""
+      )
+    }
+  }
   assert.equal(await page.locator("#login-name").inputValue(), "")
   assert.equal(await page.locator("#password").inputValue(), "")
   await context.close()
   if (runtime.demoAccounts) {
-    const { accounts } = JSON.parse(
-      readFileSync(resolve(directory, "demo-accounts.json"), "utf8")
-    )
     assert.equal(accounts.length, runtime.accountCount)
     for (const account of accounts) {
       const context = await browser.newContext({ baseURL: runtime.webURL })
       const page = await context.newPage()
-      await page.goto("/user/login")
+      const prefix =
+        account.entrances[0] === "tenant" ? "admin" : account.entrances[0]
+      await page.goto(`/${prefix}/login`)
       await page.getByRole("combobox").click()
       await page
         .getByRole("option", {
@@ -47,7 +98,12 @@ try {
         account.password
       )
       await page.locator('form button[type="submit"]').click()
-      await page.waitForURL((url) => url.pathname !== "/user/login")
+      await page.waitForURL(
+        (url) =>
+          url.pathname.startsWith(`/${prefix}/`) &&
+          !url.pathname.endsWith("/login") &&
+          !url.pathname.endsWith("/workspaces")
+      )
       const identity = await context.request.get("/api/me")
       assert.equal(identity.status(), 200)
       const { subject } = (await identity.json()).data

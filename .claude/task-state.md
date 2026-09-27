@@ -2,6 +2,25 @@
 
 ## Current Delivery - 2026-09-27
 
+### Demo-Only Entrance Switching and Matching Accounts - 2026-09-27
+
+- COMPLETE implementation. User requires entrance tabs only in demo mode, with
+  the same boundary as the account selector, and matching demo accounts per view.
+- Reuse existing development-only account configuration. Explicit entrances on
+  demo personas: system 2, platform 1, tenant 3, personal user 1. Added a personal
+  user@example.test demo with no organizational membership or administrative grant.
+  Existing global identity and server authorization semantics are unchanged.
+- Login form remounts per entrance, clearing selected credentials and target IDs.
+  Long option labels wrap within the mobile viewport; trigger dimensions are stable.
+- PASS: 239 frontend unit tests, typecheck/lint/production build; normal-entrance
+  real E2E (.temp/sqlite-lifecycle-mpZBmK/report.json), tabs/selectors absent,
+  scoped login/deep links/signup/recovery. Retained demo E2E validates exact
+  option lists, switch clearing, all 7 persona logins/session/identity links.
+- Retained demo restarted hidden on port 8091 with updated fixtures. Desktop/mobile
+  checks cover all four selectors. Self-review and requirement acceptance PASS.
+- Delivery: scoped commit/push and remote/clean-worktree verification in this turn.
+  Next: user acceptance; no further implementation or decision pending.
+
 ### View-Prefixed Web Routes - 2026-09-27
 
 - COMPLETE. User approved /system, /platform, /admin and /user as the

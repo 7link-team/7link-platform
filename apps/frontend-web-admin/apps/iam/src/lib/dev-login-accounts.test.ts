@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { parseDevLoginAccounts } from "./dev-login-accounts"
+import {
+  devAccountsForEntrance,
+  parseDevLoginAccounts,
+} from "./dev-login-accounts"
 
 const configuredAccounts = JSON.stringify([
   {
@@ -12,6 +15,57 @@ const configuredAccounts = JSON.stringify([
 ])
 
 describe("parseDevLoginAccounts", () => {
+  test("shows only explicitly assigned entrance personas", () => {
+    const accounts = parseDevLoginAccounts(
+      JSON.stringify([
+        {
+          id: "system",
+          role: "System",
+          loginName: "system",
+          password: "secret",
+          entrances: ["system"],
+        },
+        {
+          id: "tenant",
+          role: "Tenant",
+          loginName: "tenant",
+          password: "secret",
+          entrances: ["tenant"],
+        },
+        {
+          id: "user",
+          role: "User",
+          loginName: "user",
+          password: "secret",
+          entrances: ["user"],
+        },
+        {
+          id: "legacy",
+          role: "Legacy",
+          loginName: "legacy",
+          password: "secret",
+        },
+        {
+          id: "invalid",
+          role: "Invalid",
+          loginName: "invalid",
+          password: "secret",
+          entrances: ["invalid"],
+        },
+      ]),
+      true
+    )
+    expect(
+      devAccountsForEntrance("system", accounts).map((account) => account.id)
+    ).toEqual(["system"])
+    expect(
+      devAccountsForEntrance("tenant", accounts).map((account) => account.id)
+    ).toEqual(["tenant"])
+    expect(
+      devAccountsForEntrance(null, accounts).map((account) => account.id)
+    ).toEqual(["user"])
+    expect(devAccountsForEntrance("platform", accounts)).toEqual([])
+  })
   test("returns configured accounts in development", () => {
     expect(parseDevLoginAccounts(configuredAccounts, true)).toEqual([
       {

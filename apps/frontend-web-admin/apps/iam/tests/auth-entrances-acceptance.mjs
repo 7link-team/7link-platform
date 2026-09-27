@@ -111,8 +111,12 @@ export async function authEntrancesAcceptance({
         new URL(anonymous.page.url()).pathname,
         `${roots[entry]}/login`
       )
-      for (const root of Object.values(roots))
-        await anonymous.page.locator(`a[href="${root}/login"]`).waitFor()
+      assert.equal(
+        await anonymous.page.getByRole("navigation", { name: "Sign-in entrances" }).count(),
+        0,
+        "normal entrances must not expose demo switching"
+      )
+      assert.equal(await anonymous.page.getByRole("combobox").count(), 0)
       await anonymous.page
         .getByRole("heading", {
           name: `${entry[0].toUpperCase()}${entry.slice(1)} sign-in`,

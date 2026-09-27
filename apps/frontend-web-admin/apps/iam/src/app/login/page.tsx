@@ -16,7 +16,7 @@ import {
 } from "../../lib/iam-api"
 import { appName, copyrightLine } from "../../lib/branding"
 import {
-  devLoginAccounts,
+  devAccountsForEntrance,
   prefillDevLoginAccount,
   type DevLoginAccount,
 } from "../../lib/dev-login-accounts"
@@ -148,6 +148,7 @@ export default function LoginPage() {
             />
           ) : (
             <PasswordForm
+              key={entry}
               busy={busy}
               error={error}
               visible={visible}
@@ -216,8 +217,9 @@ function PasswordForm({
   const location = useLocation()
   const entry = authEntrance(location.pathname.split("/")[1])
   const selfService = !entry || publicAuthEntrance(entry) !== null
+  const accounts = devAccountsForEntrance(entry)
   const defaultAccount = prefillDevLoginAccount
-    ? devLoginAccounts[0]
+    ? accounts[0]
     : undefined
   const [selectedAccount, setSelectedAccount] = useState(
     defaultAccount?.id ?? ""
@@ -228,7 +230,7 @@ function PasswordForm({
   const [platformID, setPlatformID] = useState(defaultAccount?.platformID ?? "")
 
   const selectAccount = (id: string) => {
-    const account = devLoginAccounts.find((candidate) => candidate.id === id)
+    const account = accounts.find((candidate) => candidate.id === id)
     if (!account) return
     setSelectedAccount(account.id)
     setLoginName(account.loginName)
@@ -253,17 +255,22 @@ function PasswordForm({
       <input type="hidden" name="dev_tenant_id" value={tenantID} />
       <input type="hidden" name="dev_platform_id" value={platformID} />
       <BrandHeader />
-      {devLoginAccounts.length > 0 && (
+      {accounts.length > 0 && (
         <div className="space-y-2 rounded-md border border-dashed bg-muted/40 p-3">
           <Label id="dev-login-account-label">{t("devLoginAccount")}</Label>
           <SimpleSelect
+            triggerClassName="h-16"
             aria-labelledby="dev-login-account-label"
             value={selectedAccount}
             onValueChange={selectAccount}
             placeholder={t("devLoginCustomAccount")}
-            options={devLoginAccounts.map((account: DevLoginAccount) => ({
+            options={accounts.map((account: DevLoginAccount) => ({
               value: account.id,
-              label: `${account.role} · ${account.loginName}`,
+              label: (
+                <span className="block max-w-[220px] whitespace-normal text-start text-xs break-all">
+                  {account.role} · {account.loginName}
+                </span>
+              ),
             }))}
           />
           <p className="text-xs text-muted-foreground">

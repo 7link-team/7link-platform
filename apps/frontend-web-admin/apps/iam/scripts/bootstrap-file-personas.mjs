@@ -128,6 +128,7 @@ const filePermissions = [
 const accounts = [
   {
     id: "super-admin",
+    entrances: ["system"],
     role: "系统唯一超级管理员",
     loginName: "admin@example.test",
     password: readFileSync(adminPasswordFile, "utf8").trim(),
@@ -278,6 +279,7 @@ for (const definition of definitions) {
     })
   accounts.push({
     id: definition.id,
+    entrances: [definition.platformPermissions ? "system" : "tenant"],
     role: definition.role,
     loginName: definition.loginName,
     password: credential.password,
@@ -313,8 +315,34 @@ const operatingPlatform = operatingPlatforms.find(
   },
 })
 accounts.push({
+  entrances: ["platform"],
   id: "operating-admin", role: "运营平台管理员", loginName: platformLogin,
   password: platformCredential.password, platformID: operatingPlatform.id,
+})
+
+const userLogin = "user@example.test"
+const userCredential = passwordFor("personal-user")
+const users = await call(
+  "/system/principals?limit=200&search=" + encodeURIComponent(userLogin),
+  { tenant: false }
+)
+if (!users.items.some((item) => item.login_name === userLogin))
+  await call("/system/principals", {
+    method: "POST",
+    tenant: false,
+    body: {
+      login_name: userLogin,
+      display_name: "Development User",
+      email: userLogin,
+      password: userCredential.password,
+    },
+  })
+accounts.push({
+  id: "personal-user",
+  role: "用户账号",
+  entrances: ["user"],
+  loginName: userLogin,
+  password: userCredential.password,
 })
 
 process.stdout.write(

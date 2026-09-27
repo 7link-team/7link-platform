@@ -37,6 +37,7 @@ const browser = await chromium.launch({ channel: "chrome", headless: true })
 const results = []
 try {
   for (const account of fixture.accounts) {
+    if (!expectedScopes[account.id]) continue
     process.stdout.write(`Auditing ${account.id}...\n`)
     const context = await browser.newContext({
       baseURL: webURL,
@@ -58,7 +59,8 @@ try {
         failedResponses.push(`${response.status()} ${response.url()}`)
     })
 
-    await page.goto("/user/login")
+    const prefix = account.entrances?.[0] === "system" ? "system" : "admin"
+    await page.goto(`/${prefix}/login`)
     await page.getByLabel("Development account").click()
     await page
       .getByRole("option", {
@@ -75,7 +77,9 @@ try {
       accountPasswords.get(account.id)
     )
     await page.locator('button[type="submit"]').click()
-    await page.waitForURL((url) => url.pathname !== "/user/login")
+    await page.waitForURL((url) =>
+      url.pathname.startsWith(`/${prefix}/`) && !url.pathname.endsWith("/login")
+    )
     assert.equal(
       await page.evaluate(() => sessionStorage.getItem("iam.tenant")),
       fixture.tenantID,

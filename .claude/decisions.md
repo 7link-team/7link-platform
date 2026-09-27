@@ -1,5 +1,20 @@
 # Decisions
 
+## D93 - Demo Entrances Only Show Matching Personas (2026-09-27)
+
+User requires normal login pages to show only their own entrance. Entrance tabs
+are development/demo tools, enabled by the same configured demo-account boundary
+as the selector. Demo personas declare entrances explicitly; unassigned personas
+are not offered in any selector. System, platform, tenant and user selectors
+contain their corresponding personas. The personal-user fixture has no admin
+grant or organization membership. This is display/test configuration, not a new
+identity type or an authorization rule. Switching entrance clears credentials
+and target IDs. Shared identity and live server authorization remain authoritative.
+
+Verified: normal entrance real E2E, demo exact-option and switch-clearing browser
+checks, 7 real persona logins, desktop/mobile layouts, 239 frontend unit tests,
+typecheck/lint/build PASS. No further implementation pending.
+
 ## D92 - View-Prefixed Web Routes and Browser Test Location (2026-09-27)
 
 User approved complete Web route boundaries: /system, /platform, /admin and

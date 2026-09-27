@@ -17,7 +17,8 @@ const accountFilter = new Set(
   (process.env.IAM_PERSONAS ?? "").split(",").filter(Boolean)
 )
 const accounts = fixture.accounts.filter(
-  (account) => accountFilter.size === 0 || accountFilter.has(account.id)
+  (account) => account.tenantID &&
+    (accountFilter.size === 0 || accountFilter.has(account.id))
 )
 const outputDirectory = join(directory, "browser", "persona-menus")
 mkdirSync(outputDirectory, { recursive: true, mode: 0o700 })
@@ -88,7 +89,8 @@ try {
         browserErrors.push(message.text())
     })
 
-    await page.goto("/user/login")
+    const prefix = account.entrances?.[0] === "system" ? "system" : "admin"
+    await page.goto(`/${prefix}/login`)
     await page.getByLabel("Development account").click()
     await page
       .getByRole("option", {
@@ -101,7 +103,9 @@ try {
       passwords.get(account.id)
     )
     await page.locator('button[type="submit"]').click()
-    await page.waitForURL((url) => url.pathname !== "/user/login")
+    await page.waitForURL((url) =>
+      url.pathname.startsWith(`/${prefix}/`) && !url.pathname.endsWith("/login")
+    )
     assert.equal(
       await page.evaluate(() => sessionStorage.getItem("iam.tenant")),
       fixture.tenantID,

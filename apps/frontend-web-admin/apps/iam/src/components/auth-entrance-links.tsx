@@ -1,5 +1,6 @@
 import { Link } from "react-router"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
+import { devLoginAccounts } from "../lib/dev-login-accounts"
 import {
   authEntrances,
   entranceLoginPath,
@@ -8,6 +9,7 @@ import {
 
 export function AuthEntranceLinks({ entry }: { entry: AuthEntrance | null }) {
   const t = useTranslations("iam")
+  if (devLoginAccounts.length === 0) return null
   return (
     <nav
       aria-label={t("authEntrances")}
