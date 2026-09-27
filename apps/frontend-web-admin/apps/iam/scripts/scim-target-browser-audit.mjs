@@ -135,9 +135,9 @@ try {
   ])
   await context.addInitScript(
     ({ tenant, subject }) => {
-      if (localStorage.getItem("iam.tenant:subject") === subject) return
-      localStorage.setItem("iam.tenant", tenant)
-      localStorage.setItem("iam.tenant:subject", subject)
+      if (sessionStorage.getItem("iam.tenant:subject") === subject) return
+      sessionStorage.setItem("iam.tenant", tenant)
+      sessionStorage.setItem("iam.tenant:subject", subject)
     },
     { tenant: tenant.id, subject: actorSession.subject }
   )
@@ -414,7 +414,7 @@ try {
   await capture("mobile-list")
   await edit()
   await page.evaluate((id) => {
-    localStorage.setItem("iam.tenant", id)
+    sessionStorage.setItem("iam.tenant", id)
     window.dispatchEvent(new Event("tenant-change"))
   }, other.id)
   await dialog.waitFor({ state: "hidden" })
@@ -425,7 +425,7 @@ try {
     0
   )
   await page.evaluate((id) => {
-    localStorage.setItem("iam.tenant", id)
+    sessionStorage.setItem("iam.tenant", id)
     window.dispatchEvent(new Event("tenant-change"))
   }, tenant.id)
   await page

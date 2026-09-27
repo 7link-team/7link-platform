@@ -4766,9 +4766,11 @@ export interface components {
             /** Format: date-time */
             expires_at?: string;
             mode?: string;
-            principal_id: string | null;
+            principal_id?: string | null;
             scope_id: string | null;
             scope_type: string;
+            /** @enum {string} */
+            target_type?: "account" | "platform" | "tenant";
         };
         AccountViewRoot: {
             id: string | null;

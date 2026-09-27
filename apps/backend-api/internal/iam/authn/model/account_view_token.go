@@ -16,6 +16,7 @@ type AccountViewToken struct {
 	ActorCredentialVersion  int64      `gorm:"column:actor_credential_version;not null"`
 	TargetCredentialVersion int64      `gorm:"column:target_credential_version;not null"`
 	ScopeType               string     `gorm:"column:scope_type;size:16;not null"`
+	TargetType              string     `gorm:"column:target_type;size:16;not null;default:account"`
 	ScopeID                 guid.ID    `gorm:"column:scope_id;not null"`
 	Mode                    string     `gorm:"column:mode;size:16;not null;default:read_only"`
 	CreatedAt               time.Time  `gorm:"column:created_at;not null"`

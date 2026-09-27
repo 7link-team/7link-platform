@@ -530,11 +530,24 @@ try {
     })
   )[0]
   assert.equal(tenant.name, "First Business")
-	await admin.page.getByRole("button", { name: "Open First Business", exact: true }).click()
-	await admin.page.waitForURL((url) => url.pathname === `/tenants/${tenant.id}`)
+  await admin.page
+    .getByRole("button", { name: "Open First Business", exact: true })
+    .click()
+  const [firstWorkspace] = await Promise.all([
+    admin.context.waitForEvent("page"),
+    admin.page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Open view", exact: true })
+      .click(),
+  ])
+  await firstWorkspace.waitForURL(
+    (url) => url.pathname === `/tenants/${tenant.id}`
+  )
+  await firstWorkspace.close()
+  await admin.page.goto(`/tenants/${tenant.id}`)
   await eventually(
     async () =>
-      (await admin.page.evaluate(() => localStorage.getItem("iam.tenant"))) ===
+      (await admin.page.evaluate(() => sessionStorage.getItem("iam.tenant"))) ===
       tenant.id,
     "first tenant adoption"
   )

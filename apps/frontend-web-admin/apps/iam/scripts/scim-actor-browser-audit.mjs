@@ -98,8 +98,8 @@ try {
   const session = await api("/me")
   await page.evaluate(
     ({ tenant, subject }) => {
-      localStorage.setItem("iam.tenant", tenant)
-      localStorage.setItem("iam.tenant:subject", subject)
+      sessionStorage.setItem("iam.tenant", tenant)
+      sessionStorage.setItem("iam.tenant:subject", subject)
     },
     { tenant, subject: session.subject }
   )
@@ -188,7 +188,7 @@ try {
     owner_principal_id: me.subject,
   })
   await page.evaluate((id) => {
-    localStorage.setItem("iam.tenant", id)
+    sessionStorage.setItem("iam.tenant", id)
     window.dispatchEvent(new Event("tenant-change"))
   }, otherTenant.id)
   await page.getByRole("dialog").waitFor({ state: "hidden" })

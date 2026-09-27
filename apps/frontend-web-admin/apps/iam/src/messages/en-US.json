@@ -58,6 +58,7 @@
   "addPlatformMember": "Add platform member",
   "editAccount": "Edit account",
   "accountView": "Account view",
+  "organizationView": "Organization view",
   "accountViewReadOnly": "Read-only",
   "accountViewWritable": "Writable",
   "accountViewExit": "Exit view",

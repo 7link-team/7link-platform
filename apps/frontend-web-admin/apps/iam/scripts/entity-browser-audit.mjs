@@ -192,7 +192,7 @@ async function clickRowAction(name, title) {
 
 async function entities() {
   return evaluate(`
-    const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+    const tenant = sessionStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
     const response = await fetch("/api/tenants/" + encodeURIComponent(tenant) + "/entities", {
       credentials: "include",
     });
@@ -203,7 +203,7 @@ async function entities() {
 
 async function cleanupArtifacts() {
   await evaluate(`
-    const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+    const tenant = sessionStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
     const base = "/api/tenants/" + encodeURIComponent(tenant);
     const list = await fetch(base + "/entities", { credentials: "include" });
     if (!list.ok) throw new Error("artifact list failed: " + list.status);
@@ -417,7 +417,7 @@ await waitFor(`!document.querySelector("#entity-relationship-form")`)
 // before the binding dialog loads its role list.
 const denyRoleName = `Acceptance Store Viewer ${suffix}`
 await evaluate(`
-  const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+  const tenant = sessionStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
   const base = "/api/tenants/" + encodeURIComponent(tenant);
   const headers = { "Content-Type": "application/json" };
   const created = await fetch(base + "/roles", {
@@ -450,7 +450,7 @@ await waitFor(
   `document.querySelector('[role="dialog"]')?.textContent.includes(${JSON.stringify(businessResourceID)})`
 )
 const businessResourceCheck = await evaluate(`
-  const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+  const tenant = sessionStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
   const base = "/api/tenants/" + encodeURIComponent(tenant);
   const members = await fetch(base + "/members", { credentials: "include" });
   if (!members.ok) throw new Error("member list failed: " + members.status);
@@ -477,7 +477,7 @@ if (
     `business resource check failed: ${JSON.stringify(businessResourceCheck)}`
   )
 const localizedWindowErrors = await evaluate(`
-  const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+  const tenant = sessionStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
   const base = "/api/tenants/" + encodeURIComponent(tenant);
   const members = await fetch(base + "/members", { credentials: "include" });
   if (!members.ok) throw new Error("member list failed: " + members.status);
@@ -524,7 +524,7 @@ if (expectedWindowStatuses.length !== 3)
     `expected three localized window failures, got ${expectedWindowStatuses.length}`
   )
 const localizedConditionErrors = await evaluate(`
-  const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+  const tenant = sessionStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
   const base = "/api/tenants/" + encodeURIComponent(tenant);
   const members = await fetch(base + "/members", { credentials: "include" });
   if (!members.ok) throw new Error("member list failed: " + members.status);
@@ -764,7 +764,7 @@ if (state.some((item) => item.id === root.id || item.id === child.id))
   throw new Error("entity cleanup did not complete")
 
 const auditEvents = await evaluate(`
-  const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+  const tenant = sessionStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
   const response = await fetch("/api/tenants/" + encodeURIComponent(tenant) + "/audit-events?target_id=${encodeURIComponent(child.id)}&limit=100", {
     credentials: "include",
   });

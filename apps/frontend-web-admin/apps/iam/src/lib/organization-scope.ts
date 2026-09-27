@@ -1,3 +1,11 @@
+export function routeTenantID(): string {
+  if (typeof window === "undefined") return ""
+  const match = /^\/tenants\/([^/]+)(?:\/|$)/.exec(
+    window.location?.pathname ?? ""
+  )
+  return match ? decodeURIComponent(match[1] ?? "") : ""
+}
+
 export function operatingPlatformID(): string {
   if (typeof window === "undefined") return ""
   const match = /^\/operating-platforms\/([^/]+)(?:\/|$)/.exec(

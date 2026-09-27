@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useLocation } from "react-router"
-import { Eye, Loader2 } from "lucide-react"
+import { Eye, ExternalLink, Loader2 } from "lucide-react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -21,15 +21,19 @@ import {
 import { iamApi } from "../lib/iam-api"
 
 export function AccountViewDialog({
-  principalID,
+  principalID = "",
   label,
   preferredScope,
   preferredOwner,
+  organization,
+  disabled = false,
 }: {
-  principalID: string
+  principalID?: string
   label: string
   preferredScope?: AccountViewScope
   preferredOwner?: string
+  organization?: { kind: "platform" | "tenant"; id: string }
+  disabled?: boolean
 }) {
   const t = useTranslations("iam")
   const location = useLocation()
@@ -49,7 +53,9 @@ export function AccountViewDialog({
     setError("")
     try {
       const selection = {
-        principal_id: principalID,
+        ...(organization
+          ? { target_type: organization.kind }
+          : { principal_id: principalID }),
         scope_type: scope,
         scope_id: scopeID,
         mode,
@@ -71,12 +77,32 @@ export function AccountViewDialog({
       <Button
         size="icon"
         variant="ghost"
-        title={t("accountView")}
-        aria-label={`${t("accountView")} ${label}`}
+        disabled={disabled}
+        title={t(
+          organization
+            ? organization.kind === "platform"
+              ? "enterOperatingPlatform"
+              : "enterTenant"
+            : "accountView"
+        )}
+        aria-label={
+          organization
+            ? organization.kind === "platform"
+              ? `${t("enterOperatingPlatform")} ${label}`
+              : t("enterTenantNamed", { name: label })
+            : `${t("accountView")} ${label}`
+        }
         onClick={() => {
           setMode("read_only")
           setError("")
           setOpen(true)
+          if (organization) {
+            setLoading(false)
+            setScope(organization.kind)
+            setScopeID(organization.id)
+            setTenantID(organization.kind === "tenant" ? organization.id : "")
+            return
+          }
           setLoading(true)
           setWorkspaces([])
           setScope("personal")
@@ -109,40 +135,48 @@ export function AccountViewDialog({
             .finally(() => setLoading(false))
         }}
       >
-        <Eye className="size-4" />
+        {organization ? (
+          <ExternalLink className="size-4" />
+        ) : (
+          <Eye className="size-4" />
+        )}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {t("accountView")} · {label}
+              {t(organization ? "organizationView" : "accountView")} · {label}
             </DialogTitle>
           </DialogHeader>
           {error && <Alert>{error}</Alert>}
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="account-view-scope">
-                {t("accountViewScope")}
-              </Label>
-              <SimpleSelect
-                id="account-view-scope"
-                value={`${scope}:${scopeID}`}
-                onValueChange={(value) => {
-                  const next = workspaces.find(
-                    (item) => `${item.scope_type}:${item.scope_id}` === value
-                  )
-                  if (!next) return
-                  setScope(next.scope_type)
-                  setScopeID(next.scope_type === "system" ? "1" : next.scope_id)
-                  setTenantID(next.tenant_id ?? "")
-                }}
-                disabled={loading}
-                options={workspaces.map((item) => ({
-                  value: `${item.scope_type}:${item.scope_id}`,
-                  label: `${t(`accountViewScope_${item.scope_type}`)} · ${item.name}`,
-                }))}
-              />
-            </div>
+            {!organization && (
+              <div className="space-y-2">
+                <Label htmlFor="account-view-scope">
+                  {t("accountViewScope")}
+                </Label>
+                <SimpleSelect
+                  id="account-view-scope"
+                  value={`${scope}:${scopeID}`}
+                  onValueChange={(value) => {
+                    const next = workspaces.find(
+                      (item) => `${item.scope_type}:${item.scope_id}` === value
+                    )
+                    if (!next) return
+                    setScope(next.scope_type)
+                    setScopeID(
+                      next.scope_type === "system" ? "1" : next.scope_id
+                    )
+                    setTenantID(next.tenant_id ?? "")
+                  }}
+                  disabled={loading}
+                  options={workspaces.map((item) => ({
+                    value: `${item.scope_type}:${item.scope_id}`,
+                    label: `${t(`accountViewScope_${item.scope_type}`)} · ${item.name}`,
+                  }))}
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="account-view-mode">{t("accountViewMode")}</Label>
               <SimpleSelect
@@ -171,7 +205,7 @@ export function AccountViewDialog({
               disabled={
                 busy ||
                 loading ||
-                workspaces.length === 0 ||
+                (!organization && workspaces.length === 0) ||
                 !scopeID.trim() ||
                 (scope === "entity" && !tenantID.trim())
               }

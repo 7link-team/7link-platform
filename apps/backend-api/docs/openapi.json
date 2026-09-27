@@ -1118,10 +1118,17 @@
           },
           "scope_type": {
             "type": "string"
+          },
+          "target_type": {
+            "enum": [
+              "account",
+              "platform",
+              "tenant"
+            ],
+            "type": "string"
           }
         },
         "required": [
-          "principal_id",
           "scope_type",
           "scope_id"
         ],

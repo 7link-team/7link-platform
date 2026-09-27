@@ -98,7 +98,7 @@ func (s *Service) accountViewWorkspace(ctx context.Context, kind string, id guid
 // View admission is evaluated on issuance and every use. Route authorization
 // still evaluates the target's permissions independently.
 func (m *Module) authorizeAccountView(ctx context.Context, tx *gorm.DB, actor, target guid.ID, scope string, id guid.ID) error {
-	if m == nil || m.checker == nil || m.members == nil || m.registrar == nil || m.runtime == nil || tx == nil || actor <= 0 || target <= 0 || id <= 0 {
+	if m == nil || m.checker == nil || m.members == nil || m.registrar == nil || m.runtime == nil || tx == nil || actor <= 0 || target < 0 || id <= 0 {
 		return authnext.ErrInvalidCredentials
 	}
 	checker := *m.checker
@@ -109,6 +109,27 @@ func (m *Module) authorizeAccountView(ctx context.Context, tx *gorm.DB, actor, t
 	}
 	if !allowed {
 		return authnext.ErrInvalidCredentials
+	}
+	if target == 0 {
+		if scope != "platform" && scope != "tenant" {
+			return authnext.ErrInvalidCredentials
+		}
+		names, err := checker.authorizationTables()
+		if err != nil {
+			return fmt.Errorf("%w: %w", authnext.ErrUnavailable, err)
+		}
+		active, member, err := ownerMembershipState(ctx, systemCurrentRead(tx), names, id, actor, scope)
+		if err != nil {
+			return fmt.Errorf("%w: %w", authnext.ErrUnavailable, err)
+		}
+		full, err := systemFullAdministrator(ctx, tx, names.Tables.PlatformAdministrators.String(), actor)
+		if err != nil {
+			return fmt.Errorf("%w: %w", authnext.ErrUnavailable, err)
+		}
+		if !active || (!member && !full) {
+			return authnext.ErrInvalidCredentials
+		}
+		return nil
 	}
 	switch scope {
 	case "personal":

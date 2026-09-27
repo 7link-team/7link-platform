@@ -131,7 +131,7 @@ func TestSystemMenuUpgradePreservesCustomNodesAndRunsOnce(t *testing.T) {
 		if menu.Route == "/system/operating-platforms" {
 			parent, err := h.service.GetMenu(t.Context(), 99, menu.ParentID)
 			require.NoError(t, err)
-			require.Equal(t, "Operations management", parent.Label)
+			require.Equal(t, "Organization management", parent.Label)
 		}
 	}
 	var removed guid.ID

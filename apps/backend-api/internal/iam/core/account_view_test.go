@@ -39,6 +39,10 @@ func TestAccountViewAdmissionUsesLiveOperatorAndExactTargetOwner(t *testing.T) {
 		{"ordinary-system", "system", 22, 1, false},
 		{"administrator-system", "system", 33, 1, true},
 		{"system-wrong-id", "system", 33, 2, false},
+		{"organization-platform", "platform", 0, 1, true},
+		{"organization-tenant", "tenant", 0, 2, true},
+		{"organization-wrong-kind", "tenant", 0, 1, false},
+		{"organization-not-a-personal-view", "personal", 0, 33, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := h.db.Transaction(func(tx *gorm.DB) error {
@@ -76,4 +80,54 @@ func TestAccountViewWorkspaceFollowsVerifiedScope(t *testing.T) {
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 	_, err = h.service.accountViewWorkspace(t.Context(), "platform", 2)
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
+func TestOrganizationViewAuthorityIsScopedAndDoesNotCreateMembership(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	seedOperatingPlatform(t, h, 1, 11)
+	h.seedMember(t, 2, 22, MemberActive)
+	h.seedMember(t, 3, 33, MemberActive)
+	_, err := h.repository.GrantPlatformAdministrator(t.Context(), 33)
+	require.NoError(t, err)
+	members := NewMembershipChecker(h.runtime)
+	require.NoError(t, members.BindForeignTables(publishedDirectoryTables("sl_"), publishedPrincipalTable("sl_")))
+	for _, kind := range []string{"platform", "tenant"} {
+		id := guid.ID(1)
+		if kind == "tenant" {
+			id = 2
+		}
+		ctx := authnext.WithClaims(t.Context(), &authnext.Claims{PrincipalID: 33, AccountView: &authnext.AccountViewIdentity{ID: 50, PrincipalID: 33, ScopeType: kind, ScopeID: id, TargetType: kind}})
+		if kind == "platform" {
+			allowed, err := h.authorizer.CheckOperatingPlatform(ctx, id, "role_create", 33)
+			require.NoError(t, err)
+			require.True(t, allowed)
+			allowed, err = h.authorizer.CheckOperatingPlatform(t.Context(), id, "role_create", 33)
+			require.NoError(t, err)
+			require.False(t, allowed, "ordinary system cookie authority must not bypass platform membership")
+		} else {
+			allowed, err := h.authorizer.Check(ctx, id, "role_create", 33)
+			require.NoError(t, err)
+			require.True(t, allowed)
+			constraint, err := h.authorizer.Constraint(ctx, id, "file_read", 33)
+			require.NoError(t, err)
+			require.True(t, constraint.AllowAll, "data constraints must agree with exact organization administration")
+			allowed, err = h.authorizer.Check(t.Context(), id, "role_create", 33)
+			require.NoError(t, err)
+			require.False(t, allowed)
+		}
+		var count int64
+		require.NoError(t, h.db.Table("sl_iam_tenant_members").Where("tenant_id = ? AND principal_id = ?", id, 33).Count(&count).Error)
+		require.Zero(t, count)
+	}
+	require.NoError(t, h.db.Exec("DELETE FROM sl_iam_platform_administrators WHERE principal_id = ?", 33).Error)
+	seedSystemPermissions(t, h, 33, "account_view_create")
+	m := &Module{runtime: h.runtime, checker: h.authorizer, members: members, registrar: authz.NewDeclarationOnlyRegistrar(h.service.registry)}
+	for _, scope := range []string{"platform", "tenant"} {
+		id := guid.ID(1)
+		if scope == "tenant" {
+			id = 2
+		}
+		err := h.db.Transaction(func(tx *gorm.DB) error { return m.authorizeAccountView(t.Context(), tx, 33, 0, scope, id) })
+		require.ErrorIs(t, err, authnext.ErrInvalidCredentials, "view creation authority alone must not grant organization administration")
+	}
 }

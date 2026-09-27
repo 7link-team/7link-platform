@@ -1,5 +1,9 @@
 import type { components } from "./api-schema"
-import { operatingPlatformID, organizationRouteURL } from "./organization-scope"
+import {
+  operatingPlatformID,
+  organizationRouteURL,
+  routeTenantID,
+} from "./organization-scope"
 import {
   accountViewRequest,
   accountViewResponse,
@@ -1119,13 +1123,18 @@ export class ApiError extends Error {
  *
  * A build cannot know which tenants a deployment has, so there is no compiled-in
  * fallback slug: the value is either one the operator picked, one the deployment
- * configured, or one adopted from the session (see `adoptSessionTenant`). Empty
+ * configured, or one adopted from the session (see `adoptSessionTenant`). Each
+ * tab keeps its own selection so simultaneous workspaces cannot change it. Empty
  * means "not resolved yet" and no tenant resource request can be constructed.
  */
 export function getTenant(): string {
   if (getAccountView()) return getViewTenant()
+  const routeTenant = routeTenantID()
+  if (routeTenant) return routeTenant
   const stored =
-    typeof localStorage === "undefined" ? null : localStorage.getItem(tenantKey)
+    typeof sessionStorage === "undefined"
+      ? null
+      : sessionStorage.getItem(tenantKey)
   return stored ?? import.meta.env.VITE_DEFAULT_TENANT ?? ""
 }
 
@@ -1141,11 +1150,11 @@ export function adoptSessionTenant(
   session: Pick<Session, "organization_id"> & Partial<Pick<Session, "subject">>
 ) {
   if (getAccountView()) return
-  if (session.subject && typeof localStorage !== "undefined") {
+  if (session.subject && typeof sessionStorage !== "undefined") {
     const ownerKey = `${tenantKey}:subject`
-    if (localStorage.getItem(ownerKey) !== session.subject) {
+    if (sessionStorage.getItem(ownerKey) !== session.subject) {
       setTenant(session.organization_id ?? "")
-      localStorage.setItem(ownerKey, session.subject)
+      sessionStorage.setItem(ownerKey, session.subject)
       return
     }
   }
@@ -1155,7 +1164,7 @@ export function adoptSessionTenant(
 
 export function setTenant(value: string): void {
   if (getAccountView()) setViewTenant(value.trim())
-  else localStorage.setItem(tenantKey, value.trim())
+  else sessionStorage.setItem(tenantKey, value.trim())
   window.dispatchEvent(new Event("tenant-change"))
 }
 

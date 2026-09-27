@@ -205,8 +205,8 @@ async function login(loginName, loginPassword) {
   await waitFor(`location.pathname === "/tenants"`, 20000)
   const session = await api("/me", {}, "")
   await evaluate(`
-    localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
-    localStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
+    sessionStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
+    sessionStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
   `)
   await command("Page.reload", { ignoreCache: true })
   await waitFor(
@@ -413,12 +413,17 @@ await command("Emulation.setDeviceMetricsOverride", {
   mobile: false,
 })
 
-await clickRowAction(updatedName, "进入租户")
+await evaluate(`
+  const link = (${rowExpression(updatedName)}).querySelector('a[title="进入租户"]');
+  if (!link || link.target !== "_blank" || link.rel !== "noopener noreferrer")
+    throw new Error("tenant workspace must open in a detached tab");
+`)
+await navigate(`/tenants/${encodeURIComponent(tenant.id)}`)
 await waitFor(
-  `location.pathname === "/" && localStorage.getItem("iam.tenant") === ${JSON.stringify(tenant.id)}`
+  `location.pathname.startsWith("/tenants/${tenant.id}") && sessionStorage.getItem("iam.tenant") === ${JSON.stringify(tenant.id)}`
 )
 await evaluate(`
-  localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
+  sessionStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
   window.dispatchEvent(new Event("tenant-change"));
 `)
 await navigate("/tenants")

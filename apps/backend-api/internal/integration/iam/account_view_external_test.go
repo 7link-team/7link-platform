@@ -32,6 +32,18 @@ func TestAccountViewExternalDatabase(t *testing.T) {
 	headers := map[string]string{"Cookie": cookie, "Origin": "https://app.example.test"}
 	targetSessions := f.count(t, "iam_sessions", "principal_id = ?", f.requesterB.ID)
 	operatorSessions := f.count(t, "iam_sessions", "principal_id = ?", f.adminA.ID)
+	organization := f.request(t, http.MethodPost, "/account-views", 0, "", map[string]any{
+		"target_type": "tenant", "scope_type": "tenant", "scope_id": iamTenantB.String(), "mode": "read_write",
+	}, headers)
+	requireStatus(t, http.StatusOK, organization)
+	organizationView := decodeEnvelope[iamauthn.AccountViewCreated](t, organization)
+	organizationClaims, err := service.Authenticate(t.Context(), "Bearer "+organizationView.Token, "")
+	require.NoError(t, err)
+	require.Equal(t, f.adminA.ID, organizationClaims.PrincipalID)
+	require.Equal(t, "tenant", organizationClaims.AccountView.TargetType)
+	requireStatus(t, http.StatusOK, f.request(t, http.MethodGet, "/tenants/"+iamTenantB.String()+"/roles", 0, organizationView.Token, nil, nil))
+	requireStatus(t, http.StatusForbidden, f.request(t, http.MethodGet, "/tenants/"+iamTenantA.String()+"/roles", 0, organizationView.Token, nil, nil))
+	require.Error(t, f.db.Table(f.table("iam_account_view_tokens")).Where("id = ?", organizationView.ID).Update("target_type", "account").Error)
 	create := func() iamauthn.AccountViewCreated {
 		response := f.request(t, http.MethodPost, "/account-views", 0, "", map[string]any{
 			"principal_id": f.requesterB.ID.String(), "scope_type": "tenant", "scope_id": iamTenantB.String(),
@@ -72,6 +84,8 @@ func TestAccountViewExternalDatabase(t *testing.T) {
 		Update("status", "active").Error)
 	// Restricted authority is a direct role assignment on the real system root.
 	require.NoError(t, f.db.Table(f.table("iam_platform_administrators")).Where("principal_id = ?", f.adminA.ID).Delete(&struct{}{}).Error)
+	_, err = service.Authenticate(t.Context(), "Bearer "+organizationView.Token, "")
+	require.Error(t, err, "organization view must lose nonmember authority immediately when protected system authority is removed")
 	var root struct{ ID guid.ID }
 	require.NoError(t, f.db.Table(f.table("iam_tenants")).Select("id").Where("slug = ? AND scope_kind = ?", core.SystemRootSlug, "system").Take(&root).Error)
 	roleID := guid.ID(987654321)

@@ -350,7 +350,7 @@ try {
       ])
       await login(context, account)
       await context.addInitScript(
-        (value) => localStorage.setItem("iam.tenant", value),
+        (value) => sessionStorage.setItem("iam.tenant", value),
         tenant
       )
       const page = await context.newPage()

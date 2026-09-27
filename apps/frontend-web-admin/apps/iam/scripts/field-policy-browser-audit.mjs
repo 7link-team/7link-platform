@@ -109,7 +109,7 @@ async function fits() {
 try {
   await page.goto(baseURL + "/login")
   await page.evaluate(
-    ({ tenant }) => localStorage.setItem("iam.tenant", tenant),
+    ({ tenant }) => sessionStorage.setItem("iam.tenant", tenant),
     { tenant }
   )
   await ok("/login", "POST", {
@@ -298,7 +298,7 @@ try {
   await editor()
   await page.evaluate(
     ({ tenantB }) => {
-      localStorage.setItem("iam.tenant", tenantB)
+      sessionStorage.setItem("iam.tenant", tenantB)
       window.dispatchEvent(new Event("tenant-change"))
     },
     { tenantB: tenantB.id }
@@ -340,7 +340,7 @@ try {
   page.on("pageerror", (error) => exceptions.push(error.message))
   await page.goto(baseURL + "/login")
   await page.evaluate(
-    (tenant) => localStorage.setItem("iam.tenant", tenant),
+    (tenant) => sessionStorage.setItem("iam.tenant", tenant),
     tenant
   )
   await ok("/login", "POST", {

@@ -36,6 +36,7 @@ func newAccountViewToken(db *gorm.DB, opts ...gen.DOOption) accountViewToken {
 	_accountViewToken.ActorCredentialVersion = field.NewInt64(tableName, "actor_credential_version")
 	_accountViewToken.TargetCredentialVersion = field.NewInt64(tableName, "target_credential_version")
 	_accountViewToken.ScopeType = field.NewString(tableName, "scope_type")
+	_accountViewToken.TargetType = field.NewString(tableName, "target_type")
 	_accountViewToken.ScopeID = field.NewField(tableName, "scope_id")
 	_accountViewToken.Mode = field.NewString(tableName, "mode")
 	_accountViewToken.CreatedAt = field.NewTime(tableName, "created_at")
@@ -60,6 +61,7 @@ type accountViewToken struct {
 	ActorCredentialVersion  field.Int64
 	TargetCredentialVersion field.Int64
 	ScopeType               field.String
+	TargetType              field.String
 	ScopeID                 field.Field
 	Mode                    field.String
 	CreatedAt               field.Time
@@ -90,6 +92,7 @@ func (a *accountViewToken) updateTableName(table string) *accountViewToken {
 	a.ActorCredentialVersion = field.NewInt64(table, "actor_credential_version")
 	a.TargetCredentialVersion = field.NewInt64(table, "target_credential_version")
 	a.ScopeType = field.NewString(table, "scope_type")
+	a.TargetType = field.NewString(table, "target_type")
 	a.ScopeID = field.NewField(table, "scope_id")
 	a.Mode = field.NewString(table, "mode")
 	a.CreatedAt = field.NewTime(table, "created_at")
@@ -124,7 +127,7 @@ func (a *accountViewToken) GetFieldByName(fieldName string) (field.OrderExpr, bo
 }
 
 func (a *accountViewToken) fillFieldMap() {
-	a.fieldMap = make(map[string]field.Expr, 14)
+	a.fieldMap = make(map[string]field.Expr, 15)
 	a.fieldMap["id"] = a.ID
 	a.fieldMap["token_hash"] = a.TokenHash
 	a.fieldMap["actor_id"] = a.ActorID
@@ -133,6 +136,7 @@ func (a *accountViewToken) fillFieldMap() {
 	a.fieldMap["actor_credential_version"] = a.ActorCredentialVersion
 	a.fieldMap["target_credential_version"] = a.TargetCredentialVersion
 	a.fieldMap["scope_type"] = a.ScopeType
+	a.fieldMap["target_type"] = a.TargetType
 	a.fieldMap["scope_id"] = a.ScopeID
 	a.fieldMap["mode"] = a.Mode
 	a.fieldMap["created_at"] = a.CreatedAt

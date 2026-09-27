@@ -52,7 +52,16 @@ export function AccountViewBanner({ view }: { view: ActiveAccountView }) {
     >
       <span className="flex min-w-0 flex-wrap items-center gap-2">
         <Eye className="size-4 shrink-0" />
-        {t("accountView")} · {view.principal_id} ·{" "}
+        {t(
+          view.target_type === "platform" || view.target_type === "tenant"
+            ? "organizationView"
+            : "accountView"
+        )}{" "}
+        ·{" "}
+        {view.target_type === "platform" || view.target_type === "tenant"
+          ? `${t(`accountViewScope_${view.scope_type}`)} ${view.scope_id}`
+          : view.principal_id}{" "}
+        ·{" "}
         {t(
           view.mode === "read_only"
             ? "accountViewReadOnly"

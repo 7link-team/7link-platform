@@ -254,7 +254,7 @@ try {
     await row.getByRole("button", { name: "编辑", exact: false }).click()
     await dialog.waitFor()
     await page.evaluate(() => {
-      localStorage.setItem("iam.tenant", "999999")
+      sessionStorage.setItem("iam.tenant", "999999")
       window.dispatchEvent(new Event("tenant-change"))
     })
     await dialog.waitFor({ state: "hidden" })

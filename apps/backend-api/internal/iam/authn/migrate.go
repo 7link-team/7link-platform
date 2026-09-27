@@ -38,6 +38,7 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 		{Name: "reauthentication", Version: 14},
 		{Name: "personal-tokens", Version: 15, Dependencies: []module.MigrationMilestoneRef{{Module: "organization", Name: "base"}}},
 		{Name: "account-view-tokens", Version: 16},
+		{Name: "access-view-targets", Version: 17},
 	}
 }
 

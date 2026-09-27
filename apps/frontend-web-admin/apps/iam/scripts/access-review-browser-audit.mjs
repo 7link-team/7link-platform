@@ -181,7 +181,7 @@ async function login(loginName, loginPassword) {
     `location.pathname === "/login" && document.querySelector("#login-name")`
   )
   await evaluate(
-    `localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)})`
+    `sessionStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)})`
   )
   await setControl("#login-name", loginName)
   await setControl("#password", loginPassword)
@@ -189,8 +189,8 @@ async function login(loginName, loginPassword) {
   await waitFor(`location.pathname === "/"`, 20000)
   const session = await api("/me")
   await evaluate(`
-    localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
-    localStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
+    sessionStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
+    sessionStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
   `)
   await command("Page.reload", { ignoreCache: true })
   await waitFor(

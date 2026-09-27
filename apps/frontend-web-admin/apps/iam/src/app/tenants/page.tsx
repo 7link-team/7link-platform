@@ -1,6 +1,6 @@
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useCallback, useEffect, useState, type FormEvent } from "react"
-import { ArrowRight, Landmark, Pencil, Plus, Trash2 } from "lucide-react"
+import { Landmark, Pencil, Plus, Trash2 } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Checkbox } from "@workspace/ui/components/checkbox"
@@ -23,14 +23,13 @@ import {
   TableHeader,
   TableRow,
 } from "@workspace/ui/components/table"
-import { useNavigate } from "react-router"
+import { AccountViewDialog } from "../../components/account-view-dialog"
 import { Alert } from "../../components/alert"
 import { useAuth } from "../../components/auth"
 import { PageHeader } from "../../components/page-header"
 import {
   iamApi,
   getTenant,
-  setTenant,
   type Principal,
   type Tenant,
   type TenantUpdate,
@@ -64,7 +63,6 @@ export default function TenantsPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [loadError, setLoadError] = useState("")
-  const navigate = useNavigate()
 
   const refresh = useCallback(
     () =>
@@ -167,11 +165,6 @@ export default function TenantsPage() {
     }
   }
 
-  const enterTenant = (tenant: Tenant) => {
-    setTenant(tenant.id)
-    navigate(`/tenants/${encodeURIComponent(tenant.id)}`)
-  }
-
   return (
     <>
       <PageHeader
@@ -270,18 +263,13 @@ export default function TenantsPage() {
                 <TableCell className="text-right">
                   {tenant.status !== "deleted" && (
                     <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={busy || tenant.status !== "active"}
-                        onClick={() => enterTenant(tenant)}
-                        aria-label={t("enterTenantNamed", {
-                          name: tenant.name,
-                        })}
-                        title={t("enterTenant")}
-                      >
-                        <ArrowRight />
-                      </Button>
+                      {allowed("account_view_create") && (
+                        <AccountViewDialog
+                          label={tenant.name}
+                          organization={{ kind: "tenant", id: tenant.id }}
+                          disabled={busy || tenant.status !== "active"}
+                        />
+                      )}
                       {allowed("tenant_update") && (
                         <Button
                           variant="ghost"

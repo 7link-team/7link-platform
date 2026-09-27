@@ -291,7 +291,7 @@ try {
       .click()
     await started
     await page.evaluate(() => {
-      localStorage.setItem("iam.tenant", "12")
+      sessionStorage.setItem("iam.tenant", "12")
       window.dispatchEvent(new Event("tenant-change"))
     })
     await page.getByText("暂无归档任务", { exact: true }).waitFor()
@@ -307,7 +307,7 @@ try {
     )
     records = []
     await page.evaluate(() => {
-      localStorage.setItem("iam.tenant", "11")
+      sessionStorage.setItem("iam.tenant", "11")
       window.dispatchEvent(new Event("tenant-change"))
     })
     await page.getByText("暂无归档任务", { exact: true }).waitFor()

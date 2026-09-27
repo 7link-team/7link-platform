@@ -43,8 +43,8 @@ try {
       viewport: { width: 1440, height: 960 },
     })
     await context.addInitScript(() => {
-      if (!localStorage.getItem("iam.tenant"))
-        localStorage.setItem("iam.tenant", "1")
+      if (!sessionStorage.getItem("iam.tenant"))
+        sessionStorage.setItem("iam.tenant", "1")
     })
     const page = await context.newPage()
     const consoleErrors = []
@@ -77,7 +77,7 @@ try {
     await page.locator('button[type="submit"]').click()
     await page.waitForURL((url) => url.pathname !== "/login")
     assert.equal(
-      await page.evaluate(() => localStorage.getItem("iam.tenant")),
+      await page.evaluate(() => sessionStorage.getItem("iam.tenant")),
       fixture.tenantID,
       `${account.id} replaces a stale tenant before navigation`
     )

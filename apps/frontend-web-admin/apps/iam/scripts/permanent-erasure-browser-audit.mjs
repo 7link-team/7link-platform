@@ -56,7 +56,7 @@ try {
     { name: "NEXT_LOCALE", value: "zh-CN", url: baseURL },
   ])
   await context.addInitScript((tenantID) => {
-    localStorage.setItem("iam.tenant", tenantID)
+    sessionStorage.setItem("iam.tenant", tenantID)
   }, tenant)
   const page = await context.newPage()
   const browserErrors = []

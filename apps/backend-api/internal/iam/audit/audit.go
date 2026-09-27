@@ -51,7 +51,15 @@ func NewDomainEvent(ctx context.Context, tenantID guid.ID, eventType, targetType
 	}
 	if claims, ok := authn.FromContext(ctx); ok && claims != nil && claims.AccountView != nil {
 		event.Detail["account_view_id"] = claims.AccountView.ID.String()
-		event.Detail["viewed_principal_id"] = claims.PrincipalID.String()
+		view := claims.AccountView
+		kind, id := "account", claims.PrincipalID
+		if view.OrganizationView() {
+			kind, id = view.TargetType, view.ScopeID
+		} else {
+			event.Detail["viewed_principal_id"] = claims.PrincipalID.String()
+		}
+		event.Detail["view_target_type"], event.Detail["view_target_id"] = kind, id.String()
+		event.Detail["view_scope_type"], event.Detail["view_scope_id"] = view.ScopeType, view.ScopeID.String()
 		event.Detail["account_view_read_only"] = claims.AccountView.ReadOnly
 	}
 	return event

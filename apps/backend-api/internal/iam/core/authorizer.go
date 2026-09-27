@@ -66,15 +66,16 @@ func (a *Authorizer) BindForeignTables(directory DirectoryTableNames, principal 
 }
 
 type authorizationSnapshot struct {
-	revision           int64
-	tenantActive       bool
-	memberActive       bool
-	entityIDs          []guid.ID
-	tenantGrants       []tenantGrant
-	scopedGrants       []scopedGrant
-	relationshipGrants []relationshipGrant
-	ownerIDs           []guid.ID
-	departmentIDs      []guid.ID
+	organizationAdministrator bool
+	revision                  int64
+	tenantActive              bool
+	memberActive              bool
+	entityIDs                 []guid.ID
+	tenantGrants              []tenantGrant
+	scopedGrants              []scopedGrant
+	relationshipGrants        []relationshipGrant
+	ownerIDs                  []guid.ID
+	departmentIDs             []guid.ID
 }
 
 // NewAuthorizer constructs an authorizer with the process-wide default action
@@ -287,6 +288,10 @@ func (a *Authorizer) CheckOperatingPlatform(ctx context.Context, platformID guid
 	_, active, err := ownerMembershipState(ctx, readDB, names, platformID, subject, "platform")
 	if err != nil || !active {
 		return false, err
+	}
+	full, err := organizationViewFullAdministrator(ctx, readDB, names, platformID, subject, "platform")
+	if err != nil || full {
+		return full, err
 	}
 	grants, err := a.loadTenantGrants(ctx, platformID, subject, []string{permission, "operating_platform_administer"}, policyx.TrustedFromContext(ctx, a.now()))
 	if err != nil {
@@ -605,6 +610,7 @@ func compileDataConstraint(registry *authz.Registry, snapshot authorizationSnaps
 	constraint.OwnerIDs = guidStrings(snapshot.ownerIDs)
 	constraint.DepartmentIDs = guidStrings(snapshot.departmentIDs)
 	tenantRequested, tenantAdmin := tenantCapabilities(snapshot.tenantGrants, permission)
+	tenantAdmin = tenantAdmin || snapshot.organizationAdministrator
 	action, _ := registry.Find(permission)
 	relationshipsByEntity := allowedRelationshipsByEntity(action, snapshot.relationshipGrants)
 	constraint.AllowAll = tenantRequested || tenantAdmin
@@ -738,6 +744,7 @@ func explainAuthorization(
 		return explanation
 	}
 	tenantRequested, tenantAdmin := tenantCapabilities(snapshot.tenantGrants, permission)
+	tenantAdmin = tenantAdmin || snapshot.organizationAdministrator
 	action, _ := registry.Find(permission)
 	for _, grant := range snapshot.tenantGrants {
 		explanation.Matches = append(explanation.Matches, authz.DecisionMatch{
@@ -848,6 +855,10 @@ func (a *Authorizer) snapshot(
 			return authorizationSnapshot{}, fmt.Errorf("list authorization entities: %w", err)
 		}
 		if snapshot.memberActive {
+			snapshot.organizationAdministrator, err = organizationViewFullAdministrator(ctx, a.db, names, tenantID, subject, "tenant")
+			if err != nil {
+				return authorizationSnapshot{}, err
+			}
 			snapshot.tenantGrants, err = a.loadTenantGrants(ctx, tenantID, subject, requested, trusted)
 			if err != nil {
 				return authorizationSnapshot{}, err

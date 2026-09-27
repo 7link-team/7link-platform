@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { writeFile } from "node:fs/promises"
 import { systemAdministrationAcceptance } from "./system-administration-acceptance.mjs"
 import { accountViewTabsAcceptance } from "./account-view-tabs-acceptance.mjs"
+import { organizationTabsAcceptance } from "./organization-tabs-acceptance.mjs"
 
 export async function administrationAccountViewAcceptance({
   admin,
@@ -629,7 +630,10 @@ export async function administrationAccountViewAcceptance({
         )
       }
       if (name !== "personal")
-        assert.equal(await admin.page.getByTitle("Account", { exact: true }).count(), 0)
+        assert.equal(
+          await admin.page.getByTitle("Account", { exact: true }).count(),
+          0
+        )
       if (name === "platform") {
         await admin.page
           .getByRole("navigation")
@@ -725,6 +729,19 @@ export async function administrationAccountViewAcceptance({
       platformA,
       tenantB,
       ownerContext: targetLogin.context,
+    })
+    await organizationTabsAcceptance({
+      admin,
+      request,
+      operator,
+      platformA,
+      tenantB,
+      statement,
+      createAccount,
+      login,
+      contexts,
+      directory,
+      pass,
     })
   } catch (cause) {
     await admin.page

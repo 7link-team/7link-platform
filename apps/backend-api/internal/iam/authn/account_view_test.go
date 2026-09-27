@@ -20,6 +20,36 @@ import (
 
 type accountViewHTTPVerifier struct{ service *Service }
 
+func TestOrganizationViewPreservesVisitorAndImmutableObject(t *testing.T) {
+	for _, kind := range []string{"platform", "tenant"} {
+		t.Run(kind, func(t *testing.T) {
+			s, h := newAccountViewService(t, "organization_")
+			s.accountViewAuthorizer = func(ctx context.Context, tx *gorm.DB, actor, target guid.ID, scope string, id guid.ID) error {
+				require.Equal(t, guid.ID(101), actor)
+				require.Zero(t, target)
+				require.Equal(t, kind, scope)
+				require.Equal(t, guid.ID(55), id)
+				return nil
+			}
+			created, err := s.CreateAccountView(t.Context(), "session=browser-101", AccountViewRequest{TargetType: kind, ScopeType: kind, ScopeID: 55})
+			require.NoError(t, err)
+			claims, err := s.AuthenticateAccountView(t.Context(), created.Token)
+			require.NoError(t, err)
+			require.Equal(t, guid.ID(101), claims.PrincipalID)
+			require.Equal(t, guid.ID(101), claims.AccountView.PrincipalID)
+			require.Equal(t, kind, claims.AccountView.TargetType)
+			require.True(t, claims.AccountView.OrganizationView())
+			require.Equal(t, 1, claims.ACR)
+			require.Error(t, h.db.Table(h.repository.names.AccountViewTokens.String()).Where("id = ?", created.ID).Update("target_type", "account").Error)
+			_, err = s.CreateAccountView(t.Context(), "session=browser-101", AccountViewRequest{TargetType: kind, PrincipalID: 202, ScopeType: kind, ScopeID: 55})
+			require.ErrorIs(t, err, authnext.ErrInvalidToken)
+			require.NoError(t, s.RevokeAccountView(t.Context(), "session=browser-101", created.ID))
+			_, err = s.AuthenticateAccountView(t.Context(), created.Token)
+			require.ErrorIs(t, err, authnext.ErrInvalidToken)
+		})
+	}
+}
+
 func TestAccountViewVerificationRejectsNoncanonicalStoredMode(t *testing.T) {
 	s, h := newAccountViewService(t, "corrupt_")
 	created, err := s.CreateAccountView(t.Context(), "session=browser-101", AccountViewRequest{PrincipalID: 202, ScopeType: "personal", ScopeID: 202})

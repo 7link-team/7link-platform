@@ -271,10 +271,15 @@ type AccountViewIdentity struct {
 	ReadOnly    bool
 	ScopeType   string
 	ScopeID     guid.ID
+	TargetType  string
 }
 
 func (v *AccountViewIdentity) Valid() bool {
 	if v == nil || v.ID <= 0 || v.PrincipalID <= 0 || v.ScopeID <= 0 {
+		return false
+	}
+	if v.TargetType != "" && v.TargetType != "account" &&
+		(v.TargetType != v.ScopeType || (v.TargetType != "platform" && v.TargetType != "tenant")) {
 		return false
 	}
 	switch v.ScopeType {
@@ -283,6 +288,10 @@ func (v *AccountViewIdentity) Valid() bool {
 	default:
 		return false
 	}
+}
+
+func (v *AccountViewIdentity) OrganizationView() bool {
+	return v.Valid() && (v.TargetType == "platform" || v.TargetType == "tenant")
 }
 
 type Assurance struct {

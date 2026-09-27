@@ -94,8 +94,8 @@ for (const name of selected.length ? selected : audits) {
     if (process.env.IAM_BROWSER_TENANT) {
       await page.evaluate(
         ({ tenant, subject }) => {
-          localStorage.setItem("iam.tenant", tenant)
-          localStorage.setItem("iam.tenant:subject", subject)
+          sessionStorage.setItem("iam.tenant", tenant)
+          sessionStorage.setItem("iam.tenant:subject", subject)
         },
         { tenant: process.env.IAM_BROWSER_TENANT, subject: tenantSubject }
       )

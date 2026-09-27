@@ -663,8 +663,8 @@ try {
             ])
             await context.addInitScript(
               ({ tenant, subject }) => {
-                localStorage.setItem("iam.tenant", tenant)
-                localStorage.setItem("iam.tenant:subject", subject)
+                sessionStorage.setItem("iam.tenant", tenant)
+                sessionStorage.setItem("iam.tenant:subject", subject)
               },
               { tenant: f.tenant.id, subject: session.subject }
             )

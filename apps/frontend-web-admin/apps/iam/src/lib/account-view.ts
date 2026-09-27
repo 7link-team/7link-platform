@@ -3,7 +3,8 @@ export type AccountViewScope =
 export type AccountViewMode = "read_only" | "read_write"
 
 export interface AccountViewSelection {
-  principal_id: string
+  principal_id?: string
+  target_type?: "account" | "platform" | "tenant"
   scope_type: AccountViewScope
   scope_id: string
   mode: AccountViewMode
@@ -302,7 +303,13 @@ export async function initializeAccountViewTab(): Promise<
           ) ||
           !["read_only", "read_write"].includes(selection.mode) ||
           issued?.mode !== selection.mode ||
-          typeof selection.principal_id !== "string" ||
+          (selection.target_type === "platform" ||
+          selection.target_type === "tenant"
+            ? selection.principal_id !== undefined ||
+              selection.scope_type !== selection.target_type
+            : (selection.target_type !== undefined &&
+                selection.target_type !== "account") ||
+              typeof selection.principal_id !== "string") ||
           typeof selection.scope_id !== "string" ||
           typeof issued?.id !== "string" ||
           typeof issued?.token !== "string" ||

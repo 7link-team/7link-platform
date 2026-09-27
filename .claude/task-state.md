@@ -2,6 +2,55 @@
 
 ## Current Delivery - 2026-09-27
 
+### Organization Entry Clarification and Tab Isolation - 2026-09-27
+
+- IN PROGRESS. User requested clearer organization menus and separate tabs for
+  entering operating platforms and tenants, then reported denied platform access.
+- Implemented organization-management group translations, detached native links,
+  and sessionStorage tenant selection per ordinary tab. Account-view credentials
+  remain in tab memory using the existing dedicated token lifecycle.
+- Updated browser audit tenant preferences to sessionStorage; added real platform
+  and simultaneous tenant-tab acceptance to the existing administration gate.
+- IAM152 tests, typecheck, lint and final production build PASS. Real browser
+  gate ZO7vt2/report.json PASS with zero mocked business responses/page errors.
+  Concurrent platform/two-tenant tabs, refresh, sibling closure and exact operator
+  identity verified. Desktop platform and mobile tenant screenshots inspected.
+- New browser coverage found route selection cleared during session adoption;
+  getTenant now prefers the explicit tenant URL for ordinary sessions, retaining
+  the existing account-view memory scope first. Final gate passed after correction.
+- IMPORTANT: CheckOperatingPlatform requires that principal's scoped membership
+  and grants. System authority does not bypass platform admission. Current enter
+  links point to member workspaces; new tabs alone do not fix missing admission.
+- User CONFIRMED unified access objects: account entry targets an account;
+  organization entry targets a platform/tenant, retaining the actual visitor.
+  Plan and review: docs/access-view-implementation-plan-2026-09-27.md.
+- IMPLEMENTATION: target_type in the existing immutable token record; legacy
+  requests/records default account. Organization effective principal is visitor;
+  existing authorizer callback receives target zero only for organization objects.
+  Protected full system administrator gets exact scoped organization admission;
+  other visitors retain current memberships/grants. No membership writes or owner
+  impersonation. Shared scope guards and readonly checks remain mandatory.
+- Backend generated query updated; three SQL17 migrations add constrained immutable
+  target type. UI extends the existing dialog/handoff and displays organization
+  object rather than a fabricated account. Domain audit adds typed view object.
+- Verified: affected Go authentication/authorization/audit packages PASS; real
+  MySQL8 and PostgreSQL16 TestAccountViewExternalDatabase PASS, including SQL17,
+  immutable type, exact scope and live full-administrator revocation. Disposable
+  owned containers removed. Logs: backend .temp/access-view-{mysql,postgres}.log.
+- OpenAPI/schema regenerated; API type drift, workspace typecheck/lint/tests and
+  production build PASS. IAM152 and shared UI85 tests PASS.
+- Full browser Db7AbZ reached original account/system acceptance, then a new
+  restricted-visitor fixture failed422 because full_administrator was omitted.
+  Corrected required fixture field; full real gate iMLiIb PASS50/50. Earlier
+  ZO7vt2 evidence predates unified access semantics and is not final acceptance.
+- Retained demo rebuilt/restarted on8091/8080 with demo selector enabled. Chinese
+  tenant-entry smoke PASS. Desktop/mobile organization screenshots inspected.
+  Full E2E zero mocked business responses/page errors. Architecture/security
+  self-review and final requirement acceptance PASS; no independent review claimed.
+- Implementation complete; no pending product decision or further implementation.
+  Current delivery action: commit/push reviewed scoped changes and verify remote
+  HEAD/clean worktree. The user can accept via admin@example.test demo selection.
+
 ### Department Empty-State Scope Correction - 2026-09-27
 
 - User found system departments incorrectly say "current tenant" when empty.

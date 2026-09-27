@@ -221,7 +221,7 @@ await waitFor(
   `location.pathname === "/login" && document.querySelector("#login-name")`
 )
 await evaluate(
-  `localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)})`
+  `sessionStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)})`
 )
 await setInput("#login-name", adminLogin)
 await setInput("#password", password)

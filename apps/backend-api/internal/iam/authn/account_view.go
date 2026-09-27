@@ -54,7 +54,8 @@ func WithAccountViewAuthorizer(authorizer AccountViewAuthorizer) WebOption {
 }
 
 type AccountViewRequest struct {
-	PrincipalID guid.ID   `json:"principal_id"`
+	PrincipalID guid.ID   `json:"principal_id,omitempty"`
+	TargetType  string    `json:"target_type,omitempty" enum:"account,platform,tenant"`
 	ScopeType   string    `json:"scope_type"`
 	ScopeID     guid.ID   `json:"scope_id"`
 	Mode        string    `json:"mode,omitempty"`
@@ -79,10 +80,18 @@ func (s *Service) accountViewReady(ctx context.Context) error {
 }
 
 func normalizeAccountView(in AccountViewRequest, now time.Time) (AccountViewRequest, error) {
+	if in.TargetType == "" {
+		in.TargetType = "account"
+	}
+	organization := in.TargetType == "platform" || in.TargetType == "tenant"
+	if (organization && (in.PrincipalID != 0 || in.ScopeType != in.TargetType)) ||
+		(!organization && (in.TargetType != "account" || in.PrincipalID <= 0)) {
+		return in, authnext.ErrInvalidToken
+	}
 	if in.Mode == "" {
 		in.Mode = "read_only"
 	}
-	if in.PrincipalID <= 0 || in.ScopeID <= 0 ||
+	if in.ScopeID <= 0 ||
 		!slices.Contains([]string{"system", "platform", "tenant", "entity", "personal"}, in.ScopeType) ||
 		!slices.Contains([]string{"read_only", "read_write"}, in.Mode) ||
 		(in.ScopeType == "personal" && in.ScopeID != in.PrincipalID) {
@@ -188,6 +197,9 @@ func (s *Service) CreateAccountView(ctx context.Context, operatorCookie string, 
 	if err != nil {
 		return AccountViewCreated{}, accountViewServiceError(err)
 	}
+	if input.TargetType != "account" {
+		input.PrincipalID = candidate.PrincipalID
+	}
 	var result AccountViewCreated
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
 		principals, err := lockAccountViewPrincipals(ctx, repo, candidate.PrincipalID, input.PrincipalID)
@@ -208,7 +220,7 @@ func (s *Service) CreateAccountView(ctx context.Context, operatorCookie string, 
 			return err
 		}
 		actorContext := accountViewActorContext(ctx, principals[candidate.PrincipalID], session, actorVersion)
-		if err := s.accountViewAuthorizer(actorContext, repo.writer(), candidate.PrincipalID, input.PrincipalID, input.ScopeType, input.ScopeID); err != nil {
+		if err := s.accountViewAuthorizer(actorContext, repo.writer(), candidate.PrincipalID, accountViewAuthorizationTarget(input.TargetType, input.PrincipalID), input.ScopeType, input.ScopeID); err != nil {
 			return err
 		}
 		expiresAt := input.ExpiresAt
@@ -228,7 +240,7 @@ func (s *Service) CreateAccountView(ctx context.Context, operatorCookie string, 
 		raw := "avt_" + random
 		row := model.AccountViewToken{ID: id, TokenHash: tokenHash(raw), ActorID: candidate.PrincipalID, PrincipalID: input.PrincipalID,
 			ActorSessionHash: sessionHash, ActorCredentialVersion: actorVersion, TargetCredentialVersion: targetVersion,
-			ScopeType: input.ScopeType, ScopeID: input.ScopeID, Mode: input.Mode, CreatedAt: now, ExpiresAt: expiresAt}
+			ScopeType: input.ScopeType, ScopeID: input.ScopeID, TargetType: input.TargetType, Mode: input.Mode, CreatedAt: now, ExpiresAt: expiresAt}
 		if err := repo.createAccountViewToken(ctx, &row); err != nil {
 			return err
 		}
@@ -244,9 +256,17 @@ func (s *Service) CreateAccountView(ctx context.Context, operatorCookie string, 
 	return result, nil
 }
 
+// A zero authorization target denotes an organization, never a principal to impersonate.
+func accountViewAuthorizationTarget(kind string, principal guid.ID) guid.ID {
+	if kind == "platform" || kind == "tenant" {
+		return 0
+	}
+	return principal
+}
+
 func accountViewAudit(ctx context.Context, row *model.AccountViewToken, eventType string) audit.DomainEvent {
 	claims := &authnext.Claims{PrincipalID: row.PrincipalID, AccountView: &authnext.AccountViewIdentity{
-		ID: row.ID, PrincipalID: row.ActorID, ReadOnly: row.Mode == "read_only", ScopeType: row.ScopeType, ScopeID: row.ScopeID}}
+		ID: row.ID, PrincipalID: row.ActorID, ReadOnly: row.Mode == "read_only", ScopeType: row.ScopeType, ScopeID: row.ScopeID, TargetType: row.TargetType}}
 	event := audit.NewDomainEvent(authnext.WithClaims(ctx, claims), 0, eventType, "account_view", row.ID)
 	event.Detail["scope_type"], event.Detail["scope_id"] = row.ScopeType, row.ScopeID.String()
 	return event
@@ -280,9 +300,12 @@ func (s *Service) AuthenticateAccountView(ctx context.Context, raw string) (*aut
 		if row.ID <= 0 || (row.Mode != "read_only" && row.Mode != "read_write") {
 			return authnext.ErrInvalidToken
 		}
-		_, err = normalizeAccountView(AccountViewRequest{PrincipalID: row.PrincipalID, ScopeType: row.ScopeType, ScopeID: row.ScopeID, Mode: row.Mode, ExpiresAt: row.ExpiresAt}, row.CreatedAt)
+		_, err = normalizeAccountView(AccountViewRequest{PrincipalID: accountViewAuthorizationTarget(row.TargetType, row.PrincipalID), TargetType: row.TargetType, ScopeType: row.ScopeType, ScopeID: row.ScopeID, Mode: row.Mode, ExpiresAt: row.ExpiresAt}, row.CreatedAt)
 		if err != nil {
 			return err
+		}
+		if (row.TargetType == "platform" || row.TargetType == "tenant") && row.PrincipalID != row.ActorID {
+			return authnext.ErrInvalidToken
 		}
 		actorVersion, err := accountViewCredentialVersion(ctx, repo, row.ActorID)
 		if err != nil {
@@ -300,7 +323,7 @@ func (s *Service) AuthenticateAccountView(ctx context.Context, raw string) (*aut
 			return err
 		}
 		actorContext := accountViewActorContext(ctx, principals[row.ActorID], session, actorVersion)
-		if err := s.accountViewAuthorizer(actorContext, repo.writer(), row.ActorID, row.PrincipalID, row.ScopeType, row.ScopeID); err != nil {
+		if err := s.accountViewAuthorizer(actorContext, repo.writer(), row.ActorID, accountViewAuthorizationTarget(row.TargetType, row.PrincipalID), row.ScopeType, row.ScopeID); err != nil {
 			return err
 		}
 		if _, err := repo.touchAccountViewToken(ctx, row.ID, now); err != nil {
@@ -313,7 +336,10 @@ func (s *Service) AuthenticateAccountView(ctx context.Context, raw string) (*aut
 		claims = &authnext.Claims{Issuer: s.cfg.Issuer, Subject: target.ID.String(), SubjectType: authnext.SubjectTypePrincipal,
 			PrincipalID: target.ID, PreferredUsername: target.LoginName, Email: target.Email, EmailVerified: target.EmailVerified,
 			CredentialVersion: targetVersion, IssuedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt,
-			AccountView: &authnext.AccountViewIdentity{ID: row.ID, PrincipalID: row.ActorID, ReadOnly: row.Mode == "read_only", ScopeType: row.ScopeType, ScopeID: row.ScopeID}}
+			AccountView: &authnext.AccountViewIdentity{ID: row.ID, PrincipalID: row.ActorID, ReadOnly: row.Mode == "read_only", ScopeType: row.ScopeType, ScopeID: row.ScopeID, TargetType: row.TargetType}}
+		if claims.AccountView.OrganizationView() {
+			claims.ACR, claims.AMR, claims.AuthTime = session.ACR, strings.Fields(session.AMR), session.AuthTime
+		}
 		return nil
 	})
 	if err != nil {

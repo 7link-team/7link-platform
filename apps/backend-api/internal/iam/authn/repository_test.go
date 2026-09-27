@@ -199,7 +199,8 @@ func TestModuleMigrationContract(t *testing.T) {
 	module := &Module{}
 	assert.Equal(t, Name, module.ModuleName())
 	assert.Equal(t, "goose_authn", module.MigrationSource().TableName)
-	require.Len(t, module.MigrationMilestones(), 9)
+	require.Len(t, module.MigrationMilestones(), 10)
+	assert.Equal(t, "access-view-targets", module.MigrationMilestones()[9].Name)
 	assert.Equal(t, "account-view-tokens", module.MigrationMilestones()[8].Name)
 	assert.Equal(t, "reauthentication", module.MigrationMilestones()[6].Name)
 	assert.Equal(t, []string{"base", "constraints", "indexes", "verification-attempts", "notification-principals", "principal-erasure"}, []string{

@@ -859,7 +859,7 @@ try {
       await arrived
       await page.waitForURL("**/tenants/t2")
       await page.waitForFunction(
-        () => localStorage.getItem("iam.tenant") === "t2"
+        () => sessionStorage.getItem("iam.tenant") === "t2"
       )
       assert.equal(
         await page.getByText("Tenant one menu", { exact: true }).count(),
@@ -923,7 +923,7 @@ try {
       await page.getByRole("button", { name: "Retry now" }).click()
       await page.waitForURL("**/signed-out")
       assert.equal(
-        await page.evaluate(() => localStorage.getItem("iam.tenant")),
+        await page.evaluate(() => sessionStorage.getItem("iam.tenant")),
         ""
       )
     }
@@ -937,7 +937,7 @@ try {
     await page.getByRole("button", { name: "Sign out all devices" }).click()
     await page.waitForURL("**/signed-out")
     assert.equal(
-      await page.evaluate(() => localStorage.getItem("iam.tenant")),
+      await page.evaluate(() => sessionStorage.getItem("iam.tenant")),
       ""
     )
   })
@@ -949,7 +949,7 @@ try {
       await page.getByRole("button", { name: /Workspace t2/ }).waitFor()
       await page.getByRole("button", { name: /Workspace t2/ }).click()
       await page.waitForFunction(
-        () => localStorage.getItem("iam.tenant") === "t2"
+        () => sessionStorage.getItem("iam.tenant") === "t2"
       )
       assert(
         state.requests
@@ -960,7 +960,7 @@ try {
       state.mine = [tenant("t3")]
       await page.reload()
       await page.waitForFunction(
-        () => localStorage.getItem("iam.tenant") === "t3"
+        () => sessionStorage.getItem("iam.tenant") === "t3"
       )
       await workspace(page)
       await page.getByRole("button", { name: /Workspace t3/ }).waitFor()
@@ -968,10 +968,10 @@ try {
         await page.getByText("Workspace t2", { exact: true }).count(),
         0
       )
-      await page.evaluate(() => localStorage.setItem("iam.tenant", "expired"))
+      await page.evaluate(() => sessionStorage.setItem("iam.tenant", "expired"))
       await page.reload()
       await page.waitForFunction(
-        () => localStorage.getItem("iam.tenant") === "t3"
+        () => sessionStorage.getItem("iam.tenant") === "t3"
       )
     }
   )
@@ -982,7 +982,7 @@ try {
       state.platform = [tenant("platform-only")]
       await page.goto("/system/tenants")
       await page.waitForFunction(
-        () => localStorage.getItem("iam.tenant") === "platform-only"
+        () => sessionStorage.getItem("iam.tenant") === "platform-only"
       )
       await workspace(page)
       await page
@@ -1023,7 +1023,7 @@ try {
         window.dispatchEvent(new Event("tenant-catalog-change"))
       )
       await page.waitForFunction(
-        () => localStorage.getItem("iam.tenant") === "current"
+        () => sessionStorage.getItem("iam.tenant") === "current"
       )
       // Delayed response resolves after a more recent directory request.
       for (const release of delayed) await release()
@@ -1034,7 +1034,7 @@ try {
           )
       )
       assert.equal(
-        await page.evaluate(() => localStorage.getItem("iam.tenant")),
+        await page.evaluate(() => sessionStorage.getItem("iam.tenant")),
         "current"
       )
     }

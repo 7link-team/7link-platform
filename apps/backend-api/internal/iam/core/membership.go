@@ -8,6 +8,7 @@ import (
 	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"gorm.io/gorm"
 )
 
@@ -163,6 +164,10 @@ func ownerMembershipState(ctx context.Context, db *gorm.DB, names query.Authoriz
 	if !tenantActive {
 		return false, false, nil
 	}
+	full, err := organizationViewFullAdministrator(ctx, db, names, tenantID, principalID, kind)
+	if err != nil || full {
+		return true, full, err
+	}
 	// Direct reads inherit transaction locking; nested subqueries may use an older MySQL snapshot.
 	statement := db.WithContext(ctx).Table(names.Tables.TenantMembers.String()+" AS tm").
 		Select("tm.principal_id").
@@ -179,6 +184,16 @@ func ownerMembershipState(ctx context.Context, db *gorm.DB, names query.Authoriz
 		return true, false, fmt.Errorf("check active tenant membership: %w", err)
 	}
 	return true, true, nil
+}
+
+func organizationViewFullAdministrator(ctx context.Context, db *gorm.DB, names query.AuthorizationTables, owner, subject guid.ID, kind string) (bool, error) {
+	claims, ok := authnext.FromContext(ctx)
+	if !ok || claims == nil || !claims.AccountView.OrganizationView() ||
+		claims.AccountView.TargetType != kind || claims.AccountView.ScopeID != owner ||
+		claims.AccountView.PrincipalID != subject || claims.PrincipalID != subject {
+		return false, nil
+	}
+	return systemFullAdministrator(ctx, db, names.Tables.PlatformAdministrators.String(), subject)
 }
 
 func (m *MembershipChecker) IsOperatingPlatformMemberActive(ctx context.Context, platformID, principalID guid.ID) (bool, error) {

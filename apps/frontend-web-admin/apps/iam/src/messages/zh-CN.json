@@ -58,6 +58,7 @@
   "addPlatformMember": "添加平台成员",
   "editAccount": "编辑账号",
   "accountView": "账号视图",
+  "organizationView": "组织视图",
   "accountViewReadOnly": "只读",
   "accountViewWritable": "可写",
   "accountViewExit": "退出视图",

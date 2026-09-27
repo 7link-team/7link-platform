@@ -57,7 +57,7 @@ func SystemDefaultMenus() []Menu {
 		{ID: 3, Label: "Basic management", Icon: "boxes", SortOrder: 30, Status: MenuActive},
 		{ParentID: 3, Label: "Menus", Route: "/system/menus", Icon: "boxes", SortOrder: 10, PermissionCode: "system_menu_view", Status: MenuActive},
 		{ParentID: 3, Label: "File management", Route: "/system/files", Icon: "folder", SortOrder: 20, PermissionCode: "system_file_view", Status: MenuActive},
-		{ID: 4, Label: "Operations management", Icon: "network", SortOrder: 40, Status: MenuActive},
+		{ID: 4, Label: "Organization management", Icon: "network", SortOrder: 40, Status: MenuActive},
 		{ParentID: 4, Label: "Operating platforms", Route: "/system/operating-platforms", Icon: "network", SortOrder: 10, PermissionCode: "operating_platform_view", Status: MenuActive},
 		{ParentID: 4, Label: "Tenants", Route: "/system/tenants", Icon: "building-2", SortOrder: 20, PermissionCode: "tenant_view", Status: MenuActive},
 		{ID: 5, Label: "Audit", Icon: "file-clock", SortOrder: 50, Status: MenuActive},

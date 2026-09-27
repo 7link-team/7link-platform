@@ -235,7 +235,7 @@ async function clickRowAction(name, fromEnd) {
 
 async function departments() {
   return evaluate(`
-    const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+    const tenant = sessionStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
     const response = await fetch("/api/tenants/" + encodeURIComponent(tenant) + "/departments", {
       credentials: "include",
     });
@@ -246,7 +246,7 @@ async function departments() {
 
 async function cleanupArtifacts() {
   await evaluate(`
-    const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+    const tenant = sessionStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
     const base = "/api/tenants/" + encodeURIComponent(tenant);
     const response = await fetch(base + "/departments", { credentials: "include" });
     if (!response.ok) throw new Error("artifact list failed: " + response.status);
@@ -408,7 +408,7 @@ await waitFor(`!(${rowExpression(rootB)})`)
 
 const audit = await evaluate(`
   const query = new URLSearchParams({ target_id: ${JSON.stringify(childRecord.id)}, limit: "100" });
-  const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+  const tenant = sessionStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
   const response = await fetch("/api/tenants/" + encodeURIComponent(tenant) + "/audit-events?" + query, {
     credentials: "include",
   });

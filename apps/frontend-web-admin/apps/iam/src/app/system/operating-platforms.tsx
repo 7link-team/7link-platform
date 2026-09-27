@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
-import { ArrowRight, Pencil, Plus, Trash2, Loader2 } from "lucide-react"
-import { Link } from "react-router"
+import { Pencil, Plus, Trash2, Loader2 } from "lucide-react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
@@ -23,6 +22,7 @@ import {
 import { SimpleSelect } from "@workspace/ui/components/select"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
+import { AccountViewDialog } from "../../components/account-view-dialog"
 import { useAuth } from "../../components/auth"
 import { useAllowed } from "../../lib/permissions"
 import { iamApi, type Tenant } from "../../lib/iam-api"
@@ -139,14 +139,13 @@ export default function OperatingPlatformsPage() {
                 <TableCell>{item.status}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
-                    <Link
-                      to={`/operating-platforms/${encodeURIComponent(item.id)}`}
-                      title={t("enterOperatingPlatform")}
-                      aria-label={`${t("enterOperatingPlatform")} ${item.name}`}
-                      className="grid size-9 place-items-center"
-                    >
-                      <ArrowRight className="size-4" />
-                    </Link>
+                    {allowed("account_view_create") && (
+                      <AccountViewDialog
+                        label={item.name}
+                        organization={{ kind: "platform", id: item.id }}
+                        disabled={item.status !== "active"}
+                      />
+                    )}
                     {allowed("operating_platform_update") && (
                       <Button
                         size="icon"

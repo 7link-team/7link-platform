@@ -3125,3 +3125,24 @@ ordinary piped shell calls continued to flash. Virtual-terminal mode is availabl
 in the existing tool and does not require a new launcher or dependency.
 Scope: repository execution rules and touched test launcher options; no product
 behavior changes. Status: APPLIED; all subsequent commands use virtual terminals.
+
+## Unified Access View Objects - 2026-09-27
+
+Decision: reuse /account-views for account, operating-platform and tenant targets.
+Account views use the selected account's authority. Organization views retain the
+actual visitor identity and scope the token to the selected organization. Dedicated
+tokens stay only in each new tab's memory; readonly is the default and writable
+requires explicit selection. No owner impersonation or membership creation.
+Reason: user confirmed visitor plus typed access object for all three entries.
+Admission requires account_view_create and current organization membership, or
+protected full system-administrator authority. Creation permission alone does not
+grant nonmember access. Only verified exact organization views gain that scoped
+system authority; ordinary cookies and account views keep existing admission.
+All uses recheck the original session, credential versions, organization activity
+and live admission. Audit records actual visitor, typed view object, scope and mode.
+Compatibility: legacy requests and stored tokens default to account. Extend existing
+token lifecycle, immutable DB record, guards and handoff rather than add a session
+system. Refresh loses memory credentials and fails closed without cookie fallback.
+Status: IMPLEMENTED and VERIFIED. Full real E2E50/50, affected backend tests,
+MySQL8/PostgreSQL16 integration and frontend workspace gates PASS. Plan/review:
+apps/backend-api/docs/access-view-implementation-plan-2026-09-27.md.

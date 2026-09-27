@@ -495,7 +495,7 @@ func (r *Registrar) authenticatedOnly(api huma.API) func(huma.Context, func(huma
 				return
 			}
 		}
-		trusted := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
+		trusted := policyx.WithTrustedContext(authn.WithClaims(ctx.Context(), claims), policyx.TrustedContext{
 			ACR: claims.ACR, AMR: claims.AMR, ClientID: claims.ClientID, NetworkZone: claims.NetworkZone,
 		})
 		next(huma.WithContext(ctx, authn.WithClaims(trusted, claims)))
@@ -832,7 +832,7 @@ func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, fu
 		trusted := policyx.TrustedContext{
 			ACR: claims.ACR, AMR: claims.AMR, ClientID: claims.ClientID, NetworkZone: claims.NetworkZone,
 		}
-		requestContext := policyx.WithTrustedContext(ctx.Context(), trusted)
+		requestContext := policyx.WithTrustedContext(authn.WithClaims(ctx.Context(), claims), trusted)
 		tenantText := ctx.Param(TenantPath)
 		tenantID, tenantErr := guid.Parse(tenantText)
 		if tenantErr != nil || tenantID.Zero() || claims.PrincipalID.Zero() {
@@ -957,7 +957,7 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 			next(huma.WithContext(ctx, authn.WithClaims(ctx.Context(), &trustedClaims)))
 			return
 		}
-		requestContext := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
+		requestContext := policyx.WithTrustedContext(authn.WithClaims(ctx.Context(), claims), policyx.TrustedContext{
 			ACR: claims.ACR, AMR: claims.AMR, ClientID: claims.ClientID, NetworkZone: claims.NetworkZone,
 		})
 		var active bool
@@ -1033,7 +1033,7 @@ func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors fun
 		if !allowAccountViewScope(api, ctx, claims, ResourceOwner{TenantID: tenantID, EntityID: entityID}, false) {
 			return
 		}
-		requestContext := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
+		requestContext := policyx.WithTrustedContext(authn.WithClaims(ctx.Context(), claims), policyx.TrustedContext{
 			ACR: claims.ACR, AMR: claims.AMR, ClientID: claims.ClientID, NetworkZone: claims.NetworkZone,
 		})
 		active, err := r.members.IsMemberActive(requestContext, tenantID, principalID)
@@ -1087,7 +1087,7 @@ func (r *Registrar) platformMiddleware(api huma.API, guard Guard) func(huma.Cont
 		if !allowAccountViewScope(api, ctx, claims, ResourceOwner{}, true) {
 			return
 		}
-		requestContext := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
+		requestContext := policyx.WithTrustedContext(authn.WithClaims(ctx.Context(), claims), policyx.TrustedContext{
 			ACR: claims.ACR, AMR: claims.AMR, ClientID: claims.ClientID, NetworkZone: claims.NetworkZone,
 		})
 		allowed, err := r.checker.CheckPlatform(requestContext, guard.Code(), claims.PrincipalID)
@@ -1119,7 +1119,7 @@ func (r *Registrar) operatingPlatformMiddleware(api huma.API, guard Guard, check
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
 			return
 		}
-		requestContext := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
+		requestContext := policyx.WithTrustedContext(authn.WithClaims(ctx.Context(), claims), policyx.TrustedContext{
 			ACR: claims.ACR, AMR: claims.AMR, ClientID: claims.ClientID, NetworkZone: claims.NetworkZone,
 		})
 		active, err := members.IsOperatingPlatformMemberActive(requestContext, id, claims.PrincipalID)
