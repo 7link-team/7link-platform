@@ -4,7 +4,7 @@
 
 ### Organization Entry Clarification and Tab Isolation - 2026-09-27
 
-- IN PROGRESS. User requested clearer organization menus and separate tabs for
+- DELIVERED. User requested clearer organization menus and separate tabs for
   entering operating platforms and tenants, then reported denied platform access.
 - Implemented organization-management group translations, detached native links,
   and sessionStorage tenant selection per ordinary tab. Account-view credentials
@@ -48,8 +48,11 @@
   Full E2E zero mocked business responses/page errors. Architecture/security
   self-review and final requirement acceptance PASS; no independent review claimed.
 - Implementation complete; no pending product decision or further implementation.
-  Current delivery action: commit/push reviewed scoped changes and verify remote
-  HEAD/clean worktree. The user can accept via admin@example.test demo selection.
+  Implementation commit e36c727 pushed to IAM; remote HEAD equality and clean
+  worktree verified. This checkpoint records delivery. Next: user acceptance via
+  admin@example.test demo selection at http://127.0.0.1:8091/login. Dedicated
+  views default readonly; choose writable explicitly. Reload intentionally closes
+  memory-only authority; reopen from the operator tab.
 
 ### Department Empty-State Scope Correction - 2026-09-27
 
