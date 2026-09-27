@@ -4,7 +4,7 @@
 
 ### Separate Authentication Entrances - 2026-09-27
 
-- VERIFIED. User approved separate system/platform login-only entrances and
+- DELIVERED. User approved separate system/platform login-only entrances and
   tenant/user login, registration and password recovery. One shared principal
   remains; an entrance never grants a system/platform identity or membership.
 - Design/review: reuse password/MFA/passkey, email activation, recovery and live
@@ -48,8 +48,11 @@
 - Self-review and final requirement acceptance PASS: scope/reuse/architecture,
   privilege separation, atomic verified onboarding and existing regression.
   Reviews performed directly; no independent reviewer claim.
-- Next: commit/push scoped deliverables under standing authorization and verify
-  remote HEAD/clean worktree. Implementation complete; only user acceptance remains.
+- Implementation commit5d60854 pushed to IAM; remote HEAD equality and clean
+  worktree verified. This checkpoint records delivery. No outstanding implementation
+  or product decision. Next: user acceptance at the four retained entrances above;
+  use the demo selector (admin@example.test for full system authority). Development
+  verification/recovery messages are local in the ignored backend mailbox file.
 
 ### Organization Entry Clarification and Tab Isolation - 2026-09-27
 
