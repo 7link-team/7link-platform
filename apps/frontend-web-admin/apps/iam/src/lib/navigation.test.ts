@@ -103,9 +103,9 @@ describe("effective navigation", () => {
       "/system/audit-governance"
     )
     expect(defaultWorkspacePath("456", new Set(["tenant_administer"]))).toBe(
-      "/tenants/456"
+      "/admin/456"
     )
-    expect(defaultWorkspacePath("", new Set())).toBe("/me")
+    expect(defaultWorkspacePath("", new Set())).toBe("/user")
   })
   it("keeps platform administration gates independent", () => {
     expect(platformNavigation(true, false).map((item) => item.path)).toEqual([
@@ -145,12 +145,12 @@ describe("effective navigation", () => {
   })
   it("returns to the current tenant workspace without capturing startup state", () => {
     expect(workspacePath("38001505780891648")).toBe(
-      "/tenants/38001505780891648"
+      "/admin/38001505780891648"
     )
     expect(workspacePath("tenant / 测试")).toBe(
-      "/tenants/tenant%20%2F%20%E6%B5%8B%E8%AF%95"
+      "/admin/tenant%20%2F%20%E6%B5%8B%E8%AF%95"
     )
-    expect(workspacePath("")).toBe("/me")
+    expect(workspacePath("")).toBe("/user")
   })
 
   it("flattens nested authorized menu paths", () => {

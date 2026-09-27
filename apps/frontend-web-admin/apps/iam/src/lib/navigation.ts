@@ -30,15 +30,15 @@ export function platformNavigation(
 }
 
 export const personalNavigation: SystemNavigationItem[] = [
-  { path: "/me/profile", label: "profile" },
-  { path: "/me/security", label: "security" },
-  { path: "/me/mfa", label: "twoFactor" },
-  { path: "/me/tokens", label: "personalTokens" },
-  { path: "/me/files", label: "myFiles" },
-  { path: "/me/memberships", label: "myMemberships" },
-  { path: "/me/identities", label: "linkedIdentities" },
-  { path: "/me/closure", label: "accountClosure" },
-  { path: "/me/applications", label: "authorizedApplications" },
+  { path: "/user/profile", label: "profile" },
+  { path: "/user/security", label: "security" },
+  { path: "/user/mfa", label: "twoFactor" },
+  { path: "/user/tokens", label: "personalTokens" },
+  { path: "/user/files", label: "myFiles" },
+  { path: "/user/memberships", label: "myMemberships" },
+  { path: "/user/identities", label: "linkedIdentities" },
+  { path: "/user/closure", label: "accountClosure" },
+  { path: "/user/applications", label: "authorizedApplications" },
 ]
 
 export function entityNavigation(
@@ -100,7 +100,7 @@ export function isPlatformRoute(route: string): boolean {
 }
 
 export function workspacePath(tenantID: string): string {
-  return tenantID ? `/tenants/${encodeURIComponent(tenantID)}` : "/me"
+  return tenantID ? `/admin/${encodeURIComponent(tenantID)}` : "/user"
 }
 
 export function tenantNavigation(menus: EffectiveMenu[]): EffectiveMenu[] {

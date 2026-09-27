@@ -112,7 +112,7 @@ export default function AppLayout() {
   }, [status, subject])
 
   const navigate = useNavigate()
-  const entityMatch = useMatch("/tenants/:tenantID/entities/:entityID/:view")
+  const entityMatch = useMatch("/admin/:tenantID/entities/:entityID/:view")
   const entityID = routeParams.entityID ?? entityMatch?.params.entityID ?? ""
   const entityFileRoute =
     Boolean(entityID) && location.pathname.endsWith("/files")
@@ -251,8 +251,8 @@ export default function AppLayout() {
     }
   }, [status, tenantValue, entityID, subject, platformView])
   const loginState = useMemo(
-    () => ({ from: location.pathname }),
-    [location.pathname]
+    () => ({ from: location.pathname + location.search }),
+    [location.pathname, location.search]
   )
 
   useEffect(() => {
@@ -454,14 +454,14 @@ export default function AppLayout() {
   }, [])
 
   if (status === "loading" || status === "error") return <SessionVerification />
-  if (!session) return <Navigate to="/login" replace state={loginState} />
+  if (!session) return <Navigate to="/admin/login" replace state={loginState} />
 
   const commitTenant = (next: string) => {
     if (!next || !availableTenants?.some((tenant) => tenant.id === next)) return
     setMenuCatalog(null)
     setTenant(next)
     setTenantValue(next)
-    navigate(`/tenants/${encodeURIComponent(next)}`)
+    navigate(`/admin/${encodeURIComponent(next)}`)
   }
 
   return (
@@ -531,12 +531,12 @@ export default function AppLayout() {
             <WorkspaceSwitcher
               operatingPlatforms={operatingPlatforms}
               onOperatingPlatform={(id) =>
-                navigate(`/operating-platforms/${encodeURIComponent(id)}`)
+                navigate(`/platform/${encodeURIComponent(id)}`)
               }
               platformPath={platformPath}
               platformView={platformView}
               onPlatform={() => navigate(platformPath)}
-              onPersonal={() => navigate("/me/profile")}
+              onPersonal={() => navigate("/user/profile")}
               tenantID={tenantValue}
               entityID={entityID}
               tenants={availableTenants}
@@ -550,8 +550,8 @@ export default function AppLayout() {
               onEntity={(id) => {
                 navigate(
                   id
-                    ? `/tenants/${encodeURIComponent(tenantValue)}/entities/${encodeURIComponent(id)}/overview`
-                    : `/tenants/${encodeURIComponent(tenantValue)}`
+                    ? `/admin/${encodeURIComponent(tenantValue)}/entities/${encodeURIComponent(id)}/overview`
+                    : `/admin/${encodeURIComponent(tenantValue)}`
                 )
               }}
             />

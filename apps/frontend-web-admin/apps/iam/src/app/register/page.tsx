@@ -20,7 +20,7 @@ import { entranceLoginPath, publicAuthEntrance } from "../../lib/auth-entrance"
 export default function RegisterPage() {
   const t = useTranslations("iam")
   const location = useLocation()
-  const entry = publicAuthEntrance(location.pathname.split("/")[2])
+  const entry = publicAuthEntrance(location.pathname.split("/")[1])
 
   const [busy, setBusy] = useState(false)
   const [complete, setComplete] = useState(false)

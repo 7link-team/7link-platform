@@ -181,7 +181,7 @@ Bun 的浏览器管道兼容问题。截图写入仓库忽略的 `.local/screens
 `apps/admin/apps/iam`（package name `sys`）：24 个页面约 1.24 万行，最大的五个是
 `entities`(1405) `security`(1032) `roles`(1004) `service-accounts`(923) `scim-directories`(829)；
 `src/lib/iam-api.ts` 1711 行是唯一的 API 客户端层，配套 1742 行测试；
-11 个业务组件；14 个 `scripts/*-browser-audit.mjs`（迁入 13 个）。
+11 个业务组件；14 个 `tests/*-browser-audit.mjs`（迁入 13 个）。
 技术栈 React 19 + react-router 8 + Vite 8 + Tailwind 4 + `@workspace/ui`。
 
 ### 1.3 契约漂移：迁移前的关键发现（已收口）
@@ -259,7 +259,7 @@ turbo 2.9 五条 task：`build` / `lint` / `format` / `typecheck` / `test`），
 不接触 HTTP 契约，分批复制只增加仪式、不降低风险。因此一次性迁入
 24 个页面 + `layout.tsx` + 11 个 components + 13 个 audit 脚本。
 
-分批的价值保留在验收侧：13 个 `scripts/*-browser-audit.mjs` 按业务域分组跑，
+分批的价值保留在验收侧：13 个 `tests/*-browser-audit.mjs` 按业务域分组跑，
 那才是真正验证渲染与交互的地方。对 `82f2966` 后端 **13/13，连过三轮**。
 
 迁移过程中修掉的实际缺陷：路由抛错时的白屏（补 error boundary）、

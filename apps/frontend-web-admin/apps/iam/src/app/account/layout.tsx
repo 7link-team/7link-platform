@@ -34,13 +34,13 @@ export function AccountNavigation({ onNavigate }: { onNavigate?: () => void }) {
       <NavigationGroup label={t("account")}>
         {personalNavigation.map(({ path, label }) => {
           const Icon =
-            path === "/me/mfa"
+            path === "/user/mfa"
               ? Smartphone
-              : path === "/me/files"
+              : path === "/user/files"
                 ? Folder
-                : ["/me/tokens", "/me/applications"].includes(path)
+                : ["/user/tokens", "/user/applications"].includes(path)
                   ? KeyRound
-                  : ["/me/security", "/me/closure"].includes(path)
+                  : ["/user/security", "/user/closure"].includes(path)
                     ? ShieldCheck
                     : UserRound
           return (
@@ -70,7 +70,7 @@ export function AccountContent({
   children: ReactNode
 }) {
   const className =
-    pathname.replace(/\/+$/, "") === "/me/files"
+    pathname.replace(/\/+$/, "") === "/user/files"
       ? "h-full w-full max-w-none"
       : "mx-auto max-w-5xl p-4 sm:p-6"
   return <div className={className}>{children}</div>
@@ -84,7 +84,13 @@ export default function AccountLayout() {
   const [open, setOpen] = useState(false)
   if (status === "loading" || status === "error") return <SessionVerification />
   if (!session)
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+    return (
+      <Navigate
+        to="/user/login"
+        replace
+        state={{ from: location.pathname + location.search }}
+      />
+    )
   return (
     <div className="flex h-svh flex-col bg-background">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
@@ -124,7 +130,7 @@ export default function AccountLayout() {
               disabled={
                 Boolean(getAccountView()) &&
                 (getAccountView()?.mode === "read_only" ||
-                  location.pathname !== "/me/files")
+                  location.pathname !== "/user/files")
               }
             >
               <Outlet key={location.pathname} />

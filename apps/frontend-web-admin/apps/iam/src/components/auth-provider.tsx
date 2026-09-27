@@ -22,6 +22,7 @@ import {
   exitAccountView,
 } from "../lib/account-view"
 import { AccountViewBanner } from "./account-view-banner"
+import { logoutDestination } from "../lib/auth-entrance"
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
@@ -123,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTenant("")
     setSession(null)
     setStatus("anonymous")
-    window.location.assign(result?.logout_url || "/login")
+    window.location.assign(logoutDestination(result?.logout_url))
   }, [])
 
   const value = useMemo(

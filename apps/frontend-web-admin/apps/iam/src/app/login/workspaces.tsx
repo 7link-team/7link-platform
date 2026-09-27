@@ -26,7 +26,7 @@ function WorkspaceOptions() {
   const t = useTranslations("iam")
   const location = useLocation()
   const navigate = useNavigate()
-  const entry = authEntrance(location.pathname.split("/")[2])
+  const entry = authEntrance(location.pathname.split("/")[1])
   const { status, session, logout } = useAuth()
   const [items, setItems] = useState<Tenant[] | null>(null)
   const [system, setSystem] = useState(false)
@@ -77,8 +77,8 @@ function WorkspaceOptions() {
     if (entry === "tenant") setTenant(selected.id)
     navigate(
       entry === "platform"
-        ? `/operating-platforms/${selected.id}`
-        : `/tenants/${selected.id}`,
+        ? `/platform/${selected.id}`
+        : `/admin/${selected.id}`,
       { replace: true }
     )
   }, [status, items, creating, entry, navigate])
@@ -86,7 +86,7 @@ function WorkspaceOptions() {
   if (status === "anonymous")
     return <Navigate to={entranceLoginPath(entry)} replace />
   if (status !== "authenticated") return <SessionVerification />
-  if (entry === "user") return <Navigate to="/me/files" replace />
+  if (entry === "user") return <Navigate to="/user/files" replace />
   if (items && entry === "system" && system)
     return <Navigate to="/system" replace />
   if (items?.length === 1 && !creating) {
@@ -103,7 +103,7 @@ function WorkspaceOptions() {
         slug: String(form.get("slug") ?? "").trim(),
       })
       setTenant(tenant.id)
-      navigate(`/tenants/${tenant.id}`, { replace: true })
+      navigate(`/admin/${tenant.id}`, { replace: true })
     } catch (cause) {
       setError((cause as Error).message)
     } finally {
@@ -153,8 +153,8 @@ function WorkspaceOptions() {
               className="flex items-center gap-3 py-4 hover:text-primary"
               to={
                 entry === "platform"
-                  ? `/operating-platforms/${item.id}`
-                  : `/tenants/${item.id}`
+                  ? `/platform/${item.id}`
+                  : `/admin/${item.id}`
               }
               onClick={() => {
                 if (entry === "tenant") setTenant(item.id)

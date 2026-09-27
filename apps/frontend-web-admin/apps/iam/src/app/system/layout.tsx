@@ -137,9 +137,15 @@ export default function AdministrationLayout() {
   }, [session, platformID])
   if (status === "loading" || status === "error") return <SessionVerification />
   if (!session)
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+    return (
+      <Navigate
+        to={platformID ? "/platform/login" : "/system/login"}
+        replace
+        state={{ from: location.pathname + location.search }}
+      />
+    )
   const base = platformID
-    ? `/operating-platforms/${encodeURIComponent(platformID)}`
+    ? `/platform/${encodeURIComponent(platformID)}`
     : "/system"
   const renderMenus = (items: EffectiveMenu[]) =>
     items.map((item) => (
@@ -206,7 +212,7 @@ export default function AdministrationLayout() {
         <Link
           to={
             platformID
-              ? `/operating-platforms/${encodeURIComponent(platformID)}`
+              ? `/platform/${encodeURIComponent(platformID)}`
               : "/system"
           }
           className="text-sm font-semibold"
@@ -224,22 +230,22 @@ export default function AdministrationLayout() {
             operatingPlatforms={catalog.platforms}
             operatingPlatformID={platformID}
             onOperatingPlatform={(id) =>
-              navigate(`/operating-platforms/${encodeURIComponent(id)}`)
+              navigate(`/platform/${encodeURIComponent(id)}`)
             }
             platformView={!platformID}
             platformPath={catalog.system ? "/system" : ""}
             onPlatform={() => navigate("/system")}
-            onPersonal={() => navigate("/me/profile")}
+            onPersonal={() => navigate("/user/profile")}
             onTenant={(id) => {
               setTenant(id)
-              navigate(`/tenants/${encodeURIComponent(id)}`)
+              navigate(`/admin/${encodeURIComponent(id)}`)
             }}
             onEntity={() => {}}
           />
         )}
         <div className="ms-auto flex items-center gap-1">
           {!getAccountView() && (
-            <Link to="/me/profile" title={t("account")}>
+            <Link to="/user/profile" title={t("account")}>
               <UserRound className="size-4" />
             </Link>
           )}
@@ -277,7 +283,7 @@ export function AdministrationWorkspaceHome() {
       <p className="text-sm text-muted-foreground">{t("noTokenPermissions")}</p>
     )
   const base = platformID
-    ? `/operating-platforms/${encodeURIComponent(platformID)}`
+    ? `/platform/${encodeURIComponent(platformID)}`
     : "/system"
   return (
     <Navigate

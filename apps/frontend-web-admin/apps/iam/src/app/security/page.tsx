@@ -65,9 +65,9 @@ export default function SecurityPage() {
 
   const { pathname } = useLocation()
   const section =
-    pathname === "/me/profile"
+    pathname === "/user/profile"
       ? "profile"
-      : pathname === "/me/mfa"
+      : pathname === "/user/mfa"
         ? "mfa"
         : "security"
   const { session } = useAuth()
@@ -138,7 +138,7 @@ export default function SecurityPage() {
   const revoke = (session: BrowserSession) =>
     run(async () => {
       await iamApi.revokeSession(session.id)
-      if (session.current) window.location.assign("/login")
+      if (session.current) window.location.assign("/user/login")
       else {
         await refresh()
         setNotice(t("sessionRevoked"))
@@ -149,7 +149,7 @@ export default function SecurityPage() {
     run(async () => {
       const result = await iamApi.logoutAll()
       setTenant("")
-      window.location.assign(result?.logout_url || "/login")
+      window.location.assign(result?.logout_url || "/user/login")
     })
 
   const sendEmailVerification = () =>

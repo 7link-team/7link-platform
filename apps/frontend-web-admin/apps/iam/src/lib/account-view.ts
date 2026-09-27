@@ -178,13 +178,13 @@ export function accountViewPath(
     case "system":
       return "/system"
     case "platform":
-      return `/operating-platforms/${id}`
+      return `/platform/${id}`
     case "tenant":
-      return `/tenants/${id}`
+      return `/admin/${id}`
     case "entity":
-      return `/tenants/${encodeURIComponent(tenantID)}/entities/${id}/overview`
+      return `/admin/${encodeURIComponent(tenantID)}/entities/${id}/overview`
     case "personal":
-      return "/me/profile"
+      return "/user/profile"
   }
 }
 

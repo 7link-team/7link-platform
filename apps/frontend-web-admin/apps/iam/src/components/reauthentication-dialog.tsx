@@ -177,7 +177,7 @@ export function ReauthenticationDialog({
         {error && <Alert>{t.has(error) ? t(error) : error}</Alert>}
         {canRecover && (error || (available && !method)) && (
           <Button asChild variant="outline">
-            <Link to="/recover" onClick={onClose}>
+            <Link to="/user/recover" onClick={onClose}>
               {t("forgotPassword")}
             </Link>
           </Button>

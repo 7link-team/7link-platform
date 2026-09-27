@@ -148,7 +148,7 @@ function AccountUserMenu({
             </p>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => navigate("/me/profile")}>
+          <DropdownMenuItem onClick={() => navigate("/user/profile")}>
             <UserRound className="mr-2 size-4" />
             {t("account")}
           </DropdownMenuItem>

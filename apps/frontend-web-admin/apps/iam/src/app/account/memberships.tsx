@@ -89,7 +89,7 @@ export default function MembershipsPage() {
       />
       {registration && (
         <Button variant="outline" asChild>
-          <Link to="/workspaces/tenant?create=1">{t("registerTenant")}</Link>
+          <Link to="/admin/workspaces?create=1">{t("registerTenant")}</Link>
         </Button>
       )}
       {error && (

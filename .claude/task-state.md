@@ -2,6 +2,59 @@
 
 ## Current Delivery - 2026-09-27
 
+### View-Prefixed Web Routes - 2026-09-27
+
+- COMPLETE. User approved /system, /platform, /admin and /user as the
+  complete Web route boundaries, including authentication and workspace pages.
+- Canonical: /system/login and /system/...; /platform/login and /platform/:id/...;
+  /admin/login|register|recover and /admin/:tenantID/...; /user/login|register|recover
+  and /user/... . Platform/admin roots resolve admitted workspaces, not new grants.
+- Reuse existing layouts, live authorization, organization selection, bootstrap,
+  account-view handoff and memory tokens. Internal entry type remains tenant;
+  its Web prefix is admin. API paths and identity/permission semantics stay intact.
+- Direct execution: router, URL helpers, scope detection and test fixtures share
+  the same contract. Architecture/security self-review: reserve auth/chooser path
+  segments from organization IDs, preserve exact view scopes, local return paths
+  and real actor audits. Old Web bookmarks redirect to canonical paths preserving
+  query/hash; they do not create a parallel workspace. Shared generic callbacks
+  redirect to public per-view continuations. Existing menu suffixes remain usable.
+- Required changes: router/helpers/layout/navigation/auth forms and public email
+  continuation; browser-only fixture addresses and dev print/config. Generated API
+  clients/OpenAPI and resource transports are not renamed by this Web change.
+- Verify meaningful route/scope tests (Web prefix vs unchanged API path), workspace
+  gates, full real E2E, Chinese desktop/mobile demo. Source freeze during browser
+  acceptance prevents HMR from resetting memory-only view tokens.
+- Implemented canonical routes, entrance-aware guards/logout, all navigation and
+  account-view links, legacy aliases preserving query/hash, and public email URLs.
+  Backend resource paths and generated API documents are unchanged.
+- Browser audits/acceptance flows and fixtures moved from apps/iam/scripts to
+  apps/iam/tests; package commands, Go integration invocation and documentation
+  updated. scripts retains four development/generation tools. Production dist
+  contains no test scripts/fixtures. Unit tests stay alongside source.
+- PASS: frontend typecheck/lint/build, 238 unit tests, API type drift and OpenAPI
+  checks; go test ./internal/iam/authn ./internal/app. Browser script syntax PASS.
+- PASS: real entrance E2E (.temp/sqlite-lifecycle-19Dq2Y/report.json), canonical
+  email URLs, four entrances, legacy/deep-link continuation, signup, recovery,
+  live permissions and multiple organization selection. Chinese retained demo
+  selectors/login/workspace/logout and desktop/mobile screenshots inspected.
+- PASS: relocated file-browser-ui-audit on retained port 8091, desktop/tablet/mobile,
+  Chinese/Malay, entity and personal routes. Corrected old fixture expectations:
+  selection mode persists while selections clear; folders open on double-click;
+  empty-folder paste uses actual empty surface; explicit resource paths replace
+  retired scope headers. Settled request counts must stop growing.
+- Earlier full run exposed stale system-entry and tenant register/recover test
+  selectors. Corrected them and ran the final full real E2E: 56/56 PASS at
+  .temp/sqlite-lifecycle-kMOVZj/report.json, zero mocked business responses,
+  zero page errors. Product source stayed frozen during browser execution.
+- Self-review and requirement acceptance PASS: complete view route boundaries,
+  API compatibility, scoped authorization, memory-only account-view tokens,
+  real actor audits, test directory/build separation and usable demo selectors.
+- Retained demo: http://127.0.0.1:8091/{system,platform,admin,user}/login;
+  Swagger http://127.0.0.1:8080/docs. Demo selectors prefill credentials.
+- Scoped deliverables committed under standing authorization; delivery finishes
+  by pushing IAM and verifying remote HEAD/clean worktree in the same turn.
+- Next: user acceptance in retained demo. No implementation or decision pending.
+
 ### Separate Authentication Entrances - 2026-09-27
 
 - DELIVERED. User approved separate system/platform login-only entrances and

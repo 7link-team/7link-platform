@@ -90,10 +90,12 @@ async function ready(url) {
 }
 function print(settings) {
   console.log(
-    `Web: ${settings.webURL}/login\nSwagger: ${settings.apiURL}/docs\nAPI: ${settings.apiURL}\nDatabase: SQLite (${join(directory, "dev.sqlite")})\nDemo account selector: ${settings.demoAccounts ? "enabled" : "disabled"}\nAccount: admin@example.test\nPassword file: ${join(directory, "admin-password")}\nCtrl+C stops both services; data and credentials are retained.`,
+    `Web: ${settings.webURL}/user/login\nSwagger: ${settings.apiURL}/docs\nAPI: ${settings.apiURL}\nDatabase: SQLite (${join(directory, "dev.sqlite")})\nDemo account selector: ${settings.demoAccounts ? "enabled" : "disabled"}\nAccount: admin@example.test\nPassword file: ${join(directory, "admin-password")}\nCtrl+C stops both services; data and credentials are retained.`,
   );
   for (const entry of ["system", "platform", "tenant", "user"])
-    console.log(`${entry} login: ${settings.webURL}/login/${entry}`);
+    console.log(
+      `${entry} login: ${settings.webURL}/${entry === "tenant" ? "admin" : entry}/login`,
+    );
   console.log(`Local development mail: ${join(directory, "mailbox.jsonl")}`);
 }
 async function availablePort(preferred) {
@@ -138,7 +140,7 @@ if (options.has("--stop")) {
   const running =
     settings.running &&
     (await ready(settings.apiURL + "/readyz")) &&
-    (await ready(settings.webURL + "/login"));
+    (await ready(settings.webURL + "/user/login"));
   console.log(`Status: ${running ? "running" : "stopped"}`);
   print(settings);
   process.exitCode = running ? 0 : 1;
@@ -157,7 +159,7 @@ if (options.has("--stop")) {
     if (
       previous.running &&
       (await ready(previous.apiURL + "/readyz")) &&
-      (await ready(previous.webURL + "/login"))
+      (await ready(previous.webURL + "/user/login"))
     ) {
       throw new Error(
         `Development environment is already running at ${previous.webURL}; stop it before changing startup settings.`,
@@ -245,15 +247,18 @@ if (options.has("--stop")) {
           notification: { url: notificationURL },
           email_verification: {
             enabled: true,
-            verify_url: settings.webURL + "/verify-email",
+            verify_url: settings.webURL + "/user/verify-email",
           },
-          recovery: { enabled: true, reset_url: settings.webURL + "/recover" },
+          recovery: {
+            enabled: true,
+            reset_url: settings.webURL + "/user/recover",
+          },
           web: {
             enabled: true,
             cookie_name: "dev_session",
             cookie_secure: false,
             post_login_url: settings.webURL + "/",
-            post_logout_url: settings.webURL + "/login",
+            post_logout_url: settings.webURL + "/user/login",
             allowed_return_urls: [settings.webURL + "/"],
             allowed_origins: [settings.webURL],
           },
@@ -459,7 +464,7 @@ if (options.has("--stop")) {
         VITE_DEV_LOGIN_ACCOUNTS: JSON.stringify(accounts),
       },
     );
-    await waitReady(settings.webURL + "/login");
+    await waitReady(settings.webURL + "/user/login");
     settings.running = true;
     settings.tenantID = tenantID;
     settings.accountCount = accounts.length;

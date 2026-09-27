@@ -202,6 +202,16 @@ func publicEntranceCredentialURL(base, token, entry string) (string, error) {
 		return "", err
 	}
 	if entry != "" {
+		prefix := "/user"
+		if entry == "tenant" {
+			prefix = "/admin"
+		}
+		for _, page := range []string{"/recover", "/verify-email"} {
+			if target.Path == page || target.Path == "/user"+page || target.Path == "/admin"+page {
+				target.Path = prefix + page
+				break
+			}
+		}
 		query := target.Query()
 		query.Set("entry", entry)
 		target.RawQuery = query.Encode()

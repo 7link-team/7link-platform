@@ -25,7 +25,7 @@ import EntitiesPage from "./page"
 
 export default function EntityWorkspace() {
   const { tenantID = "", entityID = "", view = "overview" } = useParams()
-  const base = `/tenants/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entityID)}`
+  const base = `/admin/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entityID)}`
   if (!["overview", "roles", "resources", "manage"].includes(view))
     return <Navigate to={`${base}/overview`} replace />
   if (view === "manage") return <EntitiesPage scopeEntityID={entityID} />
@@ -51,7 +51,7 @@ function EntityDetails({
   const t = useTranslations("iam")
   const locale = useLocale()
   const navigate = useNavigate()
-  const base = `/tenants/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entityID)}`
+  const base = `/admin/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entityID)}`
   const allowed = useAllowed()
   const [data, setData] = useState<{
     entity: Entity
@@ -103,7 +103,7 @@ function EntityDetails({
         action={
           <Link
             className="inline-flex min-h-11 items-center rounded-md border px-3 text-sm hover:bg-accent"
-            to={`/tenants/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entityID)}/manage`}
+            to={`/admin/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entityID)}/manage`}
           >
             {t("entitySettings")}
           </Link>

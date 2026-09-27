@@ -127,6 +127,26 @@ func TestRegistrationEntranceSurvivesVerifiedEmailDelivery(t *testing.T) {
 	assert.Error(t, err, "registration continuation must not accept privileged or arbitrary destinations")
 }
 
+func TestPublicEntranceCredentialsUseViewRoutes(t *testing.T) {
+	for _, item := range []struct{ base, entry, path string }{
+		{"https://app.example.test/verify-email", "tenant", "/admin/verify-email"},
+		{"https://app.example.test/user/verify-email", "tenant", "/admin/verify-email"},
+		{"https://app.example.test/recover", "user", "/user/recover"},
+		{"https://app.example.test/admin/recover", "user", "/user/recover"},
+		{"https://app.example.test/custom-reset", "tenant", "/custom-reset"},
+	} {
+		t.Run(item.base+"/"+item.entry, func(t *testing.T) {
+			value, err := publicEntranceCredentialURL(item.base, "credential", item.entry)
+			require.NoError(t, err)
+			target, err := url.Parse(value)
+			require.NoError(t, err)
+			assert.Equal(t, item.path, target.Path)
+			assert.Equal(t, "credential", target.Query().Get("token"))
+			assert.Equal(t, item.entry, target.Query().Get("entry"))
+		})
+	}
+}
+
 func TestRegistrationValidationAndConfiguration(t *testing.T) {
 	assert.Equal(t, authnext.Capabilities{}, (*Service)(nil).Capabilities())
 	disabled, err := NewWebService(authnext.Config{}, nil)

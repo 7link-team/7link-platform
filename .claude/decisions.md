@@ -1,5 +1,31 @@
 # Decisions
 
+## D92 - View-Prefixed Web Routes and Browser Test Location (2026-09-27)
+
+User approved complete Web route boundaries: /system, /platform, /admin and
+/user. Authentication, workspace selection, internal pages, navigation and
+account-view handoffs use the owning prefix. Tenant remains the internal scope
+name; admin is its Web prefix. Public registration/recovery/email continuations
+exist under admin/user; system/platform expose login only. Old bookmarks redirect
+with query/hash retained. Entrances never grant additional permissions.
+
+API resource URLs remain unchanged: Web /admin maps to /tenants and Web /platform
+maps to /operating-platforms. Scope detection excludes login/chooser segments.
+Account-view credentials remain in tab memory with exact scopes and real actors.
+
+Browser audits, acceptance flows and fixtures belong in apps/iam/tests. Genuine
+generation/bootstrap tools and their shared credential reader remain in scripts.
+Neither directory is imported by the production entry. Unit tests stay beside
+source. Package commands, integration invocation and docs follow the moved paths.
+
+Status: IMPLEMENTED and VERIFIED. Direct execution, architecture/security review
+and acceptance PASS. Frontend typecheck/lint/build and 238 unit tests, affected
+backend suites, API type/OpenAPI drift checks PASS. Full real SQLite/browser E2E
+56/56 PASS (.temp/sqlite-lifecycle-kMOVZj/report.json), zero mocked business
+responses and zero page errors. Relocated file-browser UI audit and Chinese
+retained-demo selectors/workspaces/logout desktop/mobile PASS. No database
+migrations or dependencies introduced; no further implementation is pending.
+
 ## D72 - The coverage gate measures the union across test binaries
 
 **Date** 2026-09-22

@@ -15,7 +15,7 @@ export default function RecoverPage() {
 
   const location = useLocation()
   const entry =
-    publicAuthEntrance(location.pathname.split("/")[2]) ??
+    publicAuthEntrance(location.pathname.split("/")[1]) ??
     publicAuthEntrance(new URLSearchParams(location.search).get("entry"))
   const token = new URLSearchParams(location.search).get("token") ?? ""
   const [busy, setBusy] = useState(false)

@@ -24,14 +24,23 @@ import { useAuth } from "../../components/auth"
 import { SessionVerification } from "../../components/session-verification"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { AuthEntranceLinks } from "../../components/auth-entrance-links"
-import { authEntrance, publicAuthEntrance } from "../../lib/auth-entrance"
+import {
+  authEntrance,
+  publicAuthEntrance,
+  entrancePath,
+} from "../../lib/auth-entrance"
 
 export default function LoginPage() {
   const t = useTranslations("iam")
 
   const { status, login, verifyLoginMfa, loginWithPasskey } = useAuth()
   const location = useLocation()
-  const entry = authEntrance(location.pathname.split("/")[2])
+  const entry = authEntrance(location.pathname.split("/")[1])
+  const from = (location.state as { from?: string } | null)?.from
+  const prefix = entrancePath(entry, "login").replace(/\/login$/, "")
+  const requested = from?.startsWith(`${prefix}/`)
+    ? from
+    : entrancePath(entry, "workspaces")
   const [visible, setVisible] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(() =>
@@ -50,8 +59,7 @@ export default function LoginPage() {
       .then(setCapabilities, () => setCapabilities(null))
   }, [])
   if (status === "loading" || status === "error") return <SessionVerification />
-  if (status === "authenticated")
-    return <Navigate to={entry ? `/workspaces/${entry}` : "/"} replace />
+  if (status === "authenticated") return <Navigate to={requested} replace />
 
   const submitPassword = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -59,13 +67,7 @@ export default function LoginPage() {
     setError("")
     const data = new FormData(event.currentTarget)
     const devTenantID = String(data.get("dev_tenant_id") ?? "")
-    const devPlatformID = String(data.get("dev_platform_id") ?? "")
     const previousTenantID = devTenantID ? getTenant() : ""
-    const requested = entry
-      ? `/workspaces/${entry}`
-      : devPlatformID
-        ? `/operating-platforms/${encodeURIComponent(devPlatformID)}`
-        : ((location.state as { from?: string } | null)?.from ?? "/")
     try {
       if (devTenantID) setTenant(devTenantID)
       const result = await login(
@@ -110,9 +112,6 @@ export default function LoginPage() {
   const submitPasskey = async () => {
     setBusy(true)
     setError("")
-    const requested = entry
-      ? `/workspaces/${entry}`
-      : ((location.state as { from?: string } | null)?.from ?? "/")
     try {
       await loginWithPasskey(`${window.location.origin}${requested}`)
     } catch (cause) {
@@ -170,7 +169,7 @@ export default function LoginPage() {
 function BrandHeader({ mfa = false }: { mfa?: boolean }) {
   const t = useTranslations("iam")
   const location = useLocation()
-  const entry = authEntrance(location.pathname.split("/")[2])
+  const entry = authEntrance(location.pathname.split("/")[1])
 
   return (
     <div className="space-y-2.5">
@@ -215,7 +214,7 @@ function PasswordForm({
 }) {
   const t = useTranslations("iam")
   const location = useLocation()
-  const entry = authEntrance(location.pathname.split("/")[2])
+  const entry = authEntrance(location.pathname.split("/")[1])
   const selfService = !entry || publicAuthEntrance(entry) !== null
   const defaultAccount = prefillDevLoginAccount
     ? devLoginAccounts[0]
@@ -317,7 +316,7 @@ function PasswordForm({
         {selfService && capabilities?.password_recovery && (
           <div className="flex justify-end">
             <Link
-              to={entry ? `/recover/${entry}` : "/recover"}
+              to={entrancePath(entry, "recover")}
               className="text-sm font-medium text-primary hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               {t("forgotPassword")}
@@ -351,7 +350,7 @@ function PasswordForm({
           {t("noAccount")}{" "}
           <Link
             className="font-medium text-primary hover:underline"
-            to={entry ? `/register/${entry}` : "/register"}
+            to={entrancePath(entry, "register")}
           >
             {t("createAccount")}
           </Link>

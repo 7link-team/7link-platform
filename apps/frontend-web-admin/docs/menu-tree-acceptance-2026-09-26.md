@@ -22,7 +22,7 @@ are not committed/pushed.
 Run from `apps/frontend-web-admin`:
 
 ```powershell
-node apps/iam/scripts/menu-tree-browser-audit.mjs
+node apps/iam/tests/menu-tree-browser-audit.mjs
 ```
 
 Final real Chrome run: PASS, zero mocked business responses, zero page errors.

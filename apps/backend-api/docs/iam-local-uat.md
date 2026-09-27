@@ -138,7 +138,7 @@ installed Chrome; it does not require the agent's embedded browser tool. From
 `apps/backend-api`, with UAT running and `verify` already completed:
 
 ```sh
-node ../frontend-web-admin/apps/iam/scripts/local-uat-browser-audit.mjs
+node ../frontend-web-admin/apps/iam/tests/local-uat-browser-audit.mjs
 ```
 
 This drives actual UI login, tenant selection, navigation, read-only lifecycle
@@ -160,7 +160,7 @@ IAM_NOTIFICATION_FILE="$PWD/.temp/iam-uat/notification-last.json" \
 IAM_CAPTCHA_TEST_ANSWER_FILE="$PWD/.temp/iam-uat/captcha-test-answer" \
 IAM_DATABASE_CONTAINER="$(node -p "require('./.temp/iam-uat/state.json').container")" \
 IAM_DATABASE_TABLE_PREFIX=uat_ \
-node ../frontend-web-admin/apps/iam/scripts/run-browser-audits.mjs
+node ../frontend-web-admin/apps/iam/tests/run-browser-audits.mjs
 ```
 
 The registration audit reads its randomly generated test answer from a file and

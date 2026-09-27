@@ -1,6 +1,6 @@
 export function routeTenantID(): string {
   if (typeof window === "undefined") return ""
-  const match = /^\/tenants\/([^/]+)(?:\/|$)/.exec(
+  const match = /^\/admin\/([1-9][0-9]*)(?:\/|$)/.exec(
     window.location?.pathname ?? ""
   )
   return match ? decodeURIComponent(match[1] ?? "") : ""
@@ -8,7 +8,7 @@ export function routeTenantID(): string {
 
 export function operatingPlatformID(): string {
   if (typeof window === "undefined") return ""
-  const match = /^\/operating-platforms\/([^/]+)(?:\/|$)/.exec(
+  const match = /^\/platform\/([1-9][0-9]*)(?:\/|$)/.exec(
     window.location?.pathname ?? ""
   )
   return match ? decodeURIComponent(match[1] ?? "") : ""

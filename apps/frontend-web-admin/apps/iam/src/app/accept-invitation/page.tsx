@@ -14,7 +14,7 @@ export default function AcceptInvitationPage() {
 
   const [token] = useState(() => {
     const value = new URLSearchParams(window.location.search).get("token") ?? ""
-    window.history.replaceState(null, "", "/accept-invitation")
+    window.history.replaceState(null, "", "/admin/accept-invitation")
     return value
   })
   const [busy, setBusy] = useState(false)
@@ -138,7 +138,7 @@ export default function AcceptInvitationPage() {
           )}
 
           <Button variant="ghost" className="mt-4 w-full" asChild>
-            <Link to="/login">
+            <Link to="/admin/login">
               <ArrowLeft />
               {t("backSignIn")}
             </Link>

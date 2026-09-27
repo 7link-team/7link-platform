@@ -80,7 +80,7 @@ it("accepts one verified child handoff and loses authorization on document dispo
     globalThis.window=Object.assign(new EventTarget(),{
       location:{origin:"http://console.test",pathname:"/account-view/open"},
       name:"iam-account-view:nonce",opener,setTimeout,clearTimeout,
-      history:{replaceState:(_state,_title,path)=>{assert.equal(path,"/tenants/7");window.location.pathname=path}}
+      history:{replaceState:(_state,_title,path)=>{assert.equal(path,"/admin/7");window.location.pathname=path}}
     });
     const {initializeAccountViewTab,getAccountView,accountViewRequest}=await import("./account-view.ts");
     const initialization=initializeAccountViewTab();
@@ -124,7 +124,7 @@ it("blocks refreshed view tabs even when browser storage is unavailable", () => 
       `
     import assert from "node:assert/strict";
     globalThis.sessionStorage={getItem:()=>{throw new Error("Storage disabled")},setItem:()=>{throw new Error("Storage disabled")}};
-    globalThis.window=Object.assign(new EventTarget(),{location:{pathname:"/tenants/7"},name:"iam-account-view:closed"});
+    globalThis.window=Object.assign(new EventTarget(),{location:{pathname:"/admin/7"},name:"iam-account-view:closed"});
     const {initializeAccountViewTab,accountViewRequest,issueAccountView}=await import("./account-view.ts");
     assert.equal(await initializeAccountViewTab(),"closed");
     assert.throws(()=>accountViewRequest("GET"),/closed/);

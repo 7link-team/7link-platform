@@ -82,7 +82,7 @@ export function AppSidebar({
   const t = useTranslations("iam")
 
   const location = useLocation()
-  const tenantBase = tenantID ? `/tenants/${encodeURIComponent(tenantID)}` : ""
+  const tenantBase = tenantID ? `/admin/${encodeURIComponent(tenantID)}` : ""
   const platformView = isPlatformRoute(location.pathname + location.search)
   menus = tenantNavigation(menus)
   const paths = effectiveMenuPaths(menus)
@@ -275,7 +275,7 @@ function SideLink({
       end={
         to === "/" ||
         to === "/system/accounts" ||
-        /^\/tenants\/[^/]+$/u.test(to)
+        /^\/admin\/[^/]+$/u.test(to)
       }
       aria-current={scopeMatches ? undefined : false}
       className={({ isActive }) =>

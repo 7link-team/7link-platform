@@ -138,7 +138,7 @@ func runGovernanceBrowser(t *testing.T, fixture *iamTenantFixture, console, cons
 	}, 15*time.Second, 100*time.Millisecond)
 	browserCtx, cancelBrowser := context.WithTimeout(t.Context(), 3*time.Minute)
 	defer cancelBrowser()
-	browser := exec.CommandContext(browserCtx, "node", "scripts/archive-live-browser-audit.mjs")
+	browser := exec.CommandContext(browserCtx, "node", "tests/archive-live-browser-audit.mjs")
 	browser.Dir = console
 	browser.Env = append(os.Environ(), "IAM_CONSOLE_URL="+consoleURL, "IAM_ARCHIVE_FIXTURE_CONTROL="+controlURL,
 		fmt.Sprintf("IAM_GOVERNANCE_DISABLED=%t", disabled), "IAM_BROWSER_PASSWORD=correct horse battery staple")

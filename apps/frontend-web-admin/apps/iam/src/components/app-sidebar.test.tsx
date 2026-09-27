@@ -53,7 +53,7 @@ describe("AppSidebar", () => {
       },
     ])
     expect(html).toContain("Configured requests")
-    expect(html.match(/href="\/tenants\/456\/access-requests"/g)?.length).toBe(
+    expect(html.match(/href="\/admin\/456\/access-requests"/g)?.length).toBe(
       1
     )
     expect(html).not.toContain(">当前租户</span>")
@@ -63,13 +63,13 @@ describe("AppSidebar", () => {
       [],
       false,
       false,
-      "/tenants/456/entities/123/overview",
+      "/admin/456/entities/123/overview",
       "123",
       new Set(["todo_view"])
     )
-    expect(html).not.toContain('href="/tenants/456/entities/123/')
+    expect(html).not.toContain('href="/admin/456/entities/123/')
     expect(renderSidebar([], false, false, "/", "123", null)).not.toContain(
-      'href="/tenants/456/entities/123/'
+      'href="/admin/456/entities/123/'
     )
   })
   it("uses entity routes without exposing tenant-wide administration in entity view", () => {
@@ -85,18 +85,18 @@ describe("AppSidebar", () => {
       ],
       true,
       true,
-      "/tenants/456/entities/123/roles",
+      "/admin/456/entities/123/roles",
       "123"
     )
-    expect(html).toContain('href="/tenants/456/entities/123/overview"')
-    expect(html).toContain('href="/tenants/456/entities/123/roles"')
-    expect(html).not.toContain('href="/tenants/456/entities/123/resources"')
+    expect(html).toContain('href="/admin/456/entities/123/overview"')
+    expect(html).toContain('href="/admin/456/entities/123/roles"')
+    expect(html).not.toContain('href="/admin/456/entities/123/resources"')
     expect(html).toContain("访问控制")
-    expect(html).toContain('href="/tenants/456/entities/123/manage"')
-    expect(html).not.toContain('href="/tenants/456/users"')
+    expect(html).toContain('href="/admin/456/entities/123/manage"')
+    expect(html).not.toContain('href="/admin/456/users"')
     expect(html).not.toContain('href="/system/tenants"')
-    expect(html).not.toContain('href="/tenants/456/field-policies"')
-    expect(html).not.toContain('href="/tenants/456/access-requests"')
+    expect(html).not.toContain('href="/admin/456/field-policies"')
+    expect(html).not.toContain('href="/admin/456/access-requests"')
   })
   it("exposes entity files only with the file view permission", () => {
     expect(
@@ -104,28 +104,28 @@ describe("AppSidebar", () => {
         [],
         false,
         false,
-        "/tenants/456/entities/123/overview",
+        "/admin/456/entities/123/overview",
         "123",
         new Set(["file_view"])
       )
-    ).toContain('href="/tenants/456/entities/123/files"')
+    ).toContain('href="/admin/456/entities/123/files"')
     expect(
       renderSidebar(
         [],
         false,
         false,
-        "/tenants/456/entities/123/overview",
+        "/admin/456/entities/123/overview",
         "123",
         new Set(["entity_view"])
       )
-    ).not.toContain('href="/tenants/456/entities/123/files"')
+    ).not.toContain('href="/admin/456/entities/123/files"')
   })
   it("exposes tenant files only with the file view permission", () => {
     expect(
       renderSidebar([], false, false, "/", "", new Set(["file_view"]))
-    ).toContain('href="/tenants/456/files"')
+    ).toContain('href="/admin/456/files"')
     expect(renderSidebar([], false, false, "/")).not.toContain(
-      'href="/tenants/456/files"'
+      'href="/admin/456/files"'
     )
   })
   it("links scoped accounts to entity files without exposing tenant files", () => {
@@ -133,13 +133,13 @@ describe("AppSidebar", () => {
       [],
       false,
       false,
-      "/tenants/456",
+      "/admin/456",
       "",
       new Set(["entity_view"]),
       "123"
     )
-    expect(html).toContain('href="/tenants/456/entities/123/files"')
-    expect(html).not.toContain('href="/tenants/456/files"')
+    expect(html).toContain('href="/admin/456/entities/123/files"')
+    expect(html).not.toContain('href="/admin/456/files"')
   })
   it("does not duplicate a tenant file menu supplied by the server", () => {
     const html = renderSidebar(
@@ -158,7 +158,7 @@ describe("AppSidebar", () => {
       "",
       new Set(["file_view"])
     )
-    expect(html.match(/href="\/tenants\/456\/files"/g)).toHaveLength(1)
+    expect(html.match(/href="\/admin\/456\/files"/g)).toHaveLength(1)
   })
   it("excludes personal routes even when supplied by the effective menu tree", () => {
     const html = renderSidebar(
@@ -176,13 +176,13 @@ describe("AppSidebar", () => {
   })
   it("shows field administration only after its own catalog access is proven", () => {
     expect(renderSidebar([])).not.toContain(
-      'href="/tenants/456/field-policies"'
+      'href="/admin/456/field-policies"'
     )
     expect(renderSidebar([], true)).not.toContain(
-      'href="/tenants/456/field-policies"'
+      'href="/admin/456/field-policies"'
     )
     expect(renderSidebar([], false, true)).toContain(
-      'href="/tenants/456/field-policies"'
+      'href="/admin/456/field-policies"'
     )
   })
   it("keeps self-service navigation without exposing administration", () => {
@@ -193,7 +193,7 @@ describe("AppSidebar", () => {
     expect(html).not.toContain('href="/security"')
     expect(html).not.toContain('href="/account/')
     expect(html).toContain("访问申请")
-    expect(html).toContain('href="/tenants/456/access-requests"')
+    expect(html).toContain('href="/admin/456/access-requests"')
     expect(html).not.toContain("主体与成员")
     expect(html).not.toContain("角色权限")
   })
@@ -260,14 +260,14 @@ describe("AppSidebar", () => {
     ])
     expect(html).toContain("Users")
     expect(html).not.toContain("角色权限")
-    expect(html).toContain('href="/tenants/456/users"')
-    expect(html).toContain('href="/tenants/456/service-accounts"')
-    expect(html).toContain('href="/tenants/456/entities"')
-    expect(html).toContain('href="/tenants/456/departments"')
-    expect(html).not.toContain('href="/tenants/456/positions"')
-    expect(html).toContain('href="/tenants/456/groups"')
-    expect(html).toContain('href="/tenants/456/access-reviews"')
-    expect(html).toContain('href="/tenants/456/scim-directories"')
+    expect(html).toContain('href="/admin/456/users"')
+    expect(html).toContain('href="/admin/456/service-accounts"')
+    expect(html).toContain('href="/admin/456/entities"')
+    expect(html).toContain('href="/admin/456/departments"')
+    expect(html).not.toContain('href="/admin/456/positions"')
+    expect(html).toContain('href="/admin/456/groups"')
+    expect(html).toContain('href="/admin/456/access-reviews"')
+    expect(html).toContain('href="/admin/456/scim-directories"')
   })
 
   it("keeps platform administration out of the tenant sidebar even for administrators", () => {
@@ -298,13 +298,13 @@ describe("AppSidebar", () => {
     expect(html).toContain("租户管理")
     expect(html).toContain('href="/system/tenants"')
     expect(html).toContain('href="/system/audit-governance"')
-    expect(html).not.toContain('href="/tenants/456/users"')
-    expect(html).not.toContain('href="/tenants/456/field-policies"')
-    expect(html).not.toContain('href="/tenants/456/access-requests"')
+    expect(html).not.toContain('href="/admin/456/users"')
+    expect(html).not.toContain('href="/admin/456/field-policies"')
+    expect(html).not.toContain('href="/admin/456/access-requests"')
     expect(
       renderSidebar([], true, false, "/system/tenants", "", new Set())
     ).not.toContain('href="/system/audit-governance"')
-    expect(renderSidebar([], false, false, "/tenants")).not.toContain(
+    expect(renderSidebar([], false, false, "/admin")).not.toContain(
       'href="/system/tenants"'
     )
   })
@@ -338,7 +338,7 @@ describe("AppSidebar", () => {
       ],
       true
     )
-    expect(html).toContain('href="/tenants/456/users"')
+    expect(html).toContain('href="/admin/456/users"')
     expect(html).not.toContain('href="/system/audit-governance"')
     expect(html).not.toContain("Platform tenants")
   })
@@ -348,7 +348,7 @@ describe("AppSidebar", () => {
       [],
       true,
       false,
-      "/tenants/456/audit-governance"
+      "/admin/456/audit-governance"
     )
     const platform = renderSidebar(
       [],

@@ -12,14 +12,22 @@ import { Button } from "@workspace/ui/components/button"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi } from "../../lib/iam-api"
 import { appName, copyrightLine } from "../../lib/branding"
-import { entranceLoginPath, publicAuthEntrance } from "../../lib/auth-entrance"
+import {
+  entranceLoginPath,
+  entrancePath,
+  publicAuthEntrance,
+} from "../../lib/auth-entrance"
 
 type VerificationState = "pending" | "success" | "invalid" | "unavailable"
 
 export default function VerifyEmailPage() {
   const t = useTranslations("iam")
-  const [entry] = useState(() =>
-    publicAuthEntrance(new URLSearchParams(window.location.search).get("entry"))
+  const [entry] = useState(
+    () =>
+      publicAuthEntrance(window.location.pathname.split("/")[1]) ??
+      publicAuthEntrance(
+        new URLSearchParams(window.location.search).get("entry")
+      )
   )
 
   const [token] = useState(
@@ -33,11 +41,7 @@ export default function VerifyEmailPage() {
   useEffect(() => {
     if (started.current) return
     started.current = true
-    window.history.replaceState(
-      null,
-      "",
-      entry ? `/verify-email?entry=${entry}` : "/verify-email"
-    )
+    window.history.replaceState(null, "", entrancePath(entry, "verify-email"))
     if (!token) return
     void iamApi.completeEmailVerification(token).then(
       () => setState("success"),
