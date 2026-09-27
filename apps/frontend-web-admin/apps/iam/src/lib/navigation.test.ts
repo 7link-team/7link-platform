@@ -10,8 +10,7 @@ import {
   defaultWorkspacePath,
   platformNavigation,
   tenantSystemNavigation,
-  systemAdministrationNavigation,
-  systemAdministrationMenus,
+  firstEffectiveMenuPath,
 } from "./navigation"
 
 const menus: EffectiveMenu[] = [
@@ -82,19 +81,19 @@ describe("menu subtree movement", () => {
 })
 
 describe("effective navigation", () => {
-  it("groups all six system destinations and omits unauthorized empty branches", () => {
-    expect(systemAdministrationMenus).toHaveLength(3)
+  it("chooses the first admitted destination from the actual persisted tree", () => {
+    expect(firstEffectiveMenuPath(menus)).toBe("/users")
+    expect(firstEffectiveMenuPath([])).toBe("")
     expect(
-      systemAdministrationMenus.flatMap((group) => group.children)
-    ).toHaveLength(6)
-    const groups = systemAdministrationNavigation(
-      new Set(["system_account_view"])
-    )
-    expect(groups).toHaveLength(1)
-    expect(groups[0]?.children.map((item) => item.path)).toEqual([
-      "/system/accounts",
-    ])
-    expect(systemAdministrationNavigation(null)).toEqual([])
+      firstEffectiveMenuPath([
+        {
+          ...menus[0]!,
+          children: [
+            { ...menus[0]!.children![0]!, path: "/system/audit/events" },
+          ],
+        },
+      ])
+    ).toBe("/system/audit/events")
   })
   it("selects a platform home only from global platform permissions", () => {
     expect(defaultWorkspacePath("456", new Set(["tenant_view"]))).toBe(

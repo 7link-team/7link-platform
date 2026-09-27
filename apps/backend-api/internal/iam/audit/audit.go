@@ -363,10 +363,14 @@ func (s *Service) RequestExport(ctx context.Context, filter Filter, principalID 
 		if err != nil || !before.Integrity.Valid {
 			return err
 		}
+		event := NewDomainEvent(ctx, filter.TenantID, "audit_export_requested", "audit_event", 0)
+		if event.PrincipalID.Zero() {
+			event.PrincipalID = principalID
+		}
+		event.Detail["filter"] = exportCriteriaOf(filter)
 		if _, err := s.appendTo(ctx, repo.writer(), EventInput{
-			TenantID: filter.TenantID, PrincipalID: principalID,
-			EventType: "audit_export_requested", TargetType: "audit_event", Outcome: "success",
-			Detail: map[string]any{"filter": exportCriteriaOf(filter)},
+			TenantID: event.TenantID, PrincipalID: event.PrincipalID,
+			EventType: event.EventType, TargetType: event.TargetType, Outcome: "success", Detail: event.Detail,
 		}); err != nil {
 			return err
 		}

@@ -11,7 +11,7 @@ async function workspaceHomeLoader() {
   if (view)
     return redirect(
       view.scope_type === "system"
-        ? "/system/accounts"
+        ? "/system"
         : view.scope_type === "platform"
           ? `/operating-platforms/${encodeURIComponent(view.scope_id)}`
           : view.scope_type === "personal"
@@ -28,8 +28,7 @@ async function workspaceHomeLoader() {
         iamApi.myOperatingPlatforms(),
         iamApi.systemPermissions(),
       ])
-    if (systemPermissions.includes("system_account_view"))
-      return redirect("/system/accounts")
+    if (systemPermissions.length > 0) return redirect("/system")
     if (
       platforms.length &&
       !memberships.some(
@@ -94,6 +93,26 @@ export const router = createBrowserRouter([
             }),
             children: [
               {
+                path: "/system",
+                lazy: async () => ({
+                  Component: (await import("./app/system/layout"))
+                    .AdministrationWorkspaceHome,
+                }),
+              },
+              {
+                path: "/system/menus",
+                lazy: async () => ({
+                  Component: (await import("./app/menus/page")).SystemMenusPage,
+                }),
+              },
+              {
+                path: "/system/audit/events",
+                lazy: async () => ({
+                  Component: (await import("./app/audit-events/page"))
+                    .SystemAuditEventsPage,
+                }),
+              },
+              {
                 path: "/system/administrators",
                 lazy: async () => ({
                   Component: (await import("./app/system/administrators"))
@@ -137,7 +156,7 @@ export const router = createBrowserRouter([
                 path: "/operating-platforms/:platformID",
                 lazy: async () => ({
                   Component: (await import("./app/system/layout"))
-                    .OperatingWorkspaceHome,
+                    .AdministrationWorkspaceHome,
                 }),
               },
               {

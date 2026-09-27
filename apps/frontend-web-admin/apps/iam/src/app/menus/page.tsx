@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useMemo,
   useState,
   type FormEvent,
   type DragEvent,
@@ -58,9 +59,39 @@ import { defaultLocale, locales, localeNames } from "@workspace/ui/i18n/config"
 
 const rootMenu = "__root__"
 
-export default function MenusPage() {
+export function SystemMenusPage() {
+  return <MenusPage scope="system" />
+}
+
+export default function MenusPage({
+  scope = "tenant",
+}: {
+  scope?: "system" | "tenant"
+}) {
   const t = useTranslations("iam")
-  const allowed = useAllowed()
+  const scopeAllowed = useAllowed()
+  const system = scope === "system"
+  const allowed = useCallback(
+    (code: string) => scopeAllowed(system ? `system_${code}` : code),
+    [scopeAllowed, system]
+  )
+  const menuApi = useMemo(
+    () =>
+      system
+        ? {
+            list: iamApi.systemMenus,
+            create: iamApi.createSystemMenu,
+            update: iamApi.updateSystemMenu,
+            remove: iamApi.deleteSystemMenu,
+          }
+        : {
+            list: iamApi.menus,
+            create: iamApi.createMenu,
+            update: iamApi.updateMenu,
+            remove: iamApi.deleteMenu,
+          },
+    [system]
+  )
   const locale = useLocale()
 
   const [menus, setMenus] = useState<Menu[]>([])
@@ -90,7 +121,7 @@ export default function MenusPage() {
     setLoading(true)
     setLoadError("")
     try {
-      const next = await iamApi.menus()
+      const next = await menuApi.list()
       if (generation === loadGeneration.current) {
         setMenus(next)
         setSelectedID((id) =>
@@ -105,7 +136,7 @@ export default function MenusPage() {
     } finally {
       if (generation === loadGeneration.current) setLoading(false)
     }
-  }, [])
+  }, [menuApi])
 
   useEffect(() => {
     let active = true
@@ -160,13 +191,16 @@ export default function MenusPage() {
       ),
       route: String(data.get("route")),
       icon: String(data.get("icon")),
-      permission_code: String(data.get("permission_code")),
+      permission_code:
+        system && !allowed("menu_bind_permission")
+          ? (editing?.permission_code ?? "")
+          : String(data.get("permission_code") ?? ""),
       sort_order: Number(data.get("sort_order") || 0),
       status,
     }
     try {
-      if (editing) await iamApi.updateMenu(editing.id, body)
-      else await iamApi.createMenu(body)
+      if (editing) await menuApi.update(editing.id, body)
+      else await menuApi.create(body)
       setOpen(false)
       setEditing(null)
       await refresh()
@@ -182,7 +216,7 @@ export default function MenusPage() {
     setBusy(true)
     setError("")
     try {
-      await iamApi.deleteMenu(id)
+      await menuApi.remove(id)
       await refresh()
       window.dispatchEvent(new Event("menu-catalog-change"))
     } catch (cause) {
@@ -222,7 +256,7 @@ export default function MenusPage() {
     setBusy(true)
     setError("")
     try {
-      await iamApi.updateMenu(id, destination)
+      await menuApi.update(id, destination)
       await refresh()
       window.dispatchEvent(new Event("menu-catalog-change"))
     } catch (cause) {
@@ -303,9 +337,11 @@ export default function MenusPage() {
     <>
       <PageHeader
         title={t(
-          operatingPlatformID()
-            ? "platformMenuManagement"
-            : "tenantMenuManagement"
+          system
+            ? "systemMenuManagement"
+            : operatingPlatformID()
+              ? "platformMenuManagement"
+              : "tenantMenuManagement"
         )}
         action={
           allowed("menu_create") && (
@@ -463,17 +499,23 @@ export default function MenusPage() {
               </span>
             </div>
             <div className="max-h-[calc(100dvh-320px)] min-h-40 overflow-auto border">
-              <Table>
+              <Table className="min-w-[1100px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t("menu")}</TableHead>
+                    <TableHead className="min-w-64">{t("menu")}</TableHead>
                     <TableHead>{t("route")}</TableHead>
                     <TableHead>{t("permissionCode")}</TableHead>
-                    <TableHead>{t("sortOrder")}</TableHead>
-                    <TableHead>{t("status")}</TableHead>
-                    <TableHead className="w-24 text-right">
-                      {t("actions")}
+                    <TableHead className="min-w-24 whitespace-nowrap">
+                      {t("sortOrder")}
                     </TableHead>
+                    <TableHead className="min-w-24 whitespace-nowrap">
+                      {t("status")}
+                    </TableHead>
+                    {(allowed("menu_update") || allowed("menu_delete")) && (
+                      <TableHead className="sticky right-0 z-10 min-w-40 bg-background text-right">
+                        {t("actions")}
+                      </TableHead>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -530,7 +572,7 @@ export default function MenusPage() {
                           ) : (
                             <Boxes className="size-4 text-primary" />
                           )}
-                          <span>
+                          <span className="min-w-36 break-words">
                             {menuLabel(menu, previewLanguage ?? locale)}
                             <span className="mt-1 block text-xs font-normal text-muted-foreground">
                               {Object.keys(menu.translations ?? {}).join(
@@ -554,6 +596,7 @@ export default function MenusPage() {
                       </TableCell>
                       <TableCell>
                         <Badge
+                          className="whitespace-nowrap"
                           variant={
                             menu.status === "active"
                               ? "secondary"
@@ -565,80 +608,86 @@ export default function MenusPage() {
                             : t("disable")}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {allowed("menu_update") && (
-                            <>
+                      {(allowed("menu_update") || allowed("menu_delete")) && (
+                        <TableCell className="sticky right-0 bg-background text-right">
+                          <div className="flex justify-end gap-1">
+                            {allowed("menu_update") && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={
+                                    busy ||
+                                    !adjacentMenuMove(menus, menu.id, "up")
+                                  }
+                                  onClick={() =>
+                                    void move(
+                                      menu.id,
+                                      adjacentMenuMove(menus, menu.id, "up")
+                                    )
+                                  }
+                                  aria-label={t("moveMenuUp", {
+                                    name: menu.label,
+                                  })}
+                                  title={t("moveMenuUp", { name: menu.label })}
+                                >
+                                  <ArrowUp />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={
+                                    busy ||
+                                    !adjacentMenuMove(menus, menu.id, "down")
+                                  }
+                                  onClick={() =>
+                                    void move(
+                                      menu.id,
+                                      adjacentMenuMove(menus, menu.id, "down")
+                                    )
+                                  }
+                                  aria-label={t("moveMenuDown", {
+                                    name: menu.label,
+                                  })}
+                                  title={t("moveMenuDown", {
+                                    name: menu.label,
+                                  })}
+                                >
+                                  <ArrowDown />
+                                </Button>
+                              </>
+                            )}
+                            {allowed("menu_update") && (
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                disabled={
-                                  busy ||
-                                  !adjacentMenuMove(menus, menu.id, "up")
-                                }
-                                onClick={() =>
-                                  void move(
-                                    menu.id,
-                                    adjacentMenuMove(menus, menu.id, "up")
-                                  )
-                                }
-                                aria-label={t("moveMenuUp", {
+                                disabled={busy}
+                                onClick={() => openEdit(menu)}
+                                aria-label={t("editNamed", {
                                   name: menu.label,
                                 })}
-                                title={t("moveMenuUp", { name: menu.label })}
+                                title={t("editMenu")}
                               >
-                                <ArrowUp />
+                                <Pencil />
                               </Button>
+                            )}
+                            {allowed("menu_delete") && (
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                disabled={
-                                  busy ||
-                                  !adjacentMenuMove(menus, menu.id, "down")
-                                }
-                                onClick={() =>
-                                  void move(
-                                    menu.id,
-                                    adjacentMenuMove(menus, menu.id, "down")
-                                  )
-                                }
-                                aria-label={t("moveMenuDown", {
+                                disabled={busy}
+                                onClick={() => void remove(menu.id)}
+                                aria-label={t("deleteNamed", {
                                   name: menu.label,
                                 })}
-                                title={t("moveMenuDown", { name: menu.label })}
+                                title={t("deleteMenu")}
                               >
-                                <ArrowDown />
+                                <Trash2 className="text-destructive" />
                               </Button>
-                            </>
-                          )}
-                          {allowed("menu_update") && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              disabled={busy}
-                              onClick={() => openEdit(menu)}
-                              aria-label={t("editNamed", { name: menu.label })}
-                              title={t("editMenu")}
-                            >
-                              <Pencil />
-                            </Button>
-                          )}
-                          {allowed("menu_delete") && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              disabled={busy}
-                              onClick={() => void remove(menu.id)}
-                              aria-label={t("deleteNamed", {
-                                name: menu.label,
-                              })}
-                              title={t("deleteMenu")}
-                            >
-                              <Trash2 className="text-destructive" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
+                            )}
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -790,6 +839,7 @@ export default function MenusPage() {
             <MenuField
               label={t("permissionCode")}
               name="permission_code"
+              disabled={system && !allowed("menu_bind_permission")}
               defaultValue={editing?.permission_code}
               maxLength={128}
             />
@@ -844,6 +894,7 @@ function MenuField({
   name,
   type = "text",
   required = false,
+  disabled = false,
   defaultValue,
   maxLength,
   min,
@@ -853,6 +904,7 @@ function MenuField({
   name: string
   type?: string
   required?: boolean
+  disabled?: boolean
   defaultValue?: string
   maxLength?: number
   min?: number
@@ -866,6 +918,7 @@ function MenuField({
         name={name}
         type={type}
         required={required}
+        disabled={disabled}
         defaultValue={defaultValue}
         maxLength={maxLength}
         min={min}

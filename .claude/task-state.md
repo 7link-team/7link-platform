@@ -1,6 +1,57 @@
 # Task State
 
-## Current Delivery - 2026-09-26
+## Current Delivery - 2026-09-27
+
+### Reopened System Foundation - 2026-09-26
+
+- User correction: system superadmin needs foundational menu and audit management,
+  in addition to global accounts/views. System administrators means system grants;
+  rename UI to System access grants to distinguish it from account CRUD.
+- Phase: ACCEPTANCE. Implementation, self-review and requirement acceptance PASS.
+- Plan: reserved internal __system__ root, generated real ID, existing unique
+  slug excludes public collisions, no tenant membership/role or new business model.
+  Existing menu engine stores hierarchy; effective system tree drives sidebar.
+  Add explicit /system/menus CRUD/catalog/navigation with global system_menu_*
+  actions, exact owner checks, canonical page permission floors, audit partition0.
+- Add /system/audit/events list/detail, exports and integrity verification via
+  existing audit services. Fixed partition0, system_audit_event_view/export;
+  tenant streams never included. Export preserves actual operator attribution.
+- Agents: architecture owns backend menus/root bootstrap; security owns audit
+  adapters/regressions; acceptance owns scope-aware shared pages/navigation/E2E.
+  Root owns action registry, generated schema/manifests, integration and acceptance.
+- Required verification: system persistent drag/arrows/status/translations match
+  sidebar; global audit filter/detail/export/chain; restricted grants/foreign IDs;
+  desktop/mobile readonly/writable views; backend+frontend gates and real DB/E2E.
+- Integration checkpoint: 298-operation composed route/guard tests PASS;
+  OpenAPI/types regenerated and drift checks PASS. Full core/org/audit/app and
+  authz suites PASS; independent backend security review PASS. Real MySQL8 full
+  gate PASS, unchanged performance budgets and246 published schema files PASS.
+  Final frontend145 tests, typecheck/lint/build PASS. No implementation work remains.
+- Retained demo supervisor20560 running8080/8091 with account selector enabled.
+  Root Chrome check: full admin Chinese sidebar eight leaves, menu/audit/grant
+  pages without alerts and zero uncaught errors PASS. Desktop/mobile screenshots
+  inspected; readable menu columns and pinned actions verified after correction.
+- Concurrent first-start bootstrap regression reproduced candidate-ID predicate
+  and simulated MySQL foundRows ambiguity. Fresh locked root lookup/stored-ID
+  comparison fixed both; full org suite/vet PASS. Final combined backend suites
+  and latest demo rebuild/restart Chrome acceptance PASS.
+- Final focused real browser17/17 PASS: .temp/sqlite-lifecycle-vvnTDp/report.json,
+  zero mocked business responses;40 desktop/mobile screenshots retained. Root
+  inspected restricted audit and writable menu views plus Chinese demo images.
+  Full lifecycle38/38 PASS: .temp/sqlite-lifecycle-n72jTp/report.json,
+  zero mocked responses and pageErrors;47 screenshots. Empty readonly Actions
+  column removed; final mobile screenshot confirms readable labels. Owned test
+  services cleaned; only retained demo remains running.
+- Bootstrap executes at organization.Start after GUID becomes available;
+  initialization cannot allocate IDs. Existing roots are preserved on restart.
+- Final review: scope/reuse/architecture/complexity/regression/durable state and
+  original requirement acceptance PASS. Schema/types updated, no new migration,
+  temporary reports/logs/images/binaries excluded from the delivery commit.
+- Next: manual acceptance via http://127.0.0.1:8091/login, choose system superadmin
+  admin@example.test. Commit/push and remote identity reported in final delivery.
+  No outstanding engineering work or decision required from the user.
+
+### Previous Delivery - de041b949fa907fd25dcbaa283499d2f7c0aa1ae
 
 - Task: separate system/operating-platform/tenant/entity/account administration,
   dedicated read-only/writable target views, reliable E2E and runnable demo.

@@ -328,6 +328,16 @@ func normalizeTenantBootstrap(input TenantBootstrapInput) (TenantBootstrapInput,
 // than assuming the repository has arrived.
 func (m *Module) tenantBootstrapper() TenantBootstrapper {
 	return TenantBootstrapper{
+		SeedSystemMenus: func(ctx context.Context, db *gorm.DB, ownerID guid.ID, now time.Time) error {
+			if m == nil || m.repository == nil || db == nil || ownerID.Zero() {
+				return ErrUnavailable
+			}
+			repo := m.repository.withDB(db)
+			if _, err := repo.createMenus(ctx, ownerID, SystemDefaultMenus(), now); err != nil {
+				return err
+			}
+			return repo.bumpPolicyRevision(ctx, ownerID)
+		},
 		Bootstrap: func(
 			ctx context.Context,
 			db *gorm.DB,

@@ -161,7 +161,8 @@ type FileRootContentChecker func(context.Context, *gorm.DB, FileRootProvisionInp
 // able to administer it commit together or not at all. Organization must never
 // write these tables itself.
 type TenantBootstrapper struct {
-	Bootstrap func(context.Context, *gorm.DB, TenantBootstrapInput, time.Time) (TenantBootstrapResult, error)
+	SeedSystemMenus func(context.Context, *gorm.DB, guid.ID, time.Time) error
+	Bootstrap       func(context.Context, *gorm.DB, TenantBootstrapInput, time.Time) (TenantBootstrapResult, error)
 	// IsUnclaimed reports whether a tenant still has no member and no role. It
 	// is what keeps the repair path create-only: a tenant somebody already
 	// administers must never be handed a second owner by a recovery command.

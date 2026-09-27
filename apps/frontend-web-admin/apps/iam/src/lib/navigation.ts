@@ -3,63 +3,13 @@ import { defaultLocale } from "@workspace/ui/i18n/config"
 
 export type SystemNavigationItem = { path: string; label: string }
 
-export const systemAdministrationMenus = [
-  {
-    label: "navigationOrganization",
-    children: [
-      {
-        path: "/system/accounts",
-        label: "systemAccounts",
-        code: "system_account_view",
-      },
-      {
-        path: "/system/operating-platforms",
-        label: "operatingPlatforms",
-        code: "operating_platform_view",
-      },
-      {
-        path: "/system/tenants",
-        label: "tenantManagement",
-        code: "tenant_view",
-      },
-    ],
-  },
-  {
-    label: "navigationAccess",
-    children: [
-      {
-        path: "/system/administrators",
-        label: "systemAdministrators",
-        code: "platform_administer",
-      },
-    ],
-  },
-  {
-    label: "navigationAudit",
-    children: [
-      {
-        path: "/system/audit-governance",
-        label: "platformAudit",
-        code: "platform_administer",
-      },
-      {
-        path: "/system/closure-requests",
-        label: "closureRequests",
-        code: "platform_administer",
-      },
-    ],
-  },
-]
-
-export function systemAdministrationNavigation(
-  permissions: ReadonlySet<string> | null
-) {
-  return systemAdministrationMenus
-    .map((group) => ({
-      ...group,
-      children: group.children.filter((item) => permissions?.has(item.code)),
-    }))
-    .filter((group) => group.children.length)
+export function firstEffectiveMenuPath(menus: EffectiveMenu[]): string {
+  for (const menu of menus) {
+    const child = firstEffectiveMenuPath(menu.children ?? [])
+    if (child) return child
+    if (menu.path) return menu.path
+  }
+  return ""
 }
 
 export function platformNavigation(

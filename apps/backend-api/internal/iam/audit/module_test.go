@@ -76,7 +76,7 @@ func TestAuditModuleLifecycleProvidesStableAppender(t *testing.T) {
 	assert.Equal(t, int64(1), h.count(t, "iam_audit_events", 901))
 	_, api = humatest.New(t)
 	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
-	assert.Len(t, auditOperationManifest(api.OpenAPI()), 21)
+	assert.Len(t, auditOperationManifest(api.OpenAPI()), 25)
 }
 
 func TestAuditModuleActivationComesFromConfig(t *testing.T) {

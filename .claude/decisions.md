@@ -2946,6 +2946,28 @@ it must remain separate from membership and from generic IAM identity constraint
 Status: CONFIRMED BY USER and IMPLEMENTED. Generic account/tenant/entity
 cardinality preserved; distinct workspaces and scoped navigation verified.
 
+## D90 - Persisted System Navigation and System Audit (2026-09-27)
+
+Decision: system administration includes menu management, audit events and audit
+governance. Rename system administrator assignment to System access grants to
+distinguish global authorization from account management. Persist system menus
+through the existing menu engine; actual sidebar reads their effective tree.
+Reason: user acceptance identified missing foundational functions and misleading
+labels in the system workspace. Static navigation cannot reflect menu edits.
+Alternatives considered: another static catalog or a separate menu/audit engine.
+Tradeoffs: an internal reserved __system__ organization root has a generated ID,
+no tenant membership and no tenant role. Atomic seeding runs at module Start after
+GUID startup, preserves existing records and uses the existing unique slug.
+Canonical page permissions remain mandatory even after menu binding edits.
+System audit uses only partition0, with separate view/export permissions and
+actual operator attribution during dedicated account views.
+Scope: explicit /system/menus, menu-catalog/navigation and system audit adapters,
+shared management pages, navigation and regression/E2E acceptance.
+Status: IMPLEMENTED and ACCEPTED. Full browser38/38, final focused17/17,
+backend/frontend/contract gates and real MySQL8 PASS. Root self-review and final
+requirement acceptance PASS; retained demo rebuilt and visually verified.
+This supersedes D87's static system-navigation alternative for the system scope.
+
 ## D89 - Operating Platforms and Dedicated Account Views (2026-09-26)
 
 Decision: the same deployment may contain separately operated platform scopes,

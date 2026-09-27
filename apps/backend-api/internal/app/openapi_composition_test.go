@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const iamHTTPMappingCount = 287
+const iamHTTPMappingCount = 298
 
 type iamHTTPMapping struct {
 	sourceOperation string
@@ -54,13 +54,13 @@ func TestIAMAuthorizationClassifierDistinguishesGuardBoundaries(t *testing.T) {
 	authz.RegisterEntityAdapter(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "entity-query", Method: http.MethodGet, Path: "/entity-query"}, authz.Guard{Resource: "store", Verb: "view"}, func(huma.Context) {})
 
 	expected := map[string]iamHTTPAuthorization{
-		"/public":                                                 {class: "public"},
-		"/authenticated":                                          {class: "authenticated"},
-		"/tenants/{tenant_id}/tenant-member":                      {class: "tenant-member"},
-		"/tenants/{tenant_id}/tenant":                             {class: "tenant", permission: "store_view"},
-		"/system":                                               {class: "platform", permission: "tenant_view"},
-		"/operating-platforms/{platform_id}/roles":                {class: "operating-platform", permission: "role_view"},
-		"/operating-platforms/{platform_id}/navigation":           {class: "operating-platform-member"},
+		"/public":                                       {class: "public"},
+		"/authenticated":                                {class: "authenticated"},
+		"/tenants/{tenant_id}/tenant-member":            {class: "tenant-member"},
+		"/tenants/{tenant_id}/tenant":                   {class: "tenant", permission: "store_view"},
+		"/system":                                       {class: "platform", permission: "tenant_view"},
+		"/operating-platforms/{platform_id}/roles":      {class: "operating-platform", permission: "role_view"},
+		"/operating-platforms/{platform_id}/navigation": {class: "operating-platform-member"},
 		"/tenants/{tenant_id}/entities/{entity_id}/entity-header": {class: "entity-path", permission: "store_view"},
 		"/tenants/{tenant_id}/entities/{entity_id}/entity-query":  {class: "entity-path", permission: "store_view"},
 	}

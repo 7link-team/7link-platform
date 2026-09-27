@@ -1,4 +1,7 @@
 {
+  "systemMenuManagement": "Pengurusan menu sistem",
+  "systemAuditEvents": "Peristiwa audit sistem",
+  "systemAuditDescription": "Cari peristiwa keselamatan sistem dan sahkan rantaian audit sistem",
   "platformRolePermissions": "Peranan dan kebenaran platform",
   "platformRolesDescription": "Urus peranan, ahli dan pemberian kebenaran platform",
   "platformMenuManagement": "Pengurusan menu platform",
@@ -7,8 +10,8 @@
   "navigationOrganization": "Organisasi",
   "navigationAccess": "Akses",
   "navigationAudit": "Audit",
-  "systemAdministrators": "Pentadbir sistem",
-  "addSystemAdministrator": "Tambah pentadbir sistem",
+  "systemAdministrators": "Pemberian akses sistem",
+  "addSystemAdministrator": "Beri akses sistem",
   "fullSystemAdministrator": "Pentadbir sistem penuh",
   "revokeSystemAdministrator": "Tarik balik akses sistem",
   "systemAccounts": "Akaun global",

@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { DatabaseSync } from "node:sqlite"
 import { join } from "node:path"
 import { writeFile } from "node:fs/promises"
+import { systemAdministrationAcceptance } from "./system-administration-acceptance.mjs"
 
 export async function administrationAccountViewAcceptance({
   admin,
@@ -404,7 +405,13 @@ export async function administrationAccountViewAcceptance({
 
     const openUI = async (target, workspace, writable = false) => {
       await admin.page.setViewportSize({ width: 1440, height: 1000 })
-      await admin.page.goto("/system/accounts")
+      if (new URL(admin.page.url()).pathname !== "/system/accounts") {
+        await admin.page.goto("/system/accounts")
+      }
+      await admin.page
+        .getByRole("heading", { name: "Global accounts", exact: true })
+        .waitFor()
+      await admin.page.waitForLoadState("networkidle")
       await admin.page
         .getByRole("button", {
           name: `Account view ${target.display_name}`,
@@ -564,7 +571,10 @@ export async function administrationAccountViewAcceptance({
         )
       }
       if (name === "personal") {
-        await admin.page.getByText(ownerA.login_name, { exact: true }).first().waitFor()
+        await admin.page
+          .getByText(ownerA.login_name, { exact: true })
+          .first()
+          .waitFor()
         await admin.page
           .getByRole("button", { name: "Restore random avatar", exact: true })
           .waitFor()
@@ -607,6 +617,23 @@ export async function administrationAccountViewAcceptance({
         `real desktop/mobile ${name} view resolves target UI, exact workspace, secret isolation and restores operator`
       )
     }
+    await systemAdministrationAcceptance({
+      admin,
+      directory,
+      request,
+      createAccount,
+      systemTarget,
+      login,
+      contexts,
+      eventually,
+      pass,
+      openUI,
+      exitUI,
+      viewRequest,
+      open,
+      statement,
+      operator,
+    })
     await openUI(ordinary, /Operating platform.*Platform A/)
     await admin.page
       .getByText("You have no available permissions in this workspace.", {
@@ -619,7 +646,12 @@ export async function administrationAccountViewAcceptance({
     await admin.page
       .getByRole("link", { name: "Roles and permissions", exact: true })
       .click()
-    await admin.page.getByRole("heading", { name: "Platform roles and permissions", exact: true }).waitFor()
+    await admin.page
+      .getByRole("heading", {
+        name: "Platform roles and permissions",
+        exact: true,
+      })
+      .waitFor()
     await admin.page
       .getByRole("button", { name: "Create role", exact: true })
       .click()

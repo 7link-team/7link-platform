@@ -2,6 +2,58 @@
 
 ## Goal and Requirements
 
+### System Foundation Completion Review
+
+User acceptance reopened missing system menu and audit-event management. Review
+approved reuse of existing menu/audit engines with explicit global guards:
+
+- System menu storage uses an internal generated-ID root with scope_kind=system
+  and reserved slug __system__. Existing slug uniqueness makes creation atomic;
+  public slug validation excludes this name. No membership or role is created.
+- System menu CRUD and effective navigation share persistent records and atomic
+  hierarchy placement. Canonical page permission floors survive menu edits.
+- System audit list/detail/export/integrity always use partition0. They expose
+  actual global events, not an implicit cross-tenant stream.
+- Global system_menu_* and system_audit_event_* actions permit restricted grants;
+  full system administrators acquire declared actions automatically.
+- System access grants manage existing accounts' global authority; global account
+  administration continues to manage identity/profile/status.
+- Reuse existing shared pages and transport. Verify actual desktop/mobile system
+  tree edits, query/export, owner isolation and actual operator attribution.
+
+Completion verification (2026-09-27):
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Backend core/organization/audit/app | PASS | Combined `go test` run; system ownership, bootstrap, route guards and operator attribution regressions |
+| Composed API contract | PASS | 298 exact operations/guards; OpenAPI and frontend type drift checks |
+| Frontend | PASS | 145 tests, typecheck, lint and build |
+| Real MySQL8 | PASS | `make test-mysql8-run`; lifecycle, account views, migrations and unchanged enforced performance budgets |
+| Published schema lock | PASS | 246 migration files unchanged |
+| Retained demo Chrome | PASS | Chinese full-admin sidebar eight leaves, menu/audit/grant pages without alerts, zero uncaught errors |
+| Final focused browser | PASS | 17/17 real flows, zero mocks/page errors; `.temp/sqlite-lifecycle-vvnTDp/report.json`, 40 desktop/mobile screenshots |
+| Full browser lifecycle | PASS | 38/38 flows, zero mocks/page errors; `.temp/sqlite-lifecycle-n72jTp/report.json`, 47 screenshots |
+
+Self-review repaired narrow menu columns and kept row commands visible during
+horizontal scrolling; actual desktop/mobile screenshots inspected. Concurrent
+bootstrap tests reproduced GORM's candidate-ID predicate and simulated MySQL
+foundRows ambiguity; a fresh locked stored-root lookup now prevents duplicate
+seeding. Full affected suites and rebuilt retained-demo startup passed afterward.
+Final visual review removed the empty readonly Actions column. The final focused
+browser run and frontend gates passed afterward; root inspected the corrected
+readonly mobile screenshot. Readonly UI retains its existing export suppression;
+ordinary restricted audit export and backend readonly admission were verified.
+Self-review and original-requirement acceptance: PASS. No engineering work or
+unresolved decision remains. Earlier evidence below belongs to the previous
+delivery.
+
+Manual acceptance: http://127.0.0.1:8091/login, select the system superadmin
+admin@example.test. Verify System access grants, Menus, Audit events and Audit
+governance in the system workspace. Menu manager and sidebar share stored
+records; restart preserves the 11 default nodes and subsequent edits. Retained
+demo remains running; test services and generated temporary artifacts are excluded
+from the delivery commit.
+
 Separate system administration, platform administration and tenant administration.
 System administrators manage system subadministrators, platform administrators,
 tenant administrators/members and global users. Preserve global accounts and

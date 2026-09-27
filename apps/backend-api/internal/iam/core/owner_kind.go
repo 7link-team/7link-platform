@@ -32,7 +32,7 @@ func (s *Service) permissionAllowedForRoot(ctx context.Context, id guid.ID, acti
 	if err != nil {
 		return err
 	}
-	if kind == "platform" && authz.IsOperatingPlatformPermission(action) || kind == "tenant" && action.Scope != "platform" && action.Scope != "operating_platform" {
+	if kind == "system" && action.Scope == "platform" || kind == "platform" && authz.IsOperatingPlatformPermission(action) || kind == "tenant" && action.Scope != "platform" && action.Scope != "operating_platform" {
 		return nil
 	}
 	return fmt.Errorf("%w: permission %s cannot be owned by %s", ErrInvalidArgument, action.Code, kind)
@@ -101,6 +101,15 @@ func (s *Service) checkRootPermissions(ctx context.Context, id guid.ID, codes []
 		return s.checker.CheckBulk(ctx, id, codes, subject)
 	}
 	allowed := make(map[string]bool, len(codes))
+	if kind == "system" {
+		for _, code := range codes {
+			allowed[code], err = s.checker.CheckPlatform(ctx, code, subject)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return allowed, nil
+	}
 	if kind != "platform" {
 		return allowed, nil
 	}

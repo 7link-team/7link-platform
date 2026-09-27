@@ -73,11 +73,20 @@ const outcomeOptions = [
   { value: "failure", label: "failure" },
 ]
 
-export default function AuditEventsPage() {
+export function SystemAuditEventsPage() {
+  return <AuditEventsPage scope="system" />
+}
+
+export default function AuditEventsPage({
+  scope = "tenant",
+}: {
+  scope?: "system" | "tenant"
+}) {
   const locale = useLocale()
 
   const t = useTranslations("iam")
   const allowed = useAllowed()
+  const system = scope === "system"
 
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [total, setTotal] = useState(0)
@@ -98,8 +107,10 @@ export default function AuditEventsPage() {
   useEffect(() => {
     let active = true
     void Promise.all([
-      iamApi.auditEvents({ ...query, offset, limit: pageSize }),
-      iamApi.auditIntegrity(),
+      system
+        ? iamApi.systemAuditEvents({ ...query, offset, limit: pageSize })
+        : iamApi.auditEvents({ ...query, offset, limit: pageSize }),
+      system ? iamApi.systemAuditIntegrity() : iamApi.auditIntegrity(),
     ]).then(
       ([page, chain]) => {
         if (!active) return
@@ -120,7 +131,7 @@ export default function AuditEventsPage() {
     return () => {
       active = false
     }
-  }, [offset, query, refreshKey])
+  }, [offset, query, refreshKey, system])
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -153,7 +164,11 @@ export default function AuditEventsPage() {
     setDetailBusy(true)
     setError("")
     try {
-      setSelected(await iamApi.auditEvent(event.id))
+      setSelected(
+        await (system
+          ? iamApi.systemAuditEvent(event.id)
+          : iamApi.auditEvent(event.id))
+      )
     } catch (cause) {
       setError((cause as Error).message)
     } finally {
@@ -165,7 +180,9 @@ export default function AuditEventsPage() {
     setExporting(true)
     setError("")
     try {
-      const download = await iamApi.auditExport(query)
+      const download = await (system
+        ? iamApi.systemAuditExport(query)
+        : iamApi.auditExport(query))
       const url = URL.createObjectURL(download.blob)
       const anchor = document.createElement("a")
       anchor.href = url
@@ -190,11 +207,13 @@ export default function AuditEventsPage() {
   return (
     <>
       <PageHeader
-        title={t("auditLog")}
-        description={t("auditDescription")}
+        title={t(system ? "systemAuditEvents" : "auditLog")}
+        description={t(system ? "systemAuditDescription" : "auditDescription")}
         action={
           <div className="flex flex-wrap gap-2">
-            {allowed("audit_event_export") && (
+            {allowed(
+              system ? "system_audit_event_export" : "audit_event_export"
+            ) && (
               <Button
                 variant="outline"
                 disabled={loading || exporting || integrity?.valid !== true}

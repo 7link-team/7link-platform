@@ -1,4 +1,7 @@
 {
+  "systemMenuManagement": "System menu management",
+  "systemAuditEvents": "System audit events",
+  "systemAuditDescription": "Search system security events and verify the system audit chain",
   "platformRolePermissions": "Platform roles and permissions",
   "platformRolesDescription": "Manage platform roles, members and permission grants",
   "platformMenuManagement": "Platform menu management",
@@ -7,8 +10,8 @@
   "navigationOrganization": "Organization",
   "navigationAccess": "Access",
   "navigationAudit": "Audit",
-  "systemAdministrators": "System administrators",
-  "addSystemAdministrator": "Add system administrator",
+  "systemAdministrators": "System access grants",
+  "addSystemAdministrator": "Grant system access",
   "fullSystemAdministrator": "Full system administrator",
   "revokeSystemAdministrator": "Revoke system access",
   "systemAccounts": "Global accounts",

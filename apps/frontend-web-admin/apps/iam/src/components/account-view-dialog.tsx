@@ -64,7 +64,7 @@ export function AccountViewDialog({
         scope === "personal"
           ? "/me/profile"
           : scope === "system"
-            ? "/system/accounts"
+            ? "/system"
             : scope === "platform"
               ? `/operating-platforms/${encodeURIComponent(scopeID)}`
               : scope === "entity"

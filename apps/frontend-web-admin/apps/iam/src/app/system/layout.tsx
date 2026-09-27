@@ -33,7 +33,7 @@ import {
   type Tenant,
 } from "../../lib/iam-api"
 import { getAccountView } from "../../lib/account-view"
-import { menuLabel, systemAdministrationNavigation } from "../../lib/navigation"
+import { menuLabel, firstEffectiveMenuPath } from "../../lib/navigation"
 import type { ConsoleOutletContext } from "../../lib/permissions"
 
 export default function AdministrationLayout() {
@@ -77,9 +77,7 @@ export default function AdministrationLayout() {
           setCatalog({
             tenants,
             platforms,
-            system:
-              codes.includes("system_account_view") ||
-              codes.includes("tenant_view"),
+            system: codes.length > 0,
           })
       },
       () => {}
@@ -100,7 +98,7 @@ export default function AdministrationLayout() {
           : iamApi.systemPermissions(),
         platformID
           ? iamApi.operatingNavigation(platformID)
-          : Promise.resolve([]),
+          : iamApi.systemNavigation(),
       ]).then(
         ([codes, nextMenus]) => {
           if (active && request === generation) {
@@ -140,9 +138,9 @@ export default function AdministrationLayout() {
   if (status === "loading" || status === "error") return <SessionVerification />
   if (!session)
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
-  const system = systemAdministrationNavigation(permissions)
-  const base = `/operating-platforms/${encodeURIComponent(platformID)}`
-  const links = platformID ? menus : []
+  const base = platformID
+    ? `/operating-platforms/${encodeURIComponent(platformID)}`
+    : "/system"
   const renderMenus = (items: EffectiveMenu[]) =>
     items.map((item) => (
       <div key={item.id}>
@@ -172,29 +170,7 @@ export default function AdministrationLayout() {
     ))
   const navigation = (
     <nav aria-label={t("mainNav")} className="space-y-1 p-3">
-      {platformID
-        ? renderMenus(links)
-        : system.map((group) => (
-            <div key={group.label}>
-              <div className="px-3 py-2 text-sm font-medium">
-                {t(group.label)}
-              </div>
-              <div className="ms-3 border-s ps-2">
-                {group.children.map((item) => (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setOpen(false)}
-                    className={({ isActive }) =>
-                      `block rounded-md px-3 py-2 text-sm ${isActive ? "bg-sidebar-accent font-medium" : "hover:bg-sidebar-accent"}`
-                    }
-                  >
-                    {t(item.label)}
-                  </NavLink>
-                ))}
-              </div>
-            </div>
-          ))}
+      {renderMenus(menus)}
     </nav>
   )
   const context: ConsoleOutletContext = {
@@ -230,7 +206,7 @@ export default function AdministrationLayout() {
           to={
             platformID
               ? `/operating-platforms/${encodeURIComponent(platformID)}`
-              : "/system/accounts"
+              : "/system"
           }
           className="text-sm font-semibold"
         >
@@ -250,8 +226,8 @@ export default function AdministrationLayout() {
               navigate(`/operating-platforms/${encodeURIComponent(id)}`)
             }
             platformView={!platformID}
-            platformPath={catalog.system ? "/system/accounts" : ""}
-            onPlatform={() => navigate("/system/accounts")}
+            platformPath={catalog.system ? "/system" : ""}
+            onPlatform={() => navigate("/system")}
             onPersonal={() => navigate("/me/profile")}
             onTenant={(id) => {
               setTenant(id)
@@ -288,26 +264,20 @@ export default function AdministrationLayout() {
   )
 }
 
-export function OperatingWorkspaceHome() {
+export function AdministrationWorkspaceHome() {
   const t = useTranslations("iam")
   const { platformID = "" } = useParams<{ platformID: string }>()
   const { menus, permissionsResolved } =
     useOutletContext<ConsoleOutletContext>()
-  const firstPath = (items: EffectiveMenu[]): string => {
-    for (const item of items) {
-      const child = firstPath(item.children ?? [])
-      if (child) return child
-      if (item.path) return item.path
-    }
-    return ""
-  }
   if (!permissionsResolved) return <PendingRoute />
-  const path = firstPath(menus ?? [])
+  const path = firstEffectiveMenuPath(menus ?? [])
   if (!path)
     return (
       <p className="text-sm text-muted-foreground">{t("noTokenPermissions")}</p>
     )
-  const base = `/operating-platforms/${encodeURIComponent(platformID)}`
+  const base = platformID
+    ? `/operating-platforms/${encodeURIComponent(platformID)}`
+    : "/system"
   return (
     <Navigate
       to={path.startsWith(base) ? path : base + "/" + path.replace(/^\//, "")}

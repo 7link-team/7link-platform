@@ -15,6 +15,13 @@ import (
 
 const coreRouteManifest = `
 iam-account-view-workspace|GET|/account-views/workspace
+iam-system-menus|GET|/system/menus
+iam-system-menu-create|POST|/system/menus
+iam-system-menu|GET|/system/menus/{menu_id}
+iam-system-menu-update|PATCH|/system/menus/{menu_id}
+iam-system-menu-delete|DELETE|/system/menus/{menu_id}
+iam-system-menu-catalog|GET|/system/menu-catalog
+iam-system-navigation|GET|/system/navigation
 iam-platform-roles|GET|/operating-platforms/{platform_id}/roles
 iam-platform-role-create|POST|/operating-platforms/{platform_id}/roles
 iam-platform-permissions|GET|/operating-platforms/{platform_id}/permission-catalog
@@ -102,7 +109,7 @@ func TestCoreRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 75)
+	require.Len(t, got, 82)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -158,7 +165,7 @@ func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 				} else {
 					assert.NotContains(t, parameters, tenantKey, location)
 					scheme := authz.SessionScheme
-					if operation.OperationID == "iam-effective-platform-permissions" || operation.OperationID == "iam-system-my-permissions" || operation.OperationID == "iam-account-view-workspace" {
+					if operation.OperationID == "iam-effective-platform-permissions" || operation.OperationID == "iam-system-my-permissions" || operation.OperationID == "iam-account-view-workspace" || operation.OperationID == "iam-system-navigation" {
 						scheme = authz.BearerScheme
 					}
 					assert.Equal(t, []map[string][]string{{scheme: {}}}, operation.Security, location)

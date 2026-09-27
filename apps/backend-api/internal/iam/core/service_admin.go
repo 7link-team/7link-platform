@@ -452,6 +452,11 @@ func (s *Service) EffectiveMenus(
 			routePermissions[menu.Route] = menu.PermissionCode
 		}
 	}
+	if kind == "system" {
+		for _, menu := range SystemDefaultMenus() {
+			routePermissions[menu.Route] = menu.PermissionCode
+		}
+	}
 	pagePermissions := map[guid.ID]string{}
 	for _, menu := range menus {
 		// A custom label or permission cannot weaken a built-in page's gate.
@@ -506,7 +511,7 @@ func (s *Service) EffectiveMenus(
 			}
 			next[menu.ID] = true
 			nodes := build(menu.ID, next)
-			if kind == "platform" && menu.Route == "" && len(nodes) == 0 {
+			if (kind == "platform" || kind == "system") && menu.Route == "" && len(nodes) == 0 {
 				continue
 			}
 			accessible := (menu.PermissionCode == "" || allowed[menu.PermissionCode]) &&
@@ -681,6 +686,29 @@ func (s *Service) validateMenu(ctx context.Context, repo *Repository, menu *Menu
 	menu.Route = strings.TrimSpace(menu.Route)
 	menu.Icon = strings.TrimSpace(menu.Icon)
 	menu.PermissionCode = strings.TrimSpace(menu.PermissionCode)
+	kind, err := repo.rootKind(ctx, menu.TenantID)
+	if err != nil {
+		return err
+	}
+	if kind == "system" && menu.Route != "" {
+		parsed, err := url.Parse(menu.Route)
+		if err != nil || parsed.Host != "" || parsed.RawQuery != "" || parsed.Fragment != "" || !strings.HasPrefix(path.Clean(parsed.Path), "/system/") {
+			return fmt.Errorf("%w: invalid system menu route", ErrInvalidArgument)
+		}
+		menu.Route = path.Clean(parsed.Path)
+		if menu.PermissionCode == "" {
+			known := false
+			for _, declaration := range SystemDefaultMenus() {
+				if declaration.Route == menu.Route {
+					known = true
+					break
+				}
+			}
+			if !known {
+				return fmt.Errorf("%w: system menu route requires a global permission", ErrInvalidArgument)
+			}
+		}
+	}
 	if menu.Label == "" || len(menu.Label) > 128 || len(menu.Route) > 512 || len(menu.Icon) > 64 ||
 		menu.SortOrder < -100000 || menu.SortOrder > 100000 ||
 		(menu.Status != MenuActive && menu.Status != MenuDisabled) {

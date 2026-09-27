@@ -74,6 +74,7 @@ type retentionInput struct {
 }
 
 func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
+	registerSystemAuditHTTP(api, service, registrar)
 	registerArchiveHTTP(api, service, registrar, false)
 	registerArchiveHTTP(api, service, registrar, true)
 	authz.Register(registrar, api, huma.Operation{
@@ -248,6 +249,10 @@ func filterValues(tenant, principal, eventType, outcome, targetType, target, fro
 	if err != nil {
 		return Filter{}, err
 	}
+	return filterFields(tenantID, principal, eventType, outcome, targetType, target, from, to)
+}
+
+func filterFields(tenantID guid.ID, principal, eventType, outcome, targetType, target, from, to string) (Filter, error) {
 	principalID, err := parseOptionalAuditID(principal)
 	if err != nil {
 		return Filter{}, err

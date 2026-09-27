@@ -231,6 +231,13 @@ func (m *Module) Initialize(context.Context) error {
 	return nil
 }
 
+func (m *Module) Start(ctx context.Context) error {
+	if m == nil || m.service == nil {
+		return ErrUnavailable
+	}
+	return m.ensureSystemRoot(ctx)
+}
+
 // Platforms returns the concrete service owned and initialized by organization.
 func (m *Module) Platforms() *PlatformService {
 	if m == nil {

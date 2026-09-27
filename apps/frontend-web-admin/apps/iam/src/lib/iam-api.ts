@@ -795,6 +795,14 @@ export interface MenuInput {
   status: "active" | "disabled"
 }
 
+export interface MenuDeclaration extends Omit<
+  EffectiveMenu,
+  "id" | "children"
+> {
+  key: string
+  children?: MenuDeclaration[]
+}
+
 export interface EffectiveMenu {
   translations?: Record<string, string>
   id: string
@@ -3046,6 +3054,32 @@ export function createIamApi(
           path: { tenant_id: tenantID() },
         })
       ),
+    systemNavigation: () =>
+      request<EffectiveMenu[]>(apiRoute("get", "/system/navigation")),
+    systemMenus: () => request<Menu[]>(apiRoute("get", "/system/menus")),
+    systemMenuCatalog: () =>
+      request<MenuDeclaration[]>(apiRoute("get", "/system/menu-catalog")),
+    createSystemMenu: (body: MenuInput) =>
+      request<Menu>(apiRoute("post", "/system/menus"), {
+        body: JSON.stringify(body),
+      }),
+    updateSystemMenu: (
+      id: string,
+      body: Partial<MenuInput> & {
+        placement?: {
+          kind: "first" | "last" | "before" | "after"
+          relative_to?: string
+        }
+      }
+    ) =>
+      request<Menu>(
+        apiRoute("patch", "/system/menus/{menu_id}", { path: { menu_id: id } }),
+        { body: JSON.stringify(body) }
+      ),
+    deleteSystemMenu: (id: string) =>
+      request(
+        apiRoute("delete", "/system/menus/{menu_id}", { path: { menu_id: id } })
+      ),
     menus: () =>
       request<Menu[]>(
         apiRoute("get", "/tenants/{tenant_id}/menus", {
@@ -3249,6 +3283,32 @@ export function createIamApi(
           "/scim-directories/{directory_id}/credentials/{credential_id}",
           { path: { directory_id: directoryID, credential_id: credentialID } }
         )
+      ),
+    systemAuditEvents: async (
+      query: RouteQuery<"/system/audit/events"> = {}
+    ) => {
+      const envelope = await requestEnvelope<AuditEvent[]>(
+        apiRoute("get", "/system/audit/events", { query })
+      )
+      return {
+        items: envelope.data,
+        total: envelope.meta?.page?.total ?? envelope.data.length,
+      }
+    },
+    systemAuditEvent: (id: string) =>
+      request<AuditEvent>(
+        apiRoute("get", "/system/audit/events/{event_id}", {
+          path: { event_id: id },
+        })
+      ),
+    systemAuditIntegrity: () =>
+      request<AuditIntegrity>(
+        apiRoute("get", "/system/audit/integrity-verifications")
+      ),
+    systemAuditExport: (query: RouteQuery<"/system/audit/exports"> = {}) =>
+      requestAuditDownloadWithBase(
+        apiBase,
+        apiRoute("get", "/system/audit/exports", { query })
       ),
     auditEvents: async (
       query: RouteQuery<"/tenants/{tenant_id}/audit/events"> = {}

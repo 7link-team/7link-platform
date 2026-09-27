@@ -1,4 +1,7 @@
 {
+  "systemMenuManagement": "系统菜单管理",
+  "systemAuditEvents": "系统审计事件",
+  "systemAuditDescription": "查询系统安全事件并验证系统审计链",
   "platformRolePermissions": "平台角色与权限",
   "platformRolesDescription": "管理平台角色、成员和权限授予",
   "platformMenuManagement": "平台菜单管理",
@@ -7,8 +10,8 @@
   "navigationOrganization": "组织",
   "navigationAccess": "访问",
   "navigationAudit": "审计",
-  "systemAdministrators": "系统管理员",
-  "addSystemAdministrator": "添加系统管理员",
+  "systemAdministrators": "系统权限授权",
+  "addSystemAdministrator": "授予系统权限",
   "fullSystemAdministrator": "完整系统管理员",
   "revokeSystemAdministrator": "撤销系统权限",
   "systemAccounts": "全局账号",

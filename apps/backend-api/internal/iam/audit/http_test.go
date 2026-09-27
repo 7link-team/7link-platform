@@ -42,7 +42,11 @@ audit-platform-request-archive|POST|/system/audit/archives
 audit-platform-retry-archive|POST|/system/audit/archives/{archive_id}/attempts
 audit-platform-verify-archive|POST|/system/audit/archives/{archive_id}/verifications
 audit-platform-download-archive|GET|/system/audit/archives/{archive_id}/content
-audit-platform-set-retention|PUT|/system/audit/retention-policy`
+audit-platform-set-retention|PUT|/system/audit/retention-policy
+audit-system-list-events|GET|/system/audit/events
+audit-system-get-event|GET|/system/audit/events/{event_id}
+audit-system-export-events|GET|/system/audit/exports
+audit-system-verify-integrity|GET|/system/audit/integrity-verifications`
 
 var auditGuards = map[string]string{
 	"audit-anchor-current":            "audit_event_anchor",
@@ -66,6 +70,10 @@ var auditGuards = map[string]string{
 	"audit-platform-verify-archive":   "platform_administer",
 	"audit-platform-download-archive": "platform_administer",
 	"audit-platform-set-retention":    "platform_administer",
+	"audit-system-list-events":        "system_audit_event_view",
+	"audit-system-get-event":          "system_audit_event_view",
+	"audit-system-export-events":      "system_audit_event_export",
+	"audit-system-verify-integrity":   "system_audit_event_view",
 }
 
 func auditPathOperations(item *huma.PathItem) map[string]*huma.Operation {
@@ -79,7 +87,7 @@ func auditPathOperations(item *huma.PathItem) map[string]*huma.Operation {
 }
 
 func auditOperationManifest(spec *huma.OpenAPI) []string {
-	manifest := make([]string, 0, 21)
+	manifest := make([]string, 0, 25)
 	for path, item := range spec.Paths {
 		for method, operation := range auditPathOperations(item) {
 			if operation != nil {
@@ -104,7 +112,7 @@ func TestAuditRouteManifestAndOpenAPIContract(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 21)
+	require.Len(t, got, 25)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 
 	for path, item := range api.OpenAPI().Paths {
