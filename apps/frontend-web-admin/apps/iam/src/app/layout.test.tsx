@@ -24,14 +24,17 @@ const auth = {
   refresh: async () => {},
 } satisfies AuthContextValue
 
-async function renderShell(): Promise<{ html: string; openMainNav: string }> {
+async function renderShell(
+  path = "/"
+): Promise<{ html: string; openMainNav: string }> {
   const messages = await loadMessages("zh-CN")
   const html = renderToStaticMarkup(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={[path]}>
       <IntlAppProvider initialLocale="zh-CN" initialMessages={messages}>
         <AuthContext.Provider value={auth}>
           <Routes>
             <Route path="/" element={<AppLayout />} />
+            <Route path="/admin/:tenantID/users" element={<AppLayout />} />
           </Routes>
         </AuthContext.Provider>
       </IntlAppProvider>
@@ -53,5 +56,15 @@ describe("AppLayout shell", () => {
       )
     )
     expect(html).toContain("md:hidden")
+  })
+
+  it("never shows a route tenant that requests cannot address", async () => {
+    // A non-numeric tenant segment names no tenant, so the shell hands over to
+    // the workspace chooser instead of displaying it over another tenant.
+    const { html: rejected } = await renderShell("/admin/acme/users")
+    expect(rejected).not.toContain("acme")
+    expect(rejected).not.toContain("<header")
+    const { html: addressed } = await renderShell("/admin/7/users")
+    expect(addressed).toContain("<header")
   })
 })

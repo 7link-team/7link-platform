@@ -11,7 +11,7 @@ it("isolates view credentials, identity caches and workspace storage", () => {
     import {activateAccountView,getAccountView,issueAccountView,exitAccountView} from "./account-view.ts";
     import {createIamApi,getTenant,setTenant,adoptSessionTenant} from "./iam-api.ts";
     const saved = new Map([["iam.tenant","operator-tenant"],["iam.tenant:subject","1"]]);
-    globalThis.localStorage = {getItem:key=>saved.get(key)??null,setItem:(key,value)=>saved.set(key,value)};
+    globalThis.sessionStorage = {getItem:key=>saved.get(key)??null,setItem:(key,value)=>saved.set(key,value)};
     let closed=false;
     globalThis.window = Object.assign(new EventTarget(), {close:()=>{closed=true},location:{origin:"http://console.test"}});
     const calls = [];
@@ -31,6 +31,7 @@ it("isolates view credentials, identity caches and workspace storage", () => {
     assert.equal(calls.at(-1).init.credentials,"include");
     assert.equal(new Headers(calls.at(-1).init.headers).get("Authorization"),null);
     assert.equal(new Headers(calls.at(-1).init.headers).get("Origin"),"http://console.test");
+    assert.equal(getTenant(),"operator-tenant");
     activateAccountView(selection,issued,"/system/accounts","");
     assert.ok(!JSON.stringify(getAccountView()).includes(token));
     const verification = api.session();

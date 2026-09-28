@@ -321,6 +321,8 @@
   "eventType": "Jenis peristiwa",
   "outcome": "Hasil",
   "actorId": "ID akaun pelaku",
+  "auditActor": "Pelaku",
+  "viewedAccount": "Akaun yang dilihat",
   "targetType": "Jenis sasaran",
   "targetId": "ID sasaran",
   "startTime": "Waktu mula",

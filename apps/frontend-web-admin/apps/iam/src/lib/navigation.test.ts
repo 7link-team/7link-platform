@@ -8,7 +8,6 @@ import {
   adjacentMenuMove,
   droppedMenuMove,
   defaultWorkspacePath,
-  platformNavigation,
   tenantSystemNavigation,
   firstEffectiveMenuPath,
 } from "./navigation"
@@ -106,16 +105,6 @@ describe("effective navigation", () => {
       "/admin/456"
     )
     expect(defaultWorkspacePath("", new Set())).toBe("/user")
-  })
-  it("keeps platform administration gates independent", () => {
-    expect(platformNavigation(true, false).map((item) => item.path)).toEqual([
-      "/system/tenants",
-    ])
-    expect(platformNavigation(false, false)).toEqual([])
-    expect(platformNavigation(false, true).map((item) => item.path)).toEqual([
-      "/system/audit-governance",
-      "/system/closure-requests",
-    ])
   })
   it("preserves configured entry placement and supplies missing self-service entries once", () => {
     expect(

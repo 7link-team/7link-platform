@@ -1,0 +1,71 @@
+import { redirect, type LoaderFunctionArgs } from "react-router"
+import { getTenant, iamApi, setTenant } from "./lib/iam-api"
+import { defaultWorkspacePath } from "./lib/navigation"
+import { accountViewPath, getAccountView } from "./lib/account-view"
+import {
+  authEntrance,
+  publicAuthEntrance,
+  entrancePath,
+} from "./lib/auth-entrance"
+
+export function legacyRouteLoader({ request }: LoaderFunctionArgs) {
+  const url = new URL(request.url)
+  const old = url.pathname
+  let path = old
+    .replace(/^\/me(?=\/|$)/, "/user")
+    .replace(/^\/tenants(?=\/|$)/, "/admin")
+    .replace(/^\/operating-platforms(?=\/|$)/, "/platform")
+  const auth =
+    /^\/(login|register|recover|workspaces)(?:\/(system|platform|tenant|user))?$/.exec(
+      old
+    )
+  if (auth)
+    path = entrancePath(
+      authEntrance(auth[2]) ??
+        publicAuthEntrance(url.searchParams.get("entry")),
+      auth[1] as "login" | "register" | "recover" | "workspaces"
+    )
+  if (old === "/verify-email")
+    path = entrancePath(
+      publicAuthEntrance(url.searchParams.get("entry")),
+      "verify-email"
+    )
+  if (old === "/accept-invitation") path = "/admin/accept-invitation"
+  if (path === old) throw new Response("Not Found", { status: 404 })
+  return redirect(
+    path +
+      url.search +
+      (typeof window === "undefined" ? url.hash : window.location.hash)
+  )
+}
+
+export async function workspaceHomeLoader() {
+  const view = getAccountView()
+  if (view) return redirect(accountViewPath(view, getTenant()))
+  try {
+    const [memberships, permissions, platforms, systemPermissions] =
+      await Promise.all([
+        iamApi.myTenants(),
+        iamApi.myPermissions(),
+        iamApi.myOperatingPlatforms(),
+        iamApi.systemPermissions(),
+      ])
+    if (systemPermissions.length > 0) return redirect("/system")
+    if (
+      platforms.length &&
+      !memberships.some(
+        (tenant) => tenant.status === "active" && tenant.id === getTenant()
+      )
+    )
+      return redirect(`/platform/${encodeURIComponent(platforms[0]!.id)}`)
+    const tenants = memberships.filter((tenant) => tenant.status === "active")
+    const selected = getTenant()
+    const tenantID = tenants.some((tenant) => tenant.id === selected)
+      ? selected
+      : (tenants[0]?.id ?? "")
+    if (tenantID) setTenant(tenantID)
+    return redirect(defaultWorkspacePath(tenantID, new Set(permissions)))
+  } catch {
+    return redirect("/user")
+  }
+}

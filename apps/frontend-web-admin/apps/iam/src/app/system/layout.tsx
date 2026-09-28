@@ -232,9 +232,9 @@ export default function AdministrationLayout() {
             onOperatingPlatform={(id) =>
               navigate(`/platform/${encodeURIComponent(id)}`)
             }
-            platformView={!platformID}
-            platformPath={catalog.system ? "/system" : ""}
-            onPlatform={() => navigate("/system")}
+            systemView={!platformID}
+            systemPath={catalog.system ? "/system" : ""}
+            onSystem={() => navigate("/system")}
             onPersonal={() => navigate("/user/profile")}
             onTenant={(id) => {
               setTenant(id)

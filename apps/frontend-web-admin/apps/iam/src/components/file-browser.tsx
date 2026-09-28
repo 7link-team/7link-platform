@@ -423,7 +423,7 @@ function FileBrowserBody({
     movingNodes.current = sources
     event.dataTransfer.effectAllowed = "move"
     event.dataTransfer.setData(
-      "application/x-7link-files",
+      "application/x-file-browser-items",
       sources.map((source) => source.id).join(",")
     )
   }

@@ -8,7 +8,6 @@ import zh from "../messages/zh-CN.json"
 
 function renderSidebar(
   menus: EffectiveMenu[],
-  platformTenantAccess = false,
   fieldPolicyAccess = false,
   path = "/",
   entityID = "",
@@ -24,8 +23,6 @@ function renderSidebar(
           entityID={entityID}
           scopedFileEntityID={scopedFileEntityID}
           menus={menus}
-          platformTenantAccess={platformTenantAccess}
-          platformAuditAccess={permissions?.has("platform_administer") ?? false}
           fieldPolicyAccess={fieldPolicyAccess}
         />
       </IntlAppProvider>
@@ -62,13 +59,12 @@ describe("AppSidebar", () => {
     const html = renderSidebar(
       [],
       false,
-      false,
       "/admin/456/entities/123/overview",
       "123",
       new Set(["todo_view"])
     )
     expect(html).not.toContain('href="/admin/456/entities/123/')
-    expect(renderSidebar([], false, false, "/", "123", null)).not.toContain(
+    expect(renderSidebar([], false, "/", "123", null)).not.toContain(
       'href="/admin/456/entities/123/'
     )
   })
@@ -83,7 +79,6 @@ describe("AppSidebar", () => {
           sort_order: 1,
         },
       ],
-      true,
       true,
       "/admin/456/entities/123/roles",
       "123"
@@ -103,7 +98,6 @@ describe("AppSidebar", () => {
       renderSidebar(
         [],
         false,
-        false,
         "/admin/456/entities/123/overview",
         "123",
         new Set(["file_view"])
@@ -113,7 +107,6 @@ describe("AppSidebar", () => {
       renderSidebar(
         [],
         false,
-        false,
         "/admin/456/entities/123/overview",
         "123",
         new Set(["entity_view"])
@@ -122,16 +115,15 @@ describe("AppSidebar", () => {
   })
   it("exposes tenant files only with the file view permission", () => {
     expect(
-      renderSidebar([], false, false, "/", "", new Set(["file_view"]))
+      renderSidebar([], false, "/", "", new Set(["file_view"]))
     ).toContain('href="/admin/456/files"')
-    expect(renderSidebar([], false, false, "/")).not.toContain(
+    expect(renderSidebar([], false, "/")).not.toContain(
       'href="/admin/456/files"'
     )
   })
   it("links scoped accounts to entity files without exposing tenant files", () => {
     const html = renderSidebar(
       [],
-      false,
       false,
       "/admin/456",
       "",
@@ -152,7 +144,6 @@ describe("AppSidebar", () => {
           sort_order: 1,
         },
       ],
-      false,
       false,
       "/",
       "",
@@ -178,10 +169,7 @@ describe("AppSidebar", () => {
     expect(renderSidebar([])).not.toContain(
       'href="/admin/456/field-policies"'
     )
-    expect(renderSidebar([], true)).not.toContain(
-      'href="/admin/456/field-policies"'
-    )
-    expect(renderSidebar([], false, true)).toContain(
+    expect(renderSidebar([], true)).toContain(
       'href="/admin/456/field-policies"'
     )
   })
@@ -273,40 +261,15 @@ describe("AppSidebar", () => {
   it("keeps platform administration out of the tenant sidebar even for administrators", () => {
     expect(renderSidebar([])).not.toContain("租户管理")
     expect(renderSidebar([])).not.toContain("平台审计")
-    const html = renderSidebar([], true)
+    const html = renderSidebar(
+      [],
+      false,
+      "/admin/456",
+      "",
+      new Set(["tenant_view", "platform_administer"])
+    )
     expect(html).not.toContain('href="/system/tenants"')
     expect(html).not.toContain('href="/system/audit-governance"')
-  })
-
-  it("shows only platform navigation on platform pages, with independent permission gates", () => {
-    const html = renderSidebar(
-      [
-        {
-          id: "users",
-          label: "Users",
-          path: "/users",
-          permission_code: "user_view",
-          sort_order: 0,
-        },
-      ],
-      true,
-      true,
-      "/system/tenants",
-      "",
-      new Set(["platform_administer"])
-    )
-    expect(html).toContain("租户管理")
-    expect(html).toContain('href="/system/tenants"')
-    expect(html).toContain('href="/system/audit-governance"')
-    expect(html).not.toContain('href="/admin/456/users"')
-    expect(html).not.toContain('href="/admin/456/field-policies"')
-    expect(html).not.toContain('href="/admin/456/access-requests"')
-    expect(
-      renderSidebar([], true, false, "/system/tenants", "", new Set())
-    ).not.toContain('href="/system/audit-governance"')
-    expect(renderSidebar([], false, false, "/admin")).not.toContain(
-      'href="/system/tenants"'
-    )
   })
 
   it("filters platform routes from custom tenant menus, keeping tenant children as directories", () => {
@@ -335,30 +298,10 @@ describe("AppSidebar", () => {
           sort_order: 1,
           permission_code: "",
         },
-      ],
-      true
+      ]
     )
     expect(html).toContain('href="/admin/456/users"')
     expect(html).not.toContain('href="/system/audit-governance"')
     expect(html).not.toContain("Platform tenants")
-  })
-
-  it("selects platform audit navigation only in the platform view", () => {
-    const tenant = renderSidebar(
-      [],
-      true,
-      false,
-      "/admin/456/audit-governance"
-    )
-    const platform = renderSidebar(
-      [],
-      true,
-      false,
-      "/system/audit-governance",
-      "",
-      new Set(["platform_administer"])
-    )
-    expect(tenant).not.toContain('aria-current="page"')
-    expect(platform).toContain('aria-current="page"')
   })
 })

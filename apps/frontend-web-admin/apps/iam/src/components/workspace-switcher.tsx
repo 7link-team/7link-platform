@@ -28,9 +28,9 @@ export function WorkspaceSwitcher({
   onRetryTenants,
   onTenant,
   onEntity,
-  platformPath = "",
-  platformView = false,
-  onPlatform,
+  systemPath = "",
+  systemView = false,
+  onSystem,
   onPersonal,
   operatingPlatforms = [],
   onOperatingPlatform,
@@ -45,9 +45,9 @@ export function WorkspaceSwitcher({
   onRetryTenants?: () => void
   onTenant: (id: string) => void
   onEntity: (id: string) => void
-  platformPath?: string
-  platformView?: boolean
-  onPlatform?: () => void
+  systemPath?: string
+  systemView?: boolean
+  onSystem?: () => void
   onPersonal?: () => void
   operatingPlatforms?: Tenant[]
   onOperatingPlatform?: (id: string) => void
@@ -61,6 +61,8 @@ export function WorkspaceSwitcher({
     t("selectTenant")
   const entityName =
     entities?.find((entity) => entity.id === entityID)?.name || entityID
+  // Only the tenant workspace has a tenant or entity perspective to select.
+  const tenantView = !systemView && !operatingPlatformID
   return (
     <Popover
       open={open}
@@ -77,7 +79,7 @@ export function WorkspaceSwitcher({
           />
         }
       >
-        {platformView ? (
+        {systemView || operatingPlatformID ? (
           <Landmark className="shrink-0" />
         ) : (
           <Building2 className="shrink-0" />
@@ -87,7 +89,7 @@ export function WorkspaceSwitcher({
             ? operatingPlatforms.find(
                 (platform) => platform.id === operatingPlatformID
               )?.name || `${t("operatingPlatforms")} · ${operatingPlatformID}`
-            : platformView
+            : systemView
               ? t("platformManagement")
               : `${tenantName} / ${entityID ? entityName : t("tenantPerspective")}`}
         </span>
@@ -101,11 +103,11 @@ export function WorkspaceSwitcher({
         aria-describedby={undefined}
       >
         <div className="mb-4 flex flex-wrap gap-2 border-b pb-3">
-          {platformPath && (
+          {systemPath && (
             <Button
-              variant={platformView ? "secondary" : "outline"}
+              variant={systemView ? "secondary" : "outline"}
               onClick={() => {
-                onPlatform?.()
+                onSystem?.()
                 setOpen(false)
               }}
             >
@@ -133,7 +135,11 @@ export function WorkspaceSwitcher({
               {operatingPlatforms.map((platform) => (
                 <Button
                   key={platform.id}
-                  variant="outline"
+                  variant={
+                    platform.id === operatingPlatformID
+                      ? "secondary"
+                      : "outline"
+                  }
                   onClick={() => {
                     onOperatingPlatform?.(platform.id)
                     setOpen(false)
@@ -209,11 +215,11 @@ export function WorkspaceSwitcher({
             >
               <Building2 className="size-4 shrink-0" />
               <span>{t("tenantPerspective")}</span>
-              {!platformView && !entityID && (
+              {tenantView && !entityID && (
                 <Check className="ms-auto size-4 shrink-0" />
               )}
             </button>
-            {!platformView && (
+            {tenantView && (
               <>
                 <h3 className="mb-2 text-xs font-medium text-muted-foreground">
                   {t("entityPerspective")}
