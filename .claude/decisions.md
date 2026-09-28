@@ -3289,8 +3289,10 @@ over 322 operations).
 
 Decision: SCIM bulk keeps re-checking credential and service account inside
 every operation transaction (c7a02b1), so a revocation committed mid-bulk stops
-the remaining operations. The ~3x scim_bulk_25 cost is accepted and the latency
-sample is re-baselined on a quiet machine; the latency gate judges the median.
+the remaining operations. The per-operation cost is accepted. After the
+allocation fix (5932893) the enforced gate passes unchanged on a quiet machine
+(scim_bulk_25 median 5.2-5.8 ms vs 8 ms, 2026-09-28), so no re-baseline was
+made; the latency gate judges the median.
 Rejected: one check per bulk (weakens revocation), a cross-module combined query
 (D-ServiceAccountValidator rejection). Known limit: 1 ms rounding lets a 2x
 regression of sub-millisecond paths pass; D13 margin unchanged.

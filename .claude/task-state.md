@@ -1,26 +1,27 @@
 # Task State
 
-## Active: IAM Audit Remediation (closed list) - 2026-09-28
+## IAM Audit Remediation (closed list) - 2026-09-28 - DELIVERED
 
-- Phase: IMPLEMENTATION wave 2. Contract: decisions.md "Audit Remediation Is A
-  Closed List" + 3 later decisions (delegated OAuth, SCIM reauth, registration).
-- DONE on IAM (merged, go build/vet/unit tests/openapi+types drift PASS):
-  G2 ci gates (2593157), frontend F2-F7/N9fe/N2fe/P6/P7/P9, P1/P4/P5/P8 (golangci v2),
-  P10 audit batch (e582f84), P2 webauthn 0.18 + P3 jwsx, S1 (Registrar refuses
-  client_id tokens, composed invariant), S2 SAML membership, S8 credential replace,
-  S3-S7 grantability (4f8cec0), G1 cause found: c7a02b1 per-op SCIM reauth kept by
-  decision + 40afa59 alloc fix (5932893); G3 median gate (954157c).
-- Wave 2 (in-class residue, running): R1 = S1b account-holder bearer helpers refuse
-  client_id; S4b scope-aware grant on role grant/member/create paths + any widening;
-  S7b restore route symmetric; S8b verification requires password, provisioned
-  pending principals never re-credentialed; P3b authn/web.go verifier -> jwsx.
-  C1+N1 catalog single registration path. D1 alerts archive+outbox.
-- Wave 3 (serial, after wave 2): C2-C14, D2, N2-N8 contract/API batch + regen + FE.
-- Final: re-baseline scim_bulk_25 on quiet machine (no agents running), make ci,
-  release-check incl. test-mysql8-run, external-DB grantability lock tests, full
-  real E2E, one limited verification review, commit, push decision.
-- Not achieved by design: G3 "2x always fails" (1ms rounding, D13 kept); no
-  set-wide grant-path invariant (no genuine call-graph oracle; per-path tests).
+- Phase: ACCEPTANCE complete. Contract: decisions.md "Audit Remediation Is A
+  Closed List" + later decisions (delegated OAuth, SCIM reauth, registration,
+  list parameters, business error codes, secret-keyed hash PKs).
+- All listed items S/G/C/N/D/F/P done on IAM (waves 1-3 merged; verification
+  review classes 1-8 PASS after fb9cc23 department re-parent + script fixes).
+- Verification (all exit 0): make ci (.temp/final-ci3.log: lint 0 issues,
+  coverage 91.2%, integration incl. architecture/migration/performance, openapi +
+  web client contract); test-mysql8-run (incl. TestGrantabilityExternalDatabase),
+  test-redis-security, test-alerts, generate-check, frontend-check, test-race
+  (.temp/rel-*.log); schema.lock extended with authn 00018 + identity 00007 after
+  MySQL 8 (6bccbe6, 255 files); enforced perf gate on quiet machine: scim_bulk_25
+  median 5.2-5.8 ms < 8 ms, no re-baseline; full real E2E 56/56 PASS, 0 mocked,
+  0 page errors (.temp/sqlite-lifecycle-Cln448/report.json).
+- Not achieved by design: G3 "2x always fails" (1 ms rounding, D13 kept); no
+  set-wide grant-path call-graph invariant (per-path tests + composed tests).
+- Backlog (outside contract, not done): grantability evaluates conditional grants
+  in the current request context; SCIM-provisioned pending principals lack a
+  self-service activation after S8b (product question); department reactivation
+  widens selected_departments reach (low); react-leaflet Hippocratic license (legal).
+- Next: user decides merge IAM -> main; then first business module.
 
 ## Active: IAM Scoped Deep Audit (pre-merge gate) - 2026-09-28
 
