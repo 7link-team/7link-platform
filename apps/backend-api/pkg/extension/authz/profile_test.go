@@ -33,7 +33,7 @@ func TestProfileCatalogProjectionAndWriteBoundaries(t *testing.T) {
 	assert.ErrorIs(t, constraint.RequireWrite(false, "id"), ErrFieldDenied)
 	assert.ErrorIs(t, constraint.RequireRead("unknown"), ErrFieldDenied)
 	assert.ErrorIs(t, constraint.RequireWrite(false, "unknown"), ErrFieldDenied)
-	assert.Equal(t, "", *constraint.ReadString("email", ""))
+	assert.Empty(t, *constraint.ReadString("email", ""))
 	assert.False(t, *constraint.EmailVerified(false))
 	for _, read := range []string{"omit", "redact", "unknown"} {
 		constraint.Fields["email"] = FieldDecision{Read: read}

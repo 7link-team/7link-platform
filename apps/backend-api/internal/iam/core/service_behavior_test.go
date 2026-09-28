@@ -776,7 +776,7 @@ func TestServiceCatalogsAndConstructors(t *testing.T) {
 	model := harness.service.ScopeModel(t.Context())
 	assert.Len(t, model, 5)
 	assert.Equal(t, "system", model[0].Type)
-	assert.Equal(t, "", model[2].ParentType, "no operating-platform to tenant cardinality is imposed")
+	assert.Empty(t, model[2].ParentType, "no operating-platform to tenant cardinality is imposed")
 	menuCatalog := harness.service.MenuCatalog(t.Context())
 	require.Len(t, menuCatalog, 1)
 	assert.NotEmpty(t, menuCatalog[0].Children)

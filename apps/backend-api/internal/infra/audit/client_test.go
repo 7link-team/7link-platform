@@ -44,12 +44,12 @@ func TestClientFromGRPC(t *testing.T) {
 func TestMetadataValue(t *testing.T) {
 	md := metadata.Pairs("k", "v1", "k", "v2")
 	assert.Equal(t, "v1", metadataValue(md, "k"))
-	assert.Equal(t, "", metadataValue(md, "missing"))
+	assert.Empty(t, metadataValue(md, "missing"))
 }
 
 func TestFirstNonEmptyAndPeerIP(t *testing.T) {
 	assert.Equal(t, "a", firstNonEmpty("", "a", "b"))
-	assert.Equal(t, "", firstNonEmpty("", ""))
+	assert.Empty(t, firstNonEmpty("", ""))
 	assert.Equal(t, "1.2.3.4", peerIP("1.2.3.4:8080"))
 	assert.Equal(t, "bare", peerIP("bare"))
 }

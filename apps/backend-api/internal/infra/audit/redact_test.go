@@ -74,7 +74,7 @@ func TestRedactJSONMalformedReturnsNoBody(t *testing.T) {
 func TestRedactJSONScalarAndEmpty(t *testing.T) {
 	redactor := newRedactor(nil)
 	assert.Equal(t, `"just text"`, requireRedactedJSON(t, redactor, []byte(`"just text"`)))
-	assert.Equal(t, "", requireRedactedJSON(t, redactor, nil))
+	assert.Empty(t, requireRedactedJSON(t, redactor, nil))
 }
 
 func TestRedactJSONPreservesNumberPrecision(t *testing.T) {
@@ -123,7 +123,7 @@ func TestTruncateStringRuneSafe(t *testing.T) {
 	// ASCII shorter than max is unchanged.
 	assert.Equal(t, "short", truncateString("short", 100))
 	// Empty input unchanged.
-	assert.Equal(t, "", truncateString("", 10))
+	assert.Empty(t, truncateString("", 10))
 	// Non-positive max returns input unchanged.
 	assert.Equal(t, "abc", truncateString("abc", 0))
 }

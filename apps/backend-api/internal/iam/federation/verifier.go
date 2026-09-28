@@ -316,7 +316,21 @@ func (k jwk) publicKey() (crypto.PublicKey, error) {
 		if err != nil {
 			return nil, fmt.Errorf("decode ec y: %w", err)
 		}
-		return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil
+		// Parse through the SEC 1 uncompressed form so a point that is not on
+		// the curve is rejected here instead of being handed to the verifier.
+		size := (curve.Params().BitSize + 7) / 8
+		if x.BitLen() > size*8 || y.BitLen() > size*8 {
+			return nil, errors.New("ec coordinate exceeds curve size")
+		}
+		point := make([]byte, 1+2*size)
+		point[0] = 4
+		x.FillBytes(point[1 : 1+size])
+		y.FillBytes(point[1+size:])
+		public, err := ecdsa.ParseUncompressedPublicKey(curve, point)
+		if err != nil {
+			return nil, fmt.Errorf("parse ec key: %w", err)
+		}
+		return public, nil
 	case "OKP":
 		if k.Crv != "Ed25519" {
 			return nil, fmt.Errorf("unsupported okp curve %q", k.Crv)

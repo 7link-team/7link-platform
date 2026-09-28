@@ -334,7 +334,7 @@ func parseFlags(m *map[string]sFlag, c interface{}, parent string, field *reflec
 	t := reflect.TypeOf(c)
 	v := reflect.ValueOf(c)
 
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 		v = v.Elem()
 	}
@@ -369,11 +369,11 @@ func parseFlags(m *map[string]sFlag, c interface{}, parent string, field *reflec
 		}
 		valueType := t.Elem()
 		valueNew := reflect.New(valueType)
-		if valueType.Kind() == reflect.Ptr {
+		if valueType.Kind() == reflect.Pointer {
 			valueType = valueType.Elem()
 			valueNew = reflect.New(valueType)
 		}
-		if valueNew.Type().Kind() == reflect.Ptr {
+		if valueNew.Type().Kind() == reflect.Pointer {
 			valueNew = valueNew.Elem()
 		}
 		tagmap := field.Tag.Get("mapkey")

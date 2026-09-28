@@ -14,6 +14,6 @@ func TestLocaleContextHelpers(t *testing.T) {
 	})
 
 	t.Run("empty context", func(t *testing.T) {
-		assert.Equal(t, "", LocaleFromContext(context.Background()))
+		assert.Empty(t, LocaleFromContext(context.Background()))
 	})
 }

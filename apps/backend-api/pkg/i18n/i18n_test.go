@@ -405,7 +405,7 @@ func TestGlobalFunctions_NilDefault(t *testing.T) {
 	// Act + Assert
 	assert.Equal(t, "key", T("key"))
 	assert.Equal(t, "key", TContext(context.Background(), "key"))
-	assert.Equal(t, "", Locale())
+	assert.Empty(t, Locale())
 	// SetLocale on nil should be a no-op (not panic).
 	assert.NotPanics(t, func() { SetLocale("zh") })
 }
