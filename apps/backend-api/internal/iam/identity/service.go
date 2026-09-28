@@ -368,11 +368,11 @@ func (s *Service) updateProfile(ctx context.Context, tenantID, id guid.ID, displ
 		}
 		requestedEmail = &value
 	}
-	actor := authnext.PrincipalIDFromContext(ctx)
-	if actor.Zero() {
+	principal := authnext.PrincipalIDFromContext(ctx)
+	if principal.Zero() {
 		return Principal{}, ErrProfileDenied
 	}
-	if actor != id {
+	if principal != id {
 		if s.avatarPermissions == nil {
 			return Principal{}, ErrUnavailable
 		}
@@ -380,7 +380,7 @@ func (s *Service) updateProfile(ctx context.Context, tenantID, id guid.ID, displ
 		if tenantID.Zero() {
 			permission = "system_account_update"
 		}
-		allowed, err := s.avatarPermissions.CheckPlatform(ctx, permission, actor)
+		allowed, err := s.avatarPermissions.CheckPlatform(ctx, permission, principal)
 		if err != nil {
 			return Principal{}, err
 		}

@@ -72,7 +72,7 @@ func (s *Service) PersonalTokenPermissions(ctx context.Context, cookie string, t
 	actions := s.personalRegistry.All()
 	codes := make([]string, 0, len(actions))
 	for _, action := range actions {
-		if action.Scope != "platform" {
+		if action.Scope != authz.ActionScopeSystem {
 			codes = append(codes, action.Code)
 		}
 	}
@@ -82,7 +82,7 @@ func (s *Service) PersonalTokenPermissions(ctx context.Context, cookie string, t
 	}
 	result := []authz.Action{}
 	for _, action := range actions {
-		if action.Scope != "platform" && allowed[action.Code] {
+		if action.Scope != authz.ActionScopeSystem && allowed[action.Code] {
 			result = append(result, action)
 		}
 	}
@@ -105,7 +105,7 @@ func (s *Service) normalizePersonalToken(in PersonalTokenRequest) (PersonalToken
 	}
 	for _, permission := range in.Permissions {
 		action, ok := s.personalRegistry.Find(permission)
-		if !ok || action.Scope == "platform" {
+		if !ok || action.Scope == authz.ActionScopeSystem {
 			return PersonalTokenPreparation{}, errPersonalTokenInput
 		}
 	}

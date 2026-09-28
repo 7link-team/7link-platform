@@ -30,7 +30,7 @@ func (s *Service) AccountWorkspaces(ctx context.Context, target guid.ID) ([]Acco
 		return nil, ErrUnavailable
 	}
 	for _, action := range s.permissionRegistry.All() {
-		if action.Scope != "platform" {
+		if action.Scope != authz.ActionScopeSystem {
 			continue
 		}
 		allowed, err := s.avatarPermissions.CheckPlatform(ctx, action.Code, target)
