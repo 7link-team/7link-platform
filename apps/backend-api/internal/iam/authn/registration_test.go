@@ -114,6 +114,95 @@ func TestRegistrationLifecycle(t *testing.T) {
 	assert.Equal(t, 1, requested)
 }
 
+// A pending principal proves nothing about who owns its address, so the
+// password in force is the latest registrant's, and only a link issued for that
+// password can activate it. Neither registrant can hold the account the owner
+// of the address verifies with someone else's credential.
+func TestReRegistrationOfPendingAddressReplacesTheCredential(t *testing.T) {
+	const (
+		email    = "owner@example.com"
+		attacker = "attacker registration password"
+		owner    = "owner registration password"
+	)
+	register := func(t *testing.T, service *Service, recorder *notificationRecorder, password string) notificationPayload {
+		t.Helper()
+		require.NoError(t, service.Register(t.Context(), email, password, "Registrant"))
+		require.NoError(t, service.deliverPendingNotifications(t.Context()))
+		return recorder.last(t)
+	}
+	principalOf := func(t *testing.T, harness *authnRepositoryHarness) identitymodel.Principal {
+		t.Helper()
+		var principals []identitymodel.Principal
+		require.NoError(t, harness.db.Table(harness.runtime.TablePrefix()+"iam_principals").
+			Where("login_name = ?", email).Find(&principals).Error)
+		require.Len(t, principals, 1)
+		return principals[0]
+	}
+
+	t.Run("owner registers after a pre-registration", func(t *testing.T) {
+		service, harness, recorder := newRegistrationService(t)
+		preRegistered := register(t, service, recorder, attacker)
+		// Within the resend cooldown: a new credential is never held back by it.
+		ownerMail := register(t, service, recorder, owner)
+		require.NotEqual(t, preRegistered.VerificationURL, ownerMail.VerificationURL)
+
+		assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, preRegistered), "", ""),
+			authnext.ErrInvalidEmailVerification, "a link issued for the replaced credential must not activate")
+		assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), "", email, preRegistered.Code),
+			authnext.ErrInvalidEmailVerification, "the replaced link's code must not activate either")
+		assert.True(t, principalOf(t, harness).ActivationRequired)
+
+		require.NoError(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, ownerMail), "", ""))
+		principal := principalOf(t, harness)
+		assert.False(t, principal.ActivationRequired)
+		_, err := service.BeginLogin(t.Context(), email, owner, "")
+		require.NoError(t, err)
+		_, err = service.BeginLogin(t.Context(), email, attacker, "")
+		assert.ErrorIs(t, err, authnext.ErrInvalidCredentials)
+	})
+
+	t.Run("a later registration withdraws the earlier link", func(t *testing.T) {
+		service, harness, recorder := newRegistrationService(t)
+		ownerMail := register(t, service, recorder, owner)
+		register(t, service, recorder, attacker)
+		assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, ownerMail), "", ""),
+			authnext.ErrInvalidEmailVerification, "the owner's link must not activate the attacker's credential")
+		assert.True(t, principalOf(t, harness).ActivationRequired)
+	})
+
+	t.Run("repeating the same password keeps the cooldown and the link", func(t *testing.T) {
+		service, harness, recorder := newRegistrationService(t)
+		first := register(t, service, recorder, owner)
+		require.NoError(t, service.Register(t.Context(), email, owner, "Registrant"))
+		var outstanding int64
+		require.NoError(t, harness.db.Table("iam_email_verification_tokens").
+			Where("email = ? AND consumed_at IS NULL", email).Count(&outstanding).Error)
+		assert.Equal(t, int64(1), outstanding)
+		require.NoError(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, first), "", ""))
+		_, err := service.BeginLogin(t.Context(), email, owner, "")
+		require.NoError(t, err)
+	})
+
+	t.Run("credential storage failure answers as a failure", func(t *testing.T) {
+		service, harness, recorder := newRegistrationService(t)
+		register(t, service, recorder, owner)
+		require.NoError(t, harness.db.Exec("DROP TABLE iam_credentials").Error)
+		assert.ErrorContains(t, service.Register(t.Context(), email, attacker, "Registrant"), "load pending registration credential")
+	})
+
+	t.Run("an activated address is never re-credentialed", func(t *testing.T) {
+		service, _, recorder := newRegistrationService(t)
+		ownerMail := register(t, service, recorder, owner)
+		require.NoError(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, ownerMail), "", ""))
+		// The HTTP contract answers this conflict with the same 202 as a new address.
+		assert.ErrorIs(t, service.Register(t.Context(), email, attacker, "Registrant"), authnext.ErrRegistrationConflict)
+		_, err := service.BeginLogin(t.Context(), email, owner, "")
+		require.NoError(t, err)
+		_, err = service.BeginLogin(t.Context(), email, attacker, "")
+		assert.ErrorIs(t, err, authnext.ErrInvalidCredentials)
+	})
+}
+
 func TestRegistrationEntranceSurvivesVerifiedEmailDelivery(t *testing.T) {
 	service, _, recorder := newRegistrationService(t)
 	require.NoError(t, service.RegisterForEntry(t.Context(), "tenant@example.test", "correct registration password", "Tenant", "tenant"))
