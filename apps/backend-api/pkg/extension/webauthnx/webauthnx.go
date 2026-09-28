@@ -119,6 +119,12 @@ func New(cfg Config) (*Adapter, error) {
 			ResidentKey:      protocol.ResidentKeyRequirementRequired,
 			UserVerification: protocol.VerificationRequired,
 		},
+		// No ceremony requests an extension and none of their outputs is read,
+		// so an output a client returns unprompted stays ignored as it was
+		// before the library began rejecting it by default. The browser
+		// forwards getClientExtensionResults() verbatim, and some credential
+		// managers fill it without being asked.
+		ExtensionsUnsolicitedOutputPolicy: protocol.UnsolicitedOutputPolicyIgnore,
 	})
 	if err != nil {
 		return nil, err

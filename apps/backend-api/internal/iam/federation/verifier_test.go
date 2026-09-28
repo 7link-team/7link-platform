@@ -6,10 +6,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/sha512"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"7link.com/platform/pkg/extension/httpx"
+	"7link.com/platform/pkg/extension/jwsx"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -562,39 +564,95 @@ func TestJWKPublicKeyParsing(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestVerifySignatureAlgorithms(t *testing.T) {
-	message := []byte("header.payload")
+// TestIDTokenSignatureAlgorithms pins the algorithms an upstream ID token may
+// be signed with, end to end through verifyWithKeys: exactly RS256, RS512,
+// ES256, ES512 and EdDSA verify, and anything else -- "none", HMAC keyed with
+// the provider's public key, algorithms the shared JWS package does not
+// implement -- is refused as an invalid token.
+func TestIDTokenSignatureAlgorithms(t *testing.T) {
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
-	sha := sha256.Sum256(message)
-	rsaSig, err := rsa.SignPKCS1v15(rand.Reader, rsaKey, crypto.SHA256, sha[:])
+	ec256, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
-	require.NoError(t, verifySignature("RS256", &rsaKey.PublicKey, message, rsaSig))
-	assert.ErrorIs(t, verifySignature("RS256", &rsaKey.PublicKey, message, append([]byte{}, rsaSig...)[:len(rsaSig)-1]), ErrOIDCTokenInvalid)
-	assert.ErrorIs(t, verifySignature("RS512", &rsaKey.PublicKey, message, rsaSig), ErrOIDCTokenInvalid)
-
-	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-	ecSig := ecdsaSignature(t, ecKey, sha[:])
-	require.NoError(t, verifySignature("ES256", &ecKey.PublicKey, message, ecSig))
-	assert.ErrorIs(t, verifySignature("ES256", &ecKey.PublicKey, message, ecSig[:10]), ErrOIDCTokenInvalid)
-	assert.ErrorIs(t, verifySignature("ES256", &rsaKey.PublicKey, message, ecSig), ErrOIDCTokenInvalid)
-
 	ec521, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
 	require.NoError(t, err)
-	sha512 := sha512.Sum512(message)
-	ec512Sig := ecdsaSignature(t, ec521, sha512[:])
-	require.NoError(t, verifySignature("ES512", &ec521.PublicKey, message, ec512Sig))
-
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	edPublic, edPrivate, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
-	edSig := ed25519.Sign(priv, message)
-	require.NoError(t, verifySignature("EdDSA", pub, message, edSig))
-	bad := append([]byte{}, edSig...)
-	bad[0] ^= 0xff
-	assert.ErrorIs(t, verifySignature("EdDSA", pub, message, bad), ErrOIDCTokenInvalid)
-	assert.ErrorIs(t, verifySignature("EdDSA", &rsaKey.PublicKey, message, edSig), ErrOIDCTokenInvalid)
-	assert.ErrorIs(t, verifySignature("HS256", pub, message, edSig), ErrOIDCTokenInvalid)
+	keys := map[string]crypto.PublicKey{
+		"rsa": &rsaKey.PublicKey, "ec256": &ec256.PublicKey, "ec521": &ec521.PublicKey, "ed": edPublic,
+	}
+	client := &oidcClient{clockSkew: time.Minute}
+	const issuer, clientID = "https://idp.example", "client"
+	claims := testIDTokenClaims(issuer, clientID, nil)
+	sign := func(alg, kid string, signature func(input []byte) []byte) string {
+		header, err := json.Marshal(map[string]any{"alg": alg, "kid": kid, "typ": "JWT"})
+		require.NoError(t, err)
+		payload, err := json.Marshal(claims)
+		require.NoError(t, err)
+		input := base64.RawURLEncoding.EncodeToString(header) + "." + base64.RawURLEncoding.EncodeToString(payload)
+		return input + "." + base64.RawURLEncoding.EncodeToString(signature([]byte(input)))
+	}
+	rsaPKCS1 := func(hash crypto.Hash) func([]byte) []byte {
+		return func(input []byte) []byte {
+			h := hash.New()
+			h.Write(input)
+			sig, err := rsa.SignPKCS1v15(rand.Reader, rsaKey, hash, h.Sum(nil))
+			require.NoError(t, err)
+			return sig
+		}
+	}
+	ecdsaRaw := func(key *ecdsa.PrivateKey, hash crypto.Hash) func([]byte) []byte {
+		return func(input []byte) []byte {
+			h := hash.New()
+			h.Write(input)
+			return ecdsaSignature(t, key, h.Sum(nil))
+		}
+	}
+	publicDER, err := x509.MarshalPKIXPublicKey(&rsaKey.PublicKey)
+	require.NoError(t, err)
+	hmacWithPublicKey := func(input []byte) []byte {
+		mac := hmac.New(sha256.New, publicDER)
+		mac.Write(input)
+		return mac.Sum(nil)
+	}
+
+	for _, test := range []struct {
+		name   string
+		token  string
+		accept bool
+	}{
+		{"RS256", sign("RS256", "rsa", rsaPKCS1(crypto.SHA256)), true},
+		{"RS512", sign("RS512", "rsa", rsaPKCS1(crypto.SHA512)), true},
+		{"ES256", sign("ES256", "ec256", ecdsaRaw(ec256, crypto.SHA256)), true},
+		{"ES512", sign("ES512", "ec521", ecdsaRaw(ec521, crypto.SHA512)), true},
+		{"EdDSA", sign("EdDSA", "ed", func(input []byte) []byte { return ed25519.Sign(edPrivate, input) }), true},
+		{"none", sign("none", "rsa", func([]byte) []byte { return nil }), false},
+		{"HS256 keyed with the RSA public key", sign("HS256", "rsa", hmacWithPublicKey), false},
+		{"RS384", sign("RS384", "rsa", rsaPKCS1(crypto.SHA384)), false},
+		{"ES256 header on an RSA key", sign("ES256", "rsa", ecdsaRaw(ec256, crypto.SHA256)), false},
+		{"EdDSA header on an RSA key", sign("EdDSA", "rsa", func(input []byte) []byte { return ed25519.Sign(edPrivate, input) }), false},
+		{"RS256 signed by another key", sign("RS256", "rsa", func(input []byte) []byte {
+			other, err := rsa.GenerateKey(rand.Reader, 2048)
+			require.NoError(t, err)
+			sum := sha256.Sum256(input)
+			sig, err := rsa.SignPKCS1v15(rand.Reader, other, crypto.SHA256, sum[:])
+			require.NoError(t, err)
+			return sig
+		}), false},
+		{"only two segments", "e30.e30", false},
+		{"signature not base64url", "e30.e30.!!", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := client.verifyWithKeys(issuer, clientID, test.token, keys, time.Now())
+			if test.accept {
+				require.NoError(t, err)
+				assert.Equal(t, "external-user-1", got.Subject)
+				return
+			}
+			assert.ErrorIs(t, err, ErrOIDCTokenInvalid)
+		})
+	}
+	assert.Equal(t, jwsx.Algorithms{jwsx.RS256, jwsx.RS512, jwsx.ES256, jwsx.ES512, jwsx.EdDSA}, idTokenAlgorithms)
 }
 
 func ecdsaSignature(t *testing.T, key *ecdsa.PrivateKey, digest []byte) []byte {
@@ -606,23 +664,6 @@ func ecdsaSignature(t *testing.T, key *ecdsa.PrivateKey, digest []byte) []byte {
 	sig = append(sig, r.FillBytes(make([]byte, size))...)
 	sig = append(sig, s.FillBytes(make([]byte, size))...)
 	return sig
-}
-
-func TestSplitJWTAndDecode(t *testing.T) {
-	_, _, _, err := splitJWT("only.two")
-	assert.Error(t, err)
-	_, _, _, err = splitJWT("a.b.!!not-base64!!")
-	assert.Error(t, err)
-	header, payload, signature, err := splitJWT("eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiJ4In0.c2ln")
-	require.NoError(t, err)
-	assert.Equal(t, "eyJhbGciOiJFZERTQSJ9", header)
-	assert.Equal(t, "eyJzdWIiOiJ4In0", payload)
-	assert.Equal(t, []byte("sig"), signature)
-
-	var claims map[string]any
-	require.NoError(t, decodeJSONPart(payload, &claims))
-	assert.Equal(t, "x", claims["sub"])
-	assert.Error(t, decodeJSONPart("!!bad!!", &claims))
 }
 
 func TestCurveForAndDecodeCoordinate(t *testing.T) {

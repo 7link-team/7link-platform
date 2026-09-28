@@ -7,8 +7,6 @@ import (
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"crypto/sha256"
-	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -21,6 +19,7 @@ import (
 	"time"
 
 	"7link.com/platform/pkg/extension/httpx"
+	"7link.com/platform/pkg/extension/jwsx"
 )
 
 const wellKnownPath = "/.well-known/openid-configuration"
@@ -202,20 +201,18 @@ func (c *oidcClient) verifyIDToken(ctx context.Context, issuer, clientID, raw st
 
 var errUnknownKey = errors.New("unknown signing key")
 
+// idTokenAlgorithms are the signatures accepted on an upstream ID token.
+// Providers choose their own, so the set is broader than the platform token
+// verifier's; it still never admits "none" or a shared-secret algorithm.
+var idTokenAlgorithms = jwsx.Algorithms{jwsx.RS256, jwsx.RS512, jwsx.ES256, jwsx.ES512, jwsx.EdDSA}
+
 func (c *oidcClient) verifyWithKeys(issuer, clientID, raw string, keys map[string]crypto.PublicKey, now time.Time) (idTokenClaims, error) {
-	header, payload, signature, err := splitJWT(raw)
+	token, err := jwsx.Parse(raw)
 	if err != nil {
 		return idTokenClaims{}, fmt.Errorf("%w: %w", ErrOIDCTokenInvalid, err)
 	}
-	var head struct {
-		Alg string `json:"alg"`
-		Kid string `json:"kid"`
-	}
-	if err := decodeJSONPart(header, &head); err != nil {
-		return idTokenClaims{}, fmt.Errorf("%w: decode header: %w", ErrOIDCTokenInvalid, err)
-	}
 	var claims idTokenClaims
-	if err := decodeJSONPart(payload, &claims); err != nil {
+	if err := json.Unmarshal(token.Payload, &claims); err != nil {
 		return idTokenClaims{}, fmt.Errorf("%w: decode claims: %w", ErrOIDCTokenInvalid, err)
 	}
 	if claims.Issuer != issuer || claims.Subject == "" || len(claims.Subject) > 128 {
@@ -235,12 +232,12 @@ func (c *oidcClient) verifyWithKeys(issuer, clientID, raw string, keys map[strin
 	if claims.ExpiresAt <= nowUnix-skew || (claims.NotBefore > 0 && claims.NotBefore > nowUnix+skew) {
 		return idTokenClaims{}, fmt.Errorf("%w: token is outside its validity window", ErrOIDCTokenInvalid)
 	}
-	key, ok := keys[head.Kid]
+	key, ok := keys[token.Header.Kid]
 	if !ok {
-		return idTokenClaims{}, fmt.Errorf("%w: %s", errUnknownKey, head.Kid)
+		return idTokenClaims{}, fmt.Errorf("%w: %s", errUnknownKey, token.Header.Kid)
 	}
-	if err := verifySignature(head.Alg, key, []byte(header+"."+payload), signature); err != nil {
-		return idTokenClaims{}, err
+	if err := idTokenAlgorithms.Verify(token.Header.Alg, key, token.SigningInput, token.Signature); err != nil {
+		return idTokenClaims{}, fmt.Errorf("%w: %w", ErrOIDCTokenInvalid, err)
 	}
 	return claims, nil
 }
@@ -367,84 +364,6 @@ func decodeCoordinate(encoded string) (*big.Int, error) {
 		return nil, err
 	}
 	return new(big.Int).SetBytes(raw), nil
-}
-
-func splitJWT(raw string) (header, payload string, signature []byte, err error) {
-	parts := strings.Split(raw, ".")
-	if len(parts) != 3 {
-		return "", "", nil, errors.New("malformed token")
-	}
-	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil {
-		return "", "", nil, errors.New("malformed signature")
-	}
-	return parts[0], parts[1], sig, nil
-}
-
-func decodeJSONPart(part string, dst any) error {
-	raw, err := base64.RawURLEncoding.DecodeString(part)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(raw, dst)
-}
-
-func verifySignature(alg string, key crypto.PublicKey, signingInput, signature []byte) error {
-	switch alg {
-	case "RS256", "RS512":
-		rsaKey, ok := key.(*rsa.PublicKey)
-		if !ok {
-			return fmt.Errorf("%w: RSA key required for %s", ErrOIDCTokenInvalid, alg)
-		}
-		var digest []byte
-		hash := crypto.SHA256
-		if alg == "RS512" {
-			hash = crypto.SHA512
-			sum := sha512.Sum512(signingInput)
-			digest = sum[:]
-		} else {
-			sum := sha256.Sum256(signingInput)
-			digest = sum[:]
-		}
-		if err := rsa.VerifyPKCS1v15(rsaKey, hash, digest, signature); err != nil {
-			return fmt.Errorf("%w: RSA signature invalid", ErrOIDCTokenInvalid)
-		}
-		return nil
-	case "ES256", "ES512":
-		ecKey, ok := key.(*ecdsa.PublicKey)
-		if !ok {
-			return fmt.Errorf("%w: EC key required for %s", ErrOIDCTokenInvalid, alg)
-		}
-		size := (ecKey.Curve.Params().BitSize + 7) / 8
-		if len(signature) != 2*size {
-			return fmt.Errorf("%w: malformed ECDSA signature", ErrOIDCTokenInvalid)
-		}
-		r := new(big.Int).SetBytes(signature[:size])
-		s := new(big.Int).SetBytes(signature[size:])
-		var digest []byte
-		if alg == "ES512" {
-			sum := sha512.Sum512(signingInput)
-			digest = sum[:]
-		} else {
-			sum := sha256.Sum256(signingInput)
-			digest = sum[:]
-		}
-		if !ecdsa.Verify(ecKey, digest, r, s) {
-			return fmt.Errorf("%w: ECDSA signature invalid", ErrOIDCTokenInvalid)
-		}
-		return nil
-	case "EdDSA":
-		edKey, ok := key.(ed25519.PublicKey)
-		if !ok {
-			return fmt.Errorf("%w: Ed25519 key required for EdDSA", ErrOIDCTokenInvalid)
-		}
-		if !ed25519.Verify(edKey, signingInput, signature) {
-			return fmt.Errorf("%w: EdDSA signature invalid", ErrOIDCTokenInvalid)
-		}
-		return nil
-	default:
-		return fmt.Errorf("%w: unsupported alg %s", ErrOIDCTokenInvalid, alg)
-	}
 }
 
 func containsAudience(got audClaim, want string) bool {

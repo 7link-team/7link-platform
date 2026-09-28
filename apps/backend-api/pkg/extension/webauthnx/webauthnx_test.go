@@ -269,7 +269,8 @@ func TestAdapterCeremonySuccessAndProtocolFailures(t *testing.T) {
 func TestBeginCeremonyMarshalFailures(t *testing.T) {
 	user, err := NewUser([]byte("user-handle"), "alice", "Alice", nil)
 	require.NoError(t, err)
-	badExtension := protocol.AuthenticationExtensions{"unsupported": make(chan int)}
+	badExtension := protocol.AuthenticationExtensions{Extra: map[string]any{"unsupported": make(chan int)}}
+	badSessionExtension := protocol.SessionExtensions{Extra: map[string]any{"unsupported": make(chan int)}}
 	fake := &fakeCeremonyProtocol{
 		beginRegistration: func(webauthn.User, ...webauthn.RegistrationOption) (*protocol.CredentialCreation, *webauthn.SessionData, error) {
 			return &protocol.CredentialCreation{Response: protocol.PublicKeyCredentialCreationOptions{
@@ -289,10 +290,10 @@ func TestBeginCeremonyMarshalFailures(t *testing.T) {
 	assert.Error(t, err)
 
 	fake.beginRegistration = func(webauthn.User, ...webauthn.RegistrationOption) (*protocol.CredentialCreation, *webauthn.SessionData, error) {
-		return &protocol.CredentialCreation{}, &webauthn.SessionData{Extensions: badExtension}, nil
+		return &protocol.CredentialCreation{}, &webauthn.SessionData{Extensions: badSessionExtension}, nil
 	}
 	fake.beginLogin = func(...webauthn.LoginOption) (*protocol.CredentialAssertion, *webauthn.SessionData, error) {
-		return &protocol.CredentialAssertion{}, &webauthn.SessionData{Extensions: badExtension}, nil
+		return &protocol.CredentialAssertion{}, &webauthn.SessionData{Extensions: badSessionExtension}, nil
 	}
 	_, _, err = adapter.BeginRegistration(user, time.Now())
 	assert.Error(t, err)

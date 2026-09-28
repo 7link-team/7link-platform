@@ -110,6 +110,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/internal/todo \
 	7link.com/platform/pkg/extension/authn \
 	7link.com/platform/pkg/extension/authz \
+	7link.com/platform/pkg/extension/jwsx \
 	7link.com/platform/pkg/extension/keyringx \
 	7link.com/platform/pkg/extension/passwordx \
 	7link.com/platform/pkg/extension/policyx \

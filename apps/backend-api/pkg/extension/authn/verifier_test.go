@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/jwsx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -107,7 +108,8 @@ func TestVerifyRejectsBadSignatureAndUnknownKey(t *testing.T) {
 	signature[0] ^= 1
 	parts[2] = base64.RawURLEncoding.EncodeToString(signature)
 	_, err = verifier.Verify(context.Background(), strings.Join(parts, "."))
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidToken)
+	assert.ErrorIs(t, err, jwsx.ErrSignature)
 }
 
 func TestParseClaims(t *testing.T) {
@@ -181,8 +183,8 @@ func TestJWKPublicKeysAndSignatureAlgorithms(t *testing.T) {
 	hash := sha256.Sum256(message)
 	rsaSignature, err := rsa.SignPKCS1v15(rand.Reader, rsaKey.private, crypto.SHA256, hash[:])
 	require.NoError(t, err)
-	assert.NoError(t, verifySignature("RS256", parsedRSA, message, rsaSignature))
-	assert.Error(t, verifySignature("RS256", parsedRSA, message, append([]byte(nil), rsaSignature[:len(rsaSignature)-1]...)))
+	assert.NoError(t, tokenAlgorithms.Verify("RS256", parsedRSA, message, rsaSignature))
+	assert.ErrorIs(t, tokenAlgorithms.Verify("RS256", parsedRSA, message, append([]byte(nil), rsaSignature[:len(rsaSignature)-1]...)), jwsx.ErrSignature)
 
 	edPublic, edPrivate, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -196,9 +198,9 @@ func TestJWKPublicKeysAndSignatureAlgorithms(t *testing.T) {
 	assert.Equal(t, edPublic, parsedEd)
 
 	edSignature := ed25519.Sign(edPrivate, message)
-	assert.NoError(t, verifySignature("EdDSA", parsedEd, message, edSignature))
-	assert.ErrorIs(t, verifySignature("EdDSA", parsedEd, []byte("tampered"), edSignature), ErrInvalidToken)
-	assert.ErrorIs(t, verifySignature("EdDSA", parsedRSA, message, edSignature), ErrInvalidToken)
+	assert.NoError(t, tokenAlgorithms.Verify("EdDSA", parsedEd, message, edSignature))
+	assert.ErrorIs(t, tokenAlgorithms.Verify("EdDSA", parsedEd, []byte("tampered"), edSignature), jwsx.ErrSignature)
+	assert.ErrorIs(t, tokenAlgorithms.Verify("EdDSA", parsedRSA, message, edSignature), jwsx.ErrKeyType)
 
 	_, err = (&jwk{Kid: "bad-curve", Kty: "OKP", Crv: "X25519", X: base64.RawURLEncoding.EncodeToString(edPublic)}).publicKey()
 	assert.Error(t, err)
@@ -271,15 +273,13 @@ func TestVerifierErrorBranches(t *testing.T) {
 	assert.Error(t, err)
 	_, err = (&jwk{Kty: "RSA"}).publicKey()
 	assert.Error(t, err)
-	assert.Error(t, verifySignature("RS256", "not-rsa", []byte("a.b"), []byte("sig")))
-	assert.Error(t, verifySignature("HS256", &rsa.PublicKey{}, []byte("a.b"), []byte("sig")))
+	assert.ErrorIs(t, tokenAlgorithms.Verify("RS256", "not-rsa", []byte("a.b"), []byte("sig")), jwsx.ErrKeyType)
+	assert.ErrorIs(t, tokenAlgorithms.Verify("HS256", &rsa.PublicKey{}, []byte("a.b"), []byte("sig")), jwsx.ErrUnsupportedAlgorithm)
 
 	var n json.Number = "123"
 	assert.False(t, unixClaim(n).IsZero())
 	assert.True(t, unixClaim("bad").IsZero())
 
-	var dst map[string]any
-	assert.Error(t, decodeJSON("!", &dst))
 }
 
 func TestRefreshAndDiscoveryErrors(t *testing.T) {
@@ -764,10 +764,16 @@ func TestUnsupportedAlgorithmDoesNotFetchKeys(t *testing.T) {
 	t.Cleanup(srv.Close)
 	verifier, err := NewVerifier(Config{Enabled: true, Issuer: "https://issuer.example", JWKSURL: srv.URL})
 	require.NoError(t, err)
-	header := mustJSONPart(t, map[string]any{"alg": "HS256", "kid": "key"})
-	_, err = verifier.Verify(t.Context(), header+".e30.c2ln")
-	assert.ErrorIs(t, err, ErrInvalidToken)
+	// Platform tokens are RS256 or EdDSA only. Every other algorithm --
+	// including ones the shared JWS package implements for federation -- is
+	// refused before a key is fetched.
+	for _, alg := range []string{"HS256", "HS512", "none", "", "rs256", "RS384", "RS512", "PS256", "ES256", "ES384", "ES512", "EdDSA25519"} {
+		header := mustJSONPart(t, map[string]any{"alg": alg, "kid": "key"})
+		_, err = verifier.Verify(t.Context(), header+".e30.c2ln")
+		assert.ErrorIs(t, err, ErrInvalidToken, alg)
+	}
 	assert.Zero(t, requests.Load())
+	assert.Equal(t, jwsx.Algorithms{jwsx.RS256, jwsx.EdDSA}, tokenAlgorithms)
 }
 
 func newTestKey(t *testing.T) testKey {

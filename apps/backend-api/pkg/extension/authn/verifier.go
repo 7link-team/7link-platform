@@ -5,7 +5,6 @@ import (
 	"crypto"
 	"crypto/ed25519"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
@@ -19,6 +18,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/jwsx"
 )
 
 const (
@@ -50,6 +50,11 @@ var (
 	ErrRegistrationConflict   = errors.New("self-service registration identity exists")
 	ErrUnavailable            = errors.New("authentication unavailable")
 )
+
+// tokenAlgorithms are the signatures a platform access token may carry: RS256
+// from an upstream issuer and EdDSA from the local one (authn/web.go signs
+// Ed25519). Widening it widens what this service trusts.
+var tokenAlgorithms = jwsx.Algorithms{jwsx.RS256, jwsx.EdDSA}
 
 // Config describes the local issuer and optional upstream JWT verification.
 type Config struct {
@@ -365,23 +370,15 @@ func (v *Verifier) Verify(ctx context.Context, token string) (*Claims, error) {
 	if !v.cfg.Enabled {
 		return nil, ErrDisabled
 	}
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return nil, ErrInvalidToken
+	parsed, err := jwsx.Parse(token)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidToken, err)
 	}
-
-	var header struct {
-		Alg string `json:"alg"`
-		Kid string `json:"kid"`
-		Typ string `json:"typ"`
-	}
-	if err := decodeJSON(parts[0], &header); err != nil {
-		return nil, fmt.Errorf("%w: header: %w", ErrInvalidToken, err)
-	}
+	header := parsed.Header
 	if header.Kid == "" || header.Alg == "" {
 		return nil, ErrInvalidToken
 	}
-	if !supportedAlgorithm(header.Alg) {
+	if !tokenAlgorithms.Allows(header.Alg) {
 		return nil, fmt.Errorf("%w: unsupported alg %s", ErrInvalidToken, header.Alg)
 	}
 
@@ -389,23 +386,18 @@ func (v *Verifier) Verify(ctx context.Context, token string) (*Claims, error) {
 	if err != nil {
 		return nil, err
 	}
-	signed := parts[0] + "." + parts[1]
-	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil {
-		return nil, fmt.Errorf("%w: signature encoding", ErrInvalidToken)
-	}
-	if err := verifySignature(header.Alg, key, []byte(signed), sig); err != nil {
+	if err := tokenAlgorithms.Verify(header.Alg, key, parsed.SigningInput, parsed.Signature); err != nil {
 		key, refreshErr := v.refreshKey(ctx, header.Kid, true)
 		if refreshErr != nil {
 			return nil, refreshErr
 		}
-		if retryErr := verifySignature(header.Alg, key, []byte(signed), sig); retryErr != nil {
-			return nil, retryErr
+		if retryErr := tokenAlgorithms.Verify(header.Alg, key, parsed.SigningInput, parsed.Signature); retryErr != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidToken, retryErr)
 		}
 	}
 
 	var raw map[string]any
-	if err := decodeJSON(parts[1], &raw); err != nil {
+	if err := json.Unmarshal(parsed.Payload, &raw); err != nil {
 		return nil, fmt.Errorf("%w: claims: %w", ErrInvalidToken, err)
 	}
 	claims, err := parseClaims(raw)
@@ -659,35 +651,6 @@ func (k jwk) publicKey() (crypto.PublicKey, error) {
 	}
 }
 
-func verifySignature(alg string, key crypto.PublicKey, signed, sig []byte) error {
-	switch alg {
-	case "RS256":
-		hash := sha256.Sum256(signed)
-		rsaKey, ok := key.(*rsa.PublicKey)
-		if !ok {
-			return ErrInvalidToken
-		}
-		return rsa.VerifyPKCS1v15(rsaKey, crypto.SHA256, hash[:], sig)
-	case "EdDSA":
-		// The local issuer (authn/web.go) signs Ed25519; the verifier must
-		// accept it or every locally-issued access token is rejected.
-		edKey, ok := key.(ed25519.PublicKey)
-		if !ok {
-			return ErrInvalidToken
-		}
-		if !ed25519.Verify(edKey, signed, sig) {
-			return ErrInvalidToken
-		}
-		return nil
-	default:
-		return fmt.Errorf("%w: unsupported alg %s", ErrInvalidToken, alg)
-	}
-}
-
-func supportedAlgorithm(alg string) bool {
-	return alg == "RS256" || alg == "EdDSA"
-}
-
 func decodeLimitedJSON(reader io.Reader, limit int64, dst any) error {
 	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
 	if err != nil {
@@ -800,14 +763,6 @@ func audienceAllowed(tokenAud, allowed []string) bool {
 		}
 	}
 	return false
-}
-
-func decodeJSON(part string, dst any) error {
-	data, err := base64.RawURLEncoding.DecodeString(part)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, dst)
 }
 
 func intFromBytes(data []byte) *big.Int {
