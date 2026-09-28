@@ -117,26 +117,26 @@ func (r *signingKeyring) activeID() string {
 	return r.active.id
 }
 
-// verify checks a signature against the one key the header names.
+// publicKey returns the one verification key the header names.
 //
 // The key is selected by identifier rather than tried in turn, so a token that
 // names a key which has left the ring is rejected outright instead of being
 // offered to every remaining key. Trying them all would keep working after the
 // retired key was removed, and the removal would then be silently undone by the
 // code rather than reported.
-func (r *signingKeyring) verify(id string, signed, signature []byte) bool {
+func (r *signingKeyring) publicKey(id string) (ed25519.PublicKey, bool) {
 	if r == nil {
-		return false
+		return nil, false
 	}
 	if r.active.id == id {
-		return ed25519.Verify(r.active.public, signed, signature)
+		return r.active.public, true
 	}
 	for _, key := range r.retired {
 		if key.id == id {
-			return ed25519.Verify(key.public, signed, signature)
+			return key.public, true
 		}
 	}
-	return false
+	return nil, false
 }
 
 // jwks publishes every key that still verifies, active first.

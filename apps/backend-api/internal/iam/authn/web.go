@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -23,6 +22,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
+	"7link.com/platform/pkg/extension/jwsx"
 	"7link.com/platform/pkg/extension/keyringx"
 	"7link.com/platform/pkg/extension/passwordx"
 	"7link.com/platform/pkg/extension/secretx"
@@ -1066,31 +1066,15 @@ func (s *Service) verifyAccessToken(authorization string) (*authnext.Claims, err
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 		return nil, authnext.ErrInvalidBearer
 	}
-	segments := strings.Split(parts[1], ".")
-	if len(segments) != 3 {
+	token, err := jwsx.Parse(parts[1])
+	if err != nil || !accessTokenAlgorithms.Allows(token.Header.Alg) {
 		return nil, authnext.ErrInvalidToken
 	}
-	headerData, err := base64.RawURLEncoding.DecodeString(segments[0])
-	if err != nil {
+	key, known := s.signingKeys.publicKey(token.Header.Kid)
+	if !known || accessTokenAlgorithms.Verify(token.Header.Alg, key, token.SigningInput, token.Signature) != nil {
 		return nil, authnext.ErrInvalidToken
 	}
-	var header struct {
-		Algorithm string `json:"alg"`
-		KeyID     string `json:"kid"`
-	}
-	if json.Unmarshal(headerData, &header) != nil || header.Algorithm != "EdDSA" {
-		return nil, authnext.ErrInvalidToken
-	}
-	signature, err := base64.RawURLEncoding.DecodeString(segments[2])
-	verified := err == nil &&
-		s.signingKeys.verify(header.KeyID, []byte(segments[0]+"."+segments[1]), signature)
-	if subtle.ConstantTimeCompare([]byte{boolByte(verified)}, []byte{1}) != 1 {
-		return nil, authnext.ErrInvalidToken
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(segments[1])
-	if err != nil {
-		return nil, authnext.ErrInvalidToken
-	}
+	payload := token.Payload
 	var raw struct {
 		Issuer            string   `json:"iss"`
 		Subject           string   `json:"sub"`
@@ -1133,6 +1117,11 @@ func (s *Service) verifyAccessToken(authorization string) (*authnext.Claims, err
 		OAuthGrantID: raw.OAuthGrantID,
 	}, nil
 }
+
+// accessTokenAlgorithms is what this service signs its own access tokens
+// with; every other algorithm, "none" and HMAC included, is refused before a
+// key is looked up.
+var accessTokenAlgorithms = jwsx.Algorithms{jwsx.EdDSA}
 
 func validSubjectType(subjectType string) bool {
 	return subjectType == authnext.SubjectTypePrincipal || subjectType == authnext.SubjectTypeOAuthClient ||
@@ -1316,13 +1305,6 @@ func hasAudience(got, accepted []string) bool {
 		}
 	}
 	return false
-}
-
-func boolByte(value bool) byte {
-	if value {
-		return 1
-	}
-	return 0
 }
 
 var (

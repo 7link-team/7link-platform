@@ -36,13 +36,13 @@ func TestSigningKeyringSignsWithOneKeyAndVerifiesWithAnyOfThem(t *testing.T) {
 	// A signature the retired key made, which is what an unexpired token in
 	// somebody's browser carries right after a rotation.
 	old := ed25519.Sign(retired.private, signed)
-	assert.True(t, ring.verify(retired.activeID(), signed, old),
+	assert.True(t, keyringVerifies(ring, retired.activeID(), signed, old),
 		"a token issued before the rotation must still be accepted")
 
 	// Signing still happens with one key only.
 	fresh := ed25519.Sign(ring.private, signed)
-	assert.True(t, ring.verify(ring.activeID(), signed, fresh))
-	assert.False(t, ring.verify(retired.activeID(), signed, fresh),
+	assert.True(t, keyringVerifies(ring, ring.activeID(), signed, fresh))
+	assert.False(t, keyringVerifies(ring, retired.activeID(), signed, fresh),
 		"a signature may only verify under the key that actually made it")
 }
 
@@ -73,7 +73,7 @@ func TestSigningKeyringPublishesEveryKeyThatStillVerifies(t *testing.T) {
 	assert.Empty(t, empty["keys"])
 	assert.False(t, (*signingKeyring)(nil).usable())
 	assert.Empty(t, (*signingKeyring)(nil).activeID())
-	assert.False(t, (*signingKeyring)(nil).verify("any", nil, nil))
+	assert.False(t, keyringVerifies(nil, "any", nil, nil))
 	assert.False(t, (*signingKeyring)(nil).contains("any"))
 }
 
@@ -114,10 +114,10 @@ func TestSigningKeyringRejectsATokenNamingAKeyItNoLongerHolds(t *testing.T) {
 	require.NoError(t, err)
 
 	signed := []byte("header.payload")
-	assert.False(t, ring.verify(removed.activeID(), signed, ed25519.Sign(removed.private, signed)),
+	assert.False(t, keyringVerifies(ring, removed.activeID(), signed, ed25519.Sign(removed.private, signed)),
 		"once the key is out of the configuration its tokens stop being accepted")
 	// Naming a key that is present does not help a signature made by another.
-	assert.False(t, ring.verify(ring.activeID(), signed, ed25519.Sign(removed.private, signed)))
+	assert.False(t, keyringVerifies(ring, ring.activeID(), signed, ed25519.Sign(removed.private, signed)))
 }
 
 // TestResolveSigningKeyringReportsConfigurationProblemsAtStartup covers the
@@ -184,4 +184,11 @@ func TestWebServiceAcceptsTokensIssuedBeforeAKeyRotation(t *testing.T) {
 	_, err = before.Authenticate(t.Context(), "Bearer "+fresh, "")
 	assert.ErrorIs(t, err, authnext.ErrInvalidToken,
 		"the service that does not hold the new key must not accept its tokens")
+}
+
+// keyringVerifies checks a signature the way verifyAccessToken does: the key
+// the identifier names, under the access-token algorithm set.
+func keyringVerifies(ring *signingKeyring, id string, signed, signature []byte) bool {
+	key, known := ring.publicKey(id)
+	return known && accessTokenAlgorithms.Verify("EdDSA", key, signed, signature) == nil
 }

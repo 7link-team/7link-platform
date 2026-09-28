@@ -3,6 +3,9 @@ package authn
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -14,6 +17,7 @@ import (
 	identitymodel "7link.com/platform/internal/iam/identity/model"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/jwsx"
 	"7link.com/platform/pkg/extension/keyringx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -858,4 +862,55 @@ func tokenPayload(t *testing.T, token string) map[string]any {
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(payload, &result))
 	return result
+}
+
+// The service's own access tokens are EdDSA only. Every other identifier --
+// "none", the HMAC family keyed with the published key, algorithms jwsx
+// implements for other callers, and near-miss spellings -- is refused even
+// when the signature is the genuine Ed25519 one over the rewritten header.
+func TestAccessTokenVerifierAcceptsOnlyEdDSA(t *testing.T) {
+	service, harness := newLocalService(t)
+	principalID := bootstrapLocalPrincipal(t, harness, "alice", "correct horse battery staple")
+	genuine, _, err := service.IssueAccessToken(t.Context(), principalID, "", "")
+	require.NoError(t, err)
+	payload := strings.Split(genuine, ".")[1]
+	kid := service.signingKeys.activeID()
+	public, known := service.signingKeys.publicKey(kid)
+	require.True(t, known)
+	forge := func(alg, kid string, sign func(input []byte) []byte) string {
+		header, err := json.Marshal(map[string]string{"alg": alg, "kid": kid, "typ": "JWT"})
+		require.NoError(t, err)
+		input := base64.RawURLEncoding.EncodeToString(header) + "." + payload
+		return input + "." + base64.RawURLEncoding.EncodeToString(sign([]byte(input)))
+	}
+	signatures := map[string]func([]byte) []byte{
+		"ed25519": func(input []byte) []byte { return ed25519.Sign(service.signingKeys.private, input) },
+		"hs256":   func(input []byte) []byte { mac := hmac.New(sha256.New, public); mac.Write(input); return mac.Sum(nil) },
+		"hs512":   func(input []byte) []byte { mac := hmac.New(sha512.New, public); mac.Write(input); return mac.Sum(nil) },
+		"empty":   func([]byte) []byte { return nil },
+	}
+
+	claims, err := service.verifyAccessToken("Bearer " + forge("EdDSA", kid, signatures["ed25519"]))
+	require.NoError(t, err, "control: a re-signed EdDSA token is accepted")
+	assert.Equal(t, principalID, claims.PrincipalID)
+	for _, alg := range []string{"none", "None", "NONE", "", "HS256", "HS384", "HS512", "RS256", "RS512", "ES256", "ES512", "PS256", "eddsa", "EDDSA", "EdDSA ", "Ed25519"} {
+		for name, sign := range signatures {
+			_, err := service.verifyAccessToken("Bearer " + forge(alg, kid, sign))
+			assert.ErrorIs(t, err, authnext.ErrInvalidToken, "alg %q signature %s", alg, name)
+		}
+	}
+	for name, sign := range signatures {
+		if name == "ed25519" {
+			continue
+		}
+		_, err := service.verifyAccessToken("Bearer " + forge("EdDSA", kid, sign))
+		assert.ErrorIs(t, err, authnext.ErrInvalidToken, "EdDSA with signature %s", name)
+	}
+	_, err = service.verifyAccessToken("Bearer " + forge("EdDSA", "retired-or-unknown", signatures["ed25519"]))
+	assert.ErrorIs(t, err, authnext.ErrInvalidToken, "a key the ring does not hold")
+	for _, malformed := range []string{"a.b", "!!.e30.c2ln", genuine + ".extra"} {
+		_, err = service.verifyAccessToken("Bearer " + malformed)
+		assert.ErrorIs(t, err, authnext.ErrInvalidToken, malformed)
+	}
+	assert.Equal(t, jwsx.Algorithms{jwsx.EdDSA}, accessTokenAlgorithms)
 }
