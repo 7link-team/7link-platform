@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"7link.com/platform/internal/iam/audit/model"
@@ -180,6 +181,9 @@ type Service struct {
 	archive        *AnchorStore
 	erasureLedger  *ErasureLedger
 	erasureTimeout time.Duration
+
+	archiveSweepFailures   atomic.Int64
+	archiveAttemptFailures atomic.Int64
 }
 
 func NewService(runtime *appenv.Runtime, ids guid.Source) *Service {

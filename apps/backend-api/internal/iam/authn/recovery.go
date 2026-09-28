@@ -449,6 +449,7 @@ func (s *Service) runNotificationWorker(ctx context.Context, done chan<- struct{
 
 func (s *Service) deliverPendingNotificationsAndReport(ctx context.Context) {
 	if err := s.deliverPendingNotifications(ctx); err != nil && ctx.Err() == nil {
+		s.notificationPollFailures.Add(1)
 		slog.ErrorContext(ctx, "authn notification poll failed", "error", err)
 	}
 }
@@ -513,6 +514,11 @@ func (s *Service) deliverNotification(ctx context.Context, id guid.ID) error {
 	}
 	if !updated {
 		return errors.New("notification delivery lease lost before failure update")
+	}
+	if status == "failed" {
+		s.notificationTerminalFailures.Add(1)
+	} else {
+		s.notificationRetryableFailures.Add(1)
 	}
 	return err
 }

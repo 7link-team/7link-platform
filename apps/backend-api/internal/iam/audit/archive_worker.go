@@ -24,6 +24,7 @@ func (m *Module) runArchives(ctx context.Context, service *Service, done chan<- 
 	defer ticker.Stop()
 	for {
 		if err := service.sweepArchives(ctx, m.config.Archive.Timeout); err != nil && ctx.Err() == nil {
+			service.archiveSweepFailures.Add(1)
 			slog.ErrorContext(ctx, "audit archive sweep failed", "error_code", "database_unavailable")
 		}
 		select {
@@ -62,6 +63,7 @@ func (s *Service) sweepArchives(ctx context.Context, timeout time.Duration) erro
 			}
 			cancel()
 			if err != nil && !errors.Is(err, ErrArchiveBusy) && ctx.Err() == nil {
+				s.archiveAttemptFailures.Add(1)
 				slog.ErrorContext(ctx, "audit archive attempt failed", "tenant_id", head.TenantID.String(), "job_id", job.ID.String(), "error_code", archiveFailureCode(err))
 			}
 		}
