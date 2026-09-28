@@ -111,6 +111,23 @@ func (s *InvitationService) requireGrantableInvitationRoles(ctx context.Context,
 	return checker.RequireGrantableRoles(ctx, repo.writer(), tenantID, roles)
 }
 
+// requireGrantableInvitationDepartment keeps an invitation from placing its
+// invitee in a department where the invitation's department-scoped roles reach
+// further than the inviter's own data scope: acceptance applies both without
+// an actor, so this is the only point the inviter's authority can be checked.
+func (s *InvitationService) requireGrantableInvitationDepartment(ctx context.Context, repo *Repository, tenantID, departmentID guid.ID, roles []guid.ID) error {
+	if authnext.PrincipalIDFromContext(ctx).Zero() || departmentID.Zero() || len(roles) == 0 {
+		return nil
+	}
+	checker, ok := s.administrators.(interface {
+		RequireGrantableDepartmentPlacement(context.Context, *gorm.DB, guid.ID, guid.ID, []guid.ID) error
+	})
+	if !ok {
+		return ErrUnavailable
+	}
+	return checker.RequireGrantableDepartmentPlacement(ctx, repo.writer(), tenantID, departmentID, roles)
+}
+
 func (s *InvitationService) prepareGrantableInvitationRoles(ctx context.Context, repo *Repository, tenantID guid.ID) error {
 	if authnext.PrincipalIDFromContext(ctx).Zero() {
 		return nil
@@ -175,6 +192,9 @@ func (s *InvitationService) Create(ctx context.Context, tenantID guid.ID, input 
 			return err
 		}
 		if err := s.requireGrantableInvitationRoles(ctx, repo, tenantID, input.RoleIDs); err != nil {
+			return err
+		}
+		if err := s.requireGrantableInvitationDepartment(ctx, repo, tenantID, input.DepartmentID, input.RoleIDs); err != nil {
 			return err
 		}
 		if err := repo.writer().WithContext(ctx).Table(tables.Invitations.TableName()).Where("tenant_id = ? AND email_key = ? AND status = ?", tenantID, input.Email, InvitationPending).
@@ -272,6 +292,9 @@ func (s *InvitationService) Resend(ctx context.Context, tenantID, id guid.ID, tt
 			return err
 		}
 		if err := s.requireGrantableInvitationRoles(ctx, repo, tenantID, roles); err != nil {
+			return err
+		}
+		if err := s.requireGrantableInvitationDepartment(ctx, repo, tenantID, optionalID(current.DepartmentID), roles); err != nil {
 			return err
 		}
 		result := repo.writer().WithContext(ctx).Table(tables.Invitations.TableName()).Where("tenant_id = ? AND id = ? AND status = ?", tenantID, id, InvitationPending).

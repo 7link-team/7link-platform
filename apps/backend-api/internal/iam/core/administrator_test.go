@@ -226,6 +226,13 @@ func TestAdministratorGuardGrantabilityFollowsTheActorsOwnAuthority(t *testing.T
 	assert.ErrorIs(t, h.db.Transaction(func(tx *gorm.DB) error { return guard.PrepareGrantableRoles(actor, tx, 99) }), ErrPrivilegeEscalation)
 	assert.ErrorIs(t, (*tenantAdministratorGuard)(nil).RequireGrantableRoles(actor, h.db, 1, nil), ErrUnavailable)
 	assert.ErrorIs(t, guard.RequireGrantableRoles(actor, nil, 1, nil), ErrUnavailable)
+	// The placement check runs on the caller's transaction through the same
+	// bound guard; its semantics are TestDepartmentPlacementStaysWithinTheActorsConstraint.
+	assert.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+		return guard.RequireGrantableDepartmentPlacement(actor, tx, 1, 0, []guid.ID{sameAuthority})
+	}), "no department reaches nothing")
+	assert.ErrorIs(t, (*tenantAdministratorGuard)(nil).RequireGrantableDepartmentPlacement(actor, h.db, 1, 2, nil), ErrUnavailable)
+	assert.ErrorIs(t, guard.RequireGrantableDepartmentPlacement(actor, nil, 1, 2, nil), ErrUnavailable)
 
 	withoutRegistry := boundGuard(t, h.runtime, "sl_")
 	assert.ErrorIs(t, h.db.Transaction(func(tx *gorm.DB) error {

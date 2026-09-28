@@ -57,6 +57,19 @@ func (guard *tenantAdministratorGuard) RequireGrantableRoles(ctx context.Context
 	return nil
 }
 
+// RequireGrantableDepartmentPlacement checks, on the mutation transaction, that
+// placing a new member in departmentID with roleIDs reaches no department the
+// actor's own data scope does not cover (requireGrantableDepartmentPlacement).
+func (guard *tenantAdministratorGuard) RequireGrantableDepartmentPlacement(ctx context.Context, db *gorm.DB, ownerID, departmentID guid.ID, roleIDs []guid.ID) error {
+	if guard == nil || db == nil || guard.registry == nil {
+		return ErrUnavailable
+	}
+	checker := &Authorizer{db: db, repositoryTables: repositoryTables{names: guard.names}, registry: guard.registry, revisions: guard.revisions, now: guard.now, foreign: guard.foreign}
+	repo := &Repository{db: db, repositoryTables: repositoryTables{names: guard.names}, foreign: guard.foreign, revisions: guard.revisions}
+	service := &Service{repo: repo, checker: checker, registry: guard.registry}
+	return service.requireGrantableDepartmentPlacement(ctx, repo, ownerID, departmentID, roleIDs)
+}
+
 // PrepareGrantableRoles acquires global authority before the local policy fence.
 func (guard *tenantAdministratorGuard) PrepareGrantableRoles(ctx context.Context, db *gorm.DB, ownerID guid.ID) error {
 	return guard.RequireGrantableRoles(ctx, db, ownerID, nil)

@@ -22,6 +22,13 @@ type grantingAdministratorGuard struct {
 	requireErr error
 	prepared   []guid.ID
 	required   [][]guid.ID
+	placeErr   error
+	placed     []guid.ID
+}
+
+func (g *grantingAdministratorGuard) RequireGrantableDepartmentPlacement(_ context.Context, _ *gorm.DB, _, department guid.ID, _ []guid.ID) error {
+	g.placed = append(g.placed, department)
+	return g.placeErr
 }
 
 func (g *grantingAdministratorGuard) PrepareGrantableRoles(_ context.Context, _ *gorm.DB, owner guid.ID) error {
