@@ -474,13 +474,15 @@ func (r *Repository) insertServiceAccount(ctx context.Context, row *model.Servic
 }
 
 func (r *Repository) serviceAccountQuery(ctx context.Context) (*gorm.DB, error) {
-	tables, db, err := r.tables()
-	if err != nil {
-		return nil, err
+	// SCIM revalidates its service account once per operation through this
+	// query, so it reads the bound names rather than building the query set.
+	db := r.writer()
+	if db == nil {
+		return nil, errRepositoryUnavailable
 	}
-	return db.WithContext(ctx).Table(tables.ServiceAccounts.TableName() + " AS service_account").
+	return db.WithContext(ctx).Table(r.names.ServiceAccounts.String() + " AS service_account").
 		Select("service_account.*, principal.login_name AS login_name, principal.display_name AS display_name").
-		Joins("JOIN " + tables.Principals.TableName() + " AS principal ON principal.id = service_account.principal_id"), nil
+		Joins("JOIN " + r.names.Principals.String() + " AS principal ON principal.id = service_account.principal_id"), nil
 }
 
 func (r *Repository) serviceAccountOwner(ctx context.Context, id guid.ID) (guid.ID, bool, error) {

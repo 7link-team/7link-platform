@@ -529,13 +529,16 @@ func (r *Repository) revokeCredential(ctx context.Context, directoryID, id guid.
 // Initial bearer authentication has no trusted scope yet; subsequent checks
 // bind the resolved tenant and directory in SQL as well as validating the row.
 func (r *Repository) credentialForAuth(ctx context.Context, id, tenantID, directoryID guid.ID) (credentialAuthRow, error) {
-	tables, db, err := r.tables()
-	if err != nil {
-		return credentialAuthRow{}, err
+	// Every SCIM request and every bulk operation revalidates through here, so
+	// it reads the bound names directly rather than building the whole query
+	// set for two table names.
+	db := r.writer()
+	if db == nil {
+		return credentialAuthRow{}, errRepositoryUnavailable
 	}
 	var row credentialAuthRow
-	credentialTable := tables.Credentials.TableName()
-	directoryTable := tables.Directories.TableName()
+	credentialTable := r.names.Credentials.String()
+	directoryTable := r.names.Directories.String()
 	tenants := r.foreign.directory.Tenants.String()
 	query := db.WithContext(ctx).Table(credentialTable+" AS credential").
 		Select("credential.*, directory.tenant_id AS tenant_id, directory.status AS directory_status, tenant.status AS tenant_status, COALESCE(directory.service_account_id, 0) AS service_account_id").
@@ -548,7 +551,7 @@ func (r *Repository) credentialForAuth(ctx context.Context, id, tenantID, direct
 	if directoryID > 0 {
 		query = query.Where("directory.id = ? AND credential.directory_id = ?", directoryID, directoryID)
 	}
-	err = query.Take(&row).Error
+	err := query.Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrUnauthorized
 	}
@@ -691,12 +694,12 @@ func (r *Repository) userPage(ctx context.Context, directoryID guid.ID, request 
 }
 
 func (r *Repository) userQuery(directoryID guid.ID, includeDeleted bool) (*gorm.DB, error) {
-	tables, db, err := r.tables()
-	if err != nil {
-		return nil, err
+	db := r.writer()
+	if db == nil {
+		return nil, errRepositoryUnavailable
 	}
-	resourceTable := tables.Resources.TableName()
-	directoryTable := tables.Directories.TableName()
+	resourceTable := r.names.Resources.String()
+	directoryTable := r.names.Directories.String()
 	principals := r.foreign.principal.Principals.String()
 	members := r.foreign.access.TenantMembers.String()
 	query := db.Table(resourceTable+" AS resource").

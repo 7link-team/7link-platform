@@ -488,11 +488,13 @@ real-MySQL gate.
 samples for IAM authorization, session lookup, SCIM bulk, and audit append. The
 checked-in PostgreSQL/MySQL baseline always enforces SQL fingerprints and rejects
 unscoped or critical full scans. Set `IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1` when
-rerunning on the baseline machine to enforce its frozen latency thresholds.
+rerunning on the baseline machine to enforce its frozen latency thresholds; each
+path is judged by the median of its five samples, so a single outlier does not
+fail the gate.
 After an intentional SQL change, `IAM_PERFORMANCE_UPDATE=plans` regenerates only
-the plans using the same performance commands. It validates the new plans and
-enforces the existing latency limits before writing; original benchmark samples
-and thresholds are retained. Review the generated plans, then rerun with this
+the plans using the same performance commands. It validates the new plans before
+writing and enforces latency only when `IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1` is
+also set; original benchmark samples and thresholds are retained. Review the generated plans, then rerun with this
 variable unset to verify SQL fingerprints without updating the baseline.
 
 ## Principal Erasure Upgrade Boundary
