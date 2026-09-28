@@ -1262,7 +1262,9 @@ try {
   await call(devices.context, `/sessions/${foreign.id}`, "GET", undefined, {
     status: 404,
   })
-  await call(devices.context, `/sessions/${"a".repeat(64)}`, "GET", undefined, {
+  // Sessions are addressed by their public snowflake ID; an unknown one is as
+  // absent as a foreign one.
+  await call(devices.context, "/sessions/999999999999999999", "GET", undefined, {
     status: 404,
   })
   const mixed = await devices.context.request.get("/api/sessions/current", {
