@@ -55,7 +55,7 @@ type fileResourceInput struct {
 
 type filePathInput struct {
 	RootFileID string `path:"root_file_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"globally unique authorized root file identifier"`
-	Path       string `path:"*" doc:"slash-separated path relative to the selected root"`
+	Path       string `path:"*" doc:"slash-separated path relative to the selected root; spans multiple URL segments"`
 }
 
 type fileCreateForm struct {
@@ -239,6 +239,11 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "get-file-by-path", Method: http.MethodGet, Path: runtimeFilePath,
 		Summary: "Get authorized file metadata by a root-relative path", Tags: []string{"files"},
+		Description: "The path spans every remaining URL segment: /files/{root_file_id}/-/a/b/c.txt names c.txt " +
+			"inside a/b under the root. OpenAPI has no multi-segment parameter, so the value is published as {path}; " +
+			"a client sends the segments separated by / and escapes each segment on its own. An escaped separator " +
+			"(%2F) is decoded before the lookup and names the same file as /. Empty, leading or trailing segments " +
+			"and backslashes are rejected with 422.",
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "root_file_id", fileOwner, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *filePathInput) (*respx.Body[fileEntryView], error) {
 		rootID, err := guid.RequireID(input.RootFileID)

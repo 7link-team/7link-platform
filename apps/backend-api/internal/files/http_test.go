@@ -304,6 +304,15 @@ func TestFileHTTPAuthorizedBasicRoutes(t *testing.T) {
 	require.Equal(t, http.StatusOK, metadata.Code, metadata.Body.String())
 	byPath := api.Get("/files/2/-/Source/Shared/root.txt", headers...)
 	require.Equal(t, http.StatusOK, byPath.Code, byPath.Body.String())
+	// The published operation describes the path as multi-segment and an
+	// escaped separator as the same path: %2F is decoded before the lookup.
+	escaped := api.Get("/files/2/-/Source%2FShared%2Froot.txt", headers...)
+	require.Equal(t, http.StatusOK, escaped.Code, escaped.Body.String())
+	var plain, decoded respx.Envelope[fileEntryView]
+	require.NoError(t, json.Unmarshal(byPath.Body.Bytes(), &plain))
+	require.NoError(t, json.Unmarshal(escaped.Body.Bytes(), &decoded))
+	assert.Equal(t, plain.Data.ID, decoded.Data.ID)
+	assert.NotZero(t, decoded.Data.ID)
 
 	created := postFileForm(t, api, headers, map[string]string{"parent_id": "2", "kind": "directory", "name": "Contracts"}, "", "")
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())

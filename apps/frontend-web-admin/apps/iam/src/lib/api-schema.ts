@@ -390,7 +390,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get authorized file metadata by a root-relative path */
+        /**
+         * Get authorized file metadata by a root-relative path
+         * @description The path spans every remaining URL segment: /files/{root_file_id}/-/a/b/c.txt names c.txt inside a/b under the root. OpenAPI has no multi-segment parameter, so the value is published as {path}; a client sends the segments separated by / and escapes each segment on its own. An escaped separator (%2F) is decoded before the lookup and names the same file as /. Empty, leading or trailing segments and backslashes are rejected with 422.
+         */
         get: operations["get-file-by-path"];
         put?: never;
         post?: never;
@@ -11379,7 +11382,7 @@ export interface operations {
             path: {
                 /** @description Resource identifier */
                 root_file_id: string;
-                /** @description slash-separated path relative to the selected root */
+                /** @description slash-separated path relative to the selected root; spans multiple URL segments */
                 path: string;
             };
             cookie?: never;
