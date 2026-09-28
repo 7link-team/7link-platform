@@ -61,15 +61,17 @@ func TestSetRoleDataScopeCannotWidenBeyondTheActorsOwnScope(t *testing.T) {
 	assert.Equal(t, DataScopeSelf, scopeOf(peer))
 	assert.False(t, allowAll(), "authority is unchanged after the refused widenings")
 
-	// Scopes other than all stay available, and a full administrator is unaffected.
-	_, changed, err := harness.service.SetRoleDataScope(actor, tenantID, peer, DataScopeDepartment, nil)
-	require.NoError(t, err)
-	assert.True(t, changed)
+	// Department scopes widen self just as all does, while a full administrator is unaffected.
+	for _, scope := range []DataScope{DataScopeDepartment, DataScopeDepartmentAndDescendants} {
+		_, _, err = harness.service.SetRoleDataScope(actor, tenantID, peer, scope, nil)
+		require.ErrorIs(t, err, ErrPrivilegeEscalation, "the actor holds todo_view for its own rows only")
+	}
+	assert.Equal(t, DataScopeSelf, scopeOf(peer))
 	platformAdministratorID := guid.ID(12)
 	harness.seedAdditionalMember(t, tenantID, platformAdministratorID, MemberActive)
 	require.NoError(t, harness.db.Exec("INSERT INTO sl_iam_platform_administrators(principal_id,created_at) VALUES (?,?)", platformAdministratorID, repositoryTestTime).Error)
 	platformAdministrator := authn.WithClaims(t.Context(), &authn.Claims{SubjectType: authn.SubjectTypePrincipal, PrincipalID: platformAdministratorID, TenantID: tenantID})
-	_, changed, err = harness.service.SetRoleDataScope(platformAdministrator, tenantID, own, DataScopeAll, nil)
+	_, changed, err := harness.service.SetRoleDataScope(platformAdministrator, tenantID, own, DataScopeAll, nil)
 	require.NoError(t, err)
 	assert.True(t, changed, "a platform administrator holds no tenant role yet is a full administrator")
 	administrators := role("Administrators", DataScopeAll, "tenant_administer")

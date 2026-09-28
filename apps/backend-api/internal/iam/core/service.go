@@ -399,6 +399,9 @@ func (s *Service) changePermission(
 			if err := s.requireGrantablePermissionsOn(ctx, repo, tenantID, code); err != nil {
 				return err
 			}
+			if err := s.requireGrantableDataScope(ctx, repo, tenantID, roleID, nil, []string{code}); err != nil {
+				return err
+			}
 			changed, err = repo.GrantPermission(ctx, tenantID, roleID, code)
 		} else {
 			verify, protectErr := s.administrators.Protect(ctx, repo.writer(), tenantID)
