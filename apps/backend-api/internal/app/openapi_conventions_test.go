@@ -63,8 +63,6 @@ func TestComposedOpenAPIAddressesPrincipalsByPrincipalID(t *testing.T) {
 var nonSnowflakePathIDs = map[string]string{
 	"link_id":      "an identity link is addressed by provider_id:base64url(subject), the upstream identity it names",
 	"candidate_id": "an avatar candidate is a 48-hex content token that is never stored as a row",
-	"session_id":   "sessions are still addressed by their secret-keyed hash until they publish a snowflake ID",
-	"passkey_id":   "passkeys are still addressed by their credential hash until they publish a snowflake ID",
 }
 
 func TestComposedOpenAPIPublishesSnowflakePathIDs(t *testing.T) {

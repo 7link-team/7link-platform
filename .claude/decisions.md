@@ -3330,3 +3330,23 @@ state changed, 102003 operation conflict, data = conflict frontier). The web
 client mirrors the codes in `businessCode` (iam-api.ts). The error-key gate has
 no allowlist any more (audit C15).
 Status: IMPLEMENTED.
+
+## Secret-Keyed Tables Keep Hash Primary Keys - 2026-09-28
+
+Decision: exemption to the snowflake primary-key rule. A table whose row is
+looked up by a presented secret (cookie, token, code, challenge) keys it by the
+secret's hash, because that hash is the only lookup the protocol offers and a
+second key would add an index without adding an access path. Exempt tables:
+iam_sessions, iam_passkeys (credential-ID hash), iam_mfa_challenges,
+iam_passkey_challenges, iam_stepup_challenges, iam_reauth_challenges,
+iam_recovery_codes (principal_id + code hash), iam_password_recovery_tokens,
+iam_email_verification_tokens (token HMAC), iam_identity_link_transactions,
+iam_oauth_codes, iam_oauth_consent_requests (challenge hash),
+iam_refresh_tokens. None of these hashes is ever an API identifier.
+Sessions and passkeys are listed and addressed by users, so they additionally
+carry a snowflake `public_id` (authn migration 18, unique, three dialects) that
+is their only API identity (/sessions/{session_id},
+/principals/{principal_id}/passkeys/{passkey_id}). New rows are inserted with
+it; rows created before the column get one from the authn module's start-up
+backfill. The column stays NULL-able only for that window.
+Status: IMPLEMENTED (audit D2).

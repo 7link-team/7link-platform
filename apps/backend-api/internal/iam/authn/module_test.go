@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/authn/model"
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
@@ -248,8 +249,14 @@ func TestAuthnModuleResolvesDependenciesAndRunsLifecycle(t *testing.T) {
 	assert.ErrorIs(t, instance.Service.oauthGrants(t.Context(), &authnext.Claims{}), assert.AnError)
 	assert.Equal(t, config.Web.CookieName, instance.SessionCookieName())
 	require.NoError(t, instance.CheckHealth(t.Context()))
+	harness.seedPrincipal(t, 1, "alice")
+	legacy := testSession("pre-public-id", 1, repositoryTestNow, repositoryTestNow.Add(time.Hour), repositoryTestNow.Add(2*time.Hour))
+	require.NoError(t, harness.db.Table(harness.repository.names.Sessions.String()).Create(legacy).Error)
 	require.NoError(t, registry.Start(t.Context()))
 	assert.NotNil(t, instance.notificationCancel)
+	var backfilled model.Session
+	require.NoError(t, harness.db.Table(harness.repository.names.Sessions.String()).Where("id_hash = ?", legacy.IDHash).Take(&backfilled).Error)
+	assert.True(t, backfilled.PublicID != nil && !backfilled.PublicID.Zero(), "start assigns the public ID a pre-migration session lacks")
 
 	_, api := humatest.New(t)
 	require.NoError(t, registry.RegisterHTTP(t.Context(), api))

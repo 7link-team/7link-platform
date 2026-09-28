@@ -1805,7 +1805,11 @@
             "type": "string"
           },
           "id": {
-            "type": "string"
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "ip_address": {
             "type": "string"
@@ -10233,7 +10237,11 @@
             "type": "string"
           },
           "id": {
-            "type": "string"
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "last_used_at": {
             "format": "date-time",
@@ -28056,9 +28064,8 @@
             "name": "passkey_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
-              "minLength": 64,
-              "pattern": "^[a-f0-9]{64}$",
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -28177,9 +28184,8 @@
             "name": "passkey_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
-              "minLength": 64,
-              "pattern": "^[a-f0-9]{64}$",
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -42954,9 +42960,8 @@
             "name": "session_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
-              "minLength": 64,
-              "pattern": "^[a-f0-9]{64}$",
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -43054,9 +43059,8 @@
             "name": "session_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
-              "minLength": 64,
-              "pattern": "^[a-f0-9]{64}$",
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }

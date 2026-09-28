@@ -45,7 +45,11 @@ type PasskeyUser struct {
 func (PasskeyUser) TableName() string { return "iam_passkey_users" }
 
 type Passkey struct {
-	IDHash               string     `gorm:"column:id_hash;type:text;primaryKey"`
+	IDHash string `gorm:"column:id_hash;type:text;primaryKey"`
+	// PublicID is the snowflake the API addresses the passkey by; the
+	// credential hash stays internal. NULL only until the start-up backfill
+	// reaches a row created before the column existed.
+	PublicID             *guid.ID   `gorm:"column:public_id"`
 	PrincipalID          guid.ID    `gorm:"column:principal_id;not null"`
 	Name                 string     `gorm:"column:name;type:text;not null"`
 	CredentialCiphertext string     `gorm:"column:credential_ciphertext;type:text;not null"`

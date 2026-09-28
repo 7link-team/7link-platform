@@ -50,6 +50,9 @@ func (r *Repository) createSession(ctx context.Context, row *model.Session) erro
 	if err != nil {
 		return err
 	}
+	if err := r.assignPublicID(&row.PublicID); err != nil {
+		return err
+	}
 	return tables.Sessions.WithContext(ctx).Create(row)
 }
 
@@ -66,13 +69,15 @@ func (r *Repository) listActiveSessions(ctx context.Context, principalID guid.ID
 	).Order(tables.Sessions.LastSeenAt.Desc(), tables.Sessions.CreatedAt.Desc()).Find()
 }
 
-func (r *Repository) revokeSession(ctx context.Context, principalID guid.ID, idHash string, now time.Time) (bool, error) {
+// revokeSession revokes one of the principal's sessions by the snowflake the
+// API addresses it by.
+func (r *Repository) revokeSession(ctx context.Context, principalID, publicID guid.ID, now time.Time) (bool, error) {
 	tables, _, err := r.tables()
 	if err != nil {
 		return false, err
 	}
 	result, err := tables.Sessions.WithContext(ctx).Where(
-		tables.Sessions.IDHash.Eq(idHash),
+		tables.Sessions.PublicID.Eq(publicID),
 		tables.Sessions.PrincipalID.Eq(principalID),
 		tables.Sessions.RevokedAt.IsNull(),
 	).UpdateSimple(tables.Sessions.RevokedAt.Value(now))
@@ -178,7 +183,61 @@ func (r *Repository) rotateSession(
 		if !changed {
 			return nil
 		}
+		if err := repository.assignPublicID(&replacement.PublicID); err != nil {
+			return err
+		}
 		return tables.Sessions.WithContext(ctx).Create(replacement)
 	})
 	return current, changed, err
+}
+
+// backfillPublicIDs gives every session and passkey created before public_id
+// existed its snowflake. It runs at start-up, once the ID source is ready, so
+// no row reaches the API without one; rows created afterwards are inserted with
+// it. A row another instance filled meanwhile is left as that instance set it.
+func (r *Repository) backfillPublicIDs(ctx context.Context) error {
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
+	for {
+		rows, err := tables.Sessions.WithContext(ctx).Where(tables.Sessions.PublicID.IsNull()).Limit(100).Find()
+		if err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			break
+		}
+		for _, row := range rows {
+			id, err := r.nextID()
+			if err != nil {
+				return err
+			}
+			if _, err := tables.Sessions.WithContext(ctx).Where(
+				tables.Sessions.IDHash.Eq(row.IDHash), tables.Sessions.PublicID.IsNull(),
+			).UpdateSimple(tables.Sessions.PublicID.Value(id)); err != nil {
+				return err
+			}
+		}
+	}
+	for {
+		rows, err := tables.Passkeys.WithContext(ctx).Where(tables.Passkeys.PublicID.IsNull()).Limit(100).Find()
+		if err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		for _, row := range rows {
+			id, err := r.nextID()
+			if err != nil {
+				return err
+			}
+			if _, err := tables.Passkeys.WithContext(ctx).Where(
+				tables.Passkeys.IDHash.Eq(row.IDHash), tables.Passkeys.PublicID.IsNull(),
+			).UpdateSimple(tables.Passkeys.PublicID.Value(id)); err != nil {
+				return err
+			}
+		}
+	}
 }

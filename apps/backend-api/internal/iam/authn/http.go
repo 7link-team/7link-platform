@@ -102,7 +102,7 @@ type sessionMutationInput struct {
 	Authorization string `header:"Authorization" hidden:"true"`
 	Cookie        string `header:"Cookie" hidden:"true"`
 	Origin        string `header:"Origin" hidden:"true"`
-	ID            string `path:"session_id" minLength:"64" maxLength:"64" pattern:"^[a-f0-9]{64}$"`
+	ID            string `path:"session_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type passwordChangeInput struct {
@@ -335,7 +335,7 @@ type passkeyMutationInput struct {
 	Authorization string `header:"Authorization" hidden:"true"`
 	Cookie        string `header:"Cookie" hidden:"true"`
 	Origin        string `header:"Origin" hidden:"true"`
-	ID            string `path:"passkey_id" minLength:"64" maxLength:"64" pattern:"^[a-f0-9]{64}$"`
+	ID            string `path:"passkey_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body          struct {
 		Name string `json:"name" minLength:"1" maxLength:"200"`
 	}
@@ -345,7 +345,7 @@ type passkeyDeleteInput struct {
 	Authorization string `header:"Authorization" hidden:"true"`
 	Cookie        string `header:"Cookie" hidden:"true"`
 	Origin        string `header:"Origin" hidden:"true"`
-	ID            string `path:"passkey_id" minLength:"64" maxLength:"64" pattern:"^[a-f0-9]{64}$"`
+	ID            string `path:"passkey_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body          struct {
 		CurrentPassword string `json:"current_password" minLength:"1" maxLength:"1024"`
 	}
@@ -575,7 +575,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		if strings.TrimSpace(in.Authorization) != "" || currentSessionHash(in.Cookie, web.web.CookieName) == "" {
 			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
-		output, err := web.GetSession(ctx, "", in.Cookie, currentSessionHash(in.Cookie, web.web.CookieName))
+		output, err := web.CurrentSession(ctx, in.Cookie)
 		if err != nil {
 			return nil, authenticationError(err)
 		}

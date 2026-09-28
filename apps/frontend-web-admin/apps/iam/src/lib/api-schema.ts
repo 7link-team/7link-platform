@@ -4996,7 +4996,7 @@ export interface components {
             current: boolean;
             /** Format: date-time */
             expires_at: string;
-            id: string;
+            id: string | null;
             ip_address?: string;
             /** Format: date-time */
             last_seen_at: string;
@@ -7912,7 +7912,7 @@ export interface components {
             attestation_type?: string;
             /** Format: date-time */
             created_at: string;
-            id: string;
+            id: string | null;
             /** Format: date-time */
             last_used_at?: string;
             name: string;

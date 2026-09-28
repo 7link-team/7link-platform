@@ -479,7 +479,7 @@ func TestWebServiceDatabaseFailuresFailClosed(t *testing.T) {
 		assert.ErrorIs(t, err, authnext.ErrUnavailable)
 		_, err = service.ListSessions(t.Context(), "Bearer "+bearer, "")
 		assert.ErrorContains(t, err, "list browser sessions")
-		err = service.RevokeSession(t.Context(), "Bearer "+bearer, "", strings.Repeat("a", 64))
+		err = service.RevokeSession(t.Context(), "Bearer "+bearer, "", "9223372036854775807")
 		assert.ErrorContains(t, err, "revoke browser session")
 		err = service.LogoutAll(t.Context(), "Bearer "+bearer, "")
 		assert.ErrorContains(t, err, "revoke all sessions")
@@ -766,12 +766,12 @@ func TestWebServiceReachableEdgeBranches(t *testing.T) {
 		cookie := service.SessionCookie(current.SessionID)
 		assert.ErrorIs(t, service.RevokeSession(t.Context(), "", cookie, "invalid"), ErrSessionNotFound)
 		harness.auditErr = assert.AnError
-		err = service.RevokeSession(t.Context(), "", cookie, tokenHash(other.SessionID))
+		err = service.RevokeSession(t.Context(), "", cookie, harness.sessionPublicID(t, other.SessionID))
 		assert.ErrorContains(t, err, "revoke browser session")
 		_, err = service.Authenticate(t.Context(), "", service.SessionCookie(other.SessionID))
 		require.NoError(t, err, "audit failure must roll back revocation")
 		harness.auditErr = nil
-		require.NoError(t, service.RevokeSession(t.Context(), "", cookie, tokenHash(other.SessionID)))
+		require.NoError(t, service.RevokeSession(t.Context(), "", cookie, harness.sessionPublicID(t, other.SessionID)))
 		_, err = service.Authenticate(t.Context(), "", service.SessionCookie(other.SessionID))
 		assert.ErrorIs(t, err, ErrInvalidSession)
 	})

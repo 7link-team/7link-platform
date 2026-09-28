@@ -29,6 +29,7 @@ func newSession(db *gorm.DB, opts ...gen.DOOption) session {
 	tableName := _session.sessionDo.TableName()
 	_session.ALL = field.NewAsterisk(tableName)
 	_session.IDHash = field.NewString(tableName, "id_hash")
+	_session.PublicID = field.NewField(tableName, "public_id")
 	_session.PrincipalID = field.NewField(tableName, "principal_id")
 	_session.CreatedAt = field.NewTime(tableName, "created_at")
 	_session.AuthTime = field.NewTime(tableName, "auth_time")
@@ -51,6 +52,7 @@ type session struct {
 
 	ALL               field.Asterisk
 	IDHash            field.String
+	PublicID          field.Field
 	PrincipalID       field.Field
 	CreatedAt         field.Time
 	AuthTime          field.Time
@@ -79,6 +81,7 @@ func (s session) As(alias string) *session {
 func (s *session) updateTableName(table string) *session {
 	s.ALL = field.NewAsterisk(table)
 	s.IDHash = field.NewString(table, "id_hash")
+	s.PublicID = field.NewField(table, "public_id")
 	s.PrincipalID = field.NewField(table, "principal_id")
 	s.CreatedAt = field.NewTime(table, "created_at")
 	s.AuthTime = field.NewTime(table, "auth_time")
@@ -114,8 +117,9 @@ func (s *session) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (s *session) fillFieldMap() {
-	s.fieldMap = make(map[string]field.Expr, 12)
+	s.fieldMap = make(map[string]field.Expr, 13)
 	s.fieldMap["id_hash"] = s.IDHash
+	s.fieldMap["public_id"] = s.PublicID
 	s.fieldMap["principal_id"] = s.PrincipalID
 	s.fieldMap["created_at"] = s.CreatedAt
 	s.fieldMap["auth_time"] = s.AuthTime

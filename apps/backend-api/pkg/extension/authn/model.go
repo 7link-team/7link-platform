@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+
+	"7link.com/platform/internal/infra/guid"
 )
 
 var (
@@ -51,7 +53,7 @@ type PasskeyOptions struct {
 }
 
 type Passkey struct {
-	ID                string     `json:"id"`
+	ID                guid.ID    `json:"id"`
 	Name              string     `json:"name"`
 	SignCount         uint32     `json:"sign_count"`
 	CreatedAt         time.Time  `json:"created_at"`
@@ -90,7 +92,7 @@ type StepUpResult struct {
 
 // BrowserSession is a revocable browser session visible to its owner.
 type BrowserSession struct {
-	ID                string    `json:"id"`
+	ID                guid.ID   `json:"id"`
 	Current           bool      `json:"current"`
 	CreatedAt         time.Time `json:"created_at"`
 	LastSeenAt        time.Time `json:"last_seen_at"`

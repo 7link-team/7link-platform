@@ -24,7 +24,11 @@ type Credential struct {
 func (Credential) TableName() string { return "iam_credentials" }
 
 type Session struct {
-	IDHash            string     `gorm:"column:id_hash;type:text;primaryKey"`
+	IDHash string `gorm:"column:id_hash;type:text;primaryKey"`
+	// PublicID is the snowflake the API addresses the session by; the hash
+	// stays internal. NULL only until the start-up backfill reaches a row
+	// created before the column existed.
+	PublicID          *guid.ID   `gorm:"column:public_id"`
 	PrincipalID       guid.ID    `gorm:"column:principal_id;not null"`
 	CreatedAt         time.Time  `gorm:"column:created_at;not null"`
 	AuthTime          time.Time  `gorm:"column:auth_time;not null"`

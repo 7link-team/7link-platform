@@ -166,7 +166,7 @@ describe("IAM API client", () => {
       () => "90",
       () => "101"
     )
-    const id = "a".repeat(64)
+    const id = "7300000000000000001"
     await client.session()
     await client.currentBrowserSession()
     await client.browserSession(id)
@@ -1588,7 +1588,7 @@ describe("IAM API client", () => {
           body: await request.text(),
         })
         const passkey = {
-          id: "a".repeat(64),
+          id: "7300000000000000002",
           name: "Work laptop",
           sign_count: 1,
           created_at: "2026-08-01T00:00:00Z",
@@ -1628,8 +1628,8 @@ describe("IAM API client", () => {
       challenge_id: login.challenge_id,
       credential,
     })
-    await client.renamePasskey("a".repeat(64), "Security key")
-    await client.deletePasskey("a".repeat(64), "password")
+    await client.renamePasskey("7300000000000000002", "Security key")
+    await client.deletePasskey("7300000000000000002", "password")
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /principals/101/passkeys",
@@ -1637,8 +1637,8 @@ describe("IAM API client", () => {
       "POST /principals/101/passkeys",
       "POST /login/passkey/options",
       "POST /login/passkey/verify",
-      `PATCH /principals/101/passkeys/${"a".repeat(64)}`,
-      `DELETE /principals/101/passkeys/${"a".repeat(64)}`,
+      "PATCH /principals/101/passkeys/7300000000000000002",
+      "DELETE /principals/101/passkeys/7300000000000000002",
     ])
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBeNull()

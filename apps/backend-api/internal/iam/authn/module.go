@@ -400,6 +400,9 @@ func (m *Module) Start(ctx context.Context) error {
 	if m == nil || m.Service == nil {
 		return fmt.Errorf("start authn: service is unavailable")
 	}
+	if err := m.Service.repo.backfillPublicIDs(ctx); err != nil {
+		return fmt.Errorf("start authn: assign session and passkey public IDs: %w", err)
+	}
 	return m.StartNotificationWorker(ctx)
 }
 

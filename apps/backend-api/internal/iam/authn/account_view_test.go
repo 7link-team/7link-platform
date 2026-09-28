@@ -89,8 +89,9 @@ func TestAccountViewTokenThroughActualPersonalHTTPHandlers(t *testing.T) {
 	assert.NotContains(t, me.Body.String(), created.Token)
 	sessions := api.Get("/principals/202/sessions", authorization, cookie)
 	require.Equal(t, http.StatusOK, sessions.Code, sessions.Body.String())
-	assert.Contains(t, sessions.Body.String(), tokenHash("browser-202"))
-	assert.NotContains(t, sessions.Body.String(), tokenHash("browser-101"))
+	assert.Contains(t, sessions.Body.String(), `"id":"`+h.sessionPublicID(t, "browser-202")+`"`)
+	assert.NotContains(t, sessions.Body.String(), `"id":"`+h.sessionPublicID(t, "browser-101")+`"`)
+	assert.NotContains(t, sessions.Body.String(), tokenHash("browser-202"), "the session hash is never published")
 	assert.NotContains(t, sessions.Body.String(), `"current":true`)
 	foreign := api.Get("/principals/101/sessions", authorization, cookie)
 	require.Equal(t, http.StatusNotFound, foreign.Code, foreign.Body.String())
@@ -141,9 +142,9 @@ func TestAccountViewPersonalReadsNeverSubstituteCookieOwner(t *testing.T) {
 		sessions, readErr := s.ListSessions(ctx, "Bearer "+created.Token, cookie)
 		require.NoError(t, readErr)
 		require.Len(t, sessions, 1)
-		assert.Equal(t, tokenHash("browser-202"), sessions[0].ID)
+		assert.Equal(t, h.sessionPublicID(t, "browser-202"), sessions[0].ID.String())
 		assert.False(t, sessions[0].Current, "a view must not mark any target browser session current")
-		_, readErr = s.GetSession(ctx, "", cookie, tokenHash("browser-101"))
+		_, readErr = s.GetSession(ctx, "", cookie, h.sessionPublicID(t, "browser-101"))
 		assert.ErrorIs(t, readErr, ErrSessionNotFound)
 		status, readErr := s.MFAStatus(ctx, "", cookie)
 		require.NoError(t, readErr)
@@ -441,4 +442,13 @@ func TestAccountHolderHelpersRefuseDelegatedOAuthTokens(t *testing.T) {
 	assert.ErrorIs(t, err, authnext.ErrInvalidCredentials)
 	assert.ErrorIs(t, service.LogoutAll(t.Context(), bearer, ""), authnext.ErrInvalidCredentials)
 	assert.ErrorIs(t, service.ChangePassword(t.Context(), bearer, "", "correct horse battery staple", "another horse battery staple"), authnext.ErrInvalidCredentials)
+}
+
+// sessionPublicID is the snowflake the API addresses the session holding token by.
+func (h *authnRepositoryHarness) sessionPublicID(t *testing.T, token string) string {
+	t.Helper()
+	var row model.Session
+	require.NoError(t, h.db.Table(h.repository.names.Sessions.String()).Where("id_hash = ?", tokenHash(token)).Take(&row).Error)
+	require.NotNil(t, row.PublicID, "every session is created with its public ID")
+	return row.PublicID.String()
 }

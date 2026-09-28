@@ -29,6 +29,7 @@ func newPasskey(db *gorm.DB, opts ...gen.DOOption) passkey {
 	tableName := _passkey.passkeyDo.TableName()
 	_passkey.ALL = field.NewAsterisk(tableName)
 	_passkey.IDHash = field.NewString(tableName, "id_hash")
+	_passkey.PublicID = field.NewField(tableName, "public_id")
 	_passkey.PrincipalID = field.NewField(tableName, "principal_id")
 	_passkey.Name = field.NewString(tableName, "name")
 	_passkey.CredentialCiphertext = field.NewString(tableName, "credential_ciphertext")
@@ -47,6 +48,7 @@ type passkey struct {
 
 	ALL                  field.Asterisk
 	IDHash               field.String
+	PublicID             field.Field
 	PrincipalID          field.Field
 	Name                 field.String
 	CredentialCiphertext field.String
@@ -71,6 +73,7 @@ func (p passkey) As(alias string) *passkey {
 func (p *passkey) updateTableName(table string) *passkey {
 	p.ALL = field.NewAsterisk(table)
 	p.IDHash = field.NewString(table, "id_hash")
+	p.PublicID = field.NewField(table, "public_id")
 	p.PrincipalID = field.NewField(table, "principal_id")
 	p.Name = field.NewString(table, "name")
 	p.CredentialCiphertext = field.NewString(table, "credential_ciphertext")
@@ -102,8 +105,9 @@ func (p *passkey) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (p *passkey) fillFieldMap() {
-	p.fieldMap = make(map[string]field.Expr, 8)
+	p.fieldMap = make(map[string]field.Expr, 9)
 	p.fieldMap["id_hash"] = p.IDHash
+	p.fieldMap["public_id"] = p.PublicID
 	p.fieldMap["principal_id"] = p.PrincipalID
 	p.fieldMap["name"] = p.Name
 	p.fieldMap["credential_ciphertext"] = p.CredentialCiphertext

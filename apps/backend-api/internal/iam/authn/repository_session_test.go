@@ -49,13 +49,15 @@ func TestRepositorySessionOwnershipExpiryAndRevocation(t *testing.T) {
 	require.Len(t, active, 2)
 	assert.Equal(t, "current", active[0].IDHash)
 
-	changed, err := harness.repository.revokeSession(t.Context(), 2, "other", now)
+	require.NotNil(t, rows[1].PublicID, "a session is created with its public ID")
+	other := *rows[1].PublicID
+	changed, err := harness.repository.revokeSession(t.Context(), 2, other, now)
 	require.NoError(t, err)
 	assert.False(t, changed, "principal B cannot revoke principal A's session")
-	changed, err = harness.repository.revokeSession(t.Context(), 1, "other", now)
+	changed, err = harness.repository.revokeSession(t.Context(), 1, other, now)
 	require.NoError(t, err)
 	assert.True(t, changed)
-	changed, err = harness.repository.revokeSession(t.Context(), 1, "other", now)
+	changed, err = harness.repository.revokeSession(t.Context(), 1, other, now)
 	require.NoError(t, err)
 	assert.False(t, changed)
 }
@@ -212,6 +214,48 @@ func TestRepositoryRotateSessionRequiresOwnedActiveSession(t *testing.T) {
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
 	_, err = harness.repository.activeSession(t.Context(), "new", now)
 	require.NoError(t, err)
+}
+
+// TestRepositoryBackfillsPublicIDsOfRowsCreatedBeforeTheColumn covers the rows
+// migration 18 finds: sessions and passkeys stored without a public ID get a
+// distinct snowflake each, and a row that already has one keeps it.
+func TestRepositoryBackfillsPublicIDsOfRowsCreatedBeforeTheColumn(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "sl_")
+	harness.seedPrincipal(t, 1, "alice")
+	now := repositoryTestNow
+	sessions := harness.repository.names.Sessions.String()
+	passkeys := harness.repository.names.Passkeys.String()
+	for _, hash := range []string{"legacy-a", "legacy-b"} {
+		require.NoError(t, harness.db.Table(sessions).Create(testSession(hash, 1, now, now.Add(time.Hour), now.Add(8*time.Hour))).Error)
+		require.NoError(t, harness.db.Table(passkeys).Create(&model.Passkey{
+			IDHash: hash, PrincipalID: 1, Name: hash, CredentialCiphertext: "cipher", CreatedAt: now, UpdatedAt: now,
+		}).Error)
+	}
+	kept := testSession("current", 1, now, now.Add(time.Hour), now.Add(8*time.Hour))
+	require.NoError(t, harness.repository.createSession(t.Context(), kept))
+	require.NotNil(t, kept.PublicID)
+	var missing int64
+	require.NoError(t, harness.db.Table(sessions).Where("public_id IS NULL").Count(&missing).Error)
+	require.EqualValues(t, 2, missing, "the fixture stores rows the way pre-migration code did")
+
+	require.NoError(t, harness.repository.backfillPublicIDs(t.Context()))
+	require.NoError(t, harness.repository.backfillPublicIDs(t.Context()), "a second start finds nothing to do")
+
+	seen := map[guid.ID]bool{}
+	for _, table := range []string{sessions, passkeys} {
+		var ids []*guid.ID
+		require.NoError(t, harness.db.Table(table).Order("id_hash").Pluck("public_id", &ids).Error)
+		for _, id := range ids {
+			// guid.ID scans NULL as zero, so a missing ID reads as nil or zero.
+			require.True(t, id != nil && !id.Zero(), "%s keeps a row without a public ID", table)
+			assert.False(t, seen[*id], "public ID %s is assigned twice", id)
+			seen[*id] = true
+		}
+	}
+	assert.Len(t, seen, 5)
+	var current model.Session
+	require.NoError(t, harness.db.Table(sessions).Where("id_hash = ?", "current").Take(&current).Error)
+	assert.Equal(t, kept.PublicID, current.PublicID, "an assigned public ID never changes")
 }
 
 func testSession(id string, principalID guid.ID, createdAt, expiresAt, absoluteExpiresAt time.Time) *model.Session {

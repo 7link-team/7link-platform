@@ -119,7 +119,7 @@ func TestAccountViewTokenRejectsExpiredRevokedAndWrongOperatorSessions(t *testin
 			case "expired-session":
 				require.NoError(t, h.db.Model(&model.Session{}).Where("id_hash = ?", row.ActorSessionHash).Update("expires_at", at).Error)
 			case "revoked-session":
-				_, err := h.repository.revokeSession(t.Context(), row.ActorID, row.ActorSessionHash, at)
+				_, err := h.repository.revokeSessionByHash(t.Context(), row.ActorSessionHash, at)
 				require.NoError(t, err)
 			case "wrong-session-owner":
 				row.ActorSessionHash = tokenHash("browser-202")

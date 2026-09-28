@@ -69,7 +69,7 @@ func TestRepositoryExplicitAuthenticationTimestampsPostgresSQL(t *testing.T) {
 			return err
 		}},
 		{"passkey name", func() error {
-			_, _, err := repo.renamePasskey(t.Context(), 101, "test-hash", "Renamed", repositoryTestNow)
+			_, _, err := repo.renamePasskey(t.Context(), 101, 202, "Renamed", repositoryTestNow)
 			return err
 		}},
 	} {
@@ -199,7 +199,8 @@ func TestModuleMigrationContract(t *testing.T) {
 	module := &Module{}
 	assert.Equal(t, Name, module.ModuleName())
 	assert.Equal(t, "goose_authn", module.MigrationSource().TableName)
-	require.Len(t, module.MigrationMilestones(), 10)
+	require.Len(t, module.MigrationMilestones(), 11)
+	assert.Equal(t, "public-ids", module.MigrationMilestones()[10].Name)
 	assert.Equal(t, "access-view-targets", module.MigrationMilestones()[9].Name)
 	assert.Equal(t, "account-view-tokens", module.MigrationMilestones()[8].Name)
 	assert.Equal(t, "reauthentication", module.MigrationMilestones()[6].Name)
@@ -290,7 +291,7 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 		},
 		"create session":        func() error { return repository.createSession(t.Context(), &model.Session{}) },
 		"list sessions":         func() error { _, err := repository.listActiveSessions(t.Context(), principalID, now); return err },
-		"revoke session":        func() error { _, err := repository.revokeSession(t.Context(), principalID, "session", now); return err },
+		"revoke session":        func() error { _, err := repository.revokeSession(t.Context(), principalID, 202, now); return err },
 		"revoke sessions":       func() error { _, err := repository.revokeSessions(t.Context(), principalID, "", now); return err },
 		"revoke refresh tokens": func() error { _, err := repository.revokeRefreshTokens(t.Context(), principalID, now); return err },
 		"revoke authentication": func() error { return repository.revokeOtherAuthentication(t.Context(), principalID, "", now) },
@@ -333,10 +334,10 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 			return err
 		},
 		"rename passkey": func() error {
-			_, _, err := repository.renamePasskey(t.Context(), principalID, "passkey", "name", now)
+			_, _, err := repository.renamePasskey(t.Context(), principalID, 202, "name", now)
 			return err
 		},
-		"delete passkey":      func() error { _, err := repository.deletePasskey(t.Context(), principalID, "passkey"); return err },
+		"delete passkey":      func() error { _, err := repository.deletePasskey(t.Context(), principalID, 202); return err },
 		"ensure passkey user": func() error { _, err := repository.ensurePasskeyUser(t.Context(), &model.PasskeyUser{}); return err },
 		"get passkey user":    func() error { _, err := repository.getPasskeyUser(t.Context(), principalID); return err },
 		"find passkey user": func() error {

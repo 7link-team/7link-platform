@@ -170,9 +170,11 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 				continue
 			}
 			found = true
-			assert.Equal(t, "^[a-f0-9]{64}$", parameter.Schema.Pattern, path)
-			assert.Equal(t, 64, *parameter.Schema.MinLength, path)
-			assert.Equal(t, 64, *parameter.Schema.MaxLength, path)
+			// Addressed by the published snowflake; the secret-keyed hash that
+			// keys the row is never part of the contract.
+			assert.Equal(t, "^[1-9][0-9]*$", parameter.Schema.Pattern, path)
+			assert.Nil(t, parameter.Schema.MinLength, path)
+			assert.Equal(t, 19, *parameter.Schema.MaxLength, path)
 		}
 		require.True(t, found, path)
 	}
