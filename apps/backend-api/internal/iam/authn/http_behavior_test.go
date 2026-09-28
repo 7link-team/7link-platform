@@ -862,6 +862,14 @@ func TestAuthenticationPasskeyHTTPContract(t *testing.T) {
 	invalidLogin := map[string]any{"challenge_id": options.Data.ChallengeID, "credential": map[string]any{"invalid": true}}
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/login/passkey/verify", invalidLogin, "Origin: https://app.example").Code)
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/login/passkey/verify", invalidLogin, "Origin: https://app.example").Code)
+	// Clients forward getClientExtensionResults() verbatim, including outputs
+	// nobody requested; the contract must not refuse them before the ceremony.
+	unsolicitedOutputs := map[string]any{"challenge_id": options.Data.ChallengeID, "credential": map[string]any{
+		"id": "Y3JlZGVudGlhbA", "rawId": "Y3JlZGVudGlhbA", "type": "public-key",
+		"clientExtensionResults": map[string]any{"credProps": map[string]any{"rk": true}, "vendor.example": map[string]any{}},
+		"response":               map[string]any{"clientDataJSON": "e30", "authenticatorData": "AA", "signature": "AA", "userHandle": "AA"},
+	}}
+	assert.Equal(t, http.StatusUnauthorized, api.Post("/login/passkey/verify", unsolicitedOutputs, "Origin: https://app.example").Code)
 
 	missingID := strings.Repeat("a", 64)
 	assert.Equal(t, http.StatusNotFound, api.Patch("/principals/"+principalID+"/passkeys/"+missingID, "Cookie: "+cookie, "Origin: https://app.example", map[string]any{"name": "Missing"}).Code)

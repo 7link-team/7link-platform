@@ -230,9 +230,21 @@ type passkeyLoginBeginInput struct {
 	}
 }
 
+// aliasWebAuthnExtensions describes extension inputs and outputs as the open
+// objects they are on the wire. Both types carry the members the library does
+// not model in a field their custom JSON codecs merge into the top level, so
+// the closed schema reflected from their fields would refuse what a client
+// legitimately forwards from getClientExtensionResults().
+func aliasWebAuthnExtensions(registry huma.Registry) {
+	open := reflect.TypeFor[map[string]any]()
+	registry.RegisterTypeAlias(reflect.TypeFor[protocol.AuthenticationExtensions](), open)
+	registry.RegisterTypeAlias(reflect.TypeFor[protocol.AuthenticationExtensionsClientOutputs](), open)
+}
+
 type webAuthnAssertion json.RawMessage
 
 func (webAuthnAssertion) Schema(registry huma.Registry) *huma.Schema {
+	aliasWebAuthnExtensions(registry)
 	return registry.Schema(reflect.TypeFor[protocol.CredentialAssertionResponse](), true, "WebAuthnAssertion")
 }
 
@@ -247,6 +259,7 @@ func (value *webAuthnAssertion) UnmarshalJSON(raw []byte) error {
 type webAuthnCreation json.RawMessage
 
 func (webAuthnCreation) Schema(registry huma.Registry) *huma.Schema {
+	aliasWebAuthnExtensions(registry)
 	return registry.Schema(reflect.TypeFor[protocol.CredentialCreationResponse](), true, "WebAuthnCreation")
 }
 
@@ -261,6 +274,7 @@ func (value *webAuthnCreation) UnmarshalJSON(raw []byte) error {
 type webAuthnAssertionOptions json.RawMessage
 
 func (webAuthnAssertionOptions) Schema(registry huma.Registry) *huma.Schema {
+	aliasWebAuthnExtensions(registry)
 	return registry.Schema(reflect.TypeFor[protocol.CredentialAssertion](), true, "WebAuthnAssertionOptions")
 }
 
@@ -271,6 +285,7 @@ func (value webAuthnAssertionOptions) MarshalJSON() ([]byte, error) {
 type webAuthnCreationOptions json.RawMessage
 
 func (webAuthnCreationOptions) Schema(registry huma.Registry) *huma.Schema {
+	aliasWebAuthnExtensions(registry)
 	return registry.Schema(reflect.TypeFor[protocol.CredentialCreation](), true, "WebAuthnCreationOptions")
 }
 
