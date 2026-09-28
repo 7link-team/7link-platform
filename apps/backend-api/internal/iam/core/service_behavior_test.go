@@ -45,10 +45,30 @@ type policyPutResult struct {
 	err     error
 }
 
+// contributeTaskModule adds what a business task module contributes to the
+// shared registry of a composed app. core cannot import that module, so the
+// fixture declares the subset of its permissions and fields these tests use.
+func contributeTaskModule(t testing.TB, registry *authz.Registry) *authz.Registry {
+	t.Helper()
+	require.NoError(t, registry.Contribute(
+		[]authz.Action{
+			{Resource: "todo", Verb: "view", Scope: authz.ActionScopeTenant, DataScoped: true},
+			{Resource: "todo", Verb: "export", Scope: authz.ActionScopeTenant, DataScoped: true},
+		},
+		[]authz.Field{
+			{Resource: "todo", Name: "id", Mutability: "readOnly", Returned: "always"},
+			{Resource: "todo", Name: "title", Mutability: "readWrite", Returned: "default", Maskable: true, Configurable: true},
+			{Resource: "todo", Name: "description", Mutability: "readWrite", Returned: "default", Maskable: true, Configurable: true},
+		},
+	))
+	return registry
+}
+
 func newCoreServiceHarness(t *testing.T) coreServiceHarness {
 	t.Helper()
 	harness := newRepositoryHarness(t, "sl_")
-	authorizer := NewAuthorizer(harness.runtime)
+	registry := contributeTaskModule(t, authz.DefaultRegistry())
+	authorizer := NewAuthorizerWithRegistry(harness.runtime, registry)
 	authorizer.now = harness.repository.now
 	require.NoError(t, authorizer.BindForeignTables(
 		publishedDirectoryTables("sl_"), publishedPrincipalTable("sl_"),
@@ -58,7 +78,7 @@ func newCoreServiceHarness(t *testing.T) coreServiceHarness {
 		events = append(events, event)
 		return nil
 	}
-	service := NewService(authz.DefaultRegistry(), harness.repository, authorizer, appender)
+	service := NewService(registry, harness.repository, authorizer, appender)
 	service.lockPrincipal = func(ctx context.Context, tx *gorm.DB, id guid.ID) error {
 		return tx.WithContext(ctx).Table("sl_iam_principals").Where("id = ?", id).Update("updated_at", gorm.Expr("updated_at")).Error
 	}
@@ -1210,7 +1230,7 @@ func TestAuthorizationSourceGeneratedQueriesPropagateFailures(t *testing.T) {
 		for _, table := range []string{"iam_temporary_role_grants", "iam_role_bindings"} {
 			t.Run(table, func(t *testing.T) {
 				harness := newRepositoryHarness(t, "sl_")
-				authorizer := NewAuthorizer(harness.runtime)
+				authorizer := NewAuthorizerWithRegistry(harness.runtime, authz.DefaultRegistry())
 				pinned, err := authorizer.pinWriter()
 				require.NoError(t, err)
 				require.NoError(t, harness.db.Exec("DROP TABLE sl_"+table).Error)
@@ -1235,7 +1255,7 @@ func TestAuthorizationSourceGeneratedQueriesPropagateFailures(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
 				harness := newRepositoryHarness(t, "sl_")
-				authorizer := NewAuthorizer(harness.runtime)
+				authorizer := NewAuthorizerWithRegistry(harness.runtime, authz.DefaultRegistry())
 				pinned, err := authorizer.pinWriter()
 				require.NoError(t, err)
 				require.NoError(t, harness.db.Exec("DROP TABLE sl_"+test.table).Error)
@@ -1249,7 +1269,7 @@ func TestAuthorizationSourceGeneratedQueriesPropagateFailures(t *testing.T) {
 
 	t.Run("directory reader", func(t *testing.T) {
 		harness := newRepositoryHarness(t, "sl_")
-		authorizer := NewAuthorizer(harness.runtime)
+		authorizer := NewAuthorizerWithRegistry(harness.runtime, authz.DefaultRegistry())
 		pinned, err := authorizer.pinWriter()
 		require.NoError(t, err)
 		want := errors.New("directory unavailable")
@@ -1269,7 +1289,7 @@ func TestAuthorizationSourceGeneratedQueriesPropagateFailures(t *testing.T) {
 
 	t.Run("invalid relationship source", func(t *testing.T) {
 		harness := newRepositoryHarness(t, "sl_")
-		authorizer := NewAuthorizer(harness.runtime)
+		authorizer := NewAuthorizerWithRegistry(harness.runtime, authz.DefaultRegistry())
 		pinned, err := authorizer.pinWriter()
 		require.NoError(t, err)
 		_, err = pinned.loadAuthorizationSourceLabels(t.Context(), 1, 2, nil, nil, []relationshipGrant{{
@@ -1286,7 +1306,7 @@ func TestMemberAuthorizationSourcesRejectsUnavailableAndInvalidAuthorizer(t *tes
 	assert.ErrorIs(t, authorizer.BindDirectoryAuthorizationSources(DirectoryAuthorizationSourceStore{}), ErrUnavailable)
 
 	harness := newRepositoryHarness(t, "sl_")
-	authorizer = NewAuthorizer(harness.runtime)
+	authorizer = NewAuthorizerWithRegistry(harness.runtime, authz.DefaultRegistry())
 	assert.ErrorIs(t, authorizer.BindDirectoryAuthorizationSources(DirectoryAuthorizationSourceStore{}), ErrUnavailable)
 	_, err = authorizer.MemberAuthorizationSources(t.Context(), 0, 2)
 	assert.ErrorIs(t, err, ErrInvalidArgument)
@@ -1295,7 +1315,7 @@ func TestMemberAuthorizationSourcesRejectsUnavailableAndInvalidAuthorizer(t *tes
 func TestServiceWriteRollsBackMutationRevisionAndAuditFailure(t *testing.T) {
 	harness := newRepositoryHarness(t, "sl_")
 	seedTenantAndPrincipal(t, harness.db, "sl_", 1, 11)
-	authorizer := NewAuthorizer(harness.runtime)
+	authorizer := NewAuthorizerWithRegistry(harness.runtime, authz.DefaultRegistry())
 	want := errors.New("audit unavailable")
 	service := NewService(
 		authz.DefaultRegistry(), harness.repository, authorizer,

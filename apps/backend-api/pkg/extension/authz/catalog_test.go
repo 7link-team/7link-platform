@@ -93,3 +93,52 @@ func TestRegisterInitializesZeroRegistry(t *testing.T) {
 	_, ok := r.Find("store_view")
 	assert.True(t, ok)
 }
+
+func TestDefaultRegistryDeclaresNoBusinessModulePermissions(t *testing.T) {
+	r := DefaultRegistry()
+	for _, action := range r.All() {
+		assert.NotEqual(t, "todo", action.Resource, "task permissions belong to the task module")
+		assert.NotEqual(t, "file", action.Resource, "file permissions belong to the files module")
+		assert.NotEqual(t, "system_file", action.Resource, "file permissions belong to the files module")
+	}
+	assert.Empty(t, r.Fields("todo"))
+}
+
+func TestContributeAddsActionsAndFieldsAsOneUnit(t *testing.T) {
+	r := DefaultRegistry()
+	before := len(r.All())
+	field := Field{Resource: "task", Name: "title", Mutability: "readWrite", Returned: "default", Configurable: true}
+	require.NoError(t, r.Contribute([]Action{{Resource: "task", Verb: "view", Scope: ActionScopeTenant}}, []Field{field}))
+	action, ok := r.Find("task_view")
+	require.True(t, ok)
+	assert.Equal(t, ActionScopeTenant, action.Scope)
+	_, ok = r.FindField("task", "title")
+	assert.True(t, ok)
+
+	// A rejected contribution leaves nothing behind: neither its valid actions
+	// nor its fields, whichever declaration failed.
+	for name, contribution := range map[string]struct {
+		actions []Action
+		fields  []Field
+	}{
+		"duplicate action": {actions: []Action{{Resource: "task", Verb: "export"}, {Resource: "task", Verb: "view"}}},
+		"invalid action":   {actions: []Action{{Resource: "task", Verb: "export"}, {Resource: "Task", Verb: "delete"}}},
+		"duplicate field":  {actions: []Action{{Resource: "task", Verb: "export"}}, fields: []Field{field}},
+		"invalid field":    {actions: []Action{{Resource: "task", Verb: "export"}}, fields: []Field{{Resource: "task", Name: "x"}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Error(t, r.Contribute(contribution.actions, contribution.fields))
+			_, exported := r.Find("task_export")
+			assert.False(t, exported)
+			assert.Len(t, r.All(), before+1)
+			assert.Len(t, r.Fields("task"), 1)
+		})
+	}
+
+	var zero Registry
+	require.NoError(t, zero.Contribute([]Action{{Resource: "task", Verb: "view"}}, []Field{field}))
+	_, ok = zero.Find("task_view")
+	assert.True(t, ok)
+	var missing *Registry
+	assert.Error(t, missing.Contribute(nil, nil))
+}

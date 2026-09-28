@@ -25,10 +25,8 @@ func (p *todoPolicy) FieldConstraint(context.Context, guid.ID, guid.ID, string, 
 	fields := p.fields
 	if fields == nil {
 		fields = map[string]authz.FieldDecision{}
-		for _, f := range authz.DefaultFields() {
-			if f.Resource == Name {
-				fields[f.Name] = authz.DecideField(f, nil, nil)
-			}
+		for _, f := range authorizationFields() {
+			fields[f.Name] = authz.DecideField(f, nil, nil)
 		}
 	}
 	return authz.FieldConstraint{Fields: fields}, p.err
@@ -68,7 +66,11 @@ func (todoVerifier) Authenticate(context.Context, string, string) (*authn.Claims
 func (todoVerifier) IsMemberActive(context.Context, guid.ID, guid.ID) (bool, error) { return true, nil }
 
 func todoRegistrar(policy *todoPolicy) *authz.Registrar {
-	return authz.NewRegistrar(authz.DefaultRegistry(), todoVerifier{}, policy, todoVerifier{})
+	registry := authz.DefaultRegistry()
+	if err := registry.Contribute(authorizationActions(), authorizationFields()); err != nil {
+		panic(err)
+	}
+	return authz.NewRegistrar(registry, todoVerifier{}, policy, todoVerifier{})
 }
 
 func boundaryContext(t *testing.T, tenant, entity, principal guid.ID) context.Context {

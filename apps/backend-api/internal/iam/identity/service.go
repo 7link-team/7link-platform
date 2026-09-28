@@ -66,12 +66,13 @@ func NewService(
 	appender audit.Appender,
 	administrators core.AdministratorGuard,
 	ids guid.Source,
+	permissions *authz.Registry,
 ) *Service {
-	if runtime == nil || appender == nil || administrators == nil || ids == nil {
-		panic("identity service requires runtime, audit appender, administrator guard, and id generator")
+	if runtime == nil || appender == nil || administrators == nil || ids == nil || permissions == nil {
+		panic("identity service requires runtime, audit appender, administrator guard, id generator, and permission registry")
 	}
 	return &Service{
-		repo: NewRepository(runtime, ids, appender), administrators: administrators, permissionRegistry: authz.DefaultRegistry(), now: time.Now,
+		repo: NewRepository(runtime, ids, appender), administrators: administrators, permissionRegistry: permissions, now: time.Now,
 	}
 }
 

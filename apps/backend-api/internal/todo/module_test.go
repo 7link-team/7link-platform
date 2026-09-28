@@ -170,9 +170,36 @@ func servicesWith(t *testing.T, ids guid.Source) *module.Services {
 	require.NoError(t, module.Provide[core.EntityOwnerResolver](services, func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
 		return authz.ResourceOwner{TenantID: 1, EntityID: 10}, true, nil
 	}))
-	require.NoError(t, module.Provide[*authz.Registrar](services, todoRegistrar(policy)))
+	// The core catalog, as IAM core publishes it: the module contributes its own.
+	require.NoError(t, module.Provide[*authz.Registrar](services, authz.NewRegistrar(authz.DefaultRegistry(), todoVerifier{}, policy, todoVerifier{})))
 	require.NoError(t, services.Seal())
 	return services
+}
+
+func TestModuleContributesItsPermissionsToTheSharedRegistry(t *testing.T) {
+	services := servicesWith(t, &stubIDs{})
+	registrar, err := module.Resolve[*authz.Registrar](services)
+	require.NoError(t, err)
+	for _, action := range authorizationActions() {
+		_, found := registrar.Registry().Find(authz.PermissionCode(action.Resource, action.Verb))
+		require.False(t, found, "the core catalog must not declare %s", action.Resource+"_"+action.Verb)
+	}
+	require.Empty(t, registrar.Registry().Fields(Name))
+
+	require.NoError(t, NewModule(newTestRuntime(t), enabledTodoConfig()).InjectServices(services))
+	for _, action := range authorizationActions() {
+		registered, found := registrar.Registry().Find(authz.PermissionCode(action.Resource, action.Verb))
+		require.True(t, found, action.Verb)
+		assert.Equal(t, action.Summary, registered.Summary)
+		assert.True(t, registered.DataScoped)
+	}
+	assert.Len(t, registrar.Registry().Fields(Name), len(authorizationFields()))
+	description, found := registrar.Registry().FindField(Name, "description")
+	require.True(t, found)
+	assert.True(t, description.Maskable)
+
+	// A second contribution of the same codes is a wiring error, not a silent merge.
+	assert.ErrorContains(t, NewModule(newTestRuntime(t), enabledTodoConfig()).InjectServices(services), "duplicate authz code")
 }
 
 func TestModuleContributesTheRawQueryMiddleware(t *testing.T) {

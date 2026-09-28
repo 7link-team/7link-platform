@@ -8,8 +8,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// taskFields mirrors the shape a business module contributes: identifiers are
+// always returned and never configurable, text attributes are maskable.
+func taskFields() []Field {
+	return []Field{
+		{Resource: "task", Name: "id", Mutability: "readOnly", Returned: "always"},
+		{Resource: "task", Name: "version", Mutability: "readOnly", Returned: "default"},
+		{Resource: "task", Name: "description", Mutability: "readWrite", Returned: "default", Maskable: true, Configurable: true},
+	}
+}
+
 func TestFieldPolicyCanonicalAndDenyPrecedence(t *testing.T) {
-	f, ok := DefaultRegistry().FindField("todo", "description")
+	registry := DefaultRegistry()
+	require.NoError(t, registry.Contribute(nil, taskFields()))
+	f, ok := registry.FindField("task", "description")
 	require.True(t, ok)
 	p := FieldPolicy{Read: FieldAccess{Default: "deny", AllowRoles: []guid.ID{2, 1, 1}, DenyRoles: []guid.ID{2}}, Write: FieldAccess{Default: "allow", DenyRoles: []guid.ID{1}}, Mask: "redact"}
 	canonical, err := p.Canonical(f)
@@ -27,13 +39,16 @@ func TestFieldPolicyCanonicalAndDenyPrecedence(t *testing.T) {
 }
 
 func TestFieldCapabilitiesCannotExposeSecretsOrMutateIdentifiers(t *testing.T) {
-	for _, f := range DefaultFields() {
+	identifiers := 0
+	for _, f := range append(DefaultFields(), taskFields()...) {
 		if f.Name == "id" || f.Name == "version" {
+			identifiers++
 			_, err := (FieldPolicy{}).Canonical(f)
 			assert.Error(t, err)
 			assert.Equal(t, FieldDecision{Read: "allow"}, DecideField(f, nil, nil))
 		}
 	}
+	assert.Equal(t, 3, identifiers, "profile id plus the contributed id and version")
 	secret := Field{Resource: "test", Name: "password", Mutability: "writeOnly", Returned: "never", Configurable: true}
 	assert.Equal(t, FieldDecision{Read: "omit", Create: true, Update: true}, DecideField(secret, nil, nil))
 	p := FieldPolicy{Read: FieldAccess{Default: "allow"}, Write: FieldAccess{Default: "allow"}, Mask: "omit"}

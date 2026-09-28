@@ -110,7 +110,7 @@ func identityWiredRegistry(
 			))
 		}},
 		&identityDependencyProvider{name: core.Name, provide: func(services *module.Services) error {
-			if err := module.Provide[core.AuthorizationEvaluator](services, core.NewAuthorizer(harness.runtime)); err != nil {
+			if err := module.Provide[core.AuthorizationEvaluator](services, core.NewAuthorizerWithRegistry(harness.runtime, authz.DefaultRegistry())); err != nil {
 				return err
 			}
 			if err := module.Provide[*authz.Registrar](services, identityTestRegistrar()); err != nil {
@@ -306,7 +306,7 @@ func TestIdentityModuleRefusesToStartWithoutThePublishedTableNames(t *testing.T)
 				func(context.Context, audit.ErasureObligation) error { return nil },
 			)))
 			require.NoError(t, module.Provide[core.AdministratorGuard](services, harness.guard))
-			require.NoError(t, module.Provide[core.AuthorizationEvaluator](services, core.NewAuthorizer(harness.runtime)))
+			require.NoError(t, module.Provide[core.AuthorizationEvaluator](services, core.NewAuthorizerWithRegistry(harness.runtime, authz.DefaultRegistry())))
 			require.NoError(t, module.Provide[core.PrincipalTableNamesConnector](services,
 				core.PrincipalTableNamesConnector{Bind: func(core.PrincipalTableNames) error { return nil }}))
 			require.NoError(t, module.Provide[core.AccessTableNames](services, absent.access))

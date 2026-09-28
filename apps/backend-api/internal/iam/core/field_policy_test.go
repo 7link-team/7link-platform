@@ -147,7 +147,7 @@ func TestFieldPolicyAuditFailureRollsBackAndConcurrentVersionsHaveOneWinner(t *t
 	before, err := h.repository.revisions.Current(ctx, h.db, 1)
 	require.NoError(t, err)
 	want := errors.New("audit offline")
-	failing := NewService(authz.DefaultRegistry(), h.repository, httpAuthorizationEvaluator{}, func(context.Context, *gorm.DB, audit.DomainEvent) error { return want })
+	failing := NewService(h.module.service.registry, h.repository, httpAuthorizationEvaluator{}, func(context.Context, *gorm.DB, audit.DomainEvent) error { return want })
 	_, err = failing.SetFieldPolicy(ctx, 1, "todo", "description", policy, saved.Version)
 	assert.ErrorIs(t, err, want)
 	assert.ErrorIs(t, failing.DeleteFieldPolicy(ctx, 1, "todo", "description", saved.Version), want)
@@ -188,7 +188,7 @@ func TestFieldPolicyAuditFailureRollsBackAndConcurrentVersionsHaveOneWinner(t *t
 }
 
 func TestFieldPolicyRejectsMalformedStorageAndInvalidScope(t *testing.T) {
-	f, ok := authz.DefaultRegistry().FindField("todo", "description")
+	f, ok := contributeTaskModule(t, authz.DefaultRegistry()).FindField("todo", "description")
 	require.True(t, ok)
 	for _, raw := range []string{"null", "{", "{}", `{"unknown":true}`, `{"read":{"default":"allow"},"write":{"default":"deny"},"mask":"omit"} {}`} {
 		_, err := decodeFieldPolicy(f, raw)

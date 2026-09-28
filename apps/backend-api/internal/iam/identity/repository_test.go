@@ -17,6 +17,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
@@ -151,7 +152,7 @@ func newIdentityHarness(t *testing.T, prefix string) *identityHarness {
 		return harness.auditErr
 	})
 	ids := newIdentityTestIDs(1000)
-	harness.service = NewService(harness.runtime, appender, harness.guard, ids)
+	harness.service = NewService(harness.runtime, appender, harness.guard, ids, authz.DefaultRegistry())
 	storage, err := files.NewLocal(t.TempDir())
 	require.NoError(t, err)
 	harness.storage = storage
@@ -332,10 +333,11 @@ func TestNewRepositoryRequiresDependencies(t *testing.T) {
 	assert.Panics(t, func() { NewRepository(nil, ids, appender) })
 	assert.Panics(t, func() { NewRepository(runtime, nil, appender) })
 	assert.Panics(t, func() { NewRepository(runtime, ids, nil) })
-	assert.Panics(t, func() { NewService(nil, appender, &stubAdministratorGuard{}, ids) })
-	assert.Panics(t, func() { NewService(runtime, nil, &stubAdministratorGuard{}, ids) })
-	assert.Panics(t, func() { NewService(runtime, appender, nil, ids) })
-	assert.Panics(t, func() { NewService(runtime, appender, &stubAdministratorGuard{}, nil) })
+	assert.Panics(t, func() { NewService(nil, appender, &stubAdministratorGuard{}, ids, authz.DefaultRegistry()) })
+	assert.Panics(t, func() { NewService(runtime, nil, &stubAdministratorGuard{}, ids, authz.DefaultRegistry()) })
+	assert.Panics(t, func() { NewService(runtime, appender, nil, ids, authz.DefaultRegistry()) })
+	assert.Panics(t, func() { NewService(runtime, appender, &stubAdministratorGuard{}, nil, authz.DefaultRegistry()) })
+	assert.Panics(t, func() { NewService(runtime, appender, &stubAdministratorGuard{}, ids, nil) })
 }
 
 func TestRepositoryUnavailableWithoutDatabase(t *testing.T) {
@@ -655,6 +657,7 @@ func TestEveryServiceEntryPointFailsWithoutDatabase(t *testing.T) {
 		func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil },
 		&stubAdministratorGuard{},
 		newIdentityTestIDs(1),
+		authz.DefaultRegistry(),
 	)
 	ctx := t.Context()
 	display := "Alice"

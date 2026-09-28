@@ -9,6 +9,7 @@ import (
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authz"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -60,7 +61,7 @@ func boundMemberTenantResolver(t *testing.T, runtime *appenv.Runtime) core.Membe
 // wires it, for a harness that provides one to a module under test.
 func boundAuthorizationEvaluator(t *testing.T, runtime *appenv.Runtime) core.AuthorizationEvaluator {
 	t.Helper()
-	authorizer := core.NewAuthorizer(runtime)
+	authorizer := core.NewAuthorizerWithRegistry(runtime, authz.DefaultRegistry())
 	directory, principal := publishedForeignTables(runtime.TablePrefix())
 	require.NoError(t, authorizer.BindForeignTables(directory, principal))
 	return authorizer

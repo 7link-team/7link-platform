@@ -62,6 +62,9 @@ func NewModule(runtime *appenv.Runtime, config Config) *Module {
 	if runtime == nil {
 		panic("iam module requires runtime")
 	}
+	// The one shared registry of the process: published through the registrar,
+	// extended by business modules through Registry.Contribute, and read by
+	// every authorization consumer core hands out.
 	registry := authz.DefaultRegistry()
 	instance := &Module{
 		config:    config,

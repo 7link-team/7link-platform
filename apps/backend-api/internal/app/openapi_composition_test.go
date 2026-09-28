@@ -90,7 +90,12 @@ func TestIAMAuthorizationClassifierDistinguishesGuardBoundaries(t *testing.T) {
 	assert.ErrorContains(t, err, "is optional")
 }
 
-func TestComposedIAMOpenAPIHasExactMappedOperationSet(t *testing.T) {
+// bootstrapComposedApp drives the production composition with every IAM and
+// business module enabled on a migrated SQLite database. extra modules join the
+// inventory after the production modules, before Wire, the way a new business
+// module would.
+func bootstrapComposedApp(t *testing.T, extra ...module.Module) *App {
+	t.Helper()
 	seed := make([]byte, ed25519.SeedSize)
 	for index := range seed {
 		seed[index] = byte(index + 1)
@@ -113,8 +118,51 @@ func TestComposedIAMOpenAPIHasExactMappedOperationSet(t *testing.T) {
 		}),
 		Federation: IAMFederation{Enabled: true, EncryptionKey: key},
 	}}
-	require.NoError(t, app.bootstrap(t.Context()))
+	require.NoError(t, app.initializeRuntime(t.Context()))
+	require.NoError(t, app.composeModules())
+	require.NoError(t, app.addModule(extra...))
+	require.NoError(t, app.prepareModules())
+	require.NoError(t, app.lifecycle(t.Context()))
 	t.Cleanup(func() { assert.NoError(t, app.shutdown()) })
+	return app
+}
+
+// TestComposedRouteGuardsUseOnlySharedRegistryPermissions iterates every
+// operation of the composed application, not only the IAM ones: a business
+// module's guard naming a code it never contributed would authorize against a
+// permission no role can hold.
+func TestComposedRouteGuardsUseOnlySharedRegistryPermissions(t *testing.T) {
+	app := bootstrapComposedApp(t)
+	api := humax.New(chi.NewRouter(), humax.Config{Name: app.config.Name, Version: app.config.Version})
+	require.NoError(t, app.modules.RegisterHTTP(t.Context(), api))
+	registrar, err := module.Resolve[*authz.Registrar](app.modules.Services())
+	require.NoError(t, err)
+	registry := registrar.Registry()
+
+	guarded := map[string]bool{}
+	for path, item := range api.OpenAPI().Paths {
+		for method, operation := range openAPIPathOperations(item) {
+			if operation == nil {
+				continue
+			}
+			code, isGuarded := authz.OperationGuard(operation)
+			if !isGuarded {
+				continue
+			}
+			_, declared := registry.Find(code)
+			assert.True(t, declared, "%s %s (%s) is guarded by %q, which the shared registry does not declare", method, path, operation.OperationID, code)
+			guarded[code] = true
+		}
+	}
+	// The walk must reach the modules that contribute their own codes, or it
+	// proves nothing about the contribution path.
+	for _, code := range []string{"todo_view", "todo_import", "file_view", "system_file_view", "role_view"} {
+		assert.True(t, guarded[code], "no composed route is guarded by %s", code)
+	}
+}
+
+func TestComposedIAMOpenAPIHasExactMappedOperationSet(t *testing.T) {
+	app := bootstrapComposedApp(t)
 
 	api := humax.New(chi.NewRouter(), humax.Config{Name: app.config.Name, Version: app.config.Version})
 	require.NoError(t, app.modules.RegisterHTTP(t.Context(), api))

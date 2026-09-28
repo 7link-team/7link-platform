@@ -345,7 +345,7 @@ func (m *Module) Initialize(ctx context.Context) error {
 	if !m.foreign.bound() {
 		return errors.New("initialize identity: the core, organization, and oauth modules must publish the table names identity joins")
 	}
-	m.Service = NewService(m.runtime, m.appender, m.administrators, m.ids)
+	m.Service = NewService(m.runtime, m.appender, m.administrators, m.ids, m.registrar.Registry())
 	m.Service.repo.resourceFiles = m.resourceFiles
 	// Wire has already run, so the owners have published; the service and every
 	// repository it clones share the one holder the connectors bound.
@@ -353,7 +353,6 @@ func (m *Module) Initialize(ctx context.Context) error {
 	m.Service.repo.credentials = m.credentials
 	m.Service.fields = m.fields
 	m.Service.avatarPermissions = m.avatarPermissions
-	m.Service.permissionRegistry = m.registrar.Registry()
 	m.Service.anonymizer = m.anonymizer
 	m.Service.erasureRecorder = m.erasureRecorder
 	m.Service.privacyBrowser, m.Service.reauthenticate = m.privacyBrowser, m.reauthenticate

@@ -56,7 +56,7 @@ func TestFileModuleWiresItsAuthorizationCatalog(t *testing.T) {
 		require.True(t, ok, action.Code)
 		require.Equal(t, action, registered)
 	}
-	require.ErrorContains(t, NewModule(runtime, Config{}).InjectServices(services), "already registered")
+	require.ErrorContains(t, NewModule(runtime, Config{}).InjectServices(services), "duplicate authz code")
 }
 
 func TestModuleProvidesConfiguredExtensibleDriver(t *testing.T) {
