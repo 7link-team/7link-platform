@@ -55,8 +55,22 @@ type governanceAuditRow struct {
 	TargetID  guid.ID
 }
 
+// governanceGrantGuard adds the grant capability core's administrator guard
+// publishes, recording the roles an approval asked it to judge.
+type governanceGrantGuard struct {
+	governanceAdministratorGuard
+	requireErr error
+	required   [][]guid.ID
+}
+
+func (g *governanceGrantGuard) RequireGrantableRoles(_ context.Context, _ *gorm.DB, _ guid.ID, roles []guid.ID) error {
+	g.required = append(g.required, roles)
+	return g.requireErr
+}
+
 type governanceHarness struct {
 	service       *Service
+	guard         *governanceGrantGuard
 	runtime       *appenv.Runtime
 	db            *gorm.DB
 	prefix        string
@@ -77,9 +91,9 @@ func newGovernanceHarness(t *testing.T, prefix string) *governanceHarness {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, router.Close()) })
 	runtime := appenv.NewRuntime(appenv.NewIdentity("governance-test", "1"), appenv.WithDatabase(router), appenv.WithTablePrefix(prefix))
-	h := &governanceHarness{runtime: runtime, db: router.Write(), prefix: prefix}
+	h := &governanceHarness{runtime: runtime, db: router.Write(), prefix: prefix, guard: &governanceGrantGuard{}}
 	h.migrate(t)
-	h.service = NewService(runtime, h.appendAudit, h.grantStore(), newGovernanceTestIDs(1000))
+	h.service = NewService(runtime, h.appendAudit, h.grantStore(), h.guard, newGovernanceTestIDs(1000))
 	h.service.now = func() time.Time { return governanceTestNow }
 	bindForeignTables(t, h.service.repo, prefix)
 	return h
@@ -297,6 +311,50 @@ func TestAccessRequestLifecycleTenantIsolationAndAtomicAudit(t *testing.T) {
 	assert.Equal(t, StatusCancelled, withdrawn.Status)
 }
 
+// Approving a role access request grants the role, so the approver must be able
+// to grant it directly; otherwise an approver widens someone's authority past
+// their own.
+func TestAccessRequestApprovalRequiresTheApproverToGrantTheRole(t *testing.T) {
+	h := newGovernanceHarness(t, "sl_")
+	h.seedTenant(t, 1)
+	h.seedMember(t, 1, 10, "Requester")
+	h.seedMember(t, 1, 11, "Approver")
+	h.seedRole(t, 1, 20, "Operator")
+	request, err := h.service.Create(t.Context(), 1, 10, CreateAccessRequest{
+		RoleID: 20, Reason: "temporary operations access", AccessExpiresAt: governanceTestNow.Add(24 * time.Hour),
+	})
+	require.NoError(t, err)
+
+	h.guard.requireErr = core.ErrPrivilegeEscalation
+	_, err = h.service.Approve(t.Context(), 1, request.ID, 11, "approved")
+	require.ErrorIs(t, err, core.ErrPrivilegeEscalation)
+	assert.Equal(t, [][]guid.ID{{20}}, h.guard.required)
+	assert.Zero(t, h.count(t, "iam_temporary_role_grants", "tenant_id = ?", 1), "the refused approval grants nothing")
+	items, err := h.service.List(t.Context(), 1, 0)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, StatusPending, items[0].Status, "the request stays open for an approver who can grant it")
+
+	rejected, err := h.service.Reject(t.Context(), 1, request.ID, 11, "rejected")
+	require.NoError(t, err, "rejecting grants nothing and needs no grant authority")
+	assert.Equal(t, StatusRejected, rejected.Status)
+	assert.Len(t, h.guard.required, 1)
+
+	h.guard.requireErr = nil
+	second, err := h.service.Create(t.Context(), 1, 10, CreateAccessRequest{
+		RoleID: 20, Reason: "second attempt", AccessExpiresAt: governanceTestNow.Add(24 * time.Hour),
+	})
+	require.NoError(t, err)
+	h.service.administrators = governanceAdministratorGuard{}
+	_, err = h.service.Approve(t.Context(), 1, second.ID, 11, "approved")
+	require.ErrorIs(t, err, ErrUnavailable, "a guard that cannot judge grantability fails closed")
+	h.service.administrators = h.guard
+	approved, err := h.service.Approve(t.Context(), 1, second.ID, 11, "approved")
+	require.NoError(t, err)
+	assert.Equal(t, StatusApproved, approved.Status)
+	assert.Equal(t, int64(1), h.count(t, "iam_temporary_role_grants", "tenant_id = ? AND id = ?", 1, second.ID))
+}
+
 func TestAccessRequestAuditFailureRollsBackDecisionAndGrant(t *testing.T) {
 	h := newGovernanceHarness(t, "")
 	h.seedTenant(t, 1)
@@ -355,7 +413,11 @@ func TestAccessRequestValidationAndDerivedExpiry(t *testing.T) {
 func TestGovernanceRepositoriesAndServicesFailClosed(t *testing.T) {
 	assert.Panics(t, func() { NewRepository(nil, newGovernanceTestIDs(1)) })
 	assert.Panics(t, func() { NewRepository(appenv.NewRuntime(appenv.NewIdentity("test", "1")), nil) })
-	assert.Panics(t, func() { NewService(nil, nil, core.RoleGrantStore{}, nil) })
+	assert.Panics(t, func() { NewService(nil, nil, core.RoleGrantStore{}, nil, nil) })
+	unguarded := newGovernanceHarness(t, "")
+	assert.Panics(t, func() {
+		NewService(unguarded.runtime, unguarded.appendAudit, unguarded.grantStore(), nil, newGovernanceTestIDs(1))
+	})
 
 	var repo *Repository
 	assert.Nil(t, repo.writer())

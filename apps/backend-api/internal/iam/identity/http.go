@@ -511,6 +511,8 @@ func identityError(err error) error {
 	switch {
 	case errors.Is(err, authz.ErrFieldDenied):
 		return huma.Error403Forbidden("respx.forbidden")
+	case errors.Is(err, ErrPrincipalSharedBeyondTenant):
+		return huma.Error409Conflict(identityi18n.PrincipalSharedBeyondTenant)
 	case errors.Is(err, authz.ErrFieldsUnavailable):
 		return huma.Error503ServiceUnavailable(identityi18n.IdentityUnavailable)
 	case errors.Is(err, ErrNotFound):

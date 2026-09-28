@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/core"
+	corei18n "7link.com/platform/internal/iam/core/i18n"
 	governancei18n "7link.com/platform/internal/iam/governance/i18n"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -361,6 +362,8 @@ func governanceError(err error) error {
 		return huma.Error409Conflict(governancei18n.SelfApproval)
 	case errors.Is(err, ErrRequesterOnly):
 		return huma.Error403Forbidden(governancei18n.RequesterOnly)
+	case errors.Is(err, core.ErrPrivilegeEscalation):
+		return huma.Error403Forbidden(corei18n.PrivilegeEscalationDenied)
 	case errors.Is(err, ErrReviewNotFound):
 		return huma.Error404NotFound(governancei18n.ReviewNotFound)
 	case errors.Is(err, ErrReviewItemNotFound):

@@ -11,10 +11,12 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization/model"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -81,16 +83,44 @@ type InvitationPrincipalCreator = identity.InvitationPrincipalCreator
 
 type InvitationService struct {
 	repo            *Repository
+	administrators  core.AdministratorGuard
 	credentials     InvitationCredentials
 	createPrincipal InvitationPrincipalCreator
 	now             func() time.Time
 }
 
-func NewInvitationService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Source, credentials InvitationCredentials, createPrincipal InvitationPrincipalCreator) *InvitationService {
-	if runtime == nil || appender == nil || ids == nil || credentials == nil || createPrincipal == nil {
-		panic("invitation service requires runtime, audit appender, id generator, credentials, and principal creator")
+func NewInvitationService(runtime *appenv.Runtime, appender audit.Appender, administrators core.AdministratorGuard, ids guid.Source, credentials InvitationCredentials, createPrincipal InvitationPrincipalCreator) *InvitationService {
+	if runtime == nil || appender == nil || administrators == nil || ids == nil || credentials == nil || createPrincipal == nil {
+		panic("invitation service requires runtime, audit appender, administrator guard, id generator, credentials, and principal creator")
 	}
-	return &InvitationService{repo: NewRepository(runtime, ids, appender), credentials: credentials, createPrincipal: createPrincipal, now: time.Now}
+	return &InvitationService{repo: NewRepository(runtime, ids, appender), administrators: administrators, credentials: credentials, createPrincipal: createPrincipal, now: time.Now}
+}
+
+// requireGrantableInvitationRoles keeps an invitation from carrying roles the
+// inviter could not grant directly: acceptance attaches them without an actor.
+func (s *InvitationService) requireGrantableInvitationRoles(ctx context.Context, repo *Repository, tenantID guid.ID, roles []guid.ID) error {
+	if authnext.PrincipalIDFromContext(ctx).Zero() || len(roles) == 0 {
+		return nil
+	}
+	checker, ok := s.administrators.(interface {
+		RequireGrantableRoles(context.Context, *gorm.DB, guid.ID, []guid.ID) error
+	})
+	if !ok {
+		return ErrUnavailable
+	}
+	return checker.RequireGrantableRoles(ctx, repo.writer(), tenantID, roles)
+}
+
+func (s *InvitationService) prepareGrantableInvitationRoles(ctx context.Context, repo *Repository, tenantID guid.ID) error {
+	if authnext.PrincipalIDFromContext(ctx).Zero() {
+		return nil
+	}
+	if checker, ok := s.administrators.(interface {
+		PrepareGrantableRoles(context.Context, *gorm.DB, guid.ID) error
+	}); ok {
+		return checker.PrepareGrantableRoles(ctx, repo.writer(), tenantID)
+	}
+	return nil
 }
 
 func (s *InvitationService) List(ctx context.Context, tenantID guid.ID) ([]Invitation, error) {
@@ -135,10 +165,16 @@ func (s *InvitationService) Create(ctx context.Context, tenantID guid.ID, input 
 		if err != nil {
 			return err
 		}
+		if err := s.prepareGrantableInvitationRoles(ctx, repo, tenantID); err != nil {
+			return err
+		}
 		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
 			return err
 		}
 		if err := validateInvitationBindings(ctx, repo, tenantID, input.DepartmentID, input.RoleIDs); err != nil {
+			return err
+		}
+		if err := s.requireGrantableInvitationRoles(ctx, repo, tenantID, input.RoleIDs); err != nil {
 			return err
 		}
 		if err := repo.writer().WithContext(ctx).Table(tables.Invitations.TableName()).Where("tenant_id = ? AND email_key = ? AND status = ?", tenantID, input.Email, InvitationPending).
@@ -218,6 +254,9 @@ func (s *InvitationService) Resend(ctx context.Context, tenantID, id guid.ID, tt
 		if err != nil {
 			return err
 		}
+		if err := s.prepareGrantableInvitationRoles(ctx, repo, tenantID); err != nil {
+			return err
+		}
 		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
 			return err
 		}
@@ -227,6 +266,13 @@ func (s *InvitationService) Resend(ctx context.Context, tenantID, id guid.ID, tt
 		}
 		if current.Status != InvitationPending {
 			return ErrInvitationState
+		}
+		roles, err := invitationRoleIDs(ctx, repo, tenantID, id)
+		if err != nil {
+			return err
+		}
+		if err := s.requireGrantableInvitationRoles(ctx, repo, tenantID, roles); err != nil {
+			return err
 		}
 		result := repo.writer().WithContext(ctx).Table(tables.Invitations.TableName()).Where("tenant_id = ? AND id = ? AND status = ?", tenantID, id, InvitationPending).
 			Updates(map[string]any{"token_hmac": digest, "expires_at": now.Add(ttl), "updated_at": now})

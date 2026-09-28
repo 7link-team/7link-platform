@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -98,4 +100,67 @@ func TestResourceRelationshipUsesOwningEntityAndExactTenantKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, rows, 1)
 	assert.ErrorIs(t, repository.DeleteEntity(t.Context(), 1, owner.ID), ErrEntityHasRelationships)
+}
+
+// A relationship confers every action whose AllowedRelations name it, so writing
+// one is a grant: the actor must already hold each of those actions on the target.
+func TestPutRelationshipRequiresTheActionsTheRelationConfers(t *testing.T) {
+	harness := newCoreServiceHarness(t)
+	tenantID, actorID := guid.ID(1), guid.ID(10)
+	harness.seedMember(t, tenantID, actorID, MemberActive)
+	store, err := harness.service.CreateEntity(t.Context(), Entity{TenantID: tenantID, Type: "store", Name: "Store"})
+	require.NoError(t, err)
+	grantActor := func(name string, codes ...string) {
+		role, err := harness.repository.CreateRole(t.Context(), tenantID, name, "")
+		require.NoError(t, err)
+		for _, code := range codes {
+			_, err = harness.repository.GrantPermission(t.Context(), tenantID, role.ID, code)
+			require.NoError(t, err)
+		}
+		_, err = harness.repository.AddMember(t.Context(), tenantID, role.ID, actorID)
+		require.NoError(t, err)
+	}
+	grantActor("Binding managers", "entity_manage_binding")
+	actor := authn.WithClaims(t.Context(), &authn.Claims{SubjectType: authn.SubjectTypePrincipal, PrincipalID: actorID, TenantID: tenantID})
+	canDelete := func() bool {
+		allowed, err := harness.authorizer.CheckEntity(t.Context(), tenantID, store.ID, "entity_delete", actorID)
+		require.NoError(t, err)
+		return allowed
+	}
+
+	// Control: the direct grant of the conferred action is refused.
+	direct, err := harness.repository.CreateRole(t.Context(), tenantID, "Deleters", "")
+	require.NoError(t, err)
+	_, err = harness.service.GrantPermission(actor, tenantID, direct.ID, "entity_delete")
+	require.ErrorIs(t, err, ErrPrivilegeEscalation)
+
+	owner := Relationship{TenantID: tenantID, SubjectType: "principal", SubjectID: actorID, Relation: "owner", ResourceType: "store", ResourceID: store.ID}
+	_, _, err = harness.service.PutRelationship(actor, owner)
+	require.ErrorIs(t, err, ErrPrivilegeEscalation, "owning the entity would confer entity_delete")
+	resourceOwner := owner
+	resourceOwner.EntityID, resourceOwner.ResourceID = store.ID, 501
+	_, _, err = harness.service.PutRelationship(actor, resourceOwner)
+	require.ErrorIs(t, err, ErrPrivilegeEscalation, "a business-resource relationship confers the same actions on that resource")
+	viewer := owner
+	viewer.Relation = "viewer"
+	_, _, err = harness.service.PutRelationship(actor, viewer)
+	require.ErrorIs(t, err, ErrPrivilegeEscalation, "even viewer confers entity_view, which the actor lacks")
+	items, err := harness.service.ListRelationships(t.Context(), tenantID, RelationshipFilter{})
+	require.NoError(t, err)
+	assert.Empty(t, items)
+	assert.False(t, canDelete(), "authority is unchanged after the refused writes")
+
+	// Holding every action the relation confers makes it grantable.
+	grantActor("Viewers", "entity_view", "store_view")
+	_, changed, err := harness.service.PutRelationship(actor, viewer)
+	require.NoError(t, err)
+	assert.True(t, changed)
+	_, _, err = harness.service.PutRelationship(actor, owner)
+	require.ErrorIs(t, err, ErrPrivilegeEscalation)
+	assert.False(t, canDelete())
+
+	grantActor("Administrators", "tenant_administer")
+	_, changed, err = harness.service.PutRelationship(actor, owner)
+	require.NoError(t, err)
+	assert.True(t, changed, "a full administrator is unaffected")
 }

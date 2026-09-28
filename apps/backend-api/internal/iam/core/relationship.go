@@ -320,6 +320,9 @@ func (s *Service) PutRelationship(
 		if err := validateRelationshipFacts(ctx, repo, relationship); err != nil {
 			return err
 		}
+		if err := s.requireGrantableRelationship(ctx, repo, relationship); err != nil {
+			return err
+		}
 		if relationship.EntityID.Zero() {
 			if err := repo.validateRelationshipAddition(ctx, relationship); err != nil {
 				return err

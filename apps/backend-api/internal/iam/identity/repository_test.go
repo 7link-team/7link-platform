@@ -168,6 +168,7 @@ func newIdentityHarness(t *testing.T, prefix string) *identityHarness {
 	harness.service.revokeTenantTokens = func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }
 	harness.service.revokeTenantOAuth = func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }
 	harness.service.erasureRecorder = func(context.Context, audit.ErasureObligation) error { return nil }
+	harness.service.platformAccessGuard = func(context.Context, *gorm.DB, guid.ID) error { return nil }
 	harness.repository = harness.service.repo
 	// The owners' connectors publish their table names in a running deployment;
 	// a harness that runs identity alone publishes what they would, so a reader

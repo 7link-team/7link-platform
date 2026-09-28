@@ -56,7 +56,7 @@ func newBoundInvitationService(
 	createPrincipal InvitationPrincipalCreator,
 ) *InvitationService {
 	t.Helper()
-	service := NewInvitationService(runtime, appender, ids, credentials, createPrincipal)
+	service := NewInvitationService(runtime, appender, &grantingAdministratorGuard{}, ids, credentials, createPrincipal)
 	bindForeignTables(t, service.repo, runtime.TablePrefix())
 	return service
 }

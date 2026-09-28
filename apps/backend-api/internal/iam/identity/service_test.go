@@ -1,11 +1,13 @@
 package identity
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/passwordx"
 	"github.com/stretchr/testify/assert"
@@ -521,10 +523,8 @@ func TestSetStatusDisableProtectsLastAdministratorPerActiveTenant(t *testing.T) 
 	harness := newIdentityHarness(t, "sl_")
 	principal, err := harness.service.Create(t.Context(), 7, "alice", testPassword, "Alice", "alice@example.test")
 	require.NoError(t, err)
-	require.NoError(t, harness.repository.insertTenantMember(t.Context(), tenantMemberRecord{
-		TenantID: 9, PrincipalID: principal.ID, DisplayName: "Alice", Email: "alice@example.test",
-		Status: "active", CreatedAt: identityTestNow, UpdatedAt: identityTestNow,
-	}))
+	// A membership that is no longer active neither blocks the tenant route nor
+	// needs its administrators protected.
 	require.NoError(t, harness.repository.insertTenantMember(t.Context(), tenantMemberRecord{
 		TenantID: 8, PrincipalID: principal.ID, DisplayName: "Alice", Email: "alice@example.test",
 		Status: "disabled", CreatedAt: identityTestNow, UpdatedAt: identityTestNow,
@@ -536,8 +536,8 @@ func TestSetStatusDisableProtectsLastAdministratorPerActiveTenant(t *testing.T) 
 	require.NoError(t, err)
 
 	assert.Equal(t, "disabled", updated.Status)
-	assert.Equal(t, []guid.ID{7, 9}, harness.guard.protectedTenants())
-	assert.Equal(t, 2, harness.guard.verifiedCount())
+	assert.Equal(t, []guid.ID{7}, harness.guard.protectedTenants())
+	assert.Equal(t, 1, harness.guard.verifiedCount())
 	assert.NotNil(t, harness.principal(t, principal.ID).DisabledAt)
 	assert.Zero(t, harness.nullTimeCount(t, "iam_sessions", "revoked_at", principal.ID))
 	assert.Zero(t, harness.nullTimeCount(t, "iam_refresh_tokens", "revoked_at", principal.ID))
@@ -547,6 +547,59 @@ func TestSetStatusDisableProtectsLastAdministratorPerActiveTenant(t *testing.T) 
 	assert.Equal(t, "principal_disabled", events[1].EventType)
 	assert.Equal(t, true, events[1].Detail["changed"])
 	assert.Equal(t, "disabled", events[1].Detail["status"])
+}
+
+// A principal is global, so the tenant suspension route would lock it out of
+// every other organization and of any platform authority it holds. Those
+// accounts are left to their other owners; the tenant removes its membership.
+func TestSetStatusRefusesSuspendingAPrincipalSharedBeyondTheTenant(t *testing.T) {
+	t.Parallel()
+
+	harness := newIdentityHarness(t, "sl_")
+	principal, err := harness.service.Create(t.Context(), 7, "alice", testPassword, "Alice", "alice@example.test")
+	require.NoError(t, err)
+	harness.seedSession(t, 11, principal.ID)
+	unchanged := func() {
+		t.Helper()
+		assert.Equal(t, "active", harness.principal(t, principal.ID).Status)
+		assert.Nil(t, harness.principal(t, principal.ID).DisabledAt)
+		assert.Equal(t, int64(1), harness.nullTimeCount(t, "iam_sessions", "revoked_at", principal.ID))
+		assert.Len(t, harness.events(), 1, "a refused suspension records no event")
+	}
+
+	// Control: the platform route already refuses an account that holds platform authority.
+	harness.service.platformAccessGuard = func(context.Context, *gorm.DB, guid.ID) error {
+		return core.ErrPrincipalHasPlatformAccess
+	}
+	_, err = harness.service.SetPlatformStatus(t.Context(), principal.ID, "disabled")
+	require.ErrorIs(t, err, core.ErrPrincipalHasPlatformAccess)
+	protected := harness.guard.protectedTenants()
+	_, err = harness.service.SetStatus(t.Context(), 7, principal.ID, "disabled")
+	require.ErrorIs(t, err, ErrPrincipalSharedBeyondTenant)
+	require.ErrorIs(t, err, core.ErrPrincipalHasPlatformAccess)
+	unchanged()
+
+	guardFailure := errors.New("platform grants unreadable")
+	harness.service.platformAccessGuard = func(context.Context, *gorm.DB, guid.ID) error { return guardFailure }
+	_, err = harness.service.SetStatus(t.Context(), 7, principal.ID, "disabled")
+	require.ErrorIs(t, err, guardFailure)
+	assert.NotErrorIs(t, err, ErrPrincipalSharedBeyondTenant)
+	harness.service.platformAccessGuard = nil
+	_, err = harness.service.SetStatus(t.Context(), 7, principal.ID, "disabled")
+	require.ErrorIs(t, err, ErrUnavailable, "without the platform guard the tenant route fails closed")
+	unchanged()
+
+	harness.service.platformAccessGuard = func(context.Context, *gorm.DB, guid.ID) error { return nil }
+	require.NoError(t, harness.repository.insertTenantMember(t.Context(), tenantMemberRecord{
+		TenantID: 9, PrincipalID: principal.ID, DisplayName: "Alice", Email: "alice@example.test",
+		Status: "active", CreatedAt: identityTestNow, UpdatedAt: identityTestNow,
+	}))
+	_, err = harness.service.SetStatus(t.Context(), 7, principal.ID, "disabled")
+	require.ErrorIs(t, err, ErrPrincipalSharedBeyondTenant, "an active member of another organization root")
+	_, err = harness.service.SetStatus(t.Context(), 9, principal.ID, "disabled")
+	require.ErrorIs(t, err, ErrPrincipalSharedBeyondTenant, "the other root is refused symmetrically")
+	unchanged()
+	assert.Equal(t, protected, harness.guard.protectedTenants(), "refusal precedes the administrator guard")
 }
 
 func TestSetStatusRollsBackWhenGuardRejects(t *testing.T) {

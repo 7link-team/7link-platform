@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/core"
+	corei18n "7link.com/platform/internal/iam/core/i18n"
 	coremodel "7link.com/platform/internal/iam/core/model"
 	governancei18n "7link.com/platform/internal/iam/governance/i18n"
 	"7link.com/platform/internal/infra/guid"
@@ -276,6 +277,7 @@ func TestGovernanceHTTPValidationHumanPrincipalAndErrorMappings(t *testing.T) {
 		{ErrStateConflict, 409, governancei18n.RequestStateConflict},
 		{ErrSelfApproval, 409, governancei18n.SelfApproval},
 		{ErrRequesterOnly, 403, governancei18n.RequesterOnly},
+		{core.ErrPrivilegeEscalation, 403, corei18n.PrivilegeEscalationDenied},
 		{ErrReviewNotFound, 404, governancei18n.ReviewNotFound},
 		{ErrReviewItemNotFound, 404, governancei18n.ReviewItemNotFound},
 		{ErrReviewExpired, 410, governancei18n.ReviewExpired},

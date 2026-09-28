@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -525,6 +526,8 @@ func TestIdentityErrorMapsEveryDomainSentinelOnce(t *testing.T) {
 		{ErrCredentialLimit, http.StatusConflict, identityi18n.ServiceAccountCredentialLimit},
 		{ErrPrincipalInactive, http.StatusConflict, identityi18n.InvalidPrincipal},
 		{core.ErrPrincipalHasPlatformAccess, http.StatusConflict, identityi18n.PlatformAccessBlocksClosure},
+		{ErrPrincipalSharedBeyondTenant, http.StatusConflict, identityi18n.PrincipalSharedBeyondTenant},
+		{fmt.Errorf("%w: %w", ErrPrincipalSharedBeyondTenant, core.ErrPrincipalHasPlatformAccess), http.StatusConflict, identityi18n.PrincipalSharedBeyondTenant},
 		{ErrServiceAccountInvalid, http.StatusUnprocessableEntity, identityi18n.InvalidServiceAccount},
 		{ErrInvalid, http.StatusUnprocessableEntity, identityi18n.InvalidPrincipal},
 		{errRepositoryUnavailable, http.StatusInternalServerError, identityi18n.IdentityUnavailable},
