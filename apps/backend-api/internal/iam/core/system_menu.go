@@ -155,6 +155,16 @@ func (m *SystemMenus) Defaults() []Menu {
 	return menus
 }
 
+// A system root seeded between 211e2d4 and e36c727 named the organization
+// branch "Operations management". The upgrade gives it the current label, and
+// the current translations when it still carries the ones seeded then; the
+// locale key they came from no longer exists, so they are recorded here.
+const retiredOrganizationBranch = "Operations management"
+
+var retiredOrganizationBranchTranslations = map[string]string{
+	"en-US": "Operations management", "zh-CN": "运营管理", "ms-MY": "Pengurusan operasi",
+}
+
 // systemMenuDefaults is the system menu this repository seeds and upgrades to.
 func (r *Repository) systemMenuDefaults() []Menu {
 	if r == nil {
@@ -169,10 +179,29 @@ func (r *Repository) upgradeSystemMenus(ctx context.Context, owner guid.ID, _ ti
 		return false, err
 	}
 	accountBranch, permissionBranch, localized := false, false, false
+	organizationBranch := false
 	for _, menu := range stored {
 		if menu.Route == "" && menu.ParentID.Zero() {
 			accountBranch = accountBranch || menu.Label == "Account management"
 			permissionBranch = permissionBranch || menu.Label == "Permission management"
+			organizationBranch = organizationBranch || menu.Label == "Organization management"
+		}
+	}
+	if !organizationBranch {
+		for i, menu := range stored {
+			if menu.Route != "" || !menu.ParentID.Zero() || menu.Label != retiredOrganizationBranch {
+				continue
+			}
+			menu.Label = "Organization management"
+			if reflect.DeepEqual(menu.Translations, retiredOrganizationBranchTranslations) {
+				menu.Translations = corei18n.Translations("menu_system_organization_management")
+			}
+			updated, err := r.UpdateMenu(ctx, menu)
+			if err != nil {
+				return false, err
+			}
+			stored[i], localized = updated, true
+			break
 		}
 	}
 	if accountBranch && permissionBranch {
