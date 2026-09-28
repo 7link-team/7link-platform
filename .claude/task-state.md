@@ -1,5 +1,54 @@
 # Task State
 
+## Active: IAM Audit Remediation (closed list) - 2026-09-28
+
+- Phase: IMPLEMENTATION wave 2. Contract: decisions.md "Audit Remediation Is A
+  Closed List" + 3 later decisions (delegated OAuth, SCIM reauth, registration).
+- DONE on IAM (merged, go build/vet/unit tests/openapi+types drift PASS):
+  G2 ci gates (2593157), frontend F2-F7/N9fe/N2fe/P6/P7/P9, P1/P4/P5/P8 (golangci v2),
+  P10 audit batch (e582f84), P2 webauthn 0.18 + P3 jwsx, S1 (Registrar refuses
+  client_id tokens, composed invariant), S2 SAML membership, S8 credential replace,
+  S3-S7 grantability (4f8cec0), G1 cause found: c7a02b1 per-op SCIM reauth kept by
+  decision + 40afa59 alloc fix (5932893); G3 median gate (954157c).
+- Wave 2 (in-class residue, running): R1 = S1b account-holder bearer helpers refuse
+  client_id; S4b scope-aware grant on role grant/member/create paths + any widening;
+  S7b restore route symmetric; S8b verification requires password, provisioned
+  pending principals never re-credentialed; P3b authn/web.go verifier -> jwsx.
+  C1+N1 catalog single registration path. D1 alerts archive+outbox.
+- Wave 3 (serial, after wave 2): C2-C14, D2, N2-N8 contract/API batch + regen + FE.
+- Final: re-baseline scim_bulk_25 on quiet machine (no agents running), make ci,
+  release-check incl. test-mysql8-run, external-DB grantability lock tests, full
+  real E2E, one limited verification review, commit, push decision.
+- Not achieved by design: G3 "2x always fails" (1ms rounding, D13 kept); no
+  set-wide grant-path invariant (no genuine call-graph oracle; per-path tests).
+
+## Active: IAM Scoped Deep Audit (pre-merge gate) - 2026-09-28
+
+- Phase: REVIEW complete; report delivered in chat. NO code changed. Fixes go
+  through deep-review after user picks items. Tree: only this file modified.
+- Scope: internal/iam/*, pkg/module, pkg/extension/authz, respx, migrations,
+  OpenAPI (377 ops, 343 IAM), frontend IAM. 7 read-only subagents, probes deleted.
+- Merge blockers (probe-verified; F1/F3-F7 re-checked in source by main agent):
+  S1 OAuth client token accepted on every tenant/system route (register.go
+  tenant/platform middleware ignore ClientID/OrganizationID); S2 SAML IdP SSO
+  issues assertion without tenant membership (federation/saml.go:383);
+  S3-S6 grant-check missing: PutRelationship, SetRoleDataScope, invitation
+  role_ids, access-request approval; S7 tenant suspension skips
+  platformAccessGuard (identity/service.go SetStatus); S8 re-registration keeps
+  first registrant's password hash (registration.go:103).
+- Gates: scim_bulk_25 ~3x regression starting ~f56cb43 (not machine); schema-lock
+  and frontend checks not in make ci; perf threshold all-samples design fragile.
+- Contract-before-business: permission catalog in pkg (todo/merchant/store) +
+  runtime Register + DefaultRegistry fallbacks + lifecycle.go "system_file_"
+  literal; ~130 bare i18n keys (invalid_principal_id has no locale); 17 mappers
+  swallow huma.StatusError (0 reachable); {subject} vs {principal_id}; 45 id
+  params without pattern; POST create 201 vs 200; 5 non-respx.List lists;
+  audit principal_id = actor; "platform" dual meaning; JWT aud default "7link-api";
+  session/passkey hash PKs vs snowflake rule (needs decision).
+- Pending user decisions: fix order; S7 semantics; hash-PK exemption; 201/list
+  breaking changes; pkg/interpreter removal; react-leaflet license; aud default.
+- Next: wait for user to choose; recommended first batch = S1-S8 via deep-review.
+
 ## Active: Review Fixes for 346a809..HEAD - 2026-09-27
 
 - Phase: ACCEPTANCE (complete, uncommitted). User asked: re-verify every finding, plan fixes for all,

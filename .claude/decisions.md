@@ -534,6 +534,9 @@ CI 强制的前提下，版本漂移是唯一的实际风险：不同开发者�
 而独立存在，不进入运行时依赖图，因此代价可接受。已实测：钉定后运行结果与本地 v1.64.8
 完全一致（0 findings）。
 
+**Update 2026-09-28**：v1 已停止维护，升级为 v2.14.0（`.golangci.yml` 转为 v2 格式，保持同一 linter 集合：
+staticcheck 限定 `SA*`/`S1*`，等同 v1 的 staticcheck+gosimple）。钉版本的方式不变。
+
 **Scope**
 `apps/backend-api/tools/go.mod`、`Makefile`、`tools/README.md`。
 
@@ -3248,3 +3251,54 @@ path owner_id, never tenant_id, because tenant_id reads as tenant-gated admissio
 The composed-spec test enforces it for every module, plus lowercase OperationIDs.
 Organization's two system department routes were renamed accordingly.
 Status: IMPLEMENTED.
+
+## Audit Remediation Is A Closed List - 2026-09-28
+
+Decision: the 2026-09-28 scoped IAM audit is remediated as a fixed list (task-state
+"IAM Audit Remediation" items S/G/C/N/D/F/P). Completion = every listed item fixed,
+each fixed class guarded by a set-wide invariant test that is mutation-verified,
+make ci + release-check + full real E2E green, then ONE verification review limited
+to the changed code and the listed classes. New issues found outside the list are
+recorded as backlog and do not reopen or block this remediation. "Record but don't
+change" items of the audit stay unchanged by decision.
+Delegated decisions (user: "全部修掉", accepting the audit recommendations):
+- Tenant-route principal suspension is refused when the target holds system or
+  operating-platform authority (platformAccessGuard) or is an active member of
+  another organization root; tenant admins remove membership instead.
+- Secret-keyed ephemeral tables may use hash primary keys (exemption to the
+  snowflake rule); sessions and passkeys expose a snowflake public ID in the API.
+- Create operations return 201 everywhere; every list response uses respx.List.
+- JWT audience comes from configuration with neutral default "api".
+- pkg/interpreter and its four interpreters are removed (no binary uses them).
+- react-leaflet license is a legal question: no code change, reported to user.
+Reason: user requires a finite remediation, not open-ended fix/review cycles.
+Status: ACCEPTED.
+
+## Delegated OAuth Tokens Carry No Administrative Authority - 2026-09-28
+
+Decision: any token with a client_id (authorization-code, refresh or
+client_credentials) is refused with 403 on every Registrar-guarded operation,
+in every tenant including the client's own. The only scopes with meaning are
+OIDC openid/profile/email, served by /oauth/userinfo; no route declares OAuth
+scope support, so no opt-in exists. Account-holder bearer helpers follow the
+same rule. Reason: audit S1 proved a tenant-B client token had the user's full
+authority in tenant A and on /system. Status: IMPLEMENTED (composed invariant
+over 322 operations).
+
+## Per-Operation SCIM Reauthorization Is Kept - 2026-09-28
+
+Decision: SCIM bulk keeps re-checking credential and service account inside
+every operation transaction (c7a02b1), so a revocation committed mid-bulk stops
+the remaining operations. The ~3x scim_bulk_25 cost is accepted and the latency
+sample is re-baselined on a quiet machine; the latency gate judges the median.
+Rejected: one check per bulk (weakens revocation), a cross-module combined query
+(D-ServiceAccountValidator rejection). Known limit: 1 ms rounding lets a 2x
+regression of sub-millisecond paths pass; D13 margin unchanged.
+
+## Self-Registration Activation Proves Both Mailbox And Password - 2026-09-28
+
+Decision: re-registering a pending self-registered address replaces its
+credential and voids earlier links; completing email verification also requires
+the password of the registration being confirmed. Directory/invitation-provisioned
+pending principals are never re-credentialed by public registration.
+Reason: audit S8 residual - the owner could click an attacker-triggered link.
