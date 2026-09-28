@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	filesi18n "7link.com/platform/internal/files/i18n"
 	"7link.com/platform/internal/files/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
@@ -574,9 +575,9 @@ func TestFileHTTPHelpersRejectMalformedRequests(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, browserPageRequest{Limit: defaultBrowserPage}, page)
 	_, err = browserPageOf("bad", 10)
-	assertHTTPError(t, err, http.StatusUnprocessableEntity, "respx.invalid_id")
+	assertHTTPError(t, err, http.StatusUnprocessableEntity, respx.InvalidID)
 	_, err = browserPageOf("", maxBrowserPage+1)
-	assertHTTPError(t, err, http.StatusUnprocessableEntity, "invalid_file_request")
+	assertHTTPError(t, err, http.StatusUnprocessableEntity, filesi18n.InvalidFileRequest)
 
 	h := newOperationServiceHarness(t)
 	for name, test := range map[string]struct {
@@ -585,16 +586,16 @@ func TestFileHTTPHelpersRejectMalformedRequests(t *testing.T) {
 		status    int
 		detail    string
 	}{
-		"missing form":         {nil, true, http.StatusUnprocessableEntity, "invalid_file_content"},
-		"root not allowed":     {&fileCreateForm{Kind: "directory", Scope: "account"}, false, http.StatusUnprocessableEntity, "invalid_file_root"},
-		"named root":           {&fileCreateForm{Kind: "directory", Scope: "account", Name: "named"}, true, http.StatusUnprocessableEntity, "invalid_file_root"},
-		"scoped child":         {&fileCreateForm{ParentID: "2", Kind: "directory", Scope: "account"}, false, http.StatusUnprocessableEntity, "invalid_file_scope"},
-		"invalid parent":       {&fileCreateForm{ParentID: "bad", Kind: "directory"}, false, http.StatusUnprocessableEntity, "respx.invalid_id"},
-		"directory content":    {&fileCreateForm{ParentID: "2", Kind: "directory", File: huma.FormFile{IsSet: true}}, false, http.StatusUnprocessableEntity, "directory_content_not_allowed"},
-		"missing file":         {&fileCreateForm{ParentID: "2", Kind: "file"}, false, http.StatusUnprocessableEntity, "invalid_file_content"},
-		"unsupported kind":     {&fileCreateForm{ParentID: "2", Kind: "link"}, false, http.StatusUnprocessableEntity, "invalid_file_kind"},
-		"invalid directory":    {&fileCreateForm{ParentID: "2", Kind: "directory", Name: "."}, false, http.StatusUnprocessableEntity, "invalid_file_request"},
-		"foreign account root": {&fileCreateForm{Kind: "directory", Scope: "account"}, true, http.StatusForbidden, "forbidden"},
+		"missing form":         {nil, true, http.StatusUnprocessableEntity, filesi18n.InvalidFileContent},
+		"root not allowed":     {&fileCreateForm{Kind: "directory", Scope: "account"}, false, http.StatusUnprocessableEntity, filesi18n.InvalidFileRoot},
+		"named root":           {&fileCreateForm{Kind: "directory", Scope: "account", Name: "named"}, true, http.StatusUnprocessableEntity, filesi18n.InvalidFileRoot},
+		"scoped child":         {&fileCreateForm{ParentID: "2", Kind: "directory", Scope: "account"}, false, http.StatusUnprocessableEntity, filesi18n.InvalidFileScope},
+		"invalid parent":       {&fileCreateForm{ParentID: "bad", Kind: "directory"}, false, http.StatusUnprocessableEntity, respx.InvalidID},
+		"directory content":    {&fileCreateForm{ParentID: "2", Kind: "directory", File: huma.FormFile{IsSet: true}}, false, http.StatusUnprocessableEntity, filesi18n.DirectoryContentNotAllowed},
+		"missing file":         {&fileCreateForm{ParentID: "2", Kind: "file"}, false, http.StatusUnprocessableEntity, filesi18n.InvalidFileContent},
+		"unsupported kind":     {&fileCreateForm{ParentID: "2", Kind: "link"}, false, http.StatusUnprocessableEntity, filesi18n.InvalidFileKind},
+		"invalid directory":    {&fileCreateForm{ParentID: "2", Kind: "directory", Name: "."}, false, http.StatusUnprocessableEntity, filesi18n.InvalidFileRequest},
+		"foreign account root": {&fileCreateForm{Kind: "directory", Scope: "account"}, true, http.StatusForbidden, respx.Forbidden},
 	} {
 		t.Run(name, func(t *testing.T) {
 			body, err := createFile(h.ctx, h.service, test.form, test.allowRoot)
@@ -604,16 +605,16 @@ func TestFileHTTPHelpersRejectMalformedRequests(t *testing.T) {
 	}
 
 	_, err = fileOperationRequestOf(nil)
-	assertHTTPError(t, err, http.StatusUnprocessableEntity, "invalid_file_operation")
+	assertHTTPError(t, err, http.StatusUnprocessableEntity, filesi18n.InvalidFileOperation)
 	badDestination := &fileOperationInput{IdempotencyKey: "operation"}
 	badDestination.Body.DestinationID = "bad"
 	_, err = fileOperationRequestOf(badDestination)
-	assertHTTPError(t, err, http.StatusUnprocessableEntity, "respx.invalid_id")
+	assertHTTPError(t, err, http.StatusUnprocessableEntity, respx.InvalidID)
 	badSource := &fileOperationInput{IdempotencyKey: "operation"}
 	badSource.Body.DestinationID = "10"
 	badSource.Body.Sources = []string{"bad"}
 	_, err = fileOperationRequestOf(badSource)
-	assertHTTPError(t, err, http.StatusUnprocessableEntity, "respx.invalid_id")
+	assertHTTPError(t, err, http.StatusUnprocessableEntity, respx.InvalidID)
 
 	valid := &fileOperationInput{IdempotencyKey: "operation"}
 	valid.Body.Action = "copy"
@@ -639,7 +640,7 @@ func TestFileHTTPHelpersRejectMalformedRequests(t *testing.T) {
 
 	valid.IdempotencyKey = ""
 	_, err = fileOperationRequestOf(valid)
-	assertHTTPError(t, err, http.StatusUnprocessableEntity, "invalid_file_request")
+	assertHTTPError(t, err, http.StatusUnprocessableEntity, filesi18n.InvalidFileRequest)
 }
 
 func TestFileHTTPGlobalRoutesResolveOwnersBeforeHandlers(t *testing.T) {

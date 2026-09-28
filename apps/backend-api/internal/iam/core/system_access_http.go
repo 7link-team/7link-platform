@@ -96,7 +96,7 @@ func registerSystemAccessHTTP(api huma.API, svc *Service, registrar *authz.Regis
 	})
 	authz.RegisterPlatform(registrar, api, op("iam-system-role-create", http.MethodPost, "/system/roles", "Create a system role"), authz.Guard{Resource: "system_role", Verb: "create"}, func(ctx context.Context, in *systemRoleCreateInput) (*respx.Body[APISystemRole], error) {
 		if reservedSystemRoleName(in.Body.Name) {
-			return nil, huma.Error422UnprocessableEntity("respx.invalid_argument")
+			return nil, huma.Error422UnprocessableEntity(respx.InvalidArgument)
 		}
 		var role Role
 		err := svc.systemAccessMutation(ctx, 0, "system_role_create", func(tx *Service, owner guid.ID) error {

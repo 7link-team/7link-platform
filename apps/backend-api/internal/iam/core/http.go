@@ -21,7 +21,7 @@ import (
 func requireID(value string) (guid.ID, error) {
 	id, err := guid.Parse(strings.TrimSpace(value))
 	if err != nil || id.Zero() {
-		return 0, huma.Error422UnprocessableEntity("respx.invalid_id")
+		return 0, huma.Error422UnprocessableEntity(respx.InvalidID)
 	}
 	return id, nil
 }
@@ -1159,7 +1159,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		if in.Body.Placement != nil {
 			if in.Body.Label != nil || in.Body.Translations != nil || in.Body.Route != nil || in.Body.Icon != nil || in.Body.SortOrder != nil || in.Body.PermissionCode != nil || in.Body.Status != nil {
-				return nil, huma.Error422UnprocessableEntity("respx.invalid_argument")
+				return nil, huma.Error422UnprocessableEntity(respx.InvalidArgument)
 			}
 			var parentID *guid.ID
 			if in.Body.ParentID != nil {
@@ -1230,7 +1230,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	authz.RegisterPrincipalTenantMember(registrar, a, huma.Operation{OperationID: "iam-effective-menus", Method: http.MethodGet, Path: "/principals/{principal_id}/menus", Summary: "Return the current member's authorized menu tree", Tags: []string{"access-control"}}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]MenuItem], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
@@ -1252,7 +1252,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]string], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		codes, err := svc.EffectivePermissions(ctx, 0, claims.PrincipalID)
 		if err != nil {
@@ -1267,7 +1267,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	}, func(ctx context.Context, in *myPermissionsInput) (*respx.Body[[]string], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
@@ -1286,7 +1286,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	}, func(ctx context.Context, in *myEntityPermissionsInput) (*respx.Body[[]string], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
@@ -1425,7 +1425,7 @@ func apiError(operation string, err error) error {
 		return err
 	}
 	if errors.Is(err, ErrMemberConflict) {
-		return huma.Error409Conflict("membership_already_exists")
+		return huma.Error409Conflict(corei18n.MembershipAlreadyExists)
 	}
 	switch {
 	case errors.Is(err, ErrFieldPolicyConflict):
@@ -1499,7 +1499,7 @@ func apiError(operation string, err error) error {
 	case errors.Is(err, ErrInvalidRolePermissionCondition):
 		return huma.Error422UnprocessableEntity(corei18n.InvalidRolePermissionCondition)
 	case errors.Is(err, authz.ErrFieldsUnavailable):
-		return huma.Error503ServiceUnavailable("respx.service_unavailable")
+		return huma.Error503ServiceUnavailable(respx.ServiceUnavailable)
 	case errors.Is(err, ErrPrivilegeEscalation), errors.Is(err, authz.ErrFieldDenied):
 		return huma.Error403Forbidden(corei18n.PrivilegeEscalationDenied)
 	case errors.Is(err, ErrInvalidArgument):
@@ -1508,7 +1508,7 @@ func apiError(operation string, err error) error {
 		return huma.Error503ServiceUnavailable(corei18n.Unavailable)
 	default:
 		slog.Error("iam request failed", "operation", operation, "err", err)
-		return huma.Error500InternalServerError("respx.internal_server_error")
+		return huma.Error500InternalServerError(respx.InternalServerError)
 	}
 }
 

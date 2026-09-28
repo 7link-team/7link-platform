@@ -47,6 +47,7 @@
   "resource_not_found": "当前租户中不存在指定的 IAM 资源，请核对标识符和租户后重试。",
   "resource_conflict": "IAM 资源与现有数据或当前版本冲突，请重新加载并基于最新版本重试。",
   "tenant_member_inactive": "该身份主体不是当前租户的有效成员，请先启用成员资格再分配访问权限。",
+  "membership_already_exists": "该主体已是此组织的成员，请管理现有成员关系。",
   "directory_assignee_not_found": "不存在指定的用户组或岗位受让对象，请刷新目录后选择现有对象。",
   "directory_assignee_inactive": "指定的用户组或岗位受让对象已停用，请启用该对象或选择其他对象。",
   "last_tenant_administrator": "不能移除或停用租户中最后一个有效管理员，请先分配另一个有效管理员。",

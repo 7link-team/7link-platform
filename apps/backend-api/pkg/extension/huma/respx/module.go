@@ -41,6 +41,9 @@ const (
 	AuthenticationUnavailable = Name + ".authentication_unavailable"
 	InactiveTenantMembership  = Name + ".inactive_tenant_membership"
 	CSRFRejected              = Name + ".csrf_rejected"
+	InvalidArgument           = Name + ".invalid_argument"
+	ServiceUnavailable        = Name + ".service_unavailable"
+	InternalServerError       = Name + ".internal_server_error"
 )
 
 func messageKey(local string) string {

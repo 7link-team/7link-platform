@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	filesi18n "7link.com/platform/internal/files/i18n"
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
@@ -299,7 +300,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 			}
 			result, err = service.restoreNodeAs(ctx, fileID, input.Body.Revision, name)
 		default:
-			return nil, huma.Error422UnprocessableEntity("invalid_file_update")
+			return nil, huma.Error422UnprocessableEntity(filesi18n.InvalidFileUpdate)
 		}
 		if err != nil {
 			return nil, fileHTTPError(err)
@@ -380,13 +381,13 @@ func personalContext(ctx context.Context) context.Context {
 
 func createFile(ctx context.Context, service *operationService, form *fileCreateForm, allowRoot bool) (*respx.Body[fileEntryView], error) {
 	if form == nil {
-		return nil, huma.Error422UnprocessableEntity("invalid_file_content")
+		return nil, huma.Error422UnprocessableEntity(filesi18n.InvalidFileContent)
 	}
 	var result fileEntryView
 	var err error
 	if strings.TrimSpace(form.ParentID) == "" {
 		if !allowRoot || form.Kind != "directory" || form.Scope != ownerAccount || strings.TrimSpace(form.Name) != "" || form.File.IsSet {
-			return nil, huma.Error422UnprocessableEntity("invalid_file_root")
+			return nil, huma.Error422UnprocessableEntity(filesi18n.InvalidFileRoot)
 		}
 		result, err = service.ensureOwnedRoot(ctx)
 		if err != nil {
@@ -395,7 +396,7 @@ func createFile(ctx context.Context, service *operationService, form *fileCreate
 		return respx.OK(ctx, result), nil
 	}
 	if form.Scope != "" {
-		return nil, huma.Error422UnprocessableEntity("invalid_file_scope")
+		return nil, huma.Error422UnprocessableEntity(filesi18n.InvalidFileScope)
 	}
 	parentID, err := fileID(form.ParentID)
 	if err != nil {
@@ -404,16 +405,16 @@ func createFile(ctx context.Context, service *operationService, form *fileCreate
 	switch form.Kind {
 	case "directory":
 		if form.File.IsSet {
-			return nil, huma.Error422UnprocessableEntity("directory_content_not_allowed")
+			return nil, huma.Error422UnprocessableEntity(filesi18n.DirectoryContentNotAllowed)
 		}
 		result, err = service.createDirectory(ctx, parentID, form.Name)
 	case "file":
 		if !form.File.IsSet || strings.TrimSpace(form.Name) != "" {
-			return nil, huma.Error422UnprocessableEntity("invalid_file_content")
+			return nil, huma.Error422UnprocessableEntity(filesi18n.InvalidFileContent)
 		}
 		result, err = service.uploadFile(ctx, parentID, form.File.Filename, form.File.ContentType, form.File, form.File.Size)
 	default:
-		return nil, huma.Error422UnprocessableEntity("invalid_file_kind")
+		return nil, huma.Error422UnprocessableEntity(filesi18n.InvalidFileKind)
 	}
 	if err != nil {
 		return nil, fileHTTPError(err)
@@ -461,7 +462,7 @@ func browserPageOf(after string, limit int) (browserPageRequest, error) {
 
 func fileOperationRequestOf(input *fileOperationInput) (immediateOperationRequest, error) {
 	if input == nil {
-		return immediateOperationRequest{}, huma.Error422UnprocessableEntity("invalid_file_operation")
+		return immediateOperationRequest{}, huma.Error422UnprocessableEntity(filesi18n.InvalidFileOperation)
 	}
 	destinationID, err := fileID(input.Body.DestinationID)
 	if err != nil {
@@ -498,7 +499,7 @@ func fileOperationRequestOf(input *fileOperationInput) (immediateOperationReques
 func fileID(raw string) (guid.ID, error) {
 	id, err := guid.Parse(strings.TrimSpace(raw))
 	if err != nil || id <= 0 {
-		return 0, huma.Error422UnprocessableEntity("respx.invalid_id")
+		return 0, huma.Error422UnprocessableEntity(respx.InvalidID)
 	}
 	return id, nil
 }
@@ -512,18 +513,18 @@ func fileHTTPError(err error) error {
 			Meta: respx.Meta{RequestAt: time.Now().UTC()}, Data: conflicts,
 		}
 	case errors.Is(err, errOperationForbidden):
-		return huma.Error403Forbidden("forbidden")
+		return huma.Error403Forbidden(respx.Forbidden)
 	case errors.Is(err, ErrNotFound), errors.Is(err, gorm.ErrRecordNotFound):
-		return huma.Error404NotFound("not_found")
+		return huma.Error404NotFound(respx.NotFound)
 	case errors.Is(err, errRestoreNameConflict):
 		return huma.Error409Conflict("file_restore_name_conflict")
 	case errors.Is(err, errTreeConflict), errors.Is(err, errVersionConflict), errors.Is(err, errOperationKey), errors.Is(err, errOperationState), errors.Is(err, core.ErrAuthorizationChanged):
 		return huma.Error409Conflict("file_state_changed")
 	case errors.Is(err, errOperationInput), errors.Is(err, errFileACL), errors.Is(err, errHierarchy), errors.Is(err, errRootUnbound),
 		errors.Is(err, ErrName), errors.Is(err, ErrLength), errors.Is(err, ErrInvalidKey):
-		return huma.Error422UnprocessableEntity("invalid_file_request")
+		return huma.Error422UnprocessableEntity(filesi18n.InvalidFileRequest)
 	case errors.Is(err, errOperationUnavailable), errors.Is(err, context.DeadlineExceeded):
-		return huma.Error503ServiceUnavailable("file_service_unavailable")
+		return huma.Error503ServiceUnavailable(filesi18n.FileServiceUnavailable)
 	default:
 		return err
 	}

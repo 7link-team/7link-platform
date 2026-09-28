@@ -16,6 +16,7 @@ const (
 	ResourceNotFound                   = Namespace + ".resource_not_found"
 	ResourceConflict                   = Namespace + ".resource_conflict"
 	TenantMemberInactive               = Namespace + ".tenant_member_inactive"
+	MembershipAlreadyExists            = Namespace + ".membership_already_exists"
 	DirectoryAssigneeNotFound          = Namespace + ".directory_assignee_not_found"
 	DirectoryAssigneeInactive          = Namespace + ".directory_assignee_inactive"
 	LastTenantAdministrator            = Namespace + ".last_tenant_administrator"

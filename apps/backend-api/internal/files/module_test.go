@@ -1,6 +1,7 @@
 package files
 
 import (
+	filesi18n "7link.com/platform/internal/files/i18n"
 	"7link.com/platform/internal/files/query"
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/core"
@@ -9,6 +10,7 @@ import (
 	"7link.com/platform/pkg/extension/authz"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"context"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -48,7 +50,7 @@ func TestFileModuleWiresItsAuthorizationCatalog(t *testing.T) {
 	require.NoError(t, module.Provide[guid.Source](services, &operationServiceIDs{}))
 	require.NoError(t, module.Provide[audit.Appender](services, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }))
 	require.NoError(t, services.Seal())
-	require.Equal(t, []string{guid.Name, audit.Name, core.Name}, instance.ModuleDependencies())
+	require.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, core.Name}, instance.ModuleDependencies())
 	require.NoError(t, instance.InjectServices(services))
 	require.NotNil(t, instance.operations)
 	for _, action := range fileAuthorizationActions() {
@@ -80,7 +82,11 @@ func TestModuleProvidesConfiguredExtensibleDriver(t *testing.T) {
 	bindings, err := module.Resolve[*ResourceBindings](services)
 	require.NoError(t, err)
 	require.Same(t, m.bindings, bindings)
+	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	require.NoError(t, m.Initialize(t.Context()))
+	ctx := platformi18n.WithLocale(t.Context(), "zh-CN")
+	require.NotEqual(t, filesi18n.InvalidFileRequest, platformi18n.TContext(ctx, filesi18n.InvalidFileRequest), "Initialize publishes the files locale bundle")
+	require.ErrorContains(t, m.Initialize(t.Context()), "register i18n", "a locale namespace registers exactly once")
 	require.Error(t, m.RegisterDriver("late", func(c DriverConfig) (Driver, error) { return NewLocal(c["root"]) }))
 	require.ErrorIs(t, (&Module{}).Initialize(t.Context()), ErrUnsupported)
 	unknown := NewModule(runtime, Config{Backend: "unknown"})

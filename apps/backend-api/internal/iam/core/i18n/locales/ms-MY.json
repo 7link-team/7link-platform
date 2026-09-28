@@ -47,6 +47,7 @@
   "resource_not_found": "Sumber IAM yang diminta tidak ditemui dalam penyewa ini. Semak pengecam dan penyewa, kemudian cuba lagi.",
   "resource_conflict": "Sumber IAM bercanggah dengan data sedia ada atau versi semasanya. Muat semula dan cuba dengan versi terkini.",
   "tenant_member_inactive": "Prinsipal bukan ahli aktif penyewa ini. Aktifkan keahlian sebelum memberikan akses.",
+  "membership_already_exists": "Prinsipal sudah menjadi ahli organisasi ini. Urus keahlian sedia ada sebaliknya.",
   "directory_assignee_not_found": "Kumpulan atau jawatan penerima yang diminta tidak ditemui. Muat semula direktori dan pilih penerima yang wujud.",
   "directory_assignee_inactive": "Kumpulan atau jawatan penerima yang diminta tidak aktif. Aktifkannya atau pilih penerima lain.",
   "last_tenant_administrator": "Pentadbir aktif terakhir penyewa tidak boleh dibuang atau dinyahaktifkan. Tetapkan pentadbir aktif lain terlebih dahulu.",

@@ -20,7 +20,7 @@ import (
 func parseFederationID(value string) (guid.ID, error) {
 	id, err := guid.Parse(strings.TrimSpace(value))
 	if err != nil {
-		return 0, huma.Error422UnprocessableEntity("invalid_id")
+		return 0, huma.Error422UnprocessableEntity(respx.InvalidID)
 	}
 	return id, nil
 }

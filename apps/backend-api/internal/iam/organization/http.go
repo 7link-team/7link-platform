@@ -258,7 +258,7 @@ func RegisterHTTP(
 func parseOrganizationID(value string) (guid.ID, error) {
 	id, err := guid.Parse(strings.TrimSpace(value))
 	if err != nil || id.Zero() {
-		return 0, huma.Error422UnprocessableEntity("respx.invalid_id")
+		return 0, huma.Error422UnprocessableEntity(respx.InvalidID)
 	}
 	return id, nil
 }
@@ -545,7 +545,7 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 	}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]Tenant], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		items, err := service.ListByMember(ctx, claims.PrincipalID)
 		if err != nil {

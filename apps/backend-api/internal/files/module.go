@@ -8,11 +8,13 @@ import (
 	"sync"
 	"time"
 
+	filesi18n "7link.com/platform/internal/files/i18n"
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -67,9 +69,11 @@ func (m *Module) RegisterDriver(name string, factory DriverFactory) error {
 	}
 	return m.registry.Register(name, factory)
 }
-func (*Module) ModuleName() string           { return Name }
-func (*Module) ModuleDependencies() []string { return []string{guid.Name, audit.Name, core.Name} }
-func (m *Module) Enabled() bool              { return m != nil && m.config.Enabled }
+func (*Module) ModuleName() string { return Name }
+func (*Module) ModuleDependencies() []string {
+	return []string{platformi18n.Name, guid.Name, audit.Name, core.Name}
+}
+func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 
 func (m *Module) ProvideServices(services *module.Services) error {
 	backend := m.config.Backend
@@ -193,6 +197,9 @@ func (m *Module) InjectServices(services *module.Services) error {
 func (m *Module) Initialize(context.Context) error {
 	if m.driver == nil {
 		return ErrUnsupported
+	}
+	if err := filesi18n.Register(); err != nil {
+		return fmt.Errorf("register i18n: %w", err)
 	}
 	return nil
 }

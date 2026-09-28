@@ -67,7 +67,7 @@ func registerPersonalIdentityHTTP(api huma.API, service *Service) {
 	registrar := authz.NewAuthenticationOnlyRegistrar(service.authn)
 	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-list-personal-identity-links", Method: http.MethodGet, Path: "/principals/{principal_id}/identity-links", Tags: []string{"account"}, Summary: "List the current principal's linked identities"}, func(ctx context.Context, in *IdentityBrowserInput) (*respx.Body[[]PersonalIdentityLink], error) {
 		if in.Authorization != "" {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		rows, err := service.ListPersonalIdentityLinks(ctx, in.Cookie)
 		if err != nil {
@@ -77,7 +77,7 @@ func registerPersonalIdentityHTTP(api huma.API, service *Service) {
 	})
 	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-list-personal-identity-providers", Method: http.MethodGet, Path: "/principals/{principal_id}/identity-link-providers", Tags: []string{"account"}, Summary: "List active providers available through current memberships"}, func(ctx context.Context, in *IdentityBrowserInput) (*respx.Body[[]LinkableProvider], error) {
 		if in.Authorization != "" {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		rows, err := service.ListLinkableProviders(ctx, in.Cookie)
 		if err != nil {
@@ -87,10 +87,10 @@ func registerPersonalIdentityHTTP(api huma.API, service *Service) {
 	})
 	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-create-personal-identity-transaction", Method: http.MethodPost, Path: "/principals/{principal_id}/identity-link-transactions", Tags: []string{"account"}, Summary: "Start linking or reauthenticate an existing linked identity", Errors: []int{401, 403, 409, 500}}, func(ctx context.Context, in *identityOperationInput) (*identityOperationOutput, error) {
 		if in.Authorization != "" {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		if err := service.authn.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, ""); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		// The local issuer is configured by authn; never derive an OAuth redirect
 		// from an untrusted Host or forwarded header on this sensitive operation.
@@ -113,10 +113,10 @@ func registerPersonalIdentityHTTP(api huma.API, service *Service) {
 	})
 	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-delete-personal-identity-link", Method: http.MethodDelete, Path: "/principals/{principal_id}/identity-links/{link_id}", Tags: []string{"account"}, Summary: "Unlink one identity while retaining a usable login method", Errors: []int{401, 403, 409, 500}}, func(ctx context.Context, in *identityUnlinkInput) (*respx.Body[map[string]bool], error) {
 		if in.Authorization != "" {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		if err := service.authn.ValidateCSRF(http.MethodDelete, in.Origin, in.Cookie, ""); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		if err := service.UnlinkPersonalIdentity(ctx, in.Cookie, in.ID, in.Body.Proof); err != nil {
 			return nil, federationError(err)
@@ -127,7 +127,7 @@ func registerPersonalIdentityHTTP(api huma.API, service *Service) {
 	authz.DenyAccountView(&continuation)
 	authz.RegisterSessionAuthenticated(registrar, api, continuation, func(ctx context.Context, in *identityContinuationInput) (*identityContinuationOutput, error) {
 		if in.Authorization != "" {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		providerID, err := parseFederationID(in.ProviderID)
 		if err != nil {

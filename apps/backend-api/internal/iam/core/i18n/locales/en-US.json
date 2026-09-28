@@ -47,6 +47,7 @@
   "resource_not_found": "The requested IAM resource was not found in this tenant. Verify the identifier and tenant, then try again.",
   "resource_conflict": "The IAM resource conflicts with existing data or its current version. Reload the resource and retry with the latest version.",
   "tenant_member_inactive": "The principal is not an active member of this tenant. Activate the membership before assigning access.",
+  "membership_already_exists": "The principal is already a member of this organization. Manage the existing membership instead.",
   "directory_assignee_not_found": "The requested group or position assignee was not found. Refresh the directory and choose an existing assignee.",
   "directory_assignee_inactive": "The requested group or position assignee is inactive. Activate it or choose another assignee.",
   "last_tenant_administrator": "The last active tenant administrator cannot be removed or disabled. Assign another active administrator first.",

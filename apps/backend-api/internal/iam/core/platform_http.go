@@ -46,10 +46,10 @@ func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) 
 	authz.RegisterAuthenticated(registrar, a, huma.Operation{OperationID: "iam-system-my-permissions", Method: http.MethodGet, Path: "/system/permissions", Summary: "Return my system permission codes", Tags: []string{"system"}}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]string], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		if view := claims.AccountView; view != nil && (view.ScopeType != "system" || view.ScopeID != systemScopeID) {
-			return nil, huma.Error403Forbidden("forbidden")
+			return nil, huma.Error403Forbidden(respx.Forbidden)
 		}
 		codes, err := svc.EffectivePermissions(ctx, 0, claims.PrincipalID)
 		if err != nil {

@@ -30,7 +30,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 func parseProvisioningID(value string) (guid.ID, error) {
 	id, err := guid.Parse(strings.TrimSpace(value))
 	if err != nil {
-		return 0, huma.Error422UnprocessableEntity("invalid_id")
+		return 0, huma.Error422UnprocessableEntity(respx.InvalidID)
 	}
 	return id, nil
 }
@@ -169,10 +169,10 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 
 func provisioningError(err error) error {
 	if errors.Is(err, authz.ErrFieldDenied) {
-		return huma.Error403Forbidden("forbidden")
+		return huma.Error403Forbidden(respx.Forbidden)
 	}
 	if errors.Is(err, authz.ErrFieldsUnavailable) {
-		return huma.Error503ServiceUnavailable("provisioning_unavailable")
+		return huma.Error503ServiceUnavailable(provisioningi18n.Unavailable)
 	}
 	switch {
 	case errors.Is(err, ErrInvalidDirectory):

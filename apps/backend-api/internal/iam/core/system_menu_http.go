@@ -31,7 +31,7 @@ func (s *Service) requireSystemMenuBinding(ctx context.Context) error {
 		return apiError("check system menu permission binding", err)
 	}
 	if !allowed {
-		return huma.Error403Forbidden("respx.forbidden")
+		return huma.Error403Forbidden(respx.Forbidden)
 	}
 	return nil
 }
@@ -57,7 +57,7 @@ func registerSystemMenuHTTP(api huma.API, svc *Service, registrar *authz.Registr
 	authz.RegisterAuthenticated(registrar, api, op("iam-system-navigation", http.MethodGet, "/system/navigation", "Return my system menu tree"), func(ctx context.Context, _ *struct{}) (*respx.Body[[]MenuItem], error) {
 		claims, _ := authnext.FromContext(ctx)
 		if claims != nil && claims.AccountView != nil && (claims.AccountView.ScopeType != "system" || claims.AccountView.ScopeID != 1) {
-			return nil, huma.Error403Forbidden("respx.forbidden")
+			return nil, huma.Error403Forbidden(respx.Forbidden)
 		}
 		s, owner, err := svc.systemMenuService(ctx)
 		if err != nil {
@@ -115,7 +115,7 @@ func registerSystemMenuHTTP(api huma.API, svc *Service, registrar *authz.Registr
 		}
 		if in.Body.Placement != nil {
 			if in.Body.Label != nil || in.Body.Translations != nil || in.Body.Route != nil || in.Body.Icon != nil || in.Body.SortOrder != nil || in.Body.PermissionCode != nil || in.Body.Status != nil {
-				return nil, huma.Error422UnprocessableEntity("respx.invalid_argument")
+				return nil, huma.Error422UnprocessableEntity(respx.InvalidArgument)
 			}
 			var parent *guid.ID
 			if in.Body.ParentID != nil {

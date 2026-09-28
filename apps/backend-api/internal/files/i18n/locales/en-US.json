@@ -1,0 +1,11 @@
+{
+  "invalid_file_update": "The file update is invalid. Rename, move or restore the entry with a supported change.",
+  "invalid_file_content": "The file content is missing or invalid. Attach one file and leave the name empty.",
+  "invalid_file_root": "The file root request is invalid. Only an unnamed account root directory can be created.",
+  "invalid_file_scope": "A scope can only be chosen for a root directory. Remove the scope and try again.",
+  "directory_content_not_allowed": "A directory cannot carry file content. Remove the attachment and try again.",
+  "invalid_file_kind": "The entry kind is not supported. Choose a file or a directory.",
+  "invalid_file_operation": "The file operation is invalid. Check the entries, destination and conflict choices, then try again.",
+  "invalid_file_request": "The file request is invalid. Check the names, destination and permissions, then try again.",
+  "file_service_unavailable": "The file service could not complete the request in time. Retry later; contact an administrator if the problem continues."
+}

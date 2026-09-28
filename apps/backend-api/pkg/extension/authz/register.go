@@ -455,7 +455,7 @@ func PrincipalScopeError(claims *authn.Claims, text string) huma.StatusError {
 	}
 	id, err := guid.Parse(text)
 	if err != nil || id.Zero() || id.String() != text {
-		return huma.Error422UnprocessableEntity("invalid_principal_id")
+		return huma.Error422UnprocessableEntity(respx.InvalidID)
 	}
 	if id != claims.PrincipalID {
 		return huma.Error404NotFound(respx.NotFound)

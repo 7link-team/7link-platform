@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	authni18n "7link.com/platform/internal/iam/authn/i18n"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -64,7 +65,7 @@ func registerAccountViewHTTP(api huma.API, service *Service) {
 		Summary: "Open an administrator account view", Tags: []string{"account"}, Errors: []int{401, 403, 422, 503},
 	}, func(ctx context.Context, in *accountViewCreateInput) (*respx.Body[AccountViewCreated], error) {
 		if err := service.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, ""); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		created, err := service.CreateAccountView(ctx, in.Cookie, in.Body)
 		if err != nil {
@@ -77,11 +78,11 @@ func registerAccountViewHTTP(api huma.API, service *Service) {
 		Summary: "Close an administrator account view", Tags: []string{"account"}, Errors: []int{401, 403, 422, 503},
 	}, func(ctx context.Context, in *accountViewRevokeInput) (*respx.Body[map[string]bool], error) {
 		if err := service.ValidateCSRF(http.MethodDelete, in.Origin, in.Cookie, ""); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		id, err := guid.Parse(in.ID)
 		if err != nil || id <= 0 || id.String() != in.ID {
-			return nil, huma.Error422UnprocessableEntity("invalid_account_view_id")
+			return nil, huma.Error422UnprocessableEntity(respx.InvalidID)
 		}
 		if err := service.RevokeAccountView(ctx, in.Cookie, id); err != nil {
 			return nil, accountViewHTTPError(ctx, err)
@@ -99,7 +100,7 @@ func accountViewHTTPError(ctx context.Context, err error) error {
 		} else {
 			slog.ErrorContext(ctx, "account view unavailable", "error", err)
 		}
-		return huma.Error503ServiceUnavailable("authentication_unavailable")
+		return huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable)
 	}
 	return authenticationError(err)
 }
