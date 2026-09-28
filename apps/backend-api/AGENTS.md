@@ -17,7 +17,7 @@ Modules own their lifecycle, models, generated queries, localization, and migrat
 - `make test-integration`: run the separate integration-test module.
 - `make test-coverage`: enforce overall and registered-module coverage.
 - `make lint`: run the pinned `golangci-lint` configuration.
-- `make ci`: run formatting, lint, coverage, integration tests, and build in gate order.
+- `make ci`: run formatting, lint, the migration lock check, coverage, integration tests, build, the API document check and the web client contract check in gate order.
 
 ## Coding Style & Naming Conventions
 

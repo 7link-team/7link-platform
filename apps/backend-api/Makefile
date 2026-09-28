@@ -120,7 +120,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/query
 
 .PHONY: build ci dev dev-api dev-status dev-stop fmt-check generate generate-docs golangci iam-preflight lint openapi openapi-check test test-coverage test-integration test-performance test-load test-all test-mysql8 test-mysql8-run
-.PHONY: release-check test-race generate-check frontend-check test-alerts test-redis-security
+.PHONY: release-check test-race generate-check frontend-check frontend-contract-check schema-lock-check test-alerts test-redis-security
 # These gates share coverage files and embedded database resources. Even when
 # invoked with -j, execute each prerequisite to completion before starting the next.
 .NOTPARALLEL: ci release-check
@@ -154,12 +154,24 @@ test-mysql8: iam-preflight
 
 test-mysql8-run:
 	bash scripts/test-mysql8.sh "$(DOCKER_TEST_HOST)" "$(MYSQL8_IMAGE)" $(DOCKER_CMD)
+	@"$(MAKE)" --no-print-directory schema-lock-check
+
+# Published migrations are frozen by schema.lock. The check is static, so it
+# belongs in ci: editing an applied migration must fail before any release run.
+schema-lock-check:
 	go -C tools run ./iam-schema-lock --target ..
+
+# The web client takes its request types and addresses from the committed
+# OpenAPI document. A route change that regenerates the document must also
+# regenerate and still type-check the client, or ci is green on a broken client.
+frontend-contract-check:
+	cd ../frontend-web-admin && bun run check:api-types --force
+	cd ../frontend-web-admin && bun run typecheck --force
 
 # Single entry point for a pipeline: every gate, in cheapest-first order, so a
 # formatting or lint failure reports before the slow database tests run. Fails
 # on the first gate that fails.
-ci: fmt-check lint test-coverage test-integration build openapi-check
+ci: fmt-check lint schema-lock-check test-coverage test-integration build openapi-check frontend-contract-check
 
 # The production candidate adds the slow gates deliberately kept outside ci.
 # Configure DOCKER_CMD / DOCKER_TEST_HOST for an already provisioned test daemon;

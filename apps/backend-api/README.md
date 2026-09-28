@@ -474,7 +474,7 @@ make test-performance  # uncached IAM hot-path plans/benchmarks on PostgreSQL 16
 make test-mysql8       # IAM migrations and hot paths on pinned real MySQL 8.4
 make test-all          # unit + integration
 make lint              # golangci-lint, pinned in tools/go.mod
-make ci                # format, lint, coverage, integration, build, and the API document check
+make ci                # format, lint, migration lock, coverage, integration, build, API document and web client contract checks
 ```
 
 `make test-coverage` enforces 90% overall and 90% for every package listed in
