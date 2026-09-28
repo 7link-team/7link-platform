@@ -219,6 +219,9 @@ func parseIfMatch(raw string) (int, error) {
 // HTTP semantics, so the envelope's code mirrors the status and this module
 // defines no business codes of its own.
 func httpError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, ErrForbidden):
 		return huma.Error403Forbidden(todoi18n.Forbidden)

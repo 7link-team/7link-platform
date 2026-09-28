@@ -622,3 +622,24 @@ func TestOrganizationHTTPMapsDirectoryDomainErrorsWithoutWriting(t *testing.T) {
 	require.NoError(t, h.db.Table(h.table("iam_group_members")).Where("tenant_id = 1 AND group_id = 401").Count(&members).Error)
 	assert.Equal(t, int64(1), members)
 }
+
+// TestErrorMappersKeepChosenStatus is this package's half of the set-wide rule in
+// tests/architecture (domainErrorMappers): an error that already chose its
+// status, headers included, leaves every mapper unchanged instead of becoming 500.
+func TestErrorMappersKeepChosenStatus(t *testing.T) {
+	chosen := huma.ErrorWithHeaders(huma.Error422UnprocessableEntity(respx.InvalidID), http.Header{"Retry-After": {"1"}})
+	for name, mapper := range map[string]func(error) error{
+		"departmentError": departmentError,
+		"groupError":      groupError,
+		"invitationError": invitationError,
+		"tenantError":     tenantError,
+	} {
+		mapped := mapper(chosen)
+		var status huma.StatusError
+		require.ErrorAs(t, mapped, &status, name)
+		assert.Equal(t, http.StatusUnprocessableEntity, status.GetStatus(), name)
+		var headers huma.HeadersError
+		require.ErrorAs(t, mapped, &headers, name)
+		assert.Equal(t, "1", headers.GetHeaders().Get("Retry-After"), name)
+	}
+}

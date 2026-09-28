@@ -295,6 +295,9 @@ func exportOperation() huma.Operation {
 }
 
 func auditAPIError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, ErrArchiveNotFound):
 		return huma.Error404NotFound(auditi18n.ArchiveNotFound)

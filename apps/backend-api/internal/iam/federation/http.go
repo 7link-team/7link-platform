@@ -373,6 +373,9 @@ func requestCallbackURL(ctx huma.Context, providerID guid.ID) string {
 }
 
 func federationError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, ErrIdentityOwnershipRequired):
 		return huma.Error409Conflict(federationi18n.IdentityUnavailable)

@@ -132,6 +132,9 @@ func (s *Service) closureMutationPrincipal(ctx context.Context, in ClosureBrowse
 }
 
 func closureError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	if errors.Is(err, core.ErrPrincipalHasPlatformAccess) {
 		return huma.Error409Conflict(identityi18n.PlatformAccessBlocksClosure)
 	}

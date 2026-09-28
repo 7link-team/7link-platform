@@ -111,6 +111,9 @@ func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) 
 // platformAPIError maps platform authorization failures before delegating to
 // the shared IAM error contract.
 func platformAPIError(operation string, err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, ErrPlatformAdministratorNotFound):
 		return huma.Error404NotFound(corei18n.PlatformAdministratorNotFound)

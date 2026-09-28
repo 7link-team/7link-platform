@@ -922,6 +922,9 @@ func loginResponse(ctx context.Context, web *Service, result authnext.LoginResul
 }
 
 func authenticationError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, authz.ErrFieldDenied):
 		return huma.Error403Forbidden(respx.Forbidden)

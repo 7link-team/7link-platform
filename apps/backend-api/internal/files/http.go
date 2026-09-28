@@ -505,6 +505,9 @@ func fileID(raw string) (guid.ID, error) {
 }
 
 func fileHTTPError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	var conflicts *immediateConflicts
 	switch {
 	case errors.As(err, &conflicts):

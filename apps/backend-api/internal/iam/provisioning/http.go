@@ -168,6 +168,9 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 }
 
 func provisioningError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	if errors.Is(err, authz.ErrFieldDenied) {
 		return huma.Error403Forbidden(respx.Forbidden)
 	}

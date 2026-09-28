@@ -30,6 +30,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
+	"7link.com/platform/pkg/extension/huma/respx"
 	"github.com/beevik/etree"
 	saml "github.com/crewjam/saml"
 	"github.com/danielgtaylor/huma/v2"
@@ -832,6 +833,9 @@ func writeSAMLError(api huma.API, ctx huma.Context, status int, key string) {
 }
 
 func samlError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, ErrSAMLSPNotFound):
 		return huma.Error404NotFound(federationi18n.SAMLSPNotFound)

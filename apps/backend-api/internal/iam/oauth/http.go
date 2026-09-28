@@ -354,6 +354,9 @@ func registerConsentHTTP(api huma.API, service *Service) {
 // authentication. Telling the two apart would let a caller probe which
 // challenges exist.
 func consentError(ctx context.Context, err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	if errors.Is(err, ErrInvalidRequest) || errors.Is(err, authnext.ErrInvalidCredentials) {
 		return oauthError(ctx, http.StatusBadRequest, "invalid_request")
 	}
@@ -685,6 +688,9 @@ func consentPrincipal(ctx context.Context, cookie, authorization string) (guid.I
 // consents here -- but a revocation that finds nothing to revoke is a mistyped
 // client, not a server fault.
 func oauthConsentError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	if errors.Is(err, ErrInvalidRequest) {
 		return huma.Error404NotFound(oauthi18n.ConsentNotFound)
 	}
@@ -700,6 +706,9 @@ func parseOAuthID(value string) (guid.ID, error) {
 }
 
 func oauthClientError(err error, notFound bool) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	if errors.Is(err, ErrInvalidRequest) {
 		if notFound {
 			return huma.Error404NotFound(oauthi18n.ClientNotFound)

@@ -740,6 +740,9 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 }
 
 func departmentError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, core.ErrPrivilegeEscalation):
 		return huma.Error403Forbidden(corei18n.PrivilegeEscalationDenied)
@@ -765,6 +768,9 @@ func departmentError(err error) error {
 }
 
 func groupError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, core.ErrPrivilegeEscalation):
 		return huma.Error403Forbidden(corei18n.PrivilegeEscalationDenied)
@@ -798,6 +804,9 @@ func groupError(err error) error {
 }
 
 func tenantError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, ErrTenantNotFound):
 		return huma.Error404NotFound(organizationi18n.TenantNotFound)
@@ -817,6 +826,9 @@ func tenantError(err error) error {
 }
 
 func invitationError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, core.ErrPrivilegeEscalation):
 		return huma.Error403Forbidden(corei18n.PrivilegeEscalationDenied)

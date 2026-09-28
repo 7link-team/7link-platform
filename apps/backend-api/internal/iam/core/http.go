@@ -1418,10 +1418,7 @@ func menusFromDomain(menus []Menu) []APIMenu {
 }
 
 func apiError(operation string, err error) error {
-	// An input check that already chose its response (requireID's 422) keeps it;
-	// wrapping it again as a domain error would report the client's mistake as 500.
-	var status huma.StatusError
-	if errors.As(err, &status) {
+	if respx.IsStatusError(err) {
 		return err
 	}
 	if errors.Is(err, ErrMemberConflict) {

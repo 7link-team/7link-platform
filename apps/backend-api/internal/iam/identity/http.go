@@ -500,6 +500,9 @@ type serviceAccountCredentialRevokeData struct {
 // Principal and service-account failures share a mapper because both surfaces
 // report the same tenant, conflict, and validation semantics.
 func identityError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	if errors.Is(err, ErrProfileDenied) {
 		return huma.Error403Forbidden("respx.forbidden")
 	}

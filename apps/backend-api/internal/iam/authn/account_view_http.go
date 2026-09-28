@@ -94,6 +94,9 @@ func registerAccountViewHTTP(api huma.API, service *Service) {
 // An unavailable dependency is logged here, where the cause is still known; the
 // response deliberately carries only the stable code.
 func accountViewHTTPError(ctx context.Context, err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	if errors.Is(err, authnext.ErrUnavailable) {
 		if ctx.Err() != nil {
 			slog.DebugContext(ctx, "account view abandoned by the caller", "error", err)

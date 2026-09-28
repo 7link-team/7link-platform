@@ -48,6 +48,9 @@ type personalTokenPermissionsInput struct {
 }
 
 func personalTokenError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	if errors.Is(err, errPersonalTokenInput) {
 		return huma.Error422UnprocessableEntity(authni18n.InvalidPersonalToken)
 	}

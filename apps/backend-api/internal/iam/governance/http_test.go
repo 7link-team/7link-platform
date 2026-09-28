@@ -406,3 +406,21 @@ func TestGovernanceHTTPReportsStorageFaultsOnEveryOperation(t *testing.T) {
 		assert.NotContains(t, []int{http.StatusNotFound, http.StatusConflict}, broken.response.Code, broken.name)
 	}
 }
+
+// TestErrorMappersKeepChosenStatus is this package's half of the set-wide rule in
+// tests/architecture (domainErrorMappers): an error that already chose its
+// status, headers included, leaves every mapper unchanged instead of becoming 500.
+func TestErrorMappersKeepChosenStatus(t *testing.T) {
+	chosen := huma.ErrorWithHeaders(huma.Error422UnprocessableEntity(respx.InvalidID), http.Header{"Retry-After": {"1"}})
+	for name, mapper := range map[string]func(error) error{
+		"governanceError": governanceError,
+	} {
+		mapped := mapper(chosen)
+		var status huma.StatusError
+		require.ErrorAs(t, mapped, &status, name)
+		assert.Equal(t, http.StatusUnprocessableEntity, status.GetStatus(), name)
+		var headers huma.HeadersError
+		require.ErrorAs(t, mapped, &headers, name)
+		assert.Equal(t, "1", headers.GetHeaders().Get("Retry-After"), name)
+	}
+}

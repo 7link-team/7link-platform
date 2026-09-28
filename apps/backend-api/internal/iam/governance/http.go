@@ -345,6 +345,9 @@ func humanPrincipal(ctx context.Context) (guid.ID, error) {
 }
 
 func governanceError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return huma.Error404NotFound(governancei18n.RequestNotFound)
