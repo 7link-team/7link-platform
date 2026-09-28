@@ -135,6 +135,24 @@ func TestGormSinkRejectsInvalidEventIDsWithoutWritingZeroPrimaryKey(t *testing.T
 	assert.Zero(t, count)
 }
 
+// A UUID-fallback event in a batch used to make the whole batch fail, so the
+// valid events flushed alongside it were lost from the database sink.
+func TestGormSinkPersistsValidEventsBesideAnInvalidID(t *testing.T) {
+	db := openTestDB(t)
+	migrateTestDatabase(t, db)
+	sink := NewGormSink(db, "")
+
+	err := sink.Write(t.Context(), []Event{
+		{ID: "1234567890123", Operation: "kept"},
+		{ID: "0b6c2f0e-uuid-fallback", Operation: "fallback"},
+		{ID: "1234567890124", Operation: "also-kept"},
+	})
+	require.ErrorIs(t, err, ErrInvalidEventID)
+	var operations []string
+	require.NoError(t, db.Model(&OperationLog{}).Order("operation").Pluck("operation", &operations).Error)
+	assert.Equal(t, []string{"also-kept", "kept"}, operations)
+}
+
 type countingGormWriter struct {
 	db    *gorm.DB
 	calls atomic.Int32
