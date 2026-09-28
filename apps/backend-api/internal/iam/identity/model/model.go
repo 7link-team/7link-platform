@@ -16,6 +16,7 @@ type Principal struct {
 	Status             string     `gorm:"column:status;type:text;not null"`
 	EmailVerified      bool       `gorm:"column:email_verified;not null"`
 	ActivationRequired bool       `gorm:"column:activation_required;not null"`
+	SelfRegistered     bool       `gorm:"column:self_registered;not null"`
 	CreatedAt          time.Time  `gorm:"column:created_at;not null"`
 	UpdatedAt          time.Time  `gorm:"column:updated_at;not null"`
 	DisabledAt         *time.Time `gorm:"column:disabled_at"`

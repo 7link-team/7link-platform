@@ -91,6 +91,10 @@ export async function authEntrancesAcceptance({
     })
     assert.equal(denied.status(), 401, "unverified registration cannot log in")
     await record.page.goto(message.verification_url)
+    // The link proves the mailbox; activation also needs the registration password.
+    await record.page.locator("#verification-password").fill(password)
+    await record.page.locator('form button[type="submit"]').click()
+    await record.page.getByRole("status").waitFor()
     await record.page.locator(`a[href="${roots[entry]}/login"]`).waitFor()
     assert.equal(
       await record.page

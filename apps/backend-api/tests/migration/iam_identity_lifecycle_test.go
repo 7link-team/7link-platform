@@ -45,11 +45,12 @@ func TestIAMPrincipalLifecycleMigrationsAcrossEngines(t *testing.T) {
 					now := time.Now().UTC().Truncate(time.Millisecond)
 					principal := model.Principal{ID: 1, LoginName: "before-upgrade", DisplayName: "Before", Email: "before@example.test",
 						Status: "disabled", CreatedAt: now, UpdatedAt: now, DisabledAt: &now}
-					require.NoError(t, gdb.Table(prefix+"iam_principals").Omit("Avatar").Create(&principal).Error)
+					require.NoError(t, gdb.Table(prefix+"iam_principals").Omit("Avatar", "SelfRegistered").Create(&principal).Error)
 					require.NoError(t, goosex.Migrate(t.Context(), db, source, engine.dialect))
 					var loaded model.Principal
 					require.NoError(t, gdb.Table(prefix+"iam_principals").Where("id = 1").Take(&loaded).Error)
 					assert.Equal(t, principal.Email, loaded.Email)
+					assert.False(t, loaded.SelfRegistered, "an existing principal is never taken for a self-registration")
 					// Clean installations retain structural rollback before any erasure.
 					require.NoError(t, goosex.MigrateDownTo(t.Context(), db, source, engine.dialect, 2))
 					require.NoError(t, goosex.Migrate(t.Context(), db, source, engine.dialect))

@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/authn/model"
+	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/passwordx"
 	"gorm.io/gorm"
 )
 
@@ -112,9 +114,16 @@ func (s *Service) BeginEmailVerification(
 
 // CompleteEmailVerification accepts either the link token or its six-digit
 // companion code with its email address and consumes the persisted credential exactly once.
-func (s *Service) CompleteEmailVerification(ctx context.Context, token, email, code string) error {
+// Verifying a principal still pending activation also activates it, so that
+// also needs the password of the registration being confirmed: a mailbox owner
+// following a link someone else's registration sent cannot activate an account
+// whose password that someone chose. The password is ignored otherwise.
+func (s *Service) CompleteEmailVerification(ctx context.Context, token, email, code, password string) error {
 	if !s.EmailVerificationEnabled() {
 		return authnext.ErrEmailVerificationDisabled
+	}
+	if len(password) > 1024 {
+		return authnext.ErrInvalidEmailVerification
 	}
 	now := s.now().UTC()
 	var verification *model.EmailVerificationToken
@@ -159,6 +168,9 @@ func (s *Service) CompleteEmailVerification(ctx context.Context, token, email, c
 		return authnext.ErrInvalidEmailVerification
 	}
 	err := s.repo.runInTx(ctx, func(repository *Repository) error {
+		if err := requirePendingRegistrationPassword(ctx, repository, verification.PrincipalID, password); err != nil {
+			return err
+		}
 		consumed, err := repository.consumeEmailVerification(
 			ctx, verification.TokenHMAC, attemptLimit, now,
 		)
@@ -191,6 +203,35 @@ func (s *Service) CompleteEmailVerification(ctx context.Context, token, email, c
 	}
 	if err != nil {
 		return fmt.Errorf("complete email verification: %w", err)
+	}
+	return nil
+}
+
+// requirePendingRegistrationPassword refuses activating a pending principal
+// unless password matches its pending credential. It holds the principal lock,
+// which a re-registration replacing that credential also takes. Every refusal
+// is the same invalid-credential error a wrong or spent link gets, and nothing
+// is consumed, so the registrant can retry with the right password.
+func requirePendingRegistrationPassword(ctx context.Context, repository *Repository, principalID guid.ID, password string) error {
+	principal, err := repository.lockPrincipal(ctx, principalID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return authnext.ErrInvalidEmailVerification
+	}
+	if err != nil {
+		return err
+	}
+	if !principal.ActivationRequired {
+		return nil
+	}
+	credential, err := repository.getCredential(ctx, principalID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return authnext.ErrInvalidEmailVerification
+	}
+	if err != nil {
+		return fmt.Errorf("load pending registration credential: %w", err)
+	}
+	if matched, err := passwordx.Verify(credential.PasswordHash, password); err != nil || !matched {
+		return authnext.ErrInvalidEmailVerification
 	}
 	return nil
 }

@@ -221,6 +221,7 @@ func TestCreatePendingPrincipalGrantsNoMembership(t *testing.T) {
 	assert.Equal(t, "alice@example.test", row.LoginName)
 	assert.Equal(t, "alice@example.test", row.DisplayName)
 	assert.True(t, row.ActivationRequired)
+	assert.True(t, row.SelfRegistered, "public registration may re-credential only what it created")
 	assert.False(t, row.EmailVerified)
 	assert.Equal(t, int64(1), harness.credentialVersion(t, id))
 	assert.Zero(t, harness.memberCount(t, 7, id))

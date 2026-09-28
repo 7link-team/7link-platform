@@ -231,7 +231,7 @@ func (s *Service) CreatePendingPrincipal(
 		return 0, err
 	}
 	principal := model.Principal{
-		ID: id, LoginName: email, Email: email, ActivationRequired: true,
+		ID: id, LoginName: email, Email: email, ActivationRequired: true, SelfRegistered: true,
 		DisplayName: displayName, Status: "active", CreatedAt: now, UpdatedAt: now,
 	}
 	if err := repo.insertPrincipal(ctx, &principal); err != nil {

@@ -164,7 +164,7 @@ func moduleMigrations() []moduleMigration {
 		{
 			name:    "identity",
 			table:   "iam_principals",
-			target:  6,
+			target:  7,
 			seedSQL: `INSERT INTO iam_principals (id, login_name, display_name, status, created_at, updated_at) VALUES (1, 'first', 'First', 'active', '2026-09-02 00:00:00', '2026-09-02 00:00:00')`,
 			source:  (&identity.Module{}).MigrationSource(),
 		},

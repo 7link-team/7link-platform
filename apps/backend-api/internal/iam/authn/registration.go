@@ -144,6 +144,16 @@ func (s *Service) resendRegistrationCode(ctx context.Context, email, password, p
 		if !principal.ActivationRequired {
 			return authnext.ErrRegistrationConflict
 		}
+		// A pending principal a directory, an invitation or an administrator
+		// created is answered like an existing account: public registration
+		// never re-credentials it or sends it a link.
+		selfRegistered, err := repository.selfRegistered(ctx, principal.ID)
+		if err != nil {
+			return fmt.Errorf("load pending registration origin: %w", err)
+		}
+		if !selfRegistered {
+			return authnext.ErrRegistrationConflict
+		}
 		credential, err := repository.getCredential(ctx, principal.ID)
 		if err != nil {
 			return fmt.Errorf("load pending registration credential: %w", err)

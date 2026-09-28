@@ -2480,9 +2480,9 @@ export function createIamApi(
       request<{ accepted: boolean }>(
         apiRoute("post", "/email-verifications/requests")
       ),
-    completeEmailVerification: (token: string) =>
+    completeEmailVerification: (token: string, password?: string) =>
       request<{ verified: boolean }>(apiRoute("post", "/email-verifications"), {
-        body: JSON.stringify({ token }),
+        body: JSON.stringify(password ? { token, password } : { token }),
       }),
     mfaStatus: async () =>
       request<MfaStatus>(

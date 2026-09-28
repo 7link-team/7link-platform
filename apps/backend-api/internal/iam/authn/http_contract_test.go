@@ -292,6 +292,24 @@ func TestAuthnOpenAPIEmailVerificationRequiresOneCredentialForm(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/email-verifications", map[string]any{
 		"email": "person@example.test", "code": "123456",
 	}, "Origin: https://app.example.test").Code)
+	assert.Equal(t, 1024, *schema.Properties["password"].MaxLength)
+	for _, accepted := range []map[string]any{
+		{"token": "cev1_token", "password": "registration password"},
+		{"email": "person@example.test", "code": "123456", "password": "registration password"},
+	} {
+		assert.Equal(t, http.StatusServiceUnavailable, api.Post("/email-verifications", accepted,
+			"Origin: https://app.example.test").Code, "either form may carry the registration password")
+	}
+	for _, refused := range []map[string]any{
+		{"password": "registration password"},
+		{"token": "cev1_token", "email": "person@example.test"},
+		{"token": "cev1_token", "code": "123456", "password": "registration password"},
+		{"email": "person@example.test", "password": "registration password"},
+		{"token": "cev1_token", "password": ""},
+	} {
+		assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/email-verifications", refused,
+			"Origin: https://app.example.test").Code, "%v", refused)
+	}
 }
 
 func TestAuthnOpenAPIDeclaresRuntimeErrorsWithOneEnvelope(t *testing.T) {

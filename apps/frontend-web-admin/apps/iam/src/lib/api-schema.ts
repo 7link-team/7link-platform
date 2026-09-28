@@ -9607,8 +9607,20 @@ export interface operations {
                     code?: string;
                     /** Format: email */
                     email?: string;
+                    /** @description Password of the registration being confirmed; required to activate a pending self-registration */
+                    password?: string;
                     token?: string;
-                } & (Record<string, never> | Record<string, never>);
+                } & ({
+                    /** @description Password of the registration being confirmed; required to activate a pending self-registration */
+                    password?: string;
+                    token: string;
+                } | {
+                    code: string;
+                    /** Format: email */
+                    email: string;
+                    /** @description Password of the registration being confirmed; required to activate a pending self-registration */
+                    password?: string;
+                });
             };
         };
         responses: {

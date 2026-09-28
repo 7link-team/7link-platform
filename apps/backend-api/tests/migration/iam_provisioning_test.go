@@ -178,7 +178,7 @@ func assertProvisioningUp(t *testing.T, db *gorm.DB, modules []module.Module, pr
 	}
 	assert.Equal(t, "retire-positions", milestones[iamcore.Name])
 	assert.Equal(t, "administration-scopes", milestones[organization.Name])
-	assert.Equal(t, "avatars", milestones[identity.Name])
+	assert.Equal(t, "self-registration-origin", milestones[identity.Name])
 	assert.Equal(t, "outbound-coordination", milestones[provisioning.Name])
 }
 

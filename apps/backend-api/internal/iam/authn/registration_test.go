@@ -41,7 +41,7 @@ func registrationCreatorForHarness(harness *authnRepositoryHarness) Registration
 		principalID := guid.ID(rawID)
 		if err := db.WithContext(ctx).Table(harness.runtime.TablePrefix() + "iam_principals").Create(&identitymodel.Principal{
 			ID: principalID, LoginName: email, Email: email, DisplayName: displayName,
-			Status: "active", ActivationRequired: true, CreatedAt: now, UpdatedAt: now,
+			Status: "active", ActivationRequired: true, SelfRegistered: true, CreatedAt: now, UpdatedAt: now,
 		}).Error; err != nil {
 			return 0, err
 		}
@@ -98,7 +98,7 @@ func TestRegistrationLifecycle(t *testing.T) {
 	require.NoError(t, service.deliverPendingNotifications(t.Context()))
 	payload := recorder.last(t)
 	token := verificationTokenFromPayload(t, payload)
-	require.NoError(t, service.CompleteEmailVerification(t.Context(), token, "", ""))
+	require.NoError(t, service.CompleteEmailVerification(t.Context(), token, "", "", password))
 	principalAfter := harness.principal(t, principal.ID)
 	assert.False(t, principalAfter.ActivationRequired)
 	assert.True(t, principalAfter.EmailVerified)
@@ -146,13 +146,13 @@ func TestReRegistrationOfPendingAddressReplacesTheCredential(t *testing.T) {
 		ownerMail := register(t, service, recorder, owner)
 		require.NotEqual(t, preRegistered.VerificationURL, ownerMail.VerificationURL)
 
-		assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, preRegistered), "", ""),
+		assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, preRegistered), "", "", attacker),
 			authnext.ErrInvalidEmailVerification, "a link issued for the replaced credential must not activate")
-		assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), "", email, preRegistered.Code),
+		assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), "", email, preRegistered.Code, attacker),
 			authnext.ErrInvalidEmailVerification, "the replaced link's code must not activate either")
 		assert.True(t, principalOf(t, harness).ActivationRequired)
 
-		require.NoError(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, ownerMail), "", ""))
+		require.NoError(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, ownerMail), "", "", owner))
 		principal := principalOf(t, harness)
 		assert.False(t, principal.ActivationRequired)
 		_, err := service.BeginLogin(t.Context(), email, owner, "")
@@ -165,7 +165,7 @@ func TestReRegistrationOfPendingAddressReplacesTheCredential(t *testing.T) {
 		service, harness, recorder := newRegistrationService(t)
 		ownerMail := register(t, service, recorder, owner)
 		register(t, service, recorder, attacker)
-		assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, ownerMail), "", ""),
+		assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, ownerMail), "", "", owner),
 			authnext.ErrInvalidEmailVerification, "the owner's link must not activate the attacker's credential")
 		assert.True(t, principalOf(t, harness).ActivationRequired)
 	})
@@ -178,7 +178,7 @@ func TestReRegistrationOfPendingAddressReplacesTheCredential(t *testing.T) {
 		require.NoError(t, harness.db.Table("iam_email_verification_tokens").
 			Where("email = ? AND consumed_at IS NULL", email).Count(&outstanding).Error)
 		assert.Equal(t, int64(1), outstanding)
-		require.NoError(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, first), "", ""))
+		require.NoError(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, first), "", "", owner))
 		_, err := service.BeginLogin(t.Context(), email, owner, "")
 		require.NoError(t, err)
 	})
@@ -193,7 +193,7 @@ func TestReRegistrationOfPendingAddressReplacesTheCredential(t *testing.T) {
 	t.Run("an activated address is never re-credentialed", func(t *testing.T) {
 		service, _, recorder := newRegistrationService(t)
 		ownerMail := register(t, service, recorder, owner)
-		require.NoError(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, ownerMail), "", ""))
+		require.NoError(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, ownerMail), "", "", owner))
 		// The HTTP contract answers this conflict with the same 202 as a new address.
 		assert.ErrorIs(t, service.Register(t.Context(), email, attacker, "Registrant"), authnext.ErrRegistrationConflict)
 		_, err := service.BeginLogin(t.Context(), email, owner, "")
@@ -201,6 +201,90 @@ func TestReRegistrationOfPendingAddressReplacesTheCredential(t *testing.T) {
 		_, err = service.BeginLogin(t.Context(), email, attacker, "")
 		assert.ErrorIs(t, err, authnext.ErrInvalidCredentials)
 	})
+}
+
+// Following a verification link proves the mailbox, not who chose the
+// password. Activating a pending registration therefore also needs that
+// registration's password, and a refusal looks exactly like a spent link and
+// leaves the link usable for the registrant.
+func TestRegistrationActivationRequiresTheRegistrationPassword(t *testing.T) {
+	const (
+		email    = "owner@example.com"
+		password = "registrant registration password"
+	)
+	service, harness, recorder := newRegistrationService(t)
+	require.NoError(t, service.Register(t.Context(), email, password, "Registrant"))
+	require.NoError(t, service.deliverPendingNotifications(t.Context()))
+	payload := recorder.last(t)
+	token := verificationTokenFromPayload(t, payload)
+	pending := func() {
+		t.Helper()
+		var principals []identitymodel.Principal
+		require.NoError(t, harness.db.Table(harness.runtime.TablePrefix()+"iam_principals").
+			Where("login_name = ?", email).Find(&principals).Error)
+		require.Len(t, principals, 1)
+		assert.True(t, principals[0].ActivationRequired)
+		assert.False(t, principals[0].EmailVerified)
+		_, err := harness.repository.activeEmailVerificationByHMAC(t.Context(), service.emailVerificationHMACs(token), service.now())
+		require.NoError(t, err, "a refused activation consumes nothing")
+	}
+
+	for _, wrong := range []string{"", "owner of the mailbox guesses", password + " "} {
+		assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), token, "", "", wrong),
+			authnext.ErrInvalidEmailVerification, "link with password %q", wrong)
+		assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), "", email, payload.Code, wrong),
+			authnext.ErrInvalidEmailVerification, "code with password %q", wrong)
+		pending()
+	}
+	assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), "cpe1_not-a-link", "", "", password),
+		authnext.ErrInvalidEmailVerification, "a wrong link answers the same")
+	assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), token, "", "", string(make([]byte, 1025))),
+		authnext.ErrInvalidEmailVerification, "an oversized password is refused before hashing")
+	pending()
+
+	require.NoError(t, service.CompleteEmailVerification(t.Context(), "", email, payload.Code, password))
+	_, err := service.BeginLogin(t.Context(), email, password, "")
+	require.NoError(t, err)
+}
+
+// Only public self-registration creates a principal public registration may
+// re-credential. A pending principal a directory created answers like an
+// existing account: same response, no new credential and no link.
+func TestRegistrationNeverReCredentialsADirectoryPendingPrincipal(t *testing.T) {
+	const email = "provisioned@example.com"
+	service, harness, recorder := newRegistrationService(t)
+	now := repositoryTestNow
+	principalID := guid.ID(8801)
+	require.NoError(t, harness.db.Table(harness.runtime.TablePrefix()+"iam_principals").Create(&identitymodel.Principal{
+		ID: principalID, LoginName: email, Email: email, DisplayName: "Provisioned",
+		Status: "active", ActivationRequired: true, CreatedAt: now, UpdatedAt: now,
+	}).Error)
+	require.NoError(t, harness.db.Table(harness.runtime.TablePrefix()+"iam_credentials").Create(&model.Credential{
+		PrincipalID: principalID, PasswordHash: "directory-managed", PasswordChangedAt: now,
+		CredentialVersion: 1, UpdatedAt: now,
+	}).Error)
+
+	err := service.Register(t.Context(), email, "attacker registration password", "Attacker")
+	require.ErrorIs(t, err, authnext.ErrRegistrationConflict, "the HTTP contract answers this with the same 202 as a new address")
+	credential, err := harness.repository.getCredential(t.Context(), principalID)
+	require.NoError(t, err)
+	assert.Equal(t, "directory-managed", credential.PasswordHash)
+	assert.Equal(t, int64(1), credential.CredentialVersion)
+	var links int64
+	require.NoError(t, harness.db.Table("iam_email_verification_tokens").Where("principal_id = ?", principalID).Count(&links).Error)
+	assert.Zero(t, links)
+	require.NoError(t, service.deliverPendingNotifications(t.Context()))
+	recorder.mu.Lock()
+	assert.Empty(t, recorder.payloads)
+	recorder.mu.Unlock()
+
+	// Control: the same row marked as a self-registration is re-credentialed.
+	require.NoError(t, harness.db.Table(harness.runtime.TablePrefix()+"iam_principals").
+		Where("id = ?", principalID).Update("self_registered", true).Error)
+	require.NoError(t, service.Register(t.Context(), email, "attacker registration password", "Attacker"))
+	credential, err = harness.repository.getCredential(t.Context(), principalID)
+	require.NoError(t, err)
+	assert.NotEqual(t, "directory-managed", credential.PasswordHash)
 }
 
 func TestRegistrationEntranceSurvivesVerifiedEmailDelivery(t *testing.T) {
@@ -211,7 +295,7 @@ func TestRegistrationEntranceSurvivesVerifiedEmailDelivery(t *testing.T) {
 	target, err := url.Parse(payload.VerificationURL)
 	require.NoError(t, err)
 	assert.Equal(t, "tenant", target.Query().Get("entry"))
-	require.NoError(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, payload), "", ""))
+	require.NoError(t, service.CompleteEmailVerification(t.Context(), verificationTokenFromPayload(t, payload), "", "", "correct registration password"))
 	_, err = publicEntranceCredentialURL("https://app.example.test/verify", "secret", "system")
 	assert.Error(t, err, "registration continuation must not accept privileged or arbitrary destinations")
 }

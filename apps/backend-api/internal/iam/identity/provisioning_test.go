@@ -40,6 +40,7 @@ func TestCreateProvisionedToWritesThroughCallerTransaction(t *testing.T) {
 
 	row := harness.principal(t, principal.ID)
 	assert.Equal(t, "scim.user", row.LoginName)
+	assert.False(t, row.SelfRegistered, "public registration never re-credentials a directory principal")
 	assert.Equal(t, int64(1), harness.credentialVersion(t, principal.ID))
 	member := harness.member(t, 7, principal.ID)
 	assert.Equal(t, "active", member.Status)
