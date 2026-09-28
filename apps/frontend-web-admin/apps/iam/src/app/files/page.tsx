@@ -28,6 +28,7 @@ import {
 } from "../../lib/file-browser"
 import {
   ApiError,
+  businessCode,
   clientErrorMessage,
   iamApi,
   type FileOperationInput,
@@ -382,7 +383,7 @@ export default function FilesPage({
     } catch (cause) {
       if (
         cause instanceof ApiError &&
-        cause.code === "file_restore_name_conflict"
+        cause.businessCode === businessCode.fileRestoreNameConflict
       )
         return "name-conflict"
       setActionError({ scope: scopeKey, message: actionMessage(cause) })

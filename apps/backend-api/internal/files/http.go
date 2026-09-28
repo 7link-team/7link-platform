@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	filesi18n "7link.com/platform/internal/files/i18n"
 	"7link.com/platform/internal/iam/core"
@@ -120,17 +119,19 @@ type fileOperationInput struct {
 	}
 }
 
-type fileConflictHTTPError struct {
-	status int
-
-	Code    int                 `json:"code"`
-	Message string              `json:"message"`
-	Meta    respx.Meta          `json:"meta"`
-	Data    *immediateConflicts `json:"data,omitempty"`
-}
-
-func (e *fileConflictHTTPError) Error() string  { return e.Message }
-func (e *fileConflictHTTPError) GetStatus() int { return e.status }
+// Business codes of the file failures a client resolves rather than reports.
+// The files module owns 102000-102999.
+const (
+	// fileRestoreNameConflictCode: a restore target name is taken; the client
+	// offers a rename.
+	fileRestoreNameConflictCode = 102001
+	// fileStateChangedCode: the tree changed under a confirmed operation; the
+	// client runs preflight again.
+	fileStateChangedCode = 102002
+	// fileOperationConflictCode: the operation met conflicts; data lists them for
+	// the client to decide.
+	fileOperationConflictCode = 102003
+)
 
 func registerFileHTTP(api huma.API, service *operationService, registrar *authz.Registrar, fileOwner, entityOwner, departmentOwner authz.ResourceOwnerResolver) {
 	registerSystemFileHTTP(api, service, registrar)
@@ -505,21 +506,21 @@ func fileHTTPError(err error) error {
 	if respx.IsStatusError(err) {
 		return err
 	}
+	// The mapping runs without the request context, so the envelope is stamped
+	// when it is built, as huma's own errors are.
+	ctx := context.Background()
 	var conflicts *immediateConflicts
 	switch {
 	case errors.As(err, &conflicts):
-		return &fileConflictHTTPError{
-			status: http.StatusConflict, Code: http.StatusConflict, Message: "file_operation_conflict",
-			Meta: respx.Meta{RequestAt: time.Now().UTC()}, Data: conflicts,
-		}
+		return respx.ErrStatus(ctx, http.StatusConflict, fileOperationConflictCode, filesi18n.FileOperationConflict, conflicts)
 	case errors.Is(err, errOperationForbidden):
 		return huma.Error403Forbidden(respx.Forbidden)
 	case errors.Is(err, ErrNotFound), errors.Is(err, gorm.ErrRecordNotFound):
 		return huma.Error404NotFound(respx.NotFound)
 	case errors.Is(err, errRestoreNameConflict):
-		return huma.Error409Conflict("file_restore_name_conflict")
+		return respx.ErrStatus(ctx, http.StatusConflict, fileRestoreNameConflictCode, filesi18n.FileRestoreNameConflict, nil)
 	case errors.Is(err, errTreeConflict), errors.Is(err, errVersionConflict), errors.Is(err, errOperationKey), errors.Is(err, errOperationState), errors.Is(err, core.ErrAuthorizationChanged):
-		return huma.Error409Conflict("file_state_changed")
+		return respx.ErrStatus(ctx, http.StatusConflict, fileStateChangedCode, filesi18n.FileStateChanged, nil)
 	case errors.Is(err, errOperationInput), errors.Is(err, errFileACL), errors.Is(err, errHierarchy), errors.Is(err, errRootUnbound),
 		errors.Is(err, ErrName), errors.Is(err, ErrLength), errors.Is(err, ErrInvalidKey):
 		return huma.Error422UnprocessableEntity(filesi18n.InvalidFileRequest)

@@ -1089,22 +1089,39 @@ interface ErrorResponse {
   data?: unknown
 }
 
+/**
+ * Business codes (envelope code 100000 and above) of the failures the client
+ * resolves rather than reports. The server owns the numbers: authn uses
+ * 101000-101999 and files 102000-102999. Branch on these, never on a message,
+ * which is localized.
+ */
+export const businessCode = {
+  captchaInvalid: 101001,
+  fileRestoreNameConflict: 102001,
+  fileStateChanged: 102002,
+  fileOperationConflict: 102003,
+} as const
+
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
   readonly data: unknown
+  /** The envelope's business code, when the failure has one. */
+  readonly businessCode: number | undefined
 
   constructor(
     status: number,
     code: string,
     message = clientErrorMessage(code),
-    data?: unknown
+    data?: unknown,
+    businessCode?: number
   ) {
     super(message)
     this.name = "ApiError"
     this.status = status
     this.code = code
     this.data = data
+    this.businessCode = businessCode
   }
 }
 
@@ -1316,13 +1333,21 @@ function apiError(status: number, body: ErrorResponse | null): ApiError {
     body?.detail?.trim() ||
     message ||
     `HTTP ${status}`
-  return new ApiError(status, code, message || undefined, body?.data)
+  const business =
+    typeof body?.code === "number" && body.code >= 100000
+      ? body.code
+      : undefined
+  return new ApiError(status, code, message || undefined, body?.data, business)
 }
 
 export function fileOperationConflicts(
   cause: unknown
 ): FileOperationConflicts | null {
-  if (!(cause instanceof ApiError) || cause.status !== 409) return null
+  if (
+    !(cause instanceof ApiError) ||
+    cause.businessCode !== businessCode.fileOperationConflict
+  )
+    return null
   const data = cause.data
   if (!data || typeof data !== "object") return null
   const candidate = data as Partial<FileOperationConflicts>

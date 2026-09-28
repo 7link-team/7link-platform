@@ -387,6 +387,11 @@ type mfaConfirmationOutput struct {
 	Body      respx.Envelope[authnext.MFAConfirmation]
 }
 
+// captchaInvalidCode is the business code of a rejected registration captcha,
+// which shares its 422 with rejected registration data; the registration page
+// tells the two apart by code. The authn module owns 101000-101999.
+const captchaInvalidCode = 101001
+
 // RegisterHTTP registers the authn module's HTTP operations.
 func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	registerAccountViewBoundary(a)
@@ -454,7 +459,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			return nil, huma.Error403Forbidden(authni18n.RegistrationRequestRejected)
 		}
 		if !web.VerifyCaptcha(in.Body.CaptchaType, in.Body.CaptchaID, in.Body.CaptchaAnswer) {
-			return nil, huma.Error422UnprocessableEntity("captcha_invalid")
+			return nil, respx.ErrStatus(ctx, http.StatusUnprocessableEntity, captchaInvalidCode, authni18n.CaptchaInvalid, nil)
 		}
 		if err := web.RegisterForEntry(ctx, in.Body.Email, in.Body.Password, in.Body.DisplayName, in.Body.Entry); err != nil {
 			switch {

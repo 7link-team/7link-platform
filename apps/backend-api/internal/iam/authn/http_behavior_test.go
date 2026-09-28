@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	authni18n "7link.com/platform/internal/iam/authn/i18n"
 	"7link.com/platform/internal/iam/authn/model"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -587,8 +588,24 @@ func TestRegistrationHTTPFlow(t *testing.T) {
 		"captcha_type": "text", "captcha_id": "invalid", "captcha_answer": "invalid",
 	}, "Origin: https://evil.example").Code)
 	invalid := registrationRequestWithCaptcha(t, api, "not-an-email", "short", "")
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/registrations", invalid,
-		"Origin: https://app.example").Code)
+	rejectedData := api.Post("/registrations", invalid, "Origin: https://app.example")
+	assert.Equal(t, http.StatusUnprocessableEntity, rejectedData.Code)
+	// A wrong captcha shares the 422 with rejected data; only the business code
+	// tells the registration page which one to show.
+	wrongCaptcha := api.Post("/registrations", map[string]any{
+		"email": "registered@example.com", "password": "correct registration password", "display_name": "Registered User",
+		"captcha_type": "text", "captcha_id": "invalid", "captcha_answer": "invalid",
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusUnprocessableEntity, wrongCaptcha.Code, wrongCaptcha.Body.String())
+	var captchaFailure, dataFailure struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(wrongCaptcha.Body.Bytes(), &captchaFailure))
+	require.NoError(t, json.Unmarshal(rejectedData.Body.Bytes(), &dataFailure))
+	assert.Equal(t, captchaInvalidCode, captchaFailure.Code)
+	assert.Equal(t, authni18n.CaptchaInvalid, captchaFailure.Message)
+	assert.NotEqual(t, captchaInvalidCode, dataFailure.Code)
 
 	for range 2 {
 		request := registrationRequestWithCaptcha(t, api, "registered@example.com", "correct registration password", "Registered User")

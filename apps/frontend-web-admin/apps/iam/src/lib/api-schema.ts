@@ -7367,7 +7367,7 @@ export interface components {
              * @description the HTTP status code (1..999); business codes are 100000+
              */
             code: number;
-            /** @description always null on error */
+            /** @description null on error, except a business failure that carries the detail the client needs to resolve it */
             data: unknown;
             /** @description human-readable error summary */
             message: string;

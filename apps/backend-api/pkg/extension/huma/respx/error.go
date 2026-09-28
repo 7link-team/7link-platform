@@ -21,7 +21,7 @@ type errorEnvelope struct {
 	Code    int    `json:"code" doc:"the HTTP status code (1..999); business codes are 100000+"`
 	Message string `json:"message" doc:"human-readable error summary"`
 	Meta    Meta   `json:"meta" doc:"request metadata"`
-	Data    any    `json:"data" doc:"always null on error"`
+	Data    any    `json:"data" doc:"null on error, except a business failure that carries the detail the client needs to resolve it"`
 }
 
 type errorDetail struct {
@@ -48,12 +48,21 @@ func (e *errorEnvelope) GetStatus() int { return e.status }
 // through unchanged). The transport status is 400 so the response stays under the
 // documented error schema; the specific failure is conveyed by Code.
 func Err(ctx context.Context, code int, key string) error {
+	return ErrStatus(ctx, http.StatusBadRequest, code, key, nil)
+}
+
+// ErrStatus is Err for a business failure that has its own transport status,
+// such as a 409 the client resolves or a 422 it can tell apart from another 422
+// by Code. data is the machine-readable detail the client needs to act on the
+// failure, or nil; it is the only case in which an error carries data.
+func ErrStatus(ctx context.Context, status, code int, key string, data any) error {
 	return &errorEnvelope{
-		status:  http.StatusBadRequest,
+		status:  status,
 		summary: key,
 		Code:    code,
 		Message: key,
 		Meta:    metaOf(ctx, nil),
+		Data:    data,
 	}
 }
 

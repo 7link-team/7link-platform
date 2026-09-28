@@ -33,23 +33,11 @@ const (
 	respxImportPath  = modulePathPrefix + "pkg/extension/huma/respx"
 )
 
-// frontendContractKeys are bare keys the web client still branches on, because
-// the error envelope carries no other discriminator between two failures that
-// share a status (a wrong captcha and a wrong email are both 422). Qualifying
-// them would localize the message and silently break that branch, so they stay
-// bare until the envelope carries a machine-readable reason. The list is closed:
-// a new entry needs the same justification, and an entry no longer found fails.
-var frontendContractKeys = map[string]string{
-	"internal/iam/authn/http.go|captcha_invalid":        "register page tells a rejected captcha from rejected registration data",
-	"internal/files/http.go|file_restore_name_conflict": "files page offers a rename when a restore target name is taken",
-	"internal/files/http.go|file_state_changed":         "file operations restart preflight when the tree changed underneath",
-}
-
 // errorKeyArguments names, per package, the helpers whose argument at the given
 // index is an i18n message key. A huma Error<status> helper takes the key first.
 var errorKeyArguments = map[string]map[string]int{
 	humaImportPath:  {"NewError": 1, "WriteErr": 3},
-	respxImportPath: {"Err": 2, "OKMessage": 2, "WriteError": 3},
+	respxImportPath: {"Err": 2, "ErrStatus": 3, "OKMessage": 2, "WriteError": 3},
 }
 
 var supportedErrorLocales = []string{"en-US", "zh-CN", "ms-MY"}
@@ -65,7 +53,6 @@ func TestErrorKeysAreNamespacedAndResolve(t *testing.T) {
 	catalog := loadLocaleCatalog(t, root)
 	resolver := newConstantResolver(root)
 	var violations []errorKeyViolation
-	allowed := map[string]bool{}
 	for _, pkg := range goList(t, root, "./internal/...", "./pkg/...") {
 		if strings.Contains(filepath.ToSlash(pkg.ImportPath), "/proto/gen/") {
 			continue
@@ -78,11 +65,6 @@ func TestErrorKeysAreNamespacedAndResolve(t *testing.T) {
 			relative, err := filepath.Rel(root, filename)
 			require.NoError(t, err)
 			for _, violation := range inspectErrorKeys(t, filename, pkg.Dir, catalog, resolver) {
-				contract := filepath.ToSlash(relative) + "|" + violation.Key
-				if violation.Rule == ruleBareErrorKey && frontendContractKeys[contract] != "" {
-					allowed[contract] = true
-					continue
-				}
 				violation.Where = strings.Replace(violation.Where, filename, filepath.ToSlash(relative), 1)
 				violations = append(violations, violation)
 			}
@@ -91,9 +73,6 @@ func TestErrorKeysAreNamespacedAndResolve(t *testing.T) {
 	for _, violation := range violations {
 		t.Errorf("%s: %s: %q; pass a namespaced key constant (respx.Unauthorized, the module's i18n package) present in every locale",
 			violation.Rule, violation.Where, violation.Key)
-	}
-	for contract := range frontendContractKeys {
-		assert.True(t, allowed[contract], "frontend contract key %s is no longer used; delete the entry", contract)
 	}
 }
 
@@ -121,6 +100,7 @@ func TestErrorKeyGateRejectsItsFixture(t *testing.T) {
 		"bare-error-key\treturn huma.Error403Forbidden(\"forbidden\")",
 		"bare-error-key\treturn huma.NewError(http.StatusConflict, \"conflict\")",
 		"bare-error-key\treturn respx.Err(ctx, 100001, \"business_rule\")",
+		"bare-error-key\treturn respx.ErrStatus(ctx, http.StatusConflict, 100002, \"business_conflict\", nil)",
 		"unresolved-error-key\treturn huma.Error404NotFound(\"respx.no_such_key\")",
 		"unresolved-error-key\treturn huma.Error422UnprocessableEntity(respx.Name + \".missing\")",
 	}, reported)

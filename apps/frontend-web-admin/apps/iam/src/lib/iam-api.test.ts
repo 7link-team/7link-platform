@@ -446,7 +446,11 @@ describe("IAM API client", () => {
         })
         if (requests.length === 1)
           return Response.json(
-            { code: 409, message: "file_operation_conflict", data: conflict },
+            {
+              code: 102003,
+              message: "files.file_operation_conflict",
+              data: conflict,
+            },
             { status: 409 }
           )
         return Response.json({ code: 0, data: { created: 1 } })

@@ -3317,3 +3317,16 @@ Alignment (audit C13): personal tokens 20/100 -> 50/200; todo q -> search,
 (tenant menus ignored them; effective menus defaulted to "all").
 Guard: composed-spec invariant TestComposedOpenAPIPagesListsOneWay.
 Status: IMPLEMENTED.
+
+## Business Error Codes - 2026-09-28
+
+Decision: a failure the client must tell apart from another with the same HTTP
+status carries a business code in the existing envelope `code` (100000+), via
+respx.ErrStatus (respx.Err with an explicit status and optional data). The
+message is always a namespaced, localized key; the client branches on the code,
+never on message text. Each module owns a block: authn 101000-101999 (101001
+captcha_invalid), files 102000-102999 (102001 restore name conflict, 102002
+state changed, 102003 operation conflict, data = conflict frontier). The web
+client mirrors the codes in `businessCode` (iam-api.ts). The error-key gate has
+no allowlist any more (audit C15).
+Status: IMPLEMENTED.

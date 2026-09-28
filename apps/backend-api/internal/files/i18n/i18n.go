@@ -19,6 +19,9 @@ const (
 	InvalidFileOperation       = Namespace + ".invalid_file_operation"
 	InvalidFileRequest         = Namespace + ".invalid_file_request"
 	FileServiceUnavailable     = Namespace + ".file_service_unavailable"
+	FileRestoreNameConflict    = Namespace + ".file_restore_name_conflict"
+	FileStateChanged           = Namespace + ".file_state_changed"
+	FileOperationConflict      = Namespace + ".file_operation_conflict"
 )
 
 // MenuSystemFiles labels the system file management page the module adds to

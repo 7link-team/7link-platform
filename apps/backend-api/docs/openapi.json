@@ -8137,7 +8137,7 @@
             "type": "integer"
           },
           "data": {
-            "description": "always null on error"
+            "description": "null on error, except a business failure that carries the detail the client needs to resolve it"
           },
           "message": {
             "description": "human-readable error summary",
