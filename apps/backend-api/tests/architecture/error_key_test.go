@@ -319,8 +319,17 @@ func loadLocaleCatalog(t *testing.T, root string) localeCatalog {
 	resolver := newConstantResolver(root)
 	for _, base := range []string{"internal", "pkg"} {
 		err := filepath.WalkDir(filepath.Join(root, base), func(filename string, entry os.DirEntry, walkErr error) error {
-			if walkErr != nil || !entry.IsDir() || entry.Name() != "locales" {
+			if walkErr != nil || !entry.IsDir() {
 				return walkErr
+			}
+			// Front-end tooling installs npm packages beside the embedded docs
+			// UI; their "locales" folders are not Go bundles and exist only on
+			// machines that ran the install.
+			if entry.Name() == "node_modules" || strings.HasPrefix(entry.Name(), ".") {
+				return filepath.SkipDir
+			}
+			if entry.Name() != "locales" {
+				return nil
 			}
 			owner := filepath.Dir(filename)
 			namespace, ok := resolver.value(owner, "Namespace")
