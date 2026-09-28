@@ -102,7 +102,7 @@ func TestFromEventMetadataEncoding(t *testing.T) {
 	row := fromEvent(Event{Metadata: map[string]string{"a": "1"}})
 	assert.JSONEq(t, `{"a":"1"}`, row.Metadata)
 	row = fromEvent(Event{})
-	assert.Equal(t, "", row.Metadata)
+	assert.Empty(t, row.Metadata)
 	assert.Equal(t, model.OperationLog{}.TableName(), row.TableName())
 }
 

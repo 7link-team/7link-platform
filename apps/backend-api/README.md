@@ -53,7 +53,6 @@ pkg/module/          the Module contract and lifecycle registry
 pkg/appenv/          Runtime: the application-lifetime manager container
 pkg/config/          layered configuration, generation, and inspection
 pkg/extension/       thin adapters over huma, gorm, grpc, goose, slog
-pkg/interpreter/     script and WASM engines; not yet wired into the app
 tests/               integration tests (separate module, embedded/test engines)
 tools/               pinned build tooling (separate module)
 ```

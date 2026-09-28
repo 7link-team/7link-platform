@@ -26,7 +26,7 @@
 | [runbook-migration-recovery.md](runbook-migration-recovery.md) | 运行手册 | 迁移回滚/备份恢复/擦除对账演练；传输由 `make iam-preflight` 决定，**可用远端 Docker** | 演练恢复、或恢复之后要对账擦除义务时 |
 | [iam-scim-operations.md](iam-scim-operations.md) | 运行手册 | 出站 SCIM 的未知结果处理；claim 永不过期，无自动解锁 | SCIM 远端调用结果不明、告警指向 unfinished operation 时 |
 | [iam-redis-security.md](iam-redis-security.md) | 运行手册 | Redis 拓扑/认证/故障策略的应用侧配置与边界 | 配置共享限流与 captcha 存储、或评估异步复制下的消费语义时 |
-| [plugin-architecture.md](plugin-architecture.md) | 提案 | **未决**——结论是当前阶段不建设动态插件平台，只按可插件化方式设计边界 | 讨论扩展点、Provider SPI、领域事件、`pkg/interpreter` 定位时 |
+| [plugin-architecture.md](plugin-architecture.md) | 提案 | **未决**——结论是当前阶段不建设动态插件平台，只按可插件化方式设计边界 | 讨论扩展点、Provider SPI、领域事件、脚本/WASM 执行引擎定位时 |
 
 ## 约定
 

@@ -142,7 +142,7 @@ func TestResetDecisionWritesAnAuditEventNamingTheAdministrator(t *testing.T) {
 	assert.Equal(t, "platform_administrator_password_reset", event.EventType)
 	assert.Equal(t, "principal", event.TargetType)
 	assert.EqualValues(t, 7500, event.TargetID)
-	assert.EqualValues(t, platformAuditTenant, event.TenantID)
+	assert.Equal(t, platformAuditTenant, event.TenantID)
 	assert.Equal(t, "admin", event.Detail["login_name"])
 	assert.Equal(t, true, event.Detail["credential_existed"])
 	assert.Equal(t, true, event.Detail["sessions_revoked"])

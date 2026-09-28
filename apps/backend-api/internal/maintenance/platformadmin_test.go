@@ -255,7 +255,7 @@ func TestBootstrapDecisionWritesAnAuditEventNamingTheNewAdministrator(t *testing
 	assert.Equal(t, "platform_administrator_bootstrapped", event.EventType)
 	assert.Equal(t, "principal", event.TargetType)
 	assert.EqualValues(t, 7100, event.TargetID)
-	assert.EqualValues(t, platformAuditTenant, event.TenantID)
+	assert.Equal(t, platformAuditTenant, event.TenantID)
 	assert.EqualValues(t, 7100, event.PrincipalID)
 	assert.Equal(t, "admin", event.Detail["login_name"])
 	assert.Equal(t, true, event.Detail["full_administrator"])

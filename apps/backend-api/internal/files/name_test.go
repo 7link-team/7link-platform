@@ -24,5 +24,5 @@ func TestPortableNameAndCollisionKey(t *testing.T) {
 		require.ErrorIs(t, err, ErrName, name)
 	}
 	require.Equal(t, "mp3", Extension("renamed.MP3"))
-	require.Equal(t, "", Extension("README"))
+	require.Empty(t, Extension("README"))
 }

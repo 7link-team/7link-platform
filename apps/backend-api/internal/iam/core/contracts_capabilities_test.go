@@ -173,27 +173,29 @@ func readIAMRootDeclarations(t *testing.T) map[string]rootDeclaration {
 		if !entry.IsDir() {
 			continue
 		}
-		packages, parseErr := parser.ParseDir(token.NewFileSet(), filepath.Join(iamRoot, entry.Name()), func(info os.FileInfo) bool {
-			return !strings.HasSuffix(info.Name(), "_test.go")
-		}, 0)
-		require.NoError(t, parseErr)
-		for _, pkg := range packages {
-			for _, file := range pkg.Files {
-				for _, declaration := range file.Decls {
-					general, isGeneral := declaration.(*ast.GenDecl)
-					if !isGeneral || general.Tok != token.TYPE {
+		paths, globErr := filepath.Glob(filepath.Join(iamRoot, entry.Name(), "*.go"))
+		require.NoError(t, globErr)
+		fileSet := token.NewFileSet()
+		for _, path := range paths {
+			if strings.HasSuffix(path, "_test.go") {
+				continue
+			}
+			file, parseErr := parser.ParseFile(fileSet, path, nil, 0)
+			require.NoError(t, parseErr)
+			for _, declaration := range file.Decls {
+				general, isGeneral := declaration.(*ast.GenDecl)
+				if !isGeneral || general.Tok != token.TYPE {
+					continue
+				}
+				for _, specification := range general.Specs {
+					typeSpec := specification.(*ast.TypeSpec)
+					if !ast.IsExported(typeSpec.Name.Name) {
 						continue
 					}
-					for _, specification := range general.Specs {
-						typeSpec := specification.(*ast.TypeSpec)
-						if !ast.IsExported(typeSpec.Name.Name) {
-							continue
-						}
-						name := entry.Name() + "." + typeSpec.Name.Name
-						declarations[name] = rootDeclaration{
-							kind:  rootTypeKind(typeSpec.Type),
-							alias: typeSpec.Assign.IsValid(),
-						}
+					name := entry.Name() + "." + typeSpec.Name.Name
+					declarations[name] = rootDeclaration{
+						kind:  rootTypeKind(typeSpec.Type),
+						alias: typeSpec.Assign.IsValid(),
 					}
 				}
 			}

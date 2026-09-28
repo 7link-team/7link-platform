@@ -9,10 +9,9 @@ require (
 	buf.build/go/protovalidate v1.3.0
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/arsham/figurine/v2 v2.1.1
-	github.com/beevik/etree v1.6.0
+	github.com/beevik/etree v1.7.0
 	github.com/crewjam/saml v0.5.1
 	github.com/danielgtaylor/huma/v2 v2.39.1
-	github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230
 	github.com/felixge/httpsnoop v1.1.0
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/go-chi/chi/v5 v5.3.1
@@ -30,18 +29,15 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/redis/go-redis/v9 v9.21.0
-	github.com/russellhaering/goxmldsig v1.6.0
+	github.com/russellhaering/goxmldsig v1.6.1
 	github.com/scim2/filter-parser/v2 v2.3.1
 	github.com/sony/sonyflake v1.3.0
 	github.com/spf13/cast v1.10.0
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.12.1
-	github.com/tetratelabs/wazero v1.12.0
-	github.com/traefik/yaegi v0.16.1
 	github.com/wenlng/go-captcha/v2 v2.0.5
 	github.com/xuri/excelize/v2 v2.11.1-0.20260728235842-f98df08a8f6a
-	github.com/yuin/gopher-lua v1.1.2
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.70.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
 	go.opentelemetry.io/otel v1.45.0
@@ -49,7 +45,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.45.0
 	go.opentelemetry.io/otel/sdk v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.57.0
 	golang.org/x/image v0.46.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
@@ -110,6 +106,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
+	github.com/yuin/gopher-lua v1.1.2 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.45.0 // indirect
@@ -130,9 +127,7 @@ require (
 )
 
 require (
-	github.com/dlclark/regexp2/v2 v2.5.2 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/pressly/goose/v3 v3.27.3
@@ -141,7 +136,7 @@ require (
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cobra v1.10.2
 	github.com/subosito/gotenv v1.6.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/sys v0.48.0
 	golang.org/x/text v0.42.0
 	modernc.org/sqlite v1.57.0 // indirect

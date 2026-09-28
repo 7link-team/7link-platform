@@ -41,7 +41,7 @@ func TestNormalizeHeaderFoldsCosmeticDifferences(t *testing.T) {
 	for _, raw := range []string{"Due at", "due_at", " DUE AT ", "due-at", "DueAt"} {
 		assert.Equal(t, "dueat", normalizeHeader(raw), "for %q", raw)
 	}
-	assert.Equal(t, "", normalizeHeader("   "))
+	assert.Empty(t, normalizeHeader("   "))
 }
 
 func TestTemplateCarriesOnlyImportableColumns(t *testing.T) {
