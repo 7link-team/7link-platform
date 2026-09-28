@@ -1913,7 +1913,7 @@ export function createIamApi(
       ),
     accountViewWorkspace: () =>
       request<{
-        scope_kind: import("./account-view").AccountViewScope
+        scope_type: import("./account-view").AccountViewScope
         scope_id: string
         tenant?: Pick<Tenant, "id" | "slug" | "name" | "status">
         entity?: Entity

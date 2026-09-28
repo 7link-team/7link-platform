@@ -4820,7 +4820,7 @@ export interface components {
             entity?: components["schemas"]["APIEntity"];
             operating_platform?: components["schemas"]["AccountViewRoot"];
             scope_id: string | null;
-            scope_kind: string;
+            scope_type: string;
             tenant?: components["schemas"]["AccountViewRoot"];
         };
         AccountWorkspace: {

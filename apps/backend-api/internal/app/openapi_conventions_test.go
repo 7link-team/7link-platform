@@ -178,3 +178,17 @@ func TestComposedOpenAPICreatesAnswer201(t *testing.T) {
 	}
 	assert.Greater(t, creates, 60, "the walk must reach the create operations")
 }
+
+// TestComposedOpenAPINamesTheScopeEnumScopeType keeps one public name for the
+// system/platform/tenant/entity scope enum. Storage keeps its scope_kind column;
+// a schema publishing that name beside scope_type would make one value read as
+// two different fields.
+func TestComposedOpenAPINamesTheScopeEnumScopeType(t *testing.T) {
+	document, _ := composedOpenAPI(t)
+	schemas := document.Components.Schemas.Map()
+	require.NotEmpty(t, schemas)
+	for name, schema := range schemas {
+		_, published := schema.Properties["scope_kind"]
+		assert.False(t, published, "%s publishes scope_kind; the API field is scope_type", name)
+	}
+}

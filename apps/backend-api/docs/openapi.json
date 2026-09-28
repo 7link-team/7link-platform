@@ -1179,7 +1179,7 @@
               "null"
             ]
           },
-          "scope_kind": {
+          "scope_type": {
             "type": "string"
           },
           "tenant": {
@@ -1187,7 +1187,7 @@
           }
         },
         "required": [
-          "scope_kind",
+          "scope_type",
           "scope_id"
         ],
         "type": "object"

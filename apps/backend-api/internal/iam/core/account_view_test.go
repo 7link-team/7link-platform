@@ -213,7 +213,7 @@ func TestAccountViewWorkspaceHTTPReportsOnlyTheVerifiedViewScope(t *testing.T) {
 	response := get()
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	workspace := decodeEnvelope[AccountViewWorkspace](t, response).Data
-	require.Equal(t, AccountViewWorkspace{ScopeKind: "personal", ScopeID: 22}, workspace)
+	require.Equal(t, AccountViewWorkspace{ScopeType: "personal", ScopeID: 22}, workspace)
 
 	verifier.view = &authnext.AccountViewIdentity{ID: 50, ActorID: 33, ScopeType: "platform", ScopeID: 1}
 	response = get()
