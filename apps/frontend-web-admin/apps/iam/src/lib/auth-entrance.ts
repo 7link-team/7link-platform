@@ -26,6 +26,18 @@ export function entranceLoginPath(entry: AuthEntrance | null): string {
   return entrancePath(entry, "login")
 }
 
+// Where a sign-in continues: a requested page inside the same entrance,
+// otherwise that entrance's workspace chooser.
+export function loginReturnPath(
+  entry: AuthEntrance | null,
+  from: string | undefined
+): string {
+  const prefix = entrancePath(entry, "login").replace(/\/login$/, "")
+  return from?.startsWith(`${prefix}/`)
+    ? from
+    : entrancePath(entry, "workspaces")
+}
+
 export function logoutDestination(logoutURL?: string): string {
   const entry = authEntrance(window.location.pathname.split("/")[1])
   if (logoutURL) {

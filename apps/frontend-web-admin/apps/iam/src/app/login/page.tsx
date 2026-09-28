@@ -28,6 +28,7 @@ import {
   authEntrance,
   publicAuthEntrance,
   entrancePath,
+  loginReturnPath,
 } from "../../lib/auth-entrance"
 
 export default function LoginPage() {
@@ -36,11 +37,10 @@ export default function LoginPage() {
   const { status, login, verifyLoginMfa, loginWithPasskey } = useAuth()
   const location = useLocation()
   const entry = authEntrance(location.pathname.split("/")[1])
-  const from = (location.state as { from?: string } | null)?.from
-  const prefix = entrancePath(entry, "login").replace(/\/login$/, "")
-  const requested = from?.startsWith(`${prefix}/`)
-    ? from
-    : entrancePath(entry, "workspaces")
+  const requested = loginReturnPath(
+    entry,
+    (location.state as { from?: string } | null)?.from
+  )
   const [visible, setVisible] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(() =>
