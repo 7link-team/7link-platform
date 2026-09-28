@@ -329,7 +329,7 @@ func insertRole(t *testing.T, db *gorm.DB, tenant, role string) {
 
 func (e *federationEnvironment) migrate(t *testing.T) {
 	t.Helper()
-	require.NoError(t, e.db.Exec("CREATE TABLE "+e.prefix+"iam_tenants (id BIGINT PRIMARY KEY, status TEXT NOT NULL)").Error)
+	require.NoError(t, e.db.Exec("CREATE TABLE "+e.prefix+"iam_tenants (id BIGINT PRIMARY KEY, status TEXT NOT NULL, scope_kind TEXT NOT NULL DEFAULT 'tenant')").Error)
 	for _, tenant := range []guid.ID{testID("tenant-a"), testID("tenant-b")} {
 		require.NoError(t, e.db.Exec("INSERT INTO "+e.prefix+"iam_tenants (id,status) VALUES (?,?)", tenant, "active").Error)
 	}

@@ -11,6 +11,7 @@ import (
 	"7link.com/platform/internal/iam/federation/model"
 	"7link.com/platform/internal/iam/federation/query"
 	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
@@ -391,6 +392,22 @@ func (r *Repository) verifyPrincipalAndMember(ctx context.Context, tenantID, pri
 		return ErrPrincipalInactive
 	}
 	return nil
+}
+
+// verifySAMLSubject admits a browser subject to one tenant's identity
+// provider: the root must be an active tenant, not an operating platform or
+// the system root sharing its identifier space, and the principal an active
+// member of it.
+func (r *Repository) verifySAMLSubject(ctx context.Context, tenantID, principalID guid.ID) error {
+	var count int64
+	if err := r.currentReader().WithContext(ctx).Table(r.foreign.directory.Tenants.String()).
+		Where("id = ? AND scope_kind = ?", tenantID, organization.ScopeTenant).Count(&count).Error; err != nil {
+		return err
+	}
+	if count != 1 {
+		return ErrPrincipalInactive
+	}
+	return r.verifyPrincipalAndMember(ctx, tenantID, principalID)
 }
 
 func (r *Repository) listSAMLServiceProviders(ctx context.Context, tenantID guid.ID) ([]samlSPRow, error) {

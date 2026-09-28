@@ -101,7 +101,7 @@ func (s *Service) RegisterForEntry(ctx context.Context, email, password, display
 		return repository.appendAudit(ctx, event)
 	})
 	if errors.Is(err, authnext.ErrRegistrationConflict) {
-		return s.resendRegistrationCode(ctx, email, entry)
+		return s.resendRegistrationCode(ctx, email, password, passwordHash, entry)
 	}
 	if errors.Is(err, authnext.ErrInvalidRegistration) {
 		return err
@@ -112,11 +112,12 @@ func (s *Service) RegisterForEntry(ctx context.Context, email, password, display
 	return nil
 }
 
-func (s *Service) resendRegistrationCode(ctx context.Context, email string, entries ...string) error {
-	entry := ""
-	if len(entries) > 0 {
-		entry = entries[0]
-	}
+// resendRegistrationCode answers a registration for an address that already
+// has a principal. For one still pending verification the latest registrant's
+// password becomes the credential: nobody has proven the address yet, so the
+// first registrant's password has no better claim, and keeping it let anyone
+// pre-register an address and hold the account its owner later verified.
+func (s *Service) resendRegistrationCode(ctx context.Context, email, password, passwordHash, entry string) error {
 	secret, err := randomToken(32)
 	if err != nil {
 		return fmt.Errorf("generate resend credential: %w", err)
@@ -143,12 +144,28 @@ func (s *Service) resendRegistrationCode(ctx context.Context, email string, entr
 		if !principal.ActivationRequired {
 			return authnext.ErrRegistrationConflict
 		}
-		latestCreatedAt, err := repository.latestEmailVerificationTime(ctx, principal.ID)
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("load latest registration verification: %w", err)
+		credential, err := repository.getCredential(ctx, principal.ID)
+		if err != nil {
+			return fmt.Errorf("load pending registration credential: %w", err)
 		}
-		if latestCreatedAt != nil && now.Sub(latestCreatedAt.UTC()) < registrationVerificationCooldown {
-			return nil
+		if same, verifyErr := passwordx.Verify(credential.PasswordHash, password); verifyErr != nil || !same {
+			// The credential row was just read under the principal lock.
+			if _, err := repository.resetPassword(ctx, principal.ID, passwordHash, now); err != nil {
+				return fmt.Errorf("replace pending registration credential: %w", err)
+			}
+			// Every outstanding link would now activate the account with this
+			// credential, including links sent for another registrant's password.
+			// The replacement below consumes them all, and the registrant whose
+			// password is now in force gets a fresh link without waiting out the
+			// resend cooldown, which exists for repeats of the same credential.
+		} else {
+			latestCreatedAt, err := repository.latestEmailVerificationTime(ctx, principal.ID)
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("load latest registration verification: %w", err)
+			}
+			if latestCreatedAt != nil && now.Sub(latestCreatedAt.UTC()) < registrationVerificationCooldown {
+				return nil
+			}
 		}
 		row := model.EmailVerificationToken{
 			TokenHMAC: s.emailVerificationHMAC(token), PrincipalID: principal.ID,

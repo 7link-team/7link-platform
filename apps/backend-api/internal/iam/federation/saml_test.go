@@ -1,6 +1,8 @@
 package federation
 
 import (
+	federationi18n "7link.com/platform/internal/iam/federation/i18n"
+	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -137,9 +139,22 @@ func samlSessionCookie(t *testing.T, env *federationEnvironment) (string, string
 	t.Helper()
 	principalID := testID("alice")
 	env.web.setProfile(principalID, "alice", "alice@example.com")
+	samlTenantMember(t, env, principalID, testID("tenant-a"), "active")
 	token, err := env.web.CreateSession(t.Context(), principalID, time.Now().UTC(), authnext.Assurance{AuthTime: time.Now().UTC(), Level: 1, Methods: []string{"password"}})
 	require.NoError(t, err)
 	return guidString(principalID), env.web.SessionCookie(token)
+}
+
+// samlTenantMember makes the browser subject an active principal with the
+// given membership status in one tenant, which single sign-on asserts to.
+func samlTenantMember(t *testing.T, env *federationEnvironment, principalID, tenantID guid.ID, status string) {
+	t.Helper()
+	now := time.Now().UTC()
+	require.NoError(t, env.db.Table(env.prefix+"iam_principals").Where(federationPrincipal{ID: principalID}).
+		FirstOrCreate(&federationPrincipal{ID: principalID, LoginName: guidString(principalID), Email: guidString(principalID) + "@principal.example", Status: "active", CreatedAt: now, UpdatedAt: now}).Error)
+	require.NoError(t, env.db.Table(env.prefix+"iam_tenant_members").Where(federationMember{TenantID: tenantID, PrincipalID: principalID}).
+		Assign(map[string]any{"status": status}).
+		FirstOrCreate(&federationMember{TenantID: tenantID, PrincipalID: principalID, Status: status, CreatedAt: now, UpdatedAt: now}).Error)
 }
 
 func samlAuthnRequestParam(t *testing.T, tsp *samlTestSP, id string, issued time.Time, destination, acsURL string) string {
@@ -354,6 +369,67 @@ func TestSAMLSSOCompletesWithSignedAssertion(t *testing.T) {
 	require.NotNil(t, assertion.Subject.NameID)
 	assert.Equal(t, principalID, assertion.Subject.NameID.Value)
 	assert.Equal(t, "alice@example.com", attributeValue(t, assertion, "email"))
+}
+
+// A browser session is global, but an assertion speaks for one tenant. Single
+// sign-on asserts only an active member of an active tenant root.
+func TestSAMLSSOAssertsOnlyActiveMembersOfTheTenant(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		prepare func(t *testing.T, env *federationEnvironment, principalID guid.ID)
+		want    int
+	}{
+		{"member", func(*testing.T, *federationEnvironment, guid.ID) {}, http.StatusOK},
+		{"member-of-another-tenant", func(t *testing.T, env *federationEnvironment, principalID guid.ID) {
+			require.NoError(t, env.db.Table("iam_tenant_members").Where("tenant_id = ? AND principal_id = ?", testID("tenant-a"), principalID).Delete(&federationMember{}).Error)
+			samlTenantMember(t, env, principalID, testID("tenant-b"), "active")
+		}, http.StatusForbidden},
+		{"ended-member", func(t *testing.T, env *federationEnvironment, principalID guid.ID) {
+			samlTenantMember(t, env, principalID, testID("tenant-a"), "ended")
+		}, http.StatusForbidden},
+		{"inactive-principal", func(t *testing.T, env *federationEnvironment, principalID guid.ID) {
+			require.NoError(t, env.db.Table("iam_principals").Where("id = ?", principalID).Update("status", "disabled").Error)
+		}, http.StatusForbidden},
+		{"suspended-tenant", func(t *testing.T, env *federationEnvironment, _ guid.ID) {
+			require.NoError(t, env.db.Exec("UPDATE iam_tenants SET status = 'suspended' WHERE id = ?", testID("tenant-a")).Error)
+		}, http.StatusForbidden},
+		{"operating-platform-root", func(t *testing.T, env *federationEnvironment, _ guid.ID) {
+			require.NoError(t, env.db.Exec("UPDATE iam_tenants SET scope_kind = 'platform' WHERE id = ?", testID("tenant-a")).Error)
+		}, http.StatusForbidden},
+		{"membership-unavailable", func(t *testing.T, env *federationEnvironment, _ guid.ID) {
+			require.NoError(t, env.db.Exec("DROP TABLE iam_tenant_members").Error)
+		}, http.StatusInternalServerError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newFederationEnvironment(t)
+			startSAML(t, env, SAMLConfig{Enabled: true})
+			tsp := newSAMLSPServer(t)
+			tsp.register(t, env)
+			server := newSAMLServer(t, env)
+			principalText, cookie := samlSessionCookie(t, env)
+			principalID, err := guid.Parse(principalText)
+			require.NoError(t, err)
+			tc.prepare(t, env, principalID)
+			ssoURL := server.URL + samlSSOPath(testID("tenant-a"))
+
+			response := samlBrowserRequest(t, server, http.MethodGet, ssoURL+"?SAMLRequest="+url.QueryEscape(samlAuthnRequestParam(t, tsp, "id-member-1", time.Now().UTC(), ssoURL, "")), cookie)
+			body := samlReadBody(t, response)
+			require.Equal(t, tc.want, response.StatusCode, body)
+			if tc.want == http.StatusOK {
+				assert.Contains(t, body, "SAMLResponse")
+				return
+			}
+			assert.NotContains(t, body, "SAMLResponse")
+			message := federationi18n.IdentityUnavailable
+			if tc.want == http.StatusInternalServerError {
+				message = federationi18n.SAMLUnavailable
+			}
+			assert.Contains(t, body, localized("en-US", message))
+			for _, event := range env.events {
+				assert.NotEqual(t, "federation_saml_sso", event.EventType)
+			}
+		})
+	}
 }
 
 func TestSAMLSSOPostBindingAndMetadata(t *testing.T) {

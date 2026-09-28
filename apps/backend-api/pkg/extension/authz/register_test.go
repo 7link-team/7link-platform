@@ -12,6 +12,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
+	"7link.com/platform/pkg/extension/huma/respx"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/stretchr/testify/assert"
@@ -1117,8 +1118,93 @@ func TestTenantEntityOrAuthenticatedPublishesThreeDistinctContexts(t *testing.T)
 	assert.Equal(t, "store_view", entity.Extensions[authz.GuardExtensionKey])
 }
 
+// A token issued to an OAuth client carries only identity scopes, so no
+// guarded route kind may treat it as the account holder's authority -- neither
+// in another tenant nor in the tenant that registered the client.
+func TestDelegatedOAuthTokenIsRefusedOnEveryRouteKind(t *testing.T) {
+	type route struct {
+		name, path string
+		register   func(*authz.Registrar, huma.API, func(context.Context, *struct{}) (*routeOutput, error))
+	}
+	owner := func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+		return authz.ResourceOwner{TenantID: 11}, true, nil
+	}
+	routes := []route{
+		{"tenant", "/tenants/11/stores", func(r *authz.Registrar, api huma.API, h func(context.Context, *struct{}) (*routeOutput, error)) {
+			authz.Register(r, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "o", Method: http.MethodGet, Path: "/stores"}, authz.Guard{Resource: "store", Verb: "view"}, h)
+		}},
+		{"tenant-member", "/tenants/11/member", func(r *authz.Registrar, api huma.API, h func(context.Context, *struct{}) (*routeOutput, error)) {
+			authz.RegisterTenantMember(r, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "o", Method: http.MethodGet, Path: "/member"}, h)
+		}},
+		{"entity", "/tenants/11/entities/12/workflows", func(r *authz.Registrar, api huma.API, h func(context.Context, *struct{}) (*routeOutput, error)) {
+			authz.RegisterEntity(r, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "o", Method: http.MethodGet, Path: "/workflows"}, authz.Guard{Resource: "workflow", Verb: "view"}, h)
+		}},
+		{"owned", "/stores/99", func(r *authz.Registrar, api huma.API, h func(context.Context, *struct{}) (*routeOutput, error)) {
+			authz.RegisterOwned(r, api, huma.Operation{Tags: []string{"stores"}, OperationID: "o", Method: http.MethodGet, Path: "/stores/{store_id}"}, "store_id", owner, authz.Guard{Resource: "store", Verb: "view"}, h)
+		}},
+		{"owned-tenant-member", "/stores/99", func(r *authz.Registrar, api huma.API, h func(context.Context, *struct{}) (*routeOutput, error)) {
+			authz.RegisterOwnedTenantMember(r, api, huma.Operation{Tags: []string{"stores"}, OperationID: "o", Method: http.MethodGet, Path: "/stores/{store_id}"}, "store_id", owner, h)
+		}},
+		{"authenticated", "/me", func(r *authz.Registrar, api huma.API, h func(context.Context, *struct{}) (*routeOutput, error)) {
+			authz.RegisterAuthenticated(r, api, huma.Operation{OperationID: "o", Method: http.MethodGet, Path: "/me"}, h)
+		}},
+		{"principal", "/principals/31/profile", func(r *authz.Registrar, api huma.API, h func(context.Context, *struct{}) (*routeOutput, error)) {
+			authz.RegisterPrincipalAuthenticated(r, api, huma.Operation{OperationID: "o", Method: http.MethodGet, Path: "/principals/{principal_id}/profile"}, h)
+		}},
+		{"system", "/system/tenants", func(r *authz.Registrar, api huma.API, h func(context.Context, *struct{}) (*routeOutput, error)) {
+			authz.RegisterPlatform(r, api, huma.Operation{OperationID: "o", Method: http.MethodGet, Path: "/system/tenants"}, authz.Guard{Resource: "tenant", Verb: "view"}, h)
+		}},
+		{"operating-platform", "/operating-platforms/11/roles", func(r *authz.Registrar, api huma.API, h func(context.Context, *struct{}) (*routeOutput, error)) {
+			authz.RegisterOperatingPlatform(r, api, huma.Operation{Tags: []string{"operating-platforms"}, OperationID: "o", Method: http.MethodGet, Path: "/roles"}, authz.Guard{Resource: "role", Verb: "view"}, h)
+		}},
+		{"operating-platform-member", "/operating-platforms/11/navigation", func(r *authz.Registrar, api huma.API, h func(context.Context, *struct{}) (*routeOutput, error)) {
+			authz.RegisterOperatingPlatformMember(r, api, huma.Operation{Tags: []string{"operating-platforms"}, OperationID: "o", Method: http.MethodGet, Path: "/navigation"}, h)
+		}},
+	}
+	registry := authz.MustRegistry(
+		authz.Action{Resource: "store", Verb: "view", Scope: "tenant"},
+		authz.Action{Resource: "workflow", Verb: "view", Scope: "entity"},
+		authz.Action{Resource: "tenant", Verb: "view", Scope: "platform"},
+		authz.Action{Resource: "role", Verb: "view", Scope: "operating_platform"},
+	)
+	for _, organization := range []string{"11", "22"} {
+		for _, tc := range routes {
+			for _, delegated := range []bool{false, true} {
+				name := tc.name + "/organization-" + organization + map[bool]string{false: "/principal", true: "/delegated"}[delegated]
+				t.Run(name, func(t *testing.T) {
+					claims := validClaims()
+					claims.OrganizationID = organization
+					if delegated {
+						claims.ClientID, claims.OAuthGrantID = "41", "grant"
+					}
+					checker := &operatingPlatformChecker{fakeChecker: fakeChecker{allowed: true}}
+					r := authz.NewRegistrar(registry, &fakeVerifier{claims: claims}, checker, &operatingPlatformMembers{fakeMembership{active: true}})
+					called := false
+					_, api := humatest.New(t)
+					tc.register(r, api, func(context.Context, *struct{}) (*routeOutput, error) {
+						called = true
+						return &routeOutput{Body: "ok"}, nil
+					})
+					response := api.Get(tc.path, "Authorization: Bearer token")
+					if !delegated {
+						require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+						return
+					}
+					require.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+					assert.Contains(t, response.Body.String(), respx.Forbidden)
+					assert.False(t, called)
+					assert.Empty(t, checker.tenantCalls)
+					assert.Empty(t, checker.entityCalls)
+					assert.Empty(t, checker.platformCalls)
+					assert.Zero(t, checker.platformID)
+				})
+			}
+		}
+	}
+}
+
 func validClaims() *authn.Claims {
-	return &authn.Claims{Subject: "31", PrincipalID: 31, ACR: 2, AMR: []string{"pwd"}, ClientID: "console", NetworkZone: "internal"}
+	return &authn.Claims{Subject: "31", PrincipalID: 31, ACR: 2, AMR: []string{"pwd"}, NetworkZone: "internal"}
 }
 
 func validVerifier() *fakeVerifier {
