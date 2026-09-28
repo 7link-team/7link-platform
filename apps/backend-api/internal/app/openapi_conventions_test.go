@@ -240,10 +240,10 @@ func TestComposedOpenAPIPagesListsOneWay(t *testing.T) {
 		if assert.NotNil(t, limit.Schema, "%s: limit has no schema", entry) {
 			assert.EqualValues(t, 50, limit.Schema.Default, "%s: limit default", entry)
 			if assert.NotNil(t, limit.Schema.Minimum, "%s: limit minimum", entry) {
-				assert.EqualValues(t, 1, *limit.Schema.Minimum, "%s: limit minimum", entry)
+				assert.InDelta(t, 1, *limit.Schema.Minimum, 0, "%s: limit minimum", entry)
 			}
 			if assert.NotNil(t, limit.Schema.Maximum, "%s: limit maximum", entry) {
-				assert.EqualValues(t, 200, *limit.Schema.Maximum, "%s: limit maximum", entry)
+				assert.InDelta(t, 200, *limit.Schema.Maximum, 0, "%s: limit maximum", entry)
 			}
 		}
 		offset := query["offset"]
