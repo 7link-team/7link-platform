@@ -262,7 +262,7 @@ func TestOrganizationErrorMappings(t *testing.T) {
 		{"group dynamic", groupError, ErrDynamicGroupMembers, 409, organizationi18n.DynamicGroupMembersComputed},
 		{"group rule type", groupError, ErrGroupRuleType, 422, organizationi18n.GroupRuleRequiresDynamic},
 		{"group rule invalid", groupError, ErrGroupRuleInvalid, 422, organizationi18n.InvalidGroupRule},
-		{"group last admin", groupError, core.ErrLastTenantAdministrator, 409, organizationi18n.LastTenantAdministrator},
+		{"group last admin", groupError, core.ErrLastTenantAdministrator, 409, corei18n.LastTenantAdministrator},
 		{"group invalid", groupError, ErrGroupInvalid, 422, organizationi18n.InvalidGroup},
 		{"tenant missing", tenantError, ErrTenantNotFound, 404, organizationi18n.TenantNotFound},
 		{"tenant duplicate", tenantError, ErrTenantSlugConflict, 409, organizationi18n.TenantSlugExists},

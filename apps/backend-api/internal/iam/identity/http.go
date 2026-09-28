@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"7link.com/platform/internal/iam/core"
+	corei18n "7link.com/platform/internal/iam/core/i18n"
 	identityi18n "7link.com/platform/internal/iam/identity/i18n"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -523,7 +524,7 @@ func identityError(err error) error {
 	case errors.Is(err, ErrCredentialLimit):
 		return huma.Error409Conflict(identityi18n.ServiceAccountCredentialLimit)
 	case errors.Is(err, core.ErrLastTenantAdministrator):
-		return huma.Error409Conflict(identityi18n.LastTenantAdministrator)
+		return huma.Error409Conflict(corei18n.LastTenantAdministrator)
 	case errors.Is(err, core.ErrPrincipalHasPlatformAccess):
 		return huma.Error409Conflict(identityi18n.PlatformAccessBlocksClosure)
 	case errors.Is(err, ErrPrincipalInactive):

@@ -21,7 +21,6 @@ const (
 	AnonymizationConfirmation        = Namespace + ".principal_anonymization_confirmation"
 	LoginNameExists                  = Namespace + ".login_name_exists"
 	InvalidPrincipal                 = Namespace + ".invalid_principal"
-	LastTenantAdministrator          = Namespace + ".last_tenant_administrator"
 	IdentityUnavailable              = Namespace + ".identity_unavailable"
 	ServiceAccountNotFound           = Namespace + ".service_account_not_found"
 	ServiceAccountCredentialNotFound = Namespace + ".service_account_credential_not_found"

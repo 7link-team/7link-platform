@@ -4,7 +4,6 @@
   "identity_unavailable": "身份服务无法完成该请求，请稍后重试；若问题持续，请联系管理员。",
   "invalid_principal": "身份主体数据无效，请检查登录名、资料、邮箱和密码要求。",
   "invalid_service_account": "服务账号数据无效，请检查名称、状态、有效期、凭据作用域和租户状态。",
-  "last_tenant_administrator": "不能移除或停用租户中最后一个有效管理员，请先分配另一个有效管理员。",
   "login_name_exists": "该登录名已被使用，请选择其他登录名。",
   "principal_anonymization_confirmation": "确认内容与该主体的登录名不一致。擦除不可撤销，因此只有确实指明了正确对象的调用才会执行。",
   "principal_anonymized": "该主体已被擦除。记录已是墓碑状态，无法恢复。",

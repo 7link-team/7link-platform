@@ -779,7 +779,7 @@ func groupError(err error) error {
 	case errors.Is(err, ErrGroupRuleInvalid):
 		return huma.Error422UnprocessableEntity(organizationi18n.InvalidGroupRule)
 	case errors.Is(err, core.ErrLastTenantAdministrator):
-		return huma.Error409Conflict(organizationi18n.LastTenantAdministrator)
+		return huma.Error409Conflict(corei18n.LastTenantAdministrator)
 	case errors.Is(err, ErrGroupInvalid):
 		return huma.Error422UnprocessableEntity(organizationi18n.InvalidGroup)
 	default:

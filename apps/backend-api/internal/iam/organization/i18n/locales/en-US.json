@@ -17,7 +17,6 @@
   "dynamic_group_members_computed": "Dynamic group membership is computed from the membership rule and cannot be changed manually. Update the rule or the member attributes instead.",
   "group_rule_requires_dynamic_type": "A membership rule can only be configured for a dynamic group. Choose the dynamic group type or remove the rule.",
   "invalid_group_membership_rule": "The dynamic membership rule is invalid. Use version 1, choose all or any matching, and provide 1 to 16 supported attribute conditions.",
-  "last_tenant_administrator": "The last active tenant administrator cannot be removed or disabled. Assign another active administrator first.",
   "invalid_group": "The group data is invalid. Check its name, type, membership rule, description, status, order, and version.",
   "tenant_not_found": "The requested tenant was not found. Verify the tenant identifier and try again.",
   "tenant_slug_exists": "A tenant with this slug already exists. Choose a different tenant slug.",

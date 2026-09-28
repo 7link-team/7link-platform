@@ -28,7 +28,6 @@ const (
 	DynamicGroupMembersComputed = Namespace + ".dynamic_group_members_computed"
 	GroupRuleRequiresDynamic    = Namespace + ".group_rule_requires_dynamic_type"
 	InvalidGroupRule            = Namespace + ".invalid_group_membership_rule"
-	LastTenantAdministrator     = Namespace + ".last_tenant_administrator"
 	InvalidGroup                = Namespace + ".invalid_group"
 	TenantNotFound              = Namespace + ".tenant_not_found"
 	TenantSlugExists            = Namespace + ".tenant_slug_exists"

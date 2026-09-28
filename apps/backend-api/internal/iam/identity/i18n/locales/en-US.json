@@ -4,7 +4,6 @@
   "identity_unavailable": "The identity service could not complete the request. Retry later; contact an administrator if the problem continues.",
   "invalid_principal": "The principal data is invalid. Check the login name, profile, email, and password requirements.",
   "invalid_service_account": "The service account data is invalid. Check its name, status, expiry, credential scopes, and tenant state.",
-  "last_tenant_administrator": "The last active tenant administrator cannot be removed or disabled. Assign another active administrator first.",
   "login_name_exists": "This login name is already in use. Choose a different login name.",
   "principal_anonymization_confirmation": "The confirmation does not match this principal's login name. Erasure cannot be undone, so it only proceeds for a caller that named the right subject.",
   "principal_anonymized": "This principal has already been erased. The record is a tombstone and cannot be changed back.",
