@@ -58,10 +58,10 @@ func (id *ID) UnmarshalText(value []byte) error {
 // Do not declare a path or query parameter as ID. huma binds parameters by Go
 // kind, so it parses this int64 as a number and then validates that number
 // against this string schema, rejecting every value with 422. Declare such a
-// parameter as string and call Parse:
+// parameter as a string with the snowflake pattern and call RequireID:
 //
-//	type input struct{ ID string `path:"id"` }
-//	id, err := guid.Parse(in.ID)
+//	type input struct{ ID string `path:"id" pattern:"^[1-9][0-9]*$" maxLength:"19"`}
+//	id, err := guid.RequireID(in.ID)
 //
 // Request and response bodies are unaffected: they go through encoding/json,
 // which uses MarshalJSON and UnmarshalJSON.

@@ -106,9 +106,9 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 			if in.Authorization != "" {
 				return nil, huma.Error401Unauthorized(respx.Unauthorized)
 			}
-			id, err := guid.Parse(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
-				return nil, personalTokenError(errPersonalTokenInput)
+				return nil, err
 			}
 			if err := service.RevokePersonalToken(ctx, in.Cookie, id); err != nil {
 				return nil, personalTokenError(err)
@@ -118,9 +118,9 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-list-personal-token-permissions", Method: http.MethodGet,
 		Path: "/principals/{principal_id}/personal-token-permissions", Summary: "List currently granted permissions available for a personal token", Tags: []string{"account"}, Errors: []int{401, 422, 500, 503}},
 		func(ctx context.Context, in *personalTokenPermissionsInput) (*respx.Body[[]authz.Action], error) {
-			tenantID, err := guid.Parse(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
-				return nil, personalTokenError(errPersonalTokenInput)
+				return nil, err
 			}
 			result, err := service.PersonalTokenPermissions(ctx, in.Cookie, tenantID)
 			if err != nil {

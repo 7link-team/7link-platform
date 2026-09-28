@@ -80,9 +80,9 @@ func registerAccountViewHTTP(api huma.API, service *Service) {
 		if err := service.ValidateCSRF(http.MethodDelete, in.Origin, in.Cookie, ""); err != nil {
 			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
-		id, err := guid.Parse(in.ID)
-		if err != nil || id <= 0 || id.String() != in.ID {
-			return nil, huma.Error422UnprocessableEntity(respx.InvalidID)
+		id, err := guid.RequireID(in.ID)
+		if err != nil {
+			return nil, err
 		}
 		if err := service.RevokeAccountView(ctx, in.Cookie, id); err != nil {
 			return nil, accountViewHTTPError(ctx, err)
