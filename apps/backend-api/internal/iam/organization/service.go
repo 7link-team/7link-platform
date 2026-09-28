@@ -9,6 +9,8 @@ import (
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
+	"gorm.io/gorm"
 )
 
 type Service struct {
@@ -17,6 +19,9 @@ type Service struct {
 	now               func() time.Time
 	roots             core.FileRootProvisioner
 	rootContent       core.FileRootContentChecker
+	// administrators checks that a department re-parent stays within the
+	// actor's authority; a re-parent without it fails closed.
+	administrators core.AdministratorGuard
 }
 
 func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Source) *Service {
@@ -132,6 +137,11 @@ func (s *Service) Update(ctx context.Context, tenantID, id guid.ID, input Update
 			updated.SortOrder = *input.SortOrder
 		}
 		parentChanged := optionalID(updated.ParentID) != optionalID(current.ParentID)
+		if parentChanged {
+			if err := s.requireGrantableDepartmentMove(ctx, repo, tenantID); err != nil {
+				return err
+			}
+		}
 		if parentChanged && updated.ParentID != nil {
 			parent, err := repo.getDepartment(ctx, tenantID, *updated.ParentID)
 			if err != nil {
@@ -238,3 +248,19 @@ func departmentDepth(ctx context.Context, repo *Repository, tenantID, id guid.ID
 }
 
 func organizationTime(value time.Time) time.Time { return value.UTC().Truncate(time.Millisecond) }
+
+// requireGrantableDepartmentMove refuses a re-parent the actor could not make
+// with their own department authority: moving a subtree widens the reach of
+// every department-and-descendants scope above its new parent.
+func (s *Service) requireGrantableDepartmentMove(ctx context.Context, repo *Repository, tenantID guid.ID) error {
+	if authnext.PrincipalIDFromContext(ctx).Zero() {
+		return nil
+	}
+	checker, ok := s.administrators.(interface {
+		RequireGrantableDepartmentMove(context.Context, *gorm.DB, guid.ID) error
+	})
+	if !ok {
+		return ErrUnavailable
+	}
+	return checker.RequireGrantableDepartmentMove(ctx, repo.writer(), tenantID)
+}

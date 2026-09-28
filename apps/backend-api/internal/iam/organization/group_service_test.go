@@ -24,6 +24,13 @@ type grantingAdministratorGuard struct {
 	required   [][]guid.ID
 	placeErr   error
 	placed     []guid.ID
+	moveErr    error
+	moved      []guid.ID
+}
+
+func (g *grantingAdministratorGuard) RequireGrantableDepartmentMove(_ context.Context, _ *gorm.DB, owner guid.ID) error {
+	g.moved = append(g.moved, owner)
+	return g.moveErr
 }
 
 func (g *grantingAdministratorGuard) RequireGrantableDepartmentPlacement(_ context.Context, _ *gorm.DB, _, department guid.ID, _ []guid.ID) error {

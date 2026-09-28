@@ -299,6 +299,39 @@ func (s *Service) requireGrantableDepartmentPlacement(ctx context.Context, repo 
 	return nil
 }
 
+// requireGrantableDepartmentMove keeps a department re-parent from widening
+// anyone's department-scoped reach beyond what the actor already governs:
+// moving a subtree under another department adds it to the reach of every
+// department-and-descendants scope anchored above the new parent, including
+// the actor's own. Only actors whose department authority is tenant-wide, or
+// tenant administrators, may restructure the tree.
+// departmentUpdatePermission guards department edits, including re-parenting.
+const departmentUpdatePermission = "dept_update"
+
+func (s *Service) requireGrantableDepartmentMove(ctx context.Context, repo *Repository, tenantID guid.ID) error {
+	claims, ok := authn.FromContext(ctx)
+	if !ok || claims == nil || claims.PrincipalID.Zero() {
+		return nil
+	}
+	kind, err := repo.rootKind(ctx, tenantID)
+	if err != nil || kind != "tenant" {
+		return err
+	}
+	pinned := s.pinnedTo(repo)
+	administrator, err := pinned.checker.CheckBulk(ctx, tenantID, []string{tenantAdministratorPermission}, claims.PrincipalID)
+	if err != nil || administrator[tenantAdministratorPermission] {
+		return err
+	}
+	constraint, err := pinned.checker.Constraint(ctx, tenantID, departmentUpdatePermission, claims.PrincipalID)
+	if err != nil {
+		return err
+	}
+	if !constraint.AllowAll {
+		return fmt.Errorf("%w: %s", ErrPrivilegeEscalation, departmentUpdatePermission)
+	}
+	return nil
+}
+
 // roleScopeReach returns the departments scope reaches when applied to the
 // actor: an empty set for self, nil when it cannot be bounded by departments
 // (all, or a department scope for an actor without an active department).

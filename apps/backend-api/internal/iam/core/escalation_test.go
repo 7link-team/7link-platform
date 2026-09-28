@@ -223,6 +223,38 @@ func TestMemberDepartmentChangeStaysWithinTheActorsConstraint(t *testing.T) {
 	assert.Equal(t, []string{"103"}, reach(peerID))
 }
 
+// Re-parenting a department adds its subtree to the reach of every
+// department-and-descendants scope above the new parent, the actor's included,
+// without any grant being written. Only tenant-wide department authority (or a
+// tenant administrator) may restructure the tree.
+func TestDepartmentMoveRequiresTenantWideDepartmentAuthority(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	tenantID, actorID := guid.ID(1), guid.ID(10)
+	h.seedMember(t, tenantID, actorID, MemberActive)
+	role, err := h.repository.CreateRole(t.Context(), tenantID, "Department editors", "")
+	require.NoError(t, err)
+	_, err = h.repository.GrantPermission(t.Context(), tenantID, role.ID, "dept_update")
+	require.NoError(t, err)
+	_, err = h.repository.AddMember(t.Context(), tenantID, role.ID, actorID)
+	require.NoError(t, err)
+	actor := authn.WithClaims(t.Context(), &authn.Claims{SubjectType: authn.SubjectTypePrincipal, PrincipalID: actorID, TenantID: tenantID})
+	move := func() error { return h.service.requireGrantableDepartmentMove(actor, h.repository, tenantID) }
+
+	require.NoError(t, move(), "a role without a data scope row reaches the whole tenant")
+	_, _, err = h.service.SetRoleDataScope(t.Context(), tenantID, role.ID, DataScopeSelf, nil)
+	require.NoError(t, err)
+	require.ErrorIs(t, move(), ErrPrivilegeEscalation, "department authority bounded by a data scope")
+	require.NoError(t, h.service.requireGrantableDepartmentMove(t.Context(), h.repository, tenantID), "no actor, no escalation to check")
+
+	administrators, err := h.repository.CreateRole(t.Context(), tenantID, "Tenant administrators", "")
+	require.NoError(t, err)
+	_, err = h.repository.GrantPermission(t.Context(), tenantID, administrators.ID, "tenant_administer")
+	require.NoError(t, err)
+	_, err = h.repository.AddMember(t.Context(), tenantID, administrators.ID, actorID)
+	require.NoError(t, err)
+	require.NoError(t, move(), "a tenant administrator is unaffected")
+}
+
 // An invitation places its invitee in a department together with roles, and
 // acceptance applies both without an actor. A department-scoped role then
 // reaches what the invitation's department reaches, so the placement is bounded

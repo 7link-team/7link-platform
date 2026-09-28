@@ -14,6 +14,7 @@ import (
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
@@ -71,6 +72,7 @@ func newOrganizationHarness(t *testing.T, prefix string) *organizationHarness {
 	harness.runtime, harness.appender = runtime, appender
 	harness.service = newBoundService(t, runtime, appender, newOrganizationTestIDs(100))
 	harness.service.now = func() time.Time { return organizationTestNow }
+	harness.service.administrators = &grantingAdministratorGuard{}
 	return harness
 }
 
@@ -309,6 +311,44 @@ func TestDepartmentUpdateAppliesStatusAndOrderAndRefusesAMissingParent(t *testin
 		ParentID: &missing, Version: updated.Version,
 	})
 	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+// A re-parent widens department-and-descendants reach above the new parent,
+// so it asks core whether the actor may restructure the tree; a refusal leaves
+// the department where it was, and a rename does not ask at all.
+func TestDepartmentMoveAsksForGrantAuthority(t *testing.T) {
+	h := newOrganizationDirectoryHarness(t, "sl_")
+	guard := &grantingAdministratorGuard{}
+	h.service.administrators = guard
+	parent, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Sales"})
+	require.NoError(t, err)
+	moved, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Support"})
+	require.NoError(t, err)
+	actor := authnext.WithClaims(t.Context(), &authnext.Claims{PrincipalID: 5, TenantID: 1})
+
+	renamed, err := h.service.Update(actor, 1, moved.ID, UpdateDepartment{Name: stringPointer("Customer support"), Version: moved.Version})
+	require.NoError(t, err)
+	assert.Empty(t, guard.moved, "a rename is not a move")
+
+	guard.moveErr = core.ErrPrivilegeEscalation
+	_, err = h.service.Update(actor, 1, moved.ID, UpdateDepartment{ParentID: &parent.ID, Version: renamed.Version})
+	require.ErrorIs(t, err, core.ErrPrivilegeEscalation)
+	assert.Equal(t, []guid.ID{1}, guard.moved)
+	stored, err := h.service.Get(t.Context(), 1, moved.ID)
+	require.NoError(t, err)
+	assert.Zero(t, stored.ParentID, "a refused move changes nothing")
+
+	guard.moveErr = nil
+	_, err = h.service.Update(actor, 1, moved.ID, UpdateDepartment{ParentID: &parent.ID, Version: renamed.Version})
+	require.NoError(t, err)
+	stored, err = h.service.Get(t.Context(), 1, moved.ID)
+	require.NoError(t, err)
+	assert.Equal(t, parent.ID, stored.ParentID)
+
+	h.service.administrators = &organizationAdministratorGuard{}
+	root := guid.ID(0)
+	_, err = h.service.Update(actor, 1, moved.ID, UpdateDepartment{ParentID: &root, Version: renamed.Version + 1})
+	assert.ErrorIs(t, err, ErrUnavailable, "a guard without the move check fails closed")
 }
 
 // TestDepartmentServiceRejectsInvalidInputAndAnUnwiredRepository pins the
