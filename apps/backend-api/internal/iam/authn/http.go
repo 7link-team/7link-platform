@@ -142,25 +142,34 @@ type emailVerificationCompleteInput struct {
 }
 
 type emailVerificationCredential struct {
-	Token string `json:"token,omitempty"`
-	Email string `json:"email,omitempty"`
-	Code  string `json:"code,omitempty"`
+	Token    string `json:"token,omitempty"`
+	Email    string `json:"email,omitempty"`
+	Code     string `json:"code,omitempty"`
+	Password string `json:"password,omitempty"`
 }
 
 func (emailVerificationCredential) Schema(huma.Registry) *huma.Schema {
-	one, two, six, tokenMax, emailMax := 1, 2, 6, 128, 320
+	one, six, tokenMax, emailMax, passwordMax := 1, 6, 128, 320, 1024
+	properties := map[string]*huma.Schema{
+		"token": {Type: huma.TypeString, MinLength: &one, MaxLength: &tokenMax},
+		"email": {Type: huma.TypeString, Format: "email", MinLength: &one, MaxLength: &emailMax},
+		"code":  {Type: huma.TypeString, MinLength: &six, MaxLength: &six, Pattern: "^[0-9]{6}$"},
+		"password": {Type: huma.TypeString, MinLength: &one, MaxLength: &passwordMax,
+			Description: "Password of the registration being confirmed; required to activate a pending self-registration"},
+	}
+	// Each credential form may also carry password, and nothing else.
+	form := func(required ...string) *huma.Schema {
+		allowed := map[string]*huma.Schema{"password": properties["password"]}
+		for _, name := range required {
+			allowed[name] = properties[name]
+		}
+		return &huma.Schema{Type: huma.TypeObject, Required: required, Properties: allowed, AdditionalProperties: false}
+	}
 	return &huma.Schema{
 		Type:                 huma.TypeObject,
 		AdditionalProperties: false,
-		Properties: map[string]*huma.Schema{
-			"token": {Type: huma.TypeString, MinLength: &one, MaxLength: &tokenMax},
-			"email": {Type: huma.TypeString, Format: "email", MinLength: &one, MaxLength: &emailMax},
-			"code":  {Type: huma.TypeString, MinLength: &six, MaxLength: &six, Pattern: "^[0-9]{6}$"},
-		},
-		OneOf: []*huma.Schema{
-			{Type: huma.TypeObject, Required: []string{"token"}, MinProperties: &one, MaxProperties: &one},
-			{Type: huma.TypeObject, Required: []string{"email", "code"}, MinProperties: &two, MaxProperties: &two},
-		},
+		Properties:           properties,
+		OneOf:                []*huma.Schema{form("token"), form("email", "code")},
 	}
 }
 
@@ -721,7 +730,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
 			return nil, huma.Error403Forbidden("email_verification_request_rejected")
 		}
-		if err := web.CompleteEmailVerification(ctx, in.Body.Token, in.Body.Email, in.Body.Code); err != nil {
+		if err := web.CompleteEmailVerification(ctx, in.Body.Token, in.Body.Email, in.Body.Code, in.Body.Password); err != nil {
 			switch {
 			case errors.Is(err, authnext.ErrInvalidEmailVerification):
 				return nil, huma.Error400BadRequest("invalid_email_verification_credential")

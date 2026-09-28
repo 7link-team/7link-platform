@@ -30,7 +30,17 @@ func (s *Service) personalReadClaims(ctx context.Context, authorization, cookie 
 		}
 		return claims, nil
 	}
-	return s.Authenticate(ctx, authorization, cookie)
+	claims, err := s.Authenticate(ctx, authorization, cookie)
+	if err == nil && delegatedToken(claims) {
+		return nil, authnext.ErrInvalidToken
+	}
+	return claims, err
+}
+
+// delegatedToken reports a token issued to an OAuth client. Such a token only
+// carries OpenID identity scopes, never the holder's own account authority.
+func delegatedToken(claims *authnext.Claims) bool {
+	return claims != nil && claims.ClientID != ""
 }
 
 type AccountViewAuthorizer = authnext.AccountViewAuthorizer
@@ -40,7 +50,7 @@ func (s *Service) authenticateAccountHolder(ctx context.Context, authorization, 
 		return nil, authnext.ErrInvalidCredentials
 	}
 	claims, err := s.Authenticate(ctx, authorization, cookie)
-	if err == nil && claims != nil && claims.AccountView != nil {
+	if err == nil && claims != nil && (claims.AccountView != nil || delegatedToken(claims)) {
 		return nil, authnext.ErrInvalidCredentials
 	}
 	return claims, err

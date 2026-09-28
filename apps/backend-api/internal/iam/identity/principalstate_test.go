@@ -148,6 +148,9 @@ func TestPrincipalStateStoreRefusesToServeBeforeWiring(t *testing.T) {
 			verified, err := store.VerifyEmail(t.Context(), harness.db, 1, "x@example.test", identityTestNow)
 			assert.ErrorIs(t, err, ErrUnavailable)
 			assert.False(t, verified)
+			selfRegistered, err := store.SelfRegistered(t.Context(), harness.db, 1)
+			assert.ErrorIs(t, err, ErrUnavailable)
+			assert.False(t, selfRegistered)
 		})
 	}
 }
@@ -332,6 +335,18 @@ func TestPrincipalStateReadersReportAbsenceAndAmbiguityWithoutDeciding(t *testin
 		require.NoError(t, err)
 		assert.False(t, onSuspended)
 	})
+
+	t.Run("self registered reports the registration origin", func(t *testing.T) {
+		registered, err := harness.service.CreatePendingPrincipal(ctx, harness.db, "registrant@example.test", "hash", "", identityTestNow, newIdentityTestIDs(7000))
+		require.NoError(t, err)
+		for id, want := range map[guid.ID]bool{registered: true, active: false} {
+			got, err := store.SelfRegistered(ctx, harness.db, id)
+			require.NoError(t, err)
+			assert.Equal(t, want, got, "principal %s", id)
+		}
+		_, err = store.SelfRegistered(ctx, harness.db, 404)
+		assert.ErrorContains(t, err, "load principal registration origin", "an absent principal is not a registration")
+	})
 }
 
 // TestPrincipalStateReadersReportAnUnreadableTableAsAFailure separates "no such
@@ -366,4 +381,9 @@ func TestPrincipalStateReadersReportAnUnreadableTableAsAFailure(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "verify principal email")
 	assert.False(t, verified)
+
+	selfRegistered, err := store.SelfRegistered(ctx, harness.db, 1)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "load principal registration origin")
+	assert.False(t, selfRegistered)
 }

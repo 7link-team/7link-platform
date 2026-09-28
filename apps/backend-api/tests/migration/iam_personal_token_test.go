@@ -58,7 +58,7 @@ func TestIAMPersonalTokenMigrations(t *testing.T) {
 						{ID: 101, LoginName: "legacy-owner", DisplayName: "Legacy owner", Status: "active", CreatedAt: now, UpdatedAt: now},
 						{ID: 102, LoginName: "other-owner", DisplayName: "Other owner", Status: "active", CreatedAt: now, UpdatedAt: now},
 					}
-					require.NoError(t, gdb.Table(prefix+"iam_principals").Omit("Avatar").Create(&principals).Error)
+					require.NoError(t, gdb.Table(prefix+"iam_principals").Omit("Avatar", "SelfRegistered").Create(&principals).Error)
 					require.NoError(t, gdb.Table(prefix+"iam_tenants").Create(map[string]any{"id": 71, "slug": "personal", "name": "Personal", "status": "active", "version": 1, "created_at": now, "updated_at": now}).Error)
 					credential := authnmodel.Credential{PrincipalID: 101, PasswordHash: "legacy-hash", CredentialVersion: 3, PasswordChangedAt: now, UpdatedAt: now}
 					require.NoError(t, gdb.Table(prefix+"iam_credentials").Create(&credential).Error)

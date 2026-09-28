@@ -60,6 +60,11 @@ type PrincipalStateStore struct {
 	// VerifyEmail marks an active principal's pending email verified and clears
 	// its activation requirement, reporting whether a row was in that state.
 	VerifyEmail func(ctx context.Context, db *gorm.DB, id guid.ID, email string, now time.Time) (bool, error)
+	// SelfRegistered reports whether public self-registration created the
+	// principal. Only such a principal, while still pending, may have its
+	// credential replaced by a later public registration; one a directory,
+	// an invitation or an administrator created never is.
+	SelfRegistered func(ctx context.Context, db *gorm.DB, id guid.ID) (bool, error)
 }
 
 // principalStateStore binds the statements to one deployment prefix. The prefix
@@ -156,6 +161,15 @@ func principalStateStore(prefix string) PrincipalStateStore {
 			}
 			return result.RowsAffected == 1, nil
 		},
+		SelfRegistered: func(ctx context.Context, db *gorm.DB, principalID guid.ID) (bool, error) {
+			var row struct{ SelfRegistered bool }
+			err := db.WithContext(ctx).Table(principalTable).
+				Select("self_registered").Where("id = ?", principalID).Take(&row).Error
+			if err != nil {
+				return false, fmt.Errorf("load principal registration origin: %w", err)
+			}
+			return row.SelfRegistered, nil
+		},
 	}
 }
 
@@ -201,6 +215,9 @@ func unavailablePrincipalStateStore() PrincipalStateStore {
 			return nil, ErrUnavailable
 		},
 		VerifyEmail: func(context.Context, *gorm.DB, guid.ID, string, time.Time) (bool, error) {
+			return false, ErrUnavailable
+		},
+		SelfRegistered: func(context.Context, *gorm.DB, guid.ID) (bool, error) {
 			return false, ErrUnavailable
 		},
 	}

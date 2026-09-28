@@ -231,7 +231,7 @@ func (s *Service) CreatePendingPrincipal(
 		return 0, err
 	}
 	principal := model.Principal{
-		ID: id, LoginName: email, Email: email, ActivationRequired: true,
+		ID: id, LoginName: email, Email: email, ActivationRequired: true, SelfRegistered: true,
 		DisplayName: displayName, Status: "active", CreatedAt: now, UpdatedAt: now,
 	}
 	if err := repo.insertPrincipal(ctx, &principal); err != nil {
@@ -455,7 +455,7 @@ func (s *Service) SetStatus(ctx context.Context, tenantID, id guid.ID, status st
 			return err
 		}
 		verifiers := make([]func() error, 0)
-		if status == "disabled" && current.Status != "disabled" {
+		if current.Status != status {
 			if _, err := repo.lifecyclePrincipal(ctx, id, true); err != nil {
 				return err
 			}
@@ -467,6 +467,9 @@ func (s *Service) SetStatus(ctx context.Context, tenantID, id guid.ID, status st
 				return err
 			}
 			for _, affectedTenantID := range tenantIDs {
+				if status != "disabled" {
+					break
+				}
 				verify, err := s.administrators.Protect(ctx, repo.writer(), affectedTenantID)
 				if err != nil {
 					return err
@@ -508,10 +511,11 @@ func (s *Service) SetStatus(ctx context.Context, tenantID, id guid.ID, status st
 	return updated, nil
 }
 
-// requireTenantOnlyPrincipal keeps one tenant from suspending a global account
-// that another organization root or the platform also relies on: suspension
-// locks the principal out everywhere, so that tenant removes its membership
-// instead. The caller holds the principal lock.
+// requireTenantOnlyPrincipal keeps one tenant from suspending or restoring a
+// global account that another organization root or the platform also relies
+// on: suspension locks the principal out everywhere and restoring reactivates
+// it everywhere, so that tenant removes its membership instead. The caller
+// holds the principal lock.
 func (s *Service) requireTenantOnlyPrincipal(ctx context.Context, repo *Repository, tenantID, id guid.ID, activeTenantIDs []guid.ID) error {
 	for _, other := range activeTenantIDs {
 		if other != tenantID {

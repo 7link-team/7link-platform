@@ -221,6 +221,7 @@ func TestCreatePendingPrincipalGrantsNoMembership(t *testing.T) {
 	assert.Equal(t, "alice@example.test", row.LoginName)
 	assert.Equal(t, "alice@example.test", row.DisplayName)
 	assert.True(t, row.ActivationRequired)
+	assert.True(t, row.SelfRegistered, "public registration may re-credential only what it created")
 	assert.False(t, row.EmailVerified)
 	assert.Equal(t, int64(1), harness.credentialVersion(t, id))
 	assert.Zero(t, harness.memberCount(t, 7, id))
@@ -600,6 +601,59 @@ func TestSetStatusRefusesSuspendingAPrincipalSharedBeyondTheTenant(t *testing.T)
 	require.ErrorIs(t, err, ErrPrincipalSharedBeyondTenant, "the other root is refused symmetrically")
 	unchanged()
 	assert.Equal(t, protected, harness.guard.protectedTenants(), "refusal precedes the administrator guard")
+}
+
+// Lifting a suspension reactivates the account everywhere, so the tenant route
+// refuses it for a principal shared beyond the tenant exactly as it refuses the
+// suspension itself.
+func TestSetStatusRefusesRestoringAPrincipalSharedBeyondTheTenant(t *testing.T) {
+	t.Parallel()
+
+	harness := newIdentityHarness(t, "sl_")
+	principal, err := harness.service.Create(t.Context(), 7, "alice", testPassword, "Alice", "alice@example.test")
+	require.NoError(t, err)
+	_, err = harness.service.SetStatus(t.Context(), 7, principal.ID, "disabled")
+	require.NoError(t, err)
+	events := len(harness.events())
+	stillSuspended := func() {
+		t.Helper()
+		assert.Equal(t, "disabled", harness.principal(t, principal.ID).Status)
+		assert.NotNil(t, harness.principal(t, principal.ID).DisabledAt)
+		assert.Len(t, harness.events(), events, "a refused restore records no event")
+	}
+
+	require.NoError(t, harness.repository.insertTenantMember(t.Context(), tenantMemberRecord{
+		TenantID: 9, PrincipalID: principal.ID, DisplayName: "Alice", Email: "alice@example.test",
+		Status: "active", CreatedAt: identityTestNow, UpdatedAt: identityTestNow,
+	}))
+	_, err = harness.service.SetStatus(t.Context(), 7, principal.ID, "active")
+	require.ErrorIs(t, err, ErrPrincipalSharedBeyondTenant, "an active member of another organization root")
+	_, err = harness.service.SetStatus(t.Context(), 9, principal.ID, "active")
+	require.ErrorIs(t, err, ErrPrincipalSharedBeyondTenant, "the other root is refused symmetrically")
+	stillSuspended()
+	require.NoError(t, harness.db.Exec("UPDATE sl_iam_tenant_members SET status = 'disabled' WHERE tenant_id = 9").Error)
+
+	harness.service.platformAccessGuard = func(context.Context, *gorm.DB, guid.ID) error {
+		return core.ErrPrincipalHasPlatformAccess
+	}
+	_, err = harness.service.SetStatus(t.Context(), 7, principal.ID, "active")
+	require.ErrorIs(t, err, ErrPrincipalSharedBeyondTenant)
+	require.ErrorIs(t, err, core.ErrPrincipalHasPlatformAccess)
+	guardFailure := errors.New("platform grants unreadable")
+	harness.service.platformAccessGuard = func(context.Context, *gorm.DB, guid.ID) error { return guardFailure }
+	_, err = harness.service.SetStatus(t.Context(), 7, principal.ID, "active")
+	require.ErrorIs(t, err, guardFailure)
+	harness.service.platformAccessGuard = nil
+	_, err = harness.service.SetStatus(t.Context(), 7, principal.ID, "active")
+	require.ErrorIs(t, err, ErrUnavailable, "without the platform guard the tenant route fails closed")
+	stillSuspended()
+
+	// Control: an account only this tenant relies on is restored.
+	harness.service.platformAccessGuard = func(context.Context, *gorm.DB, guid.ID) error { return nil }
+	restored, err := harness.service.SetStatus(t.Context(), 7, principal.ID, "active")
+	require.NoError(t, err)
+	assert.Equal(t, "active", restored.Status)
+	assert.Equal(t, "active", harness.principal(t, principal.ID).Status)
 }
 
 func TestSetStatusRollsBackWhenGuardRejects(t *testing.T) {

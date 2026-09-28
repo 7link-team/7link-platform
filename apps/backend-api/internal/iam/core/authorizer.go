@@ -959,36 +959,12 @@ func (a *Authorizer) loadDataScopeFacts(
 		return nil, nil, err
 	}
 	departmentSet := map[guid.ID]struct{}{}
-	if needDepartment || needDescendants {
-		var row struct {
-			DepartmentID guid.ID `gorm:"column:department_id"`
-		}
-		err := a.db.WithContext(ctx).Table(names.Directory.MemberDepartments.String()+" AS md").
-			Select("md.department_id").
-			Joins("JOIN "+names.Directory.Departments.String()+" AS d ON d.tenant_id = md.tenant_id AND d.id = md.department_id AND d.status = 'active'").
-			Where("md.tenant_id = ? AND md.principal_id = ?", tenantID, subject).Take(&row).Error
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil, fmt.Errorf("get authorization member department: %w", err)
-		}
-		if !row.DepartmentID.Zero() {
-			if needDepartment {
-				departmentSet[row.DepartmentID] = struct{}{}
-			}
-			if needDescendants {
-				ids := make([]guid.ID, 0)
-				err = a.db.WithContext(ctx).Table(names.Directory.DepartmentClosure.String()+" AS c").
-					Select("c.descendant_id").
-					Joins("JOIN "+names.Directory.Departments.String()+" AS d ON d.tenant_id = c.tenant_id AND d.id = c.descendant_id AND d.status = 'active'").
-					Where("c.tenant_id = ? AND c.ancestor_id = ?", tenantID, row.DepartmentID).
-					Pluck("c.descendant_id", &ids).Error
-				if err != nil {
-					return nil, nil, fmt.Errorf("list authorization department descendants: %w", err)
-				}
-				for _, id := range ids {
-					departmentSet[id] = struct{}{}
-				}
-			}
-		}
+	ids, err := memberDepartmentScope(ctx, a.db, names.Directory, tenantID, subject, needDepartment, needDescendants)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, id := range ids {
+		departmentSet[id] = struct{}{}
 	}
 	if len(selectedRoles) > 0 {
 		roleIDs := make([]guid.ID, 0, len(selectedRoles))
@@ -1009,6 +985,52 @@ func (a *Authorizer) loadDataScopeFacts(
 		}
 	}
 	return mapKeys(ownerSet), mapKeys(departmentSet), nil
+}
+
+// memberDepartmentScope lists the active departments that a department
+// (department) or department-and-descendants (descendants) data scope reaches
+// for subject: its own active department and, with descendants, every active
+// department below it. A subject without an active department reaches none.
+func memberDepartmentScope(
+	ctx context.Context,
+	db *gorm.DB,
+	directory query.DirectoryTables,
+	tenantID, subject guid.ID,
+	department, descendants bool,
+) ([]guid.ID, error) {
+	result := []guid.ID{}
+	if !department && !descendants {
+		return result, nil
+	}
+	var row struct {
+		DepartmentID guid.ID `gorm:"column:department_id"`
+	}
+	err := db.WithContext(ctx).Table(directory.MemberDepartments.String()+" AS md").
+		Select("md.department_id").
+		Joins("JOIN "+directory.Departments.String()+" AS d ON d.tenant_id = md.tenant_id AND d.id = md.department_id AND d.status = 'active'").
+		Where("md.tenant_id = ? AND md.principal_id = ?", tenantID, subject).Take(&row).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("get authorization member department: %w", err)
+	}
+	if row.DepartmentID.Zero() {
+		return result, nil
+	}
+	if department {
+		result = append(result, row.DepartmentID)
+	}
+	if descendants {
+		ids := make([]guid.ID, 0)
+		err = db.WithContext(ctx).Table(directory.DepartmentClosure.String()+" AS c").
+			Select("c.descendant_id").
+			Joins("JOIN "+directory.Departments.String()+" AS d ON d.tenant_id = c.tenant_id AND d.id = c.descendant_id AND d.status = 'active'").
+			Where("c.tenant_id = ? AND c.ancestor_id = ?", tenantID, row.DepartmentID).
+			Pluck("c.descendant_id", &ids).Error
+		if err != nil {
+			return nil, fmt.Errorf("list authorization department descendants: %w", err)
+		}
+		result = append(result, ids...)
+	}
+	return result, nil
 }
 
 func mapKeys(values map[guid.ID]struct{}) []guid.ID {

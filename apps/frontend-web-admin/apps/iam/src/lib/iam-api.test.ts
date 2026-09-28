@@ -1388,8 +1388,15 @@ describe("IAM API client", () => {
     expect(
       await client.completeEmailVerification("cpe1_verification-value")
     ).toEqual({ verified: true })
+    expect(
+      await client.completeEmailVerification(
+        "cpe1_verification-value",
+        "registration password"
+      )
+    ).toEqual({ verified: true })
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "POST /email-verifications/requests",
+      "POST /email-verifications",
       "POST /email-verifications",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
@@ -1398,6 +1405,10 @@ describe("IAM API client", () => {
     expect(requests[0]?.body).toBe("")
     expect(JSON.parse(requests[1]?.body ?? "{}")).toEqual({
       token: "cpe1_verification-value",
+    })
+    expect(JSON.parse(requests[2]?.body ?? "{}")).toEqual({
+      token: "cpe1_verification-value",
+      password: "registration password",
     })
   })
 

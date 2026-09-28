@@ -42,7 +42,7 @@ func (guard *tenantAdministratorGuard) RequireGrantableRoles(ctx context.Context
 	if kind == "system" {
 		return ErrPrivilegeEscalation
 	}
-	service := &Service{repo: repo, checker: checker}
+	service := &Service{repo: repo, checker: checker, registry: guard.registry}
 	if err := service.requireGrantablePermissionsOn(ctx, repo, ownerID); err != nil {
 		return err
 	}

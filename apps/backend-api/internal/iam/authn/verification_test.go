@@ -84,13 +84,13 @@ func TestEmailVerificationLifecycleByCode(t *testing.T) {
 		assert.Equal(t, "alice@example.test", email)
 		return nil
 	}
-	require.NoError(t, service.CompleteEmailVerification(t.Context(), "", payload.Recipient, payload.Code))
+	require.NoError(t, service.CompleteEmailVerification(t.Context(), "", payload.Recipient, payload.Code, ""))
 	assert.Equal(t, principalID, hookedID)
 	principal := harness.principal(t, principalID)
 	assert.True(t, principal.EmailVerified)
 	assert.False(t, principal.ActivationRequired)
 	assert.ErrorIs(t, service.CompleteEmailVerification(
-		t.Context(), "", payload.Recipient, payload.Code,
+		t.Context(), "", payload.Recipient, payload.Code, "",
 	), authnext.ErrInvalidEmailVerification)
 }
 
@@ -109,7 +109,7 @@ func TestEmailVerificationHookFailureRollsBackCompletion(t *testing.T) {
 	service.verifiedHook = func(context.Context, *gorm.DB, guid.ID, string, time.Time) error {
 		return errors.New("tenant bootstrap unavailable")
 	}
-	err = service.CompleteEmailVerification(t.Context(), token, "", "")
+	err = service.CompleteEmailVerification(t.Context(), token, "", "", "")
 	assert.ErrorContains(t, err, "tenant bootstrap unavailable")
 	principal := harness.principal(t, principalID)
 	assert.False(t, principal.EmailVerified)
@@ -119,7 +119,7 @@ func TestEmailVerificationHookFailureRollsBackCompletion(t *testing.T) {
 	require.NoError(t, err, "hook failure must leave the verification credential retryable")
 
 	service.verifiedHook = nil
-	require.NoError(t, service.CompleteEmailVerification(t.Context(), token, "", ""))
+	require.NoError(t, service.CompleteEmailVerification(t.Context(), token, "", "", ""))
 }
 
 func TestEmailVerificationTokenIsSnapshotBoundAndAuditAtomic(t *testing.T) {
@@ -134,7 +134,7 @@ func TestEmailVerificationTokenIsSnapshotBoundAndAuditAtomic(t *testing.T) {
 	token := verificationTokenFromPayload(t, recorder.last(t))
 
 	harness.auditErr = errors.New("audit unavailable")
-	err = service.CompleteEmailVerification(t.Context(), token, "", "")
+	err = service.CompleteEmailVerification(t.Context(), token, "", "", "")
 	assert.ErrorContains(t, err, "audit unavailable")
 	principal := harness.principal(t, principalID)
 	assert.False(t, principal.EmailVerified)
@@ -146,7 +146,7 @@ func TestEmailVerificationTokenIsSnapshotBoundAndAuditAtomic(t *testing.T) {
 	harness.auditErr = nil
 	require.NoError(t, harness.db.Table(harness.runtime.TablePrefix()+"iam_principals").
 		Where("id = ?", principalID).Update("email", "changed@example.test").Error)
-	assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), token, "", ""), authnext.ErrInvalidEmailVerification)
+	assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), token, "", "", ""), authnext.ErrInvalidEmailVerification)
 }
 
 func TestEmailVerificationCodeAttemptsAreCredentialBoundAndPersisted(t *testing.T) {
@@ -162,13 +162,13 @@ func TestEmailVerificationCodeAttemptsAreCredentialBoundAndPersisted(t *testing.
 	payload := recorder.last(t)
 	token := verificationTokenFromPayload(t, payload)
 	assert.ErrorIs(t, service.CompleteEmailVerification(
-		t.Context(), "", "", "",
+		t.Context(), "", "", "", "",
 	), authnext.ErrInvalidEmailVerification)
 	assert.ErrorIs(t, service.CompleteEmailVerification(
-		t.Context(), "", "", payload.Code,
+		t.Context(), "", "", payload.Code, "",
 	), authnext.ErrInvalidEmailVerification)
 	assert.ErrorIs(t, service.CompleteEmailVerification(
-		t.Context(), "", payload.Recipient, "ABCDEF",
+		t.Context(), "", payload.Recipient, "ABCDEF", "",
 	), authnext.ErrInvalidEmailVerification)
 
 	for attempt := range maxCodeAttempts {
@@ -177,7 +177,7 @@ func TestEmailVerificationCodeAttemptsAreCredentialBoundAndPersisted(t *testing.
 			wrongCode = "999999"
 		}
 		assert.ErrorIs(t, service.CompleteEmailVerification(
-			t.Context(), "", strings.ToUpper(payload.Recipient), wrongCode,
+			t.Context(), "", strings.ToUpper(payload.Recipient), wrongCode, "",
 		), authnext.ErrInvalidEmailVerification)
 	}
 	verification, err := harness.repository.activeEmailVerificationByHMAC(
@@ -186,14 +186,14 @@ func TestEmailVerificationCodeAttemptsAreCredentialBoundAndPersisted(t *testing.
 	require.NoError(t, err)
 	assert.Equal(t, maxCodeAttempts, verification.Attempts)
 	assert.ErrorIs(t, service.CompleteEmailVerification(
-		t.Context(), "", payload.Recipient, payload.Code,
+		t.Context(), "", payload.Recipient, payload.Code, "",
 	), authnext.ErrInvalidEmailVerification)
 
 	restarted, err := NewWebService(service.cfg, harness.repository)
 	require.NoError(t, err)
 	restarted.now = service.now
 	assert.ErrorIs(t, restarted.CompleteEmailVerification(
-		t.Context(), "", payload.Recipient, payload.Code,
+		t.Context(), "", payload.Recipient, payload.Code, "",
 	), authnext.ErrInvalidEmailVerification, "attempt limits must survive process restart")
 }
 
@@ -282,7 +282,7 @@ func TestEmailVerificationAuthenticationAndStorageFailures(t *testing.T) {
 		require.NoError(t, service.deliverPendingNotifications(t.Context()))
 		token := verificationTokenFromPayload(t, recorder.last(t))
 		require.NoError(t, harness.db.Exec("DROP TABLE iam_email_verification_tokens").Error)
-		assert.ErrorContains(t, service.CompleteEmailVerification(t.Context(), token, "", ""),
+		assert.ErrorContains(t, service.CompleteEmailVerification(t.Context(), token, "", "", ""),
 			"load email verification credential")
 	})
 }

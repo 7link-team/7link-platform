@@ -216,7 +216,8 @@ func (s *Service) SetRoleDataScope(
 	record.Detail["scope"] = scope
 	record.Detail["department_count"] = len(departmentIDs)
 	err = s.writes.Run(ctx, record, func(repo *Repository) error {
-		if err := s.requireGrantableRoleWithRepository(ctx, repo, tenantID, roleID); err != nil {
+		codes, err := s.requireGrantableRolePermissions(ctx, repo, tenantID, roleID)
+		if err != nil {
 			return err
 		}
 		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
@@ -231,11 +232,6 @@ func (s *Service) SetRoleDataScope(
 			record.SkipAudit = true
 			return nil
 		}
-		if scope == DataScopeAll {
-			if err := s.requireGrantableDataScope(ctx, repo, tenantID, roleID); err != nil {
-				return err
-			}
-		}
 		statuses, err := repo.departmentStatuses(ctx, tenantID, departmentIDs)
 		if err != nil {
 			return err
@@ -248,6 +244,10 @@ func (s *Service) SetRoleDataScope(
 			if status != "active" {
 				return ErrRoleScopeDepartmentInactive
 			}
+		}
+		proposed := RoleDataScope{RoleID: roleID, Scope: scope, DepartmentIDs: departmentIDs}
+		if err := s.requireGrantableDataScope(ctx, repo, tenantID, roleID, &proposed, codes); err != nil {
+			return err
 		}
 		if err := repo.replaceRoleDataScope(ctx, tenantID, roleID, scope, departmentIDs); err != nil {
 			return err

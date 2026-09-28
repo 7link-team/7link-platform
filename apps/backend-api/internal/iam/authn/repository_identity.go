@@ -141,6 +141,18 @@ func (r *Repository) verifyPrincipalEmail(ctx context.Context, principalID guid.
 	return r.principals.VerifyEmail(ctx, db, principalID, email, now)
 }
 
+// selfRegistered reports whether public self-registration created the principal.
+func (r *Repository) selfRegistered(ctx context.Context, principalID guid.ID) (bool, error) {
+	_, db, err := r.tables()
+	if err != nil {
+		return false, err
+	}
+	if r.principals.SelfRegistered == nil {
+		return false, errRepositoryUnavailable
+	}
+	return r.principals.SelfRegistered(ctx, db, principalID)
+}
+
 func (r *Repository) principalState(ctx context.Context, principalID guid.ID) (principalCredentialState, error) {
 	tables, db, err := r.tables()
 	if err != nil {

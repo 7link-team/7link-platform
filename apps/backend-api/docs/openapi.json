@@ -14722,16 +14722,47 @@
                 "additionalProperties": false,
                 "oneOf": [
                   {
-                    "maxProperties": 1,
-                    "minProperties": 1,
+                    "additionalProperties": false,
+                    "properties": {
+                      "password": {
+                        "description": "Password of the registration being confirmed; required to activate a pending self-registration",
+                        "maxLength": 1024,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "token": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
                     "required": [
                       "token"
                     ],
                     "type": "object"
                   },
                   {
-                    "maxProperties": 2,
-                    "minProperties": 2,
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "maxLength": 6,
+                        "minLength": 6,
+                        "pattern": "^[0-9]{6}$",
+                        "type": "string"
+                      },
+                      "email": {
+                        "format": "email",
+                        "maxLength": 320,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "password": {
+                        "description": "Password of the registration being confirmed; required to activate a pending self-registration",
+                        "maxLength": 1024,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
                     "required": [
                       "email",
                       "code"
@@ -14749,6 +14780,12 @@
                   "email": {
                     "format": "email",
                     "maxLength": 320,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "password": {
+                    "description": "Password of the registration being confirmed; required to activate a pending self-registration",
+                    "maxLength": 1024,
                     "minLength": 1,
                     "type": "string"
                   },
