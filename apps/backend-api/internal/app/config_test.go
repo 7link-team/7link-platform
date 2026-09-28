@@ -63,14 +63,14 @@ func TestBannerDefaultsAndOverrides(t *testing.T) {
 	require.NoError(t, configx.New().Parse(&configured,
 		"--name=test-api",
 		"--banner.enabled=false",
-		"--banner.text=SEVEN LINK",
+		"--banner.text=EXAMPLE",
 		"--banner.type=slant",
 		"--banner.theme=ocean",
 	))
 	assert.Equal(t, "test-api", configured.Name)
 	assert.Equal(t, BannerConfig{
 		Enabled: false,
-		Text:    "SEVEN LINK",
+		Text:    "EXAMPLE",
 		Type:    "slant",
 		Theme:   "ocean",
 	}, configured.Banner)
