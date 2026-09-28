@@ -57,11 +57,13 @@ export async function systemWorkspaceAcceptance({
     if (owner) {
       await select("#account-owner", owner.name)
       await page.locator(`[data-account-id="${ownerA.id}"]`).waitFor()
-      const result = await request(
-        `/system/principals?category=${category}&owner_id=${owner.id}`
+      const response = await admin.context.request.get(
+        `/api/system/principals?category=${category}&owner_id=${owner.id}`
       )
-      assert(result.items.some((item) => item.id === ownerA.id))
-      assert.equal(result.total, result.items.length)
+      assert(response.ok(), `system principals: HTTP ${response.status()}`)
+      const listed = await response.json()
+      assert(listed.data.some((item) => item.id === ownerA.id))
+      assert.equal(listed.meta.page.total, listed.data.length)
     }
     if (category === "user")
       await page.locator(`[data-account-id="${worker.id}"]`).waitFor()

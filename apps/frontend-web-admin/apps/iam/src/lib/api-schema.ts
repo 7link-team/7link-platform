@@ -5106,11 +5106,6 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
-        ClosurePage: {
-            items: components["schemas"]["ClosureRequest"][] | null;
-            /** Format: int64 */
-            total: number;
-        };
         ClosureRequest: {
             principal_id: string | null;
             /** Format: date-time */
@@ -5872,19 +5867,6 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
-        EnvelopeClosurePage: {
-            /**
-             * Format: int64
-             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
-             */
-            code: number;
-            /** @description response payload; null on error */
-            data: components["schemas"]["ClosurePage"];
-            /** @description human-readable status; "ok" on success */
-            message: string;
-            /** @description request metadata */
-            meta: components["schemas"]["Meta"];
-        };
         EnvelopeClosureRequest: {
             /**
              * Format: int64
@@ -6431,6 +6413,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeListClosureRequest: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ClosureRequest"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeListCredential: {
             /**
              * Format: int64
@@ -6613,6 +6608,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeListMyMembership: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["MyMembership"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeListPasskey: {
             /**
              * Format: int64
@@ -6665,6 +6673,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeListPrincipalView: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["PrincipalView"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeListProvider: {
             /**
              * Format: int64
@@ -6712,6 +6733,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["ScopeNode"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeListServiceAccount: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ServiceAccount"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -6931,19 +6965,6 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
-        EnvelopeMyMembershipPage: {
-            /**
-             * Format: int64
-             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
-             */
-            code: number;
-            /** @description response payload; null on error */
-            data: components["schemas"]["MyMembershipPage"];
-            /** @description human-readable status; "ok" on success */
-            message: string;
-            /** @description request metadata */
-            meta: components["schemas"]["Meta"];
-        };
         EnvelopeOperationResult: {
             /**
              * Format: int64
@@ -7069,19 +7090,6 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["PrincipalLifecycleStatus"];
-            /** @description human-readable status; "ok" on success */
-            message: string;
-            /** @description request metadata */
-            meta: components["schemas"]["Meta"];
-        };
-        EnvelopePrincipalListData: {
-            /**
-             * Format: int64
-             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
-             */
-            code: number;
-            /** @description response payload; null on error */
-            data: components["schemas"]["PrincipalListData"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -7251,19 +7259,6 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["ServiceAccountDeleteData"];
-            /** @description human-readable status; "ok" on success */
-            message: string;
-            /** @description request metadata */
-            meta: components["schemas"]["Meta"];
-        };
-        EnvelopeServiceAccountListData: {
-            /**
-             * Format: int64
-             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
-             */
-            code: number;
-            /** @description response payload; null on error */
-            data: components["schemas"]["ServiceAccountListData"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -7827,11 +7822,6 @@ export interface components {
             tenant_id: string | null;
             tenant_name: string;
         };
-        MyMembershipPage: {
-            items: components["schemas"]["MyMembership"][] | null;
-            /** Format: int64 */
-            total: number;
-        };
         OperatingPlatformMemberCreateInputBody: {
             department_id?: string;
             display_name: string;
@@ -8131,11 +8121,6 @@ export interface components {
             lifecycle: components["schemas"]["PrincipalLifecycle"];
             login_name: string;
             suspended: boolean;
-        };
-        PrincipalListData: {
-            items: components["schemas"]["PrincipalView"][] | null;
-            /** Format: int64 */
-            total: number;
         };
         PrincipalUpdateInputBody: {
             display_name?: string;
@@ -8500,11 +8485,6 @@ export interface components {
         };
         ServiceAccountDeleteData: {
             deleted: boolean;
-        };
-        ServiceAccountListData: {
-            items: components["schemas"]["ServiceAccount"][] | null;
-            /** Format: int64 */
-            total: number;
         };
         ServiceAccountReplaceInputBody: {
             description?: string;
@@ -17445,7 +17425,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopeMyMembershipPage"];
+                    "application/json": components["schemas"]["EnvelopeListMyMembership"];
                 };
             };
             /** @description Unauthorized */
@@ -28259,7 +28239,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopeClosurePage"];
+                    "application/json": components["schemas"]["EnvelopeListClosureRequest"];
                 };
             };
             /** @description Unauthorized */
@@ -30509,7 +30489,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopePrincipalListData"];
+                    "application/json": components["schemas"]["EnvelopeListPrincipalView"];
                 };
             };
             /** @description Unauthorized */
@@ -37670,7 +37650,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopePrincipalListData"];
+                    "application/json": components["schemas"]["EnvelopeListPrincipalView"];
                 };
             };
             /** @description Unauthorized */
@@ -39400,7 +39380,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopeServiceAccountListData"];
+                    "application/json": components["schemas"]["EnvelopeListServiceAccount"];
                 };
             };
             /** @description Unauthorized */

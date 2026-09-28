@@ -1959,7 +1959,13 @@ describe("IAM API client", () => {
         let data: unknown = account
         if (request.method === "GET" && url.pathname.endsWith("/credentials"))
           data = [credential]
-        else if (request.method === "GET") data = { items: [account], total: 1 }
+        else if (request.method === "GET")
+          return Response.json({
+            code: 0,
+            message: "ok",
+            data: [account],
+            meta: { page: { offset: 0, limit: 200, count: 1, total: 1 } },
+          })
         else if (
           request.method === "POST" &&
           url.pathname.endsWith("/credentials")

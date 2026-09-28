@@ -271,11 +271,6 @@ export interface AvatarSettings {
   url: string
 }
 
-export interface PrincipalList {
-  items: Principal[]
-  total: number
-}
-
 export interface PrincipalLifecycle {
   principal_id: string
   version: number
@@ -312,11 +307,6 @@ export interface ServiceAccount {
   version: number
   created_at: string
   updated_at: string
-}
-
-export interface ServiceAccountList {
-  items: ServiceAccount[]
-  total: number
 }
 
 export interface ServiceAccountCredential {
@@ -1453,6 +1443,15 @@ export function createIamApi(
   }
   const requestEnvelope = <T>(route: ApiRoute) =>
     requestEnvelopeWithBase<T>(apiBase, route)
+  // One page of a list endpoint: the items are the data and the total is the
+  // envelope's meta.page, which is how every collection reports its size.
+  const requestPage = async <T>(
+    route: ApiRoute
+  ): Promise<{ items: T[]; total: number }> => {
+    const envelope = await requestEnvelope<T[]>(route)
+    const items = envelope.data ?? []
+    return { items, total: envelope.meta?.page?.total ?? items.length }
+  }
   const fileOperationRoute = async (
     entityID: string | null | undefined,
     system = false
@@ -1706,7 +1705,7 @@ export function createIamApi(
         status?: "active" | "disabled"
       } = {}
     ) =>
-      request<{ items: Principal[]; total: number }>(
+      requestPage<Principal>(
         apiRoute("get", "/system/principals", {
           query: { search, offset, limit: 50, ...filters },
         })
@@ -2276,7 +2275,7 @@ export function createIamApi(
         { body: JSON.stringify({ proof }) }
       ),
     personalMemberships: async (offset = 0, limit = 50) =>
-      request<{ items: PersonalMembership[]; total: number }>(
+      requestPage<PersonalMembership>(
         apiRoute("get", "/principals/{principal_id}/memberships", {
           path: { principal_id: await principalID() },
           query: { offset: offset, limit: limit },
@@ -2360,7 +2359,7 @@ export function createIamApi(
         RouteQuery<"/system/closure-requests">["status"]
       > = "pending"
     ) =>
-      request<{ items: ClosureRequest[]; total: number }>(
+      requestPage<ClosureRequest>(
         apiRoute("get", "/system/closure-requests", {
           query: { status, offset: offset, limit: limit },
         })
@@ -2585,7 +2584,7 @@ export function createIamApi(
         { body: JSON.stringify({ current_password: currentPassword }) }
       ),
     principals: (search = "") =>
-      request<PrincipalList>(
+      requestPage<Principal>(
         apiRoute("get", "/tenants/{tenant_id}/principals", {
           path: { tenant_id: tenantID() },
           query: { limit: 200, search: search },
@@ -2674,7 +2673,7 @@ export function createIamApi(
         { body: JSON.stringify(body) }
       ),
     serviceAccounts: (search = "") =>
-      request<ServiceAccountList>(
+      requestPage<ServiceAccount>(
         apiRoute("get", "/tenants/{tenant_id}/service-accounts", {
           path: { tenant_id: tenantID() },
           query: { limit: 200, search: search },

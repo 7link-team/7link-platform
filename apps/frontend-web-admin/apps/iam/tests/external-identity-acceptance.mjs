@@ -144,7 +144,7 @@ export async function externalIdentityAcceptance({
     providerInput
   )
   const principalList = () => call(admin.context, "/principals?limit=200")
-  const count = async () => (await principalList()).total
+  const count = async () => (await principalList()).length
   const login = async (providerID, width = 1440, success = true) => {
     const context = await browser.newContext({
       baseURL: webURL,

@@ -391,7 +391,7 @@ try {
   const principals = await api(
     `/principals?limit=200&search=${encodeURIComponent(memberLogin)}`
   )
-  const principal = principals.items.find(
+  const principal = principals.find(
     (item) => item.login_name === memberLogin
   )
   if (!principal) throw new Error("acceptance member was not found")

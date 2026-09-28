@@ -19,10 +19,6 @@ type myMembershipInput struct {
 	Offset int    `query:"offset" default:"0" minimum:"0"`
 	Limit  int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 }
-type myMembershipPage struct {
-	Items []MyMembership `json:"items"`
-	Total int64          `json:"total"`
-}
 type leaveMembershipInput struct {
 	Cookie   string `header:"Cookie"`
 	Origin   string `header:"Origin"`
@@ -33,12 +29,15 @@ type leaveMembershipInput struct {
 }
 
 func registerMemberExitHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
-	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "iam-my-memberships", Method: http.MethodGet, Path: "/principals/{principal_id}/memberships", Summary: "List my active tenant memberships", Tags: []string{"account"}, Errors: []int{401, 503}}, func(ctx context.Context, in *myMembershipInput) (*respx.Body[myMembershipPage], error) {
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "iam-my-memberships", Method: http.MethodGet, Path: "/principals/{principal_id}/memberships", Summary: "List my active tenant memberships", Tags: []string{"account"}, Errors: []int{401, 503}}, func(ctx context.Context, in *myMembershipInput) (*respx.Body[[]MyMembership], error) {
 		items, total, err := s.MyMemberships(ctx, authnext.PrincipalIDFromContext(ctx), in.Offset, in.Limit)
 		if err != nil {
 			return nil, apiError("list own memberships", err)
 		}
-		return respx.OK(ctx, myMembershipPage{Items: items, Total: total}), nil
+		if items == nil {
+			items = []MyMembership{}
+		}
+		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
 	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "iam-leave-membership", Method: http.MethodDelete, Path: "/principals/{principal_id}/memberships/{tenant_id}", Summary: "Delete my membership in one tenant while preserving my global account", Tags: []string{"account"}, Errors: []int{401, 403, 404, 409, 503}}, func(ctx context.Context, in *leaveMembershipInput) (*respx.Body[map[string]string], error) {
 		if s.privacyBrowser.ValidateCSRF == nil {

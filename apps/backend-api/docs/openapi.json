@@ -2282,29 +2282,6 @@
         ],
         "type": "object"
       },
-      "ClosurePage": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ClosureRequest"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "total": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total"
-        ],
-        "type": "object"
-      },
       "ClosureRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4515,35 +4492,6 @@
         ],
         "type": "object"
       },
-      "EnvelopeClosurePage": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
-            "format": "int64",
-            "type": "integer"
-          },
-          "data": {
-            "$ref": "#/components/schemas/ClosurePage",
-            "description": "response payload; null on error"
-          },
-          "message": {
-            "description": "human-readable status; \"ok\" on success",
-            "type": "string"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/Meta",
-            "description": "request metadata"
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "meta",
-          "data"
-        ],
-        "type": "object"
-      },
       "EnvelopeClosureRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5880,6 +5828,41 @@
         ],
         "type": "object"
       },
+      "EnvelopeListClosureRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/ClosureRequest"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeListCredential": {
         "additionalProperties": false,
         "properties": {
@@ -6374,6 +6357,41 @@
         ],
         "type": "object"
       },
+      "EnvelopeListMyMembership": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/MyMembership"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeListPasskey": {
         "additionalProperties": false,
         "properties": {
@@ -6514,6 +6532,41 @@
         ],
         "type": "object"
       },
+      "EnvelopeListPrincipalView": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/PrincipalView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeListProvider": {
         "additionalProperties": false,
         "properties": {
@@ -6631,6 +6684,41 @@
             "description": "response payload; null on error",
             "items": {
               "$ref": "#/components/schemas/ScopeNode"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeListServiceAccount": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/ServiceAccount"
             },
             "type": [
               "array",
@@ -7158,35 +7246,6 @@
         ],
         "type": "object"
       },
-      "EnvelopeMyMembershipPage": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
-            "format": "int64",
-            "type": "integer"
-          },
-          "data": {
-            "$ref": "#/components/schemas/MyMembershipPage",
-            "description": "response payload; null on error"
-          },
-          "message": {
-            "description": "human-readable status; \"ok\" on success",
-            "type": "string"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/Meta",
-            "description": "request metadata"
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "meta",
-          "data"
-        ],
-        "type": "object"
-      },
       "EnvelopeOperationResult": {
         "additionalProperties": false,
         "properties": {
@@ -7458,35 +7517,6 @@
           },
           "data": {
             "$ref": "#/components/schemas/PrincipalLifecycleStatus",
-            "description": "response payload; null on error"
-          },
-          "message": {
-            "description": "human-readable status; \"ok\" on success",
-            "type": "string"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/Meta",
-            "description": "request metadata"
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "meta",
-          "data"
-        ],
-        "type": "object"
-      },
-      "EnvelopePrincipalListData": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
-            "format": "int64",
-            "type": "integer"
-          },
-          "data": {
-            "$ref": "#/components/schemas/PrincipalListData",
             "description": "response payload; null on error"
           },
           "message": {
@@ -7864,35 +7894,6 @@
           },
           "data": {
             "$ref": "#/components/schemas/ServiceAccountDeleteData",
-            "description": "response payload; null on error"
-          },
-          "message": {
-            "description": "human-readable status; \"ok\" on success",
-            "type": "string"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/Meta",
-            "description": "request metadata"
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "meta",
-          "data"
-        ],
-        "type": "object"
-      },
-      "EnvelopeServiceAccountListData": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
-            "format": "int64",
-            "type": "integer"
-          },
-          "data": {
-            "$ref": "#/components/schemas/ServiceAccountListData",
             "description": "response payload; null on error"
           },
           "message": {
@@ -9979,29 +9980,6 @@
         ],
         "type": "object"
       },
-      "MyMembershipPage": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/MyMembership"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "total": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total"
-        ],
-        "type": "object"
-      },
       "OperatingPlatformMemberCreateInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -11062,29 +11040,6 @@
           "suspended",
           "anonymized",
           "blockers"
-        ],
-        "type": "object"
-      },
-      "PrincipalListData": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/PrincipalView"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "total": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total"
         ],
         "type": "object"
       },
@@ -12430,29 +12385,6 @@
         },
         "required": [
           "deleted"
-        ],
-        "type": "object"
-      },
-      "ServiceAccountListData": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ServiceAccount"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "total": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total"
         ],
         "type": "object"
       },
@@ -26548,7 +26480,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopeMyMembershipPage"
+                  "$ref": "#/components/schemas/EnvelopeListMyMembership"
                 }
               }
             },
@@ -45006,7 +44938,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopeClosurePage"
+                  "$ref": "#/components/schemas/EnvelopeListClosureRequest"
                 }
               }
             },
@@ -48388,7 +48320,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopePrincipalListData"
+                  "$ref": "#/components/schemas/EnvelopeListPrincipalView"
                 }
               }
             },
@@ -59131,7 +59063,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopePrincipalListData"
+                  "$ref": "#/components/schemas/EnvelopeListPrincipalView"
                 }
               }
             },
@@ -61717,7 +61649,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopeServiceAccountListData"
+                  "$ref": "#/components/schemas/EnvelopeListServiceAccount"
                 }
               }
             },

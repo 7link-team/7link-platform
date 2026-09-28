@@ -91,3 +91,55 @@ func TestComposedOpenAPIPublishesSnowflakePathIDs(t *testing.T) {
 		assert.True(t, seen[name], "exclusion %s is no longer published; delete it", name)
 	}
 }
+
+// resolveSchema follows a component reference to the schema it names.
+func resolveSchema(document *huma.OpenAPI, schema *huma.Schema) *huma.Schema {
+	if schema != nil && schema.Ref != "" {
+		return document.Components.Schemas.SchemaFromRef(schema.Ref)
+	}
+	return schema
+}
+
+// successData returns the data schema of each 2xx JSON envelope the operation
+// answers with.
+func successData(document *huma.OpenAPI, operation *huma.Operation) map[string]*huma.Schema {
+	found := map[string]*huma.Schema{}
+	for status, response := range operation.Responses {
+		if !strings.HasPrefix(status, "2") || response == nil {
+			continue
+		}
+		media := response.Content["application/json"]
+		if media == nil {
+			continue
+		}
+		envelope := resolveSchema(document, media.Schema)
+		if envelope == nil || envelope.Properties["data"] == nil {
+			continue
+		}
+		found[status] = resolveSchema(document, envelope.Properties["data"])
+	}
+	return found
+}
+
+// TestComposedOpenAPIListsPageThroughTheEnvelope keeps one list shape: a
+// collection answers with its items as data and its paging in meta.page
+// (respx.List). A data object carrying its own items and total is a second
+// paging contract the shared client helpers cannot read.
+func TestComposedOpenAPIListsPageThroughTheEnvelope(t *testing.T) {
+	document, operations := composedOpenAPI(t)
+	checked := 0
+	for _, entry := range operations {
+		for status, data := range successData(document, entry.operation) {
+			checked++
+			if data == nil || data.Properties == nil {
+				continue
+			}
+			_, items := data.Properties["items"]
+			_, total := data.Properties["total"]
+			// An access review carrying its own items and counters is a resource,
+			// not a page; a page is an object that is nothing but the two.
+			assert.False(t, items && total && len(data.Properties) == 2, "%s answers %s with a self-paged {items,total} object; use respx.List", entry, status)
+		}
+	}
+	assert.Greater(t, checked, 100, "the walk must reach the enveloped responses")
+}

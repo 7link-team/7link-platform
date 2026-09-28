@@ -37,11 +37,6 @@ type principalListInput struct {
 	Offset   int    `query:"offset" default:"0" minimum:"0"`
 }
 
-type principalListData struct {
-	Items []PrincipalView `json:"items"`
-	Total int64           `json:"total"`
-}
-
 type principalIDInput struct {
 	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	ID       string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
@@ -73,11 +68,6 @@ type serviceAccountListInput struct {
 	Search   string `query:"search" maxLength:"200"`
 	Limit    int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 	Offset   int    `query:"offset" default:"0" minimum:"0"`
-}
-
-type serviceAccountListData struct {
-	Items []ServiceAccount `json:"items"`
-	Total int64            `json:"total"`
 }
 
 type serviceAccountIDInput struct {
@@ -145,7 +135,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Summary:     "List local principals in the tenant",
 		Tags:        []string{"directory"},
 	}, authz.Guard{Resource: "user", Verb: "view"},
-		func(ctx context.Context, in *principalListInput) (*respx.Body[principalListData], error) {
+		func(ctx context.Context, in *principalListInput) (*respx.Body[[]PrincipalView], error) {
 			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
@@ -168,7 +158,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 			for i, item := range items {
 				views[i] = profileView(item, fields)
 			}
-			return respx.OK(ctx, principalListData{Items: views, Total: total}), nil
+			return respx.List(ctx, views, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(views), Total: total}), nil
 		})
 
 	authz.Register(registrar, api, huma.Operation{
@@ -309,7 +299,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Summary:     "List tenant service accounts",
 		Tags:        []string{"directory"},
 	}, authz.Guard{Resource: "service_account", Verb: "view"},
-		func(ctx context.Context, in *serviceAccountListInput) (*respx.Body[serviceAccountListData], error) {
+		func(ctx context.Context, in *serviceAccountListInput) (*respx.Body[[]ServiceAccount], error) {
 			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
@@ -318,7 +308,10 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 			if err != nil {
 				return nil, identityError(err)
 			}
-			return respx.OK(ctx, serviceAccountListData{Items: items, Total: total}), nil
+			if items == nil {
+				items = []ServiceAccount{}
+			}
+			return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 		})
 
 	authz.Register(registrar, api, huma.Operation{

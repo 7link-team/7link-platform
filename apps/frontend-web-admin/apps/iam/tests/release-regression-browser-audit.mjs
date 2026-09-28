@@ -287,10 +287,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       return send({ deleted: true })
     }
     if (path === `/principals/${state.subject}/memberships`)
-      return send({
-        items: state.memberships ?? [],
-        total: state.memberships?.length ?? 0,
-      })
+      return send(state.memberships ?? [])
     if (
       path === `/principals/${state.subject}/memberships/t1` &&
       request.method() === "DELETE"
@@ -332,7 +329,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       const items = (state.closureQueue ?? []).filter(
         (item) => item.status === status
       )
-      return send({ items, total: items.length })
+      return send(items)
     }
     if (
       path.startsWith("/system/principals/") &&
@@ -448,7 +445,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       if (state.revoke === 200) state.consents = []
       return send({ revoked: state.revoke === 200 }, state.revoke)
     }
-    if (path === "/principals") return send({ items: [] })
+    if (path === "/principals") return send([])
     if (path === "/effective-fields") return send({ fields: {} })
     if (path === "/audit-integrity")
       return send({ valid: true, verified_events: 0, head_sequence: 0 })
@@ -1311,19 +1308,16 @@ try {
       path: "/tenants/t1/service-accounts",
       api: "/tenants/t1/service-accounts",
       empty: "No service accounts created",
-      emptyData: { items: [], total: 0 },
-      data: {
-        items: [
-          {
-            id: "machine",
-            login_name: "visible-machine",
-            display_name: "Visible machine",
-            status: "active",
-            version: 1,
-          },
-        ],
-        total: 1,
-      },
+      emptyData: [],
+      data: [
+        {
+          id: "machine",
+          login_name: "visible-machine",
+          display_name: "Visible machine",
+          status: "active",
+          version: 1,
+        },
+      ],
       row: "Visible machine",
     },
     {
@@ -1349,17 +1343,15 @@ try {
       path: "/tenants/t1/users",
       api: "/tenants/t1/principals",
       empty: "No local accounts",
-      emptyData: { items: [] },
-      data: {
-        items: [
-          {
-            id: "account-1",
-            login_name: "visible-account",
-            status: "active",
-            updated_at: "2026-09-01T00:00:00Z",
-          },
-        ],
-      },
+      emptyData: [],
+      data: [
+        {
+          id: "account-1",
+          login_name: "visible-account",
+          status: "active",
+          updated_at: "2026-09-01T00:00:00Z",
+        },
+      ],
       row: "visible-account",
     },
     {
