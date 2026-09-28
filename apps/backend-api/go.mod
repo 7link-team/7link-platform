@@ -9,7 +9,7 @@ require (
 	buf.build/go/protovalidate v1.3.0
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/arsham/figurine/v2 v2.1.1
-	github.com/beevik/etree v1.6.0
+	github.com/beevik/etree v1.7.0
 	github.com/crewjam/saml v0.5.1
 	github.com/danielgtaylor/huma/v2 v2.39.1
 	github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230
@@ -30,7 +30,7 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/redis/go-redis/v9 v9.21.0
-	github.com/russellhaering/goxmldsig v1.6.0
+	github.com/russellhaering/goxmldsig v1.6.1
 	github.com/scim2/filter-parser/v2 v2.3.1
 	github.com/sony/sonyflake v1.3.0
 	github.com/spf13/cast v1.10.0
@@ -49,7 +49,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.45.0
 	go.opentelemetry.io/otel/sdk v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.57.0
 	golang.org/x/image v0.46.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
