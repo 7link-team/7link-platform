@@ -339,14 +339,14 @@ func TestPersonalTokenHTTPCompleteFlowAndFailures(t *testing.T) {
 	_, api := humatest.New(t)
 	registerPersonalTokenHTTP(api, s)
 	prepared := api.Post("/principals/"+httpSubject+"/personal-token-preparations", "Cookie: "+cookie, "Origin: https://app.example.test", in)
-	require.Equal(t, http.StatusOK, prepared.Code, prepared.Body.String())
+	require.Equal(t, http.StatusCreated, prepared.Code, prepared.Body.String())
 	proof := verifiedPersonalTokenProof(t, s, cookie, in)
 	body := struct {
 		PersonalTokenRequest
 		Proof string `json:"proof"`
 	}{PersonalTokenRequest: in, Proof: proof}
 	response := api.Post("/principals/"+httpSubject+"/personal-tokens", "Cookie: "+cookie, "Origin: https://app.example.test", body)
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	var created respx.Envelope[PersonalTokenCreated]
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &created))
 	require.NotEmpty(t, created.Data.Token)

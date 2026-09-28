@@ -44,10 +44,6 @@ type closureListInput struct {
 	Offset int    `query:"offset" default:"0" minimum:"0"`
 	Limit  int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 }
-type closurePage struct {
-	Items []ClosureRequest `json:"items"`
-	Total int64            `json:"total"`
-}
 
 func registerClosureHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-my-closure-request", Method: http.MethodGet, Path: "/principals/{principal_id}/closure-request", Summary: "Read my global account closure request", Tags: []string{"account"}, Errors: []int{401, 503}}, func(ctx context.Context, in *ClosureBrowserInput) (*respx.Body[ClosureRequest], error) {
@@ -96,12 +92,15 @@ func registerClosureHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, result), nil
 	})
-	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "identity-list-closure-requests", Method: http.MethodGet, Path: "/system/closure-requests", Summary: "Track account closure requests and derived erasure completion", Tags: []string{"platform"}}, guard, func(ctx context.Context, in *closureListInput) (*respx.Body[closurePage], error) {
+	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "identity-list-closure-requests", Method: http.MethodGet, Path: "/system/closure-requests", Summary: "Track account closure requests and derived erasure completion", Tags: []string{"platform"}}, guard, func(ctx context.Context, in *closureListInput) (*respx.Body[[]ClosureRequest], error) {
 		items, total, err := s.ListClosureRequests(ctx, in.Status, in.Offset, in.Limit)
 		if err != nil {
 			return nil, closureError(err)
 		}
-		return respx.OK(ctx, closurePage{Items: items, Total: total}), nil
+		if items == nil {
+			items = []ClosureRequest{}
+		}
+		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
 }
 

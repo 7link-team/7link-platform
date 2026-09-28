@@ -373,7 +373,7 @@ func (s *service) list(ctx context.Context, in ListInput, verb string) (Page, er
 	if err != nil {
 		return Page{}, err
 	}
-	if term := strings.TrimSpace(in.Q); term != "" {
+	if term := strings.TrimSpace(in.Search); term != "" {
 		if !readable["title"] || !readable["description"] {
 			return Page{}, ErrForbidden
 		}

@@ -147,7 +147,7 @@ func NewWebService(cfg authnext.Config, repository *Repository, options ...WebOp
 	}
 	service.cfg.Issuer = strings.TrimRight(strings.TrimSpace(cfg.Issuer), "/")
 	if len(service.cfg.Audience) == 0 {
-		service.cfg.Audience = []string{"7link-api"}
+		service.cfg.Audience = []string{authnext.DefaultAudience}
 	}
 	if service.cfg.AccessTokenTTL <= 0 {
 		service.cfg.AccessTokenTTL = 15 * time.Minute
@@ -545,9 +545,28 @@ func (s *Service) ListSessions(
 	ctx context.Context,
 	authorization, cookieHeader string,
 ) ([]authnext.BrowserSession, error) {
-	claims, err := s.personalReadClaims(ctx, authorization, cookieHeader)
+	rows, current, err := s.activeSessionRows(ctx, authorization, cookieHeader)
 	if err != nil {
 		return nil, err
+	}
+	result := make([]authnext.BrowserSession, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, browserSessionView(row, current))
+	}
+	return result, nil
+}
+
+// activeSessionRows is the owner-scoped projection behind every session read:
+// the caller's active sessions and the hash of the one its cookie holds, which
+// is empty in an account view because the viewer's cookie is not the viewed
+// principal's session.
+func (s *Service) activeSessionRows(
+	ctx context.Context,
+	authorization, cookieHeader string,
+) ([]*model.Session, string, error) {
+	claims, err := s.personalReadClaims(ctx, authorization, cookieHeader)
+	if err != nil {
+		return nil, "", err
 	}
 	current := currentSessionHash(cookieHeader, s.web.CookieName)
 	if claims.AccountView != nil {
@@ -555,29 +574,53 @@ func (s *Service) ListSessions(
 	}
 	rows, err := s.repo.listActiveSessions(ctx, claims.PrincipalID, s.now().UTC())
 	if err != nil {
-		return nil, fmt.Errorf("list browser sessions: %w", err)
+		return nil, "", fmt.Errorf("list browser sessions: %w", err)
 	}
-	result := make([]authnext.BrowserSession, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, authnext.BrowserSession{
-			ID: row.IDHash, Current: row.IDHash == current,
-			CreatedAt: row.CreatedAt, LastSeenAt: row.LastSeenAt,
-			ExpiresAt: row.ExpiresAt, AbsoluteExpiresAt: row.AbsoluteExpiresAt,
-			IPAddress: row.IPAddress, UserAgent: row.UserAgent,
-		})
-	}
-	return result, nil
+	return rows, current, nil
 }
 
-// GetSession reads an active item through the same owner-scoped projection as listing.
+// browserSessionView publishes a session under its snowflake; the hash that
+// keys it stays internal.
+func browserSessionView(row *model.Session, current string) authnext.BrowserSession {
+	var id guid.ID
+	if row.PublicID != nil {
+		id = *row.PublicID
+	}
+	return authnext.BrowserSession{
+		ID: id, Current: current != "" && row.IDHash == current,
+		CreatedAt: row.CreatedAt, LastSeenAt: row.LastSeenAt,
+		ExpiresAt: row.ExpiresAt, AbsoluteExpiresAt: row.AbsoluteExpiresAt,
+		IPAddress: row.IPAddress, UserAgent: row.UserAgent,
+	}
+}
+
+// GetSession reads an active item, addressed by its snowflake, through the same
+// owner-scoped projection as listing.
 func (s *Service) GetSession(ctx context.Context, authorization, cookieHeader, id string) (authnext.BrowserSession, error) {
-	sessions, err := s.ListSessions(ctx, authorization, cookieHeader)
+	publicID, parseErr := guid.Parse(id)
+	rows, current, err := s.activeSessionRows(ctx, authorization, cookieHeader)
 	if err != nil {
 		return authnext.BrowserSession{}, err
 	}
-	for _, session := range sessions {
-		if session.ID == id {
-			return session, nil
+	for _, row := range rows {
+		if parseErr == nil && row.PublicID != nil && *row.PublicID == publicID {
+			return browserSessionView(row, current), nil
+		}
+	}
+	return authnext.BrowserSession{}, ErrSessionNotFound
+}
+
+// CurrentSession reads the active session the cookie holds, through the same
+// owner-scoped projection as listing.
+func (s *Service) CurrentSession(ctx context.Context, cookieHeader string) (authnext.BrowserSession, error) {
+	rows, current, err := s.activeSessionRows(ctx, "", cookieHeader)
+	if err != nil {
+		return authnext.BrowserSession{}, err
+	}
+	held := currentSessionHash(cookieHeader, s.web.CookieName)
+	for _, row := range rows {
+		if held != "" && row.IDHash == held {
+			return browserSessionView(row, current), nil
 		}
 	}
 	return authnext.BrowserSession{}, ErrSessionNotFound
@@ -591,11 +634,12 @@ func (s *Service) RevokeSession(
 	if err != nil {
 		return err
 	}
-	if decoded, decodeErr := hex.DecodeString(id); decodeErr != nil || len(decoded) != sha256.Size {
+	publicID, err := guid.Parse(id)
+	if err != nil {
 		return ErrSessionNotFound
 	}
 	err = s.repo.runInTx(ctx, func(repository *Repository) error {
-		changed, err := repository.revokeSession(ctx, claims.PrincipalID, id, s.now().UTC())
+		changed, err := repository.revokeSession(ctx, claims.PrincipalID, publicID, s.now().UTC())
 		if err != nil {
 			return err
 		}

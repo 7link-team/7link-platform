@@ -41,7 +41,7 @@ func TestReauthenticationHTTPRequiresCookieAndCSRFAndVerifiesProof(t *testing.T)
 	assert.Equal(t, http.StatusForbidden, request(http.MethodPost, "/principals/"+httpSubject+"/reauthentication/challenges", body, "https://evil.example", "").Code)
 	assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, "/principals/"+httpSubject+"/reauthentication/challenges", body, "https://app.example.test", "Bearer invalid").Code)
 	started := request(http.MethodPost, "/principals/"+httpSubject+"/reauthentication/challenges", body, "https://app.example.test", "")
-	require.Equal(t, http.StatusOK, started.Code)
+	require.Equal(t, http.StatusCreated, started.Code)
 	var envelope struct {
 		Data ReauthenticationOptions `json:"data"`
 	}
@@ -50,7 +50,7 @@ func TestReauthenticationHTTPRequiresCookieAndCSRFAndVerifiesProof(t *testing.T)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusForbidden, request(http.MethodPost, "/principals/"+httpSubject+"/reauthentication/verifications", string(verify), "https://evil.example", "").Code)
 	assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, "/principals/"+httpSubject+"/reauthentication/verifications", string(verify), "https://app.example.test", "Bearer invalid").Code)
-	require.Equal(t, http.StatusOK, request(http.MethodPost, "/principals/"+httpSubject+"/reauthentication/verifications", string(verify), "https://app.example.test", "").Code)
+	require.Equal(t, http.StatusCreated, request(http.MethodPost, "/principals/"+httpSubject+"/reauthentication/verifications", string(verify), "https://app.example.test", "").Code)
 	assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, "/principals/"+httpSubject+"/reauthentication/verifications", string(verify), "https://app.example.test", "").Code)
 	require.NoError(t, harness.db.Migrator().DropTable(&model.ReauthenticationChallenge{}))
 	assert.Equal(t, http.StatusInternalServerError, request(http.MethodPost, "/principals/"+httpSubject+"/reauthentication/challenges", body, "https://app.example.test", "").Code)

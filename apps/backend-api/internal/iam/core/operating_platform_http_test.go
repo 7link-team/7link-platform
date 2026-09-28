@@ -42,7 +42,7 @@ func TestOperatingPlatformHTTPOwnerAdministersRolesMenusAndSelfService(t *testin
 	require.Equal(t, platform.AdministratorRoleID, roles.Data[0].ID)
 	require.Equal(t, guid.ID(1), roles.Data[0].TenantID)
 	response = client.Post(base+"/roles", operatingPlatformAuth, map[string]any{"name": "Auditors", "description": "Read only"})
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	created := decodeEnvelope[APIRole](t, response).Data
 	require.Equal(t, "Auditors", created.Name)
 	require.Equal(t, guid.ID(1), created.TenantID, "the role is owned by the platform in the path")
@@ -80,7 +80,7 @@ func TestOperatingPlatformHTTPOwnerAdministersRolesMenusAndSelfService(t *testin
 	}
 	require.NotZero(t, organization)
 	response = client.Post(base+"/menus", operatingPlatformAuth, map[string]any{"label": "Reports", "parent_id": organization.String(), "route": "/platform/reports", "permission_code": "role_view", "sort_order": 90})
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	menu := decodeEnvelope[APIMenu](t, response).Data
 	require.Equal(t, organization, menu.ParentID)
 	require.Equal(t, "role_view", menu.PermissionCode)
@@ -124,7 +124,7 @@ func TestOperatingPlatformHTTPMemberLifecycle(t *testing.T) {
 	require.Equal(t, MemberActive, listed.Data[0].Status)
 
 	response = client.Post(base, operatingPlatformAuth, map[string]any{"subject": "22", "display_name": "Operator", "email": "operator@example.test"})
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	member := decodeEnvelope[APITenantMember](t, response).Data
 	require.Equal(t, guid.ID(1), member.TenantID)
 	require.Equal(t, guid.ID(22), member.Subject)

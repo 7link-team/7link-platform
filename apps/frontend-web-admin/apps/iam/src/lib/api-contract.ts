@@ -64,7 +64,6 @@ import type {
   PasskeyOptions,
   Permission,
   Principal,
-  PrincipalList,
   Relationship,
   RequestableRole,
   Role,
@@ -83,7 +82,6 @@ import type {
   ServiceAccount,
   ServiceAccountCredential,
   ServiceAccountCredentialSecret,
-  ServiceAccountList,
   Session,
   Tenant,
 } from "./iam-api"
@@ -220,9 +218,6 @@ export type _PrincipalOptional = Agreed<
 >
 export type _MemberOptional = Agreed<Optionality<Member, S["APITenantMember"]>>
 export type _SessionOptional = Agreed<Optionality<Session, S["MeOutput"]>>
-export type _PrincipalList = Agreed<
-  Compare<PrincipalList, S["PrincipalListData"]>
->
 export type _Relationship = Agreed<Compare<Relationship, S["APIRelationship"]>>
 export type _RequestableRole = Agreed<
   Compare<RequestableRole, S["RequestableRole"]>
@@ -264,9 +259,6 @@ export type _ServiceAccountCredential = Agreed<
 >
 export type _ServiceAccountCredentialSecret = Agreed<
   Compare<ServiceAccountCredentialSecret, S["ServiceAccountCredentialSecret"]>
->
-export type _ServiceAccountList = Agreed<
-  Compare<ServiceAccountList, S["ServiceAccountListData"]>
 >
 export type _Session = Agreed<Compare<Session, S["MeOutput"]>>
 export type _Tenant = Agreed<Compare<Tenant, S["Tenant"]>>

@@ -237,6 +237,68 @@ func (s *Service) memberDepartmentGuard(ctx context.Context, repo *Repository, k
 	}, nil
 }
 
+// requireGrantableDepartmentPlacement bounds the department a new member is
+// placed in together with roles -- an invitation carries both and acceptance
+// applies them without an actor -- by the actor's own data scope, as
+// memberDepartmentGuard bounds a department change. For every data-scoped tenant
+// permission a role grants through a department or department-and-descendants
+// scope, the departments that scope reaches from departmentID must be inside the
+// actor's own constraint for that permission. Roles scoped otherwise are bounded
+// by requireGrantableDataScope, which measures them against the actor. No
+// department, non-tenant roots and tenant or platform full administrators are
+// unaffected.
+func (s *Service) requireGrantableDepartmentPlacement(ctx context.Context, repo *Repository, tenantID, departmentID guid.ID, roleIDs []guid.ID) error {
+	claims, ok := authn.FromContext(ctx)
+	if !ok || claims == nil || claims.PrincipalID.Zero() || departmentID.Zero() || len(roleIDs) == 0 {
+		return nil
+	}
+	kind, err := repo.rootKind(ctx, tenantID)
+	if err != nil || kind != "tenant" {
+		return err
+	}
+	pinned := s.pinnedTo(repo)
+	administrator, err := pinned.checker.CheckBulk(ctx, tenantID, []string{tenantAdministratorPermission}, claims.PrincipalID)
+	if err != nil || administrator[tenantAdministratorPermission] {
+		return err
+	}
+	directory, err := repo.directoryTables()
+	if err != nil {
+		return err
+	}
+	for _, roleID := range roleIDs {
+		scope, err := repo.GetRoleDataScope(ctx, tenantID, roleID)
+		if err != nil {
+			return err
+		}
+		if scope.Scope != DataScopeDepartment && scope.Scope != DataScopeDepartmentAndDescendants {
+			continue
+		}
+		reach, err := departmentScopeReach(ctx, repo.writer(), directory, tenantID, departmentID,
+			scope.Scope == DataScopeDepartment, scope.Scope == DataScopeDepartmentAndDescendants)
+		if err != nil {
+			return err
+		}
+		codes, err := rolePermissionCodes(ctx, repo, tenantID, roleID)
+		if err != nil {
+			return err
+		}
+		for _, code := range codes {
+			action, known := s.registry.Find(code)
+			if !known || !action.DataScoped || action.Scope == authz.ActionScopeSystem || action.Scope == authz.ActionScopeOperatingPlatform {
+				continue
+			}
+			constraint, err := pinned.checker.Constraint(ctx, tenantID, code, claims.PrincipalID)
+			if err != nil {
+				return err
+			}
+			if !constraint.AllowAll && !departmentsWithin(reach, constraint.DepartmentIDs) {
+				return fmt.Errorf("%w: %s", ErrPrivilegeEscalation, code)
+			}
+		}
+	}
+	return nil
+}
+
 // roleScopeReach returns the departments scope reaches when applied to the
 // actor: an empty set for self, nil when it cannot be bounded by departments
 // (all, or a department scope for an actor without an active department).

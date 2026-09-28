@@ -48,6 +48,9 @@ func (r *Repository) createPasskey(ctx context.Context, row *model.Passkey, maxC
 		if err != nil {
 			return err
 		}
+		if err := repository.assignPublicID(&row.PublicID); err != nil {
+			return err
+		}
 		if err := tables.Passkeys.WithContext(ctx).Create(row); err != nil {
 			return err
 		}
@@ -130,10 +133,12 @@ func (r *Repository) storePasskeyCloneWarning(
 	return result.RowsAffected == 1, err
 }
 
+// renamePasskey renames one of the principal's passkeys, addressed by the
+// snowflake the API publishes.
 func (r *Repository) renamePasskey(
 	ctx context.Context,
-	principalID guid.ID,
-	idHash, name string,
+	principalID, publicID guid.ID,
+	name string,
 	now time.Time,
 ) (*model.Passkey, bool, error) {
 	var row model.Passkey
@@ -144,7 +149,7 @@ func (r *Repository) renamePasskey(
 			return err
 		}
 		lookup := db.WithContext(ctx).Table(tables.Passkeys.TableName()).
-			Where("id_hash = ? AND principal_id = ?", idHash, principalID)
+			Where("public_id = ? AND principal_id = ?", publicID, principalID)
 		if db.Dialector.Name() != "sqlite" {
 			lookup = lookup.Clauses(clause.Locking{Strength: "UPDATE"})
 		}
@@ -152,7 +157,7 @@ func (r *Repository) renamePasskey(
 			return err
 		}
 		result, err := tables.Passkeys.WithContext(ctx).Where(
-			tables.Passkeys.IDHash.Eq(idHash), tables.Passkeys.PrincipalID.Eq(principalID),
+			tables.Passkeys.PublicID.Eq(publicID), tables.Passkeys.PrincipalID.Eq(principalID),
 		).UpdateColumnSimple(tables.Passkeys.Name.Value(name), tables.Passkeys.UpdatedAt.Value(now))
 		if err != nil {
 			return err
@@ -173,13 +178,15 @@ func (r *Repository) renamePasskey(
 	return &row, changed, nil
 }
 
-func (r *Repository) deletePasskey(ctx context.Context, principalID guid.ID, idHash string) (bool, error) {
+// deletePasskey deletes one of the principal's passkeys, addressed by the
+// snowflake the API publishes.
+func (r *Repository) deletePasskey(ctx context.Context, principalID, publicID guid.ID) (bool, error) {
 	tables, _, err := r.tables()
 	if err != nil {
 		return false, err
 	}
 	result, err := tables.Passkeys.WithContext(ctx).Where(
-		tables.Passkeys.IDHash.Eq(idHash), tables.Passkeys.PrincipalID.Eq(principalID),
+		tables.Passkeys.PublicID.Eq(publicID), tables.Passkeys.PrincipalID.Eq(principalID),
 	).Delete()
 	return result.RowsAffected == 1, err
 }

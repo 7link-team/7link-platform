@@ -47,7 +47,7 @@ func registerReauthenticationHTTP(api huma.API, service *Service) {
 		}
 		return respx.OK(ctx, methods), nil
 	})
-	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-reauthentication-challenge", Method: http.MethodPost,
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-reauthentication-challenge", Method: http.MethodPost, DefaultStatus: http.StatusCreated,
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
 		Path:     "/principals/{principal_id}/reauthentication/challenges", Summary: "Begin fresh verification for one sensitive operation", Tags: []string{"account"},
 		Security: authz.UserSecurity(), Errors: []int{401, 403, 500}}, func(ctx context.Context, in *reauthenticationBeginInput) (*respx.Body[ReauthenticationOptions], error) {
@@ -63,7 +63,7 @@ func registerReauthenticationHTTP(api huma.API, service *Service) {
 		}
 		return respx.OK(ctx, options), nil
 	})
-	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-reauthentication-verification", Method: http.MethodPost,
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-reauthentication-verification", Method: http.MethodPost, DefaultStatus: http.StatusCreated,
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
 		Path:     "/principals/{principal_id}/reauthentication/verifications", Summary: "Verify a fresh password and MFA or passkey assertion", Tags: []string{"account"},
 		Security: authz.UserSecurity(), Errors: []int{401, 403, 500}}, func(ctx context.Context, in *reauthenticationVerifyInput) (*respx.Body[map[string]bool], error) {

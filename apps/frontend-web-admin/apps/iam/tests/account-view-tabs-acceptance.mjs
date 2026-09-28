@@ -156,7 +156,7 @@ export async function accountViewTabsAcceptance({
       name: "Concurrent writable view role",
     }
   )
-  assert.equal(created.status, 200)
+  assert.equal(created.status, 201)
   assert.equal(
     (await raw(platform.page, `/roles/${created.body.data.id}`, "DELETE"))
       .status,

@@ -297,7 +297,7 @@ if (!administrator) throw new Error("built-in administrator role was not found")
 const previousOperators = await api(
   "/principals?limit=200&search=acceptance-tenant-admin"
 )
-for (const principal of previousOperators.items) {
+for (const principal of previousOperators) {
   if (principal.status !== "active") continue
   await api(
     `/roles/${encodeURIComponent(administrator.id)}/members/${encodeURIComponent(principal.id)}`,

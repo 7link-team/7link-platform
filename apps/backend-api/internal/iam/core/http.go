@@ -197,20 +197,19 @@ type APIMemberAuthorizationSnapshot struct {
 	Sources     []APIMemberAuthorizationSource `json:"sources"`
 }
 
+// tenantInput selects a tenant for the menu trees. A navigation tree is read
+// whole -- a page of it would be a tree with missing branches -- so it declares
+// no paging parameters, unlike the collections that do page.
 type tenantInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128" doc:"tenant authorization boundary"`
-	// ponytail: pagination added to prevent unbounded list responses.
-	// Offset and Limit are optional; 0/0 returns all records.
-	Offset int `query:"offset" minimum:"0" default:"0"`
-	Limit  int `query:"limit" minimum:"0" maximum:"200" default:"0"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"tenant authorization boundary"`
 }
 
 // boundedTenantInput is tenantInput's bounded counterpart, for the tenant-wide
 // listings that actually page: entities and roles both grow with the tenant, so
-// omitting limit must not mean the whole table. tenantInput keeps the opt-in
-// shape for the handlers that do not page at all.
+// omitting limit must not mean the whole table. tenantInput is for the menu
+// trees, which do not page at all.
 type boundedTenantInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128" doc:"tenant authorization boundary"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"tenant authorization boundary"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
@@ -218,7 +217,7 @@ type boundedTenantInput struct {
 // myPermissionsInput carries the tenant selector alone: the reply is a bounded
 // catalog of the caller's own codes, so there is nothing to page through.
 type myPermissionsInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128" doc:"tenant authorization boundary"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"tenant authorization boundary"`
 }
 
 type myEntityPermissionsInput struct {
@@ -248,7 +247,7 @@ type listRoleDirectoryBindingsInput struct {
 }
 
 type createRoleInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		Name        string `json:"name" minLength:"1" maxLength:"128"`
 		Description string `json:"description,omitempty" maxLength:"4096"`
@@ -286,7 +285,7 @@ type setPermissionConditionInput struct {
 
 type memberInput struct {
 	RoleID  string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	Subject string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"immutable local principal ID"`
+	Subject string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"immutable local principal ID"`
 }
 
 type directoryBindingInput struct {
@@ -296,7 +295,7 @@ type directoryBindingInput struct {
 }
 
 type listTenantMembersInput struct {
-	TenantID string       `path:"tenant_id" maxLength:"128"`
+	TenantID string       `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Search   string       `query:"search" maxLength:"128"`
 	Status   MemberStatus `query:"status" enum:"active,disabled"`
 	Offset   int          `query:"offset" minimum:"0" default:"0"`
@@ -304,22 +303,22 @@ type listTenantMembersInput struct {
 }
 
 type tenantMemberInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	Subject  string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Subject  string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 // listTenantMemberRolesInput bounds the listing by default: a member holds as
 // many roles as the tenant grants them, permanent and temporary together.
 type listTenantMemberRolesInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	Subject  string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Subject  string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type createTenantMemberInput struct {
 	RawBody  []byte
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		Subject      string       `json:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 		DisplayName  string       `json:"display_name" minLength:"1" maxLength:"128"`
@@ -331,8 +330,8 @@ type createTenantMemberInput struct {
 
 type updateTenantMemberInput struct {
 	RawBody  []byte
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	Subject  string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Subject  string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		DisplayName  *string       `json:"display_name,omitempty" minLength:"1" maxLength:"128"`
 		Email        *string       `json:"email,omitempty" maxLength:"320"`
@@ -346,7 +345,7 @@ type menuInput struct {
 }
 
 type createMenuInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		Translations   map[string]string `json:"translations,omitempty" doc:"BCP 47 language tags mapped to menu labels; default label is the fallback"`
 		ParentID       string            `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent menu ID; omitted or empty makes this a root menu"`
@@ -392,7 +391,7 @@ type listEntityRoleBindingsInput struct {
 }
 
 type createEntityInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		ParentID string         `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent entity ID; omitted or empty makes this a root entity"`
 		Type     string         `json:"type" minLength:"1" maxLength:"64"`
@@ -430,7 +429,7 @@ type putEntityRoleBindingInput struct {
 }
 
 type authorizationConstraintInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		PermissionCode string `json:"permission_code" maxLength:"128"`
 		Subject        string `json:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
@@ -438,7 +437,7 @@ type authorizationConstraintInput struct {
 }
 
 type authorizationExplanationInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		EntityID       string `json:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 		ResourceType   string `json:"resource_type,omitempty" maxLength:"64"`
@@ -879,7 +878,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-add-role-member", Method: http.MethodPut, Path: "/roles/{role_id}/members/{subject}", Summary: "Add a local principal to a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
+		OperationID: "iam-add-role-member", Method: http.MethodPut, Path: "/roles/{role_id}/members/{principal_id}", Summary: "Add a local principal to a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "manage_member"}, func(ctx context.Context, in *memberInput) (*respx.Body[MutationResult], error) {
 		tenantID, roleID, subject, err := memberRef(ctx, in)
 		if err != nil {
@@ -893,7 +892,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-remove-role-member", Method: http.MethodDelete, Path: "/roles/{role_id}/members/{subject}", Summary: "Remove a local principal from a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
+		OperationID: "iam-remove-role-member", Method: http.MethodDelete, Path: "/roles/{role_id}/members/{principal_id}", Summary: "Remove a local principal from a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "manage_member"}, func(ctx context.Context, in *memberInput) (*respx.Body[MutationResult], error) {
 		tenantID, roleID, subject, err := memberRef(ctx, in)
 		if err != nil {
@@ -1007,7 +1006,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, memberProfileView(member, fields)), nil
 	})
-	authz.Register(registrar, a, huma.Operation{OperationID: "iam-get-tenant-member", Method: http.MethodGet, Path: "/members/{subject}", Summary: "Get a tenant membership", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound}}, authz.Guard{Resource: "user", Verb: "view"}, func(ctx context.Context, in *tenantMemberInput) (*respx.Body[APITenantMember], error) {
+	authz.Register(registrar, a, huma.Operation{OperationID: "iam-get-tenant-member", Method: http.MethodGet, Path: "/members/{principal_id}", Summary: "Get a tenant membership", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound}}, authz.Guard{Resource: "user", Verb: "view"}, func(ctx context.Context, in *tenantMemberInput) (*respx.Body[APITenantMember], error) {
 		tenantID, subject, err := tenantMemberRef(in)
 		if err != nil {
 			return nil, err
@@ -1028,7 +1027,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		out.RoleIDs = append([]guid.ID{}, roles...)
 		return respx.OK(ctx, out), nil
 	})
-	authz.Register(registrar, a, huma.Operation{OperationID: "iam-update-tenant-member", Method: http.MethodPatch, Path: "/members/{subject}", Summary: "Update or disable a tenant membership", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict}}, authz.Guard{Resource: "user", Verb: "update"}, func(ctx context.Context, in *updateTenantMemberInput) (*respx.Body[APITenantMember], error) {
+	authz.Register(registrar, a, huma.Operation{OperationID: "iam-update-tenant-member", Method: http.MethodPatch, Path: "/members/{principal_id}", Summary: "Update or disable a tenant membership", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict}}, authz.Guard{Resource: "user", Verb: "update"}, func(ctx context.Context, in *updateTenantMemberInput) (*respx.Body[APITenantMember], error) {
 		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -1070,7 +1069,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, memberProfileView(member, fields)), nil
 	})
-	authz.Register(registrar, a, huma.Operation{OperationID: "iam-list-tenant-member-roles", Method: http.MethodGet, Path: "/members/{subject}/roles", Summary: "List role assignments for a tenant member", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound}}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *listTenantMemberRolesInput) (*respx.Body[[]string], error) {
+	authz.Register(registrar, a, huma.Operation{OperationID: "iam-list-tenant-member-roles", Method: http.MethodGet, Path: "/members/{principal_id}/roles", Summary: "List role assignments for a tenant member", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound}}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *listTenantMemberRolesInput) (*respx.Body[[]string], error) {
 		tenantID, subject, err := tenantMemberRefIDs(in.TenantID, in.Subject)
 		if err != nil {
 			return nil, err
@@ -1083,7 +1082,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-list-member-authorization-sources", Method: http.MethodGet,
-		Path:    "/members/{subject}/authorization-sources",
+		Path:    "/members/{principal_id}/authorization-sources",
 		Summary: "List effective authorization sources for a tenant member", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict},
 	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *tenantMemberInput) (*respx.Body[APIMemberAuthorizationSnapshot], error) {
@@ -1224,7 +1223,10 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, apiError("effective menus", err)
 		}
-		return paginateList(ctx, menus, in.Offset, in.Limit), nil
+		if menus == nil {
+			menus = []MenuItem{}
+		}
+		return respx.OK(ctx, menus), nil
 	})
 	// A platform administrator must discover their own platform permissions
 	// before the first tenant exists. This self-service route deliberately has no
@@ -1491,30 +1493,4 @@ func apiError(operation string, err error) error {
 		slog.Error("iam request failed", "operation", operation, "err", err)
 		return huma.Error500InternalServerError(respx.InternalServerError)
 	}
-}
-
-// paginateList applies offset/limit to a list result, defaulting to all
-// records when both are zero. This prevents unbounded response sizes
-// on collections that can grow large (roles, entities, menus).
-func paginateList[T any](ctx context.Context, items []T, offset, limit int) *respx.Body[[]T] {
-	if offset < 0 {
-		offset = 0
-	}
-	if limit < 0 || limit > 200 {
-		limit = 0
-	}
-	total := len(items)
-	if offset >= total {
-		return respx.List(ctx, []T{}, respx.Page{Offset: offset, Limit: limit, Total: int64(total)})
-	}
-	if limit > 0 {
-		end := offset + limit
-		if end > total {
-			end = total
-		}
-		items = items[offset:end]
-	} else if offset > 0 {
-		items = items[offset:]
-	}
-	return respx.List(ctx, items, respx.Page{Offset: offset, Limit: limit, Total: int64(total)})
 }

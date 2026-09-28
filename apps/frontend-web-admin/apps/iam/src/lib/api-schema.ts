@@ -390,7 +390,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get authorized file metadata by a root-relative path */
+        /**
+         * Get authorized file metadata by a root-relative path
+         * @description The path spans every remaining URL segment: /files/{root_file_id}/-/a/b/c.txt names c.txt inside a/b under the root. OpenAPI has no multi-segment parameter, so the value is published as {path}; a client sends the segments separated by / and escapes each segment on its own. An escaped separator (%2F) is decoded before the lookup and names the same file as /. Empty, leading or trailing segments and backslashes are rejected with 422.
+         */
         get: operations["get-file-by-path"];
         put?: never;
         post?: never;
@@ -938,7 +941,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/operating-platforms/{platform_id}/members/{subject}": {
+    "/operating-platforms/{platform_id}/members/{principal_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1963,7 +1966,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/roles/{role_id}/members/{subject}": {
+    "/roles/{role_id}/members/{principal_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -4084,7 +4087,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/tenants/{tenant_id}/members/{subject}": {
+    "/tenants/{tenant_id}/members/{principal_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -4102,7 +4105,7 @@ export interface paths {
         patch: operations["iam-update-tenant-member"];
         trace?: never;
     };
-    "/tenants/{tenant_id}/members/{subject}/authorization-sources": {
+    "/tenants/{tenant_id}/members/{principal_id}/authorization-sources": {
         parameters: {
             query?: never;
             header?: never;
@@ -4119,7 +4122,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/tenants/{tenant_id}/members/{subject}/roles": {
+    "/tenants/{tenant_id}/members/{principal_id}/roles": {
         parameters: {
             query?: never;
             header?: never;
@@ -4820,7 +4823,7 @@ export interface components {
             entity?: components["schemas"]["APIEntity"];
             operating_platform?: components["schemas"]["AccountViewRoot"];
             scope_id: string | null;
-            scope_kind: string;
+            scope_type: string;
             tenant?: components["schemas"]["AccountViewRoot"];
         };
         AccountWorkspace: {
@@ -4993,7 +4996,7 @@ export interface components {
             current: boolean;
             /** Format: date-time */
             expires_at: string;
-            id: string;
+            id: string | null;
             ip_address?: string;
             /** Format: date-time */
             last_seen_at: string;
@@ -5105,11 +5108,6 @@ export interface components {
         ClosureCancelInputBody: {
             /** Format: int64 */
             version: number;
-        };
-        ClosurePage: {
-            items: components["schemas"]["ClosureRequest"][] | null;
-            /** Format: int64 */
-            total: number;
         };
         ClosureRequest: {
             principal_id: string | null;
@@ -5872,19 +5870,6 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
-        EnvelopeClosurePage: {
-            /**
-             * Format: int64
-             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
-             */
-            code: number;
-            /** @description response payload; null on error */
-            data: components["schemas"]["ClosurePage"];
-            /** @description human-readable status; "ok" on success */
-            message: string;
-            /** @description request metadata */
-            meta: components["schemas"]["Meta"];
-        };
         EnvelopeClosureRequest: {
             /**
              * Format: int64
@@ -6431,6 +6416,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeListClosureRequest: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ClosureRequest"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeListCredential: {
             /**
              * Format: int64
@@ -6613,6 +6611,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeListMyMembership: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["MyMembership"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeListPasskey: {
             /**
              * Format: int64
@@ -6665,6 +6676,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeListPrincipalView: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["PrincipalView"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeListProvider: {
             /**
              * Format: int64
@@ -6712,6 +6736,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["ScopeNode"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeListServiceAccount: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ServiceAccount"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -6931,19 +6968,6 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
-        EnvelopeMyMembershipPage: {
-            /**
-             * Format: int64
-             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
-             */
-            code: number;
-            /** @description response payload; null on error */
-            data: components["schemas"]["MyMembershipPage"];
-            /** @description human-readable status; "ok" on success */
-            message: string;
-            /** @description request metadata */
-            meta: components["schemas"]["Meta"];
-        };
         EnvelopeOperationResult: {
             /**
              * Format: int64
@@ -7069,19 +7093,6 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["PrincipalLifecycleStatus"];
-            /** @description human-readable status; "ok" on success */
-            message: string;
-            /** @description request metadata */
-            meta: components["schemas"]["Meta"];
-        };
-        EnvelopePrincipalListData: {
-            /**
-             * Format: int64
-             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
-             */
-            code: number;
-            /** @description response payload; null on error */
-            data: components["schemas"]["PrincipalListData"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -7256,19 +7267,6 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
-        EnvelopeServiceAccountListData: {
-            /**
-             * Format: int64
-             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
-             */
-            code: number;
-            /** @description response payload; null on error */
-            data: components["schemas"]["ServiceAccountListData"];
-            /** @description human-readable status; "ok" on success */
-            message: string;
-            /** @description request metadata */
-            meta: components["schemas"]["Meta"];
-        };
         EnvelopeStepUpOptions: {
             /**
              * Format: int64
@@ -7369,7 +7367,7 @@ export interface components {
              * @description the HTTP status code (1..999); business codes are 100000+
              */
             code: number;
-            /** @description always null on error */
+            /** @description null on error, except a business failure that carries the detail the client needs to resolve it */
             data: unknown;
             /** @description human-readable error summary */
             message: string;
@@ -7827,11 +7825,6 @@ export interface components {
             tenant_id: string | null;
             tenant_name: string;
         };
-        MyMembershipPage: {
-            items: components["schemas"]["MyMembership"][] | null;
-            /** Format: int64 */
-            total: number;
-        };
         OperatingPlatformMemberCreateInputBody: {
             department_id?: string;
             display_name: string;
@@ -7919,7 +7912,7 @@ export interface components {
             attestation_type?: string;
             /** Format: date-time */
             created_at: string;
-            id: string;
+            id: string | null;
             /** Format: date-time */
             last_used_at?: string;
             name: string;
@@ -8131,11 +8124,6 @@ export interface components {
             lifecycle: components["schemas"]["PrincipalLifecycle"];
             login_name: string;
             suspended: boolean;
-        };
-        PrincipalListData: {
-            items: components["schemas"]["PrincipalView"][] | null;
-            /** Format: int64 */
-            total: number;
         };
         PrincipalUpdateInputBody: {
             display_name?: string;
@@ -8500,11 +8488,6 @@ export interface components {
         };
         ServiceAccountDeleteData: {
             deleted: boolean;
-        };
-        ServiceAccountListData: {
-            items: components["schemas"]["ServiceAccount"][] | null;
-            /** Format: int64 */
-            total: number;
         };
         ServiceAccountReplaceInputBody: {
             description?: string;
@@ -8907,8 +8890,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9629,8 +9612,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10507,7 +10490,7 @@ export interface operations {
                 /** @description written as <operator>:<value>; accepts eq, in */
                 created_by?: string[];
                 /** @description matches title or description */
-                q?: string;
+                search?: string;
                 /** @description include soft-deleted tasks */
                 deleted?: boolean;
                 /** @description comma-separated subset of columns to return */
@@ -10698,7 +10681,7 @@ export interface operations {
                 /** @description written as <operator>:<value>; accepts eq, in */
                 created_by?: string[];
                 /** @description matches title or description */
-                q?: string;
+                search?: string;
                 /** @description include soft-deleted tasks */
                 deleted?: boolean;
                 /** @description comma-separated subset of columns to return */
@@ -11399,7 +11382,7 @@ export interface operations {
             path: {
                 /** @description Resource identifier */
                 root_file_id: string;
-                /** @description slash-separated path relative to the selected root */
+                /** @description slash-separated path relative to the selected root; spans multiple URL segments */
                 path: string;
             };
             cookie?: never;
@@ -11744,6 +11727,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description Identity provider identifier */
                 provider_id: string;
             };
             cookie?: never;
@@ -11841,6 +11825,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description Identity provider identifier */
                 provider_id: string;
             };
             cookie?: never;
@@ -11935,6 +11920,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Identity provider identifier */
                 provider_id: string;
             };
             cookie?: never;
@@ -12154,8 +12140,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
@@ -12244,8 +12230,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
@@ -12354,8 +12340,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14429,8 +14415,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14574,8 +14560,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14637,7 +14623,7 @@ export interface operations {
             path: {
                 /** @description Operating platform identifier */
                 platform_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -14706,7 +14692,7 @@ export interface operations {
             path: {
                 /** @description Operating platform identifier */
                 platform_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -14775,7 +14761,7 @@ export interface operations {
             path: {
                 /** @description Operating platform identifier */
                 platform_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -14916,8 +14902,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15236,8 +15222,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15379,8 +15365,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15448,8 +15434,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -17170,8 +17156,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
@@ -17442,7 +17428,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopeMyMembershipPage"];
+                    "application/json": components["schemas"]["EnvelopeListMyMembership"];
                 };
             };
             /** @description Unauthorized */
@@ -17777,8 +17763,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
@@ -17968,8 +17954,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -18305,8 +18291,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -18483,8 +18469,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -18989,8 +18975,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19165,8 +19151,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19340,8 +19326,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19512,8 +19498,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19938,8 +19924,8 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21315,7 +21301,7 @@ export interface operations {
                 /** @description Resource identifier */
                 role_id: string;
                 /** @description immutable local principal ID */
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -21403,7 +21389,7 @@ export interface operations {
                 /** @description Resource identifier */
                 role_id: string;
                 /** @description immutable local principal ID */
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -22066,6 +22052,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Tenant whose SAML identity provider answers */
                 tenant_id: string;
             };
             cookie?: never;
@@ -22127,6 +22114,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description Tenant whose SAML identity provider answers */
                 tenant_id: string;
             };
             cookie?: never;
@@ -22186,6 +22174,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Tenant whose SAML identity provider answers */
                 tenant_id: string;
             };
             cookie?: never;
@@ -22255,6 +22244,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description Tenant whose SAML identity provider answers */
                 tenant_id: string;
             };
             cookie?: never;
@@ -22330,6 +22320,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Tenant whose SAML identity provider answers */
                 tenant_id: string;
             };
             cookie?: never;
@@ -26709,8 +26700,8 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26798,8 +26789,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
@@ -28251,7 +28242,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopeClosurePage"];
+                    "application/json": components["schemas"]["EnvelopeListClosureRequest"];
                 };
             };
             /** @description Unauthorized */
@@ -28382,8 +28373,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -28949,8 +28940,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -29335,8 +29326,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -29812,8 +29803,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -30501,7 +30492,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopePrincipalListData"];
+                    "application/json": components["schemas"]["EnvelopeListPrincipalView"];
                 };
             };
             /** @description Unauthorized */
@@ -31511,8 +31502,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -32406,8 +32397,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36583,7 +36574,7 @@ export interface operations {
             path: {
                 /** @description Tenant resource identifier */
                 tenant_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -36661,7 +36652,7 @@ export interface operations {
             path: {
                 /** @description Tenant resource identifier */
                 tenant_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -36753,7 +36744,7 @@ export interface operations {
             path: {
                 /** @description Tenant resource identifier */
                 tenant_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -36843,7 +36834,7 @@ export interface operations {
             path: {
                 /** @description Tenant resource identifier */
                 tenant_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -37136,10 +37127,7 @@ export interface operations {
     };
     "iam-list-menus": {
         parameters: {
-            query?: {
-                offset?: number;
-                limit?: number;
-            };
+            query?: never;
             header?: never;
             path: {
                 /** @description Tenant resource identifier */
@@ -37662,7 +37650,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopePrincipalListData"];
+                    "application/json": components["schemas"]["EnvelopeListPrincipalView"];
                 };
             };
             /** @description Unauthorized */
@@ -37966,10 +37954,7 @@ export interface operations {
     };
     "iam-effective-menus": {
         parameters: {
-            query?: {
-                offset?: number;
-                limit?: number;
-            };
+            query?: never;
             header?: never;
             path: {
                 /** @description Tenant resource identifier */
@@ -39392,7 +39377,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopeServiceAccountListData"];
+                    "application/json": components["schemas"]["EnvelopeListServiceAccount"];
                 };
             };
             /** @description Unauthorized */

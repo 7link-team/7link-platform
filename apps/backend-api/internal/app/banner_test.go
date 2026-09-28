@@ -134,14 +134,14 @@ func TestSingleLineFlattensWhitespaceThatWouldBreakTheInfoTable(t *testing.T) {
 }
 
 func TestValidateBannerTextRejectsEmptyAndControlCharacters(t *testing.T) {
-	require.NoError(t, validateBannerText("7link"))
+	require.NoError(t, validateBannerText("platform"))
 
 	for name, text := range map[string]string{
 		"empty":      "",
 		"whitespace": "   ",
-		"tab":        "7link\t",
-		"newline":    "7link\n",
-		"escape":     "7link\x1b[31m",
+		"tab":        "platform\t",
+		"newline":    "platform\n",
+		"escape":     "platform\x1b[31m",
 	} {
 		assert.Error(t, validateBannerText(text), name)
 	}

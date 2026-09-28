@@ -50,7 +50,7 @@ func TestMemberExitHTTPUsesCookieAndExplicitTenant(t *testing.T) {
 	require.Empty(t, left.Header().Get("Set-Cookie"), "tenant exit must preserve the global cookie")
 	page = h.api.Get("/principals/"+"11"+"/memberships", cookie)
 	require.Equal(t, http.StatusOK, page.Code, page.Body.String())
-	require.Contains(t, page.Body.String(), `"items":[]`)
+	require.Contains(t, page.Body.String(), `"data":[]`)
 }
 
 func TestPrincipalPlatformAccessGuardRejectsRetainedPlatformAuthority(t *testing.T) {

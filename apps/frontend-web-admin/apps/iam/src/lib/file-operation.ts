@@ -4,7 +4,7 @@ import type {
   FileOperationInput,
   FileOperationPolicy,
 } from "./iam-api"
-import { ApiError, fileOperationConflicts } from "./iam-api"
+import { ApiError, businessCode, fileOperationConflicts } from "./iam-api"
 
 export type PendingFileOperation = {
   input: FileOperationInput
@@ -106,7 +106,7 @@ export async function executeFileOperation(
         !restartedPreflight &&
         request.observed_revision &&
         cause instanceof ApiError &&
-        cause.code === "file_state_changed"
+        cause.businessCode === businessCode.fileStateChanged
       ) {
         request = baseFileOperationInput(input)
         restartedPreflight = true

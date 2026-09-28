@@ -255,8 +255,10 @@ func TestRepositoryPasskeysArePrincipalScopedAndCountersAreCAS(t *testing.T) {
 	rows, err := harness.repository.listPasskeys(t.Context(), 1)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
-	_, err = harness.repository.getPasskey(t.Context(), "passkey")
+	stored, err := harness.repository.getPasskey(t.Context(), "passkey")
 	require.NoError(t, err)
+	require.NotNil(t, stored.PublicID, "a passkey is created with its public ID")
+	publicID := *stored.PublicID
 
 	updated, err := harness.repository.updatePasskeyCounter(
 		t.Context(), "passkey", 0, 1, "cipher", "new-cipher", now.Add(time.Minute),
@@ -273,18 +275,18 @@ func TestRepositoryPasskeysArePrincipalScopedAndCountersAreCAS(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.True(t, updated)
-	renamed, changed, err := harness.repository.renamePasskey(t.Context(), 2, "passkey", "Stolen", now)
+	renamed, changed, err := harness.repository.renamePasskey(t.Context(), 2, publicID, "Stolen", now)
 	require.NoError(t, err)
 	assert.False(t, changed)
 	assert.Nil(t, renamed)
-	renamed, changed, err = harness.repository.renamePasskey(t.Context(), 1, "passkey", "Security key", now)
+	renamed, changed, err = harness.repository.renamePasskey(t.Context(), 1, publicID, "Security key", now)
 	require.NoError(t, err)
 	assert.True(t, changed)
 	assert.Equal(t, "Security key", renamed.Name)
-	deleted, err := harness.repository.deletePasskey(t.Context(), 2, "passkey")
+	deleted, err := harness.repository.deletePasskey(t.Context(), 2, publicID)
 	require.NoError(t, err)
 	assert.False(t, deleted)
-	deleted, err = harness.repository.deletePasskey(t.Context(), 1, "passkey")
+	deleted, err = harness.repository.deletePasskey(t.Context(), 1, publicID)
 	require.NoError(t, err)
 	assert.True(t, deleted)
 }

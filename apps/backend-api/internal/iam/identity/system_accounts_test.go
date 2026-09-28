@@ -3,6 +3,7 @@ package identity
 import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authz"
+	"7link.com/platform/pkg/extension/huma/respx"
 	"context"
 	"encoding/json"
 	"errors"
@@ -108,12 +109,10 @@ func TestSystemAccountHTTPUsesGlobalProfilesAndSystemAuthority(t *testing.T) {
 	require.Zero(t, count)
 	list := h.api.Get("/system/principals?search=GLOBAL&limit=1", "Authorization: Bearer session")
 	require.Equal(t, http.StatusOK, list.Code, list.Body.String())
-	var page struct {
-		Data principalListData `json:"data"`
-	}
+	var page respx.Envelope[[]PrincipalView]
 	require.NoError(t, json.Unmarshal(list.Body.Bytes(), &page))
-	require.EqualValues(t, 1, page.Data.Total)
-	require.Len(t, page.Data.Items, 1)
+	require.EqualValues(t, 1, page.Meta.Page.Total)
+	require.Len(t, page.Data, 1)
 	path := "/system/principals/" + body.Data.ID.String()
 	get := h.api.Get(path, "Authorization: Bearer session")
 	require.Equal(t, http.StatusOK, get.Code, get.Body.String())
@@ -315,13 +314,11 @@ func TestSystemAccountHTTPRejectsMalformedAndUnknownTargets(t *testing.T) {
 	require.NoError(t, err)
 	owned := h.api.Get("/system/principals?category=tenant&owner_id=7&limit=5", auth)
 	require.Equal(t, http.StatusOK, owned.Code, owned.Body.String())
-	var page struct {
-		Data principalListData `json:"data"`
-	}
+	var page respx.Envelope[[]PrincipalView]
 	require.NoError(t, json.Unmarshal(owned.Body.Bytes(), &page))
-	require.EqualValues(t, 1, page.Data.Total, "only tenant 7's member is listed; the global account belongs to no tenant")
-	require.Len(t, page.Data.Items, 1)
-	require.Equal(t, member.ID, page.Data.Items[0].ID)
+	require.EqualValues(t, 1, page.Meta.Page.Total, "only tenant 7's member is listed; the global account belongs to no tenant")
+	require.Len(t, page.Data, 1)
+	require.Equal(t, member.ID, page.Data[0].ID)
 
 	duplicate := h.api.Post("/system/principals", auth, map[string]any{"login_name": "known.account", "password": testPassword})
 	require.Equal(t, http.StatusConflict, duplicate.Code, duplicate.Body.String())

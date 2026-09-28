@@ -40,7 +40,7 @@ func TestSystemMenuHTTPBoundaryUsesEffectiveGlobalGrants(t *testing.T) {
 	response = client.Post("/system/menus", "Authorization: Bearer test", map[string]any{"label": "Bound", "route": "/system/menus", "permission_code": "system_menu_view"})
 	require.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
 	response = client.Post("/system/menus", "Authorization: Bearer test", map[string]any{"label": "New branch"})
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	menu := decodeEnvelope[APIMenu](t, response).Data
 	seedSystemPermissions(t, h, 11, "system_menu_bind_permission")
 	response = client.Patch("/system/menus/"+menu.ID.String(), "Authorization: Bearer test", map[string]any{"route": "/system/custom", "permission_code": "system_menu_view"})

@@ -146,6 +146,20 @@ func (r *Repository) runInTx(ctx context.Context, fn func(*Repository) error) er
 	})
 }
 
+// assignPublicID gives a session or passkey row its snowflake API identity
+// before it is inserted, unless the caller already chose one.
+func (r *Repository) assignPublicID(target **guid.ID) error {
+	if *target != nil {
+		return nil
+	}
+	id, err := r.nextID()
+	if err != nil {
+		return err
+	}
+	*target = &id
+	return nil
+}
+
 func (r *Repository) nextID() (guid.ID, error) {
 	if r == nil || r.ids == nil {
 		return 0, errRepositoryUnavailable

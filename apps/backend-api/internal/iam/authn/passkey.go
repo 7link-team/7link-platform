@@ -371,11 +371,15 @@ func (s *Service) RenamePasskey(
 	if err != nil {
 		return authnext.Passkey{}, err
 	}
+	publicID, err := guid.Parse(id)
+	if err != nil {
+		return authnext.Passkey{}, authnext.ErrPasskeyNotFound
+	}
 	now := s.now().UTC()
 	var row *model.Passkey
 	err = s.repo.runInTx(ctx, func(repository *Repository) error {
 		var changed bool
-		row, changed, err = repository.renamePasskey(ctx, claims.PrincipalID, id, name, now)
+		row, changed, err = repository.renamePasskey(ctx, claims.PrincipalID, publicID, name, now)
 		if err != nil {
 			return err
 		}
@@ -407,9 +411,13 @@ func (s *Service) DeletePasskey(
 	if _, _, err := s.verifyCurrentPassword(ctx, claims.PrincipalID, currentPassword); err != nil {
 		return err
 	}
+	publicID, err := guid.Parse(id)
+	if err != nil {
+		return authnext.ErrPasskeyNotFound
+	}
 	now := s.now().UTC()
 	err = s.repo.runInTx(ctx, func(repository *Repository) error {
-		deleted, err := repository.deletePasskey(ctx, claims.PrincipalID, id)
+		deleted, err := repository.deletePasskey(ctx, claims.PrincipalID, publicID)
 		if err != nil {
 			return err
 		}
@@ -608,9 +616,15 @@ func passkeyAAD(principalID guid.ID, idHash string) string {
 	return principalID.String() + "\x00" + idHash
 }
 
+// passkeyView publishes a passkey under its snowflake; the credential hash that
+// keys it stays internal.
 func passkeyView(row *model.Passkey) authnext.Passkey {
+	var id guid.ID
+	if row.PublicID != nil {
+		id = *row.PublicID
+	}
 	return authnext.Passkey{
-		ID: row.IDHash, Name: row.Name, SignCount: row.SignCount,
+		ID: id, Name: row.Name, SignCount: row.SignCount,
 		CreatedAt: row.CreatedAt.UTC(), LastUsedAt: row.LastUsedAt,
 	}
 }

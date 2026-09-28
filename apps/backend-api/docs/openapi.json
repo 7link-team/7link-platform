@@ -1179,7 +1179,7 @@
               "null"
             ]
           },
-          "scope_kind": {
+          "scope_type": {
             "type": "string"
           },
           "tenant": {
@@ -1187,7 +1187,7 @@
           }
         },
         "required": [
-          "scope_kind",
+          "scope_type",
           "scope_id"
         ],
         "type": "object"
@@ -1805,7 +1805,11 @@
             "type": "string"
           },
           "id": {
-            "type": "string"
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "ip_address": {
             "type": "string"
@@ -2279,29 +2283,6 @@
         },
         "required": [
           "version"
-        ],
-        "type": "object"
-      },
-      "ClosurePage": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ClosureRequest"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "total": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total"
         ],
         "type": "object"
       },
@@ -4515,35 +4496,6 @@
         ],
         "type": "object"
       },
-      "EnvelopeClosurePage": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
-            "format": "int64",
-            "type": "integer"
-          },
-          "data": {
-            "$ref": "#/components/schemas/ClosurePage",
-            "description": "response payload; null on error"
-          },
-          "message": {
-            "description": "human-readable status; \"ok\" on success",
-            "type": "string"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/Meta",
-            "description": "request metadata"
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "meta",
-          "data"
-        ],
-        "type": "object"
-      },
       "EnvelopeClosureRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5880,6 +5832,41 @@
         ],
         "type": "object"
       },
+      "EnvelopeListClosureRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/ClosureRequest"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeListCredential": {
         "additionalProperties": false,
         "properties": {
@@ -6374,6 +6361,41 @@
         ],
         "type": "object"
       },
+      "EnvelopeListMyMembership": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/MyMembership"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeListPasskey": {
         "additionalProperties": false,
         "properties": {
@@ -6514,6 +6536,41 @@
         ],
         "type": "object"
       },
+      "EnvelopeListPrincipalView": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/PrincipalView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeListProvider": {
         "additionalProperties": false,
         "properties": {
@@ -6631,6 +6688,41 @@
             "description": "response payload; null on error",
             "items": {
               "$ref": "#/components/schemas/ScopeNode"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeListServiceAccount": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/ServiceAccount"
             },
             "type": [
               "array",
@@ -7158,35 +7250,6 @@
         ],
         "type": "object"
       },
-      "EnvelopeMyMembershipPage": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
-            "format": "int64",
-            "type": "integer"
-          },
-          "data": {
-            "$ref": "#/components/schemas/MyMembershipPage",
-            "description": "response payload; null on error"
-          },
-          "message": {
-            "description": "human-readable status; \"ok\" on success",
-            "type": "string"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/Meta",
-            "description": "request metadata"
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "meta",
-          "data"
-        ],
-        "type": "object"
-      },
       "EnvelopeOperationResult": {
         "additionalProperties": false,
         "properties": {
@@ -7458,35 +7521,6 @@
           },
           "data": {
             "$ref": "#/components/schemas/PrincipalLifecycleStatus",
-            "description": "response payload; null on error"
-          },
-          "message": {
-            "description": "human-readable status; \"ok\" on success",
-            "type": "string"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/Meta",
-            "description": "request metadata"
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "meta",
-          "data"
-        ],
-        "type": "object"
-      },
-      "EnvelopePrincipalListData": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
-            "format": "int64",
-            "type": "integer"
-          },
-          "data": {
-            "$ref": "#/components/schemas/PrincipalListData",
             "description": "response payload; null on error"
           },
           "message": {
@@ -7883,35 +7917,6 @@
         ],
         "type": "object"
       },
-      "EnvelopeServiceAccountListData": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
-            "format": "int64",
-            "type": "integer"
-          },
-          "data": {
-            "$ref": "#/components/schemas/ServiceAccountListData",
-            "description": "response payload; null on error"
-          },
-          "message": {
-            "description": "human-readable status; \"ok\" on success",
-            "type": "string"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/Meta",
-            "description": "request metadata"
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "meta",
-          "data"
-        ],
-        "type": "object"
-      },
       "EnvelopeStepUpOptions": {
         "additionalProperties": false,
         "properties": {
@@ -8136,7 +8141,7 @@
             "type": "integer"
           },
           "data": {
-            "description": "always null on error"
+            "description": "null on error, except a business failure that carries the detail the client needs to resolve it"
           },
           "message": {
             "description": "human-readable error summary",
@@ -9979,29 +9984,6 @@
         ],
         "type": "object"
       },
-      "MyMembershipPage": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/MyMembership"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "total": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total"
-        ],
-        "type": "object"
-      },
       "OperatingPlatformMemberCreateInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -10255,7 +10237,11 @@
             "type": "string"
           },
           "id": {
-            "type": "string"
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "last_used_at": {
             "format": "date-time",
@@ -11062,29 +11048,6 @@
           "suspended",
           "anonymized",
           "blockers"
-        ],
-        "type": "object"
-      },
-      "PrincipalListData": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/PrincipalView"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "total": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total"
         ],
         "type": "object"
       },
@@ -12433,29 +12396,6 @@
         ],
         "type": "object"
       },
-      "ServiceAccountListData": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ServiceAccount"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "total": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total"
-        ],
-        "type": "object"
-      },
       "ServiceAccountReplaceInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -13732,7 +13672,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -13740,7 +13680,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -14804,7 +14744,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -14812,7 +14752,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "400": {
             "content": {
@@ -16169,7 +16109,7 @@
             "description": "matches title or description",
             "explode": false,
             "in": "query",
-            "name": "q",
+            "name": "search",
             "schema": {
               "description": "matches title or description",
               "maxLength": 128,
@@ -16211,6 +16151,7 @@
             "in": "query",
             "name": "offset",
             "schema": {
+              "default": 0,
               "format": "int64",
               "minimum": 0,
               "type": "integer"
@@ -16221,9 +16162,9 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 20,
+              "default": 50,
               "format": "int64",
-              "maximum": 100,
+              "maximum": 200,
               "minimum": 1,
               "type": "integer"
             }
@@ -16575,7 +16516,7 @@
             "description": "matches title or description",
             "explode": false,
             "in": "query",
-            "name": "q",
+            "name": "search",
             "schema": {
               "description": "matches title or description",
               "maxLength": 128,
@@ -16617,6 +16558,7 @@
             "in": "query",
             "name": "offset",
             "schema": {
+              "default": 0,
               "format": "int64",
               "minimum": 0,
               "type": "integer"
@@ -16627,9 +16569,9 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 20,
+              "default": 50,
               "format": "int64",
-              "maximum": 100,
+              "maximum": 200,
               "minimum": 1,
               "type": "integer"
             }
@@ -17639,6 +17581,7 @@
     },
     "/files/{root_file_id}/-/{path}": {
       "get": {
+        "description": "The path spans every remaining URL segment: /files/{root_file_id}/-/a/b/c.txt names c.txt inside a/b under the root. OpenAPI has no multi-segment parameter, so the value is published as {path}; a client sends the segments separated by / and escapes each segment on its own. An escaped separator (%2F) is decoded before the lookup and names the same file as /. Empty, leading or trailing segments and backslashes are rejected with 422.",
         "operationId": "get-file-by-path",
         "parameters": [
           {
@@ -17653,12 +17596,12 @@
             }
           },
           {
-            "description": "slash-separated path relative to the selected root",
+            "description": "slash-separated path relative to the selected root; spans multiple URL segments",
             "in": "path",
             "name": "path",
             "required": true,
             "schema": {
-              "description": "slash-separated path relative to the selected root",
+              "description": "slash-separated path relative to the selected root; spans multiple URL segments",
               "type": "string"
             }
           }
@@ -18098,11 +18041,13 @@
         "operationId": "federation-start-login",
         "parameters": [
           {
+            "description": "Identity provider identifier",
             "in": "path",
             "name": "provider_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           },
@@ -18239,11 +18184,13 @@
         "operationId": "federation-callback-login",
         "parameters": [
           {
+            "description": "Identity provider identifier",
             "in": "path",
             "name": "provider_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           },
@@ -18387,11 +18334,13 @@
         "operationId": "federation-callback-saml-login",
         "parameters": [
           {
+            "description": "Identity provider identifier",
             "in": "path",
             "name": "provider_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -18711,7 +18660,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -18719,7 +18668,7 @@
                 }
               }
             },
-            "description": "OK",
+            "description": "Created",
             "headers": {
               "Set-Cookie": {
                 "schema": {
@@ -18827,7 +18776,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -18835,7 +18784,7 @@
                 }
               }
             },
-            "description": "OK",
+            "description": "Created",
             "headers": {
               "Set-Cookie": {
                 "schema": {
@@ -18964,7 +18913,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -18972,7 +18921,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "403": {
             "content": {
@@ -19299,7 +19248,6 @@
             "description": "Internal Server Error"
           }
         },
-        "security": [],
         "summary": "Accept a tenant invitation and create the local principal",
         "tags": [
           "membership-invitations"
@@ -22110,7 +22058,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -22118,7 +22066,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -22348,7 +22296,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -22356,7 +22304,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -22424,7 +22372,7 @@
         "x-authz-permission": "platform_member_create"
       }
     },
-    "/operating-platforms/{platform_id}/members/{subject}": {
+    "/operating-platforms/{platform_id}/members/{principal_id}": {
       "delete": {
         "operationId": "iam-platform-member-delete",
         "parameters": [
@@ -22441,7 +22389,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,
@@ -22542,7 +22490,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,
@@ -22643,7 +22591,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,
@@ -22847,7 +22795,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -22855,7 +22803,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -23311,7 +23259,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -23319,7 +23267,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -23528,7 +23476,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -23536,7 +23484,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -23618,7 +23566,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -23626,7 +23574,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "400": {
             "content": {
@@ -24293,7 +24241,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -24413,7 +24362,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -26135,7 +26085,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -26143,7 +26093,7 @@
                 }
               }
             },
-            "description": "OK",
+            "description": "Created",
             "headers": {
               "Set-Cookie": {
                 "schema": {
@@ -26540,7 +26490,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopeMyMembershipPage"
+                  "$ref": "#/components/schemas/EnvelopeListMyMembership"
                 }
               }
             },
@@ -27131,7 +27081,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -27139,7 +27089,7 @@
                 }
               }
             },
-            "description": "OK",
+            "description": "Created",
             "headers": {
               "Set-Cookie": {
                 "schema": {
@@ -27277,7 +27227,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -27285,7 +27235,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -27741,7 +27691,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -27749,7 +27699,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -27981,7 +27931,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -27989,7 +27939,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -28114,9 +28064,8 @@
             "name": "passkey_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
-              "minLength": 64,
-              "pattern": "^[a-f0-9]{64}$",
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -28235,9 +28184,8 @@
             "name": "passkey_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
-              "minLength": 64,
-              "pattern": "^[a-f0-9]{64}$",
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -28703,7 +28651,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -28711,7 +28659,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -28841,9 +28789,9 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 20,
+              "default": 50,
               "format": "int64",
-              "maximum": 100,
+              "maximum": 200,
               "minimum": 1,
               "type": "integer"
             }
@@ -28964,7 +28912,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -28972,7 +28920,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -29221,7 +29169,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -29229,7 +29177,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -29461,7 +29409,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -29469,7 +29417,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -30006,7 +29954,7 @@
       "post": {
         "operationId": "authn-create-registration-captcha",
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -30014,7 +29962,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "429": {
             "content": {
@@ -30713,7 +30661,8 @@
             "name": "item_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -31912,7 +31861,7 @@
         "x-authz-permission": "role_view"
       }
     },
-    "/roles/{role_id}/members/{subject}": {
+    "/roles/{role_id}/members/{principal_id}": {
       "delete": {
         "operationId": "iam-remove-role-member",
         "parameters": [
@@ -31930,7 +31879,7 @@
           {
             "description": "immutable local principal ID",
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "description": "immutable local principal ID",
@@ -32053,7 +32002,7 @@
           {
             "description": "immutable local principal ID",
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "description": "immutable local principal ID",
@@ -32966,11 +32915,13 @@
         "operationId": "federation-saml-metadata",
         "parameters": [
           {
+            "description": "Tenant whose SAML identity provider answers",
             "in": "path",
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -33038,11 +32989,13 @@
         "operationId": "federation-saml-slo",
         "parameters": [
           {
+            "description": "Tenant whose SAML identity provider answers",
             "in": "path",
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           },
@@ -33130,11 +33083,13 @@
         "operationId": "federation-saml-slo-post",
         "parameters": [
           {
+            "description": "Tenant whose SAML identity provider answers",
             "in": "path",
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -33231,11 +33186,13 @@
         "operationId": "federation-saml-sso",
         "parameters": [
           {
+            "description": "Tenant whose SAML identity provider answers",
             "in": "path",
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           },
@@ -33341,11 +33298,13 @@
         "operationId": "federation-saml-sso-post",
         "parameters": [
           {
+            "description": "Tenant whose SAML identity provider answers",
             "in": "path",
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -33845,7 +33804,8 @@
             "name": "credential_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -37824,7 +37784,6 @@
             "description": "SCIM error"
           }
         },
-        "security": [],
         "summary": "List SCIM resource types",
         "tags": [
           "scim"
@@ -38224,7 +38183,6 @@
             "description": "SCIM error"
           }
         },
-        "security": [],
         "summary": "Get a SCIM resource type",
         "tags": [
           "scim"
@@ -38610,7 +38568,6 @@
             "description": "SCIM error"
           }
         },
-        "security": [],
         "summary": "List SCIM schemas",
         "tags": [
           "scim"
@@ -39004,7 +38961,6 @@
             "description": "SCIM error"
           }
         },
-        "security": [],
         "summary": "Get a SCIM schema",
         "tags": [
           "scim"
@@ -39389,7 +39345,6 @@
             "description": "SCIM error"
           }
         },
-        "security": [],
         "summary": "Get SCIM service provider configuration",
         "tags": [
           "scim"
@@ -42505,7 +42460,8 @@
             "name": "credential_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -42669,6 +42625,11 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Destroy the current browser session",
         "tags": [
           "sessions"
@@ -42763,7 +42724,7 @@
       "post": {
         "operationId": "authn-create-step-up-challenge",
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -42771,7 +42732,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -42880,7 +42841,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -42888,7 +42849,7 @@
                 }
               }
             },
-            "description": "OK",
+            "description": "Created",
             "headers": {
               "Set-Cookie": {
                 "schema": {
@@ -42999,9 +42960,8 @@
             "name": "session_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
-              "minLength": 64,
-              "pattern": "^[a-f0-9]{64}$",
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -43099,9 +43059,8 @@
             "name": "session_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
-              "minLength": 64,
-              "pattern": "^[a-f0-9]{64}$",
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -43979,7 +43938,8 @@
             "name": "archive_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -44090,7 +44050,8 @@
             "name": "archive_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -44203,7 +44164,8 @@
             "name": "archive_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -44488,7 +44450,8 @@
             "name": "event_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -44981,7 +44944,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopeClosurePage"
+                  "$ref": "#/components/schemas/EnvelopeListClosureRequest"
                 }
               }
             },
@@ -45170,7 +45133,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -45178,7 +45141,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -45255,7 +45218,8 @@
             "name": "department_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           },
@@ -45354,7 +45318,8 @@
             "name": "department_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -45443,7 +45408,8 @@
             "name": "department_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -46032,7 +45998,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -46040,7 +46006,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -46544,7 +46510,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -46552,7 +46518,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -47252,7 +47218,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -47260,7 +47226,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -48360,7 +48326,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopePrincipalListData"
+                  "$ref": "#/components/schemas/EnvelopeListPrincipalView"
                 }
               }
             },
@@ -48539,7 +48505,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -48638,7 +48605,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -49444,7 +49412,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -49723,7 +49692,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -49731,7 +49700,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -51051,7 +51020,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -51059,7 +51028,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -52324,7 +52293,8 @@
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           },
@@ -52443,7 +52413,8 @@
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -52542,7 +52513,8 @@
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -53137,7 +53109,8 @@
             "name": "archive_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -53259,7 +53232,8 @@
             "name": "archive_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -53383,7 +53357,8 @@
             "name": "archive_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -53694,7 +53669,8 @@
             "name": "event_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -57456,7 +57432,7 @@
         "x-authz-permission": "user_create"
       }
     },
-    "/tenants/{tenant_id}/members/{subject}": {
+    "/tenants/{tenant_id}/members/{principal_id}": {
       "get": {
         "operationId": "iam-get-tenant-member",
         "parameters": [
@@ -57473,7 +57449,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,
@@ -57584,7 +57560,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,
@@ -57707,7 +57683,7 @@
         "x-authz-permission": "user_update"
       }
     },
-    "/tenants/{tenant_id}/members/{subject}/authorization-sources": {
+    "/tenants/{tenant_id}/members/{principal_id}/authorization-sources": {
       "get": {
         "operationId": "iam-list-member-authorization-sources",
         "parameters": [
@@ -57724,7 +57700,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,
@@ -57830,7 +57806,7 @@
         "x-authz-permission": "role_view"
       }
     },
-    "/tenants/{tenant_id}/members/{subject}/roles": {
+    "/tenants/{tenant_id}/members/{principal_id}/roles": {
       "get": {
         "operationId": "iam-list-tenant-member-roles",
         "parameters": [
@@ -57847,7 +57823,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,
@@ -58299,29 +58275,6 @@
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "offset",
-            "schema": {
-              "default": 0,
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "default": 0,
-              "format": "int64",
-              "maximum": 200,
-              "minimum": 0,
-              "type": "integer"
             }
           }
         ],
@@ -59093,7 +59046,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopePrincipalListData"
+                  "$ref": "#/components/schemas/EnvelopeListPrincipalView"
                 }
               }
             },
@@ -59303,7 +59256,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -59413,7 +59367,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -59556,29 +59511,6 @@
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "offset",
-            "schema": {
-              "default": 0,
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "default": 0,
-              "format": "int64",
-              "maximum": 200,
-              "minimum": 0,
-              "type": "integer"
             }
           }
         ],
@@ -59914,7 +59846,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -60034,7 +59967,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -61675,7 +61609,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopeServiceAccountListData"
+                  "$ref": "#/components/schemas/EnvelopeListServiceAccount"
                 }
               }
             },

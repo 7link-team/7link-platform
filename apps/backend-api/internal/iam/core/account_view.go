@@ -24,7 +24,7 @@ type AccountViewRoot struct {
 }
 
 type AccountViewWorkspace struct {
-	ScopeKind         string           `json:"scope_kind"`
+	ScopeType         string           `json:"scope_type"`
 	ScopeID           guid.ID          `json:"scope_id"`
 	Tenant            *AccountViewRoot `json:"tenant,omitempty"`
 	Entity            *APIEntity       `json:"entity,omitempty"`
@@ -55,7 +55,7 @@ func registerAccountViewWorkspaceHTTP(api huma.API, svc *Service, registrar *aut
 
 // Metadata follows only the verified token scope, never a caller-selected root.
 func (s *Service) accountViewWorkspace(ctx context.Context, kind string, id guid.ID) (AccountViewWorkspace, error) {
-	out := AccountViewWorkspace{ScopeKind: kind, ScopeID: id}
+	out := AccountViewWorkspace{ScopeType: kind, ScopeID: id}
 	rootID := id
 	if kind == "personal" || kind == "system" {
 		return out, nil

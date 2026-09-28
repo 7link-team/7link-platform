@@ -8,5 +8,8 @@
   "invalid_file_operation": "文件操作无效，请检查条目、目标位置和冲突处理方式后重试。",
   "invalid_file_request": "文件请求无效，请检查名称、目标位置和权限后重试。",
   "file_service_unavailable": "文件服务未能及时完成请求，请稍后重试；若问题持续，请联系管理员。",
+  "file_restore_name_conflict": "恢复位置已存在同名条目，请更换名称后重试。",
+  "file_state_changed": "确认操作期间文件已发生变化，请重新检查条目后重试。",
+  "file_operation_conflict": "部分条目与目标位置的现有条目冲突，请为每个冲突选择处理方式后重试。",
   "menu_system_files": "文件管理"
 }

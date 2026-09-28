@@ -153,7 +153,7 @@ type systemPrincipalListInput struct {
 }
 
 type systemPrincipalIDInput struct {
-	ID string `path:"principal_id" maxLength:"64"`
+	ID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type systemPrincipalCreateInput struct {
@@ -166,7 +166,7 @@ type systemPrincipalCreateInput struct {
 }
 
 type systemPrincipalUpdateInput struct {
-	ID   string `path:"principal_id" maxLength:"64"`
+	ID   string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body struct {
 		DisplayName *string `json:"display_name,omitempty" minLength:"1" maxLength:"128"`
 		Email       *string `json:"email,omitempty" maxLength:"320"`
@@ -195,7 +195,7 @@ func registerSystemPrincipalHTTP(api huma.API, service *Service, registrar *auth
 		OperationID: "identity-system-list-principals", Method: http.MethodGet, Path: "/system/principals",
 		Summary: "List global accounts", Tags: []string{"system"},
 		Description: "Lists global accounts of one category (user when omitted). The system_account permission covers every category; the System accounts menu shows only the system category.",
-	}, authz.Guard{Resource: "system_account", Verb: "view"}, func(ctx context.Context, in *systemPrincipalListInput) (*respx.Body[principalListData], error) {
+	}, authz.Guard{Resource: "system_account", Verb: "view"}, func(ctx context.Context, in *systemPrincipalListInput) (*respx.Body[[]PrincipalView], error) {
 		var ownerID guid.ID
 		if in.OwnerID != "" {
 			var err error
@@ -212,7 +212,7 @@ func registerSystemPrincipalHTTP(api huma.API, service *Service, registrar *auth
 		for i, item := range items {
 			views[i] = systemPrincipalView(item)
 		}
-		return respx.OK(ctx, principalListData{Items: views, Total: total}), nil
+		return respx.List(ctx, views, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(views), Total: total}), nil
 	})
 	authz.RegisterPlatform(registrar, api, huma.Operation{
 		OperationID: "identity-system-create-principal", Method: http.MethodPost, Path: "/system/principals",

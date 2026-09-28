@@ -20,13 +20,13 @@ import (
 // providerListInput bounds the listing by default: a tenant's provider registry
 // is open-ended, and an omitted limit used to mean "every row".
 type providerListInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type providerIDInput struct {
-	ProviderID string `path:"provider_id" maxLength:"128"`
+	ProviderID string `path:"provider_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type providerBody struct {
@@ -42,12 +42,12 @@ type providerBody struct {
 }
 
 type providerCreateInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     providerBody
 }
 
 type providerReplaceInput struct {
-	ProviderID string `path:"provider_id" maxLength:"128"`
+	ProviderID string `path:"provider_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body       providerBody
 }
 
@@ -129,7 +129,7 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 		OperationID: "federation-start-login", Method: http.MethodGet, Path: "/identity-providers/{provider_id}/authorization",
 		Summary: "Start an OIDC login for a tenant identity provider", Tags: []string{"applications"}, DefaultStatus: http.StatusFound,
 		Parameters: []*huma.Param{
-			{Name: "provider_id", In: "path", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(128)}},
+			authz.IDPathParameter("provider_id", "Identity provider identifier"),
 			{Name: "return_url", In: "query", Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(2048), Description: "Allowlisted application URL to return to after login"}},
 		},
 	}
@@ -159,7 +159,7 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 		OperationID: "federation-callback-login", Method: http.MethodGet, Path: "/identity-providers/{provider_id}/callback",
 		Summary: "Complete the OIDC authorization code flow and set the browser session", Tags: []string{"applications"}, DefaultStatus: http.StatusFound,
 		Parameters: []*huma.Param{
-			{Name: "provider_id", In: "path", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(128)}},
+			authz.IDPathParameter("provider_id", "Identity provider identifier"),
 			{Name: "code", In: "query", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(4096)}},
 			{Name: "state", In: "query", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(256)}},
 		},
@@ -201,7 +201,7 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 		OperationID: "federation-callback-saml-login", Method: http.MethodPost, Path: "/identity-providers/{provider_id}/callback",
 		Summary: "Complete the SAML SP-initiated assertion flow and set the browser session", Tags: []string{"applications"}, DefaultStatus: http.StatusFound,
 		Parameters: []*huma.Param{
-			{Name: "provider_id", In: "path", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(128)}},
+			authz.IDPathParameter("provider_id", "Identity provider identifier"),
 		},
 	}
 	authz.Public(&samlCallback)

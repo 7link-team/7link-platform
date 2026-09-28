@@ -100,7 +100,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 	}
 	sessionOnly := map[string]bool{
 		"authn-create-account-view": true, "authn-delete-account-view": true,
-		"authn-get-current-session":               true,
+		"authn-get-current-session": true, "authn-delete-current-session": true,
 		"authn-create-reauthentication-challenge": true, "authn-create-reauthentication-verification": true,
 		"authn-list-reauthentication-methods": true, "authn-create-personal-token-preparation": true,
 		"authn-create-personal-token": true, "authn-delete-personal-token": true,
@@ -170,9 +170,11 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 				continue
 			}
 			found = true
-			assert.Equal(t, "^[a-f0-9]{64}$", parameter.Schema.Pattern, path)
-			assert.Equal(t, 64, *parameter.Schema.MinLength, path)
-			assert.Equal(t, 64, *parameter.Schema.MaxLength, path)
+			// Addressed by the published snowflake; the secret-keyed hash that
+			// keys the row is never part of the contract.
+			assert.Equal(t, "^[1-9][0-9]*$", parameter.Schema.Pattern, path)
+			assert.Nil(t, parameter.Schema.MinLength, path)
+			assert.Equal(t, 19, *parameter.Schema.MaxLength, path)
 		}
 		require.True(t, found, path)
 	}
@@ -197,7 +199,7 @@ func TestAuthnOpenAPIUsesTypedWebAuthnSchemas(t *testing.T) {
 		"assertion options": spec.Paths["/login/passkey/options"].Post,
 		"creation options":  spec.Paths["/principals/{principal_id}/passkey-registration-challenges"].Post,
 	} {
-		response := resolveAuthnSchema(spec, operation.Responses["200"].Content["application/json"].Schema)
+		response := resolveAuthnSchema(spec, operation.Responses["201"].Content["application/json"].Schema)
 		data := resolveAuthnSchema(spec, response.Properties["data"])
 		options := resolveAuthnSchema(spec, data.Properties["options"])
 		if assert.NotNil(t, options, name) {

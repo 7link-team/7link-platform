@@ -397,7 +397,7 @@ func TestIdentityLinkHTTPUsesSessionCSRFAndCompletesPersonalLifecycle(t *testing
 	assert.Equal(t, http.StatusForbidden, request(http.MethodPost, path, string(body), "https://evil.example", "", cookie).Code)
 	assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, path, string(body), "https://app.example", "Bearer invalid", cookie).Code)
 	started := request(http.MethodPost, path, string(body), "https://app.example", "", cookie)
-	require.Equal(t, http.StatusOK, started.Code)
+	require.Equal(t, http.StatusCreated, started.Code)
 	var envelope struct {
 		Data identityOperationLocation `json:"data"`
 	}

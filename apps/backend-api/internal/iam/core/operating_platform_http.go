@@ -12,13 +12,13 @@ import (
 )
 
 type operatingPlatformPageInput struct {
-	PlatformID string `path:"platform_id"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset     int    `query:"offset" minimum:"0" default:"0"`
 	Limit      int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type operatingPlatformRoleInput struct {
-	PlatformID string `path:"platform_id"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body       struct {
 		Name        string `json:"name" minLength:"1" maxLength:"128"`
 		Description string `json:"description,omitempty" maxLength:"1024"`
@@ -26,7 +26,7 @@ type operatingPlatformRoleInput struct {
 }
 
 type operatingPlatformMenuInput struct {
-	PlatformID string `path:"platform_id"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body       struct {
 		Translations   map[string]string `json:"translations,omitempty"`
 		ParentID       string            `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19"`
@@ -40,7 +40,7 @@ type operatingPlatformMenuInput struct {
 }
 
 type operatingPlatformMembersInput struct {
-	PlatformID string       `path:"platform_id"`
+	PlatformID string       `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset     int          `query:"offset" minimum:"0" default:"0"`
 	Limit      int          `query:"limit" minimum:"1" maximum:"200" default:"50"`
 	Search     string       `query:"search" maxLength:"128"`
@@ -48,13 +48,13 @@ type operatingPlatformMembersInput struct {
 }
 
 type operatingPlatformMemberInput struct {
-	PlatformID string `path:"platform_id"`
-	Subject    string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Subject    string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type operatingPlatformMemberPutInput struct {
-	PlatformID string `path:"platform_id"`
-	Subject    string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Subject    string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body       struct {
 		DisplayName  string       `json:"display_name" minLength:"1" maxLength:"128"`
 		Email        string       `json:"email,omitempty" maxLength:"320"`
@@ -64,7 +64,7 @@ type operatingPlatformMemberPutInput struct {
 }
 
 type operatingPlatformMemberCreateInput struct {
-	PlatformID string `path:"platform_id"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body       struct {
 		Subject      string       `json:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 		DisplayName  string       `json:"display_name" minLength:"1" maxLength:"128"`
@@ -85,7 +85,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.List(ctx, rolesFromDomain(roles), respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-role-create", http.MethodPost, "/roles", "Create an operating platform role"), authz.Guard{Resource: "role", Verb: "create"}, func(ctx context.Context, in *operatingPlatformRoleInput) (*respx.Body[APIRole], error) {
+	authz.RegisterOperatingPlatform(registrar, api, created(op("iam-platform-role-create", http.MethodPost, "/roles", "Create an operating platform role")), authz.Guard{Resource: "role", Verb: "create"}, func(ctx context.Context, in *operatingPlatformRoleInput) (*respx.Body[APIRole], error) {
 		role, err := svc.CreateRole(ctx, authnext.TenantIDFromContext(ctx), in.Body.Name, in.Body.Description)
 		if err != nil {
 			return nil, apiError("create platform role", err)
@@ -108,7 +108,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.OK(ctx, menusFromDomain(menus)), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-menu-create", http.MethodPost, "/menus", "Create an operating platform menu"), authz.Guard{Resource: "menu", Verb: "create"}, func(ctx context.Context, in *operatingPlatformMenuInput) (*respx.Body[APIMenu], error) {
+	authz.RegisterOperatingPlatform(registrar, api, created(op("iam-platform-menu-create", http.MethodPost, "/menus", "Create an operating platform menu")), authz.Guard{Resource: "menu", Verb: "create"}, func(ctx context.Context, in *operatingPlatformMenuInput) (*respx.Body[APIMenu], error) {
 		parent, err := guid.OptionalID(in.Body.ParentID)
 		if err != nil {
 			return nil, err
@@ -144,7 +144,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.List(ctx, views, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member", http.MethodGet, "/members/{subject}", "Get an operating platform member"), authz.Guard{Resource: "platform_member", Verb: "view"}, func(ctx context.Context, in *operatingPlatformMemberInput) (*respx.Body[APITenantMember], error) {
+	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member", http.MethodGet, "/members/{principal_id}", "Get an operating platform member"), authz.Guard{Resource: "platform_member", Verb: "view"}, func(ctx context.Context, in *operatingPlatformMemberInput) (*respx.Body[APITenantMember], error) {
 		id, err := guid.RequireID(in.Subject)
 		if err != nil {
 			return nil, err
@@ -155,7 +155,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.OK(ctx, memberFromDomain(member)), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member-create", http.MethodPost, "/members", "Bind an existing account to an operating platform"), authz.Guard{Resource: "platform_member", Verb: "create"}, func(ctx context.Context, in *operatingPlatformMemberCreateInput) (*respx.Body[APITenantMember], error) {
+	authz.RegisterOperatingPlatform(registrar, api, created(op("iam-platform-member-create", http.MethodPost, "/members", "Bind an existing account to an operating platform")), authz.Guard{Resource: "platform_member", Verb: "create"}, func(ctx context.Context, in *operatingPlatformMemberCreateInput) (*respx.Body[APITenantMember], error) {
 		id, err := guid.RequireID(in.Body.Subject)
 		if err != nil {
 			return nil, err
@@ -171,7 +171,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.OK(ctx, memberFromDomain(member)), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member-update", http.MethodPatch, "/members/{subject}", "Update an operating platform member"), authz.Guard{Resource: "platform_member", Verb: "update"}, func(ctx context.Context, in *operatingPlatformMemberPutInput) (*respx.Body[APITenantMember], error) {
+	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member-update", http.MethodPatch, "/members/{principal_id}", "Update an operating platform member"), authz.Guard{Resource: "platform_member", Verb: "update"}, func(ctx context.Context, in *operatingPlatformMemberPutInput) (*respx.Body[APITenantMember], error) {
 		id, err := guid.RequireID(in.Subject)
 		if err != nil {
 			return nil, err
@@ -189,7 +189,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.OK(ctx, memberFromDomain(member)), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member-delete", http.MethodDelete, "/members/{subject}", "Disable an operating platform membership"), authz.Guard{Resource: "platform_member", Verb: "delete"}, func(ctx context.Context, in *operatingPlatformMemberInput) (*respx.Body[APITenantMember], error) {
+	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member-delete", http.MethodDelete, "/members/{principal_id}", "Disable an operating platform membership"), authz.Guard{Resource: "platform_member", Verb: "delete"}, func(ctx context.Context, in *operatingPlatformMemberInput) (*respx.Body[APITenantMember], error) {
 		id, err := guid.RequireID(in.Subject)
 		if err != nil {
 			return nil, err
@@ -200,4 +200,11 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.OK(ctx, memberFromDomain(member)), nil
 	})
+}
+
+// created marks an operation that creates a resource: it answers 201, as every
+// create operation does.
+func created(operation huma.Operation) huma.Operation {
+	operation.DefaultStatus = http.StatusCreated
+	return operation
 }

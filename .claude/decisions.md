@@ -3302,3 +3302,51 @@ credential and voids earlier links; completing email verification also requires
 the password of the registration being confirmed. Directory/invitation-provisioned
 pending principals are never re-credentialed by public registration.
 Reason: audit S8 residual - the owner could click an attacker-triggered link.
+
+## List Parameters - 2026-09-28
+
+Decision: an offset-paged collection declares `limit` (default 50, minimum 1,
+maximum 200) and `offset` (default 0, minimum 0), answers through respx.List
+(items as data, paging in meta.page), and names its free-text filter `search`.
+Cursor-paged file collections keep `after` and their own bound (limit 50, max
+100) by design: they page a live directory tree whose rows move, not a counted
+table. Navigation trees (tenant menus, effective menus) are read whole and
+declare no paging parameters; a page of a tree is a tree with missing branches.
+Alignment (audit C13): personal tokens 20/100 -> 50/200; todo q -> search,
+20/100 -> 50/200, offset default 0; the two menu routes drop limit/offset
+(tenant menus ignored them; effective menus defaulted to "all").
+Guard: composed-spec invariant TestComposedOpenAPIPagesListsOneWay.
+Status: IMPLEMENTED.
+
+## Business Error Codes - 2026-09-28
+
+Decision: a failure the client must tell apart from another with the same HTTP
+status carries a business code in the existing envelope `code` (100000+), via
+respx.ErrStatus (respx.Err with an explicit status and optional data). The
+message is always a namespaced, localized key; the client branches on the code,
+never on message text. Each module owns a block: authn 101000-101999 (101001
+captcha_invalid), files 102000-102999 (102001 restore name conflict, 102002
+state changed, 102003 operation conflict, data = conflict frontier). The web
+client mirrors the codes in `businessCode` (iam-api.ts). The error-key gate has
+no allowlist any more (audit C15).
+Status: IMPLEMENTED.
+
+## Secret-Keyed Tables Keep Hash Primary Keys - 2026-09-28
+
+Decision: exemption to the snowflake primary-key rule. A table whose row is
+looked up by a presented secret (cookie, token, code, challenge) keys it by the
+secret's hash, because that hash is the only lookup the protocol offers and a
+second key would add an index without adding an access path. Exempt tables:
+iam_sessions, iam_passkeys (credential-ID hash), iam_mfa_challenges,
+iam_passkey_challenges, iam_stepup_challenges, iam_reauth_challenges,
+iam_recovery_codes (principal_id + code hash), iam_password_recovery_tokens,
+iam_email_verification_tokens (token HMAC), iam_identity_link_transactions,
+iam_oauth_codes, iam_oauth_consent_requests (challenge hash),
+iam_refresh_tokens. None of these hashes is ever an API identifier.
+Sessions and passkeys are listed and addressed by users, so they additionally
+carry a snowflake `public_id` (authn migration 18, unique, three dialects) that
+is their only API identity (/sessions/{session_id},
+/principals/{principal_id}/passkeys/{passkey_id}). New rows are inserted with
+it; rows created before the column get one from the authn module's start-up
+backfill. The column stays NULL-able only for that window.
+Status: IMPLEMENTED (audit D2).

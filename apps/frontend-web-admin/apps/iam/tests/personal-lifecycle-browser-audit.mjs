@@ -166,7 +166,7 @@ try {
           context,
           "/principals/{principal_id}/memberships"
         )
-        assert.equal(membership.items.length, 0)
+        assert.equal(membership.length, 0)
         await page.goto("/user/closure")
         await page
           .getByRole("button", {
@@ -265,7 +265,7 @@ try {
           "/system/closure-requests?status=processing"
         )
         assert(
-          requests.items.some(
+          requests.some(
             (item) =>
               item.principal_id === principal.id && item.status === "processing"
           )

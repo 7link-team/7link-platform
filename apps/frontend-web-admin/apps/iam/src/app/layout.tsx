@@ -365,7 +365,7 @@ export default function AppLayout() {
               platformAccess: false,
               error: "",
             })
-            if (metadata.scope_kind === "entity")
+            if (metadata.scope_type === "entity")
               setEntityCatalog({
                 subject,
                 tenant: tenant.id,

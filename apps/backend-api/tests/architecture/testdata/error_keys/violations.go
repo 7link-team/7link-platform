@@ -29,6 +29,9 @@ func bare(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 	if w != nil {
 		_ = huma.WriteErr(nil, nil, http.StatusUnprocessableEntity, "invalid_tenant_id")
 	}
+	if r != nil {
+		return respx.ErrStatus(ctx, http.StatusConflict, 100002, "business_conflict", nil)
+	}
 	return respx.Err(ctx, 100001, "business_rule")
 }
 

@@ -60,7 +60,7 @@ var tokenAlgorithms = jwsx.Algorithms{jwsx.RS256, jwsx.EdDSA}
 type Config struct {
 	Enabled        bool          `mapstructure:"enabled" description:"enable local identity and authentication" default:"false"`
 	Issuer         string        `mapstructure:"issuer" description:"canonical local OAuth/OIDC issuer URL"`
-	Audience       []string      `mapstructure:"audience" description:"accepted JWT audience values; empty skips audience check"`
+	Audience       []string      `mapstructure:"audience" description:"accepted JWT audience values; the first is the audience of locally issued access tokens; empty means [api]"`
 	JWKSURL        string        `mapstructure:"jwks_url" description:"optional upstream JWKS URL for federation adapters"`
 	HTTPTimeout    time.Duration `mapstructure:"http_timeout" description:"upstream discovery/JWKS HTTP timeout" default:"5s"`
 	ClockSkew      time.Duration `mapstructure:"clock_skew" description:"allowed token clock skew" default:"30s"`
@@ -200,6 +200,13 @@ type PasskeyConfig struct {
 	AllowedAttestationFormats []string      `mapstructure:"allowed_attestation_formats" description:"accepted attestation statement formats; empty allows every format"`
 	AllowedAAGUIDs            []string      `mapstructure:"allowed_aaguid" description:"accepted 16-byte authenticator AAGUID hex values; empty allows every authenticator"`
 }
+
+// DefaultAudience is the audience locally issued access tokens carry when a
+// deployment configures none. Like the cookie name it names what the tokens
+// are for, not who runs the deployment, so one build serves them all. It is a
+// constant rather than a default tag because configuration applies no default
+// to a list; the local issuer substitutes it for an empty audience.
+const DefaultAudience = "api"
 
 // DefaultSessionCookieName is the browser session cookie name a deployment
 // gets when it configures none. It is named for what it holds rather than

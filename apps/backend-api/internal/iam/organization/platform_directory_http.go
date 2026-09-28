@@ -50,7 +50,7 @@ func registerPlatformDirectoryHTTP(api huma.API, service *Service, groups *Group
 		}
 		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("organization-platform-department-create", http.MethodPost, "/departments", "Create an operating platform department"), authz.Guard{Resource: "dept", Verb: "create"}, func(ctx context.Context, in *createPlatformDepartmentInput) (*respx.Body[Department], error) {
+	authz.RegisterOperatingPlatform(registrar, api, created(op("organization-platform-department-create", http.MethodPost, "/departments", "Create an operating platform department")), authz.Guard{Resource: "dept", Verb: "create"}, func(ctx context.Context, in *createPlatformDepartmentInput) (*respx.Body[Department], error) {
 		parent, err := guid.OptionalID(in.Body.ParentID)
 		if err != nil {
 			return nil, err
@@ -68,11 +68,18 @@ func registerPlatformDirectoryHTTP(api huma.API, service *Service, groups *Group
 		}
 		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("organization-platform-group-create", http.MethodPost, "/principal-groups", "Create an operating platform user group"), authz.Guard{Resource: "group", Verb: "create"}, func(ctx context.Context, in *createPlatformGroupInput) (*respx.Body[Group], error) {
+	authz.RegisterOperatingPlatform(registrar, api, created(op("organization-platform-group-create", http.MethodPost, "/principal-groups", "Create an operating platform user group")), authz.Guard{Resource: "group", Verb: "create"}, func(ctx context.Context, in *createPlatformGroupInput) (*respx.Body[Group], error) {
 		item, err := groups.Create(ctx, authnext.TenantIDFromContext(ctx), CreateGroup{Name: in.Body.Name, Type: in.Body.Type, Rule: in.Body.Rule, Description: in.Body.Description, Status: in.Body.Status, SortOrder: in.Body.SortOrder})
 		if err != nil {
 			return nil, groupError(err)
 		}
 		return respx.OK(ctx, item), nil
 	})
+}
+
+// created marks an operation that creates a resource: it answers 201, as every
+// create operation does.
+func created(operation huma.Operation) huma.Operation {
+	operation.DefaultStatus = http.StatusCreated
+	return operation
 }

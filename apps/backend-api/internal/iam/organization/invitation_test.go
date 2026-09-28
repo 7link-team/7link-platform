@@ -428,3 +428,52 @@ func TestInvitationRolesMustBeGrantableByTheInviter(t *testing.T) {
 	_, _, err = service.Create(inviter, 1, CreateInvitation{Email: "other@example.com", RoleIDs: []guid.ID{10}})
 	require.ErrorIs(t, err, ErrUnavailable, "a guard that cannot judge grantability fails closed")
 }
+
+// Acceptance also places the invitee in the invitation's department without an
+// actor, and department-scoped roles reach what that department reaches, so
+// the inviter's data scope is checked where the department is chosen and
+// wherever the credential is re-issued (audit residue d, as S4c for members).
+func TestInvitationDepartmentMustStayWithinTheInvitersDataScope(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	h.seedTenant(t, 1, TenantActive)
+	h.seedRole(t, 1, 10)
+	department, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
+	require.NoError(t, err)
+	var principalCalls atomic.Int64
+	service := newInvitationService(t, h, &invitationCredentialFixture{}, &principalCalls)
+	guard := &grantingAdministratorGuard{}
+	service.administrators = guard
+	inviter := authnext.WithClaims(t.Context(), &authnext.Claims{PrincipalID: 5, TenantID: 1})
+	invitations := func() int64 {
+		var count int64
+		require.NoError(t, h.db.Table(h.table("iam_invitations")).Where("tenant_id = 1").Count(&count).Error)
+		return count
+	}
+
+	guard.placeErr = core.ErrPrivilegeEscalation
+	_, _, err = service.Create(inviter, 1, CreateInvitation{Email: "user@example.com", DepartmentID: department.ID, RoleIDs: []guid.ID{10}})
+	require.ErrorIs(t, err, core.ErrPrivilegeEscalation)
+	assert.Equal(t, []guid.ID{department.ID}, guard.placed)
+	assert.Zero(t, invitations(), "a refused placement leaves nothing to accept")
+
+	guard.placeErr = nil
+	pending, _, err := service.Create(inviter, 1, CreateInvitation{Email: "user@example.com", DepartmentID: department.ID, RoleIDs: []guid.ID{10}})
+	require.NoError(t, err)
+	_, _, err = service.Create(inviter, 1, CreateInvitation{Email: "plain@example.com", DepartmentID: department.ID})
+	require.NoError(t, err)
+	assert.Len(t, guard.placed, 2, "a department without roles reaches nothing")
+
+	guard.placeErr = core.ErrPrivilegeEscalation
+	before, err := getInvitation(t.Context(), service.repo, 1, pending.ID)
+	require.NoError(t, err)
+	_, _, err = service.Resend(inviter, 1, pending.ID, 0)
+	require.ErrorIs(t, err, core.ErrPrivilegeEscalation, "re-issuing a credential re-places the invitee")
+	assert.Equal(t, department.ID, guard.placed[len(guard.placed)-1])
+	after, err := getInvitation(t.Context(), service.repo, 1, pending.ID)
+	require.NoError(t, err)
+	assert.Equal(t, before.TokenHMAC, after.TokenHMAC)
+
+	service.administrators = &organizationAdministratorGuard{}
+	_, _, err = service.Create(inviter, 1, CreateInvitation{Email: "other@example.com", DepartmentID: department.ID, RoleIDs: []guid.ID{10}})
+	require.ErrorIs(t, err, ErrUnavailable, "a guard that cannot judge the placement fails closed")
+}

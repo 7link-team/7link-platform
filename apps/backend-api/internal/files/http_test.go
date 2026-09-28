@@ -15,6 +15,7 @@ import (
 
 	filesi18n "7link.com/platform/internal/files/i18n"
 	"7link.com/platform/internal/files/query"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -175,16 +176,37 @@ func TestFileHTTPInputAndErrorMapping(t *testing.T) {
 	} {
 		require.Equal(t, test.status, fileHTTPError(test.err).(huma.StatusError).GetStatus())
 	}
-	var restoreConflict *huma.ErrorModel
-	require.ErrorAs(t, fileHTTPError(errRestoreNameConflict), &restoreConflict)
-	require.Equal(t, "file_restore_name_conflict", restoreConflict.Detail)
+	// The failures the client resolves carry a business code, not a bare key.
+	business := func(err error) (int, map[string]any) {
+		t.Helper()
+		mapped := fileHTTPError(err)
+		var status huma.StatusError
+		require.ErrorAs(t, mapped, &status)
+		raw, marshalErr := json.Marshal(mapped)
+		require.NoError(t, marshalErr)
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(raw, &body))
+		return status.GetStatus(), body
+	}
+	status, body := business(errRestoreNameConflict)
+	require.Equal(t, http.StatusConflict, status)
+	require.EqualValues(t, fileRestoreNameConflictCode, body["code"])
+	require.Equal(t, filesi18n.FileRestoreNameConflict, body["message"])
+	for _, changed := range []error{errTreeConflict, errVersionConflict, errOperationKey, errOperationState, core.ErrAuthorizationChanged} {
+		status, body = business(changed)
+		require.Equal(t, http.StatusConflict, status)
+		require.EqualValues(t, fileStateChangedCode, body["code"])
+		require.Equal(t, filesi18n.FileStateChanged, body["message"])
+	}
 
 	conflicts := &immediateConflicts{SpaceRevision: 7, Conflicts: []immediateConflict{{Key: strings.Repeat("a", 64), Kind: "file"}}}
-	mapped := fileHTTPError(conflicts)
-	var response *fileConflictHTTPError
-	require.ErrorAs(t, mapped, &response)
-	require.Same(t, conflicts, response.Data)
-	require.Equal(t, http.StatusConflict, response.GetStatus())
+	status, body = business(conflicts)
+	require.Equal(t, http.StatusConflict, status)
+	require.EqualValues(t, fileOperationConflictCode, body["code"])
+	require.Equal(t, filesi18n.FileOperationConflict, body["message"])
+	data, ok := body["data"].(map[string]any)
+	require.True(t, ok, "the conflict frontier travels as data")
+	require.EqualValues(t, 7, data["space_revision"])
 }
 
 func requireFileID(t *testing.T, raw string) guid.ID {
@@ -304,6 +326,15 @@ func TestFileHTTPAuthorizedBasicRoutes(t *testing.T) {
 	require.Equal(t, http.StatusOK, metadata.Code, metadata.Body.String())
 	byPath := api.Get("/files/2/-/Source/Shared/root.txt", headers...)
 	require.Equal(t, http.StatusOK, byPath.Code, byPath.Body.String())
+	// The published operation describes the path as multi-segment and an
+	// escaped separator as the same path: %2F is decoded before the lookup.
+	escaped := api.Get("/files/2/-/Source%2FShared%2Froot.txt", headers...)
+	require.Equal(t, http.StatusOK, escaped.Code, escaped.Body.String())
+	var plain, decoded respx.Envelope[fileEntryView]
+	require.NoError(t, json.Unmarshal(byPath.Body.Bytes(), &plain))
+	require.NoError(t, json.Unmarshal(escaped.Body.Bytes(), &decoded))
+	assert.Equal(t, plain.Data.ID, decoded.Data.ID)
+	assert.NotZero(t, decoded.Data.ID)
 
 	created := postFileForm(t, api, headers, map[string]string{"parent_id": "2", "kind": "directory", "name": "Contracts"}, "", "")
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
@@ -563,10 +594,6 @@ func TestFileHTTPHelpersRejectMalformedRequests(t *testing.T) {
 		require.Equal(t, status, response.GetStatus())
 		require.Equal(t, detail, response.Detail)
 	}
-
-	conflict := &fileConflictHTTPError{status: http.StatusConflict, Message: "file conflict"}
-	require.Equal(t, "file conflict", conflict.Error())
-	require.Equal(t, http.StatusConflict, conflict.GetStatus())
 
 	page, err := browserPageOf(" 32 ", 7)
 	require.NoError(t, err)

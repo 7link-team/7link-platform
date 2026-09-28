@@ -14,13 +14,13 @@ import (
 
 // samlSPListInput bounds the listing by default, like providerListInput.
 type samlSPListInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type samlSPIDInput struct {
-	ServiceProviderID string `path:"sp_id" maxLength:"128"`
+	ServiceProviderID string `path:"sp_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type samlSPBody struct {
@@ -31,12 +31,12 @@ type samlSPBody struct {
 }
 
 type samlSPCreateInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     samlSPBody
 }
 
 type samlSPReplaceInput struct {
-	ServiceProviderID string `path:"sp_id" maxLength:"128"`
+	ServiceProviderID string `path:"sp_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body              samlSPBody
 }
 
@@ -124,7 +124,7 @@ func registerSAMLBrowserHTTP(api huma.API, service *Service) {
 		OperationID: "federation-saml-sso", Method: http.MethodGet, Path: samlSSORoute,
 		Summary: "Process a SAML AuthnRequest and return a signed response", Tags: []string{"saml"},
 		Parameters: []*huma.Param{
-			{Name: "tenant_id", In: "path", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(128)}},
+			authz.IDPathParameter("tenant_id", "Tenant whose SAML identity provider answers"),
 			{Name: "SAMLRequest", In: "query", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(65536)}},
 			{Name: "RelayState", In: "query", Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(2048)}},
 		},
@@ -147,7 +147,7 @@ func registerSAMLBrowserHTTP(api huma.API, service *Service) {
 		OperationID: "federation-saml-sso-post", Method: http.MethodPost, Path: samlSSORoute,
 		Summary: "Process a SAML AuthnRequest (HTTP-POST binding)", Tags: []string{"saml"},
 		Parameters: []*huma.Param{
-			{Name: "tenant_id", In: "path", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(128)}},
+			authz.IDPathParameter("tenant_id", "Tenant whose SAML identity provider answers"),
 		},
 	}
 	authz.Public(&ssoPost)
@@ -169,7 +169,7 @@ func registerSAMLBrowserHTTP(api huma.API, service *Service) {
 		OperationID: "federation-saml-slo", Method: http.MethodGet, Path: samlSLORoute,
 		Summary: "Process a SAML LogoutRequest and revoke the browser session", Tags: []string{"saml"},
 		Parameters: []*huma.Param{
-			{Name: "tenant_id", In: "path", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(128)}},
+			authz.IDPathParameter("tenant_id", "Tenant whose SAML identity provider answers"),
 			{Name: "SAMLRequest", In: "query", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(65536)}},
 			{Name: "RelayState", In: "query", Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(2048)}},
 		},
@@ -193,7 +193,7 @@ func registerSAMLBrowserHTTP(api huma.API, service *Service) {
 		OperationID: "federation-saml-slo-post", Method: http.MethodPost, Path: samlSLORoute,
 		Summary: "Process a SAML LogoutRequest (HTTP-POST binding)", Tags: []string{"saml"},
 		Parameters: []*huma.Param{
-			{Name: "tenant_id", In: "path", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(128)}},
+			authz.IDPathParameter("tenant_id", "Tenant whose SAML identity provider answers"),
 		},
 	}
 	authz.Public(&sloPost)
@@ -216,7 +216,7 @@ func registerSAMLBrowserHTTP(api huma.API, service *Service) {
 		OperationID: "federation-saml-metadata", Method: http.MethodGet, Path: samlMetadataRoute,
 		Summary: "Return the tenant SAML identity provider metadata", Tags: []string{"saml"},
 		Parameters: []*huma.Param{
-			{Name: "tenant_id", In: "path", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(128)}},
+			authz.IDPathParameter("tenant_id", "Tenant whose SAML identity provider answers"),
 		},
 	}
 	authz.Public(&metadata)

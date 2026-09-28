@@ -747,7 +747,7 @@ try {
         undefined,
         tenant.id
       )
-      for (const principal of discovered.items) {
+      for (const principal of discovered) {
         if (principal.display_name?.startsWith(stamp))
           principals.add(principal.id)
       }

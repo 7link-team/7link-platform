@@ -222,3 +222,65 @@ func TestMemberDepartmentChangeStaysWithinTheActorsConstraint(t *testing.T) {
 	require.NoError(t, move(peerID, 103))
 	assert.Equal(t, []string{"103"}, reach(peerID))
 }
+
+// An invitation places its invitee in a department together with roles, and
+// acceptance applies both without an actor. A department-scoped role then
+// reaches what the invitation's department reaches, so the placement is bounded
+// by the inviter's own constraint the way a department move is.
+func TestDepartmentPlacementStaysWithinTheActorsConstraint(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	tenantID, actorID := guid.ID(1), guid.ID(10)
+	h.seedMember(t, tenantID, actorID, MemberActive)
+	now := repositoryTestTime
+	require.NoError(t, h.db.Exec(`INSERT INTO sl_iam_departments
+		(tenant_id,id,parent_id,name,name_key,status,sort_order,version,created_at,updated_at)
+		VALUES (?, 101, NULL, 'Sales', 'sales', 'active', 0, 1, ?, ?),
+		       (?, 102, 101, 'Sales east', 'sales east', 'active', 0, 1, ?, ?),
+		       (?, 103, NULL, 'Support', 'support', 'active', 0, 1, ?, ?)`,
+		tenantID, now, now, tenantID, now, now, tenantID, now, now).Error)
+	require.NoError(t, h.db.Exec(`INSERT INTO sl_iam_department_closure
+		(tenant_id,ancestor_id,descendant_id,depth)
+		VALUES (?,101,101,0),(?,101,102,1),(?,102,102,0),(?,103,103,0)`, tenantID, tenantID, tenantID, tenantID).Error)
+	require.NoError(t, h.db.Exec(`INSERT INTO sl_iam_member_departments
+		(tenant_id,principal_id,department_id,updated_at) VALUES (?, ?, 101, ?)`, tenantID, actorID, now).Error)
+	role := func(name string, scope DataScope, members ...guid.ID) guid.ID {
+		created, err := h.repository.CreateRole(t.Context(), tenantID, name, "")
+		require.NoError(t, err)
+		_, err = h.repository.GrantPermission(t.Context(), tenantID, created.ID, "todo_view")
+		require.NoError(t, err)
+		_, _, err = h.service.SetRoleDataScope(t.Context(), tenantID, created.ID, scope, nil)
+		require.NoError(t, err)
+		for _, member := range members {
+			_, err = h.repository.AddMember(t.Context(), tenantID, created.ID, member)
+			require.NoError(t, err)
+		}
+		return created.ID
+	}
+	department := role("Department tasks", DataScopeDepartment, actorID)
+	subtree := role("Department and below", DataScopeDepartmentAndDescendants)
+	own := role("Own tasks", DataScopeSelf)
+	actor := authn.WithClaims(t.Context(), &authn.Claims{SubjectType: authn.SubjectTypePrincipal, PrincipalID: actorID, TenantID: tenantID})
+	place := func(departmentID guid.ID, roles ...guid.ID) error {
+		return h.service.requireGrantableDepartmentPlacement(actor, h.repository, tenantID, departmentID, roles)
+	}
+
+	require.NoError(t, place(101, department), "into the actor's own department")
+	for _, outside := range []guid.ID{102, 103} {
+		require.ErrorIs(t, place(outside, department), ErrPrivilegeEscalation, "into department %s", outside)
+	}
+	require.ErrorIs(t, place(101, subtree), ErrPrivilegeEscalation, "the subtree reaches 102, which the actor's department scope does not")
+	require.NoError(t, place(103, own), "a role without a department-based scope reaches nothing through the department")
+	require.NoError(t, place(0, department), "no department places the invitee nowhere")
+	require.NoError(t, place(103), "a department without roles grants nothing")
+	require.NoError(t, h.service.requireGrantableDepartmentPlacement(t.Context(), h.repository, tenantID, 103, []guid.ID{department}),
+		"without an actor there is no grantor to exceed")
+
+	// A tenant administrator is unaffected.
+	administrators, err := h.repository.CreateRole(t.Context(), tenantID, "Tenant administrators", "")
+	require.NoError(t, err)
+	_, err = h.repository.GrantPermission(t.Context(), tenantID, administrators.ID, "tenant_administer")
+	require.NoError(t, err)
+	_, err = h.repository.AddMember(t.Context(), tenantID, administrators.ID, actorID)
+	require.NoError(t, err)
+	require.NoError(t, place(103, department, subtree))
+}

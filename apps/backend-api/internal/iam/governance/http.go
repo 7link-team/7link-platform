@@ -17,20 +17,20 @@ import (
 )
 
 type tenantInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 // listInput bounds a tenant listing by default. tenantInput stays as it is
 // because the endpoints that only address a tenant share it; these listings grow
 // with the tenant and an omitted limit used to mean "every row".
 type listInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type createRequestInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		RoleID          string    `json:"role_id" minLength:"1" maxLength:"32"`
 		Reason          string    `json:"reason" minLength:"3" maxLength:"500"`
@@ -39,7 +39,7 @@ type createRequestInput struct {
 }
 
 type decisionInput struct {
-	ID   string `path:"request_id" maxLength:"64"`
+	ID   string `path:"request_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body struct {
 		Decision string `json:"decision" enum:"approved,rejected"`
 		Note     string `json:"note,omitempty" maxLength:"500"`
@@ -47,14 +47,14 @@ type decisionInput struct {
 }
 
 type revokeInput struct {
-	ID   string `path:"request_id" maxLength:"64"`
+	ID   string `path:"request_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body struct {
 		Reason string `json:"reason,omitempty" maxLength:"500"`
 	}
 }
 
 type createReviewInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		Name  string    `json:"name" minLength:"3" maxLength:"128"`
 		DueAt time.Time `json:"due_at" format:"date-time"`
@@ -62,19 +62,19 @@ type createReviewInput struct {
 }
 
 type reviewInput struct {
-	ID string `path:"review_id" maxLength:"64"`
+	ID string `path:"review_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type reviewUpdateInput struct {
-	ID   string `path:"review_id" maxLength:"64"`
+	ID   string `path:"review_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body struct {
 		Status string `json:"status" enum:"completed,cancelled"` //nolint:misspell // Frozen source state value.
 	}
 }
 
 type reviewItemInput struct {
-	ID     string `path:"review_id" maxLength:"64"`
-	ItemID string `path:"item_id" maxLength:"64"`
+	ID     string `path:"review_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	ItemID string `path:"item_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body   struct {
 		Decision string `json:"decision" enum:"keep,revoke"`
 		Note     string `json:"note,omitempty" maxLength:"500"`

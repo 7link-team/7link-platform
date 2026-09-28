@@ -17,11 +17,11 @@ import (
 )
 
 type departmentResourceInput struct {
-	ID string `path:"department_id" maxLength:"128"`
+	ID string `path:"department_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type groupResourceInput struct {
-	ID string `path:"group_id" maxLength:"128"`
+	ID string `path:"group_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 // tenantPageSelector selects a tenant for a listing that has to be bounded by
@@ -30,34 +30,34 @@ type groupResourceInput struct {
 // one, maximum two hundred, default fifty -- rather than the opt-in shape,
 // where omitting limit returns every row.
 type tenantPageSelector struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type groupResourcePageInput struct {
-	ID     string `path:"group_id" maxLength:"128"`
+	ID     string `path:"group_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset int    `query:"offset" minimum:"0" default:"0"`
 	Limit  int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type groupMemberResourceInput struct {
-	ID          string `path:"group_id" maxLength:"128"`
-	PrincipalID string `path:"principal_id" maxLength:"128"`
+	ID          string `path:"group_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	PrincipalID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type deleteDepartmentInput struct {
-	ID      string `path:"department_id" maxLength:"128"`
+	ID      string `path:"department_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Version int64  `query:"version" minimum:"1"`
 }
 
 type deleteGroupInput struct {
-	ID      string `path:"group_id" maxLength:"128"`
+	ID      string `path:"group_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Version int64  `query:"version" minimum:"1"`
 }
 
 type createDepartmentInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		EntityID  string `json:"entity_id" minLength:"1" maxLength:"128"`
 		ParentID  string `json:"parent_id,omitempty" maxLength:"128"`
@@ -68,7 +68,7 @@ type createDepartmentInput struct {
 }
 
 type updateDepartmentInput struct {
-	ID   string `path:"department_id" maxLength:"128"`
+	ID   string `path:"department_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body struct {
 		ParentID  *string `json:"parent_id,omitempty" maxLength:"128"`
 		Name      *string `json:"name,omitempty" minLength:"1" maxLength:"128"`
@@ -79,8 +79,8 @@ type updateDepartmentInput struct {
 }
 
 type groupMembershipInput struct {
-	ID          string `path:"group_id" maxLength:"128"`
-	PrincipalID string `path:"principal_id" maxLength:"128"`
+	ID          string `path:"group_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	PrincipalID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body        struct {
 		StartsAt *time.Time `json:"starts_at,omitempty"`
 		EndsAt   *time.Time `json:"ends_at,omitempty"`
@@ -88,7 +88,7 @@ type groupMembershipInput struct {
 }
 
 type createGroupInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		Name        string         `json:"name" minLength:"1" maxLength:"128"`
 		Type        string         `json:"type,omitempty" enum:"static,dynamic" default:"static"`
@@ -100,7 +100,7 @@ type createGroupInput struct {
 }
 
 type updateGroupInput struct {
-	ID   string `path:"group_id" maxLength:"128"`
+	ID   string `path:"group_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body struct {
 		Name        *string         `json:"name,omitempty" minLength:"1" maxLength:"128"`
 		Description *string         `json:"description,omitempty" maxLength:"1024"`
@@ -121,7 +121,7 @@ type listTenantsInput struct {
 }
 
 type tenantIDInput struct {
-	ID string `path:"tenant_id" maxLength:"128"`
+	ID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type createTenantInput struct {
@@ -135,7 +135,7 @@ type createTenantInput struct {
 }
 
 type updateTenantInput struct {
-	ID   string `path:"tenant_id" maxLength:"128"`
+	ID   string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body struct {
 		Name    *string `json:"name,omitempty" minLength:"1" maxLength:"128"`
 		Status  *string `json:"status,omitempty" enum:"active,suspended"`
@@ -144,12 +144,12 @@ type updateTenantInput struct {
 }
 
 type deleteTenantInput struct {
-	ID      string `path:"tenant_id" maxLength:"128"`
+	ID      string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Version int64  `query:"version" minimum:"1"`
 }
 
 type createInvitationInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		Email          string   `json:"email" format:"email" maxLength:"320"`
 		DepartmentID   string   `json:"department_id,omitempty" maxLength:"128"`
@@ -159,14 +159,14 @@ type createInvitationInput struct {
 }
 
 type resendInvitationInput struct {
-	ID   string `path:"invitation_id" maxLength:"128"`
+	ID   string `path:"invitation_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body struct {
 		ExpiresInHours int `json:"expires_in_hours,omitempty" minimum:"1" maximum:"720" default:"72"`
 	}
 }
 
 type invitationResourceInput struct {
-	ID string `path:"invitation_id" maxLength:"128"`
+	ID string `path:"invitation_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 func tenantOwner(tenantID guid.ID, found bool, err error) (authz.ResourceOwner, bool, error) {
@@ -709,8 +709,7 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 	authz.RegisterPublic(api, huma.Operation{
 		OperationID: "organization-accept-invitation", Method: http.MethodPost, Path: "/membership-invitations/acceptances",
 		Summary: "Accept a tenant invitation and create the local principal", Tags: []string{"authentication"},
-		Security: []map[string][]string{},
-		Errors:   []int{http.StatusBadRequest, http.StatusConflict, http.StatusGone, http.StatusInternalServerError},
+		Errors: []int{http.StatusBadRequest, http.StatusConflict, http.StatusGone, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *acceptInvitationInput) (*respx.Body[InvitationAcceptance], error) {
 		accepted, err := service.Accept(ctx, AcceptInvitation{
 			Token: in.Body.Token, LoginName: in.Body.LoginName,

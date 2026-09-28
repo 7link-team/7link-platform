@@ -386,7 +386,7 @@ func TestIdentityPrincipalHTTPLifecycleAndTenantIsolation(t *testing.T) {
 
 	listedByB := harness.api.Get(headerB+"/principals?limit=50", auth)
 	require.Equal(t, http.StatusOK, listedByB.Code)
-	assert.Empty(t, decodeIdentityEnvelope[principalListData](t, listedByB).Data.Items)
+	assert.Empty(t, decodeIdentityEnvelope[[]PrincipalView](t, listedByB).Data)
 	assert.Equal(t, "Alice Smith", harness.principal(t, principal.ID).DisplayName)
 	assert.Equal(t, "active", harness.principal(t, principal.ID).Status)
 }
@@ -596,7 +596,7 @@ func TestIdentityHTTPReportsStorageFailuresInsteadOfEmptyAnswers(t *testing.T) {
 		"delete service account": harness.api.Delete(accountPath+"?version=1", auth),
 	} {
 		assert.Equal(t, http.StatusInternalServerError, response.Code, "%s: %s", name, response.Body.String())
-		assert.NotContains(t, response.Body.String(), `"items":[]`, "%s must not answer as an empty page", name)
+		assert.NotContains(t, response.Body.String(), `"data":[]`, "%s must not answer as an empty page", name)
 	}
 }
 

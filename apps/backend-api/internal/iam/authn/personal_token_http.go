@@ -34,7 +34,7 @@ type personalTokenCreateInput struct {
 type personalTokenListInput struct {
 	PersonalTokenBrowserInput
 	Offset int `query:"offset" minimum:"0" default:"0"`
-	Limit  int `query:"limit" minimum:"1" maximum:"100" default:"20"`
+	Limit  int `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type personalTokenDeleteInput struct {
@@ -62,7 +62,7 @@ func personalTokenError(err error) error {
 
 func registerPersonalTokenHTTP(api huma.API, service *Service) {
 	registrar := authz.NewAuthenticationOnlyRegistrar(service)
-	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-personal-token-preparation", Method: http.MethodPost,
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-personal-token-preparation", Method: http.MethodPost, DefaultStatus: http.StatusCreated,
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
 		Path:     "/principals/{principal_id}/personal-token-preparations", Summary: "Prepare exact permissions and expiry for fresh verification", Tags: []string{"account"}, Errors: []int{401, 403, 422, 500, 503}},
 		func(ctx context.Context, in *personalTokenPrepareInput) (*respx.Body[PersonalTokenPreparation], error) {
@@ -75,7 +75,7 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 			}
 			return respx.OK(ctx, result), nil
 		})
-	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-personal-token", Method: http.MethodPost,
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-personal-token", Method: http.MethodPost, DefaultStatus: http.StatusCreated,
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
 		Path:     "/principals/{principal_id}/personal-tokens", Summary: "Create a tenant-scoped personal token; return its secret once", Tags: []string{"account"}, Errors: []int{401, 403, 422, 500, 503}},
 		func(ctx context.Context, in *personalTokenCreateInput) (*respx.Body[PersonalTokenCreated], error) {
@@ -106,9 +106,9 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 			if in.Authorization != "" {
 				return nil, huma.Error401Unauthorized(respx.Unauthorized)
 			}
-			id, err := guid.Parse(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
-				return nil, personalTokenError(errPersonalTokenInput)
+				return nil, err
 			}
 			if err := service.RevokePersonalToken(ctx, in.Cookie, id); err != nil {
 				return nil, personalTokenError(err)
@@ -118,9 +118,9 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-list-personal-token-permissions", Method: http.MethodGet,
 		Path: "/principals/{principal_id}/personal-token-permissions", Summary: "List currently granted permissions available for a personal token", Tags: []string{"account"}, Errors: []int{401, 422, 500, 503}},
 		func(ctx context.Context, in *personalTokenPermissionsInput) (*respx.Body[[]authz.Action], error) {
-			tenantID, err := guid.Parse(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
-				return nil, personalTokenError(errPersonalTokenInput)
+				return nil, err
 			}
 			result, err := service.PersonalTokenPermissions(ctx, in.Cookie, tenantID)
 			if err != nil {

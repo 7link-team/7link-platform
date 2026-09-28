@@ -21,17 +21,17 @@ const (
 
 func fileAuthorizationActions() []authz.Action {
 	actions := []authz.Action{
-		{Resource: "file", Verb: "view", Scope: "tenant", Summary: "view file workspaces", DataScoped: true, Menu: true},
-		{Resource: "file", Verb: "read_all", Scope: "tenant", Summary: "read all files in the authorized management scope", DataScoped: true},
+		{Resource: "file", Verb: "view", Scope: authz.ActionScopeTenant, Summary: "view file workspaces", DataScoped: true, Menu: true},
+		{Resource: "file", Verb: "read_all", Scope: authz.ActionScopeTenant, Summary: "read all files in the authorized management scope", DataScoped: true},
 	}
 	for _, verb := range []string{"list", "traverse", "read", "download", "create", "update", "rename", "move", "delete", "restore", "purge", "share", "manage_acl"} {
-		actions = append(actions, authz.Action{Resource: "file", Verb: verb, Scope: "tenant", Summary: verb + " files", DataScoped: true})
+		actions = append(actions, authz.Action{Resource: "file", Verb: verb, Scope: authz.ActionScopeTenant, Summary: verb + " files", DataScoped: true})
 	}
 	for index := range actions {
 		actions[index].Code = authz.PermissionCode(actions[index].Resource, actions[index].Verb)
 	}
 	for _, verb := range []string{"view", "list", "traverse", "read", "download", "create", "update", "rename", "move", "delete", "restore", "purge", "share", "manage_acl"} {
-		actions = append(actions, authz.Action{Code: "system_file_" + verb, Resource: "system_file", Verb: verb, Scope: "platform", Summary: verb + " system shared files", Menu: verb == "view"})
+		actions = append(actions, authz.Action{Code: "system_file_" + verb, Resource: "system_file", Verb: verb, Scope: authz.ActionScopeSystem, Summary: verb + " system shared files", Menu: verb == "view"})
 	}
 	return actions
 }

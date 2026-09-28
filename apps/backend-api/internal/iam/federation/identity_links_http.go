@@ -85,7 +85,7 @@ func registerPersonalIdentityHTTP(api huma.API, service *Service) {
 		}
 		return respx.OK(ctx, rows), nil
 	})
-	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-create-personal-identity-transaction", Method: http.MethodPost, Path: "/principals/{principal_id}/identity-link-transactions", Tags: []string{"account"}, Summary: "Start linking or reauthenticate an existing linked identity", Errors: []int{401, 403, 409, 500}}, func(ctx context.Context, in *identityOperationInput) (*identityOperationOutput, error) {
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-create-personal-identity-transaction", Method: http.MethodPost, DefaultStatus: http.StatusCreated, Path: "/principals/{principal_id}/identity-link-transactions", Tags: []string{"account"}, Summary: "Start linking or reauthenticate an existing linked identity", Errors: []int{401, 403, 409, 500}}, func(ctx context.Context, in *identityOperationInput) (*identityOperationOutput, error) {
 		if in.Authorization != "" {
 			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}

@@ -1015,15 +1015,30 @@ func memberDepartmentScope(
 	if row.DepartmentID.Zero() {
 		return result, nil
 	}
+	return departmentScopeReach(ctx, db, directory, tenantID, row.DepartmentID, department, descendants)
+}
+
+// departmentScopeReach is what a department (department) or
+// department-and-descendants (descendants) data scope reaches for a member of
+// departmentID: the department itself, or it and every active department below
+// it.
+func departmentScopeReach(
+	ctx context.Context,
+	db *gorm.DB,
+	directory query.DirectoryTables,
+	tenantID, departmentID guid.ID,
+	department, descendants bool,
+) ([]guid.ID, error) {
+	result := []guid.ID{}
 	if department {
-		result = append(result, row.DepartmentID)
+		result = append(result, departmentID)
 	}
 	if descendants {
 		ids := make([]guid.ID, 0)
-		err = db.WithContext(ctx).Table(directory.DepartmentClosure.String()+" AS c").
+		err := db.WithContext(ctx).Table(directory.DepartmentClosure.String()+" AS c").
 			Select("c.descendant_id").
 			Joins("JOIN "+directory.Departments.String()+" AS d ON d.tenant_id = c.tenant_id AND d.id = c.descendant_id AND d.status = 'active'").
-			Where("c.tenant_id = ? AND c.ancestor_id = ?", tenantID, row.DepartmentID).
+			Where("c.tenant_id = ? AND c.ancestor_id = ?", tenantID, departmentID).
 			Pluck("c.descendant_id", &ids).Error
 		if err != nil {
 			return nil, fmt.Errorf("list authorization department descendants: %w", err)

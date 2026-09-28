@@ -49,7 +49,7 @@ func TestSystemDepartmentHTTPHierarchyOwnershipAndTransactionGuard(t *testing.T)
 	client := humatest.Wrap(t, api)
 	auth := "Authorization: Bearer test"
 	response := client.Post("/system/departments", auth, map[string]any{"name": "System support"})
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	var body struct {
 		Data Department `json:"data"`
 	}
@@ -58,7 +58,7 @@ func TestSystemDepartmentHTTPHierarchyOwnershipAndTransactionGuard(t *testing.T)
 	require.Equal(t, guid.ID(99), parent.TenantID)
 	require.Zero(t, parent.EntityID)
 	response = client.Post("/system/departments", auth, map[string]any{"name": "Security", "parent_id": parent.ID.String()})
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	child := body.Data
 	require.Equal(t, http.StatusConflict, client.Patch("/system/departments/"+parent.ID.String(), auth, map[string]any{"parent_id": child.ID.String(), "version": 1}).Code)

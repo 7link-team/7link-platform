@@ -271,11 +271,6 @@ export interface AvatarSettings {
   url: string
 }
 
-export interface PrincipalList {
-  items: Principal[]
-  total: number
-}
-
 export interface PrincipalLifecycle {
   principal_id: string
   version: number
@@ -312,11 +307,6 @@ export interface ServiceAccount {
   version: number
   created_at: string
   updated_at: string
-}
-
-export interface ServiceAccountList {
-  items: ServiceAccount[]
-  total: number
 }
 
 export interface ServiceAccountCredential {
@@ -1099,22 +1089,39 @@ interface ErrorResponse {
   data?: unknown
 }
 
+/**
+ * Business codes (envelope code 100000 and above) of the failures the client
+ * resolves rather than reports. The server owns the numbers: authn uses
+ * 101000-101999 and files 102000-102999. Branch on these, never on a message,
+ * which is localized.
+ */
+export const businessCode = {
+  captchaInvalid: 101001,
+  fileRestoreNameConflict: 102001,
+  fileStateChanged: 102002,
+  fileOperationConflict: 102003,
+} as const
+
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
   readonly data: unknown
+  /** The envelope's business code, when the failure has one. */
+  readonly businessCode: number | undefined
 
   constructor(
     status: number,
     code: string,
     message = clientErrorMessage(code),
-    data?: unknown
+    data?: unknown,
+    businessCode?: number
   ) {
     super(message)
     this.name = "ApiError"
     this.status = status
     this.code = code
     this.data = data
+    this.businessCode = businessCode
   }
 }
 
@@ -1326,13 +1333,21 @@ function apiError(status: number, body: ErrorResponse | null): ApiError {
     body?.detail?.trim() ||
     message ||
     `HTTP ${status}`
-  return new ApiError(status, code, message || undefined, body?.data)
+  const business =
+    typeof body?.code === "number" && body.code >= 100000
+      ? body.code
+      : undefined
+  return new ApiError(status, code, message || undefined, body?.data, business)
 }
 
 export function fileOperationConflicts(
   cause: unknown
 ): FileOperationConflicts | null {
-  if (!(cause instanceof ApiError) || cause.status !== 409) return null
+  if (
+    !(cause instanceof ApiError) ||
+    cause.businessCode !== businessCode.fileOperationConflict
+  )
+    return null
   const data = cause.data
   if (!data || typeof data !== "object") return null
   const candidate = data as Partial<FileOperationConflicts>
@@ -1453,6 +1468,15 @@ export function createIamApi(
   }
   const requestEnvelope = <T>(route: ApiRoute) =>
     requestEnvelopeWithBase<T>(apiBase, route)
+  // One page of a list endpoint: the items are the data and the total is the
+  // envelope's meta.page, which is how every collection reports its size.
+  const requestPage = async <T>(
+    route: ApiRoute
+  ): Promise<{ items: T[]; total: number }> => {
+    const envelope = await requestEnvelope<T[]>(route)
+    const items = envelope.data ?? []
+    return { items, total: envelope.meta?.page?.total ?? items.length }
+  }
   const fileOperationRoute = async (
     entityID: string | null | undefined,
     system = false
@@ -1706,7 +1730,7 @@ export function createIamApi(
         status?: "active" | "disabled"
       } = {}
     ) =>
-      request<{ items: Principal[]; total: number }>(
+      requestPage<Principal>(
         apiRoute("get", "/system/principals", {
           query: { search, offset, limit: 50, ...filters },
         })
@@ -1914,7 +1938,7 @@ export function createIamApi(
       ),
     accountViewWorkspace: () =>
       request<{
-        scope_kind: import("./account-view").AccountViewScope
+        scope_type: import("./account-view").AccountViewScope
         scope_id: string
         tenant?: Pick<Tenant, "id" | "slug" | "name" | "status">
         entity?: Entity
@@ -2276,7 +2300,7 @@ export function createIamApi(
         { body: JSON.stringify({ proof }) }
       ),
     personalMemberships: async (offset = 0, limit = 50) =>
-      request<{ items: PersonalMembership[]; total: number }>(
+      requestPage<PersonalMembership>(
         apiRoute("get", "/principals/{principal_id}/memberships", {
           path: { principal_id: await principalID() },
           query: { offset: offset, limit: limit },
@@ -2360,7 +2384,7 @@ export function createIamApi(
         RouteQuery<"/system/closure-requests">["status"]
       > = "pending"
     ) =>
-      request<{ items: ClosureRequest[]; total: number }>(
+      requestPage<ClosureRequest>(
         apiRoute("get", "/system/closure-requests", {
           query: { status, offset: offset, limit: limit },
         })
@@ -2585,7 +2609,7 @@ export function createIamApi(
         { body: JSON.stringify({ current_password: currentPassword }) }
       ),
     principals: (search = "") =>
-      request<PrincipalList>(
+      requestPage<Principal>(
         apiRoute("get", "/tenants/{tenant_id}/principals", {
           path: { tenant_id: tenantID() },
           query: { limit: 200, search: search },
@@ -2674,7 +2698,7 @@ export function createIamApi(
         { body: JSON.stringify(body) }
       ),
     serviceAccounts: (search = "") =>
-      request<ServiceAccountList>(
+      requestPage<ServiceAccount>(
         apiRoute("get", "/tenants/{tenant_id}/service-accounts", {
           path: { tenant_id: tenantID() },
           query: { limit: 200, search: search },
@@ -2800,23 +2824,23 @@ export function createIamApi(
       >
     ) =>
       request<Member>(
-        apiRoute("patch", "/tenants/{tenant_id}/members/{subject}", {
-          path: { tenant_id: tenantID(), subject: subject },
+        apiRoute("patch", "/tenants/{tenant_id}/members/{principal_id}", {
+          path: { tenant_id: tenantID(), principal_id: subject },
         }),
         { body: JSON.stringify(body) }
       ),
     memberRoles: (subject: string) =>
       request<string[]>(
-        apiRoute("get", "/tenants/{tenant_id}/members/{subject}/roles", {
-          path: { tenant_id: tenantID(), subject: subject },
+        apiRoute("get", "/tenants/{tenant_id}/members/{principal_id}/roles", {
+          path: { tenant_id: tenantID(), principal_id: subject },
         })
       ),
     memberAuthorizationSources: (subject: string) =>
       request<MemberAuthorizationSnapshot>(
         apiRoute(
           "get",
-          "/tenants/{tenant_id}/members/{subject}/authorization-sources",
-          { path: { tenant_id: tenantID(), subject: subject } }
+          "/tenants/{tenant_id}/members/{principal_id}/authorization-sources",
+          { path: { tenant_id: tenantID(), principal_id: subject } }
         )
       ),
     entities: () =>
@@ -3334,14 +3358,14 @@ export function createIamApi(
       ),
     addRoleMember: (id: string, subject: string) =>
       request(
-        apiRoute("put", "/roles/{role_id}/members/{subject}", {
-          path: { role_id: id, subject: subject },
+        apiRoute("put", "/roles/{role_id}/members/{principal_id}", {
+          path: { role_id: id, principal_id: subject },
         })
       ),
     removeRoleMember: (id: string, subject: string) =>
       request(
-        apiRoute("delete", "/roles/{role_id}/members/{subject}", {
-          path: { role_id: id, subject: subject },
+        apiRoute("delete", "/roles/{role_id}/members/{principal_id}", {
+          path: { role_id: id, principal_id: subject },
         })
       ),
     roleDirectoryBindings: (id: string) =>

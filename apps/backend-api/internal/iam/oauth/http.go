@@ -191,13 +191,13 @@ func (e *protocolError) GetStatus() int { return e.Status }
 // clientListInput bounds the listing by default: a tenant's client registry is
 // open-ended, and an omitted limit used to mean "every row".
 type clientListInput struct {
-	TenantID string `path:"tenant_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type clientCreateInput struct {
-	TenantID string `path:"tenant_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		Name         string             `json:"name" minLength:"1" maxLength:"128"`
 		RedirectURIs []oauthRedirectURI `json:"redirect_uris,omitempty" maxItems:"32"`
@@ -214,7 +214,7 @@ type clientCreateData struct {
 }
 
 type clientUpdateInput struct {
-	ID   string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
+	ID   string `path:"client_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body struct {
 		Name         string             `json:"name" minLength:"1" maxLength:"128"`
 		RedirectURIs []oauthRedirectURI `json:"redirect_uris,omitempty" maxItems:"32"`
@@ -227,7 +227,7 @@ type clientUpdateInput struct {
 }
 
 type clientIDInput struct {
-	ID string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
+	ID string `path:"client_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type clientSecretData struct {
@@ -240,7 +240,7 @@ type consentListInput struct {
 
 type consentRevokeInput struct {
 	Cookie   string `header:"Cookie"`
-	ClientID string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
+	ClientID string `path:"client_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type consentRevokeData struct {

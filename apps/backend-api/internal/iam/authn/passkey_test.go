@@ -97,25 +97,25 @@ func TestPasskeyCredentialManagementIsPrincipalScoped(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, created)
 
-	_, err = service.RenamePasskey(t.Context(), "", otherCookie, row.IDHash, "Stolen")
+	_, err = service.RenamePasskey(t.Context(), "", otherCookie, row.PublicID.String(), "Stolen")
 	assert.ErrorIs(t, err, authnext.ErrPasskeyNotFound)
 	assert.ErrorIs(t, service.DeletePasskey(
-		t.Context(), "", otherCookie, row.IDHash, "correct horse battery staple",
+		t.Context(), "", otherCookie, row.PublicID.String(), "correct horse battery staple",
 	), authnext.ErrPasskeyNotFound)
 	stored, err := harness.repository.getPasskey(t.Context(), row.IDHash)
 	require.NoError(t, err)
 	assert.Equal(t, principalID, stored.PrincipalID)
 	assert.Equal(t, "Laptop", stored.Name)
 
-	renamed, err := service.RenamePasskey(t.Context(), "", cookie, row.IDHash, " Security key ")
+	renamed, err := service.RenamePasskey(t.Context(), "", cookie, row.PublicID.String(), " Security key ")
 	require.NoError(t, err)
 	assert.Equal(t, "Security key", renamed.Name)
 	assert.Equal(t, uint32(7), renamed.SignCount)
-	_, err = service.RenamePasskey(t.Context(), "", cookie, row.IDHash, "")
+	_, err = service.RenamePasskey(t.Context(), "", cookie, row.PublicID.String(), "")
 	assert.ErrorIs(t, err, authnext.ErrPasskeyCredential)
-	assert.ErrorIs(t, service.DeletePasskey(t.Context(), "", cookie, row.IDHash, "wrong"), authnext.ErrInvalidCredentials)
+	assert.ErrorIs(t, service.DeletePasskey(t.Context(), "", cookie, row.PublicID.String(), "wrong"), authnext.ErrInvalidCredentials)
 	require.NoError(t, service.DeletePasskey(
-		t.Context(), "", cookie, row.IDHash, "correct horse battery staple",
+		t.Context(), "", cookie, row.PublicID.String(), "correct horse battery staple",
 	))
 	_, err = service.Authenticate(t.Context(), "", otherCookie)
 	require.NoError(t, err, "another principal's session must not be revoked")
@@ -153,13 +153,13 @@ func TestPasskeySecurityMutationsRollBackWhenAuditFails(t *testing.T) {
 		service, harness, principalID, cookie := newPasskeyService(t)
 		current := seedPasskey(t, service, harness, principalID, []byte("audit-management"), 1)
 		harness.auditErr = assert.AnError
-		_, err := service.RenamePasskey(t.Context(), "", cookie, current.IDHash, "Renamed")
+		_, err := service.RenamePasskey(t.Context(), "", cookie, current.PublicID.String(), "Renamed")
 		assert.ErrorContains(t, err, "append authentication audit event")
 		after, loadErr := harness.repository.getPasskey(t.Context(), current.IDHash)
 		require.NoError(t, loadErr)
 		assert.Equal(t, current.Name, after.Name)
 		err = service.DeletePasskey(
-			t.Context(), "", cookie, current.IDHash, "correct horse battery staple",
+			t.Context(), "", cookie, current.PublicID.String(), "correct horse battery staple",
 		)
 		assert.ErrorContains(t, err, "append authentication audit event")
 		_, loadErr = harness.repository.getPasskey(t.Context(), current.IDHash)
@@ -190,7 +190,8 @@ func TestPasskeyStoredCredentialResolution(t *testing.T) {
 	resolvedID, resolvedRow, err := service.resolvePasskey(t.Context(), credential.ID, firstHandle)
 	require.NoError(t, err)
 	assert.Equal(t, principalID, resolvedID)
-	assert.Equal(t, view.ID, resolvedRow.IDHash)
+	require.NotNil(t, resolvedRow.PublicID)
+	assert.Equal(t, view.ID, *resolvedRow.PublicID)
 	_, _, err = service.resolvePasskey(t.Context(), []byte("unknown"), firstHandle)
 	assert.ErrorIs(t, err, authnext.ErrPasskeyCredential)
 	_, _, err = service.resolvePasskey(t.Context(), credential.ID, []byte("wrong-handle"))
@@ -238,9 +239,9 @@ func TestPasskeyCredentialAndCounterCommit(t *testing.T) {
 		t.Context(), principalID, "Security key", credential, repositoryTestNow,
 	)
 	require.NoError(t, err)
-	assert.Equal(t, passkeyIDHash(credential.ID), view.ID)
+	assert.NotZero(t, view.ID, "the passkey is published under its snowflake, not its credential hash")
 	assert.Equal(t, "0102", view.AAGUID)
-	current, err := harness.repository.getPasskey(t.Context(), view.ID)
+	current, err := harness.repository.getPasskey(t.Context(), passkeyIDHash(credential.ID))
 	require.NoError(t, err)
 	plain, err := service.decryptAuthnData(
 		passkeyCipher, passkeyAAD(principalID, current.IDHash), current.CredentialCiphertext,
@@ -257,7 +258,7 @@ func TestPasskeyCredentialAndCounterCommit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, claims.ACR)
 	assert.Equal(t, []string{"passkey"}, claims.AMR)
-	after, err := harness.repository.getPasskey(t.Context(), view.ID)
+	after, err := harness.repository.getPasskey(t.Context(), passkeyIDHash(credential.ID))
 	require.NoError(t, err)
 	assert.Equal(t, uint32(8), after.SignCount)
 	require.NotNil(t, after.LastUsedAt)
@@ -273,7 +274,7 @@ func TestPasskeyCredentialAndCounterCommit(t *testing.T) {
 	)
 	assert.ErrorIs(t, err, authnext.ErrPasskeyCredential)
 
-	warned, err := harness.repository.getPasskey(t.Context(), view.ID)
+	warned, err := harness.repository.getPasskey(t.Context(), passkeyIDHash(credential.ID))
 	require.NoError(t, err)
 	warnedData, err := service.decryptAuthnData(
 		passkeyCipher, passkeyAAD(principalID, warned.IDHash), warned.CredentialCiphertext,
@@ -287,7 +288,7 @@ func TestPasskeyCredentialAndCounterCommit(t *testing.T) {
 		t.Context(), principalID, after, passkeyCredential(credential.ID, 9, false), repositoryTestNow.Add(3*time.Minute),
 	)
 	assert.ErrorIs(t, err, authnext.ErrPasskeyCredential, "an old snapshot must not overwrite clone-warning state")
-	stillWarned, err := harness.repository.getPasskey(t.Context(), view.ID)
+	stillWarned, err := harness.repository.getPasskey(t.Context(), passkeyIDHash(credential.ID))
 	require.NoError(t, err)
 	assert.Equal(t, warned.CredentialCiphertext, stillWarned.CredentialCiphertext)
 }
@@ -498,7 +499,7 @@ func TestPasskeyStorageFailuresFailClosed(t *testing.T) {
 		service, harness, principalID, cookie := newPasskeyService(t)
 		row := seedPasskey(t, service, harness, principalID, []byte("rename-table"), 1)
 		require.NoError(t, harness.db.Exec("DROP TABLE iam_passkeys").Error)
-		_, err := service.RenamePasskey(t.Context(), "", cookie, row.IDHash, "Renamed")
+		_, err := service.RenamePasskey(t.Context(), "", cookie, row.PublicID.String(), "Renamed")
 		assert.ErrorContains(t, err, "rename passkey")
 	})
 
@@ -507,7 +508,7 @@ func TestPasskeyStorageFailuresFailClosed(t *testing.T) {
 		row := seedPasskey(t, service, harness, principalID, []byte("delete-table"), 1)
 		require.NoError(t, harness.db.Exec("DROP TABLE iam_passkeys").Error)
 		err := service.DeletePasskey(
-			t.Context(), "", cookie, row.IDHash, "correct horse battery staple",
+			t.Context(), "", cookie, row.PublicID.String(), "correct horse battery staple",
 		)
 		assert.ErrorContains(t, err, "delete passkey")
 	})

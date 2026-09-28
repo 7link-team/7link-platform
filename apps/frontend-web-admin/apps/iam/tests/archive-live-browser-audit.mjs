@@ -31,7 +31,7 @@ async function login(context, name) {
     headers: headers(),
     data: { login_name: name, password, return_url: baseURL + "/" },
   })
-  assert.equal(response.status(), 200, "fixture browser login")
+  assert.equal(response.status(), 201, "fixture browser login")
   return (await response.json()).data
 }
 async function get(context, path, tenant) {

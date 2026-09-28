@@ -13,7 +13,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
-import { ApiError, iamApi, type Captcha } from "../../lib/iam-api"
+import { ApiError, businessCode, iamApi, type Captcha } from "../../lib/iam-api"
 import { appName, copyrightLine } from "../../lib/branding"
 import { entranceLoginPath, publicAuthEntrance } from "../../lib/auth-entrance"
 
@@ -280,7 +280,8 @@ function registrationError(cause: unknown): string {
   if (cause.status === 403) return "registrationOrigin"
   // A rejected captcha and a rejected email share one status, so tell them
   // apart by code; otherwise a wrong captcha reads as a bad password forever.
-  if (cause.code === "captcha_invalid") return "invalidCaptcha"
+  if (cause.businessCode === businessCode.captchaInvalid)
+    return "invalidCaptcha"
   if (cause.status === 422) return "registrationInvalid"
   if (cause.status === 503) return "registrationClosed"
   return "identityUnavailable"

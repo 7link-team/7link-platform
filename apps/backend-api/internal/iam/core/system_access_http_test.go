@@ -59,7 +59,7 @@ func TestSystemRoleHTTPLifecycleAndPermissionGrants(t *testing.T) {
 	require.Len(t, roles, 1, "a refused role is not persisted")
 
 	response = client.Post("/system/roles", systemAccessAuth, map[string]any{"name": "Operators", "description": "Day shift"})
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	role := decodeEnvelope[APISystemRole](t, response).Data
 	require.False(t, role.Builtin)
 	require.Equal(t, guid.ID(99), role.TenantID)
@@ -129,10 +129,10 @@ func TestSystemRoleHTTPMembershipAndSuperadministratorAssignment(t *testing.T) {
 	h, client, verifier := newSystemAccessHTTPClient(t)
 	full := systemBuiltinRole(t, client)
 	response := client.Post("/system/roles", systemAccessAuth, map[string]any{"name": "Readers"})
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	role := decodeEnvelope[APISystemRole](t, response).Data
 	response = client.Post("/system/members", systemAccessAuth, map[string]any{"principal_id": "22", "display_name": "Reader"})
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 
 	response = client.Put("/system/roles/"+role.ID.String()+"/members/22", systemAccessAuth)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
@@ -192,7 +192,7 @@ func TestSystemRoleHTTPMembershipAndSuperadministratorAssignment(t *testing.T) {
 func TestSystemMemberHTTPListCreateUpdateAndLookup(t *testing.T) {
 	h, client, _ := newSystemAccessHTTPClient(t)
 	response := client.Post("/system/members", systemAccessAuth, map[string]any{"principal_id": "22", "display_name": "Reader", "email": "reader@example.test"})
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	created := decodeEnvelope[APISystemMember](t, response).Data
 	require.Equal(t, guid.ID(22), created.Subject)
 	require.Equal(t, guid.ID(99), created.TenantID)

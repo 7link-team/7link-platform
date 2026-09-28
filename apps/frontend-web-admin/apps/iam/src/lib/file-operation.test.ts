@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import {
   ApiError,
+  businessCode,
   type FileOperationConflicts,
   type FileOperationDecision,
   type FileOperationInput,
@@ -119,8 +120,20 @@ describe("file operation conflict state", () => {
       async (request, key) => {
         submitted.push({ input: request, key })
         if (submitted.length === 1)
-          throw new ApiError(409, "file_state_changed")
-        throw new ApiError(409, "file_operation_conflict", undefined, fresh)
+          throw new ApiError(
+            409,
+            "files.file_state_changed",
+            undefined,
+            undefined,
+            businessCode.fileStateChanged
+          )
+        throw new ApiError(
+          409,
+          "files.file_operation_conflict",
+          undefined,
+          fresh,
+          businessCode.fileOperationConflict
+        )
       },
       { ...input, observed_revision: 7, decisions: [selected] },
       "stable-key"
