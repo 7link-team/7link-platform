@@ -83,6 +83,10 @@ func (s *Service) putRootMember(ctx context.Context, kind string, tenantID, prin
 				return ErrMemberDepartmentInactive
 			}
 		}
+		departmentGranted, err := s.memberDepartmentGuard(ctx, repo, kind, tenantID, principalID, departmentID)
+		if err != nil {
+			return err
+		}
 		var verify func() error
 		if status == MemberDisabled {
 			verify, err = s.administrators.Protect(ctx, repo.writer(), tenantID)
@@ -98,6 +102,9 @@ func (s *Service) putRootMember(ctx context.Context, kind string, tenantID, prin
 			return err
 		}
 		if err = repo.setMemberDepartment(ctx, tenantID, principalID, departmentID); err != nil {
+			return err
+		}
+		if err = departmentGranted(); err != nil {
 			return err
 		}
 		if verify != nil {

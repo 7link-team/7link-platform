@@ -145,3 +145,80 @@ func TestDepartmentScopeNeedsTheActorsOwnDepartment(t *testing.T) {
 	_, _, err = h.service.SetRoleDataScope(actor, tenantID, created.ID, DataScopeSelf, nil)
 	require.NoError(t, err, "narrowing to self stays available")
 }
+
+// Department and department-and-descendants scopes follow the member's
+// department, so moving a member -- the actor included -- widens what those
+// scopes reach without any grant being written. The move is bounded by the
+// actor's own constraint for each permission the member holds that way.
+func TestMemberDepartmentChangeStaysWithinTheActorsConstraint(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	tenantID, actorID, peerID, selfOnlyID := guid.ID(1), guid.ID(10), guid.ID(11), guid.ID(12)
+	h.seedMember(t, tenantID, actorID, MemberActive)
+	h.seedAdditionalMember(t, tenantID, peerID, MemberActive)
+	h.seedAdditionalMember(t, tenantID, selfOnlyID, MemberActive)
+	now := repositoryTestTime
+	require.NoError(t, h.db.Exec(`INSERT INTO sl_iam_departments
+		(tenant_id,id,parent_id,name,name_key,status,sort_order,version,created_at,updated_at)
+		VALUES (?, 101, NULL, 'Sales', 'sales', 'active', 0, 1, ?, ?),
+		       (?, 102, 101, 'Sales east', 'sales east', 'active', 0, 1, ?, ?),
+		       (?, 103, NULL, 'Support', 'support', 'active', 0, 1, ?, ?)`,
+		tenantID, now, now, tenantID, now, now, tenantID, now, now).Error)
+	require.NoError(t, h.db.Exec(`INSERT INTO sl_iam_department_closure
+		(tenant_id,ancestor_id,descendant_id,depth)
+		VALUES (?,101,101,0),(?,101,102,1),(?,102,102,0),(?,103,103,0)`, tenantID, tenantID, tenantID, tenantID).Error)
+	require.NoError(t, h.db.Exec(`INSERT INTO sl_iam_member_departments
+		(tenant_id,principal_id,department_id,updated_at) VALUES (?, ?, 101, ?)`, tenantID, actorID, now).Error)
+	role := func(name string, scope DataScope, members ...guid.ID) guid.ID {
+		created, err := h.repository.CreateRole(t.Context(), tenantID, name, "")
+		require.NoError(t, err)
+		_, err = h.repository.GrantPermission(t.Context(), tenantID, created.ID, "todo_view")
+		require.NoError(t, err)
+		_, _, err = h.service.SetRoleDataScope(t.Context(), tenantID, created.ID, scope, nil)
+		require.NoError(t, err)
+		for _, member := range members {
+			_, err = h.repository.AddMember(t.Context(), tenantID, created.ID, member)
+			require.NoError(t, err)
+		}
+		return created.ID
+	}
+	role("Department tasks", DataScopeDepartment, actorID, peerID)
+	role("Own tasks", DataScopeSelf, selfOnlyID)
+	actor := authn.WithClaims(t.Context(), &authn.Claims{SubjectType: authn.SubjectTypePrincipal, PrincipalID: actorID, TenantID: tenantID})
+	move := func(principalID, departmentID guid.ID) error {
+		_, err := h.service.PutTenantMember(actor, tenantID, principalID, "Member", "", departmentID, MemberActive)
+		return err
+	}
+	departmentOf := func(principalID guid.ID) guid.ID {
+		member, err := h.repository.GetMember(t.Context(), tenantID, principalID)
+		require.NoError(t, err)
+		return member.DepartmentID
+	}
+	reach := func(principalID guid.ID) []string {
+		constraint, err := h.authorizer.Constraint(t.Context(), tenantID, "todo_view", principalID)
+		require.NoError(t, err)
+		return constraint.DepartmentIDs
+	}
+
+	require.NoError(t, move(peerID, 101), "into the actor's own department")
+	assert.Equal(t, []string{"101"}, reach(peerID))
+	for _, outside := range []guid.ID{102, 103} {
+		require.ErrorIs(t, move(peerID, outside), ErrPrivilegeEscalation, "into department %s", outside)
+		assert.Equal(t, guid.ID(101), departmentOf(peerID), "a refused move changes nothing")
+	}
+	require.ErrorIs(t, move(actorID, 103), ErrPrivilegeEscalation, "the actor cannot move itself out of its constraint")
+	assert.Equal(t, []string{"101"}, reach(actorID))
+	require.NoError(t, move(peerID, 101), "keeping the department is not a change")
+	require.NoError(t, move(peerID, 0), "clearing the department only narrows")
+	assert.Empty(t, reach(peerID))
+	require.NoError(t, move(selfOnlyID, 103), "a member without a department-based scope gains nothing")
+
+	// A tenant administrator is unaffected.
+	administrators, err := h.repository.CreateRole(t.Context(), tenantID, "Tenant administrators", "")
+	require.NoError(t, err)
+	_, err = h.repository.GrantPermission(t.Context(), tenantID, administrators.ID, "tenant_administer")
+	require.NoError(t, err)
+	_, err = h.repository.AddMember(t.Context(), tenantID, administrators.ID, actorID)
+	require.NoError(t, err)
+	require.NoError(t, move(peerID, 103))
+	assert.Equal(t, []string{"103"}, reach(peerID))
+}

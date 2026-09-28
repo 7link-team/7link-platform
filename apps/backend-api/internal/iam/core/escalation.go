@@ -157,6 +157,86 @@ func (s *Service) requireGrantableDataScope(ctx context.Context, repo *Repositor
 	return nil
 }
 
+// memberDepartmentGuard bounds a member's department change by the actor's own
+// data scope. Department and department-and-descendants scopes follow the
+// member's department, so placing a member -- the actor included -- in a
+// department widens what those scopes reach for them, without any grant being
+// written. Before the change it records, for every data-scoped tenant
+// permission the member holds, the departments the member reaches; the
+// returned check runs after the change in the same transaction and refuses any
+// department the member gains that the actor's own constraint for that
+// permission, as it stood before the change, does not cover. Clearing or
+// keeping a department, non-tenant roots and tenant or platform full
+// administrators are unaffected, as in requireGrantableDataScope.
+func (s *Service) memberDepartmentGuard(ctx context.Context, repo *Repository, kind string, tenantID, principalID, departmentID guid.ID) (func() error, error) {
+	unaffected := func() error { return nil }
+	claims, ok := authn.FromContext(ctx)
+	if !ok || claims == nil || claims.PrincipalID.Zero() || kind != "tenant" || departmentID.Zero() {
+		return unaffected, nil
+	}
+	current, err := repo.GetMember(ctx, tenantID, principalID)
+	if err != nil && !errors.Is(err, ErrMemberNotFound) {
+		return nil, err
+	}
+	if err == nil && current.DepartmentID == departmentID {
+		return unaffected, nil
+	}
+	pinned := s.pinnedTo(repo)
+	administrator, err := pinned.checker.CheckBulk(ctx, tenantID, []string{tenantAdministratorPermission}, claims.PrincipalID)
+	if err != nil || administrator[tenantAdministratorPermission] {
+		return unaffected, err
+	}
+	codes := make([]string, 0)
+	for _, action := range s.registry.All() {
+		if action.DataScoped && action.Scope != authz.ActionScopeSystem && action.Scope != authz.ActionScopeOperatingPlatform {
+			codes = append(codes, action.Code)
+		}
+	}
+	reach := func() (map[string][]string, error) {
+		held, err := pinned.checker.CheckBulk(ctx, tenantID, codes, principalID)
+		if err != nil {
+			return nil, err
+		}
+		departments := map[string][]string{}
+		for _, code := range codes {
+			if !held[code] {
+				continue
+			}
+			constraint, err := pinned.checker.Constraint(ctx, tenantID, code, principalID)
+			if err != nil {
+				return nil, err
+			}
+			departments[code] = constraint.DepartmentIDs
+		}
+		return departments, nil
+	}
+	before, err := reach()
+	if err != nil {
+		return nil, err
+	}
+	actor := map[string]authz.DataConstraint{}
+	for _, code := range codes {
+		if actor[code], err = pinned.checker.Constraint(ctx, tenantID, code, claims.PrincipalID); err != nil {
+			return nil, err
+		}
+	}
+	return func() error {
+		after, err := reach()
+		if err != nil {
+			return err
+		}
+		for code, departments := range after {
+			for _, department := range departments {
+				if slices.Contains(before[code], department) || actor[code].AllowAll || slices.Contains(actor[code].DepartmentIDs, department) {
+					continue
+				}
+				return fmt.Errorf("%w: %s", ErrPrivilegeEscalation, code)
+			}
+		}
+		return nil
+	}, nil
+}
+
 // roleScopeReach returns the departments scope reaches when applied to the
 // actor: an empty set for self, nil when it cannot be bounded by departments
 // (all, or a department scope for an actor without an active department).
