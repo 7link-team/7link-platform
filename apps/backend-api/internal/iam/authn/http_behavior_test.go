@@ -1075,7 +1075,7 @@ func newAuthenticationService(t *testing.T) (*gorm.DB, *Service, string) {
 		Enabled: true, Issuer: "https://iam.example", Audience: []string{"api"},
 		SigningKey: base64.RawStdEncoding.EncodeToString(seed), AccessTokenTTL: time.Hour,
 		MFA:     authnext.MFAConfig{EncryptionKey: base64.RawStdEncoding.EncodeToString(seed)},
-		Passkey: authnext.PasskeyConfig{Enabled: true, RPID: "app.example", DisplayName: "SevenLink", Origins: []string{"https://app.example"}},
+		Passkey: authnext.PasskeyConfig{Enabled: true, RPID: "app.example", DisplayName: "Example Platform", Origins: []string{"https://app.example"}},
 		Web: authnext.WebConfig{
 			Enabled: true, CookieName: "custom_session", SessionTTL: time.Hour, IdleTTL: 10 * time.Minute,
 			PostLoginURL: "https://app.example/", PostLogoutURL: "https://app.example/login",

@@ -23,7 +23,7 @@ func newPasskeyService(t *testing.T) (*Service, *authnRepositoryHarness, guid.ID
 	harness := newAuthnRepositoryHarness(t, "")
 	config := localAuthnConfig()
 	config.Passkey = authnext.PasskeyConfig{
-		Enabled: true, RPID: "app.example.test", DisplayName: "7Link",
+		Enabled: true, RPID: "app.example.test", DisplayName: "Example Platform",
 		Origins: []string{"https://app.example.test"}, ChallengeTTL: 5 * time.Minute,
 		MaxCredentials: 10,
 	}

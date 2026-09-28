@@ -113,9 +113,9 @@ func TestErasureLedgerConfigBoundsSynchronousWrites(t *testing.T) {
 }
 
 func TestErasureLedgerRealObjectLock(t *testing.T) {
-	endpoint := os.Getenv("SEVENLINK_MINIO_ENDPOINT")
+	endpoint := os.Getenv("IAM_ARCHIVE_MINIO_ENDPOINT")
 	if endpoint == "" {
-		t.Skip("real MinIO endpoint not configured; set SEVENLINK_MINIO_ENDPOINT")
+		t.Skip("real MinIO endpoint not configured; set IAM_ARCHIVE_MINIO_ENDPOINT")
 	}
 	address, secure, err := endpointAddress(endpoint)
 	require.NoError(t, err)

@@ -51,7 +51,7 @@ func (f *fakeCeremonyProtocol) ValidatePasskeyLogin(
 
 func TestCeremonyOptionsAndValidationBoundaries(t *testing.T) {
 	adapter, err := New(Config{
-		RPID: "example.com", DisplayName: "7Link", Origins: []string{"https://example.com"},
+		RPID: "example.com", DisplayName: "Example Platform", Origins: []string{"https://example.com"},
 	})
 	require.NoError(t, err)
 	user, err := NewUser([]byte("opaque-user-handle"), "alice", "Alice", nil)
@@ -88,7 +88,7 @@ func TestCeremonyOptionsAndValidationBoundaries(t *testing.T) {
 }
 
 func TestConfigurationRequiresTrustedOrigins(t *testing.T) {
-	_, err := New(Config{RPID: "example.com", DisplayName: "7Link"})
+	_, err := New(Config{RPID: "example.com", DisplayName: "Example Platform"})
 	assert.Error(t, err)
 }
 
@@ -103,7 +103,7 @@ func TestAttestationConveyancePreference(t *testing.T) {
 		{AttestationEnterprise, `"attestation":"enterprise"`},
 	} {
 		adapter, err := New(Config{
-			RPID: "example.com", DisplayName: "7Link", Origins: []string{"https://example.com"},
+			RPID: "example.com", DisplayName: "Example Platform", Origins: []string{"https://example.com"},
 			AttestationPreference: tc.preference,
 		})
 		require.NoError(t, err)
@@ -115,7 +115,7 @@ func TestAttestationConveyancePreference(t *testing.T) {
 	}
 
 	_, err := New(Config{
-		RPID: "example.com", DisplayName: "7Link", Origins: []string{"https://example.com"},
+		RPID: "example.com", DisplayName: "Example Platform", Origins: []string{"https://example.com"},
 		AttestationPreference: "unsupported",
 	})
 	assert.Error(t, err)
@@ -190,7 +190,7 @@ func TestStoredUserCredentialAndSessionEncoding(t *testing.T) {
 	_, err = decodeSession([]byte(`{"expires":`))
 	assert.ErrorIs(t, err, ErrInvalidCredential)
 
-	adapter, err := New(Config{RPID: "example.com", DisplayName: "7Link", Origins: []string{"https://example.com"}})
+	adapter, err := New(Config{RPID: "example.com", DisplayName: "Example Platform", Origins: []string{"https://example.com"}})
 	require.NoError(t, err)
 	_, err = adapter.FinishRegistration(user, []byte(`not-json`), nil)
 	assert.ErrorIs(t, err, ErrInvalidCredential)

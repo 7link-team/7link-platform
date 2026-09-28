@@ -138,9 +138,9 @@ func TestInvitationLifecycleTenantBindingsAndAcceptance(t *testing.T) {
 	var principalCalls atomic.Int64
 	service := newInvitationService(t, h, credentials, &principalCalls)
 
-	invitation, token, err := service.Create(t.Context(), 1, CreateInvitation{Email: "User@Example.com", DepartmentID: department.ID, RoleIDs: []guid.ID{10}})
+	invitation, token, err := service.Create(t.Context(), 1, CreateInvitation{Email: "User@Example.test", DepartmentID: department.ID, RoleIDs: []guid.ID{10}})
 	require.NoError(t, err)
-	assert.Equal(t, "user@example.com", invitation.Email)
+	assert.Equal(t, "user@example.test", invitation.Email)
 	assert.NotEmpty(t, token)
 	_, _, err = service.Create(t.Context(), 1, CreateInvitation{Email: "other@example.com", RoleIDs: []guid.ID{20}})
 	assert.ErrorIs(t, err, ErrInvitationBindingMissing, "a role from another tenant must remain invisible")

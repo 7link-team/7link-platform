@@ -151,7 +151,7 @@ func TestWebServiceAcceptsTokensIssuedBeforeAKeyRotation(t *testing.T) {
 	before, harness := newLocalService(t)
 
 	payload := map[string]any{
-		"iss": before.Issuer(), "sub": "subject", "aud": []string{"7link-api"},
+		"iss": before.Issuer(), "sub": "subject", "aud": []string{"test-api"},
 		"subject_type": authnext.SubjectTypeService,
 		"iat":          before.now().Unix(), "exp": before.now().Add(time.Minute).Unix(),
 	}
