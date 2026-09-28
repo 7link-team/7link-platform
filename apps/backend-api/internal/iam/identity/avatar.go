@@ -593,10 +593,7 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		return &imageOutput{ContentType: "image/png", CacheControl: "private, no-store", NoSniff: "nosniff", Body: pixels}, nil
 	})
 	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-avatar-candidate-image", Method: http.MethodGet, Path: "/principals/{principal_id}/avatar-candidates/{candidate_id}", Summary: "Read my private expiring avatar candidate", Tags: []string{"account"}}, func(ctx context.Context, in *candidateImageInput) (*imageOutput, error) {
-		id, err := closurePrincipal(ctx, in.Cookie, in.Authorization)
-		if err != nil {
-			return nil, err
-		}
+		id := authnext.PrincipalIDFromContext(ctx)
 		if s.repo.resourceFiles == nil {
 			return nil, huma.Error404NotFound("respx.not_found")
 		}
@@ -629,13 +626,21 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 	})
 }
 
+// avatarReadPrincipal admits a personal account view as well as the browser
+// session: the read is registered without the session-only restriction so the
+// view's bearer credential can reach it, which is why this route alone keeps
+// its own session check.
 func avatarReadPrincipal(ctx context.Context, cookie, authorization string) (guid.ID, error) {
-	if claims, ok := authnext.FromContext(ctx); ok && claims != nil && claims.AccountView != nil {
+	claims, ok := authnext.FromContext(ctx)
+	if ok && claims != nil && claims.AccountView != nil {
 		view := claims.AccountView
 		if !view.Valid() || view.ScopeType != "personal" || view.ScopeID != claims.PrincipalID {
 			return 0, huma.Error403Forbidden("respx.forbidden")
 		}
 		return claims.PrincipalID, nil
 	}
-	return closurePrincipal(ctx, cookie, authorization)
+	if authorization != "" || cookie == "" || !ok || claims == nil || claims.PrincipalID <= 0 || claims.SubjectType != authnext.SubjectTypePrincipal {
+		return 0, huma.Error401Unauthorized("respx.unauthorized")
+	}
+	return claims.PrincipalID, nil
 }

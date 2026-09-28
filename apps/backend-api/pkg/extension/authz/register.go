@@ -409,10 +409,19 @@ func preparePrincipalScope(api huma.API, op *huma.Operation) {
 	}
 	op.Parameters = append(op.Parameters, pathSelector(PrincipalPath, "Authenticated principal identifier"))
 	op.Errors = appendUniqueStatus(op.Errors, http.StatusNotFound, http.StatusUnprocessableEntity)
+	sessionOnly, _ := op.Metadata[sessionOnlyMetadataKey].(bool)
 	op.Middlewares = append(op.Middlewares, func(ctx huma.Context, next func(huma.Context)) {
 		claims, _ := authn.FromContext(ctx.Context())
 		if err := PrincipalScopeError(claims, ctx.Param(PrincipalPath)); err != nil {
 			_ = huma.WriteErr(api, ctx, err.GetStatus(), err.Error())
+			return
+		}
+		// A session-only self-service mount acts for the person signed in to
+		// the browser, so its handlers read the principal from the claims and
+		// never check the caller again. A request without the session cookie,
+		// or any subject other than a principal, is refused here.
+		if sessionOnly && (ctx.Header("Cookie") == "" || claims.SubjectType != authn.SubjectTypePrincipal) {
+			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, respx.Unauthorized)
 			return
 		}
 		next(ctx)

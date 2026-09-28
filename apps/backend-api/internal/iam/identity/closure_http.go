@@ -51,11 +51,7 @@ type closurePage struct {
 
 func registerClosureHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-my-closure-request", Method: http.MethodGet, Path: "/principals/{principal_id}/closure-request", Summary: "Read my global account closure request", Tags: []string{"account"}, Errors: []int{401, 503}}, func(ctx context.Context, in *ClosureBrowserInput) (*respx.Body[ClosureRequest], error) {
-		id, err := closurePrincipal(ctx, in.Cookie, in.Authorization)
-		if err != nil {
-			return nil, err
-		}
-		result, err := s.GetClosureRequest(ctx, id)
+		result, err := s.GetClosureRequest(ctx, authnext.PrincipalIDFromContext(ctx))
 		if err != nil {
 			return nil, closureError(err)
 		}
@@ -109,26 +105,17 @@ func registerClosureHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 	})
 }
 
-func closurePrincipal(ctx context.Context, cookie, authorization string) (guid.ID, error) {
-	claims, ok := authnext.FromContext(ctx)
-	if authorization != "" || cookie == "" || !ok || claims == nil || claims.PrincipalID <= 0 || claims.SubjectType != authnext.SubjectTypePrincipal {
-		return 0, huma.Error401Unauthorized("respx.unauthorized")
-	}
-	return claims.PrincipalID, nil
-}
-
+// closureMutationPrincipal returns the caller of a session-only self-service
+// mutation once its cross-site request check passes. The registrar has already
+// proved the caller is the principal the path names.
 func (s *Service) closureMutationPrincipal(ctx context.Context, in ClosureBrowserInput, method string) (guid.ID, error) {
-	id, err := closurePrincipal(ctx, in.Cookie, in.Authorization)
-	if err != nil {
-		return 0, err
-	}
 	if s == nil || s.privacyBrowser.ValidateCSRF == nil {
 		return 0, huma.Error503ServiceUnavailable(identityi18n.IdentityUnavailable)
 	}
 	if err := s.privacyBrowser.ValidateCSRF(method, in.Origin, in.Cookie); err != nil {
 		return 0, huma.Error403Forbidden("respx.forbidden")
 	}
-	return id, nil
+	return authnext.PrincipalIDFromContext(ctx), nil
 }
 
 func closureError(err error) error {

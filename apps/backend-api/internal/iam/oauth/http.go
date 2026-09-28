@@ -235,14 +235,12 @@ type clientSecretData struct {
 }
 
 type consentListInput struct {
-	Cookie        string `header:"Cookie"`
-	Authorization string `header:"Authorization" hidden:"true"`
+	Cookie string `header:"Cookie"`
 }
 
 type consentRevokeInput struct {
-	Cookie        string `header:"Cookie"`
-	Authorization string `header:"Authorization" hidden:"true"`
-	ClientID      string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
+	Cookie   string `header:"Cookie"`
+	ClientID string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
 }
 
 type consentRevokeData struct {
@@ -639,10 +637,7 @@ func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registra
 		Summary: "List the applications the caller has authorized", Tags: []string{"account"},
 		Errors: []int{http.StatusUnauthorized, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *consentListInput) (*respx.Body[[]GrantedConsent], error) {
-		principalID, err := consentPrincipal(ctx, in.Cookie, in.Authorization)
-		if err != nil {
-			return nil, err
-		}
+		principalID := authnext.PrincipalIDFromContext(ctx)
 		consents, err := service.ListConsents(ctx, principalID)
 		if err != nil {
 			return nil, oauthConsentError(err)
@@ -655,10 +650,7 @@ func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registra
 		Summary: "Withdraw the caller's authorization of one application",
 		Errors:  []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *consentRevokeInput) (*respx.Body[consentRevokeData], error) {
-		principalID, err := consentPrincipal(ctx, in.Cookie, in.Authorization)
-		if err != nil {
-			return nil, err
-		}
+		principalID := authnext.PrincipalIDFromContext(ctx)
 		clientID, err := guid.RequireID(in.ClientID)
 		if err != nil {
 			return nil, err
@@ -668,19 +660,6 @@ func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registra
 		}
 		return respx.OK(ctx, consentRevokeData{Revoked: true}), nil
 	})
-}
-
-// consentPrincipal reads the subject a self-service consent operation acts for.
-// Taking it from the request instead would turn "revoke my consent" into
-// "revoke anyone's consent", so the token is the only source there can be. The
-// route is session-only like the other self-service operations, so a bearer
-// credential is refused rather than accepted as a second way to be the caller.
-func consentPrincipal(ctx context.Context, cookie, authorization string) (guid.ID, error) {
-	claims, ok := authnext.FromContext(ctx)
-	if authorization != "" || cookie == "" || !ok || claims == nil || claims.PrincipalID.Zero() {
-		return 0, huma.Error401Unauthorized(oauthi18n.InvalidToken)
-	}
-	return claims.PrincipalID, nil
 }
 
 // oauthConsentError reports a grant the caller does not hold as absent. There is
