@@ -775,6 +775,15 @@ func (r *Registrar) authenticate(api huma.API, ctx huma.Context) (*authn.Claims,
 	}
 	claims, err := r.verifier.Authenticate(ctx.Context(), ctx.Header("Authorization"), ctx.Header("Cookie"))
 	if err == nil {
+		// A token carrying client_id was issued to an OAuth client, not to the
+		// account holder. The authorization server only grants OpenID identity
+		// scopes (openid, profile, email), none of which delegate the holder's
+		// tenant, operating-platform or system authority, so no guarded
+		// operation accepts one -- whatever tenant issued the client.
+		if claims != nil && claims.ClientID != "" {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
+			return nil, false
+		}
 		if claims != nil && claims.AccountView != nil {
 			if denied, _ := ctx.Operation().Metadata[accountViewDeniedMetadataKey].(bool); denied {
 				_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)

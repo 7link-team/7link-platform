@@ -105,7 +105,7 @@ func TestGrantWithdrawalReachesRealBearerResourcesAndCannotRevive(t *testing.T) 
 	require.NoError(t, err)
 	require.NotEmpty(t, claims.OAuthGrantID)
 	router, api := humatest.New(t)
-	authn.RegisterHTTP(api, authenticator, authenticator)
+	RegisterHTTP(api, h.service, oauthTestRegistrar(authenticator))
 	require.Equal(t, http.StatusOK, grantResourceStatus(router, first.AccessToken))
 	clientID, err := guid.Parse(client.ID)
 	require.NoError(t, err)
@@ -138,8 +138,10 @@ func TestGrantWithdrawalReachesRealBearerResourcesAndCannotRevive(t *testing.T) 
 }
 
 // Use the real router without humatest's request dump, which includes secrets.
+// The probe is the OpenID userinfo resource: guarded operations refuse every
+// delegated token, so userinfo is where a live application grant is observable.
 func grantResourceStatus(router http.Handler, token string) int {
-	request := httptest.NewRequest(http.MethodGet, "/me", nil)
+	request := httptest.NewRequest(http.MethodGet, "/oauth/userinfo", nil)
 	request.Header.Set("Authorization", "Bearer "+token)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
@@ -153,7 +155,7 @@ func TestGrantBearerRejectsDisabledAndDeletedApplications(t *testing.T) {
 			client, secret := grantClient(t, h, "Application")
 			tokens := grantTokens(t, h, client, secret)
 			router, api := humatest.New(t)
-			authn.RegisterHTTP(api, authenticator, authenticator)
+			RegisterHTTP(api, h.service, oauthTestRegistrar(authenticator))
 			require.Equal(t, http.StatusOK, grantResourceStatus(router, tokens.AccessToken))
 			query := h.db.Model(&model.Client{}).Where("id = ?", client.ID)
 			if state == "deleted" {
