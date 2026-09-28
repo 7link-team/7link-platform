@@ -20,6 +20,8 @@ type Services struct {
 	sealed bool
 }
 
+// NewServices returns an empty, unsealed service registry that accepts
+// providers until Seal.
 func NewServices() *Services {
 	return &Services{values: make(map[reflect.Type]any)}
 }

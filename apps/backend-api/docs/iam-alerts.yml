@@ -1,0 +1,56 @@
+# Load into the deployment's Prometheus rule_files. Route iam-scim alerts to the
+# SCIM operator; an unavailable remote directory must not evict login servers.
+# iam-workers alerts cover background jobs whose failures have no caller.
+groups:
+  - name: iam-scim
+    rules:
+      - alert: IAMSCIMUnresolvedOperation
+        expr: max by (job) (iam_scim_unfinished_operations) > 0 and max by (job) (iam_scim_oldest_operation_age_seconds) > 120
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: SCIM operation has an unresolved remote outcome
+          description: Inspect the target operation token and provider evidence using iam-scim-operations.md. Never expire or clear the claim based only on elapsed time.
+      - alert: IAMSCIMReconciliationFailing
+        expr: max by (job) (iam_scim_failed_targets) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: SCIM targets continue to fail reconciliation
+          description: Check remote connectivity, credentials and target synchronization state. Authentication readiness is intentionally independent.
+      - alert: IAMSCIMMetricsUnavailable
+        expr: iam_scim_metrics_database_success == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: SCIM operational state cannot be observed
+          description: Restore database access for the metrics probe before treating zero pending or failed targets as healthy.
+  - name: iam-workers
+    rules:
+      - alert: IAMAuditArchiveFailing
+        expr: sum by (job) (increase(iam_audit_archive_attempt_failures_total[1h])) + sum by (job) (increase(iam_audit_archive_sweep_failures_total[1h])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Background audit archiving is failing
+          description: List archive jobs with state failed and their error_code. storage_unavailable means checking object storage reachability, credentials and retention settings; integrity_failed means verifying the tenant audit chain before retrying; sweep failures mean restoring database access. Failed jobs retry with backoff; nothing is lost yet.
+      - alert: IAMNotificationDeliveryFailed
+        expr: sum by (job) (increase(iam_authn_notification_terminal_failures_total[15m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Activation or recovery notifications were permanently abandoned
+          description: Outbox rows reached status failed and will never be delivered. Inspect their last_error, restore the notification endpoint, key or client configuration, then ask affected users to request a new activation or recovery message.
+      - alert: IAMNotificationDeliveryDegraded
+        expr: sum by (job) (increase(iam_authn_notification_retryable_failures_total[15m])) + sum by (job) (increase(iam_authn_notification_poll_failures_total[15m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Notification delivery keeps failing and retrying
+          description: Check notification endpoint reachability and response status, and database access for outbox polls. Rows exhaust their attempts and become permanently failed if this persists.

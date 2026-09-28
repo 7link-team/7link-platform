@@ -97,8 +97,11 @@ func normalizeConfig(config Config) Config {
 	if config.FlushTimeout <= 0 {
 		config.FlushTimeout = base.FlushTimeout
 	}
-	switch strings.ToLower(strings.TrimSpace(config.Overflow)) {
+	switch normalized := strings.ToLower(strings.TrimSpace(config.Overflow)); normalized {
 	case overflowDrop, overflowBlock:
+		// Write the canonical form back: downstream comparisons are exact, so
+		// leaving " BLOCK " in place would silently select the drop path.
+		config.Overflow = normalized
 	default:
 		config.Overflow = base.Overflow
 	}

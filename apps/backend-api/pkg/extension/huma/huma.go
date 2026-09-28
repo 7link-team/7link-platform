@@ -65,6 +65,10 @@ func New(router chi.Router, settings Config) huma.API {
 	// DefaultConfig injects a top-level $schema property into response bodies.
 	// The application contract is the exact {code,message,meta,data} envelope.
 	config.CreateHooks = nil
+	config.OnAddOperation = append(config.OnAddOperation, func(_ *huma.OpenAPI, op *huma.Operation) {
+		prefix := strings.Split(strings.TrimPrefix(op.Path, "/"), "/")[0]
+		op.Tags = []string{prefix}
+	})
 	if settings.OpenAPI.Enabled {
 		config.OpenAPIPath = OpenAPIPath
 	} else {

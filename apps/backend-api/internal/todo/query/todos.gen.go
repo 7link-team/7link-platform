@@ -29,6 +29,9 @@ func newTodoRow(db *gorm.DB, opts ...gen.DOOption) todoRow {
 	tableName := _todoRow.todoRowDo.TableName()
 	_todoRow.ALL = field.NewAsterisk(tableName)
 	_todoRow.ID = field.NewField(tableName, "id")
+	_todoRow.TenantID = field.NewField(tableName, "tenant_id")
+	_todoRow.EntityID = field.NewField(tableName, "entity_id")
+	_todoRow.DepartmentID = field.NewField(tableName, "department_id")
 	_todoRow.Title = field.NewString(tableName, "title")
 	_todoRow.Description = field.NewString(tableName, "description")
 	_todoRow.Status = field.NewString(tableName, "status")
@@ -51,21 +54,24 @@ func newTodoRow(db *gorm.DB, opts ...gen.DOOption) todoRow {
 type todoRow struct {
 	todoRowDo todoRowDo
 
-	ALL         field.Asterisk
-	ID          field.Field
-	Title       field.String
-	Description field.String
-	Status      field.String
-	Priority    field.Int
-	DueAt       field.Time
-	CompletedAt field.Time
-	Version     field.Int
-	CreatedAt   field.Time
-	CreatedBy   field.Field
-	UpdatedAt   field.Time
-	UpdatedBy   field.Field
-	DeletedAt   field.Time
-	DeletedBy   field.Field
+	ALL          field.Asterisk
+	ID           field.Field
+	TenantID     field.Field
+	EntityID     field.Field
+	DepartmentID field.Field
+	Title        field.String
+	Description  field.String
+	Status       field.String
+	Priority     field.Int
+	DueAt        field.Time
+	CompletedAt  field.Time
+	Version      field.Int
+	CreatedAt    field.Time
+	CreatedBy    field.Field
+	UpdatedAt    field.Time
+	UpdatedBy    field.Field
+	DeletedAt    field.Time
+	DeletedBy    field.Field
 
 	fieldMap map[string]field.Expr
 }
@@ -83,6 +89,9 @@ func (t todoRow) As(alias string) *todoRow {
 func (t *todoRow) updateTableName(table string) *todoRow {
 	t.ALL = field.NewAsterisk(table)
 	t.ID = field.NewField(table, "id")
+	t.TenantID = field.NewField(table, "tenant_id")
+	t.EntityID = field.NewField(table, "entity_id")
+	t.DepartmentID = field.NewField(table, "department_id")
 	t.Title = field.NewString(table, "title")
 	t.Description = field.NewString(table, "description")
 	t.Status = field.NewString(table, "status")
@@ -120,8 +129,11 @@ func (t *todoRow) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (t *todoRow) fillFieldMap() {
-	t.fieldMap = make(map[string]field.Expr, 14)
+	t.fieldMap = make(map[string]field.Expr, 17)
 	t.fieldMap["id"] = t.ID
+	t.fieldMap["tenant_id"] = t.TenantID
+	t.fieldMap["entity_id"] = t.EntityID
+	t.fieldMap["department_id"] = t.DepartmentID
 	t.fieldMap["title"] = t.Title
 	t.fieldMap["description"] = t.Description
 	t.fieldMap["status"] = t.Status

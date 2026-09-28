@@ -1,0 +1,1166 @@
+package authn
+
+import (
+	"context"
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+
+	authni18n "7link.com/platform/internal/iam/authn/i18n"
+	"7link.com/platform/internal/iam/authn/model"
+	"7link.com/platform/internal/infra/guid"
+	authnext "7link.com/platform/pkg/extension/authn"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/mojocn/base64Captcha"
+	"github.com/pquerna/otp/totp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+)
+
+func parseGUID(value string) guid.ID {
+	id, _ := guid.Parse(value)
+	return id
+}
+
+func guidString(value guid.ID) string { return value.String() }
+
+type fixedTokenVerifier struct{ claims *authnext.Claims }
+
+func (verifier fixedTokenVerifier) Authenticate(context.Context, string, string) (*authnext.Claims, error) {
+	return verifier.claims, nil
+}
+
+type singleAuthenticationVerifier struct {
+	claims *authnext.Claims
+	calls  int
+}
+
+func (verifier *singleAuthenticationVerifier) Authenticate(context.Context, string, string) (*authnext.Claims, error) {
+	verifier.calls++
+	if verifier.calls > 1 {
+		return nil, errors.New("request authenticated more than once")
+	}
+	return verifier.claims, nil
+}
+
+func TestMeUsesAlreadyVerifiedAccountViewIdentity(t *testing.T) {
+	_, web, principalID := newAuthenticationService(t)
+	verifier := &singleAuthenticationVerifier{claims: &authnext.Claims{
+		Subject: principalID, PrincipalID: parseGUID(principalID),
+		AccountView: &authnext.AccountViewIdentity{ID: 50, ActorID: 7, ReadOnly: true, ScopeType: "personal", ScopeID: parseGUID(principalID)},
+	}}
+	_, api := humatest.New(t)
+	RegisterHTTP(api, verifier, web)
+	response := api.Get("/me", "Authorization: Bearer view-token")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, 1, verifier.calls)
+	assert.Contains(t, response.Body.String(), `"subject":"`+principalID+`"`)
+	assert.NotContains(t, response.Body.String(), "account_view")
+}
+
+func TestBearerLogoutCannotConsumeBrowserCookie(t *testing.T) {
+	db, web, principalID := newAuthenticationService(t)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+	token, err := web.CreateSession(t.Context(), parseGUID(principalID), time.Now().UTC(), authnext.Assurance{Level: 1, Methods: []string{"pwd"}})
+	require.NoError(t, err)
+	var before, after []model.Session
+	require.NoError(t, db.Table(web.repo.names.Sessions.String()).Order("id_hash").Find(&before).Error)
+	for _, bearer := range []string{"avt_read", "avt_write", "invalid", "ordinary-access-token"} {
+		response := api.Delete("/sessions/current", "Cookie: "+web.SessionCookie(token), "Authorization: Bearer "+bearer)
+		status := http.StatusUnauthorized
+		if strings.HasPrefix(bearer, "avt_") {
+			status = http.StatusForbidden
+		}
+		require.Equal(t, status, response.Code, response.Body.String())
+		assert.Empty(t, response.Header().Values("Set-Cookie"))
+	}
+	require.NoError(t, db.Table(web.repo.names.Sessions.String()).Order("id_hash").Find(&after).Error)
+	assert.Equal(t, before, after, "bearer logout must not revoke or touch the cookie owner's session")
+}
+
+func TestLogoutStorageFailurePreservesSessionUntilRetry(t *testing.T) {
+	db, web, principalID := newAuthenticationService(t)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+	token, err := web.CreateSession(t.Context(), parseGUID(principalID), time.Now().UTC(), authnext.Assurance{Level: 1, Methods: []string{"pwd"}})
+	require.NoError(t, err)
+	cookie := web.SessionCookie(token)
+	writeFailure := errors.New("injected session write failure")
+	require.NoError(t, db.Callback().Update().Before("gorm:update").Register("test:logout_failure", func(tx *gorm.DB) {
+		if strings.HasSuffix(tx.Statement.Table, "iam_sessions") {
+			_ = tx.AddError(writeFailure)
+		}
+	}))
+	t.Cleanup(func() { _ = db.Callback().Update().Remove("test:logout_failure") })
+	location, err := web.Logout(t.Context(), cookie)
+	require.ErrorIs(t, err, writeFailure)
+	assert.Empty(t, location)
+	failed := api.Delete("/sessions/current", "Cookie: "+cookie, "Origin: https://app.example")
+	require.Equal(t, http.StatusServiceUnavailable, failed.Code, failed.Body.String())
+	assert.Empty(t, failed.Header().Values("Set-Cookie"))
+	assert.NotContains(t, failed.Body.String(), "logout_url")
+	_, err = web.Authenticate(t.Context(), "", cookie)
+	require.NoError(t, err, "failed revocation must remain visible as an active session")
+	require.NoError(t, db.Callback().Update().Remove("test:logout_failure"))
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = web.Logout(canceled, cookie)
+	require.ErrorIs(t, err, context.Canceled)
+	_, err = web.Authenticate(t.Context(), "", cookie)
+	require.NoError(t, err)
+	retry := api.Delete("/sessions/current", "Cookie: "+cookie, "Origin: https://app.example")
+	require.Equal(t, http.StatusOK, retry.Code, retry.Body.String())
+	assert.Contains(t, retry.Header().Get("Set-Cookie"), "Max-Age=0")
+	_, err = web.Authenticate(t.Context(), "", cookie)
+	require.Error(t, err)
+	for _, previous := range []string{cookie, "", web.SessionCookie("unknown")} {
+		_, err = web.Logout(t.Context(), previous)
+		require.NoError(t, err, "logout is idempotent after confirmed revocation")
+	}
+	web.repo = nil
+	_, err = web.Logout(t.Context(), cookie)
+	require.ErrorContains(t, err, "authentication storage unavailable")
+}
+
+func TestAuthenticationHTTPFlow(t *testing.T) {
+	db, web, principalID := newAuthenticationService(t)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+
+	login := api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
+	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
+	require.NotEmpty(t, cookie)
+
+	session := api.Get("/me", "Cookie: "+cookie)
+	assert.Equal(t, http.StatusOK, session.Code, session.Body.String())
+	assert.Contains(t, session.Body.String(), principalID)
+	assert.NotContains(t, session.Body.String(), `"email_verified"`, "an unscoped session cannot expose tenant-controlled profile fields")
+
+	accessToken, _, err := web.IssueAccessToken(context.Background(), parseGUID(principalID), "api", "openid")
+	require.NoError(t, err)
+	me := api.Get("/me", "Authorization: Bearer "+accessToken)
+	assert.Equal(t, http.StatusOK, me.Code, me.Body.String())
+
+	logout := api.Delete("/sessions/current", "Cookie: "+cookie, "Origin: https://app.example")
+	assert.Equal(t, http.StatusOK, logout.Code, logout.Body.String())
+	assert.Contains(t, logout.Header().Get("Set-Cookie"), "Max-Age=0")
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+cookie).Code)
+
+	assert.Equal(t, http.StatusUnauthorized, api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "wrong password",
+	}, "Origin: https://app.example").Code)
+	// The allowlist admits an origin at or below a path, so the login page may
+	// send somebody back to wherever they were heading without every route
+	// being enumerated in deployment configuration.
+	assert.Equal(t, http.StatusCreated, api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple",
+		"return_url": "https://app.example/tenants/42/members?page=2",
+	}, "Origin: https://app.example").Code)
+	// The origin is still matched exactly, which is the half that makes this an
+	// open-redirect guard rather than a formality.
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple",
+		"return_url": "https://app.example.evil.test/home",
+	}, "Origin: https://app.example").Code)
+	assert.Equal(t, http.StatusForbidden, api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple",
+	}, "Origin: https://evil.example").Code)
+	assert.Equal(t, http.StatusForbidden, api.Delete("/sessions/current", "Cookie: "+cookie, "Origin: https://evil.example").Code)
+
+	err = db.WithContext(context.Background()).Table("iam_credentials").Where("principal_id = ?", principalID).Update("mfa_required", true).Error
+	require.NoError(t, err)
+	enrollmentLogin := api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple",
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, enrollmentLogin.Code, enrollmentLogin.Body.String())
+	assert.Contains(t, enrollmentLogin.Body.String(), `"status":"mfa_enrollment_required"`)
+	assert.NotEmpty(t, enrollmentLogin.Header().Get("Set-Cookie"))
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Authorization: Bearer invalid").Code)
+}
+
+func TestSessionHTTPTenantResolutionAndImmediateRevocation(t *testing.T) {
+	db, web, principalID := newAuthenticationService(t)
+	web.fields = profileCheckerFunc(allowProfileFields)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+	login := api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple",
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
+	cookie := "Cookie: " + strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
+	check := func(code int, expected string) {
+		t.Helper()
+		for _, path := range []string{"/me"} {
+			response := api.Get(path, cookie)
+			require.Equal(t, code, response.Code, response.Body.String())
+			if code == http.StatusOK {
+				var body struct {
+					Data meOutput `json:"data"`
+				}
+				require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+				assert.Equal(t, expected, body.Data.OrganizationID)
+				assert.Equal(t, principalID, body.Data.Subject)
+			}
+		}
+	}
+	check(http.StatusOK, "")
+	require.NoError(t, db.Exec("INSERT INTO iam_tenants (id,status) VALUES (101,'active'),(102,'active'),(103,'disabled')").Error)
+	require.NoError(t, db.Exec("INSERT INTO iam_tenant_members (tenant_id,principal_id,status) VALUES (101,?,'active'),(103,?,'active')", principalID, principalID).Error)
+	check(http.StatusOK, "101")
+	require.NoError(t, db.Exec("INSERT INTO iam_tenant_members (tenant_id,principal_id,status) VALUES (102,?,'active')", principalID).Error)
+	check(http.StatusOK, "")
+	require.NoError(t, db.Exec("UPDATE iam_tenant_members SET status = 'disabled' WHERE tenant_id = 102").Error)
+	check(http.StatusOK, "101")
+	require.NoError(t, db.Exec("UPDATE iam_tenants SET status = 'disabled' WHERE id = 101").Error)
+	check(http.StatusOK, "")
+	web.memberTenant = nil
+	check(http.StatusServiceUnavailable, "")
+	web.memberTenant = func(context.Context, guid.ID, guid.ID) (guid.ID, error) {
+		return 0, errors.New("membership store unavailable")
+	}
+	check(http.StatusServiceUnavailable, "")
+}
+
+func TestSessionTenantCannotRewriteSignedTokenOrMutateVerifierClaims(t *testing.T) {
+	claims := &authnext.Claims{PrincipalID: 11, OrganizationID: "101"}
+	web := &Service{memberTenant: func(context.Context, guid.ID, guid.ID) (guid.ID, error) {
+		return 102, nil
+	}}
+	resolved, err := sessionTenant(t.Context(), web, &meInput{Authorization: "Bearer token"}, claims)
+	require.NoError(t, err)
+	assert.Same(t, claims, resolved)
+	resolved, err = sessionTenant(t.Context(), web, &meInput{}, claims)
+	require.NoError(t, err)
+	assert.Equal(t, "102", resolved.OrganizationID)
+	assert.Equal(t, guid.ID(102), resolved.TenantID)
+	assert.Equal(t, "101", claims.OrganizationID)
+	assert.Zero(t, claims.TenantID)
+	_, err = sessionTenant(t.Context(), nil, &meInput{}, claims)
+	require.Error(t, err)
+}
+
+func TestRequiredMFAEnrollmentHTTPFlowDoesNotLockOutPrincipal(t *testing.T) {
+	db, web, principalID := newAuthenticationService(t)
+	require.NoError(t, db.WithContext(t.Context()).Table("iam_credentials").
+		Where("principal_id = ?", principalID).Update("mfa_required", true).Error)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+
+	login := api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple",
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
+	assert.Contains(t, login.Body.String(), `"status":"mfa_enrollment_required"`)
+	assert.Contains(t, login.Body.String(), `"subject":"`+principalID+`"`)
+	restrictedCookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
+	require.NotEmpty(t, restrictedCookie)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+restrictedCookie).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/principals/"+principalID+"/passkeys", "Cookie: "+restrictedCookie).Code)
+	for _, test := range []struct {
+		id     string
+		status int
+	}{{"999999", 404}, {"0", 422}} {
+		refused := api.Post("/principals/"+test.id+"/mfa/totp-enrollments", "Cookie: "+restrictedCookie,
+			"Origin: https://app.example", map[string]any{"current_password": "correct horse battery staple"})
+		require.Equal(t, test.status, refused.Code, refused.Body.String())
+	}
+
+	enrollment := api.Post("/principals/"+principalID+"/mfa/totp-enrollments", "Cookie: "+restrictedCookie,
+		"Origin: https://app.example", map[string]any{"current_password": "correct horse battery staple"})
+	require.Equal(t, http.StatusCreated, enrollment.Code, enrollment.Body.String())
+	var enrollmentEnvelope struct {
+		Data authnext.MFAEnrollment `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(enrollment.Body.Bytes(), &enrollmentEnvelope))
+	confirmation := api.Post("/principals/"+principalID+"/mfa/totp", "Cookie: "+restrictedCookie,
+		"Origin: https://app.example", map[string]any{"code": mustTOTPValue(t, enrollmentEnvelope.Data.Secret)})
+	require.Equal(t, http.StatusCreated, confirmation.Code, confirmation.Body.String())
+	assert.Contains(t, confirmation.Header().Get("Set-Cookie"), "Max-Age=0")
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+restrictedCookie).Code)
+
+	var confirmationEnvelope struct {
+		Data authnext.MFAConfirmation `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(confirmation.Body.Bytes(), &confirmationEnvelope))
+	require.NotEmpty(t, confirmationEnvelope.Data.RecoveryCodes)
+	challenge := api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple",
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, challenge.Code, challenge.Body.String())
+	assert.Empty(t, challenge.Header().Get("Set-Cookie"))
+	var challengeEnvelope struct {
+		Data authnext.LoginResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(challenge.Body.Bytes(), &challengeEnvelope))
+	assert.Equal(t, "mfa_required", challengeEnvelope.Data.Status)
+
+	verified := api.Post("/login/mfa", map[string]any{
+		"challenge_id": challengeEnvelope.Data.ChallengeID,
+		"code":         confirmationEnvelope.Data.RecoveryCodes[0],
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, verified.Code, verified.Body.String())
+	assert.Equal(t, http.StatusOK, api.Get("/me",
+		"Cookie: "+strings.Split(verified.Header().Get("Set-Cookie"), ";")[0]).Code)
+}
+
+func TestAuthenticationSecurityCenterHTTPFlow(t *testing.T) {
+	_, web, principalID := newAuthenticationService(t)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+	seedLocalPrincipal(t, web.repo, "bob", "bob@example.com", "correct horse battery staple")
+	bobLogin, err := web.BeginLogin(t.Context(), "bob", "correct horse battery staple", "")
+	require.NoError(t, err)
+	login := func(password string) string {
+		response := api.Post("/login", map[string]any{
+			"login_name": "alice", "password": password, "return_url": "https://app.example/",
+		}, "Origin: https://app.example")
+		require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+		return strings.Split(response.Header().Get("Set-Cookie"), ";")[0]
+	}
+	first, second := login("correct horse battery staple"), login("correct horse battery staple")
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/principals/"+principalID+"/sessions").Code)
+	sessions := api.Get("/principals/"+principalID+"/sessions", "Cookie: "+first)
+	require.Equal(t, http.StatusOK, sessions.Code, sessions.Body.String())
+	var envelope struct {
+		Data []authnext.BrowserSession `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(sessions.Body.Bytes(), &envelope))
+	require.Len(t, envelope.Data, 2)
+	for _, session := range envelope.Data {
+		assert.NotEqual(t, tokenHash(bobLogin.SessionID), session.ID)
+	}
+	assert.Equal(t, http.StatusNotFound, api.Delete("/sessions/"+sessionPublicID(t, web, bobLogin.SessionID),
+		"Cookie: "+first, "Origin: https://app.example").Code)
+	_, err = web.Authenticate(t.Context(), "", web.SessionCookie(bobLogin.SessionID))
+	require.NoError(t, err, "another principal's session must remain active")
+	var other string
+	for _, session := range envelope.Data {
+		if !session.Current {
+			other = session.ID.String()
+		}
+	}
+	require.NotEmpty(t, other)
+	assert.Equal(t, http.StatusForbidden, api.Delete("/sessions/"+other, "Cookie: "+first, "Origin: https://evil.example").Code)
+	assert.Equal(t, http.StatusOK, api.Delete("/sessions/"+other, "Cookie: "+first, "Origin: https://app.example").Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+second).Code)
+	assert.Equal(t, http.StatusNotFound, api.Delete("/sessions/9223372036854775807", "Cookie: "+first, "Origin: https://app.example").Code)
+
+	changed := api.Patch("/principals/"+principalID+"/password", "Cookie: "+first, "Origin: https://app.example", map[string]any{
+		"current_password": "correct horse battery staple", "new_password": "new correct horse battery staple",
+	})
+	assert.Equal(t, http.StatusOK, changed.Code, changed.Body.String())
+	assert.Equal(t, http.StatusForbidden, api.Patch("/principals/"+principalID+"/password", "Cookie: "+first, "Origin: https://evil.example", map[string]any{
+		"current_password": "new correct horse battery staple", "new_password": "another correct horse battery staple",
+	}).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Patch("/principals/"+principalID+"/password", "Cookie: "+first, "Origin: https://app.example", map[string]any{
+		"current_password": "new correct horse battery staple", "new_password": "correct horse battery staple",
+	}).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Patch("/principals/"+principalID+"/password", "Cookie: "+first, "Origin: https://app.example", map[string]any{
+		"current_password": "wrong password", "new_password": "another correct horse battery staple",
+	}).Code)
+	third := login("new correct horse battery staple")
+	assert.Equal(t, http.StatusForbidden, api.Delete("/principals/"+principalID+"/sessions", "Cookie: "+third, "Origin: https://evil.example").Code)
+	logoutAll := api.Delete("/principals/"+principalID+"/sessions", "Cookie: "+third, "Origin: https://app.example")
+	assert.Equal(t, http.StatusOK, logoutAll.Code, logoutAll.Body.String())
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+first).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+third).Code)
+}
+
+func TestBrowserSessionDiscoveryAndItemContract(t *testing.T) {
+	db, web, principalID := newAuthenticationService(t)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+	login, err := web.BeginLogin(t.Context(), "alice", "correct horse battery staple", "")
+	require.NoError(t, err)
+	cookie := "Cookie: " + strings.Split(web.SessionCookie(login.SessionID), ";")[0]
+	current := api.Get("/sessions/current", cookie)
+	require.Equal(t, http.StatusOK, current.Code, current.Body.String())
+	var envelope struct {
+		Data authnext.BrowserSession `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(current.Body.Bytes(), &envelope))
+	assert.Equal(t, sessionPublicID(t, web, login.SessionID), envelope.Data.ID.String())
+	assert.True(t, envelope.Data.Current)
+	assert.False(t, envelope.Data.ExpiresAt.IsZero())
+	assert.NotContains(t, current.Body.String(), login.SessionID)
+	assert.NotContains(t, current.Body.String(), `"subject"`)
+	assert.NotContains(t, current.Body.String(), `"email"`)
+	item := api.Get("/sessions/"+envelope.Data.ID.String(), cookie)
+	require.Equal(t, http.StatusOK, item.Code, item.Body.String())
+	var itemEnvelope struct {
+		Data authnext.BrowserSession `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(item.Body.Bytes(), &itemEnvelope))
+	assert.Equal(t, envelope.Data.ID, itemEnvelope.Data.ID)
+	assert.Equal(t, envelope.Data.CreatedAt, itemEnvelope.Data.CreatedAt)
+	assert.Equal(t, envelope.Data.AbsoluteExpiresAt, itemEnvelope.Data.AbsoluteExpiresAt)
+	assert.True(t, itemEnvelope.Data.Current)
+	assert.False(t, itemEnvelope.Data.LastSeenAt.Before(envelope.Data.LastSeenAt))
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/sessions/current").Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/sessions/invalid", cookie).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/sessions/"+strings.Repeat("a", 64), cookie).Code,
+		"the session hash is internal; the API addresses sessions by snowflake")
+	assert.Equal(t, http.StatusNotFound, api.Get("/sessions/9223372036854775807", cookie).Code)
+	seedLocalPrincipal(t, web.repo, "other", "other@example.com", "correct horse battery staple")
+	other, err := web.BeginLogin(t.Context(), "other", "correct horse battery staple", "")
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, api.Get("/sessions/"+sessionPublicID(t, web, other.SessionID), cookie).Code)
+	access, _, err := web.IssueAccessToken(t.Context(), parseGUID(principalID), "api", "openid")
+	require.NoError(t, err)
+	bearer := "Authorization: Bearer " + access
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/sessions/current", bearer).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/sessions/current", bearer, cookie).Code)
+	assert.Equal(t, http.StatusOK, api.Get("/sessions/"+envelope.Data.ID.String(), bearer).Code)
+	for _, old := range []string{"/principals/" + principalID + "/session", "/principals/" + principalID + "/sessions/{session_id}", "/principals/" + principalID + "/session/step-up-challenges", "/principals/" + principalID + "/session/step-up-verifications"} {
+		assert.NotContains(t, api.OpenAPI().Paths, old)
+	}
+	expired, err := web.BeginLogin(t.Context(), "alice", "correct horse battery staple", "")
+	require.NoError(t, err)
+	expiredID := sessionPublicID(t, web, expired.SessionID)
+	assert.Equal(t, http.StatusOK, api.Get("/sessions/"+expiredID, cookie).Code)
+	require.NoError(t, db.Exec("UPDATE iam_sessions SET expires_at = ? WHERE id_hash = ?", web.now().Add(-time.Hour), tokenHash(expired.SessionID)).Error)
+	assert.Equal(t, http.StatusNotFound, api.Get("/sessions/"+expiredID, cookie).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/sessions/current", "Cookie: "+strings.Split(web.SessionCookie(expired.SessionID), ";")[0]).Code)
+	assert.Equal(t, http.StatusForbidden, api.Delete("/sessions/"+envelope.Data.ID.String(), cookie, "Origin: https://evil.example").Code)
+	assert.Equal(t, http.StatusOK, api.Delete("/sessions/"+envelope.Data.ID.String(), cookie, "Origin: https://app.example").Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/sessions/current", cookie).Code)
+}
+
+func TestPasswordRecoveryHTTPFlow(t *testing.T) {
+	deliveries := make(chan string, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Type        string `json:"type"`
+			RecoveryURL string `json:"recovery_url"`
+		}
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload)) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if payload.Type == "password_recovery" {
+			parsed, err := url.Parse(payload.RecoveryURL)
+			if !assert.NoError(t, err) {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			deliveries <- parsed.Query().Get("token")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+
+	_, web, _ := newRecoveryAuthenticationService(t, server.URL)
+	require.NoError(t, web.StartNotificationWorker(t.Context()))
+	t.Cleanup(func() { _ = web.StopNotificationWorker(context.Background()) })
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+
+	assert.Equal(t, http.StatusForbidden, api.Post("/password-recoveries/requests", map[string]any{"identifier": "alice"}, "Origin: https://evil.example").Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/password-recoveries/requests", map[string]any{}, "Origin: https://app.example").Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/password-recoveries/requests", "Content-Type: application/json", "Origin: https://app.example", strings.NewReader(`"not-an-object"`)).Code)
+	missing := api.Post("/password-recoveries/requests", map[string]any{"identifier": "missing@example.com"}, "Origin: https://app.example")
+	assert.Equal(t, http.StatusAccepted, missing.Code, missing.Body.String())
+	started := api.Post("/password-recoveries/requests", map[string]any{"identifier": "alice@example.com"}, "Origin: https://app.example")
+	require.Equal(t, http.StatusAccepted, started.Code, started.Body.String())
+
+	var token string
+	select {
+	case token = <-deliveries:
+	case <-time.After(3 * time.Second):
+		t.Fatal("recovery webhook was not delivered")
+	}
+	assert.Equal(t, http.StatusBadRequest, api.Post("/password-recoveries", map[string]any{
+		"token": strings.Repeat("x", 40), "new_password": "new correct horse battery staple",
+	}, "Origin: https://app.example").Code)
+	assert.Equal(t, http.StatusConflict, api.Post("/password-recoveries", map[string]any{
+		"token": token, "new_password": "correct horse battery staple",
+	}, "Origin: https://app.example").Code)
+	completed := api.Post("/password-recoveries", map[string]any{
+		"token": token, "new_password": "new correct horse battery staple",
+	}, "Origin: https://app.example")
+	assert.Equal(t, http.StatusCreated, completed.Code, completed.Body.String())
+	assert.Equal(t, http.StatusForbidden, api.Post("/password-recoveries", map[string]any{
+		"token": token, "new_password": "another correct horse battery staple",
+	}, "Origin: https://evil.example").Code)
+
+	startOperation := api.OpenAPI().Paths["/password-recoveries/requests"].Post
+	completeOperation := api.OpenAPI().Paths["/password-recoveries"].Post
+	require.NotNil(t, startOperation)
+	require.NotNil(t, completeOperation)
+	assert.Equal(t, "authn-create-password-recovery-request", startOperation.OperationID)
+	assert.Equal(t, "authn-create-password-recovery", completeOperation.OperationID)
+	assert.Contains(t, startOperation.Responses, "202")
+}
+
+func TestEmailVerificationHTTPFlow(t *testing.T) {
+	deliveries := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		var payload struct {
+			Type            string `json:"type"`
+			VerificationURL string `json:"verification_url"`
+		}
+		if !assert.NoError(t, json.NewDecoder(request.Body).Decode(&payload)) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if payload.Type == "email_verification" {
+			parsed, err := url.Parse(payload.VerificationURL)
+			if !assert.NoError(t, err) {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			deliveries <- parsed.Query().Get("token")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+
+	db, web, principalID := newRecoveryAuthenticationService(t, server.URL)
+	web.fields = profileCheckerFunc(allowProfileFields)
+	require.NoError(t, db.Exec("INSERT INTO iam_tenants (id,status) VALUES (101,'active')").Error)
+	require.NoError(t, db.Exec("INSERT INTO iam_tenant_members (tenant_id,principal_id,status) VALUES (101,?,'active')", principalID).Error)
+	err := db.WithContext(t.Context()).Table("iam_principals").
+		Where("id = ?", principalID).Update("email_verified", false).Error
+	require.NoError(t, err)
+	require.NoError(t, web.StartNotificationWorker(t.Context()))
+	t.Cleanup(func() { _ = web.StopNotificationWorker(context.Background()) })
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+
+	login := api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
+	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
+	assert.Contains(t, api.Get("/me", "Cookie: "+cookie).Body.String(), `"email_verified":false`)
+	assert.Equal(t, http.StatusUnauthorized, api.Post("/email-verifications/requests", "Origin: https://app.example").Code)
+	assert.Equal(t, http.StatusForbidden, api.Post("/email-verifications/requests", "Cookie: "+cookie, "Origin: https://evil.example").Code)
+	started := api.Post("/email-verifications/requests", "Cookie: "+cookie, "Origin: https://app.example")
+	require.Equal(t, http.StatusAccepted, started.Code, started.Body.String())
+
+	var token string
+	select {
+	case token = <-deliveries:
+	case <-time.After(3 * time.Second):
+		t.Fatal("email verification webhook was not delivered")
+	}
+	assert.Equal(t, http.StatusForbidden, api.Post("/email-verifications", map[string]any{"token": token}, "Origin: https://evil.example").Code)
+	assert.Equal(t, http.StatusBadRequest, api.Post("/email-verifications", map[string]any{"token": strings.Repeat("x", 40)}, "Origin: https://app.example").Code)
+	completed := api.Post("/email-verifications", map[string]any{"token": token}, "Origin: https://app.example")
+	assert.Equal(t, http.StatusCreated, completed.Code, completed.Body.String())
+	assert.Contains(t, api.Get("/me", "Cookie: "+cookie).Body.String(), `"email_verified":true`)
+
+	err = db.WithContext(t.Context()).Table("iam_principals").Where("id = ?", principalID).Updates(map[string]any{"email": "", "email_verified": false}).Error
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusConflict, api.Post("/email-verifications/requests", "Cookie: "+cookie, "Origin: https://app.example").Code)
+
+	startOperation := api.OpenAPI().Paths["/email-verifications/requests"].Post
+	completeOperation := api.OpenAPI().Paths["/email-verifications"].Post
+	require.NotNil(t, startOperation)
+	require.NotNil(t, completeOperation)
+	assert.Equal(t, "authn-create-email-verification-request", startOperation.OperationID)
+	assert.Equal(t, "authn-create-email-verification", completeOperation.OperationID)
+	assert.Contains(t, startOperation.Responses, "202")
+}
+
+func TestRegistrationHTTPFlow(t *testing.T) {
+	db, web, _ := newRecoveryAuthenticationService(t, "https://notify.example.test/events", true)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+
+	capabilities := api.Get("/login/options")
+	require.Equal(t, http.StatusOK, capabilities.Code, capabilities.Body.String())
+	assert.Contains(t, capabilities.Body.String(), `"registration":true`)
+	assert.Contains(t, capabilities.Body.String(), `"password_recovery":true`)
+
+	assert.Equal(t, http.StatusForbidden, api.Post("/registrations", map[string]any{
+		"email": "registered@example.com", "password": "correct registration password", "display_name": "Registered User",
+		"captcha_type": "text", "captcha_id": "invalid", "captcha_answer": "invalid",
+	}, "Origin: https://evil.example").Code)
+	invalid := registrationRequestWithCaptcha(t, api, "not-an-email", "short", "")
+	rejectedData := api.Post("/registrations", invalid, "Origin: https://app.example")
+	assert.Equal(t, http.StatusUnprocessableEntity, rejectedData.Code)
+	// A wrong captcha shares the 422 with rejected data; only the business code
+	// tells the registration page which one to show.
+	wrongCaptcha := api.Post("/registrations", map[string]any{
+		"email": "registered@example.com", "password": "correct registration password", "display_name": "Registered User",
+		"captcha_type": "text", "captcha_id": "invalid", "captcha_answer": "invalid",
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusUnprocessableEntity, wrongCaptcha.Code, wrongCaptcha.Body.String())
+	var captchaFailure, dataFailure struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(wrongCaptcha.Body.Bytes(), &captchaFailure))
+	require.NoError(t, json.Unmarshal(rejectedData.Body.Bytes(), &dataFailure))
+	assert.Equal(t, captchaInvalidCode, captchaFailure.Code)
+	assert.Equal(t, authni18n.CaptchaInvalid, captchaFailure.Message)
+	assert.NotEqual(t, captchaInvalidCode, dataFailure.Code)
+
+	for range 2 {
+		request := registrationRequestWithCaptcha(t, api, "registered@example.com", "correct registration password", "Registered User")
+		response := api.Post("/registrations", request, "Origin: https://app.example")
+		assert.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
+		assert.Contains(t, response.Body.String(), `"accepted":true`)
+	}
+	require.NoError(t, db.WithContext(t.Context()).Table("iam_principals").
+		Where("email = ?", "registered@example.com").Update("activation_required", false).Error)
+	activeDuplicate := api.Post("/registrations",
+		registrationRequestWithCaptcha(t, api, "registered@example.com", "different registration password", "Different Name"),
+		"Origin: https://app.example")
+	assert.Equal(t, http.StatusAccepted, activeDuplicate.Code, activeDuplicate.Body.String())
+	assert.Contains(t, activeDuplicate.Body.String(), `"accepted":true`)
+	assert.Equal(t, 1, authnAPIRowCount(t, db, "iam_principals", "email = ?", "registered@example.com"))
+	assert.Equal(t, 1, authnAPIRowCount(t, db, "iam_notification_outbox", "recipient = ?", "registered@example.com"))
+	assert.Zero(t, authnAPIRowCount(t, db, "iam_tenant_members", "principal_id IN (SELECT id FROM iam_principals WHERE email = ?)", "registered@example.com"))
+
+	registration := api.OpenAPI().Paths["/registrations"].Post
+	capabilityOperation := api.OpenAPI().Paths["/login/options"].Get
+	require.NotNil(t, registration)
+	require.NotNil(t, capabilityOperation)
+	assert.Equal(t, "authn-create-registration", registration.OperationID)
+	assert.Equal(t, "authn-login-options", capabilityOperation.OperationID)
+	assert.Empty(t, registration.Security)
+	assert.Contains(t, registration.Responses, "202")
+	assert.Contains(t, registration.Responses, "422")
+
+	_, disabled, _ := newAuthenticationService(t)
+	_, disabledAPI := humatest.New(t)
+	RegisterHTTP(disabledAPI, disabled, disabled)
+	assert.Contains(t, disabledAPI.Get("/login/options").Body.String(), `"registration":false`)
+	disabledRequest := registrationRequestWithCaptcha(t, disabledAPI, "disabled@example.com", "correct registration password", "")
+	assert.Equal(t, http.StatusServiceUnavailable, disabledAPI.Post("/registrations", disabledRequest,
+		"Origin: https://app.example").Code)
+}
+
+func registrationRequestWithCaptcha(t *testing.T, api humatest.TestAPI, email, password, displayName string) map[string]any {
+	t.Helper()
+	for range 100 {
+		response := api.Post("/registrations/captchas")
+		require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+		var envelope struct {
+			Data struct {
+				Type      string `json:"type"`
+				CaptchaID string `json:"captcha_id"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &envelope))
+		if envelope.Data.Type != "text" {
+			continue
+		}
+		answer := base64Captcha.DefaultMemStore.Get(envelope.Data.CaptchaID, false)
+		require.NotEmpty(t, answer)
+		return map[string]any{
+			"email": email, "password": password, "display_name": displayName,
+			"captcha_type": envelope.Data.Type, "captcha_id": envelope.Data.CaptchaID, "captcha_answer": answer,
+		}
+	}
+	t.Fatal("text captcha was not issued after 100 attempts")
+	return nil
+}
+
+func TestDisabledPasswordRecoveryHTTPFlow(t *testing.T) {
+	_, web, _ := newAuthenticationService(t)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+
+	start := api.Post("/password-recoveries/requests", map[string]any{"identifier": "alice@example.com"}, "Origin: https://app.example")
+	assert.Equal(t, http.StatusServiceUnavailable, start.Code, start.Body.String())
+	complete := api.Post("/password-recoveries", map[string]any{
+		"token": "cpr1_" + strings.Repeat("a", 43), "new_password": "new correct horse battery staple",
+	}, "Origin: https://app.example")
+	assert.Equal(t, http.StatusServiceUnavailable, complete.Code, complete.Body.String())
+}
+
+func TestAuthenticationMFAHTTPFlow(t *testing.T) {
+	_, web, principalID := newAuthenticationService(t)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+
+	login := api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
+	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
+	require.NotEmpty(t, cookie)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/principals/"+principalID+"/mfa").Code)
+	assert.Equal(t, http.StatusForbidden, api.Post("/principals/"+principalID+"/mfa/totp-enrollments", "Cookie: "+cookie, "Origin: https://evil.example", map[string]any{
+		"current_password": "correct horse battery staple",
+	}).Code)
+
+	enroll := api.Post("/principals/"+principalID+"/mfa/totp-enrollments", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{
+		"current_password": "correct horse battery staple",
+	})
+	require.Equal(t, http.StatusCreated, enroll.Code, enroll.Body.String())
+	var enrollmentEnvelope struct {
+		Data authnext.MFAEnrollment `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(enroll.Body.Bytes(), &enrollmentEnvelope))
+	assert.NotEmpty(t, enrollmentEnvelope.Data.ProvisioningURI)
+	code, err := totp.GenerateCode(enrollmentEnvelope.Data.Secret, time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/principals/"+principalID+"/mfa/totp", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{"code": differentTOTP(code)}).Code)
+	confirm := api.Post("/principals/"+principalID+"/mfa/totp", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{"code": code})
+	require.Equal(t, http.StatusCreated, confirm.Code, confirm.Body.String())
+	var confirmationEnvelope struct {
+		Data authnext.MFAConfirmation `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(confirm.Body.Bytes(), &confirmationEnvelope))
+	require.Len(t, confirmationEnvelope.Data.RecoveryCodes, 10)
+
+	challengeResponse := api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, challengeResponse.Code, challengeResponse.Body.String())
+	assert.Empty(t, challengeResponse.Header().Get("Set-Cookie"))
+	var challengeEnvelope struct {
+		Data authnext.LoginResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(challengeResponse.Body.Bytes(), &challengeEnvelope))
+	assert.Equal(t, "mfa_required", challengeEnvelope.Data.Status)
+	assert.Equal(t, []string{"totp", "recovery_code"}, challengeEnvelope.Data.Methods)
+
+	verifyBody := map[string]any{"challenge_id": challengeEnvelope.Data.ChallengeID, "code": confirmationEnvelope.Data.RecoveryCodes[0]}
+	assert.Equal(t, http.StatusForbidden, api.Post("/login/mfa", verifyBody, "Origin: https://evil.example").Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Post("/login/mfa", map[string]any{"challenge_id": challengeEnvelope.Data.ChallengeID, "code": differentTOTP(code)}, "Origin: https://app.example").Code)
+	verified := api.Post("/login/mfa", verifyBody, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, verified.Code, verified.Body.String())
+	mfaCookie := strings.Split(verified.Header().Get("Set-Cookie"), ";")[0]
+	require.NotEmpty(t, mfaCookie)
+
+	status := api.Get("/principals/"+principalID+"/mfa", "Cookie: "+mfaCookie)
+	require.Equal(t, http.StatusOK, status.Code, status.Body.String())
+	var statusEnvelope struct {
+		Data authnext.MFAStatus `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(status.Body.Bytes(), &statusEnvelope))
+	assert.True(t, statusEnvelope.Data.TOTPEnabled)
+	assert.Equal(t, 9, statusEnvelope.Data.RecoveryCodesRemaining)
+	assert.Equal(t, http.StatusConflict, api.Post("/principals/"+principalID+"/mfa/totp-enrollments", "Cookie: "+mfaCookie, "Origin: https://app.example", map[string]any{
+		"current_password": "correct horse battery staple",
+	}).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/principals/"+principalID+"/mfa/totp", "Cookie: "+mfaCookie, "Origin: https://app.example", map[string]any{
+		"code": code,
+	}).Code)
+	assert.Equal(t, http.StatusForbidden, api.Put("/principals/"+principalID+"/mfa/recovery-codes", "Cookie: "+mfaCookie, "Origin: https://evil.example", map[string]any{
+		"current_password": "correct horse battery staple", "code": confirmationEnvelope.Data.RecoveryCodes[1],
+	}).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Put("/principals/"+principalID+"/mfa/recovery-codes", "Cookie: "+mfaCookie, "Origin: https://app.example", map[string]any{
+		"current_password": "correct horse battery staple", "code": "invalid-recovery-code",
+	}).Code)
+	regenerated := api.Put("/principals/"+principalID+"/mfa/recovery-codes", "Cookie: "+mfaCookie, "Origin: https://app.example", map[string]any{
+		"current_password": "correct horse battery staple", "code": confirmationEnvelope.Data.RecoveryCodes[1],
+	})
+	require.Equal(t, http.StatusOK, regenerated.Code, regenerated.Body.String())
+	var regeneratedEnvelope struct {
+		Data authnext.MFAConfirmation `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(regenerated.Body.Bytes(), &regeneratedEnvelope))
+	require.Len(t, regeneratedEnvelope.Data.RecoveryCodes, 10)
+	assert.Equal(t, http.StatusForbidden, api.Delete("/principals/"+principalID+"/mfa/totp", "Cookie: "+mfaCookie, "Origin: https://evil.example", map[string]any{
+		"current_password": "correct horse battery staple", "code": regeneratedEnvelope.Data.RecoveryCodes[0],
+	}).Code)
+
+	disabled := api.Delete("/principals/"+principalID+"/mfa/totp", "Cookie: "+mfaCookie, "Origin: https://app.example", map[string]any{
+		"current_password": "correct horse battery staple", "code": regeneratedEnvelope.Data.RecoveryCodes[0],
+	})
+	require.Equal(t, http.StatusOK, disabled.Code, disabled.Body.String())
+	status = api.Get("/principals/"+principalID+"/mfa", "Cookie: "+mfaCookie)
+	assert.Equal(t, http.StatusOK, status.Code, status.Body.String())
+	require.NoError(t, json.Unmarshal(status.Body.Bytes(), &statusEnvelope))
+	assert.False(t, statusEnvelope.Data.TOTPEnabled)
+	assert.Equal(t, http.StatusConflict, api.Delete("/principals/"+principalID+"/mfa/totp", "Cookie: "+mfaCookie, "Origin: https://app.example", map[string]any{
+		"current_password": "correct horse battery staple", "code": regeneratedEnvelope.Data.RecoveryCodes[1],
+	}).Code)
+
+	for _, path := range []string{"/login/mfa", "/principals/{principal_id}/mfa", "/principals/{principal_id}/mfa/totp-enrollments", "/principals/{principal_id}/mfa/recovery-codes", "/principals/{principal_id}/mfa/totp"} {
+		assert.Contains(t, api.OpenAPI().Paths, path)
+	}
+	for _, operation := range []*huma.Operation{
+		api.OpenAPI().Paths["/principals/{principal_id}/mfa"].Get,
+		api.OpenAPI().Paths["/principals/{principal_id}/mfa/totp-enrollments"].Post,
+		api.OpenAPI().Paths["/principals/{principal_id}/mfa/totp"].Post,
+		api.OpenAPI().Paths["/principals/{principal_id}/mfa/recovery-codes"].Put,
+		api.OpenAPI().Paths["/principals/{principal_id}/mfa/totp"].Delete,
+	} {
+		assert.Equal(t, []string{"account"}, operation.Tags, operation.OperationID)
+		assert.Contains(t, operation.Responses, "500")
+	}
+}
+
+func TestMFAAuditFailureHTTPRollsBackEnrollment(t *testing.T) {
+	service, harness := newLocalService(t)
+	principalID := bootstrapLocalPrincipal(t, harness, "alice", "correct horse battery staple")
+	_, api := humatest.New(t)
+	RegisterHTTP(api, service, service)
+
+	login := api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple",
+	}, "Origin: https://app.example.test")
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
+	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
+	harness.auditErr = errors.New("audit denied")
+
+	enrollment := api.Post("/principals/"+principalID.String()+"/mfa/totp-enrollments",
+		map[string]any{"current_password": "correct horse battery staple"},
+		"Cookie: "+cookie, "Origin: https://app.example.test")
+	assert.Equal(t, http.StatusInternalServerError, enrollment.Code, enrollment.Body.String())
+
+	var count int64
+	require.NoError(t, harness.db.Table("iam_mfa_enrollments").
+		Where("principal_id = ?", principalID).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestAuthenticationPasskeyHTTPContract(t *testing.T) {
+	_, web, principalID := newAuthenticationService(t)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+	login := api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
+	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
+	bobID := seedLocalPrincipal(t, web.repo, "bob", "bob@example.com", "correct horse battery staple")
+	bobLogin, err := web.BeginLogin(t.Context(), "bob", "correct horse battery staple", "")
+	require.NoError(t, err)
+	bobPasskey, err := web.storePasskeyCredential(t.Context(), bobID, "Bob's key",
+		passkeyCredential([]byte("http-bob-passkey"), 1, false), time.Now().UTC())
+	require.NoError(t, err)
+
+	list := api.Get("/principals/"+principalID+"/passkeys", "Cookie: "+cookie)
+	require.Equal(t, http.StatusOK, list.Code, list.Body.String())
+	assert.Contains(t, list.Body.String(), `"data":[]`)
+	assert.NotContains(t, list.Body.String(), bobPasskey.ID.String())
+	assert.Equal(t, http.StatusNotFound, api.Patch("/principals/"+principalID+"/passkeys/"+bobPasskey.ID.String(),
+		"Cookie: "+cookie, "Origin: https://app.example", map[string]any{"name": "Stolen"}).Code)
+	assert.Equal(t, http.StatusNotFound, api.Delete("/principals/"+principalID+"/passkeys/"+bobPasskey.ID.String(),
+		"Cookie: "+cookie, "Origin: https://app.example",
+		map[string]any{"current_password": "correct horse battery staple"}).Code)
+	storedBob, err := web.repo.getPasskey(t.Context(), passkeyIDHash([]byte("http-bob-passkey")))
+	require.NoError(t, err)
+	assert.Equal(t, "Bob's key", storedBob.Name)
+	_, err = web.Authenticate(t.Context(), "", web.SessionCookie(bobLogin.SessionID))
+	require.NoError(t, err, "another principal's session must remain active")
+	assert.Equal(t, http.StatusForbidden, api.Post("/principals/"+principalID+"/passkey-registration-challenges", "Cookie: "+cookie, "Origin: https://evil.example", map[string]any{
+		"current_password": "correct horse battery staple",
+	}).Code)
+	registration := api.Post("/principals/"+principalID+"/passkey-registration-challenges", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{
+		"current_password": "correct horse battery staple",
+	})
+	require.Equal(t, http.StatusCreated, registration.Code, registration.Body.String())
+	var options struct {
+		Data authnext.PasskeyOptions `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(registration.Body.Bytes(), &options))
+	assert.NotEmpty(t, options.Data.ChallengeID)
+	assert.Contains(t, string(options.Data.Options), `"residentKey":"required"`)
+	invalidRegistration := map[string]any{"challenge_id": options.Data.ChallengeID, "name": "Laptop", "credential": map[string]any{"invalid": true}}
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/principals/"+principalID+"/passkeys", "Cookie: "+cookie, "Origin: https://app.example", invalidRegistration).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/principals/"+principalID+"/passkeys", "Cookie: "+cookie, "Origin: https://app.example", invalidRegistration).Code)
+
+	assert.Equal(t, http.StatusForbidden, api.Post("/login/passkey/options", map[string]any{"return_url": "https://app.example/"}, "Origin: https://evil.example").Code)
+	web.web.AllowedOrigins = append(web.web.AllowedOrigins, "https://login.example")
+	assert.Equal(t, http.StatusForbidden, api.Post("/login/passkey/options", map[string]any{"return_url": "https://app.example/"}, "Origin: https://login.example").Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/login/passkey/options", map[string]any{"return_url": "https://evil.example/"}, "Origin: https://app.example").Code)
+	loginOptions := api.Post("/login/passkey/options", map[string]any{"return_url": "https://app.example/"}, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, loginOptions.Code, loginOptions.Body.String())
+	require.NoError(t, json.Unmarshal(loginOptions.Body.Bytes(), &options))
+	invalidLogin := map[string]any{"challenge_id": options.Data.ChallengeID, "credential": map[string]any{"invalid": true}}
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/login/passkey/verify", invalidLogin, "Origin: https://app.example").Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/login/passkey/verify", invalidLogin, "Origin: https://app.example").Code)
+	// Clients forward getClientExtensionResults() verbatim, including outputs
+	// nobody requested; the contract must not refuse them before the ceremony.
+	unsolicitedOutputs := map[string]any{"challenge_id": options.Data.ChallengeID, "credential": map[string]any{
+		"id": "Y3JlZGVudGlhbA", "rawId": "Y3JlZGVudGlhbA", "type": "public-key",
+		"clientExtensionResults": map[string]any{"credProps": map[string]any{"rk": true}, "vendor.example": map[string]any{}},
+		"response":               map[string]any{"clientDataJSON": "e30", "authenticatorData": "AA", "signature": "AA", "userHandle": "AA"},
+	}}
+	assert.Equal(t, http.StatusUnauthorized, api.Post("/login/passkey/verify", unsolicitedOutputs, "Origin: https://app.example").Code)
+
+	missingID := "9223372036854775807"
+	assert.Equal(t, http.StatusNotFound, api.Patch("/principals/"+principalID+"/passkeys/"+missingID, "Cookie: "+cookie, "Origin: https://app.example", map[string]any{"name": "Missing"}).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Delete("/principals/"+principalID+"/passkeys/"+missingID, "Cookie: "+cookie, "Origin: https://app.example", map[string]any{"current_password": "wrong"}).Code)
+	assert.Equal(t, http.StatusNotFound, api.Delete("/principals/"+principalID+"/passkeys/"+missingID, "Cookie: "+cookie, "Origin: https://app.example", map[string]any{"current_password": "correct horse battery staple"}).Code)
+
+	stored, err := web.storePasskeyCredential(t.Context(), parseGUID(principalID), "Laptop",
+		passkeyCredential([]byte("http-passkey"), 1, false), time.Now().UTC())
+	require.NoError(t, err)
+	renamed := api.Patch("/principals/"+principalID+"/passkeys/"+stored.ID.String(), "Cookie: "+cookie, "Origin: https://app.example",
+		map[string]any{"name": "Security key"})
+	require.Equal(t, http.StatusOK, renamed.Code, renamed.Body.String())
+	assert.Contains(t, renamed.Body.String(), `"name":"Security key"`)
+	deleted := api.Delete("/principals/"+principalID+"/passkeys/"+stored.ID.String(), "Cookie: "+cookie, "Origin: https://app.example",
+		map[string]any{"current_password": "correct horse battery staple"})
+	require.Equal(t, http.StatusOK, deleted.Code, deleted.Body.String())
+	assert.Contains(t, deleted.Body.String(), `"deleted":true`)
+
+	for _, path := range []string{"/principals/{principal_id}/passkeys", "/principals/{principal_id}/passkey-registration-challenges", "/login/passkey/options", "/login/passkey/verify", "/principals/{principal_id}/passkeys/{passkey_id}"} {
+		assert.Contains(t, api.OpenAPI().Paths, path)
+	}
+	assert.Equal(t, "authn-verify-passkey-login", api.OpenAPI().Paths["/login/passkey/verify"].Post.OperationID)
+	assert.Contains(t, api.OpenAPI().Paths["/login/passkey/verify"].Post.Responses, "401")
+	for _, operation := range []*huma.Operation{
+		api.OpenAPI().Paths["/login/passkey/options"].Post,
+		api.OpenAPI().Paths["/login/passkey/verify"].Post,
+		api.OpenAPI().Paths["/principals/{principal_id}/passkeys"].Get,
+		api.OpenAPI().Paths["/principals/{principal_id}/passkey-registration-challenges"].Post,
+		api.OpenAPI().Paths["/principals/{principal_id}/passkeys"].Post,
+		api.OpenAPI().Paths["/principals/{principal_id}/passkeys/{passkey_id}"].Patch,
+		api.OpenAPI().Paths["/principals/{principal_id}/passkeys/{passkey_id}"].Delete,
+	} {
+		assert.Contains(t, operation.Responses, "500")
+	}
+	assert.Equal(t, []string{"authentication"}, api.OpenAPI().Paths["/login/passkey/options"].Post.Tags)
+	assert.Equal(t, []string{"authentication"}, api.OpenAPI().Paths["/login/passkey/verify"].Post.Tags)
+	assert.Equal(t, []string{"account"}, api.OpenAPI().Paths["/principals/{principal_id}/passkeys"].Get.Tags)
+	assert.Equal(t, []string{"account"}, api.OpenAPI().Paths["/principals/{principal_id}/passkeys"].Post.Tags)
+}
+
+func TestAuthenticationStepUpHTTPContract(t *testing.T) {
+	_, web, principalID := newAuthenticationService(t)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+
+	login := api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
+	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
+
+	session := api.Get("/me", "Cookie: "+cookie)
+	require.Equal(t, http.StatusOK, session.Code, session.Body.String())
+	assert.Contains(t, session.Body.String(), `"acr":1`)
+	assert.Contains(t, session.Body.String(), `"amr":["pwd"]`)
+
+	enroll := api.Post("/principals/"+principalID+"/mfa/totp-enrollments", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{"current_password": "correct horse battery staple"})
+	require.Equal(t, http.StatusCreated, enroll.Code, enroll.Body.String())
+	var enrollment struct {
+		Data authnext.MFAEnrollment `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(enroll.Body.Bytes(), &enrollment))
+	confirm := api.Post("/principals/"+principalID+"/mfa/totp", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{"code": mustTOTPValue(t, enrollment.Data.Secret)})
+	require.Equal(t, http.StatusCreated, confirm.Code, confirm.Body.String())
+	var confirmation struct {
+		Data authnext.MFAConfirmation `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(confirm.Body.Bytes(), &confirmation))
+
+	assert.Equal(t, http.StatusForbidden, api.Post("/sessions/current/step-up-challenges", "Cookie: "+cookie, "Origin: https://evil.example").Code)
+	options := api.Post("/sessions/current/step-up-challenges", "Cookie: "+cookie, "Origin: https://app.example")
+	require.Equal(t, http.StatusCreated, options.Code, options.Body.String())
+	var stepUp struct {
+		Data authnext.StepUpOptions `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(options.Body.Bytes(), &stepUp))
+	assert.NotEmpty(t, stepUp.Data.ChallengeID)
+	assert.Contains(t, stepUp.Data.Methods, "totp")
+
+	wrong := api.Post("/sessions/current/step-up-verifications", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{
+		"challenge_id": stepUp.Data.ChallengeID, "code": "000000",
+	})
+	assert.Equal(t, http.StatusUnprocessableEntity, wrong.Code, wrong.Body.String())
+
+	verify := api.Post("/sessions/current/step-up-verifications", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{
+		"challenge_id": stepUp.Data.ChallengeID, "code": confirmation.Data.RecoveryCodes[0],
+	})
+	require.Equal(t, http.StatusCreated, verify.Code, verify.Body.String())
+	upgradedCookie := strings.Split(verify.Header().Get("Set-Cookie"), ";")[0]
+	require.NotEmpty(t, upgradedCookie)
+
+	session = api.Get("/me", "Cookie: "+upgradedCookie)
+	require.Equal(t, http.StatusOK, session.Code, session.Body.String())
+	assert.Contains(t, session.Body.String(), `"acr":2`)
+	assert.Contains(t, session.Body.String(), `"mfa"`)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+cookie).Code)
+
+	assert.Contains(t, api.OpenAPI().Paths, "/sessions/current/step-up-challenges")
+	assert.Contains(t, api.OpenAPI().Paths, "/sessions/current/step-up-verifications")
+	assert.Equal(t, "authn-create-step-up-challenge", api.OpenAPI().Paths["/sessions/current/step-up-challenges"].Post.OperationID)
+	assert.Equal(t, "authn-create-step-up-verification", api.OpenAPI().Paths["/sessions/current/step-up-verifications"].Post.OperationID)
+	assert.Contains(t, api.OpenAPI().Paths["/sessions/current/step-up-verifications"].Post.Responses, "500")
+}
+
+func mustTOTPValue(t *testing.T, secret string) string {
+	t.Helper()
+	code, err := totp.GenerateCode(secret, time.Now())
+	require.NoError(t, err)
+	return code
+}
+
+func differentTOTP(code string) string {
+	if code[0] == '0' {
+		return "1" + code[1:]
+	}
+	return "0" + code[1:]
+}
+
+func TestAuthenticationHTTPUnavailableAndDisabledWeb(t *testing.T) {
+	db, web, principalID := newAuthenticationService(t)
+	accessToken, _, err := web.IssueAccessToken(t.Context(), parseGUID(principalID), "api", "openid")
+	require.NoError(t, err)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, fixedTokenVerifier{claims: &authnext.Claims{
+		PrincipalID: parseGUID(principalID), Subject: principalID,
+	}}, web)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+	assert.Equal(t, http.StatusInternalServerError, api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple",
+	}, "Origin: https://app.example").Code)
+	assert.Equal(t, http.StatusInternalServerError, api.Post("/login/passkey/options", map[string]any{
+		"return_url": "https://app.example/",
+	}, "Origin: https://app.example").Code)
+	authorization := "Authorization: Bearer " + accessToken
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/sessions/current", authorization).Code)
+	assert.Equal(t, http.StatusInternalServerError, api.Get("/sessions/9223372036854775807", authorization).Code)
+	assert.Equal(t, http.StatusInternalServerError, api.Get("/principals/"+principalID+"/sessions", authorization).Code)
+	assert.Equal(t, http.StatusInternalServerError, api.Get("/principals/"+principalID+"/mfa", authorization).Code)
+	assert.Equal(t, http.StatusInternalServerError, api.Get("/principals/"+principalID+"/passkeys", authorization).Code)
+	assert.Equal(t, http.StatusInternalServerError, api.Patch("/principals/"+principalID+"/password", authorization, map[string]any{
+		"current_password": "correct horse battery staple", "new_password": "another correct horse battery staple",
+	}).Code)
+	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/email-verifications/requests", authorization).Code)
+	assert.Equal(t, http.StatusInternalServerError, api.Post("/principals/"+principalID+"/mfa/totp-enrollments", authorization,
+		map[string]any{"current_password": "correct horse battery staple"}).Code)
+	assert.Equal(t, http.StatusInternalServerError, api.Post("/sessions/current/step-up-challenges", authorization).Code)
+	assert.Equal(t, http.StatusInternalServerError, api.Post("/principals/"+principalID+"/passkey-registration-challenges", authorization,
+		map[string]any{"current_password": "correct horse battery staple"}).Code)
+
+	_, declaration := humatest.New(t)
+	RegisterHTTP(declaration, web, nil)
+	assert.Contains(t, declaration.OpenAPI().Paths, "/me")
+	assert.NotContains(t, declaration.OpenAPI().Paths, "/sessions")
+}
+
+func TestAuthenticationHTTPHandlersEnforceCSRFDefenseInDepth(t *testing.T) {
+	_, web, principalID := newAuthenticationService(t)
+	login, err := web.BeginLogin(t.Context(), "alice", "correct horse battery staple", "")
+	require.NoError(t, err)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, fixedTokenVerifier{claims: &authnext.Claims{
+		PrincipalID: parseGUID(principalID), Subject: principalID,
+	}}, web)
+	cookie := "Cookie: " + strings.Split(web.SessionCookie(login.SessionID), ";")[0]
+	evilOrigin := "Origin: https://evil.example"
+	id := "9223372036854775807"
+
+	assert.Equal(t, http.StatusForbidden, api.Delete("/sessions/current", cookie, evilOrigin).Code)
+	assert.Equal(t, http.StatusForbidden, api.Delete("/sessions/"+id, cookie, evilOrigin).Code)
+	assert.Equal(t, http.StatusForbidden, api.Delete("/principals/"+principalID+"/sessions", cookie, evilOrigin).Code)
+	assert.Equal(t, http.StatusForbidden, api.Patch("/principals/"+principalID+"/password", cookie, evilOrigin, map[string]any{
+		"current_password": "correct horse battery staple", "new_password": "another correct horse battery staple",
+	}).Code)
+	assert.Equal(t, http.StatusForbidden, api.Post("/email-verifications/requests", cookie, evilOrigin).Code)
+	assert.Equal(t, http.StatusForbidden, api.Post("/principals/"+principalID+"/mfa/totp-enrollments", cookie, evilOrigin,
+		map[string]any{"current_password": "correct horse battery staple"}).Code)
+	assert.Equal(t, http.StatusForbidden, api.Post("/principals/"+principalID+"/mfa/totp", cookie, evilOrigin,
+		map[string]any{"code": "123456"}).Code)
+	verification := map[string]any{"current_password": "correct horse battery staple", "code": "123456"}
+	assert.Equal(t, http.StatusForbidden, api.Put("/principals/"+principalID+"/mfa/recovery-codes", cookie, evilOrigin, verification).Code)
+	assert.Equal(t, http.StatusForbidden, api.Delete("/principals/"+principalID+"/mfa/totp", cookie, evilOrigin, verification).Code)
+	assert.Equal(t, http.StatusForbidden, api.Post("/sessions/current/step-up-challenges", cookie, evilOrigin).Code)
+	assert.Equal(t, http.StatusForbidden, api.Post("/sessions/current/step-up-verifications", cookie, evilOrigin,
+		map[string]any{"challenge_id": strings.Repeat("c", 32), "code": "123456"}).Code)
+	assert.Equal(t, http.StatusForbidden, api.Post("/principals/"+principalID+"/passkey-registration-challenges", cookie, evilOrigin,
+		map[string]any{"current_password": "correct horse battery staple"}).Code)
+	assert.Equal(t, http.StatusForbidden, api.Patch("/principals/"+principalID+"/passkeys/"+id, cookie, evilOrigin,
+		map[string]any{"name": "Security key"}).Code)
+	assert.Equal(t, http.StatusForbidden, api.Delete("/principals/"+principalID+"/passkeys/"+id, cookie, evilOrigin,
+		map[string]any{"current_password": "correct horse battery staple"}).Code)
+}
+
+// sessionPublicID is the snowflake the API addresses the session holding token
+// by; the token's hash keys the row but is never published.
+func sessionPublicID(t *testing.T, web *Service, token string) string {
+	t.Helper()
+	tables, _, err := web.repo.tables()
+	require.NoError(t, err)
+	row, err := tables.Sessions.WithContext(t.Context()).Where(tables.Sessions.IDHash.Eq(tokenHash(token))).Take()
+	require.NoError(t, err)
+	require.NotNil(t, row.PublicID, "every session is created with its public ID")
+	return row.PublicID.String()
+}
+
+func newAuthenticationService(t *testing.T) (*gorm.DB, *Service, string) {
+	t.Helper()
+	harness := newAuthnRepositoryHarness(t, "")
+	seed := make([]byte, ed25519.SeedSize)
+	for index := range seed {
+		seed[index] = byte(index + 1)
+	}
+	service, err := NewWebService(authnext.Config{
+		Enabled: true, Issuer: "https://iam.example", Audience: []string{"api"},
+		SigningKey: base64.RawStdEncoding.EncodeToString(seed), AccessTokenTTL: time.Hour,
+		MFA:     authnext.MFAConfig{EncryptionKey: base64.RawStdEncoding.EncodeToString(seed)},
+		Passkey: authnext.PasskeyConfig{Enabled: true, RPID: "app.example", DisplayName: "Example Platform", Origins: []string{"https://app.example"}},
+		Web: authnext.WebConfig{
+			Enabled: true, CookieName: "custom_session", SessionTTL: time.Hour, IdleTTL: 10 * time.Minute,
+			PostLoginURL: "https://app.example/", PostLogoutURL: "https://app.example/login",
+			AllowedReturnURLs: []string{"https://app.example/"}, AllowedOrigins: []string{"https://app.example"},
+		},
+	}, harness.repository, WithMemberTenantResolver(boundMemberTenantResolver(t, harness.runtime)))
+	require.NoError(t, err)
+	principalID := seedLocalPrincipal(t, harness.repository, "alice", "alice@example.com", "correct horse battery staple")
+	return harness.db, service, guidString(principalID)
+}
+
+func newRecoveryAuthenticationService(t *testing.T, notificationURL string, registration ...bool) (*gorm.DB, *Service, string) {
+	t.Helper()
+	harness := newAuthnRepositoryHarness(t, "")
+	seed := make([]byte, ed25519.SeedSize)
+	for index := range seed {
+		seed[index] = byte(index + 1)
+	}
+	registrationEnabled := len(registration) > 0 && registration[0]
+	options := []WebOption{WithMemberTenantResolver(boundMemberTenantResolver(t, harness.runtime))}
+	if registrationEnabled {
+		options = append(options, WithRegistrationPrincipalCreator(registrationCreatorForHarness(harness)))
+	}
+	service, err := NewWebService(authnext.Config{
+		Enabled: true, Issuer: "https://iam.example", Audience: []string{"api"},
+		SigningKey: base64.RawStdEncoding.EncodeToString(seed), AccessTokenTTL: time.Hour,
+		MFA:               authnext.MFAConfig{EncryptionKey: base64.RawStdEncoding.EncodeToString(seed)},
+		Recovery:          authnext.RecoveryConfig{Enabled: true, TokenTTL: 15 * time.Minute, Cooldown: 24 * time.Hour, ResetURL: "https://app.example/recover"},
+		EmailVerification: authnext.EmailVerificationConfig{Enabled: true, TokenTTL: time.Hour, VerifyURL: "https://app.example/verify-email"},
+		Registration:      authnext.RegistrationConfig{Enabled: registrationEnabled},
+		Notification:      authnext.NotificationConfig{URL: notificationURL, PollInterval: 10 * time.Millisecond, RequestTimeout: time.Second, MaxAttempts: 3},
+		Web: authnext.WebConfig{
+			Enabled: true, CookieName: "custom_session", SessionTTL: time.Hour, IdleTTL: 10 * time.Minute,
+			PostLoginURL: "https://app.example/", PostLogoutURL: "https://app.example/login",
+			AllowedReturnURLs: []string{"https://app.example/"}, AllowedOrigins: []string{"https://app.example"},
+		},
+	}, harness.repository, options...)
+	require.NoError(t, err)
+	principalID := seedLocalPrincipal(t, harness.repository, "alice", "alice@example.com", "correct horse battery staple")
+	return harness.db, service, guidString(principalID)
+}
+
+func authnAPIRowCount(t *testing.T, db *gorm.DB, table, condition string, args ...any) int {
+	t.Helper()
+	var count int64
+	err := db.WithContext(t.Context()).Table(table).Where(condition, args...).Count(&count).Error
+	require.NoError(t, err)
+	return int(count)
+}
+
+func httpPrincipalID(t *testing.T, service *Service, cookie string) string {
+	t.Helper()
+	claims, err := service.Authenticate(t.Context(), "", cookie)
+	require.NoError(t, err)
+	return claims.PrincipalID.String()
+}

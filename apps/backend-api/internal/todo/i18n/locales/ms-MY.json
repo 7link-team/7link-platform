@@ -1,5 +1,6 @@
 {
   "not_found": "tugas tidak dijumpai",
+  "forbidden": "akses tugas ditolak",
   "deleted": "tugas telah dipadam",
   "not_deleted": "tugas belum dipadam",
   "version_conflict": "tugas telah diubah oleh orang lain",

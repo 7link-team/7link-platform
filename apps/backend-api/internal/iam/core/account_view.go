@@ -1,0 +1,199 @@
+package core
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+
+	"7link.com/platform/internal/infra/guid"
+	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
+	"7link.com/platform/pkg/extension/huma/respx"
+	"github.com/danielgtaylor/huma/v2"
+	"gorm.io/gorm"
+)
+
+const systemScopeID guid.ID = 1
+
+type AccountViewRoot struct {
+	ID     guid.ID `json:"id"`
+	Slug   string  `json:"slug"`
+	Name   string  `json:"name"`
+	Status string  `json:"status"`
+}
+
+type AccountViewWorkspace struct {
+	ScopeType         string           `json:"scope_type"`
+	ScopeID           guid.ID          `json:"scope_id"`
+	Tenant            *AccountViewRoot `json:"tenant,omitempty"`
+	Entity            *APIEntity       `json:"entity,omitempty"`
+	OperatingPlatform *AccountViewRoot `json:"operating_platform,omitempty"`
+}
+
+func registerAccountViewWorkspaceHTTP(api huma.API, svc *Service, registrar *authz.Registrar) {
+	authz.RegisterAuthenticated(registrar, api, huma.Operation{
+		OperationID: "iam-account-view-workspace", Method: http.MethodGet,
+		Path: "/account-views/workspace", Summary: "Get the verified account view workspace", Tags: []string{"account-views"},
+	}, func(ctx context.Context, _ *struct{}) (*respx.Body[AccountViewWorkspace], error) {
+		claims, ok := authnext.FromContext(ctx)
+		if !ok || claims == nil || claims.AccountView == nil {
+			return nil, huma.Error403Forbidden(respx.Forbidden)
+		}
+		workspace, err := svc.accountViewWorkspace(ctx, claims.AccountView.ScopeType, claims.AccountView.ScopeID)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// The view's scope no longer resolves to an active root of its kind,
+			// so the view admits nothing, as when there is no view at all.
+			return nil, huma.Error403Forbidden(respx.Forbidden)
+		}
+		if err != nil {
+			return nil, apiError("account view workspace", err)
+		}
+		return respx.OK(ctx, workspace), nil
+	})
+}
+
+// Metadata follows only the verified token scope, never a caller-selected root.
+func (s *Service) accountViewWorkspace(ctx context.Context, kind string, id guid.ID) (AccountViewWorkspace, error) {
+	out := AccountViewWorkspace{ScopeType: kind, ScopeID: id}
+	rootID := id
+	if kind == "personal" || kind == "system" {
+		return out, nil
+	}
+	if kind == "entity" {
+		owner, found, err := s.resolveEntityOwner(ctx, id)
+		if err != nil {
+			return out, err
+		}
+		if !found {
+			return out, gorm.ErrRecordNotFound
+		}
+		entity, err := s.GetEntity(ctx, owner.TenantID, id)
+		if err != nil {
+			return out, err
+		}
+		apiEntity := entityFromDomain(entity)
+		out.Entity = &apiEntity
+		rootID = owner.TenantID
+	}
+	repo, err := s.repo.pinWriter()
+	if err != nil {
+		return out, err
+	}
+	tables, err := repo.directoryTables()
+	if err != nil {
+		return out, err
+	}
+	root := new(AccountViewRoot)
+	rootKind := "tenant"
+	if kind == "platform" {
+		rootKind = "platform"
+	}
+	err = repo.writer().WithContext(ctx).Table(tables.Tenants.String()).Select("id, slug, name, status").Where("id = ? AND scope_kind = ? AND status = ?", rootID, rootKind, "active").Take(root).Error
+	if err != nil {
+		return out, err
+	}
+	if kind == "platform" {
+		out.OperatingPlatform = root
+	} else {
+		out.Tenant = root
+	}
+	return out, nil
+}
+
+// View admission is evaluated on issuance and every use. Route authorization
+// still evaluates the target's permissions independently.
+func (m *Module) authorizeAccountView(ctx context.Context, tx *gorm.DB, actor, target guid.ID, scope string, id guid.ID) error {
+	if m == nil || m.checker == nil || m.members == nil || m.registrar == nil || m.runtime == nil || tx == nil || actor <= 0 || target < 0 || id <= 0 {
+		return authnext.ErrInvalidCredentials
+	}
+	checker := *m.checker
+	checker.db = tx
+	allowed, err := checker.CheckPlatform(ctx, "account_view_create", actor)
+	if err != nil {
+		return fmt.Errorf("%w: evaluate account view operator: %w", authnext.ErrUnavailable, err)
+	}
+	if !allowed {
+		return authnext.ErrInvalidCredentials
+	}
+	if target == 0 {
+		if scope != "platform" && scope != "tenant" {
+			return authnext.ErrInvalidCredentials
+		}
+		names, err := checker.authorizationTables()
+		if err != nil {
+			return fmt.Errorf("%w: %w", authnext.ErrUnavailable, err)
+		}
+		active, member, err := ownerMembershipState(ctx, systemCurrentRead(tx), names, id, actor, scope)
+		if err != nil {
+			return fmt.Errorf("%w: %w", authnext.ErrUnavailable, err)
+		}
+		full, err := systemFullAdministrator(ctx, tx, names.Tables.PlatformAdministrators.String(), actor)
+		if err != nil {
+			return fmt.Errorf("%w: %w", authnext.ErrUnavailable, err)
+		}
+		if !active || (!member && !full) {
+			return authnext.ErrInvalidCredentials
+		}
+		return nil
+	}
+	switch scope {
+	case "personal":
+		allowed = id == target
+	case "system":
+		allowed = false
+		if id == systemScopeID {
+			allowed, err = m.systemViewWithinOperatorAuthority(ctx, &checker, actor, target)
+		}
+	case "platform":
+		allowed, err = m.members.IsOperatingPlatformMemberActiveOn(ctx, tx, id, target)
+	case "tenant":
+		allowed, err = m.members.IsMemberActiveOn(ctx, tx, id, target)
+	case "entity":
+		var entity struct{ TenantID guid.ID }
+		err = tx.WithContext(ctx).Table(checker.names.Entities.String()).Select("tenant_id").Where("id = ? AND status = ?", id, EntityActive).Take(&entity).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			err = nil
+			allowed = false
+		} else if err == nil {
+			allowed, err = m.members.IsMemberActiveOn(ctx, tx, entity.TenantID, target)
+		}
+	default:
+		allowed = false
+	}
+	if err != nil {
+		return fmt.Errorf("%w: evaluate account view target: %w", authnext.ErrUnavailable, err)
+	}
+	if !allowed {
+		return authnext.ErrInvalidCredentials
+	}
+	return nil
+}
+
+// A system view borrows the target's system authority, so it must never exceed
+// the operator's own: a full administrator is viewable only by another, and any
+// other target's platform permissions must all be held by the operator.
+func (m *Module) systemViewWithinOperatorAuthority(ctx context.Context, checker *Authorizer, actor, target guid.ID) (bool, error) {
+	targetFull, targetCodes, err := checker.systemPermissions(ctx, true, target)
+	if err != nil {
+		return false, err
+	}
+	actorFull, actorCodes, err := checker.systemPermissions(ctx, true, actor)
+	if err != nil {
+		return false, err
+	}
+	if targetFull {
+		return actorFull, nil
+	}
+	held := false
+	for _, action := range m.registrar.Registry().All() {
+		if action.Scope != authz.ActionScopeSystem || !targetCodes[action.Code] {
+			continue
+		}
+		if !actorFull && !actorCodes[action.Code] {
+			return false, nil
+		}
+		held = true
+	}
+	return held, nil
+}

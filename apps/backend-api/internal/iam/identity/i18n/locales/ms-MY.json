@@ -1,0 +1,19 @@
+{
+  "closure_conflict": "Permintaan penutupan telah berubah atau tindakan ini tidak dibenarkan dalam keadaan semasa. Muat semula dan cuba lagi.",
+  "platform_access_blocks_closure": "Tarik balik akses platform akaun ini melalui aliran pentadbir yang dilindungi sebelum memproses penutupan.",
+  "identity_unavailable": "Perkhidmatan identiti tidak dapat menyelesaikan permintaan. Cuba lagi kemudian; hubungi pentadbir jika masalah berterusan.",
+  "invalid_principal": "Data prinsipal tidak sah. Semak nama log masuk, profil, e-mel dan keperluan kata laluan.",
+  "invalid_service_account": "Data akaun perkhidmatan tidak sah. Semak nama, status, tamat tempoh, skop bukti kelayakan dan keadaan penyewa.",
+  "login_name_exists": "Nama log masuk ini telah digunakan. Pilih nama log masuk lain.",
+  "principal_anonymization_confirmation": "Pengesahan tidak sepadan dengan nama log masuk prinsipal ini. Pemadaman tidak boleh dibatalkan, jadi ia hanya diteruskan untuk pemanggil yang menamakan subjek yang betul.",
+  "principal_anonymized": "Prinsipal ini telah pun dipadam. Rekodnya ialah batu nisan dan tidak boleh dikembalikan.",
+  "principal_lifecycle_version_conflict": "Dasar pengekalan berubah semasa anda membuat keputusan. Muat semula dan putuskan berdasarkan kandungan terkininya.",
+  "principal_not_found": "Prinsipal yang diminta tidak ditemui dalam penyewa ini. Semak pengecam prinsipal dan penyewa, kemudian cuba lagi.",
+  "principal_retained": "Tarikh akhir pengekalan belum berlalu, atau terdapat penahanan undang-undang. Pemadaman kekal disekat sehingga kedua-duanya selesai.",
+  "principal_shared_beyond_tenant": "Akaun ini juga milik organisasi lain atau memegang kuasa platform. Menggantung atau memulihkannya di sini akan berkuat kuasa di semua tempat, jadi keluarkan keahliannya dalam organisasi ini.",
+  "principal_suspension_required": "Gantung prinsipal ini dahulu. Memadam akaun yang masih boleh log masuk akan meninggalkan sesi yang memegang data yang tidak lagi wujud.",
+  "service_account_credential_limit": "Akaun perkhidmatan ini telah mencapai bilangan maksimum bukti kelayakan aktif. Batalkan bukti kelayakan yang tidak digunakan dahulu.",
+  "service_account_credential_not_found": "Bukti kelayakan akaun perkhidmatan yang diminta tidak ditemui. Muat semula senarai bukti kelayakan dan cuba lagi.",
+  "service_account_not_found": "Akaun perkhidmatan yang diminta tidak ditemui dalam penyewa ini. Semak pengecam dan penyewa, kemudian cuba lagi.",
+  "service_account_version_conflict": "Akaun perkhidmatan telah berubah selepas anda membukanya. Muat semula akaun dan gunakan perubahan sekali lagi."
+}

@@ -1,0 +1,31 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+*.local
+
+# Turborepo
+.turbo
+
+# TypeScript
+*.tsbuildinfo
+
+# Test/coverage output
+coverage
+.temp/
+
+# Logs
+*.log
+
+# env files (.env.example is intentionally tracked)
+.env*
+!.env.example
+!**/.env.example
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store

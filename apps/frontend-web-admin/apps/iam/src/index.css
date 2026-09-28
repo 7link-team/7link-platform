@@ -1,0 +1,84 @@
+@import "@workspace/ui/globals.css";
+
+.iam-presentation-preview {
+  display: grid;
+  grid-template-columns: minmax(10rem, 13rem) minmax(0, 1fr);
+  min-height: 100%;
+}
+
+.iam-presentation-pages {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  border-inline-end: 1px solid var(--border);
+  padding: 0.75rem;
+  background: var(--background);
+}
+
+.iam-presentation-page {
+  min-height: 2.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.625rem;
+  overflow: hidden;
+  background: var(--card);
+  color: var(--card-foreground);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  text-align: start;
+  text-overflow: ellipsis;
+}
+
+.iam-presentation-page:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.iam-presentation-page[aria-current="page"] {
+  border-color: var(--primary);
+  outline: 2px solid color-mix(in srgb, var(--primary) 25%, transparent);
+  outline-offset: -2px;
+}
+
+.iam-presentation-preview
+  .ofv-pptx-viewer
+  > div[data-slide-index]:not([data-iam-presentation-active="true"]) {
+  display: none;
+}
+
+@media print {
+  .iam-presentation-pages {
+    display: none !important;
+  }
+
+  .iam-presentation-preview {
+    display: block;
+  }
+
+  .iam-presentation-preview [data-slide-index] {
+    display: block !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .iam-presentation-preview {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .iam-presentation-pages {
+    max-height: 7rem;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .iam-presentation-page {
+    width: 9rem;
+    flex: 0 0 9rem;
+  }
+}

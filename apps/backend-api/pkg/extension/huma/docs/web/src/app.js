@@ -67,26 +67,28 @@ import { parse as parseYAML } from "yaml";
         root.appendChild(rapidoc);
         return;
       }
-      case "stoplight": {
-        loadStylesheet("/docs/assets/stoplight.css");
-        await loadScript("/docs/assets/stoplight.js");
-        var stoplight = document.createElement("elements-api");
-        stoplight.apiDescriptionUrl = config.specYAML;
-        stoplight.router = "hash";
-        stoplight.layout = "sidebar";
-        stoplight.tryItCredentialsPolicy = "same-origin";
-        root.appendChild(stoplight);
-        return;
-      }
-      case "openapi-ui": {
-        var openapi = document.createElement("div");
-        openapi.id = "openapi-ui-container";
-        openapi.setAttribute("spec-url", config.specJSON);
-        openapi.setAttribute("theme", "light");
-        root.appendChild(openapi);
-        await loadScript("/docs/assets/openapi-ui.js");
-        return;
-      }
+      // Disabled: Stoplight 9.0.24 pulls vulnerable Mermaid/DOMPurify assets.
+      // case "stoplight": {
+      //   loadStylesheet("/docs/assets/stoplight.css");
+      //   await loadScript("/docs/assets/stoplight.js");
+      //   var stoplight = document.createElement("elements-api");
+      //   stoplight.apiDescriptionUrl = config.specYAML;
+      //   stoplight.router = "hash";
+      //   stoplight.layout = "sidebar";
+      //   stoplight.tryItCredentialsPolicy = "same-origin";
+      //   root.appendChild(stoplight);
+      //   return;
+      // }
+      // Disabled: openapi-ui-dist 2.3.3 has unresolved vulnerable dependencies.
+      // case "openapi-ui": {
+      //   var openapi = document.createElement("div");
+      //   openapi.id = "openapi-ui-container";
+      //   openapi.setAttribute("spec-url", config.specJSON);
+      //   openapi.setAttribute("theme", "light");
+      //   root.appendChild(openapi);
+      //   await loadScript("/docs/assets/openapi-ui.js");
+      //   return;
+      // }
       case "openapi-json":
         await renderSpec("json", config.specJSON);
         return;

@@ -1,0 +1,137 @@
+package identity
+
+import (
+	"context"
+	"errors"
+	"net/http"
+
+	"7link.com/platform/internal/iam/core"
+	identityi18n "7link.com/platform/internal/iam/identity/i18n"
+	"7link.com/platform/internal/infra/guid"
+	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
+	"7link.com/platform/pkg/extension/huma/respx"
+	"github.com/danielgtaylor/huma/v2"
+)
+
+type ClosureBrowserInput struct {
+	Cookie        string `header:"Cookie"`
+	Authorization string `header:"Authorization" hidden:"true"`
+	Origin        string `header:"Origin"`
+}
+type closureSubmitInput struct {
+	ClosureBrowserInput
+	Body struct {
+		Proof   string `json:"proof" minLength:"1" maxLength:"1024"`
+		Version int64  `json:"version" minimum:"0"`
+	}
+}
+type closureCancelInput struct {
+	ClosureBrowserInput
+	Body struct {
+		Version int64 `json:"version" minimum:"1"`
+	}
+}
+type closureUpdateInput struct {
+	PrincipalID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Body        struct {
+		Version int64  `json:"version" minimum:"1"`
+		Status  string `json:"status" enum:"processing,rejected"`
+	}
+}
+type closureListInput struct {
+	Status string `query:"status" enum:"pending,processing,canceled,rejected,completed"`
+	Offset int    `query:"offset" default:"0" minimum:"0"`
+	Limit  int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
+}
+
+func registerClosureHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-my-closure-request", Method: http.MethodGet, Path: "/principals/{principal_id}/closure-request", Summary: "Read my global account closure request", Tags: []string{"account"}, Errors: []int{401, 503}}, func(ctx context.Context, in *ClosureBrowserInput) (*respx.Body[ClosureRequest], error) {
+		result, err := s.GetClosureRequest(ctx, authnext.PrincipalIDFromContext(ctx))
+		if err != nil {
+			return nil, closureError(err)
+		}
+		return respx.OK(ctx, result), nil
+	})
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-submit-closure-request", Method: http.MethodPost, Path: "/principals/{principal_id}/closure-request", Summary: "Request global account closure without changing retention or access", Tags: []string{"account"}, Errors: []int{401, 403, 409, 503}}, func(ctx context.Context, in *closureSubmitInput) (*respx.Body[ClosureRequest], error) {
+		id, err := s.closureMutationPrincipal(ctx, in.ClosureBrowserInput, http.MethodPost)
+		if err != nil {
+			return nil, err
+		}
+		result, err := s.ChangeClosureRequest(ctx, id, in.Body.Version, "pending", in.Cookie, in.Body.Proof)
+		if err != nil {
+			return nil, closureError(err)
+		}
+		return respx.OK(ctx, result), nil
+	})
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-cancel-closure-request", Method: http.MethodDelete, Path: "/principals/{principal_id}/closure-request", Summary: "Cancel my pending account closure request", Tags: []string{"account"}, Errors: []int{401, 403, 409, 503}}, func(ctx context.Context, in *closureCancelInput) (*respx.Body[ClosureRequest], error) {
+		id, err := s.closureMutationPrincipal(ctx, in.ClosureBrowserInput, http.MethodDelete)
+		if err != nil {
+			return nil, err
+		}
+		result, err := s.ChangeClosureRequest(ctx, id, in.Body.Version, "canceled", in.Cookie, "")
+		if err != nil {
+			return nil, closureError(err)
+		}
+		return respx.OK(ctx, result), nil
+	})
+	guard := authz.Guard{Resource: "platform", Verb: "administer"}
+	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "identity-update-closure-request", Method: http.MethodPatch, Path: "/system/principals/{principal_id}/closure-request", Summary: "Move a closure request to processing or rejected", Tags: []string{"platform"}, Errors: []int{404, 409, 503}}, guard, func(ctx context.Context, in *closureUpdateInput) (*respx.Body[ClosureRequest], error) {
+		id, err := guid.RequireID(in.PrincipalID)
+		if err != nil {
+			return nil, err
+		}
+		var result ClosureRequest
+		if in.Body.Status == "processing" {
+			result, err = s.ProcessClosureRequest(ctx, id, in.Body.Version)
+		} else {
+			result, err = s.ChangeClosureRequest(ctx, id, in.Body.Version, "rejected", "", "")
+		}
+		if err != nil {
+			return nil, closureError(err)
+		}
+		return respx.OK(ctx, result), nil
+	})
+	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "identity-list-closure-requests", Method: http.MethodGet, Path: "/system/closure-requests", Summary: "Track account closure requests and derived erasure completion", Tags: []string{"platform"}}, guard, func(ctx context.Context, in *closureListInput) (*respx.Body[[]ClosureRequest], error) {
+		items, total, err := s.ListClosureRequests(ctx, in.Status, in.Offset, in.Limit)
+		if err != nil {
+			return nil, closureError(err)
+		}
+		if items == nil {
+			items = []ClosureRequest{}
+		}
+		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
+	})
+}
+
+// closureMutationPrincipal returns the caller of a session-only self-service
+// mutation once its cross-site request check passes. The registrar has already
+// proved the caller is the principal the path names.
+func (s *Service) closureMutationPrincipal(ctx context.Context, in ClosureBrowserInput, method string) (guid.ID, error) {
+	if s == nil || s.privacyBrowser.ValidateCSRF == nil {
+		return 0, huma.Error503ServiceUnavailable(identityi18n.IdentityUnavailable)
+	}
+	if err := s.privacyBrowser.ValidateCSRF(method, in.Origin, in.Cookie); err != nil {
+		return 0, huma.Error403Forbidden("respx.forbidden")
+	}
+	return authnext.PrincipalIDFromContext(ctx), nil
+}
+
+func closureError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
+	if errors.Is(err, core.ErrPrincipalHasPlatformAccess) {
+		return huma.Error409Conflict(identityi18n.PlatformAccessBlocksClosure)
+	}
+	if errors.Is(err, ErrClosureConflict) {
+		return huma.Error409Conflict(identityi18n.ClosureConflict)
+	}
+	if errors.Is(err, authnext.ErrInvalidCredentials) || errors.Is(err, authnext.ErrInvalidToken) {
+		return huma.Error403Forbidden("respx.forbidden")
+	}
+	if errors.Is(err, ErrUnavailable) || errors.Is(err, authnext.ErrUnavailable) {
+		return huma.Error503ServiceUnavailable(identityi18n.IdentityUnavailable)
+	}
+	return identityError(err)
+}

@@ -1,0 +1,19 @@
+{
+  "closure_conflict": "The closure request changed or cannot perform this action in its current state. Refresh and try again.",
+  "platform_access_blocks_closure": "Remove this account's platform access through the protected administrator workflow before processing closure.",
+  "identity_unavailable": "The identity service could not complete the request. Retry later; contact an administrator if the problem continues.",
+  "invalid_principal": "The principal data is invalid. Check the login name, profile, email, and password requirements.",
+  "invalid_service_account": "The service account data is invalid. Check its name, status, expiry, credential scopes, and tenant state.",
+  "login_name_exists": "This login name is already in use. Choose a different login name.",
+  "principal_anonymization_confirmation": "The confirmation does not match this principal's login name. Erasure cannot be undone, so it only proceeds for a caller that named the right subject.",
+  "principal_anonymized": "This principal has already been erased. The record is a tombstone and cannot be changed back.",
+  "principal_lifecycle_version_conflict": "The retention policy changed while you were deciding. Reload it and make the decision against what it says now.",
+  "principal_not_found": "The requested principal was not found in this tenant. Verify the principal identifier and tenant, then try again.",
+  "principal_retained": "The retention deadline has not passed, or a legal hold is in force. Erasure stays blocked until both are clear.",
+  "principal_shared_beyond_tenant": "This account also belongs to another organization or holds platform authority. Suspending or restoring it here would apply everywhere, so remove its membership in this organization instead.",
+  "principal_suspension_required": "Suspend the principal first. Erasing an account that can still sign in would leave sessions holding data that no longer exists.",
+  "service_account_credential_limit": "This service account already has the maximum number of active credentials. Revoke an unused credential before creating another.",
+  "service_account_credential_not_found": "The requested service account credential was not found. Refresh the credential list and try again.",
+  "service_account_not_found": "The requested service account was not found in this tenant. Verify the identifier and tenant, then try again.",
+  "service_account_version_conflict": "The service account changed after you opened it. Refresh the account and apply your changes again."
+}

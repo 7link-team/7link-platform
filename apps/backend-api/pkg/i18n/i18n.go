@@ -141,6 +141,17 @@ func (i *I18n) lookup(locale, key string) string {
 	return ""
 }
 
+// Translations renders key in every supported locale. It serves labels that are
+// stored rather than rendered per request, such as seeded menu rows, which must
+// carry each locale's text.
+func (i *I18n) Translations(key string) map[string]string {
+	labels := make(map[string]string, len(Supported()))
+	for _, locale := range Supported() {
+		labels[locale.Code] = i.TContext(WithLocale(context.Background(), locale.Code), key)
+	}
+	return labels
+}
+
 // Has checks if a key exists in the current locale.
 func (i *I18n) Has(key string) bool {
 	return i.T(key) != key

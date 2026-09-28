@@ -6,6 +6,13 @@ import (
 	"path/filepath"
 	"testing"
 
+	iamaudit "7link.com/platform/internal/iam/audit"
+	iamauthn "7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/federation"
+	"7link.com/platform/internal/iam/governance"
+	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/iam/organization"
 	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/health"
@@ -255,10 +262,11 @@ func TestBootstrapWithoutWriterReportsUnhealthy(t *testing.T) {
 			{Name: "guid", Status: healthservice.StatusNotServing},
 			{Name: "telemetry", Status: healthservice.StatusUnknown},
 			{Name: "audit", Status: healthservice.StatusUnknown},
-			{Name: "todo", Status: healthservice.StatusNotServing},
 			{Name: "health", Status: healthservice.StatusServing},
 		},
 	}, module.Service().Check(t.Context()))
+	_, todoEnabled := app.modules.ByName("todo")
+	assert.False(t, todoEnabled, "tasks must not be exposed without IAM")
 }
 
 func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
@@ -281,7 +289,7 @@ func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
 	}
 	assert.Equal(t, []string{
 		"i18n", "respx", "dlock", "wuid", "guid", "metrics", "telemetry", "audit",
-		"database-monitor", "migration-status", "config-inspector", "pprof", "todo", "health",
+		"database-monitor", "migration-status", "config-inspector", "pprof", "health",
 	}, names)
 	_, ok := app.modules.ByName("metrics")
 	assert.True(t, ok)
@@ -300,6 +308,125 @@ func TestBootstrapRegistersAuditRecorderWhenDisabled(t *testing.T) {
 	auditModule, ok := app.modules.ByName(audit.Name)
 	require.True(t, ok)
 	assert.NotNil(t, auditModule.(*audit.Module).Collector())
+}
+
+func TestIAMCompositionUsesFrozenRuntimeInventory(t *testing.T) {
+	app := &App{config: AppConfig{
+		Authn:      IAMAuthn{Enabled: true},
+		Federation: IAMFederation{Enabled: true},
+		Database: map[string]Database{"primary": {
+			Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "iam-composition.sqlite"), Writable: true, Readable: true,
+		}},
+	}}
+	require.NoError(t, app.initializeRuntime(t.Context()))
+	t.Cleanup(func() { _ = app.runtime.Close() })
+	require.NoError(t, app.composeModules())
+	require.NoError(t, app.modules.Activate())
+	require.NoError(t, app.modules.Wire(app.provideCrossCutting))
+
+	names := make([]string, 0, len(app.modules.Modules()))
+	for _, current := range app.modules.Modules() {
+		names = append(names, current.ModuleName())
+	}
+	assert.Subset(t, names, []string{
+		iamaudit.Name, core.Name, iamauthn.Name, identity.Name, organization.Name,
+		"oauth", "provisioning", governance.Name, federation.Name,
+	})
+	assertIAMOrder(t, names)
+}
+
+func TestIAMCompositionDelegatesActivationToModules(t *testing.T) {
+	app := &App{config: AppConfig{Database: map[string]Database{"primary": {
+		Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "iam-disabled.sqlite"), Writable: true, Readable: true,
+	}}}}
+	require.NoError(t, app.initializeRuntime(t.Context()))
+	t.Cleanup(func() { _ = app.runtime.Close() })
+	require.NoError(t, app.composeModules())
+
+	for _, name := range []string{
+		iamaudit.Name, core.Name, iamauthn.Name, identity.Name, organization.Name,
+		"oauth", "provisioning", governance.Name, federation.Name,
+	} {
+		_, registered := app.modules.ByName(name)
+		assert.True(t, registered, "%s must be registered before activation", name)
+	}
+
+	require.NoError(t, app.modules.Activate())
+	for _, name := range []string{
+		iamaudit.Name, core.Name, iamauthn.Name, identity.Name, organization.Name,
+		"oauth", "provisioning", governance.Name, federation.Name,
+	} {
+		_, active := app.modules.ByName(name)
+		assert.False(t, active, "%s must own its disabled activation state", name)
+	}
+}
+
+func TestIAMCompositionRejectsEnabledDependentWithDisabledDependencies(t *testing.T) {
+	app := &App{config: AppConfig{
+		Federation: IAMFederation{Enabled: true},
+		Database: map[string]Database{"primary": {
+			Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "iam-invalid-activation.sqlite"), Writable: true,
+		}},
+	}}
+	require.NoError(t, app.initializeRuntime(t.Context()))
+	t.Cleanup(func() { _ = app.runtime.Close() })
+	require.NoError(t, app.composeModules())
+
+	err := app.modules.Activate()
+	assert.ErrorContains(t, err, `module "federation" requires unregistered module "iam-audit"`)
+}
+
+func TestIAMCompositionReportsEveryMissingBusinessProvider(t *testing.T) {
+	tests := []struct {
+		provider string
+		want     string
+	}{
+		{iamaudit.Name, "resolve IAM audit appender"},
+		{core.Name, "resolve audit authorization registrar"},
+		{iamauthn.Name, "resolve authentication verifier"},
+		{identity.Name, "resolve authn registration principal creator"},
+		// Files consumes organization-owned entity and department resolvers,
+		// so replacing organization makes that dependency fail first.
+		{organization.Name, "resolve files department owner"},
+	}
+	for _, test := range tests {
+		t.Run(test.provider, func(t *testing.T) {
+			app := &App{config: AppConfig{
+				Authn: IAMAuthn{Enabled: true}, Federation: IAMFederation{Enabled: true},
+				Database: map[string]Database{"primary": {
+					Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "missing.sqlite"), Writable: true,
+				}},
+			}}
+			require.NoError(t, app.initializeRuntime(t.Context()))
+			t.Cleanup(func() { _ = app.runtime.Close() })
+			require.NoError(t, app.composeModules())
+
+			modules := app.modules.Modules()
+			for index, current := range modules {
+				if current.ModuleName() == test.provider {
+					modules[index] = &namedHealthModule{name: test.provider}
+				}
+			}
+			app.modules = module.NewRegistry()
+			require.NoError(t, app.modules.Register(modules...))
+			require.NoError(t, app.modules.Activate())
+			err := app.modules.Wire(app.provideCrossCutting)
+			assert.ErrorContains(t, err, test.want)
+			assert.ErrorContains(t, err, "service is not registered")
+		})
+	}
+}
+
+func assertIAMOrder(t *testing.T, names []string) {
+	t.Helper()
+	want := []string{iamaudit.Name, core.Name, iamauthn.Name, identity.Name, organization.Name, "oauth", "provisioning", governance.Name, federation.Name}
+	positions := make(map[string]int, len(names))
+	for index, name := range names {
+		positions[name] = index
+	}
+	for index := 1; index < len(want); index++ {
+		assert.Less(t, positions[want[index-1]], positions[want[index]], want[index])
+	}
 }
 
 func TestConfigureProcessRuntime(t *testing.T) {

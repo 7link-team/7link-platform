@@ -88,3 +88,90 @@ func TestANSIWriterStripsSequencesAcrossWrites(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "green text", output.String())
 }
+
+func TestBannerFontCandidatesResolveNamesAndPassPathsThrough(t *testing.T) {
+	// A bare name is tried as given and then title-cased, so both "slant" and
+	// "Slant" resolve without the operator having to know the file's casing.
+	assert.Equal(t, []string{"slant.flf", "Slant.flf"}, bannerFontCandidates("slant"))
+	assert.Equal(t, []string{"slant.flf", "Slant.flf"}, bannerFontCandidates("slant.flf"))
+	assert.Equal(t, []string{"slant.flf", "Slant.flf"}, bannerFontCandidates("  slant  "))
+	// An already-title-cased name must not be offered twice.
+	assert.Equal(t, []string{"Slant.flf"}, bannerFontCandidates("Slant"))
+
+	// Anything that looks like a path is handed back untouched rather than
+	// having an extension appended or being title-cased. Rewriting it could
+	// turn an explicit path into a different file on disk.
+	for name, font := range map[string]string{
+		"absolute":  "/usr/share/figlet/slant.flf",
+		"relative":  "fonts/slant.flf",
+		"traversal": "../../etc/passwd",
+	} {
+		assert.Equal(t, []string{font}, bannerFontCandidates(font), name)
+	}
+}
+
+func TestTitleBannerFontCapitalizesEachWord(t *testing.T) {
+	for input, want := range map[string]string{
+		"slant":      "Slant",
+		"big money":  "Big Money",
+		"big-money":  "Big-Money",
+		"big_money":  "Big_Money",
+		"3d":         "3d",
+		"":           "",
+		"alreadyCap": "AlreadyCap",
+	} {
+		assert.Equal(t, want, titleBannerFont(input), input)
+	}
+}
+
+func TestSingleLineFlattensWhitespaceThatWouldBreakTheInfoTable(t *testing.T) {
+	// The info block is tab-aligned, so an embedded tab or newline coming from
+	// a configured name would misalign or split the table.
+	assert.Equal(t, "a b c", singleLine("a\tb\nc"))
+	assert.Equal(t, "a b", singleLine("a\rb"))
+	assert.Equal(t, "plain", singleLine("plain"))
+	assert.Empty(t, singleLine(""))
+}
+
+func TestValidateBannerTextRejectsEmptyAndControlCharacters(t *testing.T) {
+	require.NoError(t, validateBannerText("platform"))
+
+	for name, text := range map[string]string{
+		"empty":      "",
+		"whitespace": "   ",
+		"tab":        "platform\t",
+		"newline":    "platform\n",
+		"escape":     "platform\x1b[31m",
+	} {
+		assert.Error(t, validateBannerText(text), name)
+	}
+}
+
+func TestANSIStripWriterRemovesEscapeSequencesAcrossWrites(t *testing.T) {
+	var out bytes.Buffer
+	writer := &ansiStripWriter{writer: &out}
+
+	n, err := writer.Write([]byte("\x1b[31mred\x1b[0m plain"))
+	require.NoError(t, err)
+	assert.Equal(t, len("\x1b[31mred\x1b[0m plain"), n, "the caller must see every byte accepted")
+	assert.Equal(t, "red plain", out.String())
+
+	// A sequence split across two writes must still be stripped; the state
+	// machine carries across calls, otherwise a flushed banner could emit raw
+	// escape bytes into a log file.
+	out.Reset()
+	split := &ansiStripWriter{writer: &out}
+	_, err = split.Write([]byte("a\x1b"))
+	require.NoError(t, err)
+	_, err = split.Write([]byte("[1mb"))
+	require.NoError(t, err)
+	assert.Equal(t, "ab", out.String())
+
+	// An escape that is not a control sequence introducer leaves the following
+	// byte intact.
+	out.Reset()
+	lone := &ansiStripWriter{writer: &out}
+	_, err = lone.Write([]byte("a\x1bZb"))
+	require.NoError(t, err)
+	assert.Equal(t, "ab", out.String())
+}

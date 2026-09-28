@@ -1,8 +1,9 @@
 # Backend API
 
-Go service that hosts the platform's HTTP and gRPC APIs. Business domains are
-not implemented yet; what exists today is the module runtime and the
-infrastructure modules every domain will build on.
+Go service that hosts the platform's HTTP and gRPC APIs. It includes the module
+runtime, shared infrastructure modules, and nine IAM domain modules covering
+authorization, authentication, identity, OAuth, organization, audit,
+governance, provisioning, and federation.
 
 ## Stack
 
@@ -20,26 +21,39 @@ infrastructure modules every domain will build on.
 ## Quick start
 
 ```sh
-make dev     # run with debug, migrations, and every diagnostic endpoint on
+make dev     # API + Web + selectable demo accounts, persistent local SQLite
+make dev-api # backend only, using DEV_ARGS/configuration
+make dev-status # print current URLs and readiness
+make dev-stop # stop API and Web; retain local data
 make build   # version-stamped binary at bin/7link-api
 ```
 
-`make dev` starts on the configured HTTP address and serves the landing page,
-`/docs`, and `/openapi` by default.
+`make dev` also works from the repository root. It requires Go, Node, Bun, make,
+and installed frontend dependencies (`bun install` in `apps/frontend-web-admin`).
+It prefers API port 8080 and Web port 8091, selects a free port when occupied,
+and prints the actual Web, API and Swagger (`/docs`) URLs after startup.
+Data, keys, credentials and logs persist under `apps/backend-api/.temp/dev`.
+Ctrl+C stops both services without deleting development data.
+
+Use `DEV_API_PORT=... DEV_WEB_PORT=...` to choose ports,
+`DEV_DEMO_ACCOUNTS=false` to hide the selectable demo accounts, or
+`DEV_PREFILL_ACCOUNT=true` to prefill an account. Demo accounts are development
+fixtures only. External identity providers, mail, Passkey and SAML integrations
+still require their own configuration. `make dev-api` retains the configurable
+backend invocation, migrations, debug mode and diagnostic endpoints.
 
 ## Layout
 
 ```
-cmd/7link-api/       CLI entrypoint: serve and migrate commands
+cmd/7link-api/       CLI entrypoint: serve, migrate, iam and openapi commands
 internal/app/        composition root: runtime, module registry, HTTP/gRPC servers
 internal/infra/      infrastructure modules (see below)
-internal/iam/        reserved for identity and access; not implemented
+internal/iam/        namespace for nine autonomous identity and access modules
 pkg/module/          the Module contract and lifecycle registry
 pkg/appenv/          Runtime: the application-lifetime manager container
 pkg/config/          layered configuration, generation, and inspection
 pkg/extension/       thin adapters over huma, gorm, grpc, goose, slog
-pkg/interpreter/     script and WASM engines; not yet wired into the app
-tests/               integration tests (separate module, real database engines)
+tests/               integration tests (separate module, embedded/test engines)
 tools/               pinned build tooling (separate module)
 ```
 
@@ -53,7 +67,7 @@ modules; the registry owns activation, wiring, migration, and ordering.
 
 Phases run `Register → Activate → Wire → Initialize → Start`, and shut down in
 reverse as `Quiesce → Stop → Deinitialize`. See
-`docs/module-lifecycle-redesign-final.md` for the design and its rationale.
+`docs/module-lifecycle-redesign.md` for the design and its rationale.
 
 ### Infrastructure modules
 
@@ -78,24 +92,529 @@ and `default` tags there drive both flag registration and generated config.
 Fields tagged `secret:"true"` — datasource DSNs, OTLP headers — are redacted
 wherever configuration is rendered, including the config-inspector endpoint.
 
-Run `make dev` with `--help` for the full flag list.
+Run `make dev-api DEV_ARGS="serve --help"` for the full flag list. Passing `--help` to
+`make` itself prints make's usage, not the server's.
+
+## Rotating keys
+
+Every secret the service seals with can be replaced without downtime, because
+each one is configured as a ring: one key is active and does the sealing or
+signing, and the retired keys are kept only long enough to read what they
+already produced. A rotation is therefore two deployments separated by time,
+never one.
+
+| What | Active | Retired |
+|---|---|---|
+| Token signing | `authn.signing_key` | `authn.previous_signing_keys` |
+| MFA secrets and recovery codes | `authn.mfa.encryption_key` | `authn.mfa.previous_encryption_keys` |
+| Federation client secrets | `federation.encryption_key` | `federation.previous_encryption_keys` |
+| Provisioning tokens | `provisioning.encryption_key` | `provisioning.previous_encryption_keys` |
+
+Each has a `*_file` variant, which is what a real deployment should use; naming
+both the value and the file for the same key is rejected at startup rather than
+resolved by a precedence rule nobody would remember.
+
+**Stored data — MFA, federation, provisioning.** Move the current key into the
+`previous_*` list, put the new key in the active slot, and deploy. Everything
+already stored still opens; everything written from now on is sealed with the
+new key. Then run `7link-api iam rewrap-secrets` to reseal the rows still on the
+old key. It reports how many rows remain, which is what tells you the old key
+can be dropped — rather than guessing. Derived digests such as recovery codes
+and verification tokens cannot be resealed; the command reports those
+separately, with an expiry date or `expires=never`.
+
+**Token signing.** The same two steps, but the waiting period is not optional
+and it is not a matter of caution. Access tokens already issued carry the key
+that signed them, and they stay valid for `authn.access_token_ttl`. Removing
+that key before the last one expires rejects every session still holding one —
+every signed-in user at once, with nothing in the logs that looks like a fault.
+So:
+
+1. Deploy with the new key active and the old key in `previous_signing_keys`.
+   `/.well-known/jwks.json` now publishes both, new tokens carry the new key,
+   and tokens issued a minute ago still verify.
+2. Wait at least one full `authn.access_token_ttl` — plus whatever your relying
+   parties cache the JWKS document for, if that is longer.
+3. Deploy again with the old key removed. Any token still naming it is now
+   rejected, which by this point is only a token that outlived its own lifetime.
+
+There is no rewrap step here: tokens are not stored, they expire.
+
+## Federation replicas and upgrades
+
+All replicas must use the same writable database, table prefix, federation keys
+and synchronized UTC clocks. Migration `federation` version 4 adds persistent
+replay claims for OIDC state, SAML state/assertions and SAML logout requests.
+The database primary key ensures a protocol identifier is consumed once across
+replicas and process restarts. Expiry and cleanup use the shared database clock,
+so a fast replica cannot erase another replica's still-live claim. A replay
+store failure refuses the request with HTTP 503; it never falls back to a
+process-local registry. Expired claims are
+cleaned on incoming federation requests, at most once per minute per replica.
+
+Logout requests must not be issued more than `federation.clock_skew` into the
+future. They expire at the earlier of `IssueInstant + max_issue_delay` and their
+optional `NotOnOrAfter`; an expired request never revokes a browser session.
+
+For an upgrade from the process-local registry, stop federation traffic and
+drain all old replicas before migrating and starting the new release. A mixed
+deployment does not provide cross-replica replay protection. Old login state
+consumption was never stored: keep login callbacks paused for at least the old
+`federation.state_ttl`, plus the maximum measured application/database clock
+offset and a safety margin, after the last old request finishes.
+
+**Legacy SAML logout needs a separate cutover.** The old implementation accepted
+arbitrarily future-dated logout requests, so no fixed waiting period can expire
+all messages it may have consumed. Keep the SLO routes blocked at ingress until
+the old SP entity IDs are retired and replacements are registered with the
+partners; ensure the old IDs remain inactive, refresh every replica's metadata
+cache, and revoke the old browser sessions. Waiting ten minutes alone is not a
+safe legacy SLO migration. New deployments have no legacy history to drain.
+
+Application rollback is supported only to a binary that understands version 4
+and persistent replay claims; retain the migration and claim rows. An old binary
+with automatic migration rejects the unknown version, and bypassing that check
+does not make rollback safe: even one old replica ignores all stored claims.
+
+Restoring a backup loses consumption after its snapshot. Pause federation and
+drain all requests first. For history produced entirely by this release, wait
+at least the larger of `federation.state_ttl` and
+`federation.saml.max_issue_delay + federation.clock_skew`, plus the maximum
+measured application/database clock offset and a safety margin, from the last
+pre-restore request. Use the largest settings active during that history, not
+just the restored settings. Legacy SLO history still requires the cutover above.
+Migration down removes claim history and is for isolated tests, not recovery.
+
+## Task data permissions and upgrades
+
+The `todo` module is the reference consumer of IAM row-level permissions. It is
+activated only when `authn.enabled` is true; without IAM its routes and migration
+source are absent from application composition. Every
+`/tenants/{tenant_id}/entities/{entity_id}/todos` operation requires authentication
+and active membership. The entity must be active and belong to the tenant named in
+the path.
+
+Grant the relevant `todo_create`, `todo_view`, `todo_update`, `todo_delete`,
+`todo_export` or `todo_import` permission through IAM roles and their data scope.
+Restore requires update, and template download requires import. Viewing does not
+grant export or import. Entity grants can inherit from ancestors; explicit entity
+denies take precedence. Self and department scopes authorize matching rows, not
+the whole entity. List totals, pagination, individual reads, writes and exports
+all retain the same tenant/entity SQL boundary. Missing authorization dependencies
+or an unavailable store never produce an unfiltered fallback.
+
+Creation and import take tenant, entity and principal from authenticated request
+context, not client-supplied attribution. The creator's active department is
+snapshotted on each new task. Moving a member to another department does not move
+their existing tasks. Spreadsheet attribution columns cannot replace the trusted
+creator. Field policies below impose additional attribute restrictions.
+
+Migration `todo` version 2 adds nullable tenant/entity/department columns and
+boundary indexes. Existing rows remain NULL and invisible through the authorized
+API; the upgrade never guesses ownership. Before upgrading, back up the database,
+stop task traffic and retire all old binaries that expose unrestricted task
+routes. Apply migrations and configure roles/entities before resuming traffic.
+Legacy rows may be attributed only from an operator-reviewed mapping of real
+tenants, entities, creators and departments, while task traffic is stopped; keep
+unresolved rows unassigned. Retain the backup and mapping for verification.
+
+Operational rollback must keep schema version 2 and use a binary that enforces
+its data boundaries. The structural down migration is tested, but drops all three
+attribution columns; reapplying version 2 leaves those rows unassigned again. It
+is not a production recovery procedure. Restore a consistent backup of tasks and
+IAM state when recovering, and verify tenant A/B read, write and export isolation
+before reopening traffic. Never run an old unrestricted binary against that
+backup or a downgraded schema.
+
+## Field policies
+
+The field catalog covers `todo` and `user_profile` (login name, display name and
+email). The management UI and server-side consumers enforce these declarations.
+Field policies were accepted as part of phase 10.5; `docs/iam-release-checkpoints.md`
+records the current release evidence and what remains outside application scope.
+Tenant administrators with `field_policy_view` / `field_policy_update` can inspect
+`GET /tenants/{tenant_id}/field-catalog`, list
+`GET /tenants/{tenant_id}/field-policies?resource=todo`, and change
+`PUT /tenants/{tenant_id}/field-policies/{resource}/{field}` with `version` and `policy`. Each
+policy has separate read/write defaults (`allow` or `deny`), `allow_roles` and
+`deny_roles`, and a mask (`omit`, or constant `redact` for declared text fields).
+Explicit role denies win, including for administrators. Policies restrict field
+access; they never grant an endpoint or any task rows. Missing policies preserve
+declared defaults; unavailable or invalid policy state fails closed.
+
+Use the version returned by the policy API, not a locally incremented number.
+Version zero creates an absent override; stale changes return 409. Deleting with
+`?version=<current>` restores declared defaults. Recreating an override receives
+a newer version, so an earlier editor cannot overwrite the replacement.
+`GET /tenants/{tenant_id}/entities/{entity_id}/fields/effective?resource=todo`
+returns only the caller's
+field capabilities. Policy changes are audited and advance the tenant revision.
+
+Task responses and exports omit or redact restricted fields. Filters, sorting
+and full-text search cannot inspect hidden values. Write restrictions apply to
+creation, updates and all-or-nothing imports, including explicitly submitted
+nulls, defaults and blank spreadsheet columns. Templates contain only writable
+columns. IDs and versions cannot be made writable or restricted by policy.
+
+Public principal/member views, scoped sessions, OAuth tokens/userinfo and SCIM
+user responses apply the tenant profile policy. Unscoped sessions/tokens omit
+profile attributes; OIDC `profile` and `email` scopes restrict them further.
+Hidden or masked email also omits `email_verified`. Existing JWT payloads remain
+immutable, but userinfo rechecks current policy and principal values. Internal
+authentication/provisioning reads keep raw values and are not public views.
+SCIM PATCH preserves a transactional raw snapshot and version; it never writes
+back projected data. PUT checks every replaced field, including omitted values.
+Filters and fixed list ordering require readable fields. Profile policy denies
+return 403 and an unavailable evaluator returns 503. The console edits only
+changed writable fields and never persists a redacted placeholder.
+
+Core migration v12 is a new `field_policies` milestone; the published `base`
+milestone remains v11 so existing organization constraints remain valid during
+upgrades. Retire older binaries before enabling field restrictions: they ignore
+the policy table. Keep v12 and policy-aware binaries for operational rollback.
+The tested structural down migration drops every field override and is not a
+production rollback procedure. Verify restrictions after any backup recovery.
+
+## Browser session tenancy
+
+The global cookie session is read through `GET /sessions/current` and is never
+scoped by a business-resource header. Tenant context is explicit in canonical
+resource paths such as `/tenants/{tenant_id}/me/permissions` and
+`/tenants/{tenant_id}/me/menus`. The tenant must be an active membership in an
+active tenant; otherwise the response is 403. Clients must prompt for a selection
+when membership is ambiguous, never assume a tenant named `platform` or select the
+first tenant. Bearer-token tenant claims cannot be widened by choosing another path.
+
+## SCIM tenant and credential lifecycle
+
+SCIM bearer authentication requires an active tenant and directory plus a live,
+unexpired credential. User/group reads, writes and bulk operations revalidate the
+resolved tenant/directory/credential tuple at the service boundary; writes check
+inside their transaction. Retained contexts are not an exemption from revocation.
+Suspending or soft-deleting the tenant rejects subsequent requests with SCIM 401.
+Resuming a suspended tenant restores access only while its directory and credential
+remain active. Public SCIM discovery documents contain no tenant resource data.
+
+Retire older binaries when deploying it: an old replica still accepts credentials that the
+new checks reject. Tenant/credential revalidation itself does not require credential
+reissuance.
+
+Directory and outbound target create/replace bodies now accept an optional
+`service_account_id`, referencing an active service account owned by the same
+tenant. The `provisioning.service_accounts` v4 milestone depends on `identity.base`.
+Upgrades leave existing bindings NULL; they do not create accounts or grant roles.
+PUT is full replacement: omission or JSON null clears a binding. Preserve the
+existing value when changing unrelated settings. A binding change increments the
+configuration version and participates in its audit transaction.
+
+Bound inbound credentials resolve the actual service-account principal. Every
+resource operation checks that the retained principal still matches the directory
+and that the account, principal, membership and owning tenant remain active and
+unexpired. Outbound push, removal and reconciliation reject invalid actors before
+any remote request. The administrative outbound API reports 409 for an inactive
+actor, while inbound SCIM reports 401. Administrators may disable or rebind a
+configuration even when its old actor has expired or been deleted.
+Inbound resource audit events identify the bound service account. Outbound events
+retain the initiating administrator and record `service_account_id` in their
+detail; background work uses the service account as its audit principal.
+
+Unbound configurations can be created and repaired, but cannot process SCIM:
+inbound authentication returns 401 and outbound operations return 409 without
+remote calls. Before upgrading an operating deployment, explicitly create and
+bind tenant-owned service accounts for every directory/target and configure
+their roles; there are no implicit role grants. Outbound user projection uses
+the target's bound account, never the initiating administrator. An unreadable or
+masked required `userName` rejects the push before any remote request; optional
+attributes are omitted or redacted according to that account's policy.
+Structural rollback from v4 to v3 drops bindings but preserves directories,
+credentials, resources and targets; re-upgrade cannot recover dropped bindings.
+Do not use that structural rollback to operate a production instance whose
+security depends on those bindings, or mix actor-aware and older replicas.
+
+## Audit Archive Execution
+
+Permanent principal erasure has a separate, near-real-time recovery ledger.
+Enable it on every replica that can accept erasure:
+
+```yaml
+iam_audit:
+  anchor:
+    endpoint: https://objects.example.invalid
+    bucket: audit-anchors
+    region: us-east-1
+    access_key: ${AUDIT_OBJECT_ACCESS_KEY}
+    secret_key: ${AUDIT_OBJECT_SECRET_KEY}
+    retention_days: 365
+  erasure_ledger:
+    enabled: true
+    timeout: 10s
+```
+
+It reuses the anchor S3 connection and writes COMPLIANCE-locked objects under
+`audit/erasures/{principal_id}/{lifecycle_version}.json`. `anchor.enabled` does
+not have to be enabled. If the ledger is disabled, unavailable, unlocked or
+cannot be read back exactly, permanent erasure returns unavailable and all
+database changes roll back. The objects contain identifiers and timestamps but
+no login, email, display name or other subject PII.
+
+Set `anchor.retention_days` longer than the maximum age of every database backup
+that can be restored, including off-site copies and the operational recovery
+window. A shorter object retention creates an interval in which an old backup
+can revive PII after its corresponding obligation is legally deletable. Before
+reopening a restored database, run:
+
+```sh
+7link-api iam list-erasure-obligations --config <config> > erasure-obligations.ndjson
+```
+
+The command does not initialize the application or read its database. It lists
+all object versions so an S3 delete marker cannot hide a locked obligation, and
+verifies each object's key, schema, exact version, SHA-256 and COMPLIANCE
+retention before writing one JSON object per line. Treat any command failure as
+an incomplete recovery and keep admission disabled. The full reconciliation
+procedure is in `docs/runbook-migration-recovery.md`.
+
+The audit module owns a durable archive executor. Enable
+`iam_audit.archive.enabled` after applying audit migration v3. It uses the
+endpoint, bucket, region, credentials and minimum object-lock duration in
+`iam_audit.anchor`; `iam_audit.anchor.enabled` is independent. Archive sweeps
+default to one minute and each attempt to four minutes (`archive.interval` and
+`archive.timeout`). Missing archive tables or invalid interval/timeout settings
+fail startup. IAM itself must be enabled.
+
+Each tenant advances through contiguous batches of at most 500 old-enough audit
+events. The first event that has not reached `archive_after_days` stops the batch;
+exactly-on-the-cutoff events are not yet eligible. Jobs freeze their sequence
+range, verified chain head, generation time and retention deadline before any
+external write. An archive uses the existing `audit-export.v1` NDJSON manifest,
+events and completion format; incremental manifests additionally carry
+`after_sequence` and `previous_hash` to identify the link to the preceding batch.
+The source database retains every event and its append-only triggers.
+
+`iam_audit_archive_jobs` persists queued/running/failed/complete state, attempts,
+retry deadlines and the exact object reference. Leases and retry eligibility use
+the database clock; completion requires the current lease token. Retrying a lost
+upload response verifies and reuses the same object rather than replacing it.
+The executor streams directly without plaintext temporary files, reads back the
+specific S3 version, and verifies the entire file's SHA-256 and size plus its
+COMPLIANCE lock. A completed record includes bucket/key/version/hash/size/retention.
+The lock lasts at least the job's frozen minimum-retention deadline and the
+configured object-lock duration from upload. Failures back off from one minute
+to one hour; stored/logged failure codes do not contain raw infrastructure errors.
+
+Archives above 16 MiB use streamed multipart uploads. Conditional creation is
+enforced on multipart completion as well as single-object writes; competing
+replicas converge on one immutable version. The producer's final digest/length
+check precedes multipart completion. Failed or canceled attempts abort their
+own upload with a separate bounded cleanup context. Configure the bucket's
+`AbortIncompleteMultipartUpload` lifecycle rule for the `audit/archives/` prefix
+(for example, after one day) to reclaim parts left by a process or host crash.
+That rule must target incomplete uploads only, never expire archived versions.
+
+The application never deletes archived objects or source audit events. Protect
+both the archive-job database and versioned bucket in backups. Recovery must
+restore those exact object versions, not just each key's latest alias. Disable
+the worker and let in-flight attempts stop before maintenance. Do not drop v3
+on an operating deployment: that removes durable cursors and object references,
+although source events and S3 objects survive. Prefer a v3-aware binary rollback
+with archiving disabled; retain the job table and bucket backup for recovery.
+
+Management is available in the audit-governance console. The tenant API uses
+`/tenants/{tenant_id}/audit`; the platform API uses `/platform/audit` and always
+scopes to tenant zero. Platform operations require `platform_administer`; tenant
+operations reject tenant zero. Platform `tenant_id` fields serialize as JSON
+`null`, following the shared ID encoding.
+
+| Method / suffix | Tenant permission | Purpose |
+| --- | --- | --- |
+| GET `/archive-status` | `audit_event_view` | Actual completion, pending event and job counts |
+| GET `/archives` | `audit_event_view` | Paginated durable jobs (`offset`, `limit`) |
+| POST `/archives` | `audit_event_export` | Queue the next eligible contiguous segment |
+| POST `/archives/{id}/retry` | `audit_event_export` | Retry a failed or lease-expired job |
+| POST `/archives/{id}/verify` | `audit_event_view` | Verify the exact object version, digest and retention |
+| GET `/archives/{id}/download` | `audit_event_export` | Download verified NDJSON with its exact content length |
+
+PUT `/retention` retains the tenant `audit_event_manage` permission; its platform
+counterpart configures the platform policy under `platform_administer`. Platform
+events participate in the same worker and immutable storage lifecycle. Retry is
+idempotent for queued jobs and rejects completed jobs or unexpired leases.
+
+The existing governance `archive_ready_events` remains an age-based count, not a
+pending count. `archive-status` reports `archived_events` from completed contiguous
+segments and `pending_events` from eligible events beyond that cursor. Management
+HTTP tests, platform execution and desktop/mobile UI fixtures pass. Multi-pool
+database concurrency/recovery, real multipart replica convergence, cancellation,
+lost completion response, exact-version downloads and a 1,003-event multi-file
+chain have additional automated evidence. Real desktop/mobile browser acceptance
+also passes against a new SQLite database, the composed application, background
+worker and MinIO: outage/retry, manual queueing, immutable verification/download,
+tenant isolation and ordinary-member denial. Set `IAM_ARCHIVE_MINIO_ENDPOINT` to an
+isolated MinIO fixture to include real storage tests in `go test
+./internal/iam/audit -race -count=1`; without it those tests explicitly skip.
+
+For the real browser gate, additionally set `IAM_ARCHIVE_BROWSER=1`,
+`IAM_ARCHIVE_MINIO_USER` and `IAM_ARCHIVE_MINIO_PASSWORD`, then run
+`go test ./internal/app -run TestComposedArchiveBrowserAcceptance -count=1 -timeout=5m`.
+It requires installed frontend dependencies, Bun, Node and Chrome. The harness
+creates an exclusive temporary database, seeds aged events through the actual
+audit service before application bootstrap, and starts isolated HTTP/Vite
+listeners. It never changes an existing database or weakens audit triggers.
+Screenshots remain under `.local/screenshots/archive-live/`; temporary database
+and local servers are cleaned up. Compliance-locked test objects remain in the
+isolated MinIO fixture until its operator removes the fixture itself.
 
 ## Testing
 
 ```sh
 make test              # unit tests
 make test-coverage     # unit tests + coverage gates
-make test-integration  # integration tests against real database engines
+make test-integration  # integration tests against embedded/test engines
+make test-performance  # uncached IAM hot-path plans/benchmarks on PostgreSQL 16
+make test-mysql8       # IAM migrations and hot paths on pinned real MySQL 8.4
 make test-all          # unit + integration
 make lint              # golangci-lint, pinned in tools/go.mod
+make ci                # format, lint, migration lock, coverage, integration, build, API document and web client contract checks
 ```
 
-`make test-coverage` enforces 90% overall and 90% for each infrastructure
-module individually; it fails the build below either threshold.
+`make test-coverage` enforces 90% overall and 90% for every package listed in
+`MODULE_COVERAGE_PACKAGES`; it fails the build below either threshold.
 
-`make test-integration` runs the `tests/` module, which starts a real embedded
-PostgreSQL and an in-process MySQL-protocol engine, so migrations are exercised
-against actual databases rather than mocks.
+`make test-integration` runs the `tests/` module against an embedded PostgreSQL
+16 server, file-backed SQLite, and the in-process `go-mysql-server` compatibility
+engine. The latter is not MySQL 8 and does not replace the separately pinned
+real-MySQL gate.
+
+`make test-performance` captures PostgreSQL JSON `EXPLAIN` plans and benchmark
+samples for IAM authorization, session lookup, SCIM bulk, and audit append. The
+checked-in PostgreSQL/MySQL baseline always enforces SQL fingerprints and rejects
+unscoped or critical full scans. Set `IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1` when
+rerunning on the baseline machine to enforce its frozen latency thresholds; each
+path is judged by the median of its five samples, so a single outlier does not
+fail the gate.
+After an intentional SQL change, `IAM_PERFORMANCE_UPDATE=plans` regenerates only
+the plans using the same performance commands. It validates the new plans before
+writing and enforces latency only when `IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1` is
+also set; original benchmark samples and thresholds are retained. Review the generated plans, then rerun with this
+variable unset to verify SQL fingerprints without updating the baseline.
+
+## Principal Erasure Upgrade Boundary
+
+Principal anonymization is exposed through the platform-admin lifecycle API
+and account administration UI. Apply every owner's erasure migration before enabling
+that workflow: identity lifecycle v4; core/authn v13; OAuth/organization v9;
+federation/provisioning v5; governance v4. Disabled runtime modules may still own
+historical records, so their persisted schemas and cleanup are not skipped.
+
+Outbound SCIM replicas additionally require provisioning v6 before serving
+traffic. Do not run old replicas alongside v6 writers: old code does not honor
+durable operation claims. Stop old writers before migration and restart the
+candidate together. See [SCIM operations](docs/iam-scim-operations.md) for
+unknown-outcome recovery; timeouts do not authorize clearing a pending claim.
+
+OAuth grant-incarnation migration v10 introduces application-specific access
+revocation. The matching authentication implementation validates the grant carried
+by an OAuth principal token on the platform's request path. Legacy OAuth access
+tokens, authorization codes and refresh tokens without a grant require renewed
+authorization; ordinary browser sessions are not invalidated by this migration.
+Stop all old OAuth writers before upgrading and do not mix old authentication
+instances with the new candidate. Reverting to an old verifier can accept already
+signed, revoked JWTs again: deleting grant rows alone does not make that rollback
+safe. A downgrade must first remove trust in those signing keys or establish that
+all affected JWTs have expired, with OAuth traffic held closed throughout.
+
+External resource servers that only verify JWT signatures offline do not observe
+platform grant revocation immediately. They must use online introspection or an
+equivalent revocation mechanism for immediate enforcement; otherwise their token
+expiry window remains an explicit deployment limitation.
+
+### Shared authentication security
+
+For multiple replicas, configure `authn.shared_security.redis_url_file` with a
+private file containing a Redis 6.2+ URL (`rediss://` for TLS). All replicas must
+use the same database and deployment-specific `namespace`. Text, slide and click
+captcha answers expire after five minutes and are atomically consumed even on
+an incorrect answer. Shared mode rejects `registration.captcha.test_answer`.
+
+`failure_policy` must explicitly be `closed` (503 on limiter storage outage) or
+`open` (continue requests and log a warning); neither is silently chosen. Captcha
+storage failure always rejects the challenge. The service owner must select the
+production policy. Test both policies using an unavailable Redis before release.
+
+The default fixed-window limits are 60 requests per socket peer and 3000 requests
+globally per minute, shared across replicas for authentication write operations.
+Exceeding either returns 429 and `Retry-After`. Configure the budgets from measured
+traffic. Forwarded IP headers are deliberately not trusted: behind a reverse proxy,
+the socket-peer budget applies to that proxy, and the trusted ingress must enforce
+the client-IP budget. GET session checks and DELETE logout remain available.
+
+### Release verification
+
+`make release-check` serially runs `ci`, the full Go race suite, generation
+idempotence, frontend lint/typecheck/tests/build, alert rule tests, real MySQL,
+the schema lock and the disposable Redis security checks in plaintext and TLS.
+Install `promtool` (tested with 3.5.0) or set `PROMTOOL` to its
+command. Load `docs/iam-alerts.yml` into the deployment's Prometheus and separately
+verify delivery to the responsible operator; rule tests do not prove alert routing.
+Use an already provisioned `DOCKER_CMD` / `DOCKER_TEST_HOST`; it does not install
+Docker remotely. Browser UAT, the production deployment, recovery objectives and
+sign-off are separate release evidence, not implied by this target passing.
+
+Erasure covers global principal profiles, membership profile copies,
+authentication secrets/sessions/owned notifications, OAuth grants/tokens,
+federation links, SCIM User identifiers, accepted-invitation email and cached
+access-review principal names. It retains subject IDs, historical decisions and
+immutable audit records. It does not claim to scrub arbitrary free-text content,
+already issued JWT payloads, external recipients, database backups or remote
+systems. Those require their own retention controls. Restoring an older backup
+must reconcile subsequent erasure decisions before admission is re-enabled.
+
+Authn v12 deliberately leaves legacy notification `principal_id` values NULL;
+email addresses are not reliable ownership evidence. Any such row blocks
+anonymization, including sent/failed rows. Before release:
+
+1. Inventory NULL-owned rows by status and retention age using a read-only query.
+   Do not export recipient addresses or encrypted payloads into incident logs.
+2. Under an approved retention/legal-hold decision, an operator must either
+   establish ownership from authoritative records or remove explicitly reviewed,
+   expired outbox rows. No automatic age cutoff or email-based backfill is provided.
+   Stop and drain notification delivery before that maintenance transaction;
+   do not discard pending or delivering notifications as an upgrade shortcut.
+3. Recheck that NULL-owned rows are zero before attempting principal erasure.
+   If evidence or deletion authority is unavailable, leave erasure blocked.
+
+For an individual principal, complete outbound SCIM deprovisioning before
+erasure; a live remote User mapping blocks cleanup so its remote ID is not lost.
+Remove platform access through the existing protected administrator/grant
+workflow. Wait for in-flight notification delivery to finish. Finally, suspend
+the principal and record an explicit expired retention deadline with no legal
+hold. The cleanup, tombstone and audit event commit atomically. Once any tombstone
+exists, structural downgrade of erasure guards is refused; roll forward rather
+than disabling triggers or deleting the lifecycle record.
+
+## API document
+
+`docs/openapi.json` is the published description of this API. It is generated,
+not written, and committed rather than only served, because the things that
+need it run before the service does: client type generation, a compatibility
+check, the review of an API change.
+
+```sh
+make openapi        # regenerate docs/openapi.json -- commit the result
+make openapi-check  # fail when the committed document no longer matches the code
+```
+
+The export composes the application as configured rather than a fixed
+"everything on" superset, so a deployment that runs fewer modules produces a
+smaller document; nothing binds a port. `OPENAPI_NAME` sets the application
+name the title is built from and defaults to something neutral, so the
+committed document carries no product name. The version comes from the
+configuration and never from the build stamp: a stamp would change on every
+commit, so a committed document could never match a fresh export and a real
+API change would be buried in the noise.
+
+`7link-api openapi` is also a command in its own right. With no `--out` it
+writes to standard output, so it pipes; `--format yaml` selects the other
+serialization.
 
 ## Code generation
 

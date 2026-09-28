@@ -66,7 +66,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 		Path:        Path,
 		Summary:     "Inspect effective configuration",
 		Description: "Returns the effective application configuration with sensitive values redacted.",
-		Tags:        []string{"Diagnostics"},
+		Tags:        []string{"system"},
 		Responses: map[string]*huma.Response{
 			"200": {
 				Description: "Effective configuration",

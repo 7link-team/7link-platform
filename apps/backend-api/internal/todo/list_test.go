@@ -20,7 +20,7 @@ func seed(t *testing.T, svc *service, drafts ...Draft) []*model.TodoRow {
 	t.Helper()
 	rows := make([]*model.TodoRow, 0, len(drafts))
 	for _, d := range drafts {
-		row, err := svc.Create(t.Context(), d)
+		row, err := svc.Create(todoContext(t), d)
 		require.NoError(t, err)
 		rows = append(rows, row)
 	}
@@ -44,7 +44,7 @@ func listRequest(t *testing.T, raw string) ListInput {
 	require.NoError(t, err)
 
 	in := ListInput{Limit: 20, RawQuery: values}
-	in.Q = values.Get("q")
+	in.Search = values.Get("search")
 	in.Sort = values.Get("sort")
 	in.Fields = values.Get("fields")
 	in.Deleted = values.Get("deleted") == "true"
@@ -53,14 +53,14 @@ func listRequest(t *testing.T, raw string) ListInput {
 
 func listing(t *testing.T, svc *service, raw string) Page {
 	t.Helper()
-	page, err := svc.List(t.Context(), listRequest(t, raw))
+	page, err := svc.List(todoContext(t), listRequest(t, raw))
 	require.NoError(t, err)
 	return page
 }
 
 func listError(t *testing.T, svc *service, raw string) platformquery.Error {
 	t.Helper()
-	_, err := svc.List(t.Context(), listRequest(t, raw))
+	_, err := svc.List(todoContext(t), listRequest(t, raw))
 	var queryErr platformquery.Error
 	require.ErrorAs(t, err, &queryErr, "expected a contract violation for %q", raw)
 	return queryErr
@@ -127,7 +127,7 @@ func TestListSearchesTitleAndDescription(t *testing.T) {
 	described.Description = "mentions reimbursement"
 	seed(t, svc, draft("reimbursement report"), described, draft("something else"))
 
-	assert.Len(t, listing(t, svc, "q=reimbursement").Rows, 2, "q spans title and description")
+	assert.Len(t, listing(t, svc, "search=reimbursement").Rows, 2, "search spans title and description")
 	assert.Equal(t, []string{"reimbursement report"},
 		titles(listing(t, svc, "title=like:reimbursement").Rows))
 }
@@ -135,7 +135,7 @@ func TestListSearchesTitleAndDescription(t *testing.T) {
 func TestListExcludesDeletedUnlessAsked(t *testing.T) {
 	svc, _ := newTestService(t, "")
 	rows := seed(t, svc, draft("kept"), draft("removed"))
-	require.NoError(t, svc.Delete(t.Context(), rows[1].ID, rows[1].Version))
+	require.NoError(t, svc.Delete(todoContext(t), rows[1].ID, rows[1].Version))
 
 	assert.Equal(t, []string{"kept"}, titles(listing(t, svc, "").Rows))
 	assert.Len(t, listing(t, svc, "deleted=true").Rows, 2)
@@ -156,7 +156,7 @@ func TestListPagesWithoutDuplicatingOrSkipping(t *testing.T) {
 	for offset := 0; offset < 10; offset += 3 {
 		in := listRequest(t, "sort=priority")
 		in.Offset, in.Limit = offset, 3
-		page, err := svc.List(t.Context(), in)
+		page, err := svc.List(todoContext(t), in)
 		require.NoError(t, err)
 		assert.Equal(t, int64(10), page.Total)
 		for _, row := range page.Rows {
@@ -247,7 +247,7 @@ func TestActorFilterAcceptsOnlyRealIdentifiers(t *testing.T) {
 	assert.Equal(t, "created_by", listError(t, svc, "created_by=eq:0").Field)
 	assert.Equal(t, "created_by", listError(t, svc, "created_by=eq:abc").Field)
 
-	_, err := svc.List(t.Context(), listRequest(t, "created_by=eq:2366488506482438144"))
+	_, err := svc.List(todoContext(t), listRequest(t, "created_by=eq:2366488506482438144"))
 	require.NoError(t, err)
 }
 
@@ -315,14 +315,14 @@ func TestTimeRangesExcludeTheUpperBoundWhenAsked(t *testing.T) {
 }
 
 // TestSearchTermDropsAWildcardOnlyQuery covers the same normalization order the
-// filter layer enforces. EscapeLike removes the wildcards, so a q of nothing but
+// filter layer enforces. EscapeLike removes the wildcards, so a search of nothing but
 // them would build LIKE '%%' on both columns — a full scan that matches every
 // row anyway. The result set is unchanged; the pointless predicate is not built.
 func TestSearchTermDropsAWildcardOnlyQuery(t *testing.T) {
 	_, db := newTestService(t, "")
 	cols := query.Bind(db, "")
 	for _, term := range []string{"%", "___", `\`, "%_%"} {
-		assert.Nil(t, searchTerm(cols, term), "q=%s", term)
+		assert.Nil(t, searchTerm(cols, term), "search=%s", term)
 	}
 	assert.NotNil(t, searchTerm(cols, "task"))
 	assert.NotNil(t, searchTerm(cols, "a%b"))
@@ -338,7 +338,7 @@ func TestFilterDescriptionIsEmpty(t *testing.T) {
 	)
 
 	titles := func(filter string) []string {
-		page, err := svc.List(t.Context(), ListInput{
+		page, err := svc.List(todoContext(t), ListInput{
 			Limit: 10, RawQuery: url.Values{"description": {filter}},
 		})
 		require.NoError(t, err)

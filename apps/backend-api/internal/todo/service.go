@@ -6,11 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"7link.com/platform/internal/infra/audit"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/todo/model"
 	"7link.com/platform/internal/todo/query"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformquery "7link.com/platform/pkg/query"
 	"gorm.io/gen"
@@ -22,9 +24,34 @@ import (
 // query package, so the soft-delete predicate and the table prefix cannot be
 // forgotten at some other call site.
 type service struct {
-	runtime *appenv.Runtime
-	ids     guid.Source
-	now     func() time.Time
+	runtime     *appenv.Runtime
+	ids         guid.Source
+	now         func() time.Time
+	checker     authz.EntityDataPermissionChecker
+	fields      authz.FieldPermissionChecker
+	departments core.MemberDepartmentReader
+	entities    core.EntityOwnerResolver
+}
+
+func (s *service) resolveOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+	db := s.writer()
+	if db == nil {
+		return authz.ResourceOwner{}, false, ErrUnavailable
+	}
+	var row model.TodoRow
+	names := query.BindNames(s.runtime.TablePrefix())
+	err := db.WithContext(ctx).Table(names.Todos.String()).
+		Select("tenant_id, entity_id").Where("id = ?", id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return authz.ResourceOwner{}, false, nil
+	}
+	if err != nil {
+		return authz.ResourceOwner{}, false, err
+	}
+	if row.TenantID == nil || row.EntityID == nil {
+		return authz.ResourceOwner{}, false, nil
+	}
+	return authz.ResourceOwner{TenantID: *row.TenantID, EntityID: *row.EntityID}, true, nil
 }
 
 func newService(rt *appenv.Runtime, ids guid.Source) *service {
@@ -44,7 +71,7 @@ func (s *service) writer() *gorm.DB {
 // includeDeleted explicitly at every call site means excluding soft-deleted
 // rows is never an accident, and the table prefix is applied in exactly one
 // place.
-func (s *service) scope(ctx context.Context, includeDeleted bool) (query.ITodoRowDo, *query.Todos, error) {
+func (s *service) scope(ctx context.Context, includeDeleted bool, verb string) (query.ITodoRowDo, *query.Todos, error) {
 	db := s.writer()
 	if db == nil {
 		return nil, nil, ErrUnavailable
@@ -54,7 +81,8 @@ func (s *service) scope(ctx context.Context, includeDeleted bool) (query.ITodoRo
 	if !includeDeleted {
 		q = q.Where(todos.DeletedAt.IsNull())
 	}
-	return q, todos, nil
+	q, err := s.constrain(ctx, q, todos, verb)
+	return q, todos, err
 }
 
 // contract returns the filter declaration for description alone. It builds no
@@ -70,12 +98,13 @@ func (s *service) contract() (*platformquery.Fields, error) {
 	return filters(query.Bind(db, s.runtime.TablePrefix())), nil
 }
 
-// actor is the acting principal, taken from the identity contract audit already
-// defines. No middleware populates it yet, so it is zero today; when one lands,
-// these columns start carrying values with no change here.
+// actor uses the same trusted principal as the data authorization boundary.
 func actor(ctx context.Context) guid.ID {
-	id, _ := guid.Parse(audit.ActorFromContext(ctx).ID)
-	return id
+	claims, ok := authn.FromContext(ctx)
+	if !ok || claims == nil {
+		return 0
+	}
+	return claims.PrincipalID
 }
 
 // nullableTime assigns a nullable time column. gen models such a column as
@@ -90,8 +119,15 @@ func nullableTime(column field.Time, value *time.Time) field.AssignExpr {
 
 // Create stores a validated draft.
 func (s *service) Create(ctx context.Context, draft Draft) (*model.TodoRow, error) {
-	_, todos, err := s.scope(ctx, false)
+	claims, departmentID, err := s.creationScope(ctx, "create")
 	if err != nil {
+		return nil, err
+	}
+	constraint, err := s.fieldConstraint(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkFieldWrites(constraint, draft.submitted(), true); err != nil {
 		return nil, err
 	}
 
@@ -103,7 +139,8 @@ func (s *service) Create(ctx context.Context, draft Draft) (*model.TodoRow, erro
 	now := s.now()
 	who := actor(ctx)
 	row := &model.TodoRow{
-		ID:          guid.ID(next),
+		ID:       guid.ID(next),
+		TenantID: &claims.TenantID, EntityID: &claims.EntityID, DepartmentID: departmentID,
 		Title:       draft.Title,
 		Description: draft.Description,
 		Status:      string(draft.Status),
@@ -116,7 +153,7 @@ func (s *service) Create(ctx context.Context, draft Draft) (*model.TodoRow, erro
 		UpdatedAt:   now,
 		UpdatedBy:   who,
 	}
-	if err := todos.WithContext(ctx).Create(row); err != nil {
+	if err := query.Bind(s.writer(), s.runtime.TablePrefix()).WithContext(ctx).Create(row); err != nil {
 		return nil, err
 	}
 	return row, nil
@@ -124,17 +161,17 @@ func (s *service) Create(ctx context.Context, draft Draft) (*model.TodoRow, erro
 
 // Get returns one live task.
 func (s *service) Get(ctx context.Context, id guid.ID) (*model.TodoRow, error) {
-	return s.find(ctx, id, false)
+	return s.find(ctx, id, false, "view")
 }
 
 // GetIncludingDeleted returns a task whether or not it is soft-deleted, for the
 // restore path and for list queries that opt in.
 func (s *service) GetIncludingDeleted(ctx context.Context, id guid.ID) (*model.TodoRow, error) {
-	return s.find(ctx, id, true)
+	return s.find(ctx, id, true, "view")
 }
 
-func (s *service) find(ctx context.Context, id guid.ID, includeDeleted bool) (*model.TodoRow, error) {
-	q, todos, err := s.scope(ctx, includeDeleted)
+func (s *service) find(ctx context.Context, id guid.ID, includeDeleted bool, verb string) (*model.TodoRow, error) {
+	q, todos, err := s.scope(ctx, includeDeleted, verb)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +188,14 @@ func (s *service) find(ctx context.Context, id guid.ID, includeDeleted bool) (*m
 // Update applies a patch under an optimistic lock. version is the caller's view
 // of the row; a mismatch means someone else wrote first.
 func (s *service) Update(ctx context.Context, id guid.ID, version int, patch Patch) (*model.TodoRow, error) {
-	current, err := s.find(ctx, id, false)
+	constraint, err := s.fieldConstraint(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkFieldWrites(constraint, patch.submitted(), false); err != nil {
+		return nil, err
+	}
+	current, err := s.find(ctx, id, false, "update")
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +210,7 @@ func (s *service) Update(ctx context.Context, id guid.ID, version int, patch Pat
 		next = *patch.Status
 	}
 
-	q, todos, err := s.scope(ctx, false)
+	q, todos, err := s.scope(ctx, false, "update")
 	if err != nil {
 		return nil, err
 	}
@@ -203,13 +247,13 @@ func (s *service) Update(ctx context.Context, id guid.ID, version int, patch Pat
 	if info.RowsAffected != 1 {
 		return nil, ErrVersionConflict
 	}
-	return s.find(ctx, id, false)
+	return s.find(ctx, id, false, "update")
 }
 
 // Delete soft-deletes a live task under the same optimistic lock as Update:
 // deleting a stale view is the same lost-update problem as writing one.
 func (s *service) Delete(ctx context.Context, id guid.ID, version int) error {
-	q, todos, err := s.scope(ctx, false)
+	q, todos, err := s.scope(ctx, false, "delete")
 	if err != nil {
 		return err
 	}
@@ -229,7 +273,7 @@ func (s *service) Delete(ctx context.Context, id guid.ID, version int) error {
 	}
 	// Zero rows means the row is gone, already deleted, or the version moved.
 	// Re-read to tell the caller which, rather than returning one vague error.
-	if _, err := s.find(ctx, id, false); err != nil {
+	if _, err := s.find(ctx, id, false, "delete"); err != nil {
 		return err
 	}
 	return ErrVersionConflict
@@ -238,7 +282,7 @@ func (s *service) Delete(ctx context.Context, id guid.ID, version int) error {
 // Restore clears the soft delete. It requires the caller to have seen the
 // deleted row, so a task cannot be restored from its ID alone.
 func (s *service) Restore(ctx context.Context, id guid.ID, version int) (*model.TodoRow, error) {
-	current, err := s.find(ctx, id, true)
+	current, err := s.find(ctx, id, true, "update")
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +293,7 @@ func (s *service) Restore(ctx context.Context, id guid.ID, version int) (*model.
 		return nil, ErrVersionConflict
 	}
 
-	q, todos, err := s.scope(ctx, true)
+	q, todos, err := s.scope(ctx, true, "update")
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +312,7 @@ func (s *service) Restore(ctx context.Context, id guid.ID, version int) (*model.
 	if info.RowsAffected != 1 {
 		return nil, ErrVersionConflict
 	}
-	return s.find(ctx, id, false)
+	return s.find(ctx, id, false, "update")
 }
 
 // conditions adapts typed field expressions to the query builder's wider
@@ -301,34 +345,70 @@ type Page struct {
 // momentarily inconsistent, which is the standard trade-off for offset paging
 // and cheaper than holding a snapshot for every listing.
 func (s *service) List(ctx context.Context, in ListInput) (Page, error) {
-	_, todos, err := s.scope(ctx, in.Deleted)
+	return s.list(ctx, in, "view")
+}
+
+// Export applies the export permission independently of interactive viewing.
+func (s *service) Export(ctx context.Context, in ListInput) (Page, error) {
+	return s.list(ctx, in, "export")
+}
+
+func (s *service) list(ctx context.Context, in ListInput, verb string) (Page, error) {
+	_, todos, err := s.scope(ctx, in.Deleted, verb)
 	if err != nil {
 		return Page{}, err
 	}
-	contract := filters(todos)
+	constraint, err := s.fieldConstraint(ctx)
+	if err != nil {
+		return Page{}, err
+	}
+	readable := readableFields(constraint)
+	if in.Deleted && !readable["deleted_at"] {
+		return Page{}, ErrForbidden
+	}
+	fullContract := filters(todos)
+	contract := fullContract.Readable(readable)
 
 	where, err := contract.Parse(in.RawQuery)
 	if err != nil {
 		return Page{}, err
 	}
-	if term := strings.TrimSpace(in.Q); term != "" {
+	if term := strings.TrimSpace(in.Search); term != "" {
+		if !readable["title"] || !readable["description"] {
+			return Page{}, ErrForbidden
+		}
 		if match := searchTerm(todos, term); match != nil {
 			where = append(where, match)
 		}
 	}
-	order, err := contract.Ordering(in.Sort, maxSortKeys, todos.ID.Desc())
+	sortBy := in.Sort
+	if sortBy == "" && readable["created_at"] {
+		sortBy = "-created_at"
+	}
+	order, err := contract.Ordering(sortBy, maxSortKeys, todos.ID.Desc())
 	if err != nil {
 		return Page{}, err
 	}
 	// version is read whatever the caller selected, because the ETag is built
 	// from it; id is read because a row without one cannot be acted on.
-	columns, rendered, err := contract.Projection(in.Fields, "id", "version")
+	_, requested, err := fullContract.Projection(in.Fields, "id", "version")
 	if err != nil {
 		return Page{}, err
 	}
+	rendered := renderedFields(requested, constraint)
 	rendered["id"] = true
+	selected := []string{"id", "version"}
+	for _, name := range contract.SelectableNames() {
+		if rendered[name] && name != "id" && name != "version" {
+			selected = append(selected, name)
+		}
+	}
+	columns, _, err := contract.Projection(strings.Join(selected, ","))
+	if err != nil {
+		return Page{}, err
+	}
 
-	counting, _, err := s.scope(ctx, in.Deleted)
+	counting, _, err := s.scope(ctx, in.Deleted, verb)
 	if err != nil {
 		return Page{}, err
 	}
@@ -337,7 +417,7 @@ func (s *service) List(ctx context.Context, in ListInput) (Page, error) {
 		return Page{}, err
 	}
 
-	paging, _, err := s.scope(ctx, in.Deleted)
+	paging, _, err := s.scope(ctx, in.Deleted, verb)
 	if err != nil {
 		return Page{}, err
 	}
@@ -349,6 +429,9 @@ func (s *service) List(ctx context.Context, in ListInput) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
+	for index, row := range rows {
+		rows[index] = maskedRow(row, constraint)
+	}
 	return Page{Rows: rows, Total: total, Rendered: rendered, Capabilities: contract.Describe()}, nil
 }
 
@@ -359,8 +442,21 @@ func (s *service) List(ctx context.Context, in ListInput) (Page, error) {
 // whole file or only the failures, and re-uploading would duplicate rows
 // because a task has no business key to match on.
 func (s *service) ImportAll(ctx context.Context, drafts []Draft) (int, error) {
+	claims, departmentID, err := s.creationScope(ctx, "import")
+	if err != nil {
+		return 0, err
+	}
 	if len(drafts) == 0 {
 		return 0, nil
+	}
+	constraint, err := s.fieldConstraint(ctx)
+	if err != nil {
+		return 0, err
+	}
+	for _, draft := range drafts {
+		if err := checkFieldWrites(constraint, draft.submitted(), true); err != nil {
+			return 0, err
+		}
 	}
 	db := s.writer()
 	if db == nil {
@@ -376,7 +472,8 @@ func (s *service) ImportAll(ctx context.Context, drafts []Draft) (int, error) {
 			return 0, errors.Join(ErrUnavailable, err)
 		}
 		rows = append(rows, &model.TodoRow{
-			ID:          guid.ID(next),
+			ID:       guid.ID(next),
+			TenantID: &claims.TenantID, EntityID: &claims.EntityID, DepartmentID: departmentID,
 			Title:       d.Title,
 			Description: d.Description,
 			Status:      string(d.Status),
@@ -391,7 +488,7 @@ func (s *service) ImportAll(ctx context.Context, drafts []Draft) (int, error) {
 		})
 	}
 
-	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return query.Bind(tx, s.runtime.TablePrefix()).WithContext(ctx).CreateInBatches(rows, importBatchSize)
 	})
 	if err != nil {

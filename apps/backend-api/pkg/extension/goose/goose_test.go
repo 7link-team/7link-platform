@@ -116,6 +116,36 @@ func TestInspectDetectsDatabaseAheadOfEmbeddedMigrations(t *testing.T) {
 	assert.False(t, upToDate)
 }
 
+func TestVersionAppliedUsesLatestPrefixedGooseState(t *testing.T) {
+	gormDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	db, err := gormDB.DB()
+	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	source := Source{FS: testMigrations, TableName: "goose_widgets", Prefix: "test_"}
+	require.NoError(t, Migrate(t.Context(), db, source, "sqlite"))
+	applied, err := VersionApplied(t.Context(), gormDB, source, 1)
+	require.NoError(t, err)
+	assert.True(t, applied)
+
+	_, err = db.ExecContext(t.Context(),
+		"INSERT INTO test_goose_widgets (version_id, is_applied) VALUES (?, ?)", 1, false,
+	)
+	require.NoError(t, err)
+	applied, err = VersionApplied(t.Context(), gormDB, source, 1)
+	require.NoError(t, err)
+	assert.False(t, applied)
+
+	_, err = VersionApplied(t.Context(), gormDB, source, 2)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	_, err = VersionApplied(t.Context(), nil, source, 1)
+	assert.ErrorContains(t, err, "nil database")
+	_, err = VersionApplied(t.Context(), gormDB, Source{TableName: "goose;drop"}, 1)
+	assert.ErrorContains(t, err, "invalid version table")
+}
+
 func widgetCount(t *testing.T, ctx context.Context, db *sql.DB) int {
 	t.Helper()
 	var count int
@@ -160,12 +190,12 @@ func TestMigrationFailuresArePropagated(t *testing.T) {
 	assert.ErrorContains(t, err, "create provider")
 }
 
-func TestValidateMigrationStateRejectsDivergedHistory(t *testing.T) {
-	err := validateMigrationState(Status{
+func TestValidateStatusRejectsDivergedHistory(t *testing.T) {
+	err := ValidateStatus(Status{
 		Current: 2,
 		Target:  2,
 		Pending: []int64{1},
 	})
 	assert.ErrorContains(t, err, "embedded and applied migrations diverge")
-	assert.NoError(t, validateMigrationState(Status{Current: 1, Target: 2, Pending: []int64{2}}))
+	assert.NoError(t, ValidateStatus(Status{Current: 1, Target: 2, Pending: []int64{2}}))
 }

@@ -142,8 +142,9 @@ a { color: inherit; }
 }
 
 .renderer > rapi-doc,
+/* Disabled with the Stoplight and openapi-ui renderers:
 .renderer > elements-api,
-.renderer > #openapi-ui-container,
+.renderer > #openapi-ui-container, */
 .renderer > #swagger-ui,
 .renderer > div:first-child:not(.loading):not(.load-error) { display: block; min-height: 100%; }
 

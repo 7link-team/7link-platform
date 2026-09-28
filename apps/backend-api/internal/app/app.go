@@ -10,11 +10,96 @@ import (
 	"os/signal"
 	"syscall"
 
+	"7link.com/platform/internal/infra/dlock"
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/internal/infra/wuid"
 	"7link.com/platform/pkg/appenv"
 	configx "7link.com/platform/pkg/config"
+	slogx "7link.com/platform/pkg/extension/slog"
 	"7link.com/platform/pkg/module"
 	"google.golang.org/grpc"
+	"gorm.io/gorm"
 )
+
+// ErrMaintenanceSchemaNotReady identifies a dirty or unmigrated module graph.
+var ErrMaintenanceSchemaNotReady = errors.New("maintenance schema is not ready")
+
+// MaintenanceOperation is an out-of-band use case executed against the same
+// initialized services as the server, without opening network listeners.
+type MaintenanceOperation func(*module.Services, *gorm.DB, *dlock.Module) error
+
+// RunMaintenance owns the complete lifecycle for one synchronous operational
+// use case. Business decisions remain in internal/maintenance.
+func RunMaintenance(ctx context.Context, config AppConfig, operation MaintenanceOperation) (resultErr error) {
+	return runMaintenance(ctx, config, operation, true)
+}
+
+// RunPreparedMaintenance initializes owner capabilities without starting workers
+// or authentication cutover hooks. Inventory can therefore precede cutover safely.
+func RunPreparedMaintenance(ctx context.Context, config AppConfig, operation MaintenanceOperation) error {
+	return runMaintenance(ctx, config, operation, false)
+}
+
+func runMaintenance(ctx context.Context, config AppConfig, operation MaintenanceOperation, start bool) (resultErr error) {
+	if operation == nil {
+		return errors.New("maintenance operation is required")
+	}
+	if err := configureApplication(&config); err != nil {
+		return err
+	}
+	if !start {
+		slog.SetDefault(slogx.NewConsole(processConsoleErrorWriter(), config.Debug, config.Name, nil))
+	}
+	application := &App{config: config}
+	defer func() { resultErr = errors.Join(resultErr, application.shutdown()) }()
+	if err := application.prepare(ctx); err != nil {
+		return fmt.Errorf("prepare maintenance application: %w", err)
+	}
+	if _, err := application.migrateModules(ctx, MigrationRequest{Action: MigrationValidate}); err != nil {
+		return errors.Join(ErrMaintenanceSchemaNotReady, err)
+	}
+	if err := application.modules.Initialize(ctx); err != nil {
+		return fmt.Errorf("initialize maintenance modules: %w", err)
+	}
+	if start {
+		if err := application.modules.Start(ctx); err != nil {
+			return fmt.Errorf("start maintenance modules: %w", err)
+		}
+	} else {
+		// Owner audit appends require IDs; start only their infrastructure, never
+		// authentication cutover hooks or business dispatchers during inventory.
+		for _, name := range []string{wuid.Name, guid.Name} {
+			owner, found := application.modules.ByName(name)
+			starter, ok := owner.(module.Starter)
+			if !found || !ok {
+				return fmt.Errorf("maintenance requires %s infrastructure", name)
+			}
+			if stopper, ok := owner.(module.Stopper); ok {
+				defer func() {
+					timeout := application.config.Shutdown.Timeout
+					if timeout <= 0 {
+						timeout = defaultShutdownTimeout
+					}
+					stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+					defer cancel()
+					resultErr = errors.Join(resultErr, stopper.Stop(stopCtx))
+				}()
+			}
+			if err := starter.Start(ctx); err != nil {
+				return fmt.Errorf("start maintenance %s: %w", name, err)
+			}
+		}
+	}
+	if application.runtime == nil || application.runtime.Database() == nil || application.runtime.Database().Write() == nil {
+		return errors.New("maintenance requires a writable database")
+	}
+	lockModule, found := application.modules.ByName(dlock.Name)
+	locker, ok := lockModule.(*dlock.Module)
+	if !found || !ok {
+		return errors.New("maintenance requires the distributed lock module")
+	}
+	return operation(application.modules.Services(), application.runtime.Database().Write(), locker)
+}
 
 type App struct {
 	// config is the parsed configuration handed to Run.
@@ -41,6 +126,26 @@ type App struct {
 	grpcServer *grpc.Server
 	httpServer *http.Server
 }
+
+// New constructs an application lifecycle with immutable caller-owned
+// configuration. Bootstrap or Run performs the process and module setup.
+func New(config AppConfig) *App { return &App{config: config} }
+
+// Config returns the effective application configuration.
+func (app *App) Config() AppConfig { return app.config }
+
+// Runtime returns the application-lifetime runtime after Bootstrap.
+func (app *App) Runtime() *appenv.Runtime { return app.runtime }
+
+// Modules returns the composed module registry after Bootstrap.
+func (app *App) Modules() *module.Registry { return app.modules }
+
+// Bootstrap prepares, migrates, initializes, and starts the configured module
+// graph without opening network listeners.
+func (app *App) Bootstrap(ctx context.Context) error { return app.bootstrap(ctx) }
+
+// Shutdown stops modules and releases application-lifetime resources.
+func (app *App) Shutdown() error { return app.shutdown() }
 
 // addModule declares modules for this run. Registration, activation, wiring, and
 // lifecycle phases are owned by the module lifecycle (app.modules); bootstrap

@@ -11,6 +11,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	todoi18n "7link.com/platform/internal/todo/i18n"
 	"7link.com/platform/internal/todo/model"
+	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformquery "7link.com/platform/pkg/query"
 	"github.com/danielgtaylor/huma/v2"
@@ -59,8 +60,8 @@ func viewOf(row *model.TodoRow) View { return viewOfSelected(row, allFields) }
 //
 // The two empty columns are not written the same way, and the difference is
 // deliberate. An identifier is a value on the row, so a selected one is always
-// present and a zero renders as null — an actor no authentication middleware
-// has supplied. A nullable timestamp is already a pointer, so an empty one is
+// present and a zero renders as null for historical or unset actors. A nullable
+// timestamp is already a pointer, so an empty one is
 // indistinguishable from an unselected one and drops out of the response; that
 // is the shape a cleared due date has, and it is asserted as such.
 func viewOfSelected(row *model.TodoRow, rendered map[string]bool) View {
@@ -119,7 +120,7 @@ func viewOfSelected(row *model.TodoRow, rendered map[string]bool) View {
 
 // IDInput carries the path identifier shared by every single-task operation.
 type IDInput struct {
-	ID string `path:"id" doc:"task identifier"`
+	TodoID string `path:"todo_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"globally unique task identifier"`
 }
 
 // VersionedInput adds the If-Match precondition, so a caller that has not read
@@ -129,19 +130,9 @@ type VersionedInput struct {
 	IfMatch string `header:"If-Match" doc:"version of the task being replaced, as returned in ETag"`
 }
 
-// taskID parses a path identifier. An unparsable or non-positive value can
-// never name a stored task, so it is reported as absent rather than as a
-// malformed request.
-func taskID(raw string) (guid.ID, error) {
-	id, err := guid.Parse(raw)
-	if err != nil || id.Zero() {
-		return 0, huma.Error404NotFound(todoi18n.NotFound)
-	}
-	return id, nil
-}
-
 type createInput struct {
-	Body struct {
+	RawBody []byte
+	Body    struct {
 		Title       string     `json:"title" minLength:"1" maxLength:"255" doc:"task title"`
 		Description string     `json:"description,omitempty" doc:"free-form details"`
 		Status      string     `json:"status,omitempty" enum:"open,doing,done" default:"open" doc:"lifecycle label"`
@@ -152,7 +143,8 @@ type createInput struct {
 
 type patchInput struct {
 	VersionedInput
-	Body struct {
+	RawBody []byte
+	Body    struct {
 		Title       *string    `json:"title,omitempty" minLength:"1" maxLength:"255"`
 		Description *string    `json:"description,omitempty"`
 		Status      *string    `json:"status,omitempty" enum:"open,doing,done"`
@@ -216,7 +208,12 @@ func parseIfMatch(raw string) (int, error) {
 // HTTP semantics, so the envelope's code mirrors the status and this module
 // defines no business codes of its own.
 func httpError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
+	case errors.Is(err, ErrForbidden):
+		return huma.Error403Forbidden(todoi18n.Forbidden)
 	case errors.Is(err, ErrNotFound):
 		return huma.Error404NotFound(todoi18n.NotFound)
 	case errors.Is(err, ErrDeleted):
@@ -248,19 +245,25 @@ type taskBody struct {
 	Body respx.Envelope[View]
 }
 
-func taskResponse(ctx context.Context, row *model.TodoRow) *taskBody {
-	return &taskBody{ETag: etag(row.Version), Body: respx.OK(ctx, viewOf(row)).Body}
+func registerEntityTodo[I, O any](registrar *authz.Registrar, api huma.API, svc *service, op huma.Operation, guard authz.Guard, handler func(context.Context, *I) (*O, error)) {
+	op.Tags = []string{"todos"}
+	authz.RegisterOwned(registrar, api, op, authz.EntityPath, authz.ResourceOwnerResolver(svc.entities), guard, handler)
 }
 
-func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param) {
-	huma.Register(api, huma.Operation{
+func registerOwnedTodo[I, O any](registrar *authz.Registrar, api huma.API, svc *service, op huma.Operation, guard authz.Guard, handler func(context.Context, *I) (*O, error)) {
+	op.Tags = []string{"todos"}
+	authz.RegisterOwned(registrar, api, op, "todo_id", svc.resolveOwner, guard, handler)
+}
+
+func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, registrar *authz.Registrar) {
+	registerEntityTodo(registrar, api, svc, huma.Operation{
 		OperationID:   "create-todo",
 		Method:        http.MethodPost,
-		Path:          basePath,
+		Path:          "/entities/{entity_id}" + basePath,
 		Summary:       "Create a task",
-		Tags:          []string{"Todo"},
+		Tags:          []string{"todos"},
 		DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, in *createInput) (*taskBody, error) {
+	}, authz.Guard{Resource: "todo", Verb: "create", FilterData: true}, func(ctx context.Context, in *createInput) (*taskBody, error) {
 		draft, err := draftOf(in)
 		if err != nil {
 			return nil, httpError(err)
@@ -269,19 +272,19 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param) {
 		if err != nil {
 			return nil, httpError(err)
 		}
-		return taskResponse(ctx, row), nil
+		return svc.taskResponse(ctx, row)
 	})
 
-	huma.Register(api, huma.Operation{
+	registerEntityTodo(registrar, api, svc, huma.Operation{
 		OperationID: "list-todos",
 		Method:      http.MethodGet,
-		Path:        basePath,
+		Path:        "/entities/{entity_id}" + basePath,
 		Summary:     "List tasks",
 		Description: "Filters are AND-combined. Sorting accepts up to three keys; the identifier is " +
 			"always appended so paging stays stable when sort values tie.",
-		Tags:       []string{"Todo"},
+		Tags:       []string{"todos"},
 		Parameters: filterParams,
-	}, func(ctx context.Context, in *ListInput) (*respx.Body[[]View], error) {
+	}, authz.Guard{Resource: "todo", Verb: "view", FilterData: true}, func(ctx context.Context, in *ListInput) (*respx.Body[[]View], error) {
 		in.RawQuery = rawQueryFrom(ctx)
 		page, err := svc.List(ctx, *in)
 		if err != nil {
@@ -300,14 +303,14 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param) {
 		return body, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	registerOwnedTodo(registrar, api, svc, huma.Operation{
 		OperationID: "get-todo",
 		Method:      http.MethodGet,
-		Path:        basePath + "/{id}",
+		Path:        basePath + "/{todo_id}",
 		Summary:     "Read a task",
-		Tags:        []string{"Todo"},
-	}, func(ctx context.Context, in *IDInput) (*taskBody, error) {
-		id, err := taskID(in.ID)
+		Tags:        []string{"todos"},
+	}, authz.Guard{Resource: "todo", Verb: "view", FilterData: true}, func(ctx context.Context, in *IDInput) (*taskBody, error) {
+		id, err := guid.RequireID(in.TodoID)
 		if err != nil {
 			return nil, err
 		}
@@ -315,22 +318,22 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param) {
 		if err != nil {
 			return nil, httpError(err)
 		}
-		return taskResponse(ctx, row), nil
+		return svc.taskResponse(ctx, row)
 	})
 
-	huma.Register(api, huma.Operation{
+	registerOwnedTodo(registrar, api, svc, huma.Operation{
 		OperationID: "update-todo",
 		Method:      http.MethodPatch,
-		Path:        basePath + "/{id}",
+		Path:        basePath + "/{todo_id}",
 		Summary:     "Update a task",
 		Description: "Requires If-Match carrying the version last read, so a concurrent write cannot be lost.",
-		Tags:        []string{"Todo"},
-	}, func(ctx context.Context, in *patchInput) (*taskBody, error) {
+		Tags:        []string{"todos"},
+	}, authz.Guard{Resource: "todo", Verb: "update", FilterData: true}, func(ctx context.Context, in *patchInput) (*taskBody, error) {
 		version, err := parseIfMatch(in.IfMatch)
 		if err != nil {
 			return nil, err
 		}
-		id, err := taskID(in.ID)
+		id, err := guid.RequireID(in.TodoID)
 		if err != nil {
 			return nil, err
 		}
@@ -342,23 +345,23 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param) {
 		if err != nil {
 			return nil, httpError(err)
 		}
-		return taskResponse(ctx, row), nil
+		return svc.taskResponse(ctx, row)
 	})
 
-	huma.Register(api, huma.Operation{
+	registerOwnedTodo(registrar, api, svc, huma.Operation{
 		OperationID:   "delete-todo",
 		Method:        http.MethodDelete,
-		Path:          basePath + "/{id}",
+		Path:          basePath + "/{todo_id}",
 		Summary:       "Delete a task",
 		Description:   "Soft delete. Requires If-Match: deleting a stale view loses an update just as writing one does.",
-		Tags:          []string{"Todo"},
+		Tags:          []string{"todos"},
 		DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, in *VersionedInput) (*struct{}, error) {
+	}, authz.Guard{Resource: "todo", Verb: "delete", FilterData: true}, func(ctx context.Context, in *VersionedInput) (*struct{}, error) {
 		version, err := parseIfMatch(in.IfMatch)
 		if err != nil {
 			return nil, err
 		}
-		id, err := taskID(in.ID)
+		id, err := guid.RequireID(in.TodoID)
 		if err != nil {
 			return nil, err
 		}
@@ -368,19 +371,19 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param) {
 		return nil, nil
 	})
 
-	huma.Register(api, huma.Operation{
-		OperationID: "restore-todo",
-		Method:      http.MethodPost,
-		Path:        basePath + "/{id}/restore",
-		Summary:     "Restore a deleted task",
-		Description: "Requires If-Match, so a task cannot be restored from its identifier alone.",
-		Tags:        []string{"Todo"},
-	}, func(ctx context.Context, in *VersionedInput) (*taskBody, error) {
+	registerOwnedTodo(registrar, api, svc, huma.Operation{
+		OperationID: "delete-todo-deletion",
+		Method:      http.MethodDelete,
+		Path:        basePath + "/{todo_id}/deletion",
+		Summary:     "Remove a task deletion marker",
+		Description: "Restores the soft-deleted task. Requires If-Match, so a task cannot be restored from its identifier alone.",
+		Tags:        []string{"todos"},
+	}, authz.Guard{Resource: "todo", Verb: "update", FilterData: true}, func(ctx context.Context, in *VersionedInput) (*taskBody, error) {
 		version, err := parseIfMatch(in.IfMatch)
 		if err != nil {
 			return nil, err
 		}
-		id, err := taskID(in.ID)
+		id, err := guid.RequireID(in.TodoID)
 		if err != nil {
 			return nil, err
 		}
@@ -388,13 +391,17 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param) {
 		if err != nil {
 			return nil, httpError(err)
 		}
-		return taskResponse(ctx, row), nil
+		return svc.taskResponse(ctx, row)
 	})
 }
 
 // draftOf validates the create body. huma has already enforced the tag-level
 // constraints; this adds the rules the tags cannot express.
 func draftOf(in *createInput) (Draft, error) {
+	provided, err := submittedFields(in.RawBody)
+	if err != nil {
+		return Draft{}, err
+	}
 	title, err := validateTitle(in.Body.Title)
 	if err != nil {
 		return Draft{}, err
@@ -414,6 +421,7 @@ func draftOf(in *createInput) (Draft, error) {
 		return Draft{}, err
 	}
 	return Draft{
+		provided:    provided,
 		Title:       title,
 		Description: in.Body.Description,
 		Status:      status,
@@ -423,7 +431,11 @@ func draftOf(in *createInput) (Draft, error) {
 }
 
 func patchOf(in *patchInput) (Patch, error) {
-	var patch Patch
+	provided, err := submittedFields(in.RawBody)
+	if err != nil {
+		return Patch{}, err
+	}
+	patch := Patch{provided: provided}
 	if in.Body.Title != nil {
 		title, err := validateTitle(*in.Body.Title)
 		if err != nil {
@@ -511,37 +523,41 @@ func parseFormat(raw string) (Format, error) {
 	return format, nil
 }
 
-func registerTransferHTTP(api huma.API, svc *service, filterParams []*huma.Param) {
-	huma.Register(api, huma.Operation{
+func registerTransferHTTP(api huma.API, svc *service, filterParams []*huma.Param, registrar *authz.Registrar) {
+	registerEntityTodo(registrar, api, svc, huma.Operation{
 		OperationID: "download-todo-import-template",
 		Method:      http.MethodGet,
-		Path:        basePath + "/import-template",
+		Path:        "/entities/{entity_id}" + basePath + "/import-template",
 		Summary:     "Download the import template",
 		Description: "Headers follow the request locale, and the importer accepts a template filled in " +
 			"under any supported locale.",
-		Tags: []string{"Todo"},
-	}, func(ctx context.Context, in *TemplateRequest) (*huma.StreamResponse, error) {
+		Tags: []string{"todos"},
+	}, authz.Guard{Resource: "todo", Verb: "import", FilterData: true}, func(ctx context.Context, in *TemplateRequest) (*huma.StreamResponse, error) {
 		format, err := parseFormat(in.Format)
 		if err != nil {
 			return nil, err
 		}
-		payload, err := templateGrid(ctx, in.Sample).encode(format)
+		table, err := svc.importTemplate(ctx, in.Sample)
+		if err != nil {
+			return nil, httpError(err)
+		}
+		payload, err := table.encode(format)
 		if err != nil {
 			return nil, err
 		}
 		return fileResponse("todo-import-template", format, payload), nil
 	})
 
-	huma.Register(api, huma.Operation{
+	registerEntityTodo(registrar, api, svc, huma.Operation{
 		OperationID: "export-todos",
 		Method:      http.MethodGet,
-		Path:        basePath + "/export",
+		Path:        "/entities/{entity_id}" + basePath + "/export",
 		Summary:     "Export tasks",
 		Description: "Accepts every list filter. The result is not paginated but is capped; a filter " +
 			"matching more rows is rejected rather than silently truncated.",
-		Tags:       []string{"Todo"},
+		Tags:       []string{"todos"},
 		Parameters: filterParams,
-	}, func(ctx context.Context, in *ExportRequest) (*huma.StreamResponse, error) {
+	}, authz.Guard{Resource: "todo", Verb: "export", FilterData: true}, func(ctx context.Context, in *ExportRequest) (*huma.StreamResponse, error) {
 		format, err := parseFormat(in.Format)
 		if err != nil {
 			return nil, err
@@ -552,16 +568,13 @@ func registerTransferHTTP(api huma.API, svc *service, filterParams []*huma.Param
 		}
 
 		limits := in.Limits()
-		// The export reads whole rows: the fields parameter selects which
-		// columns are written, not which are read, so every renderer has its
-		// value.
+		// Field selection and field permissions constrain both SQL and output.
 		query := in.ListInput
 		query.RawQuery = rawQueryFrom(ctx)
-		query.Fields = ""
 		query.Offset = 0
 		query.Limit = limits.MaxRows + 1
 
-		page, err := svc.List(ctx, query)
+		page, err := svc.Export(ctx, query)
 		if err != nil {
 			return nil, httpError(err)
 		}
@@ -569,22 +582,29 @@ func registerTransferHTTP(api huma.API, svc *service, filterParams []*huma.Param
 			return nil, huma.Error422UnprocessableEntity(todoi18n.ExportTooManyRows)
 		}
 
-		payload, err := exportGrid(ctx, cols, page.Rows).encode(format)
+		permitted := make([]column, 0, len(cols))
+		for _, col := range cols {
+			if page.Rendered[col.key] {
+				permitted = append(permitted, col)
+			}
+		}
+		payload, err := exportGrid(ctx, permitted, page.Rows).encode(format)
 		if err != nil {
 			return nil, err
 		}
 		return fileResponse("todos", format, payload), nil
 	})
 
-	huma.Register(api, huma.Operation{
+	registerEntityTodo(registrar, api, svc, huma.Operation{
 		OperationID: "import-todos",
 		Method:      http.MethodPost,
-		Path:        basePath + "/import",
+		Path:        "/entities/{entity_id}" + basePath + "/import",
 		Summary:     "Import tasks",
 		Description: "Every row is validated first. If any row is invalid nothing is written and each " +
 			"problem is reported, so a corrected file can be re-uploaded whole without duplicating rows.",
-		Tags: []string{"Todo"},
-	}, func(ctx context.Context, in *ImportRequest) (*respx.Body[ImportReport], error) {
+		Tags:         []string{"todos"},
+		MaxBodyBytes: ImportRequest{}.Limits().MaxBytes + (1 << 20),
+	}, authz.Guard{Resource: "todo", Verb: "import", FilterData: true}, func(ctx context.Context, in *ImportRequest) (*respx.Body[ImportReport], error) {
 		format, err := parseFormat(in.Format)
 		if err != nil {
 			return nil, err

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"7link.com/platform/internal/files"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,15 @@ import (
 	"log/slog"
 	"os"
 
+	iamaudit "7link.com/platform/internal/iam/audit"
+	iamauthn "7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/federation"
+	"7link.com/platform/internal/iam/governance"
+	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/iam/oauth"
+	"7link.com/platform/internal/iam/organization"
+	"7link.com/platform/internal/iam/provisioning"
 	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
@@ -46,6 +56,13 @@ func processConsoleWriter() io.Writer {
 	return colorable.NewColorable(os.Stdout)
 }
 
+// processConsoleErrorWriter is where diagnostics go for a command whose output
+// is a document rather than a report. Standard output has to carry only the
+// document, or redirecting it produces a file with log lines in the middle.
+func processConsoleErrorWriter() io.Writer {
+	return colorable.NewColorable(os.Stderr)
+}
+
 func processConsoleColorsEnabled(debug bool) bool {
 	return debug || isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())
 }
@@ -78,7 +95,7 @@ func (app *App) prepare(ctx context.Context) error {
 func (app *App) composeModules() error {
 	app.modules = module.NewRegistry()
 	rt := app.runtime
-	return app.addModule(
+	modules := []module.Module{
 		i18n.NewModule(rt, i18n.Base),
 		respx.NewModule(rt),
 		dlock.NewModule(rt),
@@ -94,13 +111,37 @@ func (app *App) composeModules() error {
 		migrationstatus.NewModule(rt, migrationStatusConfig(app.config)),
 		configinspector.NewModule(rt, app.config, configInspectorConfig(app.config)),
 		pprof.NewModule(rt, pprofConfig(app.config)),
+	}
 
-		// Business modules. They depend on the infrastructure above, so they are
-		// registered after it.
-		todo.NewModule(rt),
+	// Modules own activation through module.Enabler. The composition root only
+	// declares the complete inventory; Registry.Activate validates the remaining
+	// dependency graph after disabled modules have removed themselves.
+	modules = append(modules, app.composeIAMRuntimeModules()...)
 
+	modules = append(modules,
+		todo.NewModule(rt, todo.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
 		health.NewModule(rt),
 	)
+	return app.addModule(modules...)
+}
+
+// composeIAMRuntimeModules declares the IAM inventory in lifecycle order.
+// Modules construct their own state and connect cross-module capabilities
+// exclusively through module.Services during Wire.
+func (app *App) composeIAMRuntimeModules() []module.Module {
+	rt := app.runtime
+	return []module.Module{
+		iamaudit.NewModule(rt, iamAuditConfig(app.config)),
+		core.NewModule(rt, iamCoreConfig(app.config)),
+		files.NewModule(app.runtime, fileConfig(app.config)),
+		iamauthn.NewModule(rt, iamAuthnConfig(app.config)),
+		identity.NewModule(rt, iamIdentityConfig(app.config)),
+		organization.NewModule(rt, iamOrganizationConfig(app.config)),
+		oauth.NewModule(rt, iamOAuthConfig(app.config)),
+		provisioning.NewModule(rt, iamProvisioningConfig(app.config)),
+		governance.NewModule(rt, iamGovernanceConfig(app.config)),
+		federation.NewModule(rt, iamFederationConfig(app.config)),
+	}
 }
 
 // lifecycle drives the post-preparation phases through start.
@@ -110,6 +151,14 @@ func (app *App) lifecycle(ctx context.Context) error {
 			Action: MigrationAuto,
 		}); err != nil {
 			return fmt.Errorf("migrate modules: %w", err)
+		}
+	}
+	if app.config.Authn.Enabled && !app.config.Federation.Enabled && !app.config.Federation.SAML.Enabled {
+		if app.runtime == nil || app.runtime.Database() == nil {
+			return fmt.Errorf("check retained external identity quarantine: %w", federation.ErrUnavailable)
+		}
+		if err := federation.RequireLegacyQuarantine(ctx, app.runtime.Database().Write(), app.runtime.TablePrefix()); err != nil {
+			return fmt.Errorf("check retained external identity quarantine: %w", err)
 		}
 	}
 	if err := app.modules.Initialize(ctx); err != nil {

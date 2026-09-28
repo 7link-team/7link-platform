@@ -56,7 +56,7 @@ func TestHTTPObserverExportsRouteMetricsWithoutRawURLs(t *testing.T) {
 	assert.NotContains(t, text, "/missing/456")
 	assert.NotContains(t, text, "secret")
 	assert.Contains(t, api.OpenAPI().Paths, Path)
-	assert.Equal(t, []string{"Metrics"}, api.OpenAPI().Paths[Path].Get.Tags)
+	assert.Equal(t, []string{"metrics"}, api.OpenAPI().Paths[Path].Get.Tags)
 }
 
 func TestDatasourceMetricsIncludeNamedPoolState(t *testing.T) {

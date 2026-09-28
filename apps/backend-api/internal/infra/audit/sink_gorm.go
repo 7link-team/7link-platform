@@ -61,16 +61,27 @@ func (sink *GormSink) Write(ctx context.Context, events []Event) error {
 	if db == nil {
 		return nil
 	}
-	rows := make([]OperationLog, len(events))
+	// An event without a snowflake ID (the recorder's UUID fallback) has no
+	// valid primary key. It is reported, but it must not cost the valid events
+	// flushed in the same batch their persistence.
+	rows := make([]OperationLog, 0, len(events))
+	var invalid error
 	for index, event := range events {
 		if !isSnowflakeID(event.ID) {
-			return fmt.Errorf("%w %q at batch index %d", ErrInvalidEventID, event.ID, index)
+			invalid = errors.Join(invalid, fmt.Errorf("%w %q at batch index %d", ErrInvalidEventID, event.ID, index))
+			continue
 		}
-		rows[index] = fromEvent(event)
+		rows = append(rows, fromEvent(event))
 	}
-	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	if len(rows) == 0 {
+		return invalid
+	}
+	if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return query.Bind(tx, sink.prefix).WithContext(ctx).Create(rowPointers(rows)...)
-	})
+	}); err != nil {
+		return errors.Join(err, invalid)
+	}
+	return invalid
 }
 
 // rowPointers adapts the batch to the generated Create signature, which takes

@@ -93,7 +93,13 @@ func TestModulePollsAndHealthCheckersShareSnapshot(t *testing.T) {
 	module := newTestModule(fake, Config{Interval: 5 * time.Millisecond, Timeout: time.Second, StaleAfter: time.Second})
 	require.NoError(t, module.Start(t.Context()))
 	t.Cleanup(func() { require.NoError(t, module.Stop(context.Background())) })
-	require.Eventually(t, func() bool { return fake.callCount() >= 2 }, time.Second, time.Millisecond)
+	// Probe increments its counter before the resulting snapshot is published.
+	require.Eventually(t, func() bool {
+		snapshot := module.Snapshot()
+		return len(snapshot.Datasources) == 2 && snapshot.Datasources[1].ConsecutiveFailures >= 2
+	}, time.Second, time.Millisecond)
+	// Quiesce scheduled probes before asserting that cached reads add no calls.
+	require.NoError(t, module.Stop(context.Background()))
 
 	calls := fake.callCount()
 	checkers := module.HealthCheckers()
@@ -146,9 +152,9 @@ func TestDatasourceDiagnosticsAreRedactedAndOptional(t *testing.T) {
 	assert.NotContains(t, response.Body.String(), "password")
 	assert.NotContains(t, response.Body.String(), "private")
 	require.Contains(t, api.OpenAPI().Paths, Path)
-	assert.Equal(t, []string{"Diagnostics"}, api.OpenAPI().Paths[Path].Get.Tags)
+	assert.Equal(t, []string{"debug"}, api.OpenAPI().Paths[Path].Get.Tags)
 	require.Contains(t, api.OpenAPI().Paths, SQLPath)
-	assert.Equal(t, []string{"Diagnostics"}, api.OpenAPI().Paths[SQLPath].Get.Tags)
+	assert.Equal(t, []string{"debug"}, api.OpenAPI().Paths[SQLPath].Get.Tags)
 	assert.NotContains(t, api.OpenAPI().Paths, ConsolePath)
 
 	sqlDiagnostics := httptest.NewRecorder()

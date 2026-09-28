@@ -61,6 +61,31 @@ func (f *Fields) Reserve(names ...string) *Fields {
 	return f
 }
 
+// Readable copies a contract with only permitted filter, sort and select keys.
+// Reserved transport parameters remain the transport's responsibility.
+func (f *Fields) Readable(allowed map[string]bool) *Fields {
+	out := New()
+	for _, filter := range f.filters {
+		if allowed[filter.name] {
+			out.filters = append(out.filters, filter)
+		}
+	}
+	for name, key := range f.sortable {
+		if allowed[name] {
+			out.sortable[name] = key
+		}
+	}
+	for name, column := range f.selectable {
+		if allowed[name] {
+			out.selectable[name] = column
+		}
+	}
+	for name, reserved := range f.reserved {
+		out.reserved[name] = reserved
+	}
+	return out
+}
+
 // Error names the parameter a request was rejected for.
 //
 // It deliberately does not echo the offending value. A message that carries

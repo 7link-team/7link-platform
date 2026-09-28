@@ -1,0 +1,68 @@
+package query
+
+import (
+	"reflect"
+	"testing"
+
+	gormx "7link.com/platform/pkg/extension/gorm"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+func TestBindAppliesPrefixToEveryAuthnTable(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Open("file::memory:"), &gorm.Config{
+		DryRun: true, Logger: logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	plain := Bind(db, "")
+	prefixed := Bind(db, "sl_")
+	actual := map[string][2]string{
+		"credentials":               {plain.Credentials.TableName(), prefixed.Credentials.TableName()},
+		"sessions":                  {plain.Sessions.TableName(), prefixed.Sessions.TableName()},
+		"password_history":          {plain.PasswordHistory.TableName(), prefixed.PasswordHistory.TableName()},
+		"mfa_enrollments":           {plain.MFAEnrollments.TableName(), prefixed.MFAEnrollments.TableName()},
+		"recovery_codes":            {plain.RecoveryCodes.TableName(), prefixed.RecoveryCodes.TableName()},
+		"mfa_challenges":            {plain.MFAChallenges.TableName(), prefixed.MFAChallenges.TableName()},
+		"passkey_users":             {plain.PasskeyUsers.TableName(), prefixed.PasskeyUsers.TableName()},
+		"passkeys":                  {plain.Passkeys.TableName(), prefixed.Passkeys.TableName()},
+		"passkey_challenges":        {plain.PasskeyChallenges.TableName(), prefixed.PasskeyChallenges.TableName()},
+		"password_recovery_tokens":  {plain.PasswordRecoveryTokens.TableName(), prefixed.PasswordRecoveryTokens.TableName()},
+		"notification_outbox":       {plain.NotificationOutbox.TableName(), prefixed.NotificationOutbox.TableName()},
+		"email_verification_tokens": {plain.EmailVerificationTokens.TableName(), prefixed.EmailVerificationTokens.TableName()},
+		"stepup_challenges":         {plain.StepUpChallenges.TableName(), prefixed.StepUpChallenges.TableName()},
+		"personal_tokens":           {plain.PersonalTokens.TableName(), prefixed.PersonalTokens.TableName()},
+		"reauth_challenges":         {plain.ReauthenticationChallenges.TableName(), prefixed.ReauthenticationChallenges.TableName()},
+		"account_view_tokens":       {plain.AccountViewTokens.TableName(), prefixed.AccountViewTokens.TableName()},
+	}
+
+	require.Len(t, actual, 16)
+	for name, pair := range actual {
+		assert.Equal(t, "sl_"+pair[0], pair[1], name)
+	}
+}
+
+// TestBindNamesCarryThePrefixExactlyOnce reads every name BindNames produces,
+// field by field, at a prefix and without one. A name that lost the prefix
+// would read the wrong table in a prefixed deployment and the right one in
+// every test that runs without a prefix -- so the two have to be compared.
+func TestBindNamesCarryThePrefixExactlyOnce(t *testing.T) {
+	t.Parallel()
+	const prefix = "sl_"
+	plain, prefixed := reflect.ValueOf(BindNames("")), reflect.ValueOf(BindNames(prefix))
+	names := prefixed.Type()
+	require.Positive(t, names.NumField(), "a module that binds tables names at least one")
+
+	for index := range names.NumField() {
+		field := names.Field(index).Name
+		name := prefixed.Field(index).Interface().(gormx.TableName)
+		logical := plain.Field(index).Interface().(gormx.TableName).String()
+		assert.Equal(t, prefix+logical, name.String(), field)
+		assert.Equal(t, logical, name.Logical(), field)
+		assert.False(t, name.IsZero(), field)
+	}
+}

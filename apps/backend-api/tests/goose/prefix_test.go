@@ -9,6 +9,7 @@ import (
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/wuid"
 	goosex "7link.com/platform/pkg/extension/goose"
+	"7link.com/platform/tests/internal/testdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	mysqldriver "gorm.io/driver/mysql"
@@ -52,8 +53,8 @@ func TestPrefixedModuleQueriesOnMySQLAndPostgres(t *testing.T) {
 		dialect string
 		open    databaseFactory
 	}{
-		{name: "mysql", dialect: "mysql", open: openMySQL},
-		{name: "postgres", dialect: "postgres", open: openPostgres},
+		{name: "mysql", dialect: "mysql", open: testdb.OpenMySQL},
+		{name: "postgres", dialect: "postgres", open: testdb.OpenPostgres},
 	}
 
 	for _, tt := range tests {
@@ -94,14 +95,37 @@ func TestPrefixedModuleQueriesOnMySQLAndPostgres(t *testing.T) {
 
 			t.Run("audit", func(t *testing.T) {
 				sink := audit.NewGormSink(gormDB, queryPrefix)
+				const operationLogID = "2366488506482438144"
 				require.NoError(t, sink.Write(ctx, []audit.Event{{
-					ID:         "2366488506482438144",
+					ID:         operationLogID,
 					OccurredAt: time.Now(),
 					Entry:      audit.KindHTTP,
 					Operation:  "POST /orders",
 					Access:     audit.AccessWrite,
 					Outcome:    audit.OutcomeSuccess,
 				}}))
+
+				table := queryPrefix + "operation_logs"
+				assert.Error(t, gormDB.Table(table).Where("id = ?", operationLogID).
+					UpdateColumn("operation", "changed").Error)
+				assert.Error(t, gormDB.Table(table).Where("id = ?", operationLogID).Delete(nil).Error)
+
+				auditSource := (&audit.Module{}).MigrationSource()
+				auditSource.Prefix = queryPrefix
+				if tt.dialect == "mysql" {
+					_, err := sqlDB.Exec("DROP TRIGGER " + queryPrefix + "trg_operation_logs_no_delete")
+					require.NoError(t, err)
+				}
+				require.NoError(t, goosex.MigrateDown(ctx, sqlDB, auditSource, tt.dialect))
+				require.NoError(t, gormDB.Table(table).Where("id = ?", operationLogID).
+					UpdateColumn("operation", "after-down").Error)
+				require.NoError(t, goosex.MigrateUp(ctx, sqlDB, auditSource, tt.dialect))
+				assert.Error(t, gormDB.Table(table).Where("id = ?", operationLogID).
+					UpdateColumn("operation", "after-up").Error)
+				assert.Error(t, gormDB.Table(table).Where("id = ?", operationLogID).Delete(nil).Error)
+				var count int64
+				require.NoError(t, gormDB.Table(table).Where("id = ?", operationLogID).Count(&count).Error)
+				assert.Equal(t, int64(1), count)
 			})
 
 			t.Run("unprefixed access fails", func(t *testing.T) {

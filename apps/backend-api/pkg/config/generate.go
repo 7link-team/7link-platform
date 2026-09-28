@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 var durationType = reflect.TypeOf(time.Duration(0))
@@ -20,7 +20,7 @@ var durationType = reflect.TypeOf(time.Duration(0))
 // The output round-trips: decoding it back into o yields the documented defaults.
 func GenerateYAML(o interface{}) ([]byte, error) {
 	t := reflect.TypeOf(o)
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -78,7 +78,7 @@ func omitFromPublishedConfig(field reflect.StructField) bool {
 
 // valueNode builds the value node for a field of type t with the given tags.
 func valueNode(t reflect.Type, tag reflect.StructTag) (*yaml.Node, error) {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	def := tag.Get("default")
@@ -113,7 +113,7 @@ func valueNode(t reflect.Type, tag reflect.StructTag) (*yaml.Node, error) {
 func mapNode(t reflect.Type, tag reflect.StructTag) (*yaml.Node, error) {
 	key := strings.Trim(orElse(tag.Get("mapkey"), DefaultMapKey), "<>")
 	elem := t.Elem()
-	for elem.Kind() == reflect.Ptr {
+	for elem.Kind() == reflect.Pointer {
 		elem = elem.Elem()
 	}
 	var entry *yaml.Node

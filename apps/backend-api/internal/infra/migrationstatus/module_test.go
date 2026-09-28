@@ -27,21 +27,27 @@ func TestModuleReturnsJSONAndRegistersOpenAPI(t *testing.T) {
 	require.NoError(t, m.InjectServices(services))
 	assert.Equal(t, "migration-status", m.ModuleName())
 	require.NoError(t, m.RegisterHTTP(t.Context(), api))
-	for _, route := range m.RawHTTPRoutes() {
+	routes := m.RawHTTPRoutes()
+	require.Len(t, routes, 2)
+	for _, route := range routes {
 		router.Method(route.Method, route.Path, route.Handler)
 	}
 
-	for _, accept := range []string{"application/json", "text/html"} {
-		request := httptest.NewRequest(http.MethodGet, Path, nil)
-		request.Header.Set("Accept", accept)
-		response := httptest.NewRecorder()
-		router.ServeHTTP(response, request)
-		assert.Equal(t, http.StatusOK, response.Code)
-		assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
-		assert.Contains(t, response.Body.String(), `"state":"pending"`)
+	for _, path := range []string{Path, LegacyPath} {
+		for _, accept := range []string{"application/json", "text/html"} {
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			request.Header.Set("Accept", accept)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			assert.Equal(t, http.StatusOK, response.Code)
+			assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+			assert.Contains(t, response.Body.String(), `"state":"pending"`)
+		}
 	}
 	assert.Contains(t, api.OpenAPI().Paths, Path)
-	assert.Equal(t, []string{"Diagnostics"}, api.OpenAPI().Paths[Path].Get.Tags)
+	assert.Equal(t, []string{"migration-status"}, api.OpenAPI().Paths[Path].Get.Tags)
+	assert.Contains(t, api.OpenAPI().Paths, LegacyPath)
+	assert.True(t, api.OpenAPI().Paths[LegacyPath].Get.Deprecated)
 }
 
 func TestModuleHidesInspectionErrors(t *testing.T) {

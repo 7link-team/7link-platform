@@ -66,7 +66,7 @@ func TestSlogSinkEmptyBatch(t *testing.T) {
 }
 
 func TestEncodeMetadata(t *testing.T) {
-	assert.Equal(t, "", encodeMetadata(nil))
-	assert.Equal(t, "", encodeMetadata(map[string]string{}))
+	assert.Empty(t, encodeMetadata(nil))
+	assert.Empty(t, encodeMetadata(map[string]string{}))
 	assert.JSONEq(t, `{"a":"1"}`, encodeMetadata(map[string]string{"a": "1"}))
 }

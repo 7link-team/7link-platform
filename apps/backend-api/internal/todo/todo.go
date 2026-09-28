@@ -57,6 +57,7 @@ const (
 const TitleMaxLength = 255
 
 var (
+	ErrForbidden = errors.New("todo: forbidden")
 	// ErrNotFound covers both "never existed" and "soft-deleted", which are
 	// indistinguishable to a caller without the deleted filter.
 	ErrNotFound = errors.New("todo: task not found")
@@ -75,6 +76,7 @@ var (
 // Draft is a validated creation request. Constructing one through newDraft is
 // the only way to reach the store, so no unvalidated task can be written.
 type Draft struct {
+	provided    []string
 	Title       string
 	Description string
 	Status      Status
@@ -86,6 +88,7 @@ type Draft struct {
 // which is why every field is a pointer: for Description and DueAt, "clear it"
 // and "do not touch it" are different requests.
 type Patch struct {
+	provided    []string
 	Title       *string
 	Description *string
 	Status      *Status

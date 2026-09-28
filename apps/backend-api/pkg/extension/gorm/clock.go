@@ -1,9 +1,30 @@
 package gormx
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
+
+	"gorm.io/gorm"
 )
+
+// DatabaseClockMillis reads the database server's Unix millisecond clock.
+//
+// Lease and replay windows must use the shared database clock, so a node whose
+// own clock runs fast cannot reclaim another node's lease early. Every caller
+// goes through here, which is what keeps the dialect branch in NowMillisExpr
+// the only one in the repository.
+func DatabaseClockMillis(ctx context.Context, db *gorm.DB) (int64, error) {
+	if db == nil {
+		return 0, errors.New("gormx: database clock requires a database handle")
+	}
+	var millis int64
+	if err := db.WithContext(ctx).Raw("SELECT " + NowMillisExpr(db.Dialector.Name())).Scan(&millis).Error; err != nil {
+		return 0, err
+	}
+	return millis, nil
+}
 
 // NowMillisExpr returns a SQL expression for the database server's current
 // Unix time in milliseconds. Lease expiry must use the shared database clock

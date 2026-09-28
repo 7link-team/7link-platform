@@ -3,19 +3,28 @@ package app
 import (
 	"fmt"
 	"time"
+
+	authnext "7link.com/platform/pkg/extension/authn"
 )
 
 type AppConfig struct {
 	Name    string `mapstructure:"name" description:"application name" trim:"true" default:""`
 	Version string `mapstructure:"version" description:"application version" trim:"true"`
 
-	Debug     bool           `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
-	Banner    BannerConfig   `mapstructure:"banner" group:"banner"`
-	Pprof     Pprof          `mapstructure:"pprof" group:"pprof"`
-	API       API            `mapstructure:"api" group:"api"`
-	Telemetry Telemetry      `mapstructure:"telemetry" group:"telemetry"`
-	Audit     Audit          `mapstructure:"audit" group:"audit"`
-	Shutdown  ShutdownConfig `mapstructure:"shutdown" group:"shutdown"`
+	Debug        bool            `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
+	Banner       BannerConfig    `mapstructure:"banner" group:"banner"`
+	Pprof        Pprof           `mapstructure:"pprof" group:"pprof"`
+	API          API             `mapstructure:"api" group:"api"`
+	Telemetry    Telemetry       `mapstructure:"telemetry" group:"telemetry"`
+	Audit        Audit           `mapstructure:"audit" group:"audit"`
+	Authn        IAMAuthn        `mapstructure:"authn" group:"authn"`
+	IAM          IAMCore         `mapstructure:"iam" group:"iam"`
+	Files        FilesConfig     `mapstructure:"files" group:"files"`
+	IAMAudit     IAMAudit        `mapstructure:"iam_audit" group:"iam_audit"`
+	Provisioning IAMProvisioning `mapstructure:"provisioning" group:"provisioning"`
+	Federation   IAMFederation   `mapstructure:"federation" group:"federation"`
+	OAuth        IAMOAuth        `mapstructure:"oauth" group:"oauth"`
+	Shutdown     ShutdownConfig  `mapstructure:"shutdown" group:"shutdown"`
 
 	Timezone string `mapstructure:"timezone" description:"timezone" default:"UTC"`
 
@@ -26,6 +35,100 @@ type AppConfig struct {
 	TablePrefix       string              `mapstructure:"table_prefix" description:"prefix prepended to every table this application owns" validate:"^$|^[a-z_][a-z0-9_]{0,20}$"`
 	Database          map[string]Database `mapstructure:"database" group:"database" mapkey:"<dbkey>"`
 	DatasourceMonitor DatasourceMonitor   `mapstructure:"datasource_monitor" group:"datasource_monitor"`
+}
+
+// IAMAuthn is the application-owned configuration surface for the shared
+// authentication extension. A distinct type keeps AppConfig ownership here
+// while preserving the extension's complete field and validation contract.
+type IAMAuthn authnext.Config
+
+// IAMCore configures platform-wide IAM policy that belongs to no single IAM
+// sub-domain.
+type IAMCore struct {
+	TenantRegistrationEnabled bool `mapstructure:"tenant_registration_enabled" description:"allow verified principals to register their own tenants" default:"false"`
+	// RequirePlatformAdministrator defaults to true because a freshly migrated
+	// database can serve no platform operation at all. Recovery and migration
+	// tooling can turn it off to reach an otherwise unreachable deployment.
+	RequirePlatformAdministrator bool `mapstructure:"require_platform_administrator" description:"report IAM unready until a platform administrator exists" default:"true"`
+}
+
+// FilesConfig owns storage settings shared by all file consumers.
+type FilesConfig struct {
+	LocalRoot        string            `mapstructure:"local_root" description:"final local file storage root" default:"data/files"`
+	LegacyLocalRoots map[string]string `mapstructure:"legacy_local_roots" group:"legacy_local_roots" mapkey:"<key-prefix>" description:"migration-only mapping from legacy key prefixes to source local roots"`
+}
+
+// IAMAudit configures the IAM domain audit chain. It is intentionally separate
+// from Audit, which controls transport-level operation logging.
+type IAMAudit struct {
+	Anchor        IAMAuditAnchor        `mapstructure:"anchor" group:"anchor"`
+	Archive       IAMAuditArchive       `mapstructure:"archive" group:"archive"`
+	ErasureLedger IAMAuditErasureLedger `mapstructure:"erasure_ledger" group:"erasure_ledger"`
+}
+
+type IAMAuditErasureLedger struct {
+	Enabled bool          `mapstructure:"enabled" description:"require an external immutable obligation before permanently erasing a principal" default:"false"`
+	Timeout time.Duration `mapstructure:"timeout" description:"maximum duration of each synchronous erasure-ledger operation" default:"10s"`
+}
+
+type IAMAuditArchive struct {
+	Enabled  bool          `mapstructure:"enabled" description:"execute durable audit archives using the anchor S3 configuration; source events are never deleted" default:"false"`
+	Interval time.Duration `mapstructure:"interval" description:"interval between archive sweeps; at least one second" default:"1m"`
+	Timeout  time.Duration `mapstructure:"timeout" description:"maximum duration per archive attempt; one second to one hour" default:"4m"`
+}
+
+type IAMAuditAnchor struct {
+	Enabled       bool   `mapstructure:"enabled" description:"anchor verified IAM audit heads in an external object-lock store" default:"false"`
+	Endpoint      string `mapstructure:"endpoint" description:"S3-compatible audit anchor endpoint" default:""`
+	Bucket        string `mapstructure:"bucket" description:"bucket holding IAM audit anchors" default:"audit-anchors"`
+	Region        string `mapstructure:"region" description:"audit anchor signing region" default:""`
+	AccessKey     string `mapstructure:"access_key" description:"S3 audit anchor access key" default:""`
+	SecretKey     string `mapstructure:"secret_key" description:"S3 audit anchor secret key" default:"" secret:"true"`
+	RetentionDays int    `mapstructure:"retention_days" description:"audit anchor object-lock retention in days" default:"365"`
+	SigningKey    string `mapstructure:"signing_key" description:"base64 Ed25519 seed signing IAM audit roots" default:"" secret:"true"`
+}
+
+type IAMProvisioning struct {
+	EncryptionKey          string        `mapstructure:"encryption_key" description:"base64 key encrypting outbound SCIM credentials" default:"" secret:"true"`
+	EncryptionKeyFile      string        `mapstructure:"encryption_key_file" description:"file containing the outbound SCIM encryption key" default:""`
+	HTTPTimeout            time.Duration `mapstructure:"http_timeout" description:"outbound SCIM request timeout" default:"10s"`
+	OutboundAllowPlaintext bool          `mapstructure:"outbound_allow_plaintext" description:"permit http:// SCIM targets; leave false to require https" default:"false"`
+	OutboundAllowNetworks  []string      `mapstructure:"outbound_allow_networks" description:"CIDR blocks a SCIM target may resolve to despite being private or reserved"`
+	SyncInterval           time.Duration `mapstructure:"sync_interval" description:"outbound SCIM reconciliation interval; zero disables it" default:"0"`
+}
+
+// IAMOAuth configures the parts of the OAuth authorization server an operator
+// can move: where the consent screen lives and how long an unanswered request
+// stays open.
+type IAMOAuth struct {
+	Consent IAMOAuthConsent `mapstructure:"consent" group:"consent"`
+}
+
+type IAMOAuthConsent struct {
+	Path         string        `mapstructure:"path" description:"path the authorization endpoint sends a browser to for consent; point it at your own screen to replace the built-in one" trim:"true" default:"/oauth/consent" validate:"^/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$"`
+	TemplateFile string        `mapstructure:"template_file" description:"HTML template replacing the built-in consent screen" trim:"true" default:""`
+	TTL          time.Duration `mapstructure:"ttl" description:"how long an authorization request stays answerable on the consent screen" default:"10m"`
+}
+
+type IAMFederation struct {
+	Enabled                bool              `mapstructure:"enabled" description:"enable inbound identity-provider federation" default:"false"`
+	EncryptionKey          string            `mapstructure:"encryption_key" description:"base64 key protecting federation secrets and state" default:"" secret:"true"`
+	EncryptionKeyFile      string            `mapstructure:"encryption_key_file" description:"file containing the federation encryption key" default:""`
+	HTTPTimeout            time.Duration     `mapstructure:"http_timeout" description:"federation upstream HTTP timeout" default:"10s"`
+	OutboundAllowPlaintext bool              `mapstructure:"outbound_allow_plaintext" description:"permit http:// upstream identity providers; leave false to require https" default:"false"`
+	OutboundAllowNetworks  []string          `mapstructure:"outbound_allow_networks" description:"CIDR blocks an upstream identity provider may resolve to despite being private or reserved"`
+	ClockSkew              time.Duration     `mapstructure:"clock_skew" description:"allowed upstream token clock skew" default:"30s"`
+	StateTTL               time.Duration     `mapstructure:"state_ttl" description:"federation login state lifetime" default:"10m"`
+	SAML                   IAMFederationSAML `mapstructure:"saml" group:"saml"`
+}
+
+type IAMFederationSAML struct {
+	Enabled         bool          `mapstructure:"enabled" description:"enable the SAML identity provider" default:"false"`
+	SigningKeyFile  string        `mapstructure:"signing_key_file" description:"PEM RSA private key used to sign SAML assertions" default:""`
+	CertificateFile string        `mapstructure:"certificate_file" description:"PEM certificate matching the SAML signing key" default:""`
+	LoginPath       string        `mapstructure:"login_path" description:"browser login path for unauthenticated SAML requests" default:"/login"`
+	ValidDuration   time.Duration `mapstructure:"valid_duration" description:"SAML assertion and metadata validity window" default:"5m"`
+	MaxIssueDelay   time.Duration `mapstructure:"max_issue_delay" description:"maximum accepted SAML request age" default:"5m"`
 }
 
 type BannerConfig struct {
@@ -140,7 +243,7 @@ type Audit struct {
 	BatchSize       int           `mapstructure:"batch_size" description:"events per database write batch" default:"200"`
 	FlushInterval   time.Duration `mapstructure:"flush_interval" description:"maximum time between database flushes" default:"1s"`
 	FlushTimeout    time.Duration `mapstructure:"flush_timeout" description:"maximum time for one database flush" default:"5s"`
-	Overflow        string        `mapstructure:"overflow" description:"queue overflow behavior: drop | block" default:"drop"`
+	Overflow        string        `mapstructure:"overflow" description:"queue overflow behavior: drop | block" default:"drop" trim:"true" validate:"^(drop|block)$"`
 }
 
 // AuditDatabase gates the database-backed audit sink.

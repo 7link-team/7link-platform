@@ -31,21 +31,21 @@ func (h *Handler) Register(api huma.API) {
 		Method:      stdhttp.MethodGet,
 		Path:        "/livez",
 		Summary:     "Check service liveness",
-		Tags:        []string{"Health"},
+		Tags:        []string{"system"},
 	}, h.liveness)
 	huma.Register(api, huma.Operation{
 		OperationID: "check-health",
 		Method:      stdhttp.MethodGet,
 		Path:        "/healthz",
 		Summary:     "Check service liveness and module health",
-		Tags:        []string{"Health"},
+		Tags:        []string{"system"},
 	}, h.check)
 	huma.Register(api, huma.Operation{
 		OperationID: "check-readiness",
 		Method:      stdhttp.MethodGet,
 		Path:        "/readyz",
 		Summary:     "Check service readiness",
-		Tags:        []string{"Health"},
+		Tags:        []string{"system"},
 	}, h.readiness)
 	readyOperation := api.OpenAPI().Paths["/readyz"].Get
 	if success := readyOperation.Responses["200"]; success != nil {

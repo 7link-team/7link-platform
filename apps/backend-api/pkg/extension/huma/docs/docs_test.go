@@ -47,14 +47,15 @@ func newDocsRouter(custom ...Options) http.Handler {
 func TestGeneratedRendererPages(t *testing.T) {
 	handler := newDocsRouter()
 	paths := map[string]string{
-		"/docs":              "swagger",
-		"/docs/":             "swagger",
-		"/docs/scalar":       "scalar",
-		"/docs/swagger":      "swagger",
-		"/docs/redoc":        "redoc",
-		"/docs/rapidoc":      "rapidoc",
-		"/docs/stoplight":    "stoplight",
-		"/docs/openapi-ui":   "openapi-ui",
+		"/docs":         "swagger",
+		"/docs/":        "swagger",
+		"/docs/swagger": "swagger",
+		"/docs/scalar":  "scalar",
+		"/docs/redoc":   "redoc",
+		"/docs/rapidoc": "rapidoc",
+		// Disabled because their dependency trees contain unresolved browser vulnerabilities.
+		// "/docs/stoplight":  "stoplight",
+		// "/docs/openapi-ui": "openapi-ui",
 		"/docs/openapi-json": "openapi-json",
 		"/docs/openapi-yaml": "openapi-yaml",
 	}
@@ -75,7 +76,7 @@ func TestGeneratedRendererPages(t *testing.T) {
 
 func TestRendererTabsFollowGitHubStarOrder(t *testing.T) {
 	body := request(t, newDocsRouter(), "/docs/").Body.String()
-	ordered := []string{"Swagger UI", "ReDoc", "Scalar", "Stoplight", "RapiDoc", "openapi-ui"}
+	ordered := []string{"Swagger UI", "ReDoc", "Scalar", "RapiDoc"}
 	previous := -1
 	for _, label := range ordered {
 		current := strings.Index(body, ">"+label+"<")
@@ -118,10 +119,11 @@ func TestEmbeddedAssetsAreServedLocally(t *testing.T) {
 		"/docs/assets/swagger-ui-bundle.js",
 		"/docs/assets/redoc.js",
 		"/docs/assets/rapidoc.js",
-		"/docs/assets/stoplight.css",
-		"/docs/assets/stoplight.js",
-		"/docs/assets/mermaid.min.js",
-		"/docs/assets/openapi-ui.js",
+		// Disabled with the corresponding renderer pages:
+		// "/docs/assets/stoplight.css",
+		// "/docs/assets/stoplight.js",
+		// "/docs/assets/mermaid.min.js",
+		// "/docs/assets/openapi-ui.js",
 	}
 
 	for _, route := range assets {
@@ -133,10 +135,20 @@ func TestEmbeddedAssetsAreServedLocally(t *testing.T) {
 	}
 }
 
-func TestStoplightUsesEmbeddedMermaid(t *testing.T) {
-	body := request(t, newDocsRouter(), "/docs/assets/stoplight.js").Body.String()
-	assert.Contains(t, body, "/docs/assets/mermaid.min.js")
-	assert.NotContains(t, body, "https://unpkg.com/mermaid")
+func TestVulnerableRenderersAreNotEmbedded(t *testing.T) {
+	handler := newDocsRouter()
+	for _, route := range []string{
+		"/docs/stoplight",
+		"/docs/openapi-ui",
+		"/docs/assets/stoplight.css",
+		"/docs/assets/stoplight.js",
+		"/docs/assets/mermaid.min.js",
+		"/docs/assets/openapi-ui.js",
+	} {
+		t.Run(route, func(t *testing.T) {
+			assert.Equal(t, http.StatusNotFound, requestStatus(handler, route))
+		})
+	}
 }
 
 func TestRootLandingAndOrdinaryRouteProtection(t *testing.T) {

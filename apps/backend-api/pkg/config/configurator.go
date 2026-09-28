@@ -83,19 +83,24 @@ func (f *Flagger) GetViper() *viper.Viper {
 func (f *Flagger) UseFlags(fs *pflag.FlagSet) {
 	f.flags = fs
 	if fs != nil {
-		fs.SetNormalizeFunc(normalizeFlagName)
+		fs.SetNormalizeFunc(NormalizeFlagName)
 	}
 }
 
 func (f *Flagger) GetFlags() *pflag.FlagSet {
 	if f.flags == nil {
 		f.flags = pflag.NewFlagSet(os.Args[0], pflag.ContinueOnError)
-		f.flags.SetNormalizeFunc(normalizeFlagName)
+		f.flags.SetNormalizeFunc(NormalizeFlagName)
 	}
 	return f.flags
 }
 
-func normalizeFlagName(_ *pflag.FlagSet, name string) pflag.NormalizedName {
+// NormalizeFlagName maps a flag name onto the spelling this package registers
+// it under, so an operator may write either separator. It is exported because a
+// command group that hangs its settings on persistent flags has to install it
+// on the whole command tree: cobra merges those flags into each subcommand own
+// flag set, and that merge does not carry a normalizer set here.
+func NormalizeFlagName(_ *pflag.FlagSet, name string) pflag.NormalizedName {
 	return pflag.NormalizedName(strings.ReplaceAll(name, "_", "-"))
 }
 
@@ -329,7 +334,7 @@ func parseFlags(m *map[string]sFlag, c interface{}, parent string, field *reflec
 	t := reflect.TypeOf(c)
 	v := reflect.ValueOf(c)
 
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 		v = v.Elem()
 	}
@@ -364,11 +369,11 @@ func parseFlags(m *map[string]sFlag, c interface{}, parent string, field *reflec
 		}
 		valueType := t.Elem()
 		valueNew := reflect.New(valueType)
-		if valueType.Kind() == reflect.Ptr {
+		if valueType.Kind() == reflect.Pointer {
 			valueType = valueType.Elem()
 			valueNew = reflect.New(valueType)
 		}
-		if valueNew.Type().Kind() == reflect.Ptr {
+		if valueNew.Type().Kind() == reflect.Pointer {
 			valueNew = valueNew.Elem()
 		}
 		tagmap := field.Tag.Get("mapkey")

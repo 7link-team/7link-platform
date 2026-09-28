@@ -1,12 +1,35 @@
 package timezone
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestTimezoneWithoutInstallation(t *testing.T) {
+	if os.Getenv("IAM_TIMEZONE_SUBPROCESS") == "1" {
+		for _, name := range []string{"Asia/Shanghai", "America/New_York"} {
+			require.NoError(t, SetTimezone(name))
+			assert.Equal(t, name, time.Local.String())
+		}
+		assert.Error(t, SetTimezone("Invalid/Timezone"))
+		return
+	}
+	// Release binaries must work without the Go installation's zoneinfo.zip.
+	t.Setenv("IAM_TIMEZONE_SUBPROCESS", "1")
+	t.Setenv("GOROOT", filepath.Join(t.TempDir(), "missing-go"))
+	t.Setenv("ZONEINFO", filepath.Join(t.TempDir(), "missing-zoneinfo"))
+	executable, err := os.Executable()
+	require.NoError(t, err)
+	command := exec.CommandContext(t.Context(), executable, "-test.run=^TestTimezoneWithoutInstallation$")
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, "%s", output)
+}
 
 func TestTimezoneLifecycle(t *testing.T) {
 	require.NoError(t, SetTimezone("America/New_York"))

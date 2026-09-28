@@ -19,6 +19,11 @@ import (
 )
 
 func newTestAPI(t *testing.T) humatest.TestAPI {
+	api, _ := newTestAPIService(t)
+	return api
+}
+
+func newTestAPIService(t *testing.T) (humatest.TestAPI, *service) {
 	t.Helper()
 	svc, _ := newTestService(t, "")
 	// respx owns the error envelope's messages; without its catalog every
@@ -33,9 +38,9 @@ func newTestAPI(t *testing.T) humatest.TestAPI {
 	contract, err := svc.contract()
 	require.NoError(t, err)
 	filterParams := contract.Parameters()
-	registerTransferHTTP(api, svc, filterParams)
-	registerHTTP(api, svc, filterParams)
-	return humatest.Wrap(t, api)
+	registerTransferHTTP(api, svc, filterParams, todoRegistrar(&todoPolicy{}))
+	registerHTTP(api, svc, filterParams, todoRegistrar(&todoPolicy{}))
+	return humatest.Wrap(t, api), svc
 }
 
 // decode unpacks the platform envelope so assertions read the typed view
@@ -64,7 +69,7 @@ func rawEnvelope(t *testing.T, body []byte) (respx.Envelope[json.RawMessage], ma
 // write needs.
 func createTask(t *testing.T, api humatest.TestAPI, title string) (string, string) {
 	t.Helper()
-	resp := api.Post("/todos", map[string]any{"title": title})
+	resp := api.Post("/entities/10/todos", map[string]any{"title": title})
 	require.Equal(t, http.StatusCreated, resp.Code, resp.Body.String())
 	envelope := decode(t, resp.Body.Bytes())
 	require.NotZero(t, envelope.Data.ID)
@@ -73,7 +78,7 @@ func createTask(t *testing.T, api humatest.TestAPI, title string) (string, strin
 
 func TestCreateReturnsEnvelopeAndETag(t *testing.T) {
 	api := newTestAPI(t)
-	resp := api.Post("/todos", map[string]any{"title": "write the spec"})
+	resp := api.Post("/entities/10/todos", map[string]any{"title": "write the spec"})
 
 	require.Equal(t, http.StatusCreated, resp.Code, resp.Body.String())
 	envelope := decode(t, resp.Body.Bytes())
@@ -90,7 +95,7 @@ func TestCreateReturnsEnvelopeAndETag(t *testing.T) {
 
 func TestCreateRejectsEmptyTitle(t *testing.T) {
 	api := newTestAPI(t)
-	resp := api.Post("/todos", map[string]any{"title": ""})
+	resp := api.Post("/entities/10/todos", map[string]any{"title": ""})
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.Code, resp.Body.String())
 }
 
@@ -154,7 +159,7 @@ func TestDeleteThenRestoreRoundTrip(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, missing.Code, "a deleted task is gone from the live view")
 
 	// The delete advanced the version, so restore uses the next one.
-	restored := api.Post("/todos/"+id+"/restore", "If-Match: 2")
+	restored := api.Delete("/todos/"+id+"/deletion", "If-Match: 2")
 	require.Equal(t, http.StatusOK, restored.Code, restored.Body.String())
 
 	live := api.Get("/todos/" + id)
@@ -165,13 +170,13 @@ func TestRestoreLiveTaskConflicts(t *testing.T) {
 	api := newTestAPI(t)
 	id, etag := createTask(t, api, "task")
 
-	resp := api.Post("/todos/"+id+"/restore", "If-Match: "+etag)
+	resp := api.Delete("/todos/"+id+"/deletion", "If-Match: "+etag)
 	assert.Equal(t, http.StatusConflict, resp.Code)
 }
 
 func TestPatchClearsDueAtWithExplicitNull(t *testing.T) {
 	api := newTestAPI(t)
-	resp := api.Post("/todos", map[string]any{
+	resp := api.Post("/entities/10/todos", map[string]any{
 		"title": "task", "due_at": "2026-10-01T00:00:00Z",
 	})
 	require.Equal(t, http.StatusCreated, resp.Code, resp.Body.String())
@@ -206,7 +211,7 @@ func TestStatusTransitionsAreUnrestricted(t *testing.T) {
 
 func TestCreateRejectsUnknownStatus(t *testing.T) {
 	api := newTestAPI(t)
-	resp := api.Post("/todos", map[string]any{"title": "task", "status": "archived"})
+	resp := api.Post("/entities/10/todos", map[string]any{"title": "task", "status": "archived"})
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.Code,
 		"the enum tag rejects a status outside the declared set")
 }
@@ -217,7 +222,7 @@ func TestListReturnsPagedEnvelope(t *testing.T) {
 		createTask(t, api, title)
 	}
 
-	resp := api.Get("/todos?limit=2")
+	resp := api.Get("/entities/10/todos?limit=2")
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 
 	var envelope respx.Envelope[[]View]
@@ -237,7 +242,7 @@ func TestListAppliesFilters(t *testing.T) {
 	done := api.Patch("/todos/"+id, "If-Match: 1", map[string]any{"status": "done"})
 	require.Equal(t, http.StatusOK, done.Code, done.Body.String())
 
-	resp := api.Get("/todos?status=eq:done")
+	resp := api.Get("/entities/10/todos?status=eq:done")
 	require.Equal(t, http.StatusOK, resp.Code)
 
 	var envelope respx.Envelope[[]View]
@@ -251,7 +256,7 @@ func TestListOmitsUnselectedFields(t *testing.T) {
 	api := newTestAPI(t)
 	createTask(t, api, "task")
 
-	resp := api.Get("/todos?fields=title")
+	resp := api.Get("/entities/10/todos?fields=title")
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 
 	var envelope respx.Envelope[[]json.RawMessage]
@@ -268,7 +273,7 @@ func TestListOmitsUnselectedFields(t *testing.T) {
 
 func TestListRejectsUnknownSortKey(t *testing.T) {
 	api := newTestAPI(t)
-	resp := api.Get("/todos?sort=nonsense")
+	resp := api.Get("/entities/10/todos?sort=nonsense")
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.Code, resp.Body.String())
 }
 
@@ -276,7 +281,7 @@ func TestListRejectsOversizedLimit(t *testing.T) {
 	api := newTestAPI(t)
 	// The bound is declared on the parameter, so huma rejects it before the
 	// handler runs.
-	resp := api.Get("/todos?limit=1000")
+	resp := api.Get("/entities/10/todos?limit=1000")
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.Code)
 }
 
@@ -293,13 +298,13 @@ func uploadCSV(t *testing.T, api humatest.TestAPI, body string) *httptest.Respon
 
 	// humatest treats a []byte argument as a value to JSON-encode; a raw body
 	// must be passed as an io.Reader.
-	return api.Post("/todos/import", "Content-Type: "+form.FormDataContentType(), bytes.NewReader(buffer.Bytes()))
+	return api.Post("/entities/10/todos/import", "Content-Type: "+form.FormDataContentType(), bytes.NewReader(buffer.Bytes()))
 }
 
 func TestTemplateDownloadsCSVWithLocaleHeaders(t *testing.T) {
 	api := newTestAPI(t)
 
-	resp := api.Get("/todos/import-template?format=csv&lang=zh-CN")
+	resp := api.Get("/entities/10/todos/import-template?format=csv&lang=zh-CN")
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	assert.Contains(t, resp.Header().Get("Content-Type"), "text/csv")
 	assert.Contains(t, resp.Header().Get("Content-Disposition"), "todo-import-template.csv")
@@ -311,7 +316,7 @@ func TestTemplateDownloadsCSVWithLocaleHeaders(t *testing.T) {
 
 func TestTemplateDownloadsXLSX(t *testing.T) {
 	api := newTestAPI(t)
-	resp := api.Get("/todos/import-template?format=xlsx&sample=true")
+	resp := api.Get("/entities/10/todos/import-template?format=xlsx&sample=true")
 	require.Equal(t, http.StatusOK, resp.Code)
 	assert.Contains(t, resp.Header().Get("Content-Type"), "spreadsheetml")
 
@@ -322,7 +327,7 @@ func TestTemplateDownloadsXLSX(t *testing.T) {
 
 func TestTemplateRejectsUnsupportedFormat(t *testing.T) {
 	api := newTestAPI(t)
-	resp := api.Get("/todos/import-template?format=pdf")
+	resp := api.Get("/entities/10/todos/import-template?format=pdf")
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.Code)
 }
 
@@ -335,7 +340,7 @@ func TestImportCreatesTasks(t *testing.T) {
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &envelope))
 	assert.Equal(t, 2, envelope.Data.Imported)
 
-	listed := api.Get("/todos")
+	listed := api.Get("/entities/10/todos")
 	var page respx.Envelope[[]View]
 	require.NoError(t, json.Unmarshal(listed.Body.Bytes(), &page))
 	assert.Len(t, page.Data, 2)
@@ -348,7 +353,7 @@ func TestImportWritesNothingWhenAnyRowIsInvalid(t *testing.T) {
 	resp := uploadCSV(t, api, "title,priority\ngood,3\nbad,99\n")
 	require.Equal(t, http.StatusUnprocessableEntity, resp.Code)
 
-	listed := api.Get("/todos")
+	listed := api.Get("/entities/10/todos")
 	var page respx.Envelope[[]View]
 	require.NoError(t, json.Unmarshal(listed.Body.Bytes(), &page))
 	assert.Empty(t, page.Data, "a rejected import leaves the table untouched")
@@ -365,9 +370,17 @@ func TestImportRejectsUnreadableFile(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, form.Close())
 
-	resp := api.Post("/todos/import?format=xlsx",
+	resp := api.Post("/entities/10/todos/import?format=xlsx",
 		"Content-Type: "+form.FormDataContentType(), bytes.NewReader(buffer.Bytes()))
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.Code)
+}
+
+func TestImportAcceptsBodiesAboveHumaDefaultLimit(t *testing.T) {
+	api := newTestAPI(t)
+	body := "title\n" + strings.Repeat(" ", 2<<20)
+	resp := uploadCSV(t, api, body)
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.Code, resp.Body.String())
+	assert.NotContains(t, resp.Body.String(), "request body too large")
 }
 
 func TestExportReturnsFilteredRows(t *testing.T) {
@@ -377,7 +390,7 @@ func TestExportReturnsFilteredRows(t *testing.T) {
 	require.Equal(t, http.StatusOK,
 		api.Patch("/todos/"+id, "If-Match: 1", map[string]any{"status": "done"}).Code)
 
-	resp := api.Get("/todos/export?status=eq:done&format=csv")
+	resp := api.Get("/entities/10/todos/export?status=eq:done&format=csv")
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	assert.Contains(t, resp.Header().Get("Content-Disposition"), "todos.csv")
 
@@ -391,7 +404,7 @@ func TestExportSelectsColumns(t *testing.T) {
 	api := newTestAPI(t)
 	createTask(t, api, "task")
 
-	resp := api.Get("/todos/export?fields=title,status")
+	resp := api.Get("/entities/10/todos/export?fields=title,status")
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 
 	table, err := decodeGrid(bytes.NewReader(resp.Body.Bytes()), FormatCSV)
@@ -401,7 +414,7 @@ func TestExportSelectsColumns(t *testing.T) {
 
 func TestExportRejectsUnknownField(t *testing.T) {
 	api := newTestAPI(t)
-	resp := api.Get("/todos/export?fields=nonsense")
+	resp := api.Get("/entities/10/todos/export?fields=nonsense")
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.Code)
 }
 
@@ -410,7 +423,7 @@ func TestExportRoundTripsThroughImport(t *testing.T) {
 	createTask(t, api, "first")
 	createTask(t, api, "second")
 
-	exported := api.Get("/todos/export?format=csv&lang=zh-CN")
+	exported := api.Get("/entities/10/todos/export?format=csv&lang=zh-CN")
 	require.Equal(t, http.StatusOK, exported.Code)
 
 	// A full export carries server-maintained columns; the importer ignores
@@ -484,8 +497,8 @@ func TestListAcceptsAnEmptyQueryString(t *testing.T) {
 	api := newTestAPI(t)
 	createTask(t, api, "task")
 
-	for _, raw := range []string{"", "?", "?q=", "?fields=&sort="} {
-		resp := api.Get("/todos" + raw)
+	for _, raw := range []string{"", "?", "?search=", "?fields=&sort="} {
+		resp := api.Get("/entities/10/todos" + raw)
 		assert.Equal(t, http.StatusOK, resp.Code, "GET /todos%s: %s", raw, resp.Body.String())
 	}
 }
@@ -497,7 +510,7 @@ func TestListAcceptsAnEmptyQueryString(t *testing.T) {
 func TestListDeclaresItsFilterParameters(t *testing.T) {
 	api := newTestAPI(t)
 
-	for _, path := range []string{"/todos", "/todos/export"} {
+	for _, path := range []string{"/entities/{entity_id}/todos", "/entities/{entity_id}/todos/export"} {
 		operation := api.OpenAPI().Paths[path].Get
 		require.NotNil(t, operation, path)
 		declared := map[string]bool{}
@@ -512,7 +525,7 @@ func TestListDeclaresItsFilterParameters(t *testing.T) {
 
 // TestWildcardOnlySearchStillReturnsEverything pins the half of the wildcard
 // rule that must not change. Dropping the predicate is an optimization, not a
-// filter: q=% matched every row when it built LIKE '%%', and it still does.
+// filter: search=% matched every row when it built LIKE '%%', and it still does.
 func TestWildcardOnlySearchStillReturnsEverything(t *testing.T) {
 	api := newTestAPI(t)
 	createTask(t, api, "first")
@@ -530,6 +543,24 @@ func TestWildcardOnlySearchStillReturnsEverything(t *testing.T) {
 		}
 		return out
 	}
-	assert.Equal(t, titles("/todos"), titles("/todos?q=%25"),
+	assert.Equal(t, titles("/entities/10/todos"), titles("/entities/10/todos?search=%25"),
 		"a search for nothing must return the same page as no search")
+}
+
+// TestErrorMappersKeepChosenStatus is this package's half of the set-wide rule in
+// tests/architecture (domainErrorMappers): an error that already chose its
+// status, headers included, leaves every mapper unchanged instead of becoming 500.
+func TestErrorMappersKeepChosenStatus(t *testing.T) {
+	chosen := huma.ErrorWithHeaders(huma.Error422UnprocessableEntity(respx.InvalidID), http.Header{"Retry-After": {"1"}})
+	for name, mapper := range map[string]func(error) error{
+		"httpError": httpError,
+	} {
+		mapped := mapper(chosen)
+		var status huma.StatusError
+		require.ErrorAs(t, mapped, &status, name)
+		assert.Equal(t, http.StatusUnprocessableEntity, status.GetStatus(), name)
+		var headers huma.HeadersError
+		require.ErrorAs(t, mapped, &headers, name)
+		assert.Equal(t, "1", headers.GetHeaders().Get("Retry-After"), name)
+	}
 }

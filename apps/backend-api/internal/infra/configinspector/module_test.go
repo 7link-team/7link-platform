@@ -37,7 +37,7 @@ func TestModuleRedactsConfigurationAndRegistersOpenAPI(t *testing.T) {
 	assert.Contains(t, response.Body.String(), configx.RedactedValue)
 	assert.NotContains(t, response.Body.String(), "private")
 	assert.Contains(t, api.OpenAPI().Paths, Path)
-	assert.Equal(t, []string{"Diagnostics"}, api.OpenAPI().Paths[Path].Get.Tags)
+	assert.Equal(t, []string{"debug"}, api.OpenAPI().Paths[Path].Get.Tags)
 }
 
 func TestNewModuleRejectsUnsupportedConfiguration(t *testing.T) {

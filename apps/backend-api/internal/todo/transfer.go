@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/csv"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -80,7 +81,10 @@ func headerRow(ctx context.Context, cols []column) []string {
 // asked for. The sample doubles as format documentation, which is more use to
 // an operator than a paragraph describing the date layout.
 func templateGrid(ctx context.Context, withSample bool) grid {
-	cols := importableColumns()
+	return templateGridColumns(ctx, withSample, importableColumns())
+}
+
+func templateGridColumns(ctx context.Context, withSample bool, cols []column) grid {
 	out := grid{headerRow(ctx, cols)}
 	if withSample {
 		row := make([]string, len(cols))
@@ -188,7 +192,15 @@ func decodeCSV(reader io.Reader) (grid, error) {
 	return grid(records), nil
 }
 
-func decodeXLSX(reader io.Reader) (grid, error) {
+func decodeXLSX(reader io.Reader) (table grid, err error) {
+	// Spreadsheet bytes are untrusted. Keep parser panics inside this boundary
+	// so malformed workbooks become ordinary unreadable-upload errors.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			table = nil
+			err = fmt.Errorf("todo: malformed workbook: %v", recovered)
+		}
+	}()
 	file, err := excelize.OpenReader(reader)
 	if err != nil {
 		return nil, err
@@ -294,9 +306,12 @@ func parseImport(ctx context.Context, table grid, limits Limits) ([]Draft, []Row
 		if blank(record) {
 			continue
 		}
-		draft := Draft{Status: StatusOpen, Priority: DefaultPriority}
+		draft := Draft{Status: StatusOpen, Priority: DefaultPriority, provided: []string{}}
 		for _, c := range importableColumns() {
 			position, present := positions[c.key]
+			if present {
+				draft.provided = append(draft.provided, c.key)
+			}
 			raw := ""
 			if present && position < len(record) {
 				raw = record[position]

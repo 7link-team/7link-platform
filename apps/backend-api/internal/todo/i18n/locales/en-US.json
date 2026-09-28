@@ -1,5 +1,6 @@
 {
   "not_found": "task not found",
+  "forbidden": "task access denied",
   "deleted": "task has been deleted",
   "not_deleted": "task is not deleted",
   "version_conflict": "task was modified by someone else",

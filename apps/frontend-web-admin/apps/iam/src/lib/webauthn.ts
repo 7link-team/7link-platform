@@ -1,0 +1,128 @@
+type WebAuthnOptions = {
+  publicKey: Record<string, unknown>
+  mediation?: CredentialMediationRequirement
+}
+
+export async function createPasskeyCredential(
+  options: WebAuthnOptions
+): Promise<Record<string, unknown>> {
+  requireWebAuthn()
+  const publicKey = decodeCreationOptions(options.publicKey)
+  const credential = await navigator.credentials.create({ publicKey })
+  if (!(credential instanceof PublicKeyCredential))
+    throw new Error("passkeyNotCreated")
+  const response = credential.response
+  if (!(response instanceof AuthenticatorAttestationResponse))
+    throw new Error("passkeyInvalidResponse")
+  return {
+    id: credential.id,
+    rawId: encodeBase64URL(credential.rawId),
+    type: credential.type,
+    authenticatorAttachment: credential.authenticatorAttachment,
+    clientExtensionResults: credential.getClientExtensionResults(),
+    response: {
+      attestationObject: encodeBase64URL(response.attestationObject),
+      clientDataJSON: encodeBase64URL(response.clientDataJSON),
+      transports: response.getTransports(),
+      // WebAuthn Level 3 registration responses carry the parsed authenticator
+      // data and public key alongside the attestation object; servers rely on
+      // them, so send the full shape rather than the two raw blobs.
+      authenticatorData: encodeBase64URL(response.getAuthenticatorData()),
+      publicKey: encodeOptionalBase64URL(response.getPublicKey()),
+      publicKeyAlgorithm: response.getPublicKeyAlgorithm(),
+    },
+  }
+}
+
+export async function getPasskeyCredential(
+  options: WebAuthnOptions
+): Promise<Record<string, unknown>> {
+  requireWebAuthn()
+  const publicKey = decodeRequestOptions(options.publicKey)
+  const credential = await navigator.credentials.get({
+    publicKey,
+    mediation: options.mediation,
+  })
+  if (!(credential instanceof PublicKeyCredential))
+    throw new Error("passkeyNotSelected")
+  const response = credential.response
+  if (!(response instanceof AuthenticatorAssertionResponse))
+    throw new Error("passkeyInvalidResponse")
+  return {
+    id: credential.id,
+    rawId: encodeBase64URL(credential.rawId),
+    type: credential.type,
+    authenticatorAttachment: credential.authenticatorAttachment,
+    clientExtensionResults: credential.getClientExtensionResults(),
+    response: {
+      authenticatorData: encodeBase64URL(response.authenticatorData),
+      clientDataJSON: encodeBase64URL(response.clientDataJSON),
+      signature: encodeBase64URL(response.signature),
+      userHandle: response.userHandle
+        ? encodeBase64URL(response.userHandle)
+        : null,
+    },
+  }
+}
+
+function encodeOptionalBase64URL(value: ArrayBuffer | null): string {
+  // getPublicKey() returns null when the browser cannot export the key format.
+  return value ? encodeBase64URL(value) : ""
+}
+
+export function encodeBase64URL(value: ArrayBuffer): string {
+  const bytes = new Uint8Array(value)
+  let binary = ""
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "")
+}
+
+export function decodeBase64URL(value: string): ArrayBuffer {
+  const normalized = value.replaceAll("-", "+").replaceAll("_", "/")
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")
+  const binary = atob(padded)
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
+  return bytes.buffer
+}
+
+function decodeCreationOptions(
+  value: Record<string, unknown>
+): PublicKeyCredentialCreationOptions {
+  const user = value.user as Record<string, unknown>
+  return {
+    ...value,
+    challenge: decodeBase64URL(String(value.challenge)),
+    user: { ...user, id: decodeBase64URL(String(user.id)) },
+    excludeCredentials: decodeDescriptors(value.excludeCredentials),
+  } as PublicKeyCredentialCreationOptions
+}
+
+function decodeRequestOptions(
+  value: Record<string, unknown>
+): PublicKeyCredentialRequestOptions {
+  return {
+    ...value,
+    challenge: decodeBase64URL(String(value.challenge)),
+    allowCredentials: decodeDescriptors(value.allowCredentials),
+  } as PublicKeyCredentialRequestOptions
+}
+
+function decodeDescriptors(value: unknown): PublicKeyCredentialDescriptor[] {
+  if (!Array.isArray(value)) return []
+  return value.map((descriptor) => {
+    const item = descriptor as Record<string, unknown>
+    return { ...item, id: decodeBase64URL(String(item.id)) }
+  }) as PublicKeyCredentialDescriptor[]
+}
+
+function requireWebAuthn(): void {
+  if (
+    typeof window === "undefined" ||
+    !("PublicKeyCredential" in window) ||
+    !navigator.credentials
+  )
+    throw new Error("passkeyUnsupported")
+}

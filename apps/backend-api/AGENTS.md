@@ -8,14 +8,16 @@ Modules own their lifecycle, models, generated queries, localization, and migrat
 
 ## Build, Test, and Development Commands
 
-- `make dev`: run the API with migrations, debug mode, and diagnostic endpoints.
+- `make dev`: run API and Web with migrations, selectable demo accounts and local SQLite.
+- `make dev-api`: run only the configurable API with debug mode and diagnostics.
+- `make dev-status` / `make dev-stop`: inspect or stop the local development environment.
 - `make build`: produce the version-stamped `bin/7link-api` binary.
 - `make generate`: regenerate protobuf and module-owned GORM query code.
 - `make test`: run main-module unit tests.
 - `make test-integration`: run the separate integration-test module.
 - `make test-coverage`: enforce overall and registered-module coverage.
 - `make lint`: run the pinned `golangci-lint` configuration.
-- `make ci`: run formatting, lint, coverage, integration tests, and build in gate order.
+- `make ci`: run formatting, lint, the migration lock check, coverage, integration tests, build, the API document check and the web client contract check in gate order.
 
 ## Coding Style & Naming Conventions
 

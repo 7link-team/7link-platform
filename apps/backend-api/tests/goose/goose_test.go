@@ -4,21 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"errors"
-	"fmt"
-	"io"
 	"io/fs"
-	"net"
-	"path/filepath"
 	"testing"
-	"time"
 
 	goosex "7link.com/platform/pkg/extension/goose"
-	"github.com/dolthub/go-mysql-server/driver"
-	"github.com/dolthub/go-mysql-server/memory"
-	gmssql "github.com/dolthub/go-mysql-server/sql"
-	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
-	_ "github.com/lib/pq"
+	"7link.com/platform/tests/internal/testdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,72 +18,11 @@ var migrations embed.FS
 
 type databaseFactory func(*testing.T) *sql.DB
 
-type mysqlProvider struct {
-	provider gmssql.DatabaseProvider
-}
-
-func (p mysqlProvider) Resolve(dsn string, _ *driver.Options) (string, gmssql.DatabaseProvider, error) {
-	return dsn, p.provider, nil
-}
-
 func migrationsRoot(t *testing.T) fs.FS {
 	t.Helper()
 	root, err := fs.Sub(migrations, "testdata")
 	require.NoError(t, err)
 	return root
-}
-
-func openMySQL(t *testing.T) *sql.DB {
-	t.Helper()
-	const databaseName = "goose"
-	database := memory.NewDatabase(databaseName)
-	database.BaseDatabase.EnablePrimaryKeyIndexes()
-	drv := driver.New(mysqlProvider{provider: memory.NewDBProvider(database)}, nil)
-	connector, err := drv.OpenConnector(databaseName)
-	require.NoError(t, err)
-	db := sql.OpenDB(connector)
-	db.SetMaxOpenConns(1)
-	require.NoError(t, db.PingContext(t.Context()))
-	_, err = db.ExecContext(t.Context(), "USE "+databaseName)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-		if err := drv.Close(); err != nil && !errors.Is(err, context.Canceled) {
-			t.Errorf("close MySQL engine: %v", err)
-		}
-	})
-	return db
-}
-
-func openPostgres(t *testing.T) *sql.DB {
-	t.Helper()
-	port := freeTCPPort(t)
-	config := embeddedpostgres.DefaultConfig().
-		Version(embeddedpostgres.V16).
-		Port(port).
-		Database("goose").
-		Username("postgres").
-		Password("postgres").
-		RuntimePath(filepath.Join(t.TempDir(), "postgres")).
-		StartTimeout(time.Minute).
-		Logger(io.Discard)
-	postgres := embeddedpostgres.NewDatabase(config)
-	require.NoError(t, postgres.Start())
-	t.Cleanup(func() { require.NoError(t, postgres.Stop()) })
-	dsn := fmt.Sprintf("postgres://postgres:postgres@127.0.0.1:%d/goose?sslmode=disable", port)
-	db, err := sql.Open("postgres", dsn)
-	require.NoError(t, err)
-	require.NoError(t, db.PingContext(t.Context()))
-	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	return db
-}
-
-func freeTCPPort(t *testing.T) uint32 {
-	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	defer func() { require.NoError(t, listener.Close()) }()
-	return uint32(listener.Addr().(*net.TCPAddr).Port)
 }
 
 func TestMigrationsMySQLAndPostgres(t *testing.T) {
@@ -102,8 +31,8 @@ func TestMigrationsMySQLAndPostgres(t *testing.T) {
 		dialect string
 		open    databaseFactory
 	}{
-		{name: "mysql", dialect: "mysql", open: openMySQL},
-		{name: "postgres", dialect: "postgres", open: openPostgres},
+		{name: "mysql", dialect: "mysql", open: testdb.OpenMySQL},
+		{name: "postgres", dialect: "postgres", open: testdb.OpenPostgres},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -1,0 +1,65 @@
+package core
+
+import (
+	"context"
+	"errors"
+	"net/http"
+
+	corei18n "7link.com/platform/internal/iam/core/i18n"
+	"7link.com/platform/internal/infra/guid"
+
+	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
+	"7link.com/platform/pkg/extension/huma/respx"
+	"github.com/danielgtaylor/huma/v2"
+)
+
+type myMembershipInput struct {
+	Cookie string `header:"Cookie"`
+	Offset int    `query:"offset" default:"0" minimum:"0"`
+	Limit  int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
+}
+type leaveMembershipInput struct {
+	Cookie   string `header:"Cookie"`
+	Origin   string `header:"Origin"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Body     struct {
+		Proof string `json:"proof" minLength:"1" maxLength:"1024"`
+	}
+}
+
+func registerMemberExitHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "iam-my-memberships", Method: http.MethodGet, Path: "/principals/{principal_id}/memberships", Summary: "List my active tenant memberships", Tags: []string{"account"}, Errors: []int{401, 503}}, func(ctx context.Context, in *myMembershipInput) (*respx.Body[[]MyMembership], error) {
+		items, total, err := s.MyMemberships(ctx, authnext.PrincipalIDFromContext(ctx), in.Offset, in.Limit)
+		if err != nil {
+			return nil, apiError("list own memberships", err)
+		}
+		if items == nil {
+			items = []MyMembership{}
+		}
+		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
+	})
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "iam-leave-membership", Method: http.MethodDelete, Path: "/principals/{principal_id}/memberships/{tenant_id}", Summary: "Delete my membership in one tenant while preserving my global account", Tags: []string{"account"}, Errors: []int{401, 403, 404, 409, 503}}, func(ctx context.Context, in *leaveMembershipInput) (*respx.Body[map[string]string], error) {
+		if s.privacyBrowser.ValidateCSRF == nil {
+			return nil, huma.Error503ServiceUnavailable(corei18n.Unavailable)
+		}
+		if err := s.privacyBrowser.ValidateCSRF(http.MethodDelete, in.Origin, in.Cookie); err != nil {
+			return nil, huma.Error403Forbidden("respx.forbidden")
+		}
+		tenant, err := guid.RequireID(in.TenantID)
+		if err != nil {
+			return nil, err
+		}
+		_, err = s.LeaveTenant(ctx, authnext.PrincipalIDFromContext(ctx), tenant, in.Cookie, in.Body.Proof)
+		if errors.Is(err, authnext.ErrInvalidCredentials) || errors.Is(err, authnext.ErrInvalidToken) {
+			return nil, huma.Error403Forbidden("respx.forbidden")
+		}
+		if errors.Is(err, ErrUnavailable) || errors.Is(err, authnext.ErrUnavailable) {
+			return nil, huma.Error503ServiceUnavailable(corei18n.Unavailable)
+		}
+		if err != nil {
+			return nil, apiError("leave membership", err)
+		}
+		return respx.OK(ctx, map[string]string{"status": "disabled"}), nil
+	})
+}

@@ -170,3 +170,61 @@ func TestGracefulShutdownQuiescesServersModulesAndCancelsRootContext(t *testing.
 	assert.True(t, lifecycle.stopped)
 	assert.ErrorIs(t, rootCtx.Err(), context.Canceled)
 }
+
+// TestShutdownImmediateSkipsTheDrainDelay pins the non-graceful path. It must
+// not wait out the drain delay: an "immediate" shutdown that still slept
+// through draining would hold the process open exactly when an operator asked
+// it to stop now.
+func TestShutdownImmediateSkipsTheDrainDelay(t *testing.T) {
+	app := &App{
+		config: AppConfig{Shutdown: ShutdownConfig{
+			Graceful: false, Timeout: time.Minute, DrainDelay: time.Hour,
+		}},
+		httpServer: &http.Server{},
+		grpcServer: grpc.NewServer(),
+	}
+
+	start := time.Now()
+	require.NoError(t, app.shutdown())
+	assert.Less(t, time.Since(start), 10*time.Second, "the drain delay belongs to the graceful path only")
+}
+
+func TestShutdownGracefulDrainsBeforeStopping(t *testing.T) {
+	app := &App{
+		config: AppConfig{Shutdown: ShutdownConfig{
+			Graceful: true, Timeout: time.Minute, DrainDelay: time.Millisecond,
+		}},
+		httpServer: &http.Server{},
+		grpcServer: grpc.NewServer(),
+	}
+	require.NoError(t, app.shutdown())
+}
+
+func TestShutdownAppliesADefaultTimeoutAndToleratesAnEmptyApp(t *testing.T) {
+	// Nothing is wired: no servers, no modules, no runtime. Shutdown runs on
+	// every exit path including an early startup failure, so it must be a clean
+	// no-op rather than a nil dereference.
+	app := &App{config: AppConfig{Shutdown: ShutdownConfig{Graceful: true}}}
+	require.NoError(t, app.shutdown())
+
+	// A zero timeout falls back to the built-in default. An already-expired
+	// context would otherwise fail every step of a shutdown that had nothing
+	// wrong with it.
+	withServer := &App{
+		config:     AppConfig{Shutdown: ShutdownConfig{Graceful: true, Timeout: 0}},
+		httpServer: &http.Server{},
+	}
+	require.NoError(t, withServer.shutdown())
+}
+
+func TestShutdownCancelsTheRootContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	app := &App{
+		config: AppConfig{Shutdown: ShutdownConfig{Graceful: false, Timeout: time.Minute}},
+		ctx:    ctx, cancel: cancel,
+	}
+	require.NoError(t, app.shutdown())
+	// Background workers watch this context; leaving it live would keep them
+	// running after the process reported that it stopped.
+	assert.Error(t, ctx.Err())
+}

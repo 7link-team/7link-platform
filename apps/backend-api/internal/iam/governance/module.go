@@ -1,0 +1,139 @@
+package governance
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/core"
+	governancei18n "7link.com/platform/internal/iam/governance/i18n"
+	"7link.com/platform/internal/iam/organization"
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authz"
+	platformi18n "7link.com/platform/pkg/i18n"
+	"7link.com/platform/pkg/module"
+	"github.com/danielgtaylor/huma/v2"
+)
+
+var ErrUnavailable = errors.New("governance service unavailable")
+
+type Config struct {
+	module.Config
+}
+
+type Module struct {
+	config         Config
+	service        *Service
+	runtime        *appenv.Runtime
+	registrar      *authz.Registrar
+	ids            guid.Source
+	appender       audit.Appender
+	grants         core.RoleGrantStore
+	administrators core.AdministratorGuard
+	// foreign is the one holder of the table names the modules that own them
+	// published to governance. The repository reads through it, so a name that
+	// was never published fails the statement instead of reaching the database.
+	foreign foreignTables
+}
+
+func NewModule(runtime *appenv.Runtime, config Config) *Module {
+	if runtime == nil {
+		panic("governance module requires runtime")
+	}
+	return &Module{runtime: runtime, config: config}
+}
+
+func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
+
+func (*Module) ModuleDependencies() []string {
+	return []string{platformi18n.Name, guid.Name, audit.Name, core.Name, organization.Name}
+}
+
+func (m *Module) InjectServices(services *module.Services) error {
+	registrar, err := module.Resolve[*authz.Registrar](services)
+	if err != nil {
+		return fmt.Errorf("resolve governance authorization registrar: %w", err)
+	}
+	ids, err := module.Resolve[guid.Source](services)
+	if err != nil {
+		return fmt.Errorf("resolve governance id generator: %w", err)
+	}
+	appender, err := module.Resolve[audit.Appender](services)
+	if err != nil {
+		return fmt.Errorf("resolve governance audit appender: %w", err)
+	}
+	grants, err := module.Resolve[core.RoleGrantStore](services)
+	if err != nil {
+		return fmt.Errorf("resolve governance role grant store: %w", err)
+	}
+	administrators, err := module.Resolve[core.AdministratorGuard](services)
+	if err != nil {
+		return fmt.Errorf("resolve governance administrator guard: %w", err)
+	}
+	accessTables, err := module.Resolve[core.AccessTableNames](services)
+	if err != nil {
+		return fmt.Errorf("resolve governance access tables: %w", err)
+	}
+	directoryTables, err := module.Resolve[organization.DirectoryTableNames](services)
+	if err != nil {
+		return fmt.Errorf("resolve governance directory tables: %w", err)
+	}
+	if err := m.foreign.bind(accessTables, directoryTables); err != nil {
+		return fmt.Errorf("bind governance foreign tables: %w", err)
+	}
+	m.registrar, m.ids, m.appender, m.grants, m.administrators = registrar, ids, appender, grants, administrators
+	return nil
+}
+
+func (m *Module) Initialize(context.Context) error {
+	if err := governancei18n.Register(); err != nil {
+		return fmt.Errorf("register governance i18n: %w", err)
+	}
+	if m == nil {
+		return errors.New("initialize governance: module is required")
+	}
+	if m.runtime == nil || m.registrar == nil || m.ids == nil || m.appender == nil || m.administrators == nil ||
+		m.grants.Grant == nil || m.grants.Revoke == nil || m.grants.RoleGranted == nil ||
+		m.grants.RemovePermanent == nil || m.grants.RemoveGroupMembership == nil ||
+		m.grants.RemoveEntityRoleBinding == nil {
+		return errors.New("initialize governance: runtime, authz registrar, id generator, audit appender, role grant store, and administrator guard are required")
+	}
+	// Checked here rather than in every statement: injection has run, so an
+	// owner that published nothing is a deployment that must not start.
+	if !m.foreign.bound() {
+		return errors.New("initialize governance: the core and organization modules must publish the table names governance joins")
+	}
+	m.service = NewService(m.runtime, m.appender, m.grants, m.administrators, m.ids)
+	m.service.repo.foreign = &m.foreign
+	return nil
+}
+
+func (m *Module) CheckHealth(context.Context) error {
+	if m == nil || m.service == nil || m.service.repo == nil || m.service.repo.writer() == nil {
+		return ErrUnavailable
+	}
+	return nil
+}
+
+func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
+	if m == nil || m.registrar == nil {
+		return errors.New("register governance: module is unavailable")
+	}
+	if m.service == nil {
+		return errors.New("register governance: service is unavailable")
+	}
+	RegisterHTTP(api, m.service, m.registrar)
+	return nil
+}
+
+var (
+	_ module.Module          = (*Module)(nil)
+	_ module.Enabler         = (*Module)(nil)
+	_ module.Depender        = (*Module)(nil)
+	_ module.ServiceInjector = (*Module)(nil)
+	_ module.Initializer     = (*Module)(nil)
+	_ module.HealthChecker   = (*Module)(nil)
+	_ module.HTTPRegistrar   = (*Module)(nil)
+)

@@ -1,0 +1,921 @@
+package federation
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+
+	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
+	"7link.com/platform/pkg/extension/httpx"
+	"7link.com/platform/pkg/extension/keyringx"
+	"7link.com/platform/pkg/extension/secretx"
+	"7link.com/platform/pkg/module"
+	saml "github.com/crewjam/saml"
+	"gorm.io/gorm"
+)
+
+// Config controls the inbound federation bridge. The encryption key protects
+// upstream client secrets and login state cookies; resolve it from a secret
+// manager via encryption_key_file in production.
+type Config struct {
+	module.Config
+	EncryptionKey     string `mapstructure:"encryption_key" description:"base64 32-byte key protecting provider client secrets and login state; prefer encryption_key_file" default:"" secret:"true"`
+	EncryptionKeyFile string `mapstructure:"encryption_key_file" description:"file containing the base64 32-byte federation encryption key" default:""`
+	// The previous keys open what the key before this one sealed. They are a
+	// list rather than a single value so a deployment is not forced to finish
+	// one rotation before it can start the next, and they never seal anything.
+	PreviousEncryptionKeys     []string      `mapstructure:"previous_encryption_keys" description:"retired base64 32-byte federation keys that still open stored values; prefer previous_encryption_key_files" secret:"true"`
+	PreviousEncryptionKeyFiles []string      `mapstructure:"previous_encryption_key_files" description:"files containing retired base64 32-byte federation keys"`
+	HTTPTimeout                time.Duration `mapstructure:"http_timeout" description:"upstream discovery, JWKS, and token endpoint timeout" default:"10s"`
+	// A tenant names its own issuer, so the addresses reached on its behalf are
+	// tenant-controlled. These two settings are the only way to widen what that
+	// reaches, and they are deliberately per-module: permitting an internal
+	// identity provider should not also permit outbound SCIM to that range.
+	OutboundAllowPlaintext bool          `mapstructure:"outbound_allow_plaintext" description:"permit http:// upstream identity providers; leave false to require https" default:"false"`
+	OutboundAllowNetworks  []string      `mapstructure:"outbound_allow_networks" description:"CIDR blocks an upstream identity provider may resolve to despite being private or reserved"`
+	ClockSkew              time.Duration `mapstructure:"clock_skew" description:"allowed ID token and SAML logout clock skew" default:"30s"`
+	StateTTL               time.Duration `mapstructure:"state_ttl" description:"login state cookie lifetime" default:"10m"`
+	SAML                   SAMLConfig    `mapstructure:"saml" group:"saml"`
+}
+
+const federationCipherVersion = "v1"
+
+// federationKeyDomain separates this module's derived subkeys from every other
+// module's. It is the literal prefix the derivation already used before the key
+// ring existed, so everything stored under the old code keeps opening.
+const federationKeyDomain = "federation:key:"
+
+// LoginStart is the result of beginning a browser login: where to redirect and
+// the state cookie the browser must send back.
+type LoginStart struct {
+	AuthorizationURL string
+	StateCookie      string
+}
+
+// LoginComplete is the result of finishing the OIDC callback: the opaque
+// browser session token and the application URL to return to.
+type LoginComplete struct {
+	SessionToken string
+	ReturnURL    string
+}
+
+type Service struct {
+	repo                    *Repository
+	audit                   audit.Appender
+	identities              identity.IdentityProvisioner
+	authn                   authnextWebService
+	accountProofs           reauthenticationConsumer
+	accountReauthentication federatedReauthentication
+	revokeCredentials       identity.PrincipalCredentialsRevoker
+	revokeOAuth             identity.PrincipalOAuthRevoker
+	nextID                  func() (guid.ID, error)
+	keys                    *keyringx.Keyring
+	oidc                    *oidcClient
+	outbound                httpx.Policy
+	stateTTL                time.Duration
+	clockSkew               time.Duration
+	now                     func() time.Time
+	samlMu                  sync.Mutex
+	samlCfg                 SAMLConfig
+	samlKey                 *rsa.PrivateKey
+	samlCert                *x509.Certificate
+	samlSPs                 sync.Map
+	// SAML SP-initiated login state: cached upstream IdP metadata keyed by
+	// provider ID, plus the lazily generated SP signing key for AuthnRequests.
+	samlIDPCache sync.Map // providerID -> *saml.EntityDescriptor
+	spMu         sync.Mutex
+	spKey        *rsa.PrivateKey
+	spCert       *x509.Certificate
+	replays      *replayRegistry
+}
+
+// authnextWebService is an alias-free local view of authn.WebService. Keeping
+// the consumer contract in the provider package is required by module.Services.
+type authnextWebService interface {
+	Authenticate(context.Context, string, string) (*authnext.Claims, error)
+	ClearCookie() string
+	CookieSecure() bool
+	CreateSession(context.Context, guid.ID, time.Time, authnext.Assurance) (string, error)
+	CreateSessionOn(context.Context, *gorm.DB, guid.ID, time.Time, authnext.Assurance) (string, error)
+	Logout(context.Context, string) (string, error)
+	ResolveReturnURL(string) (string, error)
+	SessionCookie(string) string
+	SessionCookieName() string
+	ValidateCSRF(string, string, string, string) error
+}
+
+// ResolveKeyring loads the configured federation keys so startup fails fast
+// instead of surfacing a runtime secret error. The first key seals; every key
+// opens, which is what lets a deployment replace one without losing what the
+// replaced key protected.
+func ResolveOutboundPolicy(cfg Config) (httpx.Policy, error) {
+	policy, err := httpx.ParsePolicy(cfg.OutboundAllowPlaintext, cfg.OutboundAllowNetworks)
+	if err != nil {
+		return httpx.Policy{}, fmt.Errorf("federation outbound policy: %w", err)
+	}
+	return policy, nil
+}
+
+func ResolveKeyring(cfg Config) (*keyringx.Keyring, error) {
+	active, err := secretx.Resolve("federation.encryption_key", cfg.EncryptionKey, cfg.EncryptionKeyFile, 4096)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(active) == "" {
+		return nil, errors.New("federation encryption key is required when federation is enabled")
+	}
+	previous, err := secretx.ResolveList(
+		"federation.previous_encryption_keys",
+		cfg.PreviousEncryptionKeys, cfg.PreviousEncryptionKeyFiles, 4096,
+	)
+	if err != nil {
+		return nil, err
+	}
+	keys, err := keyringx.New(federationKeyDomain, active, previous...)
+	if err != nil {
+		return nil, fmt.Errorf("federation encryption key: %w", err)
+	}
+	return keys, nil
+}
+
+// openError translates a key ring failure into the vocabulary of the value that
+// failed to open. The unknown-key case stays separate from the rest because its
+// fix differs in kind: the retired key goes back into the configuration, and
+// nothing has been lost.
+func openError(what string, err error) error {
+	switch {
+	case errors.Is(err, keyringx.ErrUnsupportedEnvelope):
+		return fmt.Errorf("unsupported %s ciphertext", what)
+	case errors.Is(err, keyringx.ErrInvalidEnvelope):
+		return fmt.Errorf("invalid %s ciphertext", what)
+	case errors.Is(err, keyringx.ErrUnknownKey):
+		return fmt.Errorf("%s was sealed with a key this deployment no longer holds", what)
+	default:
+		return fmt.Errorf("decrypt %s", what)
+	}
+}
+
+func NewService(runtime *appenv.Runtime, appender audit.Appender, identities identity.IdentityProvisioner, principals identity.PrincipalStateStore, authn authnextWebService, cfg Config, keys *keyringx.Keyring, ids guid.Source, outbound httpx.Policy) *Service {
+	if runtime == nil || appender == nil || identities == nil || principals.Status == nil || authn == nil || ids == nil {
+		panic("federation service requires database, audit appender, identity provisioner, principal state store, authentication service, and id generator")
+	}
+	timeout := cfg.HTTPTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	skew := cfg.ClockSkew
+	if skew <= 0 {
+		skew = 30 * time.Second
+	}
+	stateTTL := cfg.StateTTL
+	if stateTTL <= 0 {
+		stateTTL = 10 * time.Minute
+	}
+	repo := NewRepository(runtime)
+	repo.principals = principals
+	return &Service{
+		repo: repo, audit: appender, identities: identities, authn: authn,
+		keys: keys, stateTTL: stateTTL, clockSkew: skew, now: time.Now,
+		nextID: func() (guid.ID, error) {
+			id, err := ids.Next()
+			return guid.ID(id), err
+		},
+		oidc:     newOIDCClient(httpx.NewClient(timeout, outbound), outbound, skew, 5*time.Minute),
+		outbound: outbound,
+		replays:  newReplayRegistry(repo),
+	}
+}
+
+func (s *Service) ListProviders(ctx context.Context, tenantID guid.ID) ([]Provider, error) {
+	if tenantID.Zero() {
+		return nil, ErrInvalidProvider
+	}
+	rows, err := s.repo.listProviders(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Provider, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, providerFromRow(row))
+	}
+	return result, nil
+}
+
+func (s *Service) CreateProvider(ctx context.Context, tenantID guid.ID, input ProviderInput) (Provider, error) {
+	row, secret, err := s.normalizeProvider(tenantID, input)
+	if err != nil {
+		return Provider{}, err
+	}
+	if err := s.validateDefaultRole(ctx, s.repo, row.TenantID, optionalFederationID(row.DefaultRoleID)); err != nil {
+		return Provider{}, err
+	}
+	id, err := s.nextID()
+	if err != nil {
+		return Provider{}, err
+	}
+	if id.Zero() {
+		return Provider{}, ErrInvalidProvider
+	}
+	now := s.now().UTC().Truncate(time.Millisecond)
+	row.ID = id
+	row.CreatedAt = now
+	row.UpdatedAt = now
+	if secret != "" {
+		row.ClientSecretCiphertext, err = s.encryptSecret(id, secret)
+		if err != nil {
+			return Provider{}, err
+		}
+	}
+	if err := s.repo.insertProvider(ctx, &row); err != nil {
+		return Provider{}, err
+	}
+	return providerFromRow(row), nil
+}
+
+func (s *Service) UpdateProvider(ctx context.Context, tenantID, id guid.ID, input ProviderInput) (Provider, error) {
+	if tenantID.Zero() || id.Zero() {
+		return Provider{}, ErrInvalidProvider
+	}
+	current, err := s.getProvider(ctx, tenantID, id)
+	if err != nil {
+		return Provider{}, err
+	}
+	row, secret, err := s.normalizeProvider(tenantID, input)
+	if err != nil {
+		return Provider{}, err
+	}
+	if err := s.validateDefaultRole(ctx, s.repo, tenantID, optionalFederationID(row.DefaultRoleID)); err != nil {
+		return Provider{}, err
+	}
+	row.ID = current.ID
+	row.TenantID = tenantID
+	row.CreatedAt = current.CreatedAt
+	row.UpdatedAt = s.now().UTC().Truncate(time.Millisecond)
+	row.ClientSecretCiphertext = current.ClientSecretCiphertext
+	if secret != "" {
+		row.ClientSecretCiphertext, err = s.encryptSecret(row.ID, secret)
+		if err != nil {
+			return Provider{}, err
+		}
+	}
+	for {
+		var principals []guid.ID
+		if err := s.repo.writer().WithContext(ctx).Table(s.repo.names.IdentityLinks.String()).Distinct("principal_id").
+			Where("provider_id = ? AND tenant_id = ?", id, tenantID).Order("principal_id").Pluck("principal_id", &principals).Error; err != nil {
+			return Provider{}, err
+		}
+		bindingSetChanged := false
+		err := s.repo.runInTx(ctx, func(repo *Repository) error {
+			// Account operations lock the principal before the provider. Lock the
+			// complete current owner set in that same order before source replacement.
+			locked := make(map[guid.ID]bool, len(principals))
+			for _, principalID := range principals {
+				if repo.principals.Lock == nil {
+					return ErrUnavailable
+				}
+				if err := repo.principals.Lock(ctx, repo.writer(), principalID); err != nil {
+					return err
+				}
+				locked[principalID] = true
+			}
+			previous, err := repo.lockProvider(ctx, id)
+			if err != nil {
+				return err
+			}
+			var links []identityLinkRow
+			if err := repo.currentReader().WithContext(ctx).Table(repo.names.IdentityLinks.String()).
+				Where("provider_id = ? AND tenant_id = ?", id, tenantID).Order("principal_id").Find(&links).Error; err != nil {
+				return err
+			}
+			for _, link := range links {
+				if !locked[link.PrincipalID] {
+					bindingSetChanged = true
+					return ErrIdentityLinkConflict
+				}
+			}
+			if err := repo.updateProvider(ctx, &row); err != nil {
+				return err
+			}
+			if securityProviderFingerprint(previous) == securityProviderFingerprint(row) {
+				return nil
+			}
+			var currentPrincipals []guid.ID
+			for _, link := range links {
+				if len(currentPrincipals) == 0 || currentPrincipals[len(currentPrincipals)-1] != link.PrincipalID {
+					currentPrincipals = append(currentPrincipals, link.PrincipalID)
+				}
+			}
+			for _, principalID := range currentPrincipals {
+				if err := s.invalidatePrincipalOn(ctx, repo, principalID, row.UpdatedAt); err != nil {
+					return err
+				}
+			}
+			if err := repo.writer().WithContext(ctx).Table(repo.names.IdentityLinks.String()).
+				Where("provider_id = ? AND tenant_id = ?", id, tenantID).Update("quarantined_at", row.UpdatedAt).Error; err != nil {
+				return err
+			}
+			if err := repo.writer().WithContext(ctx).Table(repo.names.IdentityLinkTransactions.String()).
+				Where("provider_id = ? AND consumed_at IS NULL", id).Update("consumed_at", row.UpdatedAt).Error; err != nil {
+				return err
+			}
+			return s.audit(ctx, repo.writer(), audit.NewDomainEvent(ctx, tenantID, "identity_provider_source_replaced", "identity_provider", id))
+		})
+		if bindingSetChanged && !s.repo.inTx {
+			continue
+		}
+		if err != nil {
+			return Provider{}, err
+		}
+		break
+	}
+	if securityProviderFingerprint(current) != securityProviderFingerprint(row) {
+		s.samlIDPCache.Delete(id)
+	}
+	return providerFromRow(row), nil
+}
+
+func (s *Service) DeleteProvider(ctx context.Context, tenantID, id guid.ID) error {
+	if tenantID.Zero() || id.Zero() {
+		return ErrInvalidProvider
+	}
+	return s.repo.deleteProvider(ctx, tenantID, id)
+}
+
+// StartLogin begins a browser login for an upstream identity provider: the
+// OIDC authorization-code flow, or the SAML SP-initiated flow for SAML
+// providers. It resolves the provider, seals the state cookie, and returns the
+// upstream redirect URL.
+func (s *Service) StartLogin(ctx context.Context, providerID guid.ID, returnURL, callback string) (LoginStart, error) {
+	provider, err := s.getProviderByID(ctx, providerID)
+	if err != nil {
+		return LoginStart{}, err
+	}
+	if provider.Status != ProviderActive {
+		return LoginStart{}, ErrProviderDisabled
+	}
+	if provider.ProviderType == ProviderSAML {
+		redirectURL, stateCookie, err := s.StartSAMLLogin(ctx, providerID, returnURL, callback)
+		if err != nil {
+			return LoginStart{}, err
+		}
+		return LoginStart{AuthorizationURL: redirectURL, StateCookie: stateCookie}, nil
+	}
+	if !validHTTPURL(callback) || !strings.HasSuffix(callback, callbackURL(provider.ID)) {
+		return LoginStart{}, ErrInvalidProvider
+	}
+	resolvedReturnURL, err := s.authn.ResolveReturnURL(returnURL)
+	if err != nil {
+		return LoginStart{}, err
+	}
+	state, err := newLoginState(provider.ID.String(), provider.TenantID.String(), resolvedReturnURL, s.stateTTL, s.now().UTC())
+	if err != nil {
+		return LoginStart{}, err
+	}
+	state.SecurityFingerprint, err = s.bindingFingerprint(ctx, provider)
+	if err != nil {
+		return LoginStart{}, err
+	}
+	sealed, err := sealState(s.keys, state)
+	if err != nil {
+		return LoginStart{}, err
+	}
+	discovery, err := s.oidc.discovery(ctx, provider.Issuer)
+	if err != nil {
+		return LoginStart{}, err
+	}
+	query := url.Values{}
+	query.Set("response_type", "code")
+	query.Set("client_id", provider.ClientID)
+	query.Set("redirect_uri", callback)
+	query.Set("scope", provider.Scopes)
+	query.Set("state", state.Nonce)
+	query.Set("code_challenge", codeChallenge(state.CodeVerifier))
+	query.Set("code_challenge_method", "S256")
+	separator := "?"
+	if strings.Contains(discovery.AuthorizationEndpoint, "?") {
+		separator = "&"
+	}
+	return LoginStart{
+		AuthorizationURL: discovery.AuthorizationEndpoint + separator + query.Encode(),
+		StateCookie:      stateCookie(sealed, s.authn.CookieSecure(), int(s.stateTTL.Seconds())),
+	}, nil
+}
+
+// CompleteLogin finishes the callback: it validates the state cookie, exchanges
+// the code, verifies the ID token, provisions or links the identity, and issues
+// a browser session.
+func (s *Service) CompleteLogin(ctx context.Context, providerID guid.ID, code, state, cookieHeader, callback string) (LoginComplete, error) {
+	provider, err := s.getProviderByID(ctx, providerID)
+	if err != nil {
+		return LoginComplete{}, err
+	}
+	if provider.Status != ProviderActive {
+		return LoginComplete{}, ErrProviderDisabled
+	}
+	stateValue, err := cookieValue(cookieHeader, stateCookieName)
+	if err != nil {
+		return LoginComplete{}, ErrOIDCState
+	}
+	sealedState, err := openState(s.keys, stateValue)
+	if err != nil {
+		return LoginComplete{}, ErrOIDCState
+	}
+	now := s.now().UTC()
+	if sealedState.ProviderID != provider.ID.String() || sealedState.TenantID != provider.TenantID.String() ||
+		sealedState.Nonce != state || sealedState.ExpiresAt <= now.Unix() || sealedState.SecurityFingerprint != securityProviderFingerprint(provider) {
+		return LoginComplete{}, ErrOIDCState
+	}
+	claimed, err := s.replays.claim(ctx, "state:"+sealedState.Nonce, time.Unix(sealedState.ExpiresAt, 0), now)
+	if err != nil {
+		return LoginComplete{}, err
+	}
+	if !claimed {
+		return LoginComplete{}, ErrOIDCState
+	}
+	var clientSecret string
+	if provider.ClientSecretCiphertext != "" {
+		clientSecret, err = s.decryptSecret(provider.ID, provider.ClientSecretCiphertext)
+		if err != nil {
+			return LoginComplete{}, err
+		}
+	}
+	rawIDToken, err := s.oidc.exchangeCode(ctx, provider.Issuer, provider.ClientID, clientSecret, code, callback, sealedState.CodeVerifier)
+	if err != nil {
+		return LoginComplete{}, err
+	}
+	claims, err := s.oidc.verifyIDToken(ctx, provider.Issuer, provider.ClientID, rawIDToken, s.now().UTC())
+	if err != nil {
+		return LoginComplete{}, err
+	}
+	sessionToken, err := s.authenticate(ctx, provider, claims, "oidc")
+	if err != nil {
+		return LoginComplete{}, err
+	}
+	return LoginComplete{SessionToken: sessionToken, ReturnURL: sealedState.ReturnURL}, nil
+}
+
+// StateClearCookie returns a cookie that expires the login state after the
+// callback completes (successfully or not).
+func (s *Service) StateClearCookie() string {
+	return stateClearCookie(s.authn.CookieSecure())
+}
+
+// StartSAMLLogin begins an SP-initiated SAML login for a SAML identity
+// provider. It builds a signed HTTP-Redirect AuthnRequest to the IdP's SSO
+// endpoint and returns the redirect URL plus the sealed state cookie the
+// browser must send back to the callback.
+func (s *Service) StartSAMLLogin(ctx context.Context, providerID guid.ID, returnURL, callback string) (string, string, error) {
+	provider, err := s.getProviderByID(ctx, providerID)
+	if err != nil {
+		return "", "", err
+	}
+	if provider.Status != ProviderActive {
+		return "", "", ErrProviderDisabled
+	}
+	if provider.ProviderType != ProviderSAML {
+		return "", "", ErrInvalidProvider
+	}
+	if !validHTTPURL(callback) || !strings.HasSuffix(callback, callbackURL(provider.ID)) {
+		return "", "", ErrInvalidProvider
+	}
+	resolvedReturnURL, err := s.authn.ResolveReturnURL(returnURL)
+	if err != nil {
+		return "", "", err
+	}
+	now := s.now().UTC()
+	// The state nonce doubles as the AuthnRequest ID so the callback can bind
+	// the response's InResponseTo to the exact request the browser started.
+	nonce, err := randomToken(18)
+	if err != nil {
+		return "", "", err
+	}
+	verifier, err := randomToken(32)
+	if err != nil {
+		return "", "", err
+	}
+	state := loginState{
+		ProviderID: provider.ID.String(), TenantID: provider.TenantID.String(), Nonce: "id-" + nonce, CodeVerifier: verifier,
+		ReturnURL: resolvedReturnURL, ExpiresAt: now.Add(s.stateTTL).Unix(),
+	}
+	state.SecurityFingerprint, err = s.bindingFingerprint(ctx, provider)
+	if err != nil {
+		return "", "", err
+	}
+	sealed, err := sealState(s.keys, state)
+	if err != nil {
+		return "", "", err
+	}
+	sp, err := s.samlServiceProvider(ctx, provider, callback)
+	if err != nil {
+		return "", "", err
+	}
+	authnRequest := &saml.AuthnRequest{
+		ID:                          state.Nonce,
+		Version:                     "2.0",
+		IssueInstant:                now,
+		Destination:                 sp.GetSSOBindingLocation(saml.HTTPRedirectBinding),
+		Issuer:                      &saml.Issuer{Format: samlNameIDEntity, Value: sp.EntityID},
+		AssertionConsumerServiceURL: callback,
+		ProtocolBinding:             saml.HTTPPostBinding,
+	}
+	redirectURL, err := authnRequest.Redirect(state.Nonce, sp)
+	if err != nil {
+		return "", "", fmt.Errorf("%w: build redirect request: %w", ErrSAMLResponse, err)
+	}
+	return redirectURL.String(), stateCookie(sealed, s.authn.CookieSecure(), int(s.stateTTL.Seconds())), nil
+}
+
+// CompleteSAMLLogin finishes an SP-initiated SAML login: it verifies the state
+// cookie, parses and verifies the IdP's SAMLResponse, provisions or links the
+// identity, and issues a browser session.
+func (s *Service) CompleteSAMLLogin(ctx context.Context, providerID guid.ID, samlResponse, cookieHeader, callback string) (string, string, error) {
+	provider, err := s.getProviderByID(ctx, providerID)
+	if err != nil {
+		return "", "", err
+	}
+	if provider.Status != ProviderActive {
+		return "", "", ErrProviderDisabled
+	}
+	if provider.ProviderType != ProviderSAML {
+		return "", "", ErrInvalidProvider
+	}
+	if !validHTTPURL(callback) || !strings.HasSuffix(callback, callbackURL(provider.ID)) {
+		return "", "", ErrInvalidProvider
+	}
+	stateValue, err := cookieValue(cookieHeader, stateCookieName)
+	if err != nil {
+		return "", "", ErrOIDCState
+	}
+	sealedState, err := openState(s.keys, stateValue)
+	if err != nil {
+		return "", "", ErrOIDCState
+	}
+	now := s.now().UTC()
+	if sealedState.ProviderID != provider.ID.String() || sealedState.TenantID != provider.TenantID.String() ||
+		sealedState.ExpiresAt <= now.Unix() {
+		return "", "", ErrOIDCState
+	}
+	fingerprint, err := s.bindingFingerprint(ctx, provider)
+	if err != nil {
+		return "", "", err
+	}
+	if sealedState.SecurityFingerprint != fingerprint {
+		return "", "", ErrOIDCState
+	}
+	claimed, err := s.replays.claim(ctx, "state:"+sealedState.Nonce, time.Unix(sealedState.ExpiresAt, 0), now)
+	if err != nil {
+		return "", "", err
+	}
+	if !claimed {
+		return "", "", ErrOIDCState
+	}
+	assertion, err := s.parseSAMLResponse(ctx, provider, samlResponse, callback, sealedState.Nonce)
+	if err != nil {
+		return "", "", err
+	}
+	if assertion.ID == "" {
+		return "", "", ErrSAMLResponse
+	}
+	claimed, err = s.replays.claim(ctx, "assertion:"+provider.ID.String()+":"+assertion.ID, time.Unix(sealedState.ExpiresAt, 0), now)
+	if err != nil {
+		return "", "", err
+	}
+	if !claimed {
+		return "", "", ErrSAMLResponse
+	}
+	email := strings.TrimSpace(samlAttribute(assertion, "email"))
+	if email == "" {
+		email = strings.TrimSpace(samlAttribute(assertion, "Email"))
+	}
+	displayName := strings.TrimSpace(samlAttribute(assertion, "display_name"))
+	if displayName == "" {
+		displayName = strings.TrimSpace(samlAttribute(assertion, "displayName"))
+	}
+	if displayName == "" {
+		displayName = strings.TrimSpace(samlAttribute(assertion, "uid"))
+	}
+	verified := true
+	var authTime int64
+	if len(assertion.AuthnStatements) > 0 {
+		authTime = assertion.AuthnStatements[0].AuthnInstant.Unix()
+	}
+	claims := idTokenClaims{
+		Subject: assertion.Subject.NameID.Value, Email: email, EmailVerified: &verified,
+		Name: displayName, PreferredUsername: displayName, AuthTime: authTime,
+	}
+	sessionToken, err := s.authenticate(ctx, provider, claims, "saml")
+	if err != nil {
+		return "", "", err
+	}
+	return sessionToken, sealedState.ReturnURL, nil
+}
+
+func (s *Service) authenticate(ctx context.Context, provider providerRow, token idTokenClaims, method string) (string, error) {
+	var principalID guid.ID
+	var sessionToken string
+	fingerprint, err := s.bindingFingerprint(ctx, provider)
+	if err != nil {
+		return "", err
+	}
+	existing, lookupErr := s.repo.identityLink(ctx, provider.ID, provider.TenantID, token.Subject)
+	if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		return "", lookupErr
+	}
+	now := s.now().UTC()
+	provisioned := false
+	defaultRoleMissing := false
+	err = s.repo.runInTx(ctx, func(tx *Repository) error {
+		if lookupErr == nil {
+			if tx.principals.Lock == nil {
+				return ErrUnavailable
+			}
+			if err := tx.principals.Lock(ctx, tx.writer(), existing.PrincipalID); err != nil {
+				return err
+			}
+		}
+		current, lockErr := tx.lockProvider(ctx, provider.ID)
+		if lockErr != nil {
+			return lockErr
+		}
+		if current.Status != ProviderActive || securityProviderFingerprint(current) != securityProviderFingerprint(provider) {
+			return ErrProviderDisabled
+		}
+		provider = current
+		// Re-read under the provider lock; only subject-owned state is reusable.
+		link, err := tx.identityLink(ctx, provider.ID, provider.TenantID, token.Subject)
+		switch {
+		case err == nil:
+			if tx.principals.Lock == nil {
+				return ErrUnavailable
+			}
+			if err := tx.principals.Lock(ctx, tx.writer(), link.PrincipalID); err != nil {
+				return err
+			}
+			if !trustedIdentityLink(link, fingerprint) {
+				return ErrIdentityOwnershipRequired
+			}
+			principalID = link.PrincipalID
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			if !provider.AutoProvision {
+				return ErrProvisioningDisabled
+			}
+			if token.Email == "" || token.EmailVerified == nil || !*token.EmailVerified {
+				return ErrProvisioningUnverified
+			}
+			displayName := strings.TrimSpace(token.Name)
+			if displayName == "" {
+				displayName = strings.TrimSpace(token.PreferredUsername)
+			}
+			id, created, err := s.identities.EnsureExternalPrincipal(ctx, tx.writer(), provider.TenantID, token.Email, displayName, now)
+			if err != nil {
+				if errors.Is(err, identity.ErrLoginConflict) {
+					return ErrIdentityOwnershipRequired
+				}
+				return err
+			}
+			if !created {
+				return ErrIdentityOwnershipRequired
+			}
+			principalID = id
+			provisioned = created
+			roleID := optionalFederationID(provider.DefaultRoleID)
+			if created && !roleID.Zero() {
+				granted, err := tx.grantDefaultRole(ctx, provider.TenantID, roleID, principalID, now)
+				if err != nil {
+					return err
+				}
+				defaultRoleMissing = !granted
+			}
+			link = identityLinkRow{
+				BindingProvenance: BindingNewPrincipal, SecurityFingerprint: fingerprint,
+				ProviderID: provider.ID, TenantID: provider.TenantID, ExternalSubject: token.Subject,
+				PrincipalID: principalID, Email: token.Email, DisplayName: displayName,
+				LastLoginAt: now, CreatedAt: now, UpdatedAt: now,
+			}
+			if err := tx.insertIdentityLink(ctx, &link); err != nil {
+				return err
+			}
+		default:
+			return err
+		}
+		if err := tx.verifyPrincipalAndMember(ctx, provider.TenantID, principalID); err != nil {
+			return err
+		}
+		if err := tx.touchIdentityLink(ctx, provider.ID, provider.TenantID, token.Subject, now); err != nil {
+			return err
+		}
+		event := audit.NewDomainEvent(ctx, provider.TenantID, "federation_login", "identity_provider", provider.ID)
+		event.PrincipalID = principalID
+		event.Detail["external_subject"] = token.Subject
+		event.Detail["provider"] = provider.Name
+		event.Detail["email"] = token.Email
+		event.Detail["provisioned"] = provisioned
+		if defaultRoleMissing {
+			event.Detail["default_role_missing"] = true
+		}
+		if err := s.audit(ctx, tx.writer(), event); err != nil {
+			return err
+		}
+		assurance := authnext.Assurance{AuthTime: now, Level: 1, Methods: []string{method}}
+		if token.AuthTime > 0 {
+			assurance.AuthTime = time.Unix(token.AuthTime, 0).UTC()
+		}
+		sessionToken, err = s.authn.CreateSessionOn(ctx, tx.writer(), principalID, now, assurance)
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	return sessionToken, nil
+}
+
+func (s *Service) normalizeProvider(tenantID guid.ID, input ProviderInput) (providerRow, string, error) {
+	name := strings.TrimSpace(input.Name)
+	providerType := strings.TrimSpace(input.ProviderType)
+	if providerType == "" {
+		providerType = ProviderOIDC
+	}
+	issuer, err := normalizeIssuer(input.Issuer, s.outbound)
+	clientID := strings.TrimSpace(input.ClientID)
+	scopes := normalizeScopes(input.Scopes)
+	defaultRoleID := input.DefaultRoleID
+	status := strings.TrimSpace(input.Status)
+	if status == "" {
+		status = ProviderActive
+	}
+	secret := strings.TrimSpace(input.ClientSecret)
+	if tenantID.Zero() || name == "" || len(name) > 128 ||
+		(providerType != ProviderOIDC && providerType != ProviderSAML) ||
+		err != nil || clientID == "" || len(clientID) > 128 ||
+		(status != ProviderActive && status != ProviderDisabled) || len(secret) > 2048 {
+		return providerRow{}, "", ErrInvalidProvider
+	}
+	// SAML providers don't require scopes (assertion-driven); OIDC does.
+	if providerType == ProviderOIDC && (scopes == "" || len(scopes) > 255) {
+		return providerRow{}, "", ErrInvalidProvider
+	}
+	return providerRow{
+		TenantID: tenantID, Name: name, ProviderType: providerType, Issuer: issuer, ClientID: clientID,
+		Scopes: scopes, AutoProvision: input.AutoProvision, DefaultRoleID: federationIDPointer(defaultRoleID), Status: status,
+	}, secret, nil
+}
+
+// validateDefaultRole rejects provider changes that point at a role the tenant
+// does not have, so JIT provisioning never silently grants nothing.
+func (s *Service) validateDefaultRole(ctx context.Context, repo *Repository, tenantID, roleID guid.ID) error {
+	if roleID.Zero() {
+		return nil
+	}
+	exists, err := repo.roleExists(ctx, tenantID, roleID)
+	if err != nil {
+		return fmt.Errorf("validate default role: %w", err)
+	}
+	if !exists {
+		return ErrProviderRoleMissing
+	}
+	return nil
+}
+
+func (s *Service) getProvider(ctx context.Context, tenantID, id guid.ID) (providerRow, error) {
+	return s.repo.getProvider(ctx, tenantID, id)
+}
+
+func (s *Service) getProviderByID(ctx context.Context, id guid.ID) (providerRow, error) {
+	if id.Zero() {
+		return providerRow{}, ErrProviderNotFound
+	}
+	return s.repo.getProviderByID(ctx, id)
+}
+
+func (s *Service) resolveProviderOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+	provider, err := s.getProviderByID(ctx, id)
+	if errors.Is(err, ErrProviderNotFound) {
+		return authz.ResourceOwner{}, false, nil
+	}
+	if err != nil {
+		return authz.ResourceOwner{}, false, err
+	}
+	return authz.ResourceOwner{TenantID: provider.TenantID}, true, nil
+}
+
+// providerSecretAAD binds a sealed client secret to the provider row it belongs
+// to, so a ciphertext copied into another row stops opening.
+func providerSecretAAD(providerID guid.ID) []byte {
+	return []byte("federation:secret\x00" + providerID.String())
+}
+
+func (s *Service) encryptSecret(providerID guid.ID, secret string) (string, error) {
+	sealed, err := s.keys.Seal("client-secret", providerSecretAAD(providerID), []byte(secret))
+	if err != nil {
+		return "", fmt.Errorf("seal federation client secret: %w", err)
+	}
+	return sealed, nil
+}
+
+func (s *Service) decryptSecret(providerID guid.ID, encoded string) (string, error) {
+	plain, err := s.keys.Open("client-secret", providerSecretAAD(providerID), encoded)
+	if err != nil {
+		return "", openError("federation client secret", err)
+	}
+	return string(plain), nil
+}
+
+func providerFromRow(row providerRow) Provider {
+	return Provider{
+		ID: row.ID, TenantID: row.TenantID, Name: row.Name, ProviderType: row.ProviderType,
+		Issuer: row.Issuer, ClientID: row.ClientID, ClientSecretSet: row.ClientSecretCiphertext != "",
+		Scopes: row.Scopes, AutoProvision: row.AutoProvision, DefaultRoleID: optionalFederationID(row.DefaultRoleID),
+		Status: row.Status, CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(),
+	}
+}
+
+func federationIDPointer(id guid.ID) *guid.ID {
+	if id.Zero() {
+		return nil
+	}
+	return &id
+}
+
+func optionalFederationID(id *guid.ID) guid.ID {
+	if id == nil {
+		return 0
+	}
+	return *id
+}
+
+func normalizeIssuer(value string, outbound httpx.Policy) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+		return "", errors.New("invalid issuer")
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	normalized := strings.TrimRight(parsed.String(), "/")
+	// Refusing a plainly unreachable issuer here gives the operator the reason
+	// while they are still looking at the form. It is not the enforcement
+	// point: a name resolving somewhere else later is caught on the dial.
+	if err := outbound.ValidateURL(normalized); err != nil {
+		return "", fmt.Errorf("invalid issuer: %w", err)
+	}
+	return normalized, nil
+}
+
+func normalizeScopes(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return defaultScopes
+	}
+	fields := strings.Fields(value)
+	seen := make(map[string]struct{}, len(fields))
+	result := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if len(field) > 64 || strings.ContainsAny(field, " \t\r\n") {
+			return ""
+		}
+		if _, ok := seen[field]; ok {
+			continue
+		}
+		seen[field] = struct{}{}
+		result = append(result, field)
+	}
+	if len(result) == 0 {
+		return ""
+	}
+	return strings.Join(result, " ")
+}
+
+func randomToken(size int) (string, error) {
+	data := make([]byte, size)
+	if _, err := rand.Read(data); err != nil {
+		return "", fmt.Errorf("generate secure token: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(data), nil
+}
+
+func cookieValue(header, name string) (string, error) {
+	request := &http.Request{Header: http.Header{"Cookie": []string{header}}}
+	cookie, err := request.Cookie(name)
+	if err != nil || cookie.Value == "" {
+		return "", http.ErrNoCookie
+	}
+	return cookie.Value, nil
+}
+
+// callbackURL is the canonical callback path. The API layer prepends the
+// externally visible scheme and host before sending it to the IdP.
+func callbackURL(providerID guid.ID) string {
+	return "/identity-providers/" + providerID.String() + "/callback"
+}

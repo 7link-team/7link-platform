@@ -1,0 +1,4 @@
+# Text files are stored and checked out as LF, matching this workspace's
+# .prettierrc and apps/backend-api. `text=auto` lets Git detect binary assets
+# (images, fonts) so they are never line-ending converted.
+* text=auto eol=lf

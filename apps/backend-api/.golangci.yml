@@ -1,20 +1,19 @@
 # golangci-lint configuration for apps/backend-api.
 # Run with: make lint
+version: "2"
+
 run:
   timeout: 5m
   tests: true
 
-output:
-  sort-results: true
-
 linters:
-  disable-all: true
+  default: none
   enable:
     # Correctness — these catch real defects.
     - errcheck # unchecked errors
     - govet
     - ineffassign
-    - staticcheck
+    - staticcheck # also runs the former gosimple checks; see settings
     - unused
     - bodyclose # unclosed HTTP response bodies
     - errorlint # %w / errors.Is misuse across the wrapped-error contract
@@ -27,48 +26,59 @@ linters:
     - testifylint # assert/require misuse that silently weakens a test
 
     # Consistency — these keep the codebase uniform, not stylish.
-    - gosimple
     - unconvert
     - usestdlibvars
     - misspell
     - predeclared # shadowing builtins
     - nolintlint # //nolint without an explanation
 
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-  errorlint:
-    asserts: false # type assertions on errors are handled by errcheck above
-  nolintlint:
-    require-explanation: true
-    require-specific: true
-    allow-unused: false
-  misspell:
-    # Go's own vocabulary is US English (context.Canceled, not Cancelled).
-    locale: US
-  testifylint:
-    disable:
-      # This codebase consistently uses assert for error assertions and lets the
-      # test continue to report every failed expectation in one run. Switching
-      # ~180 call sites to require is a style change, not a correctness fix.
-      - require-error
+  settings:
+    staticcheck:
+      # v2 merged gosimple (S1) and stylecheck (ST) into staticcheck. Keep the
+      # v1 set: staticcheck (SA) and gosimple (S1) only.
+      checks:
+        - SA*
+        - S1*
+    errcheck:
+      check-type-assertions: true
+    errorlint:
+      asserts: false # type assertions on errors are handled by errcheck above
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    misspell:
+      # Go's own vocabulary is US English (context.Canceled, not Cancelled).
+      locale: US
+    testifylint:
+      disable:
+        # This codebase consistently uses assert for error assertions and lets the
+        # test continue to report every failed expectation in one run. Switching
+        # ~180 call sites to require is a style change, not a correctness fix.
+        - require-error
+
+  exclusions:
+    # No exclusion presets: report everything; the presets hide whole classes
+    # of finding.
+    generated: lax
+    paths:
+      # Generated protobuf code is owned by buf, not by this lint config.
+      - internal/infra/[a-z]+/proto/gen
+      - pkg/extension/huma/docs/web
+      # Generated query code is owned by gorm.io/gen, not by this lint config.
+      # Scoped to generated files so hand-written code in the same directory,
+      # such as each query package's table.go, is still checked.
+      - .*\.gen\.go$
+      # v1 excluded these directories by default.
+      - third_party$
+      - builtin$
+      - examples$
+    rules:
+      # Test helpers legitimately ignore errors while arranging fixtures.
+      - path: _test\.go
+        linters:
+          - errcheck
 
 issues:
-  # Report everything; the defaults hide whole classes of finding.
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-use-default: false
-  exclude-dirs:
-    # Generated protobuf code is owned by buf, not by this lint config.
-    - internal/infra/[a-z]+/proto/gen
-    - pkg/extension/huma/docs/web
-  exclude-files:
-    # Generated query code is owned by gorm.io/gen, not by this lint config.
-    # Scoped to generated files so hand-written code in the same directory,
-    # such as each query package's table.go, is still checked.
-    - .*\.gen\.go$
-  exclude-rules:
-    # Test helpers legitimately ignore errors while arranging fixtures.
-    - path: _test\.go
-      linters:
-        - errcheck

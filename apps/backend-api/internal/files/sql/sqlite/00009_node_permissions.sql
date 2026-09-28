@@ -1,0 +1,31 @@
+-- +goose Up
+ALTER TABLE {{.Prefix}}file_nodes ADD COLUMN root_scope VARCHAR(16) NULL CHECK (root_scope IS NULL OR root_scope IN ('account', 'tenant', 'entity', 'department', 'personal'));
+ALTER TABLE {{.Prefix}}file_nodes ADD COLUMN root_owner_id BIGINT NULL CHECK (
+    (root_scope IS NULL AND root_owner_id IS NULL)
+    OR (root_scope IS NOT NULL AND root_owner_id > 0 AND kind = 'directory' AND state = 'active')
+);
+ALTER TABLE {{.Prefix}}file_nodes ADD COLUMN acl_stop_inheritance INTEGER NOT NULL DEFAULT 0 CHECK (acl_stop_inheritance IN (0, 1));
+CREATE UNIQUE INDEX {{.Prefix}}uq_file_nodes_root_owner ON {{.Prefix}}file_nodes (space_id, root_scope, root_owner_id);
+CREATE INDEX {{.Prefix}}idx_file_nodes_roots ON {{.Prefix}}file_nodes (space_id, root_scope, state, id);
+CREATE TABLE {{.Prefix}}file_node_acl (
+    id BIGINT NOT NULL PRIMARY KEY CHECK (id > 0),
+    space_id BIGINT NOT NULL,
+    node_id BIGINT NOT NULL,
+    subject_kind VARCHAR(16) NOT NULL CHECK (subject_kind IN ('principal', 'department', 'group', 'role', 'owner')),
+    subject_id BIGINT NOT NULL CHECK (subject_id > 0),
+    effect VARCHAR(8) NOT NULL CHECK (effect IN ('allow', 'deny')),
+    action VARCHAR(16) NOT NULL CHECK (action IN ('list', 'traverse', 'read', 'download', 'create', 'update', 'rename', 'move', 'delete', 'restore', 'purge', 'share', 'manage_acl')),
+    applies VARCHAR(24) NOT NULL CHECK (applies IN ('self', 'descendants', 'self_and_descendants')),
+    created_by BIGINT NOT NULL CHECK (created_by > 0),
+    created_at BIGINT NOT NULL,
+    UNIQUE (space_id, node_id, subject_kind, subject_id, effect, action, applies),
+    FOREIGN KEY (space_id, node_id) REFERENCES {{.Prefix}}file_nodes (space_id, id)
+);
+CREATE INDEX {{.Prefix}}idx_file_node_acl_node ON {{.Prefix}}file_node_acl (space_id, node_id, id);
+-- +goose Down
+DROP TABLE {{.Prefix}}file_node_acl;
+DROP INDEX {{.Prefix}}idx_file_nodes_roots;
+DROP INDEX {{.Prefix}}uq_file_nodes_root_owner;
+ALTER TABLE {{.Prefix}}file_nodes DROP COLUMN acl_stop_inheritance;
+ALTER TABLE {{.Prefix}}file_nodes DROP COLUMN root_owner_id;
+ALTER TABLE {{.Prefix}}file_nodes DROP COLUMN root_scope;

@@ -33,9 +33,11 @@ type Source struct {
 	Prefix string
 }
 
-// versionTable is where this stream records applied versions. It carries the
+// VersionTable is where this stream records applied versions. It carries the
 // prefix too: two prefixed installations in one schema must not share it.
-func (s Source) versionTable() string { return s.Prefix + s.TableName }
+// Callers outside this package read it rather than rebuilding the name, so the
+// prefix is bound in exactly one audited place.
+func (s Source) VersionTable() string { return s.Prefix + s.TableName }
 
 // Status compares every embedded migration version with every applied version.
 type Status struct {
@@ -111,7 +113,7 @@ func migrateUpTo(
 	if version < 0 {
 		return fmt.Errorf("goose: target version cannot be negative: %d", version)
 	}
-	if err := validateMigrationState(status); err != nil {
+	if err := ValidateStatus(status); err != nil {
 		return err
 	}
 	if version > status.Target {
@@ -143,7 +145,7 @@ func MigrateDown(ctx context.Context, db *sql.DB, source Source, dialect string)
 	if err != nil {
 		return err
 	}
-	if err := validateMigrationState(status); err != nil {
+	if err := ValidateStatus(status); err != nil {
 		return err
 	}
 	if status.Current == 0 {
@@ -181,7 +183,7 @@ func migrateDownTo(
 	if version < 0 {
 		return fmt.Errorf("goose: target version cannot be negative: %d", version)
 	}
-	if err := validateMigrationState(status); err != nil {
+	if err := ValidateStatus(status); err != nil {
 		return err
 	}
 	if version > status.Current {
@@ -204,7 +206,9 @@ func migrateDownTo(
 	return nil
 }
 
-func validateMigrationState(status Status) error {
+// ValidateStatus rejects applied versions that are unavailable in the embedded
+// source and histories with unapplied versions below the current version.
+func ValidateStatus(status Status) error {
 	if len(status.Unknown) > 0 {
 		return fmt.Errorf("goose: database contains migrations unavailable in embedded SQL: %v", status.Unknown)
 	}
@@ -251,7 +255,7 @@ func Inspect(ctx context.Context, db *sql.DB, source Source, dialect string) (St
 	if err != nil {
 		return Status{}, err
 	}
-	store, err := database.NewStore(resolvedDialect, source.versionTable())
+	store, err := database.NewStore(resolvedDialect, source.VersionTable())
 	if err != nil {
 		return Status{}, fmt.Errorf("goose: create migration store: %w", err)
 	}
@@ -327,7 +331,7 @@ func newProvider(db *sql.DB, source Source, dialect string) (*goosev3.Provider, 
 
 	provider, err := goosev3.NewProvider(d, db,
 		templateFS{fsys: subFS, data: templateData{Prefix: source.Prefix}},
-		goosev3.WithTableName(source.versionTable()),
+		goosev3.WithTableName(source.VersionTable()),
 		goosev3.WithDisableGlobalRegistry(true),
 	)
 	if err != nil {

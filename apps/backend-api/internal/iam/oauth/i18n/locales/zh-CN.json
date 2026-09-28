@@ -1,0 +1,21 @@
+{
+  "invalid_client_configuration": "OAuth 客户端凭据或配置无效，请修正客户端配置后重试。",
+  "client_not_found": "当前租户中不存在指定的 OAuth 客户端，请核对客户端标识符和租户后重试。",
+  "invalid_request": "OAuth 请求缺少必填参数或包含无效参数，请修正请求后重新开始流程。",
+  "invalid_grant": "授权凭据无效、已过期、已撤销或与客户端不匹配，请重新开始授权流程。",
+  "invalid_client": "OAuth 客户端认证失败，请核对客户端标识符和凭据后重试。",
+  "invalid_token": "访问令牌无效、已过期或已撤销，请获取新令牌后重试。",
+  "insufficient_scope": "访问令牌不包含 openid scope，请申请所需 scope 后重试。",
+  "unsupported_token_type": "此端点仅撤销 refresh token，请使用 token_type_hint=refresh_token。",
+  "server_error": "授权服务器无法完成该请求，请稍后重试；若问题持续，请联系管理员。",
+  "consent_required": "用户尚未对所请求的授权范围授予同意，且当前请求无法弹出同意界面。请去掉 prompt=none 重新发起流程，或先完成授权同意。",
+  "consent_not_found": "您尚未授权该应用，或该授权已被撤销。请重新加载已授权应用列表以查看当前状态。",
+  "consent_title": "授权 %s",
+  "consent_prompt": "该应用请求访问你的账户。请先确认它将获得的权限，再做决定。",
+  "consent_allow": "允许",
+  "consent_deny": "拒绝",
+  "scope_openid": "确认你的身份",
+  "scope_profile": "读取你的基本资料",
+  "scope_email": "读取你的邮箱地址",
+  "scope_offline_access": "在你离线时保持登录"
+}

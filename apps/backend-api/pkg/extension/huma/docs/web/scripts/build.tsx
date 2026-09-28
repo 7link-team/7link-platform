@@ -12,9 +12,11 @@ const renderers = [
   { id: "swagger", label: "Swagger UI" },
   { id: "redoc", label: "ReDoc" },
   { id: "scalar", label: "Scalar" },
-  { id: "stoplight", label: "Stoplight" },
+  // Disabled: @stoplight/elements 9.0.24 pulls vulnerable Mermaid/DOMPurify assets.
+  // { id: "stoplight", label: "Stoplight" },
   { id: "rapidoc", label: "RapiDoc" },
-  { id: "openapi-ui", label: "openapi-ui" }
+  // Disabled: openapi-ui-dist 2.3.3 has unresolved vulnerable dependencies.
+  // { id: "openapi-ui", label: "openapi-ui" }
 ] as const;
 
 const specPages = [
@@ -30,12 +32,14 @@ const assets: Array<[string, string, ((data: Buffer) => Buffer)?]> = [
   ["swagger-ui-dist/swagger-ui-bundle.js", "swagger-ui-bundle.js"],
   ["redoc/bundles/redoc.standalone.js", "redoc.js"],
   ["rapidoc/dist/rapidoc-min.js", "rapidoc.js"],
-  ["@stoplight/elements/styles.min.css", "stoplight.css"],
-  ["@stoplight/elements/web-components.min.js", "stoplight.js", localizeStoplight],
-  ["mermaid/dist/mermaid.min.js", "mermaid.min.js"],
-  ["openapi-ui-dist/lib/openapi-ui.umd.js", "openapi-ui.js"]
+  // Disabled with the corresponding renderers above:
+  // ["@stoplight/elements/styles.min.css", "stoplight.css"],
+  // ["@stoplight/elements/web-components.min.js", "stoplight.js", localizeStoplight],
+  // ["mermaid/dist/mermaid.min.js", "mermaid.min.js"],
+  // ["openapi-ui-dist/lib/openapi-ui.umd.js", "openapi-ui.js"]
 ];
 
+await rm(outputRoot, { recursive: true, force: true });
 await mkdir(join(outputRoot, "assets"), { recursive: true });
 await copySourceAsset("app.css");
 await bundleApp();
@@ -114,16 +118,19 @@ async function bundleApp() {
   await writeIfChanged(join(outputRoot, "assets/app.js"), result.outputFiles[0].contents);
 }
 
-function localizeStoplight(data: Buffer) {
-  const source = data.toString();
-  const remote = /https:\/\/unpkg\.com\/mermaid@[^/]+\/dist\/mermaid\.min\.js/g;
-  if (!remote.test(source)) {
-    throw new Error("Stoplight bundle no longer contains the expected Mermaid URL");
-  }
-  return Buffer.from(source.replaceAll(remote, "/docs/assets/mermaid.min.js"));
-}
+// Disabled with Stoplight. Keep the transform here so restoring the renderer does
+// not accidentally reintroduce a remote runtime asset.
+// function localizeStoplight(data: Buffer) {
+//   const source = data.toString();
+//   const remote = /https:\/\/unpkg\.com\/mermaid@[^/]+\/dist\/mermaid\.min\.js/g;
+//   if (!remote.test(source)) {
+//     throw new Error("Stoplight bundle no longer contains the expected Mermaid URL");
+//   }
+//   return Buffer.from(source.replaceAll(remote, "/docs/assets/mermaid.min.js"));
+// }
 
-async function writeIfChanged(target: string, data: Buffer) {
+async function writeIfChanged(target: string, input: Uint8Array) {
+  const data = Buffer.from(Buffer.from(input).toString().replaceAll("\r\n", "\n"));
   await mkdir(dirname(target), { recursive: true });
   try {
     const current = await readFile(target);
