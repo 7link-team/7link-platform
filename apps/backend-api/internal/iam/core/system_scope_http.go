@@ -98,7 +98,7 @@ func (a systemScopeAdministratorEvaluator) CheckBulk(_ context.Context, _ guid.I
 	allowed := make(map[string]bool, len(codes))
 	for _, code := range codes {
 		action, ok := a.registry.Find(code)
-		allowed[code] = ok && action.Scope != "platform" && action.Scope != "operating_platform"
+		allowed[code] = ok && action.Scope != authz.ActionScopeSystem && action.Scope != authz.ActionScopeOperatingPlatform
 	}
 	return allowed, nil
 }

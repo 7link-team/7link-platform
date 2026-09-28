@@ -34,7 +34,7 @@ func PlatformPermissionCodes(registry *authz.Registry) []string {
 		return codes
 	}
 	for _, action := range registry.All() {
-		if action.Scope == "platform" {
+		if action.Scope == authz.ActionScopeSystem {
 			codes = append(codes, action.Code)
 		}
 	}
@@ -387,7 +387,7 @@ func (s *Service) lockPlatformAccessMutation(ctx context.Context, repo *Reposito
 func (s *Service) PlatformPermissionCatalog(context.Context) []authz.Action {
 	actions := make([]authz.Action, 0, 8)
 	for _, action := range s.registry.All() {
-		if action.Scope == "platform" {
+		if action.Scope == authz.ActionScopeSystem {
 			actions = append(actions, action)
 		}
 	}
@@ -482,7 +482,7 @@ func (s *Service) normalizePlatformPermissions(full bool, permissions []string) 
 		if !ok {
 			return nil, fmt.Errorf("%w: %s", ErrPermissionNotFound, code)
 		}
-		if action.Scope != "platform" {
+		if action.Scope != authz.ActionScopeSystem {
 			return nil, fmt.Errorf("%w: %s", ErrPlatformPermissionScope, code)
 		}
 		if !seen[code] {

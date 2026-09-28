@@ -32,7 +32,7 @@ func (s *Service) permissionAllowedForRoot(ctx context.Context, id guid.ID, acti
 	if err != nil {
 		return err
 	}
-	if kind == "system" && action.Scope == "platform" || kind == "platform" && authz.IsOperatingPlatformPermission(action) || kind == "tenant" && action.Scope != "platform" && action.Scope != "operating_platform" {
+	if kind == "system" && action.Scope == authz.ActionScopeSystem || kind == "platform" && authz.IsOperatingPlatformPermission(action) || kind == "tenant" && action.Scope != authz.ActionScopeSystem && action.Scope != authz.ActionScopeOperatingPlatform {
 		return nil
 	}
 	return fmt.Errorf("%w: permission %s cannot be owned by %s", ErrInvalidArgument, action.Code, kind)

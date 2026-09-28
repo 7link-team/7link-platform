@@ -179,7 +179,7 @@ func (r *Repository) bootstrapSystemAccess(ctx context.Context, owner guid.ID, n
 			continue
 		}
 		action, ok := registry.Find(grant.PermissionCode)
-		if !ok || action.Scope != "platform" {
+		if !ok || action.Scope != authz.ActionScopeSystem {
 			return fmt.Errorf("%w: legacy system permission %s", ErrInvalidArgument, grant.PermissionCode)
 		}
 		byPrincipal[grant.PrincipalID] = append(byPrincipal[grant.PrincipalID], grant.PermissionCode)

@@ -187,7 +187,7 @@ func (m *Module) systemViewWithinOperatorAuthority(ctx context.Context, checker 
 	}
 	held := false
 	for _, action := range m.registrar.Registry().All() {
-		if action.Scope != "platform" || !targetCodes[action.Code] {
+		if action.Scope != authz.ActionScopeSystem || !targetCodes[action.Code] {
 			continue
 		}
 		if !actorFull && !actorCodes[action.Code] {

@@ -95,7 +95,7 @@ func (s *Service) PermissionCatalog(context.Context) []authz.Action {
 	actions := s.registry.All()
 	tenantActions := make([]authz.Action, 0, len(actions))
 	for _, action := range actions {
-		if action.Scope != "platform" && action.Scope != "operating_platform" {
+		if action.Scope != authz.ActionScopeSystem && action.Scope != authz.ActionScopeOperatingPlatform {
 			tenantActions = append(tenantActions, action)
 		}
 	}
