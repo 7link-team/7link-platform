@@ -147,7 +147,7 @@ func NewWebService(cfg authnext.Config, repository *Repository, options ...WebOp
 	}
 	service.cfg.Issuer = strings.TrimRight(strings.TrimSpace(cfg.Issuer), "/")
 	if len(service.cfg.Audience) == 0 {
-		service.cfg.Audience = []string{"7link-api"}
+		service.cfg.Audience = []string{authnext.DefaultAudience}
 	}
 	if service.cfg.AccessTokenTTL <= 0 {
 		service.cfg.AccessTokenTTL = 15 * time.Minute
