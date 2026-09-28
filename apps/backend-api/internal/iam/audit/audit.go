@@ -32,7 +32,10 @@ const exportBatchSize = 500
 // DomainEvent describes one IAM state change written in the same transaction
 // as that change.
 type DomainEvent struct {
-	TenantID    guid.ID
+	TenantID guid.ID
+	// PrincipalID is the acting operator: under an account view, the operator
+	// who opened it, not the viewed account (recorded as
+	// detail.viewed_principal_id).
 	PrincipalID guid.ID
 	EventType   string
 	TargetType  string
@@ -80,8 +83,12 @@ func NewDomainEvent(ctx context.Context, tenantID guid.ID, eventType, targetType
 	return event
 }
 
+// EventInput is one event to append.
 type EventInput struct {
-	TenantID    guid.ID
+	TenantID guid.ID
+	// PrincipalID is the acting operator: under an account view, the operator
+	// who opened it, not the viewed account (recorded as
+	// detail.viewed_principal_id).
 	PrincipalID guid.ID
 	EventType   string
 	TargetType  string
@@ -92,9 +99,13 @@ type EventInput struct {
 	Detail      map[string]any
 }
 
+// Event is one stored audit event.
 type Event struct {
-	ID           guid.ID         `json:"id"`
-	TenantID     guid.ID         `json:"tenant_id"`
+	ID       guid.ID `json:"id"`
+	TenantID guid.ID `json:"tenant_id"`
+	// PrincipalID is the acting operator: under an account view, the operator
+	// who opened it, not the viewed account (recorded as
+	// detail.viewed_principal_id).
 	PrincipalID  guid.ID         `json:"principal_id,omitempty"`
 	EventType    string          `json:"event_type"`
 	TargetType   string          `json:"target_type,omitempty"`
@@ -109,8 +120,12 @@ type Event struct {
 	CreatedAt    time.Time       `json:"created_at"`
 }
 
+// Filter selects stored audit events.
 type Filter struct {
-	TenantID    guid.ID
+	TenantID guid.ID
+	// PrincipalID matches the acting operator (Event.PrincipalID). The account
+	// seen through an account view is detail.viewed_principal_id, which this
+	// filter does not match.
 	PrincipalID guid.ID
 	EventType   string
 	Outcome     string

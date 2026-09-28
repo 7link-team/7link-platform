@@ -212,10 +212,13 @@ func DefaultRegistry() *Registry {
 func DefaultActions() []Action {
 	return []Action{
 		{Resource: "account_view", Verb: "create", Scope: "platform", Summary: "open a scoped account view"},
-		{Resource: "system_account", Verb: "create", Scope: "platform", Summary: "create global accounts"},
-		{Resource: "system_account", Verb: "view", Scope: "platform", Summary: "view global accounts"},
-		{Resource: "system_account", Verb: "update", Scope: "platform", Summary: "update global account profiles"},
-		{Resource: "system_account", Verb: "delete", Scope: "platform", Summary: "suspend global accounts"},
+		// system_account covers every global account of every category, not
+		// only the subset the "System accounts" menu (/system/accounts/system)
+		// lists.
+		{Resource: "system_account", Verb: "create", Scope: "platform", Summary: "create global accounts of any category"},
+		{Resource: "system_account", Verb: "view", Scope: "platform", Summary: "view all global accounts, not only the System accounts menu"},
+		{Resource: "system_account", Verb: "update", Scope: "platform", Summary: "update the profile of any global account"},
+		{Resource: "system_account", Verb: "delete", Scope: "platform", Summary: "suspend any global account"},
 		{Resource: "system_menu", Verb: "view", Scope: "platform", Summary: "view system menus", Menu: true},
 		{Resource: "system_menu", Verb: "create", Scope: "platform", Summary: "create system menus"},
 		{Resource: "system_menu", Verb: "update", Scope: "platform", Summary: "edit and move system menus"},

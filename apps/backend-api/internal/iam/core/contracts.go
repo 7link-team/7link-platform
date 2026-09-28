@@ -119,13 +119,18 @@ type PlatformAdministratorStore struct {
 	GrantFull func(context.Context, *gorm.DB, guid.ID) (bool, error)
 }
 
-// TenantBootstrapInput describes the first administrator a new tenant needs in
-// order to be reachable at all. Every tenant route requires an active
-// membership, so a tenant created without one can be administered by nobody.
+// TenantBootstrapInput describes the first administrator a new organization
+// root -- a tenant or an operating platform -- needs in order to be reachable
+// at all. Every route inside a root requires an active membership, so a root
+// created without one can be administered by nobody.
 type TenantBootstrapInput struct {
-	// ScopeKind defaults to tenant for existing bootstrap callers.
-	ScopeKind   string
-	TenantID    guid.ID
+	// ScopeKind is the kind of root being bootstrapped; empty means tenant,
+	// for existing bootstrap callers.
+	ScopeKind string
+	// TenantID is the organization root: a tenant or an operating platform.
+	TenantID guid.ID
+	// OwnerID is the principal who becomes the root's first administrator,
+	// not an organization root.
 	OwnerID     guid.ID
 	DisplayName string
 	Email       string

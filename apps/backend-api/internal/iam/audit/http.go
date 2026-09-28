@@ -19,7 +19,7 @@ import (
 
 type listInput struct {
 	TenantID    string `path:"tenant_id" maxLength:"128"`
-	PrincipalID string `query:"principal_id" maxLength:"64"`
+	PrincipalID string `query:"principal_id" maxLength:"64" doc:"acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)"`
 	EventType   string `query:"event_type" maxLength:"64"`
 	Outcome     string `query:"outcome" enum:"success,denied,failure"`
 	TargetType  string `query:"target_type" maxLength:"64"`
@@ -46,7 +46,7 @@ type tenantInput struct {
 
 type exportInput struct {
 	TenantID    string `path:"tenant_id" maxLength:"128"`
-	PrincipalID string `query:"principal_id" maxLength:"64"`
+	PrincipalID string `query:"principal_id" maxLength:"64" doc:"acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)"`
 	EventType   string `query:"event_type" maxLength:"64"`
 	Outcome     string `query:"outcome" enum:"success,denied,failure"`
 	TargetType  string `query:"target_type" maxLength:"64"`

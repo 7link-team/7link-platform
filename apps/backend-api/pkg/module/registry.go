@@ -52,6 +52,8 @@ type Registry struct {
 	phase   phase
 }
 
+// NewRegistry returns an empty module registry. The composition root registers
+// every module on it and then drives the lifecycle phases in order.
 func NewRegistry() *Registry {
 	return &Registry{}
 }

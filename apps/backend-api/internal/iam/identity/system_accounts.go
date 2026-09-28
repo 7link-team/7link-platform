@@ -188,9 +188,13 @@ func registerSystemPrincipalHTTP(api huma.API, service *Service, registrar *auth
 		}
 		return respx.OK(ctx, items), nil
 	})
+	// The system_account resource spans every global account. The "System
+	// accounts" menu (/system/accounts/system) is one category of this list,
+	// selected by the category parameter, not a separate resource.
 	authz.RegisterPlatform(registrar, api, huma.Operation{
 		OperationID: "identity-system-list-principals", Method: http.MethodGet, Path: "/system/principals",
 		Summary: "List global accounts", Tags: []string{"system"},
+		Description: "Lists global accounts of one category (user when omitted). The system_account permission covers every category; the System accounts menu shows only the system category.",
 	}, authz.Guard{Resource: "system_account", Verb: "view"}, func(ctx context.Context, in *systemPrincipalListInput) (*respx.Body[principalListData], error) {
 		var ownerID guid.ID
 		if in.OwnerID != "" {

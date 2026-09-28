@@ -15,7 +15,7 @@ import (
 
 type SystemAuditFilterInput struct {
 	TenantSelector string `query:"tenant_id" hidden:"true"`
-	PrincipalID    string `query:"principal_id" maxLength:"64"`
+	PrincipalID    string `query:"principal_id" maxLength:"64" doc:"acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)"`
 	EventType      string `query:"event_type" maxLength:"64"`
 	Outcome        string `query:"outcome" enum:"success,denied,failure"`
 	TargetType     string `query:"target_type" maxLength:"64"`

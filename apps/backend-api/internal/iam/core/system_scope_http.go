@@ -15,7 +15,7 @@ import (
 )
 
 type systemScopePageInput struct {
-	OwnerID string       `path:"owner_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	OwnerID string       `path:"owner_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"organization root the route acts in: a tenant or an operating platform"`
 	Offset  int          `query:"offset" minimum:"0" default:"0"`
 	Limit   int          `query:"limit" minimum:"1" maximum:"200" default:"50"`
 	Search  string       `query:"search" maxLength:"128"`
@@ -57,11 +57,11 @@ func (s *Service) ListSystemAccountOwners(ctx context.Context, category string, 
 }
 
 type SystemScopeMemberInput struct {
-	OwnerID     string `path:"owner_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	OwnerID     string `path:"owner_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"organization root the route acts in: a tenant or an operating platform"`
 	PrincipalID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 type systemScopeCreateInput struct {
-	OwnerID string `path:"owner_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	OwnerID string `path:"owner_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"organization root the route acts in: a tenant or an operating platform"`
 	Body    struct {
 		Subject      string       `json:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 		DisplayName  string       `json:"display_name" minLength:"1" maxLength:"128"`

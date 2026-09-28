@@ -3114,7 +3114,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List global accounts */
+        /**
+         * List global accounts
+         * @description Lists global accounts of one category (user when omitted). The system_account permission covers every category; the System accounts menu shows only the system category.
+         */
         get: operations["identity-system-list-principals"];
         put?: never;
         /** Create a global account */
@@ -4758,6 +4761,7 @@ export interface components {
             /** Format: int64 */
             kept: number;
             name: string;
+            /** @description principal who owns the review (an active member of the tenant) */
             owner_id: string | null;
             /** Format: int64 */
             pending: number;
@@ -5388,6 +5392,7 @@ export interface components {
             ancestors: components["schemas"]["ResourceRef"][] | null;
             denied_ids: string[] | null;
             department_ids: string[] | null;
+            /** @description principal IDs whose own rows are in scope; not organization roots */
             owner_ids: string[] | null;
             resource_ids: string[] | null;
             /** Format: int64 */
@@ -27843,6 +27848,7 @@ export interface operations {
     "audit-system-list-events": {
         parameters: {
             query?: {
+                /** @description acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id) */
                 principal_id?: string;
                 event_type?: string;
                 outcome?: "success" | "denied" | "failure";
@@ -27994,6 +28000,7 @@ export interface operations {
     "audit-system-export-events": {
         parameters: {
             query?: {
+                /** @description acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id) */
                 principal_id?: string;
                 event_type?: string;
                 outcome?: "success" | "denied" | "failure";
@@ -29653,6 +29660,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
             };
             cookie?: never;
@@ -29725,6 +29733,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
             };
             cookie?: never;
@@ -29792,6 +29801,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
             };
             cookie?: never;
@@ -29863,6 +29873,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
                 principal_id: string;
             };
@@ -29931,6 +29942,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
                 principal_id: string;
             };
@@ -29999,6 +30011,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
                 principal_id: string;
             };
@@ -30074,6 +30087,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
                 principal_id: string;
             };
@@ -30147,6 +30161,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
             };
             cookie?: never;
@@ -30214,6 +30229,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
                 principal_id: string;
                 role_id: string;
@@ -30283,6 +30299,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
                 principal_id: string;
                 role_id: string;
@@ -32237,6 +32254,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
             };
             cookie?: never;
@@ -32309,6 +32327,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
             };
             cookie?: never;
@@ -32376,6 +32395,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
             };
             cookie?: never;
@@ -32447,6 +32467,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
                 principal_id: string;
             };
@@ -32515,6 +32536,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
                 principal_id: string;
             };
@@ -32583,6 +32605,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
                 principal_id: string;
             };
@@ -32658,6 +32681,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
                 principal_id: string;
             };
@@ -32731,6 +32755,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
             };
             cookie?: never;
@@ -32798,6 +32823,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
                 principal_id: string;
                 role_id: string;
@@ -32867,6 +32893,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description organization root the route acts in: a tenant or an operating platform */
                 owner_id: string;
                 principal_id: string;
                 role_id: string;
@@ -34066,6 +34093,7 @@ export interface operations {
     "audit-list-events": {
         parameters: {
             query?: {
+                /** @description acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id) */
                 principal_id?: string;
                 event_type?: string;
                 outcome?: "success" | "denied" | "failure";
@@ -34224,6 +34252,7 @@ export interface operations {
     "audit-export-events": {
         parameters: {
             query?: {
+                /** @description acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id) */
                 principal_id?: string;
                 event_type?: string;
                 outcome?: "success" | "denied" | "failure";

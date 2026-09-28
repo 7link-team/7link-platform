@@ -32,7 +32,7 @@ type systemDepartmentCreateInput struct {
 // System routes name the selected root owner_id, as core's system scope routes
 // do: a tenant_id path parameter would read as tenant-gated admission.
 type systemOwnerDepartmentsInput struct {
-	OwnerID string `path:"owner_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	OwnerID string `path:"owner_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"organization root the route acts in: a tenant or an operating platform"`
 	Offset  int    `query:"offset" minimum:"0" default:"0"`
 	Limit   int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }

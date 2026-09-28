@@ -47,10 +47,11 @@ var (
 )
 
 type AccessReview struct {
-	ID          guid.ID            `json:"id"`
-	TenantID    guid.ID            `json:"tenant_id"`
-	Name        string             `json:"name"`
-	OwnerID     guid.ID            `json:"owner_id"`
+	ID       guid.ID `json:"id"`
+	TenantID guid.ID `json:"tenant_id"`
+	Name     string  `json:"name"`
+	// OwnerID is the principal who owns the review, not an organization root.
+	OwnerID     guid.ID            `json:"owner_id" doc:"principal who owns the review (an active member of the tenant)"`
 	Status      string             `json:"status"`
 	DueAt       time.Time          `json:"due_at"`
 	CompletedAt *time.Time         `json:"completed_at,omitempty"`
