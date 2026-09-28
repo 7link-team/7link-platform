@@ -66,10 +66,10 @@ iam-platform-menu-create|POST|/operating-platforms/{platform_id}/menus
 iam-platform-navigation|GET|/operating-platforms/{platform_id}/navigation
 iam-platform-my-permissions|GET|/operating-platforms/{platform_id}/permissions
 iam-platform-members|GET|/operating-platforms/{platform_id}/members
-iam-platform-member|GET|/operating-platforms/{platform_id}/members/{subject}
+iam-platform-member|GET|/operating-platforms/{platform_id}/members/{principal_id}
 iam-platform-member-create|POST|/operating-platforms/{platform_id}/members
-iam-platform-member-update|PATCH|/operating-platforms/{platform_id}/members/{subject}
-iam-platform-member-delete|DELETE|/operating-platforms/{platform_id}/members/{subject}
+iam-platform-member-update|PATCH|/operating-platforms/{platform_id}/members/{principal_id}
+iam-platform-member-delete|DELETE|/operating-platforms/{platform_id}/members/{principal_id}
 iam-system-my-permissions|GET|/system/permissions
 iam-my-memberships|GET|/principals/{principal_id}/memberships
 iam-leave-membership|DELETE|/principals/{principal_id}/memberships/{tenant_id}
@@ -112,17 +112,17 @@ iam-revoke-role-permission|DELETE|/roles/{role_id}/permissions/{permission_code}
 iam-set-role-permission-condition|PUT|/roles/{role_id}/permissions/{permission_code}/condition
 iam-clear-role-permission-condition|DELETE|/roles/{role_id}/permissions/{permission_code}/condition
 iam-list-role-members|GET|/roles/{role_id}/members
-iam-add-role-member|PUT|/roles/{role_id}/members/{subject}
-iam-remove-role-member|DELETE|/roles/{role_id}/members/{subject}
+iam-add-role-member|PUT|/roles/{role_id}/members/{principal_id}
+iam-remove-role-member|DELETE|/roles/{role_id}/members/{principal_id}
 iam-list-role-directory-bindings|GET|/roles/{role_id}/directory-bindings
 iam-add-role-directory-binding|PUT|/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}
 iam-remove-role-directory-binding|DELETE|/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}
 iam-list-tenant-members|GET|/tenants/{tenant_id}/members
 iam-create-tenant-member|POST|/tenants/{tenant_id}/members
-iam-get-tenant-member|GET|/tenants/{tenant_id}/members/{subject}
-iam-update-tenant-member|PATCH|/tenants/{tenant_id}/members/{subject}
-iam-list-tenant-member-roles|GET|/tenants/{tenant_id}/members/{subject}/roles
-iam-list-member-authorization-sources|GET|/tenants/{tenant_id}/members/{subject}/authorization-sources
+iam-get-tenant-member|GET|/tenants/{tenant_id}/members/{principal_id}
+iam-update-tenant-member|PATCH|/tenants/{tenant_id}/members/{principal_id}
+iam-list-tenant-member-roles|GET|/tenants/{tenant_id}/members/{principal_id}/roles
+iam-list-member-authorization-sources|GET|/tenants/{tenant_id}/members/{principal_id}/authorization-sources
 iam-list-menus|GET|/tenants/{tenant_id}/menus
 iam-create-menu|POST|/tenants/{tenant_id}/menus
 iam-get-menu|GET|/menus/{menu_id}
@@ -268,7 +268,7 @@ func TestCoreOpenAPIRelationshipTupleAndPatchContracts(t *testing.T) {
 	}{
 		{collection: "/tenants/{tenant_id}/menus", resource: "/menus/{menu_id}", property: "parent_id"},
 		{collection: "/tenants/{tenant_id}/entities", resource: "/entities/{entity_id}", property: "parent_id"},
-		{collection: "/tenants/{tenant_id}/members", resource: "/tenants/{tenant_id}/members/{subject}", property: "department_id"},
+		{collection: "/tenants/{tenant_id}/members", resource: "/tenants/{tenant_id}/members/{principal_id}", property: "department_id"},
 	} {
 		create := requestProperty(t, spec, spec.Paths[test.collection].Post, test.property)
 		update := requestProperty(t, spec, spec.Paths[test.resource].Patch, test.property)

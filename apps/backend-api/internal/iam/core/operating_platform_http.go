@@ -49,12 +49,12 @@ type operatingPlatformMembersInput struct {
 
 type operatingPlatformMemberInput struct {
 	PlatformID string `path:"platform_id"`
-	Subject    string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Subject    string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type operatingPlatformMemberPutInput struct {
 	PlatformID string `path:"platform_id"`
-	Subject    string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Subject    string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body       struct {
 		DisplayName  string       `json:"display_name" minLength:"1" maxLength:"128"`
 		Email        string       `json:"email,omitempty" maxLength:"320"`
@@ -144,7 +144,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.List(ctx, views, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member", http.MethodGet, "/members/{subject}", "Get an operating platform member"), authz.Guard{Resource: "platform_member", Verb: "view"}, func(ctx context.Context, in *operatingPlatformMemberInput) (*respx.Body[APITenantMember], error) {
+	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member", http.MethodGet, "/members/{principal_id}", "Get an operating platform member"), authz.Guard{Resource: "platform_member", Verb: "view"}, func(ctx context.Context, in *operatingPlatformMemberInput) (*respx.Body[APITenantMember], error) {
 		id, err := guid.RequireID(in.Subject)
 		if err != nil {
 			return nil, err
@@ -171,7 +171,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.OK(ctx, memberFromDomain(member)), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member-update", http.MethodPatch, "/members/{subject}", "Update an operating platform member"), authz.Guard{Resource: "platform_member", Verb: "update"}, func(ctx context.Context, in *operatingPlatformMemberPutInput) (*respx.Body[APITenantMember], error) {
+	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member-update", http.MethodPatch, "/members/{principal_id}", "Update an operating platform member"), authz.Guard{Resource: "platform_member", Verb: "update"}, func(ctx context.Context, in *operatingPlatformMemberPutInput) (*respx.Body[APITenantMember], error) {
 		id, err := guid.RequireID(in.Subject)
 		if err != nil {
 			return nil, err
@@ -189,7 +189,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.OK(ctx, memberFromDomain(member)), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member-delete", http.MethodDelete, "/members/{subject}", "Disable an operating platform membership"), authz.Guard{Resource: "platform_member", Verb: "delete"}, func(ctx context.Context, in *operatingPlatformMemberInput) (*respx.Body[APITenantMember], error) {
+	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member-delete", http.MethodDelete, "/members/{principal_id}", "Disable an operating platform membership"), authz.Guard{Resource: "platform_member", Verb: "delete"}, func(ctx context.Context, in *operatingPlatformMemberInput) (*respx.Body[APITenantMember], error) {
 		id, err := guid.RequireID(in.Subject)
 		if err != nil {
 			return nil, err

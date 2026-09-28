@@ -22424,7 +22424,7 @@
         "x-authz-permission": "platform_member_create"
       }
     },
-    "/operating-platforms/{platform_id}/members/{subject}": {
+    "/operating-platforms/{platform_id}/members/{principal_id}": {
       "delete": {
         "operationId": "iam-platform-member-delete",
         "parameters": [
@@ -22441,7 +22441,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,
@@ -22542,7 +22542,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,
@@ -22643,7 +22643,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,
@@ -31912,7 +31912,7 @@
         "x-authz-permission": "role_view"
       }
     },
-    "/roles/{role_id}/members/{subject}": {
+    "/roles/{role_id}/members/{principal_id}": {
       "delete": {
         "operationId": "iam-remove-role-member",
         "parameters": [
@@ -31930,7 +31930,7 @@
           {
             "description": "immutable local principal ID",
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "description": "immutable local principal ID",
@@ -32053,7 +32053,7 @@
           {
             "description": "immutable local principal ID",
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "description": "immutable local principal ID",
@@ -57456,7 +57456,7 @@
         "x-authz-permission": "user_create"
       }
     },
-    "/tenants/{tenant_id}/members/{subject}": {
+    "/tenants/{tenant_id}/members/{principal_id}": {
       "get": {
         "operationId": "iam-get-tenant-member",
         "parameters": [
@@ -57473,7 +57473,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,
@@ -57584,7 +57584,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,
@@ -57707,7 +57707,7 @@
         "x-authz-permission": "user_update"
       }
     },
-    "/tenants/{tenant_id}/members/{subject}/authorization-sources": {
+    "/tenants/{tenant_id}/members/{principal_id}/authorization-sources": {
       "get": {
         "operationId": "iam-list-member-authorization-sources",
         "parameters": [
@@ -57724,7 +57724,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,
@@ -57830,7 +57830,7 @@
         "x-authz-permission": "role_view"
       }
     },
-    "/tenants/{tenant_id}/members/{subject}/roles": {
+    "/tenants/{tenant_id}/members/{principal_id}/roles": {
       "get": {
         "operationId": "iam-list-tenant-member-roles",
         "parameters": [
@@ -57847,7 +57847,7 @@
           },
           {
             "in": "path",
-            "name": "subject",
+            "name": "principal_id",
             "required": true,
             "schema": {
               "maxLength": 19,

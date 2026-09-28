@@ -938,7 +938,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/operating-platforms/{platform_id}/members/{subject}": {
+    "/operating-platforms/{platform_id}/members/{principal_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1963,7 +1963,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/roles/{role_id}/members/{subject}": {
+    "/roles/{role_id}/members/{principal_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -4084,7 +4084,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/tenants/{tenant_id}/members/{subject}": {
+    "/tenants/{tenant_id}/members/{principal_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -4102,7 +4102,7 @@ export interface paths {
         patch: operations["iam-update-tenant-member"];
         trace?: never;
     };
-    "/tenants/{tenant_id}/members/{subject}/authorization-sources": {
+    "/tenants/{tenant_id}/members/{principal_id}/authorization-sources": {
         parameters: {
             query?: never;
             header?: never;
@@ -4119,7 +4119,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/tenants/{tenant_id}/members/{subject}/roles": {
+    "/tenants/{tenant_id}/members/{principal_id}/roles": {
         parameters: {
             query?: never;
             header?: never;
@@ -14637,7 +14637,7 @@ export interface operations {
             path: {
                 /** @description Operating platform identifier */
                 platform_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -14706,7 +14706,7 @@ export interface operations {
             path: {
                 /** @description Operating platform identifier */
                 platform_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -14775,7 +14775,7 @@ export interface operations {
             path: {
                 /** @description Operating platform identifier */
                 platform_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -21315,7 +21315,7 @@ export interface operations {
                 /** @description Resource identifier */
                 role_id: string;
                 /** @description immutable local principal ID */
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -21403,7 +21403,7 @@ export interface operations {
                 /** @description Resource identifier */
                 role_id: string;
                 /** @description immutable local principal ID */
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -36583,7 +36583,7 @@ export interface operations {
             path: {
                 /** @description Tenant resource identifier */
                 tenant_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -36661,7 +36661,7 @@ export interface operations {
             path: {
                 /** @description Tenant resource identifier */
                 tenant_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -36753,7 +36753,7 @@ export interface operations {
             path: {
                 /** @description Tenant resource identifier */
                 tenant_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };
@@ -36843,7 +36843,7 @@ export interface operations {
             path: {
                 /** @description Tenant resource identifier */
                 tenant_id: string;
-                subject: string;
+                principal_id: string;
             };
             cookie?: never;
         };

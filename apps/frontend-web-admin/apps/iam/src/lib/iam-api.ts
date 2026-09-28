@@ -2800,23 +2800,23 @@ export function createIamApi(
       >
     ) =>
       request<Member>(
-        apiRoute("patch", "/tenants/{tenant_id}/members/{subject}", {
-          path: { tenant_id: tenantID(), subject: subject },
+        apiRoute("patch", "/tenants/{tenant_id}/members/{principal_id}", {
+          path: { tenant_id: tenantID(), principal_id: subject },
         }),
         { body: JSON.stringify(body) }
       ),
     memberRoles: (subject: string) =>
       request<string[]>(
-        apiRoute("get", "/tenants/{tenant_id}/members/{subject}/roles", {
-          path: { tenant_id: tenantID(), subject: subject },
+        apiRoute("get", "/tenants/{tenant_id}/members/{principal_id}/roles", {
+          path: { tenant_id: tenantID(), principal_id: subject },
         })
       ),
     memberAuthorizationSources: (subject: string) =>
       request<MemberAuthorizationSnapshot>(
         apiRoute(
           "get",
-          "/tenants/{tenant_id}/members/{subject}/authorization-sources",
-          { path: { tenant_id: tenantID(), subject: subject } }
+          "/tenants/{tenant_id}/members/{principal_id}/authorization-sources",
+          { path: { tenant_id: tenantID(), principal_id: subject } }
         )
       ),
     entities: () =>
@@ -3334,14 +3334,14 @@ export function createIamApi(
       ),
     addRoleMember: (id: string, subject: string) =>
       request(
-        apiRoute("put", "/roles/{role_id}/members/{subject}", {
-          path: { role_id: id, subject: subject },
+        apiRoute("put", "/roles/{role_id}/members/{principal_id}", {
+          path: { role_id: id, principal_id: subject },
         })
       ),
     removeRoleMember: (id: string, subject: string) =>
       request(
-        apiRoute("delete", "/roles/{role_id}/members/{subject}", {
-          path: { role_id: id, subject: subject },
+        apiRoute("delete", "/roles/{role_id}/members/{principal_id}", {
+          path: { role_id: id, principal_id: subject },
         })
       ),
     roleDirectoryBindings: (id: string) =>
