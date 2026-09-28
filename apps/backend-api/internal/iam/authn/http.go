@@ -590,7 +590,10 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	authz.RegisterPublic(a, huma.Operation{
 		OperationID: "authn-delete-current-session", Method: http.MethodDelete, Path: "/sessions/current",
 		Summary: "Destroy the current browser session", Tags: []string{"account"},
-		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusServiceUnavailable},
+		// Public so that logging out with an expired cookie still clears it, but
+		// the cookie is what names the session to destroy.
+		Security: []map[string][]string{{authz.SessionScheme: {}}},
+		Errors:   []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *logoutInput) (*logoutOutput, error) {
 		if strings.TrimSpace(in.Authorization) != "" {
 			return nil, huma.Error401Unauthorized(respx.Unauthorized)

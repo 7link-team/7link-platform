@@ -19237,7 +19237,6 @@
             "description": "Internal Server Error"
           }
         },
-        "security": [],
         "summary": "Accept a tenant invitation and create the local principal",
         "tags": [
           "membership-invitations"
@@ -37776,7 +37775,6 @@
             "description": "SCIM error"
           }
         },
-        "security": [],
         "summary": "List SCIM resource types",
         "tags": [
           "scim"
@@ -38176,7 +38174,6 @@
             "description": "SCIM error"
           }
         },
-        "security": [],
         "summary": "Get a SCIM resource type",
         "tags": [
           "scim"
@@ -38562,7 +38559,6 @@
             "description": "SCIM error"
           }
         },
-        "security": [],
         "summary": "List SCIM schemas",
         "tags": [
           "scim"
@@ -38956,7 +38952,6 @@
             "description": "SCIM error"
           }
         },
-        "security": [],
         "summary": "Get a SCIM schema",
         "tags": [
           "scim"
@@ -39341,7 +39336,6 @@
             "description": "SCIM error"
           }
         },
-        "security": [],
         "summary": "Get SCIM service provider configuration",
         "tags": [
           "scim"
@@ -42622,6 +42616,11 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Destroy the current browser session",
         "tags": [
           "sessions"

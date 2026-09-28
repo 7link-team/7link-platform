@@ -192,3 +192,28 @@ func TestComposedOpenAPINamesTheScopeEnumScopeType(t *testing.T) {
 		assert.False(t, published, "%s publishes scope_kind; the API field is scope_type", name)
 	}
 }
+
+// TestComposedOpenAPIDeclaresAnonymousAccessOneWay keeps one spelling for an
+// operation anyone may call: it declares no security at all. The document has no
+// global requirement, so an explicit empty list means the same thing and only
+// makes two anonymous operations look different. An anonymous operation that
+// still reads a credential names it, so a client knows to send it.
+func TestComposedOpenAPIDeclaresAnonymousAccessOneWay(t *testing.T) {
+	document, operations := composedOpenAPI(t)
+	require.Empty(t, document.Security, "a global requirement would change what an omitted one means")
+	anonymous, logout := 0, 0
+	for _, entry := range operations {
+		if entry.operation.OperationID == "authn-delete-current-session" {
+			logout++
+			assert.Equal(t, []map[string][]string{{"sessionCookie": {}}}, entry.operation.Security,
+				"%s reads the session cookie it destroys", entry)
+		}
+		if entry.operation.Security == nil {
+			anonymous++
+			continue
+		}
+		assert.NotEmpty(t, entry.operation.Security, "%s declares an empty security list; omit it", entry)
+	}
+	assert.Equal(t, 1, logout, "the logout operation must be published")
+	assert.Greater(t, anonymous, 20, "the walk must reach the anonymous operations")
+}

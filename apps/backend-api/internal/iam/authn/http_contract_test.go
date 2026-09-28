@@ -100,7 +100,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 	}
 	sessionOnly := map[string]bool{
 		"authn-create-account-view": true, "authn-delete-account-view": true,
-		"authn-get-current-session":               true,
+		"authn-get-current-session": true, "authn-delete-current-session": true,
 		"authn-create-reauthentication-challenge": true, "authn-create-reauthentication-verification": true,
 		"authn-list-reauthentication-methods": true, "authn-create-personal-token-preparation": true,
 		"authn-create-personal-token": true, "authn-delete-personal-token": true,

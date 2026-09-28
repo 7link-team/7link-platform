@@ -709,8 +709,7 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 	authz.RegisterPublic(api, huma.Operation{
 		OperationID: "organization-accept-invitation", Method: http.MethodPost, Path: "/membership-invitations/acceptances",
 		Summary: "Accept a tenant invitation and create the local principal", Tags: []string{"authentication"},
-		Security: []map[string][]string{},
-		Errors:   []int{http.StatusBadRequest, http.StatusConflict, http.StatusGone, http.StatusInternalServerError},
+		Errors: []int{http.StatusBadRequest, http.StatusConflict, http.StatusGone, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *acceptInvitationInput) (*respx.Body[InvitationAcceptance], error) {
 		accepted, err := service.Accept(ctx, AcceptInvitation{
 			Token: in.Body.Token, LoginName: in.Body.LoginName,

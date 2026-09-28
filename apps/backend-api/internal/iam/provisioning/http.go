@@ -553,8 +553,6 @@ func registerSCIM(api huma.API, op huma.Operation, request, response reflect.Typ
 		}
 		components.SecuritySchemes[scimBearerScheme] = &huma.SecurityScheme{Type: "http", Scheme: "bearer", BearerFormat: "SCIM directory token"}
 		op.Security = []map[string][]string{{scimBearerScheme: {}}}
-	} else {
-		op.Security = []map[string][]string{}
 	}
 	if request != nil {
 		op.RequestBody = &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{SCIMContentType: {Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, request)}}}
