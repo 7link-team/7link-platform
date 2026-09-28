@@ -1231,7 +1231,7 @@ try {
   const identity = await client(devices.page, "session")
   assert.equal(identity.subject, alice.id)
   const current = await client(devices.page, "currentBrowserSession")
-  assert.match(current.id, /^[a-f0-9]{64}$/)
+  assert.match(current.id, /^[1-9][0-9]*$/)
   assert.equal(current.current, true)
   for (const field of [
     "created_at",
