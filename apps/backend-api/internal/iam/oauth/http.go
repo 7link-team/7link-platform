@@ -262,7 +262,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 			claims, _ := authnext.FromContext(ctx.Context())
 			scheme, raw, bearer := strings.Cut(strings.TrimSpace(ctx.Header("Authorization")), " ")
 			if (bearer && strings.EqualFold(scheme, "Bearer") && strings.HasPrefix(raw, "avt_")) || (claims != nil && claims.AccountView != nil) {
-				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "invalid_request")
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden, oauthi18n.InvalidRequest)
 				return
 			}
 		}

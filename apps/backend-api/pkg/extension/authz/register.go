@@ -477,12 +477,12 @@ func (r *Registrar) authenticatedOnly(api huma.API) func(huma.Context, func(huma
 				var err error
 				owner.TenantID, err = guid.Parse(ctx.Param(TenantPath))
 				if err != nil || owner.TenantID.Zero() {
-					_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, "invalid_tenant_id")
+					_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, respx.InvalidID)
 					return
 				}
 				owner.EntityID, err = guid.Parse(ctx.Param(EntityPath))
 				if err != nil || owner.EntityID.Zero() {
-					_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, "invalid_entity_id")
+					_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, respx.InvalidID)
 					return
 				}
 			}

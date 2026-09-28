@@ -48,7 +48,7 @@ var frontendContractKeys = map[string]string{
 // errorKeyArguments names, per package, the helpers whose argument at the given
 // index is an i18n message key. A huma Error<status> helper takes the key first.
 var errorKeyArguments = map[string]map[string]int{
-	humaImportPath:  {"NewError": 1},
+	humaImportPath:  {"NewError": 1, "WriteErr": 3},
 	respxImportPath: {"Err": 2, "OKMessage": 2, "WriteError": 3},
 }
 
@@ -116,6 +116,7 @@ func TestErrorKeyGateRejectsItsFixture(t *testing.T) {
 	sort.Strings(reported)
 	assert.Equal(t, []string{
 		"bare-error-key\t\"not_found\",",
+		"bare-error-key\t_ = huma.WriteErr(nil, nil, http.StatusUnprocessableEntity, \"invalid_tenant_id\")",
 		"bare-error-key\treturn huma.Error401Unauthorized(unauthorized)",
 		"bare-error-key\treturn huma.Error403Forbidden(\"forbidden\")",
 		"bare-error-key\treturn huma.NewError(http.StatusConflict, \"conflict\")",
