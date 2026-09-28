@@ -106,6 +106,10 @@
       "sha256": "6327c4b53d2e8927cd56e4c5a107a4227ae481e0d6cd3c4ac1171191ce170e23"
     },
     {
+      "path": "authn/sql/mysql/00018_public_ids.sql",
+      "sha256": "e8e3e3615a054b71a12300cbd2dbf1b3a6d667ed6c8f30a8189439b0e4b1daa7"
+    },
+    {
       "path": "authn/sql/postgres/00001_credentials.sql",
       "sha256": "6205f24b9ee17a83d86bab761386e461a2e2150fb154131aacd498fb216c14b0"
     },
@@ -174,6 +178,10 @@
       "sha256": "ed1d25d8a07c60e3c0d6fde7209773470ca7c65ba18a6c3a601a5559d0fa79d5"
     },
     {
+      "path": "authn/sql/postgres/00018_public_ids.sql",
+      "sha256": "e72625bee5bcd397daa921e142460f607c1b3aca79b181331be423ea82ce7773"
+    },
+    {
       "path": "authn/sql/sqlite/00001_credentials.sql",
       "sha256": "33756998bd13bafdd590831b996036473cadfd0dc57605dfa04b00b6321493e4"
     },
@@ -240,6 +248,10 @@
     {
       "path": "authn/sql/sqlite/00017_access_view_targets.sql",
       "sha256": "abb35be31efcb4a94d7179013ccddb85453b68dab57b755b4001dd051f0d7934"
+    },
+    {
+      "path": "authn/sql/sqlite/00018_public_ids.sql",
+      "sha256": "e72625bee5bcd397daa921e142460f607c1b3aca79b181331be423ea82ce7773"
     },
     {
       "path": "core/sql/mysql/00001_authorization.sql",
@@ -614,6 +626,10 @@
       "sha256": "e92c7fc7baa9b38a78a9f8aef1dfc5163c554078b2c2056dfaa20e00553c6b94"
     },
     {
+      "path": "identity/sql/mysql/00007_self_registration_origin.sql",
+      "sha256": "ac0296419b701fa78027284fc39893a19d67c510b9c721ebaec1f52c9f45ee5c"
+    },
+    {
       "path": "identity/sql/postgres/00001_principals.sql",
       "sha256": "681b58026ec749496bda38be27ff89ada9522958d4d268ee9be1c9118be0c4a1"
     },
@@ -638,6 +654,10 @@
       "sha256": "25ddce6b947ddb8d3ced1e9889c93dff2235ab5d1dde5be0a8ca01851231cfee"
     },
     {
+      "path": "identity/sql/postgres/00007_self_registration_origin.sql",
+      "sha256": "ac0296419b701fa78027284fc39893a19d67c510b9c721ebaec1f52c9f45ee5c"
+    },
+    {
       "path": "identity/sql/sqlite/00001_principals.sql",
       "sha256": "df18e34520cb0c7213a974b2286a05c569cab060ccd4deb732d6be5c2e7d0f31"
     },
@@ -660,6 +680,10 @@
     {
       "path": "identity/sql/sqlite/00006_avatars.sql",
       "sha256": "25ddce6b947ddb8d3ced1e9889c93dff2235ab5d1dde5be0a8ca01851231cfee"
+    },
+    {
+      "path": "identity/sql/sqlite/00007_self_registration_origin.sql",
+      "sha256": "b6077349a9adc6d7cad71cb068f59f70f277260829396a6420cb89279f5a943e"
     },
     {
       "path": "oauth/sql/mysql/00001_clients.sql",
