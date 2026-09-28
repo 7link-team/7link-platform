@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"testing"
@@ -190,16 +189,6 @@ func TestHTTPProjectionAndPaginationPreserveWireSemantics(t *testing.T) {
 	assert.NotNil(t, administrator.Permissions)
 	assert.Empty(t, administrator.Permissions)
 
-	page := paginateList(context.Background(), []int{0, 1, 2, 3}, 1, 2)
-	assert.Equal(t, []int{1, 2}, page.Body.Data)
-	require.NotNil(t, page.Body.Meta.Page)
-	assert.Equal(t, int64(4), page.Body.Meta.Page.Total)
-
-	assert.Empty(t, paginateList(context.Background(), []int{1}, 2, 10).Body.Data)
-	assert.Equal(t, []int{0, 1, 2, 3}, paginateList(context.Background(), []int{0, 1, 2, 3}, -1, -1).Body.Data)
-	assert.Equal(t, []int{2, 3}, paginateList(context.Background(), []int{0, 1, 2, 3}, 2, 0).Body.Data)
-	assert.Equal(t, []int{0, 1, 2, 3}, paginateList(context.Background(), []int{0, 1, 2, 3}, 0, 201).Body.Data)
-	assert.Equal(t, []int{2, 3}, paginateList(context.Background(), []int{0, 1, 2, 3}, 2, 10).Body.Data)
 }
 
 func assertHTTPError(t *testing.T, err error, status int, message string) {

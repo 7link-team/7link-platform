@@ -44,7 +44,7 @@ func listRequest(t *testing.T, raw string) ListInput {
 	require.NoError(t, err)
 
 	in := ListInput{Limit: 20, RawQuery: values}
-	in.Q = values.Get("q")
+	in.Search = values.Get("search")
 	in.Sort = values.Get("sort")
 	in.Fields = values.Get("fields")
 	in.Deleted = values.Get("deleted") == "true"
@@ -127,7 +127,7 @@ func TestListSearchesTitleAndDescription(t *testing.T) {
 	described.Description = "mentions reimbursement"
 	seed(t, svc, draft("reimbursement report"), described, draft("something else"))
 
-	assert.Len(t, listing(t, svc, "q=reimbursement").Rows, 2, "q spans title and description")
+	assert.Len(t, listing(t, svc, "search=reimbursement").Rows, 2, "search spans title and description")
 	assert.Equal(t, []string{"reimbursement report"},
 		titles(listing(t, svc, "title=like:reimbursement").Rows))
 }
@@ -315,14 +315,14 @@ func TestTimeRangesExcludeTheUpperBoundWhenAsked(t *testing.T) {
 }
 
 // TestSearchTermDropsAWildcardOnlyQuery covers the same normalization order the
-// filter layer enforces. EscapeLike removes the wildcards, so a q of nothing but
+// filter layer enforces. EscapeLike removes the wildcards, so a search of nothing but
 // them would build LIKE '%%' on both columns — a full scan that matches every
 // row anyway. The result set is unchanged; the pointless predicate is not built.
 func TestSearchTermDropsAWildcardOnlyQuery(t *testing.T) {
 	_, db := newTestService(t, "")
 	cols := query.Bind(db, "")
 	for _, term := range []string{"%", "___", `\`, "%_%"} {
-		assert.Nil(t, searchTerm(cols, term), "q=%s", term)
+		assert.Nil(t, searchTerm(cols, term), "search=%s", term)
 	}
 	assert.NotNil(t, searchTerm(cols, "task"))
 	assert.NotNil(t, searchTerm(cols, "a%b"))

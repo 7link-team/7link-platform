@@ -497,7 +497,7 @@ func TestListAcceptsAnEmptyQueryString(t *testing.T) {
 	api := newTestAPI(t)
 	createTask(t, api, "task")
 
-	for _, raw := range []string{"", "?", "?q=", "?fields=&sort="} {
+	for _, raw := range []string{"", "?", "?search=", "?fields=&sort="} {
 		resp := api.Get("/entities/10/todos" + raw)
 		assert.Equal(t, http.StatusOK, resp.Code, "GET /todos%s: %s", raw, resp.Body.String())
 	}
@@ -525,7 +525,7 @@ func TestListDeclaresItsFilterParameters(t *testing.T) {
 
 // TestWildcardOnlySearchStillReturnsEverything pins the half of the wildcard
 // rule that must not change. Dropping the predicate is an optimization, not a
-// filter: q=% matched every row when it built LIKE '%%', and it still does.
+// filter: search=% matched every row when it built LIKE '%%', and it still does.
 func TestWildcardOnlySearchStillReturnsEverything(t *testing.T) {
 	api := newTestAPI(t)
 	createTask(t, api, "first")
@@ -543,7 +543,7 @@ func TestWildcardOnlySearchStillReturnsEverything(t *testing.T) {
 		}
 		return out
 	}
-	assert.Equal(t, titles("/entities/10/todos"), titles("/entities/10/todos?q=%25"),
+	assert.Equal(t, titles("/entities/10/todos"), titles("/entities/10/todos?search=%25"),
 		"a search for nothing must return the same page as no search")
 }
 

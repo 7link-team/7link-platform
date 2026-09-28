@@ -18,7 +18,7 @@ const maxSortKeys = 3
 // transportParams are consumed by the handler rather than by a filter. They are
 // declared so an unrecognized parameter can be rejected: silently ignoring one
 // is how a typo returns unfiltered data and an injected parameter goes unseen.
-var transportParams = []string{"q", "deleted", "sort", "fields", "offset", "limit", "meta", "lang", "format"}
+var transportParams = []string{"search", "deleted", "sort", "fields", "offset", "limit", "meta", "lang", "format"}
 
 // filters is this module's query contract. It drives parsing, ordering, field
 // selection and the capability descriptor alike, so the three cannot disagree.
@@ -71,15 +71,15 @@ func parseActorID(raw string) (driver.Valuer, error) {
 	return id, nil
 }
 
-// searchTerm builds the cross-field match behind the q parameter. It is not a
+// searchTerm builds the cross-field match behind the search parameter. It is not a
 // field filter — there is no field to name and no operator to choose — so it
 // stays a plain parameter rather than acquiring an operator prefix.
 //
 // It returns nil for a term that escaping empties out. EscapeLike removes the
-// wildcards, so a q of nothing but them survives the caller's blank check and
+// wildcards, so a search of nothing but them survives the caller's blank check and
 // then builds LIKE '%%' on both columns — a full scan that ORs to every row.
 // Dropping the predicate returns that same set without asking the database to
-// prove it. Unlike a filter this is not an error: q is a search box, and a
+// prove it. Unlike a filter this is not an error: search is a search box, and a
 // search for nothing is the blank search the caller already handles.
 func searchTerm(cols *query.Todos, term string) field.Expr {
 	escaped := platformquery.EscapeLike(term)
@@ -98,12 +98,12 @@ func searchTerm(cols *query.Todos, term string) field.Expr {
 // huma is told about the filter parameters through Operation.Parameters, so
 // they still appear in the generated documentation.
 type ListInput struct {
-	Q       string `query:"q" maxLength:"128" doc:"matches title or description"`
+	Search  string `query:"search" maxLength:"128" doc:"matches title or description"`
 	Deleted bool   `query:"deleted" doc:"include soft-deleted tasks"`
 	Fields  string `query:"fields" doc:"comma-separated subset of columns to return"`
 	Sort    string `query:"sort" doc:"comma-separated keys; - prefixes a descending key"`
-	Offset  int    `query:"offset" minimum:"0"`
-	Limit   int    `query:"limit" default:"20" minimum:"1" maximum:"100"`
+	Offset  int    `query:"offset" default:"0" minimum:"0"`
+	Limit   int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 	Meta    string `query:"meta" enum:"capabilities" doc:"request the filter and sort contract alongside the page"`
 
 	// RawQuery carries the filter parameters. huma binds only declared fields,

@@ -217,3 +217,41 @@ func TestComposedOpenAPIDeclaresAnonymousAccessOneWay(t *testing.T) {
 	assert.Equal(t, 1, logout, "the logout operation must be published")
 	assert.Greater(t, anonymous, 20, "the walk must reach the anonymous operations")
 }
+
+// TestComposedOpenAPIPagesListsOneWay holds every offset-paged collection to
+// the list-parameter convention (decisions: List Parameters): limit defaults to
+// 50 and caps at 200, offset defaults to 0, and a free-text filter is named
+// search. Cursor-paged collections (those taking after) keep their own bounds by
+// design: they page a live tree, not a counted table.
+func TestComposedOpenAPIPagesListsOneWay(t *testing.T) {
+	_, operations := composedOpenAPI(t)
+	paged := 0
+	for _, entry := range operations {
+		query := map[string]*huma.Param{}
+		for _, parameter := range entry.operation.Parameters {
+			if parameter.In == "query" {
+				query[parameter.Name] = parameter
+			}
+		}
+		assert.NotContains(t, query, "q", "%s names its free-text filter q; use search", entry)
+		limit := query["limit"]
+		if limit == nil || query["after"] != nil {
+			continue
+		}
+		paged++
+		if assert.NotNil(t, limit.Schema, "%s: limit has no schema", entry) {
+			assert.EqualValues(t, 50, limit.Schema.Default, "%s: limit default", entry)
+			if assert.NotNil(t, limit.Schema.Minimum, "%s: limit minimum", entry) {
+				assert.EqualValues(t, 1, *limit.Schema.Minimum, "%s: limit minimum", entry)
+			}
+			if assert.NotNil(t, limit.Schema.Maximum, "%s: limit maximum", entry) {
+				assert.EqualValues(t, 200, *limit.Schema.Maximum, "%s: limit maximum", entry)
+			}
+		}
+		offset := query["offset"]
+		if assert.NotNil(t, offset, "%s pages by limit without offset", entry) && assert.NotNil(t, offset.Schema) {
+			assert.EqualValues(t, 0, offset.Schema.Default, "%s: offset default", entry)
+		}
+	}
+	assert.Greater(t, paged, 50, "the walk must reach the paged collections")
+}

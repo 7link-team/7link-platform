@@ -34,7 +34,7 @@ type personalTokenCreateInput struct {
 type personalTokenListInput struct {
 	PersonalTokenBrowserInput
 	Offset int `query:"offset" minimum:"0" default:"0"`
-	Limit  int `query:"limit" minimum:"1" maximum:"100" default:"20"`
+	Limit  int `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type personalTokenDeleteInput struct {

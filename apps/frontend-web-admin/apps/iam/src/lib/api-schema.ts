@@ -10487,7 +10487,7 @@ export interface operations {
                 /** @description written as <operator>:<value>; accepts eq, in */
                 created_by?: string[];
                 /** @description matches title or description */
-                q?: string;
+                search?: string;
                 /** @description include soft-deleted tasks */
                 deleted?: boolean;
                 /** @description comma-separated subset of columns to return */
@@ -10678,7 +10678,7 @@ export interface operations {
                 /** @description written as <operator>:<value>; accepts eq, in */
                 created_by?: string[];
                 /** @description matches title or description */
-                q?: string;
+                search?: string;
                 /** @description include soft-deleted tasks */
                 deleted?: boolean;
                 /** @description comma-separated subset of columns to return */
@@ -37124,10 +37124,7 @@ export interface operations {
     };
     "iam-list-menus": {
         parameters: {
-            query?: {
-                offset?: number;
-                limit?: number;
-            };
+            query?: never;
             header?: never;
             path: {
                 /** @description Tenant resource identifier */
@@ -37954,10 +37951,7 @@ export interface operations {
     };
     "iam-effective-menus": {
         parameters: {
-            query?: {
-                offset?: number;
-                limit?: number;
-            };
+            query?: never;
             header?: never;
             path: {
                 /** @description Tenant resource identifier */

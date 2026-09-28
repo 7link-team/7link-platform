@@ -3302,3 +3302,18 @@ credential and voids earlier links; completing email verification also requires
 the password of the registration being confirmed. Directory/invitation-provisioned
 pending principals are never re-credentialed by public registration.
 Reason: audit S8 residual - the owner could click an attacker-triggered link.
+
+## List Parameters - 2026-09-28
+
+Decision: an offset-paged collection declares `limit` (default 50, minimum 1,
+maximum 200) and `offset` (default 0, minimum 0), answers through respx.List
+(items as data, paging in meta.page), and names its free-text filter `search`.
+Cursor-paged file collections keep `after` and their own bound (limit 50, max
+100) by design: they page a live directory tree whose rows move, not a counted
+table. Navigation trees (tenant menus, effective menus) are read whole and
+declare no paging parameters; a page of a tree is a tree with missing branches.
+Alignment (audit C13): personal tokens 20/100 -> 50/200; todo q -> search,
+20/100 -> 50/200, offset default 0; the two menu routes drop limit/offset
+(tenant menus ignored them; effective menus defaulted to "all").
+Guard: composed-spec invariant TestComposedOpenAPIPagesListsOneWay.
+Status: IMPLEMENTED.

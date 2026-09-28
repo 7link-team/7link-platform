@@ -197,18 +197,17 @@ type APIMemberAuthorizationSnapshot struct {
 	Sources     []APIMemberAuthorizationSource `json:"sources"`
 }
 
+// tenantInput selects a tenant for the menu trees. A navigation tree is read
+// whole -- a page of it would be a tree with missing branches -- so it declares
+// no paging parameters, unlike the collections that do page.
 type tenantInput struct {
 	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"tenant authorization boundary"`
-	// ponytail: pagination added to prevent unbounded list responses.
-	// Offset and Limit are optional; 0/0 returns all records.
-	Offset int `query:"offset" minimum:"0" default:"0"`
-	Limit  int `query:"limit" minimum:"0" maximum:"200" default:"0"`
 }
 
 // boundedTenantInput is tenantInput's bounded counterpart, for the tenant-wide
 // listings that actually page: entities and roles both grow with the tenant, so
-// omitting limit must not mean the whole table. tenantInput keeps the opt-in
-// shape for the handlers that do not page at all.
+// omitting limit must not mean the whole table. tenantInput is for the menu
+// trees, which do not page at all.
 type boundedTenantInput struct {
 	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"tenant authorization boundary"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
@@ -1224,7 +1223,10 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, apiError("effective menus", err)
 		}
-		return paginateList(ctx, menus, in.Offset, in.Limit), nil
+		if menus == nil {
+			menus = []MenuItem{}
+		}
+		return respx.OK(ctx, menus), nil
 	})
 	// A platform administrator must discover their own platform permissions
 	// before the first tenant exists. This self-service route deliberately has no
@@ -1491,30 +1493,4 @@ func apiError(operation string, err error) error {
 		slog.Error("iam request failed", "operation", operation, "err", err)
 		return huma.Error500InternalServerError(respx.InternalServerError)
 	}
-}
-
-// paginateList applies offset/limit to a list result, defaulting to all
-// records when both are zero. This prevents unbounded response sizes
-// on collections that can grow large (roles, entities, menus).
-func paginateList[T any](ctx context.Context, items []T, offset, limit int) *respx.Body[[]T] {
-	if offset < 0 {
-		offset = 0
-	}
-	if limit < 0 || limit > 200 {
-		limit = 0
-	}
-	total := len(items)
-	if offset >= total {
-		return respx.List(ctx, []T{}, respx.Page{Offset: offset, Limit: limit, Total: int64(total)})
-	}
-	if limit > 0 {
-		end := offset + limit
-		if end > total {
-			end = total
-		}
-		items = items[offset:end]
-	} else if offset > 0 {
-		items = items[offset:]
-	}
-	return respx.List(ctx, items, respx.Page{Offset: offset, Limit: limit, Total: int64(total)})
 }

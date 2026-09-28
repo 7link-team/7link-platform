@@ -50,7 +50,7 @@ func TestFieldPolicyProtectsSingleListExportAndQueryInference(t *testing.T) {
 			assert.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 		}
 	}
-	for _, query := range []string{"q=private", "deleted=true"} {
+	for _, query := range []string{"search=private", "deleted=true"} {
 		response = api.Get("/entities/10/todos?" + query)
 		assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
 	}
