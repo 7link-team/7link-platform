@@ -7,5 +7,6 @@
   "invalid_file_kind": "Jenis entri tidak disokong. Pilih fail atau direktori.",
   "invalid_file_operation": "Operasi fail tidak sah. Semak entri, destinasi dan pilihan konflik, kemudian cuba lagi.",
   "invalid_file_request": "Permintaan fail tidak sah. Semak nama, destinasi dan kebenaran, kemudian cuba lagi.",
-  "file_service_unavailable": "Perkhidmatan fail tidak dapat melengkapkan permintaan tepat pada masanya. Cuba lagi kemudian; hubungi pentadbir jika masalah berterusan."
+  "file_service_unavailable": "Perkhidmatan fail tidak dapat melengkapkan permintaan tepat pada masanya. Cuba lagi kemudian; hubungi pentadbir jika masalah berterusan.",
+  "menu_system_files": "Pengurusan fail"
 }

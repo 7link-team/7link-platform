@@ -21,8 +21,20 @@ const (
 	FileServiceUnavailable     = Namespace + ".file_service_unavailable"
 )
 
+// MenuSystemFiles labels the system file management page the module adds to
+// the default system menu. It is a bundle-local key: the menu row stores every
+// locale's text rather than a key resolved per request.
+const MenuSystemFiles = "menu_system_files"
+
 //go:embed locales/*.json
 var locales embed.FS
+
+var labels = platformi18n.NewModuleI18nFS(platformi18n.Base, locales, "locales")
+
+// Translations renders a stored files label in every supported locale.
+func Translations(key string) map[string]string {
+	return labels.Translations(key)
+}
 
 // Register publishes the files locale bundle under its module namespace.
 func Register() error {

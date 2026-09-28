@@ -7,5 +7,6 @@
   "invalid_file_kind": "不支持该条目类型，请选择文件或目录。",
   "invalid_file_operation": "文件操作无效，请检查条目、目标位置和冲突处理方式后重试。",
   "invalid_file_request": "文件请求无效，请检查名称、目标位置和权限后重试。",
-  "file_service_unavailable": "文件服务未能及时完成请求，请稍后重试；若问题持续，请联系管理员。"
+  "file_service_unavailable": "文件服务未能及时完成请求，请稍后重试；若问题持续，请联系管理员。",
+  "menu_system_files": "文件管理"
 }

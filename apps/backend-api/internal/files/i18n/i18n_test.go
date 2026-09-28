@@ -23,3 +23,7 @@ func TestRegisterPublishesEveryFilesLocale(t *testing.T) {
 	}
 	assert.Error(t, Register(), "a module locale namespace is registered exactly once")
 }
+
+func TestTranslationsRenderAStoredLabelInEveryLocale(t *testing.T) {
+	assert.Equal(t, map[string]string{"en-US": "File management", "zh-CN": "文件管理", "ms-MY": "Pengurusan fail"}, Translations(MenuSystemFiles))
+}

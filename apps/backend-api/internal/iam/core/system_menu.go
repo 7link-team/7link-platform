@@ -3,8 +3,11 @@ package core
 import (
 	"context"
 	"fmt"
+	"maps"
 	"reflect"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
@@ -43,6 +46,12 @@ func legacySystemDefaultMenus() []Menu {
 	return menus
 }
 
+// SystemMenuBasicManagement labels the default system branch that holds
+// platform-wide basic pages; a module contributing such a page names it.
+const SystemMenuBasicManagement = "Basic management"
+
+// SystemDefaultMenus is the system menu core owns. The menu a deployment seeds
+// is SystemMenus.Defaults: these pages plus the ones other modules contribute.
 func SystemDefaultMenus() []Menu {
 	menus := []Menu{
 		{ID: 1, Label: "Account management", Icon: "users", SortOrder: 10, Status: MenuActive},
@@ -54,9 +63,8 @@ func SystemDefaultMenus() []Menu {
 		{ID: 2, Label: "Permission management", Icon: "key-round", SortOrder: 20, Status: MenuActive},
 		{ParentID: 2, Label: "Departments", Route: "/system/departments", Icon: "building-2", SortOrder: 10, PermissionCode: "system_department_view", Status: MenuActive},
 		{ParentID: 2, Label: "Roles and permissions", Route: "/system/roles", Icon: "key-round", SortOrder: 20, PermissionCode: "system_role_view", Status: MenuActive},
-		{ID: 3, Label: "Basic management", Icon: "boxes", SortOrder: 30, Status: MenuActive},
+		{ID: 3, Label: SystemMenuBasicManagement, Icon: "boxes", SortOrder: 30, Status: MenuActive},
 		{ParentID: 3, Label: "Menus", Route: "/system/menus", Icon: "boxes", SortOrder: 10, PermissionCode: "system_menu_view", Status: MenuActive},
-		{ParentID: 3, Label: "File management", Route: "/system/files", Icon: "folder", SortOrder: 20, PermissionCode: "system_file_view", Status: MenuActive},
 		{ID: 4, Label: "Organization management", Icon: "network", SortOrder: 40, Status: MenuActive},
 		{ParentID: 4, Label: "Operating platforms", Route: "/system/operating-platforms", Icon: "network", SortOrder: 10, PermissionCode: "operating_platform_view", Status: MenuActive},
 		{ParentID: 4, Label: "Tenants", Route: "/system/tenants", Icon: "building-2", SortOrder: 20, PermissionCode: "tenant_view", Status: MenuActive},
@@ -72,6 +80,87 @@ func SystemDefaultMenus() []Menu {
 		menus[i].Translations = corei18n.Translations(key)
 	}
 	return menus
+}
+
+// SystemMenuPage is a system menu page a module outside core owns. Branch is
+// the label of the default branch it sits under; Menu carries the page itself
+// (Label, Translations, Route under /system/, Icon, SortOrder, PermissionCode).
+type SystemMenuPage struct {
+	Branch string
+	Menu   Menu
+}
+
+// SystemMenus is the default system menu a deployment seeds: the pages core
+// owns plus the pages other modules contribute. Core publishes it; a module
+// that owns a system page contributes it during InjectServices, the phase in
+// which it also contributes that page's permission to the shared registry, so
+// IAM core never names another module's page or permission code.
+type SystemMenus struct {
+	mu          sync.RWMutex
+	contributed []SystemMenuPage
+}
+
+// Contribute adds pages all-or-nothing: each must name a default branch, an
+// active /system/ route no other page uses, and the permission that gates it.
+func (m *SystemMenus) Contribute(pages ...SystemMenuPage) error {
+	if m == nil {
+		return fmt.Errorf("%w: system menu contribution requires a catalog", ErrInvalidArgument)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	routes := map[string]bool{}
+	branches := map[string]bool{}
+	for _, menu := range SystemDefaultMenus() {
+		routes[menu.Route] = menu.Route != ""
+		if menu.ParentID.Zero() {
+			branches[menu.Label] = true
+		}
+	}
+	for _, page := range m.contributed {
+		routes[page.Menu.Route] = true
+	}
+	for _, page := range pages {
+		menu := page.Menu
+		if !branches[page.Branch] || !strings.HasPrefix(menu.Route, "/system/") || routes[menu.Route] ||
+			menu.Label == "" || menu.PermissionCode == "" || menu.Status != MenuActive || !menu.ID.Zero() || !menu.ParentID.Zero() {
+			return fmt.Errorf("%w: invalid system menu contribution %q", ErrInvalidArgument, menu.Route)
+		}
+		routes[menu.Route] = true
+	}
+	m.contributed = append(m.contributed, pages...)
+	return nil
+}
+
+// Defaults returns SystemDefaultMenus with each contributed page placed after
+// the last page of its branch, in contribution order.
+func (m *SystemMenus) Defaults() []Menu {
+	menus := SystemDefaultMenus()
+	if m == nil {
+		return menus
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, page := range m.contributed {
+		at := len(menus)
+		for index, menu := range menus {
+			if menu.ParentID.Zero() && menu.Label == page.Branch {
+				page.Menu.ParentID, at = menu.ID, index+1
+			} else if !page.Menu.ParentID.Zero() && menu.ParentID == page.Menu.ParentID {
+				at = index + 1
+			}
+		}
+		page.Menu.Translations = maps.Clone(page.Menu.Translations)
+		menus = slices.Insert(menus, at, page.Menu)
+	}
+	return menus
+}
+
+// systemMenuDefaults is the system menu this repository seeds and upgrades to.
+func (r *Repository) systemMenuDefaults() []Menu {
+	if r == nil {
+		return SystemDefaultMenus()
+	}
+	return r.systemMenus.Defaults()
 }
 
 func (r *Repository) upgradeSystemMenus(ctx context.Context, owner guid.ID, _ time.Time) (bool, error) {
@@ -126,7 +215,7 @@ func (r *Repository) upgradeSystemMenus(ctx context.Context, owner guid.ID, _ ti
 	if !legacy {
 		return localized, nil
 	}
-	defaults := SystemDefaultMenus()
+	defaults := r.systemMenuDefaults()
 	parents := map[guid.ID]guid.ID{}
 	oldDefaults := map[string]Menu{}
 	oldBranches := map[string]Menu{}
@@ -257,7 +346,7 @@ func defaultsBranchID(defaults []Menu, label string) guid.ID {
 }
 
 func (s *Service) SystemMenuCatalog(context.Context) []MenuDeclaration {
-	defaults := SystemDefaultMenus()
+	defaults := s.repo.systemMenuDefaults()
 	var result []MenuDeclaration
 	for _, menu := range defaults {
 		if !menu.ParentID.Zero() {

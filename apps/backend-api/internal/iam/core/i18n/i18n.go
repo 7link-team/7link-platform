@@ -1,7 +1,6 @@
 package corei18n
 
 import (
-	"context"
 	"embed"
 
 	platformi18n "7link.com/platform/pkg/i18n"
@@ -59,12 +58,7 @@ var fieldMessages = platformi18n.NewModuleI18nFS(platformi18n.Base, locales, "lo
 
 // Translations supplies all supported translations for built-in stored labels.
 func Translations(key string) map[string]string {
-	labels := make(map[string]string)
-	for _, locale := range platformi18n.Supported() {
-		ctx := platformi18n.WithLocale(context.Background(), locale.Code)
-		labels[locale.Code] = fieldMessages.TContext(ctx, key)
-	}
-	return labels
+	return fieldMessages.Translations(key)
 }
 
 func Register() error {

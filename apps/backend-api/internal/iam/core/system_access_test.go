@@ -165,7 +165,7 @@ func TestSystemMenuUpgradeCorrectsHistoricalAccountTranslations(t *testing.T) {
 			require.NoError(t, h.db.Exec("INSERT INTO sl_iam_tenants(id,scope_kind,slug,name,status,version,created_at,updated_at) VALUES(99,'system',?,'System','active',1,?,?)", SystemRootSlug, repositoryTestTime, repositoryTestTime).Error)
 			defaults := legacySystemDefaultMenus()
 			if alreadyUpgraded {
-				defaults = SystemDefaultMenus()
+				defaults = h.repository.systemMenuDefaults()
 			}
 			historical := map[string]string{"en-US": "Global accounts", "zh-CN": "全局账号", "ms-MY": "Akaun global"}
 			for i := range defaults {

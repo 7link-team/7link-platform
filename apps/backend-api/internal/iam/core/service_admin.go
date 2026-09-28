@@ -452,7 +452,7 @@ func (s *Service) EffectiveMenus(
 		}
 	}
 	if kind == "system" {
-		for _, menu := range SystemDefaultMenus() {
+		for _, menu := range s.repo.systemMenuDefaults() {
 			routePermissions[menu.Route] = menu.PermissionCode
 		}
 	}
@@ -697,7 +697,7 @@ func (s *Service) validateMenu(ctx context.Context, repo *Repository, menu *Menu
 		menu.Route = path.Clean(parsed.Path)
 		if menu.PermissionCode == "" {
 			known := false
-			for _, declaration := range SystemDefaultMenus() {
+			for _, declaration := range s.repo.systemMenuDefaults() {
 				if declaration.Route == menu.Route {
 					known = true
 					break

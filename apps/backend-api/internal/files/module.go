@@ -178,6 +178,13 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err := registrar.Registry().Contribute(fileAuthorizationActions(), nil); err != nil {
 		return fmt.Errorf("register files permissions: %w", err)
 	}
+	systemMenus, err := module.Resolve[*core.SystemMenus](services)
+	if err != nil {
+		return fmt.Errorf("resolve IAM system menus: %w", err)
+	}
+	if err := systemMenus.Contribute(systemFileMenu()); err != nil {
+		return fmt.Errorf("register files system menu: %w", err)
+	}
 	m.registrar, m.policy, m.subjects, m.references = registrar, policy, subjects, references
 	m.entityOwner, m.deptOwner = entityOwner, departmentOwner
 	m.ids, m.appender = ids, appender

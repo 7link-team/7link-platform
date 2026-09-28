@@ -9,6 +9,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// contributeFileMenu stands in for the files module, which contributes its
+// system page in the composed application with the row core used to seed.
+func contributeFileMenu(t testing.TB, menus *SystemMenus) {
+	t.Helper()
+	require.NoError(t, menus.Contribute(SystemMenuPage{Branch: SystemMenuBasicManagement, Menu: Menu{
+		Label: "File management", Translations: map[string]string{"en-US": "File management", "ms-MY": "Pengurusan fail", "zh-CN": "文件管理"},
+		Route: "/system/files", Icon: "folder", SortOrder: 20, PermissionCode: "system_file_view", Status: MenuActive,
+	}}))
+}
+
 func seedSystemMenuHarness(t *testing.T) coreServiceHarness {
 	t.Helper()
 	h := newCoreServiceHarness(t)
@@ -16,7 +26,7 @@ func seedSystemMenuHarness(t *testing.T) coreServiceHarness {
 	h.authorizer.registry = h.service.registry
 	seedTenantAndPrincipal(t, h.db, "sl_", 1, 11)
 	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_tenants (id, scope_kind, slug, name, status, version, created_at, updated_at) VALUES (99,'system',?,'System','active',1,?,?)", SystemRootSlug, repositoryTestTime, repositoryTestTime).Error)
-	_, err := h.repository.createMenus(t.Context(), 99, SystemDefaultMenus(), repositoryTestTime)
+	_, err := h.repository.createMenus(t.Context(), 99, h.repository.systemMenuDefaults(), repositoryTestTime)
 	require.NoError(t, err)
 	return h
 }
@@ -121,4 +131,42 @@ func TestSystemMenuMutationsRejectForeignOwnershipAndAttributeOperator(t *testin
 	require.Equal(t, before+1, after)
 	_, err = s.MoveMenu(ctx, owner, created.ID, nil, "before", foreign.ID)
 	require.Error(t, err)
+}
+
+func TestSystemMenusAcceptOnlyWellFormedContributionsAllOrNothing(t *testing.T) {
+	page := func(branch, route, permission string) SystemMenuPage {
+		return SystemMenuPage{Branch: branch, Menu: Menu{Label: "Page", Route: route, PermissionCode: permission, Status: MenuActive}}
+	}
+	menus := &SystemMenus{}
+	for name, invalid := range map[string]SystemMenuPage{
+		"unknown branch":   page("Nowhere", "/system/reports", "report_view"),
+		"leaf as branch":   page("Menus", "/system/reports", "report_view"),
+		"tenant route":     page(SystemMenuBasicManagement, "/reports", "report_view"),
+		"core route":       page(SystemMenuBasicManagement, "/system/menus", "report_view"),
+		"no permission":    page(SystemMenuBasicManagement, "/system/reports", ""),
+		"no label":         {Branch: SystemMenuBasicManagement, Menu: Menu{Route: "/system/reports", PermissionCode: "report_view", Status: MenuActive}},
+		"disabled":         {Branch: SystemMenuBasicManagement, Menu: Menu{Label: "Page", Route: "/system/reports", PermissionCode: "report_view", Status: MenuDisabled}},
+		"placed by caller": {Branch: SystemMenuBasicManagement, Menu: Menu{ParentID: 3, Label: "Page", Route: "/system/reports", PermissionCode: "report_view", Status: MenuActive}},
+	} {
+		require.ErrorIs(t, menus.Contribute(page(SystemMenuBasicManagement, "/system/ok", "ok_view"), invalid), ErrInvalidArgument, name)
+	}
+	require.Equal(t, SystemDefaultMenus(), menus.Defaults(), "a rejected batch contributes nothing")
+
+	require.NoError(t, menus.Contribute(page(SystemMenuBasicManagement, "/system/reports", "report_view"), page("Audit", "/system/audit/exports", "export_view")))
+	require.ErrorIs(t, menus.Contribute(page("Audit", "/system/reports", "report_view")), ErrInvalidArgument, "a contributed route is taken")
+	defaults := menus.Defaults()
+	require.Len(t, defaults, len(SystemDefaultMenus())+2)
+	for index, menu := range defaults {
+		switch menu.Route {
+		case "/system/reports":
+			require.Equal(t, "/system/menus", defaults[index-1].Route, "placed after the last page of its branch")
+			require.Equal(t, guid.ID(3), menu.ParentID)
+		case "/system/audit/exports":
+			require.Equal(t, "/system/audit-governance", defaults[index-1].Route)
+			require.Equal(t, guid.ID(5), menu.ParentID)
+		}
+	}
+	var none *SystemMenus
+	require.Equal(t, SystemDefaultMenus(), none.Defaults())
+	require.ErrorIs(t, none.Contribute(), ErrInvalidArgument)
 }

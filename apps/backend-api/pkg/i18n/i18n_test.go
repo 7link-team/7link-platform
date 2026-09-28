@@ -409,3 +409,16 @@ func TestGlobalFunctions_NilDefault(t *testing.T) {
 	// SetLocale on nil should be a no-op (not panic).
 	assert.NotPanics(t, func() { SetLocale("zh") })
 }
+
+func TestTranslationsRenderAKeyInEverySupportedLocale(t *testing.T) {
+	bundle := New(Base)
+	bundle.messages = map[string]map[string]string{
+		"en-US": {"label": "Label"},
+		"zh-CN": {"label": "标签"},
+	}
+	labels := bundle.Translations("label")
+	require.Len(t, labels, len(Supported()))
+	assert.Equal(t, "Label", labels["en-US"])
+	assert.Equal(t, "标签", labels["zh-CN"])
+	assert.Equal(t, "Label", labels["ms-MY"], "a locale without the key falls back")
+}
