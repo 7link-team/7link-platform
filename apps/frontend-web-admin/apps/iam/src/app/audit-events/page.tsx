@@ -345,7 +345,7 @@ export default function AuditEventsPage({
               <TableRow>
                 <TableHead className="min-w-44">{t("occurredAt")}</TableHead>
                 <TableHead className="min-w-52">{t("event")}</TableHead>
-                <TableHead className="min-w-44">{t("principal")}</TableHead>
+                <TableHead className="min-w-44">{t("auditActor")}</TableHead>
                 <TableHead className="min-w-52">{t("target")}</TableHead>
                 <TableHead className="w-24">{t("outcome")}</TableHead>
                 <TableHead className="w-24">{t("chainSequence")}</TableHead>
@@ -421,7 +421,7 @@ export default function AuditEventsPage({
                 <OutcomeBadge outcome={event.outcome} />
               </div>
               <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-                <span className="text-muted-foreground">{t("principal")}</span>
+                <span className="text-muted-foreground">{t("auditActor")}</span>
                 <code className="truncate font-mono">
                   {event.principal_id || "system"}
                 </code>
@@ -671,7 +671,12 @@ function DetailGrid({ event }: { event: AuditEvent }) {
   const items = [
     [t("eventId"), event.id],
     [t("tenant"), event.tenant_id],
-    [t("principal"), event.principal_id || "system"],
+    [t("auditActor"), event.principal_id || "system"],
+    // principal_id is the acting operator; an account view records the
+    // account it looked at separately.
+    ...(typeof event.detail?.viewed_principal_id === "string"
+      ? [[t("viewedAccount"), event.detail.viewed_principal_id]]
+      : []),
     [t("target"), `${event.target_type || "-"}:${event.target_id || "-"}`],
     [t("outcome"), event.outcome],
     [t("sequence"), event.sequence > 0 ? String(event.sequence) : "legacy"],

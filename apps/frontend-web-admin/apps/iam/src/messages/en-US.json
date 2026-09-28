@@ -321,6 +321,8 @@
   "eventType": "Event type",
   "outcome": "Outcome",
   "actorId": "Actor account ID",
+  "auditActor": "Actor",
+  "viewedAccount": "Viewed account",
   "targetType": "Target type",
   "targetId": "Target ID",
   "startTime": "Start time",

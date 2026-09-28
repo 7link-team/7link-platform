@@ -321,6 +321,8 @@
   "eventType": "事件类型",
   "outcome": "结果",
   "actorId": "操作账号 ID",
+  "auditActor": "操作人",
+  "viewedAccount": "被查看账号",
   "targetType": "目标类型",
   "targetId": "目标 ID",
   "startTime": "开始时间",
