@@ -1,3 +1,5 @@
+import { apiRoute } from "./api-route"
+
 export type AccountViewScope =
   "system" | "platform" | "tenant" | "entity" | "personal"
 export type AccountViewMode = "read_only" | "read_write"
@@ -131,10 +133,13 @@ export async function exitAccountView() {
 }
 
 async function revokeAccountView(id: string) {
+  const route = apiRoute("delete", "/account-views/{account_view_id}", {
+    path: { account_view_id: id },
+  })
   const response = await fetch(
-    `${(import.meta.env.VITE_API_URL ?? "/api").replace(/\/$/, "")}/account-views/${encodeURIComponent(id)}`,
+    `${(import.meta.env.VITE_API_URL ?? "/api").replace(/\/$/, "")}${route.url}`,
     {
-      method: "DELETE",
+      method: route.method,
       credentials: "include",
       headers: { Origin: window.location.origin },
     }
@@ -145,10 +150,11 @@ async function revokeAccountView(id: string) {
 
 export async function issueAccountView(selection: AccountViewSelection) {
   if (current || isolatedTab) throw new Error("An account view is already open")
+  const route = apiRoute("post", "/account-views")
   const response = await fetch(
-    `${(import.meta.env.VITE_API_URL ?? "/api").replace(/\/$/, "")}/account-views`,
+    `${(import.meta.env.VITE_API_URL ?? "/api").replace(/\/$/, "")}${route.url}`,
     {
-      method: "POST",
+      method: route.method,
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
