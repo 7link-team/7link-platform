@@ -217,7 +217,9 @@ func TestIAMPerformanceExternalDatabase(t *testing.T) {
 			"production SQL changed; review plans and regenerate with IAM_PERFORMANCE_UPDATE=plans")
 		validateIAMPerformancePlans(t, databaseType, expected.Plans)
 	}
-	if updatePlans || os.Getenv(iamPerformanceEnforce) == "1" {
+	// Plan regeneration keeps the frozen samples and thresholds, so it has no
+	// latency to vouch for; judging latency stays the explicit same-machine opt-in.
+	if os.Getenv(iamPerformanceEnforce) == "1" {
 		enforceIAMPerformanceThresholds(t, expected.Benchmarks, current.Benchmarks)
 	}
 	for name, benchmark := range current.Benchmarks {
@@ -301,6 +303,22 @@ func TestIAMPerformanceBaselineContract(t *testing.T) {
 			require.GreaterOrEqual(t, benchmark.ThresholdNSPerOp, ordered[len(ordered)-1], engine+"/"+name)
 		}
 	}
+}
+
+func TestIAMPerformanceThresholdJudgesTheMedian(t *testing.T) {
+	expected := map[string]iamPerformanceBenchmark{"path": {ThresholdNSPerOp: 1_000}}
+	judge := func(samples ...int64) []string {
+		return iamPerformanceThresholdViolations(expected, map[string]iamPerformanceBenchmark{"path": {SamplesNSPerOp: samples}})
+	}
+	assert.Empty(t, judge(300, 310, 3_000, 320, 305), "one outlier must not fail the gate")
+	assert.Empty(t, judge(1_000, 900, 5_000, 4_000, 800), "a median at the threshold passes")
+	violations := judge(900, 1_001, 5_000, 1_200, 800)
+	require.Len(t, violations, 1)
+	assert.Contains(t, violations[0], "path median 1001ns/op exceeded the same-machine frozen threshold 1000ns/op")
+	assert.Equal(t, []string{"path has no frozen threshold"},
+		iamPerformanceThresholdViolations(map[string]iamPerformanceBenchmark{}, map[string]iamPerformanceBenchmark{"path": {SamplesNSPerOp: []int64{1}}}))
+	assert.Equal(t, []string{"path has no samples"},
+		iamPerformanceThresholdViolations(expected, map[string]iamPerformanceBenchmark{"path": {}}))
 }
 
 func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperations int) iamPerformancePaths {
@@ -901,13 +919,39 @@ func enforceIAMPerformanceThresholds(
 ) {
 	t.Helper()
 	require.Equal(t, sortedIAMPerformanceBenchmarkNames(expected), sortedIAMPerformanceBenchmarkNames(current))
-	for name, actual := range current {
+	for _, violation := range iamPerformanceThresholdViolations(expected, current) {
+		assert.Fail(t, violation)
+	}
+}
+
+// iamPerformanceThresholdViolations judges each path by the median of its
+// samples, so one scheduler stall in five samples cannot fail the gate while a
+// regression that moves the typical run still does.
+func iamPerformanceThresholdViolations(
+	expected map[string]iamPerformanceBenchmark,
+	current map[string]iamPerformanceBenchmark,
+) []string {
+	violations := make([]string, 0)
+	for _, name := range sortedIAMPerformanceBenchmarkNames(current) {
 		threshold := expected[name].ThresholdNSPerOp
-		require.Positive(t, threshold, name)
-		for _, sample := range actual.SamplesNSPerOp {
-			assert.LessOrEqual(t, sample, threshold, "%s exceeded the same-machine frozen threshold", name)
+		if threshold <= 0 {
+			violations = append(violations, fmt.Sprintf("%s has no frozen threshold", name))
+			continue
+		}
+		samples := current[name].SamplesNSPerOp
+		if len(samples) == 0 {
+			violations = append(violations, fmt.Sprintf("%s has no samples", name))
+			continue
+		}
+		ordered := append([]int64(nil), samples...)
+		sort.Slice(ordered, func(i, j int) bool { return ordered[i] < ordered[j] })
+		if median := ordered[len(ordered)/2]; median > threshold {
+			violations = append(violations, fmt.Sprintf(
+				"%s median %dns/op exceeded the same-machine frozen threshold %dns/op (samples %v)",
+				name, median, threshold, samples))
 		}
 	}
+	return violations
 }
 
 func sortedIAMPerformanceBenchmarkNames(values map[string]iamPerformanceBenchmark) []string {
