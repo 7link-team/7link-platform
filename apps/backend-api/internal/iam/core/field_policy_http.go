@@ -12,7 +12,7 @@ import (
 )
 
 type fieldPolicyListInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Resource string `query:"resource" maxLength:"64"`
 	EntityID string `query:"entity_id" maxLength:"64"`
 }
@@ -23,7 +23,7 @@ type fieldPolicyListInput struct {
 // their published contract, and this one gains only offset and limit. EntityID
 // is carried for the same reason: this route has always declared it.
 type listFieldPoliciesInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Resource string `query:"resource" maxLength:"64"`
 	EntityID string `query:"entity_id" maxLength:"64"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
@@ -31,7 +31,7 @@ type listFieldPoliciesInput struct {
 }
 
 type fieldPolicyInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Resource string `path:"resource" maxLength:"64"`
 	Field    string `path:"field" maxLength:"64"`
 	Body     struct {
@@ -41,7 +41,7 @@ type fieldPolicyInput struct {
 }
 
 type fieldPolicyDeleteInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Resource string `path:"resource" maxLength:"64"`
 	Field    string `path:"field" maxLength:"64"`
 	Version  int64  `query:"version" minimum:"1" required:"true"`

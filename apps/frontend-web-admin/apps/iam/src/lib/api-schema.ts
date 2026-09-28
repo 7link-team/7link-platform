@@ -11744,6 +11744,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description Identity provider identifier */
                 provider_id: string;
             };
             cookie?: never;
@@ -11841,6 +11842,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description Identity provider identifier */
                 provider_id: string;
             };
             cookie?: never;
@@ -11935,6 +11937,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Identity provider identifier */
                 provider_id: string;
             };
             cookie?: never;
@@ -22066,6 +22069,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Tenant whose SAML identity provider answers */
                 tenant_id: string;
             };
             cookie?: never;
@@ -22127,6 +22131,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description Tenant whose SAML identity provider answers */
                 tenant_id: string;
             };
             cookie?: never;
@@ -22186,6 +22191,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Tenant whose SAML identity provider answers */
                 tenant_id: string;
             };
             cookie?: never;
@@ -22255,6 +22261,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description Tenant whose SAML identity provider answers */
                 tenant_id: string;
             };
             cookie?: never;
@@ -22330,6 +22337,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Tenant whose SAML identity provider answers */
                 tenant_id: string;
             };
             cookie?: never;

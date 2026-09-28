@@ -15,7 +15,7 @@ import (
 )
 
 type archiveListInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
@@ -26,7 +26,7 @@ type platformArchiveListInput struct {
 }
 
 type platformArchiveInput struct {
-	ID string `path:"archive_id" maxLength:"64"`
+	ID string `path:"archive_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type platformRetentionInput struct {

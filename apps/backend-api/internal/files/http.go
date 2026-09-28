@@ -29,32 +29,32 @@ type FilePageInput struct {
 
 type tenantFilePageInput struct {
 	FilePageInput
-	TenantID string `path:"tenant_id"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type entityFilePageInput struct {
 	FilePageInput
-	EntityID string `path:"entity_id"`
+	EntityID string `path:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type departmentFilePageInput struct {
 	FilePageInput
-	DepartmentID string `path:"department_id"`
+	DepartmentID string `path:"department_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type fileItemsInput struct {
 	After  string `query:"after" doc:"exclusive snowflake cursor returned by the previous page"`
 	Limit  int    `query:"limit" minimum:"1" maximum:"100" default:"50"`
-	FileID string `path:"file_id" doc:"globally unique directory file identifier"`
+	FileID string `path:"file_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"globally unique directory file identifier"`
 }
 
 type fileResourceInput struct {
-	FileID      string `path:"file_id" doc:"globally unique file identifier"`
+	FileID      string `path:"file_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"globally unique file identifier"`
 	Disposition string `query:"disposition" enum:"attachment,inline" default:"attachment" doc:"browser content disposition"`
 }
 
 type filePathInput struct {
-	RootFileID string `path:"root_file_id" doc:"globally unique authorized root file identifier"`
+	RootFileID string `path:"root_file_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"globally unique authorized root file identifier"`
 	Path       string `path:"*" doc:"slash-separated path relative to the selected root"`
 }
 
@@ -72,17 +72,17 @@ type fileCreateInput struct {
 
 type tenantFileCreateInput struct {
 	RawBody  huma.MultipartFormFiles[fileCreateForm]
-	TenantID string `path:"tenant_id"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type entityFileCreateInput struct {
 	RawBody  huma.MultipartFormFiles[fileCreateForm]
-	EntityID string `path:"entity_id"`
+	EntityID string `path:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type departmentFileCreateInput struct {
 	RawBody      huma.MultipartFormFiles[fileCreateForm]
-	DepartmentID string `path:"department_id"`
+	DepartmentID string `path:"department_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type fileUpdateBody struct {
@@ -92,12 +92,12 @@ type fileUpdateBody struct {
 }
 
 type fileUpdateInput struct {
-	FileID string         `path:"file_id" doc:"file identifier"`
+	FileID string         `path:"file_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"file identifier"`
 	Body   fileUpdateBody `json:"body"`
 }
 
 type fileDeleteInput struct {
-	FileID   string `path:"file_id" doc:"file identifier"`
+	FileID   string `path:"file_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"file identifier"`
 	Revision int64  `query:"revision" minimum:"1"`
 }
 

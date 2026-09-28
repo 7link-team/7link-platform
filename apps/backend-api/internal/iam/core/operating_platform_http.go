@@ -12,13 +12,13 @@ import (
 )
 
 type operatingPlatformPageInput struct {
-	PlatformID string `path:"platform_id"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset     int    `query:"offset" minimum:"0" default:"0"`
 	Limit      int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type operatingPlatformRoleInput struct {
-	PlatformID string `path:"platform_id"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body       struct {
 		Name        string `json:"name" minLength:"1" maxLength:"128"`
 		Description string `json:"description,omitempty" maxLength:"1024"`
@@ -26,7 +26,7 @@ type operatingPlatformRoleInput struct {
 }
 
 type operatingPlatformMenuInput struct {
-	PlatformID string `path:"platform_id"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body       struct {
 		Translations   map[string]string `json:"translations,omitempty"`
 		ParentID       string            `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19"`
@@ -40,7 +40,7 @@ type operatingPlatformMenuInput struct {
 }
 
 type operatingPlatformMembersInput struct {
-	PlatformID string       `path:"platform_id"`
+	PlatformID string       `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset     int          `query:"offset" minimum:"0" default:"0"`
 	Limit      int          `query:"limit" minimum:"1" maximum:"200" default:"50"`
 	Search     string       `query:"search" maxLength:"128"`
@@ -48,12 +48,12 @@ type operatingPlatformMembersInput struct {
 }
 
 type operatingPlatformMemberInput struct {
-	PlatformID string `path:"platform_id"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Subject    string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type operatingPlatformMemberPutInput struct {
-	PlatformID string `path:"platform_id"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Subject    string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body       struct {
 		DisplayName  string       `json:"display_name" minLength:"1" maxLength:"128"`
@@ -64,7 +64,7 @@ type operatingPlatformMemberPutInput struct {
 }
 
 type operatingPlatformMemberCreateInput struct {
-	PlatformID string `path:"platform_id"`
+	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body       struct {
 		Subject      string       `json:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 		DisplayName  string       `json:"display_name" minLength:"1" maxLength:"128"`

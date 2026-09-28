@@ -31,7 +31,7 @@ func principalRef(tenantValue, idValue string) (guid.ID, guid.ID, error) {
 }
 
 type principalListInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Search   string `query:"search" maxLength:"200"`
 	Limit    int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 	Offset   int    `query:"offset" default:"0" minimum:"0"`
@@ -43,13 +43,13 @@ type principalListData struct {
 }
 
 type principalIDInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	ID       string `path:"principal_id" maxLength:"64"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	ID       string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type principalCreateInput struct {
 	RawBody  []byte
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		LoginName   string `json:"login_name" minLength:"1" maxLength:"200"`
 		Password    string `json:"password" minLength:"12" maxLength:"1024"`
@@ -60,8 +60,8 @@ type principalCreateInput struct {
 
 type principalUpdateInput struct {
 	RawBody  []byte
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	ID       string `path:"principal_id" maxLength:"64"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	ID       string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		DisplayName *string `json:"display_name,omitempty" minLength:"1" maxLength:"128"`
 		Email       *string `json:"email,omitempty" maxLength:"320"`
@@ -69,7 +69,7 @@ type principalUpdateInput struct {
 }
 
 type serviceAccountListInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Search   string `query:"search" maxLength:"200"`
 	Limit    int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 	Offset   int    `query:"offset" default:"0" minimum:"0"`
@@ -81,11 +81,11 @@ type serviceAccountListData struct {
 }
 
 type serviceAccountIDInput struct {
-	ID string `path:"service_account_id" maxLength:"64"`
+	ID string `path:"service_account_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type serviceAccountCreateInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		LoginName   string     `json:"login_name" minLength:"1" maxLength:"200"`
 		DisplayName string     `json:"display_name,omitempty" maxLength:"128"`
@@ -95,7 +95,7 @@ type serviceAccountCreateInput struct {
 }
 
 type serviceAccountReplaceInput struct {
-	ID   string `path:"service_account_id" maxLength:"64"`
+	ID   string `path:"service_account_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body struct {
 		DisplayName string     `json:"display_name" minLength:"1" maxLength:"128"`
 		Description string     `json:"description,omitempty" maxLength:"1000"`
@@ -106,12 +106,12 @@ type serviceAccountReplaceInput struct {
 }
 
 type serviceAccountDeleteInput struct {
-	ID      string `path:"service_account_id" maxLength:"64"`
+	ID      string `path:"service_account_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Version int64  `query:"version" minimum:"1"`
 }
 
 type serviceAccountCredentialCreateInput struct {
-	ID   string `path:"service_account_id" maxLength:"64"`
+	ID   string `path:"service_account_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body struct {
 		Name      string     `json:"name" minLength:"1" maxLength:"128"`
 		Scopes    []string   `json:"scopes" minItems:"1" maxItems:"128"`
@@ -120,8 +120,8 @@ type serviceAccountCredentialCreateInput struct {
 }
 
 type serviceAccountCredentialIDInput struct {
-	ID           string `path:"service_account_id" maxLength:"64"`
-	CredentialID string `path:"credential_id" maxLength:"64"`
+	ID           string `path:"service_account_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	CredentialID string `path:"credential_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 // RegisterHTTP publishes the identity module's principal and service-account

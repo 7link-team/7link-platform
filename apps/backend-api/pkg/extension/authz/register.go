@@ -711,6 +711,14 @@ func selfPath(path string) string {
 	return "/principals/{principal_id}" + path
 }
 
+// IDPathParameter declares a required path parameter carrying a platform
+// snowflake ID, with the same schema the registrar gives the selectors it adds
+// itself. Operations registered on the raw adapter use it so their published
+// identifiers read the same as every typed route's.
+func IDPathParameter(name, description string) *huma.Param {
+	return pathSelector(name, description)
+}
+
 func pathSelector(name, description string) *huma.Param {
 	return &huma.Param{Name: name, In: "path", Description: description, Required: true,
 		Schema: &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)}}

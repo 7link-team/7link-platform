@@ -18098,11 +18098,13 @@
         "operationId": "federation-start-login",
         "parameters": [
           {
+            "description": "Identity provider identifier",
             "in": "path",
             "name": "provider_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           },
@@ -18239,11 +18241,13 @@
         "operationId": "federation-callback-login",
         "parameters": [
           {
+            "description": "Identity provider identifier",
             "in": "path",
             "name": "provider_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           },
@@ -18387,11 +18391,13 @@
         "operationId": "federation-callback-saml-login",
         "parameters": [
           {
+            "description": "Identity provider identifier",
             "in": "path",
             "name": "provider_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -24293,7 +24299,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -24413,7 +24420,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -30713,7 +30721,8 @@
             "name": "item_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -32966,11 +32975,13 @@
         "operationId": "federation-saml-metadata",
         "parameters": [
           {
+            "description": "Tenant whose SAML identity provider answers",
             "in": "path",
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -33038,11 +33049,13 @@
         "operationId": "federation-saml-slo",
         "parameters": [
           {
+            "description": "Tenant whose SAML identity provider answers",
             "in": "path",
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           },
@@ -33130,11 +33143,13 @@
         "operationId": "federation-saml-slo-post",
         "parameters": [
           {
+            "description": "Tenant whose SAML identity provider answers",
             "in": "path",
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -33231,11 +33246,13 @@
         "operationId": "federation-saml-sso",
         "parameters": [
           {
+            "description": "Tenant whose SAML identity provider answers",
             "in": "path",
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           },
@@ -33341,11 +33358,13 @@
         "operationId": "federation-saml-sso-post",
         "parameters": [
           {
+            "description": "Tenant whose SAML identity provider answers",
             "in": "path",
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -33845,7 +33864,8 @@
             "name": "credential_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -42505,7 +42525,8 @@
             "name": "credential_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -43979,7 +44000,8 @@
             "name": "archive_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -44090,7 +44112,8 @@
             "name": "archive_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -44203,7 +44226,8 @@
             "name": "archive_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -44488,7 +44512,8 @@
             "name": "event_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -45255,7 +45280,8 @@
             "name": "department_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           },
@@ -45354,7 +45380,8 @@
             "name": "department_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -45443,7 +45470,8 @@
             "name": "department_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -48539,7 +48567,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -48638,7 +48667,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -49444,7 +49474,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -52324,7 +52355,8 @@
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           },
@@ -52443,7 +52475,8 @@
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -52542,7 +52575,8 @@
             "name": "tenant_id",
             "required": true,
             "schema": {
-              "maxLength": 128,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -53137,7 +53171,8 @@
             "name": "archive_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -53259,7 +53294,8 @@
             "name": "archive_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -53383,7 +53419,8 @@
             "name": "archive_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -53694,7 +53731,8 @@
             "name": "event_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -59303,7 +59341,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -59413,7 +59452,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -59914,7 +59954,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }
@@ -60034,7 +60075,8 @@
             "name": "principal_id",
             "required": true,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
           }

@@ -153,7 +153,7 @@ type systemPrincipalListInput struct {
 }
 
 type systemPrincipalIDInput struct {
-	ID string `path:"principal_id" maxLength:"64"`
+	ID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type systemPrincipalCreateInput struct {
@@ -166,7 +166,7 @@ type systemPrincipalCreateInput struct {
 }
 
 type systemPrincipalUpdateInput struct {
-	ID   string `path:"principal_id" maxLength:"64"`
+	ID   string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body struct {
 		DisplayName *string `json:"display_name,omitempty" minLength:"1" maxLength:"128"`
 		Email       *string `json:"email,omitempty" maxLength:"320"`

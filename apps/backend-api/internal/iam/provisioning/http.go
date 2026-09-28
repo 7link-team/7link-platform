@@ -38,7 +38,7 @@ func parseSCIMID(value string) (guid.ID, error) {
 // directoryListInput bounds the listing by default: a tenant's directory count
 // is open-ended, and an omitted limit used to mean "every row".
 type directoryListInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
@@ -46,13 +46,13 @@ type directoryListInput struct {
 // directoryIDInput addresses one directory's credential listing, which the
 // directory accumulates over its lifetime, so it is bounded by default too.
 type directoryIDInput struct {
-	DirectoryID string `path:"directory_id" maxLength:"128"`
+	DirectoryID string `path:"directory_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset      int    `query:"offset" minimum:"0" default:"0"`
 	Limit       int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type directoryCreateInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		Name             string   `json:"name" minLength:"1" maxLength:"128"`
 		ServiceAccountID *guid.ID `json:"service_account_id,omitempty" nullable:"true"`
@@ -60,7 +60,7 @@ type directoryCreateInput struct {
 }
 
 type directoryReplaceInput struct {
-	DirectoryID string `path:"directory_id" maxLength:"128"`
+	DirectoryID string `path:"directory_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body        struct {
 		Name             string   `json:"name" minLength:"1" maxLength:"128"`
 		Status           string   `json:"status" enum:"active,disabled"`
@@ -70,7 +70,7 @@ type directoryReplaceInput struct {
 }
 
 type credentialCreateInput struct {
-	DirectoryID string `path:"directory_id" maxLength:"128"`
+	DirectoryID string `path:"directory_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body        struct {
 		Name      string     `json:"name" minLength:"1" maxLength:"128"`
 		ExpiresAt *time.Time `json:"expires_at,omitempty"`
@@ -78,8 +78,8 @@ type credentialCreateInput struct {
 }
 
 type credentialIDInput struct {
-	DirectoryID  string `path:"directory_id" maxLength:"128"`
-	CredentialID string `path:"credential_id" maxLength:"128"`
+	DirectoryID  string `path:"directory_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	CredentialID string `path:"credential_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
@@ -671,17 +671,17 @@ func intPointer(value int) *int { return &value }
 
 // targetListInput bounds the listing by default, like directoryListInput.
 type targetListInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type targetIDInput struct {
-	TargetID string `path:"target_id" maxLength:"128"`
+	TargetID string `path:"target_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type targetCreateInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		Name             string   `json:"name" minLength:"1" maxLength:"128"`
 		BaseURL          string   `json:"base_url" minLength:"1" maxLength:"1024"`
@@ -691,7 +691,7 @@ type targetCreateInput struct {
 }
 
 type targetReplaceInput struct {
-	TargetID string `path:"target_id" maxLength:"128"`
+	TargetID string `path:"target_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		Name             string   `json:"name" minLength:"1" maxLength:"128"`
 		BaseURL          string   `json:"base_url" minLength:"1" maxLength:"1024"`
@@ -703,7 +703,7 @@ type targetReplaceInput struct {
 }
 
 type targetPushInput struct {
-	TargetID string `path:"target_id" maxLength:"128"`
+	TargetID string `path:"target_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		ResourceType string `json:"resource_type" enum:"User,Group"`
 		ResourceID   string `json:"resource_id" minLength:"1" maxLength:"128"`

@@ -31,7 +31,7 @@ type systemAuditListInput struct {
 }
 
 type systemAuditEventInput struct {
-	ID             string `path:"event_id" maxLength:"64"`
+	ID             string `path:"event_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	TenantSelector string `query:"tenant_id" hidden:"true"`
 }
 
