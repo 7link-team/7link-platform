@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
@@ -81,6 +82,10 @@ type Service struct {
 	notificationMu            sync.Mutex
 	notificationCancel        context.CancelFunc
 	notificationDone          chan struct{}
+
+	notificationPollFailures      atomic.Int64
+	notificationRetryableFailures atomic.Int64
+	notificationTerminalFailures  atomic.Int64
 }
 
 type ClaimContext struct {

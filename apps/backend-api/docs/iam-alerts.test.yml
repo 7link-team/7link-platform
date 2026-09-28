@@ -57,3 +57,83 @@ tests:
       - eval_time: 8m
         alertname: IAMSCIMMetricsUnavailable
         exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'iam_audit_archive_attempt_failures_total{job="iam",instance="a"}'
+        values: '0 0 1x80'
+      - series: 'iam_audit_archive_sweep_failures_total{job="iam",instance="a"}'
+        values: '0x82'
+      - series: 'iam_audit_archive_attempt_failures_total{job="iam-sweep",instance="a"}'
+        values: '0x82'
+      - series: 'iam_audit_archive_sweep_failures_total{job="iam-sweep",instance="a"}'
+        values: '0 0 1x80'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: IAMAuditArchiveFailing
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: IAMAuditArchiveFailing
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              severity: warning
+            exp_annotations:
+              summary: Background audit archiving is failing
+              description: List archive jobs with state failed and their error_code. storage_unavailable means checking object storage reachability, credentials and retention settings; integrity_failed means verifying the tenant audit chain before retrying; sweep failures mean restoring database access. Failed jobs retry with backoff; nothing is lost yet.
+          - exp_labels:
+              job: iam-sweep
+              severity: warning
+            exp_annotations:
+              summary: Background audit archiving is failing
+              description: List archive jobs with state failed and their error_code. storage_unavailable means checking object storage reachability, credentials and retention settings; integrity_failed means verifying the tenant audit chain before retrying; sweep failures mean restoring database access. Failed jobs retry with backoff; nothing is lost yet.
+      - eval_time: 75m
+        alertname: IAMAuditArchiveFailing
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'iam_authn_notification_terminal_failures_total{job="iam",instance="a"}'
+        values: '0 0 1x30'
+      - series: 'iam_authn_notification_retryable_failures_total{job="iam",instance="a"}'
+        values: '0+1x14 14x30'
+      - series: 'iam_authn_notification_poll_failures_total{job="iam",instance="a"}'
+        values: '0x45'
+      - series: 'iam_authn_notification_terminal_failures_total{job="iam-poll",instance="a"}'
+        values: '0x45'
+      - series: 'iam_authn_notification_retryable_failures_total{job="iam-poll",instance="a"}'
+        values: '0x45'
+      - series: 'iam_authn_notification_poll_failures_total{job="iam-poll",instance="a"}'
+        values: '0+1x14 14x30'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: IAMNotificationDeliveryFailed
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              severity: critical
+            exp_annotations:
+              summary: Activation or recovery notifications were permanently abandoned
+              description: Outbox rows reached status failed and will never be delivered. Inspect their last_error, restore the notification endpoint, key or client configuration, then ask affected users to request a new activation or recovery message.
+      - eval_time: 20m
+        alertname: IAMNotificationDeliveryFailed
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: IAMNotificationDeliveryDegraded
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: IAMNotificationDeliveryDegraded
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              severity: warning
+            exp_annotations:
+              summary: Notification delivery keeps failing and retrying
+              description: Check notification endpoint reachability and response status, and database access for outbox polls. Rows exhaust their attempts and become permanently failed if this persists.
+          - exp_labels:
+              job: iam-poll
+              severity: warning
+            exp_annotations:
+              summary: Notification delivery keeps failing and retrying
+              description: Check notification endpoint reachability and response status, and database access for outbox polls. Rows exhaust their attempts and become permanently failed if this persists.
+      - eval_time: 32m
+        alertname: IAMNotificationDeliveryDegraded
+        exp_alerts: []
