@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -14,7 +15,7 @@ import (
 
 type SystemAuditFilterInput struct {
 	TenantSelector string `query:"tenant_id" hidden:"true"`
-	PrincipalID    string `query:"principal_id" maxLength:"64"`
+	PrincipalID    string `query:"principal_id" maxLength:"64" doc:"acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)"`
 	EventType      string `query:"event_type" maxLength:"64"`
 	Outcome        string `query:"outcome" enum:"success,denied,failure"`
 	TargetType     string `query:"target_type" maxLength:"64"`
@@ -75,7 +76,7 @@ func registerSystemAuditHTTP(api huma.API, service *Service, registrar *authz.Re
 		if err := rejectSystemAuditTenant(in.TenantSelector); err != nil {
 			return nil, err
 		}
-		id, err := parseAuditID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}

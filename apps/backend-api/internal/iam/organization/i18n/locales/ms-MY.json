@@ -17,7 +17,6 @@
   "dynamic_group_members_computed": "Keahlian kumpulan dinamik dikira daripada peraturan keahlian dan tidak boleh diubah secara manual. Kemas kini peraturan atau atribut ahli.",
   "group_rule_requires_dynamic_type": "Peraturan keahlian hanya boleh digunakan untuk kumpulan dinamik. Pilih jenis dinamik atau buang peraturan tersebut.",
   "invalid_group_membership_rule": "Peraturan keahlian dinamik tidak sah. Gunakan versi 1, pilih padanan semua atau mana-mana, dan berikan 1 hingga 16 syarat atribut yang disokong.",
-  "last_tenant_administrator": "Pentadbir aktif terakhir penyewa tidak boleh dibuang atau dinyahaktifkan. Tetapkan pentadbir aktif lain terlebih dahulu.",
   "invalid_group": "Data kumpulan tidak sah. Semak nama, jenis, peraturan keahlian, keterangan, status, susunan dan versi.",
   "tenant_not_found": "Penyewa yang diminta tidak ditemui. Semak pengecam penyewa dan cuba lagi.",
   "tenant_slug_exists": "Penyewa dengan slug ini telah wujud. Pilih slug penyewa lain.",

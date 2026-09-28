@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"7link.com/platform/internal/iam/core"
@@ -87,7 +86,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		"governance-list-requestable-roles", http.MethodGet, "/requestable-roles",
 		"List tenant roles available for access requests", http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), func(ctx context.Context, in *listInput) (*respx.Body[[]RequestableRole], error) {
-		tenantID, err := parseGovernanceID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -105,7 +104,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	)
 	createRequest.DefaultStatus = http.StatusCreated
 	authz.RegisterTenantMember(registrar, api, createRequest, func(ctx context.Context, in *createRequestInput) (*respx.Body[AccessRequest], error) {
-		tenantID, err := parseGovernanceID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +112,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, err
 		}
-		roleID, err := parseGovernanceID(in.Body.RoleID)
+		roleID, err := guid.RequireID(in.Body.RoleID)
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +129,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		"governance-list-my-access-requests", http.MethodGet, "/principals/{principal_id}/role-access-requests",
 		"List the current principal's tenant access requests", http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), func(ctx context.Context, in *tenantInput) (*respx.Body[[]AccessRequest], error) {
-		tenantID, err := parseGovernanceID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -149,7 +148,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		"governance-list-access-requests", http.MethodGet, "/role-access-requests",
 		"List tenant access requests for approval", http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), authz.Guard{Resource: "access_request", Verb: "view"}, func(ctx context.Context, in *listInput) (*respx.Body[[]AccessRequest], error) {
-		tenantID, err := parseGovernanceID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -224,7 +223,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 		"governance-list-access-reviews", http.MethodGet, "/role-access-reviews",
 		"List tenant access review campaigns", http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), authz.Guard{Resource: "access_review", Verb: "view"}, func(ctx context.Context, in *listInput) (*respx.Body[[]AccessReview], error) {
-		tenantID, err := parseGovernanceID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -241,7 +240,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 	)
 	createReview.DefaultStatus = http.StatusCreated
 	authz.Register(registrar, api, createReview, authz.Guard{Resource: "access_review", Verb: "create"}, func(ctx context.Context, in *createReviewInput) (*respx.Body[AccessReview], error) {
-		tenantID, err := parseGovernanceID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -261,7 +260,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 		"Get an access review and its snapshotted grants", http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), "review_id", service.resolveAccessReviewOwner, authz.Guard{Resource: "access_review", Verb: "view"}, func(ctx context.Context, in *reviewInput) (*respx.Body[AccessReview], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
-		id, err := parseGovernanceID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -281,7 +280,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 		if err != nil {
 			return nil, err
 		}
-		itemID, err := parseGovernanceID(in.ItemID)
+		itemID, err := guid.RequireID(in.ItemID)
 		if err != nil {
 			return nil, err
 		}
@@ -318,17 +317,9 @@ func operation(id, method, path, summary string, errors ...int) huma.Operation {
 	return huma.Operation{OperationID: id, Method: method, Path: path, Summary: summary, Tags: []string{"access-control"}, Errors: errors}
 }
 
-func parseGovernanceID(value string) (guid.ID, error) {
-	id, err := guid.Parse(strings.TrimSpace(value))
-	if err != nil {
-		return 0, huma.Error422UnprocessableEntity("respx.invalid_id")
-	}
-	return id, nil
-}
-
 func requestActor(ctx context.Context, resource string) (guid.ID, guid.ID, guid.ID, error) {
 	tenantID := authnext.TenantIDFromContext(ctx)
-	id, err := parseGovernanceID(resource)
+	id, err := guid.RequireID(resource)
 	if err != nil {
 		return 0, 0, 0, err
 	}
@@ -345,6 +336,9 @@ func humanPrincipal(ctx context.Context) (guid.ID, error) {
 }
 
 func governanceError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return huma.Error404NotFound(governancei18n.RequestNotFound)

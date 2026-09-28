@@ -21,8 +21,10 @@ type ResourceRef struct {
 // Ancestors describe grant provenance; ResourceIDs already include eligible
 // descendants. Consumers must not expand Ancestors into additional grants.
 type DataConstraint struct {
-	AllowAll      bool          `json:"allow_all"`
-	OwnerIDs      []string      `json:"owner_ids"`
+	AllowAll bool `json:"allow_all"`
+	// OwnerIDs are principals: rows those principals own are in scope (an
+	// owner-based data scope such as "self"). They are not organization roots.
+	OwnerIDs      []string      `json:"owner_ids" doc:"principal IDs whose own rows are in scope; not organization roots"`
 	ResourceIDs   []string      `json:"resource_ids"`
 	DepartmentIDs []string      `json:"department_ids"`
 	Ancestors     []ResourceRef `json:"ancestors"`

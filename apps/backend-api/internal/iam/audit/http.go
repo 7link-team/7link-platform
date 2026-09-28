@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	auditi18n "7link.com/platform/internal/iam/audit/i18n"
@@ -20,7 +19,7 @@ import (
 
 type listInput struct {
 	TenantID    string `path:"tenant_id" maxLength:"128"`
-	PrincipalID string `query:"principal_id" maxLength:"64"`
+	PrincipalID string `query:"principal_id" maxLength:"64" doc:"acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)"`
 	EventType   string `query:"event_type" maxLength:"64"`
 	Outcome     string `query:"outcome" enum:"success,denied,failure"`
 	TargetType  string `query:"target_type" maxLength:"64"`
@@ -47,7 +46,7 @@ type tenantInput struct {
 
 type exportInput struct {
 	TenantID    string `path:"tenant_id" maxLength:"128"`
-	PrincipalID string `query:"principal_id" maxLength:"64"`
+	PrincipalID string `query:"principal_id" maxLength:"64" doc:"acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)"`
 	EventType   string `query:"event_type" maxLength:"64"`
 	Outcome     string `query:"outcome" enum:"success,denied,failure"`
 	TargetType  string `query:"target_type" maxLength:"64"`
@@ -118,11 +117,11 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		Summary: "Get a tenant audit event", Tags: []string{"audit"},
 		Errors: []int{http.StatusNotFound, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "audit_event", Verb: "view"}, func(ctx context.Context, in *eventInput) (*respx.Body[Event], error) {
-		tenantID, err := parseAuditID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
-		id, err := parseAuditID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +137,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		Summary: "Verify the tenant audit hash chain", Tags: []string{"audit"},
 		Errors: []int{http.StatusInternalServerError},
 	}, authz.Guard{Resource: "audit_event", Verb: "view"}, func(ctx context.Context, in *tenantInput) (*respx.Body[Integrity], error) {
-		tenantID, err := parseAuditID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +153,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		Summary: "Anchor the current verified audit head into the WORM store", Tags: []string{"audit"},
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity, http.StatusServiceUnavailable, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "audit_event", Verb: "anchor"}, func(ctx context.Context, in *tenantInput) (*respx.Body[Anchor], error) {
-		tenantID, err := parseAuditID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -170,7 +169,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		Summary: "Get WORM governance status: retention policy, chain integrity and anchor chain", Tags: []string{"audit"},
 		Errors: []int{http.StatusUnprocessableEntity, http.StatusServiceUnavailable, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "audit_event", Verb: "view"}, func(ctx context.Context, in *governanceInput) (*respx.Body[Governance], error) {
-		tenantID, err := parseAuditID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -188,7 +187,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		Summary: "Configure the tenant audit retention policy", Tags: []string{"audit"},
 		Errors: []int{http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "audit_event", Verb: "manage"}, func(ctx context.Context, in *retentionInput) (*respx.Body[RetentionPolicy], error) {
-		tenantID, err := parseAuditID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -204,7 +203,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		Summary: "Anchor and sign the current verified audit head as a WORM root commitment", Tags: []string{"audit"},
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity, http.StatusServiceUnavailable, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "audit_event", Verb: "manage"}, func(ctx context.Context, in *tenantInput) (*respx.Body[Anchor], error) {
-		tenantID, err := parseAuditID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -214,21 +213,6 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, anchor), nil
 	})
-}
-
-func parseAuditID(value string) (guid.ID, error) {
-	id, err := guid.Parse(strings.TrimSpace(value))
-	if err != nil {
-		return 0, huma.Error422UnprocessableEntity("respx.invalid_id")
-	}
-	return id, nil
-}
-
-func parseOptionalAuditID(value string) (guid.ID, error) {
-	if strings.TrimSpace(value) == "" {
-		return 0, nil
-	}
-	return parseAuditID(value)
 }
 
 func listFilter(in *listInput) (Filter, error) {
@@ -245,7 +229,7 @@ func exportFilter(in *exportInput) (Filter, error) {
 }
 
 func filterValues(tenant, principal, eventType, outcome, targetType, target, from, to string) (Filter, error) {
-	tenantID, err := parseAuditID(tenant)
+	tenantID, err := guid.RequireID(tenant)
 	if err != nil {
 		return Filter{}, err
 	}
@@ -253,11 +237,11 @@ func filterValues(tenant, principal, eventType, outcome, targetType, target, fro
 }
 
 func filterFields(tenantID guid.ID, principal, eventType, outcome, targetType, target, from, to string) (Filter, error) {
-	principalID, err := parseOptionalAuditID(principal)
+	principalID, err := guid.OptionalID(principal)
 	if err != nil {
 		return Filter{}, err
 	}
-	targetID, err := parseOptionalAuditID(target)
+	targetID, err := guid.OptionalID(target)
 	if err != nil {
 		return Filter{}, err
 	}
@@ -295,6 +279,9 @@ func exportOperation() huma.Operation {
 }
 
 func auditAPIError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, ErrArchiveNotFound):
 		return huma.Error404NotFound(auditi18n.ArchiveNotFound)

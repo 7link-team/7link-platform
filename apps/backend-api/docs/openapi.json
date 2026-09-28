@@ -927,6 +927,7 @@
             "type": "string"
           },
           "owner_id": {
+            "description": "principal who owns the review (an active member of the tenant)",
             "pattern": "^[1-9][0-9]*$",
             "type": [
               "string",
@@ -3255,6 +3256,7 @@
             ]
           },
           "owner_ids": {
+            "description": "principal IDs whose own rows are in scope; not organization roots",
             "items": {
               "type": "string"
             },
@@ -44308,10 +44310,12 @@
         "operationId": "audit-system-list-events",
         "parameters": [
           {
+            "description": "acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)",
             "explode": false,
             "in": "query",
             "name": "principal_id",
             "schema": {
+              "description": "acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)",
               "maxLength": 64,
               "type": "string"
             }
@@ -44581,10 +44585,12 @@
         "operationId": "audit-system-export-events",
         "parameters": [
           {
+            "description": "acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)",
             "explode": false,
             "in": "query",
             "name": "principal_id",
             "schema": {
+              "description": "acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)",
               "maxLength": 64,
               "type": "string"
             }
@@ -46970,10 +46976,12 @@
         "operationId": "organization-system-platform-departments",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -47085,10 +47093,12 @@
         "operationId": "iam-system-platform-members",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -47219,10 +47229,12 @@
         "operationId": "iam-system-platform-member-create",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -47321,10 +47333,12 @@
         "operationId": "iam-system-platform-member-disable",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -47421,10 +47435,12 @@
         "operationId": "iam-system-platform-member",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -47521,10 +47537,12 @@
         "operationId": "iam-system-platform-member-update",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -47633,10 +47651,12 @@
         "operationId": "iam-system-platform-member-roles",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -47758,10 +47778,12 @@
         "operationId": "iam-system-platform-roles",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -47894,10 +47916,12 @@
         "operationId": "iam-system-platform-role-member-remove",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -48004,10 +48028,12 @@
         "operationId": "iam-system-platform-role-member-add",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -48252,6 +48278,7 @@
     },
     "/system/principals": {
       "get": {
+        "description": "Lists global accounts of one category (user when omitted). The system_account permission covers every category; the System accounts menu shows only the system category.",
         "operationId": "identity-system-list-principals",
         "parameters": [
           {
@@ -50748,10 +50775,12 @@
         "operationId": "organization-system-tenant-departments",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -50863,10 +50892,12 @@
         "operationId": "iam-system-tenant-members",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -50997,10 +51028,12 @@
         "operationId": "iam-system-tenant-member-create",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -51099,10 +51132,12 @@
         "operationId": "iam-system-tenant-member-disable",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -51199,10 +51234,12 @@
         "operationId": "iam-system-tenant-member",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -51299,10 +51336,12 @@
         "operationId": "iam-system-tenant-member-update",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -51411,10 +51450,12 @@
         "operationId": "iam-system-tenant-member-roles",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -51536,10 +51577,12 @@
         "operationId": "iam-system-tenant-roles",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -51672,10 +51715,12 @@
         "operationId": "iam-system-tenant-role-member-remove",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -51782,10 +51827,12 @@
         "operationId": "iam-system-tenant-role-member-add",
         "parameters": [
           {
+            "description": "organization root the route acts in: a tenant or an operating platform",
             "in": "path",
             "name": "owner_id",
             "required": true,
             "schema": {
+              "description": "organization root the route acts in: a tenant or an operating platform",
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
@@ -53454,10 +53501,12 @@
             }
           },
           {
+            "description": "acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)",
             "explode": false,
             "in": "query",
             "name": "principal_id",
             "schema": {
+              "description": "acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)",
               "maxLength": 64,
               "type": "string"
             }
@@ -53753,10 +53802,12 @@
             }
           },
           {
+            "description": "acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)",
             "explode": false,
             "in": "query",
             "name": "principal_id",
             "schema": {
+              "description": "acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)",
               "maxLength": 64,
               "type": "string"
             }

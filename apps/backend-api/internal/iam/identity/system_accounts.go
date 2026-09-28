@@ -30,7 +30,7 @@ func (s *Service) AccountWorkspaces(ctx context.Context, target guid.ID) ([]Acco
 		return nil, ErrUnavailable
 	}
 	for _, action := range s.permissionRegistry.All() {
-		if action.Scope != "platform" {
+		if action.Scope != authz.ActionScopeSystem {
 			continue
 		}
 		allowed, err := s.avatarPermissions.CheckPlatform(ctx, action.Code, target)
@@ -178,7 +178,7 @@ func registerSystemPrincipalHTTP(api huma.API, service *Service, registrar *auth
 		OperationID: "identity-system-principal-workspaces", Method: http.MethodGet, Path: "/system/principals/{principal_id}/workspaces",
 		Summary: "List an account's admitted workspaces", Tags: []string{"system"}, Errors: []int{http.StatusNotFound},
 	}, authz.Guard{Resource: "system_account", Verb: "view"}, func(ctx context.Context, in *systemPrincipalIDInput) (*respx.Body[[]AccountWorkspace], error) {
-		id, err := requireID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -188,14 +188,18 @@ func registerSystemPrincipalHTTP(api huma.API, service *Service, registrar *auth
 		}
 		return respx.OK(ctx, items), nil
 	})
+	// The system_account resource spans every global account. The "System
+	// accounts" menu (/system/accounts/system) is one category of this list,
+	// selected by the category parameter, not a separate resource.
 	authz.RegisterPlatform(registrar, api, huma.Operation{
 		OperationID: "identity-system-list-principals", Method: http.MethodGet, Path: "/system/principals",
 		Summary: "List global accounts", Tags: []string{"system"},
+		Description: "Lists global accounts of one category (user when omitted). The system_account permission covers every category; the System accounts menu shows only the system category.",
 	}, authz.Guard{Resource: "system_account", Verb: "view"}, func(ctx context.Context, in *systemPrincipalListInput) (*respx.Body[principalListData], error) {
 		var ownerID guid.ID
 		if in.OwnerID != "" {
 			var err error
-			ownerID, err = requireID(in.OwnerID)
+			ownerID, err = guid.RequireID(in.OwnerID)
 			if err != nil {
 				return nil, err
 			}
@@ -225,7 +229,7 @@ func registerSystemPrincipalHTTP(api huma.API, service *Service, registrar *auth
 		OperationID: "identity-system-get-principal", Method: http.MethodGet, Path: "/system/principals/{principal_id}",
 		Summary: "Get a global account", Tags: []string{"system"}, Errors: []int{http.StatusNotFound},
 	}, authz.Guard{Resource: "system_account", Verb: "view"}, func(ctx context.Context, in *systemPrincipalIDInput) (*respx.Body[PrincipalView], error) {
-		id, err := requireID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -239,7 +243,7 @@ func registerSystemPrincipalHTTP(api huma.API, service *Service, registrar *auth
 		OperationID: "identity-system-update-principal", Method: http.MethodPatch, Path: "/system/principals/{principal_id}",
 		Summary: "Update a global account profile", Tags: []string{"system"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "system_account", Verb: "update"}, func(ctx context.Context, in *systemPrincipalUpdateInput) (*respx.Body[PrincipalView], error) {
-		id, err := requireID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}

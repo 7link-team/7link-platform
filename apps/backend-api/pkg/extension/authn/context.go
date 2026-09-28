@@ -50,6 +50,11 @@ func SubjectFromContext(ctx context.Context) (string, bool) {
 	return claims.Subject, true
 }
 
+// TenantIDFromContext returns the organization root the request is authorized
+// in: a tenant on tenant routes, or an operating platform on operating-platform
+// routes, whose guard rewrites Claims.TenantID to the platform. It is zero on
+// routes that bind no root. Callers that must tell the two kinds apart resolve
+// the root's kind rather than assume a tenant.
 func TenantIDFromContext(ctx context.Context) guid.ID {
 	claims, _ := FromContext(ctx)
 	if claims == nil {
@@ -58,6 +63,9 @@ func TenantIDFromContext(ctx context.Context) guid.ID {
 	return claims.TenantID
 }
 
+// EntityIDFromContext returns the entity inside the organization root the
+// request is authorized for, or zero when the route binds none (operating-
+// platform routes always clear it).
 func EntityIDFromContext(ctx context.Context) guid.ID {
 	claims, _ := FromContext(ctx)
 	if claims == nil {
@@ -66,6 +74,9 @@ func EntityIDFromContext(ctx context.Context) guid.ID {
 	return claims.EntityID
 }
 
+// PrincipalIDFromContext returns the principal whose authority the request
+// carries. Under an account view that is the viewed account, not the operator
+// who opened the view; audit attribution uses ActorIDFromContext instead.
 func PrincipalIDFromContext(ctx context.Context) guid.ID {
 	claims, _ := FromContext(ctx)
 	if claims == nil {

@@ -130,17 +130,6 @@ type VersionedInput struct {
 	IfMatch string `header:"If-Match" doc:"version of the task being replaced, as returned in ETag"`
 }
 
-// taskID parses a globally unique task identifier. Malformed identifiers are
-// invalid input; a well-formed identifier that has no row is reported later as
-// not found by the owning repository.
-func taskID(raw string) (guid.ID, error) {
-	id, err := guid.Parse(raw)
-	if err != nil || id.Zero() {
-		return 0, huma.Error422UnprocessableEntity("respx.invalid_id")
-	}
-	return id, nil
-}
-
 type createInput struct {
 	RawBody []byte
 	Body    struct {
@@ -219,6 +208,9 @@ func parseIfMatch(raw string) (int, error) {
 // HTTP semantics, so the envelope's code mirrors the status and this module
 // defines no business codes of its own.
 func httpError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, ErrForbidden):
 		return huma.Error403Forbidden(todoi18n.Forbidden)
@@ -318,7 +310,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		Summary:     "Read a task",
 		Tags:        []string{"todos"},
 	}, authz.Guard{Resource: "todo", Verb: "view", FilterData: true}, func(ctx context.Context, in *IDInput) (*taskBody, error) {
-		id, err := taskID(in.TodoID)
+		id, err := guid.RequireID(in.TodoID)
 		if err != nil {
 			return nil, err
 		}
@@ -341,7 +333,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		if err != nil {
 			return nil, err
 		}
-		id, err := taskID(in.TodoID)
+		id, err := guid.RequireID(in.TodoID)
 		if err != nil {
 			return nil, err
 		}
@@ -369,7 +361,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		if err != nil {
 			return nil, err
 		}
-		id, err := taskID(in.TodoID)
+		id, err := guid.RequireID(in.TodoID)
 		if err != nil {
 			return nil, err
 		}
@@ -391,7 +383,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		if err != nil {
 			return nil, err
 		}
-		id, err := taskID(in.TodoID)
+		id, err := guid.RequireID(in.TodoID)
 		if err != nil {
 			return nil, err
 		}

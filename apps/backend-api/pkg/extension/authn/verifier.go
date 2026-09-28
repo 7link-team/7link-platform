@@ -252,6 +252,10 @@ type Claims struct {
 	EmailVerified     bool      `json:"email_verified,omitempty"`
 	// Subject is the OIDC protocol subject. Internal database identity and
 	// authorization scope use the snowflake fields below.
+	//
+	// TenantID is the organization root the request is authorized in: a
+	// tenant, or an operating platform once the operating-platform guard has
+	// rewritten it to the platform. It is not necessarily a tenant.
 	TenantID          guid.ID        `json:"tenant_id,omitempty"`
 	EntityID          guid.ID        `json:"entity_id,omitempty"`
 	PrincipalID       guid.ID        `json:"principal_id,omitempty"`

@@ -361,17 +361,17 @@ func (r *Repository) assertPlatformAdministratorRemains(ctx context.Context) err
 }
 
 func (s *Service) lockPlatformAccessMutation(ctx context.Context, repo *Repository, target guid.ID) (guid.ID, error) {
-	actor := authn.PrincipalIDFromContext(ctx)
-	owner, err := repo.lockSystemAuthorization(ctx, actor, target)
+	principal := authn.PrincipalIDFromContext(ctx)
+	owner, err := repo.lockSystemAuthorization(ctx, principal, target)
 	if err != nil {
 		return 0, err
 	}
-	if !actor.Zero() {
+	if !principal.Zero() {
 		names, err := repo.authorizationTables()
 		if err != nil {
 			return 0, err
 		}
-		full, err := systemFullAdministrator(ctx, repo.writer(), names.Tables.PlatformAdministrators.String(), actor)
+		full, err := systemFullAdministrator(ctx, repo.writer(), names.Tables.PlatformAdministrators.String(), principal)
 		if err != nil {
 			return 0, err
 		}

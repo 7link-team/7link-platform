@@ -1291,13 +1291,13 @@ func TestConsentSelfServiceRefusesARequestThatCarriesBothCredentials(t *testing.
 // value it cannot read has to be refused here rather than arriving downstream as
 // a zero, which every tenant and client predicate would then match on nothing.
 func TestParseOAuthIDRefusesWhatIsNotAnIdentifier(t *testing.T) {
-	id, err := parseOAuthID("  42  ")
+	id, err := guid.RequireID("  42  ")
 	require.NoError(t, err)
 	assert.Equal(t, guid.ID(42), id, "surrounding whitespace is trimmed, not rejected")
 
 	for _, value := range []string{"0", "-1", "latest", "4.2", "9999999999999999999"} {
 		t.Run(value, func(t *testing.T) {
-			_, err := parseOAuthID(value)
+			_, err := guid.RequireID(value)
 			var status huma.StatusError
 			require.ErrorAs(t, err, &status)
 			assert.Equal(t, http.StatusUnprocessableEntity, status.GetStatus())
@@ -1335,4 +1335,24 @@ func TestDecodeOAuthDocumentReportsValuesThatCannotRoundTrip(t *testing.T) {
 	require.Len(t, document.Keys, 1)
 	assert.Equal(t, "signing-1", document.Keys[0].KeyID)
 	assert.Equal(t, "Ed25519", document.Keys[0].Curve)
+}
+
+// TestErrorMappersKeepChosenStatus is this package's half of the set-wide rule in
+// tests/architecture (domainErrorMappers): an error that already chose its
+// status, headers included, leaves every mapper unchanged instead of becoming 500.
+func TestErrorMappersKeepChosenStatus(t *testing.T) {
+	chosen := huma.ErrorWithHeaders(huma.Error422UnprocessableEntity(respx.InvalidID), http.Header{"Retry-After": {"1"}})
+	for name, mapper := range map[string]func(error) error{
+		"consentError":      func(err error) error { return consentError(t.Context(), err) },
+		"oauthClientError":  func(err error) error { return oauthClientError(err, true) },
+		"oauthConsentError": oauthConsentError,
+	} {
+		mapped := mapper(chosen)
+		var status huma.StatusError
+		require.ErrorAs(t, mapped, &status, name)
+		assert.Equal(t, http.StatusUnprocessableEntity, status.GetStatus(), name)
+		var headers huma.HeadersError
+		require.ErrorAs(t, mapped, &headers, name)
+		assert.Equal(t, "1", headers.GetHeaders().Get("Retry-After"), name)
+	}
 }

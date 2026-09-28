@@ -56,7 +56,7 @@ type oauthWebFixture struct {
 func newOAuthWebFixture() *oauthWebFixture {
 	return &oauthWebFixture{
 		session: &authnext.Claims{
-			Issuer: "https://iam.example", Subject: "101", PrincipalID: 101,
+			Issuer: "https://iam.example", Subject: "101", SubjectType: authnext.SubjectTypePrincipal, PrincipalID: 101,
 			AuthTime: oauthTestNow.Add(-time.Minute), ACR: 1, AMR: []string{"pwd"},
 		},
 		tokens: make(map[string]*authnext.Claims),

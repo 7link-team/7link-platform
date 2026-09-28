@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	corei18n "7link.com/platform/internal/iam/core/i18n"
+	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -46,10 +47,10 @@ func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) 
 	authz.RegisterAuthenticated(registrar, a, huma.Operation{OperationID: "iam-system-my-permissions", Method: http.MethodGet, Path: "/system/permissions", Summary: "Return my system permission codes", Tags: []string{"system"}}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]string], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		if view := claims.AccountView; view != nil && (view.ScopeType != "system" || view.ScopeID != systemScopeID) {
-			return nil, huma.Error403Forbidden("forbidden")
+			return nil, huma.Error403Forbidden(respx.Forbidden)
 		}
 		codes, err := svc.EffectivePermissions(ctx, 0, claims.PrincipalID)
 		if err != nil {
@@ -80,7 +81,7 @@ func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) 
 		Summary: "Grant or restrict system authorization for an account", Tags: []string{"system"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, in *putPlatformAdministratorInput) (*respx.Body[PlatformAdministratorView], error) {
-		principalID, err := requireID(in.PrincipalID)
+		principalID, err := guid.RequireID(in.PrincipalID)
 		if err != nil {
 			return nil, err
 		}
@@ -96,7 +97,7 @@ func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) 
 		Summary: "Revoke system authorization for an account", Tags: []string{"system"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, in *platformPrincipalInput) (*respx.Body[MutationResult], error) {
-		principalID, err := requireID(in.PrincipalID)
+		principalID, err := guid.RequireID(in.PrincipalID)
 		if err != nil {
 			return nil, err
 		}
@@ -111,6 +112,9 @@ func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) 
 // platformAPIError maps platform authorization failures before delegating to
 // the shared IAM error contract.
 func platformAPIError(operation string, err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, ErrPlatformAdministratorNotFound):
 		return huma.Error404NotFound(corei18n.PlatformAdministratorNotFound)

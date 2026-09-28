@@ -6,6 +6,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"7link.com/platform/pkg/extension/huma/respx"
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,4 +52,49 @@ func TestHTTPEndpointsHideGeneratorFailures(t *testing.T) {
 	registerHTTP(api, func() (int64, error) { return 0, assert.AnError })
 	assert.Equal(t, http.StatusServiceUnavailable, api.Get("/guid").Code)
 	assert.Equal(t, http.StatusServiceUnavailable, api.Get("/guid/2").Code)
+}
+
+func TestRequestIDsParseThroughOneRule(t *testing.T) {
+	for _, test := range []struct {
+		value    string
+		optional bool
+		valid    bool
+		want     ID
+	}{
+		{value: "12", valid: true, want: 12},
+		{value: " 12", valid: true, want: 12},
+		{value: "12 ", valid: true, want: 12},
+		{value: `"12"`, valid: true, want: 12},
+		{value: "9223372036854775807", valid: true, want: 9223372036854775807},
+		{value: ""},
+		{value: "   "},
+		{value: "0"},
+		{value: "-12"},
+		{value: "null"},
+		{value: "abc"},
+		{value: "1.5"},
+		{value: "12x"},
+		{value: "9223372036854775808"},
+		{value: "", optional: true, valid: true},
+		{value: "  ", optional: true, valid: true},
+		{value: "7", optional: true, valid: true, want: 7},
+		{value: "0", optional: true},
+		{value: "abc", optional: true},
+	} {
+		parse := RequireID
+		if test.optional {
+			parse = OptionalID
+		}
+		id, err := parse(test.value)
+		if test.valid {
+			require.NoError(t, err, "%q optional=%v", test.value, test.optional)
+			assert.Equal(t, test.want, id, "%q", test.value)
+			continue
+		}
+		var status huma.StatusError
+		require.ErrorAs(t, err, &status, "%q optional=%v", test.value, test.optional)
+		assert.Equal(t, http.StatusUnprocessableEntity, status.GetStatus(), "%q", test.value)
+		assert.Equal(t, respx.InvalidID, status.Error(), "%q", test.value)
+		assert.Zero(t, id, "%q", test.value)
+	}
 }

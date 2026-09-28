@@ -10,25 +10,26 @@ import (
 	corei18n "7link.com/platform/internal/iam/core/i18n"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/huma/respx"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestHTTPIDParsingRejectsUnusableIdentifiers(t *testing.T) {
-	id, err := requireID(" 42 ")
+	id, err := guid.RequireID(" 42 ")
 	require.NoError(t, err)
 	assert.Equal(t, guid.ID(42), id)
 
 	for _, value := range []string{"", "0", "-1", "abc", "18446744073709551616"} {
-		_, err := requireID(value)
+		_, err := guid.RequireID(value)
 		assertHTTPError(t, err, http.StatusUnprocessableEntity, "respx.invalid_id")
 	}
 
-	id, err = optionalID("  ")
+	id, err = guid.OptionalID("  ")
 	require.NoError(t, err)
 	assert.True(t, id.Zero())
-	_, err = optionalID("bad")
+	_, err = guid.OptionalID("bad")
 	assertHTTPError(t, err, http.StatusUnprocessableEntity, "respx.invalid_id")
 
 	ids, err := requireIDs([]string{"1", "2"})
@@ -207,4 +208,23 @@ func assertHTTPError(t *testing.T, err error, status int, message string) {
 	require.ErrorAs(t, err, &statusError)
 	assert.Equal(t, status, statusError.GetStatus())
 	assert.Equal(t, message, statusError.Error())
+}
+
+// TestErrorMappersKeepChosenStatus is this package's half of the set-wide rule in
+// tests/architecture (domainErrorMappers): an error that already chose its
+// status, headers included, leaves every mapper unchanged instead of becoming 500.
+func TestErrorMappersKeepChosenStatus(t *testing.T) {
+	chosen := huma.ErrorWithHeaders(huma.Error422UnprocessableEntity(respx.InvalidID), http.Header{"Retry-After": {"1"}})
+	for name, mapper := range map[string]func(error) error{
+		"apiError":         func(err error) error { return apiError("test", err) },
+		"platformAPIError": func(err error) error { return platformAPIError("test", err) },
+	} {
+		mapped := mapper(chosen)
+		var status huma.StatusError
+		require.ErrorAs(t, mapped, &status, name)
+		assert.Equal(t, http.StatusUnprocessableEntity, status.GetStatus(), name)
+		var headers huma.HeadersError
+		require.ErrorAs(t, mapped, &headers, name)
+		assert.Equal(t, "1", headers.GetHeaders().Get("Retry-After"), name)
+	}
 }

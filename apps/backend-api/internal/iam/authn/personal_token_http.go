@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	authni18n "7link.com/platform/internal/iam/authn/i18n"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -47,11 +48,14 @@ type personalTokenPermissionsInput struct {
 }
 
 func personalTokenError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	if errors.Is(err, errPersonalTokenInput) {
-		return huma.Error422UnprocessableEntity("invalid_personal_token")
+		return huma.Error422UnprocessableEntity(authni18n.InvalidPersonalToken)
 	}
 	if errors.Is(err, authnext.ErrUnavailable) {
-		return huma.Error503ServiceUnavailable("authentication_unavailable")
+		return huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable)
 	}
 	return authenticationError(err)
 }
@@ -63,7 +67,7 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 		Path:     "/principals/{principal_id}/personal-token-preparations", Summary: "Prepare exact permissions and expiry for fresh verification", Tags: []string{"account"}, Errors: []int{401, 403, 422, 500, 503}},
 		func(ctx context.Context, in *personalTokenPrepareInput) (*respx.Body[PersonalTokenPreparation], error) {
 			if in.Authorization != "" {
-				return nil, huma.Error401Unauthorized("unauthorized")
+				return nil, huma.Error401Unauthorized(respx.Unauthorized)
 			}
 			result, err := service.PreparePersonalToken(ctx, in.Cookie, in.Body)
 			if err != nil {
@@ -76,7 +80,7 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 		Path:     "/principals/{principal_id}/personal-tokens", Summary: "Create a tenant-scoped personal token; return its secret once", Tags: []string{"account"}, Errors: []int{401, 403, 422, 500, 503}},
 		func(ctx context.Context, in *personalTokenCreateInput) (*respx.Body[PersonalTokenCreated], error) {
 			if in.Authorization != "" {
-				return nil, huma.Error401Unauthorized("unauthorized")
+				return nil, huma.Error401Unauthorized(respx.Unauthorized)
 			}
 			result, err := service.CreatePersonalToken(ctx, in.Cookie, in.Body.Proof, in.Body.PersonalTokenRequest)
 			if err != nil {
@@ -88,7 +92,7 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 		Path: "/principals/{principal_id}/personal-tokens", Summary: "List the current browser principal's personal token metadata", Tags: []string{"account"}, Errors: []int{401, 422, 500, 503}},
 		func(ctx context.Context, in *personalTokenListInput) (*respx.Body[[]PersonalTokenView], error) {
 			if in.Authorization != "" {
-				return nil, huma.Error401Unauthorized("unauthorized")
+				return nil, huma.Error401Unauthorized(respx.Unauthorized)
 			}
 			rows, total, err := service.ListPersonalTokens(ctx, in.Cookie, in.Offset, in.Limit)
 			if err != nil {
@@ -100,7 +104,7 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 		Path: "/principals/{principal_id}/personal-tokens/{token_id}", Summary: "Revoke an owned personal token", Tags: []string{"account"}, Errors: []int{401, 403, 500, 503}},
 		func(ctx context.Context, in *personalTokenDeleteInput) (*respx.Body[map[string]bool], error) {
 			if in.Authorization != "" {
-				return nil, huma.Error401Unauthorized("unauthorized")
+				return nil, huma.Error401Unauthorized(respx.Unauthorized)
 			}
 			id, err := guid.Parse(in.ID)
 			if err != nil {

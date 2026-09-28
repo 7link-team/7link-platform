@@ -26,6 +26,9 @@ type FieldAccess struct {
 	DenyRoles  []guid.ID `json:"deny_roles" maxItems:"64"`
 }
 
+// FieldPolicy is a stored restriction of one declared field: who may read and
+// write it, and how a read it denies is rendered (omitted or redacted). It can
+// only narrow what the Field declaration allows.
 type FieldPolicy struct {
 	Read  FieldAccess `json:"read"`
 	Write FieldAccess `json:"write"`
@@ -79,6 +82,8 @@ func (a FieldAccess) allows(roles []guid.ID) bool {
 	return false
 }
 
+// FieldDecision is the effective access to one field for one caller: how it
+// is read (allow, omit, redact) and whether it may be set on create or update.
 type FieldDecision struct {
 	Read   string `json:"read" enum:"allow,omit,redact"`
 	Create bool   `json:"create"`
@@ -113,6 +118,8 @@ type FieldConstraint struct {
 	Fields   map[string]FieldDecision `json:"fields"`
 }
 
+// FieldPermissionChecker supplies the field decisions for one caller:
+// FieldConstraint(ctx, tenantID, entityID, resource, principalID).
 type FieldPermissionChecker interface {
 	FieldConstraint(context.Context, guid.ID, guid.ID, string, guid.ID) (FieldConstraint, error)
 }

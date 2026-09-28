@@ -45,7 +45,7 @@ func archiveTenant(platform bool, raw string) (guid.ID, error) {
 		}
 		return 0, nil
 	}
-	id, err := parseAuditID(raw)
+	id, err := guid.RequireID(raw)
 	if err != nil {
 		return 0, err
 	}
@@ -128,7 +128,7 @@ func registerArchiveHTTP(api huma.API, service *Service, registrar *authz.Regist
 		if err != nil {
 			return nil, err
 		}
-		id, err := parseAuditID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -145,7 +145,7 @@ func registerArchiveHTTP(api huma.API, service *Service, registrar *authz.Regist
 		if err != nil {
 			return nil, err
 		}
-		id, err := parseAuditID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -162,7 +162,7 @@ func registerArchiveHTTP(api huma.API, service *Service, registrar *authz.Regist
 		if err != nil {
 			return nil, err
 		}
-		id, err := parseAuditID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -234,7 +234,7 @@ func registerPlatformArchiveByID(api huma.API, service *Service, registrar *auth
 	registerArchiveOperation(api, registrar, true, "export", huma.Operation{
 		OperationID: "audit-retry-archive", Method: http.MethodPost, Path: "/audit/archives/{archive_id}/attempts", Summary: "Create a new archive attempt",
 	}, func(ctx context.Context, in *platformArchiveInput) (*respx.Body[ArchiveJob], error) {
-		id, err := parseAuditID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -247,7 +247,7 @@ func registerPlatformArchiveByID(api huma.API, service *Service, registrar *auth
 	registerArchiveOperation(api, registrar, true, "view", huma.Operation{
 		OperationID: "audit-verify-archive", Method: http.MethodPost, Path: "/audit/archives/{archive_id}/verifications", Summary: "Create an archived-object verification",
 	}, func(ctx context.Context, in *platformArchiveInput) (*respx.Body[ArchiveObject], error) {
-		id, err := parseAuditID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -260,7 +260,7 @@ func registerPlatformArchiveByID(api huma.API, service *Service, registrar *auth
 	download := exportOperation()
 	download.OperationID, download.Path, download.Summary = "audit-download-archive", "/audit/archives/{archive_id}/content", "Download the verified immutable audit archive content"
 	registerArchiveOperation(api, registrar, true, "export", download, func(ctx context.Context, in *platformArchiveInput) (*huma.StreamResponse, error) {
-		id, err := parseAuditID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}

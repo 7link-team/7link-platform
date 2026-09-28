@@ -28,7 +28,7 @@ const (
 )
 
 func TestLegacyCredentialAndSessionCompleteLogin(t *testing.T) {
-	adapter, err := New(Config{RPID: "example.com", DisplayName: "7Link", Origins: []string{"https://example.com"}})
+	adapter, err := New(Config{RPID: "example.com", DisplayName: "Example Platform", Origins: []string{"https://example.com"}})
 	require.NoError(t, err)
 	handle := []byte("legacy-user-handle")
 	user, err := NewUser(handle, "alice", "Alice", [][]byte{[]byte(legacyCredential)})

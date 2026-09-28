@@ -31,6 +31,9 @@ type Repository struct {
 	revisions *RevisionStore
 	now       func() time.Time
 	foreign   *foreignTables
+	// systemMenus is shared with the module, which publishes it for other
+	// modules to contribute their system pages to.
+	systemMenus *SystemMenus
 	repositoryTables
 }
 
@@ -46,6 +49,7 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source) *Repository {
 		runtime: runtime, ids: ids, revisions: revisions,
 		now:              func() time.Time { return time.Now().UTC() },
 		foreign:          &foreignTables{},
+		systemMenus:      &SystemMenus{},
 		repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())},
 	}
 }

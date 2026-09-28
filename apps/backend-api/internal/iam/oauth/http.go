@@ -235,14 +235,12 @@ type clientSecretData struct {
 }
 
 type consentListInput struct {
-	Cookie        string `header:"Cookie"`
-	Authorization string `header:"Authorization" hidden:"true"`
+	Cookie string `header:"Cookie"`
 }
 
 type consentRevokeInput struct {
-	Cookie        string `header:"Cookie"`
-	Authorization string `header:"Authorization" hidden:"true"`
-	ClientID      string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
+	Cookie   string `header:"Cookie"`
+	ClientID string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
 }
 
 type consentRevokeData struct {
@@ -262,7 +260,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 			claims, _ := authnext.FromContext(ctx.Context())
 			scheme, raw, bearer := strings.Cut(strings.TrimSpace(ctx.Header("Authorization")), " ")
 			if (bearer && strings.EqualFold(scheme, "Bearer") && strings.HasPrefix(raw, "avt_")) || (claims != nil && claims.AccountView != nil) {
-				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "invalid_request")
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden, oauthi18n.InvalidRequest)
 				return
 			}
 		}
@@ -354,6 +352,9 @@ func registerConsentHTTP(api huma.API, service *Service) {
 // authentication. Telling the two apart would let a caller probe which
 // challenges exist.
 func consentError(ctx context.Context, err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	if errors.Is(err, ErrInvalidRequest) || errors.Is(err, authnext.ErrInvalidCredentials) {
 		return oauthError(ctx, http.StatusBadRequest, "invalid_request")
 	}
@@ -547,7 +548,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		OperationID: "oauth-list-clients", Method: http.MethodGet, Path: "/oauth-clients",
 		Summary: "List tenant OAuth clients", Tags: []string{"applications"},
 	}, authz.Guard{Resource: "oauth_client", Verb: "view"}, func(ctx context.Context, in *clientListInput) (*respx.Body[[]Client], error) {
-		tenantID, err := parseOAuthID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -561,7 +562,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		OperationID: "oauth-create-client", Method: http.MethodPost, Path: "/oauth-clients",
 		Summary: "Create a tenant OAuth client", Tags: []string{"applications"}, DefaultStatus: http.StatusCreated,
 	}, authz.Guard{Resource: "oauth_client", Verb: "create"}, func(ctx context.Context, in *clientCreateInput) (*respx.Body[clientCreateData], error) {
-		tenantID, err := parseOAuthID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -579,7 +580,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		OperationID: "oauth-update-client", Method: http.MethodPut, Path: "/oauth-clients/{client_id}",
 		Summary: "Replace a tenant OAuth client", Tags: []string{"applications"},
 	}, "client_id", service.resolveClientOwner, authz.Guard{Resource: "oauth_client", Verb: "update"}, func(ctx context.Context, in *clientUpdateInput) (*respx.Body[Client], error) {
-		id, err := parseOAuthID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -599,7 +600,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		Path: "/oauth-clients/{client_id}/credentials", Summary: "Create and activate a confidential OAuth client credential",
 		Tags: []string{"applications"}, Errors: []int{http.StatusNotFound},
 	}, "client_id", service.resolveClientOwner, authz.Guard{Resource: "oauth_client", Verb: "update"}, func(ctx context.Context, in *clientIDInput) (*respx.Body[clientSecretData], error) {
-		id, err := parseOAuthID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -614,7 +615,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		OperationID: "oauth-delete-client", Method: http.MethodDelete, Path: "/oauth-clients/{client_id}",
 		Summary: "Delete a tenant OAuth client", Tags: []string{"applications"}, Errors: []int{http.StatusNotFound},
 	}, "client_id", service.resolveClientOwner, authz.Guard{Resource: "oauth_client", Verb: "delete"}, func(ctx context.Context, in *clientIDInput) (*respx.Body[clientDeleteData], error) {
-		id, err := parseOAuthID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -636,10 +637,7 @@ func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registra
 		Summary: "List the applications the caller has authorized", Tags: []string{"account"},
 		Errors: []int{http.StatusUnauthorized, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *consentListInput) (*respx.Body[[]GrantedConsent], error) {
-		principalID, err := consentPrincipal(ctx, in.Cookie, in.Authorization)
-		if err != nil {
-			return nil, err
-		}
+		principalID := authnext.PrincipalIDFromContext(ctx)
 		consents, err := service.ListConsents(ctx, principalID)
 		if err != nil {
 			return nil, oauthConsentError(err)
@@ -652,11 +650,8 @@ func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registra
 		Summary: "Withdraw the caller's authorization of one application",
 		Errors:  []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *consentRevokeInput) (*respx.Body[consentRevokeData], error) {
-		principalID, err := consentPrincipal(ctx, in.Cookie, in.Authorization)
-		if err != nil {
-			return nil, err
-		}
-		clientID, err := parseOAuthID(in.ClientID)
+		principalID := authnext.PrincipalIDFromContext(ctx)
+		clientID, err := guid.RequireID(in.ClientID)
 		if err != nil {
 			return nil, err
 		}
@@ -667,39 +662,24 @@ func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registra
 	})
 }
 
-// consentPrincipal reads the subject a self-service consent operation acts for.
-// Taking it from the request instead would turn "revoke my consent" into
-// "revoke anyone's consent", so the token is the only source there can be. The
-// route is session-only like the other self-service operations, so a bearer
-// credential is refused rather than accepted as a second way to be the caller.
-func consentPrincipal(ctx context.Context, cookie, authorization string) (guid.ID, error) {
-	claims, ok := authnext.FromContext(ctx)
-	if authorization != "" || cookie == "" || !ok || claims == nil || claims.PrincipalID.Zero() {
-		return 0, huma.Error401Unauthorized(oauthi18n.InvalidToken)
-	}
-	return claims.PrincipalID, nil
-}
-
 // oauthConsentError reports a grant the caller does not hold as absent. There is
 // nothing to leak by being specific -- a caller can only ever address their own
 // consents here -- but a revocation that finds nothing to revoke is a mistyped
 // client, not a server fault.
 func oauthConsentError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	if errors.Is(err, ErrInvalidRequest) {
 		return huma.Error404NotFound(oauthi18n.ConsentNotFound)
 	}
 	return huma.Error500InternalServerError(oauthi18n.ServerError)
 }
 
-func parseOAuthID(value string) (guid.ID, error) {
-	id, err := guid.Parse(strings.TrimSpace(value))
-	if err != nil {
-		return 0, huma.Error422UnprocessableEntity(oauthi18n.InvalidClientConfiguration)
-	}
-	return id, nil
-}
-
 func oauthClientError(err error, notFound bool) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	if errors.Is(err, ErrInvalidRequest) {
 		if notFound {
 			return huma.Error404NotFound(oauthi18n.ClientNotFound)

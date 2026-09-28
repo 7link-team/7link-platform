@@ -13,7 +13,6 @@
   "passkey_attestation_rejected": "The passkey attestation was rejected by the configured authenticator policy. Use an approved security key or contact an administrator.",
   "passkey_limit_reached": "The account has reached the registered passkey limit. Remove an unused passkey before adding another.",
   "passkey_not_found": "The requested passkey was not found. Refresh the passkey list and choose an existing passkey.",
-  "csrf_rejected": "The request failed cross-site request forgery protection. Refresh the page and try again.",
   "recovery_request_rejected": "The password recovery request origin is not allowed. Use the configured application address or contact an administrator.",
   "password_recovery_unavailable": "Password recovery could not complete the request. Retry later; contact an administrator if the problem continues.",
   "invalid_recovery_request": "The password recovery request is invalid. Correct the request data and try again.",
@@ -35,5 +34,6 @@
   "registration_unavailable": "Self-service registration is not available. Contact an administrator for access or try again later.",
   "captcha_unavailable": "The registration challenge is temporarily unavailable. Retry later.",
   "captcha_invalid": "The registration challenge is invalid or expired. Request a new challenge and try again.",
-  "registration_conflict": "The registration request conflicts with the current account state. Sign in, recover the account, or contact an administrator."
+  "registration_conflict": "The registration request conflicts with the current account state. Sign in, recover the account, or contact an administrator.",
+  "invalid_personal_token": "The personal access token request is invalid. Check the token name, permissions and expiry, then try again."
 }

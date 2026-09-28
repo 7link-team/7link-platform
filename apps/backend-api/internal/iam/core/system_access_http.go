@@ -96,7 +96,7 @@ func registerSystemAccessHTTP(api huma.API, svc *Service, registrar *authz.Regis
 	})
 	authz.RegisterPlatform(registrar, api, op("iam-system-role-create", http.MethodPost, "/system/roles", "Create a system role"), authz.Guard{Resource: "system_role", Verb: "create"}, func(ctx context.Context, in *systemRoleCreateInput) (*respx.Body[APISystemRole], error) {
 		if reservedSystemRoleName(in.Body.Name) {
-			return nil, huma.Error422UnprocessableEntity("respx.invalid_argument")
+			return nil, huma.Error422UnprocessableEntity(respx.InvalidArgument)
 		}
 		var role Role
 		err := svc.systemAccessMutation(ctx, 0, "system_role_create", func(tx *Service, owner guid.ID) error {
@@ -110,7 +110,7 @@ func registerSystemAccessHTTP(api huma.API, svc *Service, registrar *authz.Regis
 		return respx.OK(ctx, systemRoleView(role)), nil
 	})
 	authz.RegisterPlatform(registrar, api, op("iam-system-role", http.MethodGet, "/system/roles/{role_id}", "Get a system role"), authz.Guard{Resource: "system_role", Verb: "view"}, func(ctx context.Context, in *roleInput) (*respx.Body[APISystemRole], error) {
-		id, err := requireID(in.RoleID)
+		id, err := guid.RequireID(in.RoleID)
 		if err != nil {
 			return nil, err
 		}
@@ -125,7 +125,7 @@ func registerSystemAccessHTTP(api huma.API, svc *Service, registrar *authz.Regis
 		return respx.OK(ctx, systemRoleView(role)), nil
 	})
 	authz.RegisterPlatform(registrar, api, op("iam-system-role-update", http.MethodPatch, "/system/roles/{role_id}", "Update a system role"), authz.Guard{Resource: "system_role", Verb: "update"}, func(ctx context.Context, in *updateRoleInput) (*respx.Body[APISystemRole], error) {
-		id, err := requireID(in.RoleID)
+		id, err := guid.RequireID(in.RoleID)
 		if err != nil {
 			return nil, err
 		}
@@ -161,7 +161,7 @@ func registerSystemAccessHTTP(api huma.API, svc *Service, registrar *authz.Regis
 		return respx.OK(ctx, systemRoleView(result)), nil
 	})
 	authz.RegisterPlatform(registrar, api, op("iam-system-role-delete", http.MethodDelete, "/system/roles/{role_id}", "Delete a system role"), authz.Guard{Resource: "system_role", Verb: "delete"}, func(ctx context.Context, in *roleInput) (*respx.Body[MutationResult], error) {
-		id, err := requireID(in.RoleID)
+		id, err := guid.RequireID(in.RoleID)
 		if err != nil {
 			return nil, err
 		}
@@ -187,7 +187,7 @@ func registerSystemAccessHTTP(api huma.API, svc *Service, registrar *authz.Regis
 		return respx.OK(ctx, actions), nil
 	})
 	authz.RegisterPlatform(registrar, api, op("iam-system-role-permission-grants", http.MethodGet, "/system/roles/{role_id}/permission-grants", "List system role permission grants"), authz.Guard{Resource: "system_role", Verb: "view"}, func(ctx context.Context, in *roleInput) (*respx.Body[[]APIRolePermissionGrant], error) {
-		id, err := requireID(in.RoleID)
+		id, err := guid.RequireID(in.RoleID)
 		if err != nil {
 			return nil, err
 		}
@@ -218,7 +218,7 @@ func registerSystemAccessHTTP(api huma.API, svc *Service, registrar *authz.Regis
 			verb = "revoke"
 		}
 		authz.RegisterPlatform(registrar, api, op("iam-system-role-permission-"+verb, method, "/system/roles/{role_id}/permissions/{permission_code}", "Change a system role permission"), authz.Guard{Resource: "system_role", Verb: "grant_permission"}, func(ctx context.Context, in *systemRolePermissionInput) (*respx.Body[MutationResult], error) {
-			id, err := requireID(in.RoleID)
+			id, err := guid.RequireID(in.RoleID)
 			if err != nil {
 				return nil, err
 			}
@@ -245,7 +245,7 @@ func registerSystemAccessHTTP(api huma.API, svc *Service, registrar *authz.Regis
 		})
 	}
 	authz.RegisterPlatform(registrar, api, op("iam-system-role-members", http.MethodGet, "/system/roles/{role_id}/members", "List direct system role assignments"), authz.Guard{Resource: "system_role", Verb: "view"}, func(ctx context.Context, in *listRoleMembersInput) (*respx.Body[[]guid.ID], error) {
-		id, err := requireID(in.RoleID)
+		id, err := guid.RequireID(in.RoleID)
 		if err != nil {
 			return nil, err
 		}
@@ -276,11 +276,11 @@ func registerSystemAccessHTTP(api huma.API, svc *Service, registrar *authz.Regis
 			verb = "remove"
 		}
 		authz.RegisterPlatform(registrar, api, op("iam-system-role-member-"+verb, method, "/system/roles/{role_id}/members/{principal_id}", "Change a direct system role assignment"), authz.Guard{Resource: "system_role", Verb: "manage_member"}, func(ctx context.Context, in *systemRoleMemberInput) (*respx.Body[MutationResult], error) {
-			role, err := requireID(in.RoleID)
+			role, err := guid.RequireID(in.RoleID)
 			if err != nil {
 				return nil, err
 			}
-			principal, err := requireID(in.PrincipalID)
+			principal, err := guid.RequireID(in.PrincipalID)
 			if err != nil {
 				return nil, err
 			}
@@ -337,7 +337,7 @@ func registerSystemMemberHTTP(api huma.API, svc *Service, registrar *authz.Regis
 		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
 	authz.RegisterPlatform(registrar, api, op("iam-system-member", http.MethodGet, "/system/members/{principal_id}", "Get a system account membership"), authz.Guard{Resource: "system_member", Verb: "view"}, func(ctx context.Context, in *systemMemberInput) (*respx.Body[APISystemMember], error) {
-		id, err := requireID(in.PrincipalID)
+		id, err := guid.RequireID(in.PrincipalID)
 		if err != nil {
 			return nil, err
 		}
@@ -356,11 +356,11 @@ func registerSystemMemberHTTP(api huma.API, svc *Service, registrar *authz.Regis
 		return respx.OK(ctx, item), nil
 	})
 	authz.RegisterPlatform(registrar, api, op("iam-system-member-create", http.MethodPost, "/system/members", "Add an existing account to system administration"), authz.Guard{Resource: "system_member", Verb: "create"}, func(ctx context.Context, in *systemMemberCreateInput) (*respx.Body[APISystemMember], error) {
-		id, err := requireID(in.Body.PrincipalID)
+		id, err := guid.RequireID(in.Body.PrincipalID)
 		if err != nil {
 			return nil, err
 		}
-		department, err := optionalID(in.Body.DepartmentID)
+		department, err := guid.OptionalID(in.Body.DepartmentID)
 		if err != nil {
 			return nil, err
 		}
@@ -380,7 +380,7 @@ func registerSystemMemberHTTP(api huma.API, svc *Service, registrar *authz.Regis
 		return respx.OK(ctx, item), nil
 	})
 	authz.RegisterPlatform(registrar, api, op("iam-system-member-update", http.MethodPatch, "/system/members/{principal_id}", "Update a system membership and primary department"), authz.Guard{Resource: "system_member", Verb: "update"}, func(ctx context.Context, in *systemMemberUpdateInput) (*respx.Body[APISystemMember], error) {
-		id, err := requireID(in.PrincipalID)
+		id, err := guid.RequireID(in.PrincipalID)
 		if err != nil {
 			return nil, err
 		}
@@ -400,7 +400,7 @@ func registerSystemMemberHTTP(api huma.API, svc *Service, registrar *authz.Regis
 				current.Status = *in.Body.Status
 			}
 			if in.Body.DepartmentID != nil {
-				department, err := optionalID(*in.Body.DepartmentID)
+				department, err := guid.OptionalID(*in.Body.DepartmentID)
 				if err != nil {
 					return err
 				}
@@ -428,7 +428,7 @@ func registerSystemMemberHTTP(api huma.API, svc *Service, registrar *authz.Regis
 		return respx.OK(ctx, item), nil
 	})
 	authz.RegisterPlatform(registrar, api, op("iam-system-member-roles", http.MethodGet, "/system/members/{principal_id}/roles", "List direct system roles assigned to an account"), authz.Guard{Resource: "system_member", Verb: "view"}, func(ctx context.Context, in *systemMemberInput) (*respx.Body[[]guid.ID], error) {
-		id, err := requireID(in.PrincipalID)
+		id, err := guid.RequireID(in.PrincipalID)
 		if err != nil {
 			return nil, err
 		}

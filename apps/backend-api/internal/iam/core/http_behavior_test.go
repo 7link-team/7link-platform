@@ -204,6 +204,7 @@ func newHTTPIAMHarness(t *testing.T, platformAllowed bool) httpIAMHarness {
 	require.NoError(t, modulepkg.Provide[authz.TokenVerifier](services, httpTokenVerifier{principalID: actorID}))
 	require.NoError(t, services.Seal())
 	require.NoError(t, module.InjectServices(services))
+	contributeFileMenu(t, &module.systemMenus)
 	module.lockPrincipal = func(ctx context.Context, tx *gorm.DB, id guid.ID) error {
 		return tx.WithContext(ctx).Table("sl_iam_principals").Where("id = ?", id).Update("updated_at", gorm.Expr("updated_at")).Error
 	}

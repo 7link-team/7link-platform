@@ -262,7 +262,7 @@ func TestOrganizationErrorMappings(t *testing.T) {
 		{"group dynamic", groupError, ErrDynamicGroupMembers, 409, organizationi18n.DynamicGroupMembersComputed},
 		{"group rule type", groupError, ErrGroupRuleType, 422, organizationi18n.GroupRuleRequiresDynamic},
 		{"group rule invalid", groupError, ErrGroupRuleInvalid, 422, organizationi18n.InvalidGroupRule},
-		{"group last admin", groupError, core.ErrLastTenantAdministrator, 409, organizationi18n.LastTenantAdministrator},
+		{"group last admin", groupError, core.ErrLastTenantAdministrator, 409, corei18n.LastTenantAdministrator},
 		{"group invalid", groupError, ErrGroupInvalid, 422, organizationi18n.InvalidGroup},
 		{"tenant missing", tenantError, ErrTenantNotFound, 404, organizationi18n.TenantNotFound},
 		{"tenant duplicate", tenantError, ErrTenantSlugConflict, 409, organizationi18n.TenantSlugExists},
@@ -296,13 +296,13 @@ func TestOrganizationErrorMappings(t *testing.T) {
 
 func TestParseOrganizationIDs(t *testing.T) {
 	t.Parallel()
-	id, err := parseOrganizationID(" 42 ")
+	id, err := guid.RequireID(" 42 ")
 	require.NoError(t, err)
 	assert.EqualValues(t, 42, id)
-	optional, err := parseOptionalOrganizationID(" ")
+	optional, err := guid.OptionalID(" ")
 	require.NoError(t, err)
 	assert.Zero(t, optional)
-	_, err = parseOrganizationID("invalid")
+	_, err = guid.RequireID("invalid")
 	assert.Error(t, err)
 	ctx := authnext.WithClaims(t.Context(), &authnext.Claims{TenantID: 1})
 	_, _, err = organizationResourceIDs(ctx, "bad")
@@ -621,4 +621,25 @@ func TestOrganizationHTTPMapsDirectoryDomainErrorsWithoutWriting(t *testing.T) {
 	var members int64
 	require.NoError(t, h.db.Table(h.table("iam_group_members")).Where("tenant_id = 1 AND group_id = 401").Count(&members).Error)
 	assert.Equal(t, int64(1), members)
+}
+
+// TestErrorMappersKeepChosenStatus is this package's half of the set-wide rule in
+// tests/architecture (domainErrorMappers): an error that already chose its
+// status, headers included, leaves every mapper unchanged instead of becoming 500.
+func TestErrorMappersKeepChosenStatus(t *testing.T) {
+	chosen := huma.ErrorWithHeaders(huma.Error422UnprocessableEntity(respx.InvalidID), http.Header{"Retry-After": {"1"}})
+	for name, mapper := range map[string]func(error) error{
+		"departmentError": departmentError,
+		"groupError":      groupError,
+		"invitationError": invitationError,
+		"tenantError":     tenantError,
+	} {
+		mapped := mapper(chosen)
+		var status huma.StatusError
+		require.ErrorAs(t, mapped, &status, name)
+		assert.Equal(t, http.StatusUnprocessableEntity, status.GetStatus(), name)
+		var headers huma.HeadersError
+		require.ErrorAs(t, mapped, &headers, name)
+		assert.Equal(t, "1", headers.GetHeaders().Get("Retry-After"), name)
+	}
 }

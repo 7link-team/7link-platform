@@ -4,7 +4,6 @@
   "identity_unavailable": "Perkhidmatan identiti tidak dapat menyelesaikan permintaan. Cuba lagi kemudian; hubungi pentadbir jika masalah berterusan.",
   "invalid_principal": "Data prinsipal tidak sah. Semak nama log masuk, profil, e-mel dan keperluan kata laluan.",
   "invalid_service_account": "Data akaun perkhidmatan tidak sah. Semak nama, status, tamat tempoh, skop bukti kelayakan dan keadaan penyewa.",
-  "last_tenant_administrator": "Pentadbir aktif terakhir penyewa tidak boleh dibuang atau dinyahaktifkan. Tetapkan pentadbir aktif lain terlebih dahulu.",
   "login_name_exists": "Nama log masuk ini telah digunakan. Pilih nama log masuk lain.",
   "principal_anonymization_confirmation": "Pengesahan tidak sepadan dengan nama log masuk prinsipal ini. Pemadaman tidak boleh dibatalkan, jadi ia hanya diteruskan untuk pemanggil yang menamakan subjek yang betul.",
   "principal_anonymized": "Prinsipal ini telah pun dipadam. Rekodnya ialah batu nisan dan tidak boleh dikembalikan.",

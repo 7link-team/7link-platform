@@ -283,13 +283,13 @@ func TestAuditAPIErrorMappingsAndFilterHelpers(t *testing.T) {
 		assert.Contains(t, status.Error(), test.key)
 	}
 
-	id, err := parseAuditID(" 42 ")
+	id, err := guid.RequireID(" 42 ")
 	require.NoError(t, err)
 	assert.Equal(t, guid.ID(42), id)
-	id, err = parseOptionalAuditID(" ")
+	id, err = guid.OptionalID(" ")
 	require.NoError(t, err)
 	assert.Zero(t, id)
-	_, err = parseAuditID("bad")
+	_, err = guid.RequireID("bad")
 	assert.Error(t, err)
 	parsed, err := optionalTime("2026-09-03T20:00:00Z")
 	require.NoError(t, err)
@@ -324,4 +324,22 @@ func TestAuditHTTPAnchorAndSignedRootSuccess(t *testing.T) {
 	signed := api.Post(header + "/audit/root-signatures")
 	require.Equal(t, http.StatusOK, signed.Code, signed.Body.String())
 	assert.Contains(t, signed.Body.String(), `"root_signature"`)
+}
+
+// TestErrorMappersKeepChosenStatus is this package's half of the set-wide rule in
+// tests/architecture (domainErrorMappers): an error that already chose its
+// status, headers included, leaves every mapper unchanged instead of becoming 500.
+func TestErrorMappersKeepChosenStatus(t *testing.T) {
+	chosen := huma.ErrorWithHeaders(huma.Error422UnprocessableEntity(respx.InvalidID), http.Header{"Retry-After": {"1"}})
+	for name, mapper := range map[string]func(error) error{
+		"auditAPIError": auditAPIError,
+	} {
+		mapped := mapper(chosen)
+		var status huma.StatusError
+		require.ErrorAs(t, mapped, &status, name)
+		assert.Equal(t, http.StatusUnprocessableEntity, status.GetStatus(), name)
+		var headers huma.HeadersError
+		require.ErrorAs(t, mapped, &headers, name)
+		assert.Equal(t, "1", headers.GetHeaders().Get("Retry-After"), name)
+	}
 }

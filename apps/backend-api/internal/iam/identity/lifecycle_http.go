@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	identityi18n "7link.com/platform/internal/iam/identity/i18n"
+	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 )
@@ -67,7 +68,7 @@ func registerPrincipalLifecycleHTTP(api huma.API, service *Service, registrar *a
 		Tags:   []string{"platform"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, guard, func(ctx context.Context, in *platformLifecycleInput) (*respx.Body[PrincipalLifecycleStatus], error) {
-		id, err := requireID(in.PrincipalID)
+		id, err := guid.RequireID(in.PrincipalID)
 		if err != nil {
 			return nil, err
 		}
@@ -90,7 +91,7 @@ func registerPrincipalLifecycleHTTP(api huma.API, service *Service, registrar *a
 		Tags:   []string{"platform"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, guard, func(ctx context.Context, in *platformRetentionInput) (*respx.Body[PrincipalLifecycle], error) {
-		id, err := requireID(in.PrincipalID)
+		id, err := guid.RequireID(in.PrincipalID)
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +115,7 @@ func registerPrincipalLifecycleHTTP(api huma.API, service *Service, registrar *a
 		Tags:   []string{"platform"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
 	}, guard, func(ctx context.Context, in *platformAnonymizeInput) (*respx.Body[PrincipalLifecycle], error) {
-		id, err := requireID(in.PrincipalID)
+		id, err := guid.RequireID(in.PrincipalID)
 		if err != nil {
 			return nil, err
 		}

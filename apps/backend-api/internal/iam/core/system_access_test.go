@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	corei18n "7link.com/platform/internal/iam/core/i18n"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -165,7 +166,7 @@ func TestSystemMenuUpgradeCorrectsHistoricalAccountTranslations(t *testing.T) {
 			require.NoError(t, h.db.Exec("INSERT INTO sl_iam_tenants(id,scope_kind,slug,name,status,version,created_at,updated_at) VALUES(99,'system',?,'System','active',1,?,?)", SystemRootSlug, repositoryTestTime, repositoryTestTime).Error)
 			defaults := legacySystemDefaultMenus()
 			if alreadyUpgraded {
-				defaults = SystemDefaultMenus()
+				defaults = h.repository.systemMenuDefaults()
 			}
 			historical := map[string]string{"en-US": "Global accounts", "zh-CN": "全局账号", "ms-MY": "Akaun global"}
 			for i := range defaults {
@@ -204,6 +205,63 @@ func TestSystemMenuUpgradeCorrectsHistoricalAccountTranslations(t *testing.T) {
 				require.Equal(t, account, stored)
 				_, err = h.service.GetMenu(t.Context(), 99, removed)
 				require.Error(t, err)
+			}
+		})
+	}
+}
+
+// A system root seeded between 211e2d4 and e36c727 stored the organization
+// branch as "Operations management". The upgrade renames it, replaces the
+// translations only when they are the ones seeded then, and never touches a
+// root that already has the current branch.
+func TestSystemMenuUpgradeRenamesTheRetiredOperationsBranch(t *testing.T) {
+	custom := map[string]string{"en-US": "Our operations", "zh-CN": "我们的运营", "ms-MY": "Operasi kami"}
+	for name, test := range map[string]struct {
+		translations map[string]string
+		keepCurrent  bool
+		label        string
+		want         map[string]string
+	}{
+		"seeded":         {translations: retiredOrganizationBranchTranslations, label: "Organization management", want: corei18n.Translations("menu_system_organization_management")},
+		"customized":     {translations: custom, label: "Organization management", want: custom},
+		"current exists": {translations: retiredOrganizationBranchTranslations, keepCurrent: true, label: retiredOrganizationBranch, want: retiredOrganizationBranchTranslations},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newCoreServiceHarness(t)
+			seedTenantAndPrincipal(t, h.db, "sl_", 1, 11)
+			require.NoError(t, h.db.Exec("INSERT INTO sl_iam_tenants(id,scope_kind,slug,name,status,version,created_at,updated_at) VALUES(99,'system',?,'System','active',1,?,?)", SystemRootSlug, repositoryTestTime, repositoryTestTime).Error)
+			defaults := h.repository.systemMenuDefaults()
+			if test.keepCurrent {
+				defaults = append(defaults, Menu{ID: 90, Label: retiredOrganizationBranch, Translations: test.translations, Icon: "network", SortOrder: 90, Status: MenuActive})
+			}
+			for i := range defaults {
+				if defaults[i].ID == 4 && !test.keepCurrent {
+					defaults[i].Label, defaults[i].Translations = retiredOrganizationBranch, test.translations
+				}
+			}
+			_, err := h.repository.createMenus(t.Context(), 99, defaults, repositoryTestTime)
+			require.NoError(t, err)
+			for range 2 {
+				bootstrapSystemTestAccess(t, h)
+				menus, err := h.repository.ListMenus(t.Context(), 99, false)
+				require.NoError(t, err)
+				var branch Menu
+				children := 0
+				for _, menu := range menus {
+					if menu.Route == "" && menu.ParentID.Zero() && menu.Icon == "network" && (menu.SortOrder == 40) != test.keepCurrent {
+						branch = menu
+					}
+				}
+				for _, menu := range menus {
+					if !branch.ID.Zero() && menu.ParentID == branch.ID {
+						children++
+					}
+				}
+				require.Equal(t, test.label, branch.Label)
+				require.Equal(t, test.want, branch.Translations)
+				if !test.keepCurrent {
+					require.Equal(t, 2, children, "the branch keeps its pages")
+				}
 			}
 		})
 	}

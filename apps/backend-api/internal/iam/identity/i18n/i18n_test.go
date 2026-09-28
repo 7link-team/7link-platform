@@ -16,7 +16,7 @@ func TestRegisterPublishesEveryIdentityLocale(t *testing.T) {
 	require.NoError(t, Register())
 
 	keys := []string{
-		PrincipalNotFound, LoginNameExists, InvalidPrincipal, LastTenantAdministrator,
+		PrincipalNotFound, LoginNameExists, InvalidPrincipal,
 		IdentityUnavailable, ServiceAccountNotFound, ServiceAccountCredentialNotFound,
 		ServiceAccountVersionConflict, ServiceAccountCredentialLimit, InvalidServiceAccount,
 		LifecycleVersionConflict, PrincipalRetained, PrincipalAnonymized,
@@ -34,7 +34,7 @@ func TestRegisterPublishesEveryIdentityLocale(t *testing.T) {
 
 func TestEveryLocaleCarriesExactlyTheDeclaredKeys(t *testing.T) {
 	declared := []string{
-		PrincipalNotFound, LoginNameExists, InvalidPrincipal, LastTenantAdministrator,
+		PrincipalNotFound, LoginNameExists, InvalidPrincipal,
 		IdentityUnavailable, ServiceAccountNotFound, ServiceAccountCredentialNotFound,
 		ServiceAccountVersionConflict, ServiceAccountCredentialLimit, InvalidServiceAccount,
 		LifecycleVersionConflict, PrincipalRetained, PrincipalAnonymized,

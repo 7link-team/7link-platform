@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	authni18n "7link.com/platform/internal/iam/authn/i18n"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -42,11 +43,11 @@ func sessionTenant(ctx context.Context, web *Service, in *meInput, claims *authn
 		return claims, nil
 	}
 	if web == nil || web.memberTenant == nil {
-		return nil, huma.Error503ServiceUnavailable("authentication_unavailable")
+		return nil, huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable)
 	}
 	tenantID, err := web.memberTenant(ctx, claims.PrincipalID, 0)
 	if err != nil {
-		return nil, huma.Error503ServiceUnavailable("authentication_unavailable")
+		return nil, huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable)
 	}
 	resolved := *claims
 	resolved.OrganizationID, resolved.TenantID = "", tenantID
@@ -402,7 +403,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	}, func(ctx context.Context, in *meInput) (*respx.Body[meOutput], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		claims, err := sessionTenant(ctx, web, in, claims)
 		if err != nil {
@@ -439,7 +440,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	}, func(ctx context.Context, _ *captchaInput) (*respx.Body[captchaOutput], error) {
 		out, err := web.IssueCaptcha()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("captcha_unavailable")
+			return nil, huma.Error500InternalServerError(authni18n.CaptchaUnavailable)
 		}
 		return respx.OK(ctx, *out), nil
 	})
@@ -450,7 +451,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusServiceUnavailable, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *registrationInput) (*respx.Body[map[string]bool], error) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
-			return nil, huma.Error403Forbidden("registration_request_rejected")
+			return nil, huma.Error403Forbidden(authni18n.RegistrationRequestRejected)
 		}
 		if !web.VerifyCaptcha(in.Body.CaptchaType, in.Body.CaptchaID, in.Body.CaptchaAnswer) {
 			return nil, huma.Error422UnprocessableEntity("captcha_invalid")
@@ -458,13 +459,13 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		if err := web.RegisterForEntry(ctx, in.Body.Email, in.Body.Password, in.Body.DisplayName, in.Body.Entry); err != nil {
 			switch {
 			case errors.Is(err, authnext.ErrInvalidRegistration):
-				return nil, huma.Error422UnprocessableEntity("invalid_registration")
+				return nil, huma.Error422UnprocessableEntity(authni18n.InvalidRegistration)
 			case errors.Is(err, authnext.ErrRegistrationDisabled):
-				return nil, huma.Error503ServiceUnavailable("registration_unavailable")
+				return nil, huma.Error503ServiceUnavailable(authni18n.RegistrationUnavailable)
 			case errors.Is(err, authnext.ErrRegistrationConflict):
 				return respx.OK(ctx, map[string]bool{"accepted": true}), nil
 			default:
-				return nil, huma.Error500InternalServerError("authentication_unavailable")
+				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
@@ -476,19 +477,19 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *loginInput) (*loginOutput, error) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
-			return nil, huma.Error403Forbidden("login_request_rejected")
+			return nil, huma.Error403Forbidden(authni18n.LoginRequestRejected)
 		}
 		result, err := web.BeginLogin(ctx, in.Body.LoginName, in.Body.Password, in.Body.ReturnURL)
 		if err != nil {
 			switch {
 			case errors.Is(err, authnext.ErrReturnURL):
-				return nil, huma.Error422UnprocessableEntity("return_url_not_allowed")
+				return nil, huma.Error422UnprocessableEntity(authni18n.ReturnURLNotAllowed)
 			case errors.Is(err, authnext.ErrAdditionalVerification):
-				return nil, huma.Error409Conflict("additional_verification_required")
+				return nil, huma.Error409Conflict(authni18n.AdditionalVerificationRequired)
 			case errors.Is(err, authnext.ErrInvalidCredentials):
-				return nil, huma.Error401Unauthorized("invalid_login")
+				return nil, huma.Error401Unauthorized(authni18n.InvalidLogin)
 			default:
-				return nil, huma.Error500InternalServerError("authentication_unavailable")
+				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
 			}
 		}
 		return loginResponse(ctx, web, result), nil
@@ -500,14 +501,14 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *mfaLoginInput) (*loginOutput, error) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
-			return nil, huma.Error403Forbidden("login_request_rejected")
+			return nil, huma.Error403Forbidden(authni18n.LoginRequestRejected)
 		}
 		result, err := web.VerifyLoginMFA(ctx, in.Body.ChallengeID, in.Body.Code)
 		if err != nil {
 			if errors.Is(err, authnext.ErrInvalidMFA) || errors.Is(err, authnext.ErrMFAChallenge) {
-				return nil, huma.Error401Unauthorized("invalid_mfa_challenge")
+				return nil, huma.Error401Unauthorized(authni18n.InvalidMFAChallenge)
 			}
-			return nil, huma.Error500InternalServerError("authentication_unavailable")
+			return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
 		}
 		return loginResponse(ctx, web, result), nil
 	})
@@ -517,19 +518,19 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Summary:  "Create WebAuthn authentication options for passkey login", Tags: []string{"authentication"}, Errors: []int{http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passkeyLoginBeginInput) (*respx.Body[passkeyAssertionOptions], error) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
-			return nil, huma.Error403Forbidden("passkey_request_rejected")
+			return nil, huma.Error403Forbidden(authni18n.PasskeyRequestRejected)
 		}
 		options, err := web.BeginPasskeyLogin(ctx, in.Origin, in.Body.ReturnURL)
 		if err != nil {
 			switch {
 			case errors.Is(err, ErrCSRF):
-				return nil, huma.Error403Forbidden("passkey_request_rejected")
+				return nil, huma.Error403Forbidden(authni18n.PasskeyRequestRejected)
 			case errors.Is(err, authnext.ErrReturnURL):
-				return nil, huma.Error422UnprocessableEntity("return_url_not_allowed")
+				return nil, huma.Error422UnprocessableEntity(authni18n.ReturnURLNotAllowed)
 			case errors.Is(err, authnext.ErrPasskeyDisabled):
-				return nil, huma.Error503ServiceUnavailable("passkey_unavailable")
+				return nil, huma.Error503ServiceUnavailable(authni18n.PasskeyUnavailable)
 			default:
-				return nil, huma.Error500InternalServerError("authentication_unavailable")
+				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
 			}
 		}
 		return respx.OK(ctx, passkeyAssertionOptions{
@@ -544,7 +545,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Summary:  "Verify a WebAuthn assertion and log in", Tags: []string{"authentication"}, Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passkeyFinishInput) (*loginOutput, error) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
-			return nil, huma.Error403Forbidden("passkey_request_rejected")
+			return nil, huma.Error403Forbidden(authni18n.PasskeyRequestRejected)
 		}
 		result, err := web.FinishPasskeyLogin(
 			ctx, in.Origin, in.Body.ChallengeID, json.RawMessage(in.Body.Credential),
@@ -552,11 +553,11 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		if err != nil {
 			switch {
 			case errors.Is(err, authnext.ErrPasskeyChallenge), errors.Is(err, authnext.ErrPasskeyCredential):
-				return nil, huma.Error401Unauthorized("invalid_passkey_challenge")
+				return nil, huma.Error401Unauthorized(authni18n.InvalidPasskeyChallenge)
 			case errors.Is(err, authnext.ErrPasskeyDisabled):
-				return nil, huma.Error503ServiceUnavailable("passkey_unavailable")
+				return nil, huma.Error503ServiceUnavailable(authni18n.PasskeyUnavailable)
 			default:
-				return nil, huma.Error500InternalServerError("authentication_unavailable")
+				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
 			}
 		}
 		return loginResponse(ctx, web, result), nil
@@ -567,7 +568,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *meInput) (*respx.Body[authnext.BrowserSession], error) {
 		if strings.TrimSpace(in.Authorization) != "" || currentSessionHash(in.Cookie, web.web.CookieName) == "" {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		output, err := web.GetSession(ctx, "", in.Cookie, currentSessionHash(in.Cookie, web.web.CookieName))
 		if err != nil {
@@ -592,14 +593,14 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *logoutInput) (*logoutOutput, error) {
 		if strings.TrimSpace(in.Authorization) != "" {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
 		if err := web.ValidateCSRF(http.MethodDelete, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		logoutURL, err := web.Logout(ctx, in.Cookie)
 		if err != nil {
-			return nil, huma.Error503ServiceUnavailable("authentication_unavailable")
+			return nil, huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable)
 		}
 		return &logoutOutput{SetCookie: web.ClearCookie(), Body: respx.OK(ctx, logoutData{LogoutURL: logoutURL}).Body}, nil
 	})
@@ -620,7 +621,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *sessionMutationInput) (*respx.Body[map[string]bool], error) {
 		if err := web.ValidateCSRF(http.MethodDelete, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		if err := web.RevokeSession(ctx, in.Authorization, in.Cookie, in.ID); err != nil {
 			return nil, authenticationError(err)
@@ -633,7 +634,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *logoutInput) (*logoutOutput, error) {
 		if err := web.ValidateCSRF(http.MethodDelete, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		if err := web.LogoutAll(ctx, in.Authorization, in.Cookie); err != nil {
 			return nil, authenticationError(err)
@@ -646,7 +647,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *passwordChangeInput) (*respx.Body[map[string]bool], error) {
 		if err := web.ValidateCSRF(http.MethodPatch, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		if err := web.ChangePassword(ctx, in.Authorization, in.Cookie, in.Body.CurrentPassword, in.Body.NewPassword); err != nil {
 			return nil, authenticationError(err)
@@ -660,16 +661,16 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passwordRecoveryStartInput) (*respx.Body[map[string]bool], error) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
-			return nil, huma.Error403Forbidden("recovery_request_rejected")
+			return nil, huma.Error403Forbidden(authni18n.RecoveryRequestRejected)
 		}
 		if err := web.BeginPasswordRecoveryForEntry(ctx, in.Body.Identifier, in.Body.Entry); err != nil {
 			switch {
 			case errors.Is(err, authnext.ErrRecoveryDisabled):
-				return nil, huma.Error503ServiceUnavailable("password_recovery_unavailable")
+				return nil, huma.Error503ServiceUnavailable(authni18n.PasswordRecoveryUnavailable)
 			case errors.Is(err, authnext.ErrInvalidRecovery):
-				return nil, huma.Error422UnprocessableEntity("invalid_recovery_request")
+				return nil, huma.Error422UnprocessableEntity(authni18n.InvalidRecoveryRequest)
 			default:
-				return nil, huma.Error503ServiceUnavailable("password_recovery_unavailable")
+				return nil, huma.Error503ServiceUnavailable(authni18n.PasswordRecoveryUnavailable)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
@@ -681,18 +682,18 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusBadRequest, http.StatusConflict, http.StatusForbidden, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passwordRecoveryCompleteInput) (*respx.Body[map[string]bool], error) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
-			return nil, huma.Error403Forbidden("recovery_request_rejected")
+			return nil, huma.Error403Forbidden(authni18n.RecoveryRequestRejected)
 		}
 		if err := web.CompletePasswordRecovery(ctx, in.Body.Token, in.Body.NewPassword); err != nil {
 			switch {
 			case errors.Is(err, authnext.ErrRecoveryDisabled):
-				return nil, huma.Error503ServiceUnavailable("password_recovery_unavailable")
+				return nil, huma.Error503ServiceUnavailable(authni18n.PasswordRecoveryUnavailable)
 			case errors.Is(err, authnext.ErrPasswordReused):
-				return nil, huma.Error409Conflict("password_reused")
+				return nil, huma.Error409Conflict(authni18n.PasswordReused)
 			case errors.Is(err, authnext.ErrInvalidRecovery):
-				return nil, huma.Error400BadRequest("invalid_recovery_credential")
+				return nil, huma.Error400BadRequest(authni18n.InvalidRecoveryCredential)
 			default:
-				return nil, huma.Error503ServiceUnavailable("password_recovery_unavailable")
+				return nil, huma.Error503ServiceUnavailable(authni18n.PasswordRecoveryUnavailable)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"changed": true}), nil
@@ -705,18 +706,18 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors:        []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *emailVerificationStartInput) (*respx.Body[map[string]bool], error) {
 		if err := web.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		if err := web.BeginEmailVerification(ctx, in.Authorization, in.Cookie); err != nil {
 			switch {
 			case errors.Is(err, authnext.ErrInvalidSession), errors.Is(err, authnext.ErrInvalidToken), errors.Is(err, authnext.ErrInvalidBearer):
-				return nil, huma.Error401Unauthorized("unauthorized")
+				return nil, huma.Error401Unauthorized(respx.Unauthorized)
 			case errors.Is(err, authnext.ErrEmailRequired):
-				return nil, huma.Error409Conflict("primary_email_required")
+				return nil, huma.Error409Conflict(authni18n.PrimaryEmailRequired)
 			case errors.Is(err, authnext.ErrEmailVerificationDisabled):
-				return nil, huma.Error503ServiceUnavailable("email_verification_unavailable")
+				return nil, huma.Error503ServiceUnavailable(authni18n.EmailVerificationUnavailable)
 			default:
-				return nil, huma.Error503ServiceUnavailable("email_verification_unavailable")
+				return nil, huma.Error503ServiceUnavailable(authni18n.EmailVerificationUnavailable)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
@@ -728,16 +729,16 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusBadRequest, http.StatusForbidden, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *emailVerificationCompleteInput) (*respx.Body[map[string]bool], error) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
-			return nil, huma.Error403Forbidden("email_verification_request_rejected")
+			return nil, huma.Error403Forbidden(authni18n.EmailVerificationRequestRejected)
 		}
 		if err := web.CompleteEmailVerification(ctx, in.Body.Token, in.Body.Email, in.Body.Code, in.Body.Password); err != nil {
 			switch {
 			case errors.Is(err, authnext.ErrInvalidEmailVerification):
-				return nil, huma.Error400BadRequest("invalid_email_verification_credential")
+				return nil, huma.Error400BadRequest(authni18n.InvalidEmailVerificationCredential)
 			case errors.Is(err, authnext.ErrEmailVerificationDisabled):
-				return nil, huma.Error503ServiceUnavailable("email_verification_unavailable")
+				return nil, huma.Error503ServiceUnavailable(authni18n.EmailVerificationUnavailable)
 			default:
-				return nil, huma.Error503ServiceUnavailable("email_verification_unavailable")
+				return nil, huma.Error503ServiceUnavailable(authni18n.EmailVerificationUnavailable)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"verified": true}), nil
@@ -751,7 +752,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	})
 	authz.RegisterPublic(a, huma.Operation{OperationID: "authn-create-totp-enrollment", Method: http.MethodPost, Path: "/principals/{principal_id}/mfa/totp-enrollments", Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication), Summary: "Begin TOTP enrollment after password verification", Tags: []string{"account"}, Security: authz.UserSecurity(), Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusConflict, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaPasswordInput) (*respx.Body[authnext.MFAEnrollment], error) {
 		if err := web.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		if err := enrollmentPrincipalScope(ctx, web, in.Authorization, in.Cookie, in.PrincipalID); err != nil {
 			return nil, err
@@ -764,7 +765,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	})
 	authz.RegisterPublic(a, huma.Operation{OperationID: "authn-create-totp-factor", Method: http.MethodPost, Path: "/principals/{principal_id}/mfa/totp", Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication), Summary: "Confirm TOTP enrollment and issue recovery codes", Tags: []string{"account"}, Security: authz.UserSecurity(), Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaCodeInput) (*mfaConfirmationOutput, error) {
 		if err := web.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		if err := enrollmentPrincipalScope(ctx, web, in.Authorization, in.Cookie, in.PrincipalID); err != nil {
 			return nil, err
@@ -781,7 +782,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	})
 	authz.RegisterPrincipalAuthenticated(authenticated, a, huma.Operation{OperationID: "authn-replace-recovery-codes", Method: http.MethodPut, Path: "/principals/{principal_id}/mfa/recovery-codes", Summary: "Replace all MFA recovery codes", Tags: []string{"account"}, Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaVerificationInput) (*respx.Body[authnext.MFAConfirmation], error) {
 		if err := web.ValidateCSRF(http.MethodPut, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		confirmation, err := web.RegenerateRecoveryCodes(ctx, in.Authorization, in.Cookie, in.Body.CurrentPassword, in.Body.Code)
 		if err != nil {
@@ -791,7 +792,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	})
 	authz.RegisterPrincipalAuthenticated(authenticated, a, huma.Operation{OperationID: "authn-delete-totp-factor", Method: http.MethodDelete, Path: "/principals/{principal_id}/mfa/totp", Summary: "Disable TOTP after password and factor verification", Tags: []string{"account"}, Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaVerificationInput) (*respx.Body[map[string]bool], error) {
 		if err := web.ValidateCSRF(http.MethodDelete, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		if err := web.DisableTOTP(ctx, in.Authorization, in.Cookie, in.Body.CurrentPassword, in.Body.Code); err != nil {
 			return nil, authenticationError(err)
@@ -805,7 +806,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *stepUpOptionsInput) (*respx.Body[authnext.StepUpOptions], error) {
 		if err := web.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		options, err := web.BeginStepUp(ctx, in.Authorization, in.Cookie)
 		if err != nil {
@@ -820,7 +821,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *stepUpVerifyInput) (*stepUpOutput, error) {
 		if err := web.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		result, err := web.VerifyStepUp(ctx, in.Authorization, in.Cookie, in.Body.ChallengeID, in.Body.Code)
 		if err != nil {
@@ -845,7 +846,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *mfaPasswordInput) (*respx.Body[passkeyCreationOptions], error) {
 		if err := web.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		options, err := web.BeginPasskeyRegistration(ctx, in.Authorization, in.Cookie, in.Body.CurrentPassword)
 		if err != nil {
@@ -864,7 +865,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passkeyRegistrationFinishInput) (*respx.Body[authnext.Passkey], error) {
 		if err := web.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		passkey, err := web.FinishPasskeyRegistration(
 			ctx, in.Authorization, in.Cookie, in.Body.ChallengeID, in.Body.Name,
@@ -881,7 +882,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passkeyMutationInput) (*respx.Body[authnext.Passkey], error) {
 		if err := web.ValidateCSRF(http.MethodPatch, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		passkey, err := web.RenamePasskey(ctx, in.Authorization, in.Cookie, in.ID, in.Body.Name)
 		if err != nil {
@@ -895,7 +896,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passkeyDeleteInput) (*respx.Body[map[string]bool], error) {
 		if err := web.ValidateCSRF(http.MethodDelete, in.Origin, in.Cookie, in.Authorization); err != nil {
-			return nil, huma.Error403Forbidden("csrf_rejected")
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
 		}
 		if err := web.DeletePasskey(ctx, in.Authorization, in.Cookie, in.ID, in.Body.CurrentPassword); err != nil {
 			return nil, authenticationError(err)
@@ -921,42 +922,45 @@ func loginResponse(ctx context.Context, web *Service, result authnext.LoginResul
 }
 
 func authenticationError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, authz.ErrFieldDenied):
-		return huma.Error403Forbidden("forbidden")
+		return huma.Error403Forbidden(respx.Forbidden)
 	case errors.Is(err, authz.ErrFieldsUnavailable):
-		return huma.Error503ServiceUnavailable("authentication_unavailable")
+		return huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable)
 	case errors.Is(err, authnext.ErrInvalidCredentials), errors.Is(err, authnext.ErrInvalidToken), errors.Is(err, authnext.ErrMissingBearer), errors.Is(err, authnext.ErrInvalidSession):
-		return huma.Error401Unauthorized("unauthorized")
+		return huma.Error401Unauthorized(respx.Unauthorized)
 	case errors.Is(err, authnext.ErrSessionNotFound):
-		return huma.Error404NotFound("session_not_found")
+		return huma.Error404NotFound(authni18n.SessionNotFound)
 	case errors.Is(err, authnext.ErrInvalidPassword):
-		return huma.Error422UnprocessableEntity("invalid_password")
+		return huma.Error422UnprocessableEntity(authni18n.InvalidPassword)
 	case errors.Is(err, authnext.ErrPasswordReused):
-		return huma.Error422UnprocessableEntity("password_reused")
+		return huma.Error422UnprocessableEntity(authni18n.PasswordReused)
 	case errors.Is(err, authnext.ErrInvalidMFA):
-		return huma.Error422UnprocessableEntity("invalid_mfa")
+		return huma.Error422UnprocessableEntity(authni18n.InvalidMFA)
 	case errors.Is(err, authnext.ErrMFAEnrollment):
-		return huma.Error422UnprocessableEntity("invalid_mfa_enrollment")
+		return huma.Error422UnprocessableEntity(authni18n.InvalidMFAEnrollment)
 	case errors.Is(err, authnext.ErrMFAAlreadyOn):
-		return huma.Error409Conflict("mfa_already_enabled")
+		return huma.Error409Conflict(authni18n.MFAAlreadyEnabled)
 	case errors.Is(err, authnext.ErrMFANotEnabled):
-		return huma.Error409Conflict("mfa_not_enabled")
+		return huma.Error409Conflict(authni18n.MFANotEnabled)
 	case errors.Is(err, authnext.ErrRecoveryCooldown):
-		return huma.Error409Conflict("recovery_cooldown_active")
+		return huma.Error409Conflict(authni18n.RecoveryCooldownActive)
 	case errors.Is(err, authnext.ErrPasskeyChallenge):
-		return huma.Error422UnprocessableEntity("invalid_passkey_challenge")
+		return huma.Error422UnprocessableEntity(authni18n.InvalidPasskeyChallenge)
 	case errors.Is(err, authnext.ErrPasskeyCredential):
-		return huma.Error422UnprocessableEntity("invalid_passkey_credential")
+		return huma.Error422UnprocessableEntity(authni18n.InvalidPasskeyCredential)
 	case errors.Is(err, authnext.ErrPasskeyAttestation):
-		return huma.Error422UnprocessableEntity("passkey_attestation_rejected")
+		return huma.Error422UnprocessableEntity(authni18n.PasskeyAttestationRejected)
 	case errors.Is(err, authnext.ErrPasskeyLimit):
-		return huma.Error409Conflict("passkey_limit_reached")
+		return huma.Error409Conflict(authni18n.PasskeyLimitReached)
 	case errors.Is(err, authnext.ErrPasskeyNotFound):
-		return huma.Error404NotFound("passkey_not_found")
+		return huma.Error404NotFound(authni18n.PasskeyNotFound)
 	case errors.Is(err, authnext.ErrPasskeyDisabled):
-		return huma.Error503ServiceUnavailable("passkey_unavailable")
+		return huma.Error503ServiceUnavailable(authni18n.PasskeyUnavailable)
 	default:
-		return huma.Error500InternalServerError("authentication_unavailable")
+		return huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
 	}
 }

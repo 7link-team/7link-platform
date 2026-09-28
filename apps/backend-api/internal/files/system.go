@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"time"
 
+	filesi18n "7link.com/platform/internal/files/i18n"
 	"7link.com/platform/internal/files/query"
 	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"github.com/danielgtaylor/huma/v2"
@@ -124,4 +126,14 @@ func (s *operationService) ensureSystemRoot(ctx context.Context) (fileEntryView,
 		return err
 	})
 	return result, err
+}
+
+// systemFileMenu is the system file management page this module adds to the
+// default system menu. Its gate is the module's own system_file_view code.
+func systemFileMenu() core.SystemMenuPage {
+	return core.SystemMenuPage{Branch: core.SystemMenuBasicManagement, Menu: core.Menu{
+		Label: "File management", Translations: filesi18n.Translations(filesi18n.MenuSystemFiles),
+		Route: "/system/files", Icon: "folder", SortOrder: 20,
+		PermissionCode: authz.PermissionCode("system_file", "view"), Status: core.MenuActive,
+	}}
 }

@@ -12,21 +12,22 @@ import (
 // The fields are named, not looked up by string, so a consumer cannot ask for a
 // table organization does not have and cannot misspell the one it wants.
 type DirectoryTableNames struct {
-	Departments        gormx.TableName
-	DepartmentClosures gormx.TableName
-	// Legacy names support historical schema checks and upgrade migrations only.
-	Positions            gormx.TableName
-	PositionMembers      gormx.TableName
+	Departments          gormx.TableName
+	DepartmentClosures   gormx.TableName
 	Groups               gormx.TableName
 	GroupMembers         gormx.TableName
 	GroupRoleBindings    gormx.TableName
-	PositionRoleBindings gormx.TableName
 	Tenants              gormx.TableName
 	MemberDepartments    gormx.TableName
 	RoleDataScopes       gormx.TableName
 	RoleScopeDepartments gormx.TableName
 	Invitations          gormx.TableName
 	InvitationRoles      gormx.TableName
+
+	// Legacy names support historical schema checks and upgrade migrations only.
+	Positions            gormx.TableName
+	PositionMembers      gormx.TableName
+	PositionRoleBindings gormx.TableName
 }
 
 // PublishedDirectoryTableNames binds every name organization owns to one deployment prefix. It

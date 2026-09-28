@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -53,7 +54,7 @@ func registerFieldPolicyHTTP(api huma.API, service *Service, registrar *authz.Re
 		})
 	authz.Register(registrar, api, huma.Operation{OperationID: "iam-list-field-policies", Method: http.MethodGet, Path: "/field-policies", Summary: "List tenant field policies", Tags: []string{"access-control"}}, authz.Guard{Resource: "field_policy", Verb: "view"},
 		func(ctx context.Context, in *listFieldPoliciesInput) (*respx.Body[[]ManagedFieldPolicy], error) {
-			tenantID, err := requireID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
@@ -65,7 +66,7 @@ func registerFieldPolicyHTTP(api huma.API, service *Service, registrar *authz.Re
 		})
 	authz.Register(registrar, api, huma.Operation{OperationID: "iam-set-field-policy", Method: http.MethodPut, Path: "/field-policies/{resource}/{field}", Summary: "Set a tenant field policy", Tags: []string{"access-control"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, authz.Guard{Resource: "field_policy", Verb: "update"},
 		func(ctx context.Context, in *fieldPolicyInput) (*respx.Body[ManagedFieldPolicy], error) {
-			tenantID, err := requireID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
@@ -77,7 +78,7 @@ func registerFieldPolicyHTTP(api huma.API, service *Service, registrar *authz.Re
 		})
 	authz.Register(registrar, api, huma.Operation{OperationID: "iam-delete-field-policy", Method: http.MethodDelete, Path: "/field-policies/{resource}/{field}", Summary: "Restore a field's declared default policy", Tags: []string{"access-control"}, Errors: []int{http.StatusConflict}}, authz.Guard{Resource: "field_policy", Verb: "update"},
 		func(ctx context.Context, in *fieldPolicyDeleteInput) (*respx.Body[MutationResult], error) {
-			tenantID, err := requireID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
@@ -93,7 +94,7 @@ func registerFieldPolicyHTTP(api huma.API, service *Service, registrar *authz.Re
 			if claims == nil {
 				return nil, apiError("effective fields", ErrPrivilegeEscalation)
 			}
-			entityID, err := optionalID(in.EntityID)
+			entityID, err := guid.OptionalID(in.EntityID)
 			if err != nil {
 				return nil, err
 			}

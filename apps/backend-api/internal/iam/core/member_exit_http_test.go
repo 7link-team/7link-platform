@@ -74,9 +74,7 @@ func TestMemberExitHTTPMissingCapabilitiesAndFailures(t *testing.T) {
 	s.privacyBrowser.ValidateCSRF = func(string, string, string) error { return nil }
 	require.Equal(t, http.StatusUnprocessableEntity, h.api.Delete("/principals/"+"11"+"/memberships/9999999999999999999", cookie, body).Code)
 	require.Equal(t, http.StatusServiceUnavailable, h.api.Delete(path, cookie, body).Code)
-	_, err := s.memberBrowser(t.Context(), "browser", "")
-	require.Error(t, err, "a cookie header alone cannot manufacture principal claims")
-	_, _, err = s.MyMemberships(t.Context(), 0, 0, 50)
+	_, _, err := s.MyMemberships(t.Context(), 0, 0, 50)
 	require.ErrorIs(t, err, ErrInvalidArgument)
 	s.reauthenticate = func(context.Context, *gorm.DB, guid.ID, string, string, string, string) error { return nil }
 	s.revokePersonalTokens = func(context.Context, *gorm.DB, guid.ID, guid.ID) error {

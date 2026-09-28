@@ -52,10 +52,18 @@ type EntityPermissionChecker interface {
 	CheckEntity(ctx context.Context, tenantID, entityID guid.ID, permission string, subject guid.ID) (bool, error)
 }
 
+// OperatingPlatformPermissionChecker decides a permission inside one operating
+// platform: CheckOperatingPlatform(ctx, platformID, permissionCode, principalID).
+// The registrar's checker must implement it before any operating-platform
+// operation is registered.
 type OperatingPlatformPermissionChecker interface {
 	CheckOperatingPlatform(context.Context, guid.ID, string, guid.ID) (bool, error)
 }
 
+// OperatingPlatformMembershipChecker reports whether a principal is an active
+// member of an operating platform: IsOperatingPlatformMemberActive(ctx,
+// platformID, principalID). The registrar's membership checker must implement
+// it before any operating-platform operation is registered.
 type OperatingPlatformMembershipChecker interface {
 	IsOperatingPlatformMemberActive(context.Context, guid.ID, guid.ID) (bool, error)
 }
@@ -68,6 +76,10 @@ type EntityDataPermissionChecker interface {
 	EntityConstraint(ctx context.Context, tenantID, entityID guid.ID, permission string, subject guid.ID) (DataConstraint, error)
 }
 
+// TokenVerifier authenticates a request from its Authorization and Cookie
+// headers, in that order of arguments, and returns the verified claims. It
+// returns authn.ErrUnavailable when it cannot decide, which the registrar
+// reports as 503 rather than 401.
 type TokenVerifier interface {
 	Authenticate(context.Context, string, string) (*authn.Claims, error)
 }
@@ -76,6 +88,8 @@ type csrfValidator interface {
 	ValidateCSRF(method, origin, cookieHeader, authorization string) error
 }
 
+// MembershipChecker reports whether a principal is an active member of an
+// organization root: IsMemberActive(ctx, tenantID, principalID).
 type MembershipChecker interface {
 	IsMemberActive(context.Context, guid.ID, guid.ID) (bool, error)
 }
@@ -409,10 +423,19 @@ func preparePrincipalScope(api huma.API, op *huma.Operation) {
 	}
 	op.Parameters = append(op.Parameters, pathSelector(PrincipalPath, "Authenticated principal identifier"))
 	op.Errors = appendUniqueStatus(op.Errors, http.StatusNotFound, http.StatusUnprocessableEntity)
+	sessionOnly, _ := op.Metadata[sessionOnlyMetadataKey].(bool)
 	op.Middlewares = append(op.Middlewares, func(ctx huma.Context, next func(huma.Context)) {
 		claims, _ := authn.FromContext(ctx.Context())
 		if err := PrincipalScopeError(claims, ctx.Param(PrincipalPath)); err != nil {
 			_ = huma.WriteErr(api, ctx, err.GetStatus(), err.Error())
+			return
+		}
+		// A session-only self-service mount acts for the person signed in to
+		// the browser, so its handlers read the principal from the claims and
+		// never check the caller again. A request without the session cookie,
+		// or any subject other than a principal, is refused here.
+		if sessionOnly && (ctx.Header("Cookie") == "" || claims.SubjectType != authn.SubjectTypePrincipal) {
+			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, respx.Unauthorized)
 			return
 		}
 		next(ctx)
@@ -455,7 +478,7 @@ func PrincipalScopeError(claims *authn.Claims, text string) huma.StatusError {
 	}
 	id, err := guid.Parse(text)
 	if err != nil || id.Zero() || id.String() != text {
-		return huma.Error422UnprocessableEntity("invalid_principal_id")
+		return huma.Error422UnprocessableEntity(respx.InvalidID)
 	}
 	if id != claims.PrincipalID {
 		return huma.Error404NotFound(respx.NotFound)
@@ -477,12 +500,12 @@ func (r *Registrar) authenticatedOnly(api huma.API) func(huma.Context, func(huma
 				var err error
 				owner.TenantID, err = guid.Parse(ctx.Param(TenantPath))
 				if err != nil || owner.TenantID.Zero() {
-					_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, "invalid_tenant_id")
+					_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, respx.InvalidID)
 					return
 				}
 				owner.EntityID, err = guid.Parse(ctx.Param(EntityPath))
 				if err != nil || owner.EntityID.Zero() {
-					_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, "invalid_entity_id")
+					_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, respx.InvalidID)
 					return
 				}
 			}
@@ -573,6 +596,10 @@ func RegisterOperatingPlatform[I, O any](r *Registrar, api huma.API, op huma.Ope
 	huma.Register(api, op, handler)
 }
 
+// RegisterOperatingPlatformMember declares an operation under
+// /operating-platforms/{operating_platform_id} that any active member of that
+// platform may call, without a permission guard. Like RegisterOperatingPlatform,
+// it rewrites the claims' TenantID to the platform for the handler.
 func RegisterOperatingPlatformMember[I, O any](r *Registrar, api huma.API, op huma.Operation, handler func(context.Context, *I) (*O, error)) {
 	if r == nil || op.OperationID == "" {
 		panic("operating platform member operation requires registrar and operation id")
@@ -1164,6 +1191,8 @@ func (r *Registrar) operatingPlatformMiddleware(api huma.API, guard Guard, check
 	}
 }
 
+// IsOperatingPlatformOperation reports whether op was registered through
+// RegisterOperatingPlatform or RegisterOperatingPlatformMember.
 func IsOperatingPlatformOperation(op *huma.Operation) bool {
 	if op == nil || op.Metadata == nil {
 		return false

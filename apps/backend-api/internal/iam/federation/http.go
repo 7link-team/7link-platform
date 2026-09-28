@@ -17,14 +17,6 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-func parseFederationID(value string) (guid.ID, error) {
-	id, err := guid.Parse(strings.TrimSpace(value))
-	if err != nil {
-		return 0, huma.Error422UnprocessableEntity("invalid_id")
-	}
-	return id, nil
-}
-
 // providerListInput bounds the listing by default: a tenant's provider registry
 // is open-ended, and an omitted limit used to mean "every row".
 type providerListInput struct {
@@ -74,7 +66,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	guard := authz.Guard{Resource: "identity_provider", Verb: "view"}
 	authz.Register(registrar, api, huma.Operation{OperationID: "federation-list-identity-providers", Method: http.MethodGet, Path: "/identity-providers", Summary: "List tenant identity providers", Tags: []string{"applications"}}, guard, func(ctx context.Context, in *providerListInput) (*respx.Body[[]Provider], error) {
-		tenantID, err := parseFederationID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -85,7 +77,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
 	authz.Register(registrar, api, huma.Operation{OperationID: "federation-create-identity-provider", Method: http.MethodPost, Path: "/identity-providers", Summary: "Create an OIDC identity provider", Tags: []string{"applications"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, authz.Guard{Resource: "identity_provider", Verb: "create"}, func(ctx context.Context, in *providerCreateInput) (*respx.Body[Provider], error) {
-		tenantID, err := parseFederationID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -101,7 +93,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 	})
 	authz.RegisterOwned(registrar, api, huma.Operation{OperationID: "federation-update-identity-provider", Method: http.MethodPut, Path: "/identity-providers/{provider_id}", Summary: "Replace an OIDC identity provider", Tags: []string{"applications"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, "provider_id", service.resolveProviderOwner, authz.Guard{Resource: "identity_provider", Verb: "update"}, func(ctx context.Context, in *providerReplaceInput) (*respx.Body[Provider], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
-		providerID, err := parseFederationID(in.ProviderID)
+		providerID, err := guid.RequireID(in.ProviderID)
 		if err != nil {
 			return nil, err
 		}
@@ -117,7 +109,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 	})
 	authz.RegisterOwned(registrar, api, huma.Operation{OperationID: "federation-delete-identity-provider", Method: http.MethodDelete, Path: "/identity-providers/{provider_id}", Summary: "Delete an OIDC identity provider and its identity links", Tags: []string{"applications"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity}}, "provider_id", service.resolveProviderOwner, authz.Guard{Resource: "identity_provider", Verb: "delete"}, func(ctx context.Context, in *providerIDInput) (*respx.Body[map[string]bool], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
-		providerID, err := parseFederationID(in.ProviderID)
+		providerID, err := guid.RequireID(in.ProviderID)
 		if err != nil {
 			return nil, err
 		}
@@ -148,7 +140,7 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 		if rejectAccountViewBrowser(api, ctx) {
 			return
 		}
-		providerID, err := parseFederationID(ctx.Param("provider_id"))
+		providerID, err := guid.RequireID(ctx.Param("provider_id"))
 		if err != nil {
 			writeFederationError(api, ctx, err)
 			return
@@ -179,7 +171,7 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 		if rejectAccountViewBrowser(api, ctx) {
 			return
 		}
-		providerID, err := parseFederationID(ctx.Param("provider_id"))
+		providerID, err := guid.RequireID(ctx.Param("provider_id"))
 		if err != nil {
 			writeFederationError(api, ctx, err)
 			return
@@ -220,7 +212,7 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 		if rejectAccountViewBrowser(api, ctx) {
 			return
 		}
-		providerID, err := parseFederationID(ctx.Param("provider_id"))
+		providerID, err := guid.RequireID(ctx.Param("provider_id"))
 		if err != nil {
 			writeFederationError(api, ctx, err)
 			return
@@ -341,7 +333,7 @@ func writeFederationError(api huma.API, ctx huma.Context, err error) {
 func intPointer(value int) *int { return &value }
 
 func providerInputFromBody(body providerBody) (ProviderInput, error) {
-	defaultRoleID, err := parseOptionalFederationID(body.DefaultRoleID)
+	defaultRoleID, err := guid.OptionalID(body.DefaultRoleID)
 	if err != nil {
 		return ProviderInput{}, err
 	}
@@ -350,14 +342,6 @@ func providerInputFromBody(body providerBody) (ProviderInput, error) {
 		ClientSecret: body.ClientSecret, Scopes: body.Scopes, AutoProvision: body.AutoProvision,
 		DefaultRoleID: defaultRoleID, Status: body.Status,
 	}, nil
-}
-
-func parseOptionalFederationID(value string) (guid.ID, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return 0, nil
-	}
-	return parseFederationID(value)
 }
 
 // requestCallbackURL reconstructs the externally visible callback URL from the
@@ -373,6 +357,9 @@ func requestCallbackURL(ctx huma.Context, providerID guid.ID) string {
 }
 
 func federationError(err error) error {
+	if respx.IsStatusError(err) {
+		return err
+	}
 	switch {
 	case errors.Is(err, ErrIdentityOwnershipRequired):
 		return huma.Error409Conflict(federationi18n.IdentityUnavailable)

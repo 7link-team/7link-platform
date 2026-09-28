@@ -334,7 +334,7 @@ func (m *Module) tenantBootstrapper() TenantBootstrapper {
 				return ErrUnavailable
 			}
 			repo := m.repository.withDB(db)
-			if _, err := repo.createMenus(ctx, ownerID, SystemDefaultMenus(), now); err != nil {
+			if _, err := repo.createMenus(ctx, ownerID, repo.systemMenuDefaults(), now); err != nil {
 				return err
 			}
 			return repo.bumpPolicyRevision(ctx, ownerID)

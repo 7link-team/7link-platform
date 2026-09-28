@@ -2,6 +2,7 @@ package respx
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -54,6 +55,17 @@ func Err(ctx context.Context, code int, key string) error {
 		Message: key,
 		Meta:    metaOf(ctx, nil),
 	}
+}
+
+// IsStatusError reports whether err already chose its HTTP response: a huma
+// status error anywhere in its chain, such as an input check's 422. A handler's
+// domain-error mapper returns such an error unchanged before matching domain
+// errors, because wrapping it again would report the client's mistake as 500.
+// The original err is what the mapper returns, so headers attached with
+// huma.ErrorWithHeaders survive.
+func IsStatusError(err error) bool {
+	var status huma.StatusError
+	return errors.As(err, &status)
 }
 
 // phraseKey normalizes huma's built-in English error summaries to i18n keys so

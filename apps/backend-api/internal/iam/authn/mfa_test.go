@@ -174,7 +174,7 @@ func TestTOTPRFC6238Compatibility(t *testing.T) {
 
 func TestTOTPProvisioningURI(t *testing.T) {
 	service, _, cookie := authenticatedLocalService(t)
-	service.cfg.MFA.Issuer = "SevenLink Test"
+	service.cfg.MFA.Issuer = "Example Issuer"
 	enrollment, err := service.BeginTOTPEnrollment(t.Context(), "", cookie, "correct horse battery staple")
 	require.NoError(t, err)
 

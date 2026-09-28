@@ -50,6 +50,10 @@ type Module struct {
 	// so the connectors below bind once for the whole module.
 	foreign foreignTables
 
+	// systemMenus is the default system menu; modules that own a system page
+	// contribute it here, and the repository seeds and upgrades from it.
+	systemMenus SystemMenus
+
 	// administratorPresent latches the readiness gate. The last-administrator
 	// guard means the count never returns to zero, so once it is satisfied the
 	// probe stops paying for a union query on every request.
@@ -126,6 +130,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}
 	if err := module.Provide[*authz.Registrar](services, m.registrar); err != nil {
 		return fmt.Errorf("provide authorization registrar: %w", err)
+	}
+	if err := module.Provide[*SystemMenus](services, &m.systemMenus); err != nil {
+		return fmt.Errorf("provide IAM system menus: %w", err)
 	}
 	if err := module.Provide[AuthorizationEvaluator](services, m.checker); err != nil {
 		return fmt.Errorf("provide IAM authorization evaluator: %w", err)
@@ -210,6 +217,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	m.ids, m.appender = ids, appender
 	repository := NewRepository(m.runtime, ids)
 	repository.foreign = &m.foreign
+	repository.systemMenus = &m.systemMenus
 	// Keep the provider-phase pointer stable; requests start only after wiring.
 	*m.checker = *NewAuthorizerWithRegistry(m.runtime, m.registrar.Registry())
 	m.checker.foreign = &m.foreign

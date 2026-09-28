@@ -1,0 +1,12 @@
+{
+  "invalid_file_update": "Kemas kini fail tidak sah. Namakan semula, alihkan atau pulihkan entri dengan perubahan yang disokong.",
+  "invalid_file_content": "Kandungan fail tiada atau tidak sah. Lampirkan satu fail dan biarkan nama kosong.",
+  "invalid_file_root": "Permintaan akar fail tidak sah. Hanya direktori akar akaun tanpa nama boleh dicipta.",
+  "invalid_file_scope": "Skop hanya boleh dipilih untuk direktori akar. Alih keluar skop dan cuba lagi.",
+  "directory_content_not_allowed": "Direktori tidak boleh membawa kandungan fail. Alih keluar lampiran dan cuba lagi.",
+  "invalid_file_kind": "Jenis entri tidak disokong. Pilih fail atau direktori.",
+  "invalid_file_operation": "Operasi fail tidak sah. Semak entri, destinasi dan pilihan konflik, kemudian cuba lagi.",
+  "invalid_file_request": "Permintaan fail tidak sah. Semak nama, destinasi dan kebenaran, kemudian cuba lagi.",
+  "file_service_unavailable": "Perkhidmatan fail tidak dapat melengkapkan permintaan tepat pada masanya. Cuba lagi kemudian; hubungi pentadbir jika masalah berterusan.",
+  "menu_system_files": "Pengurusan fail"
+}

@@ -342,7 +342,7 @@ func TestTenantBootstrapperSystemCapabilitiesGuardWiringAndReachTheSystemRoot(t 
 	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
 		return capability.SeedSystemMenus(t.Context(), tx, 99, repositoryTestTime)
 	}))
-	assert.EqualValues(t, len(SystemDefaultMenus()), countBootstrapRows(t, h.db, "sl_", "iam_menus", 99))
+	assert.EqualValues(t, len(h.repository.systemMenuDefaults()), countBootstrapRows(t, h.db, "sl_", "iam_menus", 99))
 	revision, err := h.repository.revisions.Current(t.Context(), h.db, 99)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, revision, "seeding menus invalidates cached navigation")

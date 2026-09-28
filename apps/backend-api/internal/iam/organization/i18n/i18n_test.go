@@ -17,7 +17,7 @@ var declaredKeys = []string{
 	InvalidDepartment, Unavailable, GroupNotFound, GroupNameExists,
 	GroupVersionConflict, GroupHasMembers, GroupRoleBound, GroupRelationshipBound,
 	GroupMemberInactive, DynamicGroupMembersComputed, GroupRuleRequiresDynamic,
-	InvalidGroupRule, LastTenantAdministrator, InvalidGroup, TenantNotFound, TenantSlugExists, TenantVersionConflict,
+	InvalidGroupRule, InvalidGroup, TenantNotFound, TenantSlugExists, TenantVersionConflict,
 	InvalidTenant, TenantOwnerNotFound, TenantOwnerInactive,
 	InvitationNotFound, InvalidInvitationCredential,
 	InvitationExpired, InvitationStateConflict, InvitationLoginNameExists,

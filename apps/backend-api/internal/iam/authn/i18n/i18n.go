@@ -22,7 +22,6 @@ const (
 	PasskeyAttestationRejected         = Namespace + ".passkey_attestation_rejected"
 	PasskeyLimitReached                = Namespace + ".passkey_limit_reached"
 	PasskeyNotFound                    = Namespace + ".passkey_not_found"
-	CSRFRejected                       = Namespace + ".csrf_rejected"
 	RecoveryRequestRejected            = Namespace + ".recovery_request_rejected"
 	PasswordRecoveryUnavailable        = Namespace + ".password_recovery_unavailable"
 	InvalidRecoveryRequest             = Namespace + ".invalid_recovery_request"
@@ -45,6 +44,7 @@ const (
 	CaptchaUnavailable                 = Namespace + ".captcha_unavailable"
 	CaptchaInvalid                     = Namespace + ".captcha_invalid"
 	RegistrationConflict               = Namespace + ".registration_conflict"
+	InvalidPersonalToken               = Namespace + ".invalid_personal_token"
 )
 
 //go:embed locales/*.json

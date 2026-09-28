@@ -1,6 +1,7 @@
 package files
 
 import (
+	filesi18n "7link.com/platform/internal/files/i18n"
 	"7link.com/platform/internal/files/query"
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/core"
@@ -9,6 +10,7 @@ import (
 	"7link.com/platform/pkg/extension/authz"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"context"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -47,10 +49,13 @@ func TestFileModuleWiresItsAuthorizationCatalog(t *testing.T) {
 	}))
 	require.NoError(t, module.Provide[guid.Source](services, &operationServiceIDs{}))
 	require.NoError(t, module.Provide[audit.Appender](services, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }))
+	systemMenus := &core.SystemMenus{}
+	require.NoError(t, module.Provide[*core.SystemMenus](services, systemMenus))
 	require.NoError(t, services.Seal())
-	require.Equal(t, []string{guid.Name, audit.Name, core.Name}, instance.ModuleDependencies())
+	require.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, core.Name}, instance.ModuleDependencies())
 	require.NoError(t, instance.InjectServices(services))
 	require.NotNil(t, instance.operations)
+	assertSystemFileMenuSeedsTheRowCoreSeeded(t, systemMenus.Defaults())
 	for _, action := range fileAuthorizationActions() {
 		registered, ok := registry.Find(action.Code)
 		require.True(t, ok, action.Code)
@@ -80,7 +85,11 @@ func TestModuleProvidesConfiguredExtensibleDriver(t *testing.T) {
 	bindings, err := module.Resolve[*ResourceBindings](services)
 	require.NoError(t, err)
 	require.Same(t, m.bindings, bindings)
+	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	require.NoError(t, m.Initialize(t.Context()))
+	ctx := platformi18n.WithLocale(t.Context(), "zh-CN")
+	require.NotEqual(t, filesi18n.InvalidFileRequest, platformi18n.TContext(ctx, filesi18n.InvalidFileRequest), "Initialize publishes the files locale bundle")
+	require.ErrorContains(t, m.Initialize(t.Context()), "register i18n", "a locale namespace registers exactly once")
 	require.Error(t, m.RegisterDriver("late", func(c DriverConfig) (Driver, error) { return NewLocal(c["root"]) }))
 	require.ErrorIs(t, (&Module{}).Initialize(t.Context()), ErrUnsupported)
 	unknown := NewModule(runtime, Config{Backend: "unknown"})
@@ -303,4 +312,27 @@ func TestFileModuleStopReturnsCanceledContextWhileWorkerIsStillRunning(t *testin
 	require.True(t, cancelCalled)
 	require.NotNil(t, instance.workerCancel)
 	require.Equal(t, done, instance.workerDone)
+}
+
+// assertSystemFileMenuSeedsTheRowCoreSeeded pins the page the module contributes
+// to the row IAM core seeded before the page moved here: same place in the
+// default list, same branch, and the same stored fields and translations, so a
+// new deployment and an upgraded one end with the same menu row.
+func assertSystemFileMenuSeedsTheRowCoreSeeded(t *testing.T, defaults []core.Menu) {
+	t.Helper()
+	want := core.SystemDefaultMenus()
+	at := -1
+	for index, menu := range want {
+		if menu.Route == "/system/menus" {
+			at = index + 1
+		}
+	}
+	require.Positive(t, at)
+	want = append(want[:at], append([]core.Menu{{
+		ParentID: 3, Label: "File management", Route: "/system/files", Icon: "folder", SortOrder: 20,
+		PermissionCode: "system_file_view", Status: core.MenuActive,
+		Translations: map[string]string{"en-US": "File management", "zh-CN": "文件管理", "ms-MY": "Pengurusan fail"},
+	}}, want[at:]...)...)
+	require.Equal(t, want, defaults)
+	require.Equal(t, core.SystemMenuBasicManagement, want[at-2].Label, "the page sits in the basic management branch")
 }

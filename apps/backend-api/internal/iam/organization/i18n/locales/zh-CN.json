@@ -17,7 +17,6 @@
   "dynamic_group_members_computed": "动态用户组成员由成员规则自动计算，不能手工增删。请更新规则或成员属性。",
   "group_rule_requires_dynamic_type": "成员规则只能用于动态用户组。请选择动态类型，或移除成员规则。",
   "invalid_group_membership_rule": "动态成员规则无效。请使用版本 1，选择满足全部或任一条件，并配置 1 到 16 个受支持的属性条件。",
-  "last_tenant_administrator": "不能移除或停用租户中最后一个有效管理员，请先分配另一个有效管理员。",
   "invalid_group": "用户组数据无效，请检查名称、类型、成员规则、描述、状态、排序和版本。",
   "tenant_not_found": "不存在指定的租户，请核对租户标识符后重试。",
   "tenant_slug_exists": "已存在使用该标识的租户，请选择其他租户标识。",

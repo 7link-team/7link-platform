@@ -27,7 +27,7 @@ import (
 func localAuthnConfig() authnext.Config {
 	key := base64.RawStdEncoding.EncodeToString([]byte(strings.Repeat("k", 32)))
 	return authnext.Config{
-		Enabled: true, Issuer: "https://iam.example.test", Audience: []string{"7link-api"},
+		Enabled: true, Issuer: "https://iam.example.test", Audience: []string{"test-api"},
 		SigningKey: key,
 		Web: authnext.WebConfig{
 			Enabled: true, CookieName: "session", CookieSecure: true,
@@ -316,7 +316,7 @@ func TestSubjectAndIDTokenVariantsAndEnrichment(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, authnext.SubjectTypeService, serviceClaims.SubjectType)
 	tenantServiceToken, _, err := service.IssueTenantSubjectToken(
-		t.Context(), "worker", "tenant-a", "7link-api", "jobs.write", "Worker", "",
+		t.Context(), "worker", "tenant-a", "test-api", "jobs.write", "Worker", "",
 	)
 	require.NoError(t, err)
 	tenantClaims, err := service.Authenticate(t.Context(), "Bearer "+tenantServiceToken, "")
@@ -324,7 +324,7 @@ func TestSubjectAndIDTokenVariantsAndEnrichment(t *testing.T) {
 	assert.Equal(t, "tenant-a", tenantClaims.OrganizationID)
 
 	access, _, err := service.IssueTenantAccessTokenWithAssurance(
-		t.Context(), principalID, "tenant-a", "7link-api", "openid",
+		t.Context(), principalID, "tenant-a", "test-api", "openid",
 		authnext.Assurance{
 			AuthTime: repositoryTestNow.Add(-time.Minute), Level: 2,
 			Methods: []string{"pwd", "totp"}, ClientID: "browser", OAuthGrantID: "current-grant", NetworkZone: "trusted",
@@ -393,7 +393,7 @@ func TestOAuthClientTokenLifecycle(t *testing.T) {
 		"id": clientID, "tenant_id": tenantID, "status": "active",
 	}).Error)
 	token, _, err := service.IssueTenantOAuthClientToken(
-		t.Context(), clientID.String(), tenantID.String(), "7link-api", "jobs.read", "Worker",
+		t.Context(), clientID.String(), tenantID.String(), "test-api", "jobs.read", "Worker",
 	)
 	require.NoError(t, err)
 	claims, err := service.Authenticate(t.Context(), "Bearer "+token, "")
@@ -402,11 +402,11 @@ func TestOAuthClientTokenLifecycle(t *testing.T) {
 	assert.Equal(t, "client:"+clientID.String(), claims.Subject)
 
 	_, _, err = service.IssueTenantOAuthClientToken(
-		t.Context(), "invalid", tenantID.String(), "7link-api", "", "Worker",
+		t.Context(), "invalid", tenantID.String(), "test-api", "", "Worker",
 	)
 	assert.ErrorIs(t, err, authnext.ErrInvalidToken)
 	_, _, err = service.IssueTenantOAuthClientToken(
-		t.Context(), clientID.String(), guid.ID(999).String(), "7link-api", "", "Worker",
+		t.Context(), clientID.String(), guid.ID(999).String(), "test-api", "", "Worker",
 	)
 	assert.ErrorIs(t, err, authnext.ErrInvalidToken)
 	require.NoError(t, harness.db.Table("iam_oauth_clients").Where("id = ?", clientID).
@@ -430,7 +430,7 @@ func TestServiceAccountTokenLifecycle(t *testing.T) {
 		"tenant_id": tenantID, "principal_id": principalID, "status": "active",
 	}).Error)
 	token, _, err := service.IssueTenantServiceAccountToken(
-		t.Context(), principalID.String(), tenantID.String(), "7link-api", "jobs.read", "automation", 3,
+		t.Context(), principalID.String(), tenantID.String(), "test-api", "jobs.read", "automation", 3,
 	)
 	require.NoError(t, err)
 	claims, err := service.Authenticate(t.Context(), "Bearer "+token, "")
@@ -439,7 +439,7 @@ func TestServiceAccountTokenLifecycle(t *testing.T) {
 	assert.Equal(t, principalID, claims.PrincipalID)
 
 	wrongVersion, _, err := service.IssueTenantServiceAccountToken(
-		t.Context(), principalID.String(), tenantID.String(), "7link-api", "", "automation", 2,
+		t.Context(), principalID.String(), tenantID.String(), "test-api", "", "automation", 2,
 	)
 	require.NoError(t, err)
 	_, err = service.Authenticate(t.Context(), "Bearer "+wrongVersion, "")
@@ -499,14 +499,14 @@ func TestWebServiceDatabaseFailuresFailClosed(t *testing.T) {
 			"id": clientID, "tenant_id": tenantID, "status": "active",
 		}).Error)
 		token, _, err := service.IssueTenantOAuthClientToken(
-			t.Context(), clientID.String(), tenantID.String(), "7link-api", "", "Worker",
+			t.Context(), clientID.String(), tenantID.String(), "test-api", "", "Worker",
 		)
 		require.NoError(t, err)
 		require.NoError(t, harness.db.Exec("DROP TABLE iam_oauth_clients").Error)
 		_, err = service.Authenticate(t.Context(), "Bearer "+token, "")
 		assert.ErrorIs(t, err, authnext.ErrUnavailable)
 		_, _, err = service.IssueTenantOAuthClientToken(
-			t.Context(), clientID.String(), tenantID.String(), "7link-api", "", "Worker",
+			t.Context(), clientID.String(), tenantID.String(), "test-api", "", "Worker",
 		)
 		assert.ErrorIs(t, err, authnext.ErrUnavailable)
 	})
@@ -519,7 +519,7 @@ func TestAccessTokenMalformedClaimsAndHeaders(t *testing.T) {
 		assert.Error(t, err, header)
 	}
 	base := map[string]any{
-		"iss": service.Issuer(), "sub": "subject", "aud": []string{"7link-api"},
+		"iss": service.Issuer(), "sub": "subject", "aud": []string{"test-api"},
 		"subject_type": authnext.SubjectTypeService,
 		"iat":          service.now().Unix(), "exp": service.now().Add(time.Minute).Unix(),
 	}
