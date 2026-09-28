@@ -400,3 +400,45 @@ func TestAccountViewServiceLiveStateAndAuditRollback(t *testing.T) {
 	require.NoError(t, err, "failed revocation audit must roll back revocation")
 	assert.ErrorIs(t, s.RevokeAccountView(t.Context(), "session=browser-202", created.ID), authnext.ErrInvalidToken)
 }
+
+// Account-holder helpers serve the holder's own security surface (sessions,
+// MFA, passkeys, step-up, email verification, password), which a token issued
+// to an OAuth client never delegates, whatever tenant issued the client.
+func TestAccountHolderHelpersRefuseDelegatedOAuthTokens(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "")
+	principalID := bootstrapLocalPrincipal(t, harness, "alice", "correct horse battery staple")
+	service, err := NewWebService(localAuthnConfig(), harness.repository,
+		WithOAuthGrantValidator(func(context.Context, *authnext.Claims) error { return nil }))
+	require.NoError(t, err)
+	holder, _, err := service.IssueAccessToken(t.Context(), principalID, "", "")
+	require.NoError(t, err)
+	delegated, _, err := service.IssueTenantAccessTokenWithAssurance(t.Context(), principalID, "7", "", "openid",
+		authnext.Assurance{ClientID: "22", OAuthGrantID: "current-grant"})
+	require.NoError(t, err)
+	claims, err := service.Authenticate(t.Context(), "Bearer "+delegated, "")
+	require.NoError(t, err, "the delegated token itself is valid; only the account-holder surface refuses it")
+	require.Equal(t, "22", claims.ClientID)
+
+	for _, token := range []string{holder, delegated} {
+		_, holderErr := service.authenticateAccountHolder(t.Context(), "Bearer "+token, "")
+		_, readErr := service.personalReadClaims(t.Context(), "Bearer "+token, "")
+		if token == holder {
+			require.NoError(t, holderErr)
+			require.NoError(t, readErr)
+			continue
+		}
+		assert.ErrorIs(t, holderErr, authnext.ErrInvalidCredentials)
+		assert.ErrorIs(t, readErr, authnext.ErrInvalidToken)
+	}
+	bearer := "Bearer " + delegated
+	_, err = service.ListSessions(t.Context(), bearer, "")
+	assert.ErrorIs(t, err, authnext.ErrInvalidToken)
+	_, err = service.MFAStatus(t.Context(), bearer, "")
+	assert.ErrorIs(t, err, authnext.ErrInvalidToken)
+	_, err = service.BeginTOTPEnrollment(t.Context(), bearer, "", "correct horse battery staple")
+	assert.ErrorIs(t, err, authnext.ErrInvalidCredentials)
+	_, err = service.BeginStepUp(t.Context(), bearer, "")
+	assert.ErrorIs(t, err, authnext.ErrInvalidCredentials)
+	assert.ErrorIs(t, service.LogoutAll(t.Context(), bearer, ""), authnext.ErrInvalidCredentials)
+	assert.ErrorIs(t, service.ChangePassword(t.Context(), bearer, "", "correct horse battery staple", "another horse battery staple"), authnext.ErrInvalidCredentials)
+}
