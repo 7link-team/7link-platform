@@ -8887,8 +8887,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9609,8 +9609,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12137,8 +12137,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
@@ -12227,8 +12227,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
@@ -12337,8 +12337,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14412,8 +14412,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14557,8 +14557,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14899,8 +14899,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15219,8 +15219,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15362,8 +15362,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15431,8 +15431,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -17153,8 +17153,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
@@ -17760,8 +17760,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
@@ -17951,8 +17951,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -18288,8 +18288,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -18466,8 +18466,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -18972,8 +18972,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19148,8 +19148,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19323,8 +19323,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19495,8 +19495,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19921,8 +19921,8 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26697,8 +26697,8 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26786,8 +26786,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
@@ -28370,8 +28370,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -28937,8 +28937,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -29323,8 +29323,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -29800,8 +29800,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -31499,8 +31499,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -32394,8 +32394,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

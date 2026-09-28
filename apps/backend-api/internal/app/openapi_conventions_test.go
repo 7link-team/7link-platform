@@ -143,3 +143,38 @@ func TestComposedOpenAPIListsPageThroughTheEnvelope(t *testing.T) {
 	}
 	assert.Greater(t, checked, 100, "the walk must reach the enveloped responses")
 }
+
+// acceptedCreates answer 202 instead of 201: the request is accepted without
+// revealing whether anything was created, because the answer must read the same
+// for an address that exists and one that does not.
+var acceptedCreates = map[string]string{
+	"authn-create-registration":               "self-registration never reveals whether the address is taken",
+	"authn-create-email-verification-request": "a verification mail is queued without confirming the address",
+	"authn-create-password-recovery-request":  "a recovery mail is queued without confirming the account",
+}
+
+// TestComposedOpenAPICreatesAnswer201 keeps one success status for creation: an
+// operation whose ID says it creates answers 201 Created, whichever module or
+// registrar declared it.
+func TestComposedOpenAPICreatesAnswer201(t *testing.T) {
+	_, operations := composedOpenAPI(t)
+	creates := 0
+	for _, entry := range operations {
+		if entry.method != "POST" || !strings.Contains(entry.operation.OperationID, "create") {
+			continue
+		}
+		creates++
+		want := "201"
+		if _, accepted := acceptedCreates[entry.operation.OperationID]; accepted {
+			want = "202"
+		}
+		var success []string
+		for status := range entry.operation.Responses {
+			if strings.HasPrefix(status, "2") {
+				success = append(success, status)
+			}
+		}
+		assert.Equal(t, []string{want}, success, "%s is a create operation", entry)
+	}
+	assert.Greater(t, creates, 60, "the walk must reach the create operations")
+}

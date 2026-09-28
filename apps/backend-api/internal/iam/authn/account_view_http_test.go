@@ -25,7 +25,7 @@ func TestAccountViewHTTPControlsAndSecurityBoundaries(t *testing.T) {
 			csrf := api.Post("/account-views", cookie, strings.NewReader(body))
 			require.Equal(t, http.StatusForbidden, csrf.Code, csrf.Body.String())
 			created := api.Post("/account-views", cookie, origin, strings.NewReader(body))
-			require.Equal(t, http.StatusOK, created.Code, created.Body.String())
+			require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 			var response struct {
 				Data AccountViewCreated `json:"data"`
 			}

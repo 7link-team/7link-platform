@@ -130,7 +130,7 @@ func registerSystemDepartmentHTTP(api huma.API, svc *Service, registrar *authz.R
 		}
 		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
-	authz.RegisterPlatform(registrar, api, op("organization-system-department-create", http.MethodPost, "/system/departments", "Create a system department"), authz.Guard{Resource: "system_department", Verb: "create"}, func(ctx context.Context, in *systemDepartmentCreateInput) (*respx.Body[Department], error) {
+	authz.RegisterPlatform(registrar, api, created(op("organization-system-department-create", http.MethodPost, "/system/departments", "Create a system department")), authz.Guard{Resource: "system_department", Verb: "create"}, func(ctx context.Context, in *systemDepartmentCreateInput) (*respx.Body[Department], error) {
 		parent, err := guid.OptionalID(in.Body.ParentID)
 		if err != nil {
 			return nil, err

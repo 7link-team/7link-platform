@@ -85,7 +85,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.List(ctx, rolesFromDomain(roles), respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-role-create", http.MethodPost, "/roles", "Create an operating platform role"), authz.Guard{Resource: "role", Verb: "create"}, func(ctx context.Context, in *operatingPlatformRoleInput) (*respx.Body[APIRole], error) {
+	authz.RegisterOperatingPlatform(registrar, api, created(op("iam-platform-role-create", http.MethodPost, "/roles", "Create an operating platform role")), authz.Guard{Resource: "role", Verb: "create"}, func(ctx context.Context, in *operatingPlatformRoleInput) (*respx.Body[APIRole], error) {
 		role, err := svc.CreateRole(ctx, authnext.TenantIDFromContext(ctx), in.Body.Name, in.Body.Description)
 		if err != nil {
 			return nil, apiError("create platform role", err)
@@ -108,7 +108,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.OK(ctx, menusFromDomain(menus)), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-menu-create", http.MethodPost, "/menus", "Create an operating platform menu"), authz.Guard{Resource: "menu", Verb: "create"}, func(ctx context.Context, in *operatingPlatformMenuInput) (*respx.Body[APIMenu], error) {
+	authz.RegisterOperatingPlatform(registrar, api, created(op("iam-platform-menu-create", http.MethodPost, "/menus", "Create an operating platform menu")), authz.Guard{Resource: "menu", Verb: "create"}, func(ctx context.Context, in *operatingPlatformMenuInput) (*respx.Body[APIMenu], error) {
 		parent, err := guid.OptionalID(in.Body.ParentID)
 		if err != nil {
 			return nil, err
@@ -155,7 +155,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.OK(ctx, memberFromDomain(member)), nil
 	})
-	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member-create", http.MethodPost, "/members", "Bind an existing account to an operating platform"), authz.Guard{Resource: "platform_member", Verb: "create"}, func(ctx context.Context, in *operatingPlatformMemberCreateInput) (*respx.Body[APITenantMember], error) {
+	authz.RegisterOperatingPlatform(registrar, api, created(op("iam-platform-member-create", http.MethodPost, "/members", "Bind an existing account to an operating platform")), authz.Guard{Resource: "platform_member", Verb: "create"}, func(ctx context.Context, in *operatingPlatformMemberCreateInput) (*respx.Body[APITenantMember], error) {
 		id, err := guid.RequireID(in.Body.Subject)
 		if err != nil {
 			return nil, err
@@ -200,4 +200,11 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		}
 		return respx.OK(ctx, memberFromDomain(member)), nil
 	})
+}
+
+// created marks an operation that creates a resource: it answers 201, as every
+// create operation does.
+func created(operation huma.Operation) huma.Operation {
+	operation.DefaultStatus = http.StatusCreated
+	return operation
 }

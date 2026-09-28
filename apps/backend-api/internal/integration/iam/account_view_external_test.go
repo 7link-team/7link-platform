@@ -35,7 +35,7 @@ func TestAccountViewExternalDatabase(t *testing.T) {
 	organization := f.request(t, http.MethodPost, "/account-views", 0, "", map[string]any{
 		"target_type": "tenant", "scope_type": "tenant", "scope_id": iamTenantB.String(), "mode": "read_write",
 	}, headers)
-	requireStatus(t, http.StatusOK, organization)
+	requireStatus(t, http.StatusCreated, organization)
 	organizationView := decodeEnvelope[iamauthn.AccountViewCreated](t, organization)
 	organizationClaims, err := service.Authenticate(t.Context(), "Bearer "+organizationView.Token, "")
 	require.NoError(t, err)
@@ -48,7 +48,7 @@ func TestAccountViewExternalDatabase(t *testing.T) {
 		response := f.request(t, http.MethodPost, "/account-views", 0, "", map[string]any{
 			"principal_id": f.requesterB.ID.String(), "scope_type": "tenant", "scope_id": iamTenantB.String(),
 		}, headers)
-		requireStatus(t, http.StatusOK, response)
+		requireStatus(t, http.StatusCreated, response)
 		created := decodeEnvelope[iamauthn.AccountViewCreated](t, response)
 		require.Equal(t, "read_only", created.Mode)
 		require.True(t, strings.HasPrefix(created.Token, "avt_"))

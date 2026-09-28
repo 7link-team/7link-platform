@@ -280,7 +280,7 @@ func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
 	response := f.request(t, http.MethodPost, "/login", 0, "", map[string]any{
 		"login_name": f.requesterB.LoginName, "password": "correct horse battery staple",
 	}, map[string]string{"Origin": "https://app.example.test"})
-	requireStatus(t, http.StatusOK, response)
+	requireStatus(t, http.StatusCreated, response)
 	require.NotEmpty(t, response.Cookies)
 	headers := map[string]string{"Cookie": response.Cookies[0].String()}
 	check := func(code int, expected string) {

@@ -197,7 +197,7 @@ func TestAuthnOpenAPIUsesTypedWebAuthnSchemas(t *testing.T) {
 		"assertion options": spec.Paths["/login/passkey/options"].Post,
 		"creation options":  spec.Paths["/principals/{principal_id}/passkey-registration-challenges"].Post,
 	} {
-		response := resolveAuthnSchema(spec, operation.Responses["200"].Content["application/json"].Schema)
+		response := resolveAuthnSchema(spec, operation.Responses["201"].Content["application/json"].Schema)
 		data := resolveAuthnSchema(spec, response.Properties["data"])
 		options := resolveAuthnSchema(spec, data.Properties["options"])
 		if assert.NotNil(t, options, name) {

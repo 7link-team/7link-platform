@@ -42,7 +42,7 @@ func TestSystemScopeHTTPGlobalAdministratorManagesForeignMemberships(t *testing.
 			foreign, err := h.repository.CreateRole(t.Context(), 1, "Foreign", "")
 			require.NoError(t, err)
 			response := client.Post(base+"/members", "Authorization: Bearer test", map[string]any{"subject": "22", "display_name": "Managed account"})
-			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 			require.Equal(t, guid.ID(2), decodeEnvelope[APITenantMember](t, response).Data.TenantID)
 			response = client.Put(base+"/roles/"+role.ID.String()+"/members/22", "Authorization: Bearer test")
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
@@ -174,7 +174,7 @@ func TestSystemScopeHTTPRejectsWrongKindAndMissingTargetsWithoutWriting(t *testi
 	require.NoError(t, err)
 
 	response := client.Post("/system/tenants/2/members", auth, map[string]any{"subject": "22", "display_name": "Managed", "email": "managed@example.test"})
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	response = client.Get("/system/tenants/2/roles", auth)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	roles := decodeEnvelope[[]APIRole](t, response).Data

@@ -154,7 +154,7 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 	_, api := humatest.New(t)
 	RegisterHTTP(api, service, service)
 	login := api.Post("/login", map[string]any{"login_name": "alice", "password": "correct horse battery staple"}, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, login.Code)
+	require.Equal(t, http.StatusCreated, login.Code)
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	read := func(path, header string) map[string]any {
 		t.Helper()

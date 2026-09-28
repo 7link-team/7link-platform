@@ -13664,7 +13664,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -13672,7 +13672,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -14736,7 +14736,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -14744,7 +14744,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "400": {
             "content": {
@@ -18649,7 +18649,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -18657,7 +18657,7 @@
                 }
               }
             },
-            "description": "OK",
+            "description": "Created",
             "headers": {
               "Set-Cookie": {
                 "schema": {
@@ -18765,7 +18765,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -18773,7 +18773,7 @@
                 }
               }
             },
-            "description": "OK",
+            "description": "Created",
             "headers": {
               "Set-Cookie": {
                 "schema": {
@@ -18902,7 +18902,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -18910,7 +18910,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "403": {
             "content": {
@@ -22048,7 +22048,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -22056,7 +22056,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -22286,7 +22286,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -22294,7 +22294,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -22785,7 +22785,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -22793,7 +22793,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -23249,7 +23249,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -23257,7 +23257,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -23466,7 +23466,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -23474,7 +23474,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -23556,7 +23556,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -23564,7 +23564,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "400": {
             "content": {
@@ -26075,7 +26075,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -26083,7 +26083,7 @@
                 }
               }
             },
-            "description": "OK",
+            "description": "Created",
             "headers": {
               "Set-Cookie": {
                 "schema": {
@@ -27071,7 +27071,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -27079,7 +27079,7 @@
                 }
               }
             },
-            "description": "OK",
+            "description": "Created",
             "headers": {
               "Set-Cookie": {
                 "schema": {
@@ -27217,7 +27217,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -27225,7 +27225,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -27681,7 +27681,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -27689,7 +27689,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -27921,7 +27921,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -27929,7 +27929,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -28643,7 +28643,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -28651,7 +28651,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -28904,7 +28904,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -28912,7 +28912,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -29161,7 +29161,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -29169,7 +29169,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -29401,7 +29401,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -29409,7 +29409,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -29946,7 +29946,7 @@
       "post": {
         "operationId": "authn-create-registration-captcha",
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -29954,7 +29954,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "429": {
             "content": {
@@ -42716,7 +42716,7 @@
       "post": {
         "operationId": "authn-create-step-up-challenge",
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -42724,7 +42724,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -42833,7 +42833,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -42841,7 +42841,7 @@
                 }
               }
             },
-            "description": "OK",
+            "description": "Created",
             "headers": {
               "Set-Cookie": {
                 "schema": {
@@ -45127,7 +45127,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -45135,7 +45135,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -45992,7 +45992,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -46000,7 +46000,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -46504,7 +46504,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -46512,7 +46512,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -47212,7 +47212,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -47220,7 +47220,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -49686,7 +49686,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -49694,7 +49694,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {
@@ -51014,7 +51014,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -51022,7 +51022,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "Created"
           },
           "401": {
             "content": {

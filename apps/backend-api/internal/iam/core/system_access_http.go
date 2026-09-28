@@ -94,7 +94,7 @@ func registerSystemAccessHTTP(api huma.API, svc *Service, registrar *authz.Regis
 		}
 		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
-	authz.RegisterPlatform(registrar, api, op("iam-system-role-create", http.MethodPost, "/system/roles", "Create a system role"), authz.Guard{Resource: "system_role", Verb: "create"}, func(ctx context.Context, in *systemRoleCreateInput) (*respx.Body[APISystemRole], error) {
+	authz.RegisterPlatform(registrar, api, created(op("iam-system-role-create", http.MethodPost, "/system/roles", "Create a system role")), authz.Guard{Resource: "system_role", Verb: "create"}, func(ctx context.Context, in *systemRoleCreateInput) (*respx.Body[APISystemRole], error) {
 		if reservedSystemRoleName(in.Body.Name) {
 			return nil, huma.Error422UnprocessableEntity(respx.InvalidArgument)
 		}
@@ -355,7 +355,7 @@ func registerSystemMemberHTTP(api huma.API, svc *Service, registrar *authz.Regis
 		}
 		return respx.OK(ctx, item), nil
 	})
-	authz.RegisterPlatform(registrar, api, op("iam-system-member-create", http.MethodPost, "/system/members", "Add an existing account to system administration"), authz.Guard{Resource: "system_member", Verb: "create"}, func(ctx context.Context, in *systemMemberCreateInput) (*respx.Body[APISystemMember], error) {
+	authz.RegisterPlatform(registrar, api, created(op("iam-system-member-create", http.MethodPost, "/system/members", "Add an existing account to system administration")), authz.Guard{Resource: "system_member", Verb: "create"}, func(ctx context.Context, in *systemMemberCreateInput) (*respx.Body[APISystemMember], error) {
 		id, err := guid.RequireID(in.Body.PrincipalID)
 		if err != nil {
 			return nil, err

@@ -61,7 +61,7 @@ func registerAccountViewBoundary(api huma.API) {
 func registerAccountViewHTTP(api huma.API, service *Service) {
 	registrar := authz.NewAuthenticationOnlyRegistrar(service)
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{
-		OperationID: "authn-create-account-view", Method: http.MethodPost, Path: "/account-views",
+		OperationID: "authn-create-account-view", Method: http.MethodPost, DefaultStatus: http.StatusCreated, Path: "/account-views",
 		Summary: "Open an administrator account view", Tags: []string{"account"}, Errors: []int{401, 403, 422, 503},
 	}, func(ctx context.Context, in *accountViewCreateInput) (*respx.Body[AccountViewCreated], error) {
 		if err := service.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, ""); err != nil {

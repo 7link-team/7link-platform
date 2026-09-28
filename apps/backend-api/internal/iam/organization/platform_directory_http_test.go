@@ -86,9 +86,9 @@ type platformDirectoryPage[T any] struct {
 	} `json:"meta"`
 }
 
-func decodePlatformDirectory[T any](t *testing.T, response *httptest.ResponseRecorder) T {
+func decodePlatformDirectory[T any](t *testing.T, status int, response *httptest.ResponseRecorder) T {
 	t.Helper()
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, status, response.Code, response.Body.String())
 	var body T
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	return body
@@ -104,21 +104,21 @@ func TestPlatformDirectoryHTTPManagesDepartmentsInsideTheOperatingPlatform(t *te
 	type single struct {
 		Data Department `json:"data"`
 	}
-	parent := decodePlatformDirectory[single](t, h.client.Post(base, auth, map[string]any{"name": "Operations", "sort_order": 5})).Data
+	parent := decodePlatformDirectory[single](t, http.StatusCreated, h.client.Post(base, auth, map[string]any{"name": "Operations", "sort_order": 5})).Data
 	assert.Equal(t, platformDirectoryOwner, parent.TenantID, "the department belongs to the platform in the path")
 	assert.Zero(t, parent.EntityID, "platform departments carry no tenant entity")
 	assert.Equal(t, "Operations", parent.Name)
 	assert.Equal(t, StatusActive, parent.Status)
-	child := decodePlatformDirectory[single](t, h.client.Post(base, auth, map[string]any{"name": "Support", "parent_id": parent.ID.String(), "status": "disabled"})).Data
+	child := decodePlatformDirectory[single](t, http.StatusCreated, h.client.Post(base, auth, map[string]any{"name": "Support", "parent_id": parent.ID.String(), "status": "disabled"})).Data
 	assert.Equal(t, parent.ID, child.ParentID)
 	assert.Equal(t, "disabled", child.Status)
 
-	page := decodePlatformDirectory[platformDirectoryPage[Department]](t, h.client.Get(base+"?limit=1", auth))
+	page := decodePlatformDirectory[platformDirectoryPage[Department]](t, http.StatusOK, h.client.Get(base+"?limit=1", auth))
 	require.Len(t, page.Data, 1)
 	assert.Equal(t, parent.ID, page.Data[0].ID)
 	assert.Equal(t, int64(2), page.Meta.Page.Total, "the total counts only this platform's departments")
 	assert.Equal(t, 1, page.Meta.Page.Limit)
-	page = decodePlatformDirectory[platformDirectoryPage[Department]](t, h.client.Get(base+"?offset=1&limit=5", auth))
+	page = decodePlatformDirectory[platformDirectoryPage[Department]](t, http.StatusOK, h.client.Get(base+"?offset=1&limit=5", auth))
 	require.Len(t, page.Data, 1)
 	assert.Equal(t, child.ID, page.Data[0].ID)
 	for _, item := range page.Data {
@@ -148,13 +148,13 @@ func TestPlatformDirectoryHTTPManagesGroupsInsideTheOperatingPlatform(t *testing
 	type single struct {
 		Data Group `json:"data"`
 	}
-	created := decodePlatformDirectory[single](t, h.client.Post(base, auth, map[string]any{"name": "Operators", "description": "Platform operators"})).Data
+	created := decodePlatformDirectory[single](t, http.StatusCreated, h.client.Post(base, auth, map[string]any{"name": "Operators", "description": "Platform operators"})).Data
 	assert.Equal(t, platformDirectoryOwner, created.TenantID)
 	assert.Equal(t, "Operators", created.Name)
 	assert.Equal(t, "Platform operators", created.Description)
 	assert.Equal(t, GroupTypeStatic, created.Type)
 
-	page := decodePlatformDirectory[platformDirectoryPage[Group]](t, h.client.Get(base, auth))
+	page := decodePlatformDirectory[platformDirectoryPage[Group]](t, http.StatusOK, h.client.Get(base, auth))
 	require.Len(t, page.Data, 1, "tenant groups must not leak into the platform listing")
 	assert.Equal(t, created.ID, page.Data[0].ID)
 	assert.NotEqual(t, tenantGroup.ID, page.Data[0].ID)

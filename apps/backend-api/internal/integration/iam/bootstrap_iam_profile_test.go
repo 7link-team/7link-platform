@@ -201,7 +201,7 @@ func TestComposedIAMProfileFieldPolicies(t *testing.T) {
 			response = f.request(t, http.MethodPost, "/login", 0, "", map[string]any{
 				"login_name": f.requesterB.LoginName, "password": "correct horse battery staple",
 			}, map[string]string{"Origin": "https://app.example.test"})
-			requireStatus(t, http.StatusOK, response)
+			requireStatus(t, http.StatusCreated, response)
 			headers := map[string]string{"Cookie": response.Cookies[0].String()}
 			set := func(field, mask string) core.ManagedFieldPolicy {
 				t.Helper()

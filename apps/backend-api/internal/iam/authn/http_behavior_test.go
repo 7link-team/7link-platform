@@ -139,7 +139,7 @@ func TestAuthenticationHTTPFlow(t *testing.T) {
 	login := api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
 	}, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	require.NotEmpty(t, cookie)
 
@@ -164,7 +164,7 @@ func TestAuthenticationHTTPFlow(t *testing.T) {
 	// The allowlist admits an origin at or below a path, so the login page may
 	// send somebody back to wherever they were heading without every route
 	// being enumerated in deployment configuration.
-	assert.Equal(t, http.StatusOK, api.Post("/login", map[string]any{
+	assert.Equal(t, http.StatusCreated, api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple",
 		"return_url": "https://app.example/tenants/42/members?page=2",
 	}, "Origin: https://app.example").Code)
@@ -184,7 +184,7 @@ func TestAuthenticationHTTPFlow(t *testing.T) {
 	enrollmentLogin := api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple",
 	}, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, enrollmentLogin.Code, enrollmentLogin.Body.String())
+	require.Equal(t, http.StatusCreated, enrollmentLogin.Code, enrollmentLogin.Body.String())
 	assert.Contains(t, enrollmentLogin.Body.String(), `"status":"mfa_enrollment_required"`)
 	assert.NotEmpty(t, enrollmentLogin.Header().Get("Set-Cookie"))
 	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Authorization: Bearer invalid").Code)
@@ -198,7 +198,7 @@ func TestSessionHTTPTenantResolutionAndImmediateRevocation(t *testing.T) {
 	login := api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple",
 	}, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
 	cookie := "Cookie: " + strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	check := func(code int, expected string) {
 		t.Helper()
@@ -261,7 +261,7 @@ func TestRequiredMFAEnrollmentHTTPFlowDoesNotLockOutPrincipal(t *testing.T) {
 	login := api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple",
 	}, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
 	assert.Contains(t, login.Body.String(), `"status":"mfa_enrollment_required"`)
 	assert.Contains(t, login.Body.String(), `"subject":"`+principalID+`"`)
 	restrictedCookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
@@ -279,14 +279,14 @@ func TestRequiredMFAEnrollmentHTTPFlowDoesNotLockOutPrincipal(t *testing.T) {
 
 	enrollment := api.Post("/principals/"+principalID+"/mfa/totp-enrollments", "Cookie: "+restrictedCookie,
 		"Origin: https://app.example", map[string]any{"current_password": "correct horse battery staple"})
-	require.Equal(t, http.StatusOK, enrollment.Code, enrollment.Body.String())
+	require.Equal(t, http.StatusCreated, enrollment.Code, enrollment.Body.String())
 	var enrollmentEnvelope struct {
 		Data authnext.MFAEnrollment `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(enrollment.Body.Bytes(), &enrollmentEnvelope))
 	confirmation := api.Post("/principals/"+principalID+"/mfa/totp", "Cookie: "+restrictedCookie,
 		"Origin: https://app.example", map[string]any{"code": mustTOTPValue(t, enrollmentEnvelope.Data.Secret)})
-	require.Equal(t, http.StatusOK, confirmation.Code, confirmation.Body.String())
+	require.Equal(t, http.StatusCreated, confirmation.Code, confirmation.Body.String())
 	assert.Contains(t, confirmation.Header().Get("Set-Cookie"), "Max-Age=0")
 	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+restrictedCookie).Code)
 
@@ -298,7 +298,7 @@ func TestRequiredMFAEnrollmentHTTPFlowDoesNotLockOutPrincipal(t *testing.T) {
 	challenge := api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple",
 	}, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, challenge.Code, challenge.Body.String())
+	require.Equal(t, http.StatusCreated, challenge.Code, challenge.Body.String())
 	assert.Empty(t, challenge.Header().Get("Set-Cookie"))
 	var challengeEnvelope struct {
 		Data authnext.LoginResult `json:"data"`
@@ -310,7 +310,7 @@ func TestRequiredMFAEnrollmentHTTPFlowDoesNotLockOutPrincipal(t *testing.T) {
 		"challenge_id": challengeEnvelope.Data.ChallengeID,
 		"code":         confirmationEnvelope.Data.RecoveryCodes[0],
 	}, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, verified.Code, verified.Body.String())
+	require.Equal(t, http.StatusCreated, verified.Code, verified.Body.String())
 	assert.Equal(t, http.StatusOK, api.Get("/me",
 		"Cookie: "+strings.Split(verified.Header().Get("Set-Cookie"), ";")[0]).Code)
 }
@@ -326,7 +326,7 @@ func TestAuthenticationSecurityCenterHTTPFlow(t *testing.T) {
 		response := api.Post("/login", map[string]any{
 			"login_name": "alice", "password": password, "return_url": "https://app.example/",
 		}, "Origin: https://app.example")
-		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+		require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 		return strings.Split(response.Header().Get("Set-Cookie"), ";")[0]
 	}
 	first, second := login("correct horse battery staple"), login("correct horse battery staple")
@@ -487,7 +487,7 @@ func TestPasswordRecoveryHTTPFlow(t *testing.T) {
 	completed := api.Post("/password-recoveries", map[string]any{
 		"token": token, "new_password": "new correct horse battery staple",
 	}, "Origin: https://app.example")
-	assert.Equal(t, http.StatusOK, completed.Code, completed.Body.String())
+	assert.Equal(t, http.StatusCreated, completed.Code, completed.Body.String())
 	assert.Equal(t, http.StatusForbidden, api.Post("/password-recoveries", map[string]any{
 		"token": token, "new_password": "another correct horse battery staple",
 	}, "Origin: https://evil.example").Code)
@@ -539,7 +539,7 @@ func TestEmailVerificationHTTPFlow(t *testing.T) {
 	login := api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
 	}, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	assert.Contains(t, api.Get("/me", "Cookie: "+cookie).Body.String(), `"email_verified":false`)
 	assert.Equal(t, http.StatusUnauthorized, api.Post("/email-verifications/requests", "Origin: https://app.example").Code)
@@ -556,7 +556,7 @@ func TestEmailVerificationHTTPFlow(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, api.Post("/email-verifications", map[string]any{"token": token}, "Origin: https://evil.example").Code)
 	assert.Equal(t, http.StatusBadRequest, api.Post("/email-verifications", map[string]any{"token": strings.Repeat("x", 40)}, "Origin: https://app.example").Code)
 	completed := api.Post("/email-verifications", map[string]any{"token": token}, "Origin: https://app.example")
-	assert.Equal(t, http.StatusOK, completed.Code, completed.Body.String())
+	assert.Equal(t, http.StatusCreated, completed.Code, completed.Body.String())
 	assert.Contains(t, api.Get("/me", "Cookie: "+cookie).Body.String(), `"email_verified":true`)
 
 	err = db.WithContext(t.Context()).Table("iam_principals").Where("id = ?", principalID).Updates(map[string]any{"email": "", "email_verified": false}).Error
@@ -630,7 +630,7 @@ func registrationRequestWithCaptcha(t *testing.T, api humatest.TestAPI, email, p
 	t.Helper()
 	for range 100 {
 		response := api.Post("/registrations/captchas")
-		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+		require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 		var envelope struct {
 			Data struct {
 				Type      string `json:"type"`
@@ -673,7 +673,7 @@ func TestAuthenticationMFAHTTPFlow(t *testing.T) {
 	login := api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
 	}, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	require.NotEmpty(t, cookie)
 	assert.Equal(t, http.StatusUnauthorized, api.Get("/principals/"+principalID+"/mfa").Code)
@@ -684,7 +684,7 @@ func TestAuthenticationMFAHTTPFlow(t *testing.T) {
 	enroll := api.Post("/principals/"+principalID+"/mfa/totp-enrollments", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{
 		"current_password": "correct horse battery staple",
 	})
-	require.Equal(t, http.StatusOK, enroll.Code, enroll.Body.String())
+	require.Equal(t, http.StatusCreated, enroll.Code, enroll.Body.String())
 	var enrollmentEnvelope struct {
 		Data authnext.MFAEnrollment `json:"data"`
 	}
@@ -694,7 +694,7 @@ func TestAuthenticationMFAHTTPFlow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/principals/"+principalID+"/mfa/totp", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{"code": differentTOTP(code)}).Code)
 	confirm := api.Post("/principals/"+principalID+"/mfa/totp", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{"code": code})
-	require.Equal(t, http.StatusOK, confirm.Code, confirm.Body.String())
+	require.Equal(t, http.StatusCreated, confirm.Code, confirm.Body.String())
 	var confirmationEnvelope struct {
 		Data authnext.MFAConfirmation `json:"data"`
 	}
@@ -704,7 +704,7 @@ func TestAuthenticationMFAHTTPFlow(t *testing.T) {
 	challengeResponse := api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
 	}, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, challengeResponse.Code, challengeResponse.Body.String())
+	require.Equal(t, http.StatusCreated, challengeResponse.Code, challengeResponse.Body.String())
 	assert.Empty(t, challengeResponse.Header().Get("Set-Cookie"))
 	var challengeEnvelope struct {
 		Data authnext.LoginResult `json:"data"`
@@ -717,7 +717,7 @@ func TestAuthenticationMFAHTTPFlow(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, api.Post("/login/mfa", verifyBody, "Origin: https://evil.example").Code)
 	assert.Equal(t, http.StatusUnauthorized, api.Post("/login/mfa", map[string]any{"challenge_id": challengeEnvelope.Data.ChallengeID, "code": differentTOTP(code)}, "Origin: https://app.example").Code)
 	verified := api.Post("/login/mfa", verifyBody, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, verified.Code, verified.Body.String())
+	require.Equal(t, http.StatusCreated, verified.Code, verified.Body.String())
 	mfaCookie := strings.Split(verified.Header().Get("Set-Cookie"), ";")[0]
 	require.NotEmpty(t, mfaCookie)
 
@@ -790,7 +790,7 @@ func TestMFAAuditFailureHTTPRollsBackEnrollment(t *testing.T) {
 	login := api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple",
 	}, "Origin: https://app.example.test")
-	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	harness.auditErr = errors.New("audit denied")
 
@@ -812,7 +812,7 @@ func TestAuthenticationPasskeyHTTPContract(t *testing.T) {
 	login := api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
 	}, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	bobID := seedLocalPrincipal(t, web.repo, "bob", "bob@example.com", "correct horse battery staple")
 	bobLogin, err := web.BeginLogin(t.Context(), "bob", "correct horse battery staple", "")
@@ -841,7 +841,7 @@ func TestAuthenticationPasskeyHTTPContract(t *testing.T) {
 	registration := api.Post("/principals/"+principalID+"/passkey-registration-challenges", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{
 		"current_password": "correct horse battery staple",
 	})
-	require.Equal(t, http.StatusOK, registration.Code, registration.Body.String())
+	require.Equal(t, http.StatusCreated, registration.Code, registration.Body.String())
 	var options struct {
 		Data authnext.PasskeyOptions `json:"data"`
 	}
@@ -857,7 +857,7 @@ func TestAuthenticationPasskeyHTTPContract(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, api.Post("/login/passkey/options", map[string]any{"return_url": "https://app.example/"}, "Origin: https://login.example").Code)
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/login/passkey/options", map[string]any{"return_url": "https://evil.example/"}, "Origin: https://app.example").Code)
 	loginOptions := api.Post("/login/passkey/options", map[string]any{"return_url": "https://app.example/"}, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, loginOptions.Code, loginOptions.Body.String())
+	require.Equal(t, http.StatusCreated, loginOptions.Code, loginOptions.Body.String())
 	require.NoError(t, json.Unmarshal(loginOptions.Body.Bytes(), &options))
 	invalidLogin := map[string]any{"challenge_id": options.Data.ChallengeID, "credential": map[string]any{"invalid": true}}
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/login/passkey/verify", invalidLogin, "Origin: https://app.example").Code)
@@ -918,7 +918,7 @@ func TestAuthenticationStepUpHTTPContract(t *testing.T) {
 	login := api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
 	}, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
+	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 
 	session := api.Get("/me", "Cookie: "+cookie)
@@ -927,13 +927,13 @@ func TestAuthenticationStepUpHTTPContract(t *testing.T) {
 	assert.Contains(t, session.Body.String(), `"amr":["pwd"]`)
 
 	enroll := api.Post("/principals/"+principalID+"/mfa/totp-enrollments", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{"current_password": "correct horse battery staple"})
-	require.Equal(t, http.StatusOK, enroll.Code, enroll.Body.String())
+	require.Equal(t, http.StatusCreated, enroll.Code, enroll.Body.String())
 	var enrollment struct {
 		Data authnext.MFAEnrollment `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(enroll.Body.Bytes(), &enrollment))
 	confirm := api.Post("/principals/"+principalID+"/mfa/totp", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{"code": mustTOTPValue(t, enrollment.Data.Secret)})
-	require.Equal(t, http.StatusOK, confirm.Code, confirm.Body.String())
+	require.Equal(t, http.StatusCreated, confirm.Code, confirm.Body.String())
 	var confirmation struct {
 		Data authnext.MFAConfirmation `json:"data"`
 	}
@@ -941,7 +941,7 @@ func TestAuthenticationStepUpHTTPContract(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, api.Post("/sessions/current/step-up-challenges", "Cookie: "+cookie, "Origin: https://evil.example").Code)
 	options := api.Post("/sessions/current/step-up-challenges", "Cookie: "+cookie, "Origin: https://app.example")
-	require.Equal(t, http.StatusOK, options.Code, options.Body.String())
+	require.Equal(t, http.StatusCreated, options.Code, options.Body.String())
 	var stepUp struct {
 		Data authnext.StepUpOptions `json:"data"`
 	}
@@ -957,7 +957,7 @@ func TestAuthenticationStepUpHTTPContract(t *testing.T) {
 	verify := api.Post("/sessions/current/step-up-verifications", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{
 		"challenge_id": stepUp.Data.ChallengeID, "code": confirmation.Data.RecoveryCodes[0],
 	})
-	require.Equal(t, http.StatusOK, verify.Code, verify.Body.String())
+	require.Equal(t, http.StatusCreated, verify.Code, verify.Body.String())
 	upgradedCookie := strings.Split(verify.Header().Get("Set-Cookie"), ";")[0]
 	require.NotEmpty(t, upgradedCookie)
 

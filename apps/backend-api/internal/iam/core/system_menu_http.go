@@ -69,7 +69,7 @@ func registerSystemMenuHTTP(api huma.API, svc *Service, registrar *authz.Registr
 		}
 		return respx.OK(ctx, menus), nil
 	})
-	authz.RegisterPlatform(registrar, api, op("iam-system-menu-create", http.MethodPost, "/system/menus", "Create a system menu"), authz.Guard{Resource: "system_menu", Verb: "create"}, func(ctx context.Context, in *systemMenuCreateInput) (*respx.Body[APIMenu], error) {
+	authz.RegisterPlatform(registrar, api, created(op("iam-system-menu-create", http.MethodPost, "/system/menus", "Create a system menu")), authz.Guard{Resource: "system_menu", Verb: "create"}, func(ctx context.Context, in *systemMenuCreateInput) (*respx.Body[APIMenu], error) {
 		if strings.TrimSpace(in.Body.PermissionCode) != "" {
 			if err := svc.requireSystemMenuBinding(ctx); err != nil {
 				return nil, err

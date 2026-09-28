@@ -62,7 +62,7 @@ func personalTokenError(err error) error {
 
 func registerPersonalTokenHTTP(api huma.API, service *Service) {
 	registrar := authz.NewAuthenticationOnlyRegistrar(service)
-	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-personal-token-preparation", Method: http.MethodPost,
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-personal-token-preparation", Method: http.MethodPost, DefaultStatus: http.StatusCreated,
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
 		Path:     "/principals/{principal_id}/personal-token-preparations", Summary: "Prepare exact permissions and expiry for fresh verification", Tags: []string{"account"}, Errors: []int{401, 403, 422, 500, 503}},
 		func(ctx context.Context, in *personalTokenPrepareInput) (*respx.Body[PersonalTokenPreparation], error) {
@@ -75,7 +75,7 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 			}
 			return respx.OK(ctx, result), nil
 		})
-	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-personal-token", Method: http.MethodPost,
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-personal-token", Method: http.MethodPost, DefaultStatus: http.StatusCreated,
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
 		Path:     "/principals/{principal_id}/personal-tokens", Summary: "Create a tenant-scoped personal token; return its secret once", Tags: []string{"account"}, Errors: []int{401, 403, 422, 500, 503}},
 		func(ctx context.Context, in *personalTokenCreateInput) (*respx.Body[PersonalTokenCreated], error) {

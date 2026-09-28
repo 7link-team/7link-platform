@@ -46,7 +46,7 @@ func (f *iamTenantFixture) closureCookie(t *testing.T, principal identity.Princi
 	response := f.request(t, http.MethodPost, "/login", 0, "", map[string]any{
 		"login_name": principal.LoginName, "password": "correct horse battery staple",
 	}, map[string]string{"Origin": "https://app.example.test"})
-	requireStatus(t, http.StatusOK, response)
+	requireStatus(t, http.StatusCreated, response)
 	require.NotEmpty(t, response.Cookies)
 	return response.Cookies[0].String()
 }

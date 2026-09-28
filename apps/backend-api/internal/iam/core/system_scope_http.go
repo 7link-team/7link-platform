@@ -217,7 +217,7 @@ func registerSystemScopeHTTP(api huma.API, svc *Service, registrar *authz.Regist
 			out.RoleIDs = append([]guid.ID{}, roles...)
 			return respx.OK(ctx, out), nil
 		})
-		authz.RegisterPlatform(registrar, api, op("member-create", http.MethodPost, "/members"), write, func(ctx context.Context, in *systemScopeCreateInput) (*respx.Body[APITenantMember], error) {
+		authz.RegisterPlatform(registrar, api, created(op("member-create", http.MethodPost, "/members")), write, func(ctx context.Context, in *systemScopeCreateInput) (*respx.Body[APITenantMember], error) {
 			subject, err := guid.RequireID(in.Body.Subject)
 			if err != nil {
 				return nil, err
