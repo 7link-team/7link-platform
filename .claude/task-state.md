@@ -21,7 +21,8 @@
   in the current request context; SCIM-provisioned pending principals lack a
   self-service activation after S8b (product question); department reactivation
   widens selected_departments reach (low); react-leaflet Hippocratic license (legal).
-- Next: user decides merge IAM -> main; then first business module.
+- Merged to main 2026-09-28 (ad6dc25, tree identical to verified IAM 3c86214).
+- Next: user names the first business module; design per backend-module skill.
 
 ## Active: IAM Scoped Deep Audit (pre-merge gate) - 2026-09-28
 
