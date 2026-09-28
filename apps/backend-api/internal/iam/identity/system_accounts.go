@@ -178,7 +178,7 @@ func registerSystemPrincipalHTTP(api huma.API, service *Service, registrar *auth
 		OperationID: "identity-system-principal-workspaces", Method: http.MethodGet, Path: "/system/principals/{principal_id}/workspaces",
 		Summary: "List an account's admitted workspaces", Tags: []string{"system"}, Errors: []int{http.StatusNotFound},
 	}, authz.Guard{Resource: "system_account", Verb: "view"}, func(ctx context.Context, in *systemPrincipalIDInput) (*respx.Body[[]AccountWorkspace], error) {
-		id, err := requireID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -195,7 +195,7 @@ func registerSystemPrincipalHTTP(api huma.API, service *Service, registrar *auth
 		var ownerID guid.ID
 		if in.OwnerID != "" {
 			var err error
-			ownerID, err = requireID(in.OwnerID)
+			ownerID, err = guid.RequireID(in.OwnerID)
 			if err != nil {
 				return nil, err
 			}
@@ -225,7 +225,7 @@ func registerSystemPrincipalHTTP(api huma.API, service *Service, registrar *auth
 		OperationID: "identity-system-get-principal", Method: http.MethodGet, Path: "/system/principals/{principal_id}",
 		Summary: "Get a global account", Tags: []string{"system"}, Errors: []int{http.StatusNotFound},
 	}, authz.Guard{Resource: "system_account", Verb: "view"}, func(ctx context.Context, in *systemPrincipalIDInput) (*respx.Body[PrincipalView], error) {
-		id, err := requireID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -239,7 +239,7 @@ func registerSystemPrincipalHTTP(api huma.API, service *Service, registrar *auth
 		OperationID: "identity-system-update-principal", Method: http.MethodPatch, Path: "/system/principals/{principal_id}",
 		Summary: "Update a global account profile", Tags: []string{"system"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "system_account", Verb: "update"}, func(ctx context.Context, in *systemPrincipalUpdateInput) (*respx.Body[PrincipalView], error) {
-		id, err := requireID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}

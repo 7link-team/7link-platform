@@ -17,20 +17,12 @@ import (
 	"7link.com/platform/pkg/extension/huma/respx"
 )
 
-func requireID(value string) (guid.ID, error) {
-	id, err := guid.Parse(strings.TrimSpace(value))
-	if err != nil || id.Zero() {
-		return 0, huma.Error422UnprocessableEntity("respx.invalid_id")
-	}
-	return id, nil
-}
-
 func principalRef(tenantValue, idValue string) (guid.ID, guid.ID, error) {
-	tenantID, err := requireID(tenantValue)
+	tenantID, err := guid.RequireID(tenantValue)
 	if err != nil {
 		return 0, 0, err
 	}
-	id, err := requireID(idValue)
+	id, err := guid.RequireID(idValue)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -153,7 +145,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Tags:        []string{"directory"},
 	}, authz.Guard{Resource: "user", Verb: "view"},
 		func(ctx context.Context, in *principalListInput) (*respx.Body[principalListData], error) {
-			tenantID, err := requireID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
@@ -188,7 +180,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Errors:        []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "user", Verb: "create"},
 		func(ctx context.Context, in *principalCreateInput) (*respx.Body[PrincipalView], error) {
-			tenantID, err := requireID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
@@ -317,7 +309,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Tags:        []string{"directory"},
 	}, authz.Guard{Resource: "service_account", Verb: "view"},
 		func(ctx context.Context, in *serviceAccountListInput) (*respx.Body[serviceAccountListData], error) {
-			tenantID, err := requireID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
@@ -338,7 +330,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Errors:        []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "service_account", Verb: "create"},
 		func(ctx context.Context, in *serviceAccountCreateInput) (*respx.Body[ServiceAccount], error) {
-			tenantID, err := requireID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
@@ -360,7 +352,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Errors:      []int{http.StatusNotFound},
 	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "view"},
 		func(ctx context.Context, in *serviceAccountIDInput) (*respx.Body[ServiceAccount], error) {
-			id, err := requireID(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -381,7 +373,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "update"},
 		func(ctx context.Context, in *serviceAccountReplaceInput) (*respx.Body[ServiceAccount], error) {
-			id, err := requireID(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -405,7 +397,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
 	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "delete"},
 		func(ctx context.Context, in *serviceAccountDeleteInput) (*respx.Body[serviceAccountDeleteData], error) {
-			id, err := requireID(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -425,7 +417,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Errors:      []int{http.StatusNotFound},
 	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "manage_credential"},
 		func(ctx context.Context, in *serviceAccountIDInput) (*respx.Body[[]ServiceAccountCredential], error) {
-			id, err := requireID(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -447,7 +439,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "manage_credential"},
 		func(ctx context.Context, in *serviceAccountCredentialCreateInput) (*respx.Body[ServiceAccountCredentialSecret], error) {
-			id, err := requireID(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -470,12 +462,12 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Errors:      []int{http.StatusNotFound},
 	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "manage_credential"},
 		func(ctx context.Context, in *serviceAccountCredentialIDInput) (*respx.Body[serviceAccountCredentialRevokeData], error) {
-			id, err := requireID(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
 			tenantID := authnext.TenantIDFromContext(ctx)
-			credentialID, err := requireID(in.CredentialID)
+			credentialID, err := guid.RequireID(in.CredentialID)
 			if err != nil {
 				return nil, err
 			}

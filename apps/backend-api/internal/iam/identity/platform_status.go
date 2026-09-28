@@ -144,7 +144,7 @@ func registerPlatformStatusHTTP(api huma.API, service *Service, registrar *authz
 }
 
 func platformPrincipalStatus(ctx context.Context, service *Service, in *platformLifecycleInput, status string) (*respx.Body[Principal], error) {
-	id, err := requireID(in.PrincipalID)
+	id, err := guid.RequireID(in.PrincipalID)
 	if err != nil {
 		return nil, err
 	}

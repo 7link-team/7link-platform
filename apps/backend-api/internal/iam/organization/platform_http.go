@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -61,7 +62,7 @@ func registerPlatformHTTP(api huma.API, service *PlatformService, registrar *aut
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "operating_platform", Verb: "create"},
 		func(ctx context.Context, in *createTenantInput) (*respx.Body[Platform], error) {
-			owner, err := parseOrganizationID(in.Body.OwnerPrincipalID)
+			owner, err := guid.RequireID(in.Body.OwnerPrincipalID)
 			if err != nil {
 				return nil, err
 			}
@@ -78,7 +79,7 @@ func registerPlatformHTTP(api huma.API, service *PlatformService, registrar *aut
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "operating_platform", Verb: "view"},
 		func(ctx context.Context, in *platformIDInput) (*respx.Body[Platform], error) {
-			id, err := parseOrganizationID(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -95,7 +96,7 @@ func registerPlatformHTTP(api huma.API, service *PlatformService, registrar *aut
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "operating_platform", Verb: "update"},
 		func(ctx context.Context, in *updatePlatformInput) (*respx.Body[Platform], error) {
-			id, err := parseOrganizationID(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -112,7 +113,7 @@ func registerPlatformHTTP(api huma.API, service *PlatformService, registrar *aut
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "operating_platform", Verb: "delete"},
 		func(ctx context.Context, in *deletePlatformInput) (*respx.Body[deletedResource], error) {
-			id, err := parseOrganizationID(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
 				return nil, err
 			}

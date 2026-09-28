@@ -1,10 +1,12 @@
 package core
 
 import (
-	corei18n "7link.com/platform/internal/iam/core/i18n"
 	"context"
 	"errors"
 	"net/http"
+
+	corei18n "7link.com/platform/internal/iam/core/i18n"
+	"7link.com/platform/internal/infra/guid"
 
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -55,7 +57,7 @@ func registerMemberExitHTTP(api huma.API, s *Service, registrar *authz.Registrar
 		if err := s.privacyBrowser.ValidateCSRF(http.MethodDelete, in.Origin, in.Cookie); err != nil {
 			return nil, huma.Error403Forbidden("respx.forbidden")
 		}
-		tenant, err := requireID(in.TenantID)
+		tenant, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}

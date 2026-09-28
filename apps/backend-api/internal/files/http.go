@@ -161,7 +161,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		Summary: "List department file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "department_id", departmentOwner, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *departmentFilePageInput) (*respx.Body[filePage], error) {
 		claims, _ := authn.FromContext(ctx)
-		departmentID, err := fileID(input.DepartmentID)
+		departmentID, err := guid.RequireID(input.DepartmentID)
 		if err != nil {
 			return nil, err
 		}
@@ -174,7 +174,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		Summary: "List an authorized directory page", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "file_id", fileOwner, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *fileItemsInput) (*respx.Body[fileChildrenPage], error) {
-		parentID, err := fileID(input.FileID)
+		parentID, err := guid.RequireID(input.FileID)
 		if err != nil {
 			return nil, err
 		}
@@ -224,7 +224,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		Summary: "Get authorized file metadata", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "file_id", fileOwner, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *fileResourceInput) (*respx.Body[fileEntryView], error) {
-		fileID, err := fileID(input.FileID)
+		fileID, err := guid.RequireID(input.FileID)
 		if err != nil {
 			return nil, err
 		}
@@ -241,7 +241,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		Summary: "Get authorized file metadata by a root-relative path", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "root_file_id", fileOwner, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *filePathInput) (*respx.Body[fileEntryView], error) {
-		rootID, err := fileID(input.RootFileID)
+		rootID, err := guid.RequireID(input.RootFileID)
 		if err != nil {
 			return nil, err
 		}
@@ -258,7 +258,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		Summary: "Download file content", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "file_id", fileOwner, authz.Guard{Resource: "file", Verb: "download", FilterData: true}, func(ctx context.Context, input *fileResourceInput) (*huma.StreamResponse, error) {
-		fileID, err := fileID(input.FileID)
+		fileID, err := guid.RequireID(input.FileID)
 		if err != nil {
 			return nil, err
 		}
@@ -285,7 +285,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		Summary: "Update a file or directory", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "file_id", fileOwner, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *fileUpdateInput) (*respx.Body[fileEntryView], error) {
-		fileID, err := fileID(input.FileID)
+		fileID, err := guid.RequireID(input.FileID)
 		if err != nil {
 			return nil, err
 		}
@@ -313,7 +313,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		Summary: "Move a file or directory to trash", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "file_id", fileOwner, authz.Guard{Resource: "file", Verb: "delete", FilterData: true}, func(ctx context.Context, input *fileDeleteInput) (*respx.Body[fileTrashResult], error) {
-		fileID, err := fileID(input.FileID)
+		fileID, err := guid.RequireID(input.FileID)
 		if err != nil {
 			return nil, err
 		}
@@ -398,7 +398,7 @@ func createFile(ctx context.Context, service *operationService, form *fileCreate
 	if form.Scope != "" {
 		return nil, huma.Error422UnprocessableEntity(filesi18n.InvalidFileScope)
 	}
-	parentID, err := fileID(form.ParentID)
+	parentID, err := guid.RequireID(form.ParentID)
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +448,7 @@ func browserPageOf(after string, limit int) (browserPageRequest, error) {
 	var cursor guid.ID
 	if strings.TrimSpace(after) != "" {
 		var err error
-		cursor, err = fileID(after)
+		cursor, err = guid.RequireID(after)
 		if err != nil {
 			return browserPageRequest{}, err
 		}
@@ -464,13 +464,13 @@ func fileOperationRequestOf(input *fileOperationInput) (immediateOperationReques
 	if input == nil {
 		return immediateOperationRequest{}, huma.Error422UnprocessableEntity(filesi18n.InvalidFileOperation)
 	}
-	destinationID, err := fileID(input.Body.DestinationID)
+	destinationID, err := guid.RequireID(input.Body.DestinationID)
 	if err != nil {
 		return immediateOperationRequest{}, err
 	}
 	sources := make([]guid.ID, len(input.Body.Sources))
 	for index, raw := range input.Body.Sources {
-		sources[index], err = fileID(raw)
+		sources[index], err = guid.RequireID(raw)
 		if err != nil {
 			return immediateOperationRequest{}, err
 		}
@@ -494,14 +494,6 @@ func fileOperationRequestOf(input *fileOperationInput) (immediateOperationReques
 	}
 	request.SpaceID = 0
 	return request, nil
-}
-
-func fileID(raw string) (guid.ID, error) {
-	id, err := guid.Parse(strings.TrimSpace(raw))
-	if err != nil || id <= 0 {
-		return 0, huma.Error422UnprocessableEntity(respx.InvalidID)
-	}
-	return id, nil
 }
 
 func fileHTTPError(err error) error {

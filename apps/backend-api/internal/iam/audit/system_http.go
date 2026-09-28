@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -75,7 +76,7 @@ func registerSystemAuditHTTP(api huma.API, service *Service, registrar *authz.Re
 		if err := rejectSystemAuditTenant(in.TenantSelector); err != nil {
 			return nil, err
 		}
-		id, err := parseAuditID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}

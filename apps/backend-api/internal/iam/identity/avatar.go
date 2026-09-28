@@ -545,12 +545,12 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		if !ok || claims == nil {
 			return nil, huma.Error401Unauthorized("respx.unauthorized")
 		}
-		id, err := requireID(in.PrincipalID)
+		id, err := guid.RequireID(in.PrincipalID)
 		if err != nil {
 			return nil, err
 		}
 		if id != claims.PrincipalID {
-			tenantID, err := requireID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil || s.avatarPermissions == nil {
 				return nil, huma.Error403Forbidden("respx.forbidden")
 			}

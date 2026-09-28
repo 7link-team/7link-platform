@@ -39,7 +39,7 @@ type systemOwnerDepartmentsInput struct {
 
 func registerSystemOwnerDepartmentsHTTP(api huma.API, svc *Service, registrar *authz.Registrar) {
 	list := func(ctx context.Context, value, kind string, offset, limit int) (*respx.Body[[]Department], error) {
-		id, err := parseOrganizationID(value)
+		id, err := guid.RequireID(value)
 		if err != nil {
 			return nil, err
 		}
@@ -131,7 +131,7 @@ func registerSystemDepartmentHTTP(api huma.API, svc *Service, registrar *authz.R
 		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
 	authz.RegisterPlatform(registrar, api, op("organization-system-department-create", http.MethodPost, "/system/departments", "Create a system department"), authz.Guard{Resource: "system_department", Verb: "create"}, func(ctx context.Context, in *systemDepartmentCreateInput) (*respx.Body[Department], error) {
-		parent, err := parseOptionalOrganizationID(in.Body.ParentID)
+		parent, err := guid.OptionalID(in.Body.ParentID)
 		if err != nil {
 			return nil, err
 		}
@@ -147,7 +147,7 @@ func registerSystemDepartmentHTTP(api huma.API, svc *Service, registrar *authz.R
 		return respx.OK(ctx, department), nil
 	})
 	authz.RegisterPlatform(registrar, api, op("organization-system-department", http.MethodGet, "/system/departments/{department_id}", "Get a system department"), authz.Guard{Resource: "system_department", Verb: "view"}, func(ctx context.Context, in *departmentResourceInput) (*respx.Body[Department], error) {
-		id, err := parseOrganizationID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -162,13 +162,13 @@ func registerSystemDepartmentHTTP(api huma.API, svc *Service, registrar *authz.R
 		return respx.OK(ctx, department), nil
 	})
 	authz.RegisterPlatform(registrar, api, op("organization-system-department-update", http.MethodPatch, "/system/departments/{department_id}", "Update a system department"), authz.Guard{Resource: "system_department", Verb: "update"}, func(ctx context.Context, in *updateDepartmentInput) (*respx.Body[Department], error) {
-		id, err := parseOrganizationID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
 		input := UpdateDepartment{Name: in.Body.Name, Status: in.Body.Status, SortOrder: in.Body.SortOrder, Version: in.Body.Version}
 		if in.Body.ParentID != nil {
-			parent, err := parseOptionalOrganizationID(*in.Body.ParentID)
+			parent, err := guid.OptionalID(*in.Body.ParentID)
 			if err != nil {
 				return nil, err
 			}
@@ -186,7 +186,7 @@ func registerSystemDepartmentHTTP(api huma.API, svc *Service, registrar *authz.R
 		return respx.OK(ctx, department), nil
 	})
 	authz.RegisterPlatform(registrar, api, op("organization-system-department-delete", http.MethodDelete, "/system/departments/{department_id}", "Delete an empty system department"), authz.Guard{Resource: "system_department", Verb: "delete"}, func(ctx context.Context, in *deleteDepartmentInput) (*respx.Body[deletedResource], error) {
-		id, err := parseOrganizationID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}

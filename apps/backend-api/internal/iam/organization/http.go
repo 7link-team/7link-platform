@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"7link.com/platform/internal/iam/core"
@@ -255,24 +254,9 @@ func RegisterHTTP(
 	registerInvitationHTTP(api, invitations, registrar)
 }
 
-func parseOrganizationID(value string) (guid.ID, error) {
-	id, err := guid.Parse(strings.TrimSpace(value))
-	if err != nil || id.Zero() {
-		return 0, huma.Error422UnprocessableEntity(respx.InvalidID)
-	}
-	return id, nil
-}
-
-func parseOptionalOrganizationID(value string) (guid.ID, error) {
-	if strings.TrimSpace(value) == "" {
-		return 0, nil
-	}
-	return parseOrganizationID(value)
-}
-
 func organizationResourceIDs(ctx context.Context, idValue string) (guid.ID, guid.ID, error) {
 	tenantID := authnext.TenantIDFromContext(ctx)
-	id, err := parseOrganizationID(idValue)
+	id, err := guid.RequireID(idValue)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -286,7 +270,7 @@ func registerDepartmentHTTP(api huma.API, service *Service, registrar *authz.Reg
 		Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "dept", Verb: "view"},
 		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Department], error) {
-			tenantID, err := parseOrganizationID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
@@ -303,15 +287,15 @@ func registerDepartmentHTTP(api huma.API, service *Service, registrar *authz.Reg
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "dept", Verb: "create"},
 		func(ctx context.Context, in *createDepartmentInput) (*respx.Body[Department], error) {
-			tenantID, err := parseOrganizationID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
-			entityID, err := parseOrganizationID(in.Body.EntityID)
+			entityID, err := guid.RequireID(in.Body.EntityID)
 			if err != nil {
 				return nil, err
 			}
-			parentID, err := parseOptionalOrganizationID(in.Body.ParentID)
+			parentID, err := guid.OptionalID(in.Body.ParentID)
 			if err != nil {
 				return nil, err
 			}
@@ -355,7 +339,7 @@ func registerDepartmentHTTP(api huma.API, service *Service, registrar *authz.Reg
 				Name: in.Body.Name, Status: in.Body.Status, SortOrder: in.Body.SortOrder, Version: in.Body.Version,
 			}
 			if in.Body.ParentID != nil {
-				parentID, err := parseOptionalOrganizationID(*in.Body.ParentID)
+				parentID, err := guid.OptionalID(*in.Body.ParentID)
 				if err != nil {
 					return nil, err
 				}
@@ -391,7 +375,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 		Summary: "List tenant groups", Tags: []string{"directory"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "group", Verb: "view"},
 		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Group], error) {
-			tenantID, err := parseOrganizationID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
@@ -408,7 +392,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "group", Verb: "create"},
 		func(ctx context.Context, in *createGroupInput) (*respx.Body[Group], error) {
-			tenantID, err := parseOrganizationID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
@@ -502,7 +486,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 			if err != nil {
 				return nil, err
 			}
-			principalID, err := parseOrganizationID(in.PrincipalID)
+			principalID, err := guid.RequireID(in.PrincipalID)
 			if err != nil {
 				return nil, err
 			}
@@ -525,7 +509,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 			if err != nil {
 				return nil, err
 			}
-			principalID, err := parseOrganizationID(in.PrincipalID)
+			principalID, err := guid.RequireID(in.PrincipalID)
 			if err != nil {
 				return nil, err
 			}
@@ -572,7 +556,7 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "tenant", Verb: "create"},
 		func(ctx context.Context, in *createTenantInput) (*respx.Body[Tenant], error) {
-			owner, err := parseOrganizationID(in.Body.OwnerPrincipalID)
+			owner, err := guid.RequireID(in.Body.OwnerPrincipalID)
 			if err != nil {
 				return nil, err
 			}
@@ -591,7 +575,7 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "tenant", Verb: "view"},
 		func(ctx context.Context, in *tenantIDInput) (*respx.Body[Tenant], error) {
-			id, err := parseOrganizationID(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -608,7 +592,7 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "tenant", Verb: "update"},
 		func(ctx context.Context, in *updateTenantInput) (*respx.Body[Tenant], error) {
-			id, err := parseOrganizationID(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -627,7 +611,7 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "tenant", Verb: "delete"},
 		func(ctx context.Context, in *deleteTenantInput) (*respx.Body[deletedResource], error) {
-			id, err := parseOrganizationID(in.ID)
+			id, err := guid.RequireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -645,7 +629,7 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 		Errors: []int{http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "invitation", Verb: "view"},
 		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Invitation], error) {
-			tenantID, err := parseOrganizationID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
@@ -663,17 +647,17 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "invitation", Verb: "create"},
 		func(ctx context.Context, in *createInvitationInput) (*respx.Body[issuedInvitation], error) {
-			tenantID, err := parseOrganizationID(in.TenantID)
+			tenantID, err := guid.RequireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
-			departmentID, err := parseOptionalOrganizationID(in.Body.DepartmentID)
+			departmentID, err := guid.OptionalID(in.Body.DepartmentID)
 			if err != nil {
 				return nil, err
 			}
 			roleIDs := make([]guid.ID, 0, len(in.Body.RoleIDs))
 			for _, value := range in.Body.RoleIDs {
-				roleID, err := parseOrganizationID(value)
+				roleID, err := guid.RequireID(value)
 				if err != nil {
 					return nil, err
 				}

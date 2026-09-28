@@ -79,7 +79,7 @@ func registerSystemMenuHTTP(api huma.API, svc *Service, registrar *authz.Registr
 		if err != nil {
 			return nil, apiError("system menus", err)
 		}
-		parent, err := optionalID(in.Body.ParentID)
+		parent, err := guid.OptionalID(in.Body.ParentID)
 		if err != nil {
 			return nil, err
 		}
@@ -94,7 +94,7 @@ func registerSystemMenuHTTP(api huma.API, svc *Service, registrar *authz.Registr
 		if err != nil {
 			return nil, apiError("system menus", err)
 		}
-		id, err := requireID(in.MenuID)
+		id, err := guid.RequireID(in.MenuID)
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +109,7 @@ func registerSystemMenuHTTP(api huma.API, svc *Service, registrar *authz.Registr
 		if err != nil {
 			return nil, apiError("system menus", err)
 		}
-		id, err := requireID(in.MenuID)
+		id, err := guid.RequireID(in.MenuID)
 		if err != nil {
 			return nil, err
 		}
@@ -119,13 +119,13 @@ func registerSystemMenuHTTP(api huma.API, svc *Service, registrar *authz.Registr
 			}
 			var parent *guid.ID
 			if in.Body.ParentID != nil {
-				parsed, err := optionalID(*in.Body.ParentID)
+				parsed, err := guid.OptionalID(*in.Body.ParentID)
 				if err != nil {
 					return nil, err
 				}
 				parent = &parsed
 			}
-			relative, err := optionalID(in.Body.Placement.RelativeTo)
+			relative, err := guid.OptionalID(in.Body.Placement.RelativeTo)
 			if err != nil {
 				return nil, err
 			}
@@ -145,7 +145,7 @@ func registerSystemMenuHTTP(api huma.API, svc *Service, registrar *authz.Registr
 			}
 		}
 		if in.Body.ParentID != nil {
-			parent, err := optionalID(*in.Body.ParentID)
+			parent, err := guid.OptionalID(*in.Body.ParentID)
 			if err != nil {
 				return nil, err
 			}
@@ -183,7 +183,7 @@ func registerSystemMenuHTTP(api huma.API, svc *Service, registrar *authz.Registr
 		if err != nil {
 			return nil, apiError("system menus", err)
 		}
-		id, err := requireID(in.MenuID)
+		id, err := guid.RequireID(in.MenuID)
 		if err != nil {
 			return nil, err
 		}

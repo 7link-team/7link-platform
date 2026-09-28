@@ -109,7 +109,7 @@ func (a systemScopeAdministratorEvaluator) CheckOperatingPlatform(_ context.Cont
 }
 
 func (s *Service) systemScopeOwner(ctx context.Context, raw, kind string) (guid.ID, error) {
-	id, err := requireID(raw)
+	id, err := guid.RequireID(raw)
 	if err != nil {
 		return 0, err
 	}
@@ -201,7 +201,7 @@ func registerSystemScopeHTTP(api huma.API, svc *Service, registrar *authz.Regist
 			if err != nil {
 				return nil, apiError("membership owner", err)
 			}
-			subject, err := requireID(in.PrincipalID)
+			subject, err := guid.RequireID(in.PrincipalID)
 			if err != nil {
 				return nil, err
 			}
@@ -218,11 +218,11 @@ func registerSystemScopeHTTP(api huma.API, svc *Service, registrar *authz.Regist
 			return respx.OK(ctx, out), nil
 		})
 		authz.RegisterPlatform(registrar, api, op("member-create", http.MethodPost, "/members"), write, func(ctx context.Context, in *systemScopeCreateInput) (*respx.Body[APITenantMember], error) {
-			subject, err := requireID(in.Body.Subject)
+			subject, err := guid.RequireID(in.Body.Subject)
 			if err != nil {
 				return nil, err
 			}
-			department, err := optionalID(in.Body.DepartmentID)
+			department, err := guid.OptionalID(in.Body.DepartmentID)
 			if err != nil {
 				return nil, err
 			}
@@ -238,7 +238,7 @@ func registerSystemScopeHTTP(api huma.API, svc *Service, registrar *authz.Regist
 			return respx.OK(ctx, memberFromDomain(member)), nil
 		})
 		authz.RegisterPlatform(registrar, api, op("member-update", http.MethodPatch, "/members/{principal_id}"), write, func(ctx context.Context, in *systemScopeUpdateInput) (*respx.Body[APITenantMember], error) {
-			subject, err := requireID(in.PrincipalID)
+			subject, err := guid.RequireID(in.PrincipalID)
 			if err != nil {
 				return nil, err
 			}
@@ -258,7 +258,7 @@ func registerSystemScopeHTTP(api huma.API, svc *Service, registrar *authz.Regist
 					current.Status = *in.Body.Status
 				}
 				if in.Body.DepartmentID != nil {
-					current.DepartmentID, err = optionalID(*in.Body.DepartmentID)
+					current.DepartmentID, err = guid.OptionalID(*in.Body.DepartmentID)
 					if err != nil {
 						return err
 					}
@@ -272,7 +272,7 @@ func registerSystemScopeHTTP(api huma.API, svc *Service, registrar *authz.Regist
 			return respx.OK(ctx, memberFromDomain(member)), nil
 		})
 		authz.RegisterPlatform(registrar, api, op("member-disable", http.MethodDelete, "/members/{principal_id}"), write, func(ctx context.Context, in *SystemScopeMemberInput) (*respx.Body[MutationResult], error) {
-			subject, err := requireID(in.PrincipalID)
+			subject, err := guid.RequireID(in.PrincipalID)
 			if err != nil {
 				return nil, err
 			}
@@ -301,7 +301,7 @@ func registerSystemScopeHTTP(api huma.API, svc *Service, registrar *authz.Regist
 			if err != nil {
 				return nil, apiError("role owner", err)
 			}
-			subject, err := requireID(in.PrincipalID)
+			subject, err := guid.RequireID(in.PrincipalID)
 			if err != nil {
 				return nil, err
 			}
@@ -314,11 +314,11 @@ func registerSystemScopeHTTP(api huma.API, svc *Service, registrar *authz.Regist
 		for _, route := range []struct{ method, action string }{{http.MethodPut, "add"}, {http.MethodDelete, "remove"}} {
 			method := route.method
 			authz.RegisterPlatform(registrar, api, op("role-member-"+route.action, method, "/roles/{role_id}/members/{principal_id}"), write, func(ctx context.Context, in *systemScopeRoleMemberInput) (*respx.Body[MutationResult], error) {
-				subject, err := requireID(in.PrincipalID)
+				subject, err := guid.RequireID(in.PrincipalID)
 				if err != nil {
 					return nil, err
 				}
-				role, err := requireID(in.RoleID)
+				role, err := guid.RequireID(in.RoleID)
 				if err != nil {
 					return nil, err
 				}

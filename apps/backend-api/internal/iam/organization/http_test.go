@@ -296,13 +296,13 @@ func TestOrganizationErrorMappings(t *testing.T) {
 
 func TestParseOrganizationIDs(t *testing.T) {
 	t.Parallel()
-	id, err := parseOrganizationID(" 42 ")
+	id, err := guid.RequireID(" 42 ")
 	require.NoError(t, err)
 	assert.EqualValues(t, 42, id)
-	optional, err := parseOptionalOrganizationID(" ")
+	optional, err := guid.OptionalID(" ")
 	require.NoError(t, err)
 	assert.Zero(t, optional)
-	_, err = parseOrganizationID("invalid")
+	_, err = guid.RequireID("invalid")
 	assert.Error(t, err)
 	ctx := authnext.WithClaims(t.Context(), &authnext.Claims{TenantID: 1})
 	_, _, err = organizationResourceIDs(ctx, "bad")

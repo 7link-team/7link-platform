@@ -550,7 +550,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		OperationID: "oauth-list-clients", Method: http.MethodGet, Path: "/oauth-clients",
 		Summary: "List tenant OAuth clients", Tags: []string{"applications"},
 	}, authz.Guard{Resource: "oauth_client", Verb: "view"}, func(ctx context.Context, in *clientListInput) (*respx.Body[[]Client], error) {
-		tenantID, err := parseOAuthID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -564,7 +564,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		OperationID: "oauth-create-client", Method: http.MethodPost, Path: "/oauth-clients",
 		Summary: "Create a tenant OAuth client", Tags: []string{"applications"}, DefaultStatus: http.StatusCreated,
 	}, authz.Guard{Resource: "oauth_client", Verb: "create"}, func(ctx context.Context, in *clientCreateInput) (*respx.Body[clientCreateData], error) {
-		tenantID, err := parseOAuthID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -582,7 +582,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		OperationID: "oauth-update-client", Method: http.MethodPut, Path: "/oauth-clients/{client_id}",
 		Summary: "Replace a tenant OAuth client", Tags: []string{"applications"},
 	}, "client_id", service.resolveClientOwner, authz.Guard{Resource: "oauth_client", Verb: "update"}, func(ctx context.Context, in *clientUpdateInput) (*respx.Body[Client], error) {
-		id, err := parseOAuthID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -602,7 +602,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		Path: "/oauth-clients/{client_id}/credentials", Summary: "Create and activate a confidential OAuth client credential",
 		Tags: []string{"applications"}, Errors: []int{http.StatusNotFound},
 	}, "client_id", service.resolveClientOwner, authz.Guard{Resource: "oauth_client", Verb: "update"}, func(ctx context.Context, in *clientIDInput) (*respx.Body[clientSecretData], error) {
-		id, err := parseOAuthID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -617,7 +617,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		OperationID: "oauth-delete-client", Method: http.MethodDelete, Path: "/oauth-clients/{client_id}",
 		Summary: "Delete a tenant OAuth client", Tags: []string{"applications"}, Errors: []int{http.StatusNotFound},
 	}, "client_id", service.resolveClientOwner, authz.Guard{Resource: "oauth_client", Verb: "delete"}, func(ctx context.Context, in *clientIDInput) (*respx.Body[clientDeleteData], error) {
-		id, err := parseOAuthID(in.ID)
+		id, err := guid.RequireID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -659,7 +659,7 @@ func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registra
 		if err != nil {
 			return nil, err
 		}
-		clientID, err := parseOAuthID(in.ClientID)
+		clientID, err := guid.RequireID(in.ClientID)
 		if err != nil {
 			return nil, err
 		}
@@ -695,14 +695,6 @@ func oauthConsentError(err error) error {
 		return huma.Error404NotFound(oauthi18n.ConsentNotFound)
 	}
 	return huma.Error500InternalServerError(oauthi18n.ServerError)
-}
-
-func parseOAuthID(value string) (guid.ID, error) {
-	id, err := guid.Parse(strings.TrimSpace(value))
-	if err != nil {
-		return 0, huma.Error422UnprocessableEntity(oauthi18n.InvalidClientConfiguration)
-	}
-	return id, nil
 }
 
 func oauthClientError(err error, notFound bool) error {

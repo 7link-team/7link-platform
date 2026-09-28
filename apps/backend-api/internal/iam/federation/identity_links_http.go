@@ -129,7 +129,7 @@ func registerPersonalIdentityHTTP(api huma.API, service *Service) {
 		if in.Authorization != "" {
 			return nil, huma.Error401Unauthorized(respx.Unauthorized)
 		}
-		providerID, err := parseFederationID(in.ProviderID)
+		providerID, err := guid.RequireID(in.ProviderID)
 		if err != nil {
 			return nil, err
 		}

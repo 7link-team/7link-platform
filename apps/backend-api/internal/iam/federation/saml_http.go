@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"reflect"
 
+	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -54,7 +55,7 @@ type samlResponseForm struct {
 func registerSAMLAdminHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	list := huma.Operation{OperationID: "federation-list-saml-service-providers", Method: http.MethodGet, Path: "/saml-service-providers", Summary: "List tenant SAML service providers", Tags: []string{"applications"}}
 	authz.Register(registrar, api, list, authz.Guard{Resource: "identity_provider", Verb: "view"}, func(ctx context.Context, in *samlSPListInput) (*respx.Body[[]SAMLServiceProvider], error) {
-		tenantID, err := parseFederationID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -67,7 +68,7 @@ func registerSAMLAdminHTTP(api huma.API, service *Service, registrar *authz.Regi
 
 	create := huma.Operation{OperationID: "federation-create-saml-service-provider", Method: http.MethodPost, Path: "/saml-service-providers", Summary: "Register a SAML service provider from its metadata", Tags: []string{"applications"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}
 	authz.Register(registrar, api, create, authz.Guard{Resource: "identity_provider", Verb: "create"}, func(ctx context.Context, in *samlSPCreateInput) (*respx.Body[SAMLServiceProvider], error) {
-		tenantID, err := parseFederationID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -81,7 +82,7 @@ func registerSAMLAdminHTTP(api huma.API, service *Service, registrar *authz.Regi
 	replace := huma.Operation{OperationID: "federation-update-saml-service-provider", Method: http.MethodPut, Path: "/saml-service-providers/{sp_id}", Summary: "Replace a SAML service provider", Tags: []string{"applications"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}
 	authz.RegisterOwned(registrar, api, replace, "sp_id", service.resolveSAMLServiceProviderOwner, authz.Guard{Resource: "identity_provider", Verb: "update"}, func(ctx context.Context, in *samlSPReplaceInput) (*respx.Body[SAMLServiceProvider], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
-		spID, err := parseFederationID(in.ServiceProviderID)
+		spID, err := guid.RequireID(in.ServiceProviderID)
 		if err != nil {
 			return nil, err
 		}
@@ -95,7 +96,7 @@ func registerSAMLAdminHTTP(api huma.API, service *Service, registrar *authz.Regi
 	remove := huma.Operation{OperationID: "federation-delete-saml-service-provider", Method: http.MethodDelete, Path: "/saml-service-providers/{sp_id}", Summary: "Delete a SAML service provider", Tags: []string{"applications"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity}}
 	authz.RegisterOwned(registrar, api, remove, "sp_id", service.resolveSAMLServiceProviderOwner, authz.Guard{Resource: "identity_provider", Verb: "delete"}, func(ctx context.Context, in *samlSPIDInput) (*respx.Body[map[string]bool], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
-		spID, err := parseFederationID(in.ServiceProviderID)
+		spID, err := guid.RequireID(in.ServiceProviderID)
 		if err != nil {
 			return nil, err
 		}
@@ -134,7 +135,7 @@ func registerSAMLBrowserHTTP(api huma.API, service *Service) {
 	}, true)
 	api.OpenAPI().AddOperation(&sso)
 	api.Adapter().Handle(&sso, func(ctx huma.Context) {
-		tenantID, err := parseFederationID(ctx.Param("tenant_id"))
+		tenantID, err := guid.RequireID(ctx.Param("tenant_id"))
 		if err != nil {
 			writeFederationError(api, ctx, err)
 			return
@@ -156,7 +157,7 @@ func registerSAMLBrowserHTTP(api huma.API, service *Service) {
 	}, true)
 	api.OpenAPI().AddOperation(&ssoPost)
 	api.Adapter().Handle(&ssoPost, func(ctx huma.Context) {
-		tenantID, err := parseFederationID(ctx.Param("tenant_id"))
+		tenantID, err := guid.RequireID(ctx.Param("tenant_id"))
 		if err != nil {
 			writeFederationError(api, ctx, err)
 			return
@@ -180,7 +181,7 @@ func registerSAMLBrowserHTTP(api huma.API, service *Service) {
 	}, false)
 	api.OpenAPI().AddOperation(&slo)
 	api.Adapter().Handle(&slo, func(ctx huma.Context) {
-		tenantID, err := parseFederationID(ctx.Param("tenant_id"))
+		tenantID, err := guid.RequireID(ctx.Param("tenant_id"))
 		if err != nil {
 			writeFederationError(api, ctx, err)
 			return
@@ -203,7 +204,7 @@ func registerSAMLBrowserHTTP(api huma.API, service *Service) {
 	}, false)
 	api.OpenAPI().AddOperation(&sloPost)
 	api.Adapter().Handle(&sloPost, func(ctx huma.Context) {
-		tenantID, err := parseFederationID(ctx.Param("tenant_id"))
+		tenantID, err := guid.RequireID(ctx.Param("tenant_id"))
 		if err != nil {
 			writeFederationError(api, ctx, err)
 			return
@@ -224,7 +225,7 @@ func registerSAMLBrowserHTTP(api huma.API, service *Service) {
 	}, false)
 	api.OpenAPI().AddOperation(&metadata)
 	api.Adapter().Handle(&metadata, func(ctx huma.Context) {
-		tenantID, err := parseFederationID(ctx.Param("tenant_id"))
+		tenantID, err := guid.RequireID(ctx.Param("tenant_id"))
 		if err != nil {
 			writeFederationError(api, ctx, err)
 			return

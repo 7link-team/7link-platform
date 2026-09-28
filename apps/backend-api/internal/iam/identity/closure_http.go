@@ -85,7 +85,7 @@ func registerClosureHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 	})
 	guard := authz.Guard{Resource: "platform", Verb: "administer"}
 	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "identity-update-closure-request", Method: http.MethodPatch, Path: "/system/principals/{principal_id}/closure-request", Summary: "Move a closure request to processing or rejected", Tags: []string{"platform"}, Errors: []int{404, 409, 503}}, guard, func(ctx context.Context, in *closureUpdateInput) (*respx.Body[ClosureRequest], error) {
-		id, err := requireID(in.PrincipalID)
+		id, err := guid.RequireID(in.PrincipalID)
 		if err != nil {
 			return nil, err
 		}

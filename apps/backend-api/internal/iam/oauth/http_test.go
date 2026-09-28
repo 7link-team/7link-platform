@@ -1291,13 +1291,13 @@ func TestConsentSelfServiceRefusesARequestThatCarriesBothCredentials(t *testing.
 // value it cannot read has to be refused here rather than arriving downstream as
 // a zero, which every tenant and client predicate would then match on nothing.
 func TestParseOAuthIDRefusesWhatIsNotAnIdentifier(t *testing.T) {
-	id, err := parseOAuthID("  42  ")
+	id, err := guid.RequireID("  42  ")
 	require.NoError(t, err)
 	assert.Equal(t, guid.ID(42), id, "surrounding whitespace is trimmed, not rejected")
 
 	for _, value := range []string{"0", "-1", "latest", "4.2", "9999999999999999999"} {
 		t.Run(value, func(t *testing.T) {
-			_, err := parseOAuthID(value)
+			_, err := guid.RequireID(value)
 			var status huma.StatusError
 			require.ErrorAs(t, err, &status)
 			assert.Equal(t, http.StatusUnprocessableEntity, status.GetStatus())

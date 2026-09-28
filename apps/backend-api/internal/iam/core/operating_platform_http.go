@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -108,7 +109,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		return respx.OK(ctx, menusFromDomain(menus)), nil
 	})
 	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-menu-create", http.MethodPost, "/menus", "Create an operating platform menu"), authz.Guard{Resource: "menu", Verb: "create"}, func(ctx context.Context, in *operatingPlatformMenuInput) (*respx.Body[APIMenu], error) {
-		parent, err := optionalID(in.Body.ParentID)
+		parent, err := guid.OptionalID(in.Body.ParentID)
 		if err != nil {
 			return nil, err
 		}
@@ -144,7 +145,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		return respx.List(ctx, views, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
 	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member", http.MethodGet, "/members/{subject}", "Get an operating platform member"), authz.Guard{Resource: "platform_member", Verb: "view"}, func(ctx context.Context, in *operatingPlatformMemberInput) (*respx.Body[APITenantMember], error) {
-		id, err := requireID(in.Subject)
+		id, err := guid.RequireID(in.Subject)
 		if err != nil {
 			return nil, err
 		}
@@ -155,12 +156,12 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		return respx.OK(ctx, memberFromDomain(member)), nil
 	})
 	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member-create", http.MethodPost, "/members", "Bind an existing account to an operating platform"), authz.Guard{Resource: "platform_member", Verb: "create"}, func(ctx context.Context, in *operatingPlatformMemberCreateInput) (*respx.Body[APITenantMember], error) {
-		id, err := requireID(in.Body.Subject)
+		id, err := guid.RequireID(in.Body.Subject)
 		if err != nil {
 			return nil, err
 		}
 		root := authnext.TenantIDFromContext(ctx)
-		department, err := optionalID(in.Body.DepartmentID)
+		department, err := guid.OptionalID(in.Body.DepartmentID)
 		if err != nil {
 			return nil, err
 		}
@@ -171,14 +172,14 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		return respx.OK(ctx, memberFromDomain(member)), nil
 	})
 	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member-update", http.MethodPatch, "/members/{subject}", "Update an operating platform member"), authz.Guard{Resource: "platform_member", Verb: "update"}, func(ctx context.Context, in *operatingPlatformMemberPutInput) (*respx.Body[APITenantMember], error) {
-		id, err := requireID(in.Subject)
+		id, err := guid.RequireID(in.Subject)
 		if err != nil {
 			return nil, err
 		}
 		if _, err := svc.GetOperatingPlatformMember(ctx, authnext.TenantIDFromContext(ctx), id); err != nil {
 			return nil, apiError("get platform member", err)
 		}
-		department, err := optionalID(in.Body.DepartmentID)
+		department, err := guid.OptionalID(in.Body.DepartmentID)
 		if err != nil {
 			return nil, err
 		}
@@ -189,7 +190,7 @@ func registerOperatingPlatformHTTP(api huma.API, svc *Service, registrar *authz.
 		return respx.OK(ctx, memberFromDomain(member)), nil
 	})
 	authz.RegisterOperatingPlatform(registrar, api, op("iam-platform-member-delete", http.MethodDelete, "/members/{subject}", "Disable an operating platform membership"), authz.Guard{Resource: "platform_member", Verb: "delete"}, func(ctx context.Context, in *operatingPlatformMemberInput) (*respx.Body[APITenantMember], error) {
-		id, err := requireID(in.Subject)
+		id, err := guid.RequireID(in.Subject)
 		if err != nil {
 			return nil, err
 		}

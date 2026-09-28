@@ -112,15 +112,15 @@ func registerRelationshipHTTP(a huma.API, svc *Service, registrar *authz.Registr
 		OperationID: "iam-list-relationships", Method: http.MethodGet, Path: "/authorization-relationships",
 		Summary: "List tenant entity or business-resource relationship grants", Tags: []string{"access-control"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "entity", Verb: "view"}, func(ctx context.Context, in *listRelationshipsInput) (*respx.Body[[]APIRelationship], error) {
-		tenantID, err := requireID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
-		entityID, err := optionalID(in.EntityID)
+		entityID, err := guid.OptionalID(in.EntityID)
 		if err != nil {
 			return nil, err
 		}
-		resourceID, err := optionalID(in.ResourceID)
+		resourceID, err := guid.OptionalID(in.ResourceID)
 		if err != nil {
 			return nil, err
 		}
@@ -154,19 +154,19 @@ func registerRelationshipHTTP(a huma.API, svc *Service, registrar *authz.Registr
 		OperationID: "iam-delete-relationship", Method: http.MethodDelete, Path: "/authorization-relationships",
 		Summary: "Revoke a relationship grant immediately", Tags: []string{"access-control"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "entity", Verb: "manage_binding"}, func(ctx context.Context, in *deleteRelationshipInput) (*respx.Body[MutationResult], error) {
-		tenantID, err := requireID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
-		entityID, err := optionalID(in.EntityID)
+		entityID, err := guid.OptionalID(in.EntityID)
 		if err != nil {
 			return nil, err
 		}
-		subjectID, err := requireID(in.SubjectID)
+		subjectID, err := guid.RequireID(in.SubjectID)
 		if err != nil {
 			return nil, err
 		}
-		resourceID, err := requireID(in.ResourceID)
+		resourceID, err := guid.RequireID(in.ResourceID)
 		if err != nil {
 			return nil, err
 		}
@@ -185,21 +185,21 @@ func registerRelationshipHTTP(a huma.API, svc *Service, registrar *authz.Registr
 		Summary: "Check an entity or business-resource authorization decision", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *authorizationCheckInput) (*respx.Body[AuthorizationDecision], error) {
 		var explanation authz.Explanation
-		tenantID, err := requireID(in.TenantID)
+		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
-		entityID, err := requireID(in.Body.EntityID)
+		entityID, err := guid.RequireID(in.Body.EntityID)
 		if err != nil {
 			return nil, err
 		}
-		subject, err := requireID(in.Body.Subject)
+		subject, err := guid.RequireID(in.Body.Subject)
 		if err != nil {
 			return nil, err
 		}
 		if in.Body.ResourceType != "" || in.Body.ResourceID != "" {
 			var resourceID guid.ID
-			resourceID, err = requireID(in.Body.ResourceID)
+			resourceID, err = guid.RequireID(in.Body.ResourceID)
 			if err != nil {
 				return nil, err
 			}
@@ -215,19 +215,19 @@ func registerRelationshipHTTP(a huma.API, svc *Service, registrar *authz.Registr
 }
 
 func relationshipToDomain(tenantIDValue string, fields relationshipFields) (Relationship, error) {
-	tenantID, err := requireID(tenantIDValue)
+	tenantID, err := guid.RequireID(tenantIDValue)
 	if err != nil {
 		return Relationship{}, err
 	}
-	entityID, err := optionalID(fields.EntityID)
+	entityID, err := guid.OptionalID(fields.EntityID)
 	if err != nil {
 		return Relationship{}, err
 	}
-	subjectID, err := requireID(fields.SubjectID)
+	subjectID, err := guid.RequireID(fields.SubjectID)
 	if err != nil {
 		return Relationship{}, err
 	}
-	resourceID, err := requireID(fields.ResourceID)
+	resourceID, err := guid.RequireID(fields.ResourceID)
 	if err != nil {
 		return Relationship{}, err
 	}

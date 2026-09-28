@@ -17,19 +17,19 @@ import (
 )
 
 func TestHTTPIDParsingRejectsUnusableIdentifiers(t *testing.T) {
-	id, err := requireID(" 42 ")
+	id, err := guid.RequireID(" 42 ")
 	require.NoError(t, err)
 	assert.Equal(t, guid.ID(42), id)
 
 	for _, value := range []string{"", "0", "-1", "abc", "18446744073709551616"} {
-		_, err := requireID(value)
+		_, err := guid.RequireID(value)
 		assertHTTPError(t, err, http.StatusUnprocessableEntity, "respx.invalid_id")
 	}
 
-	id, err = optionalID("  ")
+	id, err = guid.OptionalID("  ")
 	require.NoError(t, err)
 	assert.True(t, id.Zero())
-	_, err = optionalID("bad")
+	_, err = guid.OptionalID("bad")
 	assertHTTPError(t, err, http.StatusUnprocessableEntity, "respx.invalid_id")
 
 	ids, err := requireIDs([]string{"1", "2"})

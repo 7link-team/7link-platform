@@ -154,7 +154,7 @@ func TestFileHTTPContract(t *testing.T) {
 
 func TestFileHTTPInputAndErrorMapping(t *testing.T) {
 	for _, raw := range []string{"", "0", "-1", "text"} {
-		_, err := fileID(raw)
+		_, err := guid.RequireID(raw)
 		require.Error(t, err, raw)
 		require.Equal(t, http.StatusUnprocessableEntity, err.(huma.StatusError).GetStatus())
 	}
@@ -189,7 +189,7 @@ func TestFileHTTPInputAndErrorMapping(t *testing.T) {
 
 func requireFileID(t *testing.T, raw string) guid.ID {
 	t.Helper()
-	id, err := fileID(raw)
+	id, err := guid.RequireID(raw)
 	require.NoError(t, err)
 	return id
 }

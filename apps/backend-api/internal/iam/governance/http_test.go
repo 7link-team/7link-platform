@@ -297,10 +297,10 @@ func TestGovernanceHTTPValidationHumanPrincipalAndErrorMappings(t *testing.T) {
 		assert.Equal(t, test.status, status.GetStatus())
 		assert.Contains(t, status.Error(), test.key)
 	}
-	id, err := parseGovernanceID(" 42 ")
+	id, err := guid.RequireID(" 42 ")
 	require.NoError(t, err)
 	assert.Equal(t, guid.ID(42), id)
-	_, err = parseGovernanceID("bad")
+	_, err = guid.RequireID("bad")
 	assert.Error(t, err)
 }
 

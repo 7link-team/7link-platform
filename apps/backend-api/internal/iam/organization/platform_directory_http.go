@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -50,7 +51,7 @@ func registerPlatformDirectoryHTTP(api huma.API, service *Service, groups *Group
 		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
 	authz.RegisterOperatingPlatform(registrar, api, op("organization-platform-department-create", http.MethodPost, "/departments", "Create an operating platform department"), authz.Guard{Resource: "dept", Verb: "create"}, func(ctx context.Context, in *createPlatformDepartmentInput) (*respx.Body[Department], error) {
-		parent, err := parseOptionalOrganizationID(in.Body.ParentID)
+		parent, err := guid.OptionalID(in.Body.ParentID)
 		if err != nil {
 			return nil, err
 		}

@@ -283,13 +283,13 @@ func TestAuditAPIErrorMappingsAndFilterHelpers(t *testing.T) {
 		assert.Contains(t, status.Error(), test.key)
 	}
 
-	id, err := parseAuditID(" 42 ")
+	id, err := guid.RequireID(" 42 ")
 	require.NoError(t, err)
 	assert.Equal(t, guid.ID(42), id)
-	id, err = parseOptionalAuditID(" ")
+	id, err = guid.OptionalID(" ")
 	require.NoError(t, err)
 	assert.Zero(t, id)
-	_, err = parseAuditID("bad")
+	_, err = guid.RequireID("bad")
 	assert.Error(t, err)
 	parsed, err := optionalTime("2026-09-03T20:00:00Z")
 	require.NoError(t, err)
