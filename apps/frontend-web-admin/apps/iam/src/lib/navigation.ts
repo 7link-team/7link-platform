@@ -12,23 +12,6 @@ export function firstEffectiveMenuPath(menus: EffectiveMenu[]): string {
   return ""
 }
 
-export function platformNavigation(
-  tenantAccess: boolean,
-  administrator: boolean
-): SystemNavigationItem[] {
-  return [
-    ...(tenantAccess
-      ? [{ path: "/system/tenants", label: "tenantManagement" }]
-      : []),
-    ...(administrator
-      ? [
-          { path: "/system/audit-governance", label: "platformAudit" },
-          { path: "/system/closure-requests", label: "closureRequests" },
-        ]
-      : []),
-  ]
-}
-
 export const personalNavigation: SystemNavigationItem[] = [
   { path: "/user/profile", label: "profile" },
   { path: "/user/security", label: "security" },
@@ -94,7 +77,7 @@ export function defaultWorkspacePath(
   return workspacePath(tenantID)
 }
 
-export function isPlatformRoute(route: string): boolean {
+export function isSystemRoute(route: string): boolean {
   const url = new URL(route, "https://console.invalid")
   return url.pathname === "/system" || url.pathname.startsWith("/system/")
 }
@@ -107,7 +90,7 @@ export function tenantNavigation(menus: EffectiveMenu[]): EffectiveMenu[] {
   return menus.flatMap((menu) => {
     const children = tenantNavigation(menu.children ?? [])
     if (!menu.path && children.length === 0) return []
-    if (menu.path && isPlatformRoute(menu.path))
+    if (menu.path && isSystemRoute(menu.path))
       return children.length ? [{ ...menu, path: "", children }] : []
     return [{ ...menu, children }]
   })

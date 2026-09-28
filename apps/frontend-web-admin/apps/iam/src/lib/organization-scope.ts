@@ -1,9 +1,13 @@
+// The tenant a console path addresses. Tenant IDs are snowflake numbers, so
+// any other /admin/:tenantID segment names no tenant.
+export function tenantIDFromPath(pathname: string): string {
+  const match = /^\/admin\/([1-9][0-9]*)(?:\/|$)/.exec(pathname)
+  return match ? decodeURIComponent(match[1] ?? "") : ""
+}
+
 export function routeTenantID(): string {
   if (typeof window === "undefined") return ""
-  const match = /^\/admin\/([1-9][0-9]*)(?:\/|$)/.exec(
-    window.location?.pathname ?? ""
-  )
-  return match ? decodeURIComponent(match[1] ?? "") : ""
+  return tenantIDFromPath(window.location?.pathname ?? "")
 }
 
 export function operatingPlatformID(): string {

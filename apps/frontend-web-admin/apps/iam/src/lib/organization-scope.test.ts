@@ -1,7 +1,7 @@
 import { expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { organizationRouteURL } from "./organization-scope"
+import { organizationRouteURL, tenantIDFromPath } from "./organization-scope"
 
 it("selects operating collection routes while preserving owned and tenant boundaries", () => {
   const result = Bun.spawnSync(
@@ -81,4 +81,16 @@ it("rewrites tenant addresses only to published operating-platform twins", () =>
   } finally {
     globalThis.window = previous
   }
+})
+
+it("recognizes only snowflake tenant IDs in console paths", () => {
+  expect(tenantIDFromPath("/admin/7")).toBe("7")
+  expect(tenantIDFromPath("/admin/1000000000000000002/users")).toBe(
+    "1000000000000000002"
+  )
+  expect(tenantIDFromPath("/admin/acme/users")).toBe("")
+  expect(tenantIDFromPath("/admin/07/users")).toBe("")
+  expect(tenantIDFromPath("/admin/7x")).toBe("")
+  expect(tenantIDFromPath("/admin/workspaces")).toBe("")
+  expect(tenantIDFromPath("/platform/7")).toBe("")
 })

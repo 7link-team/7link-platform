@@ -11,7 +11,6 @@ import {
   Folder,
   FolderSync,
   KeyRound,
-  Landmark,
   LayoutDashboard,
   ListChecks,
   MailPlus,
@@ -20,14 +19,12 @@ import {
   Users,
   UsersRound,
 } from "lucide-react"
-import { NavLink, useLocation } from "react-router"
+import { NavLink } from "react-router"
 import type { EffectiveMenu } from "../lib/iam-api"
 import {
   effectiveMenuPaths,
-  isPlatformRoute,
   menuLabel,
   tenantNavigation,
-  platformNavigation,
   tenantSystemNavigation,
   entityNavigation,
 } from "../lib/navigation"
@@ -51,16 +48,11 @@ const routeIcons: Record<string, ReactElement> = {
   "/audit-governance": <FileClock />,
   "/field-policies": <SlidersHorizontal />,
   "/access-requests": <ClipboardCheck />,
-  "/system/tenants": <Landmark />,
-  "/system/audit-governance": <FileClock />,
-  "/system/closure-requests": <ClipboardCheck />,
 }
 
 export function AppSidebar({
   permissions = null,
   menus,
-  platformTenantAccess = false,
-  platformAuditAccess = false,
   fieldPolicyAccess = false,
   className = "",
   language = "",
@@ -70,8 +62,6 @@ export function AppSidebar({
 }: {
   permissions?: EffectivePermissions
   menus: EffectiveMenu[]
-  platformTenantAccess?: boolean
-  platformAuditAccess?: boolean
   fieldPolicyAccess?: boolean
   className?: string
   language?: string
@@ -81,9 +71,7 @@ export function AppSidebar({
 }) {
   const t = useTranslations("iam")
 
-  const location = useLocation()
   const tenantBase = tenantID ? `/admin/${encodeURIComponent(tenantID)}` : ""
-  const platformView = isPlatformRoute(location.pathname + location.search)
   menus = tenantNavigation(menus)
   const paths = effectiveMenuPaths(menus)
   const fileAccess = can(permissions, "file_view")
@@ -93,7 +81,7 @@ export function AppSidebar({
     fieldPolicyAccess,
     scopedFileEntityID
   )
-  if (entityID && !platformView) {
+  if (entityID) {
     const base = `${tenantBase}/entities/${encodeURIComponent(entityID)}`
     return (
       <aside
@@ -133,24 +121,7 @@ export function AppSidebar({
       className={`w-64 shrink-0 overflow-y-auto border-e border-sidebar-border bg-sidebar p-3 ${className}`}
     >
       <nav className="space-y-5" aria-label={t("mainNav")}>
-        {platformView && (platformTenantAccess || platformAuditAccess) && (
-          <section aria-label={t("platformManagement")}>
-            <NavigationGroup label={t("platformManagement")}>
-              {platformNavigation(
-                platformTenantAccess,
-                platformAuditAccess
-              ).map((item) => (
-                <SideLink
-                  key={item.path}
-                  to={item.path}
-                  icon={routeIcons[item.path] ?? <Folder />}
-                  label={t(item.label)}
-                />
-              ))}
-            </NavigationGroup>
-          </section>
-        )}
-        {!platformView && menus.length > 0 && (
+        {menus.length > 0 && (
           <section aria-label={t("tenantMenu")}>
             <ul className="space-y-1">
               {menus.map((menu) => (
@@ -164,18 +135,16 @@ export function AppSidebar({
             </ul>
           </section>
         )}
-        {!platformView && (
-          <NavigationGroup label={t("systemNavigation")}>
-            {systemLinks.map((item) => (
-              <SideLink
-                key={item.path}
-                to={`${tenantBase}${item.path}`}
-                icon={routeIcons[item.path] ?? <LayoutDashboard />}
-                label={t(item.label)}
-              />
-            ))}
-          </NavigationGroup>
-        )}
+        <NavigationGroup label={t("systemNavigation")}>
+          {systemLinks.map((item) => (
+            <SideLink
+              key={item.path}
+              to={`${tenantBase}${item.path}`}
+              icon={routeIcons[item.path] ?? <LayoutDashboard />}
+              label={t(item.label)}
+            />
+          ))}
+        </NavigationGroup>
       </nav>
     </aside>
   )
