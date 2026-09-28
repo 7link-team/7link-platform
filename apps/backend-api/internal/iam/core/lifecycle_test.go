@@ -15,12 +15,12 @@ var coreErasureTime = time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
 func TestCoreErasePrincipalDataRefusesUnusableArguments(t *testing.T) {
 	harness := newRepositoryHarness(t, "")
 
-	assert.ErrorContains(t, ErasePrincipalData(t.Context(), nil, "", 1, coreErasureTime), "invalid principal erasure transaction")
-	assert.ErrorContains(t, ErasePrincipalData(t.Context(), harness.db, "", 0, coreErasureTime), "invalid principal erasure transaction")
+	assert.ErrorContains(t, ErasePrincipalData(t.Context(), nil, "", authz.DefaultRegistry(), 1, coreErasureTime), "invalid principal erasure transaction")
+	assert.ErrorContains(t, ErasePrincipalData(t.Context(), harness.db, "", authz.DefaultRegistry(), 0, coreErasureTime), "invalid principal erasure transaction")
 
 	// The prefix becomes an identifier in every statement below, so a rejected
 	// one must never reach the database.
-	assert.Error(t, ErasePrincipalData(t.Context(), harness.db, "bad prefix; DROP TABLE x;--", 1, coreErasureTime))
+	assert.Error(t, ErasePrincipalData(t.Context(), harness.db, "bad prefix; DROP TABLE x;--", authz.DefaultRegistry(), 1, coreErasureTime))
 }
 
 func TestCoreErasePrincipalDataRedactsMembershipsAndSparesEveryoneElse(t *testing.T) {
@@ -41,7 +41,7 @@ func TestCoreErasePrincipalDataRedactsMembershipsAndSparesEveryoneElse(t *testin
 				require.NoError(t, err)
 			}
 
-			require.NoError(t, ErasePrincipalData(t.Context(), harness.db, prefix, target, coreErasureTime))
+			require.NoError(t, ErasePrincipalData(t.Context(), harness.db, prefix, authz.DefaultRegistry(), target, coreErasureTime))
 
 			// Redacting the row is only half of it. Authorization answers are
 			// cached against the tenant revision, so a membership that stops
@@ -88,7 +88,7 @@ func TestCoreErasePrincipalDataRefusesWhilePlatformAccessRemains(t *testing.T) {
 			// Anonymizing someone who still holds platform authority would leave
 			// the grant pointing at a principal nobody can identify any more, so
 			// the existing removal workflow has to run first.
-			assert.ErrorIs(t, ErasePrincipalData(t.Context(), harness.db, "", target, coreErasureTime), ErrPrincipalHasPlatformAccess)
+			assert.ErrorIs(t, ErasePrincipalData(t.Context(), harness.db, "", authz.DefaultRegistry(), target, coreErasureTime), ErrPrincipalHasPlatformAccess)
 
 			name, _, status := readCoreMembership(t, harness, "", guid.ID(201), target)
 			assert.Equal(t, "Target Person", name, "a refused erasure must change nothing")
@@ -98,6 +98,10 @@ func TestCoreErasePrincipalDataRefusesWhilePlatformAccessRemains(t *testing.T) {
 }
 
 func TestPrincipalLifecycleRequiresSystemRoleRevocation(t *testing.T) {
+	// system_file_read is not in the core catalog: a module contributes it to
+	// the shared registry, and the check must see it through that registry.
+	registry := authz.DefaultRegistry()
+	require.NoError(t, registry.Contribute([]authz.Action{{Resource: "system_file", Verb: "read", Scope: authz.ActionScopeSystem}}, nil))
 	for _, code := range []string{"system_account_view", "system_file_read"} {
 		t.Run(code, func(t *testing.T) {
 			h := newRepositoryHarness(t, "sl_")
@@ -106,10 +110,10 @@ func TestPrincipalLifecycleRequiresSystemRoleRevocation(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, h.db.Exec("INSERT INTO sl_iam_role_members (tenant_id, role_id, principal_id, created_at) VALUES (201, ?, 21, ?)", role.ID, coreErasureTime).Error)
 			require.NoError(t, h.db.Exec("INSERT INTO sl_iam_role_permissions (tenant_id, role_id, permission_code, created_at) VALUES (201, ?, ?, ?)", role.ID, code, coreErasureTime).Error)
-			require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21), ErrPrincipalHasPlatformAccess)
-			require.ErrorIs(t, ErasePrincipalData(t.Context(), h.db, "sl_", 21, coreErasureTime), ErrPrincipalHasPlatformAccess)
+			require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, registry), ErrPrincipalHasPlatformAccess)
+			require.ErrorIs(t, ErasePrincipalData(t.Context(), h.db, "sl_", registry, 21, coreErasureTime), ErrPrincipalHasPlatformAccess)
 			require.NoError(t, h.db.Exec("DELETE FROM sl_iam_role_members WHERE principal_id = 21").Error)
-			require.NoError(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21))
+			require.NoError(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, registry))
 		})
 	}
 }
@@ -122,8 +126,17 @@ func TestPrincipalLifecycleProtectsModuleDeclaredGlobalRolePermissions(t *testin
 	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_role_members (tenant_id, role_id, principal_id, created_at) VALUES (201, ?, 21, ?)", role.ID, coreErasureTime).Error)
 	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_role_permissions (tenant_id, role_id, permission_code, created_at) VALUES (201, ?, 'extension_manage', ?)", role.ID, coreErasureTime).Error)
 	registry := authz.DefaultRegistry()
-	require.NoError(t, registry.Register(authz.Action{Resource: "extension", Verb: "manage", Scope: "platform"}))
+	require.NoError(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, registry),
+		"a code nobody contributed is an ordinary tenant grant")
+	require.NoError(t, registry.Contribute([]authz.Action{{Resource: "extension", Verb: "manage", Scope: authz.ActionScopeSystem}}, nil))
 	require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, registry), ErrPrincipalHasPlatformAccess)
+	require.ErrorIs(t, ErasePrincipalData(t.Context(), h.db, "sl_", registry, 21, coreErasureTime), ErrPrincipalHasPlatformAccess)
+}
+
+func TestPrincipalLifecycleRequiresTheSharedRegistry(t *testing.T) {
+	h := newRepositoryHarness(t, "sl_")
+	require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, nil), ErrUnavailable)
+	require.ErrorIs(t, ErasePrincipalData(t.Context(), h.db, "sl_", nil, 21, coreErasureTime), ErrUnavailable)
 }
 
 func seedCoreMembership(t *testing.T, harness repositoryHarness, prefix string, tenant, principal guid.ID, name, email string) {
@@ -168,7 +181,7 @@ func TestCoreErasePrincipalDataLeavesUnrelatedTenantsAlone(t *testing.T) {
 	beforeUntouched, err := revisions.Current(t.Context(), harness.db, untouched)
 	require.NoError(t, err)
 
-	require.NoError(t, ErasePrincipalData(t.Context(), harness.db, "", target, coreErasureTime))
+	require.NoError(t, ErasePrincipalData(t.Context(), harness.db, "", authz.DefaultRegistry(), target, coreErasureTime))
 
 	// Bumping a revision invalidates every cached authorization answer for that
 	// tenant, so bumping one the principal never belonged to would cost a
@@ -184,5 +197,5 @@ func TestCoreErasePrincipalDataAcceptsAPrincipalWithNoMemberships(t *testing.T) 
 	// Someone can be suspended and erased before ever joining a tenant. That is
 	// nothing to redact rather than an error, or erasure would stall on the
 	// accounts with the least data to remove.
-	require.NoError(t, ErasePrincipalData(t.Context(), harness.db, "", guid.ID(51), coreErasureTime))
+	require.NoError(t, ErasePrincipalData(t.Context(), harness.db, "", authz.DefaultRegistry(), guid.ID(51), coreErasureTime))
 }

@@ -116,7 +116,7 @@ func TestEntityConstraintOnRejectsInvalidAndMissingDependencies(t *testing.T) {
 		})
 		require.ErrorIs(t, err, ErrInvalidArgument)
 	}
-	for _, authorizer := range []*Authorizer{nil, {}, NewAuthorizer(h.runtime)} {
+	for _, authorizer := range []*Authorizer{nil, {}, NewAuthorizerWithRegistry(h.runtime, authz.DefaultRegistry())} {
 		err := h.db.Transaction(func(tx *gorm.DB) error {
 			_, err := authorizer.EntityConstraintOn(t.Context(), tx, 1, entity.ID, "user_view", 11)
 			return err
@@ -279,7 +279,7 @@ func TestAuthorizationSubjectsOnFailsClosedForInvalidInactiveAndUnwired(t *testi
 		_, err := h.authorizer.AuthorizationSubjectsOn(t.Context(), db, 1, entity.ID, 11)
 		require.ErrorIs(t, err, ErrInvalidArgument)
 	}
-	for _, authorizer := range []*Authorizer{nil, {}, NewAuthorizer(h.runtime)} {
+	for _, authorizer := range []*Authorizer{nil, {}, NewAuthorizerWithRegistry(h.runtime, authz.DefaultRegistry())} {
 		err := h.db.Transaction(func(tx *gorm.DB) error {
 			_, err := authorizer.AuthorizationSubjectsOn(t.Context(), tx, 1, entity.ID, 11)
 			return err
@@ -385,7 +385,7 @@ func TestAuthorizationReferencesOnFailsClosedAndPublishesStableCapability(t *tes
 		_, err := h.authorizer.AuthorizationReferencesOn(t.Context(), db, 1, AuthorizationReferences{EntityID: entity.ID})
 		require.ErrorIs(t, err, ErrInvalidArgument)
 	}
-	for _, authorizer := range []*Authorizer{nil, {}, NewAuthorizer(h.runtime)} {
+	for _, authorizer := range []*Authorizer{nil, {}, NewAuthorizerWithRegistry(h.runtime, authz.DefaultRegistry())} {
 		err := h.db.Transaction(func(tx *gorm.DB) error {
 			_, err := authorizer.AuthorizationReferencesOn(t.Context(), tx, 1, AuthorizationReferences{EntityID: entity.ID})
 			return err
@@ -479,7 +479,7 @@ func TestTenantConstraintOnRejectsInvalidAndMissingDependencies(t *testing.T) {
 		})
 		require.ErrorIs(t, err, ErrInvalidArgument, "%s", input.permission)
 	}
-	for _, authorizer := range []*Authorizer{nil, {}, NewAuthorizer(h.runtime)} {
+	for _, authorizer := range []*Authorizer{nil, {}, NewAuthorizerWithRegistry(h.runtime, authz.DefaultRegistry())} {
 		err := h.db.Transaction(func(tx *gorm.DB) error {
 			_, err := authorizer.TenantConstraintOn(t.Context(), tx, 1, "user_view", 11)
 			return err

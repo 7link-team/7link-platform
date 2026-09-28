@@ -86,7 +86,7 @@ func boundChecker(t *testing.T, runtime *appenv.Runtime, prefix string) *Members
 
 func boundAuthorizer(t *testing.T, runtime *appenv.Runtime, prefix string) *Authorizer {
 	t.Helper()
-	authorizer := NewAuthorizer(runtime)
+	authorizer := NewAuthorizerWithRegistry(runtime, authz.DefaultRegistry())
 	authorizer.foreign = joinedTestTables(t, prefix)
 	return authorizer
 }
@@ -266,7 +266,7 @@ func TestJoinedTablesCarryTheOwnersNamesIntoEveryStatement(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "sl_iam_member_departments", directory.MemberDepartments.String())
 
-	authorizer := NewAuthorizer(harness.runtime)
+	authorizer := NewAuthorizerWithRegistry(harness.runtime, authz.DefaultRegistry())
 	require.NoError(t, authorizer.BindForeignTables(
 		publishedDirectoryTables("sl_"), publishedPrincipalTable("sl_"),
 	))

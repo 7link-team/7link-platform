@@ -30,14 +30,10 @@ type tenantAdministratorGuard struct {
 
 // RequireGrantableRoles checks indirect directory grants on the mutation transaction.
 func (guard *tenantAdministratorGuard) RequireGrantableRoles(ctx context.Context, db *gorm.DB, ownerID guid.ID, roleIDs []guid.ID) error {
-	if guard == nil || db == nil {
+	if guard == nil || db == nil || guard.registry == nil {
 		return ErrUnavailable
 	}
-	registry := guard.registry
-	if registry == nil {
-		registry = authz.DefaultRegistry()
-	}
-	checker := &Authorizer{db: db, repositoryTables: repositoryTables{names: guard.names}, registry: registry, revisions: guard.revisions, now: guard.now, foreign: guard.foreign}
+	checker := &Authorizer{db: db, repositoryTables: repositoryTables{names: guard.names}, registry: guard.registry, revisions: guard.revisions, now: guard.now, foreign: guard.foreign}
 	repo := &Repository{db: db, repositoryTables: repositoryTables{names: guard.names}, foreign: guard.foreign, revisions: guard.revisions}
 	kind, err := repo.rootKind(ctx, ownerID)
 	if err != nil {

@@ -186,15 +186,17 @@ func newHTTPIAMHarness(t *testing.T, platformAllowed bool) httpIAMHarness {
 	seedTenantAndPrincipal(t, database.db, "sl_", 1, actorID)
 	seedSystemAccessFixture(t, database.db, "sl_")
 
-	registry := authz.DefaultRegistry()
+	appender := func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }
+	module := NewModule(database.runtime, enabledModuleConfig())
+	// One shared registry, as in a composed app: the module seeds it and a
+	// business module contributes to it before any route is registered.
+	registry := contributeTaskModule(t, module.registrar.Registry())
 	registrar := authz.NewRegistrar(
 		registry,
 		httpTokenVerifier{principalID: actorID},
 		httpRouteAuthorizer{platformAllowed: platformAllowed},
 		httpMembershipChecker{tenantID: 1, principalID: actorID},
 	)
-	appender := func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }
-	module := NewModule(database.runtime, enabledModuleConfig())
 	bindModuleTables(t, module, "sl_")
 	services := modulepkg.NewServices()
 	require.NoError(t, modulepkg.Provide[guid.Source](services, database.repository.ids))

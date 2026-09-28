@@ -11,6 +11,7 @@ import (
 	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/internal/principallifecycle"
+	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/module"
 	"gorm.io/gorm"
 )
@@ -28,10 +29,14 @@ func (app *App) provideCrossCutting(services *module.Services) error {
 		if err != nil {
 			return identity.ErrUnavailable
 		}
+		registrar, err := module.Resolve[*authz.Registrar](services)
+		if err != nil || registrar.Registry() == nil {
+			return identity.ErrUnavailable
+		}
 		if err := guard(ctx, tx, principal.ID); err != nil {
 			return err
 		}
-		return principallifecycle.AnonymizePrincipalData(ctx, tx, app.runtime.TablePrefix(), principal, now)
+		return principallifecycle.AnonymizePrincipalData(ctx, tx, app.runtime.TablePrefix(), registrar.Registry(), principal, now)
 	})
 	if err := module.Provide[identity.PrincipalAnonymizer](services, anonymize); err != nil {
 		return err

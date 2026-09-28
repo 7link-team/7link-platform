@@ -7,6 +7,7 @@ package authz
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"sort"
 	"strings"
@@ -14,7 +15,29 @@ import (
 
 var codePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
+// Action.Scope values. They name the highest scope that owns a grant and are
+// stored and published as-is (D89), so the literal "platform" is kept even though
+// it denotes system-level authority: it is unrelated to the operating-platform
+// organization kind (scope_kind / ScopeType "platform").
+const (
+	// ActionScopeSystem ("platform") marks system-level authority granted only
+	// through platform grants and system roles, never by tenant or
+	// operating-platform roles.
+	ActionScopeSystem = "platform"
+	// ActionScopeOperatingPlatform marks authority inside one independently
+	// operated platform.
+	ActionScopeOperatingPlatform = "operating_platform"
+	// ActionScopeTenant marks authority inside one tenant.
+	ActionScopeTenant = "tenant"
+	// ActionScopeMerchant marks authority inside one merchant of a tenant.
+	ActionScopeMerchant = "merchant"
+)
+
 // Action is one interface/menu/data permission exposed by the platform.
+//
+// Scope is one of the ActionScope* values: ActionScopeSystem ("platform",
+// system-level authority), ActionScopeOperatingPlatform ("operating_platform"),
+// ActionScopeTenant ("tenant") or ActionScopeMerchant ("merchant").
 type Action struct {
 	Resource         string   `json:"resource" doc:"resource name, e.g. store"`
 	Verb             string   `json:"verb" doc:"action verb, e.g. view"`
@@ -132,6 +155,31 @@ func (r *Registry) MustFind(code string) Action {
 	return a
 }
 
+// Contribute adds one module's actions and field declarations as a unit: either
+// every declaration is valid and new, or the registry is left unchanged. It is
+// the single path through which a module outside the IAM core catalog adds its
+// permissions to the shared registry, and it runs during InjectServices, after
+// the module has resolved the shared *Registrar and before any route is
+// registered or request served.
+func (r *Registry) Contribute(actions []Action, fields []Field) error {
+	if r == nil {
+		return fmt.Errorf("authz contribution requires a registry")
+	}
+	staged := &Registry{actions: maps.Clone(r.actions), fields: maps.Clone(r.fields)}
+	for _, action := range actions {
+		if err := staged.Register(action); err != nil {
+			return err
+		}
+	}
+	for _, field := range fields {
+		if err := staged.RegisterField(field); err != nil {
+			return err
+		}
+	}
+	r.actions, r.fields = staged.actions, staged.fields
+	return nil
+}
+
 // All returns actions sorted by code for stable API and schema output.
 func (r *Registry) All() []Action {
 	out := make([]Action, 0, len(r.actions))
@@ -142,8 +190,12 @@ func (r *Registry) All() []Action {
 	return out
 }
 
-// DefaultRegistry is the first-phase catalog for platform, tenant, merchant,
-// store, user, role, dept, and menu management.
+// DefaultRegistry is the IAM core catalog: platform, tenant, merchant, store,
+// user, role, dept, and menu management. Business modules do not appear here;
+// they add their own actions and fields to the shared registry through
+// Contribute. Production builds it once, as the seed of the shared registry the
+// IAM core module publishes; every other production consumer resolves that
+// registry instead of building another one.
 func DefaultRegistry() *Registry {
 	r := MustRegistry(DefaultActions()...)
 	for _, f := range DefaultFields() {
@@ -195,12 +247,6 @@ func DefaultActions() []Action {
 		{Resource: "platform_member", Verb: "delete", Scope: "operating_platform", Summary: "disable operating platform memberships"},
 		{Resource: "field_policy", Verb: "view", Scope: "tenant", Summary: "view field policies"},
 		{Resource: "field_policy", Verb: "update", Scope: "tenant", Summary: "manage field read and write policies"},
-		{Resource: "todo", Verb: "create", Scope: "tenant", Summary: "create tasks", DataScoped: true},
-		{Resource: "todo", Verb: "view", Scope: "tenant", Summary: "view tasks", DataScoped: true},
-		{Resource: "todo", Verb: "update", Scope: "tenant", Summary: "update and restore tasks", DataScoped: true},
-		{Resource: "todo", Verb: "delete", Scope: "tenant", Summary: "delete tasks", DataScoped: true},
-		{Resource: "todo", Verb: "export", Scope: "tenant", Summary: "export tasks", DataScoped: true},
-		{Resource: "todo", Verb: "import", Scope: "tenant", Summary: "import tasks", DataScoped: true},
 		{Resource: "platform", Verb: "administer", Scope: "platform", Summary: "platform administration"},
 		{Resource: "tenant", Verb: "create", Scope: "platform", Summary: "create tenants"},
 		{Resource: "tenant", Verb: "view", Scope: "platform", Summary: "view tenants", DataScoped: true},

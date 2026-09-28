@@ -72,6 +72,9 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if m.registrar, err = module.Resolve[*authz.Registrar](services); err != nil {
 		return err
 	}
+	if err := m.registrar.Registry().Contribute(authorizationActions(), authorizationFields()); err != nil {
+		return fmt.Errorf("register todo permissions: %w", err)
+	}
 	if m.checker, err = module.Resolve[core.AuthorizationEvaluator](services); err != nil {
 		return err
 	}

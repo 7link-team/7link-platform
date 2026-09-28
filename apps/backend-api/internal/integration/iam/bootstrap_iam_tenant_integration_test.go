@@ -30,6 +30,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -876,7 +877,7 @@ func (f *iamTenantFixture) groupState(t *testing.T, tenantID, groupID guid.ID) (
 func newBoundIAMAuthorizer(t *testing.T, runtime *appenv.Runtime) *core.Authorizer {
 	t.Helper()
 	prefix := runtime.TablePrefix()
-	authorizer := core.NewAuthorizer(runtime)
+	authorizer := core.NewAuthorizerWithRegistry(runtime, authz.DefaultRegistry())
 	require.NoError(t, authorizer.BindForeignTables(
 		organization.CoreDirectoryTableNames(prefix), identity.CorePrincipalTableNames(prefix),
 	))

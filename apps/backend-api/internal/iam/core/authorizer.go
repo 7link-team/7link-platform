@@ -78,12 +78,6 @@ type authorizationSnapshot struct {
 	departmentIDs             []guid.ID
 }
 
-// NewAuthorizer constructs an authorizer with the process-wide default action
-// registry.
-func NewAuthorizer(runtime *appenv.Runtime) *Authorizer {
-	return NewAuthorizerWithRegistry(runtime, authz.DefaultRegistry())
-}
-
 // NewAuthorizerWithRegistry constructs an authorizer with an explicit action
 // registry and the runtime's current writer.
 func NewAuthorizerWithRegistry(runtime *appenv.Runtime, registry *authz.Registry) *Authorizer {
@@ -146,7 +140,7 @@ func (a *Authorizer) CheckPlatform(ctx context.Context, permission string, subje
 	if permission == "" || subject.Zero() || len(permission) > 128 {
 		return false, errors.New("platform permission and subject are required")
 	}
-	if action, ok := a.registry.Find(permission); !ok || action.Scope != "platform" {
+	if action, ok := a.registry.Find(permission); !ok || action.Scope != authz.ActionScopeSystem {
 		return false, nil
 	}
 	if _, transaction := a.db.Statement.ConnPool.(gorm.TxCommitter); transaction {
@@ -180,7 +174,7 @@ func (a *Authorizer) CheckBulk(
 		if permission == "" {
 			return nil, errors.New("permission is empty")
 		}
-		if action, ok := a.registry.Find(permission); ok && action.Scope != "platform" && action.Scope != "operating_platform" {
+		if action, ok := a.registry.Find(permission); ok && action.Scope != authz.ActionScopeSystem && action.Scope != authz.ActionScopeOperatingPlatform {
 			tenantPermissions = append(tenantPermissions, permission)
 		}
 	}
@@ -220,9 +214,9 @@ func (a *Authorizer) CheckBulk(
 		action, known := a.registry.Find(permission)
 		if !known {
 			allowed[permission] = false
-		} else if action.Scope == "operating_platform" {
+		} else if action.Scope == authz.ActionScopeOperatingPlatform {
 			allowed[permission] = false
-		} else if action.Scope == "platform" {
+		} else if action.Scope == authz.ActionScopeSystem {
 			allowed[permission] = platformAdministrator
 		} else {
 			allowed[permission] = grantSet[permission] || grantSet["tenant_administer"] || platformAdministrator
@@ -317,7 +311,7 @@ func (a *Authorizer) EntityConstraintOn(ctx context.Context, tx *gorm.DB, tenant
 	if a == nil || a.registry == nil {
 		return authz.DataConstraint{}, ErrUnavailable
 	}
-	if action, ok := a.registry.Find(permission); !ok || !action.DataScoped || action.Scope == "platform" {
+	if action, ok := a.registry.Find(permission); !ok || !action.DataScoped || action.Scope == authz.ActionScopeSystem {
 		return authz.DataConstraint{}, ErrInvalidArgument
 	}
 	pinned, lockedRevision, err := a.pinAuthorizationTransaction(ctx, tx, tenantID)
@@ -347,7 +341,7 @@ func (a *Authorizer) TenantConstraintOn(ctx context.Context, tx *gorm.DB, tenant
 	if a == nil || a.registry == nil {
 		return authz.DataConstraint{}, ErrUnavailable
 	}
-	if action, ok := a.registry.Find(permission); !ok || !action.DataScoped || action.Scope == "platform" {
+	if action, ok := a.registry.Find(permission); !ok || !action.DataScoped || action.Scope == authz.ActionScopeSystem {
 		return authz.DataConstraint{}, ErrInvalidArgument
 	}
 	pinned, lockedRevision, err := a.pinAuthorizationTransaction(ctx, tx, tenantID)
@@ -550,7 +544,7 @@ func (a *Authorizer) EntityConstraint(ctx context.Context, tenantID, entityID gu
 		return authz.DataConstraint{}, err
 	}
 	action, known := a.registry.Find(permission)
-	if !known || !action.DataScoped || action.Scope == "platform" {
+	if !known || !action.DataScoped || action.Scope == authz.ActionScopeSystem {
 		return compileDataConstraint(a.registry, authorizationSnapshot{}, permission), nil
 	}
 	snapshot, err := a.snapshot(ctx, tenantID, entityID, permission, subject, true, policyx.TrustedFromContext(ctx, a.now()))

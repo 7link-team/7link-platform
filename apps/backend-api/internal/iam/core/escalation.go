@@ -98,7 +98,7 @@ func (s *Service) requireGrantableDataScope(ctx context.Context, repo *Repositor
 	}
 	for _, code := range codes {
 		action, known := s.registry.Find(code)
-		if !known || !action.DataScoped || action.Scope == "platform" || action.Scope == "operating_platform" {
+		if !known || !action.DataScoped || action.Scope == authz.ActionScopeSystem || action.Scope == authz.ActionScopeOperatingPlatform {
 			continue
 		}
 		constraint, err := pinned.checker.Constraint(ctx, tenantID, code, claims.PrincipalID)

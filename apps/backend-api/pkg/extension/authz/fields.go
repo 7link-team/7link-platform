@@ -154,22 +154,8 @@ func (r *Registry) Fields(resource string) []Field {
 	return fields
 }
 
-// DefaultFields only lists resources with server-side consumers of the policy.
+// DefaultFields lists the field declarations of the IAM core catalog. Business
+// modules contribute their own through Registry.Contribute.
 func DefaultFields() []Field {
-	fields := ProfileFields()
-	for _, name := range []string{"id", "version", "title", "description", "status", "priority", "due_at", "completed_at", "created_at", "created_by", "updated_at", "updated_by", "deleted_at", "deleted_by"} {
-		f := Field{Resource: "todo", Name: name, Mutability: "readOnly", Returned: "default", Configurable: true}
-		if slices.Contains([]string{"title", "description", "status", "priority", "due_at"}, name) {
-			f.Mutability = "readWrite"
-		}
-		f.Maskable = name == "title" || name == "description"
-		if name == "id" || name == "version" {
-			f.Configurable = false
-		}
-		if name == "id" {
-			f.Returned = "always"
-		}
-		fields = append(fields, f)
-	}
-	return fields
+	return ProfileFields()
 }

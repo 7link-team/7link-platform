@@ -20,7 +20,14 @@ var ErrPrincipalHasPlatformAccess = errors.New("remove principal platform access
 // global suspension, using the caller's principal-locked transaction.
 type PrincipalPlatformAccessGuard func(context.Context, *gorm.DB, guid.ID) error
 
-func requireNoPrincipalPlatformAccess(ctx context.Context, tx *gorm.DB, prefix string, id guid.ID, registries ...*authz.Registry) error {
+// requireNoPrincipalPlatformAccess refuses while the principal holds system
+// authority in any form. The role check reads its codes from the shared
+// registry, so a system-scope action any module contributed is covered without
+// core naming that module's permissions.
+func requireNoPrincipalPlatformAccess(ctx context.Context, tx *gorm.DB, prefix string, id guid.ID, registry *authz.Registry) error {
+	if registry == nil {
+		return ErrUnavailable
+	}
 	names := query.BindNames(prefix)
 	for _, table := range []gormx.TableName{names.PlatformAdministrators, names.PlatformGrants} {
 		var count int64
@@ -34,12 +41,8 @@ func requireNoPrincipalPlatformAccess(ctx context.Context, tx *gorm.DB, prefix s
 	// Global actions cannot be granted by tenant or operating-platform roles.
 	// Keep protected authority removal mandatory even for disabled memberships.
 	codes := make([]string, 0)
-	registry := authz.DefaultRegistry()
-	if len(registries) > 0 && registries[0] != nil {
-		registry = registries[0]
-	}
 	for _, action := range registry.All() {
-		if action.Scope == "platform" {
+		if action.Scope == authz.ActionScopeSystem {
 			codes = append(codes, action.Code)
 		}
 	}
@@ -47,7 +50,7 @@ func requireNoPrincipalPlatformAccess(ctx context.Context, tx *gorm.DB, prefix s
 	err := tx.WithContext(ctx).Table(names.RoleMembers.String()+" AS member").
 		Joins("JOIN "+names.Roles.String()+" AS role ON role.tenant_id = member.tenant_id AND role.id = member.role_id").
 		Joins("JOIN "+names.RolePermissions.String()+" AS permission ON permission.tenant_id = member.tenant_id AND permission.role_id = member.role_id").
-		Where("member.principal_id = ? AND (permission.permission_code IN ? OR substr(permission.permission_code, 1, 12) = ?)", id, codes, "system_file_").Count(&count).Error
+		Where("member.principal_id = ? AND permission.permission_code IN ?", id, codes).Count(&count).Error
 	if err != nil {
 		return err
 	}
@@ -58,8 +61,9 @@ func requireNoPrincipalPlatformAccess(ctx context.Context, tx *gorm.DB, prefix s
 }
 
 // ErasePrincipalData redacts every membership profile and withdraws admission.
-// The caller owns the transaction and the suspended principal's row lock.
-func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid.ID, now time.Time) error {
+// The caller owns the transaction and the suspended principal's row lock, and
+// supplies the shared authorization registry the platform-access check reads.
+func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, registry *authz.Registry, id guid.ID, now time.Time) error {
 	if tx == nil || id <= 0 {
 		return errors.New("invalid principal erasure transaction")
 	}
@@ -67,7 +71,7 @@ func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid
 	if err != nil {
 		return err
 	}
-	if err := requireNoPrincipalPlatformAccess(ctx, tx, prefix, id); err != nil {
+	if err := requireNoPrincipalPlatformAccess(ctx, tx, prefix, id, registry); err != nil {
 		return err
 	}
 	var tenants []guid.ID

@@ -171,16 +171,8 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve files audit appender: %w", err)
 	}
-	actions := fileAuthorizationActions()
-	for _, action := range actions {
-		if _, exists := registrar.Registry().Find(action.Code); exists {
-			return fmt.Errorf("register files permission %s: already registered", action.Code)
-		}
-	}
-	for _, action := range actions {
-		if err := registrar.Registry().Register(action); err != nil {
-			return fmt.Errorf("register files permission %s: %w", action.Code, err)
-		}
+	if err := registrar.Registry().Contribute(fileAuthorizationActions(), nil); err != nil {
+		return fmt.Errorf("register files permissions: %w", err)
 	}
 	m.registrar, m.policy, m.subjects, m.references = registrar, policy, subjects, references
 	m.entityOwner, m.deptOwner = entityOwner, departmentOwner

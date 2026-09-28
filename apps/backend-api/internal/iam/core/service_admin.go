@@ -14,6 +14,7 @@ import (
 	"golang.org/x/text/language"
 
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authz"
 	"gorm.io/gorm"
 )
 
@@ -562,11 +563,11 @@ func (s *Service) EffectivePermissions(
 	}
 	tenantCodes, platformCodes := []string{}, []string{}
 	for _, action := range s.registry.All() {
-		if action.Scope == "platform" {
+		if action.Scope == authz.ActionScopeSystem {
 			platformCodes = append(platformCodes, action.Code)
 			continue
 		}
-		if action.Scope != "operating_platform" {
+		if action.Scope != authz.ActionScopeOperatingPlatform {
 			tenantCodes = append(tenantCodes, action.Code)
 		}
 	}
@@ -620,10 +621,10 @@ func (s *Service) EffectiveEntityPermissions(
 	}
 	granted := make([]string, 0)
 	for _, action := range s.registry.All() {
-		if action.Scope == "operating_platform" {
+		if action.Scope == authz.ActionScopeOperatingPlatform {
 			continue
 		}
-		if action.Scope == "platform" {
+		if action.Scope == authz.ActionScopeSystem {
 			allowed, err := s.checker.CheckPlatform(ctx, action.Code, principalID)
 			if err != nil {
 				return nil, fmt.Errorf("check effective platform permission %s: %w", action.Code, err)

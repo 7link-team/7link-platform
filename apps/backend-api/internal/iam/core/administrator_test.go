@@ -228,9 +228,9 @@ func TestAdministratorGuardGrantabilityFollowsTheActorsOwnAuthority(t *testing.T
 	assert.ErrorIs(t, guard.RequireGrantableRoles(actor, nil, 1, nil), ErrUnavailable)
 
 	withoutRegistry := boundGuard(t, h.runtime, "sl_")
-	assert.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+	assert.ErrorIs(t, h.db.Transaction(func(tx *gorm.DB) error {
 		return withoutRegistry.RequireGrantableRoles(actor, tx, 1, []guid.ID{sameAuthority})
-	}), "an unset registry falls back to the default catalog")
+	}), ErrUnavailable, "an unset registry fails closed instead of reading a private catalog")
 	members, err := h.repository.ListMembers(t.Context(), 1, broader)
 	require.NoError(t, err)
 	assert.Empty(t, members, "grantability checks never assign roles")

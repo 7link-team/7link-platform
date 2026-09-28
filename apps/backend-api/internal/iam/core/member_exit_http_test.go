@@ -8,6 +8,7 @@ import (
 
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -56,10 +57,10 @@ func TestPrincipalPlatformAccessGuardRejectsRetainedPlatformAuthority(t *testing
 	h := newCoreServiceHarness(t)
 	seedSystemAccessFixture(t, h.db, "sl_")
 	h.seedMember(t, 1, 11, MemberActive)
-	require.NoError(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 11))
+	require.NoError(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 11, authz.DefaultRegistry()))
 	_, err := h.repository.SetPlatformAdministrator(t.Context(), 11, true, nil)
 	require.NoError(t, err)
-	require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 11), ErrPrincipalHasPlatformAccess)
+	require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 11, authz.DefaultRegistry()), ErrPrincipalHasPlatformAccess)
 }
 
 func TestMemberExitHTTPMissingCapabilitiesAndFailures(t *testing.T) {

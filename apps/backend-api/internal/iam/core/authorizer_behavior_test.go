@@ -939,7 +939,7 @@ func TestAuthorizerRefusesEveryDecisionUntilTheJoinedTablesArePublished(t *testi
 	t.Parallel()
 
 	harness := newRepositoryHarness(t, "sl_")
-	unbound := NewAuthorizer(harness.runtime)
+	unbound := NewAuthorizerWithRegistry(harness.runtime, authz.DefaultRegistry())
 	unbound.now = harness.repository.now
 	ctx := t.Context()
 	tenantID, entityID, subject := guid.ID(1), guid.ID(2), guid.ID(11)

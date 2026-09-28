@@ -122,7 +122,7 @@ func verifyCoreServiceBehavior(t *testing.T, datasourceType, dsn, prefix string)
 	require.NoError(t, repository.BindForeignTables(
 		organization.CoreDirectoryTableNames(prefix), identity.CorePrincipalTableNames(prefix),
 	))
-	authorizer := iamcore.NewAuthorizer(runtime)
+	authorizer := iamcore.NewAuthorizerWithRegistry(runtime, authz.DefaultRegistry())
 	require.NoError(t, authorizer.BindForeignTables(
 		organization.CoreDirectoryTableNames(prefix), identity.CorePrincipalTableNames(prefix),
 	))

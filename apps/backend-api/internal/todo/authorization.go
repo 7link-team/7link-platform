@@ -13,6 +13,39 @@ import (
 	"gorm.io/gen/field"
 )
 
+// authorizationActions are the permissions the task module contributes to the
+// shared authorization registry. Every task route guard names one of them.
+func authorizationActions() []authz.Action {
+	return []authz.Action{
+		{Resource: Name, Verb: "create", Scope: authz.ActionScopeTenant, Summary: "create tasks", DataScoped: true},
+		{Resource: Name, Verb: "view", Scope: authz.ActionScopeTenant, Summary: "view tasks", DataScoped: true},
+		{Resource: Name, Verb: "update", Scope: authz.ActionScopeTenant, Summary: "update and restore tasks", DataScoped: true},
+		{Resource: Name, Verb: "delete", Scope: authz.ActionScopeTenant, Summary: "delete tasks", DataScoped: true},
+		{Resource: Name, Verb: "export", Scope: authz.ActionScopeTenant, Summary: "export tasks", DataScoped: true},
+		{Resource: Name, Verb: "import", Scope: authz.ActionScopeTenant, Summary: "import tasks", DataScoped: true},
+	}
+}
+
+// authorizationFields declares the task attributes field policies may govern.
+func authorizationFields() []authz.Field {
+	fields := []authz.Field{}
+	for _, name := range []string{"id", "version", "title", "description", "status", "priority", "due_at", "completed_at", "created_at", "created_by", "updated_at", "updated_by", "deleted_at", "deleted_by"} {
+		f := authz.Field{Resource: Name, Name: name, Mutability: "readOnly", Returned: "default", Configurable: true}
+		if slices.Contains([]string{"title", "description", "status", "priority", "due_at"}, name) {
+			f.Mutability = "readWrite"
+		}
+		f.Maskable = name == "title" || name == "description"
+		if name == "id" || name == "version" {
+			f.Configurable = false
+		}
+		if name == "id" {
+			f.Returned = "always"
+		}
+		fields = append(fields, f)
+	}
+	return fields
+}
+
 func (s *service) authorization(ctx context.Context, verb string) (*authn.Claims, authz.DataConstraint, error) {
 	if s.writer() == nil || s.checker == nil {
 		return nil, authz.DataConstraint{}, ErrUnavailable

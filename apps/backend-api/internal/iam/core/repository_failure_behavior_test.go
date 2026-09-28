@@ -208,7 +208,7 @@ func TestCoreUnavailableAndInvalidDependencyBranches(t *testing.T) {
 	assert.ErrorIs(t, err, ErrUnavailable)
 	_, err = authorizer.CheckResource(ctx, 1, 3, "store", 4, "store_view", 2)
 	assert.ErrorIs(t, err, ErrUnavailable)
-	assert.Panics(t, func() { NewAuthorizer(nil) })
+	assert.Panics(t, func() { NewAuthorizerWithRegistry(nil, authz.DefaultRegistry()) })
 	harness := newRepositoryHarness(t, "sl_")
 	assert.Panics(t, func() { NewAuthorizerWithRegistry(harness.runtime, nil) })
 	var checker *MembershipChecker

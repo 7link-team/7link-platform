@@ -121,7 +121,7 @@ func (a *Authorizer) MemberAuthorizationSources(
 	requested := make([]string, 0)
 	actions := make([]authz.Action, 0)
 	for _, action := range a.registry.All() {
-		if action.Scope == "platform" {
+		if action.Scope == authz.ActionScopeSystem {
 			continue
 		}
 		requested = append(requested, action.Code)

@@ -504,6 +504,9 @@ func (r *Registrar) authenticatedOnly(api huma.API) func(huma.Context, func(huma
 
 // RegisterPlatform declares an authenticated platform operation. Platform
 // routes never accept a tenant selector and authorize against platform grants.
+// "Platform" here means system-level authority: the guard must name an action
+// whose Scope is ActionScopeSystem. Operating-platform routes use
+// RegisterOperatingPlatform instead.
 func RegisterPlatform[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Guard, handler func(context.Context, *I) (*O, error)) {
 	if r == nil {
 		panic("authz registrar is nil")
@@ -515,7 +518,7 @@ func RegisterPlatform[I, O any](r *Registrar, api huma.API, op huma.Operation, g
 		panic("platform operation requires operation id")
 	}
 	action, ok := r.registry.Find(guard.Code())
-	if !ok || action.Scope != "platform" {
+	if !ok || action.Scope != ActionScopeSystem {
 		panic("platform operation uses non-platform permission: " + guard.Code())
 	}
 	if op.Metadata == nil {
@@ -620,7 +623,7 @@ func (r *Registrar) prepare(api huma.API, op *huma.Operation, guard Guard) {
 	// is never granted. The route then answers only to whoever happens to hold
 	// it, and the tenant administrator loses an operation on their own tenant
 	// while the declaration still reads as if it were guarded correctly.
-	if action.Scope == "platform" || action.Scope == "operating_platform" {
+	if action.Scope == ActionScopeSystem || action.Scope == ActionScopeOperatingPlatform {
 		panic("tenant operation uses platform permission: " + guard.Code())
 	}
 	if op.Metadata == nil {
@@ -938,7 +941,7 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 				return
 			}
 			permission := "system_" + guard.Code()
-			if action, exists := r.registry.Find(permission); !exists || action.Scope != "platform" {
+			if action, exists := r.registry.Find(permission); !exists || action.Scope != ActionScopeSystem {
 				_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
 				return
 			}
