@@ -371,7 +371,7 @@ export async function authEntrancesAcceptance({
         scope_id: first.id,
         mode: "read_write",
       },
-      200
+      201
     )
     try {
       const refused = await admin.context.request.post(

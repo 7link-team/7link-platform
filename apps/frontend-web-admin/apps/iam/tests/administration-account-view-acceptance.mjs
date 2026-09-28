@@ -261,7 +261,8 @@ export async function administrationAccountViewAcceptance({
       writable,
       `/operating-platforms/${platformA.id}/roles`,
       "POST",
-      { name: "Writable view role" }
+      { name: "Writable view role" },
+      201
     )
     await viewRequest(writable, `/roles/${role.id}`, "PATCH", {
       name: "Writable role updated",
