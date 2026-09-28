@@ -254,6 +254,9 @@ func samlProtocolResponses(api huma.API, success map[string]*huma.MediaType, red
 		"503": {Description: http.StatusText(http.StatusServiceUnavailable), Content: map[string]*huma.MediaType{"application/json": {Schema: errorSchema}}},
 	}
 	if redirect {
+		// Only single sign-on redirects to login, and only it refuses a signed-in
+		// subject the tenant does not admit.
+		responses["403"] = &huma.Response{Description: http.StatusText(http.StatusForbidden), Content: map[string]*huma.MediaType{"application/json": {Schema: errorSchema}}}
 		responses["302"] = &huma.Response{
 			Description: http.StatusText(http.StatusFound),
 			Headers: map[string]*huma.Param{

@@ -62,7 +62,7 @@ func TestManualResponsesShareTheInstalledErrorSchema(t *testing.T) {
 			checked++
 		}
 	}
-	assert.Equal(t, 11, checked, "every documented federation error response must be covered")
+	assert.Equal(t, 12, checked, "every documented federation error response must be covered")
 	for source, responses := range manual {
 		response, ok := responses["503"]
 		require.True(t, ok, "%s must document an unavailable replay store", source)

@@ -402,7 +402,7 @@ func (s *Service) ServeSAMLSSO(api huma.API, ctx huma.Context, tenantID guid.ID)
 		writeSAMLError(api, ctx, http.StatusBadRequest, federationi18n.SAMLInvalidRequest)
 		return
 	}
-	session, ok := s.samlSession(ctx)
+	session, principalID, ok := s.samlSession(ctx)
 	if !ok {
 		// No browser session: send the user to the login page and hand back the
 		// original SSO URL so the flow resumes after authentication.
@@ -411,6 +411,16 @@ func (s *Service) ServeSAMLSSO(api huma.API, ctx huma.Context, tenantID guid.ID)
 		returnURL := samlBaseURL(ctx) + requestURL.RequestURI()
 		ctx.SetHeader("Location", s.samlLoginURL(ctx)+"?return_url="+url.QueryEscape(returnURL))
 		ctx.SetStatus(http.StatusFound)
+		return
+	}
+	// A browser session is global; the assertion speaks for one tenant. Only an
+	// active member of that active tenant may be asserted to its providers.
+	if err := s.repo.verifySAMLSubject(ctx.Context(), tenantID, principalID); err != nil {
+		if errors.Is(err, ErrPrincipalInactive) {
+			writeSAMLError(api, ctx, http.StatusForbidden, federationi18n.IdentityUnavailable)
+			return
+		}
+		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable)
 		return
 	}
 	if err := (saml.DefaultAssertionMaker{}).MakeAssertion(req, session); err != nil {
@@ -638,21 +648,21 @@ func (s *Service) samlLoginURL(ctx huma.Context) string {
 	return samlBaseURL(ctx) + path
 }
 
-func (s *Service) samlSession(ctx huma.Context) (*saml.Session, bool) {
+func (s *Service) samlSession(ctx huma.Context) (*saml.Session, guid.ID, bool) {
 	claims, err := s.authn.Authenticate(ctx.Context(), "", ctx.Header("Cookie"))
 	if err != nil {
-		return nil, false
+		return nil, 0, false
 	}
 	index, err := randomToken(18)
 	if err != nil {
-		return nil, false
+		return nil, 0, false
 	}
 	now := time.Now().UTC()
 	return &saml.Session{
 		ID: index, CreateTime: now, ExpireTime: now.Add(s.samlCfg.ValidDuration),
 		NameID: claims.Subject, NameIDFormat: samlNameIDPersistent,
 		UserName: claims.PreferredUsername, UserEmail: claims.Email, UserCommonName: claims.PreferredUsername,
-	}, true
+	}, claims.PrincipalID, true
 }
 
 // samlSPDescriptor returns the parsed descriptor of an active SP, caching the
