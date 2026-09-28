@@ -105,7 +105,7 @@ func (m *Module) Initialize(context.Context) error {
 	if !m.foreign.bound() {
 		return errors.New("initialize governance: the core and organization modules must publish the table names governance joins")
 	}
-	m.service = NewService(m.runtime, m.appender, m.grants, m.ids)
+	m.service = NewService(m.runtime, m.appender, m.grants, m.administrators, m.ids)
 	m.service.repo.foreign = &m.foreign
 	return nil
 }

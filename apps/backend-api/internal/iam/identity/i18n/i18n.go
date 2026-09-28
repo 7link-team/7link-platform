@@ -16,6 +16,7 @@ const (
 	LifecycleVersionConflict         = Namespace + ".principal_lifecycle_version_conflict"
 	PrincipalRetained                = Namespace + ".principal_retained"
 	PrincipalAnonymized              = Namespace + ".principal_anonymized"
+	PrincipalSharedBeyondTenant      = Namespace + ".principal_shared_beyond_tenant"
 	SuspensionRequired               = Namespace + ".principal_suspension_required"
 	AnonymizationConfirmation        = Namespace + ".principal_anonymization_confirmation"
 	LoginNameExists                  = Namespace + ".login_name_exists"

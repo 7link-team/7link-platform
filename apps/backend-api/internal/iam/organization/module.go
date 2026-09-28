@@ -225,7 +225,7 @@ func (m *Module) Initialize(context.Context) error {
 	m.service.roots, m.tenants.roots = m.roots, m.roots
 	m.service.rootContent = m.rootContent
 	m.groups = NewGroupService(m.runtime, m.appender, m.members, m.administrators, m.ids)
-	m.invitations = NewInvitationService(m.runtime, m.appender, m.ids, m.credentials, m.createPrincipal)
+	m.invitations = NewInvitationService(m.runtime, m.appender, m.administrators, m.ids, m.credentials, m.createPrincipal)
 	for _, repo := range []*Repository{
 		m.service.repo, m.tenants.repo, m.platforms.repo, m.groups.repo, m.invitations.repo,
 	} {

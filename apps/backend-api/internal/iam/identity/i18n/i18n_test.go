@@ -21,6 +21,7 @@ func TestRegisterPublishesEveryIdentityLocale(t *testing.T) {
 		ServiceAccountVersionConflict, ServiceAccountCredentialLimit, InvalidServiceAccount,
 		LifecycleVersionConflict, PrincipalRetained, PrincipalAnonymized,
 		SuspensionRequired, AnonymizationConfirmation, ClosureConflict, PlatformAccessBlocksClosure,
+		PrincipalSharedBeyondTenant,
 	}
 	for _, locale := range platformi18n.Supported() {
 		ctx := platformi18n.WithLocale(t.Context(), locale.Code)
@@ -38,6 +39,7 @@ func TestEveryLocaleCarriesExactlyTheDeclaredKeys(t *testing.T) {
 		ServiceAccountVersionConflict, ServiceAccountCredentialLimit, InvalidServiceAccount,
 		LifecycleVersionConflict, PrincipalRetained, PrincipalAnonymized,
 		SuspensionRequired, AnonymizationConfirmation, ClosureConflict, PlatformAccessBlocksClosure,
+		PrincipalSharedBeyondTenant,
 	}
 	expected := make([]string, 0, len(declared))
 	for _, key := range declared {

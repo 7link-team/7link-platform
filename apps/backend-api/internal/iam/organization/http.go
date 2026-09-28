@@ -818,6 +818,8 @@ func tenantError(err error) error {
 
 func invitationError(err error) error {
 	switch {
+	case errors.Is(err, core.ErrPrivilegeEscalation):
+		return huma.Error403Forbidden(corei18n.PrivilegeEscalationDenied)
 	case errors.Is(err, ErrInvitationNotFound):
 		return huma.Error404NotFound(organizationi18n.InvitationNotFound)
 	case errors.Is(err, ErrInvitationCredential):

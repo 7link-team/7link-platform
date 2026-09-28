@@ -82,19 +82,33 @@ type requestSnapshot struct {
 }
 
 type Service struct {
-	repo   *Repository
-	audit  audit.Appender
-	grants core.RoleGrantStore
-	now    func() time.Time
+	repo           *Repository
+	audit          audit.Appender
+	grants         core.RoleGrantStore
+	administrators core.AdministratorGuard
+	now            func() time.Time
 }
 
-func NewService(runtime *appenv.Runtime, appender audit.Appender, grants core.RoleGrantStore, ids guid.Source) *Service {
-	if runtime == nil || appender == nil || ids == nil || grants.Grant == nil || grants.Revoke == nil ||
+func NewService(runtime *appenv.Runtime, appender audit.Appender, grants core.RoleGrantStore, administrators core.AdministratorGuard, ids guid.Source) *Service {
+	if runtime == nil || appender == nil || ids == nil || administrators == nil || grants.Grant == nil || grants.Revoke == nil ||
 		grants.RoleGranted == nil || grants.RemovePermanent == nil || grants.RemoveGroupMembership == nil ||
 		grants.RemoveEntityRoleBinding == nil {
-		panic("governance service requires runtime, audit appender, role grant store, and id generator")
+		panic("governance service requires runtime, audit appender, role grant store, administrator guard, and id generator")
 	}
-	return &Service{repo: NewRepository(runtime, ids), audit: appender, grants: grants, now: time.Now}
+	return &Service{repo: NewRepository(runtime, ids), audit: appender, grants: grants, administrators: administrators, now: time.Now}
+}
+
+// requireGrantableRole keeps an approval from granting a role the approver
+// could not grant directly. The check takes the grant fence before the policy
+// lock, the order every other grant path uses.
+func (s *Service) requireGrantableRole(ctx context.Context, repo *Repository, tenantID, roleID guid.ID) error {
+	checker, ok := s.administrators.(interface {
+		RequireGrantableRoles(context.Context, *gorm.DB, guid.ID, []guid.ID) error
+	})
+	if !ok {
+		return ErrUnavailable
+	}
+	return checker.RequireGrantableRoles(ctx, repo.writer(), tenantID, []guid.ID{roleID})
 }
 
 func (s *Service) resolveAccessRequestOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
@@ -245,6 +259,9 @@ func (s *Service) decide(ctx context.Context, tenantID, requestID, actorID guid.
 			return ErrExpired
 		}
 		if decision == StatusApproved {
+			if err := s.requireGrantableRole(ctx, repo, tenantID, row.RoleID); err != nil {
+				return err
+			}
 			if err := repo.lockPolicy(ctx, tenantID); err != nil {
 				return err
 			}

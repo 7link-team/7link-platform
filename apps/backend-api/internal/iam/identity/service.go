@@ -26,6 +26,9 @@ var (
 	ErrLoginConflict     = errors.New("login name already exists")
 	ErrPrincipalInactive = errors.New("principal or tenant membership is not active")
 	ErrProfileDenied     = errors.New("global profile update requires principal or platform authority")
+	// ErrPrincipalSharedBeyondTenant refuses a tenant-route suspension of an
+	// account that another organization or the platform also relies on.
+	ErrPrincipalSharedBeyondTenant = errors.New("principal is shared beyond this tenant; remove the membership instead")
 )
 
 type tenantMemberRecord struct {
@@ -452,8 +455,14 @@ func (s *Service) SetStatus(ctx context.Context, tenantID, id guid.ID, status st
 		}
 		verifiers := make([]func() error, 0)
 		if status == "disabled" && current.Status != "disabled" {
+			if _, err := repo.lifecyclePrincipal(ctx, id, true); err != nil {
+				return err
+			}
 			tenantIDs, err := repo.activeTenantIDs(ctx, id)
 			if err != nil {
+				return err
+			}
+			if err := s.requireTenantOnlyPrincipal(ctx, repo, tenantID, id, tenantIDs); err != nil {
 				return err
 			}
 			for _, affectedTenantID := range tenantIDs {
@@ -496,6 +505,28 @@ func (s *Service) SetStatus(ctx context.Context, tenantID, id guid.ID, status st
 		return Principal{}, fmt.Errorf("set principal status: %w", err)
 	}
 	return updated, nil
+}
+
+// requireTenantOnlyPrincipal keeps one tenant from suspending a global account
+// that another organization root or the platform also relies on: suspension
+// locks the principal out everywhere, so that tenant removes its membership
+// instead. The caller holds the principal lock.
+func (s *Service) requireTenantOnlyPrincipal(ctx context.Context, repo *Repository, tenantID, id guid.ID, activeTenantIDs []guid.ID) error {
+	for _, other := range activeTenantIDs {
+		if other != tenantID {
+			return ErrPrincipalSharedBeyondTenant
+		}
+	}
+	if s.platformAccessGuard == nil {
+		return ErrUnavailable
+	}
+	if err := s.platformAccessGuard(ctx, repo.writer(), id); err != nil {
+		if errors.Is(err, core.ErrPrincipalHasPlatformAccess) {
+			return fmt.Errorf("%w: %w", ErrPrincipalSharedBeyondTenant, err)
+		}
+		return err
+	}
+	return nil
 }
 
 func (r *Repository) insertPrincipal(ctx context.Context, row *model.Principal) error {

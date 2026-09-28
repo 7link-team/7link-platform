@@ -93,8 +93,18 @@ func runComposedPrincipalErasure(t *testing.T, external *app.Database) {
 			until := time.Now().UTC().Add(-time.Hour)
 			policy, err := service.SetPrincipalRetention(t.Context(), id, 0, until, false, "case-acceptance")
 			require.NoError(t, err)
+			if scenario == "platform-access" {
+				// The tenant route refuses to suspend a platform administrator, so
+				// the grant returns after suspension: erasure must still refuse it.
+				require.NoError(t, f.db.Exec("DELETE FROM "+f.table("iam_platform_administrators")+" WHERE principal_id = ?", id).Error)
+			}
 			_, err = service.SetStatus(t.Context(), iamTenantB, id, "disabled")
 			require.NoError(t, err)
+			if scenario == "platform-access" {
+				require.NoError(t, f.db.Table(f.table("iam_platform_administrators")).Create(map[string]any{
+					"principal_id": id, "created_at": time.Now().UTC().Truncate(time.Millisecond),
+				}).Error)
+			}
 			status := "pending"
 			if scenario == "delivery-in-flight" {
 				status = "delivering"

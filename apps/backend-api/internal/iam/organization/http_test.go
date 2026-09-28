@@ -14,6 +14,7 @@ import (
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/core"
+	corei18n "7link.com/platform/internal/iam/core/i18n"
 	"7link.com/platform/internal/iam/identity"
 	organizationi18n "7link.com/platform/internal/iam/organization/i18n"
 	"7link.com/platform/internal/infra/guid"
@@ -275,6 +276,7 @@ func TestOrganizationErrorMappings(t *testing.T) {
 		{"invitation binding", invitationError, ErrInvitationBindingMissing, 404, organizationi18n.InvitationBindingNotFound},
 		{"invitation inactive", invitationError, ErrInvitationBindingInactive, 409, organizationi18n.InvitationBindingInactive},
 		{"invitation invalid", invitationError, ErrInvitationInvalid, 422, organizationi18n.InvalidInvitation},
+		{"invitation escalation", invitationError, core.ErrPrivilegeEscalation, 403, corei18n.PrivilegeEscalationDenied},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

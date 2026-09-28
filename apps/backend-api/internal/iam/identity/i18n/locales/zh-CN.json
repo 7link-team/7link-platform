@@ -11,6 +11,7 @@
   "principal_lifecycle_version_conflict": "保留策略在你决定期间已被改动。请重新载入，并基于当前内容再做决定。",
   "principal_not_found": "当前租户中不存在指定的身份主体，请核对主体标识符和租户后重试。",
   "principal_retained": "保留期尚未到期，或存在法律保留。两者都解除前，擦除将持续被拒绝。",
+  "principal_shared_beyond_tenant": "此账号同时属于其他组织或拥有平台权限，在此停用会使其在所有地方都无法登录。请改为移除其在本组织的成员身份。",
   "principal_suspension_required": "请先停用该主体。对仍能登录的账号执行擦除，会让会话持有已不存在的数据。",
   "service_account_credential_limit": "该服务账号的有效凭据数量已达上限，请先撤销不再使用的凭据。",
   "service_account_credential_not_found": "未找到指定的服务账号凭据，请刷新凭据列表后重试。",
