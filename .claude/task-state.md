@@ -28,7 +28,7 @@
 - make ci 全绿：gofmt clean / lint 0 issues / schema lock 255 / total coverage 91.2%(与改动前一致) / 33 模块 0 未达标 / openapi matches / 前端 1+2 successful / FAIL 0
 - 变异 A 还原一个时钟 -> 架构门禁红；B 改 core model 列名 -> tests/migration 红（证明共享 database 未削弱 DDL 检测）；C 去掉会话过期过滤 -> 单测红
 ## Next Action            无。若要继续提速，剩余大头是 internal/files(255s) 与 tests/lifecycle(305s)，两者都是真实工作量而非引擎开销，需要改测试本身，另行排期
-## Last Checkpoint        2026-09-29 clock-UTC 批次已提交推送 (95b8e89)
+## Last Checkpoint        2026-09-29 已合并到 main (e8fb5b9，树与已验证 IAM 8a92755 一致)
 
 
 ## IAM Audit Remediation (closed list) - 2026-09-28 - DELIVERED
