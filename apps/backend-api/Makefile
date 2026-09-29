@@ -120,7 +120,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/i18n \
 	7link.com/platform/pkg/query
 
-.PHONY: build ci dev dev-api dev-status dev-stop fmt-check generate generate-docs golangci iam-preflight lint openapi openapi-check test test-coverage test-integration test-performance test-load test-all test-mysql8 test-mysql8-run
+.PHONY: build ci ci-fast dev dev-api dev-status dev-stop fmt-check generate generate-docs golangci iam-preflight lint openapi openapi-check test test-coverage test-integration test-performance test-load test-all test-mysql8 test-mysql8-run
 .PHONY: release-check test-race generate-check frontend-check frontend-contract-check schema-lock-check test-alerts test-redis-security
 # These gates share coverage files and embedded database resources. Even when
 # invoked with -j, execute each prerequisite to completion before starting the next.
@@ -173,6 +173,19 @@ frontend-contract-check:
 # formatting or lint failure reports before the slow database tests run. Fails
 # on the first gate that fails.
 ci: fmt-check lint schema-lock-check test-coverage test-integration build openapi-check frontend-contract-check
+
+# The edit loop's gate: the checks that answer in about a minute on a warm
+# cache. It is deliberately not a substitute for ci -- it leaves out the
+# coverage floor, the engine matrix, the published document and the web client
+# -- and it exists so that none of those is the price of checking a one-line
+# change. Run ci before committing.
+#
+# It runs `test` rather than `test-coverage` because the coverage build
+# instruments every package into every test binary, and `test` omits -count=1,
+# so a package nothing touched is not run again to reach the answer it already
+# gave. Left out of .NOTPARALLEL on purpose: these four share no coverage file
+# and no database, so `make -j ci-fast` is safe.
+ci-fast: fmt-check lint schema-lock-check test build
 
 # The production candidate adds the slow gates deliberately kept outside ci.
 # Configure DOCKER_CMD / DOCKER_TEST_HOST for an already provisioned test daemon;
