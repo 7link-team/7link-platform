@@ -189,7 +189,7 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, identities ide
 	repo.principals = principals
 	return &Service{
 		repo: repo, audit: appender, identities: identities, authn: authn,
-		keys: keys, stateTTL: stateTTL, clockSkew: skew, now: time.Now,
+		keys: keys, stateTTL: stateTTL, clockSkew: skew, now: func() time.Time { return time.Now().UTC() },
 		nextID: func() (guid.ID, error) {
 			id, err := ids.Next()
 			return guid.ID(id), err

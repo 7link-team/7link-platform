@@ -352,7 +352,7 @@ func NewVerifier(cfg Config) (*Verifier, error) {
 	return &Verifier{
 		cfg:    cfg,
 		client: &http.Client{Timeout: cfg.HTTPTimeout},
-		now:    time.Now,
+		now:    func() time.Time { return time.Now().UTC() },
 		keys:   map[string]crypto.PublicKey{},
 	}, nil
 }

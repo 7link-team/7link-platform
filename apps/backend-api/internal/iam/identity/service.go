@@ -72,7 +72,7 @@ func NewService(
 		panic("identity service requires runtime, audit appender, administrator guard, id generator, and permission registry")
 	}
 	return &Service{
-		repo: NewRepository(runtime, ids, appender), administrators: administrators, permissionRegistry: permissions, now: time.Now,
+		repo: NewRepository(runtime, ids, appender), administrators: administrators, permissionRegistry: permissions, now: func() time.Time { return time.Now().UTC() },
 	}
 }
 

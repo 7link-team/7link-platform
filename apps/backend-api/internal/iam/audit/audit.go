@@ -206,7 +206,7 @@ func NewService(runtime *appenv.Runtime, ids guid.Source) *Service {
 }
 
 func NewServiceWithAnchor(runtime *appenv.Runtime, anchor *AnchorStore, ids guid.Source) *Service {
-	return &Service{repo: NewRepository(runtime, ids), now: time.Now, anchor: anchor}
+	return &Service{repo: NewRepository(runtime, ids), now: func() time.Time { return time.Now().UTC() }, anchor: anchor}
 }
 
 func NewServiceWithAnchorAndSigner(runtime *appenv.Runtime, anchor *AnchorStore, signer *RootSigner, ids guid.Source) *Service {

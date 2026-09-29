@@ -94,7 +94,7 @@ func NewService(
 	repo.principals = principals
 	return &Service{
 		repo: repo, authn: authenticator,
-		consent: consent.normalized(), consentPage: &consentRenderer{}, now: time.Now,
+		consent: consent.normalized(), consentPage: &consentRenderer{}, now: func() time.Time { return time.Now().UTC() },
 	}
 }
 

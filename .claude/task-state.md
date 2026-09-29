@@ -1,4 +1,35 @@
 # Task State
+## make ci Speedup - 2026-09-29 - DELIVERED
+## Objective  缩短 make ci 墙钟，判定强度与稳定性零损失（用户硬约束：能证明无损才做，证明不了就不做）
+## Current Phase          ACCEPTANCE
+## Current Step           已全部完成，待提交推送
+## Measured Baseline
+- make ci 墙钟 37-44 min；单测串行累计 58.6 min / 85 包（Go 已跨包并行约 1.6x）
+- 最慢包：tests/migration 782s、tests/lifecycle 326s、internal/files 255s（三者 t.Parallel() 均为 0）
+- **单个嵌入式 PG 启停 = 46.3s**（两次实测一致），SQLite = 0.00s；全仓 34 个 OpenPostgres 调用点
+  成因：testdb.go:122 每测试 RuntimePath(t.TempDir()) → 每次重跑 initdb
+- t.Parallel() 实测：782s -> 468s(p2) -> 426s(p4)，收益递减，**不是正解**
+- -coverpkg 热缓存边际成本仅 ~21%（13.63s vs 16.55s），**降级不做**
+## Important Decisions
+- D: 不推翻「ci 不依赖 Docker」的既有分层（Docker 仅用于 release-check 的真实 MySQL/Redis 门禁）
+- D: 优先「消除 PG 重复启停」而非「并行启停」；隔离靠 per-test CREATE DATABASE，非共享 schema
+## Confirmed Constraints
+- ci-full 门禁集合与判定强度一字不变
+- 改动包连跑 10 次全绿，否则回退（不接受 flaky 换速度）
+- total coverage 与 33 个模块数字不下降
+- 变异验证：破坏若干处后新 CI 仍必须红
+## Results
+- tests/migration 782s -> 147.6s (5.3x)；完整 tests 模块墙钟 312s
+- ci-fast: 冷 187s / **热缓存 10.2s**（日常循环 37min -> 10s）
+- 稳定性 5/5 全绿，0 孤儿进程，0 遗留临时目录
+- ci 目标定义一字未动（git diff 证实），仅新增 ci-fast
+- 不做：t.Parallel(1.84x 且有 flaky 风险)、拆 coverpkg(仅 21%)、internal/files(255s 是真实工作量)
+## Verification           Build: PASS | tests/... x5: PASS | make ci: PASS (18 min, 原 37-44 min) | 变异验证: PASS (3/3)
+- make ci 全绿：gofmt clean / lint 0 issues / schema lock 255 / total coverage 91.2%(与改动前一致) / 33 模块 0 未达标 / openapi matches / 前端 1+2 successful / FAIL 0
+- 变异 A 还原一个时钟 -> 架构门禁红；B 改 core model 列名 -> tests/migration 红（证明共享 database 未削弱 DDL 检测）；C 去掉会话过期过滤 -> 单测红
+## Next Action            无。若要继续提速，剩余大头是 internal/files(255s) 与 tests/lifecycle(305s)，两者都是真实工作量而非引擎开销，需要改测试本身，另行排期
+## Last Checkpoint        2026-09-29 clock-UTC 批次已提交推送 (95b8e89)
+
 
 ## IAM Audit Remediation (closed list) - 2026-09-28 - DELIVERED
 

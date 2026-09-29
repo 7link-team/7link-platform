@@ -28,7 +28,7 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Sourc
 	if runtime == nil || appender == nil || ids == nil {
 		panic("organization service requires runtime, audit appender, and id generator")
 	}
-	return &Service{repo: NewRepository(runtime, ids, appender), now: time.Now}
+	return &Service{repo: NewRepository(runtime, ids, appender), now: func() time.Time { return time.Now().UTC() }}
 }
 
 func (s *Service) List(ctx context.Context, tenantID guid.ID) ([]Department, error) {

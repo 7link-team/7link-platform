@@ -93,7 +93,7 @@ func NewInvitationService(runtime *appenv.Runtime, appender audit.Appender, admi
 	if runtime == nil || appender == nil || administrators == nil || ids == nil || credentials == nil || createPrincipal == nil {
 		panic("invitation service requires runtime, audit appender, administrator guard, id generator, credentials, and principal creator")
 	}
-	return &InvitationService{repo: NewRepository(runtime, ids, appender), administrators: administrators, credentials: credentials, createPrincipal: createPrincipal, now: time.Now}
+	return &InvitationService{repo: NewRepository(runtime, ids, appender), administrators: administrators, credentials: credentials, createPrincipal: createPrincipal, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // requireGrantableInvitationRoles keeps an invitation from carrying roles the

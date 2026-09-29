@@ -93,7 +93,7 @@ func NewAuthorizerWithRegistry(runtime *appenv.Runtime, registry *authz.Registry
 	}
 	return &Authorizer{
 		runtime: runtime, repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())}, registry: registry,
-		revisions: revisions, now: time.Now, foreign: &foreignTables{},
+		revisions: revisions, now: func() time.Time { return time.Now().UTC() }, foreign: &foreignTables{},
 	}
 }
 

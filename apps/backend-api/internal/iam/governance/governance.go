@@ -95,7 +95,7 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, grants core.Ro
 		grants.RemoveEntityRoleBinding == nil {
 		panic("governance service requires runtime, audit appender, role grant store, administrator guard, and id generator")
 	}
-	return &Service{repo: NewRepository(runtime, ids), audit: appender, grants: grants, administrators: administrators, now: time.Now}
+	return &Service{repo: NewRepository(runtime, ids), audit: appender, grants: grants, administrators: administrators, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // requireGrantableRole keeps an approval from granting a role the approver

@@ -120,7 +120,7 @@ func WithRegistrationPrincipalCreator(creator RegistrationPrincipalCreator) WebO
 
 func NewWebService(cfg authnext.Config, repository *Repository, options ...WebOption) (*Service, error) {
 	service := &Service{
-		cfg: cfg, web: cfg.Web, repo: repository, now: time.Now,
+		cfg: cfg, web: cfg.Web, repo: repository, now: func() time.Time { return time.Now().UTC() },
 	}
 	for _, option := range options {
 		if option != nil {

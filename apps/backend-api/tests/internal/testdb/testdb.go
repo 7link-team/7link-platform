@@ -9,8 +9,11 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -105,50 +108,120 @@ func OpenMySQLWithDSN(t *testing.T) (*sql.DB, string) {
 	return db, dsn
 }
 
-// OpenPostgres starts an isolated embedded PostgreSQL 16 instance.
+// OpenPostgres hands a test its own PostgreSQL 16 database. See
+// OpenPostgresWithDSN for what the test shares with its neighbours and what it
+// does not.
 func OpenPostgres(t *testing.T) *sql.DB {
 	t.Helper()
 	db, _ := OpenPostgresWithDSN(t)
 	return db
 }
 
-// OpenPostgresWithDSN starts an isolated embedded PostgreSQL 16 instance and
-// returns both its pool and connection string for tests that open another ORM pool.
+// OpenPostgresWithDSN hands a test its own PostgreSQL 16 database and the
+// connection string for it, for tests that open another ORM pool.
+//
+// The server behind it is shared by the whole test binary and the isolation is
+// the database, not the instance. Starting an instance means running initdb,
+// which measured at 46 seconds here, so a server per test spent most of a test
+// run initializing servers: tests/migration alone took 782 seconds for work
+// that is mostly DDL. A database created on a running server costs
+// milliseconds, and two databases on one server share nothing a migration test
+// can observe -- separate catalogs, separate schemas, separate extensions.
+//
+// A package that calls this must stop the server from TestMain by way of
+// ShutdownPostgres, or it leaves a postgres process and its data directory
+// behind when the binary exits.
 func OpenPostgresWithDSN(t *testing.T) (*sql.DB, string) {
 	t.Helper()
 
-	const maxStartAttempts = 3
-	runtimeRoot := t.TempDir()
-	var (
-		postgres *embeddedpostgres.EmbeddedPostgres
-		port     uint32
-		startErr error
-	)
-	for attempt := range maxStartAttempts {
-		port = freeTCPPort(t)
-		config := embeddedpostgres.DefaultConfig().
-			Version(embeddedpostgres.V16).
-			Port(port).
-			Database("integration").
-			Username("postgres").
-			Password("postgres").
-			RuntimePath(filepath.Join(runtimeRoot, fmt.Sprintf("postgres-%d", attempt))).
-			StartTimeout(time.Minute).
-			Logger(io.Discard)
-		postgres = embeddedpostgres.NewDatabase(config)
-		startErr = postgres.Start()
-		if startErr == nil || !isPostgresPortConflict(startErr) {
-			break
-		}
-	}
-	require.NoError(t, startErr)
-	t.Cleanup(func() { require.NoError(t, postgres.Stop()) })
-	dsn := fmt.Sprintf("postgres://postgres:postgres@127.0.0.1:%d/integration?sslmode=disable", port)
+	port := sharedPostgres(t)
+	name := fmt.Sprintf("integration_%d", databaseSequence.Add(1))
+
+	admin, err := sql.Open("postgres", postgresDSN(port, "integration"))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, admin.Close()) }()
+	_, err = admin.ExecContext(t.Context(), "CREATE DATABASE "+name)
+	require.NoError(t, err, "create the test database")
+
+	// Cleanup is last-in-first-out, so the pool registered below closes before
+	// this runs: PostgreSQL refuses to drop a database that still has sessions.
+	t.Cleanup(func() {
+		dropper, dropErr := sql.Open("postgres", postgresDSN(port, "integration"))
+		require.NoError(t, dropErr)
+		defer func() { require.NoError(t, dropper.Close()) }()
+		_, dropErr = dropper.Exec("DROP DATABASE IF EXISTS " + name)
+		require.NoError(t, dropErr)
+	})
+
+	dsn := postgresDSN(port, name)
 	db, err := sql.Open("postgres", dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	require.NoError(t, db.PingContext(t.Context()))
 	return db, dsn
+}
+
+func postgresDSN(port uint32, database string) string {
+	return fmt.Sprintf("postgres://postgres:postgres@127.0.0.1:%d/%s?sslmode=disable", port, database)
+}
+
+var (
+	databaseSequence atomic.Uint64
+	postgresOnce     sync.Once
+	postgresServer   *embeddedpostgres.EmbeddedPostgres
+	postgresRoot     string
+	postgresPort     uint32
+	postgresErr      error
+)
+
+// sharedPostgres starts the one server this binary uses and reports its port.
+// Every caller after the first waits for that start rather than repeating it.
+func sharedPostgres(t *testing.T) uint32 {
+	t.Helper()
+	postgresOnce.Do(func() {
+		postgresRoot, postgresErr = os.MkdirTemp("", "testdb-postgres-")
+		if postgresErr != nil {
+			return
+		}
+		const maxStartAttempts = 3
+		for attempt := range maxStartAttempts {
+			postgresPort = freeTCPPort(t)
+			config := embeddedpostgres.DefaultConfig().
+				Version(embeddedpostgres.V16).
+				Port(postgresPort).
+				Database("integration").
+				Username("postgres").
+				Password("postgres").
+				RuntimePath(filepath.Join(postgresRoot, fmt.Sprintf("postgres-%d", attempt))).
+				StartTimeout(time.Minute).
+				Logger(io.Discard)
+			postgresServer = embeddedpostgres.NewDatabase(config)
+			postgresErr = postgresServer.Start()
+			if postgresErr == nil || !isPostgresPortConflict(postgresErr) {
+				break
+			}
+		}
+	})
+	require.NoError(t, postgresErr, "start the shared postgres server")
+	return postgresPort
+}
+
+// ShutdownPostgres stops the shared server and removes its data directory. It
+// is a no-op for a binary whose tests never asked for PostgreSQL, so every
+// TestMain can defer to it unconditionally. Call it from TestMain, after
+// m.Run, and return m.Run's code: a test binary that exits without it leaves
+// the server running.
+func ShutdownPostgres() error {
+	var stopErr error
+	if postgresServer != nil {
+		stopErr = postgresServer.Stop()
+		postgresServer = nil
+	}
+	if postgresRoot != "" {
+		stopErr = errors.Join(stopErr, os.RemoveAll(postgresRoot))
+		postgresRoot = ""
+	}
+	return stopErr
 }
 
 // OpenSQLite opens an isolated file-backed SQLite database with foreign keys
