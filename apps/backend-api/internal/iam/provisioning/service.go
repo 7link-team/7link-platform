@@ -72,7 +72,7 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Sourc
 		runtime: runtime, repo: NewRepository(runtime), appender: appender, ids: ids,
 		identity: identities, groups: groups, actors: actors, fields: fields, keys: keys,
 		http: httpx.NewClient(timeout, outbound), outbound: outbound,
-		now: time.Now, pushLocks: make(map[string]*pushLock),
+		now: func() time.Time { return time.Now().UTC() }, pushLocks: make(map[string]*pushLock),
 	}
 }
 

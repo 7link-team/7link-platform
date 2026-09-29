@@ -100,7 +100,7 @@ func NewAdministratorGuard(runtime *appenv.Runtime) *tenantAdministratorGuard {
 		panic(err)
 	}
 	return &tenantAdministratorGuard{
-		names: query.BindNames(runtime.TablePrefix()), revisions: revisions, now: time.Now,
+		names: query.BindNames(runtime.TablePrefix()), revisions: revisions, now: func() time.Time { return time.Now().UTC() },
 		foreign: &foreignTables{},
 	}
 }

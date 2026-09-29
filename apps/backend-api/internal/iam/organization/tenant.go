@@ -107,7 +107,7 @@ func NewTenantService(
 		panic("tenant service requires the tenant bootstrapper and owner lookup")
 	}
 	return &TenantService{
-		repo: NewRepository(runtime, ids, appender), now: time.Now,
+		repo: NewRepository(runtime, ids, appender), now: func() time.Time { return time.Now().UTC() },
 		bootstrap: bootstrap, owners: owners,
 	}
 }

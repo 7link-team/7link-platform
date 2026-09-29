@@ -93,7 +93,7 @@ func TestComposedGroupMutationsCannotGrantUnheldRoles(t *testing.T) {
 			if kind == "platform" {
 				owner = 91003
 				adminPermission = "operating_platform_administer"
-				require.NoError(t, f.db.Exec("INSERT INTO "+f.table("iam_tenants")+" (id, scope_kind, slug, name, status, version, created_at, updated_at) VALUES (?, 'platform', 'group-platform', 'Group Platform', 'active', 1, ?, ?)", owner, time.Now(), time.Now()).Error)
+				require.NoError(t, f.db.Exec("INSERT INTO "+f.table("iam_tenants")+" (id, scope_kind, slug, name, status, version, created_at, updated_at) VALUES (?, 'platform', 'group-platform', 'Group Platform', 'active', 1, ?, ?)", owner, time.Now().UTC(), time.Now().UTC()).Error)
 				for _, principal := range []identity.Principal{f.adminB, f.requesterB} {
 					require.NoError(t, f.db.Table(f.table("iam_tenant_members")).Create(&coremodel.TenantMember{TenantID: owner, PrincipalID: principal.ID, DisplayName: principal.DisplayName, Email: principal.Email, Status: "active", CreatedAt: time.Now(), UpdatedAt: time.Now()}).Error)
 				}

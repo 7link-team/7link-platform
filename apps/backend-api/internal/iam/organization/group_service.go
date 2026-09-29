@@ -27,7 +27,7 @@ func NewGroupService(runtime *appenv.Runtime, appender audit.Appender, members c
 	if runtime == nil || appender == nil || members == nil || administrators == nil || ids == nil {
 		panic("group service requires runtime, audit appender, active member checker, administrator guard, and id generator")
 	}
-	return &GroupService{repo: NewRepository(runtime, ids, appender), members: members, administrators: administrators, now: time.Now}
+	return &GroupService{repo: NewRepository(runtime, ids, appender), members: members, administrators: administrators, now: func() time.Time { return time.Now().UTC() }}
 }
 
 func (s *GroupService) memberActiveOn(ctx context.Context, repo *Repository, ownerID, principalID guid.ID) (bool, error) {
