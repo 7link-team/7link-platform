@@ -101,6 +101,23 @@ func newRepositoryTestIDs(start int64) *repositoryTestIDs {
 
 func (ids *repositoryTestIDs) Next() (int64, error) { return ids.next.Add(1), nil }
 
+// failReadsAfter lets the first skip reads of table through and fails every
+// later one, leaving the rows in place. It targets one read in a flow that
+// reads the same table earlier, and is how these tests tell a storage fault
+// apart from a missing row.
+func failReadsAfter(t *testing.T, db *gorm.DB, table string, skip int) {
+	t.Helper()
+	reads := 0
+	require.NoError(t, db.Callback().Query().Before("gorm:query").Register("test:fail_reads", func(db *gorm.DB) {
+		if db.Statement.Table != table {
+			return
+		}
+		if reads++; reads > skip {
+			db.AddError(errors.New("storage unavailable"))
+		}
+	}))
+}
+
 type authnRepositoryHarness struct {
 	repository *Repository
 	db         *gorm.DB

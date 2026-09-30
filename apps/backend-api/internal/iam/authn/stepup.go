@@ -2,6 +2,7 @@ package authn
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"7link.com/platform/internal/iam/authn/model"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"gorm.io/gorm"
 )
 
 // BeginStepUp starts a one-time MFA challenge bound to the current browser
@@ -23,6 +25,9 @@ func (s *Service) BeginStepUp(
 		return authnext.StepUpOptions{}, err
 	}
 	credential, err := s.repo.getMFAEnabledCredential(ctx, claims.PrincipalID)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return authnext.StepUpOptions{}, err
+	}
 	if err != nil || credential.TOTPSecret == "" {
 		return authnext.StepUpOptions{}, ErrMFANotEnabled
 	}
@@ -75,12 +80,18 @@ func (s *Service) VerifyStepUp(
 	invalidCode := false
 	err = s.repo.runInTx(ctx, func(repository *Repository) error {
 		challenge, err := repository.getStepUpChallenge(ctx, tokenHash(challengeID))
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		if err != nil || challenge.ConsumedAt != nil || !challenge.ExpiresAt.After(now) ||
 			challenge.Attempts >= s.cfg.MFA.MaxAttempts || challenge.PrincipalID != claims.PrincipalID ||
 			challenge.SessionHash != sessionHash {
 			return ErrMFAChallenge
 		}
 		credential, err := repository.getMFAEnabledCredential(ctx, claims.PrincipalID)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		if err != nil || credential.TOTPSecret == "" {
 			return ErrMFAChallenge
 		}
@@ -135,6 +146,9 @@ func (s *Service) elevateSession(
 	now time.Time,
 ) (string, time.Time, error) {
 	current, err := repository.activeSession(ctx, sessionHash, now)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", time.Time{}, err
+	}
 	if err != nil || current.PrincipalID != principalID {
 		return "", time.Time{}, ErrMFAChallenge
 	}

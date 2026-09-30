@@ -486,3 +486,19 @@ func TestNotificationDeliveryStopsOnCancelledContext(t *testing.T) {
 	defer recorder.mu.Unlock()
 	assert.Empty(t, recorder.payloads)
 }
+
+// TestPasswordRecoveryStorageFaultIsNotAnInvalidRecovery covers the re-read of
+// the principal inside the reset transaction. The same principal is read twice
+// before it: once to check the recovery, once to lock the row.
+func TestPasswordRecoveryStorageFaultIsNotAnInvalidRecovery(t *testing.T) {
+	service, harness, recorder := newRecoveryService(t)
+	bootstrapLocalPrincipal(t, harness, "alice", "correct horse battery staple")
+	require.NoError(t, service.BeginPasswordRecovery(t.Context(), "alice@example.test"))
+	require.NoError(t, service.deliverPendingNotifications(t.Context()))
+	token := recoveryTokenFromPayload(t, recorder.last(t))
+
+	failReadsAfter(t, harness.db, "iam_principals", 2)
+	err := service.CompletePasswordRecovery(t.Context(), token, "different horse battery staple")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, authnext.ErrInvalidRecovery)
+}

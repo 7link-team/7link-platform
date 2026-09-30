@@ -232,12 +232,18 @@ func (s *Service) VerifyLoginMFA(
 	invalidCode := false
 	err := s.repo.runInTx(ctx, func(repository *Repository) error {
 		challenge, err := repository.getMFAChallenge(ctx, tokenHash(challengeID))
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		if err != nil || challenge.ConsumedAt != nil || !challenge.ExpiresAt.After(now) ||
 			challenge.Attempts >= s.cfg.MFA.MaxAttempts {
 			return ErrMFAChallenge
 		}
 		principalID = challenge.PrincipalID
 		credential, err := repository.getMFAEnabledCredential(ctx, challenge.PrincipalID)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		if err != nil || credential.TOTPSecret == "" {
 			return ErrMFAChallenge
 		}
@@ -305,6 +311,9 @@ func (s *Service) RegenerateRecoveryCodes(
 	var codes []string
 	err = s.repo.runInTx(ctx, func(repository *Repository) error {
 		current, err := repository.getMFAEnabledCredential(ctx, claims.PrincipalID)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		if err != nil || current.TOTPSecret == "" {
 			return ErrMFANotEnabled
 		}
@@ -357,6 +366,9 @@ func (s *Service) DisableTOTP(
 	now := s.now().UTC()
 	err = s.repo.runInTx(ctx, func(repository *Repository) error {
 		current, err := repository.getMFAEnabledCredential(ctx, claims.PrincipalID)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		if err != nil || current.TOTPSecret == "" {
 			return ErrMFANotEnabled
 		}

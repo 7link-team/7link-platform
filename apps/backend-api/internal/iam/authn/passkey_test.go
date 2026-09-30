@@ -606,3 +606,18 @@ func TestPasskeyAdditionalSecurityFailureStates(t *testing.T) {
 	})
 
 }
+
+// TestPasskeyUserStorageFaultIsNotAWrongCredential covers both reads behind a
+// passkey user. A missing row is a credential that does not resolve; a failed
+// read is a fault, and a login must not audit it as a denied attempt.
+func TestPasskeyUserStorageFaultIsNotAWrongCredential(t *testing.T) {
+	for _, table := range []string{"iam_principals", "iam_passkey_users"} {
+		t.Run(table, func(t *testing.T) {
+			service, harness, principalID, _ := newPasskeyService(t)
+			failReadsAfter(t, harness.db, table, 0)
+			_, err := service.loadPasskeyUser(t.Context(), service.repo, principalID)
+			require.Error(t, err)
+			assert.NotErrorIs(t, err, authnext.ErrPasskeyCredential)
+		})
+	}
+}

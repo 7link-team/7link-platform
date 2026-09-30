@@ -246,17 +246,24 @@ func (s *Service) FinishPasskeyLogin(
 	}
 	var principalID guid.ID
 	var current *model.Passkey
+	var lookupErr error
 	_, credential, err := s.passkeys.FinishLogin(
 		[]byte(challenge.SessionData), response,
 		func(credentialID, userHandle []byte) (webauthnx.User, error) {
-			var lookupErr error
 			principalID, current, lookupErr = s.resolvePasskey(ctx, credentialID, userHandle)
 			if lookupErr != nil {
 				return webauthnx.User{}, lookupErr
 			}
-			return s.loadPasskeyUser(ctx, s.repo, principalID)
+			var user webauthnx.User
+			user, lookupErr = s.loadPasskeyUser(ctx, s.repo, principalID)
+			return user, lookupErr
 		},
 	)
+	// A failed read is not a wrong credential: it must not be audited as a
+	// denied login or answered as one.
+	if lookupErr != nil && !errors.Is(lookupErr, authnext.ErrPasskeyCredential) {
+		return authnext.LoginResult{}, lookupErr
+	}
 	if err != nil || principalID.Zero() || current == nil {
 		s.audit(ctx, principalID, "passkey_login", "denied")
 		return authnext.LoginResult{}, authnext.ErrPasskeyCredential
@@ -474,10 +481,16 @@ func (s *Service) loadPasskeyUser(
 ) (webauthnx.User, error) {
 	principal, err := repository.getActivePrincipal(ctx, principalID)
 	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return webauthnx.User{}, err
+		}
 		return webauthnx.User{}, authnext.ErrPasskeyCredential
 	}
 	user, err := repository.getPasskeyUser(ctx, principalID)
 	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return webauthnx.User{}, err
+		}
 		return webauthnx.User{}, authnext.ErrPasskeyCredential
 	}
 	return s.loadPasskeyUserWithIdentity(ctx, repository, principal, user)
