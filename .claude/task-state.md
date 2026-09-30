@@ -8,7 +8,7 @@
 - 7296cd5 federation identity_links 3 处；04cc137 organization invitation 1 处
 - files account_resource 6 处(用户授权由我裁决：修)；推翻 ef2bef6 钉住的 ErrNotFound 掩盖，decisions.md 记录
 ## Known Limits  FinishPasskeyLogin lookupErr 透传无法单测(webauthnx 协议私有)
-## Verification  make ci PASS(四模块)；files 包测试 PASS；最终 make ci(含 files): PASS
+## Verification  make ci PASS(四模块)；最终 make ci 含 files：tests/goose 测试全 PASS 但清理内嵌 postgres 时 Windows 拒绝删除 postgres.exe 致包 FAIL 并中断 make；单独重跑 tests/goose PASS，补跑 build/openapi-check/frontend-contract-check PASS
 ## Next Action  无；OAuth 等同类已全部修完
 ## Last Checkpoint  2026-09-30 files patch applied
 
