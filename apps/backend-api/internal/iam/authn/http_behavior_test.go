@@ -1247,3 +1247,65 @@ func TestLoginRequiresASolvedCaptcha(t *testing.T) {
 	}, "Origin: https://app.example.test")
 	require.Equal(t, http.StatusCreated, accepted.Code, accepted.Body.String())
 }
+
+// A captcha fails closed. When the deployment delegates the challenge and
+// Cloudflare cannot be reached, the attempt is refused -- and refused as this
+// deployment's problem rather than as a wrong answer, because somebody who
+// solved the widget correctly must not be told they did not.
+func TestLoginIsRefusedWhenTheDelegatedCaptchaCannotBeChecked(t *testing.T) {
+	unreachable := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	t.Cleanup(unreachable.Close)
+
+	harness := newAuthnRepositoryHarness(t, "")
+	seedLocalPrincipal(t, harness.repository, "alice", "alice@example.test", "correct horse battery staple")
+	config := localAuthnConfig()
+	config.Captcha = authnext.CaptchaConfig{
+		Provider: "turnstile",
+		Turnstile: authnext.TurnstileConfig{
+			SiteKey: "1x00000000000000000000AA",
+			// Cloudflare's always-passes dummy secret; the stub above never
+			// gets far enough to look at it.
+			SecretKey: "1x0000000000000000000000000000000AA",
+			VerifyURL: unreachable.URL, RequestTimeout: time.Second,
+			OutboundAllowPlaintext: true,
+			OutboundAllowNetworks:  []string{"127.0.0.0/8", "::1/128"},
+		},
+	}
+	service, err := NewWebService(config, harness.repository,
+		WithMemberTenantResolver(boundMemberTenantResolver(t, harness.runtime)))
+	require.NoError(t, err)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, service, service)
+
+	response := api.Post("/login", map[string]any{
+		"captcha_type": "turnstile", "captcha_id": "widget", "captcha_answer": "XXXX.DUMMY.TOKEN.XXXX",
+		"login_name": "alice", "password": "correct horse battery staple",
+	}, "Origin: https://app.example.test")
+	require.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+	assert.NotContains(t, response.Body.String(), strconv.Itoa(captchaInvalidCode),
+		"an unreachable checker is not the caller getting the answer wrong")
+
+	// And the credentials are never looked at: the challenge is settled first.
+	wrongPassword := api.Post("/login", map[string]any{
+		"captcha_type": "turnstile", "captcha_id": "widget", "captcha_answer": "XXXX.DUMMY.TOKEN.XXXX",
+		"login_name": "alice", "password": "wrong password",
+	}, "Origin: https://app.example.test")
+	assert.Equal(t, http.StatusServiceUnavailable, wrongPassword.Code, wrongPassword.Body.String())
+}
+
+// The login options tell a client what to render. Guessing is what left the
+// console asking for image challenges a Turnstile deployment never draws.
+func TestLoginOptionsNameWhoPosesTheChallenge(t *testing.T) {
+	service, _ := newLocalService(t)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, service, service)
+
+	var drawn struct {
+		Data AuthenticationCapabilities `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(api.Get("/login/options").Body.Bytes(), &drawn))
+	assert.Equal(t, "image", drawn.Data.Captcha.Provider)
+	assert.Empty(t, drawn.Data.Captcha.SiteKey, "a drawn challenge has no site key to publish")
+}

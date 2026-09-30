@@ -25,6 +25,11 @@ var domainErrorMappers = []string{
 	"internal/iam/authn.accountViewHTTPError",
 	"internal/iam/authn.authenticationError",
 	"internal/iam/authn.personalTokenError",
+	// Not a domain error mapper in the usual sense: it turns a captcha
+	// verification outcome into the refusal a client can act on. It is listed
+	// because it has the same shape and the same obligation -- a status chosen
+	// below it must survive.
+	"internal/iam/authn.refuseUnansweredCaptcha",
 	"internal/iam/core.apiError",
 	"internal/iam/core.platformAPIError",
 	"internal/iam/federation.federationError",

@@ -242,8 +242,16 @@ var secretNamePattern = regexp.MustCompile(`(?i)(key|secret|password|token|crede
 // secretTagExemptions lists credential-shaped names that are deliberately
 // published. An S3 access key is an identifier paired with the redacted secret
 // key, matching the convention used by object-store SDKs.
+//
+// A Turnstile site key is the same shape: it is served to every browser by
+// /login/options, because the widget cannot render without it, and it is the
+// secret key beside it -- which never leaves the process -- that makes a token
+// worth anything. Redacting it here would claim a secrecy it does not have and
+// would hide the one value an operator needs to read back when the widget
+// fails to appear.
 var secretTagExemptions = map[string]struct{}{
-	"AppConfig.IAMAudit.Anchor.AccessKey": {},
+	"AppConfig.IAMAudit.Anchor.AccessKey":       {},
+	"AppConfig.Authn.Captcha.Turnstile.SiteKey": {},
 }
 
 // TestCredentialFieldsAreMarkedSecret keeps /debug/config from echoing key

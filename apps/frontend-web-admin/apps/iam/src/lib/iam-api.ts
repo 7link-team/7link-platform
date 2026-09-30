@@ -215,10 +215,18 @@ export interface DeploymentIdentity {
   organization: string
 }
 
+/** What a client must render to answer a challenge. */
+export interface CaptchaCapability {
+  provider: "image" | "turnstile"
+  /** Published deliberately: the widget cannot render without it. */
+  site_key?: string
+}
+
 export interface AuthnCapabilities {
   registration: boolean
   password_recovery: boolean
   passkey: boolean
+  captcha: CaptchaCapability
 }
 
 export interface Captcha {

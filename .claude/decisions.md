@@ -3495,3 +3495,39 @@ Alternatives Considered: `//go:build dev` (rejected for the reasons above);
 dropping the development server and requiring Docker Redis locally (rejected
 when the limiter work was planned -- see the miniredis decision above).
 Status: IMPLEMENTED (as the absence of a build tag).
+
+## The Captcha Provider Is Chosen, And Turnstile Is Off By Default Locally - 2026-09-30
+
+Decision: `authn.captcha.provider` selects `image` or `turnstile` explicitly.
+Turnstile is not inferred from the presence of keys, and `make dev` keeps the
+drawn challenge unless asked for the other with `DEV_CAPTCHA=turnstile`.
+
+Reason: inferring the provider from configuration would let a half-filled
+Turnstile section serve drawn challenges while an operator believed they had
+turned it on -- a silent downgrade of the thing they were configuring. And
+validating a Turnstile token means reaching Cloudflare, so making it the local
+default would put the internet between a developer and their own login form.
+The switch exists so the widget can be worked on; it uses Cloudflare's own
+dummy keys, which pass on any hostname.
+
+Alternatives Considered: infer from keys (rejected above); make Turnstile the
+local default with dummy keys (rejected: `make dev` has needed nothing but Go,
+Node and bun, and a login that fails when the network does is a poor trade for
+exercising a widget most changes never touch).
+
+The client renders what `/login/options` names, which also removes an older
+assumption: the console used to ask for challenge kinds until it got a drawn
+one and give up after five tries, so a deployment offering only the interactive
+kinds had a sign-in page that could never be answered.
+
+Verification fails closed, per the rule the shared security configuration
+already states. A refusal from Cloudflare and an unreachable Cloudflare are
+told apart: both refuse the attempt, but only the first reports the business
+code for a wrong answer, because telling somebody who solved the widget that
+they got it wrong sends them round a loop they cannot win.
+
+The site key is published by `/login/options` and exempt from the secret-tag
+gate. It has to reach the browser for the widget to render, and it is the
+secret key beside it -- resolved through secretx, never leaving the process --
+that makes a token worth anything.
+Status: IMPLEMENTED.

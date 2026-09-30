@@ -169,11 +169,11 @@ func TestAKindTheDeploymentDoesNotOfferCannotBeAnswered(t *testing.T) {
 	offering := newTestOffering(t, authnext.CaptchaConfig{Kinds: []string{"text"}})
 
 	storeInteractiveAnswer("unoffered-slide", "S:100:50")
-	assert.False(t, offering.verify("slide", "unoffered-slide", "104"))
+	assert.False(t, mustVerify(t, offering, "slide", "unoffered-slide", "104"))
 
 	id, _, answer, err := imageCaptcha.Generate()
 	require.NoError(t, err)
-	assert.True(t, offering.verify("text", id, answer))
+	assert.True(t, mustVerify(t, offering, "text", id, answer))
 }
 
 // TestAConfiguredTestAnswerLetsAScriptThrough covers the mode an acceptance run
@@ -185,20 +185,20 @@ func TestAConfiguredTestAnswerLetsAScriptThrough(t *testing.T) {
 
 	id, _, solved, err := imageCaptcha.Generate()
 	require.NoError(t, err)
-	assert.True(t, offering.verify("text", id, configured))
+	assert.True(t, mustVerify(t, offering, "text", id, configured))
 	// The challenge is consumed either way, so a configured test answer changes
 	// which answers are accepted and not whether one challenge answers twice.
-	assert.False(t, offering.verify("text", id, solved))
+	assert.False(t, mustVerify(t, offering, "text", id, solved))
 
 	t.Run("the real answer still works", func(t *testing.T) {
 		id, _, solved, err := imageCaptcha.Generate()
 		require.NoError(t, err)
-		assert.True(t, offering.verify("text", id, solved))
+		assert.True(t, mustVerify(t, offering, "text", id, solved))
 	})
 	t.Run("and nothing near it does", func(t *testing.T) {
 		id, _, _, err := imageCaptcha.Generate()
 		require.NoError(t, err)
-		assert.False(t, offering.verify("text", id, configured+"x"))
+		assert.False(t, mustVerify(t, offering, "text", id, configured+"x"))
 	})
 }
 
@@ -211,7 +211,7 @@ func TestWithoutAConfiguredTestAnswerNothingStandsInForSolving(t *testing.T) {
 	for _, guess := range []string{"", "test", "not-a-real-captcha", "not-a-real-captcha-answer"} {
 		id, _, _, err := imageCaptcha.Generate()
 		require.NoError(t, err)
-		assert.False(t, offering.verify("text", id, guess))
+		assert.False(t, mustVerify(t, offering, "text", id, guess))
 	}
 }
 
@@ -244,3 +244,13 @@ func TestAChallengeShapeNothingBuildsIsAnErrorRatherThanEmptyOutput(t *testing.T
 // so a request that must carry a solved challenge can do so without an image.
 // It is deliberately longer than minimumCaptchaTestAnswer.
 const testCaptchaAnswer = "captcha-test-answer"
+
+// mustVerify keeps these cases reading as verdicts. A drawn challenge never
+// reports the second value -- nothing about it can be unreachable -- so a
+// reason here is a bug in the offering rather than a case worth asserting on.
+func mustVerify(t *testing.T, offering *captchaOffering, kind, id, answer string) bool {
+	t.Helper()
+	solved, err := offering.verify(t.Context(), kind, id, answer)
+	require.NoError(t, err)
+	return solved
+}

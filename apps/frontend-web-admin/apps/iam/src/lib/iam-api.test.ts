@@ -1438,7 +1438,12 @@ describe("IAM API client", () => {
           message: "ok",
           data:
             request.method === "GET"
-              ? { registration: true, password_recovery: true, passkey: false }
+              ? {
+                  registration: true,
+                  password_recovery: true,
+                  passkey: false,
+                  captcha: { provider: "image" },
+                }
               : { accepted: true },
         })
       },
@@ -1453,6 +1458,7 @@ describe("IAM API client", () => {
       registration: true,
       password_recovery: true,
       passkey: false,
+      captcha: { provider: "image" },
     })
     expect(
       await client.register({

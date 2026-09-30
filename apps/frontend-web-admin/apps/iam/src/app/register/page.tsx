@@ -13,8 +13,15 @@ import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
-import { ApiError, businessCode, iamApi, type Captcha } from "../../lib/iam-api"
+import {
+  ApiError,
+  businessCode,
+  iamApi,
+  type AuthnCapabilities,
+  type Captcha,
+} from "../../lib/iam-api"
 import { issueRegistrationCaptcha } from "../../lib/captcha"
+import { Turnstile } from "../../components/turnstile"
 import { useBranding, copyrightLine } from "../../lib/branding"
 import { entranceLoginPath, publicAuthEntrance } from "../../lib/auth-entrance"
 
@@ -30,6 +37,19 @@ export default function RegisterPage() {
   const [error, setError] = useState("")
   const [captcha, setCaptcha] = useState<Captcha | null>(null)
   const [answer, setAnswer] = useState("")
+  const [capabilities, setCapabilities] = useState<AuthnCapabilities | null>(
+    null
+  )
+  const [widget, setWidget] = useState(0)
+  // Which challenge exists is the service's to say. Asking a deployment that
+  // delegates to Cloudflare for a drawn one gets nothing, repeatedly.
+  const delegated = capabilities?.captcha.provider === "turnstile"
+
+  useEffect(() => {
+    void iamApi
+      .capabilities()
+      .then(setCapabilities, () => setCapabilities(null))
+  }, [])
 
   const loadCaptcha = () => {
     void issueRegistrationCaptcha().then(setCaptcha, () =>
@@ -38,16 +58,27 @@ export default function RegisterPage() {
   }
 
   const refreshCaptcha = () => {
-    setCaptcha(null)
     setAnswer("")
+    if (delegated) {
+      // The widget issues its own token; remounting is what asks for another.
+      setWidget((generation) => generation + 1)
+      return
+    }
+    setCaptcha(null)
     loadCaptcha()
   }
 
-  useEffect(loadCaptcha, [t])
+  useEffect(() => {
+    if (!capabilities || capabilities.captcha.provider !== "image") return
+    loadCaptcha()
+    // loadCaptcha closes over the translator only, which the dependency below
+    // already tracks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capabilities, t])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!captcha) return
+    if (!delegated && !captcha) return
     setBusy(true)
     setError("")
     const data = new FormData(event.currentTarget)
@@ -63,8 +94,9 @@ export default function RegisterPage() {
         email: String(data.get("email") ?? "").trim(),
         password,
         display_name: String(data.get("display_name") ?? "").trim(),
-        captcha_type: captcha.type,
-        captcha_id: captcha.captcha_id,
+        ...(delegated
+          ? { captcha_type: "turnstile", captcha_id: "widget" }
+          : { captcha_type: captcha!.type, captcha_id: captcha!.captcha_id }),
         captcha_answer: answer.trim(),
       })
       setComplete(true)
@@ -153,41 +185,53 @@ export default function RegisterPage() {
                 label={t("confirmPassword")}
                 visible={visible}
               />
-              <div className="space-y-2">
-                <Label htmlFor="registration-captcha">{t("captcha")}</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="registration-captcha"
-                    name="captcha_answer"
-                    value={answer}
-                    onChange={(event) => setAnswer(event.target.value)}
-                    autoComplete="off"
-                    required
-                    maxLength={16}
-                    className="flex-1"
+              {delegated ? (
+                <div className="space-y-2">
+                  <Label>{t("captcha")}</Label>
+                  <Turnstile
+                    key={widget}
+                    siteKey={capabilities?.captcha.site_key ?? ""}
+                    onToken={setAnswer}
+                    onUnavailable={() => setError(t("captchaUnavailable"))}
                   />
-                  <button
-                    type="button"
-                    className="grid h-9 w-[108px] shrink-0 place-items-center overflow-hidden rounded-md border border-border/70 bg-muted/40"
-                    onClick={refreshCaptcha}
-                    aria-label={t("refreshCaptcha")}
-                    title={t("anotherCaptcha")}
-                  >
-                    {captcha ? (
-                      <img
-                        src={captcha.image_base64}
-                        alt={t("captcha")}
-                        className="h-full w-full object-contain"
-                      />
-                    ) : (
-                      <RefreshCw className="size-4 animate-spin text-muted-foreground" />
-                    )}
-                  </button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {t("captchaHint")}
-                </p>
-              </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="registration-captcha">{t("captcha")}</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="registration-captcha"
+                      name="captcha_answer"
+                      value={answer}
+                      onChange={(event) => setAnswer(event.target.value)}
+                      autoComplete="off"
+                      required
+                      maxLength={16}
+                      className="flex-1"
+                    />
+                    <button
+                      type="button"
+                      className="grid h-9 w-[108px] shrink-0 place-items-center overflow-hidden rounded-md border border-border/70 bg-muted/40"
+                      onClick={refreshCaptcha}
+                      aria-label={t("refreshCaptcha")}
+                      title={t("anotherCaptcha")}
+                    >
+                      {captcha ? (
+                        <img
+                          src={captcha.image_base64}
+                          alt={t("captcha")}
+                          className="h-full w-full object-contain"
+                        />
+                      ) : (
+                        <RefreshCw className="size-4 animate-spin text-muted-foreground" />
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {t("captchaHint")}
+                  </p>
+                </div>
+              )}
               {error && (
                 <p className="text-sm text-destructive" role="alert">
                   {error}

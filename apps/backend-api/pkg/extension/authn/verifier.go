@@ -141,6 +141,13 @@ type RegistrationConfig struct {
 // registration -- because which challenge a deployment is willing to show is a
 // property of the deployment, not of the form the visitor happens to be on.
 type CaptchaConfig struct {
+	// Provider decides what the deployment presents. The drawn challenge needs
+	// nothing but this service; Turnstile hands the work to Cloudflare and so
+	// needs an account, a pair of keys and reachability -- which is why it is
+	// chosen rather than inferred from whichever keys happen to be present.
+	Provider string `mapstructure:"provider" description:"captcha provider: image draws a challenge here, turnstile delegates to Cloudflare" enum:"image,turnstile" default:"image"`
+	// Turnstile is read only when Provider selects it.
+	Turnstile TurnstileConfig `mapstructure:"turnstile" group:"turnstile"`
 	// Kinds is a set rather than one value so a deployment can change what it
 	// presents without a code change, and so the harder challenges stay
 	// available to a deployment that wants them without being the default.
@@ -151,6 +158,36 @@ type CaptchaConfig struct {
 	// the source so that no string in this repository is a bypass everywhere it
 	// was left switched on.
 	TestAnswer string `mapstructure:"test_answer" description:"literal answer accepted for any captcha so an automated check can log in and register; must be empty in any deployment real people use" default:"" secret:"true"`
+}
+
+// TurnstileConfig points the deployment at its Cloudflare Turnstile widget.
+//
+// The site key reaches the browser -- it is published by /login/options,
+// because the widget cannot render without it -- and the secret never leaves
+// this process. Cloudflare publishes dummy keys that always pass or always
+// fail; they are what a development environment and an automated check use,
+// and they are configuration here rather than constants for the same reason
+// the captcha test answer is.
+type TurnstileConfig struct {
+	SiteKey string `mapstructure:"site_key" description:"Turnstile site key; published to the browser, which cannot render the widget without it"`
+	// SecretKey and SecretKeyFile are alternatives, and the file is preferred:
+	// the environment is inherited by every child process and printed by
+	// anything that dumps it on a crash.
+	SecretKey     string `mapstructure:"secret_key" description:"Turnstile secret key; prefer secret_key_file" default:"" secret:"true"`
+	SecretKeyFile string `mapstructure:"secret_key_file" description:"file holding the Turnstile secret key"`
+	// VerifyURL is configurable so a test can point it at a server it controls
+	// rather than reaching Cloudflare, and so a deployment behind an egress
+	// proxy can name it. It defaults to Cloudflare's own address.
+	VerifyURL string `mapstructure:"verify_url" description:"Turnstile server-side validation endpoint" default:"https://challenges.cloudflare.com/turnstile/v0/siteverify"`
+	// RequestTimeout bounds the validation call. A challenge that cannot be
+	// checked refuses the attempt, so this is how long a caller waits to be
+	// refused, not how long they wait to get in.
+	RequestTimeout time.Duration `mapstructure:"request_timeout" description:"deadline for one Turnstile validation call" default:"5s"`
+	// OutboundAllowPlaintext and OutboundAllowNetworks mirror what federation
+	// and provisioning take, so an egress proxy on the internal network can be
+	// named the same way here as it is there.
+	OutboundAllowPlaintext bool     `mapstructure:"outbound_allow_plaintext" description:"permit an http:// validation endpoint; leave off unless TLS terminates at a sidecar" default:"false"`
+	OutboundAllowNetworks  []string `mapstructure:"outbound_allow_networks" description:"CIDR ranges the validation endpoint may resolve to even though they are otherwise blocked"`
 }
 
 type Capabilities struct {

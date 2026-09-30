@@ -4965,6 +4965,7 @@ export interface components {
             total_events: number;
         };
         AuthenticationCapabilities: {
+            captcha: components["schemas"]["CaptchaCapability"];
             passkey: boolean;
             password_recovery: boolean;
             registration: boolean;
@@ -5072,6 +5073,15 @@ export interface components {
             selectable: string[] | null;
             /** @description keys accepted by the sort parameter */
             sortable: string[] | null;
+        };
+        CaptchaCapability: {
+            /**
+             * @description who poses the challenge
+             * @enum {string}
+             */
+            provider: "image" | "turnstile";
+            /** @description Turnstile site key; absent unless the provider is turnstile */
+            site_key?: string;
         };
         CaptchaOutput: {
             captcha_id: string;
@@ -12294,7 +12304,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Authentication shared storage unavailable */
+            /** @description Service Unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;

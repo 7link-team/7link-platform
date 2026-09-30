@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"reflect"
 	"strings"
@@ -99,6 +100,10 @@ type AuthenticationCapabilities struct {
 	Registration     bool `json:"registration"`
 	PasswordRecovery bool `json:"password_recovery"`
 	Passkey          bool `json:"passkey"`
+	// Captcha tells a client what to render. Without it the client has to guess
+	// -- and the one that guessed "an image, always" spun asking for challenge
+	// kinds it could draw until it gave up.
+	Captcha CaptchaCapability `json:"captcha"`
 }
 
 type sessionListInput struct {
@@ -402,6 +407,30 @@ type mfaConfirmationOutput struct {
 // -- and refresh only the challenge. The authn module owns 101000-101999.
 const captchaInvalidCode = 101001
 
+// refuseUnansweredCaptcha turns a verification result into the refusal a client
+// can act on. A challenge that was not solved is the caller's to fix and says
+// so; one that could not be checked is this deployment's problem and says that
+// instead, because telling somebody who solved it that they got it wrong sends
+// them round a loop they cannot win. Either way the attempt is refused: a
+// captcha fails closed.
+func refuseUnansweredCaptcha(ctx context.Context, solved bool, err error) error {
+	// A status somebody already chose is theirs to keep. Nothing reaching here
+	// today carries one, and the guard is what keeps that true: this function
+	// decides between two statuses, and a third arriving from below must not be
+	// flattened into either of them.
+	if respx.IsStatusError(err) {
+		return err
+	}
+	if err != nil {
+		slog.Warn("captcha verification unavailable", "error", err)
+		return huma.Error503ServiceUnavailable(authni18n.CaptchaUnavailable)
+	}
+	if !solved {
+		return respx.ErrStatus(ctx, http.StatusUnprocessableEntity, captchaInvalidCode, authni18n.CaptchaInvalid, nil)
+	}
+	return nil
+}
+
 // RegisterHTTP registers the authn module's HTTP operations.
 func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	registerAccountViewBoundary(a)
@@ -444,7 +473,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		capabilities := web.Capabilities()
 		return respx.OK(ctx, AuthenticationCapabilities{
 			Registration: capabilities.Registration, PasswordRecovery: capabilities.PasswordRecovery,
-			Passkey: capabilities.Passkey,
+			Passkey: capabilities.Passkey, Captcha: web.CaptchaCapability(),
 		}), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
@@ -480,8 +509,9 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
 			return nil, huma.Error403Forbidden(authni18n.RegistrationRequestRejected)
 		}
-		if !web.VerifyCaptcha(in.Body.CaptchaType, in.Body.CaptchaID, in.Body.CaptchaAnswer) {
-			return nil, respx.ErrStatus(ctx, http.StatusUnprocessableEntity, captchaInvalidCode, authni18n.CaptchaInvalid, nil)
+		solved, captchaErr := web.VerifyCaptcha(ctx, in.Body.CaptchaType, in.Body.CaptchaID, in.Body.CaptchaAnswer)
+		if refusal := refuseUnansweredCaptcha(ctx, solved, captchaErr); refusal != nil {
+			return nil, refusal
 		}
 		if err := web.RegisterForEntry(ctx, in.Body.Email, in.Body.Password, in.Body.DisplayName, in.Body.Entry); err != nil {
 			switch {
@@ -501,13 +531,14 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		OperationID: "authn-create-session", Method: http.MethodPost, DefaultStatus: http.StatusCreated, Path: "/login",
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
 		Summary:  "Log in with a local username and password", Tags: []string{"authentication"},
-		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError},
+		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusServiceUnavailable, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *loginInput) (*loginOutput, error) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
 			return nil, huma.Error403Forbidden(authni18n.LoginRequestRejected)
 		}
-		if !web.VerifyCaptcha(in.Body.CaptchaType, in.Body.CaptchaID, in.Body.CaptchaAnswer) {
-			return nil, respx.ErrStatus(ctx, http.StatusUnprocessableEntity, captchaInvalidCode, authni18n.CaptchaInvalid, nil)
+		solved, captchaErr := web.VerifyCaptcha(ctx, in.Body.CaptchaType, in.Body.CaptchaID, in.Body.CaptchaAnswer)
+		if refusal := refuseUnansweredCaptcha(ctx, solved, captchaErr); refusal != nil {
+			return nil, refusal
 		}
 		result, err := web.BeginLogin(ctx, in.Body.LoginName, in.Body.Password, in.Body.ReturnURL)
 		if err != nil {

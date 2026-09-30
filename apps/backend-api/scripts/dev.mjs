@@ -31,6 +31,13 @@ const initializedPath = join(directory, "admin-initialized");
 // environment's own throwaway value, it never leaves this machine, and the
 // service refuses anything shorter than eight characters.
 const devCaptchaAnswer = "dev-captcha";
+// Cloudflare's own dummy keys, which pass on any hostname including localhost.
+// Turnstile is off by default here: validating a token means reaching
+// Cloudflare, and starting the application locally must not need the internet.
+// `make dev DEV_CAPTCHA=turnstile` switches it on when the widget is what you
+// are working on.
+const devTurnstileSiteKey = "1x00000000000000000000AA";
+const devTurnstileSecretKey = "1x0000000000000000000000000000000AA";
 const options = new Map();
 for (let i = 2; i < process.argv.length; i += 2) {
   const name = process.argv[i];
@@ -44,6 +51,7 @@ for (let i = 2; i < process.argv.length; i += 2) {
       "--web-port",
       "--demo-accounts",
       "--prefill-account",
+      "--captcha",
     ].includes(name) ||
     process.argv[i + 1] === undefined
   )
@@ -55,6 +63,12 @@ function boolean(name, fallback) {
   if (value !== "true" && value !== "false")
     throw new Error(`${name} requires true or false`);
   return value === "true";
+}
+function captchaOption(fallback) {
+  const value = options.get("--captcha") ?? fallback;
+  if (value !== "image" && value !== "turnstile")
+    throw new Error("--captcha requires image or turnstile");
+  return value;
 }
 function portOption(name, fallback) {
   const value = Number(options.get(name) ?? fallback);
@@ -150,6 +164,7 @@ if (options.has("--stop")) {
   process.exitCode = running ? 0 : 1;
 } else {
   const demoAccounts = boolean("--demo-accounts", "true");
+  const captchaProvider = captchaOption("image");
   const prefill = boolean("--prefill-account", "false");
   if (prefill && !demoAccounts)
     throw new Error("Account prefill requires demo accounts.");
@@ -260,7 +275,18 @@ if (options.has("--stop")) {
           signing_key_file: join(directory, "signing-key"),
           mfa: { encryption_key_file: join(directory, "mfa-key") },
           registration: { enabled: true },
-          captcha: { test_answer: devCaptchaAnswer },
+          captcha: {
+            test_answer: devCaptchaAnswer,
+            provider: captchaProvider,
+            ...(captchaProvider === "turnstile"
+              ? {
+                  turnstile: {
+                    site_key: devTurnstileSiteKey,
+                    secret_key: devTurnstileSecretKey,
+                  },
+                }
+              : {}),
+          },
           // Debug-only, in-process, and gone when this process is: it exists so
           // the authentication limiter is actually enforced here instead of
           // being short-circuited by having no Redis. The allowance is low

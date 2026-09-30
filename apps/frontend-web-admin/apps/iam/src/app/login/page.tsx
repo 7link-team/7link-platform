@@ -14,9 +14,11 @@ import {
   setTenant,
   type AuthnCapabilities,
   type Captcha,
+  type CaptchaCapability,
   type LoginResult,
 } from "../../lib/iam-api"
 import { issueLoginCaptcha } from "../../lib/captcha"
+import { Turnstile } from "../../components/turnstile"
 import { useBranding, copyrightLine } from "../../lib/branding"
 import {
   devAccountsForEntrance,
@@ -58,11 +60,13 @@ export default function LoginPage() {
     null
   )
   const [captcha, setCaptcha] = useState<Captcha | null>(null)
+  const [widget, setWidget] = useState(0)
   // Filled in development so a persona sign-in, and every browser audit that
   // drives this form, does not have to read the image. Empty in any build that
   // is not a development one, and useless against a backend with no configured
   // test answer.
   const [answer, setAnswer] = useState(devLoginCaptchaAnswer)
+  const delegatedCaptcha = capabilities?.captcha.provider === "turnstile"
   const issueCaptcha = useCallback(() => {
     void issueLoginCaptcha().then(setCaptcha, () =>
       setError("captchaUnavailable")
@@ -71,16 +75,27 @@ export default function LoginPage() {
   // A challenge is consumed whether or not it was the thing that failed, so a
   // new one replaces it after every attempt, exactly as registration does.
   const refreshCaptcha = useCallback(() => {
-    setCaptcha(null)
     setAnswer(devLoginCaptchaAnswer)
+    if (delegatedCaptcha) {
+      // The widget issues its own token and replaces it when it expires; the
+      // remount is what asks Cloudflare for another.
+      setWidget((generation) => generation + 1)
+      return
+    }
+    setCaptcha(null)
     issueCaptcha()
-  }, [issueCaptcha])
+  }, [delegatedCaptcha, issueCaptcha])
   useEffect(() => {
     void iamApi
       .capabilities()
       .then(setCapabilities, () => setCapabilities(null))
   }, [])
-  useEffect(issueCaptcha, [issueCaptcha])
+  // Wait for the login options before asking: which challenge exists is the
+  // service's to say, and a Turnstile deployment draws none.
+  useEffect(() => {
+    if (!capabilities || capabilities.captcha.provider !== "image") return
+    issueCaptcha()
+  }, [capabilities, issueCaptcha])
   if (status === "loading" || status === "error") return <SessionVerification />
   if (status === "authenticated") return <Navigate to={requested} replace />
 
@@ -91,7 +106,7 @@ export default function LoginPage() {
     const data = new FormData(event.currentTarget)
     const devTenantID = String(data.get("dev_tenant_id") ?? "")
     const previousTenantID = devTenantID ? getTenant() : ""
-    if (!captcha) {
+    if (!delegatedCaptcha && !captcha) {
       setBusy(false)
       return
     }
@@ -101,11 +116,9 @@ export default function LoginPage() {
         String(data.get("login_name") ?? ""),
         String(data.get("password") ?? ""),
         `${window.location.origin}${requested}`,
-        {
-          type: captcha.type,
-          id: captcha.captcha_id,
-          answer,
-        }
+        delegatedCaptcha
+          ? { type: "turnstile", id: "widget", answer }
+          : { type: captcha!.type, id: captcha!.captcha_id, answer }
       )
       if (result.status === "mfa_required") {
         if (devTenantID) setTenant(previousTenantID)
@@ -190,8 +203,11 @@ export default function LoginPage() {
               onPasskey={() => void submitPasskey()}
               capabilities={capabilities}
               captcha={captcha}
+              captchaProvider={capabilities?.captcha}
+              captchaWidget={widget}
               captchaAnswer={answer}
               onCaptchaAnswerChange={setAnswer}
+              onCaptchaUnavailable={() => setError(t("captchaUnavailable"))}
               onRefreshCaptcha={refreshCaptcha}
             />
           )}
@@ -243,8 +259,11 @@ function PasswordForm({
   onPasskey,
   capabilities,
   captcha,
+  captchaProvider,
+  captchaWidget,
   captchaAnswer,
   onCaptchaAnswerChange,
+  onCaptchaUnavailable,
   onRefreshCaptcha,
 }: {
   busy: boolean
@@ -255,8 +274,11 @@ function PasswordForm({
   onPasskey: () => void
   capabilities: AuthnCapabilities | null
   captcha: Captcha | null
+  captchaProvider: CaptchaCapability | undefined
+  captchaWidget: number
   captchaAnswer: string
   onCaptchaAnswerChange: (value: string) => void
+  onCaptchaUnavailable: () => void
   onRefreshCaptcha: () => void
 }) {
   const t = useTranslations("iam")
@@ -364,43 +386,70 @@ function PasswordForm({
           </button>
         </div>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="login-captcha">{t("captcha")}</Label>
-        <div className="flex items-center gap-2">
-          <Input
-            id="login-captcha"
-            name="captcha_answer"
-            value={captchaAnswer}
-            onChange={(event) => onCaptchaAnswerChange(event.target.value)}
-            autoComplete="off"
-            required
-            maxLength={16}
-            className="flex-1"
+      {captchaProvider?.provider === "turnstile" ? (
+        <div className="space-y-2">
+          <Label>{t("captcha")}</Label>
+          {/* The widget carries its own token; the field below only exists so
+              an automated run can hand over the configured test answer, and it
+              is not rendered for anybody else. */}
+          <Turnstile
+            key={captchaWidget}
+            siteKey={captchaProvider.site_key ?? ""}
+            onToken={onCaptchaAnswerChange}
+            onUnavailable={onCaptchaUnavailable}
           />
-
-          <button
-            type="button"
-            className="grid h-9 w-[108px] shrink-0 place-items-center overflow-hidden rounded-md border border-border/70 bg-muted/40"
-            onClick={onRefreshCaptcha}
-            aria-label={t("refreshCaptcha")}
-            title={t("anotherCaptcha")}
-          >
-            {captcha ? (
-              <img
-                src={captcha.image_base64}
-                alt={t("captcha")}
-                className="h-full w-full object-contain"
-              />
-            ) : (
-              <span className="text-xs text-muted-foreground">
-                {t("loading")}
-              </span>
-            )}
-          </button>
+          {devLoginCaptchaAnswer !== "" && (
+            <input type="hidden" name="captcha_answer" value={captchaAnswer} />
+          )}
         </div>
-      </div>
+      ) : (
+        <div className="space-y-2">
+          <Label htmlFor="login-captcha">{t("captcha")}</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              id="login-captcha"
+              name="captcha_answer"
+              value={captchaAnswer}
+              onChange={(event) => onCaptchaAnswerChange(event.target.value)}
+              autoComplete="off"
+              required
+              maxLength={16}
+              className="flex-1"
+            />
+            {/* The box is the input's height and the image's own proportions, so
+                the characters arrive at the size they were drawn rather than
+                squeezed. Selecting it asks for another, which is also the only
+                way out of a challenge kind this form cannot draw. */}
+            <button
+              type="button"
+              className="grid h-9 w-[108px] shrink-0 place-items-center overflow-hidden rounded-md border border-border/70 bg-muted/40"
+              onClick={onRefreshCaptcha}
+              aria-label={t("refreshCaptcha")}
+              title={t("anotherCaptcha")}
+            >
+              {captcha ? (
+                <img
+                  src={captcha.image_base64}
+                  alt={t("captcha")}
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  {t("loading")}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
       <FormError error={error} />
-      <Button type="submit" className="w-full" disabled={busy || !captcha}>
+      <Button
+        type="submit"
+        className="w-full"
+        disabled={
+          busy || (captchaProvider?.provider !== "turnstile" && !captcha)
+        }
+      >
         {busy ? t("verifying") : t("signIn")}
       </Button>
       {capabilities?.passkey && (

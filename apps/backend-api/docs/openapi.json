@@ -1527,6 +1527,9 @@
       "AuthenticationCapabilities": {
         "additionalProperties": false,
         "properties": {
+          "captcha": {
+            "$ref": "#/components/schemas/CaptchaCapability"
+          },
           "passkey": {
             "type": "boolean"
           },
@@ -1540,7 +1543,8 @@
         "required": [
           "registration",
           "password_recovery",
-          "passkey"
+          "passkey",
+          "captcha"
         ],
         "type": "object"
       },
@@ -1956,6 +1960,27 @@
           "filters",
           "sortable",
           "selectable"
+        ],
+        "type": "object"
+      },
+      "CaptchaCapability": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "description": "who poses the challenge",
+            "enum": [
+              "image",
+              "turnstile"
+            ],
+            "type": "string"
+          },
+          "site_key": {
+            "description": "Turnstile site key; absent unless the provider is turnstile",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider"
         ],
         "type": "object"
       },
@@ -18847,7 +18872,7 @@
                 }
               }
             },
-            "description": "Authentication shared storage unavailable"
+            "description": "Service Unavailable"
           }
         },
         "summary": "Log in with a local username and password",

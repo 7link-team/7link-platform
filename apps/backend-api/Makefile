@@ -11,6 +11,9 @@ DEV_API_PORT ?= 8080
 DEV_WEB_PORT ?= 8091
 DEV_DEMO_ACCOUNTS ?= true
 DEV_PREFILL_ACCOUNT ?= false
+# image draws the challenge locally; turnstile uses Cloudflare's dummy keys and
+# therefore needs the internet, so it is opt-in.
+DEV_CAPTCHA ?= image
 DEV_ARGS ?= serve --debug --migrate --pprof.enabled --shutdown.graceful=false \
 	--api.metrics.enabled --api.metrics.advertise \
 	--table_prefix sl_ \
@@ -235,7 +238,7 @@ $(DEV_AUTHN_SIGNING_KEY_FILE) $(DEV_AUTHN_MFA_KEY_FILE) $(DEV_FEDERATION_KEY_FIL
 	@umask 077; mkdir -p "$(DEV_SECRET_DIR)"; openssl rand -base64 32 > "$@"
 
 dev:
-	node "$(abspath scripts/dev.mjs)" --api-port $(DEV_API_PORT) --web-port $(DEV_WEB_PORT) --demo-accounts $(DEV_DEMO_ACCOUNTS) --prefill-account $(DEV_PREFILL_ACCOUNT)
+	node "$(abspath scripts/dev.mjs)" --api-port $(DEV_API_PORT) --web-port $(DEV_WEB_PORT) --demo-accounts $(DEV_DEMO_ACCOUNTS) --prefill-account $(DEV_PREFILL_ACCOUNT) --captcha $(DEV_CAPTCHA)
 
 dev-status:
 	node "$(abspath scripts/dev.mjs)" --status
