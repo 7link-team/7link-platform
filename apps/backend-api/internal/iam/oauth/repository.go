@@ -242,17 +242,26 @@ func (r *Repository) activeClient(ctx context.Context, id guid.ID) (*model.Clien
 	return &row, nil
 }
 
-func (r *Repository) activeMember(ctx context.Context, tenantID, principalID guid.ID) (bool, error) {
+// activeMember reports a principal that is not an active member of the tenant
+// as ErrInvalidRequest, like activeClient does for a client, so a caller cannot
+// fold a failed read into the same refusal.
+func (r *Repository) activeMember(ctx context.Context, tenantID, principalID guid.ID) error {
 	_, db, err := r.tables()
 	if err != nil {
-		return false, err
+		return err
 	}
 	members := r.foreign.access.TenantMembers.String()
 	var count int64
 	err = db.WithContext(ctx).Table(members).
 		Where("tenant_id = ? AND principal_id = ? AND status = ?", tenantID, principalID, "active").
 		Count(&count).Error
-	return count == 1, err
+	if err != nil {
+		return fmt.Errorf("read tenant membership: %w", err)
+	}
+	if count != 1 {
+		return ErrInvalidRequest
+	}
+	return nil
 }
 
 func (r *Repository) consent(ctx context.Context, clientID, principalID guid.ID) (*model.Consent, error) {

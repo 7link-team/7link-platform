@@ -393,17 +393,16 @@ func (s *Service) Authorize(
 		return "", ErrInvalidRequest
 	}
 	client, err := repo.activeClient(ctx, parsedClientID)
-	if err != nil || !containsWord(client.GrantTypes, "authorization_code") ||
+	if err != nil {
+		return "", err
+	}
+	if !containsWord(client.GrantTypes, "authorization_code") ||
 		!allowedRedirect(client.RedirectURIs, redirectURI) || !allowedScopes(client.Scopes, scope) {
 		return "", ErrInvalidRequest
 	}
 	claims, err := s.authn.Authenticate(ctx, "", cookieHeader)
 	if err != nil {
-		// Only an absent or invalid browser credential calls for login. Storage
-		// failures and cancellation must retain the protocol server_error path.
-		if errors.Is(err, authnext.ErrUnavailable) ||
-			(!errors.Is(err, authnext.ErrInvalidSession) && !errors.Is(err, authnext.ErrMissingBearer) &&
-				!errors.Is(err, authnext.ErrInvalidCredentials)) {
+		if !browserLoginRequired(err) {
 			return "", err
 		}
 		if prompt == "none" {
@@ -411,8 +410,8 @@ func (s *Service) Authorize(
 		}
 		return "", authnext.ErrInvalidCredentials
 	}
-	if active, activeErr := repo.activeMember(ctx, client.TenantID, claims.PrincipalID); activeErr != nil || !active {
-		return "", ErrInvalidRequest
+	if err := repo.activeMember(ctx, client.TenantID, claims.PrincipalID); err != nil {
+		return "", err
 	}
 	consent, err := repo.consent(ctx, client.ID, claims.PrincipalID)
 	if err != nil {
@@ -567,6 +566,9 @@ func (s *Service) loadPendingConsent(
 ) (*model.ConsentRequest, *model.Client, *authnext.Claims, error) {
 	claims, err := s.authn.Authenticate(ctx, "", cookieHeader)
 	if err != nil {
+		if !browserLoginRequired(err) {
+			return nil, nil, nil, err
+		}
 		return nil, nil, nil, authnext.ErrInvalidCredentials
 	}
 	if !validConsentChallenge(challenge) {
@@ -582,7 +584,7 @@ func (s *Service) loadPendingConsent(
 	}
 	client, err := repo.activeClient(ctx, row.ClientID)
 	if err != nil {
-		return nil, nil, nil, ErrInvalidRequest
+		return nil, nil, nil, err
 	}
 	// The client may have been narrowed while the subject was deciding, so the
 	// parked request is re-checked against the client as it stands now.
@@ -591,13 +593,22 @@ func (s *Service) loadPendingConsent(
 		!allowedScopes(client.Scopes, row.Scope) {
 		return nil, nil, nil, ErrInvalidRequest
 	}
-	if active, activeErr := repo.activeMember(ctx, client.TenantID, claims.PrincipalID); activeErr != nil || !active {
-		return nil, nil, nil, ErrInvalidRequest
+	if err := repo.activeMember(ctx, client.TenantID, claims.PrincipalID); err != nil {
+		return nil, nil, nil, err
 	}
 	return row, client, claims, nil
 }
 
 func (s *Service) consentTTL() time.Duration { return s.consent.TTL }
+
+// browserLoginRequired reports whether a failed browser authentication means
+// there is no usable session, which calls for login. Storage failures and
+// cancellation are not that: they keep the protocol's server_error path.
+func browserLoginRequired(err error) bool {
+	return !errors.Is(err, authnext.ErrUnavailable) &&
+		(errors.Is(err, authnext.ErrInvalidSession) || errors.Is(err, authnext.ErrMissingBearer) ||
+			errors.Is(err, authnext.ErrInvalidCredentials))
+}
 
 // ConsentPath reports where the authorization endpoint sends a browser that
 // has to consent, so the HTTP layer can tell whether the built-in screen is
@@ -817,15 +828,15 @@ func (s *Service) authorizationCode(
 	}
 	row, err := repo.authorizationCode(ctx, hashToken(code), client.ID)
 	if err != nil {
-		return TokenResponse{}, ErrInvalidRequest
+		return TokenResponse{}, err
 	}
 	now := oauthTime(s.now())
 	if row.ConsumedAt != nil || !row.ExpiresAt.After(now) || row.RedirectURI != form.Get("redirect_uri") ||
 		!verifyPKCE(row.CodeChallenge, verifier) {
 		return TokenResponse{}, ErrInvalidRequest
 	}
-	if active, activeErr := repo.activeMember(ctx, client.TenantID, row.PrincipalID); activeErr != nil || !active {
-		return TokenResponse{}, ErrInvalidRequest
+	if err := repo.activeMember(ctx, client.TenantID, row.PrincipalID); err != nil {
+		return TokenResponse{}, err
 	}
 	assurance := oauthAssurance(row.AuthTime, row.ACR, row.AMR, client.ID.String())
 	if err := s.checkGrant(ctx, repo, row.PrincipalID, client.ID, client.TenantID, row.GrantID); err != nil {
@@ -871,7 +882,7 @@ func (s *Service) refresh(
 	}
 	row, err := repo.refreshToken(ctx, hashToken(token), client.ID)
 	if err != nil {
-		return TokenResponse{}, ErrInvalidRequest
+		return TokenResponse{}, err
 	}
 	now := oauthTime(s.now())
 	if row.UsedAt != nil || row.RevokedAt != nil {
@@ -883,8 +894,8 @@ func (s *Service) refresh(
 	if !row.ExpiresAt.After(now) {
 		return TokenResponse{}, ErrInvalidRequest
 	}
-	if active, activeErr := repo.activeMember(ctx, client.TenantID, row.PrincipalID); activeErr != nil || !active {
-		return TokenResponse{}, ErrInvalidRequest
+	if err := repo.activeMember(ctx, client.TenantID, row.PrincipalID); err != nil {
+		return TokenResponse{}, err
 	}
 	assurance := oauthAssurance(row.AuthTime, row.ACR, row.AMR, client.ID.String())
 	if err := s.checkGrant(ctx, repo, row.PrincipalID, client.ID, client.TenantID, row.GrantID); err != nil {

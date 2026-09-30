@@ -18,6 +18,7 @@ import (
 	"7link.com/platform/pkg/extension/passwordx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 const oauthVerifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"
@@ -1019,4 +1020,113 @@ func TestParkedConsentIsRecheckedAgainstTheClientAsItStandsNow(t *testing.T) {
 	_, err = harness.service.PendingConsent(t.Context(), "session", live)
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrInvalidRequest)
+}
+
+// TestStorageFaultsAreNotReportedAsRefusals covers every read the grant flows
+// make after the request itself has been validated. A missing row is a refusal
+// (ErrInvalidRequest, or a demand to log in); a failed read is not, and must
+// reach the protocol's server_error path. A client told invalid_grant discards
+// a refresh token it would otherwise have retried.
+func TestStorageFaultsAreNotReportedAsRefusals(t *testing.T) {
+	requireFault := func(t *testing.T, err error) {
+		t.Helper()
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrInvalidRequest)
+		assert.NotErrorIs(t, err, authnext.ErrInvalidCredentials)
+	}
+	// failReads makes every read of one table fail, leaving its rows in place:
+	// dropping the table instead would cascade into the rows under test.
+	failReads := func(t *testing.T, harness *oauthHarness, table string) {
+		t.Helper()
+		name := harness.table(table)
+		require.NoError(t, harness.db.Callback().Query().Before("gorm:query").Register("test:fail_reads", func(db *gorm.DB) {
+			if db.Statement.Table == name {
+				db.AddError(errors.New("storage unavailable"))
+			}
+		}))
+	}
+	authorize := func(harness *oauthHarness, client Client, prompt string) (string, error) {
+		return harness.service.Authorize(
+			t.Context(), "session", client.ID, client.RedirectURIs[0], "code", "openid",
+			"", oauthChallenge(), "S256", "", prompt,
+		)
+	}
+	park := func(t *testing.T, harness *oauthHarness, client Client) string {
+		t.Helper()
+		location, err := authorize(harness, client, "consent")
+		require.NoError(t, err)
+		parsed, err := url.Parse(location)
+		require.NoError(t, err)
+		return parsed.Query().Get("consent_challenge")
+	}
+	refresh := func(harness *oauthHarness, client Client, token string) error {
+		_, err := harness.service.Token(t.Context(), url.Values{
+			"grant_type": {"refresh_token"}, "client_id": {client.ID}, "refresh_token": {token},
+		}, "")
+		return err
+	}
+	issue := func(t *testing.T, harness *oauthHarness, client Client) TokenResponse {
+		t.Helper()
+		tokens, err := exchangeCode(t, harness, client, authorizeCode(t, harness, client))
+		require.NoError(t, err)
+		return tokens
+	}
+
+	for name, run := range map[string]func(t *testing.T, harness *oauthHarness, client Client) error{
+		"authorize client": func(t *testing.T, harness *oauthHarness, client Client) error {
+			failReads(t, harness, "iam_oauth_clients")
+			_, err := authorize(harness, client, "")
+			return err
+		},
+		"authorize membership": func(t *testing.T, harness *oauthHarness, client Client) error {
+			failReads(t, harness, "iam_tenant_members")
+			_, err := authorize(harness, client, "")
+			return err
+		},
+		"consent authentication": func(t *testing.T, harness *oauthHarness, client Client) error {
+			challenge := park(t, harness, client)
+			harness.web.authenticateError = authnext.ErrUnavailable
+			_, err := harness.service.PendingConsent(t.Context(), "session", challenge)
+			return err
+		},
+		"consent client": func(t *testing.T, harness *oauthHarness, client Client) error {
+			challenge := park(t, harness, client)
+			failReads(t, harness, "iam_oauth_clients")
+			_, err := harness.service.PendingConsent(t.Context(), "session", challenge)
+			return err
+		},
+		"consent membership": func(t *testing.T, harness *oauthHarness, client Client) error {
+			challenge := park(t, harness, client)
+			failReads(t, harness, "iam_tenant_members")
+			_, err := harness.service.PendingConsent(t.Context(), "session", challenge)
+			return err
+		},
+		"authorization code": func(t *testing.T, harness *oauthHarness, client Client) error {
+			code := authorizeCode(t, harness, client)
+			failReads(t, harness, "iam_oauth_codes")
+			_, err := exchangeCode(t, harness, client, code)
+			return err
+		},
+		"authorization code membership": func(t *testing.T, harness *oauthHarness, client Client) error {
+			code := authorizeCode(t, harness, client)
+			failReads(t, harness, "iam_tenant_members")
+			_, err := exchangeCode(t, harness, client, code)
+			return err
+		},
+		"refresh token": func(t *testing.T, harness *oauthHarness, client Client) error {
+			tokens := issue(t, harness, client)
+			failReads(t, harness, "iam_refresh_tokens")
+			return refresh(harness, client, tokens.RefreshToken)
+		},
+		"refresh token membership": func(t *testing.T, harness *oauthHarness, client Client) error {
+			tokens := issue(t, harness, client)
+			failReads(t, harness, "iam_tenant_members")
+			return refresh(harness, client, tokens.RefreshToken)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			harness := newOAuthHarness(t, "sl_")
+			requireFault(t, run(t, harness, createBrowserClient(t, harness)))
+		})
+	}
 }

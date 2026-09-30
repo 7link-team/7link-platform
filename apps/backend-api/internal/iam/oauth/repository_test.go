@@ -346,7 +346,7 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 		"revoke client refresh": func() error { return repo.revokeClientRefreshTokens(t.Context(), 2, now) },
 		"delete client":         func() error { return repo.deleteClient(t.Context(), 1, 2) },
 		"active client":         func() error { _, err := repo.activeClient(t.Context(), 2); return err },
-		"active member":         func() error { _, err := repo.activeMember(t.Context(), 1, 2); return err },
+		"active member":         func() error { return repo.activeMember(t.Context(), 1, 2) },
 		"consent":               func() error { _, err := repo.consent(t.Context(), 2, 3); return err },
 		"upsert consent":        func() error { return repo.upsertConsent(t.Context(), consent) },
 		"list consents": func() error {

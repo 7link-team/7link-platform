@@ -1254,6 +1254,23 @@ func TestConsentEndpointsReportStorageFaultsAsServerErrors(t *testing.T) {
 	}
 }
 
+// TestRefreshStorageFaultIsNotInvalidGrant pins the protocol answer a client
+// acts on. invalid_grant tells it to discard the refresh token and send the
+// user back to log in; a storage fault must say server_error so it retries.
+func TestRefreshStorageFaultIsNotInvalidGrant(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	client := createBrowserClient(t, harness.oauthHarness)
+	tokens, err := exchangeCode(t, harness.oauthHarness, client, authorizeCode(t, harness.oauthHarness, client))
+	require.NoError(t, err)
+	require.NoError(t, harness.db.Exec("DROP TABLE "+harness.table("iam_refresh_tokens")).Error)
+
+	response := harness.form(http.MethodPost, "/oauth/token", url.Values{
+		"grant_type": {"refresh_token"}, "client_id": {client.ID}, "refresh_token": {tokens.RefreshToken},
+	}, nil)
+	require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
+	assert.Equal(t, "server_error", decodeProtocolError(t, response).Code)
+}
+
 // TestConsentSelfServiceRefusesARequestThatCarriesBothCredentials covers the
 // one way a caller can reach these handlers holding two identities at once. The
 // subject is taken from the session and from nowhere else, so a request that
