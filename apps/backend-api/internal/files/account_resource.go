@@ -299,12 +299,18 @@ func (r *AccountResourceFiles) Promote(ctx context.Context, tx *gorm.DB, princip
 		return err
 	}
 	space, err := q.Space.WithContext(ctx).Where(q.Space.ID.Eq(candidate.SpaceID), q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(principalID)).Take()
-	if err != nil || space == nil {
+	if errors.Is(err, gorm.ErrRecordNotFound) || err == nil && space == nil {
 		return ErrNotFound
 	}
-	file, err := q.Node.WithContext(ctx).Where(q.Node.SpaceID.Eq(candidate.SpaceID), q.Node.ID.Eq(candidate.FileID), q.Node.State.Eq("active"), q.Node.ManagementMode.Eq("resource")).Take()
 	if err != nil {
+		return err
+	}
+	file, err := q.Node.WithContext(ctx).Where(q.Node.SpaceID.Eq(candidate.SpaceID), q.Node.ID.Eq(candidate.FileID), q.Node.State.Eq("active"), q.Node.ManagementMode.Eq("resource")).Take()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrNotFound
+	}
+	if err != nil {
+		return err
 	}
 	if err := r.deactivateSlot(ctx, tx, principalID, targetPurpose, targetSlot, now); err != nil {
 		return err
@@ -339,24 +345,37 @@ func (r *AccountResourceFiles) Open(ctx context.Context, db *gorm.DB, principalI
 	if err != nil {
 		return nil, err
 	}
-	if _, err := q.Space.WithContext(ctx).Where(q.Space.ID.Eq(row.SpaceID), q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(principalID)).Take(); err != nil {
+	_, err = q.Space.WithContext(ctx).Where(q.Space.ID.Eq(row.SpaceID), q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(principalID)).Take()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}
+	if err != nil {
+		return nil, err
+	}
 	file, err := q.Node.WithContext(ctx).Where(q.Node.SpaceID.Eq(row.SpaceID), q.Node.ID.Eq(row.FileID), q.Node.State.Eq("active"), q.Node.ManagementMode.Eq("resource")).Take()
-	if err != nil || file.CurrentVersionID == nil {
+	if errors.Is(err, gorm.ErrRecordNotFound) || err == nil && file.CurrentVersionID == nil {
 		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
 	}
 	versionID := file.CurrentVersionID
 	if row.VersionID != nil {
 		versionID = row.VersionID
 	}
 	version, err := q.Version.WithContext(ctx).Where(q.Version.SpaceID.Eq(row.SpaceID), q.Version.NodeID.Eq(row.FileID), q.Version.ID.Eq(*versionID)).Take()
-	if err != nil {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}
-	object, err := q.Object.WithContext(ctx).Where(q.Object.ID.Eq(version.ObjectID), q.Object.State.Eq("verified")).Take()
 	if err != nil {
+		return nil, err
+	}
+	object, err := q.Object.WithContext(ctx).Where(q.Object.ID.Eq(version.ObjectID), q.Object.State.Eq("verified")).Take()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
 	}
 	reader, err := r.driver.Open(ctx, object.StorageKey)
 	if err != nil {

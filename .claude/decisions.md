@@ -3575,3 +3575,37 @@ Scope: principal erasure only. The OAuth service's collapse of repository
 errors into `ErrInvalidRequest` (`oauth/service.go` 396/414/594/818/827/872/886)
 is the same class of defect and is to be fixed as its own task.
 Status: IMPLEMENTED.
+
+## A Failed Read Is Not A Refusal - 2026-09-30
+
+Decision: a read that fails is returned as the error it is. Only a row that
+is genuinely absent (gorm.ErrRecordNotFound, or a repository's own not-found
+sentinel) becomes the domain refusal -- invalid_grant, a wrong MFA code, a
+bad invitation link, a missing file. Applied across oauth, authn, federation,
+organization and files (dc82574..HEAD).
+
+Reason: folding every error into the refusal turned outages into client
+errors. The sharpest case was OAuth refresh: a database hiccup answered
+invalid_grant, and a conforming client discards its refresh token. Elsewhere
+users were told their code or link was wrong and retried against a dead
+store, and nothing reached the 5xx alerts.
+
+This reverses what ef2bef6 pinned for files: that commit described
+AccountResourceFiles.Open masking space/node/version/object read failures
+as ErrNotFound as "authorization semantics". It was a test-only coverage
+commit recording existing behaviour, with no decision behind it, and the
+masking bought nothing: returning the raw error still serves no file, a
+storage fault is not something a caller can provoke to learn whether a file
+exists, and the binding read in the same function already propagated its
+failures. The user delegated the call; the four pinned expectations in
+TestAccountResourceOpenPropagatesLookupAndStorageFailures now expect the
+injected fault.
+
+Alternatives Considered: leaving the uniform refusal where it hides which
+check failed (authn). Kept as it was -- the refusal for a missing row is
+unchanged; only a failed read now escapes it, and a caller cannot cause one.
+
+Scope: the 29 read sites listed in the task state plus loadPasskeyUser.
+FinishPasskeyLogin's propagation mirrors reauthentication.go and cannot be
+unit-tested (webauthnx's protocol is private and needs a real assertion).
+Status: IMPLEMENTED.

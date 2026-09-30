@@ -1,4 +1,17 @@
 # Task State
+## Storage Errors Must Not Read As Client Errors - 2026-09-30 - DELIVERED
+## Objective  修“数据库/基础设施错误被折叠成业务拒绝(4xx)”这一类缺陷；用户确认一次修完
+## Current Phase          ACCEPTANCE
+## Completed Work (committed; each new test fails against the previous code)
+- 19ef549 oauth 9 处 + consent 认证；activeMember 返回 error；HTTP refresh 500 server_error
+- 54ce2de authn 10 处 + loadPasskeyUser；stepup challenge_lookup 断言原本钉住缺陷，已改
+- 7296cd5 federation identity_links 3 处；04cc137 organization invitation 1 处
+- files account_resource 6 处(用户授权由我裁决：修)；推翻 ef2bef6 钉住的 ErrNotFound 掩盖，decisions.md 记录
+## Known Limits  FinishPasskeyLogin lookupErr 透传无法单测(webauthnx 协议私有)
+## Verification  make ci PASS(四模块)；files 包测试 PASS；最终 make ci(含 files): PASS
+## Next Action  无；OAuth 等同类已全部修完
+## Last Checkpoint  2026-09-30 files patch applied
+
 ## Principal Erasure Owner Gate - 2026-09-30 - DELIVERED (uncommitted)
 ## Objective  修 principallifecycle 擦除门禁：owner 自己发布版本源与所需版本；未安装跳过；落后拒绝；错误不折叠
 ## Current Phase          ACCEPTANCE
