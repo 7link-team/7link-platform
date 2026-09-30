@@ -154,7 +154,16 @@ async function ensureTenant(ownerPrincipalID) {
       ...auditCaptcha(),
     }),
   })
-  const existing = (await call("/tenants?include_deleted=false")) ?? []
+  // Ask the service for this one tenant rather than for all of them: the
+  // listing is a page, and it was only ever right here while the deployment
+  // held fewer tenants than one page. Past that the tenant it wanted fell off
+  // the end, the script decided it was absent, and creating it failed on the
+  // slug that was there all along.
+  const existing =
+    (await call(
+      "/tenants?include_deleted=false&limit=200&search=" +
+        encodeURIComponent(tenantSlug)
+    )) ?? []
   const found = existing.find((tenant) => tenant.slug === tenantSlug)
   if (found) {
     note(`tenant present: ${found.slug}`)

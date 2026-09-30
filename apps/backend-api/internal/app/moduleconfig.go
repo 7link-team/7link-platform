@@ -14,6 +14,7 @@ import (
 	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
+	"7link.com/platform/internal/infra/deployment"
 	metrics "7link.com/platform/internal/infra/metrics"
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/internal/infra/pprof"
@@ -88,6 +89,10 @@ func migrationStatusConfig(c AppConfig) migrationstatus.Config {
 
 func configInspectorConfig(c AppConfig) configinspector.Config {
 	return configinspector.Config{Config: module.Config{Enabled: c.API.ConfigInspector.Enabled}}
+}
+
+func deploymentConfig(c AppConfig) deployment.Config {
+	return deployment.Config{Name: c.Deployment.Name, Organization: c.Deployment.Organization}
 }
 
 func pprofConfig(c AppConfig) pprof.Config {

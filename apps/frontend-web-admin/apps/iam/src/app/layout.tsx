@@ -31,7 +31,7 @@ import {
   type Tenant,
   type Entity,
 } from "../lib/iam-api"
-import { appName } from "../lib/branding"
+import { useBranding } from "../lib/branding"
 import { tenantIDFromPath } from "../lib/organization-scope"
 import { entrancePath } from "../lib/auth-entrance"
 import { getAccountView } from "../lib/account-view"
@@ -40,6 +40,7 @@ import { LanguageSwitcher } from "@workspace/ui/components/i18n/language-switche
 import { useClientLocale } from "@workspace/ui/i18n/intl-provider"
 
 export default function AppLayout() {
+  const { name: appName } = useBranding()
   const t = useTranslations("iam")
 
   const { session, status } = useAuth()

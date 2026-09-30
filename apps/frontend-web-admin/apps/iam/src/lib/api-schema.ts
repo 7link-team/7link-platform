@@ -143,6 +143,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/deployment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the display identity of this deployment
+         * @description Names the console renders before a session exists. Public because the sign-in page needs them.
+         */
+        get: operations["deployment-identity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/email-verifications": {
         parameters: {
             query?: never;
@@ -5451,6 +5471,12 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        DeploymentIdentity: {
+            /** @description console display name; empty when the deployment configures none */
+            name: string;
+            /** @description organization named in the console footer; empty when the deployment configures none */
+            organization: string;
+        };
         Directory: {
             /** Format: date-time */
             created_at: string;
@@ -5960,6 +5986,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["Department"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeDeploymentIdentity: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["DeploymentIdentity"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -9593,6 +9632,35 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "deployment-identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeDeploymentIdentity"];
+                };
+            };
+            /** @description Error */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };

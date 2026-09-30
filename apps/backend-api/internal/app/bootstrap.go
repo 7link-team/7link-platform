@@ -21,6 +21,7 @@ import (
 	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
+	"7link.com/platform/internal/infra/deployment"
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/infra/health"
@@ -107,6 +108,11 @@ func (app *App) composeModules() error {
 		telemetry.NewModule(rt, telemetry.WithConfig(telemetryConfig(app.config))),
 		audit.NewModule(rt, auditConfig(app.config)),
 		databasemonitor.NewModule(rt, datasourceMonitorConfig(app.config)),
+
+		// Always registered, and before the debug surfaces: the sign-in page
+		// cannot render its own name without this, so it is not something a
+		// deployment gets to switch off.
+		deployment.NewModule(rt, deploymentConfig(app.config)),
 
 		migrationstatus.NewModule(rt, migrationStatusConfig(app.config)),
 		configinspector.NewModule(rt, app.config, configInspectorConfig(app.config)),

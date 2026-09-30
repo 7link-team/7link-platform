@@ -90,6 +90,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/internal/infra/audit \
 	7link.com/platform/internal/infra/configinspector \
 	7link.com/platform/internal/infra/databasemonitor \
+	7link.com/platform/internal/infra/deployment \
 	7link.com/platform/internal/infra/dlock \
 	7link.com/platform/internal/infra/guid \
 	7link.com/platform/internal/infra/health \

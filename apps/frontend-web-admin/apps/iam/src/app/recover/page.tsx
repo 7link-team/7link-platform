@@ -7,10 +7,11 @@ import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi } from "../../lib/iam-api"
-import { appName, copyrightLine } from "../../lib/branding"
+import { useBranding, copyrightLine } from "../../lib/branding"
 import { entranceLoginPath, publicAuthEntrance } from "../../lib/auth-entrance"
 
 export default function RecoverPage() {
+  const { name: appName } = useBranding()
   const t = useTranslations("iam")
 
   const location = useLocation()

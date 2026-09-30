@@ -229,6 +229,13 @@ if (options.has("--stop")) {
     JSON.stringify(
       {
         name: "Local Development",
+        // What people signing in see, as opposed to `name` above, which is what
+        // operators see in logs and on the banner. The console reads this from
+        // the service, so it is configured here rather than built into the client.
+        deployment: {
+          name: "Local Development Console",
+          organization: "Local Development",
+        },
         // Declared here rather than passed to each command: every invocation
         // against this configuration is a development one, and the limiter's
         // in-process store is refused without it -- including by `migrate`,

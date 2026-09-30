@@ -209,6 +209,12 @@ export interface MfaStatus {
   recovery_codes_remaining: number
 }
 
+/** The display identity of this deployment, read before any session exists. */
+export interface DeploymentIdentity {
+  name: string
+  organization: string
+}
+
 export interface AuthnCapabilities {
   registration: boolean
   password_recovery: boolean
@@ -2147,6 +2153,8 @@ export function createIamApi(
       }),
     capabilities: () =>
       request<AuthnCapabilities>(apiRoute("get", "/login/options")),
+    deployment: () =>
+      request<DeploymentIdentity>(apiRoute("get", "/deployment")),
     tenantRegistrationPolicy: () =>
       request<{ enabled: boolean }>(apiRoute("get", "/tenant-registrations/options")),
     registerTenant: (body: { name: string; slug: string }) =>

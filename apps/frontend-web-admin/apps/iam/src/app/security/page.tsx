@@ -43,7 +43,7 @@ import {
   type Passkey,
   type Session,
 } from "../../lib/iam-api"
-import { appName } from "../../lib/branding"
+import { useBranding } from "../../lib/branding"
 import { createPasskeyCredential } from "../../lib/webauthn"
 
 type MfaDialog =
@@ -937,6 +937,7 @@ function EnrollmentForm({
   busy: boolean
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
+  const { name: appName } = useBranding()
   const t = useTranslations("iam")
   const locale = useLocale()
 

@@ -13,7 +13,7 @@ import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi } from "../../lib/iam-api"
-import { appName, copyrightLine } from "../../lib/branding"
+import { useBranding, copyrightLine } from "../../lib/branding"
 import {
   entranceLoginPath,
   entrancePath,
@@ -23,6 +23,7 @@ import {
 type VerificationState = "form" | "success" | "invalid"
 
 export default function VerifyEmailPage() {
+  const { name: appName } = useBranding()
   const t = useTranslations("iam")
   const [entry] = useState(
     () =>

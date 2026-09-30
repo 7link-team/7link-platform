@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client"
 import { RouterProvider } from "react-router"
 import "./index.css"
 import { ThemeProvider } from "./components/theme-provider"
-import { appName } from "./lib/branding"
+import { branding, loadBranding } from "./lib/branding"
 import { getAccountView, initializeAccountViewTab } from "./lib/account-view"
 import { PendingRoute } from "./components/pending-route"
 import { ClosedAccountView } from "./components/account-view-banner"
@@ -12,8 +12,13 @@ import { defaultLocale, locales } from "@workspace/ui/i18n/config"
 import { loadMessages } from "./lib/i18n"
 
 // The document title is deployment configuration like every other display
-// name, so it follows VITE_APP_NAME instead of being baked into index.html.
-document.title = appName
+// name, so it comes from the service rather than being baked into index.html.
+// It starts from the remembered answer -- a returning visitor sees the right
+// name on the first frame -- and is corrected once this load's answer arrives.
+document.title = branding().name
+void loadBranding().then(() => {
+  document.title = branding().name
+})
 
 const savedLocale = document.cookie
   .split("; ")

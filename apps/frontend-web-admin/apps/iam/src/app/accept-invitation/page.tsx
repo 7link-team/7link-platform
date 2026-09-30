@@ -7,9 +7,10 @@ import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi, type InvitationAcceptance } from "../../lib/iam-api"
-import { appName, copyrightLine } from "../../lib/branding"
+import { useBranding, copyrightLine } from "../../lib/branding"
 
 export default function AcceptInvitationPage() {
+  const { name: appName } = useBranding()
   const t = useTranslations("iam")
 
   const [token] = useState(() => {

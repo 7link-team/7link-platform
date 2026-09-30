@@ -10,6 +10,7 @@ export const publishedRoutes: readonly string[] = [
   "/authorization-scope-model",
   "/departments/{department_id}",
   "/departments/{department_id}/files",
+  "/deployment",
   "/email-verifications",
   "/email-verifications/requests",
   "/entities/{entity_id}",

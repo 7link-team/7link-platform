@@ -11,20 +11,24 @@ type AppConfig struct {
 	Name    string `mapstructure:"name" description:"application name" trim:"true" default:""`
 	Version string `mapstructure:"version" description:"application version" trim:"true"`
 
-	Debug        bool            `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
-	Banner       BannerConfig    `mapstructure:"banner" group:"banner"`
-	Pprof        Pprof           `mapstructure:"pprof" group:"pprof"`
-	API          API             `mapstructure:"api" group:"api"`
-	Telemetry    Telemetry       `mapstructure:"telemetry" group:"telemetry"`
-	Audit        Audit           `mapstructure:"audit" group:"audit"`
-	Authn        IAMAuthn        `mapstructure:"authn" group:"authn"`
-	IAM          IAMCore         `mapstructure:"iam" group:"iam"`
-	Files        FilesConfig     `mapstructure:"files" group:"files"`
-	IAMAudit     IAMAudit        `mapstructure:"iam_audit" group:"iam_audit"`
-	Provisioning IAMProvisioning `mapstructure:"provisioning" group:"provisioning"`
-	Federation   IAMFederation   `mapstructure:"federation" group:"federation"`
-	OAuth        IAMOAuth        `mapstructure:"oauth" group:"oauth"`
-	Shutdown     ShutdownConfig  `mapstructure:"shutdown" group:"shutdown"`
+	Debug bool `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
+	// Deployment is what people signing in see. Name above is what operators
+	// see -- in logs and on the banner -- and the two are deliberately separate:
+	// a service called iam-api may well front a console called something else.
+	Deployment   DeploymentConfig `mapstructure:"deployment" group:"deployment"`
+	Banner       BannerConfig     `mapstructure:"banner" group:"banner"`
+	Pprof        Pprof            `mapstructure:"pprof" group:"pprof"`
+	API          API              `mapstructure:"api" group:"api"`
+	Telemetry    Telemetry        `mapstructure:"telemetry" group:"telemetry"`
+	Audit        Audit            `mapstructure:"audit" group:"audit"`
+	Authn        IAMAuthn         `mapstructure:"authn" group:"authn"`
+	IAM          IAMCore          `mapstructure:"iam" group:"iam"`
+	Files        FilesConfig      `mapstructure:"files" group:"files"`
+	IAMAudit     IAMAudit         `mapstructure:"iam_audit" group:"iam_audit"`
+	Provisioning IAMProvisioning  `mapstructure:"provisioning" group:"provisioning"`
+	Federation   IAMFederation    `mapstructure:"federation" group:"federation"`
+	OAuth        IAMOAuth         `mapstructure:"oauth" group:"oauth"`
+	Shutdown     ShutdownConfig   `mapstructure:"shutdown" group:"shutdown"`
 
 	Timezone string `mapstructure:"timezone" description:"timezone" default:"UTC"`
 
@@ -35,6 +39,14 @@ type AppConfig struct {
 	TablePrefix       string              `mapstructure:"table_prefix" description:"prefix prepended to every table this application owns" validate:"^$|^[a-z_][a-z0-9_]{0,20}$"`
 	Database          map[string]Database `mapstructure:"database" group:"database" mapkey:"<dbkey>"`
 	DatasourceMonitor DatasourceMonitor   `mapstructure:"datasource_monitor" group:"datasource_monitor"`
+}
+
+// DeploymentConfig names this deployment for the people using its console. A
+// build hardcodes neither: they describe whoever deployed it, and a deployment
+// that configures neither is served neutral wording by the client.
+type DeploymentConfig struct {
+	Name         string `mapstructure:"name" description:"console display name shown to people signing in; empty leaves the console's neutral wording" default:""`
+	Organization string `mapstructure:"organization" description:"organization named in the console footer; empty shows only the year" default:""`
 }
 
 // IAMAuthn is the application-owned configuration surface for the shared

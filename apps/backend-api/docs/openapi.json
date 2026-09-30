@@ -3426,6 +3426,24 @@
         ],
         "type": "object"
       },
+      "DeploymentIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "console display name; empty when the deployment configures none",
+            "type": "string"
+          },
+          "organization": {
+            "description": "organization named in the console footer; empty when the deployment configures none",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "organization"
+        ],
+        "type": "object"
+      },
       "Directory": {
         "additionalProperties": false,
         "properties": {
@@ -4651,6 +4669,35 @@
           },
           "data": {
             "$ref": "#/components/schemas/Department",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeDeploymentIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/DeploymentIdentity",
             "description": "response payload; null on error"
           },
           "message": {
@@ -14667,6 +14714,38 @@
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "file_create"
+      }
+    },
+    "/deployment": {
+      "get": {
+        "description": "Names the console renders before a session exists. Public because the sign-in page needs them.",
+        "operationId": "deployment-identity",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeDeploymentIdentity"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Return the display identity of this deployment",
+        "tags": [
+          "deployment"
+        ]
       }
     },
     "/email-verifications": {

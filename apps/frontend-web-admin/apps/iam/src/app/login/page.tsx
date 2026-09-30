@@ -17,7 +17,7 @@ import {
   type LoginResult,
 } from "../../lib/iam-api"
 import { issueLoginCaptcha } from "../../lib/captcha"
-import { appName, copyrightLine } from "../../lib/branding"
+import { useBranding, copyrightLine } from "../../lib/branding"
 import {
   devAccountsForEntrance,
   devLoginCaptchaAnswer,
@@ -205,6 +205,7 @@ export default function LoginPage() {
 }
 
 function BrandHeader({ mfa = false }: { mfa?: boolean }) {
+  const { name: appName } = useBranding()
   const t = useTranslations("iam")
   const location = useLocation()
   const entry = authEntrance(location.pathname.split("/")[1])
