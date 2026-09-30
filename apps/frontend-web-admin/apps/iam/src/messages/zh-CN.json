@@ -713,6 +713,7 @@
   "createTenant": "创建租户",
   "showDeletedTenants": "显示已删除租户",
   "searchTenants": "搜索租户",
+  "noMatches": "无匹配结果",
   "tenant": "租户",
   "identifier": "标识",
   "id": "ID",

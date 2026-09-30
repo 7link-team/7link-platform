@@ -90,7 +90,11 @@ export default function AppLayout() {
   // completed load answers both.
   const permissionsResolved = currentMenus !== null
   const menuError = currentMenus?.error ?? ""
-  const [fieldPolicyAccess, setFieldPolicyAccess] = useState("")
+  // Field policy access is read from the caller's own permission codes. It
+  // used to be discovered by requesting the field catalogue and treating the
+  // refusal as the answer: an authorization failure per page load, logged in
+  // everybody's console, to learn something the permission set already said.
+  const fieldPolicyAccess = Boolean(permissions?.has("field_policy_view"))
   const { locale: menuLanguage } = useClientLocale()
   // The tenant directory is reachable by permission, not by membership: it is
   // where every tenant in the deployment is administered, paged and searched.
@@ -248,29 +252,6 @@ export default function AppLayout() {
     () => ({ from: location.pathname + location.search }),
     [location.pathname, location.search]
   )
-
-  useEffect(() => {
-    if (
-      status !== "authenticated" ||
-      !tenantValue ||
-      !session ||
-      !directoryReady ||
-      accountView?.scope_type === "entity"
-    )
-      return
-    let active = true
-    void iamApi.fieldCatalog().then(
-      () => {
-        if (active) setFieldPolicyAccess(`${tenantValue}:${session.subject}`)
-      },
-      () => {
-        if (active) setFieldPolicyAccess("")
-      }
-    )
-    return () => {
-      active = false
-    }
-  }, [status, tenantValue, session, directoryReady, accountView?.scope_type])
 
   useEffect(() => {
     let active = true
@@ -482,10 +463,7 @@ export default function AppLayout() {
                   scopedFileEntityID={scopedFileEntityID}
                   language={menuLanguage}
                   menus={directoryReady ? (menus ?? []) : []}
-                  fieldPolicyAccess={
-                    Boolean(tenantValue) &&
-                    fieldPolicyAccess === `${tenantValue}:${session.subject}`
-                  }
+                  fieldPolicyAccess={Boolean(tenantValue) && fieldPolicyAccess}
                   className="block h-full w-full border-0"
                 />
               </div>
@@ -574,10 +552,7 @@ export default function AppLayout() {
           scopedFileEntityID={scopedFileEntityID}
           language={menuLanguage}
           menus={directoryReady ? (menus ?? []) : []}
-          fieldPolicyAccess={
-            Boolean(tenantValue) &&
-            fieldPolicyAccess === `${tenantValue}:${session.subject}`
-          }
+          fieldPolicyAccess={Boolean(tenantValue) && fieldPolicyAccess}
           className="hidden md:block"
         />
         <main className="min-h-0 min-w-0 flex-1 overflow-auto">
@@ -624,9 +599,7 @@ export default function AppLayout() {
                   permissions,
                   permissionsResolved,
                   platformTenantAccess,
-                  fieldPolicyAccess:
-                    Boolean(tenantValue) &&
-                    fieldPolicyAccess === `${tenantValue}:${session.subject}`,
+                  fieldPolicyAccess: Boolean(tenantValue) && fieldPolicyAccess,
                   scopedFileEntityID,
                   tenantID: tenantValue,
                   tenantName,

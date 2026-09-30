@@ -713,6 +713,7 @@
   "createTenant": "Create tenant",
   "showDeletedTenants": "Show deleted tenants",
   "searchTenants": "Search tenants",
+  "noMatches": "No matches",
   "tenant": "Tenant",
   "identifier": "Identifier",
   "id": "ID",

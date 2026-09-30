@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
+import { Input } from "@workspace/ui/components/input"
 import {
   Popover,
   PopoverContent,
@@ -17,6 +18,9 @@ import {
 } from "@workspace/ui/components/popover"
 import { Alert } from "./alert"
 import type { Entity, Tenant } from "../lib/iam-api"
+
+// Above this many workspaces a list stops being scannable and needs a filter.
+const tenantFilterThreshold = 8
 
 export function WorkspaceSwitcher({
   tenantID,
@@ -55,6 +59,24 @@ export function WorkspaceSwitcher({
 }) {
   const t = useTranslations("iam")
   const [open, setOpen] = useState(false)
+  // A filter appears once the list is longer than somebody can scan. Membership
+  // grows with the person rather than with the deployment, so most callers
+  // never see it -- but a platform operator who belongs to dozens of tenants
+  // had no way to find one among them.
+  const [tenantFilter, setTenantFilter] = useState("")
+  const activeTenants = (tenants ?? []).filter(
+    (tenant) => tenant.status === "active"
+  )
+  const filterTenants = activeTenants.length > tenantFilterThreshold
+  const term = tenantFilter.trim().toLowerCase()
+  const shownTenants =
+    filterTenants && term
+      ? activeTenants.filter(
+          (tenant) =>
+            tenant.name.toLowerCase().includes(term) ||
+            tenant.slug.toLowerCase().includes(term)
+        )
+      : activeTenants
   const tenantName =
     tenants?.find((tenant) => tenant.id === tenantID)?.name ||
     tenantID ||
@@ -166,13 +188,25 @@ export function WorkspaceSwitcher({
                 </Button>
               </Alert>
             ) : tenants ? (
-              <div className="max-h-60 space-y-1 overflow-y-auto">
-                {tenants.length === 0 && (
-                  <p className="text-sm">{t("noAvailableTenants")}</p>
+              <>
+                {filterTenants && (
+                  <Input
+                    aria-label={t("searchTenants")}
+                    value={tenantFilter}
+                    onChange={(event) => setTenantFilter(event.target.value)}
+                    className="mb-2 h-9"
+                  />
                 )}
-                {tenants
-                  .filter((tenant) => tenant.status === "active")
-                  .map((tenant) => (
+                <div className="max-h-60 space-y-1 overflow-y-auto">
+                  {activeTenants.length === 0 && (
+                    <p className="text-sm">{t("noAvailableTenants")}</p>
+                  )}
+                  {activeTenants.length > 0 && shownTenants.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      {t("noMatches")}
+                    </p>
+                  )}
+                  {shownTenants.map((tenant) => (
                     <button
                       key={tenant.id}
                       type="button"
@@ -193,7 +227,8 @@ export function WorkspaceSwitcher({
                       <ChevronRight className="ms-auto size-4 shrink-0" />
                     </button>
                   ))}
-              </div>
+                </div>
+              </>
             ) : (
               <p role="status" className="text-sm">
                 {t("loading")}

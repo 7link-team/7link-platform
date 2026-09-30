@@ -713,6 +713,7 @@
   "createTenant": "Cipta penyewa",
   "showDeletedTenants": "Tunjukkan penyewa yang dipadamkan",
   "searchTenants": "Cari penyewa",
+  "noMatches": "Tiada padanan",
   "tenant": "Penyewa",
   "identifier": "Pengecam",
   "id": "ID",
