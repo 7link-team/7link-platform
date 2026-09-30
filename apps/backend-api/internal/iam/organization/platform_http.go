@@ -49,7 +49,7 @@ func registerPlatformHTTP(api huma.API, service *PlatformService, registrar *aut
 		Summary: "List operating platforms", Tags: []string{"directory"},
 	}, authz.Guard{Resource: "operating_platform", Verb: "view"},
 		func(ctx context.Context, in *listTenantsInput) (*respx.Body[[]Platform], error) {
-			items, total, err := service.ListPage(ctx, in.IncludeDeleted, in.Offset, in.Limit)
+			items, total, err := service.ListPage(ctx, in.IncludeDeleted, in.Search, in.Offset, in.Limit)
 			if err != nil {
 				return nil, tenantError(err)
 			}

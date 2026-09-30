@@ -712,6 +712,7 @@
   "deleted": "已删除",
   "createTenant": "创建租户",
   "showDeletedTenants": "显示已删除租户",
+  "searchTenants": "搜索租户",
   "tenant": "租户",
   "identifier": "标识",
   "id": "ID",

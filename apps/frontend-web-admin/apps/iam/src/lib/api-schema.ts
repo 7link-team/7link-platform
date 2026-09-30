@@ -14002,6 +14002,8 @@ export interface operations {
         parameters: {
             query?: {
                 include_deleted?: boolean;
+                /** @description matches name or slug */
+                search?: string;
                 offset?: number;
                 limit?: number;
             };
@@ -33156,6 +33158,8 @@ export interface operations {
         parameters: {
             query?: {
                 include_deleted?: boolean;
+                /** @description matches name or slug */
+                search?: string;
                 offset?: number;
                 limit?: number;
             };

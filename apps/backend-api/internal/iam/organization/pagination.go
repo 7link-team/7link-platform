@@ -3,6 +3,7 @@ package organization
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"7link.com/platform/internal/iam/organization/model"
 	"7link.com/platform/internal/infra/guid"
@@ -62,12 +63,13 @@ func pageOf[T any](items []T, offset, limit int) []T {
 func (r *Repository) listTenantsPage(
 	ctx context.Context,
 	includeDeleted bool,
+	search string,
 	offset, limit int,
 ) ([]model.Tenant, int64, error) {
-	return r.listRootsPage(ctx, ScopeTenant, includeDeleted, offset, limit)
+	return r.listRootsPage(ctx, ScopeTenant, includeDeleted, search, offset, limit)
 }
 
-func (r *Repository) listRootsPage(ctx context.Context, kind string, includeDeleted bool, offset, limit int) ([]model.Tenant, int64, error) {
+func (r *Repository) listRootsPage(ctx context.Context, kind string, includeDeleted bool, search string, offset, limit int) ([]model.Tenant, int64, error) {
 	tables, _, err := r.tables()
 	if err != nil {
 		return nil, 0, err
@@ -77,6 +79,13 @@ func (r *Repository) listRootsPage(ctx context.Context, kind string, includeDele
 		db := r.writer().WithContext(ctx).Table(name).Where("scope_kind = ?", kind)
 		if !includeDeleted {
 			db = db.Where("status <> ?", TenantDeleted)
+		}
+		// The two things a person knows a tenant by. Lowered on both sides so
+		// the match does not depend on the collation the engine happens to use,
+		// which is how tenant members are already searched.
+		if term := strings.TrimSpace(search); term != "" {
+			like := "%" + strings.ToLower(term) + "%"
+			db = db.Where("(LOWER(name) LIKE ? OR LOWER(slug) LIKE ?)", like, like)
 		}
 		return db
 	}
@@ -205,13 +214,14 @@ func (s *Service) ListPage(
 func (s *TenantService) ListPage(
 	ctx context.Context,
 	includeDeleted bool,
+	search string,
 	offset, limit int,
 ) ([]Tenant, int64, error) {
 	repo, err := s.repo.pinWriter()
 	if err != nil {
 		return nil, 0, err
 	}
-	rows, total, err := repo.listRootsPage(ctx, s.kind(), includeDeleted, offset, limit)
+	rows, total, err := repo.listRootsPage(ctx, s.kind(), includeDeleted, search, offset, limit)
 	if err != nil {
 		return nil, 0, err
 	}

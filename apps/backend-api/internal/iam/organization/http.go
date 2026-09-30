@@ -115,9 +115,10 @@ type updateGroupInput struct {
 // reason tenantPageSelector bounds the tenant-scoped ones: the collection grows
 // with the deployment, and this one is not even narrowed by a tenant.
 type listTenantsInput struct {
-	IncludeDeleted bool `query:"include_deleted"`
-	Offset         int  `query:"offset" minimum:"0" default:"0"`
-	Limit          int  `query:"limit" minimum:"1" maximum:"200" default:"50"`
+	IncludeDeleted bool   `query:"include_deleted"`
+	Search         string `query:"search" maxLength:"128" doc:"matches name or slug"`
+	Offset         int    `query:"offset" minimum:"0" default:"0"`
+	Limit          int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type tenantIDInput struct {
@@ -543,7 +544,7 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 		Summary: "List platform tenants", Tags: []string{"directory"},
 	}, authz.Guard{Resource: "tenant", Verb: "view"},
 		func(ctx context.Context, in *listTenantsInput) (*respx.Body[[]Tenant], error) {
-			items, total, err := service.ListPage(ctx, in.IncludeDeleted, in.Offset, in.Limit)
+			items, total, err := service.ListPage(ctx, in.IncludeDeleted, in.Search, in.Offset, in.Limit)
 			if err != nil {
 				return nil, tenantError(err)
 			}

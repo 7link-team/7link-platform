@@ -146,18 +146,18 @@ func TestTenantListPageBoundsThePlatformListing(t *testing.T) {
 	h.seedTenant(t, 6, TenantDeleted)
 	service, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(1000))
 
-	first, total, err := service.ListPage(t.Context(), false, 0, 2)
+	first, total, err := service.ListPage(t.Context(), false, "", 0, 2)
 	require.NoError(t, err)
 	assert.Len(t, first, 2, "the limit must bound the page")
 	assert.Equal(t, int64(5), total, "the total counts every live tenant, not the page")
 
-	second, total, err := service.ListPage(t.Context(), false, 2, 2)
+	second, total, err := service.ListPage(t.Context(), false, "", 2, 2)
 	require.NoError(t, err)
 	assert.Len(t, second, 2)
 	assert.Equal(t, int64(5), total)
 	assert.Empty(t, overlappingIDs(tenantIDs(first), tenantIDs(second)), "the offset must move the window")
 
-	last, _, err := service.ListPage(t.Context(), false, 4, 2)
+	last, _, err := service.ListPage(t.Context(), false, "", 4, 2)
 	require.NoError(t, err)
 	assert.Len(t, last, 1, "a final short page returns what is left, not an error")
 
@@ -165,7 +165,7 @@ func TestTenantListPageBoundsThePlatformListing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, tenantIDs(unpaged)[:2], tenantIDs(first), "a page keeps the order the unpaged listing has")
 
-	deleted, total, err := service.ListPage(t.Context(), true, 0, 10)
+	deleted, total, err := service.ListPage(t.Context(), true, "", 0, 10)
 	require.NoError(t, err)
 	assert.Len(t, deleted, 6, "include_deleted widens the page")
 	assert.Equal(t, int64(6), total, "and the total follows the same filter the page does")
@@ -338,7 +338,7 @@ func TestPagedListingsSurfaceStorageFailuresInsteadOfAnEmptyPage(t *testing.T) {
 	}{
 		{name: "tenants", table: "iam_tenants", call: func(t *testing.T, h *organizationHarness) error {
 			service, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(2800))
-			_, _, err := service.ListPage(t.Context(), false, 0, 10)
+			_, _, err := service.ListPage(t.Context(), false, "", 0, 10)
 			return err
 		}},
 		{name: "groups", table: "iam_groups", call: func(t *testing.T, h *organizationHarness) error {
@@ -390,7 +390,7 @@ func TestPagedListingsSurfaceStorageFailuresInsteadOfAnEmptyPage(t *testing.T) {
 func TestUnwiredRepositoryRefusesPagedListings(t *testing.T) {
 	t.Parallel()
 	unavailable := &Repository{}
-	_, _, err := unavailable.listTenantsPage(t.Context(), false, 0, 10)
+	_, _, err := unavailable.listTenantsPage(t.Context(), false, "", 0, 10)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
@@ -400,4 +400,49 @@ func TestUnwiredRepositoryRefusesPagedListings(t *testing.T) {
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	_, _, err = unavailable.listInvitationsPage(t.Context(), 1, 0, 10)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
+}
+
+// The platform listing is the only place every tenant in a deployment is shown,
+// so it is the one place a term has to narrow before a page is taken: a total
+// that ignored the term, or a page filtered after the window, would both read
+// as "no such tenant" to whoever searched for one on page two.
+func TestTenantListPageNarrowsByNameOrSlug(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	for id := guid.ID(1); id <= 5; id++ {
+		h.seedTenant(t, id, TenantActive)
+	}
+	require.NoError(t, h.db.Table(h.table("iam_tenants")).Create(map[string]any{
+		"id": guid.ID(90), "slug": "northwind", "name": "Northwind Trading",
+		"status": TenantActive, "version": 1,
+		"created_at": organizationTestNow, "updated_at": organizationTestNow,
+	}).Error)
+	service, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(1000))
+
+	byName, total, err := service.ListPage(t.Context(), false, "northwind trading", 0, 50)
+	require.NoError(t, err)
+	require.Len(t, byName, 1)
+	assert.Equal(t, "northwind", byName[0].Slug)
+	assert.EqualValues(t, 1, total, "the total counts what the term matched, not the whole deployment")
+
+	bySlug, total, err := service.ListPage(t.Context(), false, "NORTHW", 0, 50)
+	require.NoError(t, err)
+	require.Len(t, bySlug, 1)
+	assert.EqualValues(t, 1, total)
+
+	// A term shared by several narrows to those, and still pages within them.
+	shared, total, err := service.ListPage(t.Context(), false, "tenant-", 0, 2)
+	require.NoError(t, err)
+	assert.Len(t, shared, 2)
+	assert.EqualValues(t, 5, total)
+
+	none, total, err := service.ListPage(t.Context(), false, "no-such-tenant", 0, 50)
+	require.NoError(t, err)
+	assert.Empty(t, none)
+	assert.EqualValues(t, 0, total)
+
+	// An empty term is not a filter.
+	all, total, err := service.ListPage(t.Context(), false, "   ", 0, 50)
+	require.NoError(t, err)
+	assert.Len(t, all, 6)
+	assert.EqualValues(t, 6, total)
 }

@@ -1,5 +1,41 @@
 # Task State
-## Login Captcha, Local Rate Limiting, Tenant Boundary - 2026-09-30 - IN PROGRESS
+## Login Captcha, Local Rate Limiting, Tenant Boundary - 2026-09-30 - DELIVERED
+## Objective  用户批准三件一起做：切换器只列成员租户(P2a)、登录加验证码+本地限流真生效(P1)、租户目录服务端搜索分页(P2b)
+## Current Phase          ACCEPTANCE
+## Current Step           三件全部完成、门禁全绿、浏览器验收通过
+## Important Decisions
+- decisions.md 2026-09-30 三条：验证码每次登录都出；限流用 debug-only 内嵌 miniredis；
+  开发限流存储可与 captcha test_answer 共存(仅 debug，原守卫对真实部署不变)
+- 配置键按用户选的 A 方案：authn.registration.captcha -> authn.captcha
+- 账号视角(account-view.ts)已存在且与切换器互斥，这是超管看任意租户的正路
+## Confirmed Constraints
+- 验证码无条件出；miniredis 开关必须拒绝在非 debug 启用(有测试守住)
+- 切换器的实体那半已正确(按租户限定)，未动
+- 生成物不手改：docs/openapi.json、src/lib/api-schema.ts 走生成器
+## Completed Work
+- P2a 切换器边界 (4498273)：只留 myTenants()，platformTenantAccess 改由权限推导
+- P1a 登录验证码 (f4a91d6)：POST /login/captchas、登录校验、配置提升、三语言文案、
+  画布 220x64->132x44 与输入框等高、dev/UAT 接上 test answer、10 个审计登录点注入；
+  同提交含两处用户验收发现：退出登录接口失败不再阻断本地退出、忘记密码移到登录按钮下
+- P1b 本地限流 (2d3be95 + 本次)：shared_security.development_server 内嵌 miniredis、
+  非 debug 拒绝启动、dev.mjs 接线；**后补缺陷修复**：miniredis 时钟是手动的，
+  不推进则限流永不恢复，已加时钟推进 goroutine 并补上「窗口会关闭」的断言
+- P2b 租户目录：/tenants 加 search(name/slug，LOWER LIKE，与 core 成员搜索同约定)、
+  运营平台共用同一入参故一并获得、目录页改服务端分页(每页 50)+搜索框+分页器
+## Known Issues / Risks
+- 30 个浏览器审计未实跑(耗时)；表单登录靠 VITE_DEV_LOGIN_CAPTCHA_ANSWER 预填覆盖，
+  该预填已与 --demo-accounts 解耦并接进 iam-uat.mjs，但未端到端跑过
+- make ci 未整体跑(含约 10 分钟引擎矩阵)；各子门禁均已单独绿
+## Verification           Build: PASS | 后端 go test ./...: PASS | fmt/lint/schema-lock/openapi-check: PASS
+                          前端 check:api-types/typecheck/lint/test(162): PASS | make ci: NOT_RUN
+- 变异验证 6 处全部由绿转红：登录验证码校验、切换器合并、logout 的 finally、
+  debug 守卫、限流拒绝分支、miniredis 时钟
+- 浏览器验收：超管切换器只见自有租户且目录页仍可见全部；登录错误验证码被拒并换图；
+  限流第 27 次 429 带 Retry-After 且窗口后恢复；目录页 50/64 -> 翻页 offset=50 -> 64/64
+## Next Action            无。若继续：实跑 30 个浏览器审计验证验证码预填；跑一次完整 make ci；
+                          把 demo 播种下沉成后端 iam seed-dev 子命令(此前提过，与本批无关)
+## Last Checkpoint        2026-09-30 三件交付完成
+
 ## Objective  用户批准三件一起做：切换器只列成员租户(P2a)、登录加验证码+本地限流真生效(P1)、租户目录服务端搜索分页(P2b)
 ## Current Phase          IMPLEMENTATION
 ## Current Step           P1a 已完成待提交；下一步 P1b 内嵌 miniredis

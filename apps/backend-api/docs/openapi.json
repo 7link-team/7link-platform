@@ -21451,6 +21451,17 @@
             }
           },
           {
+            "description": "matches name or slug",
+            "explode": false,
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "description": "matches name or slug",
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
             "explode": false,
             "in": "query",
             "name": "offset",
@@ -52157,6 +52168,17 @@
             "name": "include_deleted",
             "schema": {
               "type": "boolean"
+            }
+          },
+          {
+            "description": "matches name or slug",
+            "explode": false,
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "description": "matches name or slug",
+              "maxLength": 128,
+              "type": "string"
             }
           },
           {

@@ -1,6 +1,14 @@
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useCallback, useEffect, useState, type FormEvent } from "react"
-import { Landmark, Pencil, Plus, Trash2 } from "lucide-react"
+import {
+  ChevronLeft,
+  ChevronRight,
+  Landmark,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Checkbox } from "@workspace/ui/components/checkbox"
@@ -27,6 +35,10 @@ import { AccountViewDialog } from "../../components/account-view-dialog"
 import { Alert } from "../../components/alert"
 import { useAuth } from "../../components/auth"
 import { PageHeader } from "../../components/page-header"
+
+// One screen's worth. The endpoint allows up to 200, and a page nobody scrolls
+// is a page nobody needed fetched.
+const tenantPageSize = 50
 import {
   iamApi,
   getTenant,
@@ -51,6 +63,9 @@ export default function TenantsPage() {
 
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [includeDeleted, setIncludeDeleted] = useState(false)
+  const [search, setSearch] = useState("")
+  const [offset, setOffset] = useState(0)
+  const [total, setTotal] = useState(0)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Tenant | null>(null)
   const [deleting, setDeleting] = useState<Tenant | null>(null)
@@ -64,20 +79,26 @@ export default function TenantsPage() {
   const [error, setError] = useState("")
   const [loadError, setLoadError] = useState("")
 
+  // One page, narrowed by the service. This listing is the only screen that
+  // shows every tenant in the deployment, so it must not read all of them to
+  // show any of them: the endpoint caps a page at 200 deliberately, and walking
+  // that cap page by page just moves the whole table into the browser.
   const refresh = useCallback(
     () =>
       iamApi
-        .tenants(includeDeleted)
+        .tenantPage({ includeDeleted, search, offset, limit: tenantPageSize })
         .then((next) => {
-          setTenants(next)
+          setTenants(next.items)
+          setTotal(next.total)
           setLoadError("")
         })
         .catch((cause: Error) => {
           setTenants([])
+          setTotal(0)
           setLoadError(cause.message)
         })
         .finally(() => setLoading(false)),
-    [includeDeleted]
+    [includeDeleted, search, offset]
   )
 
   useEffect(() => {
@@ -194,7 +215,21 @@ export default function TenantsPage() {
           </Button>
         </Alert>
       )}
-      <div className="mb-3 flex min-h-9 items-center justify-end">
+      <div className="mb-3 flex min-h-9 flex-wrap items-center justify-end gap-2">
+        <div className="mr-auto flex items-center gap-2">
+          <Search className="size-4 text-muted-foreground" />
+          <Input
+            aria-label={t("searchTenants")}
+            value={search}
+            onChange={(event) => {
+              setError("")
+              setLoading(true)
+              setSearch(event.target.value)
+              setOffset(0)
+            }}
+            className="max-w-sm"
+          />
+        </div>
         <label
           htmlFor="include-deleted-tenants"
           className="flex min-h-9 cursor-pointer items-center gap-2 text-sm"
@@ -206,6 +241,7 @@ export default function TenantsPage() {
               setError("")
               setLoading(true)
               setIncludeDeleted(checked === true)
+              setOffset(0)
             }}
           />
           {t("showDeletedTenants")}
@@ -315,6 +351,35 @@ export default function TenantsPage() {
             {t("loading")}
           </div>
         )}
+      </div>
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <span className="text-sm text-muted-foreground">
+          {Math.min(offset + tenants.length, total)} / {total}
+        </span>
+        <Button
+          size="icon"
+          aria-label={t("previous")}
+          variant="outline"
+          disabled={offset === 0 || loading}
+          onClick={() => {
+            setLoading(true)
+            setOffset(Math.max(0, offset - tenantPageSize))
+          }}
+        >
+          <ChevronLeft />
+        </Button>
+        <Button
+          size="icon"
+          aria-label={t("next")}
+          variant="outline"
+          disabled={offset + tenantPageSize >= total || loading}
+          onClick={() => {
+            setLoading(true)
+            setOffset(offset + tenantPageSize)
+          }}
+        >
+          <ChevronRight />
+        </Button>
       </div>
 
       <Dialog

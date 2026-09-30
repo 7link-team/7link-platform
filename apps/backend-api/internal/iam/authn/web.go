@@ -27,7 +27,6 @@ import (
 	"7link.com/platform/pkg/extension/passwordx"
 	"7link.com/platform/pkg/extension/secretx"
 	"7link.com/platform/pkg/extension/webauthnx"
-	"github.com/alicebob/miniredis/v2"
 	"gorm.io/gorm"
 )
 
@@ -64,7 +63,7 @@ type Service struct {
 	returnURLs            returnURLAllowlist
 	captcha               *captchaOffering
 	sharedSecurity        *sharedSecurity
-	securityServer        *miniredis.Miniredis
+	securityServer        *developmentSecurityServer
 	oauthGrants           OAuthGrantValidator
 	personalPermissions   func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
 	personalRegistry      *authz.Registry

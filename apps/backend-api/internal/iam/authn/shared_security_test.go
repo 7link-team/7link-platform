@@ -307,7 +307,9 @@ func TestDevelopmentSecurityServerLimitsLogin(t *testing.T) {
 	seedLocalPrincipal(t, harness.repository, "alice", "alice@example.test", "correct horse battery staple")
 	config := localAuthnConfig()
 	config.SharedSecurity = authnext.SharedSecurityConfig{
-		DevelopmentServer: true, Window: time.Minute, PerIP: 3, Global: 1000,
+		// The shortest window the module accepts, so the second half of this
+		// test can watch it close without adding real delay to the suite.
+		DevelopmentServer: true, Window: time.Second, PerIP: 3, Global: 1000,
 		OAuthPerIP: 100, OAuthGlobal: 1000,
 	}
 	service, err := NewWebService(config, harness.repository,
@@ -334,6 +336,23 @@ func TestDevelopmentSecurityServerLimitsLogin(t *testing.T) {
 	require.Equal(t, http.StatusTooManyRequests, limited.Code, limited.Body.String())
 	assert.NotEmpty(t, limited.Header().Get("Retry-After"),
 		"a refused caller is told when to come back")
+
+	// And the refusal ends. miniredis keeps a manual clock, so without one
+	// being advanced the window never closes and the first caller to spend its
+	// allowance is refused until the process restarts -- a limiter that never
+	// forgives, which no deployment does and no developer could learn from.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		response := api.Post("/login", body, "Origin: https://app.example.test")
+		if response.Code != http.StatusTooManyRequests {
+			require.Equal(t, http.StatusUnauthorized, response.Code, response.Body.String())
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the limit window never closed: the in-process store's clock is not advancing")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // A configured Redis and the in-process stand-in are alternatives, not layers.

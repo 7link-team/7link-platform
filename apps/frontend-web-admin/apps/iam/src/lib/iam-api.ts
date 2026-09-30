@@ -2806,6 +2806,27 @@ export function createIamApi(
       requestAllPages<Tenant>(
         pagedRoute("/tenants", { query: { include_deleted: includeDeleted } })
       ),
+    tenantPage: async (query: {
+      includeDeleted?: boolean
+      search?: string
+      offset: number
+      limit: number
+    }) => {
+      const result = await requestEnvelope<Tenant[]>(
+        apiRoute("get", "/tenants", {
+          query: {
+            include_deleted: query.includeDeleted ?? false,
+            ...(query.search ? { search: query.search } : {}),
+            offset: query.offset,
+            limit: query.limit,
+          },
+        })
+      )
+      return {
+        items: result.data ?? [],
+        total: result.meta?.page?.total ?? (result.data ?? []).length,
+      }
+    },
     createTenant: (body: TenantInput) =>
       request<Tenant>(apiRoute("post", "/tenants"), {
         body: JSON.stringify(body),
