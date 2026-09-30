@@ -259,7 +259,6 @@ function PasswordForm({
         <div className="space-y-2 rounded-md border border-dashed bg-muted/40 p-3">
           <Label id="dev-login-account-label">{t("devLoginAccount")}</Label>
           <SimpleSelect
-            triggerClassName="h-16"
             aria-labelledby="dev-login-account-label"
             value={selectedAccount}
             onValueChange={selectAccount}
@@ -267,7 +266,7 @@ function PasswordForm({
             options={accounts.map((account: DevLoginAccount) => ({
               value: account.id,
               label: (
-                <span className="block max-w-[220px] whitespace-normal text-start text-xs break-all">
+                <span className="block truncate text-start text-xs">
                   {account.role} · {account.loginName}
                 </span>
               ),
