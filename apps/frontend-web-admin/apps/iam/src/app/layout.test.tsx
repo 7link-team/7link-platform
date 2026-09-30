@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
 import { renderToStaticMarkup } from "react-dom/server"
 import { MemoryRouter, Route, Routes } from "react-router"
 import { IntlAppProvider } from "@workspace/ui/i18n/intl-provider"
@@ -66,5 +67,29 @@ describe("AppLayout shell", () => {
     expect(rejected).not.toContain("<header")
     const { html: addressed } = await renderShell("/admin/7/users")
     expect(addressed).toContain("<header")
+  })
+})
+
+// The switcher's tenant list is a membership list. A privileged caller reaches
+// a tenant it does not belong to through the account view, not by finding it
+// here among its own, so the shell must not widen the list with the platform
+// listing -- which returns every tenant in the deployment, cannot be told apart
+// from the caller's own once merged, and has no paging or search in a dropdown.
+//
+// This reads the source because the list is assembled in an effect that calls
+// the service, and the shell renders here without one. What it pins is the
+// mechanism: re-introducing the platform listing in this file fails it.
+describe("workspace switcher tenant source", () => {
+  const source = readFileSync(
+    new URL("./layout.tsx", import.meta.url),
+    "utf8"
+  )
+  it("offers the caller's own tenants and not the whole platform listing", () => {
+    expect(source).toContain("iamApi.myTenants()")
+    expect(source).not.toContain("iamApi.tenants(")
+  })
+  it("decides platform tenant access by permission, not by that listing", () => {
+    expect(source).toContain('permissions?.has("tenant_view")')
+    expect(source).not.toContain("platformAccess")
   })
 })

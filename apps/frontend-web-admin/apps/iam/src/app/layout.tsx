@@ -30,7 +30,6 @@ import {
   type EffectiveMenu,
   type Tenant,
   type Entity,
-  ApiError,
 } from "../lib/iam-api"
 import { appName } from "../lib/branding"
 import { tenantIDFromPath } from "../lib/organization-scope"
@@ -65,14 +64,11 @@ export default function AppLayout() {
   const [tenantCatalog, setTenantCatalog] = useState<{
     subject: string
     items: Pick<Tenant, "id" | "slug" | "name" | "status">[]
-    platformAccess: boolean
     error: string
   } | null>(null)
   const currentTenants =
     tenantCatalog?.subject === subject ? tenantCatalog : null
   const directoryReady = Boolean(currentTenants && !currentTenants.error)
-  const platformTenantAccess =
-    directoryReady && Boolean(currentTenants?.platformAccess)
   const availableTenants = currentTenants?.items ?? null
   const routeTenantAdmitted = Boolean(
     routeTenantID &&
@@ -95,6 +91,10 @@ export default function AppLayout() {
   const menuError = currentMenus?.error ?? ""
   const [fieldPolicyAccess, setFieldPolicyAccess] = useState("")
   const { locale: menuLanguage } = useClientLocale()
+  // The tenant directory is reachable by permission, not by membership: it is
+  // where every tenant in the deployment is administered, paged and searched.
+  // The switcher is the other thing entirely -- see the loader below.
+  const platformTenantAccess = Boolean(permissions?.has("tenant_view"))
   const systemPath = platformTenantAccess
     ? "/system/tenants"
     : permissions?.has("platform_administer")
@@ -352,7 +352,6 @@ export default function AppLayout() {
               setTenantCatalog({
                 subject,
                 items: [],
-                platformAccess: false,
                 error: t("identityUnavailable"),
               })
               return
@@ -362,7 +361,6 @@ export default function AppLayout() {
             setTenantCatalog({
               subject,
               items: [tenant],
-              platformAccess: false,
               error: "",
             })
             if (metadata.scope_type === "entity")
@@ -378,29 +376,23 @@ export default function AppLayout() {
               setTenantCatalog({
                 subject,
                 items: [],
-                platformAccess: false,
                 error: cause.message,
               })
           }
         )
         return
       }
-      void Promise.all([
-        iamApi.myTenants(),
-        iamApi.tenants().catch((cause: unknown) => {
-          if (cause instanceof ApiError && cause.status === 403) return null
-          throw cause
-        }),
-      ]).then(
-        ([mine, platform]) => {
+      // The switcher offers the tenants this caller belongs to, and only those.
+      // It deliberately does not add the tenants a permission merely lets them
+      // administer: those are every tenant in the deployment, they would be
+      // indistinguishable here from the caller's own, and the switcher has no
+      // room to page or search them. A privileged caller reaches another tenant
+      // through the account view, which is scoped, time-boxed and can be
+      // read-only -- and which hides this switcher while it is active.
+      void iamApi.myTenants().then(
+        (mine) => {
           if (!active || request !== generation) return
-          const items = [
-            ...new Map(
-              [...mine, ...(platform ?? [])]
-                .filter((tenant) => tenant.status === "active")
-                .map((tenant) => [tenant.id, tenant])
-            ).values(),
-          ]
+          const items = mine.filter((tenant) => tenant.status === "active")
           const selected = routeTenantID || getTenant()
           const admitted = items.some((tenant) => tenant.id === selected)
           const next = admitted
@@ -417,7 +409,6 @@ export default function AppLayout() {
           setTenantCatalog({
             subject,
             items,
-            platformAccess: platform !== null,
             error: "",
           })
         },
@@ -426,7 +417,6 @@ export default function AppLayout() {
             setTenantCatalog({
               subject,
               items: [],
-              platformAccess: false,
               error: cause.message,
             })
         }
