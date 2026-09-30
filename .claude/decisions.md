@@ -3437,3 +3437,61 @@ Scope: authn web service construction. No change to what a real deployment may
 configure: without debug mode the development server is refused before the
 service is built, and the original guard applies unchanged.
 Status: IMPLEMENTED.
+
+## The System View Keeps Its Workspace Switcher - 2026-09-30
+
+Decision: the system administration view continues to offer the workspace
+switcher, listing only the tenants the caller belongs to.
+
+Reason: what it offers is a workspace the account actually holds, and it is the
+only way back to that workspace from system administration. `system/layout.tsx`
+has always fed it `myTenants()`, so it never had the boundary defect the tenant
+half of the main shell had. A platform administrator who belongs to no tenant
+sees an empty switcher, which is the ordinary case in a real deployment; the
+development fixture makes the super administrator the owner of the Development
+tenant because the browser audits need an administrator who can operate inside
+one, and that is what makes a system account appear to have a tenant at all.
+
+Alternatives Considered: remove the switcher from the system view so every
+tenant, including the caller's own, is reached through the account view
+(rejected by the user: it strands a legitimate membership behind a scoped,
+time-boxed mechanism meant for tenants one does not belong to); change the
+development fixture so the super administrator holds no membership (rejected as
+out of scope here: the audits depend on it, and it would need a second
+administrator persona built for them).
+
+Scope: navigation only. It does not widen what the switcher may list -- that
+stays membership, per the decision recorded for the main shell.
+Status: ACCEPTED, NO CHANGE REQUIRED.
+
+## The Development Limiter Store Stays Behind A Runtime Refusal, Not A Build Tag - 2026-09-30
+
+Decision: `shared_security_development.go` is compiled into every build, and the
+only thing keeping its in-process Redis out of a deployment is the debug-mode
+refusal in `validateRuntimeConfig`. It is deliberately not moved behind a
+`//go:build dev` tag.
+
+Reason: the two tests that make the refusal meaningful -- that the flag is
+rejected without debug mode, and that the limiter actually refuses and then
+recovers -- would move behind the tag with the code. Unless a second tagged run
+were added to ci, the default gate would lose both, which trades "two packages
+absent from the shipped binary" for "two security assertions absent from every
+build". Both are mutation-verified today: removing the guard or the clock turns
+them red. The repository also has no build-mode split, so a tag would oblige
+`make dev`, `iam-uat.mjs` and any developer build to carry `-tags dev`.
+
+Cost accepted: the binary carries miniredis and, through it, the gopher-lua
+interpreter miniredis uses for Redis scripts. That is binary size rather than
+attack surface while nothing else instantiates either: both are reachable only
+through a flag the application refuses to start with outside debug mode.
+
+What would change this answer: a deployment target where debug mode could be
+turned on by configuration an attacker influences, another importer of
+gopher-lua that makes it reachable without the flag, or binary size becoming a
+constraint. Any of those makes the tag worth its cost, together with the tagged
+ci run that must come with it.
+
+Alternatives Considered: `//go:build dev` (rejected for the reasons above);
+dropping the development server and requiring Docker Redis locally (rejected
+when the limiter work was planned -- see the miniredis decision above).
+Status: IMPLEMENTED (as the absence of a build tag).
