@@ -335,6 +335,15 @@ func applyRuntimeDefaults(config *AppConfig) {
 }
 
 func validateRuntimeConfig(config AppConfig) error {
+	// The in-process limiter store exists so a developer can watch the limiter
+	// work without standing up Redis. It is a test double reachable by this
+	// process alone, and it must never be what a deployment is limiting
+	// against, so debug mode is the price of asking for it. This is the only
+	// place both the request and the debug flag are visible, which is why the
+	// refusal lives here rather than in the module that honors it.
+	if config.Authn.SharedSecurity.DevelopmentServer && !config.Debug {
+		return fmt.Errorf("authn.shared_security.development_server requires debug mode")
+	}
 	if config.Shutdown.Timeout < 0 {
 		return fmt.Errorf("shutdown.timeout cannot be negative")
 	}

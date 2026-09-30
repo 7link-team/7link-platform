@@ -27,6 +27,7 @@ import (
 	"7link.com/platform/pkg/extension/passwordx"
 	"7link.com/platform/pkg/extension/secretx"
 	"7link.com/platform/pkg/extension/webauthnx"
+	"github.com/alicebob/miniredis/v2"
 	"gorm.io/gorm"
 )
 
@@ -63,6 +64,7 @@ type Service struct {
 	returnURLs            returnURLAllowlist
 	captcha               *captchaOffering
 	sharedSecurity        *sharedSecurity
+	securityServer        *miniredis.Miniredis
 	oauthGrants           OAuthGrantValidator
 	personalPermissions   func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
 	personalRegistry      *authz.Registry
@@ -280,13 +282,28 @@ func NewWebService(cfg authnext.Config, repository *Repository, options ...WebOp
 		return nil, err
 	}
 	service.signingKeys = signingKeys
-	shared, err := newSharedSecurity(cfg.SharedSecurity)
+	securityConfig := cfg.SharedSecurity
+	if securityConfig.DevelopmentServer {
+		server, configured, err := startDevelopmentSecurityServer(securityConfig)
+		if err != nil {
+			return nil, err
+		}
+		service.securityServer, securityConfig = server, configured
+	}
+	shared, err := newSharedSecurity(securityConfig)
 	if err != nil {
+		service.closeSecurityServer()
 		return nil, err
 	}
 	service.sharedSecurity = shared
 	if shared != nil {
-		if service.captcha.testAnswer != "" {
+		// A test answer is a bypass, and shared security is what a deployment
+		// serving real people runs, so the two are refused together. The
+		// in-process development server is the one exception: it is refused
+		// outside debug mode, it is reachable by nothing but this process, and
+		// it dies with it -- and a developer needs both, one to watch the
+		// limiter work and the other to drive the form from a script.
+		if service.captcha.testAnswer != "" && !securityConfig.DevelopmentServer {
 			_ = shared.client.Close()
 			return nil, errors.New("shared authentication security cannot enable a captcha test answer")
 		}

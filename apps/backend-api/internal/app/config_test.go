@@ -331,3 +331,22 @@ func TestAuditOverflowIsTrimmedAndValidated(t *testing.T) {
 	var invalid AppConfig
 	require.Error(t, configx.New().Parse(&invalid, "--audit.overflow=weird"))
 }
+
+// The in-process limiter store is a test double compiled into the shipped
+// binary. Debug mode is the only thing keeping it out of a deployment, so the
+// refusal is pinned here: deleting the guard fails this.
+func TestDevelopmentSecurityServerRequiresDebugMode(t *testing.T) {
+	config := AppConfig{Shutdown: ShutdownConfig{Timeout: time.Second, DrainDelay: 0}}
+	config.Authn.SharedSecurity.DevelopmentServer = true
+
+	assert.ErrorContains(t, validateRuntimeConfig(config),
+		"authn.shared_security.development_server requires debug mode")
+
+	config.Debug = true
+	assert.NoError(t, validateRuntimeConfig(config))
+
+	// And it is not refused when nobody asked for it.
+	assert.NoError(t, validateRuntimeConfig(AppConfig{
+		Shutdown: ShutdownConfig{Timeout: time.Second},
+	}))
+}

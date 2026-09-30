@@ -229,6 +229,11 @@ if (options.has("--stop")) {
     JSON.stringify(
       {
         name: "Local Development",
+        // Declared here rather than passed to each command: every invocation
+        // against this configuration is a development one, and the limiter's
+        // in-process store is refused without it -- including by `migrate`,
+        // which reads the same file.
+        debug: true,
         table_prefix: "dev_",
         http_server: { address: "127.0.0.1", port: apiPort },
         grpc_server: { address: "127.0.0.1", port: grpcPort },
@@ -249,6 +254,18 @@ if (options.has("--stop")) {
           mfa: { encryption_key_file: join(directory, "mfa-key") },
           registration: { enabled: true },
           captcha: { test_answer: devCaptchaAnswer },
+          // Debug-only, in-process, and gone when this process is: it exists so
+          // the authentication limiter is actually enforced here instead of
+          // being short-circuited by having no Redis. The allowance is low
+          // enough to reach by hand and high enough not to trip a normal run.
+          shared_security: {
+            development_server: true,
+            window: "1m",
+            per_ip: 30,
+            global: 3000,
+            oauth_per_ip: 600,
+            oauth_global: 30000,
+          },
           notification: { url: notificationURL },
           email_verification: {
             enabled: true,

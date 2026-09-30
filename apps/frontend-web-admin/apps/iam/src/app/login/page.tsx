@@ -398,16 +398,6 @@ function PasswordForm({
           </button>
         </div>
       </div>
-      {selfService && capabilities?.password_recovery && (
-        <div className="flex justify-end">
-          <Link
-            to={entrancePath(entry, "recover")}
-            className="text-sm font-medium text-primary hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-          >
-            {t("forgotPassword")}
-          </Link>
-        </div>
-      )}
       <FormError error={error} />
       <Button type="submit" className="w-full" disabled={busy || !captcha}>
         {busy ? t("verifying") : t("signIn")}
@@ -429,17 +419,32 @@ function PasswordForm({
           </Button>
         </>
       )}
-      {selfService && capabilities?.registration && (
-        <p className="text-center text-sm text-muted-foreground">
-          {t("noAccount")}{" "}
-          <Link
-            className="font-medium text-primary hover:underline"
-            to={entrancePath(entry, "register")}
-          >
-            {t("createAccount")}
-          </Link>
-        </p>
-      )}
+      {selfService &&
+        (capabilities?.password_recovery || capabilities?.registration) && (
+          <div className="space-y-2 text-center text-sm">
+            {capabilities?.password_recovery && (
+              <p>
+                <Link
+                  className="font-medium text-primary hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  to={entrancePath(entry, "recover")}
+                >
+                  {t("forgotPassword")}
+                </Link>
+              </p>
+            )}
+            {capabilities?.registration && (
+              <p className="text-muted-foreground">
+                {t("noAccount")}{" "}
+                <Link
+                  className="font-medium text-primary hover:underline"
+                  to={entrancePath(entry, "register")}
+                >
+                  {t("createAccount")}
+                </Link>
+              </p>
+            )}
+          </div>
+        )}
     </form>
   )
 }

@@ -3410,3 +3410,30 @@ Scope: development and the local UAT environment only. No production default
 changes; a real deployment still configures `shared_security` against its own
 Redis, and gets no limiting if it does not.
 Status: ACCEPTED, NOT IMPLEMENTED.
+
+## The Development Limiter Store May Coexist With A Captcha Test Answer - 2026-09-30
+
+Decision: `NewWebService` refuses a configured `captcha.test_answer` whenever
+shared security is active, with one exemption: `shared_security.development_server`.
+
+Reason: the two guards were written for different worlds and collide in the only
+environment that needs both. Shared security means "a deployment serving real
+people", which is why a bypass alongside it is refused. The development server
+means the opposite -- an in-process store, reachable by nothing else, dying with
+the process, and refused outside debug mode. Without the exemption `make dev`
+cannot have both a working limiter and a scriptable login, so one of the two
+things the user asked for would have to be off by default.
+
+Alternatives Considered: leave the guard absolute and keep the limiter opt-in in
+development (rejected: the limiter is then off in the environment it was asked
+for, and nobody enables a flag they have to remember); drop the guard entirely
+(rejected: it is the right refusal for every configuration but this one).
+
+Tradeoffs: a bypass and shared security can now coexist, in debug mode only. The
+whole safety rests on the debug refusal in `validateRuntimeConfig`, which is
+covered by a test that fails if the guard is removed.
+
+Scope: authn web service construction. No change to what a real deployment may
+configure: without debug mode the development server is refused before the
+service is built, and the original guard applies unchanged.
+Status: IMPLEMENTED.

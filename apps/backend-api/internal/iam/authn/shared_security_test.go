@@ -15,6 +15,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -294,4 +295,51 @@ func TestAllAuthenticationMutationsDocumentSharedSecurityErrors(t *testing.T) {
 		require.NotNil(t, op.Responses["429"].Headers["Retry-After"], op.OperationID)
 	}
 	require.Positive(t, count)
+}
+
+// The limiter, its middleware and the per-operation metadata were all complete
+// while nothing was ever limited, because no Redis meant no shared security and
+// a middleware that passed everything through. This is the assertion that the
+// development server closes that gap: the refusal it produces is the real one,
+// from the real client, over a real socket.
+func TestDevelopmentSecurityServerLimitsLogin(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "")
+	seedLocalPrincipal(t, harness.repository, "alice", "alice@example.test", "correct horse battery staple")
+	config := localAuthnConfig()
+	config.SharedSecurity = authnext.SharedSecurityConfig{
+		DevelopmentServer: true, Window: time.Minute, PerIP: 3, Global: 1000,
+		OAuthPerIP: 100, OAuthGlobal: 1000,
+	}
+	service, err := NewWebService(config, harness.repository,
+		WithMemberTenantResolver(boundMemberTenantResolver(t, harness.runtime)))
+	require.NoError(t, err)
+	t.Cleanup(func() { service.closeSecurityServer() })
+	require.NotNil(t, service.sharedSecurity, "the development server must make shared security real")
+
+	_, api := humatest.New(t)
+	RegisterHTTP(api, service, service)
+
+	body := map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
+		"login_name": "alice", "password": "wrong password",
+	}
+	// Under the configured per-address allowance the attempts are answered on
+	// their merits; over it they stop being answered at all.
+	for attempt := 1; attempt <= 3; attempt++ {
+		response := api.Post("/login", body, "Origin: https://app.example.test")
+		require.Equal(t, http.StatusUnauthorized, response.Code,
+			"attempt %d is within the allowance: %s", attempt, response.Body.String())
+	}
+	limited := api.Post("/login", body, "Origin: https://app.example.test")
+	require.Equal(t, http.StatusTooManyRequests, limited.Code, limited.Body.String())
+	assert.NotEmpty(t, limited.Header().Get("Retry-After"),
+		"a refused caller is told when to come back")
+}
+
+// A configured Redis and the in-process stand-in are alternatives, not layers.
+func TestDevelopmentSecurityServerRefusesAConfiguredRedis(t *testing.T) {
+	_, _, err := startDevelopmentSecurityServer(authnext.SharedSecurityConfig{
+		DevelopmentServer: true, RedisAddresses: []string{"127.0.0.1:6379"},
+	})
+	require.ErrorContains(t, err, "cannot be combined with a configured Redis")
 }
