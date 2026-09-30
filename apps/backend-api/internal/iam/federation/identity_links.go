@@ -227,6 +227,9 @@ func (s *Service) StartIdentityOperation(ctx context.Context, cookieHeader strin
 			}
 		} else {
 			link, err := repo.identityLink(ctx, providerID, provider.TenantID, row.ExpectedSubject)
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
 			if err != nil || link.PrincipalID != claims.PrincipalID || !trustedIdentityLink(link, fingerprint) {
 				return ErrPrincipalInactive
 			}
@@ -440,6 +443,9 @@ func (s *Service) CompleteIdentityOperation(ctx context.Context, providerID guid
 		}
 		if row.Purpose == "reauthentication" {
 			link, err := repo.identityLink(ctx, providerID, provider.TenantID, row.ExternalSubject)
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
 			if err != nil || link.PrincipalID != claims.PrincipalID || !trustedIdentityLink(link, row.ProviderFingerprint) {
 				return ErrPrincipalInactive
 			}
@@ -512,6 +518,9 @@ func (s *Service) UnlinkPersonalIdentity(ctx context.Context, cookieHeader, id, 
 			return err
 		}
 		link, err := repo.identityLink(ctx, providerID, provider.TenantID, subject)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		if err != nil || link.PrincipalID != claims.PrincipalID {
 			return ErrPrincipalInactive
 		}

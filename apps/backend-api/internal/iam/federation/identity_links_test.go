@@ -710,3 +710,56 @@ func identityPrincipalStateForFederation(t *testing.T, prefix string) identity.P
 	require.NoError(t, err)
 	return store
 }
+
+// TestIdentityLinkStorageFaultsAreNotReportedAsRefusals holds each read of an
+// existing identity link to the difference between a link that does not
+// belong to the caller and a read that failed: only the first is
+// ErrPrincipalInactive.
+func TestIdentityLinkStorageFaultsAreNotReportedAsRefusals(t *testing.T) {
+	setup := func(t *testing.T) (*federationEnvironment, *authn.Service, string, Provider) {
+		t.Helper()
+		env, authenticator, principalID, cookie := newIdentityLinkEnvironment(t)
+		provider := env.createProvider(t, testID("tenant-a"), env.providerInput("OIDC", env.idp.issuer))
+		now := time.Now()
+		require.NoError(t, env.db.Create(&model.IdentityLink{BindingProvenance: BindingPrincipalVerified, SecurityFingerprint: securityProviderFingerprint(providerRow{ProviderType: provider.ProviderType, Issuer: provider.Issuer, ClientID: provider.ClientID}), ProviderID: provider.ID, TenantID: provider.TenantID, PrincipalID: principalID, ExternalSubject: "expected", CreatedAt: now, UpdatedAt: now, LastLoginAt: now}).Error)
+		return env, authenticator, cookie, provider
+	}
+	failLinkReads := func(t *testing.T, env *federationEnvironment) {
+		t.Helper()
+		require.NoError(t, env.db.Callback().Query().Before("gorm:query").Register("test:fail_link_reads", func(tx *gorm.DB) {
+			if tx.Statement.Table == "iam_identity_links" {
+				tx.AddError(assert.AnError)
+			}
+		}))
+	}
+	start := func(t *testing.T, env *federationEnvironment, authenticator *authn.Service, cookie string, provider Provider) (LoginStart, error) {
+		t.Helper()
+		options, err := authenticator.BeginReauthentication(t.Context(), cookie, authn.ReauthenticationPrincipalClose, "self", "federation", "")
+		require.NoError(t, err)
+		return env.service.StartIdentityOperation(t.Context(), cookie, provider.ID, options.Proof, identityLinkID(provider.ID, "expected"), "", "https://iam.example"+callbackURL(provider.ID))
+	}
+
+	t.Run("start reauthentication", func(t *testing.T) {
+		env, authenticator, cookie, provider := setup(t)
+		failLinkReads(t, env)
+		_, err := start(t, env, authenticator, cookie, provider)
+		assert.ErrorIs(t, err, assert.AnError)
+	})
+	t.Run("complete reauthentication", func(t *testing.T) {
+		env, authenticator, cookie, provider := setup(t)
+		started, err := start(t, env, authenticator, cookie, provider)
+		require.NoError(t, err)
+		env.idp.setClaim("sub", "expected")
+		state := verifyIdentityOIDC(t, env, provider, started)
+		failLinkReads(t, env)
+		_, err = env.service.CompleteIdentityOperation(t.Context(), provider.ID, state, cookie+"; "+started.StateCookie)
+		assert.ErrorIs(t, err, assert.AnError)
+	})
+	t.Run("unlink", func(t *testing.T) {
+		env, authenticator, cookie, provider := setup(t)
+		id := identityLinkID(provider.ID, "expected")
+		proof := identityPasswordProof(t, authenticator, cookie, authn.ReauthenticationIdentityUnlink, id)
+		failLinkReads(t, env)
+		assert.ErrorIs(t, env.service.UnlinkPersonalIdentity(t.Context(), cookie, id, proof), assert.AnError)
+	})
+}
