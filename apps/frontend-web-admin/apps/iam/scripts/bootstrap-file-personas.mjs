@@ -59,10 +59,16 @@ function passwordFor(id) {
   return { path, password: readFileSync(path, "utf8").trim() }
 }
 
+// A list endpoint answers with `data` as a bare array; paging lives in `meta`.
+function listOf(payload) {
+  return Array.isArray(payload) ? payload : (payload?.items ?? [])
+}
+
 async function ensureFromList(path, match, create) {
-  const listed = await call(path)
-  const items = Array.isArray(listed) ? listed : (listed?.items ?? [])
-  return items.find(match) ?? call(path, { method: "POST", body: create })
+  return (
+    listOf(await call(path)).find(match) ??
+    call(path, { method: "POST", body: create })
+  )
 }
 
 const entity = await ensureFromList(
@@ -140,14 +146,14 @@ for (const definition of definitions) {
   const principalPath =
     "/principals?limit=200&search=" + encodeURIComponent(definition.loginName)
   const localPrincipals = await call(principalPath)
-  let principal = localPrincipals.items.find(
+  let principal = listOf(localPrincipals).find(
     (item) => item.login_name === definition.loginName
   )
   if (!principal && sourceTenantID) {
     const sourcePrincipals = await call(principalPath, {
       tenantHeader: sourceTenantID,
     })
-    principal = sourcePrincipals.items.find(
+    principal = listOf(sourcePrincipals).find(
       (item) => item.login_name === definition.loginName
     )
     if (principal)
@@ -295,7 +301,7 @@ const systemAccounts = await call(
   "/system/principals?limit=200&search=" + encodeURIComponent(platformLogin),
   { tenant: false }
 )
-const platformOwner = systemAccounts.items.find(
+const platformOwner = listOf(systemAccounts).find(
   (item) => item.login_name === platformLogin
 ) ?? await call("/system/principals", {
   method: "POST", tenant: false,
@@ -326,7 +332,7 @@ const users = await call(
   "/system/principals?limit=200&search=" + encodeURIComponent(userLogin),
   { tenant: false }
 )
-if (!users.items.some((item) => item.login_name === userLogin))
+if (!listOf(users).some((item) => item.login_name === userLogin))
   await call("/system/principals", {
     method: "POST",
     tenant: false,
