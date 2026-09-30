@@ -175,22 +175,18 @@ export default function AppLayout() {
     )
       return
     let active = true
-    if (permissionsResolved && !permissions?.has("entity_view")) {
-      void Promise.resolve().then(() => {
-        if (active)
-          setEntityCatalog({
-            subject,
-            tenant: tenantValue,
-            items: [],
-            error: "",
-          })
-      })
-      return () => {
-        active = false
-      }
-    }
+    // No client-side pre-judgement here any more. This used to decide the list
+    // was empty whenever the caller lacked entity_view, because the endpoint it
+    // called refused without it -- and entity_view is the permission to
+    // administer every entity in the tenant, which somebody belonging to one
+    // does not have. The endpoint below answers for the caller, so the caller
+    // is no longer the one deciding what it may see.
     const refresh = () => {
-      void iamApi.entities().then(
+      // file_view is what the console does inside an entity, and the switcher
+      // offers the entities it can take somebody into. Asking for the entities
+      // this caller may administer instead was why a member of exactly one
+      // entity was shown none of them.
+      void iamApi.memberEntities("file_view").then(
         (items) => {
           if (active)
             setEntityCatalog({ subject, tenant: tenantValue, items, error: "" })
@@ -225,27 +221,19 @@ export default function AppLayout() {
   useEffect(() => {
     if (status !== "authenticated" || !tenantValue || entityID) return
     let active = true
-    void iamApi.departments().then(
-      async (departments) => {
-        const entityIDs = [
-          ...new Set(departments.map(({ entity_id }) => entity_id)),
-        ]
-        for (const candidate of entityIDs) {
-          try {
-            await iamApi.files(candidate)
-            if (active)
-              setScopedFileAccess({
-                subject,
-                tenant: tenantValue,
-                entityID: candidate,
-              })
-            return
-          } catch {
-            // Continue through the caller's authorized department entities.
-          }
-        }
+    // The service reports which entities admit this caller. This used to list
+    // departments, derive the entities behind them, and call an entity-scoped
+    // endpoint on each until one did not refuse -- several deliberate
+    // authorization failures per page load, to answer a question one request
+    // now answers.
+    void iamApi.memberEntities("file_view").then(
+      (entities) => {
         if (active)
-          setScopedFileAccess({ subject, tenant: tenantValue, entityID: "" })
+          setScopedFileAccess({
+            subject,
+            tenant: tenantValue,
+            entityID: entities[0]?.id ?? "",
+          })
       },
       () => {
         if (active)

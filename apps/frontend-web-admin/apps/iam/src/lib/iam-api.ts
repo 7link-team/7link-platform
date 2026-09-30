@@ -2898,6 +2898,16 @@ export function createIamApi(
           path: { tenant_id: tenantID() },
         })
       ),
+    // The entities this caller may act in, as opposed to the ones it may
+    // administer. Somebody bound to a single entity has the first and not the
+    // second, and the listing above answers only the second.
+    memberEntities: async (permission: string) =>
+      request<Entity[]>(
+        apiRoute("get", "/tenants/{tenant_id}/principals/{principal_id}/entities", {
+          path: { tenant_id: tenantID(), principal_id: await principalID() },
+          query: { permission },
+        })
+      ),
     entity: (id: string) =>
       request<Entity>(
         apiRoute("get", "/entities/{entity_id}", { path: { entity_id: id } })

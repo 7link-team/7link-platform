@@ -10,6 +10,7 @@ import (
 
 	"7link.com/platform/internal/iam/core/model"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authz"
 	"gorm.io/gorm"
 )
 
@@ -738,4 +739,75 @@ func equalOptionalTime(left, right *time.Time) bool {
 		return left == nil && right == nil
 	}
 	return left.Equal(*right)
+}
+
+// EntitiesOwningDepartments maps department IDs to the entities that own them.
+//
+// A department-scoped grant reaches its entity through the department, and the
+// data constraint says so by naming departments rather than entities. Resolving
+// that here is what the console used to do by listing departments and reading
+// the entity behind each -- it had the right idea and the wrong place to have
+// it, since it could only see the departments it was allowed to list.
+func (r *Repository) EntitiesOwningDepartments(
+	ctx context.Context,
+	tenantID guid.ID,
+	departmentIDs []guid.ID,
+) ([]guid.ID, error) {
+	if len(departmentIDs) == 0 {
+		return nil, nil
+	}
+	_, db, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
+	directory, err := r.directoryTables()
+	if err != nil {
+		return nil, err
+	}
+	entityIDs := []guid.ID{}
+	if err := db.WithContext(ctx).
+		Table(directory.Departments.String()).
+		Where("tenant_id = ? AND id IN ? AND status = ?", tenantID, departmentIDs, "active").
+		Distinct().Pluck("entity_id", &entityIDs).Error; err != nil {
+		return nil, fmt.Errorf("list entities owning departments: %w", err)
+	}
+	return entityIDs, nil
+}
+
+// EntitiesOwningDepartments resolves the entities behind a set of departments.
+func (s *Service) EntitiesOwningDepartments(
+	ctx context.Context,
+	tenantID guid.ID,
+	departmentIDs []guid.ID,
+) ([]guid.ID, error) {
+	return s.repo.EntitiesOwningDepartments(ctx, tenantID, departmentIDs)
+}
+
+// admittedEntities narrows a tenant's entities to the ones a constraint admits.
+//
+// AllowAll is a tenant-wide grant, so every active entity is in scope; a denial
+// still removes one, because an explicit deny is not overridden by breadth.
+// Entities reached through a department are passed in separately, because the
+// constraint names those departments rather than the entities behind them.
+func admittedEntities(entities []Entity, constraint authz.DataConstraint, throughDepartments []guid.ID) []Entity {
+	denied := make(map[string]bool, len(constraint.DeniedIDs))
+	for _, id := range constraint.DeniedIDs {
+		denied[id] = true
+	}
+	allowed := make(map[string]bool, len(constraint.ResourceIDs)+len(throughDepartments))
+	for _, id := range constraint.ResourceIDs {
+		allowed[id] = true
+	}
+	for _, id := range throughDepartments {
+		allowed[id.String()] = true
+	}
+	admitted := make([]Entity, 0, len(entities))
+	for _, entity := range entities {
+		id := entity.ID.String()
+		if denied[id] || (!constraint.AllowAll && !allowed[id]) {
+			continue
+		}
+		admitted = append(admitted, entity)
+	}
+	return admitted
 }

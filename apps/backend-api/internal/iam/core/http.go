@@ -436,6 +436,15 @@ type authorizationConstraintInput struct {
 	}
 }
 
+// memberEntitiesInput asks which entities the caller may act in. The permission
+// is named by the caller because "may act in" has no single meaning: a console
+// picking a file workspace and one picking a directory to administer are asking
+// different questions of the same graph.
+type memberEntitiesInput struct {
+	TenantID   string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"tenant authorization boundary"`
+	Permission string `query:"permission" maxLength:"128" doc:"permission code the entity must grant the caller"`
+}
+
 type authorizationExplanationInput struct {
 	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
@@ -1210,6 +1219,53 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, MutationResult{Changed: true, SyncStatus: "not_applicable"}), nil
 	})
+	// The entities a caller may act in, answered for the caller alone.
+	//
+	// The tenant-wide listing beside this one needs entity_view, which is the
+	// permission to administer every entity in the tenant -- a different thing
+	// from belonging to one. Without this, somebody bound to a single entity
+	// saw an empty list and the console went looking for their entity by
+	// listing departments and calling an entity-scoped endpoint on each until
+	// one did not refuse: several deliberate authorization failures per page
+	// load to answer a question the service can answer once.
+	authz.RegisterPrincipalTenantMember(registrar, a, huma.Operation{
+		OperationID: "iam-member-entities", Method: http.MethodGet, Path: "/principals/{principal_id}/entities",
+		Summary: "List the entities in this tenant that grant the caller a permission",
+		Tags:    []string{"directory"}, Errors: []int{http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *memberEntitiesInput) (*respx.Body[[]APIEntity], error) {
+		claims, ok := authnext.FromContext(ctx)
+		if !ok || claims == nil || claims.PrincipalID.Zero() {
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
+		}
+		tenantID, err := guid.RequireID(in.TenantID)
+		if err != nil {
+			return nil, err
+		}
+		constraint, err := svc.AuthorizationConstraint(ctx, tenantID, in.Permission, claims.PrincipalID)
+		if err != nil {
+			return nil, apiError("list member entities", err)
+		}
+		entities, err := svc.ListEntities(ctx, tenantID)
+		if err != nil {
+			return nil, apiError("list member entities", err)
+		}
+		// A department-scoped grant names departments, not the entities behind
+		// them, so those are resolved before the narrowing.
+		departments := make([]guid.ID, 0, len(constraint.DepartmentIDs))
+		for _, raw := range constraint.DepartmentIDs {
+			id, err := guid.RequireID(raw)
+			if err != nil {
+				return nil, apiError("list member entities", err)
+			}
+			departments = append(departments, id)
+		}
+		throughDepartments, err := svc.EntitiesOwningDepartments(ctx, tenantID, departments)
+		if err != nil {
+			return nil, apiError("list member entities", err)
+		}
+		return respx.OK(ctx, entitiesFromDomain(admittedEntities(entities, constraint, throughDepartments))), nil
+	})
+
 	authz.RegisterPrincipalTenantMember(registrar, a, huma.Operation{OperationID: "iam-effective-menus", Method: http.MethodGet, Path: "/principals/{principal_id}/menus", Summary: "Return the current member's authorized menu tree", Tags: []string{"access-control"}}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]MenuItem], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {

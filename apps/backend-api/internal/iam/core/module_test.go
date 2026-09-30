@@ -54,7 +54,7 @@ func TestModuleInitializeRegistersIAMLocales(t *testing.T) {
 
 func TestRuntimeModuleRegistersAllRoutes(t *testing.T) {
 	harness := newHTTPIAMHarness(t, true)
-	assert.Len(t, operationManifest(harness.api.OpenAPI()), 118)
+	assert.Len(t, operationManifest(harness.api.OpenAPI()), 119)
 	require.NoError(t, authz.ValidateOperations(harness.api, harness.module.registrar.Registry()))
 }
 

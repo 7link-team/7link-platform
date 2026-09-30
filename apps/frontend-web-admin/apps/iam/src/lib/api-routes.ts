@@ -247,6 +247,7 @@ export const publishedRoutes: readonly string[] = [
   "/tenants/{tenant_id}/principal-groups",
   "/tenants/{tenant_id}/principals",
   "/tenants/{tenant_id}/principals/{principal_id}",
+  "/tenants/{tenant_id}/principals/{principal_id}/entities",
   "/tenants/{tenant_id}/principals/{principal_id}/menus",
   "/tenants/{tenant_id}/principals/{principal_id}/permissions",
   "/tenants/{tenant_id}/principals/{principal_id}/role-access-requests",

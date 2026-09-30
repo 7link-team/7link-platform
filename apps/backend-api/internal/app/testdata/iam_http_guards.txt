@@ -164,6 +164,7 @@ iam-delete-menu => owned-resource|menu_delete
 iam-delete-platform-administrator => platform|platform_administer
 iam-delete-relationship => tenant|entity_manage_binding
 iam-delete-role => owned-resource|role_delete
+iam-member-entities => tenant-member
 iam-effective-menus => tenant-member
 iam-effective-platform-permissions => authenticated
 iam-effective-tenant-permissions => tenant-member

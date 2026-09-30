@@ -129,6 +129,7 @@ iam-get-menu|GET|/menus/{menu_id}
 iam-update-menu|PATCH|/menus/{menu_id}
 iam-delete-menu|DELETE|/menus/{menu_id}
 iam-effective-menus|GET|/tenants/{tenant_id}/principals/{principal_id}/menus
+iam-member-entities|GET|/tenants/{tenant_id}/principals/{principal_id}/entities
 iam-effective-platform-permissions|GET|/principals/{principal_id}/permissions
 iam-effective-tenant-permissions|GET|/tenants/{tenant_id}/principals/{principal_id}/permissions
 iam-effective-entity-permissions|GET|/tenants/{tenant_id}/entities/{entity_id}/principals/{principal_id}/permissions`
@@ -145,7 +146,7 @@ func TestCoreRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 118)
+	require.Len(t, got, 119)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 

@@ -99,6 +99,7 @@ iam-delete-platform-administrator => iam-delete-platform-administrator|DELETE|/s
 iam-delete-relationship => iam-delete-relationship|DELETE|/tenants/{tenant_id}/authorization-relationships
 iam-delete-role => iam-delete-role|DELETE|/roles/{role_id}
 iam-effective-menus => iam-effective-menus|GET|/tenants/{tenant_id}/principals/{principal_id}/menus
+iam-member-entities => iam-member-entities|GET|/tenants/{tenant_id}/principals/{principal_id}/entities
 iam-effective-platform-permissions => iam-effective-platform-permissions|GET|/principals/{principal_id}/permissions
 iam-effective-tenant-permissions => iam-effective-tenant-permissions|GET|/tenants/{tenant_id}/principals/{principal_id}/permissions
 iam-effective-entity-permissions => iam-effective-entity-permissions|GET|/tenants/{tenant_id}/entities/{entity_id}/principals/{principal_id}/permissions
