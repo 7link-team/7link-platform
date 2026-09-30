@@ -16,6 +16,12 @@ import (
 // deprovision a live remote account through the existing outbound workflow.
 var ErrPrincipalRemoteProvisioned = errors.New("deprovision remote principal accounts before anonymization")
 
+// PrincipalErasureVersion is the schema version ErasePrincipalData needs: the
+// later of this module's principal-erasure guard migration and the migration
+// that created the newest table erasure touches. Raise it when erasure reaches
+// a later table: the principallifecycle erasure-version test fails until then.
+const PrincipalErasureVersion = 5
+
 // ErasePrincipalData tombstones SCIM User mappings in the caller's transaction.
 // The suspended principal must already be locked; Group mappings are untouched.
 func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid.ID, now time.Time) error {

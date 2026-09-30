@@ -75,6 +75,12 @@ func (s *Service) revokePrincipalCredentialsOn(ctx context.Context, tx *gorm.DB,
 	return repo.consumeEmailVerifications(ctx, principalID, now)
 }
 
+// PrincipalErasureVersion is the schema version ErasePrincipalData needs: the
+// later of this module's principal-erasure guard migration and the migration
+// that created the newest table erasure touches. Raise it when erasure reaches
+// a later table: the principallifecycle erasure-version test fails until then.
+const PrincipalErasureVersion = 16
+
 // ErasePrincipalData removes authentication secrets and operational PII using
 // the caller's transaction, which must already lock the suspended principal.
 // It is independent of module activation so disabled modules leave no data behind.

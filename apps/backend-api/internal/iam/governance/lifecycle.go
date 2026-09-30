@@ -11,6 +11,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// PrincipalErasureVersion is the schema version ErasePrincipalData needs: the
+// later of this module's principal-erasure guard migration and the migration
+// that created the newest table erasure touches. Raise it when erasure reaches
+// a later table: the principallifecycle erasure-version test fails until then.
+const PrincipalErasureVersion = 4
+
 // ErasePrincipalData redacts cached principal names without deleting approval
 // decisions or their identity references. The caller owns the transaction and
 // the suspended principal's row lock.

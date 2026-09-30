@@ -3531,3 +3531,47 @@ gate. It has to reach the browser for the widget to render, and it is the
 secret key beside it -- resolved through secretx, never leaving the process --
 that makes a token worth anything.
 Status: IMPLEMENTED.
+
+## Principal Erasure Owners Publish Their Own Schema Requirement - 2026-09-30
+
+Decision: each IAM owner of principal data exports `MigrationSource()` as a
+package function and `PrincipalErasureVersion` beside `ErasePrincipalData`.
+`internal/principallifecycle` composes them and restates nothing. It reads each
+stream with `goosex.CurrentVersion` inside the erasure transaction: version 0
+(never installed) is skipped, an installed owner below its version fails with
+`identity.ErrUnavailable` before anything is written, and a failed read is
+returned as itself. `goosex.VersionApplied` is removed; it had no other caller.
+
+Reason: the anonymizer carried each owner's version table name and a minimum
+version by hand. Two had gone stale (authn 13 while erasure touches tables from
+14-16; federation 5 while it touches 00006), and nothing compared them. And
+because a disabled module is never migrated and cannot be selected with
+`migrate --module`, the default deployment (federation off) had no
+`goose_federation` table, so every anonymization returned 503. The composed
+suite hid this by migrating federation by hand. A stream that was never
+installed cannot hold records, and federation tables only ever come from its
+own migrations, so skipping it loses nothing; an owner that was installed and
+then disabled is still erased, as the anonymizer contract requires.
+
+Alternatives Considered: reuse the `principal-erasure` milestone (rejected: it
+means "guard triggers installed", `tests/migration` relies on that meaning, and
+milestones must be strictly increasing so it cannot move onto another
+milestone's version); require every owner to be fully migrated (rejected: a
+disabled owner is never migrated, so any unrelated later migration would block
+erasure indefinitely); check the version inside each `ErasePrincipalData`
+(rejected: seven copies of the skip/behind rule, and skipping is the composer's
+semantics). This supersedes D71's literal version table names: a package
+function is not the `cross-module-concrete-type` reference D71 was avoiding.
+
+Tradeoffs: `CurrentVersion` probes with `Migrator().GetTables()` rather than
+`HasTable`, because `HasTable` reports a failed lookup as a missing table,
+which here would silently skip an owner. The drift gate is
+`TestAnonymizePrincipalDataHoldsEachOwnerToItsErasureVersion`: each owner at
+exactly its version must erase, one below must refuse. It migrates through
+goosex rather than the milestone planner, because the planner cannot hold one
+owner below a version its neighbours' later milestones depend on.
+
+Scope: principal erasure only. The OAuth service's collapse of repository
+errors into `ErrInvalidRequest` (`oauth/service.go` 396/414/594/818/827/872/886)
+is the same class of defect and is to be fixed as its own task.
+Status: IMPLEMENTED.

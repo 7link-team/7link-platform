@@ -60,6 +60,12 @@ func requireNoPrincipalPlatformAccess(ctx context.Context, tx *gorm.DB, prefix s
 	return nil
 }
 
+// PrincipalErasureVersion is the schema version ErasePrincipalData needs: the
+// later of this module's principal-erasure guard migration and the migration
+// that created the newest table erasure touches. Raise it when erasure reaches
+// a later table: the principallifecycle erasure-version test fails until then.
+const PrincipalErasureVersion = 13
+
 // ErasePrincipalData redacts every membership profile and withdraws admission.
 // The caller owns the transaction and the suspended principal's row lock, and
 // supplies the shared authorization registry the platform-access check reads.

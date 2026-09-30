@@ -12,6 +12,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// PrincipalErasureVersion is the schema version ErasePrincipalData needs: the
+// later of this module's principal-erasure guard migration and the migration
+// that created the newest table erasure touches. Raise it when erasure reaches
+// a later table: the principallifecycle erasure-version test fails until then.
+const PrincipalErasureVersion = 9
+
 // ErasePrincipalData destroys OAuth authorization and token material in the
 // caller's transaction after the suspended principal has been locked.
 func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid.ID, _ time.Time) error {

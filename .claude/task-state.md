@@ -1,4 +1,18 @@
 # Task State
+## Principal Erasure Owner Gate - 2026-09-30 - DELIVERED (uncommitted)
+## Objective  修 principallifecycle 擦除门禁：owner 自己发布版本源与所需版本；未安装跳过；落后拒绝；错误不折叠
+## Current Phase          ACCEPTANCE
+## Completed Work (uncommitted)
+- goosex.CurrentVersion 替换 VersionApplied(GetTables 探测，不中止 PG 事务、不吞错)；version_test.go
+- 7 个 IAM owner：包级 MigrationSource() + PrincipalErasureVersion(core13 authn16 oauth9 fed6 prov5 org9 gov4)
+- anonymizer.go 只组合不抄数；anonymizer_test.go：每 owner 恰好版本放行/差一拒绝(变异验证：改回13/5即红)
+- 集成：unupgraded-owner 改真实降级；新增 TestPrincipalErasureSkipsAnUninstalledOwner(变异验证：去掉跳过即红)
+- README 擦除升级边界改写；sql-zero-census M4 标注已收敛；decisions.md 新增一条
+## Important Decisions  用户确认：未安装 owner 跳过；OAuth 错误折叠另开任务(不在本次)
+## Verification  goose/principallifecycle 单测 PASS；integration iam 擦除场景 PASS；make ci: PASS (fmt/lint 0 issues/schema-lock/coverage 91.1%/integration 含 architecture+migration/build/openapi/frontend-contract)
+## Next Action  等用户决定是否提交；另开任务修 OAuth service 错误折叠(decisions.md 已登记)
+## Last Checkpoint  2026-09-30 implementation done
+
 ## Login Captcha, Local Rate Limiting, Tenant Boundary - 2026-09-30 - DELIVERED
 ## Objective  用户批准三件一起做：切换器只列成员租户(P2a)、登录加验证码+本地限流真生效(P1)、租户目录服务端搜索分页(P2b)
 ## Current Phase          ACCEPTANCE
