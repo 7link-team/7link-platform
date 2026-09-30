@@ -15,7 +15,8 @@ export interface AuthContextValue {
   login: (
     loginName: string,
     password: string,
-    returnUrl: string
+    returnUrl: string,
+    captcha: { type: string; id: string; answer: string }
   ) => Promise<LoginResult>
   verifyLoginMfa: (challengeId: string, code: string) => Promise<LoginResult>
   loginWithPasskey: (returnUrl: string) => Promise<LoginResult>

@@ -33,6 +33,7 @@ export const publishedRoutes: readonly string[] = [
   "/identity-providers/{provider_id}/identity-continuation",
   "/livez",
   "/login",
+  "/login/captchas",
   "/login/mfa",
   "/login/options",
   "/login/passkey/options",

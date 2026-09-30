@@ -14,6 +14,7 @@ import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, businessCode, iamApi, type Captcha } from "../../lib/iam-api"
+import { issueRegistrationCaptcha } from "../../lib/captcha"
 import { appName, copyrightLine } from "../../lib/branding"
 import { entranceLoginPath, publicAuthEntrance } from "../../lib/auth-entrance"
 
@@ -30,7 +31,7 @@ export default function RegisterPage() {
   const [answer, setAnswer] = useState("")
 
   const loadCaptcha = () => {
-    void issueTextCaptcha().then(setCaptcha, () =>
+    void issueRegistrationCaptcha().then(setCaptcha, () =>
       setError(t("captchaUnavailable"))
     )
   }
@@ -166,7 +167,7 @@ export default function RegisterPage() {
                   />
                   <button
                     type="button"
-                    className="grid h-9 w-[110px] shrink-0 place-items-center overflow-hidden rounded-md border border-border/70 bg-muted/40"
+                    className="grid h-9 w-[108px] shrink-0 place-items-center overflow-hidden rounded-md border border-border/70 bg-muted/40"
                     onClick={refreshCaptcha}
                     aria-label={t("refreshCaptcha")}
                     title={t("anotherCaptcha")}
@@ -175,7 +176,7 @@ export default function RegisterPage() {
                       <img
                         src={captcha.image_base64}
                         alt={t("captcha")}
-                        className="h-full w-full object-cover"
+                        className="h-full w-full object-contain"
                       />
                     ) : (
                       <RefreshCw className="size-4 animate-spin text-muted-foreground" />
@@ -262,17 +263,6 @@ function PasswordField({
       </div>
     </div>
   )
-}
-
-async function issueTextCaptcha(): Promise<Captcha> {
-  // This page can only present the character challenge. A deployment that also
-  // hands out the interactive types has more to offer than we can draw, so ask
-  // again for one we can render instead of stranding the user on a blank box.
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const issued = await iamApi.createCaptcha()
-    if (issued.type === "text") return issued
-  }
-  throw new Error("no text captcha available")
 }
 
 function registrationError(cause: unknown): string {

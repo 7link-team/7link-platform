@@ -4,6 +4,7 @@ import { mkdirSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
 import { auditPassword } from "../scripts/audit-password.mjs"
+import { auditCaptcha } from "../scripts/audit-captcha.mjs"
 
 const tenant = process.env.IAM_BROWSER_TENANT
 if (!tenant)
@@ -51,6 +52,7 @@ async function expectTenantWorkspace(page, tenantID) {
 const errors = []
 try {
   await ok(admin, "/login", "POST", {
+    ...auditCaptcha(),
     login_name: process.env.IAM_BROWSER_LOGIN ?? "admin@example.test",
     password: auditPassword(),
     return_url: baseURL + "/",

@@ -4,6 +4,7 @@ import { randomBytes, createHash } from "node:crypto"
 import { resolve, sep } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { chromium } from "playwright"
+import { auditCaptcha } from "../scripts/audit-captcha.mjs"
 
 // Real API fixtures and real pages. Network-failure injection belongs to the
 // existing release-regression audit; this matrix never stubs HTTP responses.
@@ -242,6 +243,7 @@ async function signIn(context, persona) {
   const login =
     persona === "admin" ? "admin@example.test" : actors[persona].login_name
   await ok(context, "/login", "POST", {
+    ...auditCaptcha(),
     login_name: login,
     password: persona === "admin" ? adminPassword : fixturePassword,
     return_url: baseURL + "/",

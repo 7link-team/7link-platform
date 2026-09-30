@@ -4,6 +4,7 @@ import { createServer } from "node:http"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
+import { auditCaptcha } from "../scripts/audit-captcha.mjs"
 
 // Real IAM HTTP and browser flows. The upstream is an isolated, signed OIDC
 // test provider with one-use codes, PKCE and an explicit fresh-login button.
@@ -539,6 +540,7 @@ async function passwordLink(context, page, messages) {
 try {
   save()
   await ok(admin, "/login", "POST", {
+    ...auditCaptcha(),
     login_name: "admin@example.test",
     password: adminPassword,
     return_url: baseURL + "/",

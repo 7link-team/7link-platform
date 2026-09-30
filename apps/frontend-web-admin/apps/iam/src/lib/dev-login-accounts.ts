@@ -70,3 +70,14 @@ export function devAccountsForEntrance(
 
 export const prefillDevLoginAccount =
   import.meta.env.DEV && import.meta.env.VITE_DEV_LOGIN_PREFILL === "true"
+
+// Read inside the development branch for the same reason as the personas: a
+// production build folds the branch away rather than inlining the literal.
+//
+// Unlike the personas this is not gated on the persona switch. The acceptance
+// runs drive the real form without asking for personas, and they need the
+// challenge answered just the same. It is inert anyway against a service that
+// configured no test answer, which is every service real people use.
+export const devLoginCaptchaAnswer = import.meta.env.DEV
+  ? (import.meta.env.VITE_DEV_LOGIN_CAPTCHA_ANSWER ?? "")
+  : ""

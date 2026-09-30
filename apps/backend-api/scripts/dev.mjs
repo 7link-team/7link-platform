@@ -27,6 +27,10 @@ const binary = join(
   process.platform === "win32" ? "api.exe" : "api",
 );
 const initializedPath = join(directory, "admin-initialized");
+// A literal is fine here and only here: this is the local development
+// environment's own throwaway value, it never leaves this machine, and the
+// service refuses anything shorter than eight characters.
+const devCaptchaAnswer = "dev-captcha";
 const options = new Map();
 for (let i = 2; i < process.argv.length; i += 2) {
   const name = process.argv[i];
@@ -244,6 +248,7 @@ if (options.has("--stop")) {
           signing_key_file: join(directory, "signing-key"),
           mfa: { encryption_key_file: join(directory, "mfa-key") },
           registration: { enabled: true },
+          captcha: { test_answer: devCaptchaAnswer },
           notification: { url: notificationURL },
           email_verification: {
             enabled: true,
@@ -420,6 +425,7 @@ if (options.has("--stop")) {
       IAM_BROWSER_TENANT_NAME: "Development",
       IAM_BACKEND_DIR: root,
       IAM_BOOTSTRAP_SKIP: "true",
+      IAM_CAPTCHA_ANSWER: devCaptchaAnswer,
     };
     const tenantID = await run(
       "bun",
@@ -460,6 +466,7 @@ if (options.has("--stop")) {
         VITE_API_PROXY_TARGET: settings.apiURL,
         VITE_DEFAULT_TENANT: tenantID,
         VITE_DEV_LOGIN_ACCOUNTS_ENABLED: String(demoAccounts),
+        VITE_DEV_LOGIN_CAPTCHA_ANSWER: devCaptchaAnswer,
         VITE_DEV_LOGIN_PREFILL: String(prefill),
         VITE_DEV_LOGIN_ACCOUNTS: JSON.stringify(accounts),
       },

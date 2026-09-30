@@ -2153,8 +2153,10 @@ export function createIamApi(
       request<Tenant>(apiRoute("post", "/tenant-registrations"), {
         body: JSON.stringify(body),
       }),
-    createCaptcha: () =>
+    createRegistrationCaptcha: () =>
       request<Captcha>(apiRoute("post", "/registrations/captchas")),
+    createLoginCaptcha: () =>
+      request<Captcha>(apiRoute("post", "/login/captchas")),
     register: (body: {
       entry?: "tenant" | "user"
       email: string
@@ -2423,6 +2425,9 @@ export function createIamApi(
       login_name: string
       password: string
       return_url: string
+      captcha_type: string
+      captcha_id: string
+      captcha_answer: string
     }) => {
       resetPrincipal()
       const epoch = identityEpoch
@@ -2444,11 +2449,18 @@ export function createIamApi(
       return result
     },
     logout: async () => {
-      const result = await request<{ logout_url: string }>(
-        apiRoute("delete", "/sessions/current")
-      )
-      resetPrincipal()
-      return result
+      // Destroying the session on the service is what makes it unusable from
+      // anywhere else, so it is still attempted first. It is not, however,
+      // allowed to decide whether this browser forgets who it was: the cached
+      // principal is dropped whether the request succeeded, failed or never
+      // reached anybody.
+      try {
+        return await request<{ logout_url: string }>(
+          apiRoute("delete", "/sessions/current")
+        )
+      } finally {
+        resetPrincipal()
+      }
     },
     currentBrowserSession: () =>
       request<BrowserSession>(apiRoute("get", "/sessions/current")),

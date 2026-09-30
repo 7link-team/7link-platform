@@ -10,10 +10,15 @@ import (
 	"github.com/mojocn/base64Captcha"
 )
 
+// The canvas is close to the size the form shows it at, so the characters are
+// not shrunk on the way to the screen. A 220x64 image displayed beside a 36px
+// input had to be scaled to little over half size, which is what made it hard
+// to read; at 144x44 the same characters arrive nearly unscaled. The noise dots
+// are reduced with the canvas so their density, not just their count, is kept.
 var captchaDrivers = []base64Captcha.Driver{
-	base64Captcha.NewDriverDigit(64, 220, 4, 0.7, 80),
-	base64Captcha.NewDriverString(64, 220, 4, 1, 4, base64Captcha.TxtAlphabet, nil, nil, nil),
-	base64Captcha.NewDriverMath(64, 220, 4, 1, nil, nil, nil),
+	base64Captcha.NewDriverDigit(44, 132, 4, 0.25, 30),
+	base64Captcha.NewDriverString(44, 144, 4, 1, 4, base64Captcha.TxtAlphabet, nil, nil, nil),
+	base64Captcha.NewDriverMath(44, 144, 4, 1, nil, nil, nil),
 }
 
 // Text challenges use the process-local one-shot store, matching the
@@ -56,7 +61,7 @@ type captchaOffering struct {
 // parseCaptchaOffering reads the configured challenge kinds and test answer,
 // failing the deployment at startup rather than at somebody's first attempt to
 // register.
-func parseCaptchaOffering(cfg authnext.RegistrationCaptchaConfig) (*captchaOffering, error) {
+func parseCaptchaOffering(cfg authnext.CaptchaConfig) (*captchaOffering, error) {
 	offering := &captchaOffering{testAnswer: strings.TrimSpace(cfg.TestAnswer)}
 	for _, entry := range cfg.Kinds {
 		// A blank entry configures nothing. Deployment configuration grows
@@ -70,7 +75,7 @@ func parseCaptchaOffering(cfg authnext.RegistrationCaptchaConfig) (*captchaOffer
 		case captchaText, captchaSlide, captchaClick:
 		default:
 			return nil, fmt.Errorf(
-				"authn registration captcha kind %q must be one of text, slide, click", entry,
+				"authn captcha kind %q must be one of text, slide, click", entry,
 			)
 		}
 		// The configured list is a set. A repeated entry would otherwise weight
@@ -87,7 +92,7 @@ func parseCaptchaOffering(cfg authnext.RegistrationCaptchaConfig) (*captchaOffer
 	if offering.testAnswer != "" {
 		if len(offering.testAnswer) < minimumCaptchaTestAnswer {
 			return nil, fmt.Errorf(
-				"authn registration captcha test answer must be at least %d characters", minimumCaptchaTestAnswer,
+				"authn captcha test answer must be at least %d characters", minimumCaptchaTestAnswer,
 			)
 		}
 		// This belongs in the log of every start. A deployment reaches this

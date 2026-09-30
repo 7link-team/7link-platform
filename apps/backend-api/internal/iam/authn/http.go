@@ -69,6 +69,14 @@ type loginInput struct {
 		LoginName string `json:"login_name" minLength:"1" maxLength:"200"`
 		Password  string `json:"password" minLength:"1" maxLength:"200"`
 		ReturnURL string `json:"return_url,omitempty" maxLength:"2048"`
+		// The challenge is presented on every attempt rather than after some
+		// number of failures, because a progressive challenge would need a
+		// pre-authentication per-address failure counter, and the only counter
+		// this module has is the one shared_security keeps in Redis -- absent
+		// in exactly the deployments least able to absorb credential stuffing.
+		CaptchaType   string `json:"captcha_type" minLength:"1"`
+		CaptchaID     string `json:"captcha_id" minLength:"1"`
+		CaptchaAnswer string `json:"captcha_answer" minLength:"1"`
 	}
 }
 
@@ -387,9 +395,11 @@ type mfaConfirmationOutput struct {
 	Body      respx.Envelope[authnext.MFAConfirmation]
 }
 
-// captchaInvalidCode is the business code of a rejected registration captcha,
-// which shares its 422 with rejected registration data; the registration page
-// tells the two apart by code. The authn module owns 101000-101999.
+// captchaInvalidCode is the business code of a rejected captcha, which shares
+// its 422 with rejected registration data; the registration page tells the two
+// apart by code. Login reports it the same way, so a client can tell "solve the
+// challenge again" from "those credentials are wrong" -- which arrives as 401
+// -- and refresh only the challenge. The authn module owns 101000-101999.
 const captchaInvalidCode = 101001
 
 // RegisterHTTP registers the authn module's HTTP operations.
@@ -438,6 +448,18 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		}), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
+		OperationID: "authn-create-login-captcha", Method: http.MethodPost, DefaultStatus: http.StatusCreated, Path: "/login/captchas",
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
+		Summary:  "Issue a graphic captcha for login", Tags: []string{"authentication"},
+		Errors: []int{http.StatusInternalServerError},
+	}, func(ctx context.Context, _ *captchaInput) (*respx.Body[captchaOutput], error) {
+		out, err := web.IssueCaptcha()
+		if err != nil {
+			return nil, huma.Error500InternalServerError(authni18n.CaptchaUnavailable)
+		}
+		return respx.OK(ctx, *out), nil
+	})
+	authz.RegisterPublic(a, huma.Operation{
 		OperationID: "authn-create-registration-captcha", Method: http.MethodPost, DefaultStatus: http.StatusCreated, Path: "/registrations/captchas",
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
 		Summary:  "Issue a graphic captcha for registration", Tags: []string{"authentication"},
@@ -483,6 +505,9 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	}, func(ctx context.Context, in *loginInput) (*loginOutput, error) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
 			return nil, huma.Error403Forbidden(authni18n.LoginRequestRejected)
+		}
+		if !web.VerifyCaptcha(in.Body.CaptchaType, in.Body.CaptchaID, in.Body.CaptchaAnswer) {
+			return nil, respx.ErrStatus(ctx, http.StatusUnprocessableEntity, captchaInvalidCode, authni18n.CaptchaInvalid, nil)
 		}
 		result, err := web.BeginLogin(ctx, in.Body.LoginName, in.Body.Password, in.Body.ReturnURL)
 		if err != nil {

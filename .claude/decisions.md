@@ -3352,3 +3352,61 @@ is their only API identity (/sessions/{session_id},
 it; rows created before the column get one from the authn module's start-up
 backfill. The column stays NULL-able only for that window.
 Status: IMPLEMENTED (audit D2).
+
+## Login Presents a Captcha on Every Attempt - 2026-09-30
+
+Decision: the password login form presents a captcha unconditionally, the same
+way registration already does, rather than only after N failed attempts or only
+for an IP the limiter has flagged.
+
+Reason: a progressive captcha needs a pre-authentication per-IP failure counter,
+and the only counter this service has is the Redis-backed one in
+`sharedSecurity`, which `newSharedSecurity` returns nil for when Redis is not
+configured. A progressive challenge would therefore be silently absent in
+exactly the deployments that run without Redis, while an unconditional one
+degrades to nothing worse than itself. Per-principal `failed_attempts` cannot
+serve either, because it is only reachable once the login name resolves.
+
+Alternatives Considered: captcha after N password failures (rejected: fails open
+without Redis, and needs a new contract on the login error path for the client
+to learn a challenge is now required); captcha only for an IP over the limiter
+threshold (rejected: same Redis dependency, hardest of the three to test,
+because a test must forge both the address and the counter state).
+
+Tradeoffs: every legitimate login types a challenge. Accepted deliberately for
+an identity console. The existing `captcha.test_answer` escape is what keeps
+automated logins possible, and it is configured, never a constant.
+
+Scope: password login on all four entrances (one shared `PasswordForm`). Does
+not change MFA, passkey, OAuth or federated sign-in.
+Status: ACCEPTED, NOT IMPLEMENTED.
+
+## Development Rate Limiting Runs an In-Process miniredis - 2026-09-30
+
+Decision: the authentication limiter is exercised in development by a debug-only
+flag that starts miniredis inside the serving process and points the module's
+Redis client at it. The flag MUST refuse to start the service outside debug mode.
+
+Reason: the limiter, its middleware and the per-operation `RateLimitMetadata`
+tags are already complete; the only reason nothing is limited locally is that
+`newSharedSecurity` returns nil without Redis, which short-circuits the
+middleware. miniredis is already a module dependency, speaks real RESP over a
+real socket, and therefore exercises the same go-redis path production uses,
+which an in-process limiter would not. `make dev` keeps its zero external
+dependencies.
+
+Alternatives Considered: a Docker Redis in `make dev` (rejected: makes Docker a
+prerequisite of starting the app, which today needs only Go, Node and bun); an
+in-process limiter fallback when Redis is absent (rejected: it changes the
+production default from "no limiting" to "per-replica limiting", which multiplies
+every configured threshold by the replica count and silently loses the global
+bound the config's `global` field promises).
+
+Tradeoffs: a test double is compiled into the release binary. Contained by the
+debug-mode refusal, which must be covered by a test that fails if the guard is
+removed.
+
+Scope: development and the local UAT environment only. No production default
+changes; a real deployment still configures `shared_security` against its own
+Redis, and gets no limiting if it does not.
+Status: ACCEPTED, NOT IMPLEMENTED.

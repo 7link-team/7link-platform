@@ -28,6 +28,7 @@
  */
 
 import { auditPassword } from "./audit-password.mjs"
+import { auditCaptcha } from "./audit-captcha.mjs"
 
 const api = (process.env.IAM_API_URL ?? "http://127.0.0.1:8080").replace(/\/$/, "")
 const consoleURL = (
@@ -150,6 +151,7 @@ async function ensureTenant(ownerPrincipalID) {
       login_name: login,
       password,
       return_url: consoleURL + "/",
+      ...auditCaptcha(),
     }),
   })
   const existing = (await call("/tenants?include_deleted=false")) ?? []

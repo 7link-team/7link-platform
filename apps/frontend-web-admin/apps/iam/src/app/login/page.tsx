@@ -1,5 +1,5 @@
 import { useTranslations, useLocale } from "@workspace/ui/i18n/intl-provider"
-import { useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useState, type FormEvent } from "react"
 import { ArrowLeft, Eye, EyeOff, Fingerprint, ShieldCheck } from "lucide-react"
 import { Link, Navigate, useLocation } from "react-router"
 import { Button } from "@workspace/ui/components/button"
@@ -8,15 +8,19 @@ import { Label } from "@workspace/ui/components/label"
 import { SimpleSelect } from "@workspace/ui/components/select"
 import {
   ApiError,
+  businessCode,
   getTenant,
   iamApi,
   setTenant,
   type AuthnCapabilities,
+  type Captcha,
   type LoginResult,
 } from "../../lib/iam-api"
+import { issueLoginCaptcha } from "../../lib/captcha"
 import { appName, copyrightLine } from "../../lib/branding"
 import {
   devAccountsForEntrance,
+  devLoginCaptchaAnswer,
   prefillDevLoginAccount,
   type DevLoginAccount,
 } from "../../lib/dev-login-accounts"
@@ -53,11 +57,30 @@ export default function LoginPage() {
   const [capabilities, setCapabilities] = useState<AuthnCapabilities | null>(
     null
   )
+  const [captcha, setCaptcha] = useState<Captcha | null>(null)
+  // Filled in development so a persona sign-in, and every browser audit that
+  // drives this form, does not have to read the image. Empty in any build that
+  // is not a development one, and useless against a backend with no configured
+  // test answer.
+  const [answer, setAnswer] = useState(devLoginCaptchaAnswer)
+  const issueCaptcha = useCallback(() => {
+    void issueLoginCaptcha().then(setCaptcha, () =>
+      setError("captchaUnavailable")
+    )
+  }, [])
+  // A challenge is consumed whether or not it was the thing that failed, so a
+  // new one replaces it after every attempt, exactly as registration does.
+  const refreshCaptcha = useCallback(() => {
+    setCaptcha(null)
+    setAnswer(devLoginCaptchaAnswer)
+    issueCaptcha()
+  }, [issueCaptcha])
   useEffect(() => {
     void iamApi
       .capabilities()
       .then(setCapabilities, () => setCapabilities(null))
   }, [])
+  useEffect(issueCaptcha, [issueCaptcha])
   if (status === "loading" || status === "error") return <SessionVerification />
   if (status === "authenticated") return <Navigate to={requested} replace />
 
@@ -68,12 +91,21 @@ export default function LoginPage() {
     const data = new FormData(event.currentTarget)
     const devTenantID = String(data.get("dev_tenant_id") ?? "")
     const previousTenantID = devTenantID ? getTenant() : ""
+    if (!captcha) {
+      setBusy(false)
+      return
+    }
     try {
       if (devTenantID) setTenant(devTenantID)
       const result = await login(
         String(data.get("login_name") ?? ""),
         String(data.get("password") ?? ""),
-        `${window.location.origin}${requested}`
+        `${window.location.origin}${requested}`,
+        {
+          type: captcha.type,
+          id: captcha.captcha_id,
+          answer,
+        }
       )
       if (result.status === "mfa_required") {
         if (devTenantID) setTenant(previousTenantID)
@@ -82,6 +114,7 @@ export default function LoginPage() {
     } catch (cause) {
       if (devTenantID) setTenant(previousTenantID)
       setError(t(loginError(cause)))
+      refreshCaptcha()
     } finally {
       setBusy(false)
     }
@@ -156,6 +189,10 @@ export default function LoginPage() {
               onSubmit={submitPassword}
               onPasskey={() => void submitPasskey()}
               capabilities={capabilities}
+              captcha={captcha}
+              captchaAnswer={answer}
+              onCaptchaAnswerChange={setAnswer}
+              onRefreshCaptcha={refreshCaptcha}
             />
           )}
         </div>
@@ -204,6 +241,10 @@ function PasswordForm({
   onSubmit,
   onPasskey,
   capabilities,
+  captcha,
+  captchaAnswer,
+  onCaptchaAnswerChange,
+  onRefreshCaptcha,
 }: {
   busy: boolean
   error: string
@@ -212,15 +253,17 @@ function PasswordForm({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onPasskey: () => void
   capabilities: AuthnCapabilities | null
+  captcha: Captcha | null
+  captchaAnswer: string
+  onCaptchaAnswerChange: (value: string) => void
+  onRefreshCaptcha: () => void
 }) {
   const t = useTranslations("iam")
   const location = useLocation()
   const entry = authEntrance(location.pathname.split("/")[1])
   const selfService = !entry || publicAuthEntrance(entry) !== null
   const accounts = devAccountsForEntrance(entry)
-  const defaultAccount = prefillDevLoginAccount
-    ? accounts[0]
-    : undefined
+  const defaultAccount = prefillDevLoginAccount ? accounts[0] : undefined
   const [selectedAccount, setSelectedAccount] = useState(
     defaultAccount?.id ?? ""
   )
@@ -319,19 +362,54 @@ function PasswordForm({
             )}
           </button>
         </div>
-        {selfService && capabilities?.password_recovery && (
-          <div className="flex justify-end">
-            <Link
-              to={entrancePath(entry, "recover")}
-              className="text-sm font-medium text-primary hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-            >
-              {t("forgotPassword")}
-            </Link>
-          </div>
-        )}
       </div>
+      <div className="space-y-2">
+        <Label htmlFor="login-captcha">{t("captcha")}</Label>
+        <div className="flex items-center gap-2">
+          <Input
+            id="login-captcha"
+            name="captcha_answer"
+            value={captchaAnswer}
+            onChange={(event) => onCaptchaAnswerChange(event.target.value)}
+            autoComplete="off"
+            required
+            maxLength={16}
+            className="flex-1"
+          />
+
+          <button
+            type="button"
+            className="grid h-9 w-[108px] shrink-0 place-items-center overflow-hidden rounded-md border border-border/70 bg-muted/40"
+            onClick={onRefreshCaptcha}
+            aria-label={t("refreshCaptcha")}
+            title={t("anotherCaptcha")}
+          >
+            {captcha ? (
+              <img
+                src={captcha.image_base64}
+                alt={t("captcha")}
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                {t("loading")}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+      {selfService && capabilities?.password_recovery && (
+        <div className="flex justify-end">
+          <Link
+            to={entrancePath(entry, "recover")}
+            className="text-sm font-medium text-primary hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            {t("forgotPassword")}
+          </Link>
+        </div>
+      )}
       <FormError error={error} />
-      <Button type="submit" className="w-full" disabled={busy}>
+      <Button type="submit" className="w-full" disabled={busy || !captcha}>
         {busy ? t("verifying") : t("signIn")}
       </Button>
       {capabilities?.passkey && (
@@ -439,7 +517,12 @@ function FormError({ error }: { error: string }) {
 }
 
 function loginError(cause: unknown): string {
-  return cause instanceof ApiError && cause.status === 401
-    ? "invalidCredentials"
-    : "identityUnavailable"
+  if (!(cause instanceof ApiError)) return "identityUnavailable"
+  if (cause.status === 401) return "invalidCredentials"
+  // A rejected challenge arrives as 422 with its own code. Without this it
+  // would read as "identity unavailable" and send the person away from a form
+  // that only needed the image typed again.
+  if (cause.businessCode === businessCode.captchaInvalid)
+    return "invalidCaptcha"
+  return "identityUnavailable"
 }

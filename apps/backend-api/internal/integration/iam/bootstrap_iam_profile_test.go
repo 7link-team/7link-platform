@@ -200,6 +200,7 @@ func TestComposedIAMProfileFieldPolicies(t *testing.T) {
 			assert.Equal(t, f.requesterB.Email, decodeBody[map[string]any](t, response)["email"])
 			response = f.request(t, http.MethodPost, "/login", 0, "", map[string]any{
 				"login_name": f.requesterB.LoginName, "password": "correct horse battery staple",
+				"captcha_type": "text", "captcha_id": "test", "captcha_answer": integrationCaptchaAnswer,
 			}, map[string]string{"Origin": "https://app.example.test"})
 			requireStatus(t, http.StatusCreated, response)
 			headers := map[string]string{"Cookie": response.Cookies[0].String()}

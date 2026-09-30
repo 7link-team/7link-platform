@@ -4,6 +4,7 @@ import { mkdirSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
 import { auditPassword } from "../scripts/audit-password.mjs"
+import { auditCaptcha } from "../scripts/audit-captcha.mjs"
 
 const baseURL = (
   process.env.IAM_CONSOLE_URL ?? "http://localhost:8091"
@@ -69,6 +70,7 @@ async function fits(page) {
 const errors = []
 try {
   await ok(admin, "/login", "POST", {
+    ...auditCaptcha(),
     login_name: process.env.IAM_BROWSER_LOGIN ?? "admin@example.test",
     password: auditPassword(),
     return_url: baseURL + "/",

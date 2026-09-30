@@ -383,7 +383,8 @@ try {
           issuer: apiURL,
           signing_key_file: join(directory, "signing-key"),
           mfa: { encryption_key_file: join(directory, "mfa-key") },
-          registration: { enabled: true, captcha: { test_answer: "12345678" } },
+          registration: { enabled: true },
+          captcha: { test_answer: "12345678" },
           notification: { url: notificationURL, poll_interval: "100ms" },
           email_verification: {
             enabled: true,

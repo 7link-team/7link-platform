@@ -533,7 +533,7 @@ For multiple replicas, configure `authn.shared_security.redis_url_file` with a
 private file containing a Redis 6.2+ URL (`rediss://` for TLS). All replicas must
 use the same database and deployment-specific `namespace`. Text, slide and click
 captcha answers expire after five minutes and are atomically consumed even on
-an incorrect answer. Shared mode rejects `registration.captcha.test_answer`.
+an incorrect answer. Shared mode rejects `captcha.test_answer`.
 
 `failure_policy` must explicitly be `closed` (503 on limiter storage outage) or
 `open` (continue requests and log a warning); neither is silently chosen. Captcha

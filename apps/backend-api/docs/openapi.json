@@ -9495,6 +9495,18 @@
       "LoginInputBody": {
         "additionalProperties": false,
         "properties": {
+          "captcha_answer": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "captcha_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "captcha_type": {
+            "minLength": 1,
+            "type": "string"
+          },
           "login_name": {
             "maxLength": 200,
             "minLength": 1,
@@ -9512,7 +9524,10 @@
         },
         "required": [
           "login_name",
-          "password"
+          "password",
+          "captcha_type",
+          "captcha_id",
+          "captcha_answer"
         ],
         "type": "object"
       },
@@ -18757,6 +18772,65 @@
           }
         },
         "summary": "Log in with a local username and password",
+        "tags": [
+          "login"
+        ]
+      }
+    },
+    "/login/captchas": {
+      "post": {
+        "operationId": "authn-create-login-captcha",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeCaptchaOutput"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication shared storage unavailable"
+          }
+        },
+        "summary": "Issue a graphic captcha for login",
         "tags": [
           "login"
         ]

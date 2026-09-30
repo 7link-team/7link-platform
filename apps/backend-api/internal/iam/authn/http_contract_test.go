@@ -34,6 +34,7 @@ authn-login-options|GET|/login/options
 authn-create-registration-captcha|POST|/registrations/captchas
 authn-create-email-verification-request|POST|/email-verifications/requests
 authn-create-email-verification|POST|/email-verifications
+authn-create-login-captcha|POST|/login/captchas
 authn-create-passkey-registration-challenge|POST|/principals/{principal_id}/passkey-registration-challenges
 authn-create-passkey-login-options|POST|/login/passkey/options
 authn-verify-passkey-login|POST|/login/passkey/verify
@@ -78,7 +79,7 @@ func TestAuthnRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 41)
+	require.Len(t, got, 42)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -157,7 +158,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, operationIDs, 41)
+	require.Len(t, operationIDs, 42)
 	assert.Equal(t, "session", spec.Components.SecuritySchemes[authz.SessionScheme].Name)
 	for _, path := range []string{"/sessions/{session_id}", "/principals/{principal_id}/passkeys/{passkey_id}"} {
 		name := "session_id"

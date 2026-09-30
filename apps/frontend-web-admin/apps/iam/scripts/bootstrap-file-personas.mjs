@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { auditCaptcha } from "./audit-captcha.mjs"
 
 const apiURL = process.env.IAM_API_URL?.replace(/\/$/u, "")
 const consoleURL = process.env.IAM_CONSOLE_URL?.replace(/\/$/u, "")
@@ -47,6 +48,7 @@ await call("/login", {
     login_name: "admin@example.test",
     password: readFileSync(adminPasswordFile, "utf8").trim(),
     return_url: consoleURL + "/",
+    ...auditCaptcha(),
   },
 })
 

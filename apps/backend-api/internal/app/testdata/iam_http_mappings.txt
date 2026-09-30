@@ -148,6 +148,7 @@ authn-begin-step-up => authn-create-step-up-challenge|POST|/sessions/current/ste
 authn-begin-totp-enrollment => authn-create-totp-enrollment|POST|/principals/{principal_id}/mfa/totp-enrollments
 authn-login-options => authn-login-options|GET|/login/options
 authn-captcha => authn-create-registration-captcha|POST|/registrations/captchas
+authn-login-captcha => authn-create-login-captcha|POST|/login/captchas
 authn-change-password => authn-update-password|PATCH|/principals/{principal_id}/password
 authn-complete-email-verification => authn-create-email-verification|POST|/email-verifications
 authn-complete-password-recovery => authn-create-password-recovery|POST|/password-recoveries

@@ -14,6 +14,7 @@ func TestInvitationCredentialLifecycle(t *testing.T) {
 	harness := newAuthnRepositoryHarness(t, "")
 	key := base64.RawStdEncoding.EncodeToString(make([]byte, 32))
 	service, err := NewWebService(authnext.Config{
+		Captcha: authnext.CaptchaConfig{TestAnswer: testCaptchaAnswer},
 		Enabled: true, Issuer: "https://iam.example.test", SigningKey: key,
 		Web: authnext.WebConfig{
 			Enabled: true, PostLoginURL: "https://app.example.test/home",

@@ -1,14 +1,18 @@
 package authn
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image"
+	_ "image/png"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -138,6 +142,7 @@ func TestAuthenticationHTTPFlow(t *testing.T) {
 	RegisterHTTP(api, web, web)
 
 	login := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
@@ -160,22 +165,26 @@ func TestAuthenticationHTTPFlow(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+cookie).Code)
 
 	assert.Equal(t, http.StatusUnauthorized, api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "wrong password",
 	}, "Origin: https://app.example").Code)
 	// The allowlist admits an origin at or below a path, so the login page may
 	// send somebody back to wherever they were heading without every route
 	// being enumerated in deployment configuration.
 	assert.Equal(t, http.StatusCreated, api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple",
 		"return_url": "https://app.example/tenants/42/members?page=2",
 	}, "Origin: https://app.example").Code)
 	// The origin is still matched exactly, which is the half that makes this an
 	// open-redirect guard rather than a formality.
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple",
 		"return_url": "https://app.example.evil.test/home",
 	}, "Origin: https://app.example").Code)
 	assert.Equal(t, http.StatusForbidden, api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple",
 	}, "Origin: https://evil.example").Code)
 	assert.Equal(t, http.StatusForbidden, api.Delete("/sessions/current", "Cookie: "+cookie, "Origin: https://evil.example").Code)
@@ -183,6 +192,7 @@ func TestAuthenticationHTTPFlow(t *testing.T) {
 	err = db.WithContext(context.Background()).Table("iam_credentials").Where("principal_id = ?", principalID).Update("mfa_required", true).Error
 	require.NoError(t, err)
 	enrollmentLogin := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple",
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusCreated, enrollmentLogin.Code, enrollmentLogin.Body.String())
@@ -197,6 +207,7 @@ func TestSessionHTTPTenantResolutionAndImmediateRevocation(t *testing.T) {
 	_, api := humatest.New(t)
 	RegisterHTTP(api, web, web)
 	login := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple",
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
@@ -260,6 +271,7 @@ func TestRequiredMFAEnrollmentHTTPFlowDoesNotLockOutPrincipal(t *testing.T) {
 	RegisterHTTP(api, web, web)
 
 	login := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple",
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
@@ -297,6 +309,7 @@ func TestRequiredMFAEnrollmentHTTPFlowDoesNotLockOutPrincipal(t *testing.T) {
 	require.NoError(t, json.Unmarshal(confirmation.Body.Bytes(), &confirmationEnvelope))
 	require.NotEmpty(t, confirmationEnvelope.Data.RecoveryCodes)
 	challenge := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple",
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusCreated, challenge.Code, challenge.Body.String())
@@ -325,6 +338,7 @@ func TestAuthenticationSecurityCenterHTTPFlow(t *testing.T) {
 	require.NoError(t, err)
 	login := func(password string) string {
 		response := api.Post("/login", map[string]any{
+			"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 			"login_name": "alice", "password": password, "return_url": "https://app.example/",
 		}, "Origin: https://app.example")
 		require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
@@ -541,6 +555,7 @@ func TestEmailVerificationHTTPFlow(t *testing.T) {
 	RegisterHTTP(api, web, web)
 
 	login := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
@@ -691,6 +706,7 @@ func TestAuthenticationMFAHTTPFlow(t *testing.T) {
 	RegisterHTTP(api, web, web)
 
 	login := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
@@ -722,6 +738,7 @@ func TestAuthenticationMFAHTTPFlow(t *testing.T) {
 	require.Len(t, confirmationEnvelope.Data.RecoveryCodes, 10)
 
 	challengeResponse := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusCreated, challengeResponse.Code, challengeResponse.Body.String())
@@ -808,6 +825,7 @@ func TestMFAAuditFailureHTTPRollsBackEnrollment(t *testing.T) {
 	RegisterHTTP(api, service, service)
 
 	login := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple",
 	}, "Origin: https://app.example.test")
 	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
@@ -830,6 +848,7 @@ func TestAuthenticationPasskeyHTTPContract(t *testing.T) {
 	_, api := humatest.New(t)
 	RegisterHTTP(api, web, web)
 	login := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
@@ -936,6 +955,7 @@ func TestAuthenticationStepUpHTTPContract(t *testing.T) {
 	RegisterHTTP(api, web, web)
 
 	login := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/",
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusCreated, login.Code, login.Body.String())
@@ -1020,6 +1040,7 @@ func TestAuthenticationHTTPUnavailableAndDisabledWeb(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, sqlDB.Close())
 	assert.Equal(t, http.StatusInternalServerError, api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
 		"login_name": "alice", "password": "correct horse battery staple",
 	}, "Origin: https://app.example").Code)
 	assert.Equal(t, http.StatusInternalServerError, api.Post("/login/passkey/options", map[string]any{
@@ -1104,6 +1125,7 @@ func newAuthenticationService(t *testing.T) (*gorm.DB, *Service, string) {
 		seed[index] = byte(index + 1)
 	}
 	service, err := NewWebService(authnext.Config{
+		Captcha: authnext.CaptchaConfig{TestAnswer: testCaptchaAnswer},
 		Enabled: true, Issuer: "https://iam.example", Audience: []string{"api"},
 		SigningKey: base64.RawStdEncoding.EncodeToString(seed), AccessTokenTTL: time.Hour,
 		MFA:     authnext.MFAConfig{EncryptionKey: base64.RawStdEncoding.EncodeToString(seed)},
@@ -1132,6 +1154,7 @@ func newRecoveryAuthenticationService(t *testing.T, notificationURL string, regi
 		options = append(options, WithRegistrationPrincipalCreator(registrationCreatorForHarness(harness)))
 	}
 	service, err := NewWebService(authnext.Config{
+		Captcha: authnext.CaptchaConfig{TestAnswer: testCaptchaAnswer},
 		Enabled: true, Issuer: "https://iam.example", Audience: []string{"api"},
 		SigningKey: base64.RawStdEncoding.EncodeToString(seed), AccessTokenTTL: time.Hour,
 		MFA:               authnext.MFAConfig{EncryptionKey: base64.RawStdEncoding.EncodeToString(seed)},
@@ -1163,4 +1186,64 @@ func httpPrincipalID(t *testing.T, service *Service, cookie string) string {
 	claims, err := service.Authenticate(t.Context(), "", cookie)
 	require.NoError(t, err)
 	return claims.PrincipalID.String()
+}
+
+// Login presents a challenge on every attempt, so the challenge is part of the
+// login contract rather than a step some deployments add. These assertions are
+// what fails if the verification is dropped from the handler, or if the issuer
+// stops being reachable without a session.
+func TestLoginRequiresASolvedCaptcha(t *testing.T) {
+	service, harness := newLocalService(t)
+	bootstrapLocalPrincipal(t, harness, "alice", "correct horse battery staple")
+	_, api := humatest.New(t)
+	RegisterHTTP(api, service, service)
+
+	issued := api.Post("/login/captchas", "Origin: https://app.example.test")
+	require.Equal(t, http.StatusCreated, issued.Code, issued.Body.String())
+	var challenge struct {
+		Data captchaOutput `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(issued.Body.Bytes(), &challenge))
+	assert.Equal(t, "text", challenge.Data.Type)
+	assert.NotEmpty(t, challenge.Data.CaptchaID)
+	assert.NotEmpty(t, challenge.Data.ImageBase64)
+	// The image arrives at close to the size the form shows it at, so the
+	// characters are not shrunk into illegibility on the way to the screen.
+	decoded, err := base64.StdEncoding.DecodeString(
+		challenge.Data.ImageBase64[strings.Index(challenge.Data.ImageBase64, ",")+1:])
+	require.NoError(t, err)
+	bounds, _, err := image.Decode(bytes.NewReader(decoded))
+	require.NoError(t, err)
+	assert.Equal(t, 132, bounds.Bounds().Dx())
+	assert.Equal(t, 44, bounds.Bounds().Dy())
+
+	// A wrong answer is refused before the password is ever looked at, and it is
+	// refused by business code, so a client can tell it apart from a rejected
+	// credential -- which is a 401 -- and refresh only the challenge.
+	wrong := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": challenge.Data.CaptchaID, "captcha_answer": "not-the-answer",
+		"login_name": "alice", "password": "correct horse battery staple",
+	}, "Origin: https://app.example.test")
+	require.Equal(t, http.StatusUnprocessableEntity, wrong.Code, wrong.Body.String())
+	assert.Contains(t, wrong.Body.String(), strconv.Itoa(captchaInvalidCode))
+
+	// An omitted challenge does not fall through as an unchallenged login.
+	missing := api.Post("/login", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple",
+	}, "Origin: https://app.example.test")
+	assert.NotEqual(t, http.StatusCreated, missing.Code, missing.Body.String())
+
+	// The configured test answer is what lets an automated caller through, and
+	// a correct challenge still has to meet a correct password.
+	badPassword := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
+		"login_name": "alice", "password": "wrong password",
+	}, "Origin: https://app.example.test")
+	assert.Equal(t, http.StatusUnauthorized, badPassword.Code, badPassword.Body.String())
+
+	accepted := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
+		"login_name": "alice", "password": "correct horse battery staple",
+	}, "Origin: https://app.example.test")
+	require.Equal(t, http.StatusCreated, accepted.Code, accepted.Body.String())
 }

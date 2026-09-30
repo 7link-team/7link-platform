@@ -1,4 +1,37 @@
 # Task State
+## Login Captcha, Local Rate Limiting, Tenant Boundary - 2026-09-30 - IN PROGRESS
+## Objective  用户批准三件一起做：切换器只列成员租户(P2a)、登录加验证码+本地限流真生效(P1)、租户目录服务端搜索分页(P2b)
+## Current Phase          IMPLEMENTATION
+## Current Step           P1a 已完成待提交；下一步 P1b 内嵌 miniredis
+## Important Decisions
+- 见 decisions.md 2026-09-30 两条：验证码每次登录都出(非渐进式，因渐进式依赖 Redis，无 Redis 部署会静默失效)；
+  限流用 debug-only 开关起进程内 miniredis(走真实 RESP，生产代码路径不变)
+- 配置键按用户选的 A 方案：authn.registration.captcha -> authn.captcha，类型 RegistrationCaptchaConfig -> CaptchaConfig
+- 账号视角已存在且与切换器互斥(layout.tsx `{!accountView && ...}`)，这就是超管看任意租户的正路
+## Confirmed Constraints
+- 验证码无条件出，不做渐进式
+- miniredis 开关必须拒绝在非 debug 启用，且该拒绝必须有测试守住
+- 切换器的实体那半已正确(按租户限定)，不动
+- 生成物不手改：docs/openapi.json、src/lib/api-schema.ts 走各自生成器
+- /tenants 的 limit<=200 是后端刻意的界，修法是前端别再突破它，不是把界调大
+## Completed Work
+- P2a 切换器边界 (4498273)：删掉 myTenants()+tenants() 合并，platformTenantAccess 改由权限推导；
+  浏览器实测超管只见 Development，非成员租户 Boundary Check 不出现，目录页仍可见两者
+- P1a 登录验证码(待提交)：配置提升、POST /login/captchas、登录校验复用业务码 101001、
+  金文件+OpenAPI+前端类型重生成、三语言文案去「注册」化、PasswordForm 加字段、
+  dev/UAT 两套环境接上 test answer、10 个审计登录点注入、验证码画布 220x64 -> 132x44
+- 顺带修(用户在验收中发现)：退出登录接口失败会阻断本地退出 —— 三层都改成本地无条件清理
+- 顺带修：验证码插入后把「忘记密码」夹在两个输入框之间 —— 移到字段之后
+## Known Issues / Risks
+- 30 个浏览器审计未实跑(耗时)，靠 dev 预填 VITE_DEV_LOGIN_CAPTCHA_ANSWER 覆盖表单登录，
+  已把该预填与 --demo-accounts 解耦，但未端到端验证
+## Verification           Build: PASS | 后端 authn/app/integration: PASS | 前端 typecheck/lint/test(162): PASS | openapi-check: PASS | make ci: NOT_RUN
+- 变异验证：登录验证码校验摘掉 -> 新测试红；切换器合并加回 -> layout 测试红；logout 的 finally 改回 -> 新测试红
+## Next Action            P1b：加 --authn.shared_security 的 debug-only 内嵌 miniredis 开关(含拒绝非 debug 的测试)，
+                          接进 dev.mjs，实测 /login 超阈值返回 429 + Retry-After；然后 P2b
+## Last Checkpoint        2026-09-30 P1a 后端与前端门禁全绿，待提交
+
+
 ## make ci Speedup - 2026-09-29 - DELIVERED
 ## Objective  缩短 make ci 墙钟，判定强度与稳定性零损失（用户硬约束：能证明无损才做，证明不了就不做）
 ## Current Phase          ACCEPTANCE

@@ -153,7 +153,8 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 	require.NoError(t, db.Exec("INSERT INTO iam_tenant_members (tenant_id,principal_id,status) VALUES (101,?,'active')", subject).Error)
 	_, api := humatest.New(t)
 	RegisterHTTP(api, service, service)
-	login := api.Post("/login", map[string]any{"login_name": "alice", "password": "correct horse battery staple"}, "Origin: https://app.example")
+	login := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer, "login_name": "alice", "password": "correct horse battery staple"}, "Origin: https://app.example")
 	require.Equal(t, http.StatusCreated, login.Code)
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	read := func(path, header string) map[string]any {

@@ -89,6 +89,7 @@ audit-set-retention => tenant|audit_event_manage
 audit-sign-root => tenant|audit_event_manage
 audit-verify-integrity => tenant|audit_event_view
 authn-login-options => public
+authn-create-login-captcha => public
 authn-create-registration-captcha => public
 authn-create-email-verification => public
 authn-create-email-verification-request => authenticated

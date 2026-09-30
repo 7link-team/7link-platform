@@ -180,7 +180,8 @@ func TestPasswordRecoveryDoesNotEnumeratePrincipals(t *testing.T) {
 	assert.NoError(t, service.BeginPasswordRecovery(t.Context(), "missing@example.test"))
 	assert.ErrorIs(t, service.BeginPasswordRecovery(t.Context(), ""), authnext.ErrInvalidRecovery)
 
-	disabled, err := NewWebService(authnext.Config{}, nil)
+	disabled, err := NewWebService(authnext.Config{
+		Captcha: authnext.CaptchaConfig{TestAnswer: testCaptchaAnswer}}, nil)
 	require.NoError(t, err)
 	assert.ErrorIs(t, disabled.BeginPasswordRecovery(t.Context(), "alice"), authnext.ErrRecoveryDisabled)
 }

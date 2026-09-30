@@ -65,7 +65,7 @@ func TestRandomTokenRejectsInvalidSize(t *testing.T) {
 }
 
 func TestIssueCaptchaProducesEverySupportedChallengeShape(t *testing.T) {
-	offering := newTestOffering(t, authnext.RegistrationCaptchaConfig{
+	offering := newTestOffering(t, authnext.CaptchaConfig{
 		Kinds: []string{"text", "slide", "click"},
 	})
 	seen := make(map[string]bool, 3)
@@ -125,7 +125,7 @@ func TestVerifyInteractiveCaptchaRejectsMalformedAndConsumesValidAnswers(t *test
 
 // newTestOffering builds an offering the way NewWebService does, so these tests
 // exercise the parse rather than a struct literal that skipped it.
-func newTestOffering(t *testing.T, cfg authnext.RegistrationCaptchaConfig) *captchaOffering {
+func newTestOffering(t *testing.T, cfg authnext.CaptchaConfig) *captchaOffering {
 	t.Helper()
 	offering, err := parseCaptchaOffering(cfg)
 	require.NoError(t, err)
@@ -137,7 +137,7 @@ func newTestOffering(t *testing.T, cfg authnext.RegistrationCaptchaConfig) *capt
 // meant a third of the people registering met a slider and a third met a
 // click-the-characters grid, neither of which everyone can complete.
 func TestAnUnconfiguredDeploymentOffersTheTextChallengeOnly(t *testing.T) {
-	offering := newTestOffering(t, authnext.RegistrationCaptchaConfig{})
+	offering := newTestOffering(t, authnext.CaptchaConfig{})
 	require.Equal(t, []captchaKind{captchaText}, offering.kinds)
 
 	for range 20 {
@@ -152,7 +152,7 @@ func TestAnUnconfiguredDeploymentOffersTheTextChallengeOnly(t *testing.T) {
 // available to a deployment that wants them, without their being what an
 // unconfigured one hands out.
 func TestADeploymentPresentsWhateverItConfigured(t *testing.T) {
-	offering := newTestOffering(t, authnext.RegistrationCaptchaConfig{
+	offering := newTestOffering(t, authnext.CaptchaConfig{
 		Kinds: []string{" SLIDE ", "", "slide", "click"},
 	})
 
@@ -166,7 +166,7 @@ func TestADeploymentPresentsWhateverItConfigured(t *testing.T) {
 // names the kind in their own request, so a kind left out of issuing alone
 // would still be reachable by asking for it.
 func TestAKindTheDeploymentDoesNotOfferCannotBeAnswered(t *testing.T) {
-	offering := newTestOffering(t, authnext.RegistrationCaptchaConfig{Kinds: []string{"text"}})
+	offering := newTestOffering(t, authnext.CaptchaConfig{Kinds: []string{"text"}})
 
 	storeInteractiveAnswer("unoffered-slide", "S:100:50")
 	assert.False(t, offering.verify("slide", "unoffered-slide", "104"))
@@ -181,7 +181,7 @@ func TestAKindTheDeploymentDoesNotOfferCannotBeAnswered(t *testing.T) {
 // one, and only its outcome is known ahead of time.
 func TestAConfiguredTestAnswerLetsAScriptThrough(t *testing.T) {
 	const configured = "not-a-real-captcha-answer"
-	offering := newTestOffering(t, authnext.RegistrationCaptchaConfig{TestAnswer: configured})
+	offering := newTestOffering(t, authnext.CaptchaConfig{TestAnswer: configured})
 
 	id, _, solved, err := imageCaptcha.Generate()
 	require.NoError(t, err)
@@ -206,7 +206,7 @@ func TestAConfiguredTestAnswerLetsAScriptThrough(t *testing.T) {
 // every deployment that never opts in is relying on, including the ones that
 // never learn the mode exists.
 func TestWithoutAConfiguredTestAnswerNothingStandsInForSolving(t *testing.T) {
-	offering := newTestOffering(t, authnext.RegistrationCaptchaConfig{})
+	offering := newTestOffering(t, authnext.CaptchaConfig{})
 
 	for _, guess := range []string{"", "test", "not-a-real-captcha", "not-a-real-captcha-answer"} {
 		id, _, _, err := imageCaptcha.Generate()
@@ -219,14 +219,14 @@ func TestWithoutAConfiguredTestAnswerNothingStandsInForSolving(t *testing.T) {
 // deployment at startup, which is the only moment an operator is still watching.
 func TestCaptchaConfigurationThatCannotMeanWhatItLooksLikeIsRefused(t *testing.T) {
 	t.Run("a kind nothing here builds", func(t *testing.T) {
-		_, err := parseCaptchaOffering(authnext.RegistrationCaptchaConfig{
+		_, err := parseCaptchaOffering(authnext.CaptchaConfig{
 			Kinds: []string{"text", "turnstile"},
 		})
 		require.ErrorContains(t, err, "turnstile",
 			"the operator has to be told which entry to fix")
 	})
 	t.Run("a test answer short enough to be reached by trying", func(t *testing.T) {
-		_, err := parseCaptchaOffering(authnext.RegistrationCaptchaConfig{TestAnswer: "1234"})
+		_, err := parseCaptchaOffering(authnext.CaptchaConfig{TestAnswer: "1234"})
 		require.ErrorContains(t, err, "at least 8 characters")
 	})
 }
@@ -239,3 +239,8 @@ func TestAChallengeShapeNothingBuildsIsAnErrorRatherThanEmptyOutput(t *testing.T
 	_, err := issueCaptchaOf(captchaKind("turnstile"))
 	require.ErrorContains(t, err, "turnstile")
 }
+
+// testCaptchaAnswer is configured as every test service's captcha test answer,
+// so a request that must carry a solved challenge can do so without an image.
+// It is deliberately longer than minimumCaptchaTestAnswer.
+const testCaptchaAnswer = "captcha-test-answer"

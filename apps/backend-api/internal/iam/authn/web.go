@@ -131,7 +131,7 @@ func NewWebService(cfg authnext.Config, repository *Repository, options ...WebOp
 	// that misconfigures it is told at startup either way. A challenge kind
 	// nobody can spell is a typo whenever it is discovered, and discovering it
 	// at somebody's first attempt to register discovers it through them.
-	captcha, err := parseCaptchaOffering(cfg.Registration.Captcha)
+	captcha, err := parseCaptchaOffering(cfg.Captcha)
 	if err != nil {
 		return nil, err
 	}

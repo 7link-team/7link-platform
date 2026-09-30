@@ -32,8 +32,8 @@
   "invalid_registration": "注册信息无效，请填写有效邮箱、至少 12 个字符的密码，以及不超过 128 个字符的显示名称。",
   "registration_unavailable": "自助注册当前不可用，请联系管理员获取访问权限或稍后重试。",
   "passkey_attestation_rejected": "Passkey 证明未通过已配置的认证器策略校验。请使用受信任的安全密钥或联系管理员。",
-  "captcha_unavailable": "注册验证当前不可用，请稍后重试。",
-  "captcha_invalid": "注册验证无效或已过期，请获取新的验证内容后重试。",
+  "captcha_unavailable": "验证码当前不可用，请稍后重试。",
+  "captcha_invalid": "验证码无效或已过期，请获取新的验证码后重试。",
   "registration_conflict": "注册请求与当前账号状态冲突，请尝试登录、恢复账号或联系管理员。",
   "invalid_personal_token": "个人访问令牌请求无效，请检查令牌名称、权限和有效期后重试。"
 }
