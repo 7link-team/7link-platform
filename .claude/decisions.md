@@ -75,9 +75,23 @@ Scope and constraints that future work must not reverse without approval:
   the catalog.
 
 Status: implemented; 24 connectors. Alipay, WeCom, WeChat Mini Program, Steam,
-Dropbox, Notion and VK remain unimplemented, each one `profileFlow` away. The
-catalog's endpoints and field names have not been verified against live
-providers.
+Dropbox, Notion and VK remain unimplemented, each one `profileFlow` away.
+
+Endpoint verification (2026-10-03, by unauthenticated probe from the development
+sandbox): seventeen connectors answer as the catalog expects -- github, gitlab,
+gitee, bitbucket, spotify, naver, wechat, qq, weibo, baidu, dingtalk, feishu,
+lark, amazon, figma, yandex, douyin. A token endpoint was POSTed an empty body
+and had to answer an OAuth-shaped error rather than 404. Four parameter choices
+were confirmed from those answers: wechat names its credential `appid` and takes
+the profile token as a query parameter, dingtalk names it `clientId`, douyin
+nests its payload under `data`, and feishu and lark both serve the v2 token
+endpoint.
+
+Seven could not be reached from this sandbox and remain unverified: discord,
+facebook, x, kakao, instagram, coinbase, reddit. Instagram is the one to check
+first -- the Basic Display API it uses was retired in favour of Instagram Login,
+so those endpoints may be dead. Field names for the reachable connectors that
+need a token to read a profile are still unverified; only their endpoints are.
 
 ## D93 - Demo Entrances Only Show Matching Personas (2026-09-27)
 

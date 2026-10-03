@@ -134,8 +134,8 @@ make test-performance: NOT_RUN(待 CI 结束)
 推送后仍待办(不在本次范围):
 1. 桶 3 的 alipay(RSA2 签名信封)/ wecom(应用 token 与人分开认证)—— 本环境无法对真实
    provider 验证(无外网、需商户私钥与企业凭证),故未纳入本次提交;扩展点已由 qq 证明可用。
-2. 对照官方文档核对 24 行 connector 的 endpoint 与字段名,优先
-   figma / coinbase / instagram / douyin(信心较低)。
+2. 核对剩余 7 个不可达 connector 的 endpoint 与字段名,**优先 instagram**(疑似已弃用);
+   以及可达 connector 的字段名(需真实 token 才能读 profile)。
 
 ## Last Checkpoint
 2026-10-03 全部可执行门禁通过,等验收
