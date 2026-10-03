@@ -1,5 +1,84 @@
 # Decisions
 
+## D95 - Irreversible Migration Milestones Refuse Before Rolling Back (2026-10-03)
+
+Decision: `module.MigrationMilestone` gains `Irreversible bool`, and the
+orchestrator refuses any downward request that would cross an applied
+irreversible milestone before it touches the database. The refusal applies to
+both `down-to` and the plain one-milestone `down`. federation declares it on
+`binding-trust` (version 7). The per-dialect `RAISE` inside that migration stays
+as the backstop for anyone driving goose directly.
+
+Reason: irreversibility used to live only inside the migration's own down
+section, so the orchestrator could not know about it in advance. Rolling back
+proceeds one version at a time, so the moment a reversible migration existed
+above binding trust, a refused `down-to 6` first undid that migration and then
+failed - leaving the database between two milestones. An operator meets that
+state while already recovering from something else.
+
+Alternatives considered: (a) leave the behaviour and assert the partial state in
+tests - rejected, it documents a hazard instead of removing it; (b) make every
+migration above an irreversible one also irreversible - rejected, it spreads a
+constraint that belongs to one milestone; (c) wrap the whole rollback in one
+transaction - rejected, DDL transactionality differs per engine and MySQL cannot
+deliver it.
+
+Tradeoffs: a module must now declare irreversibility in two places, the
+milestone and its SQL. The duplication is deliberate: the declaration is what
+makes the refusal early, the SQL is what still protects a direct goose run.
+
+Scope: `pkg/module/module.go`, `internal/app/migration.go`,
+`internal/iam/federation/migrate.go`. Verified by
+`TestIrreversibleMilestoneRefusesBeforeRollingBack` and
+`TestIrreversibleMilestoneDoesNotBlockWhatWasNeverApplied` over all three
+engines, both mutation-checked: removing the guard turns them red.
+
+Status: implemented.
+
+## D94 - Social Sign-In Is One Provider Type With a Connector Table (2026-10-03)
+
+Decision: social sign-in is a third federation provider type, `oauth2`. A
+connector is a row in a compiled-in table declaring endpoints, parameter names
+and dotted claim paths; a provider whose shape the table cannot express supplies
+a `profileFlow` instead (QQ is the first). The connector key is stored in the
+existing `issuer` column, so no column or table was added. Providers that
+publish OpenID Connect discovery stay on the `oidc` type.
+
+Reason: what differs between GitHub, Discord and Feishu is a few URLs and JSON
+field names, not the protocol, so it is data. What differs for QQ, Alipay and
+WeCom is the shape of the exchange, so that is code. Keeping endpoints compiled
+in means a tenant administrator cannot repoint a provider's profile endpoint at
+a host they control while keeping the client ID that existing identity links
+trust; storing the key in `issuer` makes it part of the provider's security
+fingerprint for free, so changing it distrusts those links.
+
+Alternatives considered: (a) one package per provider, as Casdoor and Logto do -
+rejected, roughly 7000 lines to express 400 lines of data; (b) endpoints as
+tenant configuration - rejected on the takeover path above; (c) routing
+OIDC-capable providers through this path for uniformity - rejected, it trades a
+verified ID token and an authentication time for an unsigned profile read.
+
+Tradeoffs: a provider's endpoints now change only by changing code, so an API
+version bump is a code change. That is accepted because it is reviewable, and
+because the alternative is the takeover path.
+
+Scope and constraints that future work must not reverse without approval:
+- A social provider MUST NOT serve as a re-authentication proof. Plain OAuth 2.0
+  carries no authentication time and social providers routinely answer from an
+  existing session. `StartIdentityOperation` and `VerifyIdentityOperation` both
+  refuse it, and `AuthTime` MUST NOT be fabricated to pass the freshness window.
+  Linking is permitted; its freshness rests on the single-use authorization code,
+  PKCE and the replay claim.
+- A connector that states no email address cannot provision an account. Eight of
+  the twenty-four are in that position and a test freezes the list.
+- The outbound User-Agent is read from the runtime identity, never written into
+  the catalog.
+
+Status: implemented; 24 connectors. Alipay, WeCom, WeChat Mini Program, Steam,
+Dropbox, Notion and VK remain unimplemented, each one `profileFlow` away. The
+catalog's endpoints and field names have not been verified against live
+providers.
+
 ## D93 - Demo Entrances Only Show Matching Personas (2026-09-27)
 
 User requires normal login pages to show only their own entrance. Entrance tabs
