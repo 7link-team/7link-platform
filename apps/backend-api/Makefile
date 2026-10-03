@@ -106,6 +106,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/internal/iam/authn \
 	7link.com/platform/internal/iam/core \
 	7link.com/platform/internal/iam/federation \
+	7link.com/platform/internal/iam/webhook \
 	7link.com/platform/internal/iam/governance \
 	7link.com/platform/internal/iam/identity \
 	7link.com/platform/internal/iam/oauth \

@@ -240,3 +240,48 @@ func applyFilter(db *gorm.DB, filter Filter) *gorm.DB {
 	}
 	return db
 }
+
+// readStream selects one tenant's events after a sequence, naming only the
+// columns a consumer outside this module may see. The three that hold a person's
+// data -- detail, ip_address and user_agent -- are absent from the Select rather
+// than dropped afterwards, so there is no copy of them to forget to discard.
+func (r *Repository) readStream(ctx context.Context, tenantID guid.ID, afterSequence int64, limit int) ([]StreamEvent, error) {
+	db := r.writer()
+	if db == nil {
+		return nil, errRepositoryUnavailable
+	}
+	type streamRow struct {
+		ID          guid.ID
+		TenantID    guid.ID
+		Sequence    int64
+		EventType   string
+		TargetType  string
+		TargetID    *guid.ID
+		PrincipalID *guid.ID
+		Outcome     string
+		CreatedAt   time.Time
+	}
+	rows := []streamRow{}
+	if err := db.WithContext(ctx).Table(r.tables(db).Events.TableName()).
+		Select("id, tenant_id, sequence, event_type, target_type, target_id, principal_id, outcome, created_at").
+		Where("tenant_id = ? AND sequence > ?", tenantID, afterSequence).
+		Order("sequence").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("read audit event stream: %w", err)
+	}
+	events := make([]StreamEvent, 0, len(rows))
+	for _, row := range rows {
+		event := StreamEvent{
+			ID: row.ID, TenantID: row.TenantID, Sequence: row.Sequence,
+			EventType: row.EventType, TargetType: row.TargetType,
+			Outcome: row.Outcome, OccurredAt: row.CreatedAt,
+		}
+		if row.TargetID != nil {
+			event.TargetID = *row.TargetID
+		}
+		if row.PrincipalID != nil {
+			event.PrincipalID = *row.PrincipalID
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}

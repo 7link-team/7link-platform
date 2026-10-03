@@ -1,5 +1,49 @@
 # Decisions
 
+## D97 - Webhooks Follow The Audit Chain Rather Than Being Told (2026-10-04)
+
+Decision: outbound event delivery is a module that follows each tenant's audit
+chain with a cursor, not a `Publisher` capability other modules call. `audit`
+exposes `EventStreamReader`, whose projection selects neither `detail` nor
+`ip_address` nor `user_agent`; `webhook` keeps one `after_sequence` per
+subscription and advances it in the same transaction that records the work owed.
+
+Reason: the chain is already the complete, ordered, durable record of what
+happened, written at thirty call sites. A follower with a cursor therefore cannot
+miss an event and no other module has to remember to announce one -- which is the
+failure mode of per-call-site instrumentation, where the event added next year is
+the one nobody publishes. Uniqueness over (subscription, event) makes a fan-out
+pass that is interrupted safe to simply run again.
+
+What may leave is decided in the module that owns the data. The three columns
+holding a person's data are absent from the projection's Select rather than
+dropped afterwards, so there is no copy for a consumer to forward by mistake. A
+receiver is an endpoint somebody else operates: a deployment honoring a
+withdrawal can erase what it holds, not what it has already handed out.
+
+Alternatives considered: (a) a `Publisher` capability invoked beside each audit
+append - rejected, it doubles the instrumentation and the second copy drifts;
+(b) letting webhook read the audit table directly - rejected, the module that
+owns a table decides what leaves it; (c) sending the audit detail and asking
+receivers to discard it - rejected, that is a promise nobody can keep.
+
+Tradeoffs: a receiver gets identifiers and outcomes, not names, so an integration
+that wants detail must call back for it and be authorized to. Delivery is as
+timely as the poll interval rather than immediate.
+
+Scope and constraints future work must not reverse without approval:
+- `audit.StreamEvent` MUST NOT gain a field holding personal data. A test asserts
+  the payload a receiver sees.
+- A subscription starts at the tenant's current head, not at zero: registering an
+  endpoint asks to hear what happens next, not to receive the whole history.
+- Signature headers are generically named; the deployment identifies itself from
+  its runtime identity, never from a literal in the catalog or the source.
+
+Status: implemented. `internal/iam/webhook`, 2 tables, 5 operations, 90.4%
+coverage. Adding the module required registering it in seven frozen inventories,
+one of which (the permission catalog) would otherwise have panicked at startup
+rather than failed a test.
+
 ## D95 - Irreversible Migration Milestones Refuse Before Rolling Back (2026-10-03)
 
 Decision: `module.MigrationMilestone` gains `Irreversible bool`, and the

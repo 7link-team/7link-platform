@@ -17,6 +17,7 @@ import (
 	"7link.com/platform/internal/iam/oauth"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
+	"7link.com/platform/internal/iam/webhook"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
@@ -33,7 +34,7 @@ type iamMigrationContract struct {
 
 func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 	contracts := iamMigrationContracts()
-	owners := make(map[string]string, 73)
+	owners := make(map[string]string, 75)
 	versionTables := make(map[string]string, len(contracts))
 	for _, contract := range contracts {
 		t.Run(contract.name, func(t *testing.T) {
@@ -61,7 +62,7 @@ func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 			}
 		})
 	}
-	assert.Len(t, owners, 73)
+	assert.Len(t, owners, 75)
 }
 
 func iamMigrationContracts() []iamMigrationContract {
@@ -103,6 +104,9 @@ func iamMigrationContracts() []iamMigrationContract {
 		{name: "federation", tables: []string{
 			"iam_federation_replay_claims", "iam_identity_link_transactions", "iam_identity_links", "iam_identity_providers", "iam_saml_idp_keys", "iam_saml_service_providers",
 		}, module: &federation.Module{}},
+		{name: "webhook", tables: []string{
+			"iam_webhook_deliveries", "iam_webhook_subscriptions",
+		}, module: &webhook.Module{}},
 	}
 }
 

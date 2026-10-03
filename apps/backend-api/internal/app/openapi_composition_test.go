@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const iamHTTPMappingCount = 346
+const iamHTTPMappingCount = 351
 
 type iamHTTPMapping struct {
 	sourceOperation string
@@ -117,6 +117,7 @@ func bootstrapComposedApp(t *testing.T, extra ...module.Module) *App {
 			MFA: authnext.MFAConfig{EncryptionKey: key},
 		}),
 		Federation: IAMFederation{Enabled: true, EncryptionKey: key},
+		Webhook:    IAMWebhook{Enabled: true, EncryptionKey: key},
 	}}
 	require.NoError(t, app.initializeRuntime(t.Context()))
 	require.NoError(t, app.composeModules())
@@ -424,7 +425,7 @@ func openAPIPathOperations(item *huma.PathItem) map[string]*huma.Operation {
 func isIAMOperation(operationID string) bool {
 	for _, prefix := range []string{
 		"iam-", "authn-", "identity-", "oauth-", "organization-",
-		"audit-", "governance-", "provisioning-", "scim-", "federation-",
+		"audit-", "governance-", "provisioning-", "scim-", "federation-", "webhook-",
 	} {
 		if strings.HasPrefix(operationID, prefix) {
 			return true

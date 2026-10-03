@@ -1,0 +1,6 @@
+{
+  "invalid_request": "The webhook subscription is not valid. Check the receiver URL, the name, and the event types, then try again.",
+  "subscription_missing": "That webhook subscription does not exist. Refresh the list and choose an existing one.",
+  "subscription_exists": "This tenant already has a webhook subscription with that name. Choose another name or edit the existing one.",
+  "unavailable": "Webhook delivery is unavailable right now. Try again shortly; contact an administrator if it continues."
+}

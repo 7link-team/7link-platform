@@ -18,6 +18,7 @@ import (
 	"7link.com/platform/internal/iam/oauth"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
+	"7link.com/platform/internal/iam/webhook"
 	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
@@ -147,6 +148,9 @@ func (app *App) composeIAMRuntimeModules() []module.Module {
 		provisioning.NewModule(rt, iamProvisioningConfig(app.config)),
 		governance.NewModule(rt, iamGovernanceConfig(app.config)),
 		federation.NewModule(rt, iamFederationConfig(app.config)),
+		// Last among the IAM modules: it only reads what the others record, and
+		// registering after them stops its worker before the chain it follows.
+		webhook.NewModule(rt, iamWebhookConfig(app.config)),
 	}
 }
 

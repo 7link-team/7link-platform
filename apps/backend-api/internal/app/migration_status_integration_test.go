@@ -25,6 +25,7 @@ import (
 	"7link.com/platform/internal/iam/oauth"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
+	"7link.com/platform/internal/iam/webhook"
 	infraaudit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/migrationstatus"
@@ -190,6 +191,7 @@ func iamMigrationStatusAppConfig(database Database, prefix string) AppConfig {
 		MFA: authnext.MFAConfig{EncryptionKey: key},
 	})
 	config.Federation = IAMFederation{Enabled: true, EncryptionKey: key}
+	config.Webhook = IAMWebhook{Enabled: true, EncryptionKey: key}
 	return config
 }
 
@@ -204,7 +206,7 @@ func assertIAMMigrationActionState(t *testing.T, config AppConfig, action Migrat
 
 func assertIAMMigrationReports(t *testing.T, reports []MigrationReport, state goosex.State) {
 	t.Helper()
-	require.Len(t, reports, 14)
+	require.Len(t, reports, 15)
 	names := make([]string, 0, len(reports))
 	for _, report := range reports {
 		names = append(names, report.Module)
@@ -272,13 +274,15 @@ func assertIAMMigrationStatusEndpoint(t *testing.T, config AppConfig) {
 func iamMigrationFlowNames() []string {
 	return []string{
 		dlock.Name, wuid.Name, infraaudit.Name, iamaudit.Name, core.Name, files.Name, iamauthn.Name, identity.Name,
-		organization.Name, oauth.Name, provisioning.Name, governance.Name, federation.Name, todo.Name,
+		organization.Name, oauth.Name, provisioning.Name, governance.Name, federation.Name, webhook.Name, todo.Name,
 	}
 }
 
 func iamMigrationReverseOrder() []string {
 	return []string{
-		federation.Name, iamauthn.Name, oauth.Name, governance.Name, provisioning.Name,
+		// Webhook comes down first: it only reads what the others record, so
+		// nothing depends on it and removing it frees the chain it follows.
+		webhook.Name, federation.Name, iamauthn.Name, oauth.Name, governance.Name, provisioning.Name,
 		organization.Name, files.Name, core.Name, identity.Name, iamaudit.Name,
 		todo.Name, infraaudit.Name, wuid.Name, dlock.Name,
 	}

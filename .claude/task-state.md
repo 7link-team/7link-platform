@@ -10,6 +10,16 @@
 federation 新增第三种 provider 类型 `oauth2`(plain OAuth 2.0 + profile 文档),
 让一个社交 provider 的接入成本降到「一行表数据」,并复用既有的开户/绑定/审计/会话签发路径。
 
+## Current Task Set (2026-10-04)
+用户批准按我的建议做四项,一项一交付:
+1. **Webhook** —— 已完成,待 CI 确认后提交(见 D97)
+2. Device flow + Token exchange(`oauth`,接入点 `service.go:760` 的 grant switch)
+3. 角色授予期限 —— **最危险**:读取点跨 5 个模块,含 `core/query/authorization.go` 热路径
+4. 短信 —— 实为 `iam_principals` 加手机号列 + 接生命周期,不是接厂商
+
+已确认的四项决定(用户授权我定):
+- A 载荷不带 PII;B token exchange 用最窄委派;C 手机号进 principals;D 读时过滤 + 清理器 + 显示 expired
+
 ## Current Phase
 ACCEPTANCE —— 实现与全部可执行门禁通过,等用户验收。
 

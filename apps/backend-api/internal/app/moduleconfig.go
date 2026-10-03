@@ -11,6 +11,7 @@ import (
 	"7link.com/platform/internal/iam/oauth"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
+	"7link.com/platform/internal/iam/webhook"
 	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
@@ -152,6 +153,21 @@ func iamProvisioningConfig(c AppConfig) provisioning.Config {
 
 func iamGovernanceConfig(c AppConfig) governance.Config {
 	return governance.Config{Config: iamActivationConfig(c)}
+}
+
+func iamWebhookConfig(c AppConfig) webhook.Config {
+	return webhook.Config{
+		Config: module.Config{Enabled: c.Webhook.Enabled}, EncryptionKey: c.Webhook.EncryptionKey,
+		EncryptionKeyFile:          c.Webhook.EncryptionKeyFile,
+		PreviousEncryptionKeys:     c.Webhook.PreviousEncryptionKeys,
+		PreviousEncryptionKeyFiles: c.Webhook.PreviousEncryptionKeyFiles,
+		OutboundAllowPlaintext:     c.Webhook.OutboundAllowPlaintext,
+		OutboundAllowNetworks:      c.Webhook.OutboundAllowNetworks,
+		HTTPTimeout:                c.Webhook.HTTPTimeout, PollInterval: c.Webhook.PollInterval,
+		RetryBase: c.Webhook.RetryBase, MaxAttempts: c.Webhook.MaxAttempts,
+		DeliveryBatch: c.Webhook.DeliveryBatch, FanOutBatch: c.Webhook.FanOutBatch,
+		FanOutSubscriptions: c.Webhook.FanOutSubscriptions,
+	}
 }
 
 func iamFederationConfig(c AppConfig) federation.Config {

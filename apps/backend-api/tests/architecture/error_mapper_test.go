@@ -46,6 +46,7 @@ var domainErrorMappers = []string{
 	"internal/iam/organization.tenantError",
 	"internal/iam/provisioning.provisioningError",
 	"internal/todo.httpError",
+	"internal/iam/webhook.webhookError",
 }
 
 func TestDomainErrorMappersKeepChosenStatus(t *testing.T) {

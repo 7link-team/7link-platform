@@ -27,6 +27,7 @@ type AppConfig struct {
 	IAMAudit     IAMAudit         `mapstructure:"iam_audit" group:"iam_audit"`
 	Provisioning IAMProvisioning  `mapstructure:"provisioning" group:"provisioning"`
 	Federation   IAMFederation    `mapstructure:"federation" group:"federation"`
+	Webhook      IAMWebhook       `mapstructure:"webhook" group:"webhook"`
 	OAuth        IAMOAuth         `mapstructure:"oauth" group:"oauth"`
 	Shutdown     ShutdownConfig   `mapstructure:"shutdown" group:"shutdown"`
 
@@ -120,6 +121,26 @@ type IAMOAuthConsent struct {
 	Path         string        `mapstructure:"path" description:"path the authorization endpoint sends a browser to for consent; point it at your own screen to replace the built-in one" trim:"true" default:"/oauth/consent" validate:"^/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$"`
 	TemplateFile string        `mapstructure:"template_file" description:"HTML template replacing the built-in consent screen" trim:"true" default:""`
 	TTL          time.Duration `mapstructure:"ttl" description:"how long an authorization request stays answerable on the consent screen" default:"10m"`
+}
+
+// IAMWebhook configures outbound event delivery. It follows each tenant's audit
+// chain, so enabling it adds no instrumentation anywhere else; what it may reach
+// is bounded here rather than by whatever a tenant types into a receiver URL.
+type IAMWebhook struct {
+	Enabled                    bool          `mapstructure:"enabled" description:"deliver tenant events to registered receivers" default:"false"`
+	EncryptionKey              string        `mapstructure:"encryption_key" description:"base64 32-byte key protecting subscription signing secrets" default:"" secret:"true"`
+	EncryptionKeyFile          string        `mapstructure:"encryption_key_file" description:"file containing the webhook encryption key" default:""`
+	PreviousEncryptionKeys     []string      `mapstructure:"previous_encryption_keys" description:"retired webhook keys that still open stored secrets" secret:"true"`
+	PreviousEncryptionKeyFiles []string      `mapstructure:"previous_encryption_key_files" description:"files containing retired webhook keys"`
+	OutboundAllowPlaintext     bool          `mapstructure:"outbound_allow_plaintext" description:"permit http:// receivers; leave false to require https" default:"false"`
+	OutboundAllowNetworks      []string      `mapstructure:"outbound_allow_networks" description:"CIDR blocks a receiver may resolve to despite being private or reserved"`
+	HTTPTimeout                time.Duration `mapstructure:"http_timeout" description:"receiver request timeout" default:"10s"`
+	PollInterval               time.Duration `mapstructure:"poll_interval" description:"how often the chain is followed and due deliveries are sent" default:"5s"`
+	RetryBase                  time.Duration `mapstructure:"retry_base" description:"first retry delay; each further attempt doubles it" default:"5s"`
+	MaxAttempts                int           `mapstructure:"max_attempts" description:"attempts before a delivery is abandoned" default:"8"`
+	DeliveryBatch              int           `mapstructure:"delivery_batch" description:"deliveries attempted in one pass" default:"50"`
+	FanOutBatch                int           `mapstructure:"fan_out_batch" description:"events read from one tenant's chain in one pass" default:"200"`
+	FanOutSubscriptions        int           `mapstructure:"fan_out_subscriptions" description:"subscriptions caught up in one pass" default:"200"`
 }
 
 type IAMFederation struct {

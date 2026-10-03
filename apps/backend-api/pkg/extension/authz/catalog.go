@@ -323,6 +323,11 @@ func DefaultActions() []Action {
 		{Resource: "identity_provider", Verb: "update", Scope: "tenant", Summary: "update identity providers"},
 		{Resource: "identity_provider", Verb: "delete", Scope: "tenant", Summary: "delete identity providers"},
 
+		{Resource: "webhook_subscription", Verb: "create", Scope: "tenant", Summary: "create webhook subscriptions"},
+		{Resource: "webhook_subscription", Verb: "view", Scope: "tenant", Summary: "view webhook subscriptions and their delivery attempts", Menu: true},
+		{Resource: "webhook_subscription", Verb: "update", Scope: "tenant", Summary: "update webhook subscriptions"},
+		{Resource: "webhook_subscription", Verb: "delete", Scope: "tenant", Summary: "delete webhook subscriptions"},
+
 		{Resource: "access_request", Verb: "view", Scope: "tenant", Summary: "view tenant access requests", Menu: true},
 		{Resource: "access_request", Verb: "approve", Scope: "tenant", Summary: "approve, reject, and revoke temporary access"},
 		{Resource: "access_review", Verb: "view", Scope: "tenant", Summary: "view tenant access review campaigns", Menu: true},

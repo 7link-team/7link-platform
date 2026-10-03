@@ -19,14 +19,14 @@ import (
 
 const (
 	lockVersion            = 1
-	expectedIAMTables      = 73
+	expectedIAMTables      = 75
 	expectedCrossModuleFKs = 36
 )
 
 var (
 	expectedModules = []string{
 		"audit", "authn", "core", "federation", "governance",
-		"identity", "oauth", "organization", "provisioning",
+		"identity", "oauth", "organization", "provisioning", "webhook",
 	}
 	expectedDialects = []string{"mysql", "postgres", "sqlite"}
 	createTableRE    = regexp.MustCompile(`(?i)\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([^\s(]+)`)
