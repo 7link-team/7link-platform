@@ -173,6 +173,15 @@ type (
 		Name         string
 		Version      int64
 		Dependencies []MigrationMilestoneRef
+
+		// Irreversible marks a milestone that cannot be rolled back, because
+		// what it migrated cannot be reconstructed. A down request that would
+		// cross it is refused before anything is undone, which is the point of
+		// declaring it here: a migration that only refuses when its own down
+		// section runs has already rolled back everything above it, leaving the
+		// database between two milestones. The refusal inside the migration
+		// stays as the backstop for anyone driving goose directly.
+		Irreversible bool
 	}
 
 	// MigrationMilestoneProvider optionally divides a module-owned migration
