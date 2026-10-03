@@ -126,6 +126,7 @@ federation-create-identity-provider => tenant|identity_provider_create
 federation-create-saml-service-provider => tenant|identity_provider_create
 federation-delete-identity-provider => owned-resource|identity_provider_delete
 federation-delete-saml-service-provider => owned-resource|identity_provider_delete
+federation-list-connectors => tenant|identity_provider_view
 federation-list-identity-providers => tenant|identity_provider_view
 federation-list-saml-service-providers => tenant|identity_provider_view
 federation-rotate-saml-signing-key => platform|platform_administer

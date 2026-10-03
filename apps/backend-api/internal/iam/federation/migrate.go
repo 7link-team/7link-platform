@@ -40,7 +40,14 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 		{Name: "principal-erasure", Version: 5,
 			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "lifecycle"}}},
 		{Name: "identity-link-transactions", Version: 6},
-		{Name: "binding-trust", Version: 7},
+		// Binding trust quarantines legacy identity links and records the
+		// evidence that repaired them; rolling it back would discard that
+		// judgement, so it is declared irreversible rather than only refusing
+		// once its down section is reached.
+		{Name: "binding-trust", Version: 7, Irreversible: true},
+		// Social providers only widen this module's own provider_type check, so
+		// the milestone depends on nothing outside federation.
+		{Name: "social-providers", Version: 8},
 	}
 }
 

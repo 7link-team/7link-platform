@@ -234,6 +234,7 @@ export const publishedRoutes: readonly string[] = [
   "/tenants/{tenant_id}/field-policies/{resource}/{field}",
   "/tenants/{tenant_id}/file-operations",
   "/tenants/{tenant_id}/files",
+  "/tenants/{tenant_id}/identity-provider-connectors",
   "/tenants/{tenant_id}/identity-providers",
   "/tenants/{tenant_id}/members",
   "/tenants/{tenant_id}/members/{principal_id}",

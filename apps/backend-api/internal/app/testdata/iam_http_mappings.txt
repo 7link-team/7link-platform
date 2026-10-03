@@ -294,6 +294,7 @@ federation-create-identity-provider => federation-create-identity-provider|POST|
 federation-create-saml-service-provider => federation-create-saml-service-provider|POST|/tenants/{tenant_id}/saml-service-providers
 federation-delete-identity-provider => federation-delete-identity-provider|DELETE|/identity-providers/{provider_id}
 federation-delete-saml-service-provider => federation-delete-saml-service-provider|DELETE|/saml-service-providers/{sp_id}
+federation-list-connectors => federation-list-connectors|GET|/tenants/{tenant_id}/identity-provider-connectors
 federation-list-identity-providers => federation-list-identity-providers|GET|/tenants/{tenant_id}/identity-providers
 federation-list-saml-service-providers => federation-list-saml-service-providers|GET|/tenants/{tenant_id}/saml-service-providers
 federation-rotate-saml-signing-key => federation-rotate-saml-signing-key|POST|/system/saml-signing-keys

@@ -482,10 +482,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Replace an OIDC identity provider */
+        /** Replace an identity provider */
         put: operations["federation-update-identity-provider"];
         post?: never;
-        /** Delete an OIDC identity provider and its identity links */
+        /** Delete an identity provider and its identity links */
         delete: operations["federation-delete-identity-provider"];
         options?: never;
         head?: never;
@@ -499,7 +499,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Start an OIDC login for a tenant identity provider */
+        /** Start a login for a tenant identity provider */
         get: operations["federation-start-login"];
         put?: never;
         post?: never;
@@ -4088,6 +4088,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenant_id}/identity-provider-connectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the social connectors this deployment can register */
+        get: operations["federation-list-connectors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenant_id}/identity-providers": {
         parameters: {
             query?: never;
@@ -4098,7 +4115,7 @@ export interface paths {
         /** List tenant identity providers */
         get: operations["federation-list-identity-providers"];
         put?: never;
-        /** Create an OIDC identity provider */
+        /** Create an identity provider */
         post: operations["federation-create-identity-provider"];
         delete?: never;
         options?: never;
@@ -5193,6 +5210,12 @@ export interface components {
             status: "processing" | "rejected";
             /** Format: int64 */
             version: number;
+        };
+        ConnectorCatalogEntry: {
+            default_scopes: string;
+            key: string;
+            /** @description False when the provider returns no email address, so just-in-time provisioning cannot apply and the connector can only link an existing account */
+            states_email: boolean;
         };
         ConsentRequest: {
             challenge: string;
@@ -6507,6 +6530,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["ClosureRequest"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeListConnectorCatalogEntry: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ConnectorCatalogEntry"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -8254,13 +8290,14 @@ export interface components {
             client_secret?: string;
             /** @description Role granted to just-in-time provisioned members */
             default_role_id?: string;
+            /** @description Upstream issuer URL for oidc and saml; a connector key from the connector catalog for oauth2 */
             issuer: string;
             name: string;
             /**
              * @default oidc
              * @enum {string}
              */
-            provider_type: "oidc" | "saml";
+            provider_type: "oidc" | "saml" | "oauth2";
             scopes?: string;
             /**
              * @default active
@@ -36392,6 +36429,65 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "federation-list-connectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant resource identifier */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListConnectorCatalogEntry"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

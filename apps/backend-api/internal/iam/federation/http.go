@@ -31,8 +31,8 @@ type providerIDInput struct {
 
 type providerBody struct {
 	Name          string `json:"name" minLength:"1" maxLength:"128"`
-	ProviderType  string `json:"provider_type,omitempty" enum:"oidc,saml" default:"oidc"`
-	Issuer        string `json:"issuer" minLength:"1" maxLength:"255"`
+	ProviderType  string `json:"provider_type,omitempty" enum:"oidc,saml,oauth2" default:"oidc"`
+	Issuer        string `json:"issuer" minLength:"1" maxLength:"255" doc:"Upstream issuer URL for oidc and saml; a connector key from the connector catalog for oauth2"`
 	ClientID      string `json:"client_id" minLength:"1" maxLength:"128"`
 	ClientSecret  string `json:"client_secret,omitempty" maxLength:"2048" doc:"Upstream client secret; an empty value keeps the stored secret on update"`
 	Scopes        string `json:"scopes,omitempty" maxLength:"255"`
@@ -65,6 +65,9 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 
 func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	guard := authz.Guard{Resource: "identity_provider", Verb: "view"}
+	authz.Register(registrar, api, huma.Operation{OperationID: "federation-list-connectors", Method: http.MethodGet, Path: "/identity-provider-connectors", Summary: "List the social connectors this deployment can register", Tags: []string{"applications"}}, guard, func(ctx context.Context, _ *struct{}) (*respx.Body[[]ConnectorCatalogEntry], error) {
+		return respx.OK(ctx, ConnectorCatalog()), nil
+	})
 	authz.Register(registrar, api, huma.Operation{OperationID: "federation-list-identity-providers", Method: http.MethodGet, Path: "/identity-providers", Summary: "List tenant identity providers", Tags: []string{"applications"}}, guard, func(ctx context.Context, in *providerListInput) (*respx.Body[[]Provider], error) {
 		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
@@ -76,7 +79,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		}
 		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "federation-create-identity-provider", Method: http.MethodPost, Path: "/identity-providers", Summary: "Create an OIDC identity provider", Tags: []string{"applications"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, authz.Guard{Resource: "identity_provider", Verb: "create"}, func(ctx context.Context, in *providerCreateInput) (*respx.Body[Provider], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "federation-create-identity-provider", Method: http.MethodPost, Path: "/identity-providers", Summary: "Create an identity provider", Tags: []string{"applications"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, authz.Guard{Resource: "identity_provider", Verb: "create"}, func(ctx context.Context, in *providerCreateInput) (*respx.Body[Provider], error) {
 		tenantID, err := guid.RequireID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -91,7 +94,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		}
 		return respx.OK(ctx, item), nil
 	})
-	authz.RegisterOwned(registrar, api, huma.Operation{OperationID: "federation-update-identity-provider", Method: http.MethodPut, Path: "/identity-providers/{provider_id}", Summary: "Replace an OIDC identity provider", Tags: []string{"applications"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, "provider_id", service.resolveProviderOwner, authz.Guard{Resource: "identity_provider", Verb: "update"}, func(ctx context.Context, in *providerReplaceInput) (*respx.Body[Provider], error) {
+	authz.RegisterOwned(registrar, api, huma.Operation{OperationID: "federation-update-identity-provider", Method: http.MethodPut, Path: "/identity-providers/{provider_id}", Summary: "Replace an identity provider", Tags: []string{"applications"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, "provider_id", service.resolveProviderOwner, authz.Guard{Resource: "identity_provider", Verb: "update"}, func(ctx context.Context, in *providerReplaceInput) (*respx.Body[Provider], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
 		providerID, err := guid.RequireID(in.ProviderID)
 		if err != nil {
@@ -107,7 +110,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		}
 		return respx.OK(ctx, item), nil
 	})
-	authz.RegisterOwned(registrar, api, huma.Operation{OperationID: "federation-delete-identity-provider", Method: http.MethodDelete, Path: "/identity-providers/{provider_id}", Summary: "Delete an OIDC identity provider and its identity links", Tags: []string{"applications"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity}}, "provider_id", service.resolveProviderOwner, authz.Guard{Resource: "identity_provider", Verb: "delete"}, func(ctx context.Context, in *providerIDInput) (*respx.Body[map[string]bool], error) {
+	authz.RegisterOwned(registrar, api, huma.Operation{OperationID: "federation-delete-identity-provider", Method: http.MethodDelete, Path: "/identity-providers/{provider_id}", Summary: "Delete an identity provider and its identity links", Tags: []string{"applications"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity}}, "provider_id", service.resolveProviderOwner, authz.Guard{Resource: "identity_provider", Verb: "delete"}, func(ctx context.Context, in *providerIDInput) (*respx.Body[map[string]bool], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
 		providerID, err := guid.RequireID(in.ProviderID)
 		if err != nil {
@@ -127,7 +130,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 func registerBrowserHTTP(api huma.API, service *Service) {
 	start := huma.Operation{
 		OperationID: "federation-start-login", Method: http.MethodGet, Path: "/identity-providers/{provider_id}/authorization",
-		Summary: "Start an OIDC login for a tenant identity provider", Tags: []string{"applications"}, DefaultStatus: http.StatusFound,
+		Summary: "Start a login for a tenant identity provider", Tags: []string{"applications"}, DefaultStatus: http.StatusFound,
 		Parameters: []*huma.Param{
 			authz.IDPathParameter("provider_id", "Identity provider identifier"),
 			{Name: "return_url", In: "query", Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(2048), Description: "Allowlisted application URL to return to after login"}},
@@ -389,6 +392,12 @@ func federationError(err error) error {
 		return huma.Error403Forbidden(federationi18n.IdentityUnavailable)
 	case errors.Is(err, ErrProvisioningUnverified):
 		return huma.Error400BadRequest(federationi18n.EmailUnverified)
+	case errors.Is(err, ErrUnknownConnector):
+		return huma.Error422UnprocessableEntity(federationi18n.UnknownConnector)
+	case errors.Is(err, ErrNoUpstreamAuthTime):
+		return huma.Error403Forbidden(federationi18n.NoUpstreamAuthTime)
+	case errors.Is(err, ErrConnectorProfile):
+		return huma.Error400BadRequest(federationi18n.ConnectorProfileFailed)
 	case errors.Is(err, ErrOIDCDiscovery), errors.Is(err, ErrOIDCToken), errors.Is(err, ErrOIDCTokenInvalid):
 		return huma.Error400BadRequest(federationi18n.OIDCFailed)
 	case errors.Is(err, ErrSAMLResponse):

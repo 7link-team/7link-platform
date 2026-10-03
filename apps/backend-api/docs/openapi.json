@@ -2386,6 +2386,27 @@
         ],
         "type": "object"
       },
+      "ConnectorCatalogEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "default_scopes": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "states_email": {
+            "description": "False when the provider returns no email address, so just-in-time provisioning cannot apply and the connector can only link an existing account",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "default_scopes",
+          "states_email"
+        ],
+        "type": "object"
+      },
       "ConsentRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5916,6 +5937,41 @@
             "description": "response payload; null on error",
             "items": {
               "$ref": "#/components/schemas/ClosureRequest"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeListConnectorCatalogEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorCatalogEntry"
             },
             "type": [
               "array",
@@ -11298,6 +11354,7 @@
             "type": "string"
           },
           "issuer": {
+            "description": "Upstream issuer URL for oidc and saml; a connector key from the connector catalog for oauth2",
             "maxLength": 255,
             "minLength": 1,
             "type": "string"
@@ -11311,7 +11368,8 @@
             "default": "oidc",
             "enum": [
               "oidc",
-              "saml"
+              "saml",
+              "oauth2"
             ],
             "type": "string"
           },
@@ -18027,7 +18085,7 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Delete an OIDC identity provider and its identity links",
+        "summary": "Delete an identity provider and its identity links",
         "tags": [
           "identity-providers"
         ],
@@ -18148,7 +18206,7 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Replace an OIDC identity provider",
+        "summary": "Replace an identity provider",
         "tags": [
           "identity-providers"
         ],
@@ -18292,7 +18350,7 @@
             "description": "Federation storage unavailable"
           }
         },
-        "summary": "Start an OIDC login for a tenant identity provider",
+        "summary": "Start a login for a tenant identity provider",
         "tags": [
           "identity-providers"
         ]
@@ -57140,6 +57198,89 @@
         "x-authz-permission": "file_create"
       }
     },
+    "/tenants/{tenant_id}/identity-provider-connectors": {
+      "get": {
+        "operationId": "federation-list-connectors",
+        "parameters": [
+          {
+            "description": "Tenant resource identifier",
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeListConnectorCatalogEntry"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List the social connectors this deployment can register",
+        "tags": [
+          "tenants"
+        ],
+        "x-authz-permission": "identity_provider_view"
+      }
+    },
     "/tenants/{tenant_id}/identity-providers": {
       "get": {
         "operationId": "federation-list-identity-providers",
@@ -57360,7 +57501,7 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Create an OIDC identity provider",
+        "summary": "Create an identity provider",
         "tags": [
           "tenants"
         ],

@@ -65,7 +65,8 @@ func TestIAMMigrationsOnRealMySQL8(t *testing.T) {
 			_, err := app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
 				Action: app.MigrationDownTo, Module: federation.Name, To: 6,
 			}, prefix)
-			assert.ErrorContains(t, err, "binding trust downgrade is forbidden")
+			assert.ErrorContains(t, err, "is irreversible")
+			assert.ErrorContains(t, err, "nothing was rolled back")
 			assertRealMySQLSchemaSet(t, db, prefix)
 			assertRealMySQLUp(t, gormDB, modules, prefix)
 			assertRealMySQLSchemaSet(t, db, prefix)

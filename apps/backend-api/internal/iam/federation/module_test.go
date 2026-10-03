@@ -57,7 +57,7 @@ func TestFederationRuntimeModuleExactOperationManifest(t *testing.T) {
 	require.NoError(t, authz.ValidateOperations(api, declaration.registrar.Registry()))
 	assert.Equal(t, approvedFederationOperations(), federationOperationManifest(api.OpenAPI()))
 	assert.Equal(t, "goose_federation", declaration.MigrationSource().TableName)
-	assert.Len(t, declaration.MigrationMilestones(), 6)
+	assert.Len(t, declaration.MigrationMilestones(), 7)
 }
 
 func TestFederationModuleActivationComesFromItsProtocolConfig(t *testing.T) {
@@ -338,6 +338,7 @@ func approvedFederationOperations() map[string]string {
 		"federation-callback-login":                         "GET /identity-providers/{provider_id}/callback", "federation-callback-saml-login": "POST /identity-providers/{provider_id}/callback",
 		"federation-create-identity-provider": "POST /tenants/{tenant_id}/identity-providers", "federation-create-saml-service-provider": "POST /tenants/{tenant_id}/saml-service-providers",
 		"federation-delete-identity-provider": "DELETE /identity-providers/{provider_id}", "federation-delete-saml-service-provider": "DELETE /saml-service-providers/{sp_id}",
+		"federation-list-connectors":         "GET /tenants/{tenant_id}/identity-provider-connectors",
 		"federation-list-identity-providers": "GET /tenants/{tenant_id}/identity-providers", "federation-list-saml-service-providers": "GET /tenants/{tenant_id}/saml-service-providers",
 		"federation-rotate-saml-signing-key": "POST /system/saml-signing-keys", "federation-saml-metadata": "GET /saml/{tenant_id}/metadata",
 		"federation-saml-slo": "GET /saml/{tenant_id}/slo", "federation-saml-slo-post": "POST /saml/{tenant_id}/slo",
