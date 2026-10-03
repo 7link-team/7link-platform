@@ -186,8 +186,9 @@ func TestStandardExchangeFormStyleKeepsTheSecretInTheHeader(t *testing.T) {
 	recorder := newUpstreamRecorder(t, `{"access_token":"at"}`, `{}`)
 	conn := recorder.bind(socialConnectors["github"])
 
-	token, err := standardExchange(context.Background(), recorder.upstream(), conn,
-		credentials{ClientID: "cid", ClientSecret: "shh"}, "the-code", "https://cb", "verifier")
+	token, err := standardExchange(context.Background(), recorder.upstream(), exchange{
+		conn: conn, cred: credentials{ClientID: "cid", ClientSecret: "shh"}, code: "the-code", callback: "https://cb", codeVerifier: "verifier",
+	})
 	require.NoError(t, err)
 	assert.Equal(t, "at", token.AccessToken)
 
@@ -210,8 +211,9 @@ func TestStandardExchangeQueryStyleIsAGetWithProviderParameterNames(t *testing.T
 	recorder := newUpstreamRecorder(t, `{"access_token":"at","openid":"ox"}`, `{}`)
 	conn := recorder.bind(socialConnectors["wechat"])
 
-	token, err := standardExchange(context.Background(), recorder.upstream(), conn,
-		credentials{ClientID: "appid-value", ClientSecret: "secret-value"}, "code", "https://cb", "verifier")
+	token, err := standardExchange(context.Background(), recorder.upstream(), exchange{
+		conn: conn, cred: credentials{ClientID: "appid-value", ClientSecret: "secret-value"}, code: "code", callback: "https://cb", codeVerifier: "verifier",
+	})
 	require.NoError(t, err)
 
 	// WeChat documents a GET. Posting an empty body to a query-parameter
@@ -235,10 +237,11 @@ func TestStandardExchangePostsTheSecretForProvidersThatRefuseBasic(t *testing.T)
 	// fails authentication for a reason the response does not explain.
 	recorder := newUpstreamRecorder(t, `{"access_token":"at","uid":"7"}`, `{}`)
 	conn := recorder.bind(socialConnectors["weibo"])
-	require.Equal(t, clientSecretPost, conn.ClientAuth)
+	require.Equal(t, formPost{secretInBody: true}, conn.Exchange)
 
-	_, err := standardExchange(context.Background(), recorder.upstream(), conn,
-		credentials{ClientID: "cid", ClientSecret: "shh"}, "code", "https://cb", "verifier")
+	_, err := standardExchange(context.Background(), recorder.upstream(), exchange{
+		conn: conn, cred: credentials{ClientID: "cid", ClientSecret: "shh"}, code: "code", callback: "https://cb", codeVerifier: "verifier",
+	})
 	require.NoError(t, err)
 
 	assert.Equal(t, http.MethodPost, recorder.tokenReq.Method)
@@ -256,8 +259,9 @@ func TestStandardExchangeSendsNoSecretWhenThereIsNone(t *testing.T) {
 	recorder := newUpstreamRecorder(t, `{"access_token":"at"}`, `{}`)
 	conn := recorder.bind(socialConnectors["github"])
 
-	_, err := standardExchange(context.Background(), recorder.upstream(), conn,
-		credentials{ClientID: "cid"}, "code", "https://cb", "verifier")
+	_, err := standardExchange(context.Background(), recorder.upstream(), exchange{
+		conn: conn, cred: credentials{ClientID: "cid"}, code: "code", callback: "https://cb", codeVerifier: "verifier",
+	})
 	require.NoError(t, err)
 
 	_, _, hasBasic := recorder.tokenReq.BasicAuth()
@@ -271,8 +275,9 @@ func TestStandardExchangeJSONStyleSendsAJSONBody(t *testing.T) {
 	recorder := newUpstreamRecorder(t, `{"accessToken":"at","expireIn":7200}`, `{}`)
 	conn := recorder.bind(socialConnectors["dingtalk"])
 
-	token, err := standardExchange(context.Background(), recorder.upstream(), conn,
-		credentials{ClientID: "the-client", ClientSecret: "the-secret"}, "code", "https://cb", "verifier")
+	token, err := standardExchange(context.Background(), recorder.upstream(), exchange{
+		conn: conn, cred: credentials{ClientID: "the-client", ClientSecret: "the-secret"}, code: "code", callback: "https://cb", codeVerifier: "verifier",
+	})
 	require.NoError(t, err)
 	assert.Equal(t, "at", token.AccessToken, "DingTalk names the field accessToken")
 
@@ -290,8 +295,9 @@ func TestStandardExchangeReadsANestedAccessTokenAndRenamesCarriedFields(t *testi
 	recorder := newUpstreamRecorder(t, `{"data":{"access_token":"nested","open_id":"oid"},"message":"success"}`, `{}`)
 	conn := recorder.bind(socialConnectors["douyin"])
 
-	token, err := standardExchange(context.Background(), recorder.upstream(), conn,
-		credentials{ClientID: "ck", ClientSecret: "cs"}, "code", "https://cb", "verifier")
+	token, err := standardExchange(context.Background(), recorder.upstream(), exchange{
+		conn: conn, cred: credentials{ClientID: "ck", ClientSecret: "cs"}, code: "code", callback: "https://cb", codeVerifier: "verifier",
+	})
 	require.NoError(t, err)
 	assert.Equal(t, "nested", token.AccessToken)
 	assert.Equal(t, map[string]string{"open_id": "oid"}, token.Carried)
@@ -306,8 +312,9 @@ func TestStandardExchangeReportsAProviderRefusal(t *testing.T) {
 	recorder := newUpstreamRecorder(t, `{"error":"bad_verification_code","error_description":"expired"}`, `{}`)
 	conn := recorder.bind(socialConnectors["github"])
 
-	_, err := standardExchange(context.Background(), recorder.upstream(), conn,
-		credentials{ClientID: "cid"}, "code", "https://cb", "verifier")
+	_, err := standardExchange(context.Background(), recorder.upstream(), exchange{
+		conn: conn, cred: credentials{ClientID: "cid"}, code: "code", callback: "https://cb", codeVerifier: "verifier",
+	})
 	require.ErrorIs(t, err, ErrOIDCToken)
 	assert.Contains(t, err.Error(), "expired", "the operator sees the provider's own reason")
 }
@@ -318,8 +325,9 @@ func TestStandardExchangeRefusesWhenACarriedFieldIsAbsent(t *testing.T) {
 	recorder := newUpstreamRecorder(t, `{"access_token":"at"}`, `{}`)
 	conn := recorder.bind(socialConnectors["wechat"])
 
-	_, err := standardExchange(context.Background(), recorder.upstream(), conn,
-		credentials{ClientID: "a", ClientSecret: "b"}, "code", "https://cb", "verifier")
+	_, err := standardExchange(context.Background(), recorder.upstream(), exchange{
+		conn: conn, cred: credentials{ClientID: "a", ClientSecret: "b"}, code: "code", callback: "https://cb", codeVerifier: "verifier",
+	})
 	require.ErrorIs(t, err, ErrOIDCToken)
 	assert.Contains(t, err.Error(), "openid")
 }
@@ -366,6 +374,19 @@ func TestStandardProfileSendsTheTokenTheWayEachProviderAcceptsIt(t *testing.T) {
 			probe.verify(t, recorder.profileReq)
 		})
 	}
+}
+
+func TestStandardProfileSendsAConnectorsStaticHeaders(t *testing.T) {
+	// Coinbase refuses a read that does not state which API version it expects.
+	recorder := newUpstreamRecorder(t, `{}`, `{"data":{"id":"1"}}`)
+	conn := recorder.bind(socialConnectors["coinbase"])
+	require.NotEmpty(t, conn.Headers["CB-VERSION"])
+
+	_, err := standardProfile(context.Background(), recorder.upstream(), conn, upstreamToken{AccessToken: "at"})
+	require.NoError(t, err)
+	assert.Equal(t, conn.Headers["CB-VERSION"], recorder.profileReq.Header.Get("CB-VERSION"))
+	assert.Equal(t, "Bearer at", recorder.profileReq.Header.Get("Authorization"),
+		"a static header does not displace the token")
 }
 
 func TestStandardProfileSendsCarriedParameters(t *testing.T) {
@@ -513,14 +534,17 @@ func TestConnectorDefaultsFillInTheStandardNames(t *testing.T) {
 	assert.Equal(t, "client_id", plain.clientIDParam())
 	assert.Equal(t, "client_secret", plain.clientSecretParam())
 	assert.Equal(t, "access_token", plain.tokenAccessPath())
-	assert.Equal(t, "Bearer", plain.profileAuthScheme())
+	assert.Equal(t, formPost{}, plain.exchangeShape(), "the zero value is the RFC 6749 form post")
+	_, headers := plain.profileAuthOf().authorize("https://p", upstreamToken{AccessToken: "at"})
+	assert.Equal(t, "Bearer at", headers.Get("Authorization"))
 
 	overridden := connector{ClientIDParam: "appid", ClientSecretParam: "secret",
-		TokenAccessPath: "accessToken", ProfileAuthScheme: "OAuth"}
+		TokenAccessPath: "accessToken", ProfileAuth: bearerToken{scheme: "OAuth"}}
 	assert.Equal(t, "appid", overridden.clientIDParam())
 	assert.Equal(t, "secret", overridden.clientSecretParam())
 	assert.Equal(t, "accessToken", overridden.tokenAccessPath())
-	assert.Equal(t, "OAuth", overridden.profileAuthScheme())
+	_, headers = overridden.profileAuthOf().authorize("https://p", upstreamToken{AccessToken: "at"})
+	assert.Equal(t, "OAuth at", headers.Get("Authorization"))
 }
 
 func TestAuthorizationURLRefusesAnUnparseableEndpoint(t *testing.T) {

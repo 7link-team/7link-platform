@@ -44,8 +44,8 @@ func (f qqFlow) profile() string {
 	return qqProfileEndpoint
 }
 
-func (f qqFlow) Profile(ctx context.Context, upstream *upstreamHTTP, conn connector, cred credentials, code, callback, codeVerifier string) (map[string]any, error) {
-	accessToken, err := qqAccessToken(ctx, upstream, conn, cred, code, callback)
+func (f qqFlow) Profile(ctx context.Context, upstream *upstreamHTTP, ex exchange) (map[string]any, error) {
+	accessToken, err := qqAccessToken(ctx, upstream, ex)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func (f qqFlow) Profile(ctx context.Context, upstream *upstreamHTTP, conn connec
 	if err != nil {
 		return nil, err
 	}
-	profile, err := f.userInfo(ctx, upstream, cred.ClientID, accessToken, openID)
+	profile, err := f.userInfo(ctx, upstream, ex.cred.ClientID, accessToken, openID)
 	if err != nil {
 		return nil, err
 	}
@@ -65,17 +65,16 @@ func (f qqFlow) Profile(ctx context.Context, upstream *upstreamHTTP, conn connec
 
 // qqAccessToken redeems the code. The response is form encoded unless QQ honors
 // fmt=json, so both shapes are accepted.
-func qqAccessToken(ctx context.Context, upstream *upstreamHTTP, conn connector, cred credentials, code, callback string) (string, error) {
-	params := url.Values{}
-	params.Set("grant_type", "authorization_code")
-	params.Set("client_id", cred.ClientID)
-	params.Set("client_secret", cred.ClientSecret)
-	params.Set("code", code)
-	params.Set("redirect_uri", callback)
+func qqAccessToken(ctx context.Context, upstream *upstreamHTTP, ex exchange) (string, error) {
+	// The request itself is the ordinary credentials-in-the-query exchange, so
+	// it is built by that shape rather than by hand; only reading the answer
+	// differs. fmt=json asks for the shape the standard reader could have
+	// handled, and is sent even though the JSONP answer is tolerated below.
+	params := ex.params()
 	params.Set("fmt", "json")
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, appendQuery(conn.Token, params), nil)
+	request, err := queryGet{}.request(ctx, ex.conn, ex.cred, params)
 	if err != nil {
-		return "", fmt.Errorf("%w: build token request: %w", ErrOIDCToken, err)
+		return "", err
 	}
 	body, err := upstream.DoRaw(request, ErrOIDCToken)
 	if err != nil {

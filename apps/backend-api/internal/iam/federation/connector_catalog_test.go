@@ -46,23 +46,33 @@ func TestEveryConnectorIsWellFormed(t *testing.T) {
 					"declaring where verification is stated is meaningless without an address")
 			}
 
-			if conn.ProfileAuth == profileAuthHeader {
-				assert.NotEmpty(t, conn.ProfileAuthHeader, "a header style needs the header's name")
-			} else {
-				assert.Empty(t, conn.ProfileAuthHeader, "the header name applies only to the header style")
+			// A header's name and a non-default scheme now live inside their own
+			// variant, so naming one while asking for another does not compile.
+			// What a test still has to check is that a variant carrying a name
+			// was given one.
+			switch auth := conn.profileAuthOf().(type) {
+			case tokenHeader:
+				assert.NotEmpty(t, auth.name, "a header variant needs the header's name")
+			case bearerToken, tokenQuery:
+			default:
+				t.Errorf("unhandled profile auth variant %T", auth)
 			}
 
-			if conn.TokenRequest != tokenRequestForm {
-				// The query and JSON shapes put the secret in the parameters by
-				// construction, so a ClientAuth there would read as a choice
-				// that is not being honored.
-				assert.Equal(t, clientSecretBasic, conn.ClientAuth,
-					"ClientAuth only means something for the form shape")
+			for header, value := range conn.Headers {
+				assert.NotEmpty(t, header, "a static header needs a name")
+				assert.NotEmpty(t, value, "a static header needs a value")
+				assert.NotEqual(t, "user-agent", strings.ToLower(header),
+					"the deployment's identity comes from the runtime, never from the catalog")
+				assert.NotEqual(t, "authorization", strings.ToLower(header),
+					"credentials travel through ProfileAuth, not a static header")
 			}
 
-			if conn.ProfileAuthScheme != "" {
-				assert.Equal(t, profileAuthBearer, conn.ProfileAuth,
-					"overriding the scheme only means something for an Authorization header")
+			// Where the secret goes is now a field of the form shape alone, so
+			// the query and JSON shapes cannot express a choice about it.
+			switch shape := conn.exchangeShape().(type) {
+			case formPost, queryGet, jsonPost:
+			default:
+				t.Errorf("unhandled token exchange shape %T", shape)
 			}
 
 			for parameter, path := range conn.Carry {
@@ -116,6 +126,7 @@ func TestConnectorsWithoutAnAddressCannotProvision(t *testing.T) {
 		"douyin":    true,
 		"instagram": true,
 		"qq":        true,
+		"reddit":    true,
 		"wechat":    true,
 		"weibo":     true,
 		"x":         true,

@@ -14,7 +14,7 @@ package federation
 //
 // Providers deliberately absent because their shape needs a flow this delivery
 // does not implement, not because they are unsupportable: Alipay (RSA2-signed
-// request envelope), WeCom and WeChat Mini Program (the application
+// request envelope), WeCom and WeChat Mini Program (the applicati
 // authenticates separately from the person), Steam (OpenID 2.0, not OAuth),
 // Dropbox and Notion (the profile read is a POST whose body carries the
 // request), Yandex and Reddit (a bespoke Authorization scheme and a mandatory
@@ -56,6 +56,7 @@ var socialConnectors = map[string]connector{
 		Token:     "https://discord.com/api/oauth2/token",
 		Profile:   "https://discord.com/api/users/@me",
 		Scopes:    "identify email",
+		Exchange:  formPost{secretInBody: true},
 		Subject:   "id", Email: "email", EmailVerified: "verified",
 		Name: "global_name", Username: "username",
 	},
@@ -64,6 +65,7 @@ var socialConnectors = map[string]connector{
 		Token:     "https://graph.facebook.com/v21.0/oauth/access_token",
 		Profile:   "https://graph.facebook.com/v21.0/me?fields=id,name,email",
 		Scopes:    "public_profile email",
+		Exchange:  queryGet{},
 		Subject:   "id", Email: "email", Name: "name",
 	},
 	// X states no email address for an OAuth 2.0 app, so just-in-time
@@ -87,6 +89,7 @@ var socialConnectors = map[string]connector{
 		Token:     "https://kauth.kakao.com/oauth/token",
 		Profile:   "https://kapi.kakao.com/v2/user/me",
 		Scopes:    "account_email profile_nickname",
+		Exchange:  formPost{secretInBody: true},
 		Subject:   "id",
 		Email:     "kakao_account.email", EmailVerified: "kakao_account.is_email_verified",
 		Name: "kakao_account.profile.nickname",
@@ -109,8 +112,8 @@ var socialConnectors = map[string]connector{
 		Scopes:            "snsapi_login",
 		ClientIDParam:     "appid",
 		ClientSecretParam: "secret",
-		TokenRequest:      tokenRequestQuery,
-		ProfileAuth:       profileAuthQuery,
+		Exchange:          queryGet{},
+		ProfileAuth:       tokenQuery{},
 		Carry:             map[string]string{"openid": "openid"},
 		Subject:           "openid", Name: "nickname",
 	},
@@ -127,19 +130,19 @@ var socialConnectors = map[string]connector{
 		Token:       "https://api.weibo.com/oauth2/access_token",
 		Profile:     "https://api.weibo.com/2/users/show.json",
 		Scopes:      "email",
-		ClientAuth:  clientSecretPost,
-		ProfileAuth: profileAuthQuery,
+		Exchange:    formPost{secretInBody: true},
+		ProfileAuth: tokenQuery{},
 		Carry:       map[string]string{"uid": "uid"},
-		Subject:     "id", Name: "screen_name", Username: "profile_url",
+		Subject:     "id", Name: "screen_name",
 	},
 	"baidu": {
-		Authorize:    "https://openapi.baidu.com/oauth/2.0/authorize",
-		Token:        "https://openapi.baidu.com/oauth/2.0/token",
-		Profile:      "https://openapi.baidu.com/rest/2.0/passport/users/getInfo",
-		Scopes:       "basic",
-		TokenRequest: tokenRequestQuery,
-		ProfileAuth:  profileAuthQuery,
-		Subject:      "openid", Name: "username",
+		Authorize:   "https://openapi.baidu.com/oauth/2.0/authorize",
+		Token:       "https://openapi.baidu.com/oauth/2.0/token",
+		Profile:     "https://openapi.baidu.com/rest/2.0/passport/users/getInfo",
+		Scopes:      "basic",
+		Exchange:    queryGet{},
+		ProfileAuth: tokenQuery{},
+		Subject:     "openid", Name: "username",
 	},
 	"dingtalk": {
 		Authorize:         "https://login.dingtalk.com/oauth2/auth",
@@ -148,10 +151,9 @@ var socialConnectors = map[string]connector{
 		Scopes:            "openid",
 		ClientIDParam:     "clientId",
 		ClientSecretParam: "clientSecret",
-		TokenRequest:      tokenRequestJSON,
+		Exchange:          jsonPost{},
 		TokenAccessPath:   "accessToken",
-		ProfileAuth:       profileAuthHeader,
-		ProfileAuthHeader: "x-acs-dingtalk-access-token",
+		ProfileAuth:       tokenHeader{name: "x-acs-dingtalk-access-token"},
 		Subject:           "unionId", Email: "email", Name: "nick",
 	},
 	"feishu": {
@@ -170,11 +172,16 @@ var socialConnectors = map[string]connector{
 		Subject:   "data.open_id", Email: "data.email", Name: "data.name",
 	},
 	// ---- second batch ----
+	// Instagram Login replaced the Basic Display API, which was switched off in
+	// December 2024: the authorization host moved to www.instagram.com and the
+	// scopes were renamed, while the token endpoint stayed put. It admits only
+	// professional (business or creator) accounts.
 	"instagram": {
-		Authorize: "https://api.instagram.com/oauth/authorize",
+		Authorize: "https://www.instagram.com/oauth/authorize",
 		Token:     "https://api.instagram.com/oauth/access_token",
 		Profile:   "https://graph.instagram.com/me?fields=id,username",
-		Scopes:    "user_profile",
+		Scopes:    "instagram_business_basic",
+		Exchange:  formPost{secretInBody: true},
 		Subject:   "id", Username: "username",
 	},
 	"amazon": {
@@ -188,7 +195,9 @@ var socialConnectors = map[string]connector{
 		Authorize: "https://login.coinbase.com/oauth2/auth",
 		Token:     "https://login.coinbase.com/oauth2/token",
 		Profile:   "https://api.coinbase.com/v2/user",
-		Scopes:    "wallet:user:read wallet:user:email",
+		Scopes:    "wallet:user:read identity:user:email",
+		Exchange:  formPost{secretInBody: true},
+		Headers:   map[string]string{"CB-VERSION": "2024-01-01"},
 		Subject:   "data.id", Email: "data.email", Name: "data.name",
 	},
 	"figma": {
@@ -200,23 +209,23 @@ var socialConnectors = map[string]connector{
 	},
 	// Yandex refuses the Bearer scheme and wants its own.
 	"yandex": {
-		Authorize:         "https://oauth.yandex.ru/authorize",
-		Token:             "https://oauth.yandex.ru/token",
-		Profile:           "https://login.yandex.ru/info",
-		Scopes:            "login:email login:info",
-		ProfileAuthScheme: "OAuth",
-		Subject:           "id", Email: "default_email", Name: "real_name", Username: "login",
+		Authorize:   "https://oauth.yandex.ru/authorize",
+		Token:       "https://oauth.yandex.ru/token",
+		Profile:     "https://login.yandex.ru/info",
+		Scopes:      "login:email login:info",
+		ProfileAuth: bearerToken{scheme: "OAuth"},
+		Subject:     "id", Email: "default_email", Name: "real_name", Username: "login",
 	},
 	// Reddit rejects any request that does not identify itself; upstreamHTTP
 	// sends the deployment's own identity on every request, so nothing is
-	// needed here.
+	// needed here. Its profile states whether an address is verified but never
+	// sends the address, so this connector links only.
 	"reddit": {
 		Authorize: "https://www.reddit.com/api/v1/authorize",
 		Token:     "https://www.reddit.com/api/v1/access_token",
 		Profile:   "https://oauth.reddit.com/api/v1/me",
 		Scopes:    "identity",
-		Subject:   "id", Email: "email", EmailVerified: "has_verified_email",
-		Name: "name", Username: "name",
+		Subject:   "id", Name: "name", Username: "name",
 	},
 	// Douyin nests both its token and its identifier, and wants the identifier
 	// back under a different parameter name than the one it answered with.
@@ -226,9 +235,9 @@ var socialConnectors = map[string]connector{
 		Profile:         "https://open.douyin.com/oauth/userinfo/",
 		Scopes:          "user_info",
 		ClientIDParam:   "client_key",
-		ClientAuth:      clientSecretPost,
+		Exchange:        formPost{secretInBody: true},
 		TokenAccessPath: "data.access_token",
-		ProfileAuth:     profileAuthQuery,
+		ProfileAuth:     tokenQuery{},
 		Carry:           map[string]string{"open_id": "data.open_id"},
 		Subject:         "data.open_id", Name: "data.nickname",
 	},

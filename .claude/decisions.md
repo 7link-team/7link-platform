@@ -87,11 +87,34 @@ the profile token as a query parameter, dingtalk names it `clientId`, douyin
 nests its payload under `data`, and feishu and lark both serve the v2 token
 endpoint.
 
-Seven could not be reached from this sandbox and remain unverified: discord,
-facebook, x, kakao, instagram, coinbase, reddit. Instagram is the one to check
-first -- the Basic Display API it uses was retired in favour of Instagram Login,
-so those endpoints may be dead. Field names for the reachable connectors that
-need a token to read a profile are still unverified; only their endpoints are.
+Seven cannot be reached from this sandbox: discord, facebook, x, kakao,
+instagram, coinbase, reddit. They were instead checked against the published
+documentation and against two open-source implementations whose source is
+reachable -- casdoor/casdoor `idp/` and markbates/goth `providers/` -- which
+found six of the twenty-four genuinely wrong:
+
+- instagram: the Basic Display API it used was switched off on 2024-12-04. The
+  authorization host moved to www.instagram.com and the scopes were renamed.
+  Goth still carries the retired endpoints, so it is not a reference here.
+- facebook: the token exchange is a GET with the credentials in the query
+  string, not a POST with HTTP Basic. Casdoor builds the same GET.
+- discord, kakao, coinbase, instagram: the token endpoint takes the secret as a
+  request parameter, not an Authorization header.
+- reddit: `/api/v1/me` states whether an address is verified but never sends the
+  address, so claiming one told the console that provisioning could apply.
+  Goth maps only id and name, which agrees.
+- coinbase: the email scope is `identity:user:email`, and every read needs a
+  CB-VERSION header.
+
+Cross-checking the CJK connectors against casdoor confirmed every field this
+catalog maps, dingtalk and douyin and qq down to the exact names, including qq's
+non-zero `ret` being an error. Two places where this catalog is more current than
+goth: discord's display name is `global_name`, and kakao's is under
+`kakao_account.profile` rather than the legacy `properties`.
+
+Field names for connectors that need a real token to read a profile remain
+unverified against a live response; they are verified against documentation and
+at least one independent implementation.
 
 ## D93 - Demo Entrances Only Show Matching Personas (2026-09-27)
 

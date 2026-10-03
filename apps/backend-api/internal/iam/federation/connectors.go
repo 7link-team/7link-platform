@@ -57,19 +57,23 @@ type connector struct {
 	ClientIDParam     string
 	ClientSecretParam string
 
-	// TokenRequest shapes the token exchange; TokenAccessPath names the field
-	// holding the access token when it is not access_token. ClientAuth says
-	// where the secret goes, which only the form shape leaves a choice about.
-	TokenRequest    tokenRequest
+	// Exchange shapes the token request. nil means the RFC 6749 form post with
+	// the secret in an Authorization header. TokenAccessPath names the field
+	// holding the access token when it is not access_token.
+	Exchange        tokenExchange
 	TokenAccessPath string
-	ClientAuth      clientAuth
 
-	// ProfileAuth is how the access token reaches the profile endpoint.
-	// ProfileAuthHeader names the header when ProfileAuth is profileAuthHeader;
-	// ProfileAuthScheme overrides the "Bearer" scheme Yandex refuses.
-	ProfileAuth       profileAuth
-	ProfileAuthHeader string
-	ProfileAuthScheme string
+	// ProfileAuth is how the access token reaches the profile endpoint. nil
+	// means an Authorization header with the Bearer scheme. Each variant
+	// carries whatever that way needs, so a connector cannot name a header
+	// while asking for a query parameter.
+	ProfileAuth profileAuth
+
+	// Headers are sent on every profile request. Coinbase requires its API
+	// version here. The deployment's own identity is not set from a connector:
+	// upstreamHTTP sends it on every request, so one build serves any
+	// deployment.
+	Headers map[string]string
 
 	// Carry maps a profile-request parameter to the token-response path that
 	// supplies it. WeChat returns the openid only in the token response, Weibo
@@ -93,51 +97,121 @@ type connector struct {
 	Flow profileFlow
 }
 
-// tokenRequest is how a provider wants the token exchange carried.
-type tokenRequest uint8
+// tokenExchange builds the token request. The variants carry their own data,
+// which is what makes an impossible combination impossible to write: only the
+// form shape leaves a choice about where the secret goes, so only formPost has
+// a field for it.
+type tokenExchange interface {
+	// request builds the token request from the shared parameters. It is handed
+	// the connector for its parameter names and the credentials to prove the
+	// client with, and must not retain either.
+	request(ctx context.Context, conn connector, cred credentials, params url.Values) (*http.Request, error)
+}
 
-const (
-	// tokenRequestForm posts the RFC 6749 form body.
-	tokenRequestForm tokenRequest = iota
-	// tokenRequestQuery issues a GET with every parameter in the query string,
-	// which is what api.weixin.qq.com and openapi.baidu.com document. It is a
-	// GET rather than a POST because there is no body to send: posting an empty
-	// one is what makes a provider answer "invalid request" for no visible
-	// reason.
-	tokenRequestQuery
-	// tokenRequestJSON posts a JSON object, which is what DingTalk's v1.0
-	// endpoint expects.
-	tokenRequestJSON
-)
+// formPost is the RFC 6749 form body. The secret travels in an Authorization
+// header unless the provider refuses that, which Weibo, Douyin, Discord, Kakao,
+// Coinbase and Instagram all do.
+type formPost struct{ secretInBody bool }
 
-// clientAuth is how the client proves itself at the token endpoint. The two
-// values are OAuth 2.0's own token_endpoint_auth_method names, because the
-// choice is the standard's and not this codebase's.
-type clientAuth uint8
+func (f formPost) request(ctx context.Context, conn connector, cred credentials, params url.Values) (*http.Request, error) {
+	params.Set(conn.clientIDParam(), cred.ClientID)
+	basic := false
+	if cred.ClientSecret != "" {
+		if f.secretInBody {
+			params.Set(conn.clientSecretParam(), cred.ClientSecret)
+		} else {
+			basic = true
+		}
+	}
+	request, err := newTokenRequest(ctx, http.MethodPost, conn.Token, params.Encode(), "application/x-www-form-urlencoded")
+	if err != nil {
+		return nil, err
+	}
+	if basic {
+		request.SetBasicAuth(url.QueryEscape(cred.ClientID), url.QueryEscape(cred.ClientSecret))
+	}
+	return request, nil
+}
 
-const (
-	// clientSecretBasic sends the credentials in the Authorization header,
-	// keeping the secret out of bodies and logs. It is the default because
-	// RFC 6749 requires a server to support it.
-	clientSecretBasic clientAuth = iota
-	// clientSecretPost sends the secret as a request parameter, which is the
-	// only method Weibo and Douyin accept.
-	clientSecretPost
-)
+// queryGet puts every parameter in the query string and issues a GET, which is
+// what api.weixin.qq.com, openapi.baidu.com and graph.facebook.com document.
+// It is a GET because there is no body to send: posting an empty one is what
+// makes a provider answer "invalid request" for no visible reason.
+type queryGet struct{}
 
-// profileAuth is how the access token reaches the profile endpoint.
-type profileAuth uint8
+func (queryGet) request(ctx context.Context, conn connector, cred credentials, params url.Values) (*http.Request, error) {
+	params.Set(conn.clientIDParam(), cred.ClientID)
+	params.Set(conn.clientSecretParam(), cred.ClientSecret)
+	return newTokenRequest(ctx, http.MethodGet, appendQuery(conn.Token, params), "", "")
+}
 
-const (
-	// profileAuthBearer sends "Authorization: Bearer <token>".
-	profileAuthBearer profileAuth = iota
-	// profileAuthQuery sends the token, and anything carried with it, as query
-	// parameters.
-	profileAuthQuery
-	// profileAuthHeader sends the bare token in the header named by
-	// ProfileAuthHeader, which is how DingTalk accepts it.
-	profileAuthHeader
-)
+// jsonPost posts a JSON object with camelCase keys, which is what DingTalk's
+// v1.0 endpoint expects.
+type jsonPost struct{}
+
+func (jsonPost) request(ctx context.Context, conn connector, cred credentials, params url.Values) (*http.Request, error) {
+	object := map[string]string{
+		"grantType": "authorization_code", "code": params.Get("code"),
+		conn.clientIDParam(): cred.ClientID, conn.clientSecretParam(): cred.ClientSecret,
+	}
+	encoded, err := json.Marshal(object)
+	if err != nil {
+		return nil, fmt.Errorf("%w: encode token request: %w", ErrOIDCToken, err)
+	}
+	return newTokenRequest(ctx, http.MethodPost, conn.Token, string(encoded), "application/json")
+}
+
+func newTokenRequest(ctx context.Context, method, endpoint, body, contentType string) (*http.Request, error) {
+	request, err := http.NewRequestWithContext(ctx, method, endpoint, strings.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("%w: build token request: %w", ErrOIDCToken, err)
+	}
+	if contentType != "" {
+		request.Header.Set("Content-Type", contentType)
+	}
+	return request, nil
+}
+
+// profileAuth carries how the access token reaches the profile endpoint, along
+// with whatever that way needs.
+type profileAuth interface {
+	// authorize returns the endpoint to request and the headers that carry the
+	// token, so a variant that moves the token into the URL can do so before
+	// the request exists.
+	authorize(endpoint string, token upstreamToken) (string, http.Header)
+}
+
+// bearerToken sends an Authorization header. The scheme is Bearer unless the
+// provider refuses it, which Yandex does.
+type bearerToken struct{ scheme string }
+
+func (b bearerToken) authorize(endpoint string, token upstreamToken) (string, http.Header) {
+	scheme := b.scheme
+	if scheme == "" {
+		scheme = "Bearer"
+	}
+	return endpoint, http.Header{"Authorization": []string{scheme + " " + token.AccessToken}}
+}
+
+// tokenHeader sends the bare token in a header of the provider's own naming,
+// which is how DingTalk accepts it.
+type tokenHeader struct{ name string }
+
+func (h tokenHeader) authorize(endpoint string, token upstreamToken) (string, http.Header) {
+	return endpoint, http.Header{h.name: []string{token.AccessToken}}
+}
+
+// tokenQuery sends the token, and anything carried with it, as query parameters.
+type tokenQuery struct{}
+
+func (tokenQuery) authorize(endpoint string, token upstreamToken) (string, http.Header) {
+	params := url.Values{}
+	params.Set("access_token", token.AccessToken)
+	for key, value := range token.Carried {
+		params.Set(key, value)
+	}
+	return appendQuery(endpoint, params), nil
+}
 
 // profileFlow turns an authorization code into a profile document. The standard
 // implementation is standardFlow; a provider supplies its own only when its
@@ -148,7 +222,28 @@ const (
 type profileFlow interface {
 	// Profile exchanges the code and returns the provider's profile document.
 	// The returned map is read through the connector's claim paths.
-	Profile(ctx context.Context, upstream *upstreamHTTP, conn connector, cred credentials, code, callback, codeVerifier string) (map[string]any, error)
+	Profile(ctx context.Context, upstream *upstreamHTTP, ex exchange) (map[string]any, error)
+}
+
+// exchange is everything a flow needs to turn an authorization code into a
+// profile: the connector it belongs to, the tenant's credentials, and the values
+// the browser round trip produced.
+type exchange struct {
+	conn         connector
+	cred         credentials
+	code         string
+	callback     string
+	codeVerifier string
+}
+
+// params are the parameters every token request carries, whatever its shape.
+func (ex exchange) params() url.Values {
+	params := url.Values{}
+	params.Set("grant_type", "authorization_code")
+	params.Set("code", ex.code)
+	params.Set("redirect_uri", ex.callback)
+	params.Set("code_verifier", ex.codeVerifier)
+	return params
 }
 
 // credentials is the tenant's registered client identity for one provider.
@@ -283,11 +378,22 @@ func (c connector) clientSecretParam() string {
 	return "client_secret"
 }
 
-func (c connector) profileAuthScheme() string {
-	if c.ProfileAuthScheme != "" {
-		return c.ProfileAuthScheme
+// exchangeShape resolves the token request shape, defaulting to the standard
+// form post with the secret in an Authorization header.
+func (c connector) exchangeShape() tokenExchange {
+	if c.Exchange == nil {
+		return formPost{}
 	}
-	return "Bearer"
+	return c.Exchange
+}
+
+// profileAuthOf resolves how the token reaches the profile endpoint, defaulting
+// to a Bearer Authorization header.
+func (c connector) profileAuthOf() profileAuth {
+	if c.ProfileAuth == nil {
+		return bearerToken{}
+	}
+	return c.ProfileAuth
 }
 
 func (c connector) tokenAccessPath() string {
@@ -303,19 +409,21 @@ func (c connector) profile(ctx context.Context, upstream *upstreamHTTP, cred cre
 	if flow == nil {
 		flow = standardFlow{}
 	}
-	return flow.Profile(ctx, upstream, c, cred, code, callback, codeVerifier)
+	return flow.Profile(ctx, upstream, exchange{
+		conn: c, cred: cred, code: code, callback: callback, codeVerifier: codeVerifier,
+	})
 }
 
 // standardFlow is the authorization-code exchange followed by one profile read.
 // Every provider that follows OAuth 2.0 closely enough uses it.
 type standardFlow struct{}
 
-func (standardFlow) Profile(ctx context.Context, upstream *upstreamHTTP, conn connector, cred credentials, code, callback, codeVerifier string) (map[string]any, error) {
-	token, err := standardExchange(ctx, upstream, conn, cred, code, callback, codeVerifier)
+func (standardFlow) Profile(ctx context.Context, upstream *upstreamHTTP, ex exchange) (map[string]any, error) {
+	token, err := standardExchange(ctx, upstream, ex)
 	if err != nil {
 		return nil, err
 	}
-	return standardProfile(ctx, upstream, conn, token)
+	return standardProfile(ctx, upstream, ex.conn, token)
 }
 
 // upstreamToken is what an exchange yields: the access token plus the
@@ -328,66 +436,16 @@ type upstreamToken struct {
 // standardExchange redeems the authorization code. The secret travels in the
 // Authorization header whenever the provider accepts it there, so it stays out
 // of bodies and query strings that intermediaries log.
-func standardExchange(ctx context.Context, upstream *upstreamHTTP, conn connector, cred credentials, code, callback, codeVerifier string) (upstreamToken, error) {
-	params := url.Values{}
-	params.Set("grant_type", "authorization_code")
-	params.Set("code", code)
-	params.Set("redirect_uri", callback)
-	params.Set("code_verifier", codeVerifier)
-
-	endpoint := conn.Token
-	method := http.MethodPost
-	var body string
-	var contentType string
-	basicAuth := false
-	switch conn.TokenRequest {
-	case tokenRequestQuery:
-		params.Set(conn.clientIDParam(), cred.ClientID)
-		params.Set(conn.clientSecretParam(), cred.ClientSecret)
-		endpoint = appendQuery(endpoint, params)
-		method = http.MethodGet
-	case tokenRequestJSON:
-		object := map[string]string{
-			"grantType": "authorization_code", "code": code,
-			conn.clientIDParam(): cred.ClientID, conn.clientSecretParam(): cred.ClientSecret,
-		}
-		encoded, err := json.Marshal(object)
-		if err != nil {
-			return upstreamToken{}, fmt.Errorf("%w: encode token request: %w", ErrOIDCToken, err)
-		}
-		body, contentType = string(encoded), "application/json"
-	case tokenRequestForm:
-		params.Set(conn.clientIDParam(), cred.ClientID)
-		if cred.ClientSecret != "" {
-			if conn.ClientAuth == clientSecretPost {
-				params.Set(conn.clientSecretParam(), cred.ClientSecret)
-			} else {
-				basicAuth = true
-			}
-		}
-		body, contentType = params.Encode(), "application/x-www-form-urlencoded"
-	default:
-		// Every shape is named above. Reaching this means a new one was added
-		// without a case, and sending the standard form anyway would quietly
-		// produce a request the provider rejects for reasons nobody can see.
-		return upstreamToken{}, fmt.Errorf("%w: unsupported token request shape", ErrOIDCToken)
-	}
-
-	request, err := http.NewRequestWithContext(ctx, method, endpoint, strings.NewReader(body))
+func standardExchange(ctx context.Context, upstream *upstreamHTTP, ex exchange) (upstreamToken, error) {
+	request, err := ex.conn.exchangeShape().request(ctx, ex.conn, ex.cred, ex.params())
 	if err != nil {
-		return upstreamToken{}, fmt.Errorf("%w: build token request: %w", ErrOIDCToken, err)
-	}
-	if contentType != "" {
-		request.Header.Set("Content-Type", contentType)
-	}
-	if basicAuth {
-		request.SetBasicAuth(url.QueryEscape(cred.ClientID), url.QueryEscape(cred.ClientSecret))
+		return upstreamToken{}, err
 	}
 	document, err := upstream.Do(request, ErrOIDCToken)
 	if err != nil {
 		return upstreamToken{}, err
 	}
-	accessToken := claimString(document, conn.tokenAccessPath())
+	accessToken := claimString(document, ex.conn.tokenAccessPath())
 	if accessToken == "" {
 		// Providers disagree on where the reason goes; naming both keeps the
 		// operator's message useful without parsing each provider's envelope.
@@ -398,9 +456,9 @@ func standardExchange(ctx context.Context, upstream *upstreamHTTP, conn connecto
 		return upstreamToken{}, fmt.Errorf("%w: %s", ErrOIDCToken, reason)
 	}
 	token := upstreamToken{AccessToken: accessToken}
-	if len(conn.Carry) > 0 {
-		token.Carried = make(map[string]string, len(conn.Carry))
-		for parameter, path := range conn.Carry {
+	if len(ex.conn.Carry) > 0 {
+		token.Carried = make(map[string]string, len(ex.conn.Carry))
+		for parameter, path := range ex.conn.Carry {
 			value := claimString(document, path)
 			if value == "" {
 				return upstreamToken{}, fmt.Errorf("%w: token response is missing %s", ErrOIDCToken, path)
@@ -413,26 +471,16 @@ func standardExchange(ctx context.Context, upstream *upstreamHTTP, conn connecto
 
 // standardProfile reads the provider's profile document.
 func standardProfile(ctx context.Context, upstream *upstreamHTTP, conn connector, token upstreamToken) (map[string]any, error) {
-	endpoint := conn.Profile
-	if conn.ProfileAuth == profileAuthQuery {
-		params := url.Values{}
-		params.Set("access_token", token.AccessToken)
-		for key, value := range token.Carried {
-			params.Set(key, value)
-		}
-		endpoint = appendQuery(endpoint, params)
-	}
+	endpoint, headers := conn.profileAuthOf().authorize(conn.Profile, token)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("%w: build profile request: %w", ErrConnectorProfile, err)
 	}
-	switch conn.ProfileAuth {
-	case profileAuthQuery:
-		// The token is already in the query string.
-	case profileAuthHeader:
-		request.Header.Set(conn.ProfileAuthHeader, token.AccessToken)
-	default:
-		request.Header.Set("Authorization", conn.profileAuthScheme()+" "+token.AccessToken)
+	for key, values := range headers {
+		request.Header[key] = values
+	}
+	for key, value := range conn.Headers {
+		request.Header.Set(key, value)
 	}
 	return upstream.Do(request, ErrConnectorProfile)
 }
