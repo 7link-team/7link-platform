@@ -26,11 +26,17 @@ func TestEveryConnectorIsWellFormed(t *testing.T) {
 			assert.LessOrEqual(t, len(key), 255, "the issuer column bounds the key")
 
 			requireHTTPSEndpoint(t, "authorize", conn.Authorize)
-			requireHTTPSEndpoint(t, "token", conn.Token)
 
 			if conn.Flow == nil {
-				requireHTTPSEndpoint(t, "profile", conn.Profile,
-					"a connector without its own flow is read by the standard one, which needs a profile endpoint")
+				// The standard flow reads these two fields, so it needs both.
+				// A connector with its own flow addresses whatever endpoints
+				// that protocol has, which for Alipay is one signed gateway and
+				// for WeCom is a pair the application authenticates against.
+				requireHTTPSEndpoint(t, "token", conn.Token)
+				requireHTTPSEndpoint(t, "profile", conn.Profile)
+			} else {
+				assert.Empty(t, conn.Profile,
+					"a flow addresses its own endpoints, so a profile field here would be ignored")
 			}
 
 			// normalizeProvider refuses a non-SAML provider with no scopes, and
@@ -121,6 +127,7 @@ func TestConnectorsWithoutAnAddressCannotProvision(t *testing.T) {
 		}
 	}
 	assert.Equal(t, map[string]bool{
+		"alipay":    true,
 		"baidu":     true,
 		"bitbucket": true,
 		"douyin":    true,
@@ -142,6 +149,6 @@ func TestBespokeFlowsAreReachable(t *testing.T) {
 			flows[key] = true
 		}
 	}
-	assert.Equal(t, map[string]bool{"qq": true}, flows,
+	assert.Equal(t, map[string]bool{"alipay": true, "qq": true, "wecom": true}, flows,
 		"every implemented profileFlow must be referenced by a catalog row")
 }

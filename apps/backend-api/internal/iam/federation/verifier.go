@@ -180,21 +180,21 @@ func (c *oidcClient) exchangeCode(ctx context.Context, issuer, clientID, clientS
 // verifyIDToken validates signature, issuer, audience, and time claims and
 // returns the normalized claims. A failed lookup retries the JWKS once so key
 // rotation does not require a manual provider update.
-func (c *oidcClient) verifyIDToken(ctx context.Context, issuer, clientID, raw string, now time.Time) (idTokenClaims, error) {
+func (c *oidcClient) verifyIDToken(ctx context.Context, issuer, clientID, raw string, now time.Time) (upstreamIdentity, error) {
 	keys, err := c.keys(ctx, issuer, false)
 	if err != nil {
-		return idTokenClaims{}, err
+		return upstreamIdentity{}, err
 	}
 	claims, err := c.verifyWithKeys(issuer, clientID, raw, keys, now)
 	if errors.Is(err, errUnknownKey) {
 		keys, refreshErr := c.keys(ctx, issuer, true)
 		if refreshErr != nil {
-			return idTokenClaims{}, refreshErr
+			return upstreamIdentity{}, refreshErr
 		}
 		claims, err = c.verifyWithKeys(issuer, clientID, raw, keys, now)
 	}
 	if err != nil {
-		return idTokenClaims{}, err
+		return upstreamIdentity{}, err
 	}
 	return claims, nil
 }
@@ -206,38 +206,38 @@ var errUnknownKey = errors.New("unknown signing key")
 // verifier's; it still never admits "none" or a shared-secret algorithm.
 var idTokenAlgorithms = jwsx.Algorithms{jwsx.RS256, jwsx.RS512, jwsx.ES256, jwsx.ES512, jwsx.EdDSA}
 
-func (c *oidcClient) verifyWithKeys(issuer, clientID, raw string, keys map[string]crypto.PublicKey, now time.Time) (idTokenClaims, error) {
+func (c *oidcClient) verifyWithKeys(issuer, clientID, raw string, keys map[string]crypto.PublicKey, now time.Time) (upstreamIdentity, error) {
 	token, err := jwsx.Parse(raw)
 	if err != nil {
-		return idTokenClaims{}, fmt.Errorf("%w: %w", ErrOIDCTokenInvalid, err)
+		return upstreamIdentity{}, fmt.Errorf("%w: %w", ErrOIDCTokenInvalid, err)
 	}
-	var claims idTokenClaims
+	var claims upstreamIdentity
 	if err := json.Unmarshal(token.Payload, &claims); err != nil {
-		return idTokenClaims{}, fmt.Errorf("%w: decode claims: %w", ErrOIDCTokenInvalid, err)
+		return upstreamIdentity{}, fmt.Errorf("%w: decode claims: %w", ErrOIDCTokenInvalid, err)
 	}
 	if claims.Issuer != issuer || claims.Subject == "" || len(claims.Subject) > 128 {
-		return idTokenClaims{}, fmt.Errorf("%w: issuer or subject mismatch", ErrOIDCTokenInvalid)
+		return upstreamIdentity{}, fmt.Errorf("%w: issuer or subject mismatch", ErrOIDCTokenInvalid)
 	}
 	if !containsAudience(claims.Audience, clientID) {
-		return idTokenClaims{}, fmt.Errorf("%w: audience mismatch", ErrOIDCTokenInvalid)
+		return upstreamIdentity{}, fmt.Errorf("%w: audience mismatch", ErrOIDCTokenInvalid)
 	}
 	// OIDC Core 3.1.3.7: multiple audiences require an authorized party;
 	// whenever supplied, that party must identify this relying party.
 	if (len(claims.Audience) > 1 && claims.AuthorizedParty == nil) ||
 		(claims.AuthorizedParty != nil && *claims.AuthorizedParty != clientID) {
-		return idTokenClaims{}, fmt.Errorf("%w: authorized party mismatch", ErrOIDCTokenInvalid)
+		return upstreamIdentity{}, fmt.Errorf("%w: authorized party mismatch", ErrOIDCTokenInvalid)
 	}
 	nowUnix := now.Unix()
 	skew := int64(c.clockSkew.Seconds())
 	if claims.ExpiresAt <= nowUnix-skew || (claims.NotBefore > 0 && claims.NotBefore > nowUnix+skew) {
-		return idTokenClaims{}, fmt.Errorf("%w: token is outside its validity window", ErrOIDCTokenInvalid)
+		return upstreamIdentity{}, fmt.Errorf("%w: token is outside its validity window", ErrOIDCTokenInvalid)
 	}
 	key, ok := keys[token.Header.Kid]
 	if !ok {
-		return idTokenClaims{}, fmt.Errorf("%w: %s", errUnknownKey, token.Header.Kid)
+		return upstreamIdentity{}, fmt.Errorf("%w: %s", errUnknownKey, token.Header.Kid)
 	}
 	if err := idTokenAlgorithms.Verify(token.Header.Alg, key, token.SigningInput, token.Signature); err != nil {
-		return idTokenClaims{}, fmt.Errorf("%w: %w", ErrOIDCTokenInvalid, err)
+		return upstreamIdentity{}, fmt.Errorf("%w: %w", ErrOIDCTokenInvalid, err)
 	}
 	return claims, nil
 }
@@ -258,7 +258,13 @@ func (a *audClaim) UnmarshalJSON(data []byte) error {
 	return errors.New("invalid aud claim")
 }
 
-type idTokenClaims struct {
+// upstreamIdentity is what an upstream provider states about the person signing
+// in, normalized so that provisioning, linking, auditing and session issuance do
+// not care which protocol produced it. OIDC fills it from a verified ID token,
+// SAML from an assertion, and a social provider from a profile document -- which
+// is why some fields only ever arrive from one of them: Nonce and AuthorizedParty
+// are ID-token concepts, and AuthTime is absent from plain OAuth 2.0 entirely.
+type upstreamIdentity struct {
 	Nonce             string   `json:"nonce"`
 	AuthorizedParty   *string  `json:"azp"`
 	Issuer            string   `json:"iss"`

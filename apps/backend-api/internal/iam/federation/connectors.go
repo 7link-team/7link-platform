@@ -161,6 +161,16 @@ func (jsonPost) request(ctx context.Context, conn connector, cred credentials, p
 	return newTokenRequest(ctx, http.MethodPost, conn.Token, string(encoded), "application/json")
 }
 
+// jsonBody encodes a request body, so a flow that posts JSON does not repeat the
+// marshal-and-wrap dance.
+func jsonBody(value any) (io.Reader, error) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("encode request body: %w", err)
+	}
+	return bytes.NewReader(encoded), nil
+}
+
 func newTokenRequest(ctx context.Context, method, endpoint, body, contentType string) (*http.Request, error) {
 	request, err := http.NewRequestWithContext(ctx, method, endpoint, strings.NewReader(body))
 	if err != nil {
@@ -511,12 +521,12 @@ func appendQuery(endpoint string, params url.Values) string {
 // AuthTime is deliberately left zero. Plain OAuth 2.0 states nothing about when
 // the person authenticated upstream, and the flows that need that proof reject
 // a zero value rather than accept a fabricated one.
-func (c connector) claims(document map[string]any) (idTokenClaims, error) {
+func (c connector) claims(document map[string]any) (upstreamIdentity, error) {
 	subject := claimString(document, c.Subject)
 	if subject == "" || len(subject) > 128 {
-		return idTokenClaims{}, fmt.Errorf("%w: profile is missing a usable subject", ErrConnectorProfile)
+		return upstreamIdentity{}, fmt.Errorf("%w: profile is missing a usable subject", ErrConnectorProfile)
 	}
-	claims := idTokenClaims{
+	claims := upstreamIdentity{
 		Subject:           subject,
 		Email:             claimString(document, c.Email),
 		Name:              claimString(document, c.Name),
@@ -526,7 +536,7 @@ func (c connector) claims(document map[string]any) (idTokenClaims, error) {
 		// The columns behind these are bounded, and a provider is free to
 		// return more than fits. Refusing beats storing a silent truncation
 		// that later compares unequal to the same person's real name.
-		return idTokenClaims{}, fmt.Errorf("%w: profile field exceeds its stored length", ErrConnectorProfile)
+		return upstreamIdentity{}, fmt.Errorf("%w: profile field exceeds its stored length", ErrConnectorProfile)
 	}
 	if claims.Email != "" {
 		// A provider with no field for it is taken at its word; one that has

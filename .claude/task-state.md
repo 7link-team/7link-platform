@@ -132,8 +132,10 @@ make test-performance: NOT_RUN(待 CI 结束)
 本次交付收尾:全量验证通过后提交并推送到 IAM 分支。
 
 推送后仍待办(不在本次范围):
-1. 桶 3 的 alipay(RSA2 签名信封)/ wecom(应用 token 与人分开认证)—— 本环境无法对真实
-   provider 验证(无外网、需商户私钥与企业凭证),故未纳入本次提交;扩展点已由 qq 证明可用。
+1. ~~alipay / wecom~~ **已实现**(26 个 connector)。两者端点与参数名均经实测确认
+   (网关回 `isv.missing-app-id`、企业微信回 `corpsecret missing`)。支付宝的 RSA2 签名
+   用公钥离线真验证过,不是"有签名就算过"。仍未验证的只有:真实商户凭证下的端到端。
+   余下未实现:微信小程序、steam、dropbox、notion、vk。
 2. 用真实应用凭证跑一遍端到端(本环境没有任何 provider 的 client_id/secret,这是唯一
    还没验过的层面)。
 

@@ -117,6 +117,15 @@ var socialConnectors = map[string]connector{
 		Carry:             map[string]string{"openid": "openid"},
 		Subject:           "openid", Name: "nickname",
 	},
+	// Alipay's client secret is the application's PKCS#8 RSA private key, not a
+	// shared secret: every gateway call is signed with it. It states no address.
+	"alipay": {
+		Authorize:     "https://openauth.alipay.com/oauth2/publicAppAuthorize.htm",
+		Scopes:        "auth_user",
+		ClientIDParam: "app_id",
+		Subject:       "user_id", Name: "nick_name",
+		Flow: alipayFlow{},
+	},
 	"qq": {
 		Authorize: "https://graph.qq.com/oauth2.0/authorize",
 		Token:     "https://graph.qq.com/oauth2.0/token",
@@ -125,6 +134,17 @@ var socialConnectors = map[string]connector{
 		Flow: qqFlow{},
 	},
 	// Weibo posts its token request and reads the secret from the body.
+	// WeCom admits members of the organization only, and states a name or an
+	// address solely under the private-information scope, which needs an agent
+	// identifier this registration cannot carry. Under snsapi_base it links an
+	// existing account and cannot create one.
+	"wecom": {
+		Authorize:     "https://open.weixin.qq.com/connect/oauth2/authorize",
+		Scopes:        "snsapi_base",
+		ClientIDParam: "appid",
+		Subject:       "userid", Email: "email", Name: "name",
+		Flow: wecomFlow{},
+	},
 	"weibo": {
 		Authorize:   "https://api.weibo.com/oauth2/authorize",
 		Token:       "https://api.weibo.com/oauth2/access_token",

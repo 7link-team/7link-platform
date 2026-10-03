@@ -355,7 +355,7 @@ func (s *Service) VerifyIdentityOperation(ctx context.Context, providerID guid.I
 	if row.VerifiedAt != nil || row.CallbackURL != callback {
 		return ErrOIDCState
 	}
-	var claims idTokenClaims
+	var claims upstreamIdentity
 	if provider.ProviderType == ProviderSAML {
 		assertion, err := s.parseSAMLResponse(ctx, provider, samlResponse, callback, state)
 		if err != nil {
@@ -371,7 +371,7 @@ func (s *Service) VerifyIdentityOperation(ctx context.Context, providerID guid.I
 		if !claimed {
 			return ErrSAMLResponse
 		}
-		claims = idTokenClaims{Subject: assertion.Subject.NameID.Value, Email: samlAttribute(assertion, "email"),
+		claims = upstreamIdentity{Subject: assertion.Subject.NameID.Value, Email: samlAttribute(assertion, "email"),
 			Name: samlAttribute(assertion, "display_name"), AuthTime: assertion.AuthnStatements[0].AuthnInstant.Unix()}
 	} else {
 		verifier, err := s.keys.Open("account-code-verifier", []byte(row.IDHash), row.CodeVerifierCiphertext)

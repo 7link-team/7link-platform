@@ -514,29 +514,29 @@ func (s *Service) CompleteLogin(ctx context.Context, providerID guid.ID, code, s
 // carrying an authentication time; a social provider returns a profile document
 // and states nothing about when the person authenticated, so its claims carry a
 // zero AuthTime that the re-authentication paths refuse outright.
-func (s *Service) exchangeUpstreamIdentity(ctx context.Context, provider providerRow, clientSecret, code, callback, codeVerifier string) (idTokenClaims, string, error) {
+func (s *Service) exchangeUpstreamIdentity(ctx context.Context, provider providerRow, clientSecret, code, callback, codeVerifier string) (upstreamIdentity, string, error) {
 	if provider.ProviderType == ProviderOAuth2 {
 		conn, err := s.connectors(provider.Issuer)
 		if err != nil {
-			return idTokenClaims{}, "", err
+			return upstreamIdentity{}, "", err
 		}
 		document, err := conn.profile(ctx, s.social, credentials{ClientID: provider.ClientID, ClientSecret: clientSecret}, code, callback, codeVerifier)
 		if err != nil {
-			return idTokenClaims{}, "", err
+			return upstreamIdentity{}, "", err
 		}
 		claims, err := conn.claims(document)
 		if err != nil {
-			return idTokenClaims{}, "", err
+			return upstreamIdentity{}, "", err
 		}
 		return claims, "oauth2", nil
 	}
 	rawIDToken, err := s.oidc.exchangeCode(ctx, provider.Issuer, provider.ClientID, clientSecret, code, callback, codeVerifier)
 	if err != nil {
-		return idTokenClaims{}, "", err
+		return upstreamIdentity{}, "", err
 	}
 	claims, err := s.oidc.verifyIDToken(ctx, provider.Issuer, provider.ClientID, rawIDToken, s.now().UTC())
 	if err != nil {
-		return idTokenClaims{}, "", err
+		return upstreamIdentity{}, "", err
 	}
 	return claims, "oidc", nil
 }
@@ -686,7 +686,7 @@ func (s *Service) CompleteSAMLLogin(ctx context.Context, providerID guid.ID, sam
 	if len(assertion.AuthnStatements) > 0 {
 		authTime = assertion.AuthnStatements[0].AuthnInstant.Unix()
 	}
-	claims := idTokenClaims{
+	claims := upstreamIdentity{
 		Subject: assertion.Subject.NameID.Value, Email: email, EmailVerified: &verified,
 		Name: displayName, PreferredUsername: displayName, AuthTime: authTime,
 	}
@@ -697,7 +697,7 @@ func (s *Service) CompleteSAMLLogin(ctx context.Context, providerID guid.ID, sam
 	return sessionToken, sealedState.ReturnURL, nil
 }
 
-func (s *Service) authenticate(ctx context.Context, provider providerRow, token idTokenClaims, method string) (string, error) {
+func (s *Service) authenticate(ctx context.Context, provider providerRow, token upstreamIdentity, method string) (string, error) {
 	var principalID guid.ID
 	var sessionToken string
 	fingerprint, err := s.bindingFingerprint(ctx, provider)

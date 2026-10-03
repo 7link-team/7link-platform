@@ -28,7 +28,7 @@ func TestLegacyBindingRequiresReviewedOwnershipAndIndependentRepair(t *testing.T
 	link := model.IdentityLink{ProviderID: provider.ID, TenantID: provider.TenantID, PrincipalID: principalID,
 		ExternalSubject: "external-user-1", CreatedAt: now, UpdatedAt: now, LastLoginAt: now}
 	require.NoError(t, env.db.Create(&link).Error)
-	_, err = env.service.authenticate(t.Context(), row, idTokenClaims{Subject: link.ExternalSubject}, "oidc")
+	_, err = env.service.authenticate(t.Context(), row, upstreamIdentity{Subject: link.ExternalSubject}, "oidc")
 	assert.ErrorIs(t, err, ErrIdentityOwnershipRequired)
 	options, err := authenticator.BeginReauthentication(t.Context(), cookie, authn.ReauthenticationIdentityLink, provider.ID.String(), "federation", "")
 	require.NoError(t, err)
@@ -49,7 +49,7 @@ func TestLegacyBindingRequiresReviewedOwnershipAndIndependentRepair(t *testing.T
 	require.NoError(t, env.service.RecordLegacyOwnershipEvidence(t.Context(), principalID, "reviewed pre-existing credential and mailbox ownership: case 42"))
 	require.NoError(t, env.db.Take(&link).Error)
 	assert.Equal(t, BindingUnknown, link.BindingProvenance)
-	_, err = env.service.authenticate(t.Context(), row, idTokenClaims{Subject: link.ExternalSubject}, "oidc")
+	_, err = env.service.authenticate(t.Context(), row, upstreamIdentity{Subject: link.ExternalSubject}, "oidc")
 	assert.ErrorIs(t, err, ErrIdentityOwnershipRequired)
 	start, err := env.service.StartIdentityOperation(t.Context(), cookie, provider.ID, proof, "", "", "https://iam.example"+callbackURL(provider.ID))
 	require.NoError(t, err)
@@ -68,7 +68,7 @@ func TestLegacyBindingRequiresReviewedOwnershipAndIndependentRepair(t *testing.T
 	assert.Equal(t, int64(1), members)
 	assert.Zero(t, roles)
 	assert.Equal(t, int64(1), links)
-	session, err := env.service.authenticate(t.Context(), row, idTokenClaims{Subject: link.ExternalSubject}, "oidc")
+	session, err := env.service.authenticate(t.Context(), row, upstreamIdentity{Subject: link.ExternalSubject}, "oidc")
 	require.NoError(t, err)
 	assert.NotEmpty(t, session)
 }
@@ -155,7 +155,7 @@ func TestProviderSourceReplacementInvalidatesTrustedBindingAtomically(t *testing
 	assert.NotNil(t, link.QuarantinedAt)
 	current, err = env.service.repo.getProviderByID(t.Context(), provider.ID)
 	require.NoError(t, err)
-	_, err = env.service.authenticate(t.Context(), current, idTokenClaims{Subject: link.ExternalSubject}, "oidc")
+	_, err = env.service.authenticate(t.Context(), current, upstreamIdentity{Subject: link.ExternalSubject}, "oidc")
 	assert.ErrorIs(t, err, ErrIdentityOwnershipRequired)
 	assert.NotEmpty(t, result.SessionToken)
 	assert.Equal(t, principalID, link.PrincipalID)
@@ -176,7 +176,7 @@ func TestExistingEmailCannotJITBindAnotherProvider(t *testing.T) {
 			row, err := env.service.repo.getProviderByID(t.Context(), second.ID)
 			require.NoError(t, err)
 			verified := true
-			_, err = env.service.authenticate(t.Context(), row, idTokenClaims{Subject: "unrelated", Email: "user@example.com", EmailVerified: &verified}, "oidc")
+			_, err = env.service.authenticate(t.Context(), row, upstreamIdentity{Subject: "unrelated", Email: "user@example.com", EmailVerified: &verified}, "oidc")
 			assert.ErrorIs(t, err, ErrIdentityOwnershipRequired)
 			for _, table := range []string{"iam_principals", "iam_identity_links", "iam_tenant_members"} {
 				var count int64
@@ -261,7 +261,7 @@ func TestSourceReplacementRacingSessionIssuanceLeavesNoUsableOldSession(t *testi
 	}
 	loginDone := make(chan loginResult, 1)
 	go func() {
-		session, err := env.service.authenticate(t.Context(), row, idTokenClaims{Subject: "existing"}, "oidc")
+		session, err := env.service.authenticate(t.Context(), row, upstreamIdentity{Subject: "existing"}, "oidc")
 		loginDone <- loginResult{session, err}
 	}()
 	select {
@@ -307,7 +307,7 @@ func TestFederationSessionCannotEscapeBindingTransactionRollback(t *testing.T) {
 		env.service.repo = original.withDB(tx, true)
 		defer func() { env.service.repo = original }()
 		var err error
-		session, err = env.service.authenticate(t.Context(), row, idTokenClaims{Subject: "existing"}, "oidc")
+		session, err = env.service.authenticate(t.Context(), row, upstreamIdentity{Subject: "existing"}, "oidc")
 		if err != nil {
 			return err
 		}

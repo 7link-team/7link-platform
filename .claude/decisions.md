@@ -35,6 +35,31 @@ engines, both mutation-checked: removing the guard turns them red.
 
 Status: implemented.
 
+## D96 - One Upstream Identity, Three Protocols (2026-10-03)
+
+Decision: the normalized shape every federation protocol produces is named
+`upstreamIdentity` rather than `idTokenClaims`.
+
+Reason: the type was named after OIDC's ID token and then grew two more
+producers. SAML already filled it from an assertion, and a social provider fills
+it from a profile document. A name that states one producer invites the next
+reader to assume the others do not exist, and invites code to treat an absent
+field as a fault rather than as what that protocol states.
+
+The fields that belong to one producer are documented as such instead of being
+split out: Nonce and AuthorizedParty are ID-token concepts, and AuthTime is
+absent from plain OAuth 2.0 entirely, which is the whole reason a social provider
+cannot serve as a re-authentication proof.
+
+Alternatives considered: a per-protocol type with a conversion at each seam -
+rejected, three nearly identical structs and three conversions to keep in step
+for no behavioural gain.
+
+Scope: rename only, confined to `internal/iam/federation`; the type was already
+package-private, so nothing outside it changed.
+
+Status: implemented.
+
 ## D94 - Social Sign-In Is One Provider Type With a Connector Table (2026-10-03)
 
 Decision: social sign-in is a third federation provider type, `oauth2`. A
@@ -74,8 +99,22 @@ Scope and constraints that future work must not reverse without approval:
 - The outbound User-Agent is read from the runtime identity, never written into
   the catalog.
 
-Status: implemented; 24 connectors. Alipay, WeCom, WeChat Mini Program, Steam,
-Dropbox, Notion and VK remain unimplemented, each one `profileFlow` away.
+Status: implemented; 26 connectors, three of them with a flow of their own.
+Alipay signs every gateway call with the application's RSA private key, so its
+stored "client secret" is a PKCS#8 key rather than a shared secret; WeCom
+authenticates the application from its corp credentials before it will identify
+the person, and admits members of the organization only. Both were verified
+against the live endpoints: the gateway answers `isv.missing-app-id` and WeCom
+answers `corpsecret missing`, which confirms the parameter names as well as the
+addresses. WeChat Mini Program, Steam, Dropbox, Notion and VK remain
+unimplemented, each one `profileFlow` away.
+
+WeCom capitalises `UserId` in its answer while the catalog reads `userid`, so the
+flow normalizes the identifier onto the one key the claim path reads. Tolerating
+both spellings in the flow's own check while the claim path read only one is how
+a login WeCom answered correctly would still have failed; a test now goes through
+the mapping rather than the raw document, and removing the normalization turns it
+red.
 
 Endpoint verification (2026-10-03, by unauthenticated probe from the development
 sandbox): seventeen connectors answer as the catalog expects -- github, gitlab,
