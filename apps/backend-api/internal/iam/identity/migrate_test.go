@@ -38,8 +38,8 @@ func TestModuleMigrationContract(t *testing.T) {
 		}
 		assert.Equal(t, []string{"00001_principals.sql", "00002_service_accounts.sql",
 			"00003_principal_lifecycles.sql", "00004_tombstone_guards.sql", "00005_closure_requests.sql", "00006_avatars.sql",
-			"00007_self_registration_origin.sql"}, names,
-			"dialect %s must carry the module's seven migrations", dialect)
+			"00007_self_registration_origin.sql", "00008_phone.sql"}, names,
+			"dialect %s must carry the module's eight migrations", dialect)
 	}
 }
 
@@ -47,7 +47,7 @@ func TestModuleMigrationMilestones(t *testing.T) {
 	t.Parallel()
 
 	milestones := (&Module{}).MigrationMilestones()
-	require.Len(t, milestones, 5)
+	require.Len(t, milestones, 6)
 	assert.Equal(t, "base", milestones[0].Name)
 	assert.Equal(t, int64(2), milestones[0].Version)
 	assert.Empty(t, milestones[0].Dependencies, "identity owns the root of the IAM migration DAG")
@@ -59,6 +59,9 @@ func TestModuleMigrationMilestones(t *testing.T) {
 	assert.Equal(t, int64(6), milestones[3].Version)
 	assert.Equal(t, "self-registration-origin", milestones[4].Name)
 	assert.Equal(t, int64(7), milestones[4].Version)
+	assert.Equal(t, "phone", milestones[5].Name)
+	assert.Equal(t, int64(8), milestones[5].Version)
+	assert.Empty(t, milestones[5].Dependencies, "a column on this module's own table")
 
 	var _ module.MigrationSourceProvider = (*Module)(nil)
 	var _ module.MigrationMilestoneProvider = (*Module)(nil)

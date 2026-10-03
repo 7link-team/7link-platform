@@ -25,20 +25,20 @@ func TestProfileCatalogProjectionAndWriteBoundaries(t *testing.T) {
 		require.NoError(t, registry.RegisterField(field))
 		constraint.Fields[field.Name] = DecideField(field, nil, nil)
 	}
-	assert.Len(t, registry.Fields(ProfileResource), 4)
-	require.NoError(t, constraint.RequireRead("id", "login_name", "display_name", "email"))
-	require.NoError(t, constraint.RequireWrite(true, "login_name", "display_name", "email"))
-	require.NoError(t, constraint.RequireWrite(false, "login_name", "display_name", "email"))
+	assert.Len(t, registry.Fields(ProfileResource), 5)
+	require.NoError(t, constraint.RequireRead("id", "login_name", "display_name", "email", "phone"))
+	require.NoError(t, constraint.RequireWrite(true, "login_name", "display_name", "email", "phone"))
+	require.NoError(t, constraint.RequireWrite(false, "login_name", "display_name", "email", "phone"))
 	assert.ErrorIs(t, constraint.RequireWrite(true, "id"), ErrFieldDenied)
 	assert.ErrorIs(t, constraint.RequireWrite(false, "id"), ErrFieldDenied)
 	assert.ErrorIs(t, constraint.RequireRead("unknown"), ErrFieldDenied)
 	assert.ErrorIs(t, constraint.RequireWrite(false, "unknown"), ErrFieldDenied)
 	assert.Empty(t, *constraint.ReadString("email", ""))
-	assert.False(t, *constraint.EmailVerified(false))
+	assert.False(t, *constraint.Verified("email", false))
 	for _, read := range []string{"omit", "redact", "unknown"} {
 		constraint.Fields["email"] = FieldDecision{Read: read}
 		assert.ErrorIs(t, constraint.RequireRead("email"), ErrFieldDenied)
-		assert.Nil(t, constraint.EmailVerified(true))
+		assert.Nil(t, constraint.Verified("email", true))
 		if read == "redact" {
 			assert.Equal(t, "[REDACTED]", *constraint.ReadString("email", "sensitive@example.test"))
 		} else {

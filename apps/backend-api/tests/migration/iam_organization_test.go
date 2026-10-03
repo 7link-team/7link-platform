@@ -76,7 +76,7 @@ func assertOrganizationUp(t *testing.T, db *gorm.DB, modules []module.Module, pr
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
 	assert.Equal(t, "role-member-expiry", milestones[iamcore.Name])
-	assert.Equal(t, "self-registration-origin", milestones[identity.Name])
+	assert.Equal(t, "phone", milestones[identity.Name])
 	assert.Equal(t, "administration-scopes", milestones[organization.Name])
 	assert.Equal(t, "device-and-exchange", milestones[oauth.Name])
 }

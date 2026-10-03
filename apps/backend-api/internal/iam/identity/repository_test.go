@@ -676,7 +676,7 @@ func TestEveryServiceEntryPointFailsWithoutDatabase(t *testing.T) {
 			return err
 		},
 		"Update": func() error {
-			_, err := service.Update(selfContext(ctx, 1), 7, 1, &display, nil)
+			_, err := service.Update(selfContext(ctx, 1), 7, 1, &display, nil, nil)
 			return err
 		},
 		"SetStatus": func() error {

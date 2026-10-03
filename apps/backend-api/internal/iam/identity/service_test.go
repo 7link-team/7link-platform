@@ -442,7 +442,7 @@ func TestUpdateRejectsInvalidInput(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			_, err := harness.service.Update(
-				t.Context(), testCase.tenantID, testCase.id, testCase.displayName, testCase.email,
+				t.Context(), testCase.tenantID, testCase.id, testCase.displayName, testCase.email, nil,
 			)
 			assert.ErrorIs(t, err, ErrInvalid)
 		})
@@ -463,7 +463,7 @@ func TestUpdateEmailResetsVerificationAndRevokesSecurityState(t *testing.T) {
 	harness.seedVerificationToken(t, 31, principal.ID)
 
 	newEmail := "Alice.New@Example.test"
-	updated, err := harness.service.Update(selfContext(t.Context(), principal.ID), 7, principal.ID, nil, &newEmail)
+	updated, err := harness.service.Update(selfContext(t.Context(), principal.ID), 7, principal.ID, nil, &newEmail, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "alice.new@example.test", updated.Email)
@@ -491,7 +491,7 @@ func TestUpdateDisplayNameKeepsCredentialAndSessions(t *testing.T) {
 	harness.seedSession(t, 11, principal.ID)
 
 	display := "  Alice Smith  "
-	updated, err := harness.service.Update(selfContext(t.Context(), principal.ID), 7, principal.ID, &display, nil)
+	updated, err := harness.service.Update(selfContext(t.Context(), principal.ID), 7, principal.ID, &display, nil, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "Alice Smith", updated.DisplayName)
@@ -513,7 +513,7 @@ func TestUpdateCannotReachAnotherTenantsPrincipal(t *testing.T) {
 	require.NoError(t, err)
 
 	display := "Renamed By Other Tenant"
-	_, err = harness.service.Update(selfContext(t.Context(), principal.ID), 8, principal.ID, &display, nil)
+	_, err = harness.service.Update(selfContext(t.Context(), principal.ID), 8, principal.ID, &display, nil, nil)
 	assert.ErrorIs(t, err, ErrNotFound)
 	assert.Equal(t, "Alice", harness.principal(t, principal.ID).DisplayName)
 }
@@ -888,7 +888,7 @@ func TestUpdateSurfacesMissingCredentialRow(t *testing.T) {
 		Where("principal_id = ?", principal.ID).Delete(nil).Error)
 
 	email := "changed@example.test"
-	_, err = harness.service.Update(selfContext(t.Context(), principal.ID), 7, principal.ID, nil, &email)
+	_, err = harness.service.Update(selfContext(t.Context(), principal.ID), 7, principal.ID, nil, &email, nil)
 	assert.ErrorIs(t, err, errPrincipalCredentialNotFound)
 	assert.Equal(t, "alice@example.test", harness.principal(t, principal.ID).Email)
 }
@@ -993,7 +993,7 @@ func TestPrincipalOperationsFailClosedAfterDatabaseShutdown(t *testing.T) {
 		}},
 		{"get", func() error { _, err := harness.service.Get(ctx, 7, principal.ID); return err }},
 		{"update", func() error {
-			_, err := harness.service.Update(selfContext(ctx, principal.ID), 7, principal.ID, &display, nil)
+			_, err := harness.service.Update(selfContext(ctx, principal.ID), 7, principal.ID, &display, nil, nil)
 			return err
 		}},
 		{"set status", func() error {

@@ -21,7 +21,14 @@ func (*Module) MigrationSource() goosex.Source {
 }
 
 func (*Module) MigrationMilestones() []module.MigrationMilestone {
-	return []module.MigrationMilestone{{Name: "base", Version: 2}, {Name: "lifecycle", Version: 4}, {Name: "closure-requests", Version: 5}, {Name: "avatars", Version: 6}, {Name: "self-registration-origin", Version: 7}}
+	return []module.MigrationMilestone{
+		{Name: "base", Version: 2}, {Name: "lifecycle", Version: 4},
+		{Name: "closure-requests", Version: 5}, {Name: "avatars", Version: 6},
+		{Name: "self-registration-origin", Version: 7},
+		// A nullable-by-default column pair and an index on this module's own
+		// table, so the milestone depends on nothing outside identity.
+		{Name: "phone", Version: 8},
+	}
 }
 
 var (

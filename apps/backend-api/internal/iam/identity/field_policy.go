@@ -19,6 +19,8 @@ type PrincipalView struct {
 	Avatar             *Avatar   `json:"avatar,omitempty"`
 	Email              *string   `json:"email,omitempty"`
 	EmailVerified      *bool     `json:"email_verified,omitempty"`
+	Phone              *string   `json:"phone,omitempty"`
+	PhoneVerified      *bool     `json:"phone_verified,omitempty"`
 	ActivationRequired bool      `json:"activation_required"`
 	Status             string    `json:"status"`
 	CreatedAt          time.Time `json:"created_at"`
@@ -42,7 +44,8 @@ func profileView(principal Principal, fields authz.FieldConstraint) PrincipalVie
 		ID: principal.ID, LoginName: fields.ReadString("login_name", principal.LoginName),
 		DisplayName: fields.ReadString("display_name", principal.DisplayName),
 		Avatar:      avatar,
-		Email:       fields.ReadString("email", principal.Email), EmailVerified: fields.EmailVerified(principal.EmailVerified),
+		Email:       fields.ReadString("email", principal.Email), EmailVerified: fields.Verified("email", principal.EmailVerified),
+		Phone: fields.ReadString("phone", principal.Phone), PhoneVerified: fields.Verified("phone", principal.PhoneVerified),
 		ActivationRequired: principal.ActivationRequired, Status: principal.Status,
 		CreatedAt: principal.CreatedAt, UpdatedAt: principal.UpdatedAt,
 	}
@@ -53,7 +56,7 @@ func requireProfileWrites(raw []byte, fields authz.FieldConstraint, create bool)
 	if err := json.Unmarshal(raw, &submitted); err != nil {
 		return ErrInvalid
 	}
-	for _, name := range []string{"login_name", "display_name", "email"} {
+	for _, name := range []string{"login_name", "display_name", "email", "phone"} {
 		if _, present := submitted[name]; present {
 			if err := fields.RequireWrite(create, name); err != nil {
 				return err

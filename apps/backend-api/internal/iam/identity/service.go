@@ -337,21 +337,62 @@ func (s *Service) Get(ctx context.Context, tenantID, id guid.ID) (Principal, err
 func (s *Service) Update(
 	ctx context.Context,
 	tenantID, id guid.ID,
-	displayName, email *string,
+	displayName, email, phone *string,
 ) (Principal, error) {
 	if tenantID.Zero() {
 		return Principal{}, ErrInvalid
 	}
-	return s.updateProfile(ctx, tenantID, id, displayName, email)
+	return s.updateProfile(ctx, tenantID, id, displayName, email, phone)
 }
 
-func (s *Service) UpdateGlobal(ctx context.Context, id guid.ID, displayName, email *string) (Principal, error) {
-	return s.updateProfile(ctx, 0, id, displayName, email)
+func (s *Service) UpdateGlobal(
+	ctx context.Context, id guid.ID, displayName, email, phone *string,
+) (Principal, error) {
+	return s.updateProfile(ctx, 0, id, displayName, email, phone)
 }
 
-func (s *Service) updateProfile(ctx context.Context, tenantID, id guid.ID, displayName, email *string) (Principal, error) {
-	if id.Zero() || displayName == nil && email == nil {
+// normalizePhone accepts a number in the only shape that is unambiguous across
+// countries: a plus sign and up to fifteen digits, which is what E.164 allows.
+// Spaces, dashes and parentheses are how people write a number down rather than
+// part of it, so they are removed instead of refused. An empty value clears the
+// number, which is how somebody takes theirs back.
+func normalizePhone(value string) (string, bool) {
+	var builder strings.Builder
+	for index, character := range strings.TrimSpace(value) {
+		switch {
+		case character == '+' && index == 0:
+			builder.WriteRune(character)
+		case character >= '0' && character <= '9':
+			builder.WriteRune(character)
+		case character == ' ' || character == '-' || character == '(' || character == ')' || character == '.':
+		default:
+			return "", false
+		}
+	}
+	normalized := builder.String()
+	if normalized == "" {
+		return "", true
+	}
+	digits := strings.TrimPrefix(normalized, "+")
+	if !strings.HasPrefix(normalized, "+") || len(digits) < 4 || len(digits) > 15 {
+		return "", false
+	}
+	return normalized, true
+}
+
+func (s *Service) updateProfile(
+	ctx context.Context, tenantID, id guid.ID, displayName, email, phone *string,
+) (Principal, error) {
+	if id.Zero() || displayName == nil && email == nil && phone == nil {
 		return Principal{}, ErrInvalid
+	}
+	var requestedPhone *string
+	if phone != nil {
+		value, ok := normalizePhone(*phone)
+		if !ok {
+			return Principal{}, ErrInvalid
+		}
+		requestedPhone = &value
 	}
 	var requestedDisplay, requestedEmail *string
 	if displayName != nil {
@@ -396,18 +437,31 @@ func (s *Service) updateProfile(ctx context.Context, tenantID, id guid.ID, displ
 		if err != nil {
 			return err
 		}
-		wantedDisplay, wantedEmail := current.DisplayName, current.Email
+		wantedDisplay, wantedEmail, wantedPhone := current.DisplayName, current.Email, current.Phone
 		if requestedDisplay != nil {
 			wantedDisplay = *requestedDisplay
 		}
 		if requestedEmail != nil {
 			wantedEmail = *requestedEmail
 		}
+		if requestedPhone != nil {
+			wantedPhone = *requestedPhone
+		}
 		displayChanged := wantedDisplay != current.DisplayName
 		emailChanged := wantedEmail != current.Email
-		updates := map[string]any{"display_name": wantedDisplay, "email": wantedEmail, "updated_at": now}
+		phoneChanged := wantedPhone != current.Phone
+		updates := map[string]any{
+			"display_name": wantedDisplay, "email": wantedEmail, "phone": wantedPhone, "updated_at": now,
+		}
 		if emailChanged {
 			updates["email_verified"] = false
+		}
+		// A different number is a different number: whatever proved the old one
+		// proves nothing about this one. Unlike an address change this revokes no
+		// sessions, because nothing can yet be recovered or signed in to with a
+		// number -- the moment one can, this has to revoke too.
+		if phoneChanged {
+			updates["phone_verified"] = false
 		}
 		if err := repo.updatePrincipalRow(ctx, id, updates); err != nil {
 			return err
@@ -422,12 +476,19 @@ func (s *Service) updateProfile(ctx context.Context, tenantID, id guid.ID, displ
 		}
 		event.Detail["display_name_changed"] = displayChanged
 		event.Detail["email_changed"] = emailChanged
+		// Whether the number changed, never the number itself: the audit chain is
+		// read by more people than the profile is.
+		event.Detail["phone_changed"] = phoneChanged
 		if err := repo.appendAudit(ctx, event); err != nil {
 			return err
 		}
-		current.DisplayName, current.Email, current.UpdatedAt = wantedDisplay, wantedEmail, now
+		current.DisplayName, current.Email, current.Phone, current.UpdatedAt =
+			wantedDisplay, wantedEmail, wantedPhone, now
 		if emailChanged {
 			current.EmailVerified = false
+		}
+		if phoneChanged {
+			current.PhoneVerified = false
 		}
 		updated = principalFromRow(current)
 		return nil
@@ -786,8 +847,9 @@ func (r *Repository) ensureTenantMember(
 func principalFromRow(row *model.Principal) Principal {
 	return Principal{
 		ID: row.ID, LoginName: row.LoginName, Email: row.Email,
-		EmailVerified: row.EmailVerified, ActivationRequired: row.ActivationRequired,
-		DisplayName: row.DisplayName, Status: row.Status,
+		EmailVerified: row.EmailVerified, Phone: row.Phone, PhoneVerified: row.PhoneVerified,
+		ActivationRequired: row.ActivationRequired,
+		DisplayName:        row.DisplayName, Status: row.Status,
 		Avatar:    currentAvatar(row.ID, storedAvatar(row.Avatar)),
 		CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(),
 	}

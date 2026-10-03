@@ -273,7 +273,8 @@ func (s *Service) anonymizeOnce(
 		}
 		if err := repo.updatePrincipalRow(ctx, id, map[string]any{
 			"login_name": "erased:" + id.String(), "display_name": "Anonymized account", "email": "", "avatar": "",
-			"email_verified": false, "activation_required": false, "updated_at": now,
+			"phone": "", "email_verified": false, "phone_verified": false,
+			"activation_required": false, "updated_at": now,
 		}); err != nil {
 			return err
 		}

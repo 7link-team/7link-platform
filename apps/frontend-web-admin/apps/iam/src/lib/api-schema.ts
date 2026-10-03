@@ -8399,6 +8399,8 @@ export interface components {
             email_verified: boolean;
             id: string | null;
             login_name: string;
+            phone?: string;
+            phone_verified: boolean;
             status: string;
             /** Format: date-time */
             updated_at: string;
@@ -8432,6 +8434,8 @@ export interface components {
         PrincipalUpdateInputBody: {
             display_name?: string;
             email?: string;
+            /** @description E.164 number, or empty to remove it */
+            phone?: string;
         };
         PrincipalView: {
             activation_required: boolean;
@@ -8443,6 +8447,8 @@ export interface components {
             email_verified?: boolean;
             id: string | null;
             login_name?: string;
+            phone?: string;
+            phone_verified?: boolean;
             status: string;
             /** Format: date-time */
             updated_at: string;
@@ -8887,6 +8893,8 @@ export interface components {
         SystemPrincipalUpdateInputBody: {
             display_name?: string;
             email?: string;
+            /** @description E.164 number, or empty to remove it */
+            phone?: string;
         };
         SystemRoleCreateInputBody: {
             description?: string;

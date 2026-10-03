@@ -11348,6 +11348,12 @@
           "login_name": {
             "type": "string"
           },
+          "phone": {
+            "type": "string"
+          },
+          "phone_verified": {
+            "type": "boolean"
+          },
           "status": {
             "type": "string"
           },
@@ -11360,6 +11366,7 @@
           "id",
           "login_name",
           "email_verified",
+          "phone_verified",
           "activation_required",
           "display_name",
           "status",
@@ -11494,6 +11501,11 @@
           "email": {
             "maxLength": 320,
             "type": "string"
+          },
+          "phone": {
+            "description": "E.164 number, or empty to remove it",
+            "maxLength": 32,
+            "type": "string"
           }
         },
         "type": "object"
@@ -11529,6 +11541,12 @@
           },
           "login_name": {
             "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "phone_verified": {
+            "type": "boolean"
           },
           "status": {
             "type": "string"
@@ -13166,6 +13184,11 @@
           },
           "email": {
             "maxLength": 320,
+            "type": "string"
+          },
+          "phone": {
+            "description": "E.164 number, or empty to remove it",
+            "maxLength": 32,
             "type": "string"
           }
         },

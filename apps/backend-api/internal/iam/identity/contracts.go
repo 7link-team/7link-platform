@@ -16,6 +16,8 @@ type Principal struct {
 	LoginName          string    `json:"login_name"`
 	Email              string    `json:"email,omitempty"`
 	EmailVerified      bool      `json:"email_verified"`
+	Phone              string    `json:"phone,omitempty"`
+	PhoneVerified      bool      `json:"phone_verified"`
 	ActivationRequired bool      `json:"activation_required"`
 	DisplayName        string    `json:"display_name"`
 	Avatar             *Avatar   `json:"avatar,omitempty" gorm:"serializer:json"`

@@ -5,93 +5,64 @@
 
 ## Task
 用户批准的四项补齐,一项一交付一提交:
-1. ~~Webhook~~ 已交付 `b6d3b27`
-2. ~~Device flow + Token exchange~~ 已交付 `8187c19`
-3. **角色授予期限** —— 本次
-4. 短信 —— 未开始,实为 `iam_principals` 加手机号列 + 接生命周期,不是接厂商
+1. ~~Webhook~~ 已交付 `b6d3b27`(D97)
+2. ~~Device flow + Token exchange~~ 已交付 `8187c19`(D98)
+3. ~~角色授予期限~~ 已交付 `9bdddd6`(D99)
+4. **短信** —— 本次
 
 ## Objective
-让管理员能把一个租户级角色授予**带上截止时间**,并让每一处"把授予读作权限"的判定都尊重它。
+让 principal 可以有手机号,并且这个号码从一开始就被当作 PII 对待:匿名化会清掉它,
+tombstone 闸门禁止匿名化之后再写回,审计链里不留明文。
 
-## 分析结论(开工前的实地核对,与开工前的假设有出入)
-四种角色到达 principal 的方式(`core/query/authorization.go` 的 `effective_roles` CTE):
+## 分析结论(开工前实地核对)
+- `iam_principals` 现有 `email`(非唯一,仅索引)+ `email_verified`。`login_name` 才是唯一身份。
+  → 手机号镜像 email:非唯一 + 索引。号码不是身份,家庭共用号或号码回收都不该挡住开户。
+- 匿名化的写入是 `identity/lifecycle.go:275` 一张 map,加两个字段即可覆盖。
+- `iam_principals` 上有 `trg_iam_principal_tombstone_update`:对已匿名化的 principal
+  **任何 UPDATE 都 ABORT**。所以手机号与邮箱受同一道 schema 级闸门,不需要新守卫。
+- 通知已有出站链路:`iam_notification_outbox`(kind / recipient / 加密载荷 / 重试),
+  `postNotification` POST 给外部通知服务,`kind` 无 CHECK 约束 → 新增一种 kind 不动 schema。
+- 邮箱验证流程(`authn/verification.go`,259 行 + 仓储 + HTTP + 配置)把地址快照进凭证行,
+  改地址即失效 —— 手机号验证必须保留这个性质。
 
-| 来源 | 表 | 期限列 | 判定是否已过滤 |
-|------|-----|--------|----------------|
-| 永久成员 | `iam_role_members` | **无** | — |
-| 临时授予 | `iam_temporary_role_grants` | starts_at / ends_at(NOT NULL) | 已过滤 |
-| 用户组 | `iam_group_role_bindings` + 组成员 | 绑定本身无;组成员有 starts_at/ends_at | 组成员已过滤 |
-| 实体作用域 | `iam_role_bindings` | `expires_at`(可空) | 已过滤(authorization.go:309/345) |
+## 分两段交付(各自独立可验证)
+**Stage 1(已完成,待提交):号码本身 + PII 链路**
+1. 迁移 identity 00008(三方言):`phone` + `phone_verified` + phone 索引;里程碑 `phone@8`
+2. model + dbgen
+3. 匿名化写入加 `phone: ""`, `phone_verified: false`
+4. 设置/清除手机号(管理侧 + 本人),E.164 校验
+5. principal 投影暴露号码
+6. 测试(含匿名化后清空、tombstone 闸门拒绝写回)、冻结清单、openapi、前端类型
 
-所以**不是**"读取点都没过滤"(开工前的判断),而是:四条路里只有「永久成员」这一条没有期限可言。
-`governance/review_grants.go:31` 给它写的是 `NULL AS grant_expires_at` —— 那一列早就给它留好了。
-
-## 设计(D99,见 decisions.md)
-- `iam_role_members` 加可空 `expires_at`。NULL = 无期限,等于现存每一行当下的含义。
-- **不复用 `iam_temporary_role_grants`**:那张表是 governance 审批出来的授予,`source_type`/
-  `source_id` 指向访问申请,两个时间列都 NOT NULL,且每条有自己的 id 以便单独撤销与按
-  "temporary" 归类。带截止时间的直接授予仍是 (tenant, role, principal) 这同一个关系加了个界,
-  用那张表会让同一个关系有两种身份,"谁持有这个角色"要变成 union。
-- **读时过滤,不加清理器**:判定本来就按请求的 `now` 计算,四条路里三条已经这么做;清理器
-  会让正确性取决于"任务跑过没有"。过期行留着,也正是"显示为已过期"的前提。
-- **可见性走既有的 reviewable-grants 端点**(它已有 `grant_expires_at` 列和 `permanent` 类型),
-  不改 `GET /roles/{id}/members` 的 `[]guid.ID` 契约 —— 那是行管理视角,过期行照样在。
-- 作用域:只做租户级授予。`iam_group_role_bindings` 不加自己的期限 —— 组成员已有
-  starts_at/ends_at 且已被过滤,那就是租户给"组带来的角色"设界的方式。
-
-## 判定点清单(每处都有独立行为测试,且都做过变异验证:删掉谓词 → 对应用例立刻变红)
-必须过滤(把授予读作权限)—— 全部完成:
-- [x] `core/query/authorization.go` `effective_roles` 的 role_member 分支
-- [x] `core/query/authorization.go` durable administrator 计数 —— 用 `IS NULL`
-      而非「尚未过期」:守卫问的是"之后还有没有管理员",会过期的答案不算
-- [x] `core/authorizer_system.go` 系统角色判定(独立语句,无 CTE,需自己的证明)
-- [x] `core/platform.go` 平台管理员列表
-- [x] `core/repository_admin.go` `ListMemberRoleIDs`
-- [x] `core/review_grant.go` `roleGrantedOn`
-- [x] `core/lifecycle.go` 关户前的平台权限拦截
-- [x] `core/member_authorization.go` 缓存判定的到期(否则缓存比授予活得久)
-- [x] `governance/review_grants.go` permanent 分支:吐出期限 + 过滤已失效
-
-不过滤(行管理视角,有意为之):
-- `core/repository.go` 增删与 `ListMembers`、`core/pagination.go` 分页列表
-  —— 失效的行还在,撤销仍然有效
-- `core/system_access_http.go` `systemMemberView` —— 控制台据此渲染开关,
-  隐藏失效行会让开关变成空操作
-- `core/entity.go` 删实体前清点绑定 —— 失效的行照样会被外键牵连
-- `tenantbootstrap.go` / `federation` / `organization/invitation` 的写入 —— 不带期限 = 永久
-
-## Completed Work
-- 迁移 00018(三方言:可空 `expires_at` + 镜像 role_bindings 的 subject 索引)
-- 里程碑 `role-member-expiry@18` + model + dbgen
-- 授予 API 接受可选 `expires_at`(body 为指针 → 可缺省,老调用方行为不变)
-- PUT 语义:整体置为请求所述;读后写而非 upsert(upsert 的影响行数各方言含义不同,
-  而 `changed` 必须真的表示"授予变了")
-- 期限进审计明细(`expires_at`),审查端点吐出它
-- 9 处判定点 + 11 个新行为测试,逐一变异验证
-- 冻结清单:core 里程碑清单与计数、三处 `milestones[iamcore.Name]`、openapi、前端类型
+**Stage 2(下一次):验证码**
+把邮箱验证凭证改成分渠道(channel + 号码列),复用同一套尝试次数/消费一次/快照绑定,
+新增 `phone_verification` 这种 outbox kind,端点限流。不复制一套流程。
 
 ## Confirmed Constraints
-- 不改既有四条授予路径的语义,只给第一条加界。
-- MySQL 一律 `DATETIME(3)`;索引镜像 `iam_role_bindings` 的
-  `(tenant_id, principal_id, ..., expires_at)` 形状。
-- 热路径 CTE 每加一个谓词都要看性能基线。
+- 手机号是 PII:任何新增的日志、审计明细、webhook 投影都不得带它。
+- 不接任何短信厂商:出站仍是既有的通知服务 POST。
+- 邮箱的 CHECK/索引形状是模板,手机号照抄,不另发明。
 
 ## Known Issues / Risks
-- **这是四项里最危险的一项**:`effective_roles` CTE 是每次鉴权都走的路径,
-  判定点跨 core / governance / organization / federation 四个模块。
-- 一旦某个判定点漏掉谓词,后果是"过期的角色仍然生效"——静默的权限泄漏,
-  所以每个点都必须有自己的行为测试 + 变异验证,不能只靠 CTE 的 golden SQL。
+- SCIM 的属性映射不在本次范围(provisioning 另有自己的 resource 映射)。
+- 手机号格式校验只做 E.164 形状,不做运营商/国家号段校验。
 
 ## Verification
-Build: PASS / `internal/iam/...` + `internal/app`: PASS
-变异验证: 10 处谓词全部可独立变红
-make ci: RUNNING / make test-performance: RUNNING
+Build: PASS / `internal/...` + `pkg/...` 全部测试: PASS
+`tests/architecture`: PASS / `tests/migration`(三引擎 × 带/不带前缀): PASS
+make ci: PASS(EXIT=0;总覆盖率 91.1%,identity 模块 90.8%,openapi 匹配,前端契约过)
+变异验证: 匿名化清空号码、验证标志随字段可见性 —— 两处都可独立变红
 
 ## Next Action
-`make ci` 与 `make test-performance` 结束后:若 PASS 则以单个提交交付并推送,
-然后开第 4 项(短信 —— `iam_principals` 加手机号列 + 接匿名化/撤回,属 PII)。
-若性能基线退化,先查 `effective_roles` 的 role_member 分支新谓词是否吃到了
-00018 建的 `(tenant_id, principal_id, expires_at)` 索引。
+Stage 1 已交付。Stage 2(验证码)未开工,第一步是把
+`iam_email_verification_tokens` 改成分渠道:加 `channel` 与号码列,复用同一套
+尝试次数/一次性消费/联系方式快照绑定,再加 `phone_verification` 这种 outbox kind
+与端点限流。**硬约束**:号码一旦能用于找回或登录,改号必须同时吊销会话并提升
+credential version(Stage 1 故意没做,因为那时号码还什么都换不到)。
+
+另有一项等你定夺(不在四项范围内,我没擅自做):device flow 的验证页面。
+后端已完整合规(未配置验证页时直接报配置故障),但页面本身属控制台工作线。
+建议与「角色授予期限的编辑界面」一起做,控制台一次对接两处新能力。
 
 ## Last Checkpoint
-2026-10-04 第 3 项实现与变异验证完成,等全量 CI 与性能基线
+2026-10-04 第 4 项 Stage 1 全量门禁通过,待提交

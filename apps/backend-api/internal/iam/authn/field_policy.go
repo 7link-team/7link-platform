@@ -59,7 +59,7 @@ func (s *Service) ProjectProfile(ctx context.Context, claims *authnext.Claims, s
 	}
 	if email {
 		view.Email = fields.ReadString("email", claims.Email)
-		view.EmailVerified = fields.EmailVerified(claims.EmailVerified)
+		view.EmailVerified = fields.Verified("email", claims.EmailVerified)
 	}
 	return view, nil
 }

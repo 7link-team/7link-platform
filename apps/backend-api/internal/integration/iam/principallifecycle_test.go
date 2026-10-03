@@ -375,7 +375,7 @@ func (f *iamTenantFixture) assertPrincipalOwnersErased(t *testing.T, principal i
 	assert.Empty(t, after["iam_principals"][0]["email"])
 	name, email := "Restored", "restored@example.test"
 	ctx := authnext.WithClaims(t.Context(), &authnext.Claims{PrincipalID: principal.ID})
-	_, err := requireIAMModule[*identity.Module](t, f, identity.Name).Service.Update(ctx, iamTenantB, principal.ID, &name, &email)
+	_, err := requireIAMModule[*identity.Module](t, f, identity.Name).Service.Update(ctx, iamTenantB, principal.ID, &name, &email, nil)
 	assert.ErrorContains(t, err, "anonymized", "the identity API must not restore a tombstone")
 }
 

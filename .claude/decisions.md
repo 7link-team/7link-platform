@@ -1,5 +1,54 @@
 # Decisions
 
+## D100 - A Phone Number Is A Contact, Not An Identity (2026-10-04)
+
+Decision: `iam_principals` carries `phone` and `phone_verified`, indexed and not
+unique, mirroring the `email` column beside it. `login_name` remains the only
+unique identity. A number is PII from the moment it exists: anonymization clears
+it with the address, the audit chain records only that it changed, and the
+profile field catalog gains `phone` so a field policy can hide or redact it --
+and the verification flag follows the field it derives from, so a hidden number
+cannot be probed through "is it verified".
+
+Not unique, because a number is a way to reach somebody rather than a way to
+name them. Numbers are shared inside a household and reissued by carriers after
+release; a uniqueness constraint would let whoever registered one first block an
+account that has a better claim to it. Email, the same kind of contact, is
+already indexed and not unique here.
+
+Changing the number clears `phone_verified` and revokes nothing else. An address
+change revokes sessions and bumps the credential version because the address can
+recover the account; a number cannot yet recover or sign in to anything, so there
+is nothing for a change to invalidate. **The moment a number becomes a recovery
+or sign-in channel, this has to revoke too** -- that is a constraint on the
+verification work, not a preference.
+
+Accepted in one shape: a plus sign and four to fifteen digits, which is what
+E.164 allows. Spaces, dashes, dots and parentheses are how a number is written
+down rather than part of it, so they are removed instead of refused; a number
+without a country code is refused, because the same digits name different people
+in different countries. An empty value clears it, which is how somebody takes
+their number back.
+
+`FieldConstraint.EmailVerified` became `FieldConstraint.Verified(field, value)`.
+The rule it encodes -- a verification flag is readable only where the contact is
+-- was never about email, and a second copy of it for phone would have been the
+same six lines with one word changed.
+
+Nothing writes the number back after anonymization, and nothing new was needed
+for that: the tombstone trigger on `iam_principals` already aborts every update
+to an anonymized principal, so the number is behind the same schema-level gate as
+the address.
+
+Scope: the number itself and its PII handling. Verifying it by code through the
+existing notification outbox is the next piece, and will extend the email
+verification credential to be channel-aware rather than copy it -- that flow
+already snapshots the contact into the credential row so that changing the
+contact invalidates an outstanding code, and a phone must keep that property.
+No SMS vendor is involved at any point: delivery stays the POST to the
+notification service that the outbox already makes.
+Status: IMPLEMENTED (number and PII handling); verification outstanding.
+
 ## D99 - A Role Assignment May Name The Moment It Stops Granting (2026-10-04)
 
 Decision: `iam_role_members` carries a nullable `expires_at`. NULL is no end,
