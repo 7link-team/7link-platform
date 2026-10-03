@@ -54,7 +54,7 @@ func TestRoleGrantabilityKeepsDataScopeWithinTheActorsConstraint(t *testing.T) {
 		return c.DepartmentIDs
 	}
 	held := role("Sales tasks", DataScopeDepartment, nil, "todo_view", "role_create", "role_update", "role_grant_permission", "role_manage_member")
-	_, err := h.repository.AddMember(t.Context(), tenantID, held, actorID)
+	_, err := h.repository.AddMember(t.Context(), tenantID, held, actorID, nil)
 	require.NoError(t, err)
 	require.Equal(t, []string{"101"}, constraint(), "the actor reads todo rows of its own department only")
 	actor := authn.WithClaims(t.Context(), &authn.Claims{SubjectType: authn.SubjectTypePrincipal, PrincipalID: actorID, TenantID: tenantID})
@@ -89,7 +89,7 @@ func TestRoleGrantabilityKeepsDataScopeWithinTheActorsConstraint(t *testing.T) {
 	}
 	_, err = h.service.GrantPermission(actor, tenantID, created.ID, "todo_view")
 	require.NoError(t, err, "a department-scoped role stays within the actor's department")
-	_, err = h.service.AddMember(actor, tenantID, created.ID, peerID)
+	_, err = h.service.AddMember(actor, tenantID, created.ID, peerID, nil)
 	require.NoError(t, err)
 
 	// Every assignment path refuses a role that reaches beyond the actor.
@@ -98,7 +98,7 @@ func TestRoleGrantabilityKeepsDataScopeWithinTheActorsConstraint(t *testing.T) {
 		role("Sales tree tasks", DataScopeDepartmentAndDescendants, nil, "todo_view"),
 		role("East tasks", DataScopeSelectedDepartments, []guid.ID{102}, "todo_view"),
 	} {
-		_, err = h.service.AddMember(actor, tenantID, wider, peerID)
+		_, err = h.service.AddMember(actor, tenantID, wider, peerID, nil)
 		assert.ErrorIs(t, err, ErrPrivilegeEscalation, "add member")
 		_, err = h.service.AddDirectoryBinding(actor, tenantID, wider, DirectoryAssigneeGroup, 9001)
 		assert.ErrorIs(t, err, ErrPrivilegeEscalation, "directory binding")
@@ -117,11 +117,11 @@ func TestRoleGrantabilityKeepsDataScopeWithinTheActorsConstraint(t *testing.T) {
 
 	// A tenant administrator is unaffected.
 	administrators := role("Administrators", DataScopeAll, nil, "tenant_administer")
-	_, err = h.repository.AddMember(t.Context(), tenantID, administrators, actorID)
+	_, err = h.repository.AddMember(t.Context(), tenantID, administrators, actorID, nil)
 	require.NoError(t, err)
 	_, _, err = h.service.SetRoleDataScope(actor, tenantID, held, DataScopeAll, nil)
 	require.NoError(t, err)
-	_, err = h.service.AddMember(actor, tenantID, held, peerID)
+	_, err = h.service.AddMember(actor, tenantID, held, peerID, nil)
 	require.NoError(t, err)
 }
 
@@ -137,10 +137,10 @@ func TestDepartmentScopeNeedsTheActorsOwnDepartment(t *testing.T) {
 	require.NoError(t, err)
 	_, _, err = h.service.SetRoleDataScope(t.Context(), tenantID, created.ID, DataScopeDepartment, nil)
 	require.NoError(t, err)
-	_, err = h.repository.AddMember(t.Context(), tenantID, created.ID, actorID)
+	_, err = h.repository.AddMember(t.Context(), tenantID, created.ID, actorID, nil)
 	require.NoError(t, err)
 	actor := authn.WithClaims(t.Context(), &authn.Claims{SubjectType: authn.SubjectTypePrincipal, PrincipalID: actorID, TenantID: tenantID})
-	_, err = h.service.AddMember(actor, tenantID, created.ID, actorID)
+	_, err = h.service.AddMember(actor, tenantID, created.ID, actorID, nil)
 	assert.ErrorIs(t, err, ErrPrivilegeEscalation)
 	_, _, err = h.service.SetRoleDataScope(actor, tenantID, created.ID, DataScopeSelf, nil)
 	require.NoError(t, err, "narrowing to self stays available")
@@ -176,7 +176,7 @@ func TestMemberDepartmentChangeStaysWithinTheActorsConstraint(t *testing.T) {
 		_, _, err = h.service.SetRoleDataScope(t.Context(), tenantID, created.ID, scope, nil)
 		require.NoError(t, err)
 		for _, member := range members {
-			_, err = h.repository.AddMember(t.Context(), tenantID, created.ID, member)
+			_, err = h.repository.AddMember(t.Context(), tenantID, created.ID, member, nil)
 			require.NoError(t, err)
 		}
 		return created.ID
@@ -217,7 +217,7 @@ func TestMemberDepartmentChangeStaysWithinTheActorsConstraint(t *testing.T) {
 	require.NoError(t, err)
 	_, err = h.repository.GrantPermission(t.Context(), tenantID, administrators.ID, "tenant_administer")
 	require.NoError(t, err)
-	_, err = h.repository.AddMember(t.Context(), tenantID, administrators.ID, actorID)
+	_, err = h.repository.AddMember(t.Context(), tenantID, administrators.ID, actorID, nil)
 	require.NoError(t, err)
 	require.NoError(t, move(peerID, 103))
 	assert.Equal(t, []string{"103"}, reach(peerID))
@@ -235,7 +235,7 @@ func TestDepartmentMoveRequiresTenantWideDepartmentAuthority(t *testing.T) {
 	require.NoError(t, err)
 	_, err = h.repository.GrantPermission(t.Context(), tenantID, role.ID, "dept_update")
 	require.NoError(t, err)
-	_, err = h.repository.AddMember(t.Context(), tenantID, role.ID, actorID)
+	_, err = h.repository.AddMember(t.Context(), tenantID, role.ID, actorID, nil)
 	require.NoError(t, err)
 	actor := authn.WithClaims(t.Context(), &authn.Claims{SubjectType: authn.SubjectTypePrincipal, PrincipalID: actorID, TenantID: tenantID})
 	move := func() error { return h.service.requireGrantableDepartmentMove(actor, h.repository, tenantID) }
@@ -250,7 +250,7 @@ func TestDepartmentMoveRequiresTenantWideDepartmentAuthority(t *testing.T) {
 	require.NoError(t, err)
 	_, err = h.repository.GrantPermission(t.Context(), tenantID, administrators.ID, "tenant_administer")
 	require.NoError(t, err)
-	_, err = h.repository.AddMember(t.Context(), tenantID, administrators.ID, actorID)
+	_, err = h.repository.AddMember(t.Context(), tenantID, administrators.ID, actorID, nil)
 	require.NoError(t, err)
 	require.NoError(t, move(), "a tenant administrator is unaffected")
 }
@@ -283,7 +283,7 @@ func TestDepartmentPlacementStaysWithinTheActorsConstraint(t *testing.T) {
 		_, _, err = h.service.SetRoleDataScope(t.Context(), tenantID, created.ID, scope, nil)
 		require.NoError(t, err)
 		for _, member := range members {
-			_, err = h.repository.AddMember(t.Context(), tenantID, created.ID, member)
+			_, err = h.repository.AddMember(t.Context(), tenantID, created.ID, member, nil)
 			require.NoError(t, err)
 		}
 		return created.ID
@@ -312,7 +312,7 @@ func TestDepartmentPlacementStaysWithinTheActorsConstraint(t *testing.T) {
 	require.NoError(t, err)
 	_, err = h.repository.GrantPermission(t.Context(), tenantID, administrators.ID, "tenant_administer")
 	require.NoError(t, err)
-	_, err = h.repository.AddMember(t.Context(), tenantID, administrators.ID, actorID)
+	_, err = h.repository.AddMember(t.Context(), tenantID, administrators.ID, actorID, nil)
 	require.NoError(t, err)
 	require.NoError(t, place(103, department, subtree))
 }

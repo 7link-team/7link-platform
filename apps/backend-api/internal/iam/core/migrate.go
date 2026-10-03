@@ -34,6 +34,10 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 		{Name: "resource-menu-routes", Version: 16},
 		{Name: "retire-positions", Version: 17,
 			Dependencies: []module.MigrationMilestoneRef{{Module: "organization", Name: "retire-positions"}}},
+		// A nullable column and an index on this module's own table, so the
+		// milestone depends on nothing outside core and rolls back by dropping
+		// what it added.
+		{Name: "role-member-expiry", Version: 18},
 	}
 }
 

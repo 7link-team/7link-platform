@@ -242,6 +242,7 @@ WITH effective_roles(role_id, source_type, source_id) AS (
     JOIN ` + source(tables.TenantMembers) + ` tm
       ON tm.tenant_id = m.tenant_id AND tm.principal_id = m.principal_id AND tm.status = ?
     WHERE m.tenant_id = ? AND m.principal_id = ?
+      AND (m.expires_at IS NULL OR m.expires_at > ?)
     UNION
     SELECT grants.role_id, 'temporary_role', grants.id
     FROM ` + source(tables.TemporaryRoleGrants) + ` grants
@@ -262,7 +263,7 @@ WITH effective_roles(role_id, source_type, source_id) AS (
       AND (gm.starts_at IS NULL OR gm.starts_at <= ?)
       AND (gm.ends_at IS NULL OR gm.ends_at > ?)
 )`, []any{
-			params.MemberStatus, params.TenantID, params.Subject,
+			params.MemberStatus, params.TenantID, params.Subject, params.Now,
 			params.MemberStatus, params.TenantID, params.Subject, params.Now, params.Now,
 			params.MemberStatus, params.TenantID, params.Subject, params.Now, params.Now,
 		}
@@ -418,6 +419,12 @@ FROM walk`, []any{
 		}
 }
 
+// An assignment that ends is not durable, which is why this reads IS NULL
+// rather than "not yet expired": the guard asks whether the tenant would still
+// have an administrator afterwards, and one whose grant lapses next week is an
+// answer that expires. The group branch below has required the same of a
+// time-bounded membership since it was written.
+//
 // durableAdministratorCountStatement renders the statement
 // CountDurableAdministrators executes.
 func durableAdministratorCountStatement(params DurableAdministratorParams) (string, []any) {
@@ -431,6 +438,7 @@ FROM (
     JOIN ` + tables.RolePermissions.String() + ` AS permissions
       ON permissions.tenant_id = members.tenant_id AND permissions.role_id = members.role_id
     WHERE members.tenant_id = ? AND permissions.permission_code IN (?, ?) AND permissions.condition_json = ''
+      AND members.expires_at IS NULL
     UNION
     SELECT group_members.principal_id
     FROM ` + directory.GroupRoleBindings.String() + ` AS bindings

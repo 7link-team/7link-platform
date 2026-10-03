@@ -137,7 +137,7 @@ func TestServiceRoleMemberAndPermissionLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, changed)
 
-	changed, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID)
+	changed, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID, nil)
 	require.NoError(t, err)
 	assert.True(t, changed)
 	allowed, err := harness.authorizer.Check(t.Context(), tenantID, "role_view", principalID)
@@ -201,16 +201,16 @@ func TestServiceRejectsPrivilegeEscalationFromAuthenticatedActor(t *testing.T) {
 
 	_, err = harness.repository.GrantPermission(t.Context(), tenantID, role.ID, "role_view")
 	require.NoError(t, err)
-	_, err = harness.service.AddMember(actorContext, tenantID, role.ID, targetID)
+	_, err = harness.service.AddMember(actorContext, tenantID, role.ID, targetID, nil)
 	assert.ErrorIs(t, err, ErrPrivilegeEscalation)
 
 	actorRole, err := harness.repository.CreateRole(t.Context(), tenantID, "Actor permissions", "")
 	require.NoError(t, err)
 	_, err = harness.repository.GrantPermission(t.Context(), tenantID, actorRole.ID, "role_view")
 	require.NoError(t, err)
-	_, err = harness.repository.AddMember(t.Context(), tenantID, actorRole.ID, actorID)
+	_, err = harness.repository.AddMember(t.Context(), tenantID, actorRole.ID, actorID, nil)
 	require.NoError(t, err)
-	changed, err := harness.service.AddMember(actorContext, tenantID, role.ID, targetID)
+	changed, err := harness.service.AddMember(actorContext, tenantID, role.ID, targetID, nil)
 	require.NoError(t, err)
 	assert.True(t, changed)
 }
@@ -248,7 +248,7 @@ func TestDeletingEntityDenyRequiresGrantableRole(t *testing.T) {
 	require.NoError(t, err)
 	_, err = harness.repository.GrantPermission(t.Context(), tenantID, actorRole.ID, "user_delete")
 	require.NoError(t, err)
-	_, err = harness.repository.AddMember(t.Context(), tenantID, actorRole.ID, actorID)
+	_, err = harness.repository.AddMember(t.Context(), tenantID, actorRole.ID, actorID, nil)
 	require.NoError(t, err)
 	changed, err := harness.service.DeleteEntityRoleBinding(
 		actorContext, tenantID, entity.ID, deniedRole.ID, targetID,
@@ -332,7 +332,7 @@ func TestServiceMenuEntityAndAuthorizationLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	_, err = harness.service.GrantPermission(t.Context(), tenantID, role.ID, "store_view")
 	require.NoError(t, err)
-	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID)
+	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID, nil)
 	require.NoError(t, err)
 
 	root, err := harness.service.CreateMenu(t.Context(), Menu{
@@ -468,7 +468,7 @@ func TestServiceValidationAndTenantIsolation(t *testing.T) {
 
 	_, err = harness.service.GetRole(t.Context(), tenantA, roleB.ID)
 	assert.ErrorIs(t, err, ErrRoleNotFound)
-	_, err = harness.service.AddMember(t.Context(), tenantA, roleB.ID, principalA)
+	_, err = harness.service.AddMember(t.Context(), tenantA, roleB.ID, principalA, nil)
 	assert.ErrorIs(t, err, ErrRoleNotFound)
 	_, err = harness.service.CreateRole(t.Context(), 0, "invalid", "")
 	assert.ErrorIs(t, err, ErrInvalidArgument)
@@ -808,7 +808,7 @@ func TestServiceCatalogsAndConstructors(t *testing.T) {
 	assert.Panics(t, func() { NewAuthorizerWithRegistry(nil, harness.service.registry) })
 	assert.Panics(t, func() { NewAuthorizerWithRegistry(harness.runtime, nil) })
 	assert.Equal(t, Name, (&Module{}).ModuleName())
-	require.Len(t, (&Module{}).MigrationMilestones(), 7)
+	require.Len(t, (&Module{}).MigrationMilestones(), 8)
 }
 
 func TestServiceRoleConditionValidationAndReadModels(t *testing.T) {
@@ -856,9 +856,9 @@ func TestServiceRoleConditionValidationAndReadModels(t *testing.T) {
 	assert.True(t, changed)
 	assert.Empty(t, grant.Condition)
 
-	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, 999)
+	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, 999, nil)
 	assert.ErrorIs(t, err, ErrMemberInactive)
-	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, 0)
+	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, 0, nil)
 	assert.ErrorIs(t, err, ErrInvalidArgument)
 	_, err = harness.service.ListPermissions(t.Context(), tenantID, 0)
 	assert.ErrorIs(t, err, ErrInvalidArgument)
@@ -994,7 +994,7 @@ func TestServiceListsPermanentAndTemporaryMemberRoles(t *testing.T) {
 	require.NoError(t, err)
 	temporary, err := harness.service.CreateRole(t.Context(), tenantID, "Temporary", "")
 	require.NoError(t, err)
-	_, err = harness.service.AddMember(t.Context(), tenantID, permanent.ID, principalID)
+	_, err = harness.service.AddMember(t.Context(), tenantID, permanent.ID, principalID, nil)
 	require.NoError(t, err)
 	require.NoError(t, harness.repository.GrantTemporaryRole(
 		t.Context(), tenantID, 301, temporary.ID, principalID, principalID,
@@ -1044,7 +1044,7 @@ func TestServiceListsIndependentEffectiveAuthorizationSources(t *testing.T) {
 	positionRole := createRole("Position", "dept_view")
 	scopedRole := createRole("Scoped", "store_view")
 
-	_, err := harness.service.AddMember(t.Context(), tenantID, directRole.ID, principalID)
+	_, err := harness.service.AddMember(t.Context(), tenantID, directRole.ID, principalID, nil)
 	require.NoError(t, err)
 	require.NoError(t, harness.repository.runInTx(t.Context(), func(repo *Repository) error {
 		return repo.replaceRoleDataScope(t.Context(), tenantID, directRole.ID, DataScopeSelectedDepartments, []guid.ID{100})
@@ -1627,7 +1627,7 @@ func TestServiceProtectsLastTenantAdministratorAcrossMutations(t *testing.T) {
 	require.NoError(t, err)
 	_, err = harness.service.GrantPermission(t.Context(), tenantID, role.ID, "tenant_administer")
 	require.NoError(t, err)
-	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID)
+	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID, nil)
 	require.NoError(t, err)
 
 	_, err = harness.service.RevokePermission(t.Context(), tenantID, role.ID, "tenant_administer")

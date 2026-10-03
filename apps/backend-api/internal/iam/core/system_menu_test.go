@@ -51,7 +51,7 @@ func seedSystemPermissions(t *testing.T, h coreServiceHarness, principal guid.ID
 		_, err = h.repository.GrantPermission(t.Context(), 99, role.ID, code)
 		require.NoError(t, err)
 	}
-	_, err = h.repository.AddMember(t.Context(), 99, role.ID, principal)
+	_, err = h.repository.AddMember(t.Context(), 99, role.ID, principal, nil)
 	require.NoError(t, err)
 }
 

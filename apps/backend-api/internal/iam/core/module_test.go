@@ -156,7 +156,7 @@ func TestModulePublishesTheSameLiveAuthorizationEvaluator(t *testing.T) {
 	require.NoError(t, err)
 	_, err = harness.service.GrantPermission(t.Context(), tenantID, role.ID, "user_view")
 	require.NoError(t, err)
-	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID)
+	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID, nil)
 	require.NoError(t, err)
 	_, _, err = harness.service.SetRoleDataScope(t.Context(), tenantID, role.ID, DataScopeSelf, nil)
 	require.NoError(t, err)
@@ -279,6 +279,7 @@ func TestModuleMigrationSourceRemainsSelfDescribing(t *testing.T) {
 		{Name: "default-menu-translations", Version: 15},
 		{Name: "resource-menu-routes", Version: 16},
 		{Name: "retire-positions", Version: 17, Dependencies: []module.MigrationMilestoneRef{{Module: "organization", Name: "retire-positions"}}},
+		{Name: "role-member-expiry", Version: 18},
 	}, (&Module{}).MigrationMilestones())
 }
 

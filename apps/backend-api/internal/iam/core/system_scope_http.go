@@ -329,7 +329,7 @@ func registerSystemScopeHTTP(api huma.API, svc *Service, registrar *authz.Regist
 					}
 					var err error
 					if method == http.MethodPut {
-						changed, err = tx.AddMember(ctx, owner, role, subject)
+						changed, err = tx.AddMember(ctx, owner, role, subject, nil)
 					} else {
 						changed, err = tx.RemoveMember(ctx, owner, role, subject)
 					}

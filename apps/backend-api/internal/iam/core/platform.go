@@ -96,7 +96,10 @@ func (r *Repository) listPlatformAdministrators(
 			Joins("JOIN "+names.Principal.String()+" AS p ON p.id = rm.principal_id").
 			Joins("JOIN "+names.Directory.Tenants.String()+" AS root ON root.id = rm.tenant_id").
 			Where("root.slug = ? AND root.scope_kind = ? AND root.status = ? AND m.status = ? AND p.status = ?", SystemRootSlug, "system", "active", "active", "active").
-			Where("r.name <> ? AND (rp.condition_json = ? OR rp.condition_json = ?)", SystemSuperadministratorRoleName, "", "null")
+			Where("r.name <> ? AND (rp.condition_json = ? OR rp.condition_json = ?)", SystemSuperadministratorRoleName, "", "null").
+			// A lapsed assignment administers nothing, so it is not listed as an
+			// administrator; one that ends next week still administers today.
+			Where("rm.expires_at IS NULL OR rm.expires_at > ?", repo.now().UTC().Truncate(time.Millisecond))
 		if principalID != nil {
 			fullQuery = fullQuery.Where(tables.PlatformAdministrators.PrincipalID.Eq(*principalID))
 			grantQuery = grantQuery.Where("rm.principal_id = ?", *principalID)
@@ -256,7 +259,7 @@ func (r *Repository) SetPlatformAdministrator(
 				return err
 			}
 		}
-		if _, err := repo.AddMember(ctx, owner, role.ID, principalID); err != nil {
+		if _, err := repo.AddMember(ctx, owner, role.ID, principalID, nil); err != nil {
 			return err
 		}
 		if result.RowsAffected > 0 {

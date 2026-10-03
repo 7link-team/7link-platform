@@ -1,106 +1,97 @@
 # Task State
 
-> 已交付并提交的前序任务:社交 connector(26 个,`bb89072` / `1c9b77d`)、
-> webhook 模块(`b6d3b27`)。各自的决定见 `.claude/decisions.md` D94–D97。
+> 已交付并提交:社交 connector(`bb89072` / `1c9b77d`)、webhook 模块(`b6d3b27`、D97)、
+> device flow + token exchange(`8187c19`、D98)。
 
 ## Task
 用户批准的四项补齐,一项一交付一提交:
-1. ~~**Webhook**~~ —— 已交付 `b6d3b27`(D97)
-2. **Device flow(RFC 8628)+ Token exchange(RFC 8693)** —— 本次(D98)
-3. 角色授予期限 —— 未开始,**最危险**:读取点跨 5 个模块,含 `core/query/authorization.go` 热路径
+1. ~~Webhook~~ 已交付 `b6d3b27`
+2. ~~Device flow + Token exchange~~ 已交付 `8187c19`
+3. **角色授予期限** —— 本次
 4. 短信 —— 未开始,实为 `iam_principals` 加手机号列 + 接生命周期,不是接厂商
 
 ## Objective
-`oauth` 模块补两种 grant:没有浏览器的设备(电视/CLI)能登录;服务能换一张"代某人"的
-令牌。两者都挂在 `service.go` 的 grant switch 上,复用既有的 client 认证、assurance
-传递、refresh token 存储与审计路径。
+让管理员能把一个租户级角色授予**带上截止时间**,并让每一处"把授予读作权限"的判定都尊重它。
 
-## Current Phase
-TESTING —— 实现与模块级门禁全过,等 `make ci` 第三轮结果。
+## 分析结论(开工前的实地核对,与开工前的假设有出入)
+四种角色到达 principal 的方式(`core/query/authorization.go` 的 `effective_roles` CTE):
 
-## Current Step
-`make ci` 运行中(前两轮分别被 schema-lock 表数量 75→77、oauth i18n 冻结 key 清单拦下,
-两处都已修)。结束后跑 `tests/migration` 与 `make test-performance`,再提交推送。
+| 来源 | 表 | 期限列 | 判定是否已过滤 |
+|------|-----|--------|----------------|
+| 永久成员 | `iam_role_members` | **无** | — |
+| 临时授予 | `iam_temporary_role_grants` | starts_at / ends_at(NOT NULL) | 已过滤 |
+| 用户组 | `iam_group_role_bindings` + 组成员 | 绑定本身无;组成员有 starts_at/ends_at | 组成员已过滤 |
+| 实体作用域 | `iam_role_bindings` | `expires_at`(可空) | 已过滤(authorization.go:309/345) |
 
-## Overall Progress
-- [x] 迁移 00011(三方言):`iam_oauth_device_authorizations` + `iam_oauth_exchange_grants`
-- [x] `model/model.go` 两行 + dbgen + `query/table.go` BindNames
-- [x] `device.go`:用户码字母表(剔除 0/O 1/I/L 2/Z 5/S 8/B)、双码哈希存储、
-      服务端强制轮询间隔、批准者归属与 assurance 传递、消费与 refresh 存储同一事务
-- [x] `exchange.go`:`subjectPermitted`(精确优先于前缀,空前缀谁都不覆盖,裸 `*` 入口拒绝)、
-      scope 取 grant 的而非 client 的、不发 refresh token
-- [x] `http_device.go`:6 个端点(device_authorization 公开;其余 tenant 守卫 + owned-resource 删除)
-- [x] `http.go`:`supportedGrantTypes` 收口 + RFC 错误码映射
-- [x] 测试:`device_test.go`(16)、`exchange_test.go`(15)、`http_device_test.go`(10)
-- [x] oauth 包覆盖率 90.4%(门禁 ≥90%)
-- [x] 变异验证 7 处守卫(public client 两端、grant scope 上限、租户成员、
-      两处故障/拒绝分离、device 请求的租户归属)
-- [x] 登记 7 处冻结清单:oauth 路由清单、里程碑计数、error mapper 清单、
-      i18n declaredKeys、app 的 mappings/guards/count、schema-lock 表数量
-- [x] `DeviceConfig` 导出并接进 `internal/app`(`oauth.device.*` 三个键)
-- [x] 重新生成 `docs/openapi.json`
-- [ ] `make ci` / `tests/migration` / `make test-performance`
-- [ ] 提交推送
+所以**不是**"读取点都没过滤"(开工前的判断),而是:四条路里只有「永久成员」这一条没有期限可言。
+`governance/review_grants.go:31` 给它写的是 `NULL AS grant_expires_at` —— 那一列早就给它留好了。
 
-## 本次自查发现的七个真缺陷(都已修)
-1. **`validateClient` 的 grant 白名单没加新 grant** —— 管理 API 根本建不出能用 device
-   或 exchange 的 client,新功能从公开面无法到达。
-2. **token exchange 对 public client 无防护** —— public client 不持有秘密,其标识等于
-   公开值,一行 grant 就会让任何人代被覆盖的 principal 签发令牌。两端都加守卫
-   (`validateClient` 创建侧 + `tokenExchange` 使用侧)。
-3. **读失败被折叠成拒绝** —— 违反既有决定「A Failed Read Is Not A Refusal」。
-   设备轮询读失败会回 `invalid_grant`,而符合规范的设备收到它会丢弃设备码重开流程;
-   exchange 读失败会读作"委派已撤销"。改为只折叠 `gorm.ErrRecordNotFound`。
-4. **`deviceError` 未登记进 error mapper 冻结清单** —— 该清单存在的理由就是新 mapper
-   不能绕过"下层已选的状态码必须存活"这条规则。
-5. **两处错误码不合规** —— `unsupported_token_type` 映射成了 `invalid_target`
-   (RFC 8693 里 `invalid_target` 专指 resource/audience 不可接受),`unauthorized_client`
-   用了 403(RFC 6749 §5.2:token 端点除 `invalid_client` 外一律 400)。
-6. **device 查看/批准没按租户过滤** —— 端点有 `{tenant_id}` 守卫,服务层却只按用户码查。
-   另一个租户的成员能把别人的设备请求批掉:令牌发不出去(`activeMember` 兜底),但请求
-   已被消费,成了跨租户的拒绝服务,URL 里的租户段形同装饰。两处都加了 `tenant_id` 谓词。
-7. **未配置验证页时返回空 `verification_uri`** —— RFC 8628 要求该字段必须有值。空值等于
-   给设备一个"看起来能走、实际没人能完成"的流程。改为报配置故障(`server_error`),
-   并顺手把 `verification_uri_complete` 的用户码做了 URL 转义。
+## 设计(D99,见 decisions.md)
+- `iam_role_members` 加可空 `expires_at`。NULL = 无期限,等于现存每一行当下的含义。
+- **不复用 `iam_temporary_role_grants`**:那张表是 governance 审批出来的授予,`source_type`/
+  `source_id` 指向访问申请,两个时间列都 NOT NULL,且每条有自己的 id 以便单独撤销与按
+  "temporary" 归类。带截止时间的直接授予仍是 (tenant, role, principal) 这同一个关系加了个界,
+  用那张表会让同一个关系有两种身份,"谁持有这个角色"要变成 union。
+- **读时过滤,不加清理器**:判定本来就按请求的 `now` 计算,四条路里三条已经这么做;清理器
+  会让正确性取决于"任务跑过没有"。过期行留着,也正是"显示为已过期"的前提。
+- **可见性走既有的 reviewable-grants 端点**(它已有 `grant_expires_at` 列和 `permanent` 类型),
+  不改 `GET /roles/{id}/members` 的 `[]guid.ID` 契约 —— 那是行管理视角,过期行照样在。
+- 作用域:只做租户级授予。`iam_group_role_bindings` 不加自己的期限 —— 组成员已有
+  starts_at/ends_at 且已被过滤,那就是租户给"组带来的角色"设界的方式。
 
-## Important Decisions
-- D98(见 decisions.md):委派是写下来的三元组(tenant, client, subject prefix)+ 它自己的
-  scope,不是 client 上的开关;前缀匹配在 Go 里做而不是 SQL `LIKE`;不发 refresh token。
-- 设备码与用户码都只存 SHA-256,和授权码同构 —— 读库不能兑换。
-- 轮询间隔服务端强制(`last_polled_at` + `interval_seconds`),不信设备自报。
-- 迁移 00011 **可逆**:只建两张表,回滚丢掉的是待批准请求(本就 10 分钟过期)
-  与可重新写下的委派,不符合 `Irreversible` 的"迁移过的东西无法重建"门槛。
-- 不实现 RFC 7591 动态客户端注册:此处每个 client 都属于某个必须授权它的租户。
-- subject token 只接受本部署签发的 access token;SAML/外部 JWT 一律
-  `unsupported_token_type` —— 接受验不了的断言等于信任来源不明的断言。
+## 判定点清单(每处都有独立行为测试,且都做过变异验证:删掉谓词 → 对应用例立刻变红)
+必须过滤(把授予读作权限)—— 全部完成:
+- [x] `core/query/authorization.go` `effective_roles` 的 role_member 分支
+- [x] `core/query/authorization.go` durable administrator 计数 —— 用 `IS NULL`
+      而非「尚未过期」:守卫问的是"之后还有没有管理员",会过期的答案不算
+- [x] `core/authorizer_system.go` 系统角色判定(独立语句,无 CTE,需自己的证明)
+- [x] `core/platform.go` 平台管理员列表
+- [x] `core/repository_admin.go` `ListMemberRoleIDs`
+- [x] `core/review_grant.go` `roleGrantedOn`
+- [x] `core/lifecycle.go` 关户前的平台权限拦截
+- [x] `core/member_authorization.go` 缓存判定的到期(否则缓存比授予活得久)
+- [x] `governance/review_grants.go` permanent 分支:吐出期限 + 过滤已失效
+
+不过滤(行管理视角,有意为之):
+- `core/repository.go` 增删与 `ListMembers`、`core/pagination.go` 分页列表
+  —— 失效的行还在,撤销仍然有效
+- `core/system_access_http.go` `systemMemberView` —— 控制台据此渲染开关,
+  隐藏失效行会让开关变成空操作
+- `core/entity.go` 删实体前清点绑定 —— 失效的行照样会被外键牵连
+- `tenantbootstrap.go` / `federation` / `organization/invitation` 的写入 —— 不带期限 = 永久
+
+## Completed Work
+- 迁移 00018(三方言:可空 `expires_at` + 镜像 role_bindings 的 subject 索引)
+- 里程碑 `role-member-expiry@18` + model + dbgen
+- 授予 API 接受可选 `expires_at`(body 为指针 → 可缺省,老调用方行为不变)
+- PUT 语义:整体置为请求所述;读后写而非 upsert(upsert 的影响行数各方言含义不同,
+  而 `changed` 必须真的表示"授予变了")
+- 期限进审计明细(`expires_at`),审查端点吐出它
+- 9 处判定点 + 11 个新行为测试,逐一变异验证
+- 冻结清单:core 里程碑清单与计数、三处 `milestones[iamcore.Name]`、openapi、前端类型
 
 ## Confirmed Constraints
-- 不改既有 authorization_code / refresh_token / client_credentials 行为(路径未动,
-  只在 grant switch 加两个 case、把硬编码白名单收口为 `supportedGrantTypes`)。
-- MySQL 一律 `DATETIME(3)`,不用 `TIMESTAMP`。
-- 表名只在 `query/table.go` 的 `BindNames` 拼接。
+- 不改既有四条授予路径的语义,只给第一条加界。
+- MySQL 一律 `DATETIME(3)`;索引镜像 `iam_role_bindings` 的
+  `(tenant_id, principal_id, ..., expires_at)` 形状。
+- 热路径 CTE 每加一个谓词都要看性能基线。
 
 ## Known Issues / Risks
-- `make test-mysql8` 本机无 Docker 跑不了;静态 schema-lock 已过,00011 的 MySQL 侧
-  只有 CREATE TABLE + CHECK,与已发布的 oauth/00008 同构。
-- `make generate` 本环境 buf 下载超时;未改 proto,`*.gen.go` 变更仅来自 dbgen(已跑)。
-- 设备验证页(`oauth.device.verification_uri` 指向的前端页面)**尚无实现** ——
-  后端返回的 `verification_uri_complete` 当下指向一个不存在的页面。属前端工作,
-  不在本次后端范围;留空则响应里不含该字段,流程仍可用(人工拿用户码调 API)。
+- **这是四项里最危险的一项**:`effective_roles` CTE 是每次鉴权都走的路径,
+  判定点跨 core / governance / organization / federation 四个模块。
+- 一旦某个判定点漏掉谓词,后果是"过期的角色仍然生效"——静默的权限泄漏,
+  所以每个点都必须有自己的行为测试 + 变异验证,不能只靠 CTE 的 golden SQL。
 
 ## Verification
-Build: PASS / `internal/iam/oauth`: PASS(覆盖率 90.4%)
-`internal/app`: PASS / `tests/architecture`: PASS / i18n: PASS
-lint: PASS(0 issues)/ fmt: clean / schema-lock: PASS(77 表)
-make ci: RUNNING(第三轮)
-tests/migration: NOT_RUN
-make test-performance: NOT_RUN
+Build: PASS / `internal/iam/...` + `internal/app`: PASS
+变异验证: 10 处谓词全部可独立变红
+make ci: RUNNING / make test-performance: RUNNING
 
 ## Next Action
-`make ci` 结束后:若 PASS 则跑 `go -C tests test ./migration -count=1` 与
-`make test-performance`,两者过后以单个提交交付(含 D98 与本文件),推送到 IAM 分支;
-若 FAIL 则按失败门禁定位,不要绕过门禁。随后开始第 3 项(角色授予期限),
-第一步是把 5 个模块的角色绑定读取点列成清单并逐一变异验证。
+`make ci` 与 `make test-performance` 结束后:若 PASS 则以单个提交交付并推送,
+然后开第 4 项(短信 —— `iam_principals` 加手机号列 + 接匿名化/撤回,属 PII)。
+若性能基线退化,先查 `effective_roles` 的 role_member 分支新谓词是否吃到了
+00018 建的 `(tenant_id, principal_id, expires_at)` 索引。
 
 ## Last Checkpoint
-2026-10-04 第 2 项实现完成,模块级门禁全过,等全量 CI
+2026-10-04 第 3 项实现与变异验证完成,等全量 CI 与性能基线

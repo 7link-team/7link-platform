@@ -36,7 +36,7 @@ func TestListRoleMembersPageBoundsTheResult(t *testing.T) {
 	role, err := repository.CreateRole(t.Context(), 1, "Operators", "")
 	require.NoError(t, err)
 	for _, principal := range principals {
-		_, err = repository.AddMember(t.Context(), 1, role.ID, principal)
+		_, err = repository.AddMember(t.Context(), 1, role.ID, principal, nil)
 		require.NoError(t, err)
 	}
 
@@ -329,7 +329,7 @@ func TestListTenantMemberRolesPageBoundsTheUnion(t *testing.T) {
 	for index := range 5 {
 		role, err := repository.CreateRole(t.Context(), 1, "Role "+guid.ID(index).String(), "")
 		require.NoError(t, err)
-		_, err = repository.AddMember(t.Context(), 1, role.ID, 11)
+		_, err = repository.AddMember(t.Context(), 1, role.ID, 11, nil)
 		require.NoError(t, err)
 		roles = append(roles, role.ID)
 	}
@@ -415,7 +415,7 @@ func TestListFieldPoliciesPageBoundsTheResult(t *testing.T) {
 	require.NoError(t, err)
 	_, err = harness.service.GrantPermission(t.Context(), 1, role.ID, "field_policy_view")
 	require.NoError(t, err)
-	_, err = harness.repository.AddMember(t.Context(), 1, role.ID, 11)
+	_, err = harness.repository.AddMember(t.Context(), 1, role.ID, 11, nil)
 	require.NoError(t, err)
 	ctx := authn.WithClaims(t.Context(), &authn.Claims{TenantID: 1, PrincipalID: 11})
 

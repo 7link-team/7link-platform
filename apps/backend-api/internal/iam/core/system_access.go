@@ -123,7 +123,7 @@ func (s *Service) changeSystemRoleMember(ctx context.Context, roleID, principal 
 			return err
 		}
 		if add {
-			changed, err = tx.AddMember(ctx, owner, roleID, principal)
+			changed, err = tx.AddMember(ctx, owner, roleID, principal, nil)
 		} else {
 			changed, err = tx.RemoveMember(ctx, owner, roleID, principal)
 		}
@@ -209,7 +209,7 @@ func (r *Repository) bootstrapSystemAccess(ctx context.Context, owner guid.ID, n
 				return err
 			}
 		}
-		if _, err := r.AddMember(ctx, owner, role.ID, principal); err != nil {
+		if _, err := r.AddMember(ctx, owner, role.ID, principal, nil); err != nil {
 			return err
 		}
 		if err := r.writer().WithContext(ctx).Table(r.names.PlatformGrants.String()).Where("principal_id = ?", principal).Delete(&model.PlatformGrant{}).Error; err != nil {

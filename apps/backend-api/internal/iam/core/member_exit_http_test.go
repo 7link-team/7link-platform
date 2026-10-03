@@ -57,10 +57,10 @@ func TestPrincipalPlatformAccessGuardRejectsRetainedPlatformAuthority(t *testing
 	h := newCoreServiceHarness(t)
 	seedSystemAccessFixture(t, h.db, "sl_")
 	h.seedMember(t, 1, 11, MemberActive)
-	require.NoError(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 11, authz.DefaultRegistry()))
+	require.NoError(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 11, authz.DefaultRegistry(), coreErasureTime))
 	_, err := h.repository.SetPlatformAdministrator(t.Context(), 11, true, nil)
 	require.NoError(t, err)
-	require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 11, authz.DefaultRegistry()), ErrPrincipalHasPlatformAccess)
+	require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 11, authz.DefaultRegistry(), coreErasureTime), ErrPrincipalHasPlatformAccess)
 }
 
 func TestMemberExitHTTPMissingCapabilitiesAndFailures(t *testing.T) {

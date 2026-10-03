@@ -29,9 +29,9 @@ func TestAdministratorGuardRollsBackLastDurableAdministratorRemoval(t *testing.T
 	require.NoError(t, err)
 	_, err = repository.GrantPermission(t.Context(), 1, role.ID, "tenant_administer")
 	require.NoError(t, err)
-	_, err = repository.AddMember(t.Context(), 1, role.ID, 11)
+	_, err = repository.AddMember(t.Context(), 1, role.ID, 11, nil)
 	require.NoError(t, err)
-	_, err = repository.AddMember(t.Context(), 1, role.ID, 22)
+	_, err = repository.AddMember(t.Context(), 1, role.ID, 22, nil)
 	require.NoError(t, err)
 
 	store := NewRoleGrantStore(repository, boundGuard(t, harness.runtime, "sl_"))
@@ -201,7 +201,7 @@ func TestAdministratorGuardGrantabilityFollowsTheActorsOwnAuthority(t *testing.T
 		return created.ID
 	}
 	held := role("Held", "menu_create")
-	_, err := h.repository.AddMember(t.Context(), 1, held, 22)
+	_, err := h.repository.AddMember(t.Context(), 1, held, 22, nil)
 	require.NoError(t, err)
 	sameAuthority := role("Same authority", "menu_create")
 	broader := role("Broader", "menu_create", "role_create")

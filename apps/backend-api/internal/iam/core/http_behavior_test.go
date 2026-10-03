@@ -508,7 +508,7 @@ func TestMemberAuthorizationSourcesHTTPReturnsSnapshotAndNotFound(t *testing.T) 
 	require.NoError(t, err)
 	_, err = harness.module.service.GrantPermission(t.Context(), 1, role.ID, "audit_event_view")
 	require.NoError(t, err)
-	_, err = harness.module.service.AddMember(t.Context(), 1, role.ID, 11)
+	_, err = harness.module.service.AddMember(t.Context(), 1, role.ID, 11, nil)
 	require.NoError(t, err)
 
 	response := harness.api.Get(

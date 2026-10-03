@@ -13,7 +13,7 @@ func TestEffectiveMenusPreserveUnauthorizedParentsOnlyAsDirectories(t *testing.T
 	require.NoError(t, err)
 	_, err = h.service.GrantPermission(t.Context(), 1, role.ID, "user_view")
 	require.NoError(t, err)
-	_, err = h.service.AddMember(t.Context(), 1, role.ID, 11)
+	_, err = h.service.AddMember(t.Context(), 1, role.ID, 11, nil)
 	require.NoError(t, err)
 	parent, err := h.service.CreateMenu(t.Context(), Menu{TenantID: 1, Label: "Roles", Route: "/roles", PermissionCode: "role_view", Status: MenuActive})
 	require.NoError(t, err)
@@ -39,7 +39,7 @@ func TestEffectiveMenusCannotWeakenBuiltInPagePermissions(t *testing.T) {
 	require.NoError(t, err)
 	_, err = h.service.GrantPermission(t.Context(), 1, role.ID, "menu_view")
 	require.NoError(t, err)
-	_, err = h.service.AddMember(t.Context(), 1, role.ID, 11)
+	_, err = h.service.AddMember(t.Context(), 1, role.ID, 11, nil)
 	require.NoError(t, err)
 	for _, route := range []string{"/users", "/users?custom=true", "/%75sers", "/other/../users", "/entities/123/roles"} {
 		_, err = h.service.CreateMenu(t.Context(), Menu{TenantID: 1, Label: route, Route: route, PermissionCode: "menu_view", Status: MenuActive})

@@ -447,3 +447,43 @@ func TestGovernanceRecordLookupsReportStorageFaults(t *testing.T) {
 		assert.NotErrorIs(t, err, ErrReviewItemNotFound)
 	})
 }
+
+func TestAReviewSeesAnAssignmentsEndAndSkipsTheLapsedOnes(t *testing.T) {
+	// The review listing exists to answer "who holds what, until when". Every
+	// other grant type already reported its end; the permanent one reported NULL
+	// because it had none to report. Now it can, and a lapsed one is not a grant
+	// to review -- there is nothing left to keep or revoke.
+	h := newGovernanceHarness(t, "")
+	seedReviewableGrants(t, h)
+	end := governanceTestNow.Add(time.Hour)
+	require.NoError(t, h.db.Table(h.table("iam_role_members")).
+		Where("tenant_id = ? AND role_id = ? AND principal_id = ?", 1, 20, 11).
+		Update("expires_at", end).Error)
+
+	review, err := h.service.CreateReview(t.Context(), 1, 10, CreateAccessReview{
+		Name: "Privileged access review", DueAt: governanceTestNow.Add(2 * time.Hour),
+	})
+	require.NoError(t, err)
+	var seen bool
+	for _, item := range review.Items {
+		if item.GrantType != ReviewGrantPermanent {
+			continue
+		}
+		seen = true
+		require.NotNil(t, item.GrantExpiresAt, "the review shows when the assignment ends")
+		assert.True(t, end.Equal(item.GrantExpiresAt.UTC()), "want %s, got %s", end, item.GrantExpiresAt)
+	}
+	assert.True(t, seen, "the assignment is reviewable while it stands")
+
+	// Past its end it is no longer among the grants a review would cover.
+	require.NoError(t, h.db.Table(h.table("iam_role_members")).
+		Where("tenant_id = ? AND role_id = ? AND principal_id = ?", 1, 20, 11).
+		Update("expires_at", governanceTestNow.Add(-time.Minute)).Error)
+	lapsed, err := h.service.CreateReview(t.Context(), 1, 10, CreateAccessReview{
+		Name: "Later review", DueAt: governanceTestNow.Add(2 * time.Hour),
+	})
+	require.NoError(t, err)
+	for _, item := range lapsed.Items {
+		assert.NotEqual(t, ReviewGrantPermanent, item.GrantType, "a lapsed assignment is not reviewable")
+	}
+}

@@ -25,7 +25,7 @@ func transactionAuthorizationFixture(t *testing.T) (coreServiceHarness, Entity, 
 	require.NoError(t, err)
 	_, err = h.service.GrantPermission(t.Context(), 1, role.ID, "user_view")
 	require.NoError(t, err)
-	_, err = h.service.AddMember(t.Context(), 1, role.ID, 11)
+	_, err = h.service.AddMember(t.Context(), 1, role.ID, 11, nil)
 	require.NoError(t, err)
 	return h, entity, role
 }

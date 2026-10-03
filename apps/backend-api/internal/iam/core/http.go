@@ -288,6 +288,29 @@ type memberInput struct {
 	Subject string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"immutable local principal ID"`
 }
 
+// memberGrantInput adds the optional end date. The body is optional, so a
+// caller that sends none grants with no end, which is what every caller did
+// before the field existed; sending one replaces whatever end the assignment
+// carried, because this is a PUT of the whole assignment.
+type memberGrantInput struct {
+	RoleID  string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Subject string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"immutable local principal ID"`
+	// The body is a pointer so that it may be absent: a caller that sends none
+	// grants with no end, which is what every caller did before the field
+	// existed.
+	Body *struct {
+		ExpiresAt *time.Time `json:"expires_at,omitempty" format:"date-time" doc:"when the assignment stops granting; omit for no end"`
+	}
+}
+
+// grantExpiry reads the end date out of an optional body.
+func (in *memberGrantInput) grantExpiry() *time.Time {
+	if in == nil || in.Body == nil {
+		return nil
+	}
+	return in.Body.ExpiresAt
+}
+
 type directoryBindingInput struct {
 	RoleID       string                `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	AssigneeType DirectoryAssigneeType `path:"assignee_type" enum:"group"`
@@ -888,12 +911,12 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
 		OperationID: "iam-add-role-member", Method: http.MethodPut, Path: "/roles/{role_id}/members/{principal_id}", Summary: "Add a local principal to a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
-	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "manage_member"}, func(ctx context.Context, in *memberInput) (*respx.Body[MutationResult], error) {
-		tenantID, roleID, subject, err := memberRef(ctx, in)
+	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "manage_member"}, func(ctx context.Context, in *memberGrantInput) (*respx.Body[MutationResult], error) {
+		tenantID, roleID, subject, err := memberRef(ctx, &memberInput{RoleID: in.RoleID, Subject: in.Subject})
 		if err != nil {
 			return nil, err
 		}
-		changed, err := svc.AddMember(ctx, tenantID, roleID, subject)
+		changed, err := svc.AddMember(ctx, tenantID, roleID, subject, in.grantExpiry())
 		if err != nil {
 			return nil, apiError("add role member", err)
 		}

@@ -1,5 +1,63 @@
 # Decisions
 
+## D99 - A Role Assignment May Name The Moment It Stops Granting (2026-10-04)
+
+Decision: `iam_role_members` carries a nullable `expires_at`. NULL is no end,
+which is what every assignment written before the column means. Every read that
+treats an assignment as authority filters it; reads that manage the row see all
+rows, and the grant review reports the date.
+
+The four ways a role reaches a principal were already asymmetric: a temporary
+grant has `starts_at`/`ends_at`, a group-derived role is bounded by the group
+membership's `ends_at`, an entity-scoped binding has `expires_at` -- and all
+three filtered on them. Only the plain tenant-wide assignment had no end to
+speak of, and `governance/review_grants.go` selected `NULL AS grant_expires_at`
+for it, a column reserved for exactly this.
+
+Not the governance table: `iam_temporary_role_grants` exists for an approved
+access request. Its `source_type`/`source_id` point at the request, both of its
+times are NOT NULL, and each grant has its own identity so it can be revoked
+singly and reviewed as "temporary". An assignment with an end date is the same
+relation as one without -- (tenant, role, principal) -- with a bound on it.
+Backing it with that table would give one relation two identities and make
+"who holds this role" a union.
+
+Read-time, not a sweeper: the authorization answer is already computed against
+the request's clock, three of the four paths already filtered this way, and a
+sweeper would make correctness depend on a job having run. The row outliving
+its grant is also what lets a listing say when it ended.
+
+The durable-administrator guard reads `expires_at IS NULL`, not "has not
+ended". It asks whether the tenant would still have an administrator
+afterwards, so an administrator whose grant lapses next week is an answer that
+expires -- which is what the group branch has required of a timed membership
+since it was written.
+
+Granting is a PUT of the whole assignment: an end date replaces whatever the
+row carried and no end date removes one. The answer every existing caller
+already gets is unchanged, because granting a role somebody already holds on
+the same terms still reports no change. The row is read and then written rather
+than upserted: an upsert's affected-row count means different things in each
+dialect, and `changed` has to mean the assignment actually changed.
+
+Scope: the tenant-wide assignment. `iam_group_role_bindings` keeps no expiry of
+its own -- group membership already carries `starts_at`/`ends_at` and is
+filtered, which is how a tenant time-bounds the roles a group brings. The
+system-member edit view (`systemMemberView`) stays unfiltered: it lists the rows
+a console toggles, and hiding a lapsed one would make the toggle a no-op.
+
+Alternatives Considered: a `valid_from` as well -- not added, nothing asked for
+a future-dated assignment and the temporary grant already has `starts_at` for
+the case that did. Deleting on expiry -- rejected, it destroys the record of a
+grant somebody made.
+
+Scope of verification: nine decision sites, each with its own behavioural test
+and each mutation-verified (the effective-roles CTE, the durable-administrator
+count, the system-role evaluation, the platform-administrator listing,
+`ListMemberRoleIDs`, the cached-snapshot bound, `roleGrantedOn`, the
+account-closure guard, and the grant review's two halves).
+Status: IMPLEMENTED.
+
 ## D98 - A Delegation Is A Written-Down Pair, Not A Client Flag (2026-10-04)
 
 Decision: token exchange (RFC 8693) is permitted by a row in

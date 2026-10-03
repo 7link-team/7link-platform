@@ -8036,6 +8036,13 @@ export interface components {
             preferred_username?: string;
             subject: string;
         };
+        MemberGrantInputBody: {
+            /**
+             * Format: date-time
+             * @description when the assignment stops granting; omit for no end
+             */
+            expires_at?: string;
+        };
         MenuDeclaration: {
             children?: components["schemas"]["MenuDeclaration"][] | null;
             icon?: string;
@@ -21839,7 +21846,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MemberGrantInputBody"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {

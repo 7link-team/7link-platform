@@ -74,7 +74,7 @@ func TestListMemberRoleIDsKeepsTheOrderAndDistinctnessOfTheUnionItReplaced(t *te
 	require.NoError(t, err)
 
 	now := repositoryTestTime
-	_, err = repository.AddMember(t.Context(), 1, both.ID, 11)
+	_, err = repository.AddMember(t.Context(), 1, both.ID, 11, nil)
 	require.NoError(t, err)
 	require.NoError(t, repository.GrantTemporaryRole(
 		t.Context(), 1, 501, temporary.ID, 11, 99, now.Add(-time.Hour), now.Add(time.Hour),

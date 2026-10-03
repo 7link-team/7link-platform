@@ -10118,6 +10118,17 @@
         ],
         "type": "object"
       },
+      "MemberGrantInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "description": "when the assignment stops granting; omit for no end",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "MenuDeclaration": {
         "additionalProperties": false,
         "properties": {
@@ -32787,6 +32798,15 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberGrantInputBody"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

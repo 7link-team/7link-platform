@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"7link.com/platform/internal/iam/audit"
 	corei18n "7link.com/platform/internal/iam/core/i18n"
@@ -428,12 +429,14 @@ func (s *Service) ListMembers(ctx context.Context, tenantID, roleID guid.ID) ([]
 	return s.repo.ListMembers(ctx, tenantID, roleID)
 }
 
-// AddMember grants a role permanently to an active tenant member.
+// AddMember grants a role to an active tenant member, until expiresAt when one
+// is given and otherwise with no end.
 func (s *Service) AddMember(
 	ctx context.Context,
 	tenantID, roleID, principalID guid.ID,
+	expiresAt *time.Time,
 ) (bool, error) {
-	return s.changeMember(ctx, tenantID, roleID, principalID, true)
+	return s.changeMember(ctx, tenantID, roleID, principalID, expiresAt, true)
 }
 
 // RemoveMember revokes a permanent role membership while preserving the last
@@ -442,12 +445,13 @@ func (s *Service) RemoveMember(
 	ctx context.Context,
 	tenantID, roleID, principalID guid.ID,
 ) (bool, error) {
-	return s.changeMember(ctx, tenantID, roleID, principalID, false)
+	return s.changeMember(ctx, tenantID, roleID, principalID, nil, false)
 }
 
 func (s *Service) changeMember(
 	ctx context.Context,
 	tenantID, roleID, principalID guid.ID,
+	expiresAt *time.Time,
 	add bool,
 ) (bool, error) {
 	if err := validateRoleRef(tenantID, roleID); err != nil {
@@ -462,6 +466,11 @@ func (s *Service) changeMember(
 	}
 	record := newAuditRecord(ctx, tenantID, eventType, "role", roleID)
 	record.Detail["principal_id"] = principalID
+	if add && expiresAt != nil {
+		// The end date belongs in the audit record: a grant that lapses is still
+		// a grant somebody made, and a reviewer reads the chain to see until when.
+		record.Detail["expires_at"] = expiresAt.UTC().Format(time.RFC3339Nano)
+	}
 	var changed bool
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
 		var err error
@@ -476,7 +485,7 @@ func (s *Service) changeMember(
 			if !active {
 				return ErrMemberInactive
 			}
-			changed, err = repo.AddMember(ctx, tenantID, roleID, principalID)
+			changed, err = repo.AddMember(ctx, tenantID, roleID, principalID, expiresAt)
 		} else {
 			verify, protectErr := s.administrators.Protect(ctx, repo.writer(), tenantID)
 			if protectErr != nil {

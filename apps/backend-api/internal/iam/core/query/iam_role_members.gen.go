@@ -31,6 +31,7 @@ func newRoleMember(db *gorm.DB, opts ...gen.DOOption) roleMember {
 	_roleMember.TenantID = field.NewField(tableName, "tenant_id")
 	_roleMember.RoleID = field.NewField(tableName, "role_id")
 	_roleMember.PrincipalID = field.NewField(tableName, "principal_id")
+	_roleMember.ExpiresAt = field.NewTime(tableName, "expires_at")
 	_roleMember.CreatedAt = field.NewTime(tableName, "created_at")
 
 	_roleMember.fillFieldMap()
@@ -45,6 +46,7 @@ type roleMember struct {
 	TenantID    field.Field
 	RoleID      field.Field
 	PrincipalID field.Field
+	ExpiresAt   field.Time
 	CreatedAt   field.Time
 
 	fieldMap map[string]field.Expr
@@ -65,6 +67,7 @@ func (r *roleMember) updateTableName(table string) *roleMember {
 	r.TenantID = field.NewField(table, "tenant_id")
 	r.RoleID = field.NewField(table, "role_id")
 	r.PrincipalID = field.NewField(table, "principal_id")
+	r.ExpiresAt = field.NewTime(table, "expires_at")
 	r.CreatedAt = field.NewTime(table, "created_at")
 
 	r.fillFieldMap()
@@ -92,10 +95,11 @@ func (r *roleMember) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (r *roleMember) fillFieldMap() {
-	r.fieldMap = make(map[string]field.Expr, 4)
+	r.fieldMap = make(map[string]field.Expr, 5)
 	r.fieldMap["tenant_id"] = r.TenantID
 	r.fieldMap["role_id"] = r.RoleID
 	r.fieldMap["principal_id"] = r.PrincipalID
+	r.fieldMap["expires_at"] = r.ExpiresAt
 	r.fieldMap["created_at"] = r.CreatedAt
 }
 

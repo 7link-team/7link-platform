@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"gorm.io/gen/field"
 	"slices"
 	"strings"
 	"time"
@@ -182,7 +183,8 @@ func (r *Repository) IsMemberActive(ctx context.Context, tenantID, principalID g
 }
 
 // ListMemberRoleIDs returns the roles a principal holds in a tenant, as a
-// permanent member or through an unexpired temporary grant.
+// member whose assignment has not lapsed or through an unexpired temporary
+// grant.
 //
 // The two sources used to be one UNION statement, whose result was distinct and
 // ordered. Both halves are read here and merged in Go instead, and the merge
@@ -202,6 +204,7 @@ func (r *Repository) ListMemberRoleIDs(ctx context.Context, tenantID, principalI
 		Where(
 			tables.RoleMembers.TenantID.Eq(tenantID),
 			tables.RoleMembers.PrincipalID.Eq(principalID),
+			field.Or(tables.RoleMembers.ExpiresAt.IsNull(), tables.RoleMembers.ExpiresAt.Gt(now)),
 		).Pluck(tables.RoleMembers.RoleID, &memberRoleIDs); err != nil {
 		return nil, fmt.Errorf("list tenant member roles: %w", err)
 	}

@@ -21,7 +21,7 @@ func TestEffectivePermissionsReportOnlyWhatTheCallerHolds(t *testing.T) {
 	require.NoError(t, err)
 	_, err = harness.service.GrantPermission(t.Context(), tenantID, role.ID, "store_view")
 	require.NoError(t, err)
-	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID)
+	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID, nil)
 	require.NoError(t, err)
 
 	codes, err := harness.service.EffectivePermissions(t.Context(), tenantID, principalID)
