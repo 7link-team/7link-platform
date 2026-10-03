@@ -34,7 +34,7 @@ type iamMigrationContract struct {
 
 func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 	contracts := iamMigrationContracts()
-	owners := make(map[string]string, 75)
+	owners := make(map[string]string, iamOwnedTableCount)
 	versionTables := make(map[string]string, len(contracts))
 	for _, contract := range contracts {
 		t.Run(contract.name, func(t *testing.T) {
@@ -62,8 +62,13 @@ func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 			}
 		})
 	}
-	assert.Len(t, owners, 75)
+	assert.Len(t, owners, iamOwnedTableCount)
 }
+
+// iamOwnedTableCount is how many tables the contracts below claim between them.
+// It is one constant because two tests count the same set: a table added to a
+// contract and not to the database, or the other way round, has to fail in both.
+const iamOwnedTableCount = 77
 
 func iamMigrationContracts() []iamMigrationContract {
 	return []iamMigrationContract{
@@ -84,7 +89,7 @@ func iamMigrationContracts() []iamMigrationContract {
 		}, module: &identity.Module{}},
 		{name: "oauth", tables: []string{
 			"iam_oauth_clients", "iam_oauth_codes", "iam_oauth_consent_requests", "iam_oauth_consents",
-			"iam_refresh_tokens",
+			"iam_oauth_device_authorizations", "iam_oauth_exchange_grants", "iam_refresh_tokens",
 		}, module: &oauth.Module{}},
 		{name: "audit", tables: []string{
 			"iam_audit_archive_jobs", "iam_audit_events", "iam_audit_heads", "iam_audit_retention_policies",

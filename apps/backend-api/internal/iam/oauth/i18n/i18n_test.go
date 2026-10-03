@@ -15,6 +15,8 @@ var declaredKeys = []string{
 	InvalidClientConfiguration, ClientNotFound, InvalidRequest, InvalidGrant,
 	InvalidClient, InvalidToken, InsufficientScope, UnsupportedTokenType, ServerError,
 	ConsentRequired, ConsentNotFound, ConsentTitle, ConsentPrompt, ConsentAllow, ConsentDeny,
+	DeviceRequestMissing, ExchangeGrantMissing, ExchangeGrantExists, ExchangeGrantInvalid,
+	Unavailable,
 	ScopeKey("openid"), ScopeKey("profile"), ScopeKey("email"), ScopeKey("offline_access"),
 }
 

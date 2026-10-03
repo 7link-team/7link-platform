@@ -328,6 +328,12 @@ func DefaultActions() []Action {
 		{Resource: "webhook_subscription", Verb: "update", Scope: "tenant", Summary: "update webhook subscriptions"},
 		{Resource: "webhook_subscription", Verb: "delete", Scope: "tenant", Summary: "delete webhook subscriptions"},
 
+		{Resource: "oauth_device_request", Verb: "view", Scope: "tenant", Summary: "read a device authorization request awaiting approval"},
+		{Resource: "oauth_device_request", Verb: "approve", Scope: "tenant", Summary: "approve or refuse a device authorization request"},
+		{Resource: "oauth_exchange_grant", Verb: "create", Scope: "tenant", Summary: "permit a client to act as a subject"},
+		{Resource: "oauth_exchange_grant", Verb: "view", Scope: "tenant", Summary: "view token exchange grants", Menu: true},
+		{Resource: "oauth_exchange_grant", Verb: "delete", Scope: "tenant", Summary: "withdraw a token exchange grant"},
+
 		{Resource: "access_request", Verb: "view", Scope: "tenant", Summary: "view tenant access requests", Menu: true},
 		{Resource: "access_request", Verb: "approve", Scope: "tenant", Summary: "approve, reject, and revoke temporary access"},
 		{Resource: "access_review", Verb: "view", Scope: "tenant", Summary: "view tenant access review campaigns", Menu: true},

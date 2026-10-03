@@ -238,6 +238,7 @@ func newOAuthHarness(t *testing.T, prefix string) *oauthHarness {
 	harness.service = NewService(
 		harness.runtime, harness.web, newOAuthTestIDs(1000), appender,
 		resolveIdentityPrincipalState(t, harness.runtime), ConsentConfig{},
+		DeviceConfig{VerificationURI: "https://console.example.test/device"},
 	)
 	harness.service.now = func() time.Time { return oauthTestNow }
 	harness.repo = harness.service.repo
@@ -546,4 +547,12 @@ func TestOAuthRepositoryWritesThatMatchNoRowAreRefused(t *testing.T) {
 		ErrInvalidRequest, "an unknown challenge cannot be resolved")
 	assert.ErrorIs(t, harness.repo.touchServiceAccountCredential(t.Context(), 6202, oauthTestNow),
 		ErrInvalidRequest, "a credential that is gone or revoked cannot record a use")
+}
+
+// claimsFor reads back what a token was issued with, so a test asserts on the
+// token a client actually received rather than on the arguments behind it.
+func (web *oauthWebFixture) claimsFor(token string) *authnext.Claims {
+	web.mu.Lock()
+	defer web.mu.Unlock()
+	return web.tokens[token]
 }

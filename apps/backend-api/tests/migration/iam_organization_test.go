@@ -78,7 +78,7 @@ func assertOrganizationUp(t *testing.T, db *gorm.DB, modules []module.Module, pr
 	assert.Equal(t, "retire-positions", milestones[iamcore.Name])
 	assert.Equal(t, "self-registration-origin", milestones[identity.Name])
 	assert.Equal(t, "administration-scopes", milestones[organization.Name])
-	assert.Equal(t, "grant-incarnation", milestones[oauth.Name])
+	assert.Equal(t, "device-and-exchange", milestones[oauth.Name])
 }
 
 func verifyOrganizationContracts(t *testing.T, db *sql.DB, dialect, prefix string) {

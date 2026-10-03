@@ -40,6 +40,7 @@ type Service struct {
 	repo        *Repository
 	authn       authn.WebService
 	consent     ConsentConfig
+	device      DeviceConfig
 	consentPage *consentRenderer
 	now         func() time.Time
 }
@@ -86,6 +87,7 @@ func NewService(
 	appender audit.Appender,
 	principals identity.PrincipalStateStore,
 	consent ConsentConfig,
+	device DeviceConfig,
 ) *Service {
 	if runtime == nil || authenticator == nil || ids == nil || appender == nil || principals.Status == nil {
 		panic("OAuth service requires runtime, authentication, id generator, audit appender, and principal state store")
@@ -93,7 +95,7 @@ func NewService(
 	repo := NewRepository(runtime, ids, appender)
 	repo.principals = principals
 	return &Service{
-		repo: repo, authn: authenticator,
+		repo: repo, authn: authenticator, device: device,
 		consent: consent.normalized(), consentPage: &consentRenderer{}, now: func() time.Time { return time.Now().UTC() },
 	}
 }
@@ -105,6 +107,10 @@ type TokenResponse struct {
 	RefreshToken string `json:"refresh_token,omitempty"`
 	IDToken      string `json:"id_token,omitempty"`
 	Scope        string `json:"scope,omitempty"`
+	// IssuedTokenType is required of a token-exchange answer so a client knows
+	// what it received rather than assuming. It is empty for every other grant,
+	// where the type was never in question.
+	IssuedTokenType string `json:"issued_token_type,omitempty"`
 }
 
 // ConsentMode selects how the authorization endpoint obtains consent for a
@@ -762,6 +768,10 @@ func (s *Service) Token(ctx context.Context, form url.Values, authorization stri
 		return s.authorizationCode(ctx, repo, client, form)
 	case "refresh_token":
 		return s.refresh(ctx, repo, client, form.Get("refresh_token"))
+	case grantDeviceCode:
+		return s.deviceToken(ctx, repo, client, form.Get("device_code"))
+	case grantTokenExchange:
+		return s.tokenExchange(ctx, repo, client, form)
 	case "client_credentials":
 		if client.PublicClient || !containsWord(client.GrantTypes, "client_credentials") ||
 			!allowedScopes(client.Scopes, form.Get("scope")) {
@@ -1132,9 +1142,17 @@ func validateClient(
 	if !consentMode.valid() {
 		return ErrInvalidRequest
 	}
-	allowedGrants := []string{"authorization_code", "refresh_token", "client_credentials"}
+	allowedGrants := []string{
+		"authorization_code", "refresh_token", "client_credentials",
+		grantDeviceCode, grantTokenExchange,
+	}
+	// A public client holds no secret, so its identifier alone decides what it
+	// may do. That is acceptable for a device on a television, which proves
+	// itself with the device code a person approved, and unacceptable for the
+	// two grants that authenticate the client itself.
+	secretOnly := []string{"client_credentials", grantTokenExchange}
 	for _, grant := range grants {
-		if !slices.Contains(allowedGrants, grant) || public && grant == "client_credentials" {
+		if !slices.Contains(allowedGrants, grant) || public && slices.Contains(secretOnly, grant) {
 			return ErrInvalidRequest
 		}
 	}

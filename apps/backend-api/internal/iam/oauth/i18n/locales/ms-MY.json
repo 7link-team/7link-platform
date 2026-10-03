@@ -17,5 +17,10 @@
   "scope_openid": "Sahkan siapa anda",
   "scope_profile": "Baca profil asas anda",
   "scope_email": "Baca alamat e-mel anda",
-  "scope_offline_access": "Kekal log masuk semasa anda tiada"
+  "scope_offline_access": "Kekal log masuk semasa anda tiada",
+  "device_request_missing": "Kod itu tidak sepadan dengan permintaan yang menunggu kebenaran. Periksa kod pada peranti dan cuba lagi; kod luput beberapa minit selepas dipaparkan.",
+  "exchange_grant_missing": "Pemberian pertukaran token itu tidak wujud. Muat semula senarai dan pilih yang ada.",
+  "exchange_grant_exists": "Klien ini sudah mempunyai pemberian untuk subjek itu. Edit pemberian yang ada.",
+  "exchange_grant_invalid": "Pemberian pertukaran token tidak sah. Namakan klien yang ada, subjek, dan skop yang boleh dipohon.",
+  "unavailable": "Operasi OAuth ini tidak tersedia sekarang. Cuba lagi sebentar; hubungi pentadbir jika berterusan."
 }

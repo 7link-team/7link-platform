@@ -115,6 +115,16 @@ type IAMProvisioning struct {
 // stays open.
 type IAMOAuth struct {
 	Consent IAMOAuthConsent `mapstructure:"consent" group:"consent"`
+	Device  IAMOAuthDevice  `mapstructure:"device" group:"device"`
+}
+
+// IAMOAuthDevice configures the device grant. The verification page is the one
+// setting a device flow cannot work without: it is printed on a television for
+// somebody to type into another machine, so only this deployment knows it.
+type IAMOAuthDevice struct {
+	VerificationURI string        `mapstructure:"verification_uri" description:"page where somebody enters the user code a device shows; leave empty to omit it from the response" trim:"true" default:""`
+	CodeTTL         time.Duration `mapstructure:"code_ttl" description:"how long a device code stays usable" default:"10m"`
+	PollInterval    time.Duration `mapstructure:"poll_interval" description:"how often a device may ask whether somebody approved it" default:"5s"`
 }
 
 type IAMOAuthConsent struct {

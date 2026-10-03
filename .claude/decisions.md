@@ -1,5 +1,50 @@
 # Decisions
 
+## D98 - A Delegation Is A Written-Down Pair, Not A Client Flag (2026-10-04)
+
+Decision: token exchange (RFC 8693) is permitted by a row in
+`iam_oauth_exchange_grants` naming one tenant, one client and one subject
+prefix with the scopes that delegation may ask for. A client with no row
+cannot exchange at all; a client with one cannot step outside its scopes. An
+exact prefix wins over a range, an empty prefix covers nobody, and a bare `*`
+is refused at the input. Exchange is refused to a public client at both the
+creation and the use site, and the issued token carries no refresh token.
+The device grant (RFC 8628) stores both codes hashed, enforces the poll
+interval server-side rather than trusting the device, and issues for whoever
+approved -- with their own assurance -- rather than for whoever polls.
+
+Reason: the alternative shape, a `token_exchange` flag on the client, makes
+impersonation open-ended the moment it is set: the client could act as any
+principal in the tenant for everything it is itself scoped for. The scopes
+being the grant's rather than the client's is what keeps "may act as this
+person" from meaning "may do everything it can do, as this person". A public
+client authenticates with nothing, so a flag on one would make its identifier
+alone sufficient to act as every covered principal -- which is why the two
+guards are at both ends rather than only in validation. No refresh token is
+issued because a refreshable delegation outlives the authority it derived
+from; the holder can exchange again while its own token is valid.
+
+Prefix matching happens in Go rather than in SQL: a `LIKE` over a tenant's
+grants would make the stored value a pattern language, and a `%` or `_`
+someone typed would then mean something nobody wrote down.
+
+Alternatives Considered: RFC 7591 dynamic client registration, which would
+let a client create its own credentials -- not added, because every client
+here belongs to a tenant that must authorize it. Trusting the device's
+`interval` -- rejected, a device that ignores it would turn the endpoint into
+a guessing loop. Admitting other subject token types (SAML, JWT from
+elsewhere) -- refused with `unsupported_token_type`, since accepting an
+assertion this deployment cannot verify is accepting it from somewhere it does
+not trust.
+
+Scope: `oauth` only. Extends D-"A Failed Read Is Not A Refusal" to the new
+grants: `deviceClient`, both device-code reads and both exchange-grant reads
+collapse only `gorm.ErrRecordNotFound`, so a storage fault no longer reads as
+`invalid_grant` (which makes a device discard its code) or as a withdrawn
+delegation. `validateClient`'s grant whitelist now admits both grants, without
+which no client could ever be created that could use them.
+Status: IMPLEMENTED.
+
 ## D97 - Webhooks Follow The Audit Chain Rather Than Being Told (2026-10-04)
 
 Decision: outbound event delivery is a module that follows each tenant's audit

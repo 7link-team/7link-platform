@@ -2145,7 +2145,9 @@
               "enum": [
                 "authorization_code",
                 "refresh_token",
-                "client_credentials"
+                "client_credentials",
+                "urn:ietf:params:oauth:grant-type:device_code",
+                "urn:ietf:params:oauth:grant-type:token-exchange"
               ],
               "type": "string"
             },
@@ -2237,7 +2239,9 @@
               "enum": [
                 "authorization_code",
                 "refresh_token",
-                "client_credentials"
+                "client_credentials",
+                "urn:ietf:params:oauth:grant-type:device_code",
+                "urn:ietf:params:oauth:grant-type:token-exchange"
               ],
               "type": "string"
             },
@@ -3490,6 +3494,90 @@
         ],
         "type": "object"
       },
+      "DeviceAuthorization": {
+        "additionalProperties": false,
+        "properties": {
+          "device_code": {
+            "type": "string"
+          },
+          "expires_in": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "interval": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "user_code": {
+            "type": "string"
+          },
+          "verification_uri": {
+            "type": "string"
+          },
+          "verification_uri_complete": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_code",
+          "user_code",
+          "verification_uri",
+          "expires_in",
+          "interval"
+        ],
+        "type": "object"
+      },
+      "DeviceDecisionInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "approve": {
+            "type": "boolean"
+          },
+          "user_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_code",
+          "approve"
+        ],
+        "type": "object"
+      },
+      "DeviceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "client_name": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id",
+          "client_name",
+          "scope",
+          "status",
+          "expires_at"
+        ],
+        "type": "object"
+      },
       "Directory": {
         "additionalProperties": false,
         "properties": {
@@ -3613,6 +3701,10 @@
               "null"
             ]
           },
+          "device_authorization_endpoint": {
+            "format": "uri",
+            "type": "string"
+          },
           "grant_types_supported": {
             "items": {
               "type": "string"
@@ -3682,6 +3774,7 @@
           "userinfo_endpoint",
           "revocation_endpoint",
           "introspection_endpoint",
+          "device_authorization_endpoint",
           "response_types_supported",
           "grant_types_supported",
           "code_challenge_methods_supported",
@@ -4763,6 +4856,35 @@
         ],
         "type": "object"
       },
+      "EnvelopeDeviceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/DeviceRequest",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeDirectory": {
         "additionalProperties": false,
         "properties": {
@@ -4802,6 +4924,35 @@
           },
           "data": {
             "$ref": "#/components/schemas/Event",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeExchangeGrant": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ExchangeGrant",
             "description": "response payload; null on error"
           },
           "message": {
@@ -6112,6 +6263,41 @@
             "description": "response payload; null on error",
             "items": {
               "$ref": "#/components/schemas/Event"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeListExchangeGrant": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/ExchangeGrant"
             },
             "type": [
               "array",
@@ -8359,6 +8545,98 @@
           "sequence",
           "event_hash",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "ExchangeGrant": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "description": "Scopes this delegation may ask for; empty permits none",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "subject_prefix": {
+            "description": "Principal identifier, or a prefix ending in * to permit a range",
+            "type": "string"
+          },
+          "tenant_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "client_id",
+          "subject_prefix",
+          "scope",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "ExchangeGrantCreateInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]*$",
+            "type": "string"
+          },
+          "scope": {
+            "description": "Scopes this delegation may ask for",
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "type": "string"
+          },
+          "subject_prefix": {
+            "description": "Principal identifier, or a prefix ending in * to permit a range; a bare * is refused",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id",
+          "subject_prefix",
+          "scope"
         ],
         "type": "object"
       },
@@ -13183,6 +13461,9 @@
             "type": "integer"
           },
           "id_token": {
+            "type": "string"
+          },
+          "issued_token_type": {
             "type": "string"
           },
           "refresh_token": {
@@ -20388,6 +20669,109 @@
         "x-authz-permission": "oauth_client_update"
       }
     },
+    "/oauth-exchange-grants/{grant_id}": {
+      "delete": {
+        "operationId": "oauth-delete-exchange-grant",
+        "parameters": [
+          {
+            "description": "Resource identifier",
+            "in": "path",
+            "name": "grant_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMapStringBool"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Withdraw a token exchange grant",
+        "tags": [
+          "oauth-exchange-grants"
+        ],
+        "x-authz-permission": "oauth_exchange_grant_delete"
+      }
+    },
     "/oauth/authorize": {
       "get": {
         "operationId": "oauth-authorize",
@@ -20946,6 +21330,128 @@
         ]
       }
     },
+    "/oauth/device_authorization": {
+      "post": {
+        "operationId": "oauth-device-authorization",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "client_id": {
+                    "maxLength": 19,
+                    "pattern": "^[1-9][0-9]*$",
+                    "type": "string"
+                  },
+                  "scope": {
+                    "maxLength": 2048,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "client_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceAuthorization"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "error_description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "error_description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "error_description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Start a device authorization request",
+        "tags": [
+          "oauth"
+        ]
+      }
+    },
     "/oauth/introspect": {
       "post": {
         "operationId": "oauth-introspect",
@@ -21315,11 +21821,17 @@
                     "minLength": 43,
                     "type": "string"
                   },
+                  "device_code": {
+                    "maxLength": 1024,
+                    "type": "string"
+                  },
                   "grant_type": {
                     "enum": [
                       "authorization_code",
                       "refresh_token",
-                      "client_credentials"
+                      "client_credentials",
+                      "urn:ietf:params:oauth:grant-type:device_code",
+                      "urn:ietf:params:oauth:grant-type:token-exchange"
                     ],
                     "type": "string"
                   },
@@ -21331,8 +21843,24 @@
                     "maxLength": 2048,
                     "type": "string"
                   },
+                  "requested_token_type": {
+                    "enum": [
+                      "urn:ietf:params:oauth:token-type:access_token"
+                    ],
+                    "type": "string"
+                  },
                   "scope": {
                     "maxLength": 2048,
+                    "type": "string"
+                  },
+                  "subject_token": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "subject_token_type": {
+                    "enum": [
+                      "urn:ietf:params:oauth:token-type:access_token"
+                    ],
                     "type": "string"
                   }
                 },
@@ -59022,6 +59550,436 @@
           "tenants"
         ],
         "x-authz-permission": "oauth_client_create"
+      }
+    },
+    "/tenants/{tenant_id}/oauth-exchange-grants": {
+      "get": {
+        "operationId": "oauth-list-exchange-grants",
+        "parameters": [
+          {
+            "description": "Tenant resource identifier",
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeListExchangeGrant"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List token exchange grants",
+        "tags": [
+          "tenants"
+        ],
+        "x-authz-permission": "oauth_exchange_grant_view"
+      },
+      "post": {
+        "operationId": "oauth-create-exchange-grant",
+        "parameters": [
+          {
+            "description": "Tenant resource identifier",
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExchangeGrantCreateInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeExchangeGrant"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Permit one client to act as a subject",
+        "tags": [
+          "tenants"
+        ],
+        "x-authz-permission": "oauth_exchange_grant_create"
+      }
+    },
+    "/tenants/{tenant_id}/oauth/device-requests": {
+      "get": {
+        "operationId": "oauth-device-request",
+        "parameters": [
+          {
+            "description": "Tenant resource identifier",
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "user_code",
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeDeviceRequest"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read a pending device authorization request by its user code",
+        "tags": [
+          "tenants"
+        ],
+        "x-authz-permission": "oauth_device_request_view"
+      }
+    },
+    "/tenants/{tenant_id}/oauth/device-requests/decisions": {
+      "post": {
+        "operationId": "oauth-device-decision",
+        "parameters": [
+          {
+            "description": "Tenant resource identifier",
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceDecisionInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMapStringString"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Approve or refuse a device authorization request",
+        "tags": [
+          "tenants"
+        ],
+        "x-authz-permission": "oauth_device_request_approve"
       }
     },
     "/tenants/{tenant_id}/permission-catalog": {

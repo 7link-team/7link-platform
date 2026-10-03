@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
@@ -665,4 +666,233 @@ func (r *Repository) touchServiceAccountCredential(ctx context.Context, id guid.
 		return ErrInvalidRequest
 	}
 	return nil
+}
+
+// deviceClient reads one client for the device flow. A device authenticates by
+// its identifier alone, so this deliberately does not check a secret: the grant
+// declaration on the row is what admits the flow.
+func (r *Repository) deviceClient(ctx context.Context, id guid.ID) (*model.Client, error) {
+	db := r.writer()
+	if db == nil {
+		return nil, errRepositoryUnavailable
+	}
+	var row model.Client
+	err := db.WithContext(ctx).Table(r.names.Clients.String()).Where("id = ?", id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrInvalidRequest
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read OAuth client: %w", err)
+	}
+	return &row, nil
+}
+
+func (r *Repository) insertDeviceAuthorization(ctx context.Context, row *model.DeviceAuthorization) error {
+	db := r.writer()
+	if db == nil {
+		return errRepositoryUnavailable
+	}
+	return db.WithContext(ctx).Table(r.names.DeviceAuthorizations.String()).Create(row).Error
+}
+
+func (r *Repository) deviceAuthorizationByUserCode(ctx context.Context, userCodeHash string) (model.DeviceAuthorization, error) {
+	db := r.writer()
+	if db == nil {
+		return model.DeviceAuthorization{}, errRepositoryUnavailable
+	}
+	var row model.DeviceAuthorization
+	err := db.WithContext(ctx).Table(r.names.DeviceAuthorizations.String()).
+		Where("user_code_hash = ?", userCodeHash).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return row, ErrDeviceRequestNotFound
+	}
+	if err != nil {
+		return row, fmt.Errorf("read device authorization: %w", err)
+	}
+	return row, nil
+}
+
+func (r *Repository) deviceAuthorizationByDeviceCode(ctx context.Context, deviceCodeHash string) (model.DeviceAuthorization, error) {
+	db := r.writer()
+	if db == nil {
+		return model.DeviceAuthorization{}, errRepositoryUnavailable
+	}
+	var row model.DeviceAuthorization
+	err := db.WithContext(ctx).Table(r.names.DeviceAuthorizations.String()).
+		Where("device_code_hash = ?", deviceCodeHash).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return row, ErrDeviceRequestNotFound
+	}
+	if err != nil {
+		return row, fmt.Errorf("read device authorization: %w", err)
+	}
+	return row, nil
+}
+
+// decideDeviceAuthorization records an approval or a refusal. The status is part
+// of the predicate, so a second decision on the same code changes nothing and the
+// caller is told it did: whoever approves first is who the token belongs to.
+func (r *Repository) decideDeviceAuthorization(
+	ctx context.Context, tenantID guid.ID, userCodeHash, status string, principalID guid.ID,
+	authTime time.Time, acr int, amr string, now time.Time,
+) (bool, error) {
+	db := r.writer()
+	if db == nil {
+		return false, errRepositoryUnavailable
+	}
+	result := db.WithContext(ctx).Table(r.names.DeviceAuthorizations.String()).
+		Where("tenant_id = ? AND user_code_hash = ? AND status = ? AND consumed_at IS NULL AND expires_at > ?",
+			tenantID, userCodeHash, "pending", now).
+		Updates(map[string]any{
+			"status": status, "principal_id": principalID,
+			"auth_time": authTime, "acr": acr, "amr": amr,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
+}
+
+// touchDevicePoll records when a device last asked, which is what lets the poll
+// interval be enforced rather than trusted.
+func (r *Repository) touchDevicePoll(ctx context.Context, deviceCodeHash string, now time.Time) error {
+	db := r.writer()
+	if db == nil {
+		return errRepositoryUnavailable
+	}
+	return db.WithContext(ctx).Table(r.names.DeviceAuthorizations.String()).
+		Where("device_code_hash = ?", deviceCodeHash).Update("last_polled_at", now).Error
+}
+
+// consumeDeviceAuthorization marks a request spent and stores the refresh token
+// issued against it in the same transaction. Being conditional on the request
+// still being unspent is what stops two devices polling one code from both
+// getting a token; doing both together is what stops a refresh token from
+// outliving a consume that failed.
+func (r *Repository) consumeDeviceAuthorization(
+	ctx context.Context, deviceCodeHash string, now time.Time, refresh *model.RefreshToken,
+) (bool, error) {
+	consumed := false
+	err := r.runInTx(ctx, func(tx *Repository) error {
+		tables, db, err := tx.tables()
+		if err != nil {
+			return err
+		}
+		result := db.WithContext(ctx).Table(tables.DeviceAuthorizations.TableName()).
+			Where("device_code_hash = ? AND consumed_at IS NULL", deviceCodeHash).
+			Update("consumed_at", now)
+		if result.Error != nil {
+			return fmt.Errorf("consume device authorization: %w", result.Error)
+		}
+		if result.RowsAffected != 1 {
+			return nil
+		}
+		if refresh != nil {
+			if err := db.WithContext(ctx).Table(tables.RefreshTokens.TableName()).Create(refresh).Error; err != nil {
+				return fmt.Errorf("store refresh token: %w", err)
+			}
+		}
+		consumed = true
+		return nil
+	})
+	return consumed, err
+}
+
+// exchangeGrantFor finds the delegation permitting a client to act as a subject.
+// Prefix matching happens in Go rather than in SQL: a LIKE over a tenant's grants
+// would make the stored value a pattern language, and a star inside one would
+// then mean something nobody wrote down.
+func (r *Repository) exchangeGrantFor(ctx context.Context, tenantID, clientID guid.ID, subject string) (model.TokenExchangeGrant, error) {
+	db := r.writer()
+	if db == nil {
+		return model.TokenExchangeGrant{}, errRepositoryUnavailable
+	}
+	rows := []model.TokenExchangeGrant{}
+	if err := db.WithContext(ctx).Table(r.names.ExchangeGrants.String()).
+		Where("tenant_id = ? AND client_id = ? AND status = ?", tenantID, clientID, "active").
+		Order("id").Find(&rows).Error; err != nil {
+		return model.TokenExchangeGrant{}, fmt.Errorf("read token exchange grants: %w", err)
+	}
+	// An exact grant wins over a prefix one, so narrowing a range for one
+	// principal does not have to mean removing the range.
+	var widest *model.TokenExchangeGrant
+	for index := range rows {
+		if !subjectPermitted(rows[index].SubjectPrefix, subject) {
+			continue
+		}
+		if rows[index].SubjectPrefix == subject {
+			return rows[index], nil
+		}
+		if widest == nil || len(rows[index].SubjectPrefix) > len(widest.SubjectPrefix) {
+			widest = &rows[index]
+		}
+	}
+	if widest == nil {
+		return model.TokenExchangeGrant{}, ErrExchangeNotPermitted
+	}
+	return *widest, nil
+}
+
+func (r *Repository) insertExchangeGrant(ctx context.Context, row *model.TokenExchangeGrant) error {
+	db := r.writer()
+	if db == nil {
+		return errRepositoryUnavailable
+	}
+	err := db.WithContext(ctx).Table(r.names.ExchangeGrants.String()).Create(row).Error
+	if err != nil && isOAuthUniqueViolation(err) {
+		return ErrExchangeGrantExists
+	}
+	return err
+}
+
+func (r *Repository) listExchangeGrants(ctx context.Context, tenantID guid.ID) ([]model.TokenExchangeGrant, error) {
+	db := r.writer()
+	if db == nil {
+		return nil, errRepositoryUnavailable
+	}
+	rows := []model.TokenExchangeGrant{}
+	if err := db.WithContext(ctx).Table(r.names.ExchangeGrants.String()).
+		Where("tenant_id = ?", tenantID).Order("client_id, subject_prefix").Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("list token exchange grants: %w", err)
+	}
+	return rows, nil
+}
+
+func (r *Repository) deleteExchangeGrant(ctx context.Context, tenantID, id guid.ID) error {
+	db := r.writer()
+	if db == nil {
+		return errRepositoryUnavailable
+	}
+	result := db.WithContext(ctx).Table(r.names.ExchangeGrants.String()).
+		Where("tenant_id = ? AND id = ?", tenantID, id).Delete(&model.TokenExchangeGrant{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrExchangeGrantMissing
+	}
+	return nil
+}
+
+// isOAuthUniqueViolation recognizes a duplicate across the three dialects without
+// importing three drivers: each one says so in the message.
+func isOAuthUniqueViolation(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "unique") || strings.Contains(message, "duplicate")
+}
+
+// exchangeGrantOwner resolves which tenant owns a grant, which the authorization
+// layer needs before admitting a request that names one by id.
+func (r *Repository) exchangeGrantOwner(ctx context.Context, id guid.ID) (guid.ID, error) {
+	db := r.writer()
+	if db == nil {
+		return 0, errRepositoryUnavailable
+	}
+	var row model.TokenExchangeGrant
+	err := db.WithContext(ctx).Table(r.names.ExchangeGrants.String()).
+		Select("tenant_id").Where("id = ?", id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, ErrExchangeGrantMissing
+	}
+	return row.TenantID, err
 }

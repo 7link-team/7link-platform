@@ -38,6 +38,7 @@ var domainErrorMappers = []string{
 	"internal/iam/identity.closureError",
 	"internal/iam/identity.identityError",
 	"internal/iam/oauth.consentError",
+	"internal/iam/oauth.deviceError",
 	"internal/iam/oauth.oauthClientError",
 	"internal/iam/oauth.oauthConsentError",
 	"internal/iam/organization.departmentError",

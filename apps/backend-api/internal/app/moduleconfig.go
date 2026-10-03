@@ -136,9 +136,16 @@ func iamOrganizationConfig(c AppConfig) organization.Config {
 }
 
 func iamOAuthConfig(c AppConfig) oauth.Config {
-	return oauth.Config{Config: iamActivationConfig(c), Consent: oauth.ConsentConfig{
-		Path: c.OAuth.Consent.Path, TemplateFile: c.OAuth.Consent.TemplateFile, TTL: c.OAuth.Consent.TTL,
-	}}
+	return oauth.Config{
+		Config: iamActivationConfig(c),
+		Consent: oauth.ConsentConfig{
+			Path: c.OAuth.Consent.Path, TemplateFile: c.OAuth.Consent.TemplateFile, TTL: c.OAuth.Consent.TTL,
+		},
+		Device: oauth.DeviceConfig{
+			VerificationURI: c.OAuth.Device.VerificationURI,
+			CodeTTL:         c.OAuth.Device.CodeTTL, PollInterval: c.OAuth.Device.PollInterval,
+		},
+	}
 }
 
 func iamProvisioningConfig(c AppConfig) provisioning.Config {

@@ -66,19 +66,19 @@ func exchangeCode(t *testing.T, harness *oauthHarness, client Client, code strin
 func TestNewOAuthServiceRequiresDependencies(t *testing.T) {
 	harness := newOAuthHarness(t, "")
 	assert.Panics(t, func() {
-		NewService(nil, harness.web, newOAuthTestIDs(0), harness.repo.appender, harness.repo.principals, ConsentConfig{})
+		NewService(nil, harness.web, newOAuthTestIDs(0), harness.repo.appender, harness.repo.principals, ConsentConfig{}, DeviceConfig{VerificationURI: "https://console.example.test/device"})
 	})
 	assert.Panics(t, func() {
-		NewService(harness.runtime, nil, newOAuthTestIDs(0), harness.repo.appender, harness.repo.principals, ConsentConfig{})
+		NewService(harness.runtime, nil, newOAuthTestIDs(0), harness.repo.appender, harness.repo.principals, ConsentConfig{}, DeviceConfig{VerificationURI: "https://console.example.test/device"})
 	})
 	assert.Panics(t, func() {
-		NewService(harness.runtime, harness.web, nil, harness.repo.appender, harness.repo.principals, ConsentConfig{})
+		NewService(harness.runtime, harness.web, nil, harness.repo.appender, harness.repo.principals, ConsentConfig{}, DeviceConfig{VerificationURI: "https://console.example.test/device"})
 	})
 	assert.Panics(t, func() {
-		NewService(harness.runtime, harness.web, newOAuthTestIDs(0), nil, harness.repo.principals, ConsentConfig{})
+		NewService(harness.runtime, harness.web, newOAuthTestIDs(0), nil, harness.repo.principals, ConsentConfig{}, DeviceConfig{VerificationURI: "https://console.example.test/device"})
 	})
 	assert.Panics(t, func() {
-		NewService(harness.runtime, harness.web, newOAuthTestIDs(0), harness.repo.appender, identity.PrincipalStateStore{}, ConsentConfig{})
+		NewService(harness.runtime, harness.web, newOAuthTestIDs(0), harness.repo.appender, identity.PrincipalStateStore{}, ConsentConfig{}, DeviceConfig{VerificationURI: "https://console.example.test/device"})
 	})
 }
 
@@ -1022,6 +1022,18 @@ func TestParkedConsentIsRecheckedAgainstTheClientAsItStandsNow(t *testing.T) {
 	assert.NotErrorIs(t, err, ErrInvalidRequest)
 }
 
+// failReads makes every read of one table fail, leaving its rows in place:
+// dropping the table instead would cascade into the rows under test.
+func failReads(t *testing.T, harness *oauthHarness, table string) {
+	t.Helper()
+	name := harness.table(table)
+	require.NoError(t, harness.db.Callback().Query().Before("gorm:query").Register("test:fail_reads", func(db *gorm.DB) {
+		if db.Statement.Table == name {
+			db.AddError(errors.New("storage unavailable"))
+		}
+	}))
+}
+
 // TestStorageFaultsAreNotReportedAsRefusals covers every read the grant flows
 // make after the request itself has been validated. A missing row is a refusal
 // (ErrInvalidRequest, or a demand to log in); a failed read is not, and must
@@ -1033,17 +1045,6 @@ func TestStorageFaultsAreNotReportedAsRefusals(t *testing.T) {
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, ErrInvalidRequest)
 		assert.NotErrorIs(t, err, authnext.ErrInvalidCredentials)
-	}
-	// failReads makes every read of one table fail, leaving its rows in place:
-	// dropping the table instead would cascade into the rows under test.
-	failReads := func(t *testing.T, harness *oauthHarness, table string) {
-		t.Helper()
-		name := harness.table(table)
-		require.NoError(t, harness.db.Callback().Query().Before("gorm:query").Register("test:fail_reads", func(db *gorm.DB) {
-			if db.Statement.Table == name {
-				db.AddError(errors.New("storage unavailable"))
-			}
-		}))
 	}
 	authorize := func(harness *oauthHarness, client Client, prompt string) (string, error) {
 		return harness.service.Authorize(

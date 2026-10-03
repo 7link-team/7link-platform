@@ -13,5 +13,7 @@ func main() {
 		model.Consent{},
 		model.ConsentRequest{},
 		model.RefreshToken{},
+		model.DeviceAuthorization{},
+		model.TokenExchangeGrant{},
 	)
 }

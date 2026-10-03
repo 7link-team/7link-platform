@@ -29,7 +29,7 @@ func TestModuleMigrationContract(t *testing.T) {
 			"00004_refresh_tokens.sql", "00005_constraints.sql", "00006_refresh_principal_index.sql",
 			"00007_client_consent_mode.sql", "00008_consent_requests.sql",
 			"00009_principal_erasure_guards.sql",
-			"00010_grant_incarnation.sql",
+			"00010_grant_incarnation.sql", "00011_device_and_exchange.sql",
 		}, names, dialect)
 	}
 }
@@ -37,7 +37,8 @@ func TestModuleMigrationContract(t *testing.T) {
 func TestModuleMigrationMilestones(t *testing.T) {
 	t.Parallel()
 	milestones := (&Module{}).MigrationMilestones()
-	require.Len(t, milestones, 6)
+	require.Len(t, milestones, 7)
+	assert.Equal(t, module.MigrationMilestone{Name: "device-and-exchange", Version: 11}, milestones[6])
 	assert.Equal(t, module.MigrationMilestone{Name: "grant-incarnation", Version: 10}, milestones[5])
 	assert.Equal(t, []string{"base", "constraints", "indexes", "consent", "principal-erasure"}, []string{
 		milestones[0].Name, milestones[1].Name, milestones[2].Name, milestones[3].Name, milestones[4].Name,

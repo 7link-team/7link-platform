@@ -1,153 +1,106 @@
 # Task State
 
-> 前序任务「Storage Errors Must Not Read As Client Errors」已于 a842902 交付,
-> 其提交↔修复映射见 `git show a842902:.claude/task-state.md`。本文件现承载下述任务。
+> 已交付并提交的前序任务:社交 connector(26 个,`bb89072` / `1c9b77d`)、
+> webhook 模块(`b6d3b27`)。各自的决定见 `.claude/decisions.md` D94–D97。
 
 ## Task
-把社交登录 connector(含 Casdoor 覆盖的国内 provider)迁移进 Go IAM 的 `internal/iam/federation`。
+用户批准的四项补齐,一项一交付一提交:
+1. ~~**Webhook**~~ —— 已交付 `b6d3b27`(D97)
+2. **Device flow(RFC 8628)+ Token exchange(RFC 8693)** —— 本次(D98)
+3. 角色授予期限 —— 未开始,**最危险**:读取点跨 5 个模块,含 `core/query/authorization.go` 热路径
+4. 短信 —— 未开始,实为 `iam_principals` 加手机号列 + 接生命周期,不是接厂商
 
 ## Objective
-federation 新增第三种 provider 类型 `oauth2`(plain OAuth 2.0 + profile 文档),
-让一个社交 provider 的接入成本降到「一行表数据」,并复用既有的开户/绑定/审计/会话签发路径。
-
-## Current Task Set (2026-10-04)
-用户批准按我的建议做四项,一项一交付:
-1. **Webhook** —— 已完成,待 CI 确认后提交(见 D97)
-2. Device flow + Token exchange(`oauth`,接入点 `service.go:760` 的 grant switch)
-3. 角色授予期限 —— **最危险**:读取点跨 5 个模块,含 `core/query/authorization.go` 热路径
-4. 短信 —— 实为 `iam_principals` 加手机号列 + 接生命周期,不是接厂商
-
-已确认的四项决定(用户授权我定):
-- A 载荷不带 PII;B token exchange 用最窄委派;C 手机号进 principals;D 读时过滤 + 清理器 + 显示 expired
+`oauth` 模块补两种 grant:没有浏览器的设备(电视/CLI)能登录;服务能换一张"代某人"的
+令牌。两者都挂在 `service.go` 的 grant switch 上,复用既有的 client 认证、assurance
+传递、refresh token 存储与审计路径。
 
 ## Current Phase
-ACCEPTANCE —— 实现与全部可执行门禁通过,等用户验收。
+TESTING —— 实现与模块级门禁全过,等 `make ci` 第三轮结果。
 
 ## Current Step
-`make ci` EXIT=0 全绿,`make test-performance` PASS。待用户验收与两项决定(见下)。
+`make ci` 运行中(前两轮分别被 schema-lock 表数量 75→77、oauth i18n 冻结 key 清单拦下,
+两处都已修)。结束后跑 `tests/migration` 与 `make test-performance`,再提交推送。
 
 ## Overall Progress
-- [x] 读通 federation 现有 OIDC/SAML 实现与接入点
-- [x] 复用缝:`Service.authenticate(ctx, provider, idTokenClaims, method)` 一行未改
-- [x] 设计:声明式 connector 表 + `profileFlow` 接口逃生口
-- [x] `connectors.go` 引擎(claim 点号路径、三种 token 请求形状、三种 profile 鉴权、body 上限)
-- [x] `connector_catalog.go` 24 行 connector
-- [x] `connector_qq.go` bespoke flow(form 编码 token + JSONP + 第三次请求)
-- [x] domain.go:`ProviderOAuth2` + `ErrNoUpstreamAuthTime`
-- [x] service.go:normalizeProvider / StartLogin / exchangeUpstreamIdentity / 部署身份 User-Agent
-- [x] identity_links.go:重认证双重拒绝、绑定放行
-- [x] 三方言迁移 00008(SQLite 走表重建)+ migrate.go 里程碑 social-providers@8
-- [x] http.go:enum 加 oauth2 + `/identity-provider-connectors` 目录端点 + 三个错误映射
-- [x] i18n 三语各 +3 key
-- [x] 测试:connectors_test / connector_catalog_test / connector_qq_test / service_social_test
-- [x] 登记四处冻结清单(federation 路由清单、里程碑计数、app 的 mappings/guards/count)
-- [x] 自查发现并修复两个真 bug:`tokenRequestQuery` 发 POST 空 body(微信是 GET)、
-      微博/抖音的 secret 必须进 body 而非 Basic(建模为 `clientAuth`,用 OAuth 2.0 自己的命名)
-- [x] 重新生成 `docs/openapi.json`(+151 行)与前端 `api-schema.ts` / `api-routes.ts`,
-      `check:api-types` 与 `typecheck` 均通过
-- [x] i18n 一致性自查:三语各 22 key,与 22 个常量一一对应,无空值
-- [x] `tests/migration` 四个失败全部修复(见下「迁移发现」),全套 120s 通过
-- [x] `make ci` EXIT=0(gofmt clean / lint 0 issues / schema lock / 总覆盖率 91.1% /
-      openapi 匹配 / 前端 check:api-types + typecheck 全过)
-- [x] `make test-performance` PASS(未触碰性能基线)
+- [x] 迁移 00011(三方言):`iam_oauth_device_authorizations` + `iam_oauth_exchange_grants`
+- [x] `model/model.go` 两行 + dbgen + `query/table.go` BindNames
+- [x] `device.go`:用户码字母表(剔除 0/O 1/I/L 2/Z 5/S 8/B)、双码哈希存储、
+      服务端强制轮询间隔、批准者归属与 assurance 传递、消费与 refresh 存储同一事务
+- [x] `exchange.go`:`subjectPermitted`(精确优先于前缀,空前缀谁都不覆盖,裸 `*` 入口拒绝)、
+      scope 取 grant 的而非 client 的、不发 refresh token
+- [x] `http_device.go`:6 个端点(device_authorization 公开;其余 tenant 守卫 + owned-resource 删除)
+- [x] `http.go`:`supportedGrantTypes` 收口 + RFC 错误码映射
+- [x] 测试:`device_test.go`(16)、`exchange_test.go`(15)、`http_device_test.go`(10)
+- [x] oauth 包覆盖率 90.4%(门禁 ≥90%)
+- [x] 变异验证 7 处守卫(public client 两端、grant scope 上限、租户成员、
+      两处故障/拒绝分离、device 请求的租户归属)
+- [x] 登记 7 处冻结清单:oauth 路由清单、里程碑计数、error mapper 清单、
+      i18n declaredKeys、app 的 mappings/guards/count、schema-lock 表数量
+- [x] `DeviceConfig` 导出并接进 `internal/app`(`oauth.device.*` 三个键)
+- [x] 重新生成 `docs/openapi.json`
+- [ ] `make ci` / `tests/migration` / `make test-performance`
+- [ ] 提交推送
 
-## 迁移发现(四个,都是真问题)
-1. **SQLite 临时表名被当成模块拥有的表**:`tests/migration` 的 ownership 门禁正则扫
-   `CREATE TABLE {{.Prefix}}iam_*`,我原来建的 `iam_identity_providers_v8` 被算进去。
-   改成 authn 先例的形状:旧表 `RENAME TO ..._old`,新表用真名 `CREATE`。
-2. **父表重命名会带走子表 FK**:authn 先例改的是子表,我这张是父表(三个子表指向它),
-   现代 SQLite 的 RENAME 会把子表 FK 一起改写成指向 `_old`。加 `PRAGMA legacy_alter_table = ON`。
-3. **两个测试替身假设「binding-trust 是最后一个里程碑」**
-   (`tests/migration/iam_principal_erasure_test.go`、`internal/app/migration_status_integration_test.go`):
-   它们只剥掉 `*_binding_trust.sql` 却保留我的 00008,导致源目标 8 > 里程碑 6/7。
-   改成按**版本号**切(保留 < cutoff 的文件与里程碑),意图更明确且不会再被后续迁移打破。
-4. **被拒绝的降级是部分执行的** —— 需要你定夺,见下。
-
-## 已解决:不可逆降级改为事前拒绝(D-H)
-里程碑新增 `Irreversible bool`(`pkg/module/module.go`),federation 在 binding-trust@7 上声明。
-`internal/app/migration.go` 的 `downTarget` 在**任何回滚执行之前**拒绝跨越它,
-错误含「nothing was rolled back」。SQL 里三方言的 RAISE 保留作最后兜底
-(`tests/migration/iam_federation_test.go` 直接调 goosex 的那条用例现在是它的唯一覆盖)。
-新增 `TestIrreversibleMilestoneRefusesBeforeRollingBack` 与
-`TestIrreversibleMilestoneDoesNotBlockWhatWasNeverApplied`(合成模块,三引擎),
-并做过变异验证:去掉守卫后用例立刻变红。
-原来那条「失败后状态仍干净」的冻结断言因此重新成立,我撤回了为部分回滚加的临时断言。
-
-## 旧记录(已解决,保留原因说明)
-`MigrationDownTo federation To: 6` 会**先成功回滚我的第 8 版**,再撞上 binding-trust
-不可逆守卫而中止,把库留在版本 7。以前 7 就是最后一版,守卫立刻拦下、什么都没回滚,
-所以原测试断言「失败后状态仍干净」成立。
-
-我**没有**削弱那条守卫断言,而是让测试把真实的中间状态也断言出来
-(federation 停在 7、8 待应用、其余模块不受影响),再 Up 恢复。
-
-但这暴露一个运维风险:**被拒绝的降级不是原子的**。是否应该改成「请求范围内含不可逆里程碑
-就整体拒绝、一个都不回滚」?那是迁移编排的语义变更,属你的决定,我没有擅自改。
-
-## Active Work
-等 `make ci` 结束。
-
-## Completed Work
-见 Overall Progress 勾选项。覆盖率 federation 包 90.4%(门禁 ≥90%)。
+## 本次自查发现的七个真缺陷(都已修)
+1. **`validateClient` 的 grant 白名单没加新 grant** —— 管理 API 根本建不出能用 device
+   或 exchange 的 client,新功能从公开面无法到达。
+2. **token exchange 对 public client 无防护** —— public client 不持有秘密,其标识等于
+   公开值,一行 grant 就会让任何人代被覆盖的 principal 签发令牌。两端都加守卫
+   (`validateClient` 创建侧 + `tokenExchange` 使用侧)。
+3. **读失败被折叠成拒绝** —— 违反既有决定「A Failed Read Is Not A Refusal」。
+   设备轮询读失败会回 `invalid_grant`,而符合规范的设备收到它会丢弃设备码重开流程;
+   exchange 读失败会读作"委派已撤销"。改为只折叠 `gorm.ErrRecordNotFound`。
+4. **`deviceError` 未登记进 error mapper 冻结清单** —— 该清单存在的理由就是新 mapper
+   不能绕过"下层已选的状态码必须存活"这条规则。
+5. **两处错误码不合规** —— `unsupported_token_type` 映射成了 `invalid_target`
+   (RFC 8693 里 `invalid_target` 专指 resource/audience 不可接受),`unauthorized_client`
+   用了 403(RFC 6749 §5.2:token 端点除 `invalid_client` 外一律 400)。
+6. **device 查看/批准没按租户过滤** —— 端点有 `{tenant_id}` 守卫,服务层却只按用户码查。
+   另一个租户的成员能把别人的设备请求批掉:令牌发不出去(`activeMember` 兜底),但请求
+   已被消费,成了跨租户的拒绝服务,URL 里的租户段形同装饰。两处都加了 `tenant_id` 谓词。
+7. **未配置验证页时返回空 `verification_uri`** —— RFC 8628 要求该字段必须有值。空值等于
+   给设备一个"看起来能走、实际没人能完成"的流程。改为报配置故障(`server_error`),
+   并顺手把 `verification_uri_complete` 的用户码做了 URL 转义。
 
 ## Important Decisions
-- D-A: connector key 存既有 `issuer` 列,不加列不加表。`securityProviderFingerprint` 已哈希
-  issuer,换 key 自动让旧 identity link 失信;`UNIQUE(tenant_id, issuer)` 保证每租户一个同类。
-- D-B: endpoint 编译进二进制,租户不可配。否则管理员改 profile endpoint 指向 + 保持 client_id
-  即可冒用既有 identity link。
-- D-C: 支持 OIDC discovery 的 provider(Google/Microsoft/Apple/Slack/LinkedIn/Line/Twitch/
-  Zoom/Okta/Auth0/Keycloak/Casdoor/Logto…)不进本表,继续用 `oidc` 类型 —— ID token 验签 +
-  auth_time 严格强于读 profile。有测试 `TestConnectorsDoNotShadowOIDCProviders` 冻结这条。
-- D-D: 社交 provider **不得**用于重认证。plain OAuth2 无 `auth_time` 等价物,且社交方常静默
-  复用已有会话。`StartIdentityOperation` 与 `VerifyIdentityOperation` 双重拒绝,
-  绝不伪造 `AuthTime = now`。绑定(purpose=link)放行,新鲜度由单次授权码 + PKCE + replay claim 承担。
-- D-E: 变化按「值 vs 形状」分层:值进 connector 表,形状进 `profileFlow` 实现。
-  不把旋钮堆成配置语言。
-- D-G: token 端点的客户端认证方式建模为 `clientAuth`(`clientSecretBasic` / `clientSecretPost`),
-  用 OAuth 2.0 `token_endpoint_auth_method` 的原词;`tokenRequest` 只管传输形状。
-  `tokenRequestQuery` 发 GET —— 把参数放进 URL 却 POST 空 body 会被 provider 以无法诊断的
-  "invalid request" 拒绝。
-- D-F: 出站 User-Agent 由 `runtime.Identity()` 生成,不写死产品名(架构门禁
-  `TestSourceCarriesNoDeploymentIdentity` 曾抓到违规)。因此 `Headers` 字段无消费者,已删。
+- D98(见 decisions.md):委派是写下来的三元组(tenant, client, subject prefix)+ 它自己的
+  scope,不是 client 上的开关;前缀匹配在 Go 里做而不是 SQL `LIKE`;不发 refresh token。
+- 设备码与用户码都只存 SHA-256,和授权码同构 —— 读库不能兑换。
+- 轮询间隔服务端强制(`last_polled_at` + `interval_seconds`),不信设备自报。
+- 迁移 00011 **可逆**:只建两张表,回滚丢掉的是待批准请求(本就 10 分钟过期)
+  与可重新写下的委派,不符合 `Irreversible` 的"迁移过的东西无法重建"门槛。
+- 不实现 RFC 7591 动态客户端注册:此处每个 client 都属于某个必须授权它的租户。
+- subject token 只接受本部署签发的 access token;SAML/外部 JWT 一律
+  `unsupported_token_type` —— 接受验不了的断言等于信任来源不明的断言。
 
 ## Confirmed Constraints
-- 不改既有 OIDC / SAML 行为(两者代码路径未动)。
-- 三方言迁移语义等价;SQLite 不能 ALTER CHECK,走表重建 + `PRAGMA foreign_keys=OFF`。
-- 没有邮箱的 connector 只能绑定不能自动开户(沿用既有 `ErrProvisioningUnverified`,未改)。
+- 不改既有 authorization_code / refresh_token / client_credentials 行为(路径未动,
+  只在 grant switch 加两个 case、把硬编码白名单收口为 `supportedGrantTypes`)。
+- MySQL 一律 `DATETIME(3)`,不用 `TIMESTAMP`。
+- 表名只在 `query/table.go` 的 `BindNames` 拼接。
 
 ## Known Issues / Risks
-- **connector 的 endpoint 与字段名未经真实 provider 验证**(本环境无外网)。结构与映射逻辑有
-  测试保证,但某个 provider 的 URL 当下是否仍有效,需对照官方文档人工核对。
-- `make generate` 在本环境跑不起来(buf 下载超时),**生成物漂移未验证**。未改任何 model,
-  `git status` 也未显示 `*.gen.go` 变更,属间接证据。
-- 桶 3 仍缺:alipay(RSA2 信封)、wecom、微信小程序、steam、dropbox、notion、vk。
-- 会话中 `internal/iam/authn/captcha_turnstile.go:6` 曾被外部改动截断(`"errors"` → `"erro`),
-  非本任务所为,已 `git checkout --` 恢复;原因未查明。
+- `make test-mysql8` 本机无 Docker 跑不了;静态 schema-lock 已过,00011 的 MySQL 侧
+  只有 CREATE TABLE + CHECK,与已发布的 oauth/00008 同构。
+- `make generate` 本环境 buf 下载超时;未改 proto,`*.gen.go` 变更仅来自 dbgen(已跑)。
+- 设备验证页(`oauth.device.verification_uri` 指向的前端页面)**尚无实现** ——
+  后端返回的 `verification_uri_complete` 当下指向一个不存在的页面。属前端工作,
+  不在本次后端范围;留空则响应里不含该字段,流程仍可用(人工拿用户码调 API)。
 
 ## Verification
-Build: PASS / federation 包 Tests: PASS(覆盖率 90.4%)/ lint: PASS(0 issues)
-fmt-check: PASS / schema-lock-check: PASS / architecture: PASS
-internal/app: PASS / internal/integration/iam: PASS
-tests/migration(三引擎 × 带/不带前缀): PASS
-make ci: PASS(EXIT=0)
-make test-performance: PASS
-openapi-check 前置: PASS(已重新生成并提交到工作树)
-frontend check:api-types + typecheck: PASS
-make generate: 无法执行(无外网,buf 下载超时)
-make test-mysql8: 无法执行(本机无 Docker)—— 静态的 schema-lock-check 已 PASS,
-  且本次 MySQL 迁移只有 DROP CHECK + ADD CONSTRAINT,与已发布的 oauth/00007 同构
-make test-performance: NOT_RUN(待 CI 结束)
+Build: PASS / `internal/iam/oauth`: PASS(覆盖率 90.4%)
+`internal/app`: PASS / `tests/architecture`: PASS / i18n: PASS
+lint: PASS(0 issues)/ fmt: clean / schema-lock: PASS(77 表)
+make ci: RUNNING(第三轮)
+tests/migration: NOT_RUN
+make test-performance: NOT_RUN
 
 ## Next Action
-本次交付收尾:全量验证通过后提交并推送到 IAM 分支。
-
-推送后仍待办(不在本次范围):
-1. ~~alipay / wecom~~ **已实现**(26 个 connector)。两者端点与参数名均经实测确认
-   (网关回 `isv.missing-app-id`、企业微信回 `corpsecret missing`)。支付宝的 RSA2 签名
-   用公钥离线真验证过,不是"有签名就算过"。仍未验证的只有:真实商户凭证下的端到端。
-   余下未实现:微信小程序、steam、dropbox、notion、vk。
-2. 用真实应用凭证跑一遍端到端(本环境没有任何 provider 的 client_id/secret,这是唯一
-   还没验过的层面)。
+`make ci` 结束后:若 PASS 则跑 `go -C tests test ./migration -count=1` 与
+`make test-performance`,两者过后以单个提交交付(含 D98 与本文件),推送到 IAM 分支;
+若 FAIL 则按失败门禁定位,不要绕过门禁。随后开始第 3 项(角色授予期限),
+第一步是把 5 个模块的角色绑定读取点列成清单并逐一变异验证。
 
 ## Last Checkpoint
-2026-10-03 全部可执行门禁通过,等验收
+2026-10-04 第 2 项实现完成,模块级门禁全过,等全量 CI

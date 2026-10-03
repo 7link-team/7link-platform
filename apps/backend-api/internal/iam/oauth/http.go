@@ -20,13 +20,16 @@ import (
 )
 
 type discoveryDocument struct {
-	Issuer                           string   `json:"issuer" format:"uri"`
-	AuthorizationEndpoint            string   `json:"authorization_endpoint" format:"uri"`
-	TokenEndpoint                    string   `json:"token_endpoint" format:"uri"`
-	JWKSURI                          string   `json:"jwks_uri" format:"uri"`
-	UserInfoEndpoint                 string   `json:"userinfo_endpoint" format:"uri"`
-	RevocationEndpoint               string   `json:"revocation_endpoint" format:"uri"`
-	IntrospectionEndpoint            string   `json:"introspection_endpoint" format:"uri"`
+	Issuer                string `json:"issuer" format:"uri"`
+	AuthorizationEndpoint string `json:"authorization_endpoint" format:"uri"`
+	TokenEndpoint         string `json:"token_endpoint" format:"uri"`
+	JWKSURI               string `json:"jwks_uri" format:"uri"`
+	UserInfoEndpoint      string `json:"userinfo_endpoint" format:"uri"`
+	RevocationEndpoint    string `json:"revocation_endpoint" format:"uri"`
+	IntrospectionEndpoint string `json:"introspection_endpoint" format:"uri"`
+	// DeviceAuthorizationEndpoint is where a device with no browser starts, which
+	// is the only way it can discover the flow at all.
+	DeviceAuthorizationEndpoint      string   `json:"device_authorization_endpoint" format:"uri"`
 	ResponseTypesSupported           []string `json:"response_types_supported"`
 	GrantTypesSupported              []string `json:"grant_types_supported"`
 	CodeChallengeMethodsSupported    []string `json:"code_challenge_methods_supported"`
@@ -137,7 +140,7 @@ type consentPageOutput struct {
 type consentRequestOutput struct{ Body ConsentRequest }
 
 type tokenForm struct {
-	GrantType    string `json:"grant_type" enum:"authorization_code,refresh_token,client_credentials"`
+	GrantType    string `json:"grant_type" enum:"authorization_code,refresh_token,client_credentials,urn:ietf:params:oauth:grant-type:device_code,urn:ietf:params:oauth:grant-type:token-exchange"`
 	ClientID     string `json:"client_id,omitempty" maxLength:"19" pattern:"^[1-9][0-9]*$"`
 	ClientSecret string `json:"client_secret,omitempty" maxLength:"1024"`
 	Code         string `json:"code,omitempty" maxLength:"1024"`
@@ -145,6 +148,22 @@ type tokenForm struct {
 	CodeVerifier string `json:"code_verifier,omitempty" minLength:"43" maxLength:"128"`
 	RefreshToken string `json:"refresh_token,omitempty" maxLength:"2048"`
 	Scope        string `json:"scope,omitempty" maxLength:"2048"`
+
+	// The device grant's field, and token exchange's three. They are documented
+	// here so a client reading the contract knows what each grant expects rather
+	// than discovering it from a rejection.
+	DeviceCode         string `json:"device_code,omitempty" maxLength:"1024"`
+	SubjectToken       string `json:"subject_token,omitempty" maxLength:"4096"`
+	SubjectTokenType   string `json:"subject_token_type,omitempty" enum:"urn:ietf:params:oauth:token-type:access_token"`
+	RequestedTokenType string `json:"requested_token_type,omitempty" enum:"urn:ietf:params:oauth:token-type:access_token"`
+}
+
+// deviceAuthorizationForm is what a device posts to start the flow. It carries no
+// secret: a device cannot keep one, which is why the grant has to be declared on
+// the client instead.
+type deviceAuthorizationForm struct {
+	ClientID string `json:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
+	Scope    string `json:"scope,omitempty" maxLength:"2048"`
 }
 
 type revokeForm struct {
@@ -162,7 +181,10 @@ type introspectionForm struct {
 type oauthGrantType string
 
 func (oauthGrantType) Schema(huma.Registry) *huma.Schema {
-	return &huma.Schema{Type: huma.TypeString, Enum: []any{"authorization_code", "refresh_token", "client_credentials"}}
+	return &huma.Schema{Type: huma.TypeString, Enum: []any{
+		"authorization_code", "refresh_token", "client_credentials",
+		grantDeviceCode, grantTokenExchange,
+	}}
 }
 
 type oauthRedirectURI string
@@ -276,6 +298,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	registerConsentHTTP(api, service)
 	registerClientHTTP(api, service, registrar)
 	registerGrantHTTP(api, service, registrar)
+	registerDeviceHTTP(api, service, registrar)
 }
 
 // registerConsentHTTP publishes the consent screen and the endpoint that
@@ -384,7 +407,11 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 			TokenEndpoint: issuer + "/oauth/token", JWKSURI: issuer + "/.well-known/jwks.json",
 			UserInfoEndpoint: issuer + "/oauth/userinfo", RevocationEndpoint: issuer + "/oauth/revoke",
 			IntrospectionEndpoint: issuer + "/oauth/introspect", ResponseTypesSupported: []string{"code"},
-			GrantTypesSupported:              []string{"authorization_code", "refresh_token", "client_credentials"},
+			DeviceAuthorizationEndpoint: issuer + "/oauth/device_authorization",
+			GrantTypesSupported: []string{
+				"authorization_code", "refresh_token", "client_credentials",
+				grantDeviceCode, grantTokenExchange,
+			},
 			CodeChallengeMethodsSupported:    []string{"S256"},
 			SubjectTypesSupported:            []string{"public"},
 			IDTokenSigningAlgValuesSupported: []string{"EdDSA"},
@@ -434,15 +461,38 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 		if err != nil {
 			return nil, oauthError(ctx, http.StatusBadRequest, "invalid_request")
 		}
-		if !containsWord("authorization_code refresh_token client_credentials", form.Get("grant_type")) {
+		if !containsWord(supportedGrantTypes, form.Get("grant_type")) {
 			return nil, oauthError(ctx, http.StatusBadRequest, "invalid_request")
 		}
 		response, err := service.Token(ctx, form, in.Authorization)
 		if err != nil {
-			if errors.Is(err, errInvalidClient) {
+			// A polling device is told the state of its request in the code RFC
+			// 8628 defines, because that is what tells it to keep waiting rather
+			// than to give up. Collapsing these into invalid_grant would make a
+			// pending approval indistinguishable from a refused one.
+			switch {
+			case errors.Is(err, ErrAuthorizationPending):
+				return nil, oauthError(ctx, http.StatusBadRequest, "authorization_pending")
+			case errors.Is(err, ErrSlowDown):
+				return nil, oauthError(ctx, http.StatusBadRequest, "slow_down")
+			case errors.Is(err, ErrExpiredToken):
+				return nil, oauthError(ctx, http.StatusBadRequest, "expired_token")
+			case errors.Is(err, ErrAccessDenied):
+				return nil, oauthError(ctx, http.StatusBadRequest, "access_denied")
+			case errors.Is(err, ErrUnsupportedTokenType):
+				// RFC 8693 reserves invalid_target for an unacceptable resource or
+				// audience, so a token type this server cannot verify is reported
+				// as what it is: a request it cannot act on.
+				return nil, oauthError(ctx, http.StatusBadRequest, "invalid_request")
+			case errors.Is(err, ErrExchangeNotPermitted):
+				// A client asking to act as somebody it has no grant for is
+				// refused as unauthorized rather than told the grant is missing,
+				// which would let it probe for permitted subjects. RFC 6749 gives
+				// the token endpoint 400 for every error but invalid_client.
+				return nil, oauthError(ctx, http.StatusBadRequest, "unauthorized_client")
+			case errors.Is(err, errInvalidClient):
 				return nil, oauthError(ctx, http.StatusUnauthorized, "invalid_client")
-			}
-			if errors.Is(err, ErrInvalidRequest) {
+			case errors.Is(err, ErrInvalidRequest):
 				return nil, oauthError(ctx, http.StatusBadRequest, "invalid_grant")
 			}
 			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error")
@@ -759,6 +809,11 @@ func documentOAuthForm[T any](api huma.API, path string) {
 	}
 	documentOAuthErrors(api, operation, http.StatusBadRequest, http.StatusUnauthorized, http.StatusInternalServerError)
 }
+
+// supportedGrantTypes is the one place the token endpoint decides what it
+// accepts, so a grant added to the service cannot be rejected before reaching it.
+const supportedGrantTypes = "authorization_code refresh_token client_credentials " +
+	grantDeviceCode + " " + grantTokenExchange
 
 func documentOAuthErrors(api huma.API, operation *huma.Operation, statuses ...int) {
 	errorSchema := api.OpenAPI().Components.Schemas.Schema(reflect.TypeFor[protocolError](), false, "")

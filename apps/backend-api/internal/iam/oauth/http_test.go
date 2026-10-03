@@ -34,12 +34,18 @@ oauth-consent-decision|POST|/oauth/consent
 oauth-consent-page|GET|/oauth/consent
 oauth-consent-request|GET|/oauth/consent/request
 oauth-create-client|POST|/tenants/{tenant_id}/oauth-clients
+oauth-create-exchange-grant|POST|/tenants/{tenant_id}/oauth-exchange-grants
 oauth-delete-client|DELETE|/oauth-clients/{client_id}
+oauth-delete-exchange-grant|DELETE|/oauth-exchange-grants/{grant_id}
+oauth-device-authorization|POST|/oauth/device_authorization
+oauth-device-decision|POST|/tenants/{tenant_id}/oauth/device-requests/decisions
+oauth-device-request|GET|/tenants/{tenant_id}/oauth/device-requests
 oauth-discovery|GET|/.well-known/openid-configuration
 oauth-introspect|POST|/oauth/introspect
 oauth-jwks|GET|/.well-known/jwks.json
 oauth-list-clients|GET|/tenants/{tenant_id}/oauth-clients
 oauth-list-consents|GET|/principals/{principal_id}/oauth-consents
+oauth-list-exchange-grants|GET|/tenants/{tenant_id}/oauth-exchange-grants
 oauth-revoke-consent|DELETE|/principals/{principal_id}/oauth-consents/{client_id}
 oauth-revoke|POST|/oauth/revoke
 oauth-rotate-client-secret|POST|/oauth-clients/{client_id}/credentials
@@ -48,11 +54,16 @@ oauth-update-client|PUT|/oauth-clients/{client_id}
 oauth-userinfo|GET|/oauth/userinfo`
 
 var oauthGuards = map[string]string{
-	"oauth-list-clients":         "oauth_client_view",
-	"oauth-create-client":        "oauth_client_create",
-	"oauth-update-client":        "oauth_client_update",
-	"oauth-rotate-client-secret": "oauth_client_update",
-	"oauth-delete-client":        "oauth_client_delete",
+	"oauth-list-clients":          "oauth_client_view",
+	"oauth-create-client":         "oauth_client_create",
+	"oauth-update-client":         "oauth_client_update",
+	"oauth-rotate-client-secret":  "oauth_client_update",
+	"oauth-delete-client":         "oauth_client_delete",
+	"oauth-device-request":        "oauth_device_request_view",
+	"oauth-device-decision":       "oauth_device_request_approve",
+	"oauth-list-exchange-grants":  "oauth_exchange_grant_view",
+	"oauth-create-exchange-grant": "oauth_exchange_grant_create",
+	"oauth-delete-exchange-grant": "oauth_exchange_grant_delete",
 }
 
 type oauthHTTPHarness struct {
@@ -207,7 +218,7 @@ func TestOAuthRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 17)
+	require.Len(t, got, 23)
 	require.NoError(t, authz.ValidateOperations(harness.api, authz.DefaultRegistry()))
 }
 
@@ -336,9 +347,12 @@ func TestOAuthOpenAPISecurityGuardsParametersAndForms(t *testing.T) {
 			assert.ElementsMatch(t, []string{
 				"grant_type", "client_id", "client_secret", "code", "redirect_uri",
 				"code_verifier", "refresh_token", "scope",
+				// The device grant's field and token exchange's three.
+				"device_code", "subject_token", "subject_token_type", "requested_token_type",
 			}, schemaPropertyNames(requestSchema), path)
 			assert.Contains(t, requestSchema.Required, "grant_type", path)
-			assert.Equal(t, []any{"authorization_code", "refresh_token", "client_credentials"},
+			assert.Equal(t, []any{"authorization_code", "refresh_token", "client_credentials",
+				grantDeviceCode, grantTokenExchange},
 				requestSchema.Properties["grant_type"].Enum, path)
 		} else if path == "/oauth/revoke" {
 			assert.ElementsMatch(t, []string{
@@ -379,7 +393,8 @@ func TestOAuthOpenAPISecurityGuardsParametersAndForms(t *testing.T) {
 		}[method]])[method]
 		requestSchema := resolveOAuthSchema(spec, operation.RequestBody.Content["application/json"].Schema)
 		require.NotNil(t, requestSchema, method)
-		assert.Equal(t, []any{"authorization_code", "refresh_token", "client_credentials"},
+		assert.Equal(t, []any{"authorization_code", "refresh_token", "client_credentials",
+			grantDeviceCode, grantTokenExchange},
 			requestSchema.Properties["grant_types"].Items.Enum, method)
 		assert.Equal(t, "uri", requestSchema.Properties["redirect_uris"].Items.Format, method)
 		assert.Equal(t, `^https?://[^#]+$`, requestSchema.Properties["redirect_uris"].Items.Pattern, method)
@@ -413,8 +428,8 @@ func TestOAuthOpenAPISuccessSchemasAreTyped(t *testing.T) {
 	}{
 		"discovery": {
 			spec.Paths["/.well-known/openid-configuration"].Get,
-			splitCSV("issuer,authorization_endpoint,token_endpoint,jwks_uri,userinfo_endpoint,revocation_endpoint,introspection_endpoint,response_types_supported,grant_types_supported,code_challenge_methods_supported,subject_types_supported,id_token_signing_alg_values_supported"),
-			splitCSV("issuer,authorization_endpoint,token_endpoint,jwks_uri,userinfo_endpoint,revocation_endpoint,introspection_endpoint,response_types_supported,grant_types_supported,code_challenge_methods_supported,subject_types_supported,id_token_signing_alg_values_supported"),
+			splitCSV("issuer,authorization_endpoint,token_endpoint,jwks_uri,userinfo_endpoint,revocation_endpoint,introspection_endpoint,device_authorization_endpoint,response_types_supported,grant_types_supported,code_challenge_methods_supported,subject_types_supported,id_token_signing_alg_values_supported"),
+			splitCSV("issuer,authorization_endpoint,token_endpoint,jwks_uri,userinfo_endpoint,revocation_endpoint,introspection_endpoint,device_authorization_endpoint,response_types_supported,grant_types_supported,code_challenge_methods_supported,subject_types_supported,id_token_signing_alg_values_supported"),
 		},
 		"jwks": {
 			spec.Paths["/.well-known/jwks.json"].Get,
