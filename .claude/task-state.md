@@ -18,7 +18,7 @@
 并且第二种方式不能变成绕过第一种所要求的 MFA 的路子。
 
 ## Current Phase
-TESTING —— 实现与前端完成,等最后一轮全量 CI(authn 覆盖率是唯一悬着的门禁)。
+ACCEPTANCE —— 已提交推送 `d47ee12`。
 
 ## Completed Work(本轮)
 **手机号登录(D102)** `internal/iam/authn/phone_login.go`
@@ -63,15 +63,32 @@ TESTING —— 实现与前端完成,等最后一轮全量 CI(authn 覆盖率是
   默认关闭:短信是这里最弱的第二因子,开不开是部署的决定。
 
 ## Verification
-Build / 架构门禁 / 三引擎迁移 / 真 MySQL 8 迁移+计划: PASS(MySQL 延迟阈值超标是本机,
-执行计划节点类型集合前后一致,阈值未动)
+Build / lint / fmt / schema-lock: PASS
+覆盖率: 总体 91.0%,`internal/iam/authn` 90.1%(门禁 90.0%)
+test-integration(architecture / goose / lifecycle / migration / performance): PASS
+openapi-check(文档与生成一致)/ frontend-contract-check: PASS
 前端 typecheck + lint + 164 测试: PASS
-make ci: RUNNING(第 16 轮)—— `internal/iam/authn` 覆盖率门禁(≥90%)是唯一悬着的项
+真 MySQL 8:**迁移与执行计划 PASS**(这是验证两处 TEXT 默认值修复与 00020 的那一半);
+**延迟阈值 FAIL,原因是本机而非代码,阈值未动** —— 见下。
+
+## 本机 MySQL 延迟门禁的判定依据
+四个基准全部是基线中位数的 2.6~4.8 倍,只有 authorization 越过了自己的上限:
+| 基准 | 语句数 | 基线 | 本次 | 倍数 |
+|---|---|---|---|---|
+| authorization | 7 | 2.15ms | 10.25ms | 4.8x |
+| audit_append | 4 | 3.12ms | 9.63ms | 3.1x |
+| session_lookup | 3 | 3.14ms | 8.17ms | 2.6x |
+慢的倍数与**每次操作的语句条数单调相关**,折算下来是每条语句多出 1.2~1.7ms 的固定开销
+—— 这是本机每次往返的代价被放大,不是某条查询变慢。若是角色期限谓词所致,多出的代价会
+集中在一条语句上,而不是均匀摊在所有路径的每条语句上。另一个独立证据:authorization 那
+7 条语句的优化器估算代价(含那条 CTE 的 0.66)在加谓词前后**逐条完全相同**。
+参考机上的 CI 才是这半边门禁该出判定的地方。
 
 ## Next Action
-读 ci16 的 `module coverage: internal/iam/authn`;不足就用能到达的性质补测试
-(故障注入、审计原子性、入参守卫),不靠放宽断言。然后跑 tests/migration +
-tests/architecture 与 make test-mysql8(都在 00020 迁移之后),通过即提交推送。
+无遗留。工作区干净,`IAM` 已与 origin 同步。
+可选(未获批准,未动手):测试套件加速 —— (1) 缓存 fixture 口令哈希,
+(2) 每包迁移一次后按文件拷贝;实测 argon2id 单次 31.3ms、每测试建库 55ms、
+覆盖率插桩 1.8 倍。
 
 ## Last Checkpoint
-2026-10-04 手机号登录 + 短信第二因子实现完成,两个 MySQL 缺陷已修,等 ci16
+2026-10-04 `d47ee12` 已推送;手机号登录 + 短信第二因子 + 两处 MySQL 缺陷全部落盘
