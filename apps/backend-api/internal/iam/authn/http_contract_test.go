@@ -46,6 +46,9 @@ authn-create-password-recovery|POST|/password-recoveries
 authn-create-registration|POST|/registrations
 authn-create-session-verification|POST|/login/mfa
 authn-create-session|POST|/login
+authn-create-phone-login-request|POST|/login/phone/requests
+authn-create-mfa-phone-code|POST|/login/mfa/phone-codes
+authn-create-phone-session|POST|/login/phone
 authn-create-step-up-challenge|POST|/sessions/current/step-up-challenges
 authn-create-step-up-verification|POST|/sessions/current/step-up-verifications
 authn-create-totp-enrollment|POST|/principals/{principal_id}/mfa/totp-enrollments
@@ -81,7 +84,7 @@ func TestAuthnRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 44)
+	require.Len(t, got, 47)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -161,7 +164,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, operationIDs, 44)
+	require.Len(t, operationIDs, 47)
 	assert.Equal(t, "session", spec.Components.SecuritySchemes[authz.SessionScheme].Name)
 	for _, path := range []string{"/sessions/{session_id}", "/principals/{principal_id}/passkeys/{passkey_id}"} {
 		name := "session_id"

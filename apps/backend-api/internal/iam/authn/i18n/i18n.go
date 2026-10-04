@@ -36,6 +36,8 @@ const (
 	PrimaryPhoneRequired               = Namespace + ".primary_phone_required"
 	PhoneVerificationUnavailable       = Namespace + ".phone_verification_unavailable"
 	InvalidPhoneVerificationCode       = Namespace + ".invalid_phone_verification_code"
+	PhoneLoginUnavailable              = Namespace + ".phone_login_unavailable"
+	SMSFactorUnavailable               = Namespace + ".sms_factor_unavailable"
 	SessionNotFound                    = Namespace + ".session_not_found"
 	InvalidMFA                         = Namespace + ".invalid_mfa"
 	InvalidMFAEnrollment               = Namespace + ".invalid_mfa_enrollment"

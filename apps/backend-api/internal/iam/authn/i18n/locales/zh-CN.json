@@ -29,6 +29,7 @@
   "passkey_unavailable": "通行密钥认证无法完成该请求，请稍后重试或使用其他已配置的登录方式。",
   "password_recovery_unavailable": "密码恢复服务无法完成该请求，请稍后重试；若问题持续，请联系管理员。",
   "password_reused": "新密码近期已使用过，请更换其他密码。",
+  "phone_login_unavailable": "手机号登录当前不可用。请稍后重试,若持续出现请联系管理员。",
   "phone_verification_unavailable": "手机号验证当前不可用。请稍后重试,若持续出现请联系管理员。",
   "primary_email_required": "此操作需要已验证的主邮箱地址，请先添加或验证主邮箱。",
   "primary_phone_required": "请先为账号填写手机号,再进行验证。",
@@ -38,5 +39,6 @@
   "registration_request_rejected": "注册请求来源不在允许范围内，请使用已配置的应用地址或联系管理员。",
   "registration_unavailable": "自助注册当前不可用，请联系管理员获取访问权限或稍后重试。",
   "return_url_not_allowed": "返回地址未列入允许名单，请使用已批准的应用地址或联系管理员。",
-  "session_not_found": "指定的浏览器会话不存在或已失效，请刷新会话列表后重试。"
+  "session_not_found": "指定的浏览器会话不存在或已失效，请刷新会话列表后重试。",
+  "sms_factor_unavailable": "本次登录不能用手机验证码完成,请使用其他第二因子。"
 }

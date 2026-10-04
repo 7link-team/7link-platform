@@ -95,9 +95,15 @@ func (s *Service) MFAStatus(
 	if err != nil {
 		return authnext.MFAStatus{}, fmt.Errorf("count recovery codes: %w", err)
 	}
+	principal, err := s.repo.getActivePrincipal(ctx, claims.PrincipalID)
+	if err != nil {
+		return authnext.MFAStatus{}, fmt.Errorf("load MFA status: %w", err)
+	}
 	return authnext.MFAStatus{
 		TOTPEnabled:            credential.MFARequired && credential.TOTPSecret != "",
 		RecoveryCodesRemaining: int(remaining),
+		// No enrolment stands behind this: the proven number is the enrolment.
+		SMSAvailable: s.smsFactorAvailable(principal, ""),
 	}, nil
 }
 
@@ -244,12 +250,25 @@ func (s *Service) VerifyLoginMFA(
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-		if err != nil || credential.TOTPSecret == "" {
+		if err != nil {
 			return ErrMFAChallenge
 		}
-		valid, err := s.consumeFactor(ctx, repository, credential, code, now)
+		// A code sent to a proven number answers this as well as a TOTP step does,
+		// so an account with no TOTP secret is no longer a challenge nobody can
+		// answer -- it is one answered the other way.
+		valid, err := s.consumeSMSFactor(ctx, repository, challenge.PrincipalID, code, now)
 		if err != nil {
 			return err
+		}
+		// Only an account with a secret goes on to the TOTP comparison; there is
+		// nothing to compare against otherwise. What must not happen is returning
+		// here: a wrong code has to reach the failure count below, or six digits
+		// could be guessed as often as the code lives.
+		if !valid && credential.TOTPSecret != "" {
+			valid, err = s.consumeFactor(ctx, repository, credential, code, now)
+			if err != nil {
+				return err
+			}
 		}
 		if !valid {
 			changed, err := repository.failMFAChallenge(
@@ -271,8 +290,12 @@ func (s *Service) VerifyLoginMFA(
 		if !changed {
 			return ErrMFAChallenge
 		}
+		// What the session says proved the first factor is what the challenge
+		// recorded, not a guess: a login opened with a code read off a message
+		// must not claim a password was typed, or a policy that asks for one
+		// would be satisfied by something else.
 		sessionID, err := s.insertSession(ctx, repository, challenge.PrincipalID, now, authnext.Assurance{
-			AuthTime: now, Level: 2, Methods: []string{"pwd", "mfa"},
+			AuthTime: now, Level: 2, Methods: []string{challenge.FirstFactor, "mfa"},
 		})
 		if err != nil {
 			return err

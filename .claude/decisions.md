@@ -1,5 +1,117 @@
 # Decisions
 
+## D103 - A Proven Number Is The Enrolment, And Never Both Factors (2026-10-04)
+
+Decision: a code sent to a number somebody has already proven answers a
+second-factor challenge. There is no enrolment record behind it: the proven
+number on the principal *is* the enrolment -- the same fact the profile screen
+shows and the sign-in path reads. An account with no TOTP secret used to face a
+challenge it could not answer; now it can answer, and `MFAStatus` says so.
+
+It is the weakest factor here. A number can be moved to another SIM by somebody
+who talks a carrier into it, where a passkey or a TOTP secret cannot. It is
+offered because the alternative for most people is no second factor at all, it
+is off by default, and it is never the only thing offered: an account that can
+enrol TOTP is still told to.
+
+**A number is never both factors of one sign-in.** Signing in with a code and
+then answering the challenge with another code to the same number is one factor
+twice. The challenge records what proved the first factor (`first_factor`,
+migration 20), so the rule is enforced where the code is asked for rather than
+discovered after one was sent, and the challenge does not list `sms` among its
+methods in that case. Both halves are enforced: the offer and the request.
+
+The stored code is tried before a TOTP step, because six digits is the same
+shape either way and a value matching a stored code is unambiguous, where a TOTP
+comparison would accept a code this account was never sent. An account with no
+TOTP secret and a wrong code gets a refusal rather than the TOTP path being
+handed an empty secret.
+
+The number is re-read when the code is spent, not trusted from the credential
+row: a code proves the number it went to, and that has to still be the number on
+the account. Proving a *newer* number while a code is outstanding leaves the
+flag true and only the number different, which is the case that check exists for.
+
+Turning the factor off stops codes already in flight from answering, not merely
+new ones from being sent.
+
+A wrong code reaches the same failure count a wrong TOTP step does. The first
+implementation returned early for an account with no TOTP secret, which meant
+such an account counted nothing at all: six digits could be guessed as often as
+the code lived. The early return is gone -- a code that does not match falls
+through to the one place that counts a failed attempt -- and the four tests whose
+expectations encoded the wrong behaviour were corrected, not the code.
+
+The session says which factor opened it, taken from `first_factor` rather than
+assumed to be a password. A login opened by reading a message must not claim a
+password was typed, or a policy that asks for one is satisfied by something else.
+
+Four of these guards passed their first mutation run. Each time the reason was
+the same: the test never reached the guard -- the account had no second factor so
+an earlier branch returned, or the fixture changed two things where the guard
+only needed one. Every one of those paths was reachable, so the tests were
+rewritten to reach them rather than the guards trusted.
+
+A note on the test harness this exposed: the fault injector matched gorm's table
+clause, which is empty for a write sent as raw SQL and holds the *alias* for the
+principal readers. Both kinds of read and write were therefore injectable by
+nothing, and the cases that looked like they covered them passed having proved
+nothing. The injector now matches the statement text for raw writes and both
+forms of the principal table.
+Status: IMPLEMENTED.
+
+## D102 - A Proven Number Is One Factor, And Only One (2026-10-04)
+
+Decision: somebody can sign in with a code sent to a number they have already
+proven. It is one factor, exactly as a password is, so the session records
+`sms` as what proved it at level 1, and whatever the policy then requires it
+still requires: this path hands off to the same gate the password path does.
+
+That gate is now one function. `BeginLogin`'s tail became
+`completeFirstFactor`, called by both ways in, because a second way in with a
+copied tail is how a second factor quietly stops being required -- the copy is
+where the next policy change does not land.
+
+Only a proven number resolves. An unproven one is a string somebody typed into
+their own profile, and anybody can type any number. Two accounts that have each
+proven the same number -- a carrier reissues them -- resolve to nobody, which is
+the answer an ambiguous recovery identifier already gets; the connector returns
+up to two and authn decides, as it does there.
+
+Asking for a code never says what it found. A number with an account, a number
+without one, and something that is not a number all answer the same way,
+because the answer is read by whoever typed the number and they are not always
+its owner. The captcha is on that endpoint for the same reason it is on the
+password endpoint: it is a pre-authentication surface, and the only failure
+counter that exists is per-account, which an attacker spreading attempts across
+numbers never trips.
+
+Wrong codes count twice: against the code's own ceiling and against the account
+lock a run of wrong passwords sets. The two ways in therefore cannot be attacked
+independently, and a locked account is not sent a fresh code.
+
+The purpose is part of the credential's key. Through the API a verify code and a
+sign-in code cannot both be live for one account -- a verify code exists only
+while the number is unproven and a sign-in code only once it is proven, and the
+act that flips that flag consumes the verify code -- so this is not guarding a
+reachable attack. It is there so the property is local instead of a consequence
+of two flags elsewhere staying in step, and so a direct database write or a
+future flow cannot make one code answer the other. The test says that, rather
+than claiming a behavioural proof it cannot give.
+
+The constraint D100 and D101 left open comes due here: a proven number signs
+somebody in, so it is a credential, and replacing or removing one now bumps the
+credential version and revokes the sessions and tokens it opened -- exactly as
+replacing an address does. Adding an unproven number for the first time revokes
+nothing, because an unproven number reaches nothing.
+
+One check was removed rather than kept as defence: the sign-in flow does not
+compare the code's number against the principal's, because the lookup above it
+already required a proven number equal to the one typed. A number changed since
+the code left stops resolving at all -- changing one unverifies it. The test now
+names that as the mechanism instead of implying a comparison does it.
+Status: IMPLEMENTED.
+
 ## D101 - A Phone Is Proven By A Code, In Its Own Credential (2026-10-04)
 
 Decision: `iam_phone_verification_codes` holds one outstanding code per

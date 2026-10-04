@@ -61,6 +61,12 @@ type PrincipalStateStore struct {
 	// its activation requirement, reporting whether a row was in that state.
 	VerifyEmail func(ctx context.Context, db *gorm.DB, id guid.ID, email string, now time.Time) (bool, error)
 
+	// ActiveHumanByPhone resolves a proven phone number to the active people
+	// carrying it, at most two. Numbers are not unique here -- a carrier reissues
+	// them -- so what more than one means is the caller's policy, as it is for an
+	// identifier.
+	ActiveHumanByPhone func(context.Context, *gorm.DB, string) ([]Principal, error)
+
 	// VerifyPhone marks an active principal's number proven. The number is part
 	// of the predicate: a code proves the number it was sent to, so one that
 	// changed in between proves nothing about the number held now.
@@ -166,6 +172,23 @@ func principalStateStore(prefix string) PrincipalStateStore {
 			}
 			return result.RowsAffected == 1, nil
 		},
+		ActiveHumanByPhone: func(ctx context.Context, db *gorm.DB, phone string) ([]Principal, error) {
+			phone = strings.TrimSpace(phone)
+			rows := make([]Principal, 0, 2)
+			if phone == "" {
+				return rows, nil
+			}
+			// Only a proven number resolves: an unproven one is a string somebody
+			// typed into their own profile, and anybody could type any number.
+			err := db.WithContext(ctx).Table(principalAliased).
+				Where("status = ? AND phone_verified = ? AND phone = ?", "active", true, phone).
+				Where("NOT EXISTS (?)", notAServiceAccount(db)).
+				Limit(2).Find(&rows).Error
+			if err != nil {
+				return nil, fmt.Errorf("load principals by phone: %w", err)
+			}
+			return rows, nil
+		},
 		VerifyPhone: func(
 			ctx context.Context, db *gorm.DB, principalID guid.ID, phone string, now time.Time,
 		) (bool, error) {
@@ -233,6 +256,9 @@ func unavailablePrincipalStateStore() PrincipalStateStore {
 		},
 		VerifyEmail: func(context.Context, *gorm.DB, guid.ID, string, time.Time) (bool, error) {
 			return false, ErrUnavailable
+		},
+		ActiveHumanByPhone: func(context.Context, *gorm.DB, string) ([]Principal, error) {
+			return nil, ErrUnavailable
 		},
 		VerifyPhone: func(context.Context, *gorm.DB, guid.ID, string, time.Time) (bool, error) {
 			return false, ErrUnavailable

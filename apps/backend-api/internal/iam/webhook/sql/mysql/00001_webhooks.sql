@@ -8,7 +8,7 @@ CREATE TABLE {{.Prefix}}iam_webhook_subscriptions (
     tenant_id         BIGINT         NOT NULL,
     name              VARCHAR(128)   NOT NULL,
     url               VARCHAR(2048)  COLLATE utf8mb4_bin NOT NULL,
-    secret_ciphertext TEXT           COLLATE utf8mb4_bin NOT NULL DEFAULT '',
+    secret_ciphertext TEXT           COLLATE utf8mb4_bin NOT NULL DEFAULT (''),
     event_types       VARCHAR(1024)  COLLATE utf8mb4_bin NOT NULL DEFAULT '',
     status            VARCHAR(16)    COLLATE utf8mb4_bin NOT NULL DEFAULT 'active',
     after_sequence    BIGINT         NOT NULL DEFAULT 0,

@@ -1,6 +1,13 @@
 import { useTranslations, useLocale } from "@workspace/ui/i18n/intl-provider"
 import { useCallback, useEffect, useState, type FormEvent } from "react"
-import { ArrowLeft, Eye, EyeOff, Fingerprint, ShieldCheck } from "lucide-react"
+import {
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  Fingerprint,
+  ShieldCheck,
+  Smartphone,
+} from "lucide-react"
 import { Link, Navigate, useLocation } from "react-router"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
@@ -40,7 +47,15 @@ import {
 export default function LoginPage() {
   const t = useTranslations("iam")
 
-  const { status, login, verifyLoginMfa, loginWithPasskey } = useAuth()
+  const {
+    status,
+    login,
+    requestPhoneLoginCode,
+    loginWithPhoneCode,
+    requestMfaPhoneCode,
+    verifyLoginMfa,
+    loginWithPasskey,
+  } = useAuth()
   const location = useLocation()
   const entry = authEntrance(location.pathname.split("/")[1])
   const requested = loginReturnPath(
@@ -56,6 +71,11 @@ export default function LoginPage() {
       : ""
   )
   const [challenge, setChallenge] = useState<LoginResult | null>(null)
+  // mode is which way in is being offered; phone is the number a code was sent
+  // to, which is also what says the page has moved to the code step.
+  const [mode, setMode] = useState<"password" | "phone">("password")
+  const [phone, setPhone] = useState("")
+  const [mfaCodeSent, setMfaCodeSent] = useState(false)
   const [capabilities, setCapabilities] = useState<AuthnCapabilities | null>(
     null
   )
@@ -133,6 +153,79 @@ export default function LoginPage() {
     }
   }
 
+  // Asking for a code says nothing about whether the number reaches an account,
+  // so the page always moves on to the code step. Anything else would tell
+  // whoever typed the number whether it has one, and they are not always its
+  // owner.
+  const requestPhoneCode = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!delegatedCaptcha && !captcha) return
+    const typed = String(
+      new FormData(event.currentTarget).get("phone") ?? ""
+    ).trim()
+    if (!typed) return
+    setBusy(true)
+    setError("")
+    try {
+      await requestPhoneLoginCode(
+        typed,
+        delegatedCaptcha
+          ? { type: "turnstile", id: "widget", answer }
+          : { type: captcha!.type, id: captcha!.captcha_id, answer }
+      )
+      setPhone(typed)
+    } catch {
+      setError(t("identityUnavailable"))
+    } finally {
+      refreshCaptcha()
+      setBusy(false)
+    }
+  }
+
+  const submitPhoneCode = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setBusy(true)
+    setError("")
+    const code = String(new FormData(event.currentTarget).get("code") ?? "").trim()
+    try {
+      const result = await loginWithPhoneCode(
+        phone,
+        code,
+        `${window.location.origin}${requested}`
+      )
+      if (result.status === "mfa_required") setChallenge(result)
+    } catch (cause) {
+      setError(
+        cause instanceof ApiError && cause.status === 401
+          ? t("invalidPhoneCode")
+          : t("identityUnavailable")
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // A challenge that offers sms has a code to ask for. Asking says nothing about
+  // the account; it only queues the message the challenge already implies.
+  const sendMfaPhoneCode = () =>
+    void (async () => {
+      if (!challenge?.challenge_id) return
+      setBusy(true)
+      setError("")
+      try {
+        await requestMfaPhoneCode(challenge.challenge_id)
+        setMfaCodeSent(true)
+      } catch (cause) {
+        setError(
+          cause instanceof ApiError && cause.status === 409
+            ? t("smsFactorUnavailable")
+            : t("identityUnavailable")
+        )
+      } finally {
+        setBusy(false)
+      }
+    })()
+
   const submitMfa = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!challenge?.challenge_id) return
@@ -186,11 +279,42 @@ export default function LoginPage() {
               challenge={challenge}
               busy={busy}
               error={error}
+              codeSent={mfaCodeSent}
+              onSendPhoneCode={sendMfaPhoneCode}
               onSubmit={submitMfa}
               onBack={() => {
                 setChallenge(null)
+                setMfaCodeSent(false)
                 setError("")
               }}
+            />
+          ) : phone ? (
+            <PhoneCodeForm
+              phone={phone}
+              busy={busy}
+              error={error}
+              onSubmit={submitPhoneCode}
+              onBack={() => {
+                setPhone("")
+                setError("")
+              }}
+            />
+          ) : mode === "phone" ? (
+            <PhoneForm
+              busy={busy}
+              error={error}
+              onSubmit={requestPhoneCode}
+              onBack={() => {
+                setMode("password")
+                setError("")
+              }}
+              captcha={captcha}
+              captchaProvider={capabilities?.captcha}
+              captchaWidget={widget}
+              captchaAnswer={answer}
+              onCaptchaAnswerChange={setAnswer}
+              onCaptchaUnavailable={() => setError(t("captchaUnavailable"))}
+              onRefreshCaptcha={refreshCaptcha}
             />
           ) : (
             <PasswordForm
@@ -209,6 +333,10 @@ export default function LoginPage() {
               onCaptchaAnswerChange={setAnswer}
               onCaptchaUnavailable={() => setError(t("captchaUnavailable"))}
               onRefreshCaptcha={refreshCaptcha}
+              onPhone={() => {
+                setMode("phone")
+                setError("")
+              }}
             />
           )}
         </div>
@@ -217,6 +345,204 @@ export default function LoginPage() {
         </p>
       </main>
     </div>
+  )
+}
+
+function CaptchaField({
+  captcha,
+  provider,
+  widget,
+  answer,
+  onAnswerChange,
+  onUnavailable,
+  onRefresh,
+}: {
+  captcha: Captcha | null
+  provider: CaptchaCapability | undefined
+  widget: number
+  answer: string
+  onAnswerChange: (value: string) => void
+  onUnavailable: () => void
+  onRefresh: () => void
+}) {
+  const t = useTranslations("iam")
+  return (
+    <>
+      {provider?.provider === "turnstile" ? (
+        <div className="space-y-2">
+          <Label>{t("captcha")}</Label>
+          {/* The widget carries its own token; the field below only exists so
+              an automated run can hand over the configured test answer, and it
+              is not rendered for anybody else. */}
+          <Turnstile
+            key={widget}
+            siteKey={provider.site_key ?? ""}
+            onToken={onAnswerChange}
+            onUnavailable={onUnavailable}
+          />
+          {devLoginCaptchaAnswer !== "" && (
+            <input type="hidden" name="captcha_answer" value={answer} />
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Label htmlFor="login-captcha">{t("captcha")}</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              id="login-captcha"
+              name="captcha_answer"
+              value={answer}
+              onChange={(event) => onAnswerChange(event.target.value)}
+              autoComplete="off"
+              required
+              maxLength={16}
+              className="flex-1"
+            />
+            {/* The box is the input's height and the image's own proportions, so
+                the characters arrive at the size they were drawn rather than
+                squeezed. Selecting it asks for another, which is also the only
+                way out of a challenge kind this form cannot draw. */}
+            <button
+              type="button"
+              className="grid h-9 w-[108px] shrink-0 place-items-center overflow-hidden rounded-md border border-border/70 bg-muted/40"
+              onClick={onRefresh}
+              aria-label={t("refreshCaptcha")}
+              title={t("anotherCaptcha")}
+            >
+              {captcha ? (
+                <img
+                  src={captcha.image_base64}
+                  alt={t("captcha")}
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  {t("loading")}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function PhoneForm({
+  busy,
+  error,
+  onSubmit,
+  onBack,
+  captcha,
+  captchaProvider,
+  captchaWidget,
+  captchaAnswer,
+  onCaptchaAnswerChange,
+  onCaptchaUnavailable,
+  onRefreshCaptcha,
+}: {
+  busy: boolean
+  error: string
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onBack: () => void
+  captcha: Captcha | null
+  captchaProvider: CaptchaCapability | undefined
+  captchaWidget: number
+  captchaAnswer: string
+  onCaptchaAnswerChange: (value: string) => void
+  onCaptchaUnavailable: () => void
+  onRefreshCaptcha: () => void
+}) {
+  const t = useTranslations("iam")
+  return (
+    <form className="space-y-5" onSubmit={onSubmit}>
+      <BrandHeader />
+      <FormError error={error} />
+      <div className="space-y-2">
+        <Label htmlFor="phone">{t("phoneNumber")}</Label>
+        <Input
+          id="phone"
+          name="phone"
+          type="tel"
+          autoComplete="tel"
+          placeholder="+8613800138000"
+          required
+          disabled={busy}
+        />
+        <p className="text-xs text-muted-foreground">{t("phoneLoginHint")}</p>
+      </div>
+      <CaptchaField
+        captcha={captcha}
+        provider={captchaProvider}
+        widget={captchaWidget}
+        answer={captchaAnswer}
+        onAnswerChange={onCaptchaAnswerChange}
+        onUnavailable={onCaptchaUnavailable}
+        onRefresh={onRefreshCaptcha}
+      />
+      <Button type="submit" className="w-full" disabled={busy}>
+        {t("sendPhoneCode")}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        className="w-full"
+        onClick={onBack}
+        disabled={busy}
+      >
+        {t("usePasswordInstead")}
+      </Button>
+    </form>
+  )
+}
+
+function PhoneCodeForm({
+  phone,
+  busy,
+  error,
+  onSubmit,
+  onBack,
+}: {
+  phone: string
+  busy: boolean
+  error: string
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onBack: () => void
+}) {
+  const t = useTranslations("iam")
+  return (
+    <form className="space-y-5" onSubmit={onSubmit}>
+      <BrandHeader />
+      <FormError error={error} />
+      <p className="text-sm text-muted-foreground">
+        {t("phoneCodeSent", { phone })}
+      </p>
+      <div className="space-y-2">
+        <Label htmlFor="code">{t("phoneCode")}</Label>
+        <Input
+          id="code"
+          name="code"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          className="font-mono tracking-[0.3em]"
+          required
+          disabled={busy}
+        />
+      </div>
+      <Button type="submit" className="w-full" disabled={busy}>
+        {t("signIn")}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        className="w-full"
+        onClick={onBack}
+        disabled={busy}
+      >
+        {t("back")}
+      </Button>
+    </form>
   )
 }
 
@@ -257,6 +583,7 @@ function PasswordForm({
   onVisibleChange,
   onSubmit,
   onPasskey,
+  onPhone,
   capabilities,
   captcha,
   captchaProvider,
@@ -272,6 +599,7 @@ function PasswordForm({
   onVisibleChange: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onPasskey: () => void
+  onPhone: () => void
   capabilities: AuthnCapabilities | null
   captcha: Captcha | null
   captchaProvider: CaptchaCapability | undefined
@@ -386,62 +714,15 @@ function PasswordForm({
           </button>
         </div>
       </div>
-      {captchaProvider?.provider === "turnstile" ? (
-        <div className="space-y-2">
-          <Label>{t("captcha")}</Label>
-          {/* The widget carries its own token; the field below only exists so
-              an automated run can hand over the configured test answer, and it
-              is not rendered for anybody else. */}
-          <Turnstile
-            key={captchaWidget}
-            siteKey={captchaProvider.site_key ?? ""}
-            onToken={onCaptchaAnswerChange}
-            onUnavailable={onCaptchaUnavailable}
-          />
-          {devLoginCaptchaAnswer !== "" && (
-            <input type="hidden" name="captcha_answer" value={captchaAnswer} />
-          )}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <Label htmlFor="login-captcha">{t("captcha")}</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              id="login-captcha"
-              name="captcha_answer"
-              value={captchaAnswer}
-              onChange={(event) => onCaptchaAnswerChange(event.target.value)}
-              autoComplete="off"
-              required
-              maxLength={16}
-              className="flex-1"
-            />
-            {/* The box is the input's height and the image's own proportions, so
-                the characters arrive at the size they were drawn rather than
-                squeezed. Selecting it asks for another, which is also the only
-                way out of a challenge kind this form cannot draw. */}
-            <button
-              type="button"
-              className="grid h-9 w-[108px] shrink-0 place-items-center overflow-hidden rounded-md border border-border/70 bg-muted/40"
-              onClick={onRefreshCaptcha}
-              aria-label={t("refreshCaptcha")}
-              title={t("anotherCaptcha")}
-            >
-              {captcha ? (
-                <img
-                  src={captcha.image_base64}
-                  alt={t("captcha")}
-                  className="h-full w-full object-contain"
-                />
-              ) : (
-                <span className="text-xs text-muted-foreground">
-                  {t("loading")}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
+      <CaptchaField
+        captcha={captcha}
+        provider={captchaProvider}
+        widget={captchaWidget}
+        answer={captchaAnswer}
+        onAnswerChange={onCaptchaAnswerChange}
+        onUnavailable={onCaptchaUnavailable}
+        onRefresh={onRefreshCaptcha}
+      />
       <FormError error={error} />
       <Button
         type="submit"
@@ -469,6 +750,16 @@ function PasswordForm({
           </Button>
         </>
       )}
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        disabled={busy}
+        onClick={onPhone}
+      >
+        <Smartphone />
+        {t("usePhoneCode")}
+      </Button>
       {selfService &&
         (capabilities?.password_recovery || capabilities?.registration) && (
           <div className="space-y-2 text-center text-sm">
@@ -503,12 +794,16 @@ function MfaForm({
   challenge,
   busy,
   error,
+  codeSent,
+  onSendPhoneCode,
   onSubmit,
   onBack,
 }: {
   challenge: LoginResult
   busy: boolean
   error: string
+  codeSent: boolean
+  onSendPhoneCode: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onBack: () => void
 }) {
@@ -543,6 +838,18 @@ function MfaForm({
           </p>
         )}
       </div>
+      {challenge.methods?.includes("sms") && (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          disabled={busy}
+          onClick={onSendPhoneCode}
+        >
+          <Smartphone />
+          {codeSent ? t("resendPhoneCode") : t("sendPhoneCode")}
+        </Button>
+      )}
       <FormError error={error} />
       <div className="grid grid-cols-[auto_1fr] gap-2">
         <Button

@@ -373,51 +373,8 @@
         },
         {
           "path": "authorization",
-          "sql_template": "SELECT `id` FROM `iam_tenants` WHERE slug = ? AND scope_kind = ? AND status = ? LIMIT ?",
-          "fingerprint": "a98ff8522c63d7cc36f482c067e47502b78a99ee67826ee8baaa2af0dd533ecb",
-          "plan": {
-            "query_block": {
-              "select_id": 1,
-              "cost_info": {
-                "query_cost": "1.00"
-              },
-              "table": {
-                "table_name": "iam_tenants",
-                "access_type": "const",
-                "possible_keys": [
-                  "uq_iam_tenants_slug"
-                ],
-                "key": "uq_iam_tenants_slug",
-                "used_key_parts": [
-                  "slug"
-                ],
-                "key_length": "254",
-                "ref": [
-                  "const"
-                ],
-                "rows_examined_per_scan": 1,
-                "rows_produced_per_join": 1,
-                "filtered": "100.00",
-                "cost_info": {
-                  "read_cost": "0.00",
-                  "eval_cost": "0.10",
-                  "prefix_cost": "0.00",
-                  "data_read_per_join": "928"
-                },
-                "used_columns": [
-                  "id",
-                  "slug",
-                  "status",
-                  "scope_kind"
-                ]
-              }
-            }
-          }
-        },
-        {
-          "path": "authorization",
-          "sql_template": "WITH effective_roles(role_id, source_type, source_id) AS ( SELECT m.role_id, ?, m.principal_id FROM iam_role_members m JOIN iam_tenant_members tm ON tm.tenant_id = m.tenant_id AND tm.principal_id = m.principal_id AND tm.status = ? WHERE m.tenant_id = ? AND m.principal_id = ? UNION SELECT grants.role_id, ?, grants.id FROM iam_temporary_role_grants grants JOIN iam_tenant_members tm ON tm.tenant_id = grants.tenant_id AND tm.principal_id = grants.principal_id AND tm.status = ? WHERE grants.tenant_id = ? AND grants.principal_id = ? AND grants.starts_at \u003c= ? AND grants.ends_at \u003e ? UNION SELECT b.role_id, ?, b.group_id FROM iam_group_role_bindings b JOIN iam_groups g ON g.tenant_id = b.tenant_id AND g.id = b.group_id AND g.status = ? AND g.group_type = ? JOIN iam_group_members gm ON gm.tenant_id = b.tenant_id AND gm.group_id = b.group_id JOIN iam_tenant_members tm ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id AND tm.status = ? WHERE b.tenant_id = ? AND gm.principal_id = ? AND (gm.starts_at IS NULL OR gm.starts_at \u003c= ?) AND (gm.ends_at IS NULL OR gm.ends_at \u003e ?) ) SELECT DISTINCT rp.permission_code, er.role_id, er.source_type, er.source_id, COALESCE(ds.scope_type, ?) AS data_scope, rp.condition_json FROM iam_role_permissions rp JOIN effective_roles er ON er.role_id = rp.role_id LEFT JOIN iam_role_data_scopes ds ON ds.tenant_id = rp.tenant_id AND ds.role_id = rp.role_id WHERE rp.tenant_id = ? AND rp.permission_code IN (?,?,?)",
-          "fingerprint": "c789fe6eb125ff520bf8059ed74a84b277dbb55c35333599346fcc0de40d15e5",
+          "sql_template": "WITH effective_roles(role_id, source_type, source_id) AS ( SELECT m.role_id, ?, m.principal_id FROM iam_role_members m JOIN iam_tenant_members tm ON tm.tenant_id = m.tenant_id AND tm.principal_id = m.principal_id AND tm.status = ? WHERE m.tenant_id = ? AND m.principal_id = ? AND (m.expires_at IS NULL OR m.expires_at \u003e ?) UNION SELECT grants.role_id, ?, grants.id FROM iam_temporary_role_grants grants JOIN iam_tenant_members tm ON tm.tenant_id = grants.tenant_id AND tm.principal_id = grants.principal_id AND tm.status = ? WHERE grants.tenant_id = ? AND grants.principal_id = ? AND grants.starts_at \u003c= ? AND grants.ends_at \u003e ? UNION SELECT b.role_id, ?, b.group_id FROM iam_group_role_bindings b JOIN iam_groups g ON g.tenant_id = b.tenant_id AND g.id = b.group_id AND g.status = ? AND g.group_type = ? JOIN iam_group_members gm ON gm.tenant_id = b.tenant_id AND gm.group_id = b.group_id JOIN iam_tenant_members tm ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id AND tm.status = ? WHERE b.tenant_id = ? AND gm.principal_id = ? AND (gm.starts_at IS NULL OR gm.starts_at \u003c= ?) AND (gm.ends_at IS NULL OR gm.ends_at \u003e ?) ) SELECT DISTINCT rp.permission_code, er.role_id, er.source_type, er.source_id, COALESCE(ds.scope_type, ?) AS data_scope, rp.condition_json FROM iam_role_permissions rp JOIN effective_roles er ON er.role_id = rp.role_id LEFT JOIN iam_role_data_scopes ds ON ds.tenant_id = rp.tenant_id AND ds.role_id = rp.role_id WHERE rp.tenant_id = ? AND rp.permission_code IN (?,?,?)",
+          "fingerprint": "9dca10321268bab34aae5d66303c0775e4c9b6f20cabe4712c4a989a7dfce75a",
           "plan": {
             "query_block": {
               "select_id": 1,
@@ -582,7 +539,8 @@
                                         "table_name": "m",
                                         "access_type": "ref",
                                         "possible_keys": [
-                                          "PRIMARY"
+                                          "PRIMARY",
+                                          "idx_iam_role_members_subject"
                                         ],
                                         "key": "PRIMARY",
                                         "used_key_parts": [
@@ -594,20 +552,20 @@
                                         ],
                                         "rows_examined_per_scan": 1,
                                         "rows_produced_per_join": 0,
-                                        "filtered": "10.00",
-                                        "using_index": true,
+                                        "filtered": "5.00",
                                         "cost_info": {
                                           "read_cost": "0.25",
                                           "eval_cost": "0.01",
                                           "prefix_cost": "0.35",
-                                          "data_read_per_join": "4"
+                                          "data_read_per_join": "2"
                                         },
                                         "used_columns": [
                                           "tenant_id",
                                           "role_id",
-                                          "principal_id"
+                                          "principal_id",
+                                          "expires_at"
                                         ],
-                                        "attached_condition": "(`sevenlink_iam_test_performance`.`m`.`principal_id` = 39096691101532160)"
+                                        "attached_condition": "((`sevenlink_iam_test_performance`.`m`.`principal_id` = 40078961312530432) and ((`sevenlink_iam_test_performance`.`m`.`expires_at` is null) or (`sevenlink_iam_test_performance`.`m`.`expires_at` \u003e TIMESTAMP'2026-10-04 11:48:45.213')))"
                                       }
                                     }
                                   ]
@@ -691,7 +649,7 @@
                                           "starts_at",
                                           "ends_at"
                                         ],
-                                        "attached_condition": "((`sevenlink_iam_test_performance`.`grants`.`principal_id` = 39096691101532160) and (`sevenlink_iam_test_performance`.`grants`.`starts_at` \u003c= TIMESTAMP'2026-09-27 17:10:44.708') and (`sevenlink_iam_test_performance`.`grants`.`ends_at` \u003e TIMESTAMP'2026-09-27 17:10:44.708'))"
+                                        "attached_condition": "((`sevenlink_iam_test_performance`.`grants`.`principal_id` = 40078961312530432) and (`sevenlink_iam_test_performance`.`grants`.`starts_at` \u003c= TIMESTAMP'2026-10-04 11:48:45.213') and (`sevenlink_iam_test_performance`.`grants`.`ends_at` \u003e TIMESTAMP'2026-10-04 11:48:45.213'))"
                                       }
                                     }
                                   ]
@@ -847,7 +805,7 @@
                                           "starts_at",
                                           "ends_at"
                                         ],
-                                        "attached_condition": "(((`sevenlink_iam_test_performance`.`gm`.`starts_at` is null) or (`sevenlink_iam_test_performance`.`gm`.`starts_at` \u003c= TIMESTAMP'2026-09-27 17:10:44.708')) and ((`sevenlink_iam_test_performance`.`gm`.`ends_at` is null) or (`sevenlink_iam_test_performance`.`gm`.`ends_at` \u003e TIMESTAMP'2026-09-27 17:10:44.708')))"
+                                        "attached_condition": "(((`sevenlink_iam_test_performance`.`gm`.`starts_at` is null) or (`sevenlink_iam_test_performance`.`gm`.`starts_at` \u003c= TIMESTAMP'2026-10-04 11:48:45.213')) and ((`sevenlink_iam_test_performance`.`gm`.`ends_at` is null) or (`sevenlink_iam_test_performance`.`gm`.`ends_at` \u003e TIMESTAMP'2026-10-04 11:48:45.213')))"
                                       }
                                     }
                                   ]
@@ -859,6 +817,49 @@
                       }
                     }
                   }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "authorization",
+          "sql_template": "SELECT `id` FROM `iam_tenants` WHERE slug = ? AND scope_kind = ? AND status = ? LIMIT ?",
+          "fingerprint": "a98ff8522c63d7cc36f482c067e47502b78a99ee67826ee8baaa2af0dd533ecb",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "cost_info": {
+                "query_cost": "1.00"
+              },
+              "table": {
+                "table_name": "iam_tenants",
+                "access_type": "const",
+                "possible_keys": [
+                  "uq_iam_tenants_slug"
+                ],
+                "key": "uq_iam_tenants_slug",
+                "used_key_parts": [
+                  "slug"
+                ],
+                "key_length": "254",
+                "ref": [
+                  "const"
+                ],
+                "rows_examined_per_scan": 1,
+                "rows_produced_per_join": 1,
+                "filtered": "100.00",
+                "cost_info": {
+                  "read_cost": "0.00",
+                  "eval_cost": "0.10",
+                  "prefix_cost": "0.00",
+                  "data_read_per_join": "928"
+                },
+                "used_columns": [
+                  "id",
+                  "slug",
+                  "status",
+                  "scope_kind"
                 ]
               }
             }
@@ -1178,8 +1179,8 @@
         },
         {
           "path": "session_lookup",
-          "sql_template": "SELECT principal.id, principal.login_name, principal.email, principal.email_verified, principal.activation_required, principal.display_name, principal.status, principal.created_at, principal.updated_at, COALESCE(credential.credential_version, ?) AS credential_version FROM iam_principals AS principal LEFT JOIN iam_credentials AS credential ON credential.principal_id = principal.id WHERE principal.id = ? AND principal.status = ? AND principal.activation_required = false LIMIT ?",
-          "fingerprint": "241ff31314f1b2ba6c8a384706d6b6a0e396675c24b00c4857553f57637ccdea",
+          "sql_template": "SELECT principal.id, principal.login_name, principal.email, principal.email_verified, principal.phone, principal.phone_verified, principal.activation_required, principal.display_name, principal.status, principal.created_at, principal.updated_at, COALESCE(credential.credential_version, ?) AS credential_version FROM iam_principals AS principal LEFT JOIN iam_credentials AS credential ON credential.principal_id = principal.id WHERE principal.id = ? AND principal.status = ? AND principal.activation_required = false LIMIT ?",
+          "fingerprint": "373b1d4e86940a1a561ab454dbbb0fed0519b5f9a698b1538fe39c6e2c7bca85",
           "plan": {
             "query_block": {
               "select_id": 1,
@@ -1220,7 +1221,9 @@
                       "email_verified",
                       "activation_required",
                       "created_at",
-                      "updated_at"
+                      "updated_at",
+                      "phone",
+                      "phone_verified"
                     ]
                   }
                 },
@@ -1303,7 +1306,8 @@
                   "absolute_expires_at",
                   "revoked_at",
                   "ip_address",
-                  "user_agent"
+                  "user_agent",
+                  "public_id"
                 ]
               }
             }
@@ -1333,7 +1337,7 @@
                 ],
                 "rows_examined_per_scan": 1,
                 "filtered": "100.00",
-                "attached_condition": "((`sevenlink_iam_test_performance`.`iam_sessions`.`id_hash` = '1d166fa2ad6e80a4a6e19d5c25fb9d21bb88b3e0532e98f252cc69c25b95ca8b') and (`sevenlink_iam_test_performance`.`iam_sessions`.`revoked_at` is null) and (`sevenlink_iam_test_performance`.`iam_sessions`.`expires_at` \u003e TIMESTAMP'2026-09-27 17:10:44.714') and (`sevenlink_iam_test_performance`.`iam_sessions`.`absolute_expires_at` \u003e TIMESTAMP'2026-09-27 17:10:44.714') and (`sevenlink_iam_test_performance`.`iam_sessions`.`last_seen_at` \u003c= TIMESTAMP'2026-09-27 17:10:44.714'))"
+                "attached_condition": "((`sevenlink_iam_test_performance`.`iam_sessions`.`id_hash` = '9100a9698b50fe9291adaee516c4de106e803e907dac6be1df483a7b36bb39ad') and (`sevenlink_iam_test_performance`.`iam_sessions`.`revoked_at` is null) and (`sevenlink_iam_test_performance`.`iam_sessions`.`expires_at` \u003e TIMESTAMP'2026-10-04 11:48:45.225') and (`sevenlink_iam_test_performance`.`iam_sessions`.`absolute_expires_at` \u003e TIMESTAMP'2026-10-04 11:48:45.225') and (`sevenlink_iam_test_performance`.`iam_sessions`.`last_seen_at` \u003c= TIMESTAMP'2026-10-04 11:48:45.225'))"
               }
             }
           }

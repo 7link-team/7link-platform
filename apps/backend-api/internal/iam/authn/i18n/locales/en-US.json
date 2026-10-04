@@ -29,6 +29,7 @@
   "passkey_unavailable": "Passkey authentication could not complete the request. Retry later or use another configured sign-in method.",
   "password_recovery_unavailable": "Password recovery could not complete the request. Retry later; contact an administrator if the problem continues.",
   "password_reused": "The new password was used recently. Choose a different password.",
+  "phone_login_unavailable": "Signing in by phone is unavailable. Try again later; contact an administrator if the problem continues.",
   "phone_verification_unavailable": "Phone verification is unavailable. Try again later; contact an administrator if the problem continues.",
   "primary_email_required": "This operation requires a verified primary email address. Add or verify the primary email first.",
   "primary_phone_required": "Add a phone number to your account before verifying it.",
@@ -38,5 +39,6 @@
   "registration_request_rejected": "The registration request origin is not allowed. Use the configured application address or contact an administrator.",
   "registration_unavailable": "Self-service registration is not available. Contact an administrator for access or try again later.",
   "return_url_not_allowed": "The return URL is not allowlisted. Use an approved application address or contact an administrator.",
-  "session_not_found": "The browser session was not found or is no longer active. Refresh the session list before trying again."
+  "session_not_found": "The browser session was not found or is no longer active. Refresh the session list before trying again.",
+  "sms_factor_unavailable": "A phone code cannot complete this sign-in. Use another second factor."
 }

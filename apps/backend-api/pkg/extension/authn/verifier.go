@@ -250,6 +250,15 @@ type EmailVerificationConfig struct {
 type PhoneVerificationConfig struct {
 	Enabled bool          `mapstructure:"enabled" description:"enable phone number verification" default:"false"`
 	CodeTTL time.Duration `mapstructure:"code_ttl" description:"single-use phone verification code lifetime" default:"10m"`
+	// LoginEnabled lets somebody sign in with a code sent to a number they have
+	// already proven. It is separate from Enabled because proving a number is
+	// useful on its own -- a deployment may want numbers on file as a contact
+	// without making them a way in.
+	LoginEnabled bool `mapstructure:"login_enabled" description:"allow signing in with a code sent to a proven phone number" default:"false"`
+	// SecondFactorEnabled offers a code to a proven number as a second factor. It
+	// is the weakest one here -- a number can be moved to another SIM by somebody
+	// who talks a carrier into it -- and is off by default for that reason.
+	SecondFactorEnabled bool `mapstructure:"second_factor_enabled" description:"offer a code sent to a proven phone number as a second factor" default:"false"`
 }
 
 // PasskeyConfig pins the WebAuthn relying party trust boundary. Values are

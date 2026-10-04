@@ -33,6 +33,8 @@ var (
 	ErrPhoneVerificationDisabled = errors.New("phone verification is disabled")
 	ErrInvalidPhoneVerification  = errors.New("invalid or expired phone verification code")
 	ErrPhoneRequired             = errors.New("principal has no phone number to verify")
+	ErrPhoneLoginDisabled        = errors.New("phone sign-in is disabled")
+	ErrSMSFactorUnavailable      = errors.New("a phone code is not available as a second factor here")
 	ErrEmailRequired             = errors.New("primary email is required")
 )
 
@@ -69,6 +71,9 @@ type Passkey struct {
 type MFAStatus struct {
 	TOTPEnabled            bool `json:"totp_enabled"`
 	RecoveryCodesRemaining int  `json:"recovery_codes_remaining"`
+	// SMSAvailable reports that a code can be sent to a number this account has
+	// proven. There is no enrolment behind it: the proven number is the enrolment.
+	SMSAvailable bool `json:"sms_available"`
 }
 
 type MFAEnrollment struct {

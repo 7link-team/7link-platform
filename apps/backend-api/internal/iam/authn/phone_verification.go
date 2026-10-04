@@ -21,7 +21,18 @@ import (
 // What is shared with the address flow is shared rather than copied: the code
 // generator, the attempt ceiling, the outbox the message leaves through, and the
 // shape of the audit record.
-const phoneVerificationNotification = "phone_verification"
+const (
+	phoneVerificationNotification = "phone_verification"
+	phoneLoginNotification        = "phone_login"
+	phoneMFANotification          = "phone_mfa"
+
+	// A code proves possession of a number for one purpose. Confirming a number
+	// and signing in with it are different asks, so a code sent for one is not
+	// accepted for the other.
+	phoneCodeVerify = "verify"
+	phoneCodeLogin  = "login"
+	phoneCodeMFA    = "mfa"
+)
 
 func (s *Service) PhoneVerificationEnabled() bool {
 	return s != nil && s.cfg.Enabled && s.web.Enabled && s.cfg.PhoneVerification.Enabled &&
@@ -77,10 +88,11 @@ func (s *Service) BeginPhoneVerification(ctx context.Context, authorization, coo
 			return fmt.Errorf("generate phone verification code: %w", err)
 		}
 		row := model.PhoneVerificationCode{
-			PrincipalID: principal.ID, Phone: principal.Phone, Code: code,
+			PrincipalID: principal.ID, Purpose: phoneCodeVerify,
+			Phone: principal.Phone, Code: code,
 			CreatedAt: now, ExpiresAt: expiresAt,
 		}
-		if err := repository.replacePhoneVerification(ctx, &row); err != nil {
+		if err := repository.replacePhoneCode(ctx, &row); err != nil {
 			return err
 		}
 		if err := s.enqueueNotification(ctx, repository, principal.ID, notificationPayload{
@@ -127,7 +139,7 @@ func (s *Service) CompletePhoneVerification(ctx context.Context, authorization, 
 	// that promotes the number. A refusal leaves that transaction by returning an
 	// error, which would roll the counter back with it -- and an attempt ceiling
 	// that rolls back is no ceiling at all.
-	row, err := s.repo.activePhoneVerification(ctx, claims.PrincipalID, now)
+	row, err := s.repo.activePhoneCode(ctx, claims.PrincipalID, phoneCodeVerify, now)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return authnext.ErrInvalidPhoneVerification
 	}
@@ -138,7 +150,7 @@ func (s *Service) CompletePhoneVerification(ctx context.Context, authorization, 
 		return authnext.ErrInvalidPhoneVerification
 	}
 	if row.Code != code {
-		if err := s.repo.recordPhoneVerificationAttempt(ctx, claims.PrincipalID, maxCodeAttempts, now); err != nil {
+		if err := s.repo.recordPhoneCodeAttempt(ctx, claims.PrincipalID, phoneCodeVerify, maxCodeAttempts, now); err != nil {
 			return fmt.Errorf("record phone verification attempt: %w", err)
 		}
 		return authnext.ErrInvalidPhoneVerification
@@ -157,7 +169,7 @@ func (s *Service) CompletePhoneVerification(ctx context.Context, authorization, 
 		if row.Phone != principal.Phone {
 			return authnext.ErrInvalidPhoneVerification
 		}
-		consumed, err := repository.consumePhoneVerification(ctx, principal.ID, maxCodeAttempts, now)
+		consumed, err := repository.consumePhoneCode(ctx, principal.ID, phoneCodeVerify, maxCodeAttempts, now)
 		if err != nil {
 			return err
 		}
@@ -200,7 +212,7 @@ func validVerificationCode(value string) bool {
 	return true
 }
 
-func (r *Repository) replacePhoneVerification(ctx context.Context, row *model.PhoneVerificationCode) error {
+func (r *Repository) replacePhoneCode(ctx context.Context, row *model.PhoneVerificationCode) error {
 	tables, _, err := r.tables()
 	if err != nil {
 		return err
@@ -208,14 +220,17 @@ func (r *Repository) replacePhoneVerification(ctx context.Context, row *model.Ph
 	// One row per principal, so replacing is a delete and an insert rather than
 	// an upsert whose affected-row count differs by engine.
 	if _, err := tables.PhoneVerificationCodes.WithContext(ctx).
-		Where(tables.PhoneVerificationCodes.PrincipalID.Eq(row.PrincipalID)).Delete(); err != nil {
+		Where(
+			tables.PhoneVerificationCodes.PrincipalID.Eq(row.PrincipalID),
+			tables.PhoneVerificationCodes.Purpose.Eq(row.Purpose),
+		).Delete(); err != nil {
 		return fmt.Errorf("replace phone verification code: %w", err)
 	}
 	return tables.PhoneVerificationCodes.WithContext(ctx).Create(row)
 }
 
-func (r *Repository) activePhoneVerification(
-	ctx context.Context, principalID guid.ID, now time.Time,
+func (r *Repository) activePhoneCode(
+	ctx context.Context, principalID guid.ID, purpose string, now time.Time,
 ) (*model.PhoneVerificationCode, error) {
 	tables, _, err := r.tables()
 	if err != nil {
@@ -223,6 +238,7 @@ func (r *Repository) activePhoneVerification(
 	}
 	row, err := tables.PhoneVerificationCodes.WithContext(ctx).Where(
 		tables.PhoneVerificationCodes.PrincipalID.Eq(principalID),
+		tables.PhoneVerificationCodes.Purpose.Eq(purpose),
 		tables.PhoneVerificationCodes.ConsumedAt.IsNull(),
 		tables.PhoneVerificationCodes.ExpiresAt.Gt(now),
 	).Take()
@@ -232,32 +248,32 @@ func (r *Repository) activePhoneVerification(
 	return row, nil
 }
 
-func (r *Repository) recordPhoneVerificationAttempt(
-	ctx context.Context, principalID guid.ID, maxAttempts int, now time.Time,
+func (r *Repository) recordPhoneCodeAttempt(
+	ctx context.Context, principalID guid.ID, purpose string, maxAttempts int, now time.Time,
 ) error {
 	tables, db, err := r.tables()
 	if err != nil {
 		return err
 	}
 	return db.WithContext(ctx).Table(tables.PhoneVerificationCodes.TableName()).Where(
-		"principal_id = ? AND consumed_at IS NULL AND expires_at > ? AND attempts < ?",
-		principalID, now, maxAttempts,
+		"principal_id = ? AND purpose = ? AND consumed_at IS NULL AND expires_at > ? AND attempts < ?",
+		principalID, purpose, now, maxAttempts,
 	).UpdateColumn("attempts", gorm.Expr("attempts + 1")).Error
 }
 
 // consumePhoneVerification spends the code. The attempt ceiling and the unspent
 // state are part of the predicate, so two requests racing with the same code
 // cannot both succeed.
-func (r *Repository) consumePhoneVerification(
-	ctx context.Context, principalID guid.ID, maxAttempts int, now time.Time,
+func (r *Repository) consumePhoneCode(
+	ctx context.Context, principalID guid.ID, purpose string, maxAttempts int, now time.Time,
 ) (bool, error) {
 	tables, db, err := r.tables()
 	if err != nil {
 		return false, err
 	}
 	result := db.WithContext(ctx).Table(tables.PhoneVerificationCodes.TableName()).Where(
-		"principal_id = ? AND consumed_at IS NULL AND expires_at > ? AND attempts < ?",
-		principalID, now, maxAttempts,
+		"principal_id = ? AND purpose = ? AND consumed_at IS NULL AND expires_at > ? AND attempts < ?",
+		principalID, purpose, now, maxAttempts,
 	).Update("consumed_at", now)
 	if result.Error != nil {
 		return false, fmt.Errorf("consume phone verification code: %w", result.Error)

@@ -2,6 +2,7 @@ package authn
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -356,14 +357,14 @@ func TestPhoneVerificationReportsAnUnavailableRepository(t *testing.T) {
 	// repository with nothing behind it has to answer unavailable rather than
 	// panic or report a refusal the caller would act on.
 	repository := &Repository{}
-	row := &model.PhoneVerificationCode{PrincipalID: 1, Phone: "+8613800138000", Code: "123456"}
+	row := &model.PhoneVerificationCode{PrincipalID: 1, Purpose: phoneCodeVerify, Phone: "+8613800138000", Code: "123456"}
 	now := repositoryTestNow
 
-	require.Error(t, repository.replacePhoneVerification(t.Context(), row))
-	_, err := repository.activePhoneVerification(t.Context(), 1, now)
+	require.Error(t, repository.replacePhoneCode(t.Context(), row))
+	_, err := repository.activePhoneCode(t.Context(), 1, phoneCodeVerify, now)
 	require.Error(t, err)
-	require.Error(t, repository.recordPhoneVerificationAttempt(t.Context(), 1, maxCodeAttempts, now))
-	_, err = repository.consumePhoneVerification(t.Context(), 1, maxCodeAttempts, now)
+	require.Error(t, repository.recordPhoneCodeAttempt(t.Context(), 1, phoneCodeVerify, maxCodeAttempts, now))
+	_, err = repository.consumePhoneCode(t.Context(), 1, phoneCodeVerify, maxCodeAttempts, now)
 	require.Error(t, err)
 	require.Error(t, repository.consumePhoneVerifications(t.Context(), 1, now))
 	_, err = repository.verifyPrincipalPhone(t.Context(), 1, "+8613800138000", now)
@@ -389,6 +390,15 @@ func failWritesTo(t *testing.T, harness *authnRepositoryHarness, table string) {
 	}
 	require.NoError(t, harness.db.Callback().Create().Before("gorm:create").Register("test:fail_create", fail))
 	require.NoError(t, harness.db.Callback().Update().Before("gorm:update").Register("test:fail_update", fail))
+	// Some writes here are a single UPDATE sent as raw SQL, which carries no
+	// table clause at all. Matching only the clause left those writes injectable
+	// by nothing, so the statement text is what identifies them.
+	require.NoError(t, harness.db.Callback().Raw().Before("gorm:raw").Register("test:fail_raw",
+		func(db *gorm.DB) {
+			if strings.Contains(db.Statement.SQL.String(), name) {
+				db.AddError(errors.New("storage unavailable"))
+			}
+		}))
 }
 
 func TestAFailedWriteIsNotAWrongCode(t *testing.T) {
@@ -424,4 +434,56 @@ func TestAFailedWriteIsNotAWrongCode(t *testing.T) {
 		assert.NotErrorIs(t, err, authnext.ErrInvalidPhoneVerification,
 			"a guess that could not be counted is not reported as merely wrong")
 	})
+}
+
+func TestNoStorageFaultWhileProvingANumberIsReportedAsARefusal(t *testing.T) {
+	// The same rule as the sign-in path, on the flow beside it: a missing row is a
+	// refusal, a failed read or write is not. Told the code is invalid, somebody
+	// asks for another and gets the same answer.
+	type step func(t *testing.T, service *Service, harness *authnRepositoryHarness, cookie string) error
+	begin := func(table string, write bool) step {
+		return func(t *testing.T, service *Service, harness *authnRepositoryHarness, cookie string) error {
+			if write {
+				failWritesTo(t, harness, table)
+			} else {
+				failReadsFrom(t, harness, table)
+			}
+			return service.BeginPhoneVerification(t.Context(), "", cookie)
+		}
+	}
+	complete := func(table string, write bool) step {
+		return func(t *testing.T, service *Service, harness *authnRepositoryHarness, cookie string) error {
+			require.NoError(t, service.BeginPhoneVerification(t.Context(), "", cookie))
+			require.NoError(t, service.deliverPendingNotifications(t.Context()))
+			code := recorderFor(t, service).last(t).Code
+			if write {
+				failWritesTo(t, harness, table)
+			} else {
+				failReadsFrom(t, harness, table)
+			}
+			return service.CompletePhoneVerification(t.Context(), "", cookie, code)
+		}
+	}
+
+	for name, run := range map[string]step{
+		"begin reads the principal":     begin("iam_principals", false),
+		"begin writes the code":         begin("iam_phone_verification_codes", true),
+		"begin writes the outbox":       begin("iam_notification_outbox", true),
+		"complete reads the code":       complete("iam_phone_verification_codes", false),
+		"complete reads the principal":  complete("iam_principals", false),
+		"complete writes the code":      complete("iam_phone_verification_codes", true),
+		"complete writes the principal": complete("iam_principals", true),
+	} {
+		t.Run(name, func(t *testing.T) {
+			service, harness, recorder := newPhoneVerificationService(t)
+			recorders[service] = recorder
+			seedPrincipalWithPhone(t, harness, 720, "ulla", "+8613800138000")
+			cookie := signIn(t, service, "ulla")
+			err := run(t, service, harness, cookie)
+			require.Error(t, err)
+			assert.NotErrorIs(t, err, authnext.ErrInvalidPhoneVerification)
+			assert.NotErrorIs(t, err, authnext.ErrPhoneRequired)
+			assert.NotErrorIs(t, err, authnext.ErrPhoneVerificationDisabled)
+		})
+	}
 }

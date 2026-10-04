@@ -38,13 +38,15 @@ func (NotificationOutbox) TableName() string { return "iam_notification_outbox" 
 // The number is kept beside it so that changing the number invalidates it: a code
 // proves the number it was sent to and nothing else.
 type PhoneVerificationCode struct {
-	PrincipalID guid.ID    `gorm:"column:principal_id;primaryKey;autoIncrement:false"`
-	Phone       string     `gorm:"column:phone;type:text;not null"`
-	Code        string     `gorm:"column:code;type:text;not null"`
-	Attempts    int        `gorm:"column:attempts;not null"`
-	CreatedAt   time.Time  `gorm:"column:created_at;not null"`
-	ExpiresAt   time.Time  `gorm:"column:expires_at;not null"`
-	ConsumedAt  *time.Time `gorm:"column:consumed_at"`
+	PrincipalID guid.ID `gorm:"column:principal_id;primaryKey;autoIncrement:false"`
+	// Purpose is part of the key: a code is valid only for what it was sent for.
+	Purpose    string     `gorm:"column:purpose;primaryKey;size:16"`
+	Phone      string     `gorm:"column:phone;type:text;not null"`
+	Code       string     `gorm:"column:code;type:text;not null"`
+	Attempts   int        `gorm:"column:attempts;not null"`
+	CreatedAt  time.Time  `gorm:"column:created_at;not null"`
+	ExpiresAt  time.Time  `gorm:"column:expires_at;not null"`
+	ConsumedAt *time.Time `gorm:"column:consumed_at"`
 }
 
 func (PhoneVerificationCode) TableName() string { return "iam_phone_verification_codes" }

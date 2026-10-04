@@ -1146,5 +1146,13 @@
   "phoneVerified": "Telefon disahkan",
   "sendPhoneCode": "Hantar kod",
   "phoneCode": "Kod daripada mesej",
-  "phoneCodeSubmit": "Sahkan"
+  "phoneCodeSubmit": "Sahkan",
+  "phoneLoginHint": "Hanya nombor yang telah anda sahkan pada akaun boleh memasukkan anda.",
+  "usePhoneCode": "Masuk dengan kod telefon",
+  "usePasswordInstead": "Guna kata laluan",
+  "phoneCodeSent": "Jika {phone} milik sebuah akaun, kod sedang dihantar ke nombor itu.",
+  "invalidPhoneCode": "Nombor dan kod itu tidak memasukkan sesiapa. Periksa kedua-duanya dan cuba lagi.",
+  "smsFactorUnavailable": "Kod telefon tidak boleh melengkapkan masuk ini. Guna faktor kedua yang lain.",
+  "resendPhoneCode": "Hantar kod lain",
+  "smsFactorAvailable": "Kod juga boleh dihantar ke nombor telefon anda yang disahkan apabila faktor kedua diminta."
 }

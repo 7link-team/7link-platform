@@ -1514,7 +1514,11 @@ describe("IAM API client", () => {
           return Response.json({
             code: 0,
             message: "ok",
-            data: { totp_enabled: true, recovery_codes_remaining: 8 },
+            data: {
+              totp_enabled: true,
+              recovery_codes_remaining: 8,
+              sms_available: false,
+            },
           })
         return Response.json({
           code: 0,
@@ -1560,6 +1564,7 @@ describe("IAM API client", () => {
     expect(await client.mfaStatus()).toEqual({
       totp_enabled: true,
       recovery_codes_remaining: 8,
+      sms_available: false,
     })
     await client.beginTotpEnrollment("password")
     await client.confirmTotpEnrollment("123456")

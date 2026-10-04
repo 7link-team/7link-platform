@@ -260,7 +260,7 @@ func TestAuthnModuleResolvesDependenciesAndRunsLifecycle(t *testing.T) {
 
 	_, api := humatest.New(t)
 	require.NoError(t, registry.RegisterHTTP(t.Context(), api))
-	assert.Len(t, authnOperationManifest(api.OpenAPI()), 44)
+	assert.Len(t, authnOperationManifest(api.OpenAPI()), 47)
 	require.NoError(t, registry.Stop(context.Background()))
 	assert.Nil(t, instance.notificationCancel)
 	require.NoError(t, registry.Deinitialize(context.Background()))

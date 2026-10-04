@@ -331,7 +331,8 @@ func TestMFAInvalidAuthenticationAndStorageFailures(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, harness.db.Exec("DROP TABLE iam_mfa_challenges").Error)
 		_, err = service.createLoginChallenge(
-			t.Context(), claims.PrincipalID, service.web.PostLoginURL, service.now(),
+			t.Context(), claims.PrincipalID, "pwd", service.web.PostLoginURL,
+			[]string{"totp", "recovery_code"}, service.now(),
 		)
 		assert.ErrorContains(t, err, "create MFA challenge")
 	})

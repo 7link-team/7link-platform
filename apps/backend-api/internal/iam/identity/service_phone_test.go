@@ -29,7 +29,7 @@ func TestNormalizePhoneAcceptsHowPeopleWriteANumber(t *testing.T) {
 		"":                     "",
 		"   ":                  "",
 	} {
-		got, ok := normalizePhone(typed)
+		got, ok := NormalizePhone(typed)
 		require.True(t, ok, "typed %q", typed)
 		assert.Equal(t, want, got, "typed %q", typed)
 	}
@@ -42,7 +42,7 @@ func TestNormalizePhoneAcceptsHowPeopleWriteANumber(t *testing.T) {
 		"++8613800138000",               // one plus, at the front
 		"+86 138 0013 8000 extension 4", // free text is not a number
 	} {
-		_, ok := normalizePhone(refused)
+		_, ok := NormalizePhone(refused)
 		assert.False(t, ok, "%q", refused)
 	}
 }

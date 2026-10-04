@@ -29,6 +29,7 @@ func newPhoneVerificationCode(db *gorm.DB, opts ...gen.DOOption) phoneVerificati
 	tableName := _phoneVerificationCode.phoneVerificationCodeDo.TableName()
 	_phoneVerificationCode.ALL = field.NewAsterisk(tableName)
 	_phoneVerificationCode.PrincipalID = field.NewField(tableName, "principal_id")
+	_phoneVerificationCode.Purpose = field.NewString(tableName, "purpose")
 	_phoneVerificationCode.Phone = field.NewString(tableName, "phone")
 	_phoneVerificationCode.Code = field.NewString(tableName, "code")
 	_phoneVerificationCode.Attempts = field.NewInt(tableName, "attempts")
@@ -46,6 +47,7 @@ type phoneVerificationCode struct {
 
 	ALL         field.Asterisk
 	PrincipalID field.Field
+	Purpose     field.String
 	Phone       field.String
 	Code        field.String
 	Attempts    field.Int
@@ -69,6 +71,7 @@ func (p phoneVerificationCode) As(alias string) *phoneVerificationCode {
 func (p *phoneVerificationCode) updateTableName(table string) *phoneVerificationCode {
 	p.ALL = field.NewAsterisk(table)
 	p.PrincipalID = field.NewField(table, "principal_id")
+	p.Purpose = field.NewString(table, "purpose")
 	p.Phone = field.NewString(table, "phone")
 	p.Code = field.NewString(table, "code")
 	p.Attempts = field.NewInt(table, "attempts")
@@ -103,8 +106,9 @@ func (p *phoneVerificationCode) GetFieldByName(fieldName string) (field.OrderExp
 }
 
 func (p *phoneVerificationCode) fillFieldMap() {
-	p.fieldMap = make(map[string]field.Expr, 7)
+	p.fieldMap = make(map[string]field.Expr, 8)
 	p.fieldMap["principal_id"] = p.PrincipalID
+	p.fieldMap["purpose"] = p.Purpose
 	p.fieldMap["phone"] = p.Phone
 	p.fieldMap["code"] = p.Code
 	p.fieldMap["attempts"] = p.Attempts

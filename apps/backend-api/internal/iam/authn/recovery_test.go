@@ -509,3 +509,18 @@ func TestPasswordRecoveryStorageFaultIsNotAnInvalidRecovery(t *testing.T) {
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, authnext.ErrInvalidRecovery)
 }
+
+func TestAFailedAccountReadIsNotAnUnknownAccount(t *testing.T) {
+	// Recovery answers the same way whether or not the identifier reaches an
+	// account, which is what keeps it from being a way to enumerate addresses.
+	// A failed read must not borrow that silence: nothing was sent, and the one
+	// person who typed their own address would wait for a message forever.
+	service, harness, _ := newRecoveryService(t)
+	bootstrapLocalPrincipal(t, harness, "alice", "correct horse battery staple")
+	failPrincipalReads(t, harness)
+
+	err := service.BeginPasswordRecovery(t.Context(), "alice@example.test")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, authnext.ErrInvalidRecovery)
+	assert.NotErrorIs(t, err, authnext.ErrRecoveryDisabled)
+}

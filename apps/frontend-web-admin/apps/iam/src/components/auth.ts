@@ -18,6 +18,18 @@ export interface AuthContextValue {
     returnUrl: string,
     captcha: { type: string; id: string; answer: string }
   ) => Promise<LoginResult>
+  // Signing in by number is two calls: the first queues a code and says nothing
+  // about whether the number reaches an account, the second spends it.
+  requestPhoneLoginCode: (
+    phone: string,
+    captcha: { type: string; id: string; answer: string }
+  ) => Promise<{ accepted: boolean }>
+  loginWithPhoneCode: (
+    phone: string,
+    code: string,
+    returnUrl: string
+  ) => Promise<LoginResult>
+  requestMfaPhoneCode: (challengeId: string) => Promise<{ accepted: boolean }>
   verifyLoginMfa: (challengeId: string, code: string) => Promise<LoginResult>
   loginWithPasskey: (returnUrl: string) => Promise<LoginResult>
   logout: () => Promise<void>

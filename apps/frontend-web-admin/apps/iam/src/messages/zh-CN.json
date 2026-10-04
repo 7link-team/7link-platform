@@ -1146,5 +1146,13 @@
   "phoneVerified": "手机号已验证",
   "sendPhoneCode": "发送验证码",
   "phoneCode": "短信中的验证码",
-  "phoneCodeSubmit": "验证"
+  "phoneCodeSubmit": "验证",
+  "phoneLoginHint": "只有已在账号中确认过的手机号才能登录。",
+  "usePhoneCode": "用手机验证码登录",
+  "usePasswordInstead": "改用密码登录",
+  "phoneCodeSent": "如果 {phone} 属于某个账号,验证码已发往该号码。",
+  "invalidPhoneCode": "该号码与验证码无法登录,请核对后重试。",
+  "smsFactorUnavailable": "本次登录不能用手机验证码完成,请使用其他第二因子。",
+  "resendPhoneCode": "重新发送验证码",
+  "smsFactorAvailable": "需要第二因子时,也可以向你已确认的手机号发送验证码。"
 }

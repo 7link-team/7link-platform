@@ -231,3 +231,25 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, tokenPayload(t, global), "email")
 }
+
+func TestAProfileViewFromATokenFailsClosedWithoutARepository(t *testing.T) {
+	// A bearer or userinfo view re-reads the current profile rather than trusting
+	// what an old token carries, because a field policy may have changed since it
+	// was issued. With nothing to read from, the answer is that the fields are
+	// unavailable -- never the token's stale copy.
+	fields, err := allowProfileFields(t.Context(), 101, 0, authz.ProfileResource, 11)
+	require.NoError(t, err)
+	service := &Service{}
+	WithFieldPermissionChecker(profileCheckerFunc(
+		func(context.Context, guid.ID, guid.ID, string, guid.ID) (authz.FieldConstraint, error) {
+			return fields, nil
+		}))(service)
+
+	_, err = service.ProjectProfile(t.Context(), &authnext.Claims{
+		PrincipalID: 11, OrganizationID: "101",
+		Email: "alice@example.test", EmailVerified: true,
+		Phone: "+8613800138000", PhoneVerified: true,
+		Raw: map[string]any{"scope": "openid profile email"},
+	}, "openid profile email")
+	assert.ErrorIs(t, err, authz.ErrFieldsUnavailable)
+}

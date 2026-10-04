@@ -1146,5 +1146,13 @@
   "phoneVerified": "Phone verified",
   "sendPhoneCode": "Send code",
   "phoneCode": "Code from the message",
-  "phoneCodeSubmit": "Verify"
+  "phoneCodeSubmit": "Verify",
+  "phoneLoginHint": "Only a number you have already confirmed on your account can sign you in.",
+  "usePhoneCode": "Sign in with a phone code",
+  "usePasswordInstead": "Use a password instead",
+  "phoneCodeSent": "If {phone} belongs to an account, a code is on its way to it.",
+  "invalidPhoneCode": "That number and code do not sign anybody in. Check both and try again.",
+  "smsFactorUnavailable": "A phone code cannot complete this sign-in. Use another second factor.",
+  "resendPhoneCode": "Send another code",
+  "smsFactorAvailable": "A code can also be sent to your confirmed phone number when a second factor is asked for."
 }

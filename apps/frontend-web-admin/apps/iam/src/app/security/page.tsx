@@ -786,6 +786,14 @@ function MfaSection({
                   })
                 : t("mfaDescription")}
             </p>
+            {/* A proven number can answer a challenge with no enrolment of its
+                own: the number above is the enrolment. Said here so somebody
+                does not think they have no second factor at all. */}
+            {status?.sms_available && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("smsFactorAvailable")}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">

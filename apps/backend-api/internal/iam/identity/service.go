@@ -351,12 +351,12 @@ func (s *Service) UpdateGlobal(
 	return s.updateProfile(ctx, 0, id, displayName, email, phone)
 }
 
-// normalizePhone accepts a number in the only shape that is unambiguous across
+// NormalizePhone accepts a number in the only shape that is unambiguous across
 // countries: a plus sign and up to fifteen digits, which is what E.164 allows.
 // Spaces, dashes and parentheses are how people write a number down rather than
 // part of it, so they are removed instead of refused. An empty value clears the
 // number, which is how somebody takes theirs back.
-func normalizePhone(value string) (string, bool) {
+func NormalizePhone(value string) (string, bool) {
 	var builder strings.Builder
 	for index, character := range strings.TrimSpace(value) {
 		switch {
@@ -388,7 +388,7 @@ func (s *Service) updateProfile(
 	}
 	var requestedPhone *string
 	if phone != nil {
-		value, ok := normalizePhone(*phone)
+		value, ok := NormalizePhone(*phone)
 		if !ok {
 			return Principal{}, ErrInvalid
 		}
@@ -457,16 +457,20 @@ func (s *Service) updateProfile(
 			updates["email_verified"] = false
 		}
 		// A different number is a different number: whatever proved the old one
-		// proves nothing about this one. Unlike an address change this revokes no
-		// sessions, because nothing can yet be recovered or signed in to with a
-		// number -- the moment one can, this has to revoke too.
+		// proves nothing about this one.
 		if phoneChanged {
 			updates["phone_verified"] = false
 		}
+		// A proven number signs somebody in, so it is a credential. Replacing or
+		// removing one ends what it could reach, exactly as replacing an address
+		// does -- otherwise whoever held the old number would keep every session
+		// and token it opened. An unproven number reaches nothing, so adding one
+		// for the first time revokes nothing.
+		provenPhoneReplaced := phoneChanged && current.PhoneVerified
 		if err := repo.updatePrincipalRow(ctx, id, updates); err != nil {
 			return err
 		}
-		if emailChanged {
+		if emailChanged || provenPhoneReplaced {
 			if err := repo.incrementCredentialVersion(ctx, id, now); err != nil {
 				return err
 			}
@@ -479,6 +483,7 @@ func (s *Service) updateProfile(
 		// Whether the number changed, never the number itself: the audit chain is
 		// read by more people than the profile is.
 		event.Detail["phone_changed"] = phoneChanged
+		event.Detail["proven_phone_replaced"] = provenPhoneReplaced
 		if err := repo.appendAudit(ctx, event); err != nil {
 			return err
 		}

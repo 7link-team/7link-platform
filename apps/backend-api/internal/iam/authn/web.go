@@ -481,36 +481,66 @@ func (s *Service) BeginLogin(
 	if err := s.repo.resetLoginFailures(ctx, principal.ID, now); err != nil {
 		return authnext.LoginResult{}, fmt.Errorf("reset login failures: %w", err)
 	}
-	if credential.TOTPSecret == "" && (s.cfg.MFAPolicy.RequireMFA || credential.MFARequired) {
-		token, err := s.insertSession(ctx, s.repo, principal.ID, now, authnext.Assurance{
-			AuthTime: now, Level: 0, Methods: []string{"pwd", mfaEnrollmentSessionMethod},
+	return s.completeFirstFactor(ctx, principal.ID, credential, "pwd", resolvedReturnURL, now)
+}
+
+// completeFirstFactor turns one proven factor into whatever the policy says comes
+// next. It is one function because every way of proving a first factor has to
+// meet the same gate: a second way in that skipped the MFA requirement would be
+// a way around it, and that is exactly the kind of thing a copied tail grows.
+//
+// method is what the session will say proved it -- "pwd" for a password, "sms"
+// for a code read off a message.
+func (s *Service) completeFirstFactor(
+	ctx context.Context,
+	principalID guid.ID,
+	credential *model.Credential,
+	method, returnURL string,
+	now time.Time,
+) (authnext.LoginResult, error) {
+	// What can answer a challenge: a TOTP step if one is enrolled, and a code to a
+	// proven number unless that number is what just opened this login.
+	principal, err := s.repo.getActivePrincipal(ctx, principalID)
+	if err != nil {
+		return authnext.LoginResult{}, fmt.Errorf("read principal: %w", err)
+	}
+	methods := make([]string, 0, 3)
+	if credential.TOTPSecret != "" {
+		methods = append(methods, "totp", "recovery_code")
+	}
+	if s.smsFactorAvailable(principal, method) {
+		methods = append(methods, "sms")
+	}
+	if len(methods) == 0 && (s.cfg.MFAPolicy.RequireMFA || credential.MFARequired) {
+		token, err := s.insertSession(ctx, s.repo, principalID, now, authnext.Assurance{
+			AuthTime: now, Level: 0, Methods: []string{method, mfaEnrollmentSessionMethod},
 		})
 		if err != nil {
 			return authnext.LoginResult{}, err
 		}
 		expiresAt := now.Add(min(s.web.IdleTTL, s.web.SessionTTL)).UTC()
-		s.audit(ctx, principal.ID, "login_password", "success")
+		s.audit(ctx, principalID, "login_"+method, "success")
 		return authnext.LoginResult{
-			Status: "mfa_enrollment_required", Subject: principal.ID.String(), ReturnURL: resolvedReturnURL, SessionID: token,
+			Status: "mfa_enrollment_required", Subject: principalID.String(), ReturnURL: returnURL, SessionID: token,
 			ExpiresAt: &expiresAt, Methods: []string{"totp"},
 		}, nil
 	}
 	if credential.MFARequired {
-		result, err := s.createLoginChallenge(ctx, principal.ID, resolvedReturnURL, now)
+		result, err := s.createLoginChallenge(ctx, principalID, method, returnURL, methods, now)
 		if err != nil {
 			return authnext.LoginResult{}, err
 		}
-		s.audit(ctx, principal.ID, "login_password", "success")
+		s.audit(ctx, principalID, "login_"+method, "success")
 		return result, nil
 	}
-	token, err := s.insertSession(ctx, s.repo, principal.ID, now, authnext.Assurance{
-		AuthTime: now, Level: 1, Methods: []string{"pwd"},
+	token, err := s.insertSession(ctx, s.repo, principalID, now, authnext.Assurance{
+		AuthTime: now, Level: 1, Methods: []string{method},
 	})
 	if err != nil {
 		return authnext.LoginResult{}, err
 	}
-	s.audit(ctx, principal.ID, "login", "success")
-	return authnext.LoginResult{Status: "authenticated", ReturnURL: resolvedReturnURL, SessionID: token}, nil
+	s.audit(ctx, principalID, "login", "success")
+	return authnext.LoginResult{Status: "authenticated", ReturnURL: returnURL, SessionID: token}, nil
 }
 
 func (s *Service) Login(
@@ -830,7 +860,8 @@ func currentSessionHash(cookieHeader, name string) string {
 func (s *Service) createLoginChallenge(
 	ctx context.Context,
 	principalID guid.ID,
-	returnURL string,
+	firstFactor, returnURL string,
+	methods []string,
 	now time.Time,
 ) (authnext.LoginResult, error) {
 	token, err := randomToken(32)
@@ -840,13 +871,13 @@ func (s *Service) createLoginChallenge(
 	expiresAt := now.Add(s.cfg.MFA.ChallengeTTL).UTC()
 	if err := s.repo.createMFAChallenge(ctx, &model.MFAChallenge{
 		IDHash: tokenHash(token), PrincipalID: principalID, ReturnURL: returnURL,
-		CreatedAt: now.UTC(), ExpiresAt: expiresAt,
+		FirstFactor: firstFactor, CreatedAt: now.UTC(), ExpiresAt: expiresAt,
 	}, now.UTC()); err != nil {
 		return authnext.LoginResult{}, fmt.Errorf("create MFA challenge: %w", err)
 	}
 	return authnext.LoginResult{
 		Status: "mfa_required", ReturnURL: returnURL, ChallengeID: token,
-		ExpiresAt: &expiresAt, Methods: []string{"totp", "recovery_code"},
+		ExpiresAt: &expiresAt, Methods: methods,
 	}, nil
 }
 

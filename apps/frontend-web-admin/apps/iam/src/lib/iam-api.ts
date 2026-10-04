@@ -203,12 +203,15 @@ export interface LoginResult {
   return_url: string
   challenge_id?: string
   expires_at?: string
-  methods?: Array<"totp" | "recovery_code">
+  methods?: Array<"totp" | "recovery_code" | "sms">
 }
 
 export interface MfaStatus {
   totp_enabled: boolean
   recovery_codes_remaining: number
+  /** A code can be sent to a number this account has proven. No enrolment stands
+   *  behind it: the proven number is the enrolment. */
+  sms_available: boolean
 }
 
 /** The display identity of this deployment, read before any session exists. */
@@ -2478,6 +2481,35 @@ export function createIamApi(
       if (epoch === identityEpoch) subject = result.subject
       return result
     },
+    requestPhoneLoginCode: (body: {
+      phone: string
+      captcha_type: string
+      captcha_id: string
+      captcha_answer: string
+    }) =>
+      request<{ accepted: boolean }>(
+        apiRoute("post", "/login/phone/requests"),
+        { body: JSON.stringify(body) }
+      ),
+    loginWithPhoneCode: async (body: {
+      phone: string
+      code: string
+      return_url: string
+    }) => {
+      resetPrincipal()
+      const epoch = identityEpoch
+      const result = await request<LoginResult>(
+        apiRoute("post", "/login/phone"),
+        { body: JSON.stringify(body) }
+      )
+      if (epoch === identityEpoch) subject = result.subject
+      return result
+    },
+    requestMfaPhoneCode: (challengeID: string) =>
+      request<{ accepted: boolean }>(
+        apiRoute("post", "/login/mfa/phone-codes"),
+        { body: JSON.stringify({ challenge_id: challengeID }) }
+      ),
     verifyLoginMfa: async (body: { challenge_id: string; code: string }) => {
       const result = await request<LoginResult>(
         apiRoute("post", "/login/mfa"),

@@ -157,6 +157,39 @@ type emailVerificationCompleteInput struct {
 	Body   emailVerificationCredential
 }
 
+// phoneLoginStartInput asks for a code. The captcha is presented here for the
+// same reason it is on the password path: this is a pre-authentication surface,
+// and the only failure counter that exists is per-account, which an attacker
+// spreading attempts across numbers never trips.
+// mfaPhoneCodeInput names the challenge and nothing else. The challenge says who
+// it is for and what proved their first factor, so no request carries a principal
+// or a number.
+type mfaPhoneCodeInput struct {
+	Origin string `header:"Origin" hidden:"true"`
+	Body   struct {
+		ChallengeID string `json:"challenge_id" minLength:"1" maxLength:"128"`
+	}
+}
+
+type phoneLoginStartInput struct {
+	Origin string `header:"Origin" hidden:"true"`
+	Body   struct {
+		Phone         string `json:"phone" minLength:"5" maxLength:"32"`
+		CaptchaType   string `json:"captcha_type" minLength:"1"`
+		CaptchaID     string `json:"captcha_id" minLength:"1"`
+		CaptchaAnswer string `json:"captcha_answer" minLength:"1"`
+	}
+}
+
+type phoneLoginCompleteInput struct {
+	Origin string `header:"Origin" hidden:"true"`
+	Body   struct {
+		Phone     string `json:"phone" minLength:"5" maxLength:"32"`
+		Code      string `json:"code" minLength:"6" maxLength:"6" pattern:"^[0-9]{6}$"`
+		ReturnURL string `json:"return_url,omitempty" maxLength:"2048"`
+	}
+}
+
 type phoneVerificationStartInput struct {
 	Authorization string `header:"Authorization" hidden:"true"`
 	Cookie        string `header:"Cookie" hidden:"true"`
@@ -568,6 +601,87 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 				return nil, huma.Error409Conflict(authni18n.AdditionalVerificationRequired)
 			case errors.Is(err, authnext.ErrInvalidCredentials):
 				return nil, huma.Error401Unauthorized(authni18n.InvalidLogin)
+			default:
+				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
+			}
+		}
+		return loginResponse(ctx, web, result), nil
+	})
+	authz.RegisterPublic(a, huma.Operation{
+		OperationID: "authn-create-mfa-phone-code", Method: http.MethodPost,
+		Path:     "/login/mfa/phone-codes",
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
+		Summary:  "Queue a second-factor code for an outstanding login challenge",
+		Tags:     []string{"authentication"}, DefaultStatus: http.StatusAccepted,
+		Errors: []int{http.StatusBadRequest, http.StatusForbidden, http.StatusConflict, http.StatusServiceUnavailable},
+	}, func(ctx context.Context, in *mfaPhoneCodeInput) (*respx.Body[map[string]bool], error) {
+		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
+			return nil, huma.Error403Forbidden(authni18n.LoginRequestRejected)
+		}
+		if err := web.SendMFAPhoneCode(ctx, in.Body.ChallengeID); err != nil {
+			switch {
+			case errors.Is(err, ErrMFAChallenge):
+				return nil, huma.Error400BadRequest(authni18n.InvalidMFAChallenge)
+			case errors.Is(err, authnext.ErrSMSFactorUnavailable):
+				// The challenge exists but a code is not an answer to it, which is a
+				// conflict with how this login was opened rather than a bad request.
+				return nil, huma.Error409Conflict(authni18n.SMSFactorUnavailable)
+			default:
+				return nil, huma.Error503ServiceUnavailable(authni18n.PhoneVerificationUnavailable)
+			}
+		}
+		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
+	})
+	authz.RegisterPublic(a, huma.Operation{
+		OperationID: "authn-create-phone-login-request", Method: http.MethodPost, Path: "/login/phone/requests",
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
+		Summary:  "Queue a sign-in code for a proven phone number", Tags: []string{"authentication"},
+		DefaultStatus: http.StatusAccepted,
+		// 422 is the unanswered captcha. It was missing here while the handler
+		// could already return it, which is a response no client was told about.
+		Errors: []int{
+			http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusServiceUnavailable,
+		},
+	}, func(ctx context.Context, in *phoneLoginStartInput) (*respx.Body[map[string]bool], error) {
+		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
+			return nil, huma.Error403Forbidden(authni18n.LoginRequestRejected)
+		}
+		solved, captchaErr := web.VerifyCaptcha(ctx, in.Body.CaptchaType, in.Body.CaptchaID, in.Body.CaptchaAnswer)
+		if refusal := refuseUnansweredCaptcha(ctx, solved, captchaErr); refusal != nil {
+			return nil, refusal
+		}
+		if err := web.BeginPhoneLogin(ctx, in.Body.Phone); err != nil {
+			return nil, huma.Error503ServiceUnavailable(authni18n.PhoneLoginUnavailable)
+		}
+		// The same answer whatever was found: whoever typed the number is not
+		// always its owner, so this must not say whether it reaches an account.
+		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
+	})
+	authz.RegisterPublic(a, huma.Operation{
+		OperationID: "authn-create-phone-session", Method: http.MethodPost, DefaultStatus: http.StatusCreated,
+		Path:     "/login/phone",
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
+		Summary:  "Sign in with a code sent to a proven phone number", Tags: []string{"authentication"},
+		// No 409 here: a phone sign-in has nothing to report as a conflict. The
+		// password path declares one because it can refuse with "verify something
+		// else first"; this path hands that case back as a challenge, not an error.
+		Errors: []int{
+			http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity,
+			http.StatusServiceUnavailable, http.StatusInternalServerError,
+		},
+	}, func(ctx context.Context, in *phoneLoginCompleteInput) (*loginOutput, error) {
+		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
+			return nil, huma.Error403Forbidden(authni18n.LoginRequestRejected)
+		}
+		result, err := web.CompletePhoneLogin(ctx, in.Body.Phone, in.Body.Code, in.Body.ReturnURL)
+		if err != nil {
+			switch {
+			case errors.Is(err, authnext.ErrReturnURL):
+				return nil, huma.Error422UnprocessableEntity(authni18n.ReturnURLNotAllowed)
+			case errors.Is(err, authnext.ErrInvalidCredentials):
+				return nil, huma.Error401Unauthorized(authni18n.InvalidLogin)
+			case errors.Is(err, authnext.ErrPhoneLoginDisabled):
+				return nil, huma.Error503ServiceUnavailable(authni18n.PhoneLoginUnavailable)
 			default:
 				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
 			}

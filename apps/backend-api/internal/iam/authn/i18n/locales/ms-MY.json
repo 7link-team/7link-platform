@@ -29,6 +29,7 @@
   "passkey_unavailable": "Pengesahan kunci laluan tidak dapat menyelesaikan permintaan. Cuba lagi kemudian atau gunakan kaedah log masuk lain.",
   "password_recovery_unavailable": "Pemulihan kata laluan tidak dapat menyelesaikan permintaan. Cuba lagi kemudian; hubungi pentadbir jika masalah berterusan.",
   "password_reused": "Kata laluan baharu telah digunakan baru-baru ini. Pilih kata laluan lain.",
+  "phone_login_unavailable": "Masuk melalui telefon tidak tersedia. Cuba lagi nanti; hubungi pentadbir jika masalah berterusan.",
   "phone_verification_unavailable": "Pengesahan telefon tidak tersedia. Cuba lagi nanti; hubungi pentadbir jika masalah berterusan.",
   "primary_email_required": "Operasi ini memerlukan alamat e-mel utama yang disahkan. Tambah atau sahkan e-mel utama terlebih dahulu.",
   "primary_phone_required": "Tambah nombor telefon pada akaun anda sebelum mengesahkannya.",
@@ -38,5 +39,6 @@
   "registration_request_rejected": "Asal permintaan pendaftaran tidak dibenarkan. Gunakan alamat aplikasi yang dikonfigurasi atau hubungi pentadbir.",
   "registration_unavailable": "Pendaftaran layan diri tidak tersedia. Hubungi pentadbir untuk mendapatkan akses atau cuba lagi kemudian.",
   "return_url_not_allowed": "URL kembali tiada dalam senarai dibenarkan. Gunakan alamat aplikasi yang diluluskan atau hubungi pentadbir.",
-  "session_not_found": "Sesi pelayar tidak ditemui atau tidak lagi aktif. Muat semula senarai sesi sebelum mencuba lagi."
+  "session_not_found": "Sesi pelayar tidak ditemui atau tidak lagi aktif. Muat semula senarai sesi sebelum mencuba lagi.",
+  "sms_factor_unavailable": "Kod telefon tidak boleh melengkapkan masuk ini. Guna faktor kedua yang lain."
 }
