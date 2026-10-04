@@ -51,11 +51,9 @@ type auditHarness struct {
 
 func newAuditHarness(t *testing.T, prefix string) *auditHarness {
 	t.Helper()
-	dsn := fmt.Sprintf(
-		"file:%s?_busy_timeout=10000&_journal_mode=WAL&_foreign_keys=on",
-		filepath.ToSlash(filepath.Join(t.TempDir(), "audit.sqlite")),
-	)
-	initializeAuditDatabase(t, dsn, prefix)
+	path := filepath.Join(t.TempDir(), "audit.sqlite")
+	cloneSchemaDatabase(t, prefix, path)
+	dsn := templateSQLiteDSN(path)
 	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
 		"primary": {Type: "sqlite", DSN: dsn, Writable: true, Readable: true},
 	})

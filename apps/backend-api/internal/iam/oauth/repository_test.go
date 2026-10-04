@@ -210,11 +210,9 @@ type oauthHarness struct {
 
 func newOAuthHarness(t *testing.T, prefix string) *oauthHarness {
 	t.Helper()
-	dsn := fmt.Sprintf(
-		"file:%s?_busy_timeout=10000&_journal_mode=WAL",
-		filepath.ToSlash(filepath.Join(t.TempDir(), "oauth.sqlite")),
-	)
-	initializeOAuthDatabase(t, dsn, prefix)
+	path := filepath.Join(t.TempDir(), "oauth.sqlite")
+	cloneSchemaDatabase(t, prefix, path)
+	dsn := templateSQLiteDSN(path)
 	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
 		"primary": {Type: "sqlite", DSN: dsn, Writable: true, Readable: true, MaxOpenConns: 1},
 	})

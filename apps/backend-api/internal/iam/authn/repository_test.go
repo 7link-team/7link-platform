@@ -3,7 +3,6 @@ package authn
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -19,7 +18,6 @@ import (
 	"7link.com/platform/pkg/appenv"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
-	"7link.com/platform/pkg/extension/passwordx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
@@ -130,11 +128,9 @@ type authnRepositoryHarness struct {
 
 func newAuthnRepositoryHarness(t *testing.T, prefix string) *authnRepositoryHarness {
 	t.Helper()
-	dsn := fmt.Sprintf(
-		"file:%s?_busy_timeout=10000&_journal_mode=WAL",
-		filepath.ToSlash(filepath.Join(t.TempDir(), "authn-repository.sqlite")),
-	)
-	initializeAuthnRepositoryDatabase(t, dsn, prefix)
+	path := filepath.Join(t.TempDir(), "authn-repository.sqlite")
+	cloneTemplateDatabase(t, prefix, path)
+	dsn := authnSQLiteDSN(path)
 	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
 		"primary": {Type: "sqlite", DSN: dsn, Writable: true, Readable: true},
 	})
@@ -497,8 +493,7 @@ func seedLocalPrincipal(t *testing.T, repository *Repository, login, email, pass
 	require.NotNil(t, db)
 	principalID, err := repository.nextID()
 	require.NoError(t, err)
-	hash, err := passwordx.Hash(password)
-	require.NoError(t, err)
+	hash := hashFixturePassword(t, password)
 
 	// Stored normalized, the way every path that creates a principal stores it:
 	// a login is matched after normalization, so a fixture that skipped this

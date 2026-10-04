@@ -3,7 +3,6 @@ package organization
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -53,8 +52,9 @@ type organizationHarness struct {
 
 func newOrganizationHarness(t *testing.T, prefix string) *organizationHarness {
 	t.Helper()
-	dsn := fmt.Sprintf("file:%s?_busy_timeout=10000&_journal_mode=WAL&_foreign_keys=on", filepath.ToSlash(filepath.Join(t.TempDir(), "organization.sqlite")))
-	initializeOrganizationDatabase(t, dsn, prefix)
+	path := filepath.Join(t.TempDir(), "organization.sqlite")
+	cloneSchemaDatabase(t, prefix, path)
+	dsn := templateSQLiteDSN(path)
 	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
 		"primary": {Type: "sqlite", DSN: dsn, Writable: true, Readable: true},
 	})
