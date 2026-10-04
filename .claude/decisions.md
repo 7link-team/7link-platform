@@ -4127,3 +4127,45 @@ Scope: the 29 read sites listed in the task state plus loadPasskeyUser.
 FinishPasskeyLogin's propagation mirrors reauthentication.go and cannot be
 unit-tested (webauthnx's protocol is private and needs a real assertion).
 Status: IMPLEMENTED.
+
+## D104 - The Platform Answer Is Read Only When It Could Change The Verdict (2026-10-05)
+
+Decision: `CheckBulk` no longer asks whether the subject is a platform
+administrator before it knows the answer matters. A permission the tenant's own
+grants already allow is allowed whoever asks, so the platform answer -- four
+statements of its own: the system tenant by slug, the principal's status, the
+platform administrator table, and that tenant's membership -- cannot change the
+verdict and is not read. One authorization check went from **7 statements to 3**
+in the common case, on the hottest path in the service, run once per request.
+
+`platformAnswerDecides` is written as the exact negation of the loop that
+decides each permission, and says so, because the two drifting apart is the one
+way this becomes a security bug: a new branch below that consults the platform
+answer, not admitted above, would see `false` and silently refuse. A system-scoped
+permission is decided by nothing else and always asks; an operating-platform or
+unknown code is refused outright; a tenant-scoped one asks only when neither the
+permission itself nor `tenant_administer` is granted.
+
+Both halves are mutation-verified: forcing "always ask" turns the saved-statements
+test red, forcing "never ask" turns the platform administrator's verdicts red.
+
+`CheckPlatform` is read-only -- no audit, no writes -- so not calling it has no
+effect beyond the statements it would have sent.
+
+**The frozen performance baseline is deliberately NOT regenerated for this.**
+The `authorization` path's recorded plan set now names 4 statements the code no
+longer sends, so `TestIAMPerformanceExternalDatabase` will report a plan-signature
+mismatch until it is regenerated -- and that regeneration must happen on a quiet
+reference machine, never on a loaded one. The reason is in the generator:
+
+    benchmark.ThresholdNSPerOp = roundedIAMPerformanceThreshold(ordered[len(ordered)-1] * 3)
+
+The threshold is the slowest sample times three. Regenerating on the machine this
+was written on (XProtect pegging a core for eight hours, Docker's MySQL on a
+virtualised filesystem, the gate taking three hours where it takes fifteen
+minutes) would have written authorization's threshold as 42ms where the committed
+value is 7ms -- a gate weakened six-fold and frozen into the repository. That is
+weakening a test to make it pass, so it was not done. Regenerate on the reference
+machine, and take the `plans` block from that run; the `benchmarks` block already
+in the file was captured on a quiet machine and is the one worth keeping.
+Status: IMPLEMENTED, baseline refresh OUTSTANDING.
