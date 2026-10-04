@@ -310,7 +310,8 @@ var frozenIdentitySQL = map[string][]string{
 	},
 	"activePrincipalClaims": {
 		`SELECT principal.id, principal.login_name, principal.email, ` +
-			`principal.email_verified, principal.activation_required, principal.display_name, ` +
+			`principal.email_verified, principal.phone, principal.phone_verified, ` +
+			`principal.activation_required, principal.display_name, ` +
 			`principal.status, principal.created_at, principal.updated_at, ` +
 			`COALESCE(credential.credential_version, 0) AS credential_version ` +
 			`FROM sl_iam_principals AS principal ` +

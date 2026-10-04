@@ -68,7 +68,7 @@ func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 // iamOwnedTableCount is how many tables the contracts below claim between them.
 // It is one constant because two tests count the same set: a table added to a
 // contract and not to the database, or the other way round, has to fail in both.
-const iamOwnedTableCount = 77
+const iamOwnedTableCount = 78
 
 func iamMigrationContracts() []iamMigrationContract {
 	return []iamMigrationContract{
@@ -81,7 +81,9 @@ func iamMigrationContracts() []iamMigrationContract {
 			"iam_account_view_tokens",
 			"iam_credentials", "iam_email_verification_tokens", "iam_mfa_challenges", "iam_mfa_enrollments",
 			"iam_notification_outbox", "iam_passkey_challenges", "iam_passkey_users", "iam_passkeys",
-			"iam_password_history", "iam_password_recovery_tokens", "iam_personal_tokens", "iam_reauth_challenges", "iam_recovery_codes", "iam_sessions",
+			"iam_password_history", "iam_password_recovery_tokens", "iam_personal_tokens",
+			"iam_phone_verification_codes",
+			"iam_reauth_challenges", "iam_recovery_codes", "iam_sessions",
 			"iam_stepup_challenges",
 		}, module: &authn.Module{}},
 		{name: "identity", tables: []string{

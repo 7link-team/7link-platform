@@ -910,6 +910,24 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
+		OperationID: "iam-list-role-member-grants", Method: http.MethodGet,
+		Path:    "/roles/{role_id}/member-grants",
+		Summary: "List role assignments with the moment each stops granting",
+		Tags:    []string{"access-control"}, Errors: []int{http.StatusNotFound},
+	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "view"},
+		func(ctx context.Context, in *listRoleMembersInput) (*respx.Body[[]RoleMemberGrant], error) {
+			tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
+			if err != nil {
+				return nil, err
+			}
+			grants, total, err := svc.ListRoleMemberGrantsPage(ctx, tenantID, roleID, in.Offset, in.Limit)
+			if err != nil {
+				return nil, apiError("list role member grants", err)
+			}
+			return respx.List(ctx, grants, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
+		})
+
+	authz.RegisterOwned(registrar, a, huma.Operation{
 		OperationID: "iam-add-role-member", Method: http.MethodPut, Path: "/roles/{role_id}/members/{principal_id}", Summary: "Add a local principal to a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "manage_member"}, func(ctx context.Context, in *memberGrantInput) (*respx.Body[MutationResult], error) {
 		tenantID, roleID, subject, err := memberRef(ctx, &memberInput{RoleID: in.RoleID, Subject: in.Subject})

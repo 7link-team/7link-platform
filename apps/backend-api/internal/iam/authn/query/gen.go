@@ -29,6 +29,7 @@ var (
 	PasswordHistory           *passwordHistory
 	PasswordRecoveryToken     *passwordRecoveryToken
 	PersonalToken             *personalToken
+	PhoneVerificationCode     *phoneVerificationCode
 	ReauthenticationChallenge *reauthenticationChallenge
 	RecoveryCode              *recoveryCode
 	Session                   *session
@@ -49,6 +50,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	PasswordHistory = &Q.PasswordHistory
 	PasswordRecoveryToken = &Q.PasswordRecoveryToken
 	PersonalToken = &Q.PersonalToken
+	PhoneVerificationCode = &Q.PhoneVerificationCode
 	ReauthenticationChallenge = &Q.ReauthenticationChallenge
 	RecoveryCode = &Q.RecoveryCode
 	Session = &Q.Session
@@ -70,6 +72,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		PasswordHistory:           newPasswordHistory(db, opts...),
 		PasswordRecoveryToken:     newPasswordRecoveryToken(db, opts...),
 		PersonalToken:             newPersonalToken(db, opts...),
+		PhoneVerificationCode:     newPhoneVerificationCode(db, opts...),
 		ReauthenticationChallenge: newReauthenticationChallenge(db, opts...),
 		RecoveryCode:              newRecoveryCode(db, opts...),
 		Session:                   newSession(db, opts...),
@@ -92,6 +95,7 @@ type Query struct {
 	PasswordHistory           passwordHistory
 	PasswordRecoveryToken     passwordRecoveryToken
 	PersonalToken             personalToken
+	PhoneVerificationCode     phoneVerificationCode
 	ReauthenticationChallenge reauthenticationChallenge
 	RecoveryCode              recoveryCode
 	Session                   session
@@ -117,6 +121,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		PasswordHistory:           q.PasswordHistory.clone(db),
 		PasswordRecoveryToken:     q.PasswordRecoveryToken.clone(db),
 		PersonalToken:             q.PersonalToken.clone(db),
+		PhoneVerificationCode:     q.PhoneVerificationCode.clone(db),
 		ReauthenticationChallenge: q.ReauthenticationChallenge.clone(db),
 		RecoveryCode:              q.RecoveryCode.clone(db),
 		Session:                   q.Session.clone(db),
@@ -147,6 +152,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		PasswordHistory:           q.PasswordHistory.replaceDB(db),
 		PasswordRecoveryToken:     q.PasswordRecoveryToken.replaceDB(db),
 		PersonalToken:             q.PersonalToken.replaceDB(db),
+		PhoneVerificationCode:     q.PhoneVerificationCode.replaceDB(db),
 		ReauthenticationChallenge: q.ReauthenticationChallenge.replaceDB(db),
 		RecoveryCode:              q.RecoveryCode.replaceDB(db),
 		Session:                   q.Session.replaceDB(db),
@@ -167,6 +173,7 @@ type queryCtx struct {
 	PasswordHistory           IPasswordHistoryDo
 	PasswordRecoveryToken     IPasswordRecoveryTokenDo
 	PersonalToken             IPersonalTokenDo
+	PhoneVerificationCode     IPhoneVerificationCodeDo
 	ReauthenticationChallenge IReauthenticationChallengeDo
 	RecoveryCode              IRecoveryCodeDo
 	Session                   ISessionDo
@@ -187,6 +194,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		PasswordHistory:           q.PasswordHistory.WithContext(ctx),
 		PasswordRecoveryToken:     q.PasswordRecoveryToken.WithContext(ctx),
 		PersonalToken:             q.PersonalToken.WithContext(ctx),
+		PhoneVerificationCode:     q.PhoneVerificationCode.WithContext(ctx),
 		ReauthenticationChallenge: q.ReauthenticationChallenge.WithContext(ctx),
 		RecoveryCode:              q.RecoveryCode.WithContext(ctx),
 		Session:                   q.Session.WithContext(ctx),

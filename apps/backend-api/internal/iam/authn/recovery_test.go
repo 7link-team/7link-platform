@@ -54,6 +54,13 @@ func (recorder *notificationRecorder) last(t *testing.T) notificationPayload {
 	return recorder.payloads[len(recorder.payloads)-1]
 }
 
+// count is how many messages have left, which is how a test says that none did.
+func (recorder *notificationRecorder) count() int {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	return len(recorder.payloads)
+}
+
 func newRecoveryService(t *testing.T) (*Service, *authnRepositoryHarness, *notificationRecorder) {
 	t.Helper()
 	harness := newAuthnRepositoryHarness(t, "")

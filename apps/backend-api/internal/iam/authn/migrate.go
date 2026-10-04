@@ -45,6 +45,10 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 		{Name: "account-view-tokens", Version: 16},
 		{Name: "access-view-targets", Version: 17},
 		{Name: "public-ids", Version: 18},
+		// One table of this module's own, with a foreign key to the principals
+		// identity already created at its base milestone.
+		{Name: "phone-verification", Version: 19,
+			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "base"}}},
 	}
 }
 

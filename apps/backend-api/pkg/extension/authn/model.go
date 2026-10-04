@@ -30,6 +30,9 @@ var (
 	ErrRecoveryCooldown          = errors.New("account is in the post-recovery cooldown period")
 	ErrEmailVerificationDisabled = errors.New("email verification is disabled")
 	ErrInvalidEmailVerification  = errors.New("invalid or expired email verification credential")
+	ErrPhoneVerificationDisabled = errors.New("phone verification is disabled")
+	ErrInvalidPhoneVerification  = errors.New("invalid or expired phone verification code")
+	ErrPhoneRequired             = errors.New("principal has no phone number to verify")
 	ErrEmailRequired             = errors.New("primary email is required")
 )
 

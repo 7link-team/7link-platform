@@ -69,7 +69,7 @@ func (s *Service) RegisterForEntry(ctx context.Context, email, password, display
 	if err != nil {
 		return err
 	}
-	code, err := emailVerificationCode()
+	code, err := verificationCode()
 	if err != nil {
 		return fmt.Errorf("generate verification code: %w", err)
 	}
@@ -123,7 +123,7 @@ func (s *Service) resendRegistrationCode(ctx context.Context, email, password, p
 		return fmt.Errorf("generate resend credential: %w", err)
 	}
 	token := emailVerificationTokenPrefix + secret
-	code, err := emailVerificationCode()
+	code, err := verificationCode()
 	if err != nil {
 		return fmt.Errorf("generate resend code: %w", err)
 	}

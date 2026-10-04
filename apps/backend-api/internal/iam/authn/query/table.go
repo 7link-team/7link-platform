@@ -19,6 +19,7 @@ type (
 	PasswordRecoveryTokens     = passwordRecoveryToken
 	NotificationOutboxTable    = notificationOutbox
 	EmailVerificationTokens    = emailVerificationToken
+	PhoneVerificationCodes     = phoneVerificationCode
 	StepUpChallenges           = stepUpChallenge
 	ReauthenticationChallenges = reauthenticationChallenge
 	PersonalTokens             = personalToken
@@ -39,6 +40,7 @@ type Tables struct {
 	PasswordRecoveryTokens     *PasswordRecoveryTokens
 	NotificationOutbox         *NotificationOutboxTable
 	EmailVerificationTokens    *EmailVerificationTokens
+	PhoneVerificationCodes     *PhoneVerificationCodes
 	StepUpChallenges           *StepUpChallenges
 	ReauthenticationChallenges *ReauthenticationChallenges
 	PersonalTokens             *PersonalTokens
@@ -60,6 +62,7 @@ type TableNames struct {
 	PasswordRecoveryTokens     gormx.TableName
 	NotificationOutbox         gormx.TableName
 	EmailVerificationTokens    gormx.TableName
+	PhoneVerificationCodes     gormx.TableName
 	StepUpChallenges           gormx.TableName
 	ReauthenticationChallenges gormx.TableName
 	PersonalTokens             gormx.TableName
@@ -83,6 +86,7 @@ func BindNames(prefix string) TableNames {
 		PasswordRecoveryTokens:     gormx.NewTableName(prefix, model.PasswordRecoveryToken{}.TableName()),
 		NotificationOutbox:         gormx.NewTableName(prefix, model.NotificationOutbox{}.TableName()),
 		EmailVerificationTokens:    gormx.NewTableName(prefix, model.EmailVerificationToken{}.TableName()),
+		PhoneVerificationCodes:     gormx.NewTableName(prefix, model.PhoneVerificationCode{}.TableName()),
 		StepUpChallenges:           gormx.NewTableName(prefix, model.StepUpChallenge{}.TableName()),
 		ReauthenticationChallenges: gormx.NewTableName(prefix, model.ReauthenticationChallenge{}.TableName()),
 		PersonalTokens:             gormx.NewTableName(prefix, model.PersonalToken{}.TableName()),
@@ -108,6 +112,7 @@ func BindWithNames(db *gorm.DB, names TableNames) *Tables {
 		PasswordRecoveryTokens:     q.PasswordRecoveryToken.Table(names.PasswordRecoveryTokens.String()),
 		NotificationOutbox:         q.NotificationOutbox.Table(names.NotificationOutbox.String()),
 		EmailVerificationTokens:    q.EmailVerificationToken.Table(names.EmailVerificationTokens.String()),
+		PhoneVerificationCodes:     q.PhoneVerificationCode.Table(names.PhoneVerificationCodes.String()),
 		StepUpChallenges:           q.StepUpChallenge.Table(names.StepUpChallenges.String()),
 		ReauthenticationChallenges: q.ReauthenticationChallenge.Table(names.ReauthenticationChallenges.String()),
 		PersonalTokens:             q.PersonalToken.Table(names.PersonalTokens.String()),

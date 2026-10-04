@@ -158,6 +158,19 @@ export default function SecurityPage() {
       setNotice(t("emailQueued"))
     })
 
+  const sendPhoneCode = () =>
+    run(async () => {
+      await iamApi.startPhoneVerification()
+      setNotice(t("phoneQueued"))
+    })
+
+  const submitPhoneCode = (code: string) =>
+    run(async () => {
+      await iamApi.completePhoneVerification(code)
+      setNotice(t("phoneVerified"))
+      await refresh()
+    })
+
   const changePassword = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = event.currentTarget
@@ -324,6 +337,12 @@ export default function SecurityPage() {
               <dd className="mt-1 font-mono break-all">{session?.subject}</dd>
             </div>
           </dl>
+          <PhoneSection
+            session={session}
+            busy={busy}
+            onSend={sendPhoneCode}
+            onSubmit={submitPhoneCode}
+          />
           <EmailSection
             session={session}
             busy={busy}
@@ -443,6 +462,97 @@ function EmailSection({
           </span>
         )}
       </header>
+    </section>
+  )
+}
+
+/** Proving a number is two steps, unlike proving an address: a message arrives
+ *  with a code and the code is typed back here, in the session that asked. */
+function PhoneSection({
+  session,
+  busy,
+  onSend,
+  onSubmit,
+}: {
+  session: Session | null
+  busy: boolean
+  onSend: () => void
+  onSubmit: (code: string) => void
+}) {
+  const t = useTranslations("iam")
+  const [code, setCode] = useState("")
+  const [entering, setEntering] = useState(false)
+
+  const phone = session?.phone ?? ""
+  const verified = Boolean(session?.phone_verified)
+  const visible = session?.phone_verified !== undefined
+  return (
+    <section className="mb-5 overflow-hidden rounded-md border bg-card">
+      <header className="flex min-h-20 flex-wrap items-center justify-between gap-4 border-b px-5 py-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+            <Smartphone size={20} />
+          </span>
+          <div className="min-w-0">
+            <h2 className="font-semibold">{t("phoneNumber")}</h2>
+            <p className="mt-1 truncate text-sm text-muted-foreground">
+              {phone || (visible ? t("noPhone") : t("notVisible"))}
+            </p>
+          </div>
+        </div>
+        {!visible ? (
+          <span className="text-sm text-muted-foreground">
+            {t("notVisible")}
+          </span>
+        ) : verified ? (
+          <span className="inline-flex min-h-9 items-center gap-2 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+            <CheckCircle2 size={17} />
+            {t("verified")}
+          </span>
+        ) : phone ? (
+          <Button
+            disabled={busy}
+            onClick={() => {
+              setEntering(true)
+              onSend()
+            }}
+          >
+            <Smartphone />
+            {t("sendPhoneCode")}
+          </Button>
+        ) : (
+          <span className="text-sm text-muted-foreground">
+            {t("notConfigured")}
+          </span>
+        )}
+      </header>
+      {entering && !verified && phone && (
+        <form
+          className="flex flex-wrap items-end gap-3 px-5 py-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (code.length === 6) onSubmit(code)
+          }}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="phone_code">{t("phoneCode")}</Label>
+            <Input
+              id="phone_code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              className="w-32 font-mono tracking-[0.3em]"
+              value={code}
+              onChange={(event) =>
+                setCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+              }
+            />
+          </div>
+          <Button type="submit" disabled={busy || code.length !== 6}>
+            {t("phoneCodeSubmit")}
+          </Button>
+        </form>
+      )}
     </section>
   )
 }

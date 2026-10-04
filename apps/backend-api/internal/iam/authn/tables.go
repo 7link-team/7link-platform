@@ -23,6 +23,7 @@ type CredentialTableNames struct {
 	PasswordRecoveryTokens     gormx.TableName
 	NotificationOutbox         gormx.TableName
 	EmailVerificationTokens    gormx.TableName
+	PhoneVerificationCodes     gormx.TableName
 	StepUpChallenges           gormx.TableName
 	ReauthenticationChallenges gormx.TableName
 	PersonalTokens             gormx.TableName
@@ -48,6 +49,7 @@ func PublishedCredentialTableNames(prefix string) CredentialTableNames {
 		PasswordRecoveryTokens:     names.PasswordRecoveryTokens,
 		NotificationOutbox:         names.NotificationOutbox,
 		EmailVerificationTokens:    names.EmailVerificationTokens,
+		PhoneVerificationCodes:     names.PhoneVerificationCodes,
 		StepUpChallenges:           names.StepUpChallenges,
 		ReauthenticationChallenges: names.ReauthenticationChallenges,
 		PersonalTokens:             names.PersonalTokens,

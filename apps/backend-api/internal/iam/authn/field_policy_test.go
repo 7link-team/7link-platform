@@ -91,16 +91,25 @@ func TestProfileProjectionScopesMaskingAndFailClosed(t *testing.T) {
 			assert.Equal(t, strings.Contains(" "+scope+" ", " profile "), view.PreferredUsername != nil)
 			assert.Equal(t, strings.Contains(" "+scope+" ", " email "), view.Email != nil)
 			assert.Equal(t, view.Email != nil, view.EmailVerified != nil)
+			// The number is a contact like the address, so the same scope carries it
+			// and the same rule governs its verification flag.
+			assert.Equal(t, view.Email != nil, view.Phone != nil)
+			assert.Equal(t, view.Phone != nil, view.PhoneVerified != nil)
 		})
 	}
 	for _, mode := range []string{"omit", "redact", "unknown"} {
-		fields.Fields["login_name"], fields.Fields["email"] = authz.FieldDecision{Read: mode}, authz.FieldDecision{Read: mode}
+		fields.Fields["login_name"] = authz.FieldDecision{Read: mode}
+		fields.Fields["email"] = authz.FieldDecision{Read: mode}
+		fields.Fields["phone"] = authz.FieldDecision{Read: mode}
 		view, err := service.ProjectProfile(t.Context(), claims, "profile email")
 		require.NoError(t, err)
 		assert.Nil(t, view.EmailVerified)
+		assert.Nil(t, view.PhoneVerified)
 		if mode == "redact" {
 			require.NotNil(t, view.Email)
+			require.NotNil(t, view.Phone)
 			assert.Equal(t, "[REDACTED]", *view.Email)
+			assert.Equal(t, "[REDACTED]", *view.Phone)
 			assert.Equal(t, "[REDACTED]", *view.PreferredUsername)
 		} else {
 			assert.Equal(t, ProfileClaims{}, view)

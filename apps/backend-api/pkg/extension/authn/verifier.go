@@ -82,6 +82,7 @@ type Config struct {
 	Notification            NotificationConfig      `mapstructure:"notification" group:"notification"`
 	Recovery                RecoveryConfig          `mapstructure:"recovery" group:"recovery"`
 	EmailVerification       EmailVerificationConfig `mapstructure:"email_verification" group:"email_verification"`
+	PhoneVerification       PhoneVerificationConfig `mapstructure:"phone_verification" group:"phone_verification"`
 	Registration            RegistrationConfig      `mapstructure:"registration" group:"registration"`
 	Captcha                 CaptchaConfig           `mapstructure:"captcha" group:"captcha"`
 	SharedSecurity          SharedSecurityConfig    `mapstructure:"shared_security" group:"shared_security"`
@@ -240,6 +241,17 @@ type EmailVerificationConfig struct {
 	VerifyURL string        `mapstructure:"verify_url" description:"absolute browser URL used to complete email verification"`
 }
 
+// PhoneVerificationConfig controls proof of ownership for a principal's phone
+// number. Delivery uses the shared Notification configuration: there is no SMS
+// vendor here, only the message the notification service is asked to send.
+//
+// There is no verify URL, because a number is proven by a code typed back into
+// the session that asked for it rather than by following a link.
+type PhoneVerificationConfig struct {
+	Enabled bool          `mapstructure:"enabled" description:"enable phone number verification" default:"false"`
+	CodeTTL time.Duration `mapstructure:"code_ttl" description:"single-use phone verification code lifetime" default:"10m"`
+}
+
 // PasskeyConfig pins the WebAuthn relying party trust boundary. Values are
 // deployment configuration and are never inferred from browser headers.
 type PasskeyConfig struct {
@@ -310,6 +322,11 @@ type Claims struct {
 	PreferredUsername string    `json:"preferred_username,omitempty"`
 	Email             string    `json:"email,omitempty"`
 	EmailVerified     bool      `json:"email_verified,omitempty"`
+	// Phone and PhoneVerified are read from the current profile for a view, the
+	// same as the address beside them. Nothing writes them into a token payload:
+	// a number is a contact, not an assertion a relying party needs.
+	Phone         string `json:"phone,omitempty"`
+	PhoneVerified bool   `json:"phone_verified,omitempty"`
 	// Subject is the OIDC protocol subject. Internal database identity and
 	// authorization scope use the snowflake fields below.
 	//

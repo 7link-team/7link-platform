@@ -216,6 +216,9 @@ func NewWebService(cfg authnext.Config, repository *Repository, options ...WebOp
 	if service.cfg.EmailVerification.TokenTTL <= 0 {
 		service.cfg.EmailVerification.TokenTTL = 24 * time.Hour
 	}
+	if service.cfg.PhoneVerification.CodeTTL <= 0 {
+		service.cfg.PhoneVerification.CodeTTL = 10 * time.Minute
+	}
 	if service.cfg.Notification.PollInterval <= 0 {
 		service.cfg.Notification.PollInterval = 5 * time.Second
 	}
@@ -271,6 +274,9 @@ func NewWebService(cfg authnext.Config, repository *Repository, options ...WebOp
 		return nil, err
 	}
 	if err := service.configureEmailVerification(); err != nil {
+		return nil, err
+	}
+	if err := service.configurePhoneVerification(); err != nil {
 		return nil, err
 	}
 	if err := service.configureRegistration(); err != nil {

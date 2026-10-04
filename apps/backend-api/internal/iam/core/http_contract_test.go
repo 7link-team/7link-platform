@@ -112,6 +112,7 @@ iam-revoke-role-permission|DELETE|/roles/{role_id}/permissions/{permission_code}
 iam-set-role-permission-condition|PUT|/roles/{role_id}/permissions/{permission_code}/condition
 iam-clear-role-permission-condition|DELETE|/roles/{role_id}/permissions/{permission_code}/condition
 iam-list-role-members|GET|/roles/{role_id}/members
+iam-list-role-member-grants|GET|/roles/{role_id}/member-grants
 iam-add-role-member|PUT|/roles/{role_id}/members/{principal_id}
 iam-remove-role-member|DELETE|/roles/{role_id}/members/{principal_id}
 iam-list-role-directory-bindings|GET|/roles/{role_id}/directory-bindings
@@ -146,7 +147,7 @@ func TestCoreRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 119)
+	require.Len(t, got, 120)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 

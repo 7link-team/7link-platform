@@ -149,6 +149,7 @@ var acceptedCreates = map[string]string{
 	"authn-create-registration":               "self-registration never reveals whether the address is taken",
 	"authn-create-email-verification-request": "a verification mail is queued without confirming the address",
 	"authn-create-password-recovery-request":  "a recovery mail is queued without confirming the account",
+	"authn-create-phone-verification-request": "a verification message is queued without confirming the number",
 }
 
 // TestComposedOpenAPICreatesAnswer201 keeps one success status for creation: an

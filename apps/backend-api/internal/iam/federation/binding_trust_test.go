@@ -75,7 +75,7 @@ func TestLegacyBindingRequiresReviewedOwnershipAndIndependentRepair(t *testing.T
 
 func TestLegacyQuarantineInvalidatesOnceAndPreservesSource(t *testing.T) {
 	env, authenticator, principalID, cookie := newIdentityLinkEnvironment(t)
-	require.NoError(t, env.db.AutoMigrate(&authnmodel.PersonalToken{}, &authnmodel.AccountViewToken{}, &authnmodel.MFAChallenge{}, &authnmodel.PasskeyChallenge{}, &authnmodel.StepUpChallenge{}, &authnmodel.PasswordRecoveryToken{}, &authnmodel.EmailVerificationToken{}))
+	require.NoError(t, env.db.AutoMigrate(&authnmodel.PersonalToken{}, &authnmodel.AccountViewToken{}, &authnmodel.MFAChallenge{}, &authnmodel.PasskeyChallenge{}, &authnmodel.StepUpChallenge{}, &authnmodel.PasswordRecoveryToken{}, &authnmodel.EmailVerificationToken{}, &authnmodel.PhoneVerificationCode{}))
 	instance := authn.NewModule(env.runtime, authn.Config{})
 	instance.Service = authenticator
 	services := module.NewServices()
@@ -236,7 +236,7 @@ func (s *pausedFederationSessionWriter) CreateSessionOn(ctx context.Context, tx 
 
 func TestSourceReplacementRacingSessionIssuanceLeavesNoUsableOldSession(t *testing.T) {
 	env, authenticator, principalID, _ := newIdentityLinkEnvironment(t)
-	require.NoError(t, env.db.AutoMigrate(&authnmodel.PersonalToken{}, &authnmodel.AccountViewToken{}, &authnmodel.MFAChallenge{}, &authnmodel.PasskeyChallenge{}, &authnmodel.StepUpChallenge{}, &authnmodel.PasswordRecoveryToken{}, &authnmodel.EmailVerificationToken{}))
+	require.NoError(t, env.db.AutoMigrate(&authnmodel.PersonalToken{}, &authnmodel.AccountViewToken{}, &authnmodel.MFAChallenge{}, &authnmodel.PasskeyChallenge{}, &authnmodel.StepUpChallenge{}, &authnmodel.PasswordRecoveryToken{}, &authnmodel.EmailVerificationToken{}, &authnmodel.PhoneVerificationCode{}))
 	instance := authn.NewModule(env.runtime, authn.Config{})
 	instance.Service = authenticator
 	services := module.NewServices()

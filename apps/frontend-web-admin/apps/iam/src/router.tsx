@@ -402,6 +402,12 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                path: "/admin/:tenantID/device",
+                lazy: async () => ({
+                  Component: (await import("./app/device/page")).default,
+                }),
+              },
+              {
                 path: "/admin/:tenantID/scim-directories",
                 lazy: async () => ({
                   Component: (await import("./app/scim-directories/page"))

@@ -20,6 +20,7 @@ func main() {
 		model.PasswordRecoveryToken{},
 		model.NotificationOutbox{},
 		model.EmailVerificationToken{},
+		model.PhoneVerificationCode{},
 		model.StepUpChallenge{},
 		model.ReauthenticationChallenge{},
 		model.PersonalToken{},

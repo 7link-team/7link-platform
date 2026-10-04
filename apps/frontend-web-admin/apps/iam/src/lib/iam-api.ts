@@ -133,6 +133,8 @@ export interface Session {
   preferred_username?: string
   email?: string
   email_verified?: boolean
+  phone?: string
+  phone_verified?: boolean
   organization_id?: string
 }
 
@@ -837,7 +839,30 @@ export interface EffectiveMenu {
 }
 
 export type OAuthGrantType =
-  "authorization_code" | "refresh_token" | "client_credentials"
+  | "authorization_code"
+  | "refresh_token"
+  | "client_credentials"
+  | "urn:ietf:params:oauth:grant-type:device_code"
+  | "urn:ietf:params:oauth:grant-type:token-exchange"
+
+/** A device authorization request somebody is being asked to approve. It names
+ *  the client and the scopes and nothing about the device, because nothing about
+ *  the device is known. */
+/** One role assignment as an administration screen reads it: who holds the role
+ *  and when it stops granting. A null end is a standing assignment. */
+export interface RoleMemberGrant {
+  principal_id: string
+  expires_at?: string | null
+  created_at: string
+}
+
+export interface DeviceRequest {
+  client_id: string
+  client_name: string
+  scope: string
+  status: string
+  expires_at: string
+}
 
 export type OAuthConsentMode = "implicit" | "explicit"
 
@@ -2528,6 +2553,28 @@ export function createIamApi(
       request<{ changed: boolean }>(apiRoute("post", "/password-recoveries"), {
         body: JSON.stringify(body),
       }),
+    deviceRequest: (userCode: string) =>
+      request<DeviceRequest>(
+        apiRoute("get", "/tenants/{tenant_id}/oauth/device-requests", {
+          path: { tenant_id: tenantID() },
+          query: { user_code: userCode },
+        })
+      ),
+    decideDeviceRequest: (userCode: string, approve: boolean) =>
+      request<{ status: string }>(
+        apiRoute("post", "/tenants/{tenant_id}/oauth/device-requests/decisions", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify({ user_code: userCode, approve }) }
+      ),
+    startPhoneVerification: () =>
+      request<{ accepted: boolean }>(
+        apiRoute("post", "/phone-verifications/requests")
+      ),
+    completePhoneVerification: (code: string) =>
+      request<{ verified: boolean }>(apiRoute("post", "/phone-verifications"), {
+        body: JSON.stringify({ code }),
+      }),
     startEmailVerification: () =>
       request<{ accepted: boolean }>(
         apiRoute("post", "/email-verifications/requests")
@@ -3415,11 +3462,18 @@ export function createIamApi(
       requestAllPages<string>(
         pagedRoute("/roles/{role_id}/members", { path: { role_id: id } })
       ),
-    addRoleMember: (id: string, subject: string) =>
+    // A role may be granted until a moment. Sending no end makes it standing,
+    // which is what this did before an end could be named at all.
+    roleMemberGrants: (id: string) =>
+      requestAllPages<RoleMemberGrant>(
+        pagedRoute("/roles/{role_id}/member-grants", { path: { role_id: id } })
+      ),
+    addRoleMember: (id: string, subject: string, expiresAt?: string | null) =>
       request(
         apiRoute("put", "/roles/{role_id}/members/{principal_id}", {
           path: { role_id: id, principal_id: subject },
-        })
+        }),
+        { body: JSON.stringify({ expires_at: expiresAt ?? null }) }
       ),
     removeRoleMember: (id: string, subject: string) =>
       request(

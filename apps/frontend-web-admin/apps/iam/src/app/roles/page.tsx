@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react"
 import {
+  CalendarClock,
   Database,
   ExternalLink,
   KeyRound,
@@ -52,6 +53,7 @@ import {
   type Permission,
   type Role,
   type RoleDirectoryBinding,
+  type RoleMemberGrant,
   type RoleDataScope,
   type RolePermissionGrant,
 } from "../../lib/iam-api"
@@ -122,6 +124,7 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
     roleID: string
     grants: RolePermissionGrant[]
     boundMembers: string[]
+    memberEnds: Record<string, string | null>
     members: WorkspaceMember[]
     bindings: RoleDirectoryBinding[]
     groups: Group[]
@@ -132,6 +135,7 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
     roleID: "",
     grants: [],
     boundMembers: [],
+    memberEnds: {},
     members: [],
     bindings: [],
     groups: [],
@@ -184,6 +188,9 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
     void Promise.allSettled([
       api.rolePermissionGrants(selected.id),
       api.roleMembers(selected.id),
+      system
+        ? Promise.resolve([] as RoleMemberGrant[])
+        : iamApi.roleMemberGrants(selected.id),
       allowed("user_view") ? api.members() : Promise.resolve([]),
       system ? Promise.resolve([]) : iamApi.roleDirectoryBindings(selected.id),
       !system && allowed("group_view") ? iamApi.groups() : Promise.resolve([]),
@@ -200,6 +207,7 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
       ([
         nextGrants,
         nextBoundMembers,
+        nextMemberGrants,
         nextMembers,
         nextBindings,
         nextGroups,
@@ -229,6 +237,15 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
           roleID: selected.id,
           grants: nextGrants.value,
           boundMembers: nextBoundMembers.value,
+          memberEnds:
+            nextMemberGrants.status === "fulfilled"
+              ? Object.fromEntries(
+                  nextMemberGrants.value.map((grant) => [
+                    grant.principal_id,
+                    grant.expires_at ?? null,
+                  ])
+                )
+              : {},
           members: nextMembers.status === "fulfilled" ? nextMembers.value : [],
           bindings: nextBindings.value,
           groups: nextGroups.status === "fulfilled" ? nextGroups.value : [],
@@ -253,6 +270,7 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
   const grants = loadingDetails ? [] : details.grants
   const boundMembers = loadingDetails ? [] : details.boundMembers
   const members = loadingDetails ? [] : details.members
+  const memberEnds = loadingDetails ? {} : details.memberEnds
   const directoryBindings = loadingDetails ? [] : details.bindings
   const directoryGroups = loadingDetails ? [] : details.groups
 
@@ -401,6 +419,45 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
     }
   }
 
+  // Both listings are read back: one says who holds the role, the other until
+  // when, and an edit can change either.
+  const refreshMembers = async () => {
+    if (!selected) return
+    const nextBoundMembers = await api.roleMembers(selected.id)
+    const nextEnds = system
+      ? []
+      : await iamApi.roleMemberGrants(selected.id)
+    setDetails((current) =>
+      current.roleID === selected.id
+        ? {
+            ...current,
+            boundMembers: nextBoundMembers,
+            memberEnds: Object.fromEntries(
+              nextEnds.map((grant) => [
+                grant.principal_id,
+                grant.expires_at ?? null,
+              ])
+            ),
+          }
+        : current
+    )
+  }
+
+  // Granting is a put of the whole assignment, so an empty end removes one.
+  const setMemberEnd = async (subject: string, end: string | null) => {
+    if (!selected) return
+    setBusy(true)
+    setError("")
+    try {
+      await api.addRoleMember(selected.id, subject, end)
+      await refreshMembers()
+    } catch (cause) {
+      setError((cause as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const toggleMember = async (subject: string, checked: boolean) => {
     if (!selected) return
     setBusy(true)
@@ -408,12 +465,7 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
     try {
       if (checked) await api.addRoleMember(selected.id, subject)
       else await api.removeRoleMember(selected.id, subject)
-      const nextBoundMembers = await api.roleMembers(selected.id)
-      setDetails((current) =>
-        current.roleID === selected.id
-          ? { ...current, boundMembers: nextBoundMembers }
-          : current
-      )
+      await refreshMembers()
     } catch (cause) {
       setError((cause as Error).message)
     } finally {
@@ -839,6 +891,18 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
                               <small className="mt-1 block text-xs break-words text-muted-foreground">
                                 {member.email || member.subject}
                               </small>
+                              {!system &&
+                                boundMembers.includes(member.subject) && (
+                                  <RoleMemberEnd
+                                    end={memberEnds[member.subject] ?? null}
+                                    disabled={
+                                      busy || !allowed("role_manage_member")
+                                    }
+                                    onChange={(value) =>
+                                      void setMemberEnd(member.subject, value)
+                                    }
+                                  />
+                                )}
                             </span>
                             {member.status !== "active" && (
                               <Badge variant="destructive">
@@ -1267,6 +1331,93 @@ function localTimezone(): string {
 
 function roleWorkspaceView(value: string | null): RoleWorkspaceView {
   return value === "assignments" || value === "scope" ? value : "permissions"
+}
+
+function RoleMemberEnd({
+  end,
+  disabled,
+  onChange,
+}: {
+  end: string | null
+  disabled: boolean
+  onChange: (value: string | null) => void
+}) {
+  const t = useTranslations("iam")
+  const [draft, setDraft] = useState(() => localInputValue(end))
+  const [editing, setEditing] = useState(false)
+
+  if (!editing)
+    return (
+      <button
+        type="button"
+        className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-2 hover:underline"
+        data-role-member-end={end ?? ""}
+        disabled={disabled}
+        onClick={(event) => {
+          event.preventDefault()
+          // The draft is taken when the editor opens, which is the only moment it
+          // can disagree with what the service holds.
+          setDraft(localInputValue(end))
+          setEditing(true)
+        }}
+      >
+        <CalendarClock size={13} />
+        {end
+          ? `${t("roleMemberUntil")} ${new Date(end).toLocaleString()}`
+          : t("roleMemberNoEnd")}
+      </button>
+    )
+
+  return (
+    <span
+      className="mt-2 flex flex-wrap items-center gap-2"
+      onClick={(event) => event.preventDefault()}
+    >
+      <Input
+        type="datetime-local"
+        className="h-8 w-auto text-xs"
+        value={draft}
+        disabled={disabled}
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        disabled={disabled}
+        onClick={() => {
+          setEditing(false)
+          onChange(draft ? new Date(draft).toISOString() : null)
+        }}
+      >
+        {t("roleMemberEndSave")}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          setDraft(localInputValue(end))
+          setEditing(false)
+        }}
+      >
+        {t("cancel")}
+      </Button>
+    </span>
+  )
+}
+
+// localInputValue renders an instant for a datetime-local control, which reads
+// and writes local wall-clock time with no zone of its own.
+function localInputValue(iso: string | null): string {
+  if (!iso) return ""
+  const moment = new Date(iso)
+  if (Number.isNaN(moment.getTime())) return ""
+  const pad = (value: number) => String(value).padStart(2, "0")
+  return (
+    `${moment.getFullYear()}-${pad(moment.getMonth() + 1)}-${pad(moment.getDate())}` +
+    `T${pad(moment.getHours())}:${pad(moment.getMinutes())}`
+  )
 }
 
 function DirectoryBindingsSection({

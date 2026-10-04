@@ -34,6 +34,21 @@ type NotificationOutbox struct {
 
 func (NotificationOutbox) TableName() string { return "iam_notification_outbox" }
 
+// PhoneVerificationCode is the code a person reads off a message and types back.
+// The number is kept beside it so that changing the number invalidates it: a code
+// proves the number it was sent to and nothing else.
+type PhoneVerificationCode struct {
+	PrincipalID guid.ID    `gorm:"column:principal_id;primaryKey;autoIncrement:false"`
+	Phone       string     `gorm:"column:phone;type:text;not null"`
+	Code        string     `gorm:"column:code;type:text;not null"`
+	Attempts    int        `gorm:"column:attempts;not null"`
+	CreatedAt   time.Time  `gorm:"column:created_at;not null"`
+	ExpiresAt   time.Time  `gorm:"column:expires_at;not null"`
+	ConsumedAt  *time.Time `gorm:"column:consumed_at"`
+}
+
+func (PhoneVerificationCode) TableName() string { return "iam_phone_verification_codes" }
+
 type EmailVerificationToken struct {
 	TokenHMAC   string     `gorm:"column:token_hmac;type:text;primaryKey"`
 	PrincipalID guid.ID    `gorm:"column:principal_id;not null"`

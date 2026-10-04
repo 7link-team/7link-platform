@@ -60,6 +60,11 @@ type PrincipalStateStore struct {
 	// VerifyEmail marks an active principal's pending email verified and clears
 	// its activation requirement, reporting whether a row was in that state.
 	VerifyEmail func(ctx context.Context, db *gorm.DB, id guid.ID, email string, now time.Time) (bool, error)
+
+	// VerifyPhone marks an active principal's number proven. The number is part
+	// of the predicate: a code proves the number it was sent to, so one that
+	// changed in between proves nothing about the number held now.
+	VerifyPhone func(ctx context.Context, db *gorm.DB, id guid.ID, phone string, now time.Time) (bool, error)
 	// SelfRegistered reports whether public self-registration created the
 	// principal. Only such a principal, while still pending, may have its
 	// credential replaced by a later public registration; one a directory,
@@ -161,6 +166,18 @@ func principalStateStore(prefix string) PrincipalStateStore {
 			}
 			return result.RowsAffected == 1, nil
 		},
+		VerifyPhone: func(
+			ctx context.Context, db *gorm.DB, principalID guid.ID, phone string, now time.Time,
+		) (bool, error) {
+			result := db.WithContext(ctx).Table(principalTable).
+				Where("id = ? AND status = ? AND phone = ? AND phone_verified = ?",
+					principalID, "active", phone, false).
+				Updates(map[string]any{"phone_verified": true, "updated_at": now})
+			if result.Error != nil {
+				return false, fmt.Errorf("verify principal phone: %w", result.Error)
+			}
+			return result.RowsAffected == 1, nil
+		},
 		SelfRegistered: func(ctx context.Context, db *gorm.DB, principalID guid.ID) (bool, error) {
 			var row struct{ SelfRegistered bool }
 			err := db.WithContext(ctx).Table(principalTable).
@@ -215,6 +232,9 @@ func unavailablePrincipalStateStore() PrincipalStateStore {
 			return nil, ErrUnavailable
 		},
 		VerifyEmail: func(context.Context, *gorm.DB, guid.ID, string, time.Time) (bool, error) {
+			return false, ErrUnavailable
+		},
+		VerifyPhone: func(context.Context, *gorm.DB, guid.ID, string, time.Time) (bool, error) {
 			return false, ErrUnavailable
 		},
 		SelfRegistered: func(context.Context, *gorm.DB, guid.ID) (bool, error) {

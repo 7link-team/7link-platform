@@ -278,3 +278,43 @@ func TestClosingAnAccountIsNotBlockedByAuthorityThatLapsed(t *testing.T) {
 		requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", principal, registry, end.Add(time.Minute)),
 		"and not after it ends")
 }
+
+func TestTheGrantListingSaysWhenEachAssignmentEnds(t *testing.T) {
+	// The identifier-only listing beside this one cannot answer "until when", and
+	// an administration screen has to show it or an end date is invisible once set.
+	h := newCoreServiceHarness(t)
+	tenant := guid.ID(1)
+	standing, ending := guid.ID(11), guid.ID(22)
+	h.seedMember(t, tenant, standing, MemberActive)
+	h.seedAdditionalMember(t, tenant, ending, MemberActive)
+	role := roleWithPermission(t, h, tenant, "Auditors", "role_view")
+	_, err := h.service.AddMember(t.Context(), tenant, role, standing, nil)
+	require.NoError(t, err)
+	end := grantUntil(t, h, tenant, role, ending, repositoryTestTime.Add(time.Hour))
+
+	grants, total, err := h.service.ListRoleMemberGrantsPage(t.Context(), tenant, role, 0, 50)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	require.Len(t, grants, 2)
+	ends := map[guid.ID]*time.Time{}
+	for _, grant := range grants {
+		ends[grant.PrincipalID] = grant.ExpiresAt
+	}
+	assert.Nil(t, ends[standing], "a standing assignment reports no end")
+	require.NotNil(t, ends[ending])
+	assert.True(t, end.Equal(*ends[ending]), "want %s, got %s", end, *ends[ending])
+
+	// A lapsed assignment is still listed: the row is there, removing it is still
+	// an act, and a screen that hid it would offer to grant a role whose write
+	// then reports no change.
+	*h.now = end.Add(time.Hour)
+	grants, total, err = h.service.ListRoleMemberGrantsPage(t.Context(), tenant, role, 0, 50)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	assert.Len(t, grants, 2)
+
+	_, _, err = h.service.ListRoleMemberGrantsPage(t.Context(), 0, role, 0, 50)
+	assert.ErrorIs(t, err, ErrInvalidArgument)
+	_, _, err = h.service.ListRoleMemberGrantsPage(t.Context(), tenant, guid.ID(999999), 0, 50)
+	assert.ErrorIs(t, err, ErrRoleNotFound)
+}

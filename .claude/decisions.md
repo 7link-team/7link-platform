@@ -1,5 +1,60 @@
 # Decisions
 
+## D101 - A Phone Is Proven By A Code, In Its Own Credential (2026-10-04)
+
+Decision: `iam_phone_verification_codes` holds one outstanding code per
+principal, with the number it was sent to beside it. A separate table from the
+email credential, not a channel column on it: an email credential is addressed
+by the link token in its primary key and a phone has no link, so folding one
+into the other would mean inventing a primary key for something that has none.
+What the two flows genuinely share is shared -- the six-digit generator
+(`verificationCode`, no longer named for email), the attempt ceiling, the
+notification outbox, and the audit shape.
+
+The primary key makes "one live code" true rather than hoped for: asking again
+replaces the code, so the last message somebody received is the one that works,
+which is the one they will type.
+
+Completion is authenticated and carries the code alone. The session says whose
+number this is, so no request, URL or log line has to hold a phone number --
+unlike the email flow, whose link arrives in a mailbox that may be on another
+device and therefore must be completable without a session.
+
+The number is stored with the code because a code proves the number it was sent
+to and nothing else. A number changed while a code is outstanding leaves that
+code proving nothing about the number held now, so it is refused -- and not
+counted as a wrong guess, because changing a number is not an attempt at
+guessing one.
+
+**The attempt counter is written outside the transaction that promotes the
+number.** A refusal leaves that transaction by returning an error, which rolls
+back everything it did -- including the increment. A test found this: five wrong
+guesses, then the right code still worked. The email flow records its attempts
+outside its transaction for the same reason, which is now the reason written
+down rather than inferred.
+
+Every property is enforced twice, in Go and in the write predicate
+(`consumed_at IS NULL AND expires_at > ? AND attempts < ?` on the consume,
+`phone = ? AND phone_verified = ?` on the promotion). Mutation testing had to
+remove both halves to turn a test red, which is the point: either half alone
+still refuses.
+
+The write to `phone_verified` goes through a connector identity publishes
+(`PrincipalStateStore.VerifyPhone`), like `VerifyEmail` before it, because the
+column belongs to identity. The number is in its predicate, so the write that
+records the proof re-checks the thing it proves.
+
+No SMS vendor: delivery is the POST to the notification service the outbox
+already makes, with a new `kind`. The code lives minutes rather than days, and
+the configuration refuses anything outside one minute to one hour -- six digits
+read off a message already in somebody's hand is worth guessing if it is live
+for a day.
+
+Verifying a number still does not make it a recovery or sign-in channel, so the
+constraint recorded in D100 -- that a number which can recover an account must
+revoke sessions when it changes -- remains open for whoever builds that.
+Status: IMPLEMENTED.
+
 ## D100 - A Phone Number Is A Contact, Not An Identity (2026-10-04)
 
 Decision: `iam_principals` carries `phone` and `phone_verified`, indexed and not

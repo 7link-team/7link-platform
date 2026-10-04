@@ -25,6 +25,8 @@ type meOutput struct {
 	PreferredUsername *string    `json:"preferred_username,omitempty"`
 	Email             *string    `json:"email,omitempty"`
 	EmailVerified     *bool      `json:"email_verified,omitempty"`
+	Phone             *string    `json:"phone,omitempty"`
+	PhoneVerified     *bool      `json:"phone_verified,omitempty"`
 	OrganizationID    string     `json:"organization_id,omitempty"`
 	ACR               int        `json:"acr"`
 	AMR               []string   `json:"amr,omitempty"`
@@ -153,6 +155,23 @@ type emailVerificationStartInput struct {
 type emailVerificationCompleteInput struct {
 	Origin string `header:"Origin" hidden:"true"`
 	Body   emailVerificationCredential
+}
+
+type phoneVerificationStartInput struct {
+	Authorization string `header:"Authorization" hidden:"true"`
+	Cookie        string `header:"Cookie" hidden:"true"`
+	Origin        string `header:"Origin" hidden:"true"`
+}
+
+// phoneVerificationCompleteInput carries the code and nothing else. The session
+// says whose number this is, so no request, log or URL has to hold the number.
+type phoneVerificationCompleteInput struct {
+	Authorization string `header:"Authorization" hidden:"true"`
+	Cookie        string `header:"Cookie" hidden:"true"`
+	Origin        string `header:"Origin" hidden:"true"`
+	Body          struct {
+		Code string `json:"code" minLength:"6" maxLength:"6" pattern:"^[0-9]{6}$"`
+	}
 }
 
 type emailVerificationCredential struct {
@@ -803,6 +822,51 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 				return nil, huma.Error503ServiceUnavailable(authni18n.EmailVerificationUnavailable)
 			default:
 				return nil, huma.Error503ServiceUnavailable(authni18n.EmailVerificationUnavailable)
+			}
+		}
+		return respx.OK(ctx, map[string]bool{"verified": true}), nil
+	})
+	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
+		OperationID: "authn-create-phone-verification-request", Method: http.MethodPost,
+		Path:     "/phone-verifications/requests",
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
+		Summary:  "Queue a verification code for the authenticated principal phone number",
+		Tags:     []string{"authentication"}, DefaultStatus: http.StatusAccepted,
+		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusServiceUnavailable},
+	}, func(ctx context.Context, in *phoneVerificationStartInput) (*respx.Body[map[string]bool], error) {
+		if err := web.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, in.Authorization); err != nil {
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
+		}
+		if err := web.BeginPhoneVerification(ctx, in.Authorization, in.Cookie); err != nil {
+			switch {
+			case errors.Is(err, authnext.ErrInvalidSession), errors.Is(err, authnext.ErrInvalidToken), errors.Is(err, authnext.ErrInvalidBearer):
+				return nil, huma.Error401Unauthorized(respx.Unauthorized)
+			case errors.Is(err, authnext.ErrPhoneRequired):
+				return nil, huma.Error409Conflict(authni18n.PrimaryPhoneRequired)
+			default:
+				return nil, huma.Error503ServiceUnavailable(authni18n.PhoneVerificationUnavailable)
+			}
+		}
+		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
+	})
+	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
+		OperationID: "authn-create-phone-verification", Method: http.MethodPost,
+		DefaultStatus: http.StatusCreated, Path: "/phone-verifications",
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
+		Summary:  "Consume a phone verification code", Tags: []string{"authentication"},
+		Errors: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusServiceUnavailable},
+	}, func(ctx context.Context, in *phoneVerificationCompleteInput) (*respx.Body[map[string]bool], error) {
+		if err := web.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, in.Authorization); err != nil {
+			return nil, huma.Error403Forbidden(respx.CSRFRejected)
+		}
+		if err := web.CompletePhoneVerification(ctx, in.Authorization, in.Cookie, in.Body.Code); err != nil {
+			switch {
+			case errors.Is(err, authnext.ErrInvalidSession), errors.Is(err, authnext.ErrInvalidToken), errors.Is(err, authnext.ErrInvalidBearer):
+				return nil, huma.Error401Unauthorized(respx.Unauthorized)
+			case errors.Is(err, authnext.ErrInvalidPhoneVerification):
+				return nil, huma.Error400BadRequest(authni18n.InvalidPhoneVerificationCode)
+			default:
+				return nil, huma.Error503ServiceUnavailable(authni18n.PhoneVerificationUnavailable)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"verified": true}), nil

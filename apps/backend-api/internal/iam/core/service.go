@@ -503,6 +503,19 @@ func (s *Service) changeMember(
 	return changed, err
 }
 
+// ListRoleMemberGrantsPage answers what an administration screen shows beside
+// each holder: whether the assignment ends, and when.
+func (s *Service) ListRoleMemberGrantsPage(
+	ctx context.Context,
+	tenantID, roleID guid.ID,
+	offset, limit int,
+) ([]RoleMemberGrant, int64, error) {
+	if err := validateRoleRef(tenantID, roleID); err != nil {
+		return nil, 0, err
+	}
+	return s.repo.ListRoleMemberGrantsPage(ctx, tenantID, roleID, offset, limit)
+}
+
 func validateTenant(tenantID guid.ID) error {
 	if tenantID.Zero() {
 		return fmt.Errorf("%w: invalid tenant id", ErrInvalidArgument)

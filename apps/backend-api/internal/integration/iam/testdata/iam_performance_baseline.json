@@ -1697,7 +1697,7 @@
                             "Total Cost": 8.30,
                             "Plan Rows": 1,
                             "Plan Width": 48,
-                            "Index Cond": "((tenant_id = 91001) AND ((status)::text = 'active'::text COLLATE \"C\") AND (principal_id = '39985979045445632'::bigint))"
+                            "Index Cond": "((tenant_id = 91001) AND ((status)::text = 'active'::text COLLATE \"C\") AND (principal_id = '40015124559298560'::bigint))"
                           }
                         ]
                       },
@@ -1712,7 +1712,7 @@
                         "Total Cost": 0.00,
                         "Plan Rows": 1,
                         "Plan Width": 24,
-                        "Filter": "((tenant_id = 91001) AND (principal_id = '39985979045445632'::bigint))"
+                        "Filter": "((tenant_id = 91001) AND (principal_id = '40015124559298560'::bigint))"
                       }
                     ]
                   }
@@ -1749,7 +1749,7 @@
                     "Total Cost": 8.30,
                     "Plan Rows": 1,
                     "Plan Width": 8,
-                    "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '39985979045445632'::bigint))"
+                    "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '40015124559298560'::bigint))"
                   }
                 ]
               }
@@ -1782,7 +1782,7 @@
                     "Total Cost": 1.02,
                     "Plan Rows": 1,
                     "Plan Width": 8,
-                    "Filter": "(principal_id = '39985979045445632'::bigint)"
+                    "Filter": "(principal_id = '40015124559298560'::bigint)"
                   }
                 ]
               }
@@ -1850,7 +1850,7 @@
                     "Total Cost": 8.30,
                     "Plan Rows": 1,
                     "Plan Width": 8,
-                    "Index Cond": "(id = '39985979045445632'::bigint)",
+                    "Index Cond": "(id = '40015124559298560'::bigint)",
                     "Filter": "((status)::text = 'active'::text)"
                   }
                 ]
@@ -1987,8 +1987,8 @@
                                             "Total Cost": 6.05,
                                             "Plan Rows": 1,
                                             "Plan Width": 24,
-                                            "Index Cond": "((tenant_id = 91001) AND (principal_id = '39985979045445632'::bigint))",
-                                            "Filter": "((expires_at IS NULL) OR (expires_at \u003e '2026-10-03 20:25:01.858+00'::timestamp with time zone))"
+                                            "Index Cond": "((tenant_id = 91001) AND (principal_id = '40015124559298560'::bigint))",
+                                            "Filter": "((expires_at IS NULL) OR (expires_at \u003e '2026-10-04 01:14:33.941+00'::timestamp with time zone))"
                                           },
                                           {
                                             "Node Type": "Index Only Scan",
@@ -2003,7 +2003,7 @@
                                             "Total Cost": 8.30,
                                             "Plan Rows": 1,
                                             "Plan Width": 16,
-                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '39985979045445632'::bigint))"
+                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '40015124559298560'::bigint))"
                                           }
                                         ]
                                       },
@@ -2030,7 +2030,7 @@
                                             "Total Cost": 0.00,
                                             "Plan Rows": 1,
                                             "Plan Width": 32,
-                                            "Filter": "((starts_at \u003c= '2026-10-03 20:25:01.858+00'::timestamp with time zone) AND (ends_at \u003e '2026-10-03 20:25:01.858+00'::timestamp with time zone) AND (tenant_id = 91001) AND (principal_id = '39985979045445632'::bigint))"
+                                            "Filter": "((starts_at \u003c= '2026-10-04 01:14:33.941+00'::timestamp with time zone) AND (ends_at \u003e '2026-10-04 01:14:33.941+00'::timestamp with time zone) AND (tenant_id = 91001) AND (principal_id = '40015124559298560'::bigint))"
                                           },
                                           {
                                             "Node Type": "Index Only Scan",
@@ -2045,7 +2045,7 @@
                                             "Total Cost": 8.30,
                                             "Plan Rows": 1,
                                             "Plan Width": 16,
-                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '39985979045445632'::bigint))"
+                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '40015124559298560'::bigint))"
                                           }
                                         ]
                                       },
@@ -2126,7 +2126,7 @@
                                                 "Total Cost": 0.00,
                                                 "Plan Rows": 1,
                                                 "Plan Width": 24,
-                                                "Filter": "(((starts_at IS NULL) OR (starts_at \u003c= '2026-10-03 20:25:01.858+00'::timestamp with time zone)) AND ((ends_at IS NULL) OR (ends_at \u003e '2026-10-03 20:25:01.858+00'::timestamp with time zone)) AND (tenant_id = 91001) AND (principal_id = '39985979045445632'::bigint))"
+                                                "Filter": "(((starts_at IS NULL) OR (starts_at \u003c= '2026-10-04 01:14:33.941+00'::timestamp with time zone)) AND ((ends_at IS NULL) OR (ends_at \u003e '2026-10-04 01:14:33.941+00'::timestamp with time zone)) AND (tenant_id = 91001) AND (principal_id = '40015124559298560'::bigint))"
                                               }
                                             ]
                                           },
@@ -2143,7 +2143,7 @@
                                             "Total Cost": 8.30,
                                             "Plan Rows": 1,
                                             "Plan Width": 16,
-                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text COLLATE \"C\") AND (principal_id = '39985979045445632'::bigint))"
+                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text COLLATE \"C\") AND (principal_id = '40015124559298560'::bigint))"
                                           }
                                         ]
                                       }
@@ -2239,7 +2239,7 @@
                                 "Total Cost": 1.92,
                                 "Plan Rows": 1,
                                 "Plan Width": 16,
-                                "Filter": "((deleted_at IS NULL) AND ((expires_at IS NULL) OR (expires_at \u003e '2026-10-03 20:25:01.862+00'::timestamp with time zone)) AND (principal_id = '39985980739944448'::bigint) AND (owner_tenant_id = 91001) AND ((status)::text = 'active'::text COLLATE \"C\"))"
+                                "Filter": "((deleted_at IS NULL) AND ((expires_at IS NULL) OR (expires_at \u003e '2026-10-04 01:14:33.946+00'::timestamp with time zone)) AND (principal_id = '40015126253797376'::bigint) AND (owner_tenant_id = 91001) AND ((status)::text = 'active'::text COLLATE \"C\"))"
                               },
                               {
                                 "Node Type": "Index Scan",
@@ -2254,7 +2254,7 @@
                                 "Total Cost": 8.30,
                                 "Plan Rows": 1,
                                 "Plan Width": 8,
-                                "Index Cond": "(id = '39985980739944448'::bigint)",
+                                "Index Cond": "(id = '40015126253797376'::bigint)",
                                 "Filter": "((NOT activation_required) AND ((status)::text = 'active'::text COLLATE \"C\"))"
                               }
                             ]
@@ -2272,7 +2272,7 @@
                             "Total Cost": 8.30,
                             "Plan Rows": 1,
                             "Plan Width": 16,
-                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text COLLATE \"C\") AND (principal_id = '39985980739944448'::bigint))"
+                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text COLLATE \"C\") AND (principal_id = '40015126253797376'::bigint))"
                           }
                         ]
                       },
@@ -2346,7 +2346,7 @@
                             "Total Cost": 1.31,
                             "Plan Rows": 1,
                             "Plan Width": 354,
-                            "Filter": "((directory_id = '39985980740075520'::bigint) AND (id = '39985980740206592'::bigint))"
+                            "Filter": "((directory_id = '40015126253928448'::bigint) AND (id = '40015126254059520'::bigint))"
                           },
                           {
                             "Node Type": "Seq Scan",
@@ -2359,7 +2359,7 @@
                             "Total Cost": 1.96,
                             "Plan Rows": 1,
                             "Plan Width": 31,
-                            "Filter": "((id = '39985980740075520'::bigint) AND (tenant_id = 91001))"
+                            "Filter": "((id = '40015126253928448'::bigint) AND (tenant_id = 91001))"
                           }
                         ]
                       },
@@ -2447,7 +2447,7 @@
                                 "Total Cost": 6.05,
                                 "Plan Rows": 1,
                                 "Plan Width": 66,
-                                "Index Cond": "((directory_id = '39985980740075520'::bigint) AND ((resource_type)::text = 'User'::text))",
+                                "Index Cond": "((directory_id = '40015126253928448'::bigint) AND ((resource_type)::text = 'User'::text))",
                                 "Filter": "((deleted_at IS NULL) AND (resource_id = '8900000000000001'::bigint))"
                               },
                               {
@@ -2461,7 +2461,7 @@
                                 "Total Cost": 1.80,
                                 "Plan Rows": 1,
                                 "Plan Width": 16,
-                                "Filter": "(id = '39985980740075520'::bigint)"
+                                "Filter": "(id = '40015126253928448'::bigint)"
                               }
                             ]
                           },
@@ -2506,8 +2506,8 @@
         },
         {
           "path": "session_lookup",
-          "sql_template": "SELECT principal.id, principal.login_name, principal.email, principal.email_verified, principal.activation_required, principal.display_name, principal.status, principal.created_at, principal.updated_at, COALESCE(credential.credential_version, ?) AS credential_version FROM iam_principals AS principal LEFT JOIN iam_credentials AS credential ON credential.principal_id = principal.id WHERE principal.id = ? AND principal.status = ? AND principal.activation_required = false LIMIT ?",
-          "fingerprint": "241ff31314f1b2ba6c8a384706d6b6a0e396675c24b00c4857553f57637ccdea",
+          "sql_template": "SELECT principal.id, principal.login_name, principal.email, principal.email_verified, principal.phone, principal.phone_verified, principal.activation_required, principal.display_name, principal.status, principal.created_at, principal.updated_at, COALESCE(credential.credential_version, ?) AS credential_version FROM iam_principals AS principal LEFT JOIN iam_credentials AS credential ON credential.principal_id = principal.id WHERE principal.id = ? AND principal.status = ? AND principal.activation_required = false LIMIT ?",
+          "fingerprint": "373b1d4e86940a1a561ab454dbbb0fed0519b5f9a698b1538fe39c6e2c7bca85",
           "plan": [
             {
               "Plan": {
@@ -2517,7 +2517,7 @@
                 "Startup Cost": 0.28,
                 "Total Cost": 9.35,
                 "Plan Rows": 1,
-                "Plan Width": 89,
+                "Plan Width": 91,
                 "Plans": [
                   {
                     "Node Type": "Nested Loop",
@@ -2528,7 +2528,7 @@
                     "Startup Cost": 0.28,
                     "Total Cost": 9.35,
                     "Plan Rows": 1,
-                    "Plan Width": 89,
+                    "Plan Width": 91,
                     "Inner Unique": true,
                     "Plans": [
                       {
@@ -2543,8 +2543,8 @@
                         "Startup Cost": 0.28,
                         "Total Cost": 8.30,
                         "Plan Rows": 1,
-                        "Plan Width": 81,
-                        "Index Cond": "(id = '39985979045445632'::bigint)",
+                        "Plan Width": 83,
+                        "Index Cond": "(id = '40015124559298560'::bigint)",
                         "Filter": "((NOT activation_required) AND ((status)::text = 'active'::text))"
                       },
                       {
@@ -2558,7 +2558,7 @@
                         "Total Cost": 1.04,
                         "Plan Rows": 1,
                         "Plan Width": 16,
-                        "Filter": "(principal_id = '39985979045445632'::bigint)"
+                        "Filter": "(principal_id = '40015124559298560'::bigint)"
                       }
                     ]
                   }
@@ -2595,8 +2595,8 @@
                     "Total Cost": 8.30,
                     "Plan Rows": 1,
                     "Plan Width": 139,
-                    "Index Cond": "(id_hash = '8c65826c5be8597e5fb483ad199c2449d43d16a010d39f1d9756ae024a2bddde'::bpchar)",
-                    "Filter": "((revoked_at IS NULL) AND (expires_at \u003e '2026-10-03 20:25:01.86+00'::timestamp with time zone) AND (absolute_expires_at \u003e '2026-10-03 20:25:01.86+00'::timestamp with time zone))"
+                    "Index Cond": "(id_hash = '1c54a81f762fa40ee470d73e4e98657b56d84f2ee1114b993682416ee8db9f68'::bpchar)",
+                    "Filter": "((revoked_at IS NULL) AND (expires_at \u003e '2026-10-04 01:14:33.943+00'::timestamp with time zone) AND (absolute_expires_at \u003e '2026-10-04 01:14:33.943+00'::timestamp with time zone))"
                   }
                 ]
               }
@@ -2634,8 +2634,8 @@
                     "Total Cost": 8.31,
                     "Plan Rows": 1,
                     "Plan Width": 22,
-                    "Index Cond": "(id_hash = '8c65826c5be8597e5fb483ad199c2449d43d16a010d39f1d9756ae024a2bddde'::bpchar)",
-                    "Filter": "((revoked_at IS NULL) AND (expires_at \u003e '2026-10-03 20:25:01.86+00'::timestamp with time zone) AND (absolute_expires_at \u003e '2026-10-03 20:25:01.86+00'::timestamp with time zone) AND (last_seen_at \u003c= '2026-10-03 20:25:01.86+00'::timestamp with time zone))"
+                    "Index Cond": "(id_hash = '1c54a81f762fa40ee470d73e4e98657b56d84f2ee1114b993682416ee8db9f68'::bpchar)",
+                    "Filter": "((revoked_at IS NULL) AND (expires_at \u003e '2026-10-04 01:14:33.943+00'::timestamp with time zone) AND (absolute_expires_at \u003e '2026-10-04 01:14:33.943+00'::timestamp with time zone) AND (last_seen_at \u003c= '2026-10-04 01:14:33.943+00'::timestamp with time zone))"
                   }
                 ]
               }
