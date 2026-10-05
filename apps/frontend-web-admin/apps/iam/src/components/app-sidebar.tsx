@@ -96,7 +96,7 @@ export function AppSidebar({
               {entityLinks.map((item) => (
                 <SideLink
                   key={item.path}
-                  to={item.tenantPath ? `${tenantBase}${item.path}` : `${base}${item.path}`}
+                  to={`${base}${item.path}`}
                   icon={
                     routeIcons[item.path] ??
                     (item.path === "/roles" ? (

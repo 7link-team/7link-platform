@@ -344,6 +344,17 @@ export const router = createBrowserRouter([
                   Component: (await import("./app/files/page")).default,
                 }),
               },
+              // The register of departments, reached from inside an entity. It is
+              // the same page as the tenant's, which the service narrows to the
+              // departments the caller's grant names; it lives here as well so
+              // that reaching it does not leave the entity perspective, the way
+              // the files view above does not.
+              {
+                path: "/admin/:tenantID/entities/:entityID/departments",
+                lazy: async () => ({
+                  Component: (await import("./app/departments/page")).default,
+                }),
+              },
               {
                 path: "/admin/:tenantID/entities/:entityID/:view",
                 lazy: async () => ({

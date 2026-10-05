@@ -318,14 +318,15 @@ describe("AppSidebar entity perspective follows the grants held", () => {
       new Set(["file_view", "dept_view"])
     )
     expect(html).toContain('href="/admin/456/entities/5/files"')
-    // Tenant-scoped page, narrowed to the departments the grant names.
-    expect(html).toContain('href="/admin/456/departments"')
+    // Inside the entity, so reaching it does not leave the perspective. The same
+    // page as the tenant's, narrowed by the service to the granted departments.
+    expect(html).toContain('href="/admin/456/entities/5/departments"')
+    expect(html).not.toContain('href="/admin/456/departments"')
     expect(html).not.toContain('href="/admin/456/entities/5/overview"')
     expect(html).not.toContain('href="/admin/456/entities/5/manage"')
   })
   it("offers nothing where the account holds nothing in the entity", () => {
     const html = renderSidebar([], false, "/admin/456/entities/5/files", "5", new Set())
     expect(html).not.toContain('href="/admin/456/entities/5/')
-    expect(html).not.toContain('href="/admin/456/departments"')
   })
 })

@@ -205,12 +205,16 @@ describe("entityNavigation", () => {
       )
     ).toEqual(["/overview", "/roles", "/files", "/departments", "/manage"])
   })
-  // The department register is a tenant-scoped page that narrows to the
-  // departments the grant names, so its link hangs off the tenant and not off
-  // the entity being viewed.
-  it("marks the department register as a tenant path", () => {
-    const [departments] = entityNavigation(["dept_view"])
-    expect(departments?.tenantPath).toBe(true)
-    expect(entityNavigation(["file_view"])[0]?.tenantPath).toBeUndefined()
+  // Every entry hangs off the entity being viewed, the department register
+  // included: reaching it must not leave the perspective, which is what a link
+  // to the tenant's own page did.
+  it("keeps every entry inside the entity", () => {
+    for (const item of entityNavigation([
+      "entity_view",
+      "file_view",
+      "dept_view",
+    ]))
+      expect(item.path.startsWith("/")).toBe(true)
+    expect(entityNavigation(["dept_view"])[0]?.path).toBe("/departments")
   })
 })

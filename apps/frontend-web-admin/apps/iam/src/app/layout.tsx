@@ -131,8 +131,14 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const entityMatch = useMatch("/admin/:tenantID/entities/:entityID/:view")
   const entityID = routeParams.entityID ?? entityMatch?.params.entityID ?? ""
-  const entityFileRoute =
-    Boolean(entityID) && location.pathname.endsWith("/files")
+  // Views that live inside an entity but do not read the entity record itself.
+  // The checks below wait for the entity catalogue and refuse an entity that is
+  // not in it; these pages need neither, and gating them on it turned a page the
+  // account could use into "this entity is unavailable".
+  const entityOwnPage =
+    Boolean(entityID) &&
+    (location.pathname.endsWith("/files") ||
+      location.pathname.endsWith("/departments"))
   const [entityCatalog, setEntityCatalog] = useState<{
     subject: string
     tenant: string
@@ -542,7 +548,7 @@ export default function AppLayout() {
               }
               tenantPerspective={tenantPerspective}
               entities={catalog?.items ?? null}
-              error={entityFileRoute ? "" : (catalog?.error ?? "")}
+              error={entityOwnPage ? "" : (catalog?.error ?? "")}
               onTenant={commitTenant}
               onEntity={(id) => {
                 const owner = tenantValue
@@ -635,12 +641,12 @@ export default function AppLayout() {
               <p role="status">{t("loading")}</p>
             ) : !tenantValue ? (
               <p>{t("noAvailableTenants")}</p>
-            ) : entityID && !entityFileRoute && catalog?.error ? (
+            ) : entityID && !entityOwnPage && catalog?.error ? (
               <Alert>{catalog.error}</Alert>
-            ) : entityID && !entityFileRoute && !catalog ? (
+            ) : entityID && !entityOwnPage && !catalog ? (
               <p role="status">{t("loading")}</p>
             ) : entityID &&
-              !entityFileRoute &&
+              !entityOwnPage &&
               (!selectedEntity || selectedEntity.status !== "active") ? (
               <Alert>{t("entityUnavailable")}</Alert>
             ) : (
