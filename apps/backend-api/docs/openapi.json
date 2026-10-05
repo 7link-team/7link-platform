@@ -19576,9 +19576,9 @@
         ]
       }
     },
-    "/login/mfa/phone-codes": {
+    "/login/mfa/requests": {
       "post": {
-        "operationId": "authn-create-mfa-phone-code",
+        "operationId": "authn-create-mfa-verification-request",
         "requestBody": {
           "content": {
             "application/json": {

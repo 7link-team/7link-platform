@@ -2511,7 +2511,7 @@ export function createIamApi(
     },
     requestMfaPhoneCode: (challengeID: string) =>
       request<{ accepted: boolean }>(
-        apiRoute("post", "/login/mfa/phone-codes"),
+        apiRoute("post", "/login/mfa/requests"),
         { body: JSON.stringify({ challenge_id: challengeID }) }
       ),
     verifyLoginMfa: async (body: { challenge_id: string; code: string }) => {

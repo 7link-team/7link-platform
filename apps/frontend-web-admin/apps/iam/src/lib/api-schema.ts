@@ -612,7 +612,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/login/mfa/phone-codes": {
+    "/login/mfa/requests": {
         parameters: {
             query?: never;
             header?: never;
@@ -622,7 +622,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Queue a second-factor code for an outstanding login challenge */
-        post: operations["authn-create-mfa-phone-code"];
+        post: operations["authn-create-mfa-verification-request"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12833,7 +12833,7 @@ export interface operations {
             };
         };
     };
-    "authn-create-mfa-phone-code": {
+    "authn-create-mfa-verification-request": {
         parameters: {
             query?: never;
             header?: never;

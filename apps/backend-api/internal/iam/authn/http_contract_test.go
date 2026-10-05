@@ -47,7 +47,7 @@ authn-create-registration|POST|/registrations
 authn-create-session-verification|POST|/login/mfa
 authn-create-session|POST|/login
 authn-create-phone-login-request|POST|/login/phone/requests
-authn-create-mfa-phone-code|POST|/login/mfa/phone-codes
+authn-create-mfa-verification-request|POST|/login/mfa/requests
 authn-create-phone-session|POST|/login/phone
 authn-create-step-up-challenge|POST|/sessions/current/step-up-challenges
 authn-create-step-up-verification|POST|/sessions/current/step-up-verifications

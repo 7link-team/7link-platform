@@ -36,7 +36,7 @@ export const publishedRoutes: readonly string[] = [
   "/login",
   "/login/captchas",
   "/login/mfa",
-  "/login/mfa/phone-codes",
+  "/login/mfa/requests",
   "/login/options",
   "/login/passkey/options",
   "/login/passkey/verify",

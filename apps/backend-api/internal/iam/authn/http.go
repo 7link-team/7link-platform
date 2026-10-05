@@ -611,8 +611,12 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return loginResponse(ctx, web, result), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
-		OperationID: "authn-create-mfa-phone-code", Method: http.MethodPost,
-		Path:     "/login/mfa/phone-codes",
+		// Named for what it asks for, beside the /login/mfa that spends it. Every
+		// other proof of a channel in this module is a pair shaped this way --
+		// email-verifications, phone-verifications, password-recoveries,
+		// login/phone -- and this one was the only one that was not.
+		OperationID: "authn-create-mfa-verification-request", Method: http.MethodPost,
+		Path:     "/login/mfa/requests",
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
 		Summary:  "Queue a second-factor code for an outstanding login challenge",
 		Tags:     []string{"authentication"}, DefaultStatus: http.StatusAccepted,
