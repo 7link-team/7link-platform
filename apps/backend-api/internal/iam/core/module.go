@@ -163,6 +163,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[EntityConstraintOn](services, m.checker.EntityConstraintOn); err != nil {
 		return fmt.Errorf("provide IAM transaction entity authorization: %w", err)
 	}
+	if err := module.Provide[TenantConstraint](services, m.checker.Constraint); err != nil {
+		return fmt.Errorf("provide iam tenant constraint: %w", err)
+	}
 	if err := module.Provide[TenantConstraintOn](services, m.checker.TenantConstraintOn); err != nil {
 		return fmt.Errorf("provide IAM transaction tenant authorization: %w", err)
 	}

@@ -209,6 +209,30 @@ func (s *Service) ListPage(
 	return pageOf(items, offset, limit), int64(len(items)), nil
 }
 
+// ListPageVisible returns one page of the departments this caller may see, with
+// the total of that same narrowed set rather than of the tenant. A total taken
+// before narrowing tells a client there are pages it will never be shown.
+//
+// Separate from ListPage because the platform and system listings above answer
+// for an operator acting outside any tenant membership, where a tenant's
+// dept_view constraint is not the question being asked.
+func (s *Service) ListPageVisible(
+	ctx context.Context,
+	tenantID, principalID guid.ID,
+	offset, limit int,
+) ([]Department, int64, error) {
+	items, err := s.List(ctx, tenantID)
+	if err != nil {
+		return nil, 0, err
+	}
+	visible, err := s.visibleDepartments(ctx, tenantID, principalID, items)
+	if err != nil {
+		return nil, 0, err
+	}
+	offset, limit = normalizePage(offset, limit)
+	return pageOf(visible, offset, limit), int64(len(visible)), nil
+}
+
 // ListPage returns one page of the platform tenants with the unfiltered total
 // for the same include_deleted filter.
 func (s *TenantService) ListPage(

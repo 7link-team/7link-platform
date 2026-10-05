@@ -42,6 +42,15 @@ type EntityConstraintOn func(context.Context, *gorm.DB, guid.ID, guid.ID, string
 // caller's transaction and fences concurrent policy changes.
 type TenantConstraintOn func(context.Context, *gorm.DB, guid.ID, string, guid.ID) (authz.DataConstraint, error)
 
+// TenantConstraint compiles one permission's data constraint for a caller
+// outside any transaction of the caller's own. TenantConstraintOn above answers
+// inside one, which a module writing rows needs and a module listing them does
+// not have -- and a listing that cannot ask which rows a narrowed grant reaches
+// returns all of them.
+type TenantConstraint func(
+	ctx context.Context, tenantID guid.ID, permission string, subject guid.ID,
+) (authz.DataConstraint, error)
+
 // PlatformPermissionOn evaluates global authority in the caller's active transaction.
 type PlatformPermissionOn func(context.Context, *gorm.DB, string, guid.ID) (bool, error)
 

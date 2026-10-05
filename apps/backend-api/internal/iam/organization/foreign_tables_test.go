@@ -30,6 +30,9 @@ func newBoundService(t *testing.T, runtime *appenv.Runtime, appender audit.Appen
 	t.Helper()
 	service := NewService(runtime, appender, ids)
 	bindForeignTables(t, service.repo, runtime.TablePrefix())
+	// Initialize gives the service the authorizer's answer too, and the
+	// department listing refuses without it rather than listing the tenant.
+	service.scopes = allDepartmentsConstraint
 	return service
 }
 

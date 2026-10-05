@@ -275,7 +275,16 @@ func registerDepartmentHTTP(api huma.API, service *Service, registrar *authz.Reg
 			if err != nil {
 				return nil, err
 			}
-			items, total, err := service.ListPage(ctx, tenantID, in.Offset, in.Limit)
+			// dept_view can be granted narrowed to named departments. The guard
+			// above answers whether this caller may view departments at all; which
+			// ones is this listing's question, and it used to not ask.
+			claims, ok := authnext.FromContext(ctx)
+			if !ok || claims == nil || claims.PrincipalID.Zero() {
+				return nil, huma.Error401Unauthorized(respx.Unauthorized)
+			}
+			items, total, err := service.ListPageVisible(
+				ctx, tenantID, claims.PrincipalID, in.Offset, in.Limit,
+			)
 			if err != nil {
 				return nil, departmentError(err)
 			}

@@ -111,6 +111,9 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 			if err := module.Provide[core.AdministratorGuard](services, guard); err != nil {
 				return err
 			}
+			if err := module.Provide[core.TenantConstraint](services, allDepartmentsConstraint); err != nil {
+				return err
+			}
 			if err := module.Provide[core.TenantBootstrapper](services, newTenantBootstrapStub().capability()); err != nil {
 				return err
 			}
@@ -196,6 +199,9 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 		},
 		func(services *module.Services) error { return module.Provide[core.AdministratorGuard](services, guard) },
 		func(services *module.Services) error {
+			return module.Provide[core.TenantConstraint](services, allDepartmentsConstraint)
+		},
+		func(services *module.Services) error {
 			return module.Provide[authn.InvitationCredentials](services, credentials)
 		},
 		func(services *module.Services) error {
@@ -249,7 +255,8 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 		providers = append(providers, connector.provide)
 	}
 	expected := []string{
-		"authorization registrar", "active member checker", "administrator guard", "invitation credentials",
+		"authorization registrar", "active member checker", "administrator guard", "tenant constraint",
+		"invitation credentials",
 		"invitation principal creator", "id generator", "audit appender", "tenant bootstrapper",
 		"tenant owner lookup", "access tables", "directory authorization source connector", "directory table names connector",
 		"authn directory table names connector", "identity directory table names connector",
@@ -323,6 +330,7 @@ func TestOrganizationModuleRefusesToStartWithoutThePublishedTableNames(t *testin
 	require.NoError(t, module.Provide[guid.Source](services, newOrganizationTestIDs(1)))
 	require.NoError(t, module.Provide[audit.Appender](services,
 		audit.Appender(func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })))
+	require.NoError(t, module.Provide[core.TenantConstraint](services, allDepartmentsConstraint))
 	require.NoError(t, module.Provide[core.TenantBootstrapper](services, newTenantBootstrapStub().capability()))
 	require.NoError(t, module.Provide[identity.TenantOwnerLookup](services, newTenantOwnerStub().capability()))
 	require.NoError(t, module.Provide[core.AccessTableNames](services, core.AccessTableNames{}))
