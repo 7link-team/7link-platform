@@ -125,31 +125,19 @@ describe("workspace switcher tenant selectability", () => {
     new URL("../components/workspace-switcher.tsx", import.meta.url),
     "utf8"
   )
-  it("lists every tenant in the grouped arm and enters only entities", () => {
-    const grouped = source.slice(
-      source.indexOf("!tenantPerspective ?"),
-      source.indexOf("\n        ) : (", source.indexOf("!tenantPerspective ?"))
-    )
-    // The tenants are still listed -- not reduced to the current one's name.
-    expect(grouped).toContain("activeTenants.map((tenant)")
-    expect(grouped).toContain("{tenant.name}")
-    // And none of them is a button.
-    expect(grouped).not.toContain("onTenant(")
+  // Not selectable is not the same as not shown: somebody still has to see which
+  // tenant their entities belong to. The row stays and stops being a button.
+  it("keeps the tenant listed and makes it a heading without tenant standing", () => {
+    expect(source).toContain("shownTenants.map((tenant) =>")
+    expect(source).toContain("tenantPerspective ? (")
+    const rows = source.slice(source.indexOf("shownTenants.map((tenant) =>"))
+    const heading = rows.slice(rows.indexOf("                    ) : ("))
+    expect(heading).toContain("<h3")
+    expect(heading.slice(0, heading.indexOf("</h3>"))).not.toContain("onTenant(")
+    expect(heading.slice(0, heading.indexOf("</h3>"))).not.toContain("<button")
   })
-  it("makes the tenant a heading rather than a destination without tenant standing", () => {
-    const lines = source.split("\n")
-    const branch = lines.findIndex((line) => line.includes("!tenantPerspective ?"))
-    expect(branch).toBeGreaterThan(-1)
-    // Every way of choosing a tenant, and the tenant-perspective button, sit
-    // after the branch -- that is, in the arm taken when there is standing.
-    for (const call of ["onTenant(", 'onEntity("")']) {
-      const at = lines.findIndex((line) => line.includes(call))
-      expect(at).toBeGreaterThan(branch)
-    }
-    // The arm before it offers entities and nothing else.
-    const grouped = lines.slice(branch).join("\n")
-    expect(grouped.slice(0, grouped.indexOf("onTenant("))).toContain(
-      "onEntity(entity.id, tenant.id)"
-    )
+  // The perspective button is the other way into the tenant's own shell.
+  it("offers the tenant perspective button only with that standing", () => {
+    expect(source).toContain("{tenantPerspective && (")
   })
 })
