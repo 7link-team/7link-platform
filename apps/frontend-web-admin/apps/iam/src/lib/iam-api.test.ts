@@ -1442,6 +1442,7 @@ describe("IAM API client", () => {
                   registration: true,
                   password_recovery: true,
                   passkey: false,
+                  phone_login: false,
                   captcha: { provider: "image" },
                 }
               : { accepted: true },
@@ -1458,6 +1459,7 @@ describe("IAM API client", () => {
       registration: true,
       password_recovery: true,
       passkey: false,
+      phone_login: false,
       captcha: { provider: "image" },
     })
     expect(

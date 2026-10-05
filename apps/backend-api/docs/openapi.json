@@ -1536,6 +1536,9 @@
           "password_recovery": {
             "type": "boolean"
           },
+          "phone_login": {
+            "type": "boolean"
+          },
           "registration": {
             "type": "boolean"
           }
@@ -1544,6 +1547,7 @@
           "registration",
           "password_recovery",
           "passkey",
+          "phone_login",
           "captcha"
         ],
         "type": "object"

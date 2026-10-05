@@ -37,7 +37,8 @@ func (s *Service) Capabilities() authnext.Capabilities {
 	}
 	return authnext.Capabilities{
 		Registration: s.RegistrationEnabled(), PasswordRecovery: s.RecoveryEnabled(),
-		Passkey: s.cfg.Enabled && s.web.Enabled && s.cfg.Passkey.Enabled && s.passkeys != nil,
+		Passkey:    s.cfg.Enabled && s.web.Enabled && s.cfg.Passkey.Enabled && s.passkeys != nil,
+		PhoneLogin: s.PhoneLoginEnabled(),
 	}
 }
 

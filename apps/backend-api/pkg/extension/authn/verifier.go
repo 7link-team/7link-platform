@@ -195,6 +195,11 @@ type Capabilities struct {
 	Registration     bool `json:"registration"`
 	PasswordRecovery bool `json:"password_recovery"`
 	Passkey          bool `json:"passkey"`
+	// PhoneLogin says whether a code sent to a proven number signs anybody in
+	// here. A client that offers it regardless leads somebody through typing a
+	// number to a refusal, which is the deployment's configuration showing
+	// through as a dead end.
+	PhoneLogin bool `json:"phone_login"`
 }
 
 // NotificationConfig controls the shared durable webhook delivery used by

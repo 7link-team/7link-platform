@@ -308,6 +308,16 @@ if (options.has("--stop")) {
             enabled: true,
             reset_url: settings.webURL + "/user/recover",
           },
+          // All three are off in a real deployment: proving a number is useful on
+          // its own, signing in with one is a separate decision, and a code to a
+          // number is the weakest second factor on offer. They are on here
+          // because the local mailbox below is where the message lands, so the
+          // flows can actually be walked through without an SMS vendor.
+          phone_verification: {
+            enabled: true,
+            login_enabled: true,
+            second_factor_enabled: true,
+          },
           web: {
             enabled: true,
             cookie_name: "dev_session",

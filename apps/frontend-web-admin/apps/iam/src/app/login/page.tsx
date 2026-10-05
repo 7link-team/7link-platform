@@ -333,10 +333,14 @@ export default function LoginPage() {
               onCaptchaAnswerChange={setAnswer}
               onCaptchaUnavailable={() => setError(t("captchaUnavailable"))}
               onRefreshCaptcha={refreshCaptcha}
-              onPhone={() => {
-                setMode("phone")
-                setError("")
-              }}
+              onPhone={
+                capabilities?.phone_login
+                  ? () => {
+                      setMode("phone")
+                      setError("")
+                    }
+                  : undefined
+              }
             />
           )}
         </div>
@@ -599,7 +603,7 @@ function PasswordForm({
   onVisibleChange: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onPasskey: () => void
-  onPhone: () => void
+  onPhone?: () => void
   capabilities: AuthnCapabilities | null
   captcha: Captcha | null
   captchaProvider: CaptchaCapability | undefined
@@ -750,16 +754,21 @@ function PasswordForm({
           </Button>
         </>
       )}
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full"
-        disabled={busy}
-        onClick={onPhone}
-      >
-        <Smartphone />
-        {t("usePhoneCode")}
-      </Button>
+      {/* Offered only where the service says a code signs somebody in. Without
+          that check this button walks somebody through typing their number to a
+          refusal the deployment had already decided on. */}
+      {onPhone && (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          disabled={busy}
+          onClick={onPhone}
+        >
+          <Smartphone />
+          {t("usePhoneCode")}
+        </Button>
+      )}
       {selfService &&
         (capabilities?.password_recovery || capabilities?.registration) && (
           <div className="space-y-2 text-center text-sm">

@@ -5190,6 +5190,7 @@ export interface components {
             captcha: components["schemas"]["CaptchaCapability"];
             passkey: boolean;
             password_recovery: boolean;
+            phone_login: boolean;
             registration: boolean;
         };
         AuthenticatorAssertionResponse: {

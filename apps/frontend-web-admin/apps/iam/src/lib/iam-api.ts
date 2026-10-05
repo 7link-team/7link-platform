@@ -231,6 +231,10 @@ export interface AuthnCapabilities {
   registration: boolean
   password_recovery: boolean
   passkey: boolean
+  /** Whether a code sent to a proven number signs anybody in on this
+   *  deployment. Offering it regardless walks somebody through typing a number
+   *  to a refusal. */
+  phone_login: boolean
   captcha: CaptchaCapability
 }
 

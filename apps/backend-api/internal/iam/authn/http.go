@@ -102,6 +102,8 @@ type AuthenticationCapabilities struct {
 	Registration     bool `json:"registration"`
 	PasswordRecovery bool `json:"password_recovery"`
 	Passkey          bool `json:"passkey"`
+	// PhoneLogin keeps a client from offering a way in this deployment refuses.
+	PhoneLogin bool `json:"phone_login"`
 	// Captcha tells a client what to render. Without it the client has to guess
 	// -- and the one that guessed "an image, always" spun asking for challenge
 	// kinds it could draw until it gave up.
@@ -525,7 +527,8 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		capabilities := web.Capabilities()
 		return respx.OK(ctx, AuthenticationCapabilities{
 			Registration: capabilities.Registration, PasswordRecovery: capabilities.PasswordRecovery,
-			Passkey: capabilities.Passkey, Captcha: web.CaptchaCapability(),
+			Passkey: capabilities.Passkey, PhoneLogin: capabilities.PhoneLogin,
+			Captcha: web.CaptchaCapability(),
 		}), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{

@@ -531,3 +531,22 @@ func TestGuessingASecondFactorCodeRunsOutOfChallengeAttempts(t *testing.T) {
 	assert.ErrorIs(t, err, ErrMFAChallenge,
 		"the right code no longer answers a challenge whose attempts are spent")
 }
+
+func TestTheLoginOptionsSayWhetherANumberSignsAnybodyIn(t *testing.T) {
+	// The console offers the phone form from this answer alone. Reporting it the
+	// same either way is what made the button a dead end on a deployment that
+	// had turned the flow off.
+	service, _, _ := newSMSFactorService(t)
+	assert.True(t, service.Capabilities().PhoneLogin, "the fixture turns it on")
+
+	// Proving a number and signing in with one are separate decisions, so the
+	// second factor staying on must not keep advertising a way in.
+	service.cfg.PhoneVerification.LoginEnabled = false
+	assert.False(t, service.Capabilities().PhoneLogin)
+	service.cfg.PhoneVerification.LoginEnabled = true
+
+	// Proving a number is the prerequisite: with that off, nothing is proven and
+	// nothing signs anybody in, whatever the login switch says.
+	service.cfg.PhoneVerification.Enabled = false
+	assert.False(t, service.Capabilities().PhoneLogin)
+}

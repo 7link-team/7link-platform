@@ -600,6 +600,9 @@ func TestRegistrationHTTPFlow(t *testing.T) {
 	require.Equal(t, http.StatusOK, capabilities.Code, capabilities.Body.String())
 	assert.Contains(t, capabilities.Body.String(), `"registration":true`)
 	assert.Contains(t, capabilities.Body.String(), `"password_recovery":true`)
+	// A way in this deployment refuses must not be advertised: a client that
+	// offers it walks somebody through typing their number to a 503.
+	assert.Contains(t, capabilities.Body.String(), `"phone_login":false`)
 
 	assert.Equal(t, http.StatusForbidden, api.Post("/registrations", map[string]any{
 		"email": "registered@example.com", "password": "correct registration password", "display_name": "Registered User",
