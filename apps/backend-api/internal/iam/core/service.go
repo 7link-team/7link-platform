@@ -167,6 +167,13 @@ func DefaultMenus() []Menu {
 		{Label: "Service accounts", Route: "/service-accounts", Icon: "bot", SortOrder: 12, PermissionCode: "service_account_view", Status: MenuActive},
 		{Label: "Entities", Route: "/entities", Icon: "network", SortOrder: 13, PermissionCode: "entity_view", Status: MenuActive},
 		{Label: "Departments", Route: "/departments", Icon: "building-2", SortOrder: 15, PermissionCode: "dept_view", Status: MenuActive},
+		// Managed like every other page. Both were reachable only from a fixed
+		// list in the console before, which is why the console still carries that
+		// list: a tenant seeded before these rows existed has no row to show, and
+		// a row an administrator deleted cannot be told from one that was never
+		// created, so nothing re-creates them behind their back.
+		{Label: "File management", Route: "/files", Icon: "folder", SortOrder: 16, PermissionCode: "file_view", Status: MenuActive},
+		{Label: "Field permissions", Route: "/field-policies", Icon: "sliders-horizontal", SortOrder: 23, PermissionCode: "field_policy_view", Status: MenuActive},
 		{Label: "Groups", Route: "/groups", Icon: "users-round", SortOrder: 19, PermissionCode: "group_view", Status: MenuActive},
 		{Label: "Roles and permissions", Route: "/roles", Icon: "key-round", SortOrder: 20, PermissionCode: "role_view", Status: MenuActive},
 		{Label: "Access requests", Route: "/access-requests", Icon: "clipboard-check", SortOrder: 21, PermissionCode: "access_request_view", Status: MenuActive},

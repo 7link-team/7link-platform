@@ -74,6 +74,19 @@ export function entityWorkspaceView(
   return "files"
 }
 
+// tenantSystemNavigation is what a tenant's sidebar shows beside its configured
+// menu tree. Every entry except the overview is there only while the tree does
+// not already name that path, which is what makes it a fallback rather than a
+// second source: /files and /field-policies are seeded menus now, so a tenant
+// created since carries its own rows and these entries fall silent. A tenant
+// seeded before them has no rows, and nothing re-creates them behind an
+// administrator's back -- a deleted menu cannot be told from one that never
+// existed, so resurrecting them is an operator's deliberate act.
+//
+// The overview is unconditional because it is the workspace home rather than a
+// page, and the access-request entry is unconditional-in-practice for a member
+// without access_request_view: the seeded row is gated on the approver's
+// permission, while filing a request is everybody's.
 export function tenantSystemNavigation(
   paths: Set<string>,
   fileAccess: boolean,

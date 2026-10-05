@@ -28,6 +28,8 @@
   "menu_service_accounts": "Service accounts",
   "menu_entities": "Entities",
   "menu_departments": "Departments",
+  "menu_files": "File management",
+  "menu_field_policies": "Field permissions",
   "menu_groups": "Groups",
   "menu_roles": "Roles and permissions",
   "menu_access_requests": "Access requests",

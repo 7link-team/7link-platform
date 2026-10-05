@@ -1666,3 +1666,20 @@ func TestServiceEntityHierarchyDepthLimit(t *testing.T) {
 	})
 	assert.ErrorIs(t, err, ErrEntityHierarchy)
 }
+
+func TestEveryDefaultMenuNamesThePermissionThatGovernsItsPage(t *testing.T) {
+	// A page reachable only from a fixed list in a console is a page whose
+	// visibility nobody can configure and whose permission nobody declared. These
+	// two were exactly that until they were seeded like the rest.
+	routes := map[string]string{}
+	for _, menu := range DefaultMenus() {
+		assert.NotEmpty(t, menu.PermissionCode, menu.Route)
+		assert.NotEmpty(t, menu.Translations, menu.Route)
+		routes[menu.Route] = menu.PermissionCode
+	}
+	assert.Equal(t, "file_view", routes["/files"])
+	assert.Equal(t, "field_policy_view", routes["/field-policies"])
+	// Every route is distinct: two rows for one page would both answer and the
+	// console would list it twice.
+	assert.Len(t, routes, len(DefaultMenus()))
+}
