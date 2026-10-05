@@ -91,6 +91,11 @@ export function WorkspaceSwitcher({
     entities?.find((entity) => entity.id === entityID)?.name || entityID
   // Only the tenant workspace has a tenant or entity perspective to select.
   const tenantView = !systemView && !operatingPlatformID
+  // Whose entities are a destination and whose tenant is only their heading. Only
+  // asked inside the tenant workspace: in the system area or on a platform the
+  // tenant list is how an operator reaches a tenant at all, and the perspective
+  // they would get there is not what this answer is about.
+  const groupEntitiesUnderTenant = tenantView && !tenantPerspective
   return (
     <Popover
       open={open}
@@ -219,7 +224,7 @@ export function WorkspaceSwitcher({
                       heading rather than a disabled button so nothing offers a
                       perspective that is not this account's. */}
                   {shownTenants.map((tenant) =>
-                    tenantPerspective ? (
+                    !groupEntitiesUnderTenant ? (
                       <button
                         key={tenant.id}
                         type="button"
@@ -266,7 +271,7 @@ export function WorkspaceSwitcher({
             <h2 className="mb-2 text-sm font-semibold break-words">
               {tenantName}
             </h2>
-            {tenantPerspective && (
+            {!groupEntitiesUnderTenant && (
               <button
                 type="button"
                 disabled={!tenantID}

@@ -131,15 +131,21 @@ describe("workspace switcher tenant selectability", () => {
   // tenant their entities belong to. The row stays and stops being a button.
   it("keeps the tenant listed and makes it a heading without tenant standing", () => {
     expect(source).toContain("shownTenants.map((tenant) =>")
-    expect(source).toContain("tenantPerspective ? (")
+    expect(source).toContain("!groupEntitiesUnderTenant ? (")
     const rows = source.slice(source.indexOf("shownTenants.map((tenant) =>"))
     const heading = rows.slice(rows.indexOf("                    ) : ("))
     expect(heading).toContain("<h3")
     expect(heading.slice(0, heading.indexOf("</h3>"))).not.toContain("onTenant(")
     expect(heading.slice(0, heading.indexOf("</h3>"))).not.toContain("<button")
   })
-  // The perspective button is the other way into the tenant's own shell.
-  it("offers the tenant perspective button only with that standing", () => {
-    expect(source).toContain("{tenantPerspective && (")
+  // Both the perspective button and the clickable tenant rows belong to the arm
+  // taken outside the grouping, and the grouping is only asked for inside the
+  // tenant workspace: the system area and a platform reach a tenant through this
+  // same list, and withholding it there left an operator no way in.
+  it("groups only inside the tenant workspace", () => {
+    expect(source).toContain(
+      "const groupEntitiesUnderTenant = tenantView && !tenantPerspective"
+    )
+    expect(source).toContain("{!groupEntitiesUnderTenant && (")
   })
 })

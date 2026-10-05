@@ -175,12 +175,10 @@ export default function AppLayout() {
     standing: boolean
   } | null>(null)
   const tenantPerspective = tenantPerspectiveOffered(
-    Boolean(entityID),
     tenantStanding?.subject === subject && tenantStanding.tenant === tenantValue
       ? tenantStanding.standing
       : null,
-    permissions?.size ?? 0,
-    platformTenantAccess || Boolean(systemPath)
+    (catalog?.items ?? []).some((entity) => entity.status === "active")
   )
 
   useEffect(() => {

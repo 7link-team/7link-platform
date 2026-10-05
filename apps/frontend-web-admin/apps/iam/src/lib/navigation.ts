@@ -49,23 +49,22 @@ export function entityNavigation(
   ]
 }
 
-// tenantPerspectiveOffered says whether the tenant's perspective may be offered
-// at all. Authority from above answers yes on its own. Inside an entity the permission set in hand is that entity's, so the
-// tenant answer has to be the one asked for separately -- and an answer that has
-// not arrived yet is not a yes, because a view is shown once it is known to be
-// allowed rather than until it is known not to be.
+// tenantPerspectiveOffered says whether a tenant in the switcher may be entered.
+// The switcher lists memberships, so entering one goes by the same standing
+// everybody else goes by: an operator acting as an operator uses the system area,
+// which is its own navigation, not this list.
+//
+// It is withheld only on evidence that this account's place in the tenant is an
+// entity -- nothing at tenant level, and an entity that admits it. An answer that
+// has not arrived withholds nothing. Reading an empty permission set as "no
+// standing" is what took every tenant away from the super administrator and the
+// system administrator: in the system area the set in hand is tenant-scoped and
+// therefore empty, while their standing in that tenant is 146 and 10 codes.
 export function tenantPerspectiveOffered(
-  insideEntity: boolean,
   tenantStanding: boolean | null,
-  perspectivePermissionCount: number,
-  authorityFromAbove: boolean
+  anEntityAdmitsCaller: boolean
 ): boolean {
-  // An operator whose authority over tenants comes from the platform or the
-  // system holds no tenant-level grant at all, and in the system area the
-  // permission set in hand is empty besides. Reading that as "no standing" took
-  // the tenants away from the accounts most entitled to enter them.
-  if (authorityFromAbove) return true
-  return insideEntity ? tenantStanding === true : perspectivePermissionCount > 0
+  return !(tenantStanding === false && anEntityAdmitsCaller)
 }
 
 // entityWorkspaceView says which view entering an entity lands on. The overview

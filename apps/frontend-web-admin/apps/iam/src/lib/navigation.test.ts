@@ -174,25 +174,21 @@ describe("entityWorkspaceView", () => {
 })
 
 describe("tenantPerspectiveOffered", () => {
-  // An account whose grants live inside one entity was offered the tenant's
-  // perspective in the workspace switcher and could walk into it.
-  it("withholds the tenant perspective from an account with no tenant standing", () => {
-    expect(tenantPerspectiveOffered(true, false, 3, false)).toBe(false)
-    expect(tenantPerspectiveOffered(true, true, 0, false)).toBe(true)
+  // Withheld only on evidence that this account's place is an entity.
+  it("sends an account whose place is an entity there rather than into the tenant", () => {
+    expect(tenantPerspectiveOffered(false, true)).toBe(false)
   })
-  it("does not offer it on an answer that has not arrived", () => {
-    expect(tenantPerspectiveOffered(true, null, 9, false)).toBe(false)
+  it("offers the tenant to anybody with standing in it", () => {
+    expect(tenantPerspectiveOffered(true, true)).toBe(true)
+    expect(tenantPerspectiveOffered(true, false)).toBe(true)
   })
-  it("reads the perspective in hand when that perspective is the tenant", () => {
-    expect(tenantPerspectiveOffered(false, null, 1, false)).toBe(true)
-    expect(tenantPerspectiveOffered(false, true, 0, false)).toBe(false)
-  })
-  // The accounts most entitled to enter a tenant hold no grant inside one, and
-  // in the system area the permission set in hand is empty besides. Reading that
-  // as "no standing" took every tenant away from them.
-  it("offers it to authority from above whatever the tenant answer says", () => {
-    expect(tenantPerspectiveOffered(false, null, 0, true)).toBe(true)
-    expect(tenantPerspectiveOffered(true, false, 0, true)).toBe(true)
+  // An operator in the system area holds no tenant-scoped set there, and an
+  // account with nothing at tenant level and no entity has only the tenant's
+  // self-service shell. Neither is evidence for withholding.
+  it("withholds nothing without that evidence", () => {
+    expect(tenantPerspectiveOffered(null, true)).toBe(true)
+    expect(tenantPerspectiveOffered(null, false)).toBe(true)
+    expect(tenantPerspectiveOffered(false, false)).toBe(true)
   })
 })
 
