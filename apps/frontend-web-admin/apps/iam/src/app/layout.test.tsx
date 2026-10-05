@@ -125,6 +125,17 @@ describe("workspace switcher tenant selectability", () => {
     new URL("../components/workspace-switcher.tsx", import.meta.url),
     "utf8"
   )
+  it("lists every tenant in the grouped arm and enters only entities", () => {
+    const grouped = source.slice(
+      source.indexOf("!tenantPerspective ?"),
+      source.indexOf("\n        ) : (", source.indexOf("!tenantPerspective ?"))
+    )
+    // The tenants are still listed -- not reduced to the current one's name.
+    expect(grouped).toContain("activeTenants.map((tenant)")
+    expect(grouped).toContain("{tenant.name}")
+    // And none of them is a button.
+    expect(grouped).not.toContain("onTenant(")
+  })
   it("makes the tenant a heading rather than a destination without tenant standing", () => {
     const lines = source.split("\n")
     const branch = lines.findIndex((line) => line.includes("!tenantPerspective ?"))
@@ -138,7 +149,7 @@ describe("workspace switcher tenant selectability", () => {
     // The arm before it offers entities and nothing else.
     const grouped = lines.slice(branch).join("\n")
     expect(grouped.slice(0, grouped.indexOf("onTenant("))).toContain(
-      "onEntity(entity.id)"
+      "onEntity(entity.id, tenant.id)"
     )
   })
 })

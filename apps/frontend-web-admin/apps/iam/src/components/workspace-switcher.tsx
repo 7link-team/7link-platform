@@ -40,6 +40,7 @@ export function WorkspaceSwitcher({
   onOperatingPlatform,
   operatingPlatformID = "",
   tenantPerspective = false,
+  entitiesByTenant = null,
 }: {
   tenantID: string
   entityID: string
@@ -49,7 +50,7 @@ export function WorkspaceSwitcher({
   tenantError?: string
   onRetryTenants?: () => void
   onTenant: (id: string) => void
-  onEntity: (id: string) => void
+  onEntity: (id: string, tenant?: string) => void
   systemPath?: string
   systemView?: boolean
   onSystem?: () => void
@@ -62,6 +63,10 @@ export function WorkspaceSwitcher({
    *  shell there is shaped for administering the tenant, and offering it is
    *  showing a view that is not theirs. */
   tenantPerspective?: boolean
+  /** The entities of each tenant this account belongs to, keyed by tenant. Used
+   *  where the tenant is a grouping rather than a destination, because then the
+   *  switcher has to name the tenant each entity sits under. */
+  entitiesByTenant?: Record<string, Entity[]> | null
 }) {
   const t = useTranslations("iam")
   const [open, setOpen] = useState(false)
@@ -181,48 +186,70 @@ export function WorkspaceSwitcher({
           </section>
         )}
         {!tenantPerspective ? (
-          // Only the entities are a destination. The tenant is what they are
-          // grouped under and nothing more: this account has no standing at
-          // tenant level, so a clickable tenant would be an offer of a
-          // perspective that is not its own.
+          // Every tenant this account belongs to is listed, and none of them is
+          // a destination: with no standing at tenant level a clickable tenant
+          // would be an offer of a perspective that is not its own. It names the
+          // group its entities sit in, which is the whole of its part here.
           <section
             className="min-h-64 min-w-0"
             aria-label={t("entityPerspective")}
           >
-            <h2 className="mb-2 text-sm font-semibold break-words">
-              {tenantName}
-            </h2>
-            {error ? (
-              <Alert>{error}</Alert>
-            ) : !entities ? (
+            {tenantError ? (
+              <Alert>
+                <p>{tenantError}</p>
+                <Button variant="outline" onClick={onRetryTenants}>
+                  {t("retryNow")}
+                </Button>
+              </Alert>
+            ) : !tenants ? (
               <p role="status" className="text-sm">
                 {t("loading")}
               </p>
             ) : (
-              <div className="space-y-1">
-                {entities
-                  .filter((entity) => entity.status === "active")
-                  .map((entity) => (
-                    <button
-                      key={entity.id}
-                      type="button"
-                      onClick={() => {
-                        onEntity(entity.id)
-                        setOpen(false)
-                      }}
-                      className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
-                    >
-                      <Network className="size-4 shrink-0" />
-                      <span className="min-w-0 break-words">{entity.name}</span>
-                      {entityID === entity.id && (
-                        <Check className="ms-auto size-4 shrink-0" />
-                      )}
-                    </button>
-                  ))}
-                {!entities.some((entity) => entity.status === "active") && (
-                  <p className="p-3 text-sm text-muted-foreground">
-                    {t("noEntities")}
-                  </p>
+              <div className="space-y-4">
+                {activeTenants.map((tenant) => {
+                  const grouped = (
+                    entitiesByTenant?.[tenant.id] ??
+                    (tenant.id === tenantID ? entities : null) ??
+                    []
+                  ).filter((entity) => entity.status === "active")
+                  return (
+                    <div key={tenant.id} className="min-w-0">
+                      <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold break-words">
+                        <Building2 className="size-4 shrink-0" />
+                        {tenant.name}
+                      </h2>
+                      <div className="space-y-1 ps-2">
+                        {grouped.map((entity) => (
+                          <button
+                            key={entity.id}
+                            type="button"
+                            onClick={() => {
+                              onEntity(entity.id, tenant.id)
+                              setOpen(false)
+                            }}
+                            className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
+                          >
+                            <Network className="size-4 shrink-0" />
+                            <span className="min-w-0 break-words">
+                              {entity.name}
+                            </span>
+                            {entityID === entity.id && (
+                              <Check className="ms-auto size-4 shrink-0" />
+                            )}
+                          </button>
+                        ))}
+                        {grouped.length === 0 && (
+                          <p className="p-3 text-sm text-muted-foreground">
+                            {t("noEntities")}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+                {activeTenants.length === 0 && (
+                  <p className="text-sm">{t("noAvailableTenants")}</p>
                 )}
               </div>
             )}

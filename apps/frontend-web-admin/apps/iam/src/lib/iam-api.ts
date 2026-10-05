@@ -2984,10 +2984,16 @@ export function createIamApi(
     // The entities this caller may act in, as opposed to the ones it may
     // administer. Somebody bound to a single entity has the first and not the
     // second, and the listing above answers only the second.
-    memberEntities: async (permission: string) =>
+    // tenant names which tenant to ask about. It defaults to the selected one,
+    // and is given explicitly where the console has to ask about a tenant it has
+    // not switched to -- grouping entities under every membership, for one.
+    memberEntities: async (permission: string, tenant?: string) =>
       request<Entity[]>(
         apiRoute("get", "/tenants/{tenant_id}/principals/{principal_id}/entities", {
-          path: { tenant_id: tenantID(), principal_id: await principalID() },
+          path: {
+            tenant_id: tenant || tenantID(),
+            principal_id: await principalID(),
+          },
           query: { permission },
         })
       ),

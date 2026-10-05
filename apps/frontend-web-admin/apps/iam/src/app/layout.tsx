@@ -167,6 +167,14 @@ export default function AppLayout() {
     tenant: string
     standing: boolean
   } | null>(null)
+  // The entities of every tenant this account belongs to, which is what the
+  // switcher groups when the tenant itself is not a destination. Only fetched
+  // for an account with no standing at tenant level: for everybody else the
+  // tenant is selectable and its own entity list is enough.
+  const [groupedEntities, setGroupedEntities] = useState<{
+    subject: string
+    items: Record<string, Entity[]>
+  } | null>(null)
   const [scopedFileAccess, setScopedFileAccess] = useState<{
     subject: string
     tenant: string
@@ -179,6 +187,8 @@ export default function AppLayout() {
       : null,
     permissions?.size ?? 0
   )
+  const entitiesByTenant =
+    groupedEntities?.subject === subject ? groupedEntities.items : null
   const scopedFileEntityID =
     !entityID &&
     scopedFileAccess?.subject === subject &&
@@ -262,6 +272,35 @@ export default function AppLayout() {
     permissionsResolved,
     accountView?.scope_type,
   ])
+
+  // One request per membership, and only where the tenant is not selectable:
+  // the switcher has to name the tenant each entity belongs to, and the service
+  // answers that per tenant. Keyed by the ids rather than the array so the
+  // listing arriving again with the same memberships does not refetch.
+  const membershipKey = (availableTenants ?? [])
+    .filter((tenant) => tenant.status === "active")
+    .map((tenant) => tenant.id)
+    .join(",")
+  useEffect(() => {
+    if (status !== "authenticated" || !subject || tenantPerspective) return
+    const memberships = membershipKey ? membershipKey.split(",") : []
+    if (memberships.length === 0) return
+    let active = true
+    void Promise.all(
+      memberships.map((tenant) =>
+        iamApi
+          .memberEntities("file_view", tenant)
+          .then((items) => [tenant, items] as const)
+          .catch(() => [tenant, [] as Entity[]] as const)
+      )
+    ).then((pairs) => {
+      if (active)
+        setGroupedEntities({ subject, items: Object.fromEntries(pairs) })
+    })
+    return () => {
+      active = false
+    }
+  }, [status, subject, tenantPerspective, membershipKey])
 
   useEffect(() => {
     if (status !== "authenticated" || !tenantValue || entityID) return
@@ -541,18 +580,28 @@ export default function AppLayout() {
                 window.dispatchEvent(new Event("tenant-catalog-change"))
               }
               tenantPerspective={tenantPerspective}
+              entitiesByTenant={entitiesByTenant}
               entities={catalog?.items ?? null}
               error={entityFileRoute ? "" : (catalog?.error ?? "")}
               onTenant={commitTenant}
-              onEntity={(id) => {
+              onEntity={(id, tenant) => {
+                // An entity grouped under another tenant carries that tenant, so
+                // entering it selects the tenant it belongs to rather than
+                // addressing it under the one that happened to be current.
+                const owner = tenant || tenantValue
+                if (tenant && tenant !== tenantValue) {
+                  setMenuCatalog(null)
+                  setTenant(tenant)
+                  setTenantValue(tenant)
+                }
                 // The overview reads the entity itself, which is tenant-wide
                 // entity administration. Sending somebody who merely belongs to
                 // the entity there turned the whole perspective into one refusal,
                 // so they go to the view they do have.
                 navigate(
                   id
-                    ? `/admin/${encodeURIComponent(tenantValue)}/entities/${encodeURIComponent(id)}/${entityWorkspaceView(permissions ?? [])}`
-                    : `/admin/${encodeURIComponent(tenantValue)}`
+                    ? `/admin/${encodeURIComponent(owner)}/entities/${encodeURIComponent(id)}/${entityWorkspaceView(permissions ?? [])}`
+                    : `/admin/${encodeURIComponent(owner)}`
                 )
               }}
             />
