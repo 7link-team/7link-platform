@@ -330,3 +330,26 @@ describe("AppSidebar entity perspective follows the grants held", () => {
     expect(html).not.toContain('href="/admin/456/entities/5/')
   })
 })
+
+// In the entity perspective the whole sidebar is that perspective, so a group
+// heading named after it says nothing -- and being collapsible, it could hide
+// every link the account has.
+describe("AppSidebar entity perspective has no group heading", () => {
+  it("renders the links without a collapsible group", () => {
+    const html = renderSidebar(
+      [],
+      false,
+      "/admin/456/entities/5/files",
+      "5",
+      new Set(["file_view", "dept_view"])
+    )
+    expect(html).toContain('href="/admin/456/entities/5/files"')
+    expect(html).not.toContain("data-navigation-group")
+    expect(html).not.toContain('aria-expanded')
+  })
+  // The tenant perspective keeps its groups: the fixed entries there sit beside a
+  // configured menu tree and the heading is what tells them apart.
+  it("keeps the group heading in the tenant perspective", () => {
+    expect(renderSidebar([])).toContain("data-navigation-group")
+  })
+})

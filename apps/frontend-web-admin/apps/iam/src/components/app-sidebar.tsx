@@ -90,28 +90,28 @@ export function AppSidebar({
       <aside
         className={`w-64 shrink-0 overflow-y-auto border-e border-sidebar-border bg-sidebar p-3 ${className}`}
       >
-        <nav className="space-y-2" aria-label={t("mainNav")}>
-          {entityLinks.length > 0 && (
-            <NavigationGroup label={t("entityPerspective")}>
-              {entityLinks.map((item) => (
-                <SideLink
-                  key={item.path}
-                  to={`${base}${item.path}`}
-                  icon={
-                    routeIcons[item.path] ??
-                    (item.path === "/roles" ? (
-                      <KeyRound />
-                    ) : item.path === "/manage" ? (
-                      <SlidersHorizontal />
-                    ) : (
-                      <LayoutDashboard />
-                    ))
-                  }
-                  label={t(item.label)}
-                />
-              ))}
-            </NavigationGroup>
-          )}
+        {/* No group heading: the whole sidebar is this entity's perspective, and
+            the switcher above already names which entity. A collapsible group
+            labelled after the perspective it is the entirety of is a layer that
+            says nothing and can be collapsed to hide everything. */}
+        <nav className="space-y-1" aria-label={t("mainNav")}>
+          {entityLinks.map((item) => (
+            <SideLink
+              key={item.path}
+              to={`${base}${item.path}`}
+              icon={
+                routeIcons[item.path] ??
+                (item.path === "/roles" ? (
+                  <KeyRound />
+                ) : item.path === "/manage" ? (
+                  <SlidersHorizontal />
+                ) : (
+                  <LayoutDashboard />
+                ))
+              }
+              label={t(item.label)}
+            />
+          ))}
         </nav>
       </aside>
     )
