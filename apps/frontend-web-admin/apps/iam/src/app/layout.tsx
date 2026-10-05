@@ -6,7 +6,6 @@ import {
   Outlet,
   useLocation,
   useNavigate,
-  useMatch,
   useParams,
 } from "react-router"
 import { Alert } from "../components/alert"
@@ -36,7 +35,10 @@ import {
   tenantPerspectiveOffered,
 } from "../lib/navigation"
 import { useBranding } from "../lib/branding"
-import { tenantIDFromPath } from "../lib/organization-scope"
+import {
+  entityIDFromPath,
+  tenantIDFromPath,
+} from "../lib/organization-scope"
 import { entrancePath } from "../lib/auth-entrance"
 import { getAccountView } from "../lib/account-view"
 import type { EffectivePermissions } from "../lib/permissions"
@@ -129,8 +131,7 @@ export default function AppLayout() {
   }, [status, subject])
 
   const navigate = useNavigate()
-  const entityMatch = useMatch("/admin/:tenantID/entities/:entityID/:view")
-  const entityID = routeParams.entityID ?? entityMatch?.params.entityID ?? ""
+  const entityID = routeParams.entityID ?? entityIDFromPath(location.pathname)
   // Views that live inside an entity but do not read the entity record itself.
   // The checks below wait for the entity catalogue and refuse an entity that is
   // not in it; these pages need neither, and gating them on it turned a page the
