@@ -61,9 +61,10 @@ it("sends the console home to the view the caller can use", () => {
       myPermissions:async()=>access.permissions,
       myOperatingPlatforms:async()=>access.platforms,
       systemPermissions:async()=>{if(access.fail)throw new Error("offline");return access.system},
+      memberEntities:async(permission)=>access.entities[permission]??[],
     });
     const home=async(next,stored)=>{
-      access={memberships:[],permissions:[],platforms:[],system:[],...next};
+      access={memberships:[],permissions:[],platforms:[],system:[],entities:{},...next};
       saved.clear();if(stored)saved.set("iam.tenant",stored);
       return (await workspaceHomeLoader()).headers.get("Location");
     };
@@ -76,6 +77,21 @@ it("sends the console home to the view the caller can use", () => {
     assert.equal(saved.get("iam.tenant"),"7");
     assert.equal(await home({memberships:[active("7"),active("8")]},"8"),"/admin/8");
     assert.equal(await home({memberships:[active("7")],permissions:["tenant_view"]},"7"),"/system/tenants");
+    // An account whose standing is inside one entity lands in that entity's
+    // perspective, not the tenant's: the tenant shell is for somebody who
+    // administers the tenant.
+    assert.equal(
+      await home({memberships:[active("7")],entities:{entity_view:[{id:"5"}]}},"7"),
+      "/admin/7/entities/5/overview");
+    // Reaching only an entity's files is still that entity's perspective.
+    assert.equal(
+      await home({memberships:[active("7")],entities:{file_view:[{id:"6"}]}},"7"),
+      "/admin/7/entities/6/files");
+    // Any standing at tenant level keeps the tenant perspective, even for
+    // somebody who also administers an entity.
+    assert.equal(
+      await home({memberships:[active("7")],permissions:["role_view"],entities:{entity_view:[{id:"5"}]}},"7"),
+      "/admin/7");
     assert.equal(await home({}),"/user");
     assert.equal(await home({fail:true}),"/user");
     globalThis.fetch=async()=>new Response(null,{status:204});

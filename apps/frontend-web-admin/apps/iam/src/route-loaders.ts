@@ -39,6 +39,37 @@ export function legacyRouteLoader({ request }: LoaderFunctionArgs) {
   )
 }
 
+// entityWorkspacePath answers where an account whose standing is inside one
+// entity belongs. The tenant perspective is shaped for somebody who administers
+// the tenant; an account that administers an entity has no business landing in
+// it, even though the shell there offers it nothing but self-service.
+//
+// The service is the authority on both halves, so neither is inferred: a grant
+// narrowed to an entity is deliberately absent from the tenant-level permission
+// list, which makes "nothing at tenant level" an answer rather than a guess, and
+// the entity listing reports exactly which entities admit this caller for a
+// named permission. An account with any tenant standing keeps the tenant
+// perspective, and one the service cannot answer for keeps it too -- a failed
+// lookup must not move anybody.
+async function entityWorkspacePath(tenantID: string): Promise<string> {
+  if (!tenantID) return ""
+  const none: { id: string }[] = []
+  const [tenantPermissions, administered, files] = await Promise.all([
+    iamApi.myPermissions(tenantID).catch(() => ["unknown"]),
+    iamApi.memberEntities("entity_view").catch(() => none),
+    iamApi.memberEntities("file_view").catch(() => none),
+  ])
+  if ((tenantPermissions ?? []).length > 0) return ""
+  const base = `/admin/${encodeURIComponent(tenantID)}/entities`
+  // Administering one is the fuller view; reaching only its files is still that
+  // entity's perspective rather than the tenant's.
+  const entity = administered[0]
+  if (entity) return `${base}/${encodeURIComponent(entity.id)}/overview`
+  const fileEntity = files[0]
+  if (fileEntity) return `${base}/${encodeURIComponent(fileEntity.id)}/files`
+  return ""
+}
+
 export async function workspaceHomeLoader() {
   const view = getAccountView()
   if (view) return redirect(accountViewPath(view, getTenant()))
@@ -64,6 +95,8 @@ export async function workspaceHomeLoader() {
       ? selected
       : (tenants[0]?.id ?? "")
     if (tenantID) setTenant(tenantID)
+    const entityHome = await entityWorkspacePath(tenantID)
+    if (entityHome) return redirect(entityHome)
     return redirect(defaultWorkspacePath(tenantID, new Set(permissions)))
   } catch {
     return redirect("/user")
