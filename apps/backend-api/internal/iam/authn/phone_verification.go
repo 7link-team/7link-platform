@@ -123,6 +123,57 @@ func (s *Service) BeginPhoneVerification(ctx context.Context, authorization, coo
 // The code proves the number it was sent to. If the number changed after the
 // message left, the code proves nothing about the number on the principal now,
 // and is refused rather than quietly promoted.
+// phoneCodeOutcome is what reading an outstanding one-time code decided. Missing
+// covers both "nothing outstanding" and "its attempts are spent": neither is a
+// guess, so neither is counted, and a caller that treats them alike says so by
+// handling one case.
+type phoneCodeOutcome int
+
+const (
+	phoneCodeMissing phoneCodeOutcome = iota
+	phoneCodeWrong
+	phoneCodeMatched
+)
+
+// readPhoneCode reads the outstanding code for one purpose and counts a wrong
+// guess. It spends nothing -- consuming is the caller's, because what a matched
+// code buys differs by purpose.
+//
+// The counting is here, and here is outside whatever transaction the caller opens
+// afterwards, because a refusal leaves a transaction by returning an error and
+// takes the count back with it: an attempt ceiling that rolls back is no ceiling
+// at all. This module shipped that bug once, in a flow that re-implemented what
+// the flow beside it had already got right. One function is how the next purpose
+// cannot repeat it.
+//
+// The returned row is the one the code was sent to, so a caller that cares which
+// destination was proven compares against it rather than against the account as
+// it reads now.
+func (s *Service) readPhoneCode(
+	ctx context.Context,
+	principalID guid.ID,
+	purpose, code string,
+	now time.Time,
+) (*model.PhoneVerificationCode, phoneCodeOutcome, error) {
+	row, err := s.repo.activePhoneCode(ctx, principalID, purpose, now)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, phoneCodeMissing, nil
+	}
+	if err != nil {
+		return nil, phoneCodeMissing, fmt.Errorf("load phone code for %s: %w", purpose, err)
+	}
+	if row.Attempts >= maxCodeAttempts {
+		return row, phoneCodeMissing, nil
+	}
+	if row.Code != code {
+		if err := s.repo.recordPhoneCodeAttempt(ctx, principalID, purpose, maxCodeAttempts, now); err != nil {
+			return row, phoneCodeWrong, fmt.Errorf("record phone code attempt for %s: %w", purpose, err)
+		}
+		return row, phoneCodeWrong, nil
+	}
+	return row, phoneCodeMatched, nil
+}
+
 func (s *Service) CompletePhoneVerification(ctx context.Context, authorization, cookieHeader, code string) error {
 	if !s.PhoneVerificationEnabled() {
 		return authnext.ErrPhoneVerificationDisabled
@@ -139,20 +190,11 @@ func (s *Service) CompletePhoneVerification(ctx context.Context, authorization, 
 	// that promotes the number. A refusal leaves that transaction by returning an
 	// error, which would roll the counter back with it -- and an attempt ceiling
 	// that rolls back is no ceiling at all.
-	row, err := s.repo.activePhoneCode(ctx, claims.PrincipalID, phoneCodeVerify, now)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return authnext.ErrInvalidPhoneVerification
-	}
+	row, outcome, err := s.readPhoneCode(ctx, claims.PrincipalID, phoneCodeVerify, code, now)
 	if err != nil {
-		return fmt.Errorf("load phone verification code: %w", err)
+		return err
 	}
-	if row.Attempts >= maxCodeAttempts {
-		return authnext.ErrInvalidPhoneVerification
-	}
-	if row.Code != code {
-		if err := s.repo.recordPhoneCodeAttempt(ctx, claims.PrincipalID, phoneCodeVerify, maxCodeAttempts, now); err != nil {
-			return fmt.Errorf("record phone verification attempt: %w", err)
-		}
+	if outcome != phoneCodeMatched {
 		return authnext.ErrInvalidPhoneVerification
 	}
 	err = s.repo.runInTx(ctx, func(repository *Repository) error {

@@ -124,27 +124,19 @@ func (s *Service) CompletePhoneLogin(
 		return authnext.LoginResult{}, authnext.ErrInvalidCredentials
 	}
 
-	// The code is read and a wrong one counted outside the transaction that
-	// issues the session: a refusal leaves that transaction by returning an
-	// error, which would roll the count back with it.
-	row, err := s.repo.activePhoneCode(ctx, principal.ID, phoneCodeLogin, now)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return authnext.LoginResult{}, authnext.ErrInvalidCredentials
-	}
+	// Reading the code counts a wrong one, outside the transaction below that
+	// issues the session. No comparison against the principal's number here: the
+	// lookup above already required a proven number equal to the one typed, so a
+	// number changed since the code left stops resolving at all -- changing one
+	// unverifies it, and an unproven number is not a way in.
+	_, outcome, err := s.readPhoneCode(ctx, principal.ID, phoneCodeLogin, code, now)
 	if err != nil {
-		return authnext.LoginResult{}, fmt.Errorf("load phone login code: %w", err)
+		return authnext.LoginResult{}, err
 	}
-	// No comparison against the principal's number here: the lookup above already
-	// required a proven number equal to the one typed, so a number changed since
-	// the code left stops resolving at all -- changing one unverifies it, and an
-	// unproven number is not a way in.
-	if row.Attempts >= maxCodeAttempts || row.Code != code {
-		if row.Code != code && row.Attempts < maxCodeAttempts {
-			if err := s.repo.recordPhoneCodeAttempt(
-				ctx, principal.ID, phoneCodeLogin, maxCodeAttempts, now,
-			); err != nil {
-				return authnext.LoginResult{}, fmt.Errorf("record phone login attempt: %w", err)
-			}
+	if outcome != phoneCodeMatched {
+		// Only a guess counts against the account lock. Nothing outstanding is
+		// not a wrong password's worth of evidence about anybody.
+		if outcome == phoneCodeWrong {
 			if err := s.repo.recordLoginFailure(
 				ctx, principal.ID, s.cfg.Password.MaxFailedAttempts, s.cfg.Password.LockDuration, now,
 			); err != nil {

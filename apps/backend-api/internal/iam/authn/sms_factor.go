@@ -105,6 +105,13 @@ func (s *Service) SendMFAPhoneCode(ctx context.Context, challengeID string) erro
 // a TOTP step because a six-digit code is the same shape either way: a value
 // that matches a stored code is unambiguous, where a TOTP comparison would
 // accept a code this account was never sent.
+//
+// This one deliberately does not go through readPhoneCode. It runs inside the
+// transaction that answers the challenge, and a wrong guess here is counted
+// against the challenge's own attempt ceiling by the caller -- which is what
+// bounds guessing, and which a code-row counter rolled back with the refusal
+// could not. Moving the read out would split one decision across two
+// transactions to reuse a counter this path does not use.
 func (s *Service) consumeSMSFactor(
 	ctx context.Context,
 	repository *Repository,
