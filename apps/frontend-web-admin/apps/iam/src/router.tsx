@@ -3,7 +3,9 @@ import { AuthProvider } from "./components/auth-provider"
 import { PendingRoute } from "./components/pending-route"
 import { RouteError } from "./components/route-error"
 import { authEntrances, entrancePath } from "./lib/auth-entrance"
-import { legacyRouteLoader, workspaceHomeLoader } from "./route-loaders"
+import { legacyRouteLoader, workspaceHomeLoader,
+  tenantWorkspaceLoader,
+} from "./route-loaders"
 
 export const router = createBrowserRouter([
   {
@@ -309,6 +311,7 @@ export const router = createBrowserRouter([
               },
               {
                 path: "/admin/:tenantID",
+                loader: tenantWorkspaceLoader,
                 lazy: async () => ({
                   Component: (await import("./app/dashboard/page")).default,
                 }),

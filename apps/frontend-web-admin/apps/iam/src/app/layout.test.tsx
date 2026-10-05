@@ -103,12 +103,14 @@ describe("workspace switcher tenant source", () => {
     expect(source).toContain("tenantPerspectiveOffered(")
     expect(source).toContain("tenantPerspective={tenantPerspective}")
   })
-  // Picking a tenant went straight to that tenant's perspective, which is the
-  // same leak as the perspective button: choosing a tenant says nothing about
-  // having standing in it. The workspace home is where that is decided.
-  it("lets the workspace home decide where a chosen tenant lands", () => {
-    expect(source).not.toContain("navigate(`/admin/${encodeURIComponent(next)}`)")
-    expect(source).toContain('navigate("/")')
+  // A chosen tenant is addressed directly, and the tenant route decides which of
+  // its perspectives the caller gets. Routing the choice through the workspace
+  // home instead sent an operator with system authority to /system, which is
+  // where it sends anybody who asked for nowhere -- so picking a tenant bounced
+  // them out of it.
+  it("addresses a chosen tenant and leaves the perspective to its route", () => {
+    expect(source).toContain("navigate(`/admin/${encodeURIComponent(next)}`)")
+    expect(source).toContain("tenantPerspectiveOffered(")
   })
   // Entering an entity used to go to its overview, which reads the entity record
   // itself -- tenant-wide entity administration an entity's own member lacks.

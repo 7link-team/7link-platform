@@ -179,7 +179,8 @@ export default function AppLayout() {
     tenantStanding?.subject === subject && tenantStanding.tenant === tenantValue
       ? tenantStanding.standing
       : null,
-    permissions?.size ?? 0
+    permissions?.size ?? 0,
+    platformTenantAccess || Boolean(systemPath)
   )
 
   useEffect(() => {
@@ -430,12 +431,11 @@ export default function AppLayout() {
     setMenuCatalog(null)
     setTenant(next)
     setTenantValue(next)
-    // Not /admin/{tenant}: that is the tenant's perspective, and picking a
-    // tenant said nothing about having standing in it. The workspace home
-    // decides, with the service's answer for the tenant just chosen -- which is
-    // the only place that answer exists, since standing in a tenant the console
-    // has not opened yet is not something it knows.
-    navigate("/")
+    // The tenant route decides which of its perspectives this caller gets. Not
+    // the workspace home: that answers "nowhere was asked for" and sends an
+    // operator with system authority to /system, which would bounce somebody who
+    // had just picked a tenant straight back out of it.
+    navigate(`/admin/${encodeURIComponent(next)}`)
   }
 
   return (

@@ -50,15 +50,21 @@ export function entityNavigation(
 }
 
 // tenantPerspectiveOffered says whether the tenant's perspective may be offered
-// at all. Inside an entity the permission set in hand is that entity's, so the
+// at all. Authority from above answers yes on its own. Inside an entity the permission set in hand is that entity's, so the
 // tenant answer has to be the one asked for separately -- and an answer that has
 // not arrived yet is not a yes, because a view is shown once it is known to be
 // allowed rather than until it is known not to be.
 export function tenantPerspectiveOffered(
   insideEntity: boolean,
   tenantStanding: boolean | null,
-  perspectivePermissionCount: number
+  perspectivePermissionCount: number,
+  authorityFromAbove: boolean
 ): boolean {
+  // An operator whose authority over tenants comes from the platform or the
+  // system holds no tenant-level grant at all, and in the system area the
+  // permission set in hand is empty besides. Reading that as "no standing" took
+  // the tenants away from the accounts most entitled to enter them.
+  if (authorityFromAbove) return true
   return insideEntity ? tenantStanding === true : perspectivePermissionCount > 0
 }
 

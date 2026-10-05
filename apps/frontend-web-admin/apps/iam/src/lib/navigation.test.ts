@@ -177,15 +177,22 @@ describe("tenantPerspectiveOffered", () => {
   // An account whose grants live inside one entity was offered the tenant's
   // perspective in the workspace switcher and could walk into it.
   it("withholds the tenant perspective from an account with no tenant standing", () => {
-    expect(tenantPerspectiveOffered(true, false, 3)).toBe(false)
-    expect(tenantPerspectiveOffered(true, true, 0)).toBe(true)
+    expect(tenantPerspectiveOffered(true, false, 3, false)).toBe(false)
+    expect(tenantPerspectiveOffered(true, true, 0, false)).toBe(true)
   })
   it("does not offer it on an answer that has not arrived", () => {
-    expect(tenantPerspectiveOffered(true, null, 9)).toBe(false)
+    expect(tenantPerspectiveOffered(true, null, 9, false)).toBe(false)
   })
   it("reads the perspective in hand when that perspective is the tenant", () => {
-    expect(tenantPerspectiveOffered(false, null, 1)).toBe(true)
-    expect(tenantPerspectiveOffered(false, true, 0)).toBe(false)
+    expect(tenantPerspectiveOffered(false, null, 1, false)).toBe(true)
+    expect(tenantPerspectiveOffered(false, true, 0, false)).toBe(false)
+  })
+  // The accounts most entitled to enter a tenant hold no grant inside one, and
+  // in the system area the permission set in hand is empty besides. Reading that
+  // as "no standing" took every tenant away from them.
+  it("offers it to authority from above whatever the tenant answer says", () => {
+    expect(tenantPerspectiveOffered(false, null, 0, true)).toBe(true)
+    expect(tenantPerspectiveOffered(true, false, 0, true)).toBe(true)
   })
 })
 

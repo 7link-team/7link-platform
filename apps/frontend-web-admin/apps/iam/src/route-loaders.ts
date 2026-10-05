@@ -67,6 +67,23 @@ async function entityWorkspacePath(tenantID: string): Promise<string> {
   return `/admin/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entity.id)}/${entityWorkspaceView(tenantPermissions ?? [])}`
 }
 
+// tenantWorkspaceLoader decides which perspective of one named tenant the caller
+// gets. Entering a tenant is a destination, so this is not the workspace home:
+// that one answers "where do I go with nowhere asked for" and sends an operator
+// with system authority to /system, which would bounce anybody who had just
+// picked a tenant straight back out of it.
+//
+// Only an account with nothing at tenant level is moved, and only into an entity
+// that admits it. Everybody else -- a member with any standing, an operator whose
+// authority comes from above and who has no tenant grants at all -- gets the
+// tenant's own perspective, which is what they asked for.
+export async function tenantWorkspaceLoader({ params }: LoaderFunctionArgs) {
+  const tenantID = String(params.tenantID ?? "")
+  if (!tenantID || getAccountView()) return null
+  const entityHome = await entityWorkspacePath(tenantID)
+  return entityHome ? redirect(entityHome) : null
+}
+
 export async function workspaceHomeLoader() {
   const view = getAccountView()
   if (view) return redirect(accountViewPath(view, getTenant()))

@@ -75,14 +75,14 @@ function WorkspaceOptions() {
     if (status !== "authenticated" || items?.length !== 1 || creating) return
     const selected = items[0]!
     if (entry === "tenant") setTenant(selected.id)
-    // A tenant is selected here, not entered. /admin/{id} is the tenant's own
-    // perspective, and choosing a tenant says nothing about having standing in
-    // it: an account whose grants live inside one entity was dropped into a
-    // shell shaped for administering the tenant, with that tenant's overview as
-    // its home. The workspace home decides, once, for every way in.
-    navigate(entry === "platform" ? `/platform/${selected.id}` : "/", {
-      replace: true,
-    })
+    // The tenant route decides which of its perspectives this caller gets, so a
+    // chosen tenant is addressed directly: routing this through the workspace
+    // home would send an operator with system authority to /system instead of
+    // the tenant they chose.
+    navigate(
+      entry === "platform" ? `/platform/${selected.id}` : `/admin/${selected.id}`,
+      { replace: true }
+    )
   }, [status, items, creating, entry, navigate])
 
   if (status === "anonymous")
@@ -153,7 +153,11 @@ function WorkspaceOptions() {
             <Link
               key={item.id}
               className="flex items-center gap-3 py-4 hover:text-primary"
-              to={entry === "platform" ? `/platform/${item.id}` : "/"}
+              to={
+                entry === "platform"
+                  ? `/platform/${item.id}`
+                  : `/admin/${item.id}`
+              }
               onClick={() => {
                 if (entry === "tenant") setTenant(item.id)
               }}
