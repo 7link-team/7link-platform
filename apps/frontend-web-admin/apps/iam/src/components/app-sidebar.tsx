@@ -56,7 +56,6 @@ export function AppSidebar({
   className = "",
   language = "",
   entityID = "",
-  scopedFileEntityID = "",
   tenantID = "",
 }: {
   permissions?: EffectivePermissions
@@ -65,7 +64,6 @@ export function AppSidebar({
   className?: string
   language?: string
   entityID?: string
-  scopedFileEntityID?: string
   tenantID?: string
 }) {
   const t = useTranslations("iam")
@@ -74,12 +72,7 @@ export function AppSidebar({
   menus = tenantNavigation(menus)
   const paths = effectiveMenuPaths(menus)
   const fileAccess = can(permissions, "file_view")
-  const systemLinks = tenantSystemNavigation(
-    paths,
-    fileAccess,
-    fieldPolicyAccess,
-    scopedFileEntityID
-  )
+  const systemLinks = tenantSystemNavigation(paths, fileAccess, fieldPolicyAccess)
   if (entityID) {
     const base = `${tenantBase}/entities/${encodeURIComponent(entityID)}`
     // Taken from what this caller holds in this entity, not from a list of what

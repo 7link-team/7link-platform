@@ -117,11 +117,14 @@ describe("effective navigation", () => {
         true
       ).map((item) => item.path)
     ).toEqual([""])
+    // Every entry addresses the tenant. The one that addressed an entity is
+    // gone: it moved somebody into the entity perspective from what looked like
+    // a tenant item, and such an account lands in that perspective now.
     expect(
-      tenantSystemNavigation(new Set(), false, false, "123").map(
-        (item) => item.path
-      )
-    ).toEqual(["", "/access-requests", "/entities/123/files"])
+      tenantSystemNavigation(new Set(), false, false).map((item) => item.path)
+    ).toEqual(["", "/access-requests"])
+    for (const item of tenantSystemNavigation(new Set(), true, true))
+      expect(item.path.startsWith("/entities/")).toBe(false)
   })
   it("omits empty authorized groups while keeping accessible descendants", () => {
     const empty = {

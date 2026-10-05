@@ -11,8 +11,7 @@ function renderSidebar(
   fieldPolicyAccess = false,
   path = "/",
   entityID = "",
-  permissions: ReadonlySet<string> | null = new Set(["entity_view"]),
-  scopedFileEntityID = ""
+  permissions: ReadonlySet<string> | null = new Set(["entity_view"])
 ): string {
   return renderToStaticMarkup(
     <MemoryRouter initialEntries={[path]}>
@@ -21,7 +20,6 @@ function renderSidebar(
           tenantID="456"
           permissions={permissions}
           entityID={entityID}
-          scopedFileEntityID={scopedFileEntityID}
           menus={menus}
           fieldPolicyAccess={fieldPolicyAccess}
         />
@@ -121,16 +119,14 @@ describe("AppSidebar", () => {
       'href="/admin/456/files"'
     )
   })
-  it("links scoped accounts to entity files without exposing tenant files", () => {
-    const html = renderSidebar(
-      [],
-      false,
-      "/admin/456",
-      "",
-      new Set(["entity_view"]),
-      "123"
-    )
-    expect(html).toContain('href="/admin/456/entities/123/files"')
+  // This used to assert the opposite: a scoped account was given an entity link
+  // in the tenant's sidebar. Clicking it moved them into the entity perspective
+  // from what looked like a tenant item, which is what "the menu changes" was.
+  // Such an account lands in the entity perspective now and finds its files
+  // there, so nothing in the tenant's sidebar addresses an entity.
+  it("never points a tenant entry at an entity", () => {
+    const html = renderSidebar([], false, "/admin/456", "", new Set(["entity_view"]))
+    expect(html).not.toContain('href="/admin/456/entities/')
     expect(html).not.toContain('href="/admin/456/files"')
   })
   it("does not duplicate a tenant file menu supplied by the server", () => {

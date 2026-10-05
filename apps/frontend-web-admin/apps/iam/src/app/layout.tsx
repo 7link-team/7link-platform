@@ -174,11 +174,6 @@ export default function AppLayout() {
     tenant: string
     standing: boolean
   } | null>(null)
-  const [scopedFileAccess, setScopedFileAccess] = useState<{
-    subject: string
-    tenant: string
-    entityID: string
-  } | null>(null)
   const tenantPerspective = tenantPerspectiveOffered(
     Boolean(entityID),
     tenantStanding?.subject === subject && tenantStanding.tenant === tenantValue
@@ -186,12 +181,6 @@ export default function AppLayout() {
       : null,
     permissions?.size ?? 0
   )
-  const scopedFileEntityID =
-    !entityID &&
-    scopedFileAccess?.subject === subject &&
-    scopedFileAccess.tenant === tenantValue
-      ? scopedFileAccess.entityID
-      : ""
 
   useEffect(() => {
     if (!routeTenantAdmitted) return
@@ -270,32 +259,6 @@ export default function AppLayout() {
     accountView?.scope_type,
   ])
 
-  useEffect(() => {
-    if (status !== "authenticated" || !tenantValue || entityID) return
-    let active = true
-    // The service reports which entities admit this caller. This used to list
-    // departments, derive the entities behind them, and call an entity-scoped
-    // endpoint on each until one did not refuse -- several deliberate
-    // authorization failures per page load, to answer a question one request
-    // now answers.
-    void iamApi.memberEntities("file_view").then(
-      (entities) => {
-        if (active)
-          setScopedFileAccess({
-            subject,
-            tenant: tenantValue,
-            entityID: entities[0]?.id ?? "",
-          })
-      },
-      () => {
-        if (active)
-          setScopedFileAccess({ subject, tenant: tenantValue, entityID: "" })
-      }
-    )
-    return () => {
-      active = false
-    }
-  }, [status, tenantValue, entityID, subject])
   const loginState = useMemo(
     () => ({ from: location.pathname + location.search }),
     [location.pathname, location.search]
@@ -513,7 +476,6 @@ export default function AppLayout() {
                   permissions={permissions}
                   tenantID={tenantValue}
                   entityID={entityID}
-                  scopedFileEntityID={scopedFileEntityID}
                   language={menuLanguage}
                   menus={directoryReady ? (menus ?? []) : []}
                   fieldPolicyAccess={Boolean(tenantValue) && fieldPolicyAccess}
@@ -608,7 +570,6 @@ export default function AppLayout() {
           permissions={permissions}
           tenantID={tenantValue}
           entityID={entityID}
-          scopedFileEntityID={scopedFileEntityID}
           language={menuLanguage}
           menus={directoryReady ? (menus ?? []) : []}
           fieldPolicyAccess={Boolean(tenantValue) && fieldPolicyAccess}
@@ -659,7 +620,6 @@ export default function AppLayout() {
                   permissionsResolved,
                   platformTenantAccess,
                   fieldPolicyAccess: Boolean(tenantValue) && fieldPolicyAccess,
-                  scopedFileEntityID,
                   tenantID: tenantValue,
                   tenantName,
                   entityID,

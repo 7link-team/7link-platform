@@ -87,11 +87,16 @@ export function entityWorkspaceView(
 // page, and the access-request entry is unconditional-in-practice for a member
 // without access_request_view: the seeded row is gated on the approver's
 // permission, while filing a request is everybody's.
+// Every entry here addresses the tenant. One used to address an entity: an
+// account whose file access lives inside one was offered "files" in the tenant's
+// sidebar pointing at /entities/{id}/files, so clicking what looked like a tenant
+// item moved somebody into the entity perspective and the whole sidebar changed
+// under them. That is what "the menu changes" was. Such an account belongs in the
+// entity perspective, which it now lands in, and finds its files there.
 export function tenantSystemNavigation(
   paths: Set<string>,
   fileAccess: boolean,
-  fieldPolicyAccess: boolean,
-  scopedFileEntityID = ""
+  fieldPolicyAccess: boolean
 ): SystemNavigationItem[] {
   return [
     { path: "", label: "overview" },
@@ -100,14 +105,6 @@ export function tenantSystemNavigation(
       : []),
     ...(fileAccess && !paths.has("/files")
       ? [{ path: "/files", label: "files" }]
-      : []),
-    ...(!fileAccess && scopedFileEntityID
-      ? [
-          {
-            path: `/entities/${encodeURIComponent(scopedFileEntityID)}/files`,
-            label: "files",
-          },
-        ]
       : []),
     ...(fieldPolicyAccess && !paths.has("/field-policies")
       ? [{ path: "/field-policies", label: "fieldPermissions" }]
