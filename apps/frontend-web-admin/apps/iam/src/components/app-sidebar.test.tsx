@@ -347,9 +347,12 @@ describe("AppSidebar entity perspective has no group heading", () => {
     expect(html).not.toContain("data-navigation-group")
     expect(html).not.toContain('aria-expanded')
   })
-  // The tenant perspective keeps its groups: the fixed entries there sit beside a
-  // configured menu tree and the heading is what tells them apart.
-  it("keeps the group heading in the tenant perspective", () => {
-    expect(renderSidebar([])).toContain("data-navigation-group")
+  // Nor does the tenant perspective: which source an entry came from is not
+  // something to label, and the chevron that came with the label could hide
+  // entries.
+  it("renders the tenant entries without a collapsible group either", () => {
+    const html = renderSidebar([])
+    expect(html).not.toContain("data-navigation-group")
+    expect(html).toContain("访问申请")
   })
 })
