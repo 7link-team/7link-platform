@@ -1,7 +1,12 @@
 import type { EffectiveMenu, Menu } from "./iam-api"
 import { defaultLocale } from "@workspace/ui/i18n/config"
 
-export type SystemNavigationItem = { path: string; label: string }
+export type SystemNavigationItem = {
+  path: string
+  label: string
+  /** The path hangs off the tenant rather than the entity being viewed. */
+  tenantPath?: boolean
+}
 
 export function firstEffectiveMenuPath(menus: EffectiveMenu[]): string {
   for (const menu of menus) {
@@ -24,10 +29,20 @@ export const personalNavigation: SystemNavigationItem[] = [
   { path: "/user/applications", label: "authorizedApplications" },
 ]
 
+// entityNavigation offers each view behind the permission that governs its page,
+// taken from the caller's permissions in this entity. Nothing here is a fixed
+// list of what an entity member gets: a grant the account holds and a view it is
+// offered are the same decision, so a permission with a page has an entry and a
+// permission without one is a gap in the console rather than a policy.
+//
+// tenantPath is absolute because the department register is a tenant-scoped page
+// that narrows to the departments the grant names; the rest hang off this
+// entity's own base.
 export function entityNavigation(
-  entityAccess: boolean,
-  fileAccess: boolean
+  permissions: Iterable<string>
 ): SystemNavigationItem[] {
+  const held = new Set(permissions)
+  const entityAccess = held.has("entity_view")
   return [
     ...(entityAccess
       ? [
@@ -35,7 +50,10 @@ export function entityNavigation(
           { path: "/roles", label: "entityAccessControl" },
         ]
       : []),
-    ...(fileAccess ? [{ path: "/files", label: "files" }] : []),
+    ...(held.has("file_view") ? [{ path: "/files", label: "files" }] : []),
+    ...(held.has("dept_view")
+      ? [{ path: "/departments", label: "departmentManagement", tenantPath: true }]
+      : []),
     ...(entityAccess ? [{ path: "/manage", label: "entitySettings" }] : []),
   ]
 }

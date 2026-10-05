@@ -117,3 +117,28 @@ describe("workspace switcher tenant source", () => {
     expect(source).not.toContain("/entities/${encodeURIComponent(id)}/overview")
   })
 })
+
+// The workspace switcher cannot be opened in static markup, so these pin the
+// shape of the decision the shell hands it and the one branch it renders.
+describe("workspace switcher tenant selectability", () => {
+  const source = readFileSync(
+    new URL("../components/workspace-switcher.tsx", import.meta.url),
+    "utf8"
+  )
+  it("makes the tenant a heading rather than a destination without tenant standing", () => {
+    const lines = source.split("\n")
+    const branch = lines.findIndex((line) => line.includes("!tenantPerspective ?"))
+    expect(branch).toBeGreaterThan(-1)
+    // Every way of choosing a tenant, and the tenant-perspective button, sit
+    // after the branch -- that is, in the arm taken when there is standing.
+    for (const call of ["onTenant(", 'onEntity("")']) {
+      const at = lines.findIndex((line) => line.includes(call))
+      expect(at).toBeGreaterThan(branch)
+    }
+    // The arm before it offers entities and nothing else.
+    const grouped = lines.slice(branch).join("\n")
+    expect(grouped.slice(0, grouped.indexOf("onTenant("))).toContain(
+      "onEntity(entity.id)"
+    )
+  })
+})

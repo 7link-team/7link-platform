@@ -305,3 +305,27 @@ describe("AppSidebar", () => {
     expect(html).not.toContain("Platform tenants")
   })
 })
+
+// An entity account's entries follow its grants in that entity. A grant with a
+// page it could not reach was the console's gap, not the policy's.
+describe("AppSidebar entity perspective follows the grants held", () => {
+  it("offers the department register to a dept_view grant and no entity administration", () => {
+    const html = renderSidebar(
+      [],
+      false,
+      "/admin/456/entities/5/files",
+      "5",
+      new Set(["file_view", "dept_view"])
+    )
+    expect(html).toContain('href="/admin/456/entities/5/files"')
+    // Tenant-scoped page, narrowed to the departments the grant names.
+    expect(html).toContain('href="/admin/456/departments"')
+    expect(html).not.toContain('href="/admin/456/entities/5/overview"')
+    expect(html).not.toContain('href="/admin/456/entities/5/manage"')
+  })
+  it("offers nothing where the account holds nothing in the entity", () => {
+    const html = renderSidebar([], false, "/admin/456/entities/5/files", "5", new Set())
+    expect(html).not.toContain('href="/admin/456/entities/5/')
+    expect(html).not.toContain('href="/admin/456/departments"')
+  })
+})

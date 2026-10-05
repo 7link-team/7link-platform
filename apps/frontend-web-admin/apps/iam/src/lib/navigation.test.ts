@@ -12,6 +12,7 @@ import {
   firstEffectiveMenuPath,
   entityWorkspaceView,
   tenantPerspectiveOffered,
+  entityNavigation,
 } from "./navigation"
 
 const menus: EffectiveMenu[] = [
@@ -182,5 +183,34 @@ describe("tenantPerspectiveOffered", () => {
   it("reads the perspective in hand when that perspective is the tenant", () => {
     expect(tenantPerspectiveOffered(false, null, 1)).toBe(true)
     expect(tenantPerspectiveOffered(false, true, 0)).toBe(false)
+  })
+})
+
+describe("entityNavigation", () => {
+  // What an entity account is offered follows the grants it holds in that
+  // entity. The list used to be two booleans, so a permission whose page exists
+  // -- the department register -- had no entry at all and the grant was
+  // unreachable from the console.
+  it("offers each view behind the permission that governs it", () => {
+    expect(entityNavigation([]).map((item) => item.path)).toEqual([])
+    expect(entityNavigation(["file_view"]).map((item) => item.path)).toEqual([
+      "/files",
+    ])
+    expect(entityNavigation(["dept_view"]).map((item) => item.path)).toEqual([
+      "/departments",
+    ])
+    expect(
+      entityNavigation(["entity_view", "file_view", "dept_view"]).map(
+        (item) => item.path
+      )
+    ).toEqual(["/overview", "/roles", "/files", "/departments", "/manage"])
+  })
+  // The department register is a tenant-scoped page that narrows to the
+  // departments the grant names, so its link hangs off the tenant and not off
+  // the entity being viewed.
+  it("marks the department register as a tenant path", () => {
+    const [departments] = entityNavigation(["dept_view"])
+    expect(departments?.tenantPath).toBe(true)
+    expect(entityNavigation(["file_view"])[0]?.tenantPath).toBeUndefined()
   })
 })

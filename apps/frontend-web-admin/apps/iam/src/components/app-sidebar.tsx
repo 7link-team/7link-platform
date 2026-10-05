@@ -83,20 +83,20 @@ export function AppSidebar({
   )
   if (entityID) {
     const base = `${tenantBase}/entities/${encodeURIComponent(entityID)}`
+    // Taken from what this caller holds in this entity, not from a list of what
+    // an entity member is assumed to get.
+    const entityLinks = entityNavigation(permissions ?? [])
     return (
       <aside
         className={`w-64 shrink-0 overflow-y-auto border-e border-sidebar-border bg-sidebar p-3 ${className}`}
       >
         <nav className="space-y-2" aria-label={t("mainNav")}>
-          {(can(permissions, "entity_view") || fileAccess) && (
+          {entityLinks.length > 0 && (
             <NavigationGroup label={t("entityPerspective")}>
-              {entityNavigation(
-                can(permissions, "entity_view"),
-                fileAccess
-              ).map((item) => (
+              {entityLinks.map((item) => (
                 <SideLink
                   key={item.path}
-                  to={`${base}${item.path}`}
+                  to={item.tenantPath ? `${tenantBase}${item.path}` : `${base}${item.path}`}
                   icon={
                     routeIcons[item.path] ??
                     (item.path === "/roles" ? (

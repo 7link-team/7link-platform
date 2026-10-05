@@ -180,140 +180,193 @@ export function WorkspaceSwitcher({
             </div>
           </section>
         )}
-        <div className="grid min-h-64 grid-cols-1 gap-4 sm:grid-cols-[1fr_1.4fr]">
+        {!tenantPerspective ? (
+          // Only the entities are a destination. The tenant is what they are
+          // grouped under and nothing more: this account has no standing at
+          // tenant level, so a clickable tenant would be an offer of a
+          // perspective that is not its own.
           <section
-            className="min-w-0 sm:border-e sm:pe-4"
-            aria-label={t("currentTenant")}
+            className="min-h-64 min-w-0"
+            aria-label={t("entityPerspective")}
           >
-            <h2 className="mb-2 text-sm font-semibold">{t("currentTenant")}</h2>
-            {tenantError ? (
-              <Alert>
-                <p>{tenantError}</p>
-                <Button variant="outline" onClick={onRetryTenants}>
-                  {t("retryNow")}
-                </Button>
-              </Alert>
-            ) : tenants ? (
-              <>
-                {filterTenants && (
-                  <Input
-                    aria-label={t("searchTenants")}
-                    value={tenantFilter}
-                    onChange={(event) => setTenantFilter(event.target.value)}
-                    className="mb-2 h-9"
-                  />
-                )}
-                <div className="max-h-60 space-y-1 overflow-y-auto">
-                  {activeTenants.length === 0 && (
-                    <p className="text-sm">{t("noAvailableTenants")}</p>
-                  )}
-                  {activeTenants.length > 0 && shownTenants.length === 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      {t("noMatches")}
-                    </p>
-                  )}
-                  {shownTenants.map((tenant) => (
-                    <button
-                      key={tenant.id}
-                      type="button"
-                      aria-pressed={tenant.id === tenantID}
-                      onClick={() => {
-                        onTenant(tenant.id)
-                        setOpen(false)
-                      }}
-                      className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${tenant.id === tenantID ? "bg-accent font-medium" : "hover:bg-muted"}`}
-                    >
-                      <Building2 className="size-4 shrink-0" />
-                      <span className="min-w-0 break-words">
-                        {tenant.name}
-                        <span className="block text-xs text-muted-foreground">
-                          {tenant.slug}
-                        </span>
-                      </span>
-                      <ChevronRight className="ms-auto size-4 shrink-0" />
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p role="status" className="text-sm">
-                {t("loading")}
-              </p>
-            )}
-          </section>
-          <section className="min-w-0" aria-label={t("entityPerspective")}>
             <h2 className="mb-2 text-sm font-semibold break-words">
               {tenantName}
             </h2>
-            {tenantPerspective && (
-              <button
-                type="button"
-                disabled={!tenantID}
-                onClick={() => {
-                  onEntity("")
-                  setOpen(false)
-                }}
-                className="mb-3 flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-accent"
-              >
-                <Building2 className="size-4 shrink-0" />
-                <span>{t("tenantPerspective")}</span>
-                {tenantView && !entityID && (
-                  <Check className="ms-auto size-4 shrink-0" />
-                )}
-              </button>
-            )}
-            {tenantView && (
-              <>
-                <h3 className="mb-2 text-xs font-medium text-muted-foreground">
-                  {t("entityPerspective")}
-                </h3>
-                {error ? (
-                  <Alert>{error}</Alert>
-                ) : !entities ? (
-                  <p role="status" className="text-sm">
-                    {t("loading")}
+            {error ? (
+              <Alert>{error}</Alert>
+            ) : !entities ? (
+              <p role="status" className="text-sm">
+                {t("loading")}
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {entities
+                  .filter((entity) => entity.status === "active")
+                  .map((entity) => (
+                    <button
+                      key={entity.id}
+                      type="button"
+                      onClick={() => {
+                        onEntity(entity.id)
+                        setOpen(false)
+                      }}
+                      className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
+                    >
+                      <Network className="size-4 shrink-0" />
+                      <span className="min-w-0 break-words">{entity.name}</span>
+                      {entityID === entity.id && (
+                        <Check className="ms-auto size-4 shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                {!entities.some((entity) => entity.status === "active") && (
+                  <p className="p-3 text-sm text-muted-foreground">
+                    {t("noEntities")}
                   </p>
-                ) : (
-                  <div className="max-h-60 space-y-1 overflow-y-auto">
-                    {entities
-                      .filter((entity) => entity.status === "active")
-                      .map((entity) => (
-                        <button
-                          key={entity.id}
-                          type="button"
-                          onClick={() => {
-                            onEntity(entity.id)
-                            setOpen(false)
-                          }}
-                          className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
-                        >
-                          <Network className="size-4 shrink-0" />
-                          <span className="min-w-0 break-words">
-                            {entity.name}
-                            {entity.parent_id && (
-                              <span className="block text-xs text-muted-foreground">
-                                {entities.find(
-                                  (parent) => parent.id === entity.parent_id
-                                )?.name ?? entity.parent_id}
-                              </span>
-                            )}
-                          </span>
-                          {entityID === entity.id && (
-                            <Check className="ms-auto size-4 shrink-0" />
-                          )}
-                        </button>
-                      ))}
-                    {!entities.some((entity) => entity.status === "active") && (
-                      <p className="p-3 text-sm text-muted-foreground">
-                        {t("noEntities")}
-                      </p>
-                    )}
-                  </div>
                 )}
-              </>
+              </div>
             )}
           </section>
-        </div>
+        ) : (
+          <div className="grid min-h-64 grid-cols-1 gap-4 sm:grid-cols-[1fr_1.4fr]">
+            <section
+              className="min-w-0 sm:border-e sm:pe-4"
+              aria-label={t("currentTenant")}
+            >
+              <h2 className="mb-2 text-sm font-semibold">
+                {t("currentTenant")}
+              </h2>
+              {tenantError ? (
+                <Alert>
+                  <p>{tenantError}</p>
+                  <Button variant="outline" onClick={onRetryTenants}>
+                    {t("retryNow")}
+                  </Button>
+                </Alert>
+              ) : tenants ? (
+                <>
+                  {filterTenants && (
+                    <Input
+                      aria-label={t("searchTenants")}
+                      value={tenantFilter}
+                      onChange={(event) => setTenantFilter(event.target.value)}
+                      className="mb-2 h-9"
+                    />
+                  )}
+                  <div className="max-h-60 space-y-1 overflow-y-auto">
+                    {activeTenants.length === 0 && (
+                      <p className="text-sm">{t("noAvailableTenants")}</p>
+                    )}
+                    {activeTenants.length > 0 && shownTenants.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        {t("noMatches")}
+                      </p>
+                    )}
+                    {shownTenants.map((tenant) => (
+                      <button
+                        key={tenant.id}
+                        type="button"
+                        aria-pressed={tenant.id === tenantID}
+                        onClick={() => {
+                          onTenant(tenant.id)
+                          setOpen(false)
+                        }}
+                        className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${tenant.id === tenantID ? "bg-accent font-medium" : "hover:bg-muted"}`}
+                      >
+                        <Building2 className="size-4 shrink-0" />
+                        <span className="min-w-0 break-words">
+                          {tenant.name}
+                          <span className="block text-xs text-muted-foreground">
+                            {tenant.slug}
+                          </span>
+                        </span>
+                        <ChevronRight className="ms-auto size-4 shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p role="status" className="text-sm">
+                  {t("loading")}
+                </p>
+              )}
+            </section>
+            <section className="min-w-0" aria-label={t("entityPerspective")}>
+              <h2 className="mb-2 text-sm font-semibold break-words">
+                {tenantName}
+              </h2>
+              {tenantPerspective && (
+                <button
+                  type="button"
+                  disabled={!tenantID}
+                  onClick={() => {
+                    onEntity("")
+                    setOpen(false)
+                  }}
+                  className="mb-3 flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-accent"
+                >
+                  <Building2 className="size-4 shrink-0" />
+                  <span>{t("tenantPerspective")}</span>
+                  {tenantView && !entityID && (
+                    <Check className="ms-auto size-4 shrink-0" />
+                  )}
+                </button>
+              )}
+              {tenantView && (
+                <>
+                  <h3 className="mb-2 text-xs font-medium text-muted-foreground">
+                    {t("entityPerspective")}
+                  </h3>
+                  {error ? (
+                    <Alert>{error}</Alert>
+                  ) : !entities ? (
+                    <p role="status" className="text-sm">
+                      {t("loading")}
+                    </p>
+                  ) : (
+                    <div className="max-h-60 space-y-1 overflow-y-auto">
+                      {entities
+                        .filter((entity) => entity.status === "active")
+                        .map((entity) => (
+                          <button
+                            key={entity.id}
+                            type="button"
+                            onClick={() => {
+                              onEntity(entity.id)
+                              setOpen(false)
+                            }}
+                            className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
+                          >
+                            <Network className="size-4 shrink-0" />
+                            <span className="min-w-0 break-words">
+                              {entity.name}
+                              {entity.parent_id && (
+                                <span className="block text-xs text-muted-foreground">
+                                  {entities.find(
+                                    (parent) => parent.id === entity.parent_id
+                                  )?.name ?? entity.parent_id}
+                                </span>
+                              )}
+                            </span>
+                            {entityID === entity.id && (
+                              <Check className="ms-auto size-4 shrink-0" />
+                            )}
+                          </button>
+                        ))}
+                      {!entities.some(
+                        (entity) => entity.status === "active"
+                      ) && (
+                        <p className="p-3 text-sm text-muted-foreground">
+                          {t("noEntities")}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   )
