@@ -40,6 +40,31 @@ export function entityNavigation(
   ]
 }
 
+// tenantPerspectiveOffered says whether the tenant's perspective may be offered
+// at all. Inside an entity the permission set in hand is that entity's, so the
+// tenant answer has to be the one asked for separately -- and an answer that has
+// not arrived yet is not a yes, because a view is shown once it is known to be
+// allowed rather than until it is known not to be.
+export function tenantPerspectiveOffered(
+  insideEntity: boolean,
+  tenantStanding: boolean | null,
+  perspectivePermissionCount: number
+): boolean {
+  return insideEntity ? tenantStanding === true : perspectivePermissionCount > 0
+}
+
+// entityWorkspaceView says which view entering an entity lands on. The overview
+// reads the entity record itself, which is tenant-wide entity administration:
+// without that permission the page is a single refusal, so an account that
+// merely belongs to the entity lands on the view it does have. One function
+// because the switcher and the post-login redirect must not disagree.
+export function entityWorkspaceView(
+  tenantPermissions: Iterable<string>
+): "overview" | "files" {
+  for (const code of tenantPermissions) if (code === "entity_view") return "overview"
+  return "files"
+}
+
 export function tenantSystemNavigation(
   paths: Set<string>,
   fileAccess: boolean,

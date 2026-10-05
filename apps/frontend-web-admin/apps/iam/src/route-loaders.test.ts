@@ -81,10 +81,6 @@ it("sends the console home to the view the caller can use", () => {
     // perspective, not the tenant's: the tenant shell is for somebody who
     // administers the tenant.
     assert.equal(
-      await home({memberships:[active("7")],entities:{entity_view:[{id:"5"}]}},"7"),
-      "/admin/7/entities/5/overview");
-    // Reaching only an entity's files is still that entity's perspective.
-    assert.equal(
       await home({memberships:[active("7")],entities:{file_view:[{id:"6"}]}},"7"),
       "/admin/7/entities/6/files");
     // Any standing at tenant level keeps the tenant perspective, even for

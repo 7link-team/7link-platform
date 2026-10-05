@@ -10,6 +10,8 @@ import {
   defaultWorkspacePath,
   tenantSystemNavigation,
   firstEffectiveMenuPath,
+  entityWorkspaceView,
+  tenantPerspectiveOffered,
 } from "./navigation"
 
 const menus: EffectiveMenu[] = [
@@ -153,5 +155,32 @@ describe("effective navigation", () => {
   it("keeps an empty authorization result empty", () => {
     expect(flattenEffectiveMenus([])).toEqual([])
     expect(effectiveMenuPaths([]).size).toBe(0)
+  })
+})
+
+describe("entityWorkspaceView", () => {
+  // The overview reads the entity record, which is tenant-wide entity
+  // administration. An account that merely belongs to the entity used to be sent
+  // there and got one refusal where its whole perspective should have been.
+  it("sends an account without tenant-wide entity administration to the view it has", () => {
+    expect(entityWorkspaceView([])).toBe("files")
+    expect(entityWorkspaceView(["file_view", "dept_view"])).toBe("files")
+    expect(entityWorkspaceView(new Set(["entity_view"]))).toBe("overview")
+  })
+})
+
+describe("tenantPerspectiveOffered", () => {
+  // An account whose grants live inside one entity was offered the tenant's
+  // perspective in the workspace switcher and could walk into it.
+  it("withholds the tenant perspective from an account with no tenant standing", () => {
+    expect(tenantPerspectiveOffered(true, false, 3)).toBe(false)
+    expect(tenantPerspectiveOffered(true, true, 0)).toBe(true)
+  })
+  it("does not offer it on an answer that has not arrived", () => {
+    expect(tenantPerspectiveOffered(true, null, 9)).toBe(false)
+  })
+  it("reads the perspective in hand when that perspective is the tenant", () => {
+    expect(tenantPerspectiveOffered(false, null, 1)).toBe(true)
+    expect(tenantPerspectiveOffered(false, true, 0)).toBe(false)
   })
 })

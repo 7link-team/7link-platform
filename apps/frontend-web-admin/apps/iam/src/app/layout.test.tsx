@@ -95,4 +95,18 @@ describe("workspace switcher tenant source", () => {
     expect(source).toContain('permissions?.has("tenant_view")')
     expect(source).not.toContain("platformAccess")
   })
+  // The switcher offered the tenant perspective to anybody in the tenant area,
+  // including an account whose grants live inside one entity. The decision is a
+  // function with its own tests; what this pins is that the shell actually hands
+  // it over, because the switcher cannot be opened in static markup.
+  it("hands the switcher a tenant perspective decision instead of letting it assume one", () => {
+    expect(source).toContain("tenantPerspectiveOffered(")
+    expect(source).toContain("tenantPerspective={tenantPerspective}")
+  })
+  // Entering an entity used to go to its overview, which reads the entity record
+  // itself -- tenant-wide entity administration an entity's own member lacks.
+  it("enters an entity on the view the account has rather than always the overview", () => {
+    expect(source).toContain("entityWorkspaceView(permissions ?? [])")
+    expect(source).not.toContain("/entities/${encodeURIComponent(id)}/overview")
+  })
 })

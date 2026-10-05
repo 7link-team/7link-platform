@@ -39,6 +39,7 @@ export function WorkspaceSwitcher({
   operatingPlatforms = [],
   onOperatingPlatform,
   operatingPlatformID = "",
+  tenantPerspective = false,
 }: {
   tenantID: string
   entityID: string
@@ -56,6 +57,11 @@ export function WorkspaceSwitcher({
   operatingPlatforms?: Tenant[]
   onOperatingPlatform?: (id: string) => void
   operatingPlatformID?: string
+  /** Whether this account has any standing at tenant level. Somebody whose
+   *  grants live inside one entity is not offered the tenant's perspective: the
+   *  shell there is shaped for administering the tenant, and offering it is
+   *  showing a view that is not theirs. */
+  tenantPerspective?: boolean
 }) {
   const t = useTranslations("iam")
   const [open, setOpen] = useState(false)
@@ -239,21 +245,23 @@ export function WorkspaceSwitcher({
             <h2 className="mb-2 text-sm font-semibold break-words">
               {tenantName}
             </h2>
-            <button
-              type="button"
-              disabled={!tenantID}
-              onClick={() => {
-                onEntity("")
-                setOpen(false)
-              }}
-              className="mb-3 flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-accent"
-            >
-              <Building2 className="size-4 shrink-0" />
-              <span>{t("tenantPerspective")}</span>
-              {tenantView && !entityID && (
-                <Check className="ms-auto size-4 shrink-0" />
-              )}
-            </button>
+            {tenantPerspective && (
+              <button
+                type="button"
+                disabled={!tenantID}
+                onClick={() => {
+                  onEntity("")
+                  setOpen(false)
+                }}
+                className="mb-3 flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-accent"
+              >
+                <Building2 className="size-4 shrink-0" />
+                <span>{t("tenantPerspective")}</span>
+                {tenantView && !entityID && (
+                  <Check className="ms-auto size-4 shrink-0" />
+                )}
+              </button>
+            )}
             {tenantView && (
               <>
                 <h3 className="mb-2 text-xs font-medium text-muted-foreground">

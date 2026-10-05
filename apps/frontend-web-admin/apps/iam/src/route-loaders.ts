@@ -1,6 +1,6 @@
 import { redirect, type LoaderFunctionArgs } from "react-router"
 import { getTenant, iamApi, setTenant } from "./lib/iam-api"
-import { defaultWorkspacePath } from "./lib/navigation"
+import { defaultWorkspacePath, entityWorkspaceView } from "./lib/navigation"
 import { accountViewPath, getAccountView } from "./lib/account-view"
 import {
   authEntrance,
@@ -54,20 +54,17 @@ export function legacyRouteLoader({ request }: LoaderFunctionArgs) {
 async function entityWorkspacePath(tenantID: string): Promise<string> {
   if (!tenantID) return ""
   const none: { id: string }[] = []
-  const [tenantPermissions, administered, files] = await Promise.all([
+  const [tenantPermissions, entities] = await Promise.all([
     iamApi.myPermissions(tenantID).catch(() => ["unknown"]),
-    iamApi.memberEntities("entity_view").catch(() => none),
     iamApi.memberEntities("file_view").catch(() => none),
   ])
   if ((tenantPermissions ?? []).length > 0) return ""
-  const base = `/admin/${encodeURIComponent(tenantID)}/entities`
-  // Administering one is the fuller view; reaching only its files is still that
-  // entity's perspective rather than the tenant's.
-  const entity = administered[0]
-  if (entity) return `${base}/${encodeURIComponent(entity.id)}/overview`
-  const fileEntity = files[0]
-  if (fileEntity) return `${base}/${encodeURIComponent(fileEntity.id)}/files`
-  return ""
+  // The same listing the switcher offers, so the two name the same entity, and
+  // the files view because an account with no tenant standing has no tenant-wide
+  // entity administration either -- the overview would be one refusal.
+  const entity = entities[0]
+  if (!entity) return ""
+  return `/admin/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entity.id)}/${entityWorkspaceView(tenantPermissions ?? [])}`
 }
 
 export async function workspaceHomeLoader() {

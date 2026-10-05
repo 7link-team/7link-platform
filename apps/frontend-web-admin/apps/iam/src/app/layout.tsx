@@ -31,6 +31,10 @@ import {
   type Tenant,
   type Entity,
 } from "../lib/iam-api"
+import {
+  entityWorkspaceView,
+  tenantPerspectiveOffered,
+} from "../lib/navigation"
 import { useBranding } from "../lib/branding"
 import { tenantIDFromPath } from "../lib/organization-scope"
 import { entrancePath } from "../lib/auth-entrance"
@@ -152,11 +156,29 @@ export default function AppLayout() {
       ),
     [catalog]
   )
+  // Whether this account has any standing at tenant level, which is what decides
+  // whether the tenant's perspective may be offered to it at all. Inside an
+  // entity the permission set above is that entity's, so the tenant answer is
+  // asked for separately -- and until it arrives the perspective is not offered,
+  // because a view is shown once it is known to be allowed rather than until it
+  // is known not to be.
+  const [tenantStanding, setTenantStanding] = useState<{
+    subject: string
+    tenant: string
+    standing: boolean
+  } | null>(null)
   const [scopedFileAccess, setScopedFileAccess] = useState<{
     subject: string
     tenant: string
     entityID: string
   } | null>(null)
+  const tenantPerspective = tenantPerspectiveOffered(
+    Boolean(entityID),
+    tenantStanding?.subject === subject && tenantStanding.tenant === tenantValue
+      ? tenantStanding.standing
+      : null,
+    permissions?.size ?? 0
+  )
   const scopedFileEntityID =
     !entityID &&
     scopedFileAccess?.subject === subject &&
@@ -190,6 +212,25 @@ export default function AppLayout() {
       // offers the entities it can take somebody into. Asking for the entities
       // this caller may administer instead was why a member of exactly one
       // entity was shown none of them.
+      // The tenant-level answer, asked here because this effect already runs for
+      // the same subject and tenant inside an entity as well as outside one. A
+      // data-scoped grant is absent from this list unless its constraint admits
+      // everything, which is what makes "nothing here" mean "no tenant standing"
+      // rather than "no administration permissions".
+      void iamApi.myPermissions(tenantValue).then(
+        (codes) => {
+          if (active)
+            setTenantStanding({
+              subject,
+              tenant: tenantValue,
+              standing: (codes ?? []).length > 0,
+            })
+        },
+        () => {
+          if (active)
+            setTenantStanding({ subject, tenant: tenantValue, standing: false })
+        }
+      )
       void iamApi.memberEntities("file_view").then(
         (items) => {
           if (active)
@@ -494,13 +535,18 @@ export default function AppLayout() {
               onRetryTenants={() =>
                 window.dispatchEvent(new Event("tenant-catalog-change"))
               }
+              tenantPerspective={tenantPerspective}
               entities={catalog?.items ?? null}
               error={entityFileRoute ? "" : (catalog?.error ?? "")}
               onTenant={commitTenant}
               onEntity={(id) => {
+                // The overview reads the entity itself, which is tenant-wide
+                // entity administration. Sending somebody who merely belongs to
+                // the entity there turned the whole perspective into one refusal,
+                // so they go to the view they do have.
                 navigate(
                   id
-                    ? `/admin/${encodeURIComponent(tenantValue)}/entities/${encodeURIComponent(id)}/overview`
+                    ? `/admin/${encodeURIComponent(tenantValue)}/entities/${encodeURIComponent(id)}/${entityWorkspaceView(permissions ?? [])}`
                     : `/admin/${encodeURIComponent(tenantValue)}`
                 )
               }}
