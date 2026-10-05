@@ -49,6 +49,12 @@ func TestIAMDefaultMenuTranslationUpgrade(t *testing.T) {
 							table, tenant, id, quote(label), quote(route), coreTestTime, coreTestTime))
 						require.NoError(t, err)
 					}
+					// Every default is seeded, and the assertions split them: a
+					// migration is a historical artifact naming the labels that
+					// existed when it shipped, so it must translate those and leave
+					// a default added since untouched. Checking it against whatever
+					// DefaultMenus holds today instead fails the moment a page is
+					// added, which says nothing about the migration.
 					defaults := iamcore.DefaultMenus()
 					for _, tenant := range []int{1, 2} {
 						for index, menu := range defaults {
@@ -79,6 +85,10 @@ func TestIAMDefaultMenuTranslationUpgrade(t *testing.T) {
 						for index, menu := range defaults {
 							var translations map[string]string
 							require.NoError(t, json.Unmarshal([]byte(read(tenant, tenant*100+index)), &translations))
+							if !defaultMenuMigrationRoutes[legacyMenuRoute(menu.Route)] {
+								assert.Empty(t, translations, "%s postdates this migration", menu.Route)
+								continue
+							}
 							assert.Equal(t, menu.Translations, translations, menu.Route)
 							var route string
 							require.NoError(t, db.QueryRowContext(t.Context(), fmt.Sprintf("SELECT route FROM %s WHERE tenant_id = %d AND id = %d", table, tenant, tenant*100+index)).Scan(&route))
@@ -102,6 +112,20 @@ func TestIAMDefaultMenuTranslationUpgrade(t *testing.T) {
 			}
 		})
 	}
+}
+
+// defaultMenuMigrationRoutes are the routes 00015_default_menu_translations names,
+// in their pre-00016 spelling. Frozen on purpose: the published migration cannot
+// grow, so neither can this. It names /iam/positions, which 00017 retired -- a
+// migration keeps naming what it named, so this list is not the default menu set
+// and must not be compared with it.
+var defaultMenuMigrationRoutes = map[string]bool{
+	"/iam/users": true, "/iam/invitations": true, "/iam/service-accounts": true,
+	"/iam/entities": true, "/iam/departments": true, "/iam/positions": true,
+	"/iam/groups": true, "/iam/roles": true, "/iam/access-requests": true,
+	"/iam/access-reviews": true, "/iam/menus": true, "/iam/oauth-clients": true,
+	"/iam/scim-directories": true, "/iam/audit-events": true,
+	"/iam/audit-governance": true,
 }
 
 func legacyMenuRoute(route string) string {
