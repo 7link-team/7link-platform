@@ -460,7 +460,12 @@ export default function AppLayout() {
     setMenuCatalog(null)
     setTenant(next)
     setTenantValue(next)
-    navigate(`/admin/${encodeURIComponent(next)}`)
+    // Not /admin/{tenant}: that is the tenant's perspective, and picking a
+    // tenant said nothing about having standing in it. The workspace home
+    // decides, with the service's answer for the tenant just chosen -- which is
+    // the only place that answer exists, since standing in a tenant the console
+    // has not opened yet is not something it knows.
+    navigate("/")
   }
 
   return (

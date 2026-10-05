@@ -103,6 +103,13 @@ describe("workspace switcher tenant source", () => {
     expect(source).toContain("tenantPerspectiveOffered(")
     expect(source).toContain("tenantPerspective={tenantPerspective}")
   })
+  // Picking a tenant went straight to that tenant's perspective, which is the
+  // same leak as the perspective button: choosing a tenant says nothing about
+  // having standing in it. The workspace home is where that is decided.
+  it("lets the workspace home decide where a chosen tenant lands", () => {
+    expect(source).not.toContain("navigate(`/admin/${encodeURIComponent(next)}`)")
+    expect(source).toContain('navigate("/")')
+  })
   // Entering an entity used to go to its overview, which reads the entity record
   // itself -- tenant-wide entity administration an entity's own member lacks.
   it("enters an entity on the view the account has rather than always the overview", () => {
