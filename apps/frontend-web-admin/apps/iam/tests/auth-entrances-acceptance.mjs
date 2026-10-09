@@ -11,6 +11,7 @@ export async function authEntrancesAcceptance({
   pass,
   adminLogin,
   adminPassword,
+  captchaAnswer,
 }) {
   const roots = {
     system: "/system",
@@ -83,6 +84,9 @@ export async function authEntrancesAcceptance({
     )
     const denied = await record.context.request.post("/api/login", {
       data: {
+        captcha_type: "text",
+        captcha_id: "automated",
+        captcha_answer: captchaAnswer,
         login_name: email,
         password,
         return_url: webURL + `${roots[entry]}/workspaces`,

@@ -708,3 +708,33 @@ export function fileSizeLabel(
   )
   return `${new Intl.NumberFormat(locale, { maximumFractionDigits: unit === 0 ? 0 : 1 }).format(size / 1024 ** unit)} ${units[unit]}`
 }
+
+// Each collection uses ascending file IDs, including scan cursors with no visible
+// entries. Stop at the earliest unfinished scan so pagination cannot skip a
+// later-authorized entry in another collection.
+export function mergeFileCollectionPages(pages: readonly FilePage[]): FilePage {
+  for (const page of pages) {
+    if (page.next_after && !fileID.test(page.next_after)) throw new Error("invalid_response")
+    for (const item of page.items ?? []) {
+      if (!item.id || !fileID.test(item.id)) throw new Error("invalid_response")
+    }
+  }
+  const cursors = pages.flatMap((page) =>
+    page.next_after ? [BigInt(page.next_after)] : []
+  )
+  const boundary = cursors.length
+    ? cursors.reduce((a, b) => (a < b ? a : b))
+    : null
+  const entries = [
+    ...new Map(
+      pages.flatMap((page) => page.items ?? []).map((item) => [item.id, item])
+    ).values(),
+  ]
+    .filter((item) => boundary === null || BigInt(item.id!) <= boundary)
+    .sort((a, b) =>
+      BigInt(a.id!) < BigInt(b.id!) ? -1 : BigInt(a.id!) > BigInt(b.id!) ? 1 : 0
+    )
+  const items = entries.slice(0, 100)
+  const next = entries.length > 100 ? items.at(-1)?.id : boundary?.toString()
+  return { items, ...(next ? { next_after: next } : {}) }
+}

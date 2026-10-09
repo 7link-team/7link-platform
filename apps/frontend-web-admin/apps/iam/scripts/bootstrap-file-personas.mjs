@@ -94,7 +94,22 @@ const definitions = [
     loginName: "system-admin@example.test",
     displayName: "UAT System Administrator",
     scope: "all",
-    platformPermissions: ["tenant_view"],
+    // This persona demonstrates delegated system browsing, not a tenant-only
+    // observer or a full administrator. Keep mutation/grant permissions absent.
+    platformPermissions: [
+      "system_account_view",
+      "system_department_view",
+      "system_role_view",
+      "system_menu_view",
+      "operating_platform_view",
+      "tenant_view",
+      "system_audit_event_view",
+      "system_file_view",
+      "system_file_list",
+      "system_file_traverse",
+      "system_file_read",
+      "system_file_download",
+    ],
   },
   {
     id: "tenant-admin",

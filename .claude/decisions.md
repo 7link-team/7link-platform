@@ -1,3 +1,16 @@
+## 2026-10-09 ? Organization file roots must be complete in the UI
+- User explicitly authorized repair after live UI proved department roots were missing despite permitted collection APIs.
+- Keep each backend collection scoped to its owner. Aggregate existing authorized collections in the frontend: tenant/member entity discovery and permitted department catalog, filtered to the selected entity. No expanded grants or aggregate backend contract.
+- Walk all root pages; do not limit sidebar roots to the first merged page. Combine trash pages by ascending exact file IDs with the earliest unfinished scan cursor, keeping the visible content page bounded to 100 without skipping another owner's later entries.
+- Positive E2E must inspect actual root controls, click into each root, render and download real marker files, survive reload, and show authorized markers in the recycle bin. HTTP 200 or a menu link alone is insufficient.
+
+## 2026-10-09 ? Role E2E fixes preserve granted authority
+- User authorized all-role E2E; use live seven-persona desktop/mobile matrix and isolated real SQLite lifecycle. No delegated agents.
+- Department-only readers do not need entity_view to load their authorized department list. Gate the optional entity catalog with the existing permission rather than expanding backend grants or failing the whole page.
+- FileBrowserBody intentionally remounts across location/page/access changes. Keep that authorization boundary; disable the mobile folder trigger during mutation/loading so it cannot open into a body about to be replaced. Do not remove the remount or add retries/navigation redesign.
+- Align old acceptance direct login requests with the already-configured test CAPTCHA answer; do not weaken validation or change production CAPTCHA policy.
+- Local Passkey service is unavailable (503). Assert unavailable state and disabled enrollment; no claim of successful enrollment.
+
 # Decisions
 
 ## D103 - A Proven Number Is The Enrolment, And Never Both Factors (2026-10-04)
@@ -517,6 +530,36 @@ goth: discord's display name is `global_name`, and kakao's is under
 Field names for connectors that need a real token to read a profile remain
 unverified against a live response; they are verified against documentation and
 at least one independent implementation.
+## Account view controls follow creation authority - 2026-10-09
+- Decision: shared AccountViewDialog entry requires account_view_create, independently of account/organization list browsing permissions.
+- Reason: read-only system demo could list accounts but was offered a view action its backend admission refuses.
+- Alternatives: grant impersonation merely to make the button work; rejected because browsing does not require target-account authority.
+- Scope: shared frontend entry gate and real regression/authorized-popup-exit tests; no backend permission changes.
+- Status: IMPLEMENTED / real browser regression and authorized administrator success PASS.
+
+## System demo subadministrator browsing grant - 2026-10-09
+- Decision: replace tenant_view-only demo grant with explicit system browsing permissions for accounts, departments, roles, menus, operating platforms, tenants, audit events, and shared files. Retain full_administrator=false; do not grant platform_administer or mutation actions.
+- Reason: user requested review then execution to resolve the misleading one-menu system demo. Wider read scope demonstrates system management without turning a subaccount into a full administrator.
+- Alternatives: show unauthorized menu links; grant full administrator. Rejected because the former produces dead ends and the latter is broader than needed for browsing.
+- Tradeoffs: governance/closure/grant pages requiring platform_administer remain excluded; management writes still return 403. Default landing now follows the first authorized system-account menu.
+- Scope: development demo initialization and current local account grant; existing backend authorization and production menus unchanged.
+- Status: IMPLEMENTED / 8 real management-page visits and denied write checks PASS; configuration persists through dev startup.
+
+## Concurrent personal root initialization - 2026-10-09
+- Decision: harden the existing root-creation API with transaction insert-before-read and conflict-do-nothing using the existing unique principal key. The inserting transaction alone creates root hierarchy; concurrent callers reuse its committed space/root/ACL.
+- Reason: user approved review finding that multiple tabs/devices can concurrently initialize despite frontend busy state.
+- Alternatives: new implicit-parent API or frontend retries/locks; unnecessary contract changes or insufficient across devices.
+- Tradeoffs: uses an ID candidate even when the root already exists; preserves existing transaction, auditing, and authorization. Storage-content creation remains a separate request and can be retried.
+- Scope: personal initialization concurrency and regression tests. No navigation/permission/schema changes.
+- Status: IMPLEMENTED; concurrent service, read-only HTTP, real SQLite HTTP/browser acceptance, and full files regression PASS.
+
+## Personal initialization scope after rollback - 2026-10-08
+- Decision: broad personal/workspace changes were rolled back at user request. Reintroduce only automatic personal root preparation on first write through existing API. Keep GET visits and read-only views free of initialization, and preserve all original navigation/auth behavior.
+- Reason: user explicitly requested removing the manual creation step after rollback, without the previous broader redesign.
+- Alternatives: eager creation on visits or backend/API redesign; unnecessary for this scoped UX change.
+- Tradeoff: root preparation and content write are separate existing requests; initialization failure leaves the editor available for retry.
+- Scope: personal file page/browser plus focused tests. System subaccount tenant_view-only grant was confirmed live; no authorization expansion without user-specified scope.
+- Status: IMPLEMENTED / real desktop/mobile/retry acceptance PASS.
 
 ## D93 - Demo Entrances Only Show Matching Personas (2026-09-27)
 

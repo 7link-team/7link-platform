@@ -221,10 +221,25 @@ func requireFileID(t *testing.T, raw string) guid.ID {
 // behavior the route is responsible for.
 type fileHTTPVerifier struct{ tenantID guid.ID }
 
-func (v fileHTTPVerifier) Authenticate(context.Context, string, string) (*authn.Claims, error) {
-	return &authn.Claims{
+func (v fileHTTPVerifier) Authenticate(_ context.Context, authorization, _ string) (*authn.Claims, error) {
+	claims := &authn.Claims{
 		Subject: "70", PrincipalID: 70, SubjectType: authn.SubjectTypePrincipal, TenantID: v.tenantID,
-	}, nil
+	}
+	if strings.Contains(authorization, "read-only") {
+		claims.AccountView = &authn.AccountViewIdentity{ID: 1, ActorID: 71, ReadOnly: true, ScopeType: "personal", ScopeID: 70}
+	}
+	return claims, nil
+}
+
+func TestReadOnlyPersonalFilesDoNotInitializeRoot(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	api := newFileHTTPAPI(t, h.service)
+	header := "Authorization: Bearer read-only"
+	require.Equal(t, http.StatusOK, api.Get("/principals/70/files", header).Code)
+	require.Equal(t, http.StatusForbidden, postFileForm(t, api, []any{header}, map[string]string{"kind": "directory", "scope": "account"}, "", "").Code)
+	var count int64
+	require.NoError(t, h.db.Table(h.tree.prefix+"file_spaces").Where("principal_id = ?", 70).Count(&count).Error)
+	require.Zero(t, count)
 }
 
 type fileHTTPAuthorizer struct{}

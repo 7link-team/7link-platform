@@ -116,7 +116,7 @@ export type FileBrowserProps = {
   clipboard?: { action: "copy" | "move"; count: number }
   recycleBin?: boolean
   onOpenRecycleBin?: () => void
-  onEnsurePersonalRoot?: () => Promise<boolean>
+  personal?: boolean
   onEnsureSystemRoot?: () => Promise<boolean>
   onCreateDirectory?: (name: string) => Promise<boolean>
   onCreateFile?: (name: string, mimeType: string) => Promise<boolean>
@@ -274,7 +274,7 @@ function FileBrowserBody({
   clipboard,
   recycleBin = false,
   onOpenRecycleBin,
-  onEnsurePersonalRoot,
+  personal = false,
   onEnsureSystemRoot,
   onCreateDirectory,
   onCreateFile,
@@ -529,8 +529,8 @@ function FileBrowserBody({
       }
     }
   }
-  const canDrop =
-    ready && visiblePath.length > 0 && !busy && Boolean(onUploadEntries)
+  const writeLocation = visiblePath.length > 0 || (personal && !recycleBin)
+  const canDrop = ready && writeLocation && !busy && Boolean(onUploadEntries)
   const hasDraggedFiles = (event: DragEvent) =>
     Array.from(event.dataTransfer.types).includes("Files")
   const startDrag = (event: DragEvent) => {
@@ -599,6 +599,7 @@ function FileBrowserBody({
             {group.roots.map((root) => (
               <Button
                 key={root.id}
+                data-root-id={root.id}
                 variant={path[0]?.id === root.id ? "secondary" : "ghost"}
                 className="min-h-11 w-full justify-start"
                 disabled={!onNavigate}
@@ -735,6 +736,7 @@ function FileBrowserBody({
                       size="icon"
                       className="size-11 lg:hidden"
                       aria-label={tf("openFolders")}
+                      disabled={busy || !ready}
                     />
                   }
                 >
@@ -959,29 +961,21 @@ function FileBrowserBody({
                     )}
                   </>
                 )}
-                {ready &&
-                  !roots.length &&
-                  (onEnsurePersonalRoot || onEnsureSystemRoot) && (
-                    <Button
-                      className="min-h-11"
-                      disabled={busy}
-                      onClick={() =>
-                        void (onEnsureSystemRoot ?? onEnsurePersonalRoot)?.()
-                      }
-                    >
-                      {busy ? (
-                        <LoaderCircle className="animate-spin" />
-                      ) : (
-                        <FolderPlus />
-                      )}
-                      {tf(
-                        onEnsureSystemRoot
-                          ? "createSystemRoot"
-                          : "createPersonalRoot"
-                      )}
-                    </Button>
-                  )}
-                {ready && visiblePath.length > 0 && (
+                {ready && !roots.length && onEnsureSystemRoot && (
+                  <Button
+                    className="min-h-11"
+                    disabled={busy}
+                    onClick={() => void onEnsureSystemRoot()}
+                  >
+                    {busy ? (
+                      <LoaderCircle className="animate-spin" />
+                    ) : (
+                      <FolderPlus />
+                    )}
+                    {tf("createSystemRoot")}
+                  </Button>
+                )}
+                {ready && writeLocation && (
                   <>
                     <Tool
                       label={tf("createDirectory")}

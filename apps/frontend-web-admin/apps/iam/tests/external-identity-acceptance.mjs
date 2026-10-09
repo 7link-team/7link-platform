@@ -121,6 +121,7 @@ export async function externalIdentityAcceptance({
   eventually,
   pass,
   notifications,
+  captchaAnswer,
 }) {
   const fixture = await oidcFixture(apiURL)
   const contexts = []
@@ -368,7 +369,7 @@ export async function externalIdentityAcceptance({
     )
     assert.equal(fixture.state.errors, 0)
     assert(fixture.state.exchanged >= 3)
-    await scimAcceptance({ browser, admin, apiURL, webURL, call, stamp, pass })
+    await scimAcceptance({ browser, admin, apiURL, webURL, call, stamp, pass, captchaAnswer })
   } finally {
     for (const context of contexts) await context.close()
     await fixture.close()
@@ -383,6 +384,7 @@ async function scimAcceptance({
   call,
   stamp,
   pass,
+  captchaAnswer,
 }) {
   const received = []
   const receiver = createServer(async (request, response) => {
@@ -540,6 +542,9 @@ async function scimAcceptance({
     const login = await operator.request.post("/api/login", {
       headers: { Origin: webURL },
       data: {
+        captcha_type: "text",
+        captcha_id: "automated",
+        captcha_answer: captchaAnswer,
         login_name: actor.login_name,
         password,
         return_url: webURL + "/",

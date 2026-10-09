@@ -1,3 +1,30 @@
+## Commit and push delivery - 2026-10-09
+- User authorized all current changes to be committed and pushed to origin/IAM.
+- Source/test changes reviewed; generated reports, credentials and local runtime files excluded. Prior verification evidence is retained below.
+- Remote changes integrated by rebase onto 2805771; preserved remote navigation/department fixes and current source/test changes. Conflicts resolved without restoring retired historical task state.
+- Historical no-commit/no-push notes below describe earlier phases and are superseded by this authorization.
+- Integration checks PASS: frontend typecheck, lint, tests (IAM 186 pass / 0 fail), build, diff whitespace and conflict-marker checks. Self-review and requested commit/push acceptance reviewed; normal push is the final delivery action.
+
+## Authorized organization file visibility repair - 2026-10-09
+- User explicitly requested fixing positive-visibility failures. Phase ACCEPTANCE COMPLETE for this repair; direct execution, no delegation.
+- Frontend FilesPage loads its current tenant/entity collection plus authorized entity collections (existing memberEntities(file_view)) and department collections (existing dept_view catalog filtered to selected entity). Names remain owner labels; backend collection APIs remain final authorization filters. Personal/system branches retain their single collection.
+- All root pages are walked so catalogs do not truncate root navigation. Trash owner pages merged in ascending snowflake-ID order, bounded to 100 and stopped at minimum unfinished scan cursor to avoid lost entries. Unit tests cover empty scan cursor, merged limit, IDs above JS integer precision and malformed response.
+- New iamApi.departmentFiles uses published existing route; files gains optional state argument. No backend, schema, route, grant, authentication or navigation redesign.
+- Positive UI E2E added to live matrix: tenant 4, entity 3, department Finance-only 1 root; inspect actual sidebar root IDs/owner labels, click each root and reload. Department pilot desktop/mobile PASS. Expanded pilot session 66868 adds real run-owned active+trashed marker files in each owner root; verifies rendered contents, exact download bytes, refresh and authorized-only recycle bin. Fixture cleanup moves only its active files to trash.
+- Final PASS: .temp/dev/role-operations-1791564163462/report.json, all seven accounts ? desktop/mobile (14 groups, 234 page visits), authorized tenant 4 / entity 3 / Finance-only department 1 roots. Real active marker files render, exact downloads match bytes, reload preserves visibility, and per-owner trash markers render only in admitted scopes. Four active organization fixtures cleaned to trash; existing files untouched.
+- Additional negative PASS: .temp/dev/role-operations-1791564524917/report.json, department desktop/mobile directly request foreign tenant/entity/Operations marker file IDs; all rejected (403/404). Sidebar and recycle bin exclude foreign markers; fixture cleanup PASS.
+- Optional department collection 403 is omitted because permission to see a department name does not imply file access. Unexpected storage/transport errors still fail the page; primary owner access is not swallowed.
+- Static verification PASS: frontend typecheck, lint, IAM unit tests 169 plus shared UI test, build, and git diff --check. Final catch-path build and targeted eslint also PASS. No debug/scratch files retained.
+- Self-review PASS: existing owner APIs, permissions and file-browser validation reused; bounded trash cursor math tested; root navigation walks all owner pages; no backend/grant/authentication/routing changes for this repair. Original positive-visibility acceptance PASS on desktop/mobile plus direct-ID negatives. Prior E2E coverage limitations (Passkey/MFA/PAT) remain outside this repair, not claimed complete.
+- Next: user refreshes 8091 organization file page to accept restored directories. No remaining implementation work for reported visibility bug; changes uncommitted.
+
+## Positive visibility follow-up - 2026-10-09
+- User asked whether every role can actually see what it should. Rechecked live UI, not only successful page/API requests.
+- Original failure (now repaired above): department-account GET Finance department files returned one authorized root, but actual entity-files UI showed "No file root is available in this scope". Entity-account UI showed only entity root although both authorized department collection endpoints returned roots.
+- Cause: FilesPage fetches only iamApi.files(fileEntityID) (entity collection). Current backend collection contract returns only roots of that owner/scope. Department collection roots are not added to the browser's navigation.
+- Earlier seven-role PASS covers enumerated core operations/menu loads/collection API boundaries, NOT completeness of visible UI data. Do not claim all expected visibility passed. Readonly live browser check confirmed both accounts; scratch script removed, no product code changed in this follow-up.
+- Follow-up authorization: user then said "??"; repair and positive/negative acceptance completed in the newest section above. This original investigation is retained as pre-fix evidence.
+
 # Task State
 
 > 已交付并提交:社交 connector(`bb89072` / `1c9b77d`)、webhook 模块(`b6d3b27`、D97)、

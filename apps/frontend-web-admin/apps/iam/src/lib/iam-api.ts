@@ -2021,17 +2021,38 @@ export function createIamApi(
           path: { platform_id: id },
         })
       ),
-    files: (entityID?: string | null, after = "", system = false) =>
+    files: (
+      entityID?: string | null,
+      after = "",
+      system = false,
+      state: "active" | "trashed" = "active"
+    ) =>
       request<FilePage>(
         fileCollectionRoute(
           entityID,
           "get",
           {
+            ...(state === "trashed" ? { state } : {}),
             limit: 100,
             after: after || undefined,
           },
           system
         )
+      ),
+    departmentFiles: (
+      departmentID: string,
+      after = "",
+      state: "active" | "trashed" = "active"
+    ) =>
+      request<FilePage>(
+        apiRoute("get", "/departments/{department_id}/files", {
+          path: { department_id: departmentID },
+          query: {
+            limit: 100,
+            after: after || undefined,
+            ...(state === "trashed" ? { state } : {}),
+          },
+        })
       ),
     trashedFiles: (entityID?: string | null, after = "", system = false) =>
       request<FilePage>(

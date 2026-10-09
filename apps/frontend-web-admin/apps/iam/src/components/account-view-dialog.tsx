@@ -19,6 +19,7 @@ import {
   type AccountViewMode,
 } from "../lib/account-view"
 import { iamApi } from "../lib/iam-api"
+import { useAllowed } from "../lib/permissions"
 
 export function AccountViewDialog({
   principalID = "",
@@ -36,6 +37,7 @@ export function AccountViewDialog({
   disabled?: boolean
 }) {
   const t = useTranslations("iam")
+  const allowed = useAllowed()
   const location = useLocation()
   const [open, setOpen] = useState(false)
   const [scope, setScope] = useState<AccountViewScope>("personal")
@@ -72,6 +74,7 @@ export function AccountViewDialog({
       setBusy(false)
     }
   }
+  if (!allowed("account_view_create")) return null
   return (
     <>
       <Button

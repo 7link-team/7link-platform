@@ -29,11 +29,23 @@ describe("FileBrowser", () => {
     }
     expect(render()).toContain(en.empty)
   })
-  it("offers personal root creation only when the personal page supplies it", () => {
+  it("keeps mobile folder navigation unavailable until the current file operation and reload finish", () => {
+    const trigger = (props: Partial<FileBrowserProps>) =>
+      render(props).match(/<button[^>]*aria-label="Open folders"[^>]*>/)?.[0]
+    expect(trigger({ status: "loading" })).toContain('disabled=""')
+    expect(trigger({ busy: true })).toContain('disabled=""')
+    expect(trigger({})).not.toContain('disabled=""')
+  })
+  it("offers writes in an empty personal folder without manual root creation", () => {
     expect(render()).not.toContain(en.createPersonalRoot)
-    expect(render({ onEnsurePersonalRoot: async () => true })).toContain(
-      en.createPersonalRoot
-    )
+    const html = render({
+      personal: true,
+      onCreateDirectory: async () => true,
+      onUploadEntries: async () => true,
+    })
+    expect(html).not.toContain(en.createPersonalRoot)
+    expect(html).toContain(en.createDirectory)
+    expect(html).toContain(en.upload)
   })
   it("labels system shared files independently of personal file root creation", () => {
     expect(render({ onEnsureSystemRoot: async () => true })).toContain(
