@@ -2,7 +2,7 @@ module 7link.com/platform/tools
 
 go 1.26.2
 
-toolchain go1.26.6
+toolchain go1.26.9
 
 tool (
 	github.com/bufbuild/buf/cmd/buf
