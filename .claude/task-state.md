@@ -18,8 +18,8 @@
   Gate script now also runs TestSpaceInitializationConcurrencyExternalDatabase (files) and new TestSAMLConcurrentFirstStartExternalDatabase. Remote host keeps 2 pre-existing Sept gate containers (not ours) and a cached alpine:3 image.
 - test-race PASS (2026-10-11): 84 packages ok, 0 data races (MSYS2 gcc present; earlier "needs cgo" claim was wrong).
 - test-redis-security PASS (plain + TLS; standalone/cluster/sentinel) on remote docker. MySQL-side mutation of the new concurrency tests not run (PG mutation done).
-- Committed locally on chaosplus (user: "继续"), 9 commits 9a4ac32..(test(architecture) commit), NOT pushed; each commit verified to build + vet in a temp worktree. User-owned .agents/, .claude/skills deletions, .gitignore, SKILL.md left unstaged.
-- Next: push only when the user asks.
+- Committed locally on chaosplus (user: "继续"), 9 commits 9a4ac32..(test(architecture) commit), each commit verified to build + vet in a temp worktree; pushed 2026-10-11 and fast-forwarded origin/IAM and origin/main to the same commit. User-owned .agents/, .claude/skills deletions, .gitignore, SKILL.md left unstaged.
+- Next: nothing outstanding for this task. Remote host 10.0.0.100 keeps a cached alpine:3 image and two Sept gate containers (user decides).
 
 ## Deep review of 006df17..cd2c103 + deep audit - 2026-10-10
 - Phase: REVIEW reported, awaiting user confirmation before any fix (deep-review stage 5). Deep audit (whole repo) next.
