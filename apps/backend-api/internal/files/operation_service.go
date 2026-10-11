@@ -114,6 +114,15 @@ func (s *operationService) run(ctx context.Context, key string, input immediateO
 }
 
 func (s *operationService) authorize(ctx context.Context, tx *gorm.DB, claims *authn.Claims, tree directoryTree) (*nodeAuthorizer, error) {
+	authorizer, err := s.newAuthorizer(ctx, tx, claims, tree)
+	if err != nil {
+		return nil, err
+	}
+	authorizer.tokenPermissions = claims.PersonalTokenPermissions
+	return authorizer, nil
+}
+
+func (s *operationService) newAuthorizer(ctx context.Context, tx *gorm.DB, claims *authn.Claims, tree directoryTree) (*nodeAuthorizer, error) {
 	if s == nil || tx == nil || claims == nil || claims.PrincipalID <= 0 {
 		return nil, errOperationUnavailable
 	}

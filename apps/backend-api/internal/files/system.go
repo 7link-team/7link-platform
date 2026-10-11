@@ -2,7 +2,6 @@ package files
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"time"
 
@@ -89,35 +88,21 @@ func (s *operationService) ensureSystemRoot(ctx context.Context) (fileEntryView,
 			return errOperationForbidden
 		}
 		q := query.Bind(tx, tree.prefix)
-		space, err := q.Space.WithContext(ctx).Where(q.Space.ScopeKind.Eq(spaceSystem), q.Space.SystemSlot.Eq(1)).Take()
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			spaceID, idErr := s.nextID()
-			if idErr != nil {
-				return idErr
-			}
-			rootID, idErr := s.nextID()
-			if idErr != nil {
-				return idErr
-			}
-			if err := tree.createSystemSpaceOn(ctx, tx, spaceID, rootID, time.Now()); err != nil {
-				return err
-			}
-			space, err = q.Space.WithContext(ctx).Where(q.Space.ID.Eq(spaceID)).Take()
-			if err != nil {
-				return err
-			}
-			event := audit.NewDomainEvent(ctx, 0, "file_root_created", "file_node", rootID)
-			event.Detail["scope"] = ownerSystem
-			if err := s.appender(ctx, tx, event); err != nil {
-				return err
-			}
-		}
+		space, created, err := tree.ensureSpaceOn(ctx, tx, 0, 0, s.nextID, time.Now())
 		if err != nil {
 			return err
 		}
 		root, err := q.Node.WithContext(ctx).Where(q.Node.SpaceID.Eq(space.ID), q.Node.ParentID.IsNull(), q.Node.RootSlot.Eq(1), q.Node.State.Eq("active")).Take()
 		if err != nil {
 			return err
+		}
+		// Only the call that created the space records its root's creation.
+		if created {
+			event := audit.NewDomainEvent(ctx, 0, "file_root_created", "file_node", root.ID)
+			event.Detail["scope"] = ownerSystem
+			if err := s.appender(ctx, tx, event); err != nil {
+				return err
+			}
 		}
 		if err := authorizer.access(ctx, tx, space.ID, claims.PrincipalID, root.ID, "list"); err != nil {
 			return err

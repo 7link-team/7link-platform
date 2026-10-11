@@ -15,6 +15,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"gorm.io/gen/field"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -199,21 +200,10 @@ func (r *AccountResourceFiles) create(ctx context.Context, tx *gorm.DB, input Ac
 func (r *AccountResourceFiles) ensureRoot(ctx context.Context, tx *gorm.DB, principalID, actorID guid.ID, now time.Time) (*model.Space, *model.Node, error) {
 	tree := directoryTree{prefix: r.prefix}
 	q := query.Bind(tx, r.prefix)
-	space, err := q.Space.WithContext(ctx).Where(q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(principalID)).Take()
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		spaceID, idErr := r.nextID()
-		if idErr != nil {
-			return nil, nil, idErr
-		}
-		rootID, idErr := r.nextID()
-		if idErr != nil {
-			return nil, nil, idErr
-		}
-		if err := tree.createSpaceOn(ctx, tx, spaceID, rootID, principalID, spaceAccount, now); err != nil {
-			return nil, nil, err
-		}
-		space, err = q.Space.WithContext(ctx).Where(q.Space.ID.Eq(spaceID)).Take()
+	if principalID <= 0 {
+		return nil, nil, errHierarchy
 	}
+	space, _, err := tree.ensureSpaceOn(ctx, tx, principalID, 0, r.nextID, now)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -549,6 +539,21 @@ func (r *AccountResourceFiles) MigrateLegacyAvatars(ctx context.Context, db *gor
 		for _, legacy := range rows {
 			err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 				q := query.Bind(tx, r.prefix)
+				// Every replica runs this at startup. Lock the principal's
+				// active legacy avatar rows before reading anything, so a
+				// second replica waits, then sees the first one's binding
+				// and the reference it retired, instead of migrating the
+				// same avatar twice and failing on the duplicate.
+				owned := q.AccountReference.WithContext(ctx).Where(
+					q.AccountReference.PrincipalID.Eq(legacy.PrincipalID), q.AccountReference.State.Eq("active"),
+					q.AccountReference.Purpose.In("avatar", "avatar_candidate"),
+				)
+				if tx.Dialector.Name() != "sqlite" {
+					owned = owned.Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate})
+				}
+				if _, err := owned.Find(); err != nil {
+					return err
+				}
 				current, err := q.AccountReference.WithContext(ctx).Where(q.AccountReference.ID.Eq(legacy.ID), q.AccountReference.State.Eq("active")).Take()
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					return nil

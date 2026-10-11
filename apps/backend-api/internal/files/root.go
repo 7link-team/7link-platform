@@ -122,22 +122,7 @@ func (m *Module) provisionOrganizationRoot(
 	}
 
 	tree := directoryTree{prefix: m.runtime.TablePrefix()}
-	q := query.Bind(tx, tree.prefix)
-	space, err := q.Space.WithContext(ctx).Where(q.Space.ScopeKind.Eq(spaceTenant), q.Space.TenantID.Eq(input.TenantID)).Take()
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		spaceID, idErr := m.nextFileID()
-		if idErr != nil {
-			return 0, idErr
-		}
-		physicalRootID, idErr := m.nextFileID()
-		if idErr != nil {
-			return 0, idErr
-		}
-		if err := tree.createSpaceOn(ctx, tx, spaceID, physicalRootID, input.TenantID, spaceTenant, now); err != nil {
-			return 0, err
-		}
-		space, err = q.Space.WithContext(ctx).Where(q.Space.ID.Eq(spaceID)).Take()
-	}
+	space, _, err := tree.ensureSpaceOn(ctx, tx, 0, input.TenantID, m.nextFileID, now)
 	if err != nil {
 		return 0, err
 	}
@@ -145,7 +130,7 @@ func (m *Module) provisionOrganizationRoot(
 		return 0, errOperationForbidden
 	}
 
-	q, space, err = tree.lockOperationSpace(ctx, tx, space.ID)
+	q, space, err := tree.lockOperationSpace(ctx, tx, space.ID)
 	if err != nil {
 		return 0, err
 	}

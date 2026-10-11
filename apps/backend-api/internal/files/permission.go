@@ -167,6 +167,9 @@ type nodeAuthorizer struct {
 	acl          map[aclSubject]struct{}
 	constraints  map[string]authz.DataConstraint
 	validRoots   map[rootBinding]bool
+	// tokenPermissions is the authenticating personal token's list; nil means
+	// the caller did not authenticate with one.
+	tokenPermissions []string
 }
 
 func newTenantNodeAuthorizer(tree directoryTree, policy core.TenantConstraintOn, references core.AuthorizationReferencesOn, tenantID, actorID guid.ID, revision int64) (*nodeAuthorizer, error) {
@@ -247,7 +250,7 @@ func (a *nodeAuthorizer) accessMany(
 	if action == "copy" {
 		action = "read"
 	}
-	if !validACLAction(action) {
+	if !validACLAction(action) || !a.tokenAllows(action) {
 		return nil, errOperationForbidden
 	}
 	var constraint, management authz.DataConstraint
@@ -290,6 +293,23 @@ func (a *nodeAuthorizer) accessMany(
 		allowed[nodeID] = permitted
 	}
 	return allowed, nil
+}
+
+// tokenAllows applies a personal token's permission list as a ceiling on the
+// action itself (D106): a route guard names one code, but a route may perform a
+// different action, such as renaming under a view guard or moving under a
+// create guard. Navigation (list, traverse, read) is what every guarded file
+// route performs to reach its node, so the route guard alone bounds it.
+func (a *nodeAuthorizer) tokenAllows(action string) bool {
+	if a.tokenPermissions == nil {
+		return true
+	}
+	switch action {
+	case "list", "traverse", "read":
+		return true
+	default:
+		return slices.Contains(a.tokenPermissions, filePermissionPrefix+action)
+	}
 }
 
 func (a *nodeAuthorizer) authorizeLoaded(

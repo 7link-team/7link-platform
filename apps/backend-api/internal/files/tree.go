@@ -10,6 +10,7 @@ import (
 	"7link.com/platform/internal/files/query"
 	"7link.com/platform/internal/infra/guid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const maxNodeDepth = 64
@@ -50,6 +51,12 @@ func (t directoryTree) createSpaceOn(ctx context.Context, tx *gorm.DB, id, rootI
 }
 
 func (t directoryTree) createSpaceRootOn(ctx context.Context, tx *gorm.DB, id, rootID guid.ID, now time.Time) error {
+	return t.createRootOn(ctx, tx, id, rootID, false, now)
+}
+
+// createRootOn writes a space's physical root. A system root stops ACL
+// inheritance because nothing sits above it to inherit from.
+func (t directoryTree) createRootOn(ctx context.Context, tx *gorm.DB, id, rootID guid.ID, stopInheritance bool, now time.Time) error {
 	if tx == nil || id <= 0 || rootID <= 0 {
 		return errHierarchy
 	}
@@ -57,7 +64,7 @@ func (t directoryTree) createSpaceRootOn(ctx context.Context, tx *gorm.DB, id, r
 		return ErrAccountTransaction
 	}
 	slot := 1
-	root := model.Node{ID: rootID, SpaceID: id, ParentKind: "directory", RootSlot: &slot, LiveSlot: &slot, Kind: "directory", State: "active", Version: 1, ManagementMode: "user", CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli()}
+	root := model.Node{ID: rootID, SpaceID: id, ParentKind: "directory", RootSlot: &slot, LiveSlot: &slot, Kind: "directory", State: "active", Version: 1, ManagementMode: "user", ACLStopInheritance: stopInheritance, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli()}
 	q := query.Bind(tx, t.prefix)
 	if err := q.Node.WithContext(ctx).Create(&root); err != nil {
 		return err
@@ -73,16 +80,73 @@ func (t directoryTree) createSystemSpaceOn(ctx context.Context, tx *gorm.DB, id,
 		return ErrAccountTransaction
 	}
 	slot := 1
-	space := model.Space{ID: id, ScopeKind: "system", SystemSlot: &slot, Version: 1, CreatedAt: now.UnixMilli()}
-	root := model.Node{ID: rootID, SpaceID: id, ParentKind: "directory", RootSlot: &slot, LiveSlot: &slot, Kind: "directory", State: "active", Version: 1, ManagementMode: "user", ACLStopInheritance: true, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli()}
+	space := model.Space{ID: id, ScopeKind: spaceSystem, SystemSlot: &slot, Version: 1, CreatedAt: now.UnixMilli()}
 	q := query.Bind(tx, t.prefix)
 	if err := q.Space.WithContext(ctx).Create(&space); err != nil {
 		return err
 	}
-	if err := q.Node.WithContext(ctx).Create(&root); err != nil {
-		return err
+	return t.createRootOn(ctx, tx, id, rootID, true, now)
+}
+
+// ensureSpaceOn returns the one space that owner names -- an account's
+// (principalID), a tenant's (tenantID) or the system's (neither) -- creating it
+// with its physical root when none exists yet. created reports whether this
+// call created it.
+//
+// The insert comes before any read and does nothing on conflict, so
+// concurrent initializers serialize on the space's unique key instead of each
+// seeing "no space" and racing to insert. Whether this call created the space
+// is judged by the ID read back, never by an affected-row count, which MySQL
+// reports as matched rather than changed under clientFoundRows. The read-back
+// locks the row, so a reader also sees a space committed after its snapshot.
+func (t directoryTree) ensureSpaceOn(ctx context.Context, tx *gorm.DB, principalID, tenantID guid.ID, nextID func() (guid.ID, error), now time.Time) (*model.Space, bool, error) {
+	if tx == nil || nextID == nil || principalID < 0 || tenantID < 0 || (principalID > 0 && tenantID > 0) {
+		return nil, false, errHierarchy
 	}
-	return q.NodeClosure.WithContext(ctx).Create(&model.NodeClosure{SpaceID: id, AncestorID: rootID, DescendantID: rootID, Depth: 0})
+	if _, active := tx.Statement.ConnPool.(gorm.TxCommitter); !active {
+		return nil, false, ErrAccountTransaction
+	}
+	id, err := nextID()
+	if err != nil {
+		return nil, false, err
+	}
+	candidate := model.Space{ID: id, Version: 1, CreatedAt: now.UnixMilli()}
+	q := query.Bind(tx, t.prefix)
+	read := q.Space.WithContext(ctx)
+	switch {
+	case principalID > 0:
+		candidate.ScopeKind, candidate.PrincipalID = spaceAccount, &principalID
+		read = read.Where(q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(principalID))
+	case tenantID > 0:
+		candidate.ScopeKind, candidate.TenantID = spaceTenant, &tenantID
+		read = read.Where(q.Space.ScopeKind.Eq(spaceTenant), q.Space.TenantID.Eq(tenantID))
+	default:
+		slot := 1
+		candidate.ScopeKind, candidate.SystemSlot = spaceSystem, &slot
+		read = read.Where(q.Space.ScopeKind.Eq(spaceSystem), q.Space.SystemSlot.Eq(slot))
+	}
+	if err := q.Space.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&candidate); err != nil {
+		return nil, false, err
+	}
+	if tx.Dialector.Name() != "sqlite" {
+		// SQLite already holds the write lock the insert took.
+		read = read.Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate})
+	}
+	space, err := read.Take()
+	if err != nil {
+		return nil, false, err
+	}
+	if space.ID != candidate.ID {
+		return space, false, nil
+	}
+	rootID, err := nextID()
+	if err != nil {
+		return nil, false, err
+	}
+	if err := t.createRootOn(ctx, tx, space.ID, rootID, space.ScopeKind == spaceSystem, now); err != nil {
+		return nil, false, err
+	}
+	return space, true, nil
 }
 
 func (t directoryTree) createDirectory(ctx context.Context, db *gorm.DB, spaceID, id, parentID guid.ID, input string, now time.Time) (*model.Node, error) {

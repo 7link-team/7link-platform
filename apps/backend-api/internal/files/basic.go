@@ -12,7 +12,6 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const defaultUploadLifetime = 30 * time.Minute
@@ -59,37 +58,14 @@ func (s *operationService) ensureOwnedRoot(ctx context.Context) (fileEntryView, 
 		}
 		binding := rootBinding{scope: ownerAccount, ownerID: claims.PrincipalID}
 
-		q := query.Bind(tx, tree.prefix)
-		spaceID, idErr := s.nextID()
-		if idErr != nil {
-			return idErr
-		}
-		now := time.Now()
-		candidate := model.Space{ID: spaceID, ScopeKind: spaceAccount, PrincipalID: &claims.PrincipalID, Version: 1, CreatedAt: now.UnixMilli()}
-		// Insert before reading so concurrent initializers serialize on the
-		// existing unique principal key, including when no space exists yet.
-		insert := tx.Table(tree.prefix + "file_spaces").Clauses(clause.OnConflict{DoNothing: true}).Create(&candidate)
-		if insert.Error != nil {
-			return insert.Error
-		}
-		if insert.RowsAffected > 0 {
-			rootID, idErr := s.nextID()
-			if idErr != nil {
-				return idErr
-			}
-			if err := tree.createSpaceRootOn(workContext, tx, spaceID, rootID, now); err != nil {
-				return err
-			}
-		}
-		space, err := q.Space.WithContext(workContext).
-			Where(q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(claims.PrincipalID)).Take()
+		space, _, err := tree.ensureSpaceOn(workContext, tx, claims.PrincipalID, 0, s.nextID, time.Now())
 		if err != nil {
 			return err
 		}
 		if space.ScopeKind != spaceAccount || space.PrincipalID == nil || *space.PrincipalID != claims.PrincipalID {
 			return errOperationForbidden
 		}
-		q, space, err = tree.lockOperationSpace(workContext, tx, space.ID)
+		q, space, err := tree.lockOperationSpace(workContext, tx, space.ID)
 		if err != nil {
 			return err
 		}

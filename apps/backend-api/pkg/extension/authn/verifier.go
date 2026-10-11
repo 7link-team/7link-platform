@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/jwsx"
+	"7link.com/platform/pkg/guid"
 )
 
 const (
@@ -362,6 +362,11 @@ type Claims struct {
 	// AccountView is attached only after validating a dedicated server record.
 	// Ordinary JWT claims cannot supply this identity.
 	AccountView *AccountViewIdentity `json:"-"`
+	// PersonalTokenPermissions is the permission list of the personal access
+	// token that authenticated the request; nil means no personal token did.
+	// It is attached only after validating the token record, never decoded from
+	// a payload, and caps what a service may authorize beyond the route guard.
+	PersonalTokenPermissions []string `json:"-"`
 }
 
 // AccountViewIdentity preserves the operator independently of the viewed subject.

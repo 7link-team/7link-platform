@@ -168,9 +168,12 @@ func TestPersonalTokenAuthenticationRequiresRouteTenantPermissionLiveCredentialA
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := authnext.WithPersonalTokenScope(t.Context(), test.tenant, test.permission)
-			_, err := s.Authenticate(ctx, "Bearer "+created.Token, "")
+			claims, err := s.Authenticate(ctx, "Bearer "+created.Token, "")
 			if test.valid {
 				require.NoError(t, err)
+				// The token's own list travels with the claims, so a service
+				// can cap the action it authorizes, not only the route.
+				require.Equal(t, []string{"store_view"}, claims.PersonalTokenPermissions)
 			} else {
 				require.Error(t, err)
 			}
@@ -202,6 +205,7 @@ func createdPrincipal(t *testing.T, s *Service, cookie string) guid.ID {
 	t.Helper()
 	claims, err := s.Authenticate(t.Context(), "", cookie)
 	require.NoError(t, err)
+	require.Nil(t, claims.PersonalTokenPermissions, "a browser session is not a personal token")
 	return claims.PrincipalID
 }
 

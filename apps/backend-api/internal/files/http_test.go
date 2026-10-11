@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -221,7 +222,21 @@ func requireFileID(t *testing.T, raw string) guid.ID {
 // behavior the route is responsible for.
 type fileHTTPVerifier struct{ tenantID guid.ID }
 
-func (v fileHTTPVerifier) Authenticate(_ context.Context, authorization, _ string) (*authn.Claims, error) {
+func (v fileHTTPVerifier) Authenticate(ctx context.Context, authorization, _ string) (*authn.Claims, error) {
+	// "Bearer pat:<codes>" stands in for a personal token holding <codes>. Like
+	// the real authenticator, it is accepted only when the route's guard code is
+	// in the list, and the list travels with the claims.
+	if codes, ok := strings.CutPrefix(authorization, "Bearer pat:"); ok {
+		permissions := strings.Split(codes, ",")
+		scope, scoped := authn.PersonalTokenScopeFromContext(ctx)
+		if !scoped || scope.TenantID != 90 || !slices.Contains(permissions, scope.Permission) {
+			return nil, authn.ErrInvalidToken
+		}
+		return &authn.Claims{
+			Subject: "70", PrincipalID: 70, SubjectType: authn.SubjectTypePrincipal, TenantID: 90,
+			PersonalTokenPermissions: permissions,
+		}, nil
+	}
 	claims := &authn.Claims{
 		Subject: "70", PrincipalID: 70, SubjectType: authn.SubjectTypePrincipal, TenantID: v.tenantID,
 	}
@@ -817,4 +832,38 @@ func TestErrorMappersKeepChosenStatus(t *testing.T) {
 		require.ErrorAs(t, mapped, &headers, name)
 		assert.Equal(t, "1", headers.GetHeaders().Get("Retry-After"), name)
 	}
+}
+
+// A personal token's list caps the action a route performs, not only the
+// route's guard (D106). PATCH /files/{id} is guarded by file_view but renames,
+// and file-operations is guarded by file_create but moves.
+func TestFileHTTPPersonalTokenCapsTheActionNotOnlyTheRoute(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	api := newFileHTTPAPI(t, h.service)
+	rename := func(token string) *httptest.ResponseRecorder {
+		node := treeNode(t, h.db, h.tree.prefix, 32)
+		return api.Patch("/files/32", "Authorization: Bearer pat:"+token, map[string]any{"name": "renamed.txt", "revision": node.Version})
+	}
+
+	denied := rename("file_view")
+	require.Equal(t, http.StatusForbidden, denied.Code, denied.Body.String())
+	require.Equal(t, "root.txt", treeNode(t, h.db, h.tree.prefix, 32).Name, "a view-only token must not rename")
+
+	allowed := rename("file_view,file_rename")
+	require.Equal(t, http.StatusOK, allowed.Code, allowed.Body.String())
+	require.Equal(t, "renamed.txt", treeNode(t, h.db, h.tree.prefix, 32).Name)
+
+	move := func(token, key string) *httptest.ResponseRecorder {
+		return api.Post("/tenants/90/file-operations", "Authorization: Bearer pat:"+token, "Idempotency-Key: "+key, map[string]any{
+			"action": "move", "destination_id": "6", "sources": []string{"32"},
+			"file_policy": "rename", "directory_policy": "rename", "type_policy": "rename",
+		})
+	}
+	refused := move("file_create", "pat-move-refused")
+	require.Equal(t, http.StatusForbidden, refused.Code, refused.Body.String())
+	require.Equal(t, guid.ID(10), *treeNode(t, h.db, h.tree.prefix, 32).ParentID, "a create-only token must not move")
+
+	moved := move("file_create,file_move", "pat-move-allowed")
+	require.Equal(t, http.StatusCreated, moved.Code, moved.Body.String())
+	require.Equal(t, guid.ID(6), *treeNode(t, h.db, h.tree.prefix, 32).ParentID)
 }

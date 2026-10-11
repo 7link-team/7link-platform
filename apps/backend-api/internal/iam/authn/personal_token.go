@@ -305,6 +305,7 @@ func (s *Service) authenticatePersonalToken(ctx context.Context, secret string) 
 		return nil, authnext.ErrInvalidToken
 	}
 	claims.TenantID = row.TenantID
+	claims.PersonalTokenPermissions = permissions
 	return claims, nil
 }
 
