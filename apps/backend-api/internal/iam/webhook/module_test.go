@@ -243,9 +243,8 @@ func TestWorkerKeepsGoingAfterAFailedPass(t *testing.T) {
 }
 
 func TestStopReportsADeadlineItCouldNotMeet(t *testing.T) {
-	// Stop waits for the pass in flight so a delivery does not keep a lease
-	// nothing will release. A caller whose deadline passes first has to be told,
-	// because the worker is still running.
+	// Stop waits for the pass in flight. A caller whose deadline passes first has
+	// to be told, because the worker is still running.
 	env := newWebhookEnvironment(t)
 	instance := NewModule(env.runtime, Config{Config: module.Config{Enabled: true}, PollInterval: time.Hour})
 	instance.service = env.service

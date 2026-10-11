@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -46,8 +47,9 @@ type Config struct {
 	DeliveryBatch int           `mapstructure:"delivery_batch" description:"deliveries attempted in one pass" default:"50"`
 	FanOutBatch   int           `mapstructure:"fan_out_batch" description:"events read from one tenant's chain in one pass" default:"200"`
 	// FanOutSubscriptions bounds how many subscriptions one pass catches up, so a
-	// deployment with many of them makes progress on all of them in turn rather
-	// than holding one statement open across every tenant.
+	// deployment with many of them does not hold one statement open across every
+	// tenant. Each pass resumes after the last subscription the previous one
+	// reached and wraps around, so all of them make progress in turn.
 	FanOutSubscriptions int `mapstructure:"fan_out_subscriptions" description:"subscriptions caught up in one pass" default:"200"`
 }
 
@@ -64,8 +66,16 @@ type Service struct {
 	nextID     func() (guid.ID, error)
 	now        func() time.Time
 
+	// fanOutTenant and fanOutID are the key of the last subscription a fan-out
+	// pass reached; the next pass resumes after it. Zero means the start.
+	fanOutMu     sync.Mutex
+	fanOutTenant guid.ID
+	fanOutID     guid.ID
+
 	delivered atomic.Int64
 	failures  atomic.Int64
+	abandoned atomic.Int64
+	reclaimed atomic.Int64
 }
 
 func ResolveKeyring(cfg Config) (*keyringx.Keyring, error) {

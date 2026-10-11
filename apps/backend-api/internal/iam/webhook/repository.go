@@ -145,16 +145,19 @@ func (r *Repository) deleteSubscription(ctx context.Context, tenantID, id guid.I
 	return nil
 }
 
-// activeSubscriptions lists what the fan-out pass has to catch up, ordered so a
-// pass that is interrupted resumes in the same order.
-func (r *Repository) activeSubscriptions(ctx context.Context, limit int) ([]subscriptionRow, error) {
+// activeSubscriptions lists up to limit active subscriptions ordered after the
+// key (afterTenant, afterID), so consecutive passes walk the whole set rather
+// than catching up the same front of it every time.
+func (r *Repository) activeSubscriptions(ctx context.Context, afterTenant, afterID guid.ID, limit int) ([]subscriptionRow, error) {
 	db := r.writer()
 	if db == nil {
 		return nil, errRepositoryUnavailable
 	}
 	rows := []subscriptionRow{}
 	err := db.WithContext(ctx).Table(r.names().Subscriptions.String()).
-		Where("status = ?", SubscriptionActive).Order("tenant_id, id").Limit(limit).Find(&rows).Error
+		Where("status = ?", SubscriptionActive).
+		Where("tenant_id > ? OR (tenant_id = ? AND id > ?)", afterTenant, afterTenant, afterID).
+		Order("tenant_id, id").Limit(limit).Find(&rows).Error
 	return rows, err
 }
 
@@ -188,7 +191,8 @@ func (r *Repository) enqueue(ctx context.Context, subscription subscriptionRow, 
 }
 
 // claimDelivery takes a lease on one pending delivery. The attempt count is part
-// of the predicate so two replicas cannot both claim the same row.
+// of the predicate so two replicas cannot both claim the same row, and the count
+// it leaves behind is what fences the claimant's outcome write.
 func (r *Repository) claimDelivery(ctx context.Context, id guid.ID, attempts int, now time.Time) (bool, error) {
 	db := r.writer()
 	if db == nil {
@@ -206,6 +210,21 @@ func (r *Repository) claimDelivery(ctx context.Context, id guid.ID, attempts int
 	return result.RowsAffected == 1, nil
 }
 
+// resetStaleDeliveries returns claims whose lease began before staleBefore to
+// pending. A claimant that crashed, was killed, or overran its lease never writes
+// an outcome, so without this its row would stay claimed forever. The attempt is
+// kept: it was made, and the outcome fence relies on the count only growing.
+func (r *Repository) resetStaleDeliveries(ctx context.Context, staleBefore, now time.Time) (int64, error) {
+	db := r.writer()
+	if db == nil {
+		return 0, errRepositoryUnavailable
+	}
+	result := db.WithContext(ctx).Table(r.names().Deliveries.String()).
+		Where("status = ? AND (locked_at IS NULL OR locked_at < ?)", DeliveryDelivering, staleBefore).
+		Updates(map[string]any{"status": DeliveryPending, "locked_at": nil, "updated_at": now})
+	return result.RowsAffected, result.Error
+}
+
 func (r *Repository) dueDeliveries(ctx context.Context, now time.Time, limit int) ([]deliveryRow, error) {
 	db := r.writer()
 	if db == nil {
@@ -218,31 +237,55 @@ func (r *Repository) dueDeliveries(ctx context.Context, now time.Time, limit int
 	return rows, err
 }
 
-func (r *Repository) markDelivered(ctx context.Context, id guid.ID, now time.Time) error {
+// deliveryBacklog counts what is owed now: deliveries that are due, and claims
+// that have not yet recorded an outcome.
+func (r *Repository) deliveryBacklog(ctx context.Context, now time.Time) (int64, error) {
 	db := r.writer()
 	if db == nil {
-		return errRepositoryUnavailable
+		return 0, errRepositoryUnavailable
 	}
-	return db.WithContext(ctx).Table(r.names().Deliveries.String()).Where("id = ?", id).
+	var count int64
+	err := db.WithContext(ctx).Table(r.names().Deliveries.String()).
+		Where("(status = ? AND available_at <= ?) OR status = ?", DeliveryPending, now, DeliveryDelivering).
+		Count(&count).Error
+	return count, err
+}
+
+// markDelivered records a success for the claim that left attempts on the row.
+// It reports false when that claim is no longer in force -- the lease was
+// reclaimed and possibly claimed again -- and then writes nothing, so a late
+// outcome cannot overwrite the claim that replaced it.
+func (r *Repository) markDelivered(ctx context.Context, id guid.ID, attempts int, now time.Time) (bool, error) {
+	db := r.writer()
+	if db == nil {
+		return false, errRepositoryUnavailable
+	}
+	result := db.WithContext(ctx).Table(r.names().Deliveries.String()).
+		Where("id = ? AND status = ? AND attempts = ?", id, DeliveryDelivering, attempts).
 		Updates(map[string]any{
 			"status": DeliveryDelivered, "delivered_at": now, "locked_at": nil,
 			"last_error": "", "updated_at": now,
-		}).Error
+		})
+	return result.RowsAffected == 1, result.Error
 }
 
-func (r *Repository) markAttemptFailed(ctx context.Context, id guid.ID, status, reason string, retryAt, now time.Time) error {
+// markAttemptFailed records a failed attempt under the same fence as
+// markDelivered, and reports false when the claim was superseded.
+func (r *Repository) markAttemptFailed(ctx context.Context, id guid.ID, attempts int, status, reason string, retryAt, now time.Time) (bool, error) {
 	db := r.writer()
 	if db == nil {
-		return errRepositoryUnavailable
+		return false, errRepositoryUnavailable
 	}
 	if len(reason) > 512 {
 		reason = reason[:512]
 	}
-	return db.WithContext(ctx).Table(r.names().Deliveries.String()).Where("id = ?", id).
+	result := db.WithContext(ctx).Table(r.names().Deliveries.String()).
+		Where("id = ? AND status = ? AND attempts = ?", id, DeliveryDelivering, attempts).
 		Updates(map[string]any{
 			"status": status, "available_at": retryAt, "locked_at": nil,
 			"last_error": reason, "updated_at": now,
-		}).Error
+		})
+	return result.RowsAffected == 1, result.Error
 }
 
 func (r *Repository) listDeliveries(ctx context.Context, tenantID, subscriptionID guid.ID, offset, limit int) ([]deliveryRow, int64, error) {

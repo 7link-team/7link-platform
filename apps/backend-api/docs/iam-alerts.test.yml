@@ -137,3 +137,164 @@ tests:
       - eval_time: 32m
         alertname: IAMNotificationDeliveryDegraded
         exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'iam_webhook_deliveries_abandoned_total{job="iam",instance="a"}'
+        values: '0 0 1x30'
+      - series: 'iam_webhook_deliveries_abandoned_total{job="iam-quiet",instance="a"}'
+        values: '0x32'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: IAMWebhookDeliveriesAbandoned
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              severity: warning
+            exp_annotations:
+              summary: Webhook deliveries were abandoned after their last attempt
+              description: Deliveries reached status failed and will not be retried, so their receivers never got those events. List the subscription's deliveries for last_error and tell the tenant which events their endpoint missed.
+      - eval_time: 20m
+        alertname: IAMWebhookDeliveriesAbandoned
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'iam_webhook_delivery_failures_total{job="iam",instance="a"}'
+        values: '0+2x30'
+      - series: 'iam_webhook_delivered_total{job="iam",instance="a"}'
+        values: '0+1x30'
+      - series: 'iam_webhook_delivery_failures_total{job="iam-mostly-ok",instance="a"}'
+        values: '0+1x30'
+      - series: 'iam_webhook_delivered_total{job="iam-mostly-ok",instance="a"}'
+        values: '0+3x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: IAMWebhookDeliveryFailing
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: IAMWebhookDeliveryFailing
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              severity: warning
+            exp_annotations:
+              summary: Most webhook delivery attempts are failing
+              description: Failing across most receivers points at this side rather than one tenant's endpoint. Check outbound network and DNS, the webhook outbound policy, the encryption key that opens signing secrets, and database access. Deliveries retry with backoff and are abandoned once their attempts are spent.
+  - interval: 1m
+    input_series:
+      - series: 'iam_webhook_deliveries_backlog{job="iam",instance="a"}'
+        values: '5x60'
+      - series: 'iam_webhook_delivered_total{job="iam",instance="a"}'
+        values: '0x60'
+      - series: 'iam_webhook_delivery_failures_total{job="iam",instance="a"}'
+        values: '0x60'
+      - series: 'iam_webhook_deliveries_backlog{job="iam-busy",instance="a"}'
+        values: '5x60'
+      - series: 'iam_webhook_delivered_total{job="iam-busy",instance="a"}'
+        values: '0x60'
+      - series: 'iam_webhook_delivery_failures_total{job="iam-busy",instance="a"}'
+        values: '0+1x60'
+      - series: 'iam_webhook_deliveries_backlog{job="iam-idle",instance="a"}'
+        values: '0x60'
+      - series: 'iam_webhook_delivered_total{job="iam-idle",instance="a"}'
+        values: '0x60'
+      - series: 'iam_webhook_delivery_failures_total{job="iam-idle",instance="a"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: IAMWebhookDeliveryStalled
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: IAMWebhookDeliveryStalled
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              severity: warning
+            exp_annotations:
+              summary: Webhook deliveries are owed but none are being attempted
+              description: The backlog has stayed above zero with no delivery succeeding or failing. Check that the webhook module is enabled and its worker is running on at least one replica, and that its delivery pass is not failing in the log.
+  - interval: 1m
+    input_series:
+      - series: 'iam_webhook_delivery_leases_reclaimed_total{job="iam",instance="a"}'
+        values: '0 0 1x70'
+      - series: 'iam_webhook_metrics_database_success{job="iam",instance="a"}'
+        values: '0x10 1x5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: IAMWebhookLeasesReclaimed
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              severity: warning
+            exp_annotations:
+              summary: Webhook delivery claims expired without an outcome
+              description: A worker crashed, was killed, or overran twice webhook http_timeout while holding a delivery. The deliveries were retried; receivers may see a duplicate, which they deduplicate on the Idempotency-Key header. Check for restarts and slow receivers.
+      - eval_time: 70m
+        alertname: IAMWebhookLeasesReclaimed
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: IAMWebhookMetricsUnavailable
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              instance: a
+              severity: warning
+            exp_annotations:
+              summary: Webhook delivery backlog cannot be observed
+              description: Restore database access for the metrics probe before treating a zero webhook backlog as healthy.
+      - eval_time: 12m
+        alertname: IAMWebhookMetricsUnavailable
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'files_cleanup_failures_total{job="iam",instance="a",task="account_object_collection"}'
+        values: '0+1x40'
+      - series: 'files_cleanup_failures_total{job="iam",instance="a",task="binding_expiry"}'
+        values: '0+0.1x40'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: FileCleanupFailing
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: FileCleanupFailing
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              task: account_object_collection
+              severity: warning
+            exp_annotations:
+              summary: File cleanup keeps failing
+              description: The cleanup task named in the task label has failed on most ticks. Expired operations stay pinned and orphaned objects stay in storage until it succeeds. Check database access and the configured file storage backend, and the log lines that say the cleanup will retry.
+  - interval: 1m
+    input_series:
+      - series: 'audit_events_dropped_total{job="iam",instance="a"}'
+        values: '0 0 1x20'
+      - series: 'audit_events_failed_total{job="iam",instance="a"}'
+        values: '0x5 2x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: OperationLogEventsDropped
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              severity: critical
+            exp_annotations:
+              summary: Operation log events were dropped before reaching storage
+              description: The operation log queue was full and events were discarded, so those operations have no record. Check the operation log sinks for slow writes and database access, and the queue size and flush settings.
+      - eval_time: 10m
+        alertname: OperationLogEventsDropped
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: OperationLogEventsFailed
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: OperationLogEventsFailed
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              severity: critical
+            exp_annotations:
+              summary: Operation log events were rejected by every sink
+              description: No sink accepted these events, so those operations have no record. Check audit_sink_errors_total and the log for the sink error, and restore database access or the failing sink.
+      - eval_time: 15m
+        alertname: OperationLogEventsFailed
+        exp_alerts: []

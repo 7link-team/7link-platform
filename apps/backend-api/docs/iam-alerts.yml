@@ -1,6 +1,8 @@
 # Load into the deployment's Prometheus rule_files. Route iam-scim alerts to the
 # SCIM operator; an unavailable remote directory must not evict login servers.
-# iam-workers alerts cover background jobs whose failures have no caller.
+# iam-workers alerts cover background jobs whose failures have no caller,
+# including webhook delivery. files covers the file cleanup loop, and
+# operation-log covers operation log events that never reached storage.
 groups:
   - name: iam-scim
     rules:
@@ -54,3 +56,71 @@ groups:
         annotations:
           summary: Notification delivery keeps failing and retrying
           description: Check notification endpoint reachability and response status, and database access for outbox polls. Rows exhaust their attempts and become permanently failed if this persists.
+      - alert: IAMWebhookDeliveriesAbandoned
+        expr: sum by (job) (increase(iam_webhook_deliveries_abandoned_total[15m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Webhook deliveries were abandoned after their last attempt
+          description: Deliveries reached status failed and will not be retried, so their receivers never got those events. List the subscription's deliveries for last_error and tell the tenant which events their endpoint missed.
+      - alert: IAMWebhookDeliveryFailing
+        expr: sum by (job) (increase(iam_webhook_delivery_failures_total[15m])) / (sum by (job) (increase(iam_webhook_delivery_failures_total[15m])) + sum by (job) (increase(iam_webhook_delivered_total[15m]))) > 0.5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Most webhook delivery attempts are failing
+          description: Failing across most receivers points at this side rather than one tenant's endpoint. Check outbound network and DNS, the webhook outbound policy, the encryption key that opens signing secrets, and database access. Deliveries retry with backoff and are abandoned once their attempts are spent.
+      - alert: IAMWebhookDeliveryStalled
+        expr: max by (job) (min_over_time(iam_webhook_deliveries_backlog[30m])) > 0 and (sum by (job) (increase(iam_webhook_delivered_total[30m])) + sum by (job) (increase(iam_webhook_delivery_failures_total[30m]))) == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Webhook deliveries are owed but none are being attempted
+          description: The backlog has stayed above zero with no delivery succeeding or failing. Check that the webhook module is enabled and its worker is running on at least one replica, and that its delivery pass is not failing in the log.
+      - alert: IAMWebhookLeasesReclaimed
+        expr: sum by (job) (increase(iam_webhook_delivery_leases_reclaimed_total[1h])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Webhook delivery claims expired without an outcome
+          description: A worker crashed, was killed, or overran twice webhook http_timeout while holding a delivery. The deliveries were retried; receivers may see a duplicate, which they deduplicate on the Idempotency-Key header. Check for restarts and slow receivers.
+      - alert: IAMWebhookMetricsUnavailable
+        expr: iam_webhook_metrics_database_success == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Webhook delivery backlog cannot be observed
+          description: Restore database access for the metrics probe before treating a zero webhook backlog as healthy.
+  - name: files
+    rules:
+      - alert: FileCleanupFailing
+        expr: sum by (job, task) (increase(files_cleanup_failures_total[15m])) > 3
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: File cleanup keeps failing
+          description: The cleanup task named in the task label has failed on most ticks. Expired operations stay pinned and orphaned objects stay in storage until it succeeds. Check database access and the configured file storage backend, and the log lines that say the cleanup will retry.
+  - name: operation-log
+    rules:
+      - alert: OperationLogEventsDropped
+        expr: sum by (job) (increase(audit_events_dropped_total[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Operation log events were dropped before reaching storage
+          description: The operation log queue was full and events were discarded, so those operations have no record. Check the operation log sinks for slow writes and database access, and the queue size and flush settings.
+      - alert: OperationLogEventsFailed
+        expr: sum by (job) (increase(audit_events_failed_total[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Operation log events were rejected by every sink
+          description: No sink accepted these events, so those operations have no record. Check audit_sink_errors_total and the log for the sink error, and restore database access or the failing sink.

@@ -14,6 +14,7 @@ import (
 	"7link.com/platform/pkg/module"
 	"context"
 	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -192,6 +193,53 @@ func TestFileCleanupWorkerExpiresDurableOperationAndReleasesPins(t *testing.T) {
 	pins, err := q.OperationItem.WithContext(t.Context()).Where(q.OperationItem.PinnedNodeID.IsNotNull()).Count()
 	require.NoError(t, err)
 	require.Zero(t, pins)
+}
+
+func TestFileCleanupWorkerCountsEachFailedTask(t *testing.T) {
+	// The datasource exists but none of the module's tables do, so every cleanup
+	// task fails for a real reason on the first tick. Each must be counted under
+	// its own task, since the log line is otherwise the only trace.
+	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{"primary": {Type: "sqlite", DSN: filepath.Join(t.TempDir(), "unmigrated.sqlite") + "?_busy_timeout=10000", Writable: true, Readable: true}})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, router.Close()) })
+	runtime := appenv.NewRuntime(appenv.NewIdentity("files-worker", "1"), appenv.WithDatabase(router))
+	m := NewModule(runtime, Config{LocalRoot: t.TempDir()})
+	require.NoError(t, m.ProvideServices(module.NewServices()))
+
+	gather := func() map[string]float64 {
+		registry := prometheus.NewRegistry()
+		require.NoError(t, registry.Register(m.Collector()))
+		families, err := registry.Gather()
+		require.NoError(t, err)
+		values := map[string]float64{}
+		for _, family := range families {
+			require.Equal(t, "files_cleanup_failures_total", family.GetName())
+			require.Equal(t, "COUNTER", family.GetType().String())
+			for _, metric := range family.Metric {
+				require.Len(t, metric.Label, 1)
+				values[metric.Label[0].GetValue()] = metric.GetCounter().GetValue()
+			}
+		}
+		return values
+	}
+	require.Equal(t, map[string]float64{
+		"operation_expiry": 0, "binding_expiry": 0, "orphaned_resource_purge": 0, "account_object_collection": 0,
+	}, gather(), "every task is exported before it has failed, so an alert has a series to read")
+
+	require.NoError(t, m.Start(t.Context()))
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, m.Stop(ctx))
+	})
+	require.Eventually(t, func() bool {
+		for _, value := range gather() {
+			if value < 1 {
+				return false
+			}
+		}
+		return true
+	}, 5*time.Second, 10*time.Millisecond, "each failed task is counted under its own label")
 }
 
 func TestFileModuleHTTPRegistrationRequiresItsCollaborators(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	filesi18n "7link.com/platform/internal/files/i18n"
@@ -17,6 +18,7 @@ import (
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const Name = "files"
@@ -50,7 +52,24 @@ type Module struct {
 	workerMu     sync.Mutex
 	workerCancel context.CancelFunc
 	workerDone   chan struct{}
+	// cleanupFailures counts failed cleanup pages per task, indexed like
+	// cleanupTasks. The loop has no caller, so these are what an alert reads.
+	cleanupFailures [len(cleanupTasks)]atomic.Int64
 }
+
+// cleanupTasks names each step of the cleanup loop as its failure counter is
+// labeled.
+var cleanupTasks = [...]string{"operation_expiry", "binding_expiry", "orphaned_resource_purge", "account_object_collection"}
+
+const (
+	cleanupOperationExpiry = iota
+	cleanupBindingExpiry
+	cleanupOrphanedResourcePurge
+	cleanupAccountObjectCollection
+)
+
+var cleanupFailuresDesc = prometheus.NewDesc("files_cleanup_failures_total",
+	"File cleanup pages that failed and will be retried on the next tick, by cleanup task.", []string{"task"}, nil)
 
 func NewModule(runtime *appenv.Runtime, config Config) *Module {
 	if runtime == nil {
@@ -248,22 +267,26 @@ func (m *Module) cleanupLoop(ctx context.Context, done chan struct{}) {
 			nextOperation, operationErr := tree.expireOperations(workContext, m.runtime.Database().Write(), time.Now(), operationAfter, 100)
 			operationAfter = nextOperation
 			if operationErr != nil && ctx.Err() == nil {
+				m.cleanupFailures[cleanupOperationExpiry].Add(1)
 				slog.WarnContext(ctx, "file operation expiry will retry", "error", operationErr)
 			}
 			nextBinding, bindingErr := m.bindings.Expire(workContext, m.runtime.Database().Write(), time.Now(), bindingAfter, 100)
 			bindingAfter = nextBinding
 			if bindingErr != nil && ctx.Err() == nil {
+				m.cleanupFailures[cleanupBindingExpiry].Add(1)
 				slog.WarnContext(ctx, "file resource binding expiry will retry", "error", bindingErr)
 			}
 			nextResource, resourceErr := m.resources.PurgeOrphaned(workContext, m.runtime.Database().Write(), time.Now(), resourceAfter, 100)
 			resourceAfter = nextResource
 			if resourceErr != nil && ctx.Err() == nil {
+				m.cleanupFailures[cleanupOrphanedResourcePurge].Add(1)
 				slog.WarnContext(ctx, "orphaned resource file cleanup will retry", "error", resourceErr)
 			}
 			next, err := m.accounts.CollectAccountObjects(workContext, m.runtime.Database().Write(), time.Now(), after, 100)
 			cancel()
 			after = next
 			if err != nil && ctx.Err() == nil {
+				m.cleanupFailures[cleanupAccountObjectCollection].Add(1)
 				slog.WarnContext(ctx, "account file cleanup will retry", "error", err)
 			}
 		}
@@ -292,9 +315,24 @@ func (m *Module) Stop(ctx context.Context) error {
 	}
 }
 
+// Collector exports the cleanup loop's failures, which otherwise reach only the
+// log: a loop that keeps failing leaves expired operations pinned and orphaned
+// objects in storage without anything else noticing.
+func (m *Module) Collector() prometheus.Collector { return m }
+
+func (m *Module) Describe(ch chan<- *prometheus.Desc) { ch <- cleanupFailuresDesc }
+
+func (m *Module) Collect(ch chan<- prometheus.Metric) {
+	for index, task := range cleanupTasks {
+		ch <- prometheus.MustNewConstMetric(cleanupFailuresDesc, prometheus.CounterValue,
+			float64(m.cleanupFailures[index].Load()), task)
+	}
+}
+
 var (
-	_ module.Depender        = (*Module)(nil)
-	_ module.ServiceProvider = (*Module)(nil)
-	_ module.ServiceInjector = (*Module)(nil)
-	_ module.HTTPRegistrar   = (*Module)(nil)
+	_ module.Depender                  = (*Module)(nil)
+	_ module.ServiceProvider           = (*Module)(nil)
+	_ module.ServiceInjector           = (*Module)(nil)
+	_ module.HTTPRegistrar             = (*Module)(nil)
+	_ module.PrometheusCollectorModule = (*Module)(nil)
 )

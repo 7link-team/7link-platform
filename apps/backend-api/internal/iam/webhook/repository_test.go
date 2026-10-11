@@ -26,17 +26,21 @@ func TestEveryReadAndWriteRefusesWithoutADatasource(t *testing.T) {
 	assert.ErrorIs(t, repo.insertSubscription(t.Context(), &row), errRepositoryUnavailable)
 	assert.ErrorIs(t, repo.updateSubscription(t.Context(), &row), errRepositoryUnavailable)
 	assert.ErrorIs(t, repo.deleteSubscription(t.Context(), guid.ID(1), guid.ID(1)), errRepositoryUnavailable)
-	assert.ErrorIs(t, repo.markDelivered(t.Context(), guid.ID(1), now), errRepositoryUnavailable)
-	assert.ErrorIs(t, repo.markAttemptFailed(t.Context(), guid.ID(1), DeliveryFailed, "why", now, now), errRepositoryUnavailable)
+	_, err := repo.markDelivered(t.Context(), guid.ID(1), 1, now)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = repo.markAttemptFailed(t.Context(), guid.ID(1), 1, DeliveryFailed, "why", now, now)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = repo.resetStaleDeliveries(t.Context(), now, now)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	assert.ErrorIs(t, repo.runInTx(t.Context(), func(*Repository) error { return nil }), errRepositoryUnavailable)
 
-	_, err := repo.getSubscription(t.Context(), guid.ID(1), guid.ID(1))
+	_, err = repo.getSubscription(t.Context(), guid.ID(1), guid.ID(1))
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	_, _, err = repo.listSubscriptions(t.Context(), guid.ID(1), 0, 10)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	_, _, err = repo.listDeliveries(t.Context(), guid.ID(1), guid.ID(1), 0, 10)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, err = repo.activeSubscriptions(t.Context(), 10)
+	_, err = repo.activeSubscriptions(t.Context(), 0, 0, 10)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	_, err = repo.dueDeliveries(t.Context(), now, 10)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
@@ -257,4 +261,82 @@ func TestListDeliveriesIsPagedWithinItsSubscription(t *testing.T) {
 	assert.EqualValues(t, 3, total)
 	require.Len(t, page, 1)
 	assert.EqualValues(t, 2, page[0].EventSequence, "newest first, so the second page holds the middle event")
+}
+
+func TestOutcomeWritesAreFencedOnTheClaimThatMadeThem(t *testing.T) {
+	// A claim is identified by the attempt count it left on the row. Once the
+	// lease is taken back -- and again once it is claimed anew -- an outcome from
+	// the older claim matches nothing and must change nothing.
+	env := newWebhookEnvironment(t)
+	item := env.subscribe(newReceiver(t))
+	env.stream.append(guid.ID(1), "principal_created")
+	require.NoError(t, env.service.FanOut(t.Context()))
+	id := env.deliveries(item.ID)[0].ID
+	repo := env.service.repo
+	now := webhookTestNow
+
+	claimed, err := repo.claimDelivery(t.Context(), id, 0, now)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	// Only claims older than the cutoff are taken back.
+	reclaimed, err := repo.resetStaleDeliveries(t.Context(), now, now)
+	require.NoError(t, err)
+	assert.Zero(t, reclaimed, "a claim made at the cutoff is still in force")
+	reclaimed, err = repo.resetStaleDeliveries(t.Context(), now.Add(time.Second), now)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, reclaimed)
+
+	stale := func() {
+		t.Helper()
+		recorded, err := repo.markDelivered(t.Context(), id, 1, now)
+		require.NoError(t, err)
+		assert.False(t, recorded)
+		recorded, err = repo.markAttemptFailed(t.Context(), id, 1, DeliveryFailed, "late", now, now)
+		require.NoError(t, err)
+		assert.False(t, recorded)
+	}
+	stale()
+	assert.Equal(t, DeliveryPending, env.deliveries(item.ID)[0].Status, "a reclaimed row waits for its next claim")
+
+	claimed, err = repo.claimDelivery(t.Context(), id, 1, now)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	stale()
+	current := env.deliveries(item.ID)[0]
+	assert.Equal(t, DeliveryDelivering, current.Status)
+	assert.Empty(t, current.LastError)
+
+	recorded, err := repo.markAttemptFailed(t.Context(), id, 2, DeliveryPending, "refused", now, now)
+	require.NoError(t, err)
+	assert.True(t, recorded, "the claim in force records its outcome")
+	assert.Equal(t, "refused", env.deliveries(item.ID)[0].LastError)
+
+	claimed, err = repo.claimDelivery(t.Context(), id, 2, now)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	recorded, err = repo.markDelivered(t.Context(), id, 3, now)
+	require.NoError(t, err)
+	assert.True(t, recorded)
+	assert.Equal(t, DeliveryDelivered, env.deliveries(item.ID)[0].Status)
+}
+
+func TestActiveSubscriptionsResumeAfterTheGivenKey(t *testing.T) {
+	// The later tenant's subscription is created first, so its id is the
+	// smallest: only an ordering by tenant before id puts it last.
+	env := newWebhookEnvironment(t)
+	other, err := env.service.CreateSubscription(t.Context(), guid.ID(2), SubscriptionInput{Name: "other", URL: "http://127.0.0.1:1"})
+	require.NoError(t, err)
+	first := env.subscribe(newReceiver(t))
+	second := env.subscribe(newReceiver(t))
+
+	rows, err := env.service.repo.activeSubscriptions(t.Context(), first.TenantID, first.ID, 10)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, second.ID, rows[0].ID, "the same tenant continues past the key")
+	assert.Equal(t, other.ID, rows[1].ID, "then later tenants, whatever their ids")
+
+	rows, err = env.service.repo.activeSubscriptions(t.Context(), other.TenantID, other.ID, 10)
+	require.NoError(t, err)
+	assert.Empty(t, rows, "nothing follows the last key")
 }

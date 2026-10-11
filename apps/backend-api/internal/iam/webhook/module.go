@@ -116,8 +116,10 @@ func (m *Module) run(ctx context.Context) {
 	}
 }
 
-// Stop ends the worker and waits for the pass in flight, so a shutdown does not
-// leave a delivery holding a lease nothing will release.
+// Stop ends the worker and waits for the pass in flight. An attempt the stop
+// interrupts still records its outcome, which releases its claim. A process that
+// never gets here -- a crash, kill -9, a lost host -- leaves its claim behind, and
+// the next delivery pass on any replica takes it back once its lease expires.
 func (m *Module) Stop(ctx context.Context) error {
 	if m.stop == nil {
 		return nil
@@ -143,8 +145,9 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	return nil
 }
 
-// CheckHealth reports the worker's delivery outcome counters so a deployment can
-// alert on a receiver that has started refusing everything.
+// CheckHealth reports whether the service could be built. The delivery outcome
+// counters a deployment alerts on are exported by Collector, not by health: a
+// receiver refusing everything must not take this process out of rotation.
 func (m *Module) CheckHealth(context.Context) error {
 	if m.service == nil {
 		return ErrUnavailable

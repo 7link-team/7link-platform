@@ -88,12 +88,30 @@ func (s *Service) post(ctx context.Context, row deliveryRow, secret []byte, even
 // It is separate from delivery so a receiver that is down cannot stop the chain
 // from being followed, and so catching up is a read plus one insert rather than
 // a request per event.
+//
+// One pass catches up at most FanOutSubscriptions subscriptions, starting after
+// the last one the previous pass reached and wrapping around at the end, so every
+// subscription is reached in turn however many there are.
 func (s *Service) FanOut(ctx context.Context) error {
-	subscriptions, err := s.repo.activeSubscriptions(ctx, s.cfg.FanOutSubscriptions)
+	s.fanOutMu.Lock()
+	defer s.fanOutMu.Unlock()
+	subscriptions, err := s.repo.activeSubscriptions(ctx, s.fanOutTenant, s.fanOutID, s.cfg.FanOutSubscriptions)
 	if err != nil {
 		return err
 	}
+	if len(subscriptions) == 0 && (!s.fanOutTenant.Zero() || !s.fanOutID.Zero()) {
+		// The previous pass reached the last subscription. Starting over now is
+		// the wrap, and keeps this pass from being spent on finding nothing.
+		s.fanOutTenant, s.fanOutID = 0, 0
+		if subscriptions, err = s.repo.activeSubscriptions(ctx, 0, 0, s.cfg.FanOutSubscriptions); err != nil {
+			return err
+		}
+	}
 	for _, subscription := range subscriptions {
+		// The cursor passes a subscription whether or not it succeeds, so one that
+		// keeps failing cannot hold back the ones after it. It is tried again when
+		// the cursor comes back round.
+		s.fanOutTenant, s.fanOutID = subscription.TenantID, subscription.ID
 		if err := s.fanOutOne(ctx, subscription); err != nil {
 			return err
 		}
@@ -132,10 +150,28 @@ func (s *Service) fanOutOne(ctx context.Context, subscription subscriptionRow) e
 	return s.repo.enqueue(ctx, subscription, rows, through, now)
 }
 
+// outcomeWriteTimeout bounds recording what an attempt achieved. The write runs
+// on a context the worker's cancellation does not reach: an attempt interrupted
+// by a shutdown still releases its claim rather than leaving it to expire.
+const outcomeWriteTimeout = 5 * time.Second
+
+// leaseDuration is how long a claim is honored before another pass may take the
+// row back. An attempt is bounded by the receiver timeout plus a few statements,
+// so twice that timeout outlasts every claimant that is still alive. One that
+// does overrun it is fenced off by the attempt count when it writes its outcome.
+func (s *Service) leaseDuration() time.Duration { return 2 * s.cfg.HTTPTimeout }
+
 // DeliverDue sends what is owed and is due. One failure does not stop the pass:
-// a receiver that is down must not delay every other tenant's deliveries.
+// a receiver that is down must not delay every other tenant's deliveries. It
+// first takes back claims whose lease is over, which is what recovers rows held
+// by a worker that crashed or was killed before it could record an outcome.
 func (s *Service) DeliverDue(ctx context.Context) error {
 	now := s.now().UTC()
+	reclaimed, err := s.repo.resetStaleDeliveries(ctx, now.Add(-s.leaseDuration()), now)
+	if err != nil {
+		return fmt.Errorf("reclaim stale webhook deliveries: %w", err)
+	}
+	s.reclaimed.Add(reclaimed)
 	rows, err := s.repo.dueDeliveries(ctx, now, s.cfg.DeliveryBatch)
 	if err != nil {
 		return err
@@ -156,6 +192,7 @@ func (s *Service) deliverOne(ctx context.Context, row deliveryRow) error {
 	if err != nil || !claimed {
 		return err
 	}
+	// The claim left this count on the row; every outcome write is fenced on it.
 	row.Attempts++
 
 	subscription, err := s.repo.getSubscription(ctx, row.TenantID, row.SubscriptionID)
@@ -180,7 +217,12 @@ func (s *Service) deliverOne(ctx context.Context, row deliveryRow) error {
 	if err := s.post(ctx, row, secret, events[0], subscription.URL); err != nil {
 		return s.recordFailure(ctx, row, err)
 	}
-	if err := s.repo.markDelivered(ctx, row.ID, s.now().UTC()); err != nil {
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), outcomeWriteTimeout)
+	defer cancel()
+	recorded, err := s.repo.markDelivered(writeCtx, row.ID, row.Attempts, s.now().UTC())
+	if err != nil || !recorded {
+		// Not recorded means the lease was taken back while the request was in
+		// flight; the row now belongs to whoever claimed it next.
 		return err
 	}
 	s.delivered.Add(1)
@@ -195,7 +237,7 @@ func (s *Service) recordFailure(ctx context.Context, row deliveryRow, cause erro
 		status = DeliveryFailed
 	}
 	backoff := time.Duration(1<<min(row.Attempts, 8)) * s.cfg.RetryBase
-	if err := s.repo.markAttemptFailed(ctx, row.ID, status, cause.Error(), now.Add(backoff), now); err != nil {
+	if err := s.recordAttempt(ctx, row, status, cause.Error(), now.Add(backoff), now); err != nil {
 		return err
 	}
 	return cause
@@ -204,5 +246,21 @@ func (s *Service) recordFailure(ctx context.Context, row deliveryRow, cause erro
 // terminate stops retrying something that cannot succeed.
 func (s *Service) terminate(ctx context.Context, row deliveryRow, reason string) error {
 	now := s.now().UTC()
-	return s.repo.markAttemptFailed(ctx, row.ID, DeliveryFailed, reason, now, now)
+	return s.recordAttempt(ctx, row, DeliveryFailed, reason, now, now)
+}
+
+// recordAttempt writes a failed attempt's outcome under the claim's fence and
+// counts a delivery that has been given up on. A superseded claim writes and
+// counts nothing: the row belongs to whoever claimed it next.
+func (s *Service) recordAttempt(ctx context.Context, row deliveryRow, status, reason string, retryAt, now time.Time) error {
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), outcomeWriteTimeout)
+	defer cancel()
+	recorded, err := s.repo.markAttemptFailed(writeCtx, row.ID, row.Attempts, status, reason, retryAt, now)
+	if err != nil {
+		return err
+	}
+	if recorded && status == DeliveryFailed {
+		s.abandoned.Add(1)
+	}
+	return nil
 }
