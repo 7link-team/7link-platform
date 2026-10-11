@@ -242,8 +242,16 @@ var secretNamePattern = regexp.MustCompile(`(?i)(key|secret|password|token|crede
 // secretTagExemptions lists credential-shaped names that are deliberately
 // published. An S3 access key is an identifier paired with the redacted secret
 // key, matching the convention used by object-store SDKs.
+//
+// A Turnstile site key is the same shape: it is served to every browser by
+// /login/options, because the widget cannot render without it, and it is the
+// secret key beside it -- which never leaves the process -- that makes a token
+// worth anything. Redacting it here would claim a secrecy it does not have and
+// would hide the one value an operator needs to read back when the widget
+// fails to appear.
 var secretTagExemptions = map[string]struct{}{
-	"AppConfig.IAMAudit.Anchor.AccessKey": {},
+	"AppConfig.IAMAudit.Anchor.AccessKey":       {},
+	"AppConfig.Authn.Captcha.Turnstile.SiteKey": {},
 }
 
 // TestCredentialFieldsAreMarkedSecret keeps /debug/config from echoing key
@@ -330,4 +338,23 @@ func TestAuditOverflowIsTrimmedAndValidated(t *testing.T) {
 
 	var invalid AppConfig
 	require.Error(t, configx.New().Parse(&invalid, "--audit.overflow=weird"))
+}
+
+// The in-process limiter store is a test double compiled into the shipped
+// binary. Debug mode is the only thing keeping it out of a deployment, so the
+// refusal is pinned here: deleting the guard fails this.
+func TestDevelopmentSecurityServerRequiresDebugMode(t *testing.T) {
+	config := AppConfig{Shutdown: ShutdownConfig{Timeout: time.Second, DrainDelay: 0}}
+	config.Authn.SharedSecurity.DevelopmentServer = true
+
+	assert.ErrorContains(t, validateRuntimeConfig(config),
+		"authn.shared_security.development_server requires debug mode")
+
+	config.Debug = true
+	assert.NoError(t, validateRuntimeConfig(config))
+
+	// And it is not refused when nobody asked for it.
+	assert.NoError(t, validateRuntimeConfig(AppConfig{
+		Shutdown: ShutdownConfig{Timeout: time.Second},
+	}))
 }

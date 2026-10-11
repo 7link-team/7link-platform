@@ -182,6 +182,13 @@ func (s *Service) StartIdentityOperation(ctx context.Context, cookieHeader strin
 		return LoginStart{}, err
 	}
 	if existingLinkID != "" {
+		// Re-authentication has to prove the person just authenticated
+		// upstream. Plain OAuth 2.0 carries no authentication time and social
+		// providers routinely answer from an existing session, so accepting one
+		// here would turn the proof into a redirect that always succeeds.
+		if provider.ProviderType == ProviderOAuth2 {
+			return LoginStart{}, ErrNoUpstreamAuthTime
+		}
 		linkedProvider, subject, err := parseIdentityLinkID(existingLinkID)
 		if err != nil || linkedProvider != providerID {
 			return LoginStart{}, ErrOIDCState
@@ -227,6 +234,9 @@ func (s *Service) StartIdentityOperation(ctx context.Context, cookieHeader strin
 			}
 		} else {
 			link, err := repo.identityLink(ctx, providerID, provider.TenantID, row.ExpectedSubject)
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
 			if err != nil || link.PrincipalID != claims.PrincipalID || !trustedIdentityLink(link, fingerprint) {
 				return ErrPrincipalInactive
 			}
@@ -259,6 +269,13 @@ func (s *Service) identityOperationRedirect(ctx context.Context, provider provid
 			return "", err
 		}
 		return redirect.String(), nil
+	}
+	if provider.ProviderType == ProviderOAuth2 {
+		conn, err := s.connectors(provider.Issuer)
+		if err != nil {
+			return "", err
+		}
+		return conn.authorizationURL(provider.ClientID, callback, provider.Scopes, state, verifier)
 	}
 	discovery, err := s.oidc.discovery(ctx, provider.Issuer)
 	if err != nil {
@@ -338,7 +355,7 @@ func (s *Service) VerifyIdentityOperation(ctx context.Context, providerID guid.I
 	if row.VerifiedAt != nil || row.CallbackURL != callback {
 		return ErrOIDCState
 	}
-	var claims idTokenClaims
+	var claims upstreamIdentity
 	if provider.ProviderType == ProviderSAML {
 		assertion, err := s.parseSAMLResponse(ctx, provider, samlResponse, callback, state)
 		if err != nil {
@@ -354,7 +371,7 @@ func (s *Service) VerifyIdentityOperation(ctx context.Context, providerID guid.I
 		if !claimed {
 			return ErrSAMLResponse
 		}
-		claims = idTokenClaims{Subject: assertion.Subject.NameID.Value, Email: samlAttribute(assertion, "email"),
+		claims = upstreamIdentity{Subject: assertion.Subject.NameID.Value, Email: samlAttribute(assertion, "email"),
 			Name: samlAttribute(assertion, "display_name"), AuthTime: assertion.AuthnStatements[0].AuthnInstant.Unix()}
 	} else {
 		verifier, err := s.keys.Open("account-code-verifier", []byte(row.IDHash), row.CodeVerifierCiphertext)
@@ -368,21 +385,36 @@ func (s *Service) VerifyIdentityOperation(ctx context.Context, providerID guid.I
 				return err
 			}
 		}
-		raw, err := s.oidc.exchangeCode(ctx, provider.Issuer, provider.ClientID, secret, code, callback, string(verifier))
+		claims, _, err = s.exchangeUpstreamIdentity(ctx, provider, secret, code, callback, string(verifier))
 		if err != nil {
 			return err
 		}
-		claims, err = s.oidc.verifyIDToken(ctx, provider.Issuer, provider.ClientID, raw, s.now().UTC())
-		if err != nil {
-			return err
-		}
-		if claims.Nonce != state {
+		// Only OIDC echoes the nonce; a social provider has no field for it,
+		// and its single-use authorization code is bound to this operation by
+		// the state it was issued against and the PKCE verifier it redeems.
+		if provider.ProviderType != ProviderOAuth2 && claims.Nonce != state {
 			return ErrOIDCState
 		}
 	}
-	if claims.Subject == "" || len(claims.Subject) > 128 || len(claims.Email) > 255 || len(claims.Name) > 128 ||
-		claims.AuthTime == 0 || claims.AuthTime < row.CreatedAt.Add(-s.clockSkew).Unix() || claims.AuthTime > s.now().Add(s.clockSkew).Unix() {
+	if claims.Subject == "" || len(claims.Subject) > 128 || len(claims.Email) > 255 || len(claims.Name) > 128 {
 		return ErrOIDCState
+	}
+	// The upstream authentication time is what bounds how stale an assertion may
+	// be. A social provider states none, so it is admitted only for a link,
+	// where freshness rests on the single-use authorization code instead.
+	//
+	// The refusal below is unreachable today and is kept on purpose:
+	// StartIdentityOperation will not create a reauthentication transaction for
+	// a social provider, and identityOperation rejects a transaction whose
+	// provider fingerprint changed -- which it would, because the fingerprint
+	// covers provider_type. Both of those are one edit away from no longer
+	// holding, and this is the gate that reads the purpose itself.
+	if provider.ProviderType != ProviderOAuth2 {
+		if claims.AuthTime == 0 || claims.AuthTime < row.CreatedAt.Add(-s.clockSkew).Unix() || claims.AuthTime > s.now().Add(s.clockSkew).Unix() {
+			return ErrOIDCState
+		}
+	} else if row.Purpose != "link" {
+		return ErrNoUpstreamAuthTime
 	}
 	if row.Purpose == "reauthentication" && claims.Subject != row.ExpectedSubject {
 		return ErrPrincipalInactive
@@ -440,6 +472,9 @@ func (s *Service) CompleteIdentityOperation(ctx context.Context, providerID guid
 		}
 		if row.Purpose == "reauthentication" {
 			link, err := repo.identityLink(ctx, providerID, provider.TenantID, row.ExternalSubject)
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
 			if err != nil || link.PrincipalID != claims.PrincipalID || !trustedIdentityLink(link, row.ProviderFingerprint) {
 				return ErrPrincipalInactive
 			}
@@ -512,6 +547,9 @@ func (s *Service) UnlinkPersonalIdentity(ctx context.Context, cookieHeader, id, 
 			return err
 		}
 		link, err := repo.identityLink(ctx, providerID, provider.TenantID, subject)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		if err != nil || link.PrincipalID != claims.PrincipalID {
 			return ErrPrincipalInactive
 		}

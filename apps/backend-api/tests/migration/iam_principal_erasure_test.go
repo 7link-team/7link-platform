@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -23,23 +25,43 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// The erasure rollback contract predates the irreversible binding-trust upgrade.
+// The erasure rollback contract predates the irreversible binding-trust upgrade,
+// so this double presents the module as it stood just before it: every migration
+// and milestone from that version onward is withheld.
+//
+// The cutoff is read from the binding-trust milestone rather than taken to be the
+// last one, because milestones have been added after it and a double that keeps
+// assuming it is last withholds the wrong ones.
 type beforeBindingTrust struct{ module.Module }
+
+const bindingTrustMilestone = "binding-trust"
+
+// bindingTrustVersion is the first migration version this double withholds.
+func (m beforeBindingTrust) bindingTrustVersion() int64 {
+	for _, milestone := range m.Module.(module.MigrationMilestoneProvider).MigrationMilestones() {
+		if milestone.Name == bindingTrustMilestone {
+			return milestone.Version
+		}
+	}
+	panic("federation no longer declares a " + bindingTrustMilestone + " milestone")
+}
 
 func (m beforeBindingTrust) MigrationSource() goosex.Source {
 	source := m.Module.(module.MigrationSourceProvider).MigrationSource()
+	cutoff := m.bindingTrustVersion()
 	files := fstest.MapFS{}
 	err := fs.WalkDir(source.FS, "sql", func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !entry.IsDir() && !strings.HasSuffix(path, "_binding_trust.sql") {
-			data, err := fs.ReadFile(source.FS, path)
-			if err != nil {
-				return err
-			}
-			files[path] = &fstest.MapFile{Data: data}
+		if entry.IsDir() || migrationFileVersion(path) >= cutoff {
+			return nil
 		}
+		data, err := fs.ReadFile(source.FS, path)
+		if err != nil {
+			return err
+		}
+		files[path] = &fstest.MapFile{Data: data}
 		return nil
 	})
 	if err != nil {
@@ -49,9 +71,29 @@ func (m beforeBindingTrust) MigrationSource() goosex.Source {
 	return source
 }
 
+// migrationFileVersion reads the numeric prefix goose orders migrations by.
+func migrationFileVersion(path string) int64 {
+	name := filepath.Base(path)
+	digits := name
+	if index := strings.IndexByte(name, '_'); index >= 0 {
+		digits = name[:index]
+	}
+	version, err := strconv.ParseInt(digits, 10, 64)
+	if err != nil {
+		panic("migration file without a version prefix: " + path)
+	}
+	return version
+}
+
 func (m beforeBindingTrust) MigrationMilestones() []module.MigrationMilestone {
-	all := m.Module.(module.MigrationMilestoneProvider).MigrationMilestones()
-	return all[:len(all)-1]
+	cutoff := m.bindingTrustVersion()
+	kept := []module.MigrationMilestone{}
+	for _, milestone := range m.Module.(module.MigrationMilestoneProvider).MigrationMilestones() {
+		if milestone.Version < cutoff {
+			kept = append(kept, milestone)
+		}
+	}
+	return kept
 }
 
 func beforeBindingTrustModules() []module.Module {

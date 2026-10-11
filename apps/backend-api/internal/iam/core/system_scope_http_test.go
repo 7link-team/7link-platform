@@ -102,7 +102,7 @@ func TestSystemScopeHTTPGlobalAdministratorManagesForeignMemberships(t *testing.
 			require.NoError(t, err)
 			_, err = h.repository.GrantPermission(t.Context(), 99, legacy.ID, "platform_administer")
 			require.NoError(t, err)
-			_, err = h.repository.AddMember(t.Context(), 99, legacy.ID, 33)
+			_, err = h.repository.AddMember(t.Context(), 99, legacy.ID, 33, nil)
 			require.NoError(t, err)
 			require.Equal(t, http.StatusForbidden, client.Post(base+"/members", "Authorization: Bearer test", map[string]any{"subject": "33", "display_name": "Legacy"}).Code)
 			v.principal = 11

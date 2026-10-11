@@ -32,6 +32,9 @@ type Config struct {
 	// Consent locates the consent screen and bounds how long a parked
 	// authorization request stays answerable.
 	Consent ConsentConfig
+	// Device bounds the device grant: how long a code lasts and how often a
+	// device with no browser may ask whether somebody has approved it.
+	Device DeviceConfig `mapstructure:"device" group:"device"`
 }
 
 type Module struct {
@@ -183,7 +186,7 @@ func (m *Module) Initialize(context.Context) error {
 	if !m.foreign.bound() {
 		return errors.New("initialize OAuth: the core, identity, authn, and organization modules must publish the table names OAuth joins")
 	}
-	m.Service = NewService(m.runtime, m.authn, m.ids, m.appender, m.principals, m.config.Consent)
+	m.Service = NewService(m.runtime, m.authn, m.ids, m.appender, m.principals, m.config.Consent, m.config.Device)
 	m.Service.repo.foreign = &m.foreign
 	// Parse the consent screen now: a misconfigured template file should stop
 	// the process here rather than surface as a 500 on someone's first login.

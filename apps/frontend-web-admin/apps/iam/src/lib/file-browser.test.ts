@@ -4,6 +4,7 @@ import {
   fileBrowserChildren,
   fileBrowserEntries,
   fileBrowserRoots,
+  mergeFileCollectionPages,
   fileSizeLabel,
   materializeDroppedEntries,
   parentFileBrowserDirectoryID,
@@ -570,5 +571,27 @@ describe("file browser presentation", () => {
       "upload:root/reports:report.txt",
       "upload:root:readme.txt",
     ])
+  })
+})
+
+
+describe("organization file collection pagination", () => {
+  const entry = (id: string) => ({ id, name: id, kind: "directory", revision: 1, updated_at: "2026-10-09T00:00:00Z" })
+  it("merges independent owner pages in file-ID order without duplicates", () => {
+    expect(mergeFileCollectionPages([{ items: [entry("9"), entry("2")] }, { items: [entry("2"), entry("4")] }]).items?.map(item => item.id)).toEqual(["2", "4", "9"])
+  })
+  it("stops at the earliest incomplete scan, even when that scan has no visible rows", () => {
+    const result = mergeFileCollectionPages([{ items: [], next_after: "5" }, { items: [entry("3"), entry("8")], next_after: "10" }])
+    expect(result.items?.map(item => item.id)).toEqual(["3"])
+    expect(result.next_after).toBe("5")
+  })
+  it("keeps a merged page bounded without rounding snowflake IDs", () => {
+    const start = 90071992547409930n
+    const result = mergeFileCollectionPages([{ items: Array.from({ length: 60 }, (_, i) => entry(String(start + BigInt(i)))) }, { items: Array.from({ length: 60 }, (_, i) => entry(String(start + 60n + BigInt(i)))) }])
+    expect(result.items?.length).toBe(100)
+    expect(result.next_after).toBe(String(start + 99n))
+  })
+  it("rejects malformed owner results rather than silently hiding them", () => {
+    expect(() => mergeFileCollectionPages([{ items: [entry("bad")] }])).toThrow("invalid_response")
   })
 })

@@ -29,7 +29,6 @@ import {
   entityNavigation,
 } from "../lib/navigation"
 import { can, type EffectivePermissions } from "../lib/permissions"
-import { NavigationGroup } from "./navigation-group"
 
 const routeIcons: Record<string, ReactElement> = {
   "/files": <Folder />,
@@ -57,7 +56,6 @@ export function AppSidebar({
   className = "",
   language = "",
   entityID = "",
-  scopedFileEntityID = "",
   tenantID = "",
 }: {
   permissions?: EffectivePermissions
@@ -66,7 +64,6 @@ export function AppSidebar({
   className?: string
   language?: string
   entityID?: string
-  scopedFileEntityID?: string
   tenantID?: string
 }) {
   const t = useTranslations("iam")
@@ -75,43 +72,49 @@ export function AppSidebar({
   menus = tenantNavigation(menus)
   const paths = effectiveMenuPaths(menus)
   const fileAccess = can(permissions, "file_view")
-  const systemLinks = tenantSystemNavigation(
-    paths,
-    fileAccess,
-    fieldPolicyAccess,
-    scopedFileEntityID
-  )
+  const systemLinks = tenantSystemNavigation(paths, fileAccess, fieldPolicyAccess)
   if (entityID) {
     const base = `${tenantBase}/entities/${encodeURIComponent(entityID)}`
+    // Taken from what this caller holds in this entity, not from a list of what
+    // an entity member is assumed to get.
+    //
+    // Which makes "not known yet" and "holds nothing" two different things, and
+    // reading the first as the second is what made the menu look unstable: a
+    // null permission set rendered an empty sidebar for as long as the request
+    // took -- three quarters of a second here -- and the links then appeared,
+    // which from the outside is the menu changing on its own.
+    const entityLinks = permissions ? entityNavigation(permissions) : null
     return (
       <aside
         className={`w-64 shrink-0 overflow-y-auto border-e border-sidebar-border bg-sidebar p-3 ${className}`}
       >
-        <nav className="space-y-2" aria-label={t("mainNav")}>
-          {(can(permissions, "entity_view") || fileAccess) && (
-            <NavigationGroup label={t("entityPerspective")}>
-              {entityNavigation(
-                can(permissions, "entity_view"),
-                fileAccess
-              ).map((item) => (
-                <SideLink
-                  key={item.path}
-                  to={`${base}${item.path}`}
-                  icon={
-                    routeIcons[item.path] ??
-                    (item.path === "/roles" ? (
-                      <KeyRound />
-                    ) : item.path === "/manage" ? (
-                      <SlidersHorizontal />
-                    ) : (
-                      <LayoutDashboard />
-                    ))
-                  }
-                  label={t(item.label)}
-                />
-              ))}
-            </NavigationGroup>
+        {/* No group heading: the whole sidebar is this entity's perspective, and
+            the switcher above already names which entity. A collapsible group
+            labelled after the perspective it is the entirety of is a layer that
+            says nothing and can be collapsed to hide everything. */}
+        <nav className="space-y-1" aria-label={t("mainNav")}>
+          {entityLinks === null && (
+            <p role="status" className="px-3 py-2 text-sm text-sidebar-foreground/70">
+              {t("loading")}
+            </p>
           )}
+          {(entityLinks ?? []).map((item) => (
+            <SideLink
+              key={item.path}
+              to={`${base}${item.path}`}
+              icon={
+                routeIcons[item.path] ??
+                (item.path === "/roles" ? (
+                  <KeyRound />
+                ) : item.path === "/manage" ? (
+                  <SlidersHorizontal />
+                ) : (
+                  <LayoutDashboard />
+                ))
+              }
+              label={t(item.label)}
+            />
+          ))}
         </nav>
       </aside>
     )
@@ -135,7 +138,11 @@ export function AppSidebar({
             </ul>
           </section>
         )}
-        <NavigationGroup label={t("systemNavigation")}>
+        {/* Not a labelled group. Which of the two sources an entry came from --
+            the configured menu tree above or the pages that have no menu row --
+            is an implementation detail, and a heading that announces it buys a
+            collapsible chevron that can hide entries somebody needs. */}
+        <div className="space-y-1">
           {systemLinks.map((item) => (
             <SideLink
               key={item.path}
@@ -144,7 +151,7 @@ export function AppSidebar({
               label={t(item.label)}
             />
           ))}
-        </NavigationGroup>
+        </div>
       </nav>
     </aside>
   )

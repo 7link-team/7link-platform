@@ -1,4 +1,565 @@
+## 2026-10-09 ? Organization file roots must be complete in the UI
+- User explicitly authorized repair after live UI proved department roots were missing despite permitted collection APIs.
+- Keep each backend collection scoped to its owner. Aggregate existing authorized collections in the frontend: tenant/member entity discovery and permitted department catalog, filtered to the selected entity. No expanded grants or aggregate backend contract.
+- Walk all root pages; do not limit sidebar roots to the first merged page. Combine trash pages by ascending exact file IDs with the earliest unfinished scan cursor, keeping the visible content page bounded to 100 without skipping another owner's later entries.
+- Positive E2E must inspect actual root controls, click into each root, render and download real marker files, survive reload, and show authorized markers in the recycle bin. HTTP 200 or a menu link alone is insufficient.
+
+## 2026-10-09 ? Role E2E fixes preserve granted authority
+- User authorized all-role E2E; use live seven-persona desktop/mobile matrix and isolated real SQLite lifecycle. No delegated agents.
+- Department-only readers do not need entity_view to load their authorized department list. Gate the optional entity catalog with the existing permission rather than expanding backend grants or failing the whole page.
+- FileBrowserBody intentionally remounts across location/page/access changes. Keep that authorization boundary; disable the mobile folder trigger during mutation/loading so it cannot open into a body about to be replaced. Do not remove the remount or add retries/navigation redesign.
+- Align old acceptance direct login requests with the already-configured test CAPTCHA answer; do not weaken validation or change production CAPTCHA policy.
+- Local Passkey service is unavailable (503). Assert unavailable state and disabled enrollment; no claim of successful enrollment.
+
 # Decisions
+
+## D103 - A Proven Number Is The Enrolment, And Never Both Factors (2026-10-04)
+
+Decision: a code sent to a number somebody has already proven answers a
+second-factor challenge. There is no enrolment record behind it: the proven
+number on the principal *is* the enrolment -- the same fact the profile screen
+shows and the sign-in path reads. An account with no TOTP secret used to face a
+challenge it could not answer; now it can answer, and `MFAStatus` says so.
+
+It is the weakest factor here. A number can be moved to another SIM by somebody
+who talks a carrier into it, where a passkey or a TOTP secret cannot. It is
+offered because the alternative for most people is no second factor at all, it
+is off by default, and it is never the only thing offered: an account that can
+enrol TOTP is still told to.
+
+**A number is never both factors of one sign-in.** Signing in with a code and
+then answering the challenge with another code to the same number is one factor
+twice. The challenge records what proved the first factor (`first_factor`,
+migration 20), so the rule is enforced where the code is asked for rather than
+discovered after one was sent, and the challenge does not list `sms` among its
+methods in that case. Both halves are enforced: the offer and the request.
+
+The stored code is tried before a TOTP step, because six digits is the same
+shape either way and a value matching a stored code is unambiguous, where a TOTP
+comparison would accept a code this account was never sent. An account with no
+TOTP secret and a wrong code gets a refusal rather than the TOTP path being
+handed an empty secret.
+
+The number is re-read when the code is spent, not trusted from the credential
+row: a code proves the number it went to, and that has to still be the number on
+the account. Proving a *newer* number while a code is outstanding leaves the
+flag true and only the number different, which is the case that check exists for.
+
+Turning the factor off stops codes already in flight from answering, not merely
+new ones from being sent.
+
+A wrong code reaches the same failure count a wrong TOTP step does. The first
+implementation returned early for an account with no TOTP secret, which meant
+such an account counted nothing at all: six digits could be guessed as often as
+the code lived. The early return is gone -- a code that does not match falls
+through to the one place that counts a failed attempt -- and the four tests whose
+expectations encoded the wrong behaviour were corrected, not the code.
+
+The session says which factor opened it, taken from `first_factor` rather than
+assumed to be a password. A login opened by reading a message must not claim a
+password was typed, or a policy that asks for one is satisfied by something else.
+
+Four of these guards passed their first mutation run. Each time the reason was
+the same: the test never reached the guard -- the account had no second factor so
+an earlier branch returned, or the fixture changed two things where the guard
+only needed one. Every one of those paths was reachable, so the tests were
+rewritten to reach them rather than the guards trusted.
+
+A note on the test harness this exposed: the fault injector matched gorm's table
+clause, which is empty for a write sent as raw SQL and holds the *alias* for the
+principal readers. Both kinds of read and write were therefore injectable by
+nothing, and the cases that looked like they covered them passed having proved
+nothing. The injector now matches the statement text for raw writes and both
+forms of the principal table.
+Status: IMPLEMENTED.
+
+## D102 - A Proven Number Is One Factor, And Only One (2026-10-04)
+
+Decision: somebody can sign in with a code sent to a number they have already
+proven. It is one factor, exactly as a password is, so the session records
+`sms` as what proved it at level 1, and whatever the policy then requires it
+still requires: this path hands off to the same gate the password path does.
+
+That gate is now one function. `BeginLogin`'s tail became
+`completeFirstFactor`, called by both ways in, because a second way in with a
+copied tail is how a second factor quietly stops being required -- the copy is
+where the next policy change does not land.
+
+Only a proven number resolves. An unproven one is a string somebody typed into
+their own profile, and anybody can type any number. Two accounts that have each
+proven the same number -- a carrier reissues them -- resolve to nobody, which is
+the answer an ambiguous recovery identifier already gets; the connector returns
+up to two and authn decides, as it does there.
+
+Asking for a code never says what it found. A number with an account, a number
+without one, and something that is not a number all answer the same way,
+because the answer is read by whoever typed the number and they are not always
+its owner. The captcha is on that endpoint for the same reason it is on the
+password endpoint: it is a pre-authentication surface, and the only failure
+counter that exists is per-account, which an attacker spreading attempts across
+numbers never trips.
+
+Wrong codes count twice: against the code's own ceiling and against the account
+lock a run of wrong passwords sets. The two ways in therefore cannot be attacked
+independently, and a locked account is not sent a fresh code.
+
+The purpose is part of the credential's key. Through the API a verify code and a
+sign-in code cannot both be live for one account -- a verify code exists only
+while the number is unproven and a sign-in code only once it is proven, and the
+act that flips that flag consumes the verify code -- so this is not guarding a
+reachable attack. It is there so the property is local instead of a consequence
+of two flags elsewhere staying in step, and so a direct database write or a
+future flow cannot make one code answer the other. The test says that, rather
+than claiming a behavioural proof it cannot give.
+
+The constraint D100 and D101 left open comes due here: a proven number signs
+somebody in, so it is a credential, and replacing or removing one now bumps the
+credential version and revokes the sessions and tokens it opened -- exactly as
+replacing an address does. Adding an unproven number for the first time revokes
+nothing, because an unproven number reaches nothing.
+
+One check was removed rather than kept as defence: the sign-in flow does not
+compare the code's number against the principal's, because the lookup above it
+already required a proven number equal to the one typed. A number changed since
+the code left stops resolving at all -- changing one unverifies it. The test now
+names that as the mechanism instead of implying a comparison does it.
+Status: IMPLEMENTED.
+
+## D101 - A Phone Is Proven By A Code, In Its Own Credential (2026-10-04)
+
+Decision: `iam_phone_verification_codes` holds one outstanding code per
+principal, with the number it was sent to beside it. A separate table from the
+email credential, not a channel column on it: an email credential is addressed
+by the link token in its primary key and a phone has no link, so folding one
+into the other would mean inventing a primary key for something that has none.
+What the two flows genuinely share is shared -- the six-digit generator
+(`verificationCode`, no longer named for email), the attempt ceiling, the
+notification outbox, and the audit shape.
+
+The primary key makes "one live code" true rather than hoped for: asking again
+replaces the code, so the last message somebody received is the one that works,
+which is the one they will type.
+
+Completion is authenticated and carries the code alone. The session says whose
+number this is, so no request, URL or log line has to hold a phone number --
+unlike the email flow, whose link arrives in a mailbox that may be on another
+device and therefore must be completable without a session.
+
+The number is stored with the code because a code proves the number it was sent
+to and nothing else. A number changed while a code is outstanding leaves that
+code proving nothing about the number held now, so it is refused -- and not
+counted as a wrong guess, because changing a number is not an attempt at
+guessing one.
+
+**The attempt counter is written outside the transaction that promotes the
+number.** A refusal leaves that transaction by returning an error, which rolls
+back everything it did -- including the increment. A test found this: five wrong
+guesses, then the right code still worked. The email flow records its attempts
+outside its transaction for the same reason, which is now the reason written
+down rather than inferred.
+
+Every property is enforced twice, in Go and in the write predicate
+(`consumed_at IS NULL AND expires_at > ? AND attempts < ?` on the consume,
+`phone = ? AND phone_verified = ?` on the promotion). Mutation testing had to
+remove both halves to turn a test red, which is the point: either half alone
+still refuses.
+
+The write to `phone_verified` goes through a connector identity publishes
+(`PrincipalStateStore.VerifyPhone`), like `VerifyEmail` before it, because the
+column belongs to identity. The number is in its predicate, so the write that
+records the proof re-checks the thing it proves.
+
+No SMS vendor: delivery is the POST to the notification service the outbox
+already makes, with a new `kind`. The code lives minutes rather than days, and
+the configuration refuses anything outside one minute to one hour -- six digits
+read off a message already in somebody's hand is worth guessing if it is live
+for a day.
+
+Verifying a number still does not make it a recovery or sign-in channel, so the
+constraint recorded in D100 -- that a number which can recover an account must
+revoke sessions when it changes -- remains open for whoever builds that.
+Status: IMPLEMENTED.
+
+## D100 - A Phone Number Is A Contact, Not An Identity (2026-10-04)
+
+Decision: `iam_principals` carries `phone` and `phone_verified`, indexed and not
+unique, mirroring the `email` column beside it. `login_name` remains the only
+unique identity. A number is PII from the moment it exists: anonymization clears
+it with the address, the audit chain records only that it changed, and the
+profile field catalog gains `phone` so a field policy can hide or redact it --
+and the verification flag follows the field it derives from, so a hidden number
+cannot be probed through "is it verified".
+
+Not unique, because a number is a way to reach somebody rather than a way to
+name them. Numbers are shared inside a household and reissued by carriers after
+release; a uniqueness constraint would let whoever registered one first block an
+account that has a better claim to it. Email, the same kind of contact, is
+already indexed and not unique here.
+
+Changing the number clears `phone_verified` and revokes nothing else. An address
+change revokes sessions and bumps the credential version because the address can
+recover the account; a number cannot yet recover or sign in to anything, so there
+is nothing for a change to invalidate. **The moment a number becomes a recovery
+or sign-in channel, this has to revoke too** -- that is a constraint on the
+verification work, not a preference.
+
+Accepted in one shape: a plus sign and four to fifteen digits, which is what
+E.164 allows. Spaces, dashes, dots and parentheses are how a number is written
+down rather than part of it, so they are removed instead of refused; a number
+without a country code is refused, because the same digits name different people
+in different countries. An empty value clears it, which is how somebody takes
+their number back.
+
+`FieldConstraint.EmailVerified` became `FieldConstraint.Verified(field, value)`.
+The rule it encodes -- a verification flag is readable only where the contact is
+-- was never about email, and a second copy of it for phone would have been the
+same six lines with one word changed.
+
+Nothing writes the number back after anonymization, and nothing new was needed
+for that: the tombstone trigger on `iam_principals` already aborts every update
+to an anonymized principal, so the number is behind the same schema-level gate as
+the address.
+
+Scope: the number itself and its PII handling. Verifying it by code through the
+existing notification outbox is the next piece, and will extend the email
+verification credential to be channel-aware rather than copy it -- that flow
+already snapshots the contact into the credential row so that changing the
+contact invalidates an outstanding code, and a phone must keep that property.
+No SMS vendor is involved at any point: delivery stays the POST to the
+notification service that the outbox already makes.
+Status: IMPLEMENTED (number and PII handling); verification outstanding.
+
+## D99 - A Role Assignment May Name The Moment It Stops Granting (2026-10-04)
+
+Decision: `iam_role_members` carries a nullable `expires_at`. NULL is no end,
+which is what every assignment written before the column means. Every read that
+treats an assignment as authority filters it; reads that manage the row see all
+rows, and the grant review reports the date.
+
+The four ways a role reaches a principal were already asymmetric: a temporary
+grant has `starts_at`/`ends_at`, a group-derived role is bounded by the group
+membership's `ends_at`, an entity-scoped binding has `expires_at` -- and all
+three filtered on them. Only the plain tenant-wide assignment had no end to
+speak of, and `governance/review_grants.go` selected `NULL AS grant_expires_at`
+for it, a column reserved for exactly this.
+
+Not the governance table: `iam_temporary_role_grants` exists for an approved
+access request. Its `source_type`/`source_id` point at the request, both of its
+times are NOT NULL, and each grant has its own identity so it can be revoked
+singly and reviewed as "temporary". An assignment with an end date is the same
+relation as one without -- (tenant, role, principal) -- with a bound on it.
+Backing it with that table would give one relation two identities and make
+"who holds this role" a union.
+
+Read-time, not a sweeper: the authorization answer is already computed against
+the request's clock, three of the four paths already filtered this way, and a
+sweeper would make correctness depend on a job having run. The row outliving
+its grant is also what lets a listing say when it ended.
+
+The durable-administrator guard reads `expires_at IS NULL`, not "has not
+ended". It asks whether the tenant would still have an administrator
+afterwards, so an administrator whose grant lapses next week is an answer that
+expires -- which is what the group branch has required of a timed membership
+since it was written.
+
+Granting is a PUT of the whole assignment: an end date replaces whatever the
+row carried and no end date removes one. The answer every existing caller
+already gets is unchanged, because granting a role somebody already holds on
+the same terms still reports no change. The row is read and then written rather
+than upserted: an upsert's affected-row count means different things in each
+dialect, and `changed` has to mean the assignment actually changed.
+
+Scope: the tenant-wide assignment. `iam_group_role_bindings` keeps no expiry of
+its own -- group membership already carries `starts_at`/`ends_at` and is
+filtered, which is how a tenant time-bounds the roles a group brings. The
+system-member edit view (`systemMemberView`) stays unfiltered: it lists the rows
+a console toggles, and hiding a lapsed one would make the toggle a no-op.
+
+Alternatives Considered: a `valid_from` as well -- not added, nothing asked for
+a future-dated assignment and the temporary grant already has `starts_at` for
+the case that did. Deleting on expiry -- rejected, it destroys the record of a
+grant somebody made.
+
+Scope of verification: nine decision sites, each with its own behavioural test
+and each mutation-verified (the effective-roles CTE, the durable-administrator
+count, the system-role evaluation, the platform-administrator listing,
+`ListMemberRoleIDs`, the cached-snapshot bound, `roleGrantedOn`, the
+account-closure guard, and the grant review's two halves).
+Status: IMPLEMENTED.
+
+## D98 - A Delegation Is A Written-Down Pair, Not A Client Flag (2026-10-04)
+
+Decision: token exchange (RFC 8693) is permitted by a row in
+`iam_oauth_exchange_grants` naming one tenant, one client and one subject
+prefix with the scopes that delegation may ask for. A client with no row
+cannot exchange at all; a client with one cannot step outside its scopes. An
+exact prefix wins over a range, an empty prefix covers nobody, and a bare `*`
+is refused at the input. Exchange is refused to a public client at both the
+creation and the use site, and the issued token carries no refresh token.
+The device grant (RFC 8628) stores both codes hashed, enforces the poll
+interval server-side rather than trusting the device, and issues for whoever
+approved -- with their own assurance -- rather than for whoever polls.
+
+Reason: the alternative shape, a `token_exchange` flag on the client, makes
+impersonation open-ended the moment it is set: the client could act as any
+principal in the tenant for everything it is itself scoped for. The scopes
+being the grant's rather than the client's is what keeps "may act as this
+person" from meaning "may do everything it can do, as this person". A public
+client authenticates with nothing, so a flag on one would make its identifier
+alone sufficient to act as every covered principal -- which is why the two
+guards are at both ends rather than only in validation. No refresh token is
+issued because a refreshable delegation outlives the authority it derived
+from; the holder can exchange again while its own token is valid.
+
+Prefix matching happens in Go rather than in SQL: a `LIKE` over a tenant's
+grants would make the stored value a pattern language, and a `%` or `_`
+someone typed would then mean something nobody wrote down.
+
+Alternatives Considered: RFC 7591 dynamic client registration, which would
+let a client create its own credentials -- not added, because every client
+here belongs to a tenant that must authorize it. Trusting the device's
+`interval` -- rejected, a device that ignores it would turn the endpoint into
+a guessing loop. Admitting other subject token types (SAML, JWT from
+elsewhere) -- refused with `unsupported_token_type`, since accepting an
+assertion this deployment cannot verify is accepting it from somewhere it does
+not trust.
+
+Scope: `oauth` only. Extends D-"A Failed Read Is Not A Refusal" to the new
+grants: `deviceClient`, both device-code reads and both exchange-grant reads
+collapse only `gorm.ErrRecordNotFound`, so a storage fault no longer reads as
+`invalid_grant` (which makes a device discard its code) or as a withdrawn
+delegation. `validateClient`'s grant whitelist now admits both grants, without
+which no client could ever be created that could use them.
+Status: IMPLEMENTED.
+
+## D97 - Webhooks Follow The Audit Chain Rather Than Being Told (2026-10-04)
+
+Decision: outbound event delivery is a module that follows each tenant's audit
+chain with a cursor, not a `Publisher` capability other modules call. `audit`
+exposes `EventStreamReader`, whose projection selects neither `detail` nor
+`ip_address` nor `user_agent`; `webhook` keeps one `after_sequence` per
+subscription and advances it in the same transaction that records the work owed.
+
+Reason: the chain is already the complete, ordered, durable record of what
+happened, written at thirty call sites. A follower with a cursor therefore cannot
+miss an event and no other module has to remember to announce one -- which is the
+failure mode of per-call-site instrumentation, where the event added next year is
+the one nobody publishes. Uniqueness over (subscription, event) makes a fan-out
+pass that is interrupted safe to simply run again.
+
+What may leave is decided in the module that owns the data. The three columns
+holding a person's data are absent from the projection's Select rather than
+dropped afterwards, so there is no copy for a consumer to forward by mistake. A
+receiver is an endpoint somebody else operates: a deployment honoring a
+withdrawal can erase what it holds, not what it has already handed out.
+
+Alternatives considered: (a) a `Publisher` capability invoked beside each audit
+append - rejected, it doubles the instrumentation and the second copy drifts;
+(b) letting webhook read the audit table directly - rejected, the module that
+owns a table decides what leaves it; (c) sending the audit detail and asking
+receivers to discard it - rejected, that is a promise nobody can keep.
+
+Tradeoffs: a receiver gets identifiers and outcomes, not names, so an integration
+that wants detail must call back for it and be authorized to. Delivery is as
+timely as the poll interval rather than immediate.
+
+Scope and constraints future work must not reverse without approval:
+- `audit.StreamEvent` MUST NOT gain a field holding personal data. A test asserts
+  the payload a receiver sees.
+- A subscription starts at the tenant's current head, not at zero: registering an
+  endpoint asks to hear what happens next, not to receive the whole history.
+- Signature headers are generically named; the deployment identifies itself from
+  its runtime identity, never from a literal in the catalog or the source.
+
+Status: implemented. `internal/iam/webhook`, 2 tables, 5 operations, 90.4%
+coverage. Adding the module required registering it in seven frozen inventories,
+one of which (the permission catalog) would otherwise have panicked at startup
+rather than failed a test.
+
+## D95 - Irreversible Migration Milestones Refuse Before Rolling Back (2026-10-03)
+
+Decision: `module.MigrationMilestone` gains `Irreversible bool`, and the
+orchestrator refuses any downward request that would cross an applied
+irreversible milestone before it touches the database. The refusal applies to
+both `down-to` and the plain one-milestone `down`. federation declares it on
+`binding-trust` (version 7). The per-dialect `RAISE` inside that migration stays
+as the backstop for anyone driving goose directly.
+
+Reason: irreversibility used to live only inside the migration's own down
+section, so the orchestrator could not know about it in advance. Rolling back
+proceeds one version at a time, so the moment a reversible migration existed
+above binding trust, a refused `down-to 6` first undid that migration and then
+failed - leaving the database between two milestones. An operator meets that
+state while already recovering from something else.
+
+Alternatives considered: (a) leave the behaviour and assert the partial state in
+tests - rejected, it documents a hazard instead of removing it; (b) make every
+migration above an irreversible one also irreversible - rejected, it spreads a
+constraint that belongs to one milestone; (c) wrap the whole rollback in one
+transaction - rejected, DDL transactionality differs per engine and MySQL cannot
+deliver it.
+
+Tradeoffs: a module must now declare irreversibility in two places, the
+milestone and its SQL. The duplication is deliberate: the declaration is what
+makes the refusal early, the SQL is what still protects a direct goose run.
+
+Scope: `pkg/module/module.go`, `internal/app/migration.go`,
+`internal/iam/federation/migrate.go`. Verified by
+`TestIrreversibleMilestoneRefusesBeforeRollingBack` and
+`TestIrreversibleMilestoneDoesNotBlockWhatWasNeverApplied` over all three
+engines, both mutation-checked: removing the guard turns them red.
+
+Status: implemented.
+
+## D96 - One Upstream Identity, Three Protocols (2026-10-03)
+
+Decision: the normalized shape every federation protocol produces is named
+`upstreamIdentity` rather than `idTokenClaims`.
+
+Reason: the type was named after OIDC's ID token and then grew two more
+producers. SAML already filled it from an assertion, and a social provider fills
+it from a profile document. A name that states one producer invites the next
+reader to assume the others do not exist, and invites code to treat an absent
+field as a fault rather than as what that protocol states.
+
+The fields that belong to one producer are documented as such instead of being
+split out: Nonce and AuthorizedParty are ID-token concepts, and AuthTime is
+absent from plain OAuth 2.0 entirely, which is the whole reason a social provider
+cannot serve as a re-authentication proof.
+
+Alternatives considered: a per-protocol type with a conversion at each seam -
+rejected, three nearly identical structs and three conversions to keep in step
+for no behavioural gain.
+
+Scope: rename only, confined to `internal/iam/federation`; the type was already
+package-private, so nothing outside it changed.
+
+Status: implemented.
+
+## D94 - Social Sign-In Is One Provider Type With a Connector Table (2026-10-03)
+
+Decision: social sign-in is a third federation provider type, `oauth2`. A
+connector is a row in a compiled-in table declaring endpoints, parameter names
+and dotted claim paths; a provider whose shape the table cannot express supplies
+a `profileFlow` instead (QQ is the first). The connector key is stored in the
+existing `issuer` column, so no column or table was added. Providers that
+publish OpenID Connect discovery stay on the `oidc` type.
+
+Reason: what differs between GitHub, Discord and Feishu is a few URLs and JSON
+field names, not the protocol, so it is data. What differs for QQ, Alipay and
+WeCom is the shape of the exchange, so that is code. Keeping endpoints compiled
+in means a tenant administrator cannot repoint a provider's profile endpoint at
+a host they control while keeping the client ID that existing identity links
+trust; storing the key in `issuer` makes it part of the provider's security
+fingerprint for free, so changing it distrusts those links.
+
+Alternatives considered: (a) one package per provider, as Casdoor and Logto do -
+rejected, roughly 7000 lines to express 400 lines of data; (b) endpoints as
+tenant configuration - rejected on the takeover path above; (c) routing
+OIDC-capable providers through this path for uniformity - rejected, it trades a
+verified ID token and an authentication time for an unsigned profile read.
+
+Tradeoffs: a provider's endpoints now change only by changing code, so an API
+version bump is a code change. That is accepted because it is reviewable, and
+because the alternative is the takeover path.
+
+Scope and constraints that future work must not reverse without approval:
+- A social provider MUST NOT serve as a re-authentication proof. Plain OAuth 2.0
+  carries no authentication time and social providers routinely answer from an
+  existing session. `StartIdentityOperation` and `VerifyIdentityOperation` both
+  refuse it, and `AuthTime` MUST NOT be fabricated to pass the freshness window.
+  Linking is permitted; its freshness rests on the single-use authorization code,
+  PKCE and the replay claim.
+- A connector that states no email address cannot provision an account. Eight of
+  the twenty-four are in that position and a test freezes the list.
+- The outbound User-Agent is read from the runtime identity, never written into
+  the catalog.
+
+Status: implemented; 26 connectors, three of them with a flow of their own.
+Alipay signs every gateway call with the application's RSA private key, so its
+stored "client secret" is a PKCS#8 key rather than a shared secret; WeCom
+authenticates the application from its corp credentials before it will identify
+the person, and admits members of the organization only. Both were verified
+against the live endpoints: the gateway answers `isv.missing-app-id` and WeCom
+answers `corpsecret missing`, which confirms the parameter names as well as the
+addresses. WeChat Mini Program, Steam, Dropbox, Notion and VK remain
+unimplemented, each one `profileFlow` away.
+
+WeCom capitalises `UserId` in its answer while the catalog reads `userid`, so the
+flow normalizes the identifier onto the one key the claim path reads. Tolerating
+both spellings in the flow's own check while the claim path read only one is how
+a login WeCom answered correctly would still have failed; a test now goes through
+the mapping rather than the raw document, and removing the normalization turns it
+red.
+
+Endpoint verification (2026-10-03, by unauthenticated probe from the development
+sandbox): seventeen connectors answer as the catalog expects -- github, gitlab,
+gitee, bitbucket, spotify, naver, wechat, qq, weibo, baidu, dingtalk, feishu,
+lark, amazon, figma, yandex, douyin. A token endpoint was POSTed an empty body
+and had to answer an OAuth-shaped error rather than 404. Four parameter choices
+were confirmed from those answers: wechat names its credential `appid` and takes
+the profile token as a query parameter, dingtalk names it `clientId`, douyin
+nests its payload under `data`, and feishu and lark both serve the v2 token
+endpoint.
+
+Seven cannot be reached from this sandbox: discord, facebook, x, kakao,
+instagram, coinbase, reddit. They were instead checked against the published
+documentation and against two open-source implementations whose source is
+reachable -- casdoor/casdoor `idp/` and markbates/goth `providers/` -- which
+found six of the twenty-four genuinely wrong:
+
+- instagram: the Basic Display API it used was switched off on 2024-12-04. The
+  authorization host moved to www.instagram.com and the scopes were renamed.
+  Goth still carries the retired endpoints, so it is not a reference here.
+- facebook: the token exchange is a GET with the credentials in the query
+  string, not a POST with HTTP Basic. Casdoor builds the same GET.
+- discord, kakao, coinbase, instagram: the token endpoint takes the secret as a
+  request parameter, not an Authorization header.
+- reddit: `/api/v1/me` states whether an address is verified but never sends the
+  address, so claiming one told the console that provisioning could apply.
+  Goth maps only id and name, which agrees.
+- coinbase: the email scope is `identity:user:email`, and every read needs a
+  CB-VERSION header.
+
+Cross-checking the CJK connectors against casdoor confirmed every field this
+catalog maps, dingtalk and douyin and qq down to the exact names, including qq's
+non-zero `ret` being an error. Two places where this catalog is more current than
+goth: discord's display name is `global_name`, and kakao's is under
+`kakao_account.profile` rather than the legacy `properties`.
+
+Field names for connectors that need a real token to read a profile remain
+unverified against a live response; they are verified against documentation and
+at least one independent implementation.
+## Account view controls follow creation authority - 2026-10-09
+- Decision: shared AccountViewDialog entry requires account_view_create, independently of account/organization list browsing permissions.
+- Reason: read-only system demo could list accounts but was offered a view action its backend admission refuses.
+- Alternatives: grant impersonation merely to make the button work; rejected because browsing does not require target-account authority.
+- Scope: shared frontend entry gate and real regression/authorized-popup-exit tests; no backend permission changes.
+- Status: IMPLEMENTED / real browser regression and authorized administrator success PASS.
+
+## System demo subadministrator browsing grant - 2026-10-09
+- Decision: replace tenant_view-only demo grant with explicit system browsing permissions for accounts, departments, roles, menus, operating platforms, tenants, audit events, and shared files. Retain full_administrator=false; do not grant platform_administer or mutation actions.
+- Reason: user requested review then execution to resolve the misleading one-menu system demo. Wider read scope demonstrates system management without turning a subaccount into a full administrator.
+- Alternatives: show unauthorized menu links; grant full administrator. Rejected because the former produces dead ends and the latter is broader than needed for browsing.
+- Tradeoffs: governance/closure/grant pages requiring platform_administer remain excluded; management writes still return 403. Default landing now follows the first authorized system-account menu.
+- Scope: development demo initialization and current local account grant; existing backend authorization and production menus unchanged.
+- Status: IMPLEMENTED / 8 real management-page visits and denied write checks PASS; configuration persists through dev startup.
+
+## Concurrent personal root initialization - 2026-10-09
+- Decision: harden the existing root-creation API with transaction insert-before-read and conflict-do-nothing using the existing unique principal key. The inserting transaction alone creates root hierarchy; concurrent callers reuse its committed space/root/ACL.
+- Reason: user approved review finding that multiple tabs/devices can concurrently initialize despite frontend busy state.
+- Alternatives: new implicit-parent API or frontend retries/locks; unnecessary contract changes or insufficient across devices.
+- Tradeoffs: uses an ID candidate even when the root already exists; preserves existing transaction, auditing, and authorization. Storage-content creation remains a separate request and can be retried.
+- Scope: personal initialization concurrency and regression tests. No navigation/permission/schema changes.
+- Status: IMPLEMENTED; concurrent service, read-only HTTP, real SQLite HTTP/browser acceptance, and full files regression PASS.
+
+## Personal initialization scope after rollback - 2026-10-08
+- Decision: broad personal/workspace changes were rolled back at user request. Reintroduce only automatic personal root preparation on first write through existing API. Keep GET visits and read-only views free of initialization, and preserve all original navigation/auth behavior.
+- Reason: user explicitly requested removing the manual creation step after rollback, without the previous broader redesign.
+- Alternatives: eager creation on visits or backend/API redesign; unnecessary for this scoped UX change.
+- Tradeoff: root preparation and content write are separate existing requests; initialization failure leaves the editor available for retry.
+- Scope: personal file page/browser plus focused tests. System subaccount tenant_view-only grant was confirmed live; no authorization expansion without user-specified scope.
+- Status: IMPLEMENTED / real desktop/mobile/retry acceptance PASS.
 
 ## D93 - Demo Entrances Only Show Matching Personas (2026-09-27)
 
@@ -3352,3 +3913,302 @@ is their only API identity (/sessions/{session_id},
 it; rows created before the column get one from the authn module's start-up
 backfill. The column stays NULL-able only for that window.
 Status: IMPLEMENTED (audit D2).
+
+## Login Presents a Captcha on Every Attempt - 2026-09-30
+
+Decision: the password login form presents a captcha unconditionally, the same
+way registration already does, rather than only after N failed attempts or only
+for an IP the limiter has flagged.
+
+Reason: a progressive captcha needs a pre-authentication per-IP failure counter,
+and the only counter this service has is the Redis-backed one in
+`sharedSecurity`, which `newSharedSecurity` returns nil for when Redis is not
+configured. A progressive challenge would therefore be silently absent in
+exactly the deployments that run without Redis, while an unconditional one
+degrades to nothing worse than itself. Per-principal `failed_attempts` cannot
+serve either, because it is only reachable once the login name resolves.
+
+Alternatives Considered: captcha after N password failures (rejected: fails open
+without Redis, and needs a new contract on the login error path for the client
+to learn a challenge is now required); captcha only for an IP over the limiter
+threshold (rejected: same Redis dependency, hardest of the three to test,
+because a test must forge both the address and the counter state).
+
+Tradeoffs: every legitimate login types a challenge. Accepted deliberately for
+an identity console. The existing `captcha.test_answer` escape is what keeps
+automated logins possible, and it is configured, never a constant.
+
+Scope: password login on all four entrances (one shared `PasswordForm`). Does
+not change MFA, passkey, OAuth or federated sign-in.
+Status: ACCEPTED, NOT IMPLEMENTED.
+
+## Development Rate Limiting Runs an In-Process miniredis - 2026-09-30
+
+Decision: the authentication limiter is exercised in development by a debug-only
+flag that starts miniredis inside the serving process and points the module's
+Redis client at it. The flag MUST refuse to start the service outside debug mode.
+
+Reason: the limiter, its middleware and the per-operation `RateLimitMetadata`
+tags are already complete; the only reason nothing is limited locally is that
+`newSharedSecurity` returns nil without Redis, which short-circuits the
+middleware. miniredis is already a module dependency, speaks real RESP over a
+real socket, and therefore exercises the same go-redis path production uses,
+which an in-process limiter would not. `make dev` keeps its zero external
+dependencies.
+
+Alternatives Considered: a Docker Redis in `make dev` (rejected: makes Docker a
+prerequisite of starting the app, which today needs only Go, Node and bun); an
+in-process limiter fallback when Redis is absent (rejected: it changes the
+production default from "no limiting" to "per-replica limiting", which multiplies
+every configured threshold by the replica count and silently loses the global
+bound the config's `global` field promises).
+
+Tradeoffs: a test double is compiled into the release binary. Contained by the
+debug-mode refusal, which must be covered by a test that fails if the guard is
+removed.
+
+Scope: development and the local UAT environment only. No production default
+changes; a real deployment still configures `shared_security` against its own
+Redis, and gets no limiting if it does not.
+Status: ACCEPTED, NOT IMPLEMENTED.
+
+## The Development Limiter Store May Coexist With A Captcha Test Answer - 2026-09-30
+
+Decision: `NewWebService` refuses a configured `captcha.test_answer` whenever
+shared security is active, with one exemption: `shared_security.development_server`.
+
+Reason: the two guards were written for different worlds and collide in the only
+environment that needs both. Shared security means "a deployment serving real
+people", which is why a bypass alongside it is refused. The development server
+means the opposite -- an in-process store, reachable by nothing else, dying with
+the process, and refused outside debug mode. Without the exemption `make dev`
+cannot have both a working limiter and a scriptable login, so one of the two
+things the user asked for would have to be off by default.
+
+Alternatives Considered: leave the guard absolute and keep the limiter opt-in in
+development (rejected: the limiter is then off in the environment it was asked
+for, and nobody enables a flag they have to remember); drop the guard entirely
+(rejected: it is the right refusal for every configuration but this one).
+
+Tradeoffs: a bypass and shared security can now coexist, in debug mode only. The
+whole safety rests on the debug refusal in `validateRuntimeConfig`, which is
+covered by a test that fails if the guard is removed.
+
+Scope: authn web service construction. No change to what a real deployment may
+configure: without debug mode the development server is refused before the
+service is built, and the original guard applies unchanged.
+Status: IMPLEMENTED.
+
+## The System View Keeps Its Workspace Switcher - 2026-09-30
+
+Decision: the system administration view continues to offer the workspace
+switcher, listing only the tenants the caller belongs to.
+
+Reason: what it offers is a workspace the account actually holds, and it is the
+only way back to that workspace from system administration. `system/layout.tsx`
+has always fed it `myTenants()`, so it never had the boundary defect the tenant
+half of the main shell had. A platform administrator who belongs to no tenant
+sees an empty switcher, which is the ordinary case in a real deployment; the
+development fixture makes the super administrator the owner of the Development
+tenant because the browser audits need an administrator who can operate inside
+one, and that is what makes a system account appear to have a tenant at all.
+
+Alternatives Considered: remove the switcher from the system view so every
+tenant, including the caller's own, is reached through the account view
+(rejected by the user: it strands a legitimate membership behind a scoped,
+time-boxed mechanism meant for tenants one does not belong to); change the
+development fixture so the super administrator holds no membership (rejected as
+out of scope here: the audits depend on it, and it would need a second
+administrator persona built for them).
+
+Scope: navigation only. It does not widen what the switcher may list -- that
+stays membership, per the decision recorded for the main shell.
+Status: ACCEPTED, NO CHANGE REQUIRED.
+
+## The Development Limiter Store Stays Behind A Runtime Refusal, Not A Build Tag - 2026-09-30
+
+Decision: `shared_security_development.go` is compiled into every build, and the
+only thing keeping its in-process Redis out of a deployment is the debug-mode
+refusal in `validateRuntimeConfig`. It is deliberately not moved behind a
+`//go:build dev` tag.
+
+Reason: the two tests that make the refusal meaningful -- that the flag is
+rejected without debug mode, and that the limiter actually refuses and then
+recovers -- would move behind the tag with the code. Unless a second tagged run
+were added to ci, the default gate would lose both, which trades "two packages
+absent from the shipped binary" for "two security assertions absent from every
+build". Both are mutation-verified today: removing the guard or the clock turns
+them red. The repository also has no build-mode split, so a tag would oblige
+`make dev`, `iam-uat.mjs` and any developer build to carry `-tags dev`.
+
+Cost accepted: the binary carries miniredis and, through it, the gopher-lua
+interpreter miniredis uses for Redis scripts. That is binary size rather than
+attack surface while nothing else instantiates either: both are reachable only
+through a flag the application refuses to start with outside debug mode.
+
+What would change this answer: a deployment target where debug mode could be
+turned on by configuration an attacker influences, another importer of
+gopher-lua that makes it reachable without the flag, or binary size becoming a
+constraint. Any of those makes the tag worth its cost, together with the tagged
+ci run that must come with it.
+
+Alternatives Considered: `//go:build dev` (rejected for the reasons above);
+dropping the development server and requiring Docker Redis locally (rejected
+when the limiter work was planned -- see the miniredis decision above).
+Status: IMPLEMENTED (as the absence of a build tag).
+
+## The Captcha Provider Is Chosen, And Turnstile Is Off By Default Locally - 2026-09-30
+
+Decision: `authn.captcha.provider` selects `image` or `turnstile` explicitly.
+Turnstile is not inferred from the presence of keys, and `make dev` keeps the
+drawn challenge unless asked for the other with `DEV_CAPTCHA=turnstile`.
+
+Reason: inferring the provider from configuration would let a half-filled
+Turnstile section serve drawn challenges while an operator believed they had
+turned it on -- a silent downgrade of the thing they were configuring. And
+validating a Turnstile token means reaching Cloudflare, so making it the local
+default would put the internet between a developer and their own login form.
+The switch exists so the widget can be worked on; it uses Cloudflare's own
+dummy keys, which pass on any hostname.
+
+Alternatives Considered: infer from keys (rejected above); make Turnstile the
+local default with dummy keys (rejected: `make dev` has needed nothing but Go,
+Node and bun, and a login that fails when the network does is a poor trade for
+exercising a widget most changes never touch).
+
+The client renders what `/login/options` names, which also removes an older
+assumption: the console used to ask for challenge kinds until it got a drawn
+one and give up after five tries, so a deployment offering only the interactive
+kinds had a sign-in page that could never be answered.
+
+Verification fails closed, per the rule the shared security configuration
+already states. A refusal from Cloudflare and an unreachable Cloudflare are
+told apart: both refuse the attempt, but only the first reports the business
+code for a wrong answer, because telling somebody who solved the widget that
+they got it wrong sends them round a loop they cannot win.
+
+The site key is published by `/login/options` and exempt from the secret-tag
+gate. It has to reach the browser for the widget to render, and it is the
+secret key beside it -- resolved through secretx, never leaving the process --
+that makes a token worth anything.
+Status: IMPLEMENTED.
+
+## Principal Erasure Owners Publish Their Own Schema Requirement - 2026-09-30
+
+Decision: each IAM owner of principal data exports `MigrationSource()` as a
+package function and `PrincipalErasureVersion` beside `ErasePrincipalData`.
+`internal/principallifecycle` composes them and restates nothing. It reads each
+stream with `goosex.CurrentVersion` inside the erasure transaction: version 0
+(never installed) is skipped, an installed owner below its version fails with
+`identity.ErrUnavailable` before anything is written, and a failed read is
+returned as itself. `goosex.VersionApplied` is removed; it had no other caller.
+
+Reason: the anonymizer carried each owner's version table name and a minimum
+version by hand. Two had gone stale (authn 13 while erasure touches tables from
+14-16; federation 5 while it touches 00006), and nothing compared them. And
+because a disabled module is never migrated and cannot be selected with
+`migrate --module`, the default deployment (federation off) had no
+`goose_federation` table, so every anonymization returned 503. The composed
+suite hid this by migrating federation by hand. A stream that was never
+installed cannot hold records, and federation tables only ever come from its
+own migrations, so skipping it loses nothing; an owner that was installed and
+then disabled is still erased, as the anonymizer contract requires.
+
+Alternatives Considered: reuse the `principal-erasure` milestone (rejected: it
+means "guard triggers installed", `tests/migration` relies on that meaning, and
+milestones must be strictly increasing so it cannot move onto another
+milestone's version); require every owner to be fully migrated (rejected: a
+disabled owner is never migrated, so any unrelated later migration would block
+erasure indefinitely); check the version inside each `ErasePrincipalData`
+(rejected: seven copies of the skip/behind rule, and skipping is the composer's
+semantics). This supersedes D71's literal version table names: a package
+function is not the `cross-module-concrete-type` reference D71 was avoiding.
+
+Tradeoffs: `CurrentVersion` probes with `Migrator().GetTables()` rather than
+`HasTable`, because `HasTable` reports a failed lookup as a missing table,
+which here would silently skip an owner. The drift gate is
+`TestAnonymizePrincipalDataHoldsEachOwnerToItsErasureVersion`: each owner at
+exactly its version must erase, one below must refuse. It migrates through
+goosex rather than the milestone planner, because the planner cannot hold one
+owner below a version its neighbours' later milestones depend on.
+
+Scope: principal erasure only. The OAuth service's collapse of repository
+errors into `ErrInvalidRequest` (`oauth/service.go` 396/414/594/818/827/872/886)
+is the same class of defect and is to be fixed as its own task.
+Status: IMPLEMENTED.
+
+## A Failed Read Is Not A Refusal - 2026-09-30
+
+Decision: a read that fails is returned as the error it is. Only a row that
+is genuinely absent (gorm.ErrRecordNotFound, or a repository's own not-found
+sentinel) becomes the domain refusal -- invalid_grant, a wrong MFA code, a
+bad invitation link, a missing file. Applied across oauth, authn, federation,
+organization and files (dc82574..HEAD).
+
+Reason: folding every error into the refusal turned outages into client
+errors. The sharpest case was OAuth refresh: a database hiccup answered
+invalid_grant, and a conforming client discards its refresh token. Elsewhere
+users were told their code or link was wrong and retried against a dead
+store, and nothing reached the 5xx alerts.
+
+This reverses what ef2bef6 pinned for files: that commit described
+AccountResourceFiles.Open masking space/node/version/object read failures
+as ErrNotFound as "authorization semantics". It was a test-only coverage
+commit recording existing behaviour, with no decision behind it, and the
+masking bought nothing: returning the raw error still serves no file, a
+storage fault is not something a caller can provoke to learn whether a file
+exists, and the binding read in the same function already propagated its
+failures. The user delegated the call; the four pinned expectations in
+TestAccountResourceOpenPropagatesLookupAndStorageFailures now expect the
+injected fault.
+
+Alternatives Considered: leaving the uniform refusal where it hides which
+check failed (authn). Kept as it was -- the refusal for a missing row is
+unchanged; only a failed read now escapes it, and a caller cannot cause one.
+
+Scope: the 29 read sites listed in the task state plus loadPasskeyUser.
+FinishPasskeyLogin's propagation mirrors reauthentication.go and cannot be
+unit-tested (webauthnx's protocol is private and needs a real assertion).
+Status: IMPLEMENTED.
+
+## D104 - The Platform Answer Is Read Only When It Could Change The Verdict (2026-10-05)
+
+Decision: `CheckBulk` no longer asks whether the subject is a platform
+administrator before it knows the answer matters. A permission the tenant's own
+grants already allow is allowed whoever asks, so the platform answer -- four
+statements of its own: the system tenant by slug, the principal's status, the
+platform administrator table, and that tenant's membership -- cannot change the
+verdict and is not read. One authorization check went from **7 statements to 3**
+in the common case, on the hottest path in the service, run once per request.
+
+`platformAnswerDecides` is written as the exact negation of the loop that
+decides each permission, and says so, because the two drifting apart is the one
+way this becomes a security bug: a new branch below that consults the platform
+answer, not admitted above, would see `false` and silently refuse. A system-scoped
+permission is decided by nothing else and always asks; an operating-platform or
+unknown code is refused outright; a tenant-scoped one asks only when neither the
+permission itself nor `tenant_administer` is granted.
+
+Both halves are mutation-verified: forcing "always ask" turns the saved-statements
+test red, forcing "never ask" turns the platform administrator's verdicts red.
+
+`CheckPlatform` is read-only -- no audit, no writes -- so not calling it has no
+effect beyond the statements it would have sent.
+
+**The frozen performance baseline is deliberately NOT regenerated for this.**
+The `authorization` path's recorded plan set now names 4 statements the code no
+longer sends, so `TestIAMPerformanceExternalDatabase` will report a plan-signature
+mismatch until it is regenerated -- and that regeneration must happen on a quiet
+reference machine, never on a loaded one. The reason is in the generator:
+
+    benchmark.ThresholdNSPerOp = roundedIAMPerformanceThreshold(ordered[len(ordered)-1] * 3)
+
+The threshold is the slowest sample times three. Regenerating on the machine this
+was written on (XProtect pegging a core for eight hours, Docker's MySQL on a
+virtualised filesystem, the gate taking three hours where it takes fifteen
+minutes) would have written authorization's threshold as 42ms where the committed
+value is 7ms -- a gate weakened six-fold and frozen into the repository. That is
+weakening a test to make it pass, so it was not done. Regenerate on the reference
+machine, and take the `plans` block from that run; the `benchmarks` block already
+in the file was captured on a quiet machine and is the one worth keeping.
+Status: IMPLEMENTED, baseline refresh OUTSTANDING.

@@ -1,0 +1,6 @@
+{
+  "invalid_request": "Webhook 订阅无效。请检查接收地址、名称与事件类型后重试。",
+  "subscription_missing": "指定的 Webhook 订阅不存在。请刷新列表并选择现有订阅。",
+  "subscription_exists": "当前租户已存在同名的 Webhook 订阅。请更换名称或直接编辑已有订阅。",
+  "unavailable": "Webhook 投递当前不可用。请稍后重试;若问题持续,请联系管理员。"
+}

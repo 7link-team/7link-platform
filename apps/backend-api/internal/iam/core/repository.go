@@ -419,15 +419,33 @@ func (r *Repository) SetPermissionCondition(
 	return grant, changed, err
 }
 
-func (r *Repository) AddMember(ctx context.Context, tenantID, roleID, principalID guid.ID) (bool, error) {
-	return r.changeMember(ctx, tenantID, roleID, principalID, true)
+// AddMember grants a role, optionally until a moment. The assignment ends up as
+// the caller described it: an expiry replaces whatever the row carried, and no
+// expiry makes it permanent, which is what a PUT of the whole assignment means
+// and what every caller that never passes one has always got.
+func (r *Repository) AddMember(
+	ctx context.Context, tenantID, roleID, principalID guid.ID, expiresAt *time.Time,
+) (bool, error) {
+	return r.changeMember(ctx, tenantID, roleID, principalID, expiresAt, true)
 }
 
 func (r *Repository) RemoveMember(ctx context.Context, tenantID, roleID, principalID guid.ID) (bool, error) {
-	return r.changeMember(ctx, tenantID, roleID, principalID, false)
+	return r.changeMember(ctx, tenantID, roleID, principalID, nil, false)
 }
 
-func (r *Repository) changeMember(ctx context.Context, tenantID, roleID, principalID guid.ID, add bool) (bool, error) {
+// sameExpiry reports whether two assignment ends are the same moment. A changed
+// expiry is a changed assignment, and an unchanged one must not report a write
+// that did not happen.
+func sameExpiry(stored, requested *time.Time) bool {
+	if stored == nil || requested == nil {
+		return stored == nil && requested == nil
+	}
+	return stored.UTC().Equal(*requested)
+}
+
+func (r *Repository) changeMember(
+	ctx context.Context, tenantID, roleID, principalID guid.ID, expiresAt *time.Time, add bool,
+) (bool, error) {
 	var changed bool
 	err := r.runInTx(ctx, func(repo *Repository) error {
 		if err := repo.ensureRole(ctx, tenantID, roleID); err != nil {
@@ -438,14 +456,44 @@ func (r *Repository) changeMember(ctx context.Context, tenantID, roleID, princip
 			return err
 		}
 		if add {
-			row := model.RoleMember{
-				TenantID: tenantID, RoleID: roleID, PrincipalID: principalID,
-				CreatedAt: repo.now().UTC().Truncate(time.Millisecond),
+			var end *time.Time
+			if expiresAt != nil {
+				bounded := expiresAt.UTC().Truncate(time.Millisecond)
+				end = &bounded
+			}
+			// The row is read, then written, rather than upserted: an upsert's
+			// affected-row count means different things in each dialect, and the
+			// answer this returns is whether the assignment actually changed.
+			existing, err := tables.RoleMembers.WithContext(ctx).Where(
+				tables.RoleMembers.TenantID.Eq(tenantID),
+				tables.RoleMembers.RoleID.Eq(roleID),
+				tables.RoleMembers.PrincipalID.Eq(principalID),
+			).Take()
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("read role member: %w", err)
+			}
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				row := model.RoleMember{
+					TenantID: tenantID, RoleID: roleID, PrincipalID: principalID,
+					ExpiresAt: end, CreatedAt: repo.now().UTC().Truncate(time.Millisecond),
+				}
+				result := db.WithContext(ctx).Table(tables.RoleMembers.TableName()).
+					Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+				if result.Error != nil {
+					return fmt.Errorf("insert role member: %w", result.Error)
+				}
+				changed = result.RowsAffected > 0
+				return nil
+			}
+			if sameExpiry(existing.ExpiresAt, end) {
+				changed = false
+				return nil
 			}
 			result := db.WithContext(ctx).Table(tables.RoleMembers.TableName()).
-				Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+				Where("tenant_id = ? AND role_id = ? AND principal_id = ?", tenantID, roleID, principalID).
+				Update("expires_at", end)
 			if result.Error != nil {
-				return fmt.Errorf("insert role member: %w", result.Error)
+				return fmt.Errorf("update role member expiry: %w", result.Error)
 			}
 			changed = result.RowsAffected > 0
 			return nil

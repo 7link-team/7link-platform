@@ -196,6 +196,9 @@ type entityBindingSourceKey struct {
 }
 
 type authorizationSourceExpiries struct {
+	// roleMembers is keyed by role: one assignment exists per role for the
+	// subject this snapshot is about.
+	roleMembers    map[guid.ID]time.Time
 	temporaryRoles map[guid.ID]time.Time
 	groups         map[guid.ID]time.Time
 	entityBindings map[entityBindingSourceKey]time.Time
@@ -207,10 +210,28 @@ func (a *Authorizer) loadAuthorizationSourceExpiries(
 	evaluatedAt time.Time,
 ) (authorizationSourceExpiries, error) {
 	expiries := authorizationSourceExpiries{
+		roleMembers:    map[guid.ID]time.Time{},
 		temporaryRoles: map[guid.ID]time.Time{}, groups: map[guid.ID]time.Time{},
 		entityBindings: map[entityBindingSourceKey]time.Time{},
 	}
 	coreTables := corequery.BindWithNames(a.db, a.names)
+	// A role assignment that ends bounds the cached decision it contributes to,
+	// exactly as a temporary grant or a timed group membership does. Without
+	// this the snapshot would outlive the grant it was computed from.
+	members, err := coreTables.RoleMembers.WithContext(ctx).Where(
+		coreTables.RoleMembers.TenantID.Eq(tenantID),
+		coreTables.RoleMembers.PrincipalID.Eq(subject),
+		coreTables.RoleMembers.ExpiresAt.IsNotNull(),
+	).Find()
+	if err != nil {
+		return authorizationSourceExpiries{}, fmt.Errorf("list authorization role member expiries: %w", err)
+	}
+	for _, member := range members {
+		if member.ExpiresAt == nil || !member.ExpiresAt.After(evaluatedAt) {
+			continue
+		}
+		expiries.roleMembers[member.RoleID] = member.ExpiresAt.UTC()
+	}
 	temporaryRoles, err := coreTables.TemporaryRoleGrants.WithContext(ctx).Where(
 		coreTables.TemporaryRoleGrants.TenantID.Eq(tenantID),
 		coreTables.TemporaryRoleGrants.PrincipalID.Eq(subject),
@@ -400,6 +421,9 @@ func aggregateAuthorizationSources(
 		sourceName := labels.principals[grant.SourceID]
 		var expiresAt *time.Time
 		switch grant.SourceType {
+		case "role_member":
+			expiry, ok := expiries.roleMembers[grant.RoleID]
+			expiresAt = authorizationSourceExpiry(expiry, ok)
 		case "temporary_role":
 			typeName, sourceName = AuthorizationSourceTemporaryRole, ""
 			expiry, ok := expiries.temporaryRoles[grant.SourceID]

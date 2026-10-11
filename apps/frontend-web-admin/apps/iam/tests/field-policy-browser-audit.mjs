@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { mkdirSync } from "node:fs"
 import { chromium } from "playwright"
 import { auditPassword } from "../scripts/audit-password.mjs"
+import { auditCaptcha } from "../scripts/audit-captcha.mjs"
 
 const tenant = process.env.IAM_BROWSER_TENANT
 if (!tenant)
@@ -113,6 +114,7 @@ try {
     { tenant }
   )
   await ok("/login", "POST", {
+    ...auditCaptcha(),
     login_name: login,
     password,
     return_url: baseURL + "/",
@@ -344,6 +346,7 @@ try {
     tenant
   )
   await ok("/login", "POST", {
+    ...auditCaptcha(),
     login_name: viewerLogin,
     password,
     return_url: baseURL + "/",

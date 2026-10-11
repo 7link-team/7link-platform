@@ -32,6 +32,10 @@ type MFAChallenge struct {
 	ExpiresAt   time.Time  `gorm:"column:expires_at;not null"`
 	ConsumedAt  *time.Time `gorm:"column:consumed_at"`
 	Attempts    int        `gorm:"column:attempts;not null"`
+	// FirstFactor is what already proved itself for this login. A second factor
+	// sent to the same place as the first is the same factor twice, and this is
+	// what lets that be refused where the code is asked for.
+	FirstFactor string `gorm:"column:first_factor;size:16;not null;default:pwd"`
 }
 
 func (MFAChallenge) TableName() string { return "iam_mfa_challenges" }

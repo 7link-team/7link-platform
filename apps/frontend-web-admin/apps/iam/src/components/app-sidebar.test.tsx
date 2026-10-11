@@ -11,8 +11,7 @@ function renderSidebar(
   fieldPolicyAccess = false,
   path = "/",
   entityID = "",
-  permissions: ReadonlySet<string> | null = new Set(["entity_view"]),
-  scopedFileEntityID = ""
+  permissions: ReadonlySet<string> | null = new Set(["entity_view"])
 ): string {
   return renderToStaticMarkup(
     <MemoryRouter initialEntries={[path]}>
@@ -21,7 +20,6 @@ function renderSidebar(
           tenantID="456"
           permissions={permissions}
           entityID={entityID}
-          scopedFileEntityID={scopedFileEntityID}
           menus={menus}
           fieldPolicyAccess={fieldPolicyAccess}
         />
@@ -121,16 +119,14 @@ describe("AppSidebar", () => {
       'href="/admin/456/files"'
     )
   })
-  it("links scoped accounts to entity files without exposing tenant files", () => {
-    const html = renderSidebar(
-      [],
-      false,
-      "/admin/456",
-      "",
-      new Set(["entity_view"]),
-      "123"
-    )
-    expect(html).toContain('href="/admin/456/entities/123/files"')
+  // This used to assert the opposite: a scoped account was given an entity link
+  // in the tenant's sidebar. Clicking it moved them into the entity perspective
+  // from what looked like a tenant item, which is what "the menu changes" was.
+  // Such an account lands in the entity perspective now and finds its files
+  // there, so nothing in the tenant's sidebar addresses an entity.
+  it("never points a tenant entry at an entity", () => {
+    const html = renderSidebar([], false, "/admin/456", "", new Set(["entity_view"]))
+    expect(html).not.toContain('href="/admin/456/entities/')
     expect(html).not.toContain('href="/admin/456/files"')
   })
   it("does not duplicate a tenant file menu supplied by the server", () => {
@@ -303,5 +299,56 @@ describe("AppSidebar", () => {
     expect(html).toContain('href="/admin/456/users"')
     expect(html).not.toContain('href="/system/audit-governance"')
     expect(html).not.toContain("Platform tenants")
+  })
+})
+
+// An entity account's entries follow its grants in that entity. A grant with a
+// page it could not reach was the console's gap, not the policy's.
+describe("AppSidebar entity perspective follows the grants held", () => {
+  it("offers the department register to a dept_view grant and no entity administration", () => {
+    const html = renderSidebar(
+      [],
+      false,
+      "/admin/456/entities/5/files",
+      "5",
+      new Set(["file_view", "dept_view"])
+    )
+    expect(html).toContain('href="/admin/456/entities/5/files"')
+    // Inside the entity, so reaching it does not leave the perspective. The same
+    // page as the tenant's, narrowed by the service to the granted departments.
+    expect(html).toContain('href="/admin/456/entities/5/departments"')
+    expect(html).not.toContain('href="/admin/456/departments"')
+    expect(html).not.toContain('href="/admin/456/entities/5/overview"')
+    expect(html).not.toContain('href="/admin/456/entities/5/manage"')
+  })
+  it("offers nothing where the account holds nothing in the entity", () => {
+    const html = renderSidebar([], false, "/admin/456/entities/5/files", "5", new Set())
+    expect(html).not.toContain('href="/admin/456/entities/5/')
+  })
+})
+
+// In the entity perspective the whole sidebar is that perspective, so a group
+// heading named after it says nothing -- and being collapsible, it could hide
+// every link the account has.
+describe("AppSidebar entity perspective has no group heading", () => {
+  it("renders the links without a collapsible group", () => {
+    const html = renderSidebar(
+      [],
+      false,
+      "/admin/456/entities/5/files",
+      "5",
+      new Set(["file_view", "dept_view"])
+    )
+    expect(html).toContain('href="/admin/456/entities/5/files"')
+    expect(html).not.toContain("data-navigation-group")
+    expect(html).not.toContain('aria-expanded')
+  })
+  // Nor does the tenant perspective: which source an entry came from is not
+  // something to label, and the chevron that came with the label could hide
+  // entries.
+  it("renders the tenant entries without a collapsible group either", () => {
+    const html = renderSidebar([])
+    expect(html).not.toContain("data-navigation-group")
+    expect(html).toContain("访问申请")
   })
 })

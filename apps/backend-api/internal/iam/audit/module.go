@@ -49,6 +49,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[Appender](services, Appender(m.appendDomain)); err != nil {
 		return fmt.Errorf("provide audit appender: %w", err)
 	}
+	if err := module.Provide[EventStreamReader](services, EventStreamReader(m.readStream)); err != nil {
+		return err
+	}
 	if err := module.Provide[ErasureRecorder](services, ErasureRecorder(m.recordErasure)); err != nil {
 		return fmt.Errorf("provide erasure recorder: %w", err)
 	}
@@ -187,6 +190,15 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	}
 	RegisterHTTP(api, m.service, m.registrar)
 	return nil
+}
+
+// readStream adapts the service to EventStreamReader so a follower resolves a
+// function rather than this module.
+func (m *Module) readStream(ctx context.Context, tenantID guid.ID, afterSequence int64, limit int) ([]StreamEvent, error) {
+	if m == nil || m.service == nil {
+		return nil, ErrUnavailable
+	}
+	return m.service.ReadStream(ctx, tenantID, afterSequence, limit)
 }
 
 func (m *Module) appendDomain(ctx context.Context, db *gorm.DB, event DomainEvent) error {

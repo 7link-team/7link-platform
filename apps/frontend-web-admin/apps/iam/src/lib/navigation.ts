@@ -24,10 +24,16 @@ export const personalNavigation: SystemNavigationItem[] = [
   { path: "/user/applications", label: "authorizedApplications" },
 ]
 
+// entityNavigation offers each view behind the permission that governs its page,
+// taken from the caller's permissions in this entity. Nothing here is a fixed
+// list of what an entity member gets: a grant the account holds and a view it is
+// offered are the same decision, so a permission with a page has an entry and a
+// permission without one is a gap in the console rather than a policy.
 export function entityNavigation(
-  entityAccess: boolean,
-  fileAccess: boolean
+  permissions: Iterable<string>
 ): SystemNavigationItem[] {
+  const held = new Set(permissions)
+  const entityAccess = held.has("entity_view")
   return [
     ...(entityAccess
       ? [
@@ -35,16 +41,67 @@ export function entityNavigation(
           { path: "/roles", label: "entityAccessControl" },
         ]
       : []),
-    ...(fileAccess ? [{ path: "/files", label: "files" }] : []),
+    ...(held.has("file_view") ? [{ path: "/files", label: "files" }] : []),
+    ...(held.has("dept_view")
+      ? [{ path: "/departments", label: "departmentManagement" }]
+      : []),
     ...(entityAccess ? [{ path: "/manage", label: "entitySettings" }] : []),
   ]
 }
 
+// tenantPerspectiveOffered says whether a tenant in the switcher may be entered.
+// The switcher lists memberships, so entering one goes by the same standing
+// everybody else goes by: an operator acting as an operator uses the system area,
+// which is its own navigation, not this list.
+//
+// It is withheld only on evidence that this account's place in the tenant is an
+// entity -- nothing at tenant level, and an entity that admits it. An answer that
+// has not arrived withholds nothing. Reading an empty permission set as "no
+// standing" is what took every tenant away from the super administrator and the
+// system administrator: in the system area the set in hand is tenant-scoped and
+// therefore empty, while their standing in that tenant is 146 and 10 codes.
+export function tenantPerspectiveOffered(
+  tenantStanding: boolean | null,
+  anEntityAdmitsCaller: boolean
+): boolean {
+  return !(tenantStanding === false && anEntityAdmitsCaller)
+}
+
+// entityWorkspaceView says which view entering an entity lands on. The overview
+// reads the entity record itself, which is tenant-wide entity administration:
+// without that permission the page is a single refusal, so an account that
+// merely belongs to the entity lands on the view it does have. One function
+// because the switcher and the post-login redirect must not disagree.
+export function entityWorkspaceView(
+  tenantPermissions: Iterable<string>
+): "overview" | "files" {
+  for (const code of tenantPermissions) if (code === "entity_view") return "overview"
+  return "files"
+}
+
+// tenantSystemNavigation is what a tenant's sidebar shows beside its configured
+// menu tree. Every entry except the overview is there only while the tree does
+// not already name that path, which is what makes it a fallback rather than a
+// second source: /files and /field-policies are seeded menus now, so a tenant
+// created since carries its own rows and these entries fall silent. A tenant
+// seeded before them has no rows, and nothing re-creates them behind an
+// administrator's back -- a deleted menu cannot be told from one that never
+// existed, so resurrecting them is an operator's deliberate act.
+//
+// The overview is unconditional because it is the workspace home rather than a
+// page, and the access-request entry is unconditional-in-practice for a member
+// without access_request_view: the seeded row is gated on the approver's
+// permission, while filing a request is everybody's.
+// Every entry here addresses the tenant. One used to address an entity: an
+// account whose file access lives inside one was offered "files" in the tenant's
+// sidebar pointing at /entities/{id}/files, so clicking what looked like a tenant
+// item moved somebody into the entity perspective and the whole sidebar changed
+// under them. That is what "the menu changes" was. Such an account belongs in the
+// entity perspective, which it now lands in, and finds its files there.
 export function tenantSystemNavigation(
   paths: Set<string>,
   fileAccess: boolean,
-  fieldPolicyAccess: boolean,
-  scopedFileEntityID = ""
+  fieldPolicyAccess: boolean
 ): SystemNavigationItem[] {
   return [
     { path: "", label: "overview" },
@@ -53,14 +110,6 @@ export function tenantSystemNavigation(
       : []),
     ...(fileAccess && !paths.has("/files")
       ? [{ path: "/files", label: "files" }]
-      : []),
-    ...(!fileAccess && scopedFileEntityID
-      ? [
-          {
-            path: `/entities/${encodeURIComponent(scopedFileEntityID)}/files`,
-            label: "files",
-          },
-        ]
       : []),
     ...(fieldPolicyAccess && !paths.has("/field-policies")
       ? [{ path: "/field-policies", label: "fieldPermissions" }]

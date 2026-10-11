@@ -60,6 +60,7 @@ type principalUpdateInput struct {
 	Body     struct {
 		DisplayName *string `json:"display_name,omitempty" minLength:"1" maxLength:"128"`
 		Email       *string `json:"email,omitempty" maxLength:"320"`
+		Phone       *string `json:"phone,omitempty" maxLength:"32" doc:"E.164 number, or empty to remove it"`
 	}
 }
 
@@ -235,7 +236,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 			if err != nil {
 				return nil, identityError(err)
 			}
-			principal, err := service.Update(ctx, tenantID, id, in.Body.DisplayName, in.Body.Email)
+			principal, err := service.Update(ctx, tenantID, id, in.Body.DisplayName, in.Body.Email, in.Body.Phone)
 			if err != nil {
 				return nil, identityError(err)
 			}

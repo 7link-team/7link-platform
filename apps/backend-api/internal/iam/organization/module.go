@@ -41,6 +41,7 @@ type Module struct {
 	registrar        *authz.Registrar
 	members          core.ActiveMemberChecker
 	administrators   core.AdministratorGuard
+	scopes           core.TenantConstraint
 	credentials      authn.InvitationCredentials
 	createPrincipal  identity.InvitationPrincipalCreator
 	ids              guid.Source
@@ -108,6 +109,12 @@ func (m *Module) InjectServices(services *module.Services) error {
 	administrators, err := module.Resolve[core.AdministratorGuard](services)
 	if err != nil {
 		return fmt.Errorf("resolve organization administrator guard: %w", err)
+	}
+	// The department listing has to narrow by the caller's compiled dept_view
+	// constraint, which only the authorizer can answer.
+	scopes, err := module.Resolve[core.TenantConstraint](services)
+	if err != nil {
+		return fmt.Errorf("resolve organization tenant constraint: %w", err)
 	}
 	credentials, err := module.Resolve[authn.InvitationCredentials](services)
 	if err != nil {
@@ -195,6 +202,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	m.registrar = registrar
 	m.bootstrap, m.roots, m.rootContent, m.owners = bootstrap, roots, rootContent, owners
 	m.members, m.administrators = members, administrators
+	m.scopes = scopes
 	m.credentials, m.createPrincipal = credentials, createPrincipal
 	m.ids, m.appender = ids, appender
 	m.directorySources = directorySources
@@ -209,8 +217,9 @@ func (m *Module) Initialize(context.Context) error {
 		return errors.New("initialize organization: module is required")
 	}
 	if m.runtime == nil || m.registrar == nil || m.members == nil || m.administrators == nil ||
-		m.credentials == nil || m.createPrincipal == nil || m.ids == nil || m.appender == nil {
-		return errors.New("initialize organization: runtime, authz registrar, member checker, administrator guard, invitation credentials, principal creator, id generator, and audit appender are required")
+		m.scopes == nil || m.credentials == nil || m.createPrincipal == nil || m.ids == nil ||
+		m.appender == nil {
+		return errors.New("initialize organization: runtime, authz registrar, member checker, administrator guard, tenant constraint, invitation credentials, principal creator, id generator, and audit appender are required")
 	}
 	// Checked here rather than in every statement: injection has run, so an
 	// owner that published nothing is a deployment that must not start.
@@ -225,6 +234,7 @@ func (m *Module) Initialize(context.Context) error {
 	m.service.roots, m.tenants.roots = m.roots, m.roots
 	m.service.rootContent = m.rootContent
 	m.service.administrators = m.administrators
+	m.service.scopes = m.scopes
 	m.groups = NewGroupService(m.runtime, m.appender, m.members, m.administrators, m.ids)
 	m.invitations = NewInvitationService(m.runtime, m.appender, m.administrators, m.ids, m.credentials, m.createPrincipal)
 	for _, repo := range []*Repository{

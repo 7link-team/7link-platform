@@ -3,7 +3,9 @@ import { AuthProvider } from "./components/auth-provider"
 import { PendingRoute } from "./components/pending-route"
 import { RouteError } from "./components/route-error"
 import { authEntrances, entrancePath } from "./lib/auth-entrance"
-import { legacyRouteLoader, workspaceHomeLoader } from "./route-loaders"
+import { legacyRouteLoader, workspaceHomeLoader,
+  tenantWorkspaceLoader,
+} from "./route-loaders"
 
 export const router = createBrowserRouter([
   {
@@ -309,6 +311,7 @@ export const router = createBrowserRouter([
               },
               {
                 path: "/admin/:tenantID",
+                loader: tenantWorkspaceLoader,
                 lazy: async () => ({
                   Component: (await import("./app/dashboard/page")).default,
                 }),
@@ -342,6 +345,17 @@ export const router = createBrowserRouter([
                 path: "/admin/:tenantID/entities/:entityID/files",
                 lazy: async () => ({
                   Component: (await import("./app/files/page")).default,
+                }),
+              },
+              // The register of departments, reached from inside an entity. It is
+              // the same page as the tenant's, which the service narrows to the
+              // departments the caller's grant names; it lives here as well so
+              // that reaching it does not leave the entity perspective, the way
+              // the files view above does not.
+              {
+                path: "/admin/:tenantID/entities/:entityID/departments",
+                lazy: async () => ({
+                  Component: (await import("./app/departments/page")).default,
                 }),
               },
               {
@@ -399,6 +413,12 @@ export const router = createBrowserRouter([
                 path: "/admin/:tenantID/oauth-clients",
                 lazy: async () => ({
                   Component: (await import("./app/oauth-clients/page")).default,
+                }),
+              },
+              {
+                path: "/admin/:tenantID/device",
+                lazy: async () => ({
+                  Component: (await import("./app/device/page")).default,
                 }),
               },
               {

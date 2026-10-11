@@ -4,7 +4,6 @@ import (
 	"7link.com/platform/internal/files"
 	"context"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -128,11 +127,9 @@ type identityHarness struct {
 
 func newIdentityHarness(t *testing.T, prefix string) *identityHarness {
 	t.Helper()
-	dsn := fmt.Sprintf(
-		"file:%s?_busy_timeout=10000&_journal_mode=WAL",
-		filepath.ToSlash(filepath.Join(t.TempDir(), "identity.sqlite")),
-	)
-	initializeIdentityDatabase(t, dsn, prefix)
+	path := filepath.Join(t.TempDir(), "identity.sqlite")
+	cloneSchemaDatabase(t, prefix, path)
+	dsn := templateSQLiteDSN(path)
 	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
 		"primary": {Type: "sqlite", DSN: dsn, Writable: true, Readable: true},
 	})
@@ -676,7 +673,7 @@ func TestEveryServiceEntryPointFailsWithoutDatabase(t *testing.T) {
 			return err
 		},
 		"Update": func() error {
-			_, err := service.Update(selfContext(ctx, 1), 7, 1, &display, nil)
+			_, err := service.Update(selfContext(ctx, 1), 7, 1, &display, nil, nil)
 			return err
 		},
 		"SetStatus": func() error {

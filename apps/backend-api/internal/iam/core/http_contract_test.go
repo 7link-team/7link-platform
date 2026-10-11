@@ -112,6 +112,7 @@ iam-revoke-role-permission|DELETE|/roles/{role_id}/permissions/{permission_code}
 iam-set-role-permission-condition|PUT|/roles/{role_id}/permissions/{permission_code}/condition
 iam-clear-role-permission-condition|DELETE|/roles/{role_id}/permissions/{permission_code}/condition
 iam-list-role-members|GET|/roles/{role_id}/members
+iam-list-role-member-grants|GET|/roles/{role_id}/member-grants
 iam-add-role-member|PUT|/roles/{role_id}/members/{principal_id}
 iam-remove-role-member|DELETE|/roles/{role_id}/members/{principal_id}
 iam-list-role-directory-bindings|GET|/roles/{role_id}/directory-bindings
@@ -129,6 +130,7 @@ iam-get-menu|GET|/menus/{menu_id}
 iam-update-menu|PATCH|/menus/{menu_id}
 iam-delete-menu|DELETE|/menus/{menu_id}
 iam-effective-menus|GET|/tenants/{tenant_id}/principals/{principal_id}/menus
+iam-member-entities|GET|/tenants/{tenant_id}/principals/{principal_id}/entities
 iam-effective-platform-permissions|GET|/principals/{principal_id}/permissions
 iam-effective-tenant-permissions|GET|/tenants/{tenant_id}/principals/{principal_id}/permissions
 iam-effective-entity-permissions|GET|/tenants/{tenant_id}/entities/{entity_id}/principals/{principal_id}/permissions`
@@ -145,7 +147,7 @@ func TestCoreRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 118)
+	require.Len(t, got, 120)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 

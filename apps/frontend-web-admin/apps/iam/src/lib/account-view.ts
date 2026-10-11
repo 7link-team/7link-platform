@@ -127,8 +127,15 @@ export function accountViewResponse(status: number, requestRevision: number) {
 export async function exitAccountView() {
   const view = current
   if (!view) return
+  // Cleared first, and the revocation is best effort, for the same reason as
+  // sign-out: leaving the view must not depend on the service answering.
   clearAccountView()
-  await revokeAccountView(view.id)
+  try {
+    await revokeAccountView(view.id)
+  } catch {
+    // Deliberately ignored: the view is already gone from this tab, and it
+    // carries an expiry the service enforces without being asked.
+  }
   window.close()
 }
 

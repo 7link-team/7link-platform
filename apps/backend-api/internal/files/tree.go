@@ -42,12 +42,23 @@ func (t directoryTree) createSpaceOn(ctx context.Context, tx *gorm.DB, id, rootI
 	} else {
 		space.PrincipalID = &ownerID
 	}
-	slot := 1
-	root := model.Node{ID: rootID, SpaceID: id, ParentKind: "directory", RootSlot: &slot, LiveSlot: &slot, Kind: "directory", State: "active", Version: 1, ManagementMode: "user", CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli()}
 	q := query.Bind(tx, t.prefix)
 	if err := q.Space.WithContext(ctx).Create(&space); err != nil {
 		return err
 	}
+	return t.createSpaceRootOn(ctx, tx, id, rootID, now)
+}
+
+func (t directoryTree) createSpaceRootOn(ctx context.Context, tx *gorm.DB, id, rootID guid.ID, now time.Time) error {
+	if tx == nil || id <= 0 || rootID <= 0 {
+		return errHierarchy
+	}
+	if _, active := tx.Statement.ConnPool.(gorm.TxCommitter); !active {
+		return ErrAccountTransaction
+	}
+	slot := 1
+	root := model.Node{ID: rootID, SpaceID: id, ParentKind: "directory", RootSlot: &slot, LiveSlot: &slot, Kind: "directory", State: "active", Version: 1, ManagementMode: "user", CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli()}
+	q := query.Bind(tx, t.prefix)
 	if err := q.Node.WithContext(ctx).Create(&root); err != nil {
 		return err
 	}

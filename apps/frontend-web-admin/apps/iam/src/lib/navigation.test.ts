@@ -10,6 +10,9 @@ import {
   defaultWorkspacePath,
   tenantSystemNavigation,
   firstEffectiveMenuPath,
+  entityWorkspaceView,
+  tenantPerspectiveOffered,
+  entityNavigation,
 } from "./navigation"
 
 const menus: EffectiveMenu[] = [
@@ -114,11 +117,14 @@ describe("effective navigation", () => {
         true
       ).map((item) => item.path)
     ).toEqual([""])
+    // Every entry addresses the tenant. The one that addressed an entity is
+    // gone: it moved somebody into the entity perspective from what looked like
+    // a tenant item, and such an account lands in that perspective now.
     expect(
-      tenantSystemNavigation(new Set(), false, false, "123").map(
-        (item) => item.path
-      )
-    ).toEqual(["", "/access-requests", "/entities/123/files"])
+      tenantSystemNavigation(new Set(), false, false).map((item) => item.path)
+    ).toEqual(["", "/access-requests"])
+    for (const item of tenantSystemNavigation(new Set(), true, true))
+      expect(item.path.startsWith("/entities/")).toBe(false)
   })
   it("omits empty authorized groups while keeping accessible descendants", () => {
     const empty = {
@@ -153,5 +159,68 @@ describe("effective navigation", () => {
   it("keeps an empty authorization result empty", () => {
     expect(flattenEffectiveMenus([])).toEqual([])
     expect(effectiveMenuPaths([]).size).toBe(0)
+  })
+})
+
+describe("entityWorkspaceView", () => {
+  // The overview reads the entity record, which is tenant-wide entity
+  // administration. An account that merely belongs to the entity used to be sent
+  // there and got one refusal where its whole perspective should have been.
+  it("sends an account without tenant-wide entity administration to the view it has", () => {
+    expect(entityWorkspaceView([])).toBe("files")
+    expect(entityWorkspaceView(["file_view", "dept_view"])).toBe("files")
+    expect(entityWorkspaceView(new Set(["entity_view"]))).toBe("overview")
+  })
+})
+
+describe("tenantPerspectiveOffered", () => {
+  // Withheld only on evidence that this account's place is an entity.
+  it("sends an account whose place is an entity there rather than into the tenant", () => {
+    expect(tenantPerspectiveOffered(false, true)).toBe(false)
+  })
+  it("offers the tenant to anybody with standing in it", () => {
+    expect(tenantPerspectiveOffered(true, true)).toBe(true)
+    expect(tenantPerspectiveOffered(true, false)).toBe(true)
+  })
+  // An operator in the system area holds no tenant-scoped set there, and an
+  // account with nothing at tenant level and no entity has only the tenant's
+  // self-service shell. Neither is evidence for withholding.
+  it("withholds nothing without that evidence", () => {
+    expect(tenantPerspectiveOffered(null, true)).toBe(true)
+    expect(tenantPerspectiveOffered(null, false)).toBe(true)
+    expect(tenantPerspectiveOffered(false, false)).toBe(true)
+  })
+})
+
+describe("entityNavigation", () => {
+  // What an entity account is offered follows the grants it holds in that
+  // entity. The list used to be two booleans, so a permission whose page exists
+  // -- the department register -- had no entry at all and the grant was
+  // unreachable from the console.
+  it("offers each view behind the permission that governs it", () => {
+    expect(entityNavigation([]).map((item) => item.path)).toEqual([])
+    expect(entityNavigation(["file_view"]).map((item) => item.path)).toEqual([
+      "/files",
+    ])
+    expect(entityNavigation(["dept_view"]).map((item) => item.path)).toEqual([
+      "/departments",
+    ])
+    expect(
+      entityNavigation(["entity_view", "file_view", "dept_view"]).map(
+        (item) => item.path
+      )
+    ).toEqual(["/overview", "/roles", "/files", "/departments", "/manage"])
+  })
+  // Every entry hangs off the entity being viewed, the department register
+  // included: reaching it must not leave the perspective, which is what a link
+  // to the tenant's own page did.
+  it("keeps every entry inside the entity", () => {
+    for (const item of entityNavigation([
+      "entity_view",
+      "file_view",
+      "dept_view",
+    ]))
+      expect(item.path.startsWith("/")).toBe(true)
+    expect(entityNavigation(["dept_view"])[0]?.path).toBe("/departments")
   })
 })

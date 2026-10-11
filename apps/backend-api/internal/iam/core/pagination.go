@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"7link.com/platform/internal/infra/guid"
 	"gorm.io/gen"
@@ -164,6 +165,66 @@ func (r *Repository) ListRoleMembersPage(
 		principals[index] = row.PrincipalID
 	}
 	return principals, total, nil
+}
+
+// RoleMemberGrant is one assignment as an administration screen reads it: who
+// holds the role and when it stops granting, which the identifier-only listing
+// beside it cannot say.
+type RoleMemberGrant struct {
+	PrincipalID guid.ID    `json:"principal_id"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// ListRoleMemberGrantsPage returns a stable page of a role's assignments with
+// their ends. Lapsed assignments are included: the row is still there, removing
+// it is still an act, and a screen that hid them would offer to grant a role the
+// person appears not to hold while the write reports no change.
+func (r *Repository) ListRoleMemberGrantsPage(
+	ctx context.Context,
+	tenantID, roleID guid.ID,
+	offset, limit int,
+) ([]RoleMemberGrant, int64, error) {
+	repo, err := r.pinWriter()
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := repo.ensureRole(ctx, tenantID, roleID); err != nil {
+		return nil, 0, err
+	}
+	tables, _, err := repo.tables()
+	if err != nil {
+		return nil, 0, err
+	}
+	offset, limit = normalizePage(offset, limit)
+	total, err := tables.RoleMembers.WithContext(ctx).
+		Where(tables.RoleMembers.TenantID.Eq(tenantID), tables.RoleMembers.RoleID.Eq(roleID)).Count()
+	if err != nil {
+		return nil, 0, fmt.Errorf("count role member grants: %w", err)
+	}
+	listing := tables.RoleMembers.WithContext(ctx).
+		Where(tables.RoleMembers.TenantID.Eq(tenantID), tables.RoleMembers.RoleID.Eq(roleID)).
+		Order(tables.RoleMembers.PrincipalID)
+	if limit > 0 {
+		listing = listing.Limit(limit)
+	}
+	if offset > 0 {
+		listing = listing.Offset(offset)
+	}
+	rows, err := listing.Find()
+	if err != nil {
+		return nil, 0, fmt.Errorf("list role member grants: %w", err)
+	}
+	grants := make([]RoleMemberGrant, 0, len(rows))
+	for _, row := range rows {
+		grant := RoleMemberGrant{PrincipalID: row.PrincipalID, CreatedAt: row.CreatedAt.UTC()}
+		if row.ExpiresAt != nil {
+			end := row.ExpiresAt.UTC()
+			grant.ExpiresAt = &end
+		}
+		grants = append(grants, grant)
+	}
+	return grants, total, nil
 }
 
 // ListEntityRoleBindingsPage returns a stable page of the direct role bindings

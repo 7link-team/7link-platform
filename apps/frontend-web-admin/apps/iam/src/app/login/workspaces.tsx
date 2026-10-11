@@ -75,10 +75,12 @@ function WorkspaceOptions() {
     if (status !== "authenticated" || items?.length !== 1 || creating) return
     const selected = items[0]!
     if (entry === "tenant") setTenant(selected.id)
+    // The tenant route decides which of its perspectives this caller gets, so a
+    // chosen tenant is addressed directly: routing this through the workspace
+    // home would send an operator with system authority to /system instead of
+    // the tenant they chose.
     navigate(
-      entry === "platform"
-        ? `/platform/${selected.id}`
-        : `/admin/${selected.id}`,
+      entry === "platform" ? `/platform/${selected.id}` : `/admin/${selected.id}`,
       { replace: true }
     )
   }, [status, items, creating, entry, navigate])

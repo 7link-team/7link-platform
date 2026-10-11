@@ -130,7 +130,7 @@ B2 = gen 无同构 API，清零必须"换实现"，而换实现会动语义/性�
 | M1 | B1 机械迁移（248 站）：照 gen Do 类型化改写，逐语句跑既有测试 + 三方言 | 工作量（可并行按模块切） | 最大块 |
 | M2 | B1-check（21 站）执行验证：SQLite 先跑通，再 MySQL/PG；验证 `Take/ErrRecordNotFound`、`Select-on-update`、`SetCol`、`NewField` 限定列、别名 JOIN 渲染 | 验证前置 | M1 之后 |
 | M3 | B2 逐族决策（§3 的 D1-D10）→ 拍板 (a) 排期换实现 / (b) B3 登记 / (c) 记录保留 | **用户决策** | 本文档即输入 |
-| M4 | B3 登记规范化：把无锚点的 B3 补注释；goosex 访问器（principallifecycle:47）作为扩展内收敛 | 工程 | 可选 |
+| M4 | B3 登记规范化：把无锚点的 B3 补注释；goosex 访问器（principallifecycle:47）作为扩展内收敛（2026-09-30 已收敛：`goosex.CurrentVersion`，调用点移至 `internal/principallifecycle/anonymizer.go`，无 SQL） | 工程 | 可选 |
 | 验收口径 | ① 账本：budget 降至与实际违规相等（含 reviewCounts 29→28 等）；② 片段层：B1+B1-check 归零；③ B2/B3 全部在案（清单即本文件） | 验收 | — |
 
 **跨模块 gen import / owner 能力接口**（D6）是唯一需要提前定的架构决策：它决定 oauth 5、identity 13、prov S44/S45、gov 5、fed 5 的归属。参考先例：`core.RoleGrantStore`、`identity.PrincipalStateStore`（函数结构体契约 + 调用方事务）；`ModuleDependencies()` 声明；`Registry.Activate` 全序不可破。已实测允许的方向：**identity → core/query**（4 站已降 B1）；不允许：**identity → organization/oauth**（注册序 + 既有反向 Go 边）、**authn ↔ identity**（死角）。

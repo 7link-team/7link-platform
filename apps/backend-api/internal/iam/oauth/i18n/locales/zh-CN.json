@@ -17,5 +17,10 @@
   "scope_openid": "确认你的身份",
   "scope_profile": "读取你的基本资料",
   "scope_email": "读取你的邮箱地址",
-  "scope_offline_access": "在你离线时保持登录"
+  "scope_offline_access": "在你离线时保持登录",
+  "device_request_missing": "该代码没有对应的待批准请求。请核对设备上显示的代码后重试;代码在显示后几分钟内失效。",
+  "exchange_grant_missing": "指定的令牌交换授权不存在。请刷新列表并选择现有授权。",
+  "exchange_grant_exists": "该客户端对此主体已有授权。请直接编辑已有授权,而不是再添加一条。",
+  "exchange_grant_invalid": "令牌交换授权无效。请指定现有客户端、主体,以及该委派可申请的权限范围。",
+  "unavailable": "该 OAuth 操作当前不可用。请稍后重试;若问题持续,请联系管理员。"
 }

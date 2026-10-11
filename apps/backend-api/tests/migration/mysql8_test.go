@@ -17,6 +17,7 @@ import (
 	"7link.com/platform/internal/iam/oauth"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
+	"7link.com/platform/internal/iam/webhook"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"7link.com/platform/pkg/module"
 	_ "github.com/go-sql-driver/mysql"
@@ -65,7 +66,8 @@ func TestIAMMigrationsOnRealMySQL8(t *testing.T) {
 			_, err := app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
 				Action: app.MigrationDownTo, Module: federation.Name, To: 6,
 			}, prefix)
-			assert.ErrorContains(t, err, "binding trust downgrade is forbidden")
+			assert.ErrorContains(t, err, "is irreversible")
+			assert.ErrorContains(t, err, "nothing was rolled back")
 			assertRealMySQLSchemaSet(t, db, prefix)
 			assertRealMySQLUp(t, gormDB, modules, prefix)
 			assertRealMySQLSchemaSet(t, db, prefix)
@@ -96,12 +98,19 @@ func verifyRealMySQLServer(t *testing.T, db *sql.DB) {
 	t.Logf("verified MySQL %s with sql_mode=%s", version, sqlMode)
 }
 
+// realMySQLMigrationModules is derived from the ownership contracts rather than
+// written out again. A hand-written list goes stale the moment a module is added
+// -- webhook was added and this list was not, so the gate migrated nine modules
+// and compared the result against ten contracts' tables. The order it yields is
+// not the dependency order either, which is the property under test: production
+// milestone dependencies have to sort themselves.
 func realMySQLMigrationModules() []module.Module {
-	// Deliberately scrambled: production milestone dependencies own the order.
-	return []module.Module{
-		&federation.Module{}, &oauth.Module{}, &governance.Module{}, &authn.Module{},
-		&organization.Module{}, &iamaudit.Module{}, &provisioning.Module{}, &identity.Module{}, &iamcore.Module{},
+	contracts := iamMigrationContracts()
+	modules := make([]module.Module, 0, len(contracts))
+	for _, contract := range contracts {
+		modules = append(modules, contract.module)
 	}
+	return modules
 }
 
 func assertRealMySQLUp(t *testing.T, db *gorm.DB, modules []module.Module, prefix string) {
@@ -110,7 +119,7 @@ func assertRealMySQLUp(t *testing.T, db *gorm.DB, modules []module.Module, prefi
 		Action: app.MigrationUp,
 	}, prefix)
 	require.NoError(t, err)
-	require.Len(t, reports, 9)
+	require.Len(t, reports, len(modules))
 	for _, report := range reports {
 		assert.Equal(t, goosex.StateClean, report.Status.State, report.Module)
 		assert.Equal(t, report.Status.Target, report.Status.Current, report.Module)
@@ -119,7 +128,7 @@ func assertRealMySQLUp(t *testing.T, db *gorm.DB, modules []module.Module, prefi
 		Action: app.MigrationValidate,
 	}, prefix)
 	require.NoError(t, err)
-	require.Len(t, validated, 9)
+	require.Len(t, validated, len(modules))
 }
 
 func assertRealMySQLDown(t *testing.T, sqlDB *sql.DB, db *gorm.DB, modules []module.Module, prefix string) {
@@ -130,6 +139,9 @@ func assertRealMySQLDown(t *testing.T, sqlDB *sql.DB, db *gorm.DB, modules []mod
 	}, prefix)
 	require.NoError(t, err)
 	for _, name := range []string{
+		// Nothing depends on webhook, so it comes off first; the rest is the
+		// reverse of the dependency order the modules declare.
+		webhook.Name,
 		federation.Name, authn.Name, oauth.Name, governance.Name, provisioning.Name,
 		organization.Name, iamcore.Name, identity.Name, iamaudit.Name,
 	} {
@@ -145,7 +157,7 @@ func assertRealMySQLDown(t *testing.T, sqlDB *sql.DB, db *gorm.DB, modules []mod
 func assertRealMySQLSchemaSet(t *testing.T, db *sql.DB, prefix string) {
 	t.Helper()
 	expectedTables := make([]string, 0, 64)
-	expectedVersions := make([]string, 0, 9)
+	expectedVersions := make([]string, 0, len(iamMigrationContracts()))
 	for _, contract := range iamMigrationContracts() {
 		for _, table := range contract.tables {
 			expectedTables = append(expectedTables, prefix+table)

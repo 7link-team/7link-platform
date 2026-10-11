@@ -45,6 +45,7 @@ func (f *iamTenantFixture) closureCookie(t *testing.T, principal identity.Princi
 	t.Helper()
 	response := f.request(t, http.MethodPost, "/login", 0, "", map[string]any{
 		"login_name": principal.LoginName, "password": "correct horse battery staple",
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": integrationCaptchaAnswer,
 	}, map[string]string{"Origin": "https://app.example.test"})
 	requireStatus(t, http.StatusCreated, response)
 	require.NotEmpty(t, response.Cookies)

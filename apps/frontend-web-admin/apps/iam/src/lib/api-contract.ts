@@ -35,6 +35,8 @@ import type {
   AuditIntegrity,
   AuditRetentionPolicy,
   AuthnCapabilities,
+  CaptchaCapability,
+  DeploymentIdentity,
   AuthorizationExplanation,
   BrowserSession,
   Captcha,
@@ -150,6 +152,12 @@ export type _AuditRetentionPolicy = Agreed<
 >
 export type _AuthnCapabilities = Agreed<
   Compare<AuthnCapabilities, S["AuthenticationCapabilities"]>
+>
+export type _CaptchaCapability = Agreed<
+  Compare<CaptchaCapability, S["CaptchaCapability"]>
+>
+export type _DeploymentIdentity = Agreed<
+  Compare<DeploymentIdentity, S["DeploymentIdentity"]>
 >
 export type _AuthorizationExplanation = Agreed<
   Compare<AuthorizationExplanation, S["Explanation"]>

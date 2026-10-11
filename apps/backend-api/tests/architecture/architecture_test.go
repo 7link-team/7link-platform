@@ -30,6 +30,7 @@ const (
 
 var iamModules = []string{
 	"audit", "authn", "core", "federation", "governance", "identity", "oauth", "organization", "provisioning",
+	"webhook",
 }
 
 type listedPackage struct {

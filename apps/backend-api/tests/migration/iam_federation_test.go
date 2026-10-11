@@ -103,8 +103,8 @@ func assertFederationUp(t *testing.T, db *gorm.DB, modules []module.Module, pref
 		milestones[report.Module] = report.Milestone
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
-	assert.Equal(t, "self-registration-origin", milestones[identity.Name])
-	assert.Equal(t, "binding-trust", milestones[federation.Name])
+	assert.Equal(t, "phone", milestones[identity.Name])
+	assert.Equal(t, "social-providers", milestones[federation.Name])
 }
 
 func TestLegacyFederationBindingUpgradePreservesUnknownOwnership(t *testing.T) {
@@ -138,6 +138,10 @@ func TestLegacyFederationBindingUpgradePreservesUnknownOwnership(t *testing.T) {
 					assert.Equal(t, int64(991), principalID)
 					assert.False(t, quarantined.Valid)
 					require.NoError(t, execFederationSQL(t, db, "UPDATE %siam_identity_links SET recovery_evidence = 'independent case 42' WHERE provider_id = 991", prefix))
+					// Driving goose directly bypasses the orchestrator's milestone
+					// check, so this is what still exercises the refusal inside
+					// the migration itself -- the backstop for anyone running
+					// goose by hand.
 					assert.ErrorContains(t, goosex.MigrateDownTo(t.Context(), db, source, engine.dialect, 6), "binding trust downgrade is forbidden")
 					require.NoError(t, db.QueryRowContext(t.Context(), fmt.Sprintf("SELECT recovery_evidence FROM %siam_identity_links WHERE provider_id = 991", prefix)).Scan(&evidence))
 					assert.Equal(t, "independent case 42", evidence, "rollback retains ownership evidence")
@@ -242,10 +246,14 @@ func verifyFederationRollbackGraph(
 	}, prefix)
 	assert.ErrorContains(t, err, `"federation.constraints"`)
 
+	// The orchestrator refuses this before it reaches the database, because the
+	// milestone declares itself irreversible. The tables that follow are what
+	// prove nothing was undone on the way to finding out.
 	_, err = app.ExecuteModuleMigrations(t.Context(), db, modules, app.MigrationRequest{
 		Action: app.MigrationDownTo, Module: federation.Name, To: 0,
 	}, prefix)
-	assert.ErrorContains(t, err, "binding trust downgrade is forbidden")
+	assert.ErrorContains(t, err, "is irreversible")
+	assert.ErrorContains(t, err, "nothing was rolled back")
 	assertTableExists(t, sqlDB, dialect, prefix+"iam_identity_providers", true)
 	assertTableExists(t, sqlDB, dialect, prefix+"iam_federation_replay_claims", true)
 }

@@ -25,6 +25,11 @@ var domainErrorMappers = []string{
 	"internal/iam/authn.accountViewHTTPError",
 	"internal/iam/authn.authenticationError",
 	"internal/iam/authn.personalTokenError",
+	// Not a domain error mapper in the usual sense: it turns a captcha
+	// verification outcome into the refusal a client can act on. It is listed
+	// because it has the same shape and the same obligation -- a status chosen
+	// below it must survive.
+	"internal/iam/authn.refuseUnansweredCaptcha",
 	"internal/iam/core.apiError",
 	"internal/iam/core.platformAPIError",
 	"internal/iam/federation.federationError",
@@ -33,6 +38,7 @@ var domainErrorMappers = []string{
 	"internal/iam/identity.closureError",
 	"internal/iam/identity.identityError",
 	"internal/iam/oauth.consentError",
+	"internal/iam/oauth.deviceError",
 	"internal/iam/oauth.oauthClientError",
 	"internal/iam/oauth.oauthConsentError",
 	"internal/iam/organization.departmentError",
@@ -41,6 +47,7 @@ var domainErrorMappers = []string{
 	"internal/iam/organization.tenantError",
 	"internal/iam/provisioning.provisioningError",
 	"internal/todo.httpError",
+	"internal/iam/webhook.webhookError",
 }
 
 func TestDomainErrorMappersKeepChosenStatus(t *testing.T) {

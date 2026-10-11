@@ -1,0 +1,6 @@
+{
+  "invalid_request": "Langganan webhook tidak sah. Periksa URL penerima, nama dan jenis peristiwa, kemudian cuba lagi.",
+  "subscription_missing": "Langganan webhook itu tidak wujud. Muat semula senarai dan pilih yang ada.",
+  "subscription_exists": "Penyewa ini sudah mempunyai langganan webhook dengan nama itu. Pilih nama lain atau edit yang ada.",
+  "unavailable": "Penghantaran webhook tidak tersedia sekarang. Cuba lagi sebentar; hubungi pentadbir jika berterusan."
+}

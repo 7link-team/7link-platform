@@ -46,9 +46,9 @@ func TestRoleGrantedMergesPermanentAndTemporaryHolds(t *testing.T) {
 	require.NoError(t, err)
 
 	now := repositoryTestTime
-	_, err = repository.AddMember(t.Context(), 1, permanent.ID, 11)
+	_, err = repository.AddMember(t.Context(), 1, permanent.ID, 11, nil)
 	require.NoError(t, err)
-	_, err = repository.AddMember(t.Context(), 1, heldTwice.ID, 11)
+	_, err = repository.AddMember(t.Context(), 1, heldTwice.ID, 11, nil)
 	require.NoError(t, err)
 	require.NoError(t, repository.GrantTemporaryRole(
 		t.Context(), 1, 601, unexpired.ID, 11, 99, now.Add(-time.Hour), now.Add(time.Hour),
@@ -108,7 +108,7 @@ func TestRoleGrantedReportsEitherSourceFailingEvenWhenTheOtherMatches(t *testing
 			repository := seedRoleGrantedPrincipal(t, harness)
 			role, err := repository.CreateRole(t.Context(), 1, "Held", "")
 			require.NoError(t, err)
-			_, err = repository.AddMember(t.Context(), 1, role.ID, 11)
+			_, err = repository.AddMember(t.Context(), 1, role.ID, 11, nil)
 			require.NoError(t, err)
 
 			granted, err := repository.roleGrantedOn(t.Context(), repository.writer(), 1, role.ID, 11, repositoryTestTime)
@@ -164,7 +164,7 @@ func TestRoleGrantedReadsThroughTheCallerTransaction(t *testing.T) {
 
 	rolledBack := errors.New("roll back")
 	err = repository.runInTx(t.Context(), func(repo *Repository) error {
-		_, err := repo.AddMember(t.Context(), 1, role.ID, 11)
+		_, err := repo.AddMember(t.Context(), 1, role.ID, 11, nil)
 		require.NoError(t, err)
 		granted, err := repo.roleGrantedOn(t.Context(), repo.writer(), 1, role.ID, 11, repositoryTestTime)
 		require.NoError(t, err)

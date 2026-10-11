@@ -5,6 +5,18 @@ export function tenantIDFromPath(pathname: string): string {
   return match ? decodeURIComponent(match[1] ?? "") : ""
 }
 
+// The entity a console path addresses, for any depth below it. Derived from the
+// path's shape rather than matched against a pattern with a fixed number of
+// segments: a pattern that named exactly one segment after the entity kept the
+// perspective for /entities/:id/files and lost it for anything longer, so adding
+// a view inside an entity silently moved somebody into the tenant's perspective.
+export function entityIDFromPath(pathname: string): string {
+  const match = /^\/admin\/[1-9][0-9]*\/entities\/([1-9][0-9]*)(?:\/|$)/.exec(
+    pathname
+  )
+  return match ? decodeURIComponent(match[1] ?? "") : ""
+}
+
 export function routeTenantID(): string {
   if (typeof window === "undefined") return ""
   return tenantIDFromPath(window.location?.pathname ?? "")

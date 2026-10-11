@@ -36,7 +36,8 @@ func localAuthnConfig() authnext.Config {
 			AllowedOrigins:    []string{"https://app.example.test"},
 			SessionTTL:        time.Hour, IdleTTL: 15 * time.Minute,
 		},
-		MFA: authnext.MFAConfig{EncryptionKey: key},
+		MFA:     authnext.MFAConfig{EncryptionKey: key},
+		Captcha: authnext.CaptchaConfig{TestAnswer: testCaptchaAnswer},
 	}
 }
 
@@ -70,13 +71,15 @@ func bootstrapLocalPrincipal(t *testing.T, harness *authnRepositoryHarness, logi
 }
 
 func TestNewWebServiceConfiguration(t *testing.T) {
-	disabled, err := NewWebService(authnext.Config{}, nil)
+	disabled, err := NewWebService(authnext.Config{
+		Captcha: authnext.CaptchaConfig{TestAnswer: testCaptchaAnswer}}, nil)
 	require.NoError(t, err)
 	assert.False(t, disabled.Enabled())
 	assert.ErrorIs(t, disabled.ValidateLoginOrigin(""), ErrCSRF)
 	assert.Empty(t, disabled.JWKS()["keys"])
 
-	_, err = NewWebService(authnext.Config{Enabled: true}, nil)
+	_, err = NewWebService(authnext.Config{
+		Captcha: authnext.CaptchaConfig{TestAnswer: testCaptchaAnswer}, Enabled: true}, nil)
 	assert.ErrorContains(t, err, "writable database")
 
 	harness := newAuthnRepositoryHarness(t, "")
@@ -223,7 +226,8 @@ func tokenPayloadString(t *testing.T, token, key string) string {
 }
 
 func TestDisabledAndNilServiceMethodsFailClosed(t *testing.T) {
-	disabled, err := NewWebService(authnext.Config{}, nil)
+	disabled, err := NewWebService(authnext.Config{
+		Captcha: authnext.CaptchaConfig{TestAnswer: testCaptchaAnswer}}, nil)
 	require.NoError(t, err)
 	_, _, err = disabled.IssueSubjectToken("service", "audience", "", "", "")
 	assert.ErrorIs(t, err, authnext.ErrDisabled)
@@ -643,6 +647,7 @@ func TestWebServiceDefaultsAndConfigurationBoundaries(t *testing.T) {
 	harness := newAuthnRepositoryHarness(t, "")
 	key := base64.RawStdEncoding.EncodeToString([]byte(strings.Repeat("d", 32)))
 	service, err := NewWebService(authnext.Config{
+		Captcha: authnext.CaptchaConfig{TestAnswer: testCaptchaAnswer},
 		Enabled: true, Issuer: " https://iam.example.test/ ", SigningKey: key,
 		Web: authnext.WebConfig{
 			Enabled: true, PostLoginURL: "https://app.example.test/home",
@@ -719,7 +724,8 @@ func TestWebServiceDefaultsAndConfigurationBoundaries(t *testing.T) {
 }
 
 func TestWebServiceReachableEdgeBranches(t *testing.T) {
-	disabled, err := NewWebService(authnext.Config{}, nil)
+	disabled, err := NewWebService(authnext.Config{
+		Captcha: authnext.CaptchaConfig{TestAnswer: testCaptchaAnswer}}, nil)
 	require.NoError(t, err)
 	_, err = disabled.ResolveReturnURL("")
 	assert.ErrorIs(t, err, authnext.ErrDisabled)

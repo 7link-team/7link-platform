@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"gorm.io/gen/field"
 	"time"
 
 	"7link.com/platform/internal/iam/core/model"
@@ -56,6 +57,7 @@ func (r *Repository) roleGrantedOn(
 			tables.RoleMembers.TenantID.Eq(tenantID),
 			tables.RoleMembers.RoleID.Eq(roleID),
 			tables.RoleMembers.PrincipalID.Eq(principalID),
+			field.Or(tables.RoleMembers.ExpiresAt.IsNull(), tables.RoleMembers.ExpiresAt.Gt(now)),
 		).Count()
 	if err != nil {
 		return false, fmt.Errorf("check existing role grant: %w", err)

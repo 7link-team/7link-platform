@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 
 	"7link.com/platform/internal/files/model"
@@ -17,6 +18,39 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestConcurrentOwnRootInitializationReturnsOneRoot(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	const workers = 8
+	start := make(chan struct{})
+	results := make([]fileEntryView, workers)
+	errors := make([]error, workers)
+	var group sync.WaitGroup
+	for i := range workers {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			results[i], errors[i] = h.service.ensureOwnedRoot(h.ownCtx)
+		}()
+	}
+	close(start)
+	group.Wait()
+	for i := range workers {
+		require.NoError(t, errors[i])
+		require.Positive(t, results[i].ID)
+		require.Equal(t, results[0].ID, results[i].ID)
+	}
+	var spaces, roots, events, rules int64
+	require.NoError(t, h.db.Table(h.tree.prefix+"file_spaces").Where("principal_id = ?", 70).Count(&spaces).Error)
+	require.NoError(t, h.db.Table(h.tree.prefix+"file_nodes").Where("root_scope = ? AND root_owner_id = ?", "account", 70).Count(&roots).Error)
+	require.NoError(t, h.db.Table(h.tree.prefix+"iam_audit_events").Where("event_type = ?", "file_root_created").Count(&events).Error)
+	require.NoError(t, h.db.Table(h.tree.prefix+"file_node_acl").Where("node_id = ?", results[0].ID).Count(&rules).Error)
+	require.Equal(t, int64(1), spaces)
+	require.Equal(t, int64(1), roots)
+	require.Equal(t, int64(1), events)
+	require.Equal(t, int64(13), rules)
+}
 
 func TestWritableAccountViewFileMetadataRecordsOperator(t *testing.T) {
 	h := newOperationServiceHarness(t)

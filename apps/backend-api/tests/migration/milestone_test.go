@@ -45,7 +45,7 @@ func TestIAMIdentityAuthnMigrationsAcrossEngines(t *testing.T) {
 					for _, report := range reports {
 						milestones[report.Module] = report.Milestone
 					}
-					assert.Equal(t, "public-ids", milestones[authn.Name])
+					assert.Equal(t, "mfa-first-factor", milestones[authn.Name])
 					assert.Equal(t, "administration-scopes", milestones[organization.Name])
 					assertTableExists(t, db, engine.dialect, prefix+"iam_principals", true)
 					assertTableExists(t, db, engine.dialect, prefix+"iam_credentials", true)
@@ -399,5 +399,136 @@ INSERT INTO {{.Prefix}}milestone_` + moduleName + `_next (id, ` + foreignColumn 
     SELECT id, ` + foreignColumn + ` FROM {{.Prefix}}milestone_` + moduleName + `;
 DROP TABLE {{.Prefix}}milestone_` + moduleName + `;
 ALTER TABLE {{.Prefix}}milestone_` + moduleName + `_next RENAME TO {{.Prefix}}milestone_` + moduleName + `;
+`
+}
+
+// TestIrreversibleMilestoneRefusesBeforeRollingBack covers the declaration
+// itself rather than one module's use of it. The distinction that matters is
+// when the refusal happens: a migration that only refuses once its own down
+// section runs has already undone everything above it, leaving the database
+// between two milestones. Declaring it lets the orchestrator refuse while the
+// database is still untouched.
+func TestIrreversibleMilestoneRefusesBeforeRollingBack(t *testing.T) {
+	for _, engine := range []databaseEngine{
+		{name: "sqlite", dialect: "sqlite", open: testdb.OpenSQLite},
+		{name: "mysql", dialect: "mysql", open: testdb.OpenMySQL},
+		{name: "postgres", dialect: "postgres", open: testdb.OpenPostgres},
+	} {
+		t.Run(engine.name, func(t *testing.T) {
+			db := engine.open(t)
+			gormDB := openMilestoneGORM(t, db, engine.dialect)
+			const prefix = "irr_"
+			modules := []module.Module{irreversibleMilestoneModule()}
+
+			_, err := app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
+				Action: app.MigrationUp,
+			}, prefix)
+			require.NoError(t, err)
+			for _, table := range []string{"milestone_step1", "milestone_step2", "milestone_step3"} {
+				assertTableExists(t, db, engine.dialect, prefix+table, true)
+			}
+
+			// Below the irreversible milestone: refused, and the table the
+			// reversible migration above it created is still there, which is
+			// what shows the rollback never started.
+			_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
+				Action: app.MigrationDownTo, Module: "irreversible", To: 1,
+			}, prefix)
+			require.Error(t, err)
+			assert.ErrorContains(t, err, "locked")
+			assert.ErrorContains(t, err, "is irreversible")
+			assert.ErrorContains(t, err, "nothing was rolled back")
+			assertTableExists(t, db, engine.dialect, prefix+"milestone_step3", true)
+			assertTableExists(t, db, engine.dialect, prefix+"milestone_step2", true)
+
+			// Down to the irreversible milestone itself does not cross it, so it
+			// is allowed: only the reversible migration above it is undone.
+			_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
+				Action: app.MigrationDownTo, Module: "irreversible", To: 2,
+			}, prefix)
+			require.NoError(t, err)
+			assertTableExists(t, db, engine.dialect, prefix+"milestone_step3", false)
+			assertTableExists(t, db, engine.dialect, prefix+"milestone_step2", true)
+
+			// And it is still refused from there, with nothing further undone.
+			_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
+				Action: app.MigrationDownTo, Module: "irreversible", To: 1,
+			}, prefix)
+			require.Error(t, err)
+			assert.ErrorContains(t, err, "is irreversible")
+			assertTableExists(t, db, engine.dialect, prefix+"milestone_step2", true)
+
+			// Stepping down one milestone crosses it just as surely as naming a
+			// version below it, so the plain down action is refused too. Guarding
+			// only the explicit target would leave the commoner command able to
+			// start a rollback it cannot finish.
+			_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
+				Action: app.MigrationDown, Module: "irreversible",
+			}, prefix)
+			require.Error(t, err)
+			assert.ErrorContains(t, err, "is irreversible")
+			assert.ErrorContains(t, err, "nothing was rolled back")
+			assertTableExists(t, db, engine.dialect, prefix+"milestone_step2", true)
+			assertTableExists(t, db, engine.dialect, prefix+"milestone_step1", true)
+		})
+	}
+}
+
+// TestIrreversibleMilestoneDoesNotBlockWhatWasNeverApplied records the other
+// half of the rule: an irreversible milestone that has not been reached cannot
+// have anything to undo, so it must not stand in the way.
+func TestIrreversibleMilestoneDoesNotBlockWhatWasNeverApplied(t *testing.T) {
+	db := testdb.OpenSQLite(t)
+	gormDB := openMilestoneGORM(t, db, "sqlite")
+	const prefix = "irrpart_"
+	modules := []module.Module{irreversibleMilestoneModule()}
+
+	_, err := app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
+		Action: app.MigrationUpTo, Module: "irreversible", To: 1,
+	}, prefix)
+	require.NoError(t, err)
+	assertTableExists(t, db, "sqlite", prefix+"milestone_step2", false)
+
+	_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
+		Action: app.MigrationDownTo, Module: "irreversible", To: 0,
+	}, prefix)
+	require.NoError(t, err, "the irreversible milestone was never applied, so it blocks nothing")
+	assertTableExists(t, db, "sqlite", prefix+"milestone_step1", false)
+}
+
+func irreversibleMilestoneModule() module.Module {
+	return integrationMilestoneModule{
+		name:   "irreversible",
+		source: goosex.Source{FS: irreversibleMilestoneFS(), TableName: "goose_irreversible"},
+		milestones: []module.MigrationMilestone{
+			{Name: "base", Version: 1},
+			{Name: "locked", Version: 2, Irreversible: true},
+			{Name: "extra", Version: 3},
+		},
+	}
+}
+
+func irreversibleMilestoneFS() fstest.MapFS {
+	files := fstest.MapFS{}
+	for _, dialect := range []string{"postgres", "mysql", "sqlite"} {
+		for version, name := range map[int]string{1: "step1", 2: "step2", 3: "step3"} {
+			files[fmt.Sprintf("sql/%s/0000%d_%s.sql", dialect, version, name)] = &fstest.MapFile{
+				Data: []byte(reversibleMilestoneStep(name)),
+			}
+		}
+	}
+	return files
+}
+
+// reversibleMilestoneStep is one trivially reversible migration. Irreversibility
+// is declared on the milestone here rather than enforced in SQL, which is
+// exactly what this test needs to isolate: every statement below would undo
+// cleanly if the orchestrator let it run.
+func reversibleMilestoneStep(name string) string {
+	return `-- +goose Up
+CREATE TABLE {{.Prefix}}milestone_` + name + ` (id BIGINT PRIMARY KEY);
+
+-- +goose Down
+DROP TABLE {{.Prefix}}milestone_` + name + `;
 `
 }

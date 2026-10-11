@@ -117,7 +117,7 @@ func TestPutRelationshipRequiresTheActionsTheRelationConfers(t *testing.T) {
 			_, err = harness.repository.GrantPermission(t.Context(), tenantID, role.ID, code)
 			require.NoError(t, err)
 		}
-		_, err = harness.repository.AddMember(t.Context(), tenantID, role.ID, actorID)
+		_, err = harness.repository.AddMember(t.Context(), tenantID, role.ID, actorID, nil)
 		require.NoError(t, err)
 	}
 	grantActor("Binding managers", "entity_manage_binding")

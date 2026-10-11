@@ -37,6 +37,7 @@
     "audit:archive-ui": "node tests/archive-ui-browser-audit.mjs",
     "audit:permanent-erasure": "bun tests/permanent-erasure-browser-audit.mjs",
     "audit:registration": "bun tests/registration-browser-audit.mjs",
+    "audit:role-operations-live": "node tests/role-operations-live.mjs",
     "audit:sqlite-lifecycle": "node tests/sqlite-lifecycle-browser-audit.mjs",
     "audit:passkey": "bun tests/passkey-browser-audit.mjs",
     "audit:account": "node tests/account-browser-audit.mjs",

@@ -100,6 +100,7 @@ export default function DepartmentsPage({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
+  const canViewEntities = scopeAllowed("entity_view")
   const loadGeneration = useRef(0)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
@@ -110,7 +111,12 @@ export default function DepartmentsPage({
     try {
       const [nextDepartments, nextEntities] = await Promise.all([
         api.departments(),
-        system || operatingPlatformID()
+        // The entity catalogue only labels a column, and reading it is
+        // tenant-wide entity administration. Somebody whose dept_view is
+        // narrowed to a few departments does not have that, and a refused label
+        // lookup used to turn this whole page into one refusal -- so it is asked
+        // for only where the account holds it.
+        system || operatingPlatformID() || !canViewEntities
           ? Promise.resolve([])
           : iamApi.entities(),
       ])
@@ -127,7 +133,7 @@ export default function DepartmentsPage({
     } finally {
       if (generation === loadGeneration.current) setLoading(false)
     }
-  }, [api, system])
+  }, [api, system, canViewEntities])
 
   useEffect(() => {
     let active = true

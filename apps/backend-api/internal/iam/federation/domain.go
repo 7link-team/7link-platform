@@ -10,6 +10,10 @@ import (
 const (
 	ProviderOIDC = "oidc"
 	ProviderSAML = "saml"
+	// ProviderOAuth2 is a social provider: plain OAuth 2.0 with a profile
+	// document instead of a signed ID token. Its endpoints come from the
+	// compiled-in connector catalog, keyed by the value stored in Issuer.
+	ProviderOAuth2 = "oauth2"
 
 	ProviderActive   = "active"
 	ProviderDisabled = "disabled"
@@ -34,11 +38,18 @@ var (
 	ErrProvisioningDisabled   = errors.New("identity provisioning is disabled for this provider")
 	ErrProvisioningUnverified = errors.New("identity provisioning requires a verified email")
 	ErrPrincipalInactive      = errors.New("linked principal is not active")
+	// ErrNoUpstreamAuthTime reports that a flow needs proof of when the person
+	// authenticated upstream and this protocol cannot carry it. Plain OAuth 2.0
+	// states nothing about it, so a social provider can sign a person in but
+	// can never stand in for re-authentication.
+	ErrNoUpstreamAuthTime = errors.New("provider cannot prove upstream authentication time")
 )
 
 // Provider is a tenant-scoped upstream identity provider used for inbound
-// federation. Only the OIDC authorization-code flow is implemented; SAML is a
-// separate future delivery and must never reuse this code path.
+// federation. Three protocols are implemented and must not share code paths:
+// OIDC and SAML verify a signed assertion, while a social provider
+// (ProviderOAuth2) reads a profile document and therefore proves strictly less —
+// see Service.exchangeUpstreamIdentity for what each one establishes.
 type Provider struct {
 	ID              guid.ID   `json:"id"`
 	TenantID        guid.ID   `json:"tenant_id"`

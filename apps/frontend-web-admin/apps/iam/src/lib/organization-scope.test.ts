@@ -1,7 +1,7 @@
-import { expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { organizationRouteURL, tenantIDFromPath } from "./organization-scope"
+import { organizationRouteURL, tenantIDFromPath, entityIDFromPath } from "./organization-scope"
 
 it("selects operating collection routes while preserving owned and tenant boundaries", () => {
   const result = Bun.spawnSync(
@@ -93,4 +93,27 @@ it("recognizes only snowflake tenant IDs in console paths", () => {
   expect(tenantIDFromPath("/admin/7x")).toBe("")
   expect(tenantIDFromPath("/admin/workspaces")).toBe("")
   expect(tenantIDFromPath("/platform/7")).toBe("")
+})
+
+describe("entityIDFromPath", () => {
+  // The shell used to match a pattern naming exactly one segment after the
+  // entity. /entities/5/files kept the entity perspective and anything longer
+  // lost it, so adding a view inside an entity moved somebody into the tenant's
+  // perspective the moment they opened it -- the menu changing under them.
+  it("names the entity at any depth below it", () => {
+    expect(entityIDFromPath("/admin/7/entities/5")).toBe("5")
+    expect(entityIDFromPath("/admin/7/entities/5/files")).toBe("5")
+    expect(entityIDFromPath("/admin/7/entities/5/departments")).toBe("5")
+    expect(entityIDFromPath("/admin/7/entities/5/files/9/preview")).toBe("5")
+  })
+  it("names no entity where the path addresses none", () => {
+    expect(entityIDFromPath("/admin/7")).toBe("")
+    expect(entityIDFromPath("/admin/7/entities")).toBe("")
+    expect(entityIDFromPath("/admin/7/departments")).toBe("")
+    expect(entityIDFromPath("/system/accounts")).toBe("")
+    // Not a snowflake, so it addresses nothing -- the same rule the tenant
+    // segment follows.
+    expect(entityIDFromPath("/admin/7/entities/acme/files")).toBe("")
+    expect(entityIDFromPath("/admin/7/entities/0/files")).toBe("")
+  })
 })

@@ -139,7 +139,7 @@ func TestOperatingPlatformLastAdministratorIsProtectedAcrossMutations(t *testing
 	require.ErrorIs(t, err, ErrLastTenantAdministrator)
 	_, err = h.service.PutOperatingPlatformMember(t.Context(), 1, 22, "Second owner", "", 0, MemberActive)
 	require.NoError(t, err)
-	_, err = h.service.AddMember(t.Context(), 1, result.AdministratorRoleID, 22)
+	_, err = h.service.AddMember(t.Context(), 1, result.AdministratorRoleID, 22, nil)
 	require.NoError(t, err)
 	_, err = h.service.SetOperatingPlatformMemberStatus(t.Context(), 1, 11, MemberDisabled)
 	require.NoError(t, err)

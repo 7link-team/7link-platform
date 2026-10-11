@@ -43,7 +43,7 @@ func TestCorePersistenceAndAuthorizationFailClosedAfterDatabaseShutdown(t *testi
 			_, _, err := repo.SetPermissionCondition(ctx, tenantID, roleID, "role_view", nil)
 			return err
 		}},
-		{"add role member", func() error { _, err := repo.AddMember(ctx, tenantID, roleID, principalID); return err }},
+		{"add role member", func() error { _, err := repo.AddMember(ctx, tenantID, roleID, principalID, nil); return err }},
 		{"remove role member", func() error { _, err := repo.RemoveMember(ctx, tenantID, roleID, principalID); return err }},
 		{"list role members", func() error { _, err := repo.ListMembers(ctx, tenantID, roleID); return err }},
 		{"put member", func() error {
@@ -238,7 +238,7 @@ func TestRepositoryPropagatesPolicyTableFailures(t *testing.T) {
 		role, err := harness.repository.CreateRole(t.Context(), 1, "Role", "")
 		require.NoError(t, err)
 		require.NoError(t, harness.db.Exec("DROP TABLE sl_iam_role_members").Error)
-		_, err = harness.repository.AddMember(t.Context(), 1, role.ID, 2)
+		_, err = harness.repository.AddMember(t.Context(), 1, role.ID, 2, nil)
 		assert.Error(t, err)
 		_, err = harness.repository.RemoveMember(t.Context(), 1, role.ID, 2)
 		assert.Error(t, err)
@@ -391,7 +391,7 @@ func TestCoreReportsUnavailabilityWhenNoDatasourceIsConfigured(t *testing.T) {
 			_, _, err := repository.SetPermissionCondition(ctx, tenantID, roleID, "role_view", nil)
 			return err
 		},
-		"add role member":    func() error { _, err := repository.AddMember(ctx, tenantID, roleID, principalID); return err },
+		"add role member":    func() error { _, err := repository.AddMember(ctx, tenantID, roleID, principalID, nil); return err },
 		"remove role member": func() error { _, err := repository.RemoveMember(ctx, tenantID, roleID, principalID); return err },
 		"list role members":  func() error { _, err := repository.ListMembers(ctx, tenantID, roleID); return err },
 		"list role members page": func() error {
@@ -583,7 +583,7 @@ func TestCoreServiceReportsUnavailabilityWhenNoDatasourceIsConfigured(t *testing
 			_, err := service.ListPermissionGrants(ctx, tenantID, roleID)
 			return err
 		},
-		"add role member":    func() error { _, err := service.AddMember(ctx, tenantID, roleID, principalID); return err },
+		"add role member":    func() error { _, err := service.AddMember(ctx, tenantID, roleID, principalID, nil); return err },
 		"remove role member": func() error { _, err := service.RemoveMember(ctx, tenantID, roleID, principalID); return err },
 		"list role members":  func() error { _, err := service.ListMembers(ctx, tenantID, roleID); return err },
 		"list tenant members": func() error {

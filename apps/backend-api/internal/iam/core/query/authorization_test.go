@@ -57,7 +57,7 @@ func TestAuthorizationStatementsPinSQLTextAndParameterOrder(t *testing.T) {
 		Against:       against,
 	}
 	roleArguments := []any{
-		"active", guid.ID(101), guid.ID(202),
+		"active", guid.ID(101), guid.ID(202), now,
 		"active", guid.ID(101), guid.ID(202), now, now,
 		"active", guid.ID(101), guid.ID(202), now, now,
 	}
@@ -185,6 +185,7 @@ WITH effective_roles(role_id, source_type, source_id) AS (
     JOIN sl_iam_tenant_members tm
       ON tm.tenant_id = m.tenant_id AND tm.principal_id = m.principal_id AND tm.status = ?
     WHERE m.tenant_id = ? AND m.principal_id = ?
+      AND (m.expires_at IS NULL OR m.expires_at > ?)
     UNION
     SELECT grants.role_id, 'temporary_role', grants.id
     FROM sl_iam_temporary_role_grants grants
@@ -242,6 +243,7 @@ WITH effective_roles(role_id, source_type, source_id) AS (
     JOIN sl_iam_tenant_members tm
       ON tm.tenant_id = m.tenant_id AND tm.principal_id = m.principal_id AND tm.status = ?
     WHERE m.tenant_id = ? AND m.principal_id = ?
+      AND (m.expires_at IS NULL OR m.expires_at > ?)
     UNION
     SELECT grants.role_id, 'temporary_role', grants.id
     FROM sl_iam_temporary_role_grants grants
@@ -282,6 +284,7 @@ FROM (
     JOIN sl_iam_role_permissions AS permissions
       ON permissions.tenant_id = members.tenant_id AND permissions.role_id = members.role_id
     WHERE members.tenant_id = ? AND permissions.permission_code IN (?, ?) AND permissions.condition_json = ''
+      AND members.expires_at IS NULL
     UNION
     SELECT group_members.principal_id
     FROM sl_iam_group_role_bindings AS bindings

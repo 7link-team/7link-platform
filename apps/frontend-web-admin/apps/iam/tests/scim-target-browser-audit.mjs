@@ -5,6 +5,7 @@ import { createServer } from "node:http"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
 import { auditPassword } from "../scripts/audit-password.mjs"
+import { auditCaptcha } from "../scripts/audit-captcha.mjs"
 
 const baseURL = (
   process.env.IAM_CONSOLE_URL ?? "http://localhost:8091"
@@ -69,6 +70,7 @@ try {
   })
   const admin = await browser.newContext({ baseURL })
   await ok(admin, "/login", "POST", {
+    ...auditCaptcha(),
     login_name: process.env.IAM_BROWSER_LOGIN ?? "admin@example.test",
     password: auditPassword(),
     return_url: baseURL + "/",
@@ -125,6 +127,7 @@ try {
     reducedMotion: "reduce",
   })
   await ok(context, "/login", "POST", {
+    ...auditCaptcha(),
     login_name: actor.login_name,
     password: actorPassword,
     return_url: baseURL + "/",

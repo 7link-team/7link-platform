@@ -85,15 +85,20 @@ type Service struct {
 	nextID                  func() (guid.ID, error)
 	keys                    *keyringx.Keyring
 	oidc                    *oidcClient
-	outbound                httpx.Policy
-	stateTTL                time.Duration
-	clockSkew               time.Duration
-	now                     func() time.Time
-	samlMu                  sync.Mutex
-	samlCfg                 SAMLConfig
-	samlKey                 *rsa.PrivateKey
-	samlCert                *x509.Certificate
-	samlSPs                 sync.Map
+	social                  *upstreamHTTP
+	// connectors resolves a social connector key. It is a field so a test can
+	// exercise this service against a local provider; production always holds
+	// lookupConnector, which reads the compiled-in catalog.
+	connectors func(string) (connector, error)
+	outbound   httpx.Policy
+	stateTTL   time.Duration
+	clockSkew  time.Duration
+	now        func() time.Time
+	samlMu     sync.Mutex
+	samlCfg    SAMLConfig
+	samlKey    *rsa.PrivateKey
+	samlCert   *x509.Certificate
+	samlSPs    sync.Map
 	// SAML SP-initiated login state: cached upstream IdP metadata keyed by
 	// provider ID, plus the lazily generated SP signing key for AuthnRequests.
 	samlIDPCache sync.Map // providerID -> *saml.EntityDescriptor
@@ -122,6 +127,25 @@ type authnextWebService interface {
 // instead of surfacing a runtime secret error. The first key seals; every key
 // opens, which is what lets a deployment replace one without losing what the
 // replaced key protected.
+// upstreamUserAgent names this deployment to an upstream provider. The name and
+// version come from the runtime identity, so one build serves any deployment and
+// no provider sees a hardcoded product.
+func upstreamUserAgent(runtime *appenv.Runtime) string {
+	if runtime == nil {
+		return ""
+	}
+	identity := runtime.Identity()
+	name := strings.TrimSpace(identity.Name())
+	if name == "" {
+		return ""
+	}
+	version := strings.TrimSpace(identity.Version())
+	if version == "" {
+		return name
+	}
+	return name + "/" + version
+}
+
 func ResolveOutboundPolicy(cfg Config) (httpx.Policy, error) {
 	policy, err := httpx.ParsePolicy(cfg.OutboundAllowPlaintext, cfg.OutboundAllowNetworks)
 	if err != nil {
@@ -187,6 +211,10 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, identities ide
 	}
 	repo := NewRepository(runtime)
 	repo.principals = principals
+	// One policed client serves both upstream protocols: the deployment's
+	// outbound rules must not depend on which kind of provider a tenant chose.
+	upstreamClient := httpx.NewClient(timeout, outbound)
+	oidcUpstream := newOIDCClient(upstreamClient, outbound, skew, 5*time.Minute)
 	return &Service{
 		repo: repo, audit: appender, identities: identities, authn: authn,
 		keys: keys, stateTTL: stateTTL, clockSkew: skew, now: func() time.Time { return time.Now().UTC() },
@@ -194,9 +222,11 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, identities ide
 			id, err := ids.Next()
 			return guid.ID(id), err
 		},
-		oidc:     newOIDCClient(httpx.NewClient(timeout, outbound), outbound, skew, 5*time.Minute),
-		outbound: outbound,
-		replays:  newReplayRegistry(repo),
+		oidc:       oidcUpstream,
+		social:     &upstreamHTTP{client: upstreamClient, userAgent: upstreamUserAgent(runtime)},
+		connectors: lookupConnector,
+		outbound:   outbound,
+		replays:    newReplayRegistry(repo),
 	}
 }
 
@@ -393,6 +423,18 @@ func (s *Service) StartLogin(ctx context.Context, providerID guid.ID, returnURL,
 	if err != nil {
 		return LoginStart{}, err
 	}
+	cookie := stateCookie(sealed, s.authn.CookieSecure(), int(s.stateTTL.Seconds()))
+	if provider.ProviderType == ProviderOAuth2 {
+		conn, err := s.connectors(provider.Issuer)
+		if err != nil {
+			return LoginStart{}, err
+		}
+		authorizationURL, err := conn.authorizationURL(provider.ClientID, callback, provider.Scopes, state.Nonce, state.CodeVerifier)
+		if err != nil {
+			return LoginStart{}, err
+		}
+		return LoginStart{AuthorizationURL: authorizationURL, StateCookie: cookie}, nil
+	}
 	discovery, err := s.oidc.discovery(ctx, provider.Issuer)
 	if err != nil {
 		return LoginStart{}, err
@@ -411,7 +453,7 @@ func (s *Service) StartLogin(ctx context.Context, providerID guid.ID, returnURL,
 	}
 	return LoginStart{
 		AuthorizationURL: discovery.AuthorizationEndpoint + separator + query.Encode(),
-		StateCookie:      stateCookie(sealed, s.authn.CookieSecure(), int(s.stateTTL.Seconds())),
+		StateCookie:      cookie,
 	}, nil
 }
 
@@ -453,19 +495,50 @@ func (s *Service) CompleteLogin(ctx context.Context, providerID guid.ID, code, s
 			return LoginComplete{}, err
 		}
 	}
-	rawIDToken, err := s.oidc.exchangeCode(ctx, provider.Issuer, provider.ClientID, clientSecret, code, callback, sealedState.CodeVerifier)
+	claims, method, err := s.exchangeUpstreamIdentity(ctx, provider, clientSecret, code, callback, sealedState.CodeVerifier)
 	if err != nil {
 		return LoginComplete{}, err
 	}
-	claims, err := s.oidc.verifyIDToken(ctx, provider.Issuer, provider.ClientID, rawIDToken, s.now().UTC())
-	if err != nil {
-		return LoginComplete{}, err
-	}
-	sessionToken, err := s.authenticate(ctx, provider, claims, "oidc")
+	sessionToken, err := s.authenticate(ctx, provider, claims, method)
 	if err != nil {
 		return LoginComplete{}, err
 	}
 	return LoginComplete{SessionToken: sessionToken, ReturnURL: sealedState.ReturnURL}, nil
+}
+
+// exchangeUpstreamIdentity redeems the authorization code against whichever
+// redirect protocol the provider speaks and returns the normalized claims plus
+// the authentication method recorded on the session.
+//
+// The two protocols differ in what they prove. OIDC returns a signed ID token
+// carrying an authentication time; a social provider returns a profile document
+// and states nothing about when the person authenticated, so its claims carry a
+// zero AuthTime that the re-authentication paths refuse outright.
+func (s *Service) exchangeUpstreamIdentity(ctx context.Context, provider providerRow, clientSecret, code, callback, codeVerifier string) (upstreamIdentity, string, error) {
+	if provider.ProviderType == ProviderOAuth2 {
+		conn, err := s.connectors(provider.Issuer)
+		if err != nil {
+			return upstreamIdentity{}, "", err
+		}
+		document, err := conn.profile(ctx, s.social, credentials{ClientID: provider.ClientID, ClientSecret: clientSecret}, code, callback, codeVerifier)
+		if err != nil {
+			return upstreamIdentity{}, "", err
+		}
+		claims, err := conn.claims(document)
+		if err != nil {
+			return upstreamIdentity{}, "", err
+		}
+		return claims, "oauth2", nil
+	}
+	rawIDToken, err := s.oidc.exchangeCode(ctx, provider.Issuer, provider.ClientID, clientSecret, code, callback, codeVerifier)
+	if err != nil {
+		return upstreamIdentity{}, "", err
+	}
+	claims, err := s.oidc.verifyIDToken(ctx, provider.Issuer, provider.ClientID, rawIDToken, s.now().UTC())
+	if err != nil {
+		return upstreamIdentity{}, "", err
+	}
+	return claims, "oidc", nil
 }
 
 // StateClearCookie returns a cookie that expires the login state after the
@@ -613,7 +686,7 @@ func (s *Service) CompleteSAMLLogin(ctx context.Context, providerID guid.ID, sam
 	if len(assertion.AuthnStatements) > 0 {
 		authTime = assertion.AuthnStatements[0].AuthnInstant.Unix()
 	}
-	claims := idTokenClaims{
+	claims := upstreamIdentity{
 		Subject: assertion.Subject.NameID.Value, Email: email, EmailVerified: &verified,
 		Name: displayName, PreferredUsername: displayName, AuthTime: authTime,
 	}
@@ -624,7 +697,7 @@ func (s *Service) CompleteSAMLLogin(ctx context.Context, providerID guid.ID, sam
 	return sessionToken, sealedState.ReturnURL, nil
 }
 
-func (s *Service) authenticate(ctx context.Context, provider providerRow, token idTokenClaims, method string) (string, error) {
+func (s *Service) authenticate(ctx context.Context, provider providerRow, token upstreamIdentity, method string) (string, error) {
 	var principalID guid.ID
 	var sessionToken string
 	fingerprint, err := s.bindingFingerprint(ctx, provider)
@@ -749,23 +822,37 @@ func (s *Service) normalizeProvider(tenantID guid.ID, input ProviderInput) (prov
 	if providerType == "" {
 		providerType = ProviderOIDC
 	}
-	issuer, err := normalizeIssuer(input.Issuer, s.outbound)
+	issuer, err := s.normalizeProviderIssuer(providerType, input.Issuer)
 	clientID := strings.TrimSpace(input.ClientID)
 	scopes := normalizeScopes(input.Scopes)
+	if providerType == ProviderOAuth2 && err == nil && strings.TrimSpace(input.Scopes) == "" {
+		// A social provider's scopes are provider-specific, so an omitted value
+		// takes the connector's own default rather than the OIDC one.
+		if conn, lookupErr := s.connectors(issuer); lookupErr == nil {
+			scopes = conn.Scopes
+		}
+	}
 	defaultRoleID := input.DefaultRoleID
 	status := strings.TrimSpace(input.Status)
 	if status == "" {
 		status = ProviderActive
 	}
 	secret := strings.TrimSpace(input.ClientSecret)
+	// An unknown connector key is the one field an operator cannot guess, so it
+	// keeps its own error instead of collapsing into ErrInvalidProvider; the
+	// HTTP layer turns it into a message that names the catalog.
+	if errors.Is(err, ErrUnknownConnector) {
+		return providerRow{}, "", err
+	}
 	if tenantID.Zero() || name == "" || len(name) > 128 ||
-		(providerType != ProviderOIDC && providerType != ProviderSAML) ||
+		(providerType != ProviderOIDC && providerType != ProviderSAML && providerType != ProviderOAuth2) ||
 		err != nil || clientID == "" || len(clientID) > 128 ||
 		(status != ProviderActive && status != ProviderDisabled) || len(secret) > 2048 {
 		return providerRow{}, "", ErrInvalidProvider
 	}
-	// SAML providers don't require scopes (assertion-driven); OIDC does.
-	if providerType == ProviderOIDC && (scopes == "" || len(scopes) > 255) {
+	// SAML providers don't require scopes (assertion-driven); the two
+	// redirect-and-exchange protocols do.
+	if providerType != ProviderSAML && (scopes == "" || len(scopes) > 255) {
 		return providerRow{}, "", ErrInvalidProvider
 	}
 	return providerRow{
@@ -855,6 +942,20 @@ func optionalFederationID(id *guid.ID) guid.ID {
 		return 0
 	}
 	return *id
+}
+
+// normalizeProviderIssuer interprets the issuer column per provider type. For
+// OIDC and SAML it is an upstream URL; for a social provider it is a connector
+// key, which is what keeps the reachable endpoints out of tenant control.
+func (s *Service) normalizeProviderIssuer(providerType, value string) (string, error) {
+	if providerType != ProviderOAuth2 {
+		return normalizeIssuer(value, s.outbound)
+	}
+	key := strings.ToLower(strings.TrimSpace(value))
+	if _, err := s.connectors(key); err != nil {
+		return "", err
+	}
+	return key, nil
 }
 
 func normalizeIssuer(value string, outbound httpx.Policy) (string, error) {

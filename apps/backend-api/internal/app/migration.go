@@ -637,6 +637,33 @@ func (plan *migrationPlan) migrateMilestonesDown(
 }
 
 func (stream *migrationStream) downTarget(request MigrationRequest) (int64, error) {
+	target, err := stream.requestedDownTarget(request)
+	if err != nil {
+		return 0, err
+	}
+	// Refuse here rather than discover it mid-rollback, and refuse for every way
+	// down rather than only the explicit one: stepping down one milestone crosses
+	// an irreversible one just as surely as naming a version below it. By the
+	// time an irreversible migration's own down section raises, every reversible
+	// migration above it has already been undone and the database sits between
+	// two milestones -- the worst state to hand an operator who is already
+	// recovering from something.
+	if blocking, found := stream.irreversibleBelow(target); found {
+		return 0, fmt.Errorf(
+			"%s migration %s: %s at version %d is irreversible, so version %d is unreachable; nothing was rolled back",
+			stream.name,
+			request.Action,
+			blocking.Name,
+			blocking.Version,
+			target,
+		)
+	}
+	return target, nil
+}
+
+// requestedDownTarget resolves how far down this request asks to go, without
+// judging whether getting there is permitted.
+func (stream *migrationStream) requestedDownTarget(request MigrationRequest) (int64, error) {
 	if request.Action == MigrationDownTo {
 		if request.To > stream.status.Current {
 			return 0, fmt.Errorf(
@@ -705,6 +732,17 @@ func (plan *migrationPlan) nodeApplied(key migrationMilestoneKey) bool {
 
 func (plan *migrationPlan) nodeStarted(node *migrationMilestoneNode) bool {
 	return node != nil && node.stream.status.Current > node.stream.previousMilestoneVersion(node.version)
+}
+
+// irreversibleBelow reports the applied irreversible milestone that a rollback
+// to target would have to undo, if there is one.
+func (stream *migrationStream) irreversibleBelow(target int64) (module.MigrationMilestone, bool) {
+	for _, milestone := range stream.milestones {
+		if milestone.Irreversible && milestone.Version > target && milestone.Version <= stream.status.Current {
+			return milestone, true
+		}
+	}
+	return module.MigrationMilestone{}, false
 }
 
 func (stream *migrationStream) hasMilestoneVersion(version int64) bool {

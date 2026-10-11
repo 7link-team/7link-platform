@@ -133,6 +133,8 @@ export interface Session {
   preferred_username?: string
   email?: string
   email_verified?: boolean
+  phone?: string
+  phone_verified?: boolean
   organization_id?: string
 }
 
@@ -201,18 +203,39 @@ export interface LoginResult {
   return_url: string
   challenge_id?: string
   expires_at?: string
-  methods?: Array<"totp" | "recovery_code">
+  methods?: Array<"totp" | "recovery_code" | "sms">
 }
 
 export interface MfaStatus {
   totp_enabled: boolean
   recovery_codes_remaining: number
+  /** A code can be sent to a number this account has proven. No enrolment stands
+   *  behind it: the proven number is the enrolment. */
+  sms_available: boolean
+}
+
+/** The display identity of this deployment, read before any session exists. */
+export interface DeploymentIdentity {
+  name: string
+  organization: string
+}
+
+/** What a client must render to answer a challenge. */
+export interface CaptchaCapability {
+  provider: "image" | "turnstile"
+  /** Published deliberately: the widget cannot render without it. */
+  site_key?: string
 }
 
 export interface AuthnCapabilities {
   registration: boolean
   password_recovery: boolean
   passkey: boolean
+  /** Whether a code sent to a proven number signs anybody in on this
+   *  deployment. Offering it regardless walks somebody through typing a number
+   *  to a refusal. */
+  phone_login: boolean
+  captcha: CaptchaCapability
 }
 
 export interface Captcha {
@@ -823,7 +846,30 @@ export interface EffectiveMenu {
 }
 
 export type OAuthGrantType =
-  "authorization_code" | "refresh_token" | "client_credentials"
+  | "authorization_code"
+  | "refresh_token"
+  | "client_credentials"
+  | "urn:ietf:params:oauth:grant-type:device_code"
+  | "urn:ietf:params:oauth:grant-type:token-exchange"
+
+/** A device authorization request somebody is being asked to approve. It names
+ *  the client and the scopes and nothing about the device, because nothing about
+ *  the device is known. */
+/** One role assignment as an administration screen reads it: who holds the role
+ *  and when it stops granting. A null end is a standing assignment. */
+export interface RoleMemberGrant {
+  principal_id: string
+  expires_at?: string | null
+  created_at: string
+}
+
+export interface DeviceRequest {
+  client_id: string
+  client_name: string
+  scope: string
+  status: string
+  expires_at: string
+}
 
 export type OAuthConsentMode = "implicit" | "explicit"
 
@@ -1975,17 +2021,38 @@ export function createIamApi(
           path: { platform_id: id },
         })
       ),
-    files: (entityID?: string | null, after = "", system = false) =>
+    files: (
+      entityID?: string | null,
+      after = "",
+      system = false,
+      state: "active" | "trashed" = "active"
+    ) =>
       request<FilePage>(
         fileCollectionRoute(
           entityID,
           "get",
           {
+            ...(state === "trashed" ? { state } : {}),
             limit: 100,
             after: after || undefined,
           },
           system
         )
+      ),
+    departmentFiles: (
+      departmentID: string,
+      after = "",
+      state: "active" | "trashed" = "active"
+    ) =>
+      request<FilePage>(
+        apiRoute("get", "/departments/{department_id}/files", {
+          path: { department_id: departmentID },
+          query: {
+            limit: 100,
+            after: after || undefined,
+            ...(state === "trashed" ? { state } : {}),
+          },
+        })
       ),
     trashedFiles: (entityID?: string | null, after = "", system = false) =>
       request<FilePage>(
@@ -2147,14 +2214,18 @@ export function createIamApi(
       }),
     capabilities: () =>
       request<AuthnCapabilities>(apiRoute("get", "/login/options")),
+    deployment: () =>
+      request<DeploymentIdentity>(apiRoute("get", "/deployment")),
     tenantRegistrationPolicy: () =>
       request<{ enabled: boolean }>(apiRoute("get", "/tenant-registrations/options")),
     registerTenant: (body: { name: string; slug: string }) =>
       request<Tenant>(apiRoute("post", "/tenant-registrations"), {
         body: JSON.stringify(body),
       }),
-    createCaptcha: () =>
+    createRegistrationCaptcha: () =>
       request<Captcha>(apiRoute("post", "/registrations/captchas")),
+    createLoginCaptcha: () =>
+      request<Captcha>(apiRoute("post", "/login/captchas")),
     register: (body: {
       entry?: "tenant" | "user"
       email: string
@@ -2423,6 +2494,9 @@ export function createIamApi(
       login_name: string
       password: string
       return_url: string
+      captcha_type: string
+      captcha_id: string
+      captcha_answer: string
     }) => {
       resetPrincipal()
       const epoch = identityEpoch
@@ -2432,6 +2506,35 @@ export function createIamApi(
       if (epoch === identityEpoch) subject = result.subject
       return result
     },
+    requestPhoneLoginCode: (body: {
+      phone: string
+      captcha_type: string
+      captcha_id: string
+      captcha_answer: string
+    }) =>
+      request<{ accepted: boolean }>(
+        apiRoute("post", "/login/phone/requests"),
+        { body: JSON.stringify(body) }
+      ),
+    loginWithPhoneCode: async (body: {
+      phone: string
+      code: string
+      return_url: string
+    }) => {
+      resetPrincipal()
+      const epoch = identityEpoch
+      const result = await request<LoginResult>(
+        apiRoute("post", "/login/phone"),
+        { body: JSON.stringify(body) }
+      )
+      if (epoch === identityEpoch) subject = result.subject
+      return result
+    },
+    requestMfaPhoneCode: (challengeID: string) =>
+      request<{ accepted: boolean }>(
+        apiRoute("post", "/login/mfa/requests"),
+        { body: JSON.stringify({ challenge_id: challengeID }) }
+      ),
     verifyLoginMfa: async (body: { challenge_id: string; code: string }) => {
       const result = await request<LoginResult>(
         apiRoute("post", "/login/mfa"),
@@ -2444,11 +2547,18 @@ export function createIamApi(
       return result
     },
     logout: async () => {
-      const result = await request<{ logout_url: string }>(
-        apiRoute("delete", "/sessions/current")
-      )
-      resetPrincipal()
-      return result
+      // Destroying the session on the service is what makes it unusable from
+      // anywhere else, so it is still attempted first. It is not, however,
+      // allowed to decide whether this browser forgets who it was: the cached
+      // principal is dropped whether the request succeeded, failed or never
+      // reached anybody.
+      try {
+        return await request<{ logout_url: string }>(
+          apiRoute("delete", "/sessions/current")
+        )
+      } finally {
+        resetPrincipal()
+      }
     },
     currentBrowserSession: () =>
       request<BrowserSession>(apiRoute("get", "/sessions/current")),
@@ -2499,6 +2609,28 @@ export function createIamApi(
     completePasswordRecovery: (body: { token: string; new_password: string }) =>
       request<{ changed: boolean }>(apiRoute("post", "/password-recoveries"), {
         body: JSON.stringify(body),
+      }),
+    deviceRequest: (userCode: string) =>
+      request<DeviceRequest>(
+        apiRoute("get", "/tenants/{tenant_id}/oauth/device-requests", {
+          path: { tenant_id: tenantID() },
+          query: { user_code: userCode },
+        })
+      ),
+    decideDeviceRequest: (userCode: string, approve: boolean) =>
+      request<{ status: string }>(
+        apiRoute("post", "/tenants/{tenant_id}/oauth/device-requests/decisions", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify({ user_code: userCode, approve }) }
+      ),
+    startPhoneVerification: () =>
+      request<{ accepted: boolean }>(
+        apiRoute("post", "/phone-verifications/requests")
+      ),
+    completePhoneVerification: (code: string) =>
+      request<{ verified: boolean }>(apiRoute("post", "/phone-verifications"), {
+        body: JSON.stringify({ code }),
       }),
     startEmailVerification: () =>
       request<{ accepted: boolean }>(
@@ -2794,6 +2926,27 @@ export function createIamApi(
       requestAllPages<Tenant>(
         pagedRoute("/tenants", { query: { include_deleted: includeDeleted } })
       ),
+    tenantPage: async (query: {
+      includeDeleted?: boolean
+      search?: string
+      offset: number
+      limit: number
+    }) => {
+      const result = await requestEnvelope<Tenant[]>(
+        apiRoute("get", "/tenants", {
+          query: {
+            include_deleted: query.includeDeleted ?? false,
+            ...(query.search ? { search: query.search } : {}),
+            offset: query.offset,
+            limit: query.limit,
+          },
+        })
+      )
+      return {
+        items: result.data ?? [],
+        total: result.meta?.page?.total ?? (result.data ?? []).length,
+      }
+    },
     createTenant: (body: TenantInput) =>
       request<Tenant>(apiRoute("post", "/tenants"), {
         body: JSON.stringify(body),
@@ -2847,6 +3000,16 @@ export function createIamApi(
       request<Entity[]>(
         apiRoute("get", "/tenants/{tenant_id}/entities", {
           path: { tenant_id: tenantID() },
+        })
+      ),
+    // The entities this caller may act in, as opposed to the ones it may
+    // administer. Somebody bound to a single entity has the first and not the
+    // second, and the listing above answers only the second.
+    memberEntities: async (permission: string) =>
+      request<Entity[]>(
+        apiRoute("get", "/tenants/{tenant_id}/principals/{principal_id}/entities", {
+          path: { tenant_id: tenantID(), principal_id: await principalID() },
+          query: { permission },
         })
       ),
     entity: (id: string) =>
@@ -3356,11 +3519,18 @@ export function createIamApi(
       requestAllPages<string>(
         pagedRoute("/roles/{role_id}/members", { path: { role_id: id } })
       ),
-    addRoleMember: (id: string, subject: string) =>
+    // A role may be granted until a moment. Sending no end makes it standing,
+    // which is what this did before an end could be named at all.
+    roleMemberGrants: (id: string) =>
+      requestAllPages<RoleMemberGrant>(
+        pagedRoute("/roles/{role_id}/member-grants", { path: { role_id: id } })
+      ),
+    addRoleMember: (id: string, subject: string, expiresAt?: string | null) =>
       request(
         apiRoute("put", "/roles/{role_id}/members/{principal_id}", {
           path: { role_id: id, principal_id: subject },
-        })
+        }),
+        { body: JSON.stringify({ expires_at: expiresAt ?? null }) }
       ),
     removeRoleMember: (id: string, subject: string) =>
       request(

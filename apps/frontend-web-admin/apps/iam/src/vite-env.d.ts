@@ -11,10 +11,13 @@ interface ImportMetaEnv {
   readonly VITE_DEV_LOGIN_ACCOUNTS_ENABLED?: string
   /** Fill the first development persona into the login form on load. */
   readonly VITE_DEV_LOGIN_PREFILL?: string
-  /** Console display name shown in the chrome. Defaults to a neutral "IAM". */
-  readonly VITE_APP_NAME?: string
-  /** Organization named in the footer. Omitted means the footer shows only the year. */
-  readonly VITE_ORG_NAME?: string
+  /**
+   * The captcha answer the local backend is configured to accept for any
+   * challenge, so a development sign-in and the browser audits do not have to
+   * read the image. Ignored by non-development builds, and useless against a
+   * deployment that configures no test answer.
+   */
+  readonly VITE_DEV_LOGIN_CAPTCHA_ANSWER?: string
   /** Google Maps JS API key for the map picker component (was NEXT_PUBLIC_GOOGLE_MAPS_API_KEY). */
   readonly VITE_GOOGLE_MAPS_API_KEY?: string
   /** Mapbox access token for the map picker component (was NEXT_PUBLIC_MAPBOX_TOKEN). */

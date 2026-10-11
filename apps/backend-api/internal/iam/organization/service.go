@@ -22,6 +22,11 @@ type Service struct {
 	// administrators checks that a department re-parent stays within the
 	// actor's authority; a re-parent without it fails closed.
 	administrators core.AdministratorGuard
+	// scopes answers which departments a narrowed dept_view actually reaches. The
+	// permission guard answers whether somebody may view departments and never
+	// which ones, so a listing that asked only the guard handed a caller granted
+	// two departments the tenant's entire hierarchy.
+	scopes core.TenantConstraint
 }
 
 func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Source) *Service {
@@ -44,6 +49,44 @@ func (s *Service) List(ctx context.Context, tenantID guid.ID) ([]Department, err
 		return nil, err
 	}
 	return orderDepartments(rows)
+}
+
+// visibleDepartments keeps the departments a caller's dept_view actually reaches.
+// Narrowing happens after ordering, never before: the hierarchy order is derived
+// from the whole tree, and a granted department whose parent is not granted is
+// unreachable from the root -- filtering first reports that as a corrupt
+// hierarchy rather than as a narrower list.
+//
+// The constraint arrives already resolved. "Selected departments" names exactly
+// those; "department and descendants" has had its descendants expanded into the
+// same list by the authorizer, so membership is a plain comparison here rather
+// than a second traversal that could disagree with the first.
+func (s *Service) visibleDepartments(
+	ctx context.Context,
+	tenantID, principalID guid.ID,
+	ordered []Department,
+) ([]Department, error) {
+	if s.scopes == nil {
+		return nil, ErrUnavailable
+	}
+	constraint, err := s.scopes(ctx, tenantID, "dept_view", principalID)
+	if err != nil {
+		return nil, err
+	}
+	if constraint.AllowAll {
+		return ordered, nil
+	}
+	reachable := make(map[string]struct{}, len(constraint.DepartmentIDs))
+	for _, id := range constraint.DepartmentIDs {
+		reachable[id] = struct{}{}
+	}
+	visible := make([]Department, 0, len(ordered))
+	for _, department := range ordered {
+		if _, ok := reachable[department.ID.String()]; ok {
+			visible = append(visible, department)
+		}
+	}
+	return visible, nil
 }
 
 func (s *Service) Get(ctx context.Context, tenantID, id guid.ID) (Department, error) {

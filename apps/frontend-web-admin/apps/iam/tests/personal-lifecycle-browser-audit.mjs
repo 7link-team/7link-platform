@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs"
 import { randomBytes, createHash } from "node:crypto"
 import { chromium } from "playwright"
+import { auditCaptcha } from "../scripts/audit-captcha.mjs"
 
 // Real local IAM requests throughout, including the browser's reauthentication.
 const directory = new URL(
@@ -59,6 +60,7 @@ async function ok(context, path, method = "GET", data, tenant) {
 }
 async function login(context, name, secret) {
   await ok(context, "/login", "POST", {
+    ...auditCaptcha(),
     login_name: name,
     password: secret,
     return_url: baseURL + "/",

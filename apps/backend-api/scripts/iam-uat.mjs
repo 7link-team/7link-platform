@@ -131,7 +131,8 @@ async function init() {
       mfa: { encryption_key_file: join(directory, "mfa-key") },
       notification: { url: `http://127.0.0.1:${notificationPort}/notifications`, poll_interval: "100ms", request_timeout: "5s", max_attempts: 3 },
       email_verification: { enabled: true, verify_url: webURL + "/verify-email" },
-      registration: { enabled: true, captcha: { test_answer: captchaTestAnswer } },
+      registration: { enabled: true },
+      captcha: { test_answer: captchaTestAnswer },
       passkey: { enabled: true, rp_id: "localhost", display_name: "IAM Local UAT", origins: [webURL] },
       web: { enabled: true, cookie_name: `uat_${identity}`, cookie_secure: false,
         post_login_url: webURL + "/", post_logout_url: webURL + "/login",
@@ -225,7 +226,8 @@ async function serve() {
       env: { ...process.env, IAM_API_URL: settings.apiURL, IAM_CONSOLE_URL: webURL,
         IAM_BROWSER_PASSWORD_FILE: join(directory, "admin-password"), IAM_BROWSER_LOGIN: "admin@example.test",
         IAM_BROWSER_TENANT_SLUG: "uat", IAM_BROWSER_TENANT_NAME: "UAT",
-        IAM_BACKEND_DIR: root, IAM_BACKEND_COMMAND: "./.temp/iam-uat/api", IAM_BOOTSTRAP_ARGS: "--config .temp/iam-uat/config.yaml" } });
+        IAM_BACKEND_DIR: root, IAM_BACKEND_COMMAND: "./.temp/iam-uat/api", IAM_BOOTSTRAP_ARGS: "--config .temp/iam-uat/config.yaml",
+        IAM_CAPTCHA_ANSWER: captchaTestAnswer } });
     writeFileSync(join(directory, "tenant-id"), tenant + "\n", { mode: 0o600 });
     const demoAccounts = process.argv.includes("--demo-accounts");
     const prefillDemoAccount = process.argv.includes("--prefill-demo-account");
@@ -234,14 +236,15 @@ async function serve() {
       ? JSON.parse(run("bun", ["scripts/bootstrap-file-personas.mjs"], { cwd: frontend,
         env: { ...process.env, IAM_API_URL: settings.apiURL, IAM_CONSOLE_URL: webURL,
           IAM_BROWSER_PASSWORD_FILE: join(directory, "admin-password"), IAM_BROWSER_TENANT: tenant,
-          IAM_UAT_DIRECTORY: directory } }))
+          IAM_UAT_DIRECTORY: directory, IAM_CAPTCHA_ANSWER: captchaTestAnswer } }))
       : { accounts: [] };
     if (demoAccounts) save(join(directory, "file-personas.json"), { ...personaFixture,
       accounts: personaFixture.accounts.map(({ password: _password, ...account }) => account) });
     launch("bun", ["run", "dev", "--host", "127.0.0.1", "--port", String(settings.webPort), "--strictPort"],
       { cwd: frontend, env: { ...process.env, VITE_API_PROXY_TARGET: settings.apiURL,
         VITE_DEFAULT_TENANT: tenant, VITE_DEV_LOGIN_ACCOUNTS: JSON.stringify(personaFixture.accounts),
-        VITE_DEV_LOGIN_ACCOUNTS_ENABLED: String(demoAccounts), VITE_DEV_LOGIN_PREFILL: String(prefillDemoAccount) } });
+        VITE_DEV_LOGIN_ACCOUNTS_ENABLED: String(demoAccounts), VITE_DEV_LOGIN_PREFILL: String(prefillDemoAccount),
+        VITE_DEV_LOGIN_CAPTCHA_ANSWER: captchaTestAnswer } });
     await waitFor(async () => { if (stopping) throw new Error("UAT process exited during startup."); return httpReady(webURL + "/login"); }, "console startup");
     save(readyPath, { pid: process.pid, ...settings });
     console.log(`UAT ready: ${webURL}`);

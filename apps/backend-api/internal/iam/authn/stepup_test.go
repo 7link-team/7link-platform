@@ -163,10 +163,43 @@ func TestStepUpStorageAndStartAuditFailures(t *testing.T) {
 		_, err = service.VerifyStepUp(
 			t.Context(), "", cookie, options.ChallengeID, mustTOTP(t, secret, service.now()),
 		)
-		assert.ErrorIs(t, err, ErrMFAChallenge)
+		// A failed read is a storage fault, not a wrong or expired challenge.
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrMFAChallenge)
 	})
 }
 
 func assurancePassword(now time.Time) authnext.Assurance {
 	return authnext.Assurance{AuthTime: now, Level: 1, Methods: []string{"pwd"}}
+}
+
+func TestStepUpStorageFaultsAreNotReportedAsRefusals(t *testing.T) {
+	t.Run("begin credential", func(t *testing.T) {
+		service, harness, cookie, _ := enabledMFAService(t)
+		failReadsAfter(t, harness.db, "iam_credentials", 0)
+		_, err := service.BeginStepUp(t.Context(), "", cookie)
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrMFANotEnabled)
+	})
+	t.Run("verify credential", func(t *testing.T) {
+		service, harness, cookie, secret := enabledMFAService(t)
+		options, err := service.BeginStepUp(t.Context(), "", cookie)
+		require.NoError(t, err)
+		failReadsAfter(t, harness.db, "iam_credentials", 0)
+		_, err = service.VerifyStepUp(t.Context(), "", cookie, options.ChallengeID, mustTOTP(t, secret, service.now()))
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrMFAChallenge)
+	})
+	// Authenticating the caller reads the session first; the read under test is
+	// the one that re-checks it before elevation.
+	t.Run("elevate session", func(t *testing.T) {
+		service, harness, cookie, secret := enabledMFAService(t)
+		service.now = func() time.Time { return repositoryTestNow.Add(30 * time.Second) }
+		options, err := service.BeginStepUp(t.Context(), "", cookie)
+		require.NoError(t, err)
+		failReadsAfter(t, harness.db, "iam_sessions", 1)
+		_, err = service.VerifyStepUp(t.Context(), "", cookie, options.ChallengeID, mustTOTP(t, secret, service.now()))
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrMFAChallenge)
+	})
 }

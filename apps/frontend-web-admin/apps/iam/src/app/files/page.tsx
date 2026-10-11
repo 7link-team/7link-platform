@@ -20,6 +20,7 @@ import {
   fileBrowserChildren,
   fileBrowserEntries,
   fileBrowserRoots,
+  mergeFileCollectionPages,
   materializeDroppedEntries,
   parentFileBrowserDirectoryID,
   type FileBrowserLocation,
@@ -32,6 +33,7 @@ import {
   clientErrorMessage,
   iamApi,
   type FileOperationInput,
+  type FilePage,
 } from "../../lib/iam-api"
 import {
   confirmedFileOperation,
@@ -91,6 +93,7 @@ export default function FilesPage({
 }) {
   const tf = useTranslations("files")
   const allowed = useAllowed()
+  const canViewDepartments = allowed("dept_view")
   const writable = getAccountView()?.mode !== "read_only"
   const outlet = useOutletContext<{
     tenantID: string
@@ -185,35 +188,93 @@ export default function FilesPage({
     const request = ++generation.current
     let active = true
     if (!account && !system && !tenantID) return
-    void iamApi
-      .files(fileEntityID, "", system)
-      .then(async (rootPage) => {
-        const departmentIDs =
-          account || system
-            ? []
-            : [
-                ...new Set(
-                  (rootPage.items ?? []).flatMap((root) =>
-                    root.department_id ? [root.department_id] : []
-                  )
-                ),
-              ]
-        const departments = (
-          await Promise.all(
-            departmentIDs.map((id) => iamApi.department(id).catch(() => null))
-          )
-        ).filter((department) => department !== null)
-        const roots = fileBrowserRoots(rootPage, {
-          ...(tenantID && tenantName ? { [tenantID]: tenantName } : {}),
-          ...(entityNames ?? {}),
-          ...Object.fromEntries(
-            departments.map((department) => [department.id, department.name])
-          ),
+    const loadCollections = async () => {
+      if (account || system)
+        return {
+          rootPages: [await iamApi.files(fileEntityID, "", system)],
+          names: {},
+          trash: recycleBin
+            ? await iamApi.trashedFiles(fileEntityID, pageAfter, system)
+            : null,
+        }
+      const [entities, departments] = await Promise.all([
+        entityID ? Promise.resolve([]) : iamApi.memberEntities("file_view"),
+        canViewDepartments ? iamApi.departments() : Promise.resolve([]),
+      ])
+      const visibleDepartments = departments.filter(
+        (department) => !entityID || department.entity_id === entityID
+      )
+      const entityIDs = entityID
+        ? [entityID]
+        : entities.map((entity) => entity.id)
+      const collections = [
+        ...(!entityID
+          ? [
+              (after: string, state: "active" | "trashed") =>
+                iamApi.files(undefined, after, false, state),
+            ]
+          : []),
+        ...entityIDs.map(
+          (id) => (after: string, state: "active" | "trashed") =>
+            iamApi.files(id, after, false, state)
+        ),
+        ...visibleDepartments.map(
+          (department) => (after: string, state: "active" | "trashed") =>
+            iamApi
+              .departmentFiles(department.id, after, state)
+              .catch((cause: unknown): FilePage => {
+                // Department names may be visible without file access to that owner.
+                if (cause instanceof ApiError && cause.status === 403)
+                  return { items: [] }
+                throw cause
+              })
+        ),
+      ]
+      const rootPages = await Promise.all(
+        collections.map(async (load) => {
+          const pages: FilePage[] = []
+          let after = ""
+          do {
+            const page = await load(after, "active")
+            pages.push(page)
+            if (
+              page.next_after &&
+              BigInt(page.next_after) <= BigInt(after || "0")
+            )
+              throw new Error("invalid_response")
+            after = page.next_after ?? ""
+          } while (after)
+          return pages
         })
+      )
+      return {
+        rootPages: rootPages.flat(),
+        names: Object.fromEntries(
+          [...entities, ...visibleDepartments].map((owner) => [
+            owner.id,
+            owner.name,
+          ])
+        ),
+        trash: recycleBin
+          ? mergeFileCollectionPages(
+              await Promise.all(
+                collections.map((load) => load(pageAfter, "trashed"))
+              )
+            )
+          : null,
+      }
+    }
+    void loadCollections()
+      .then(async ({ rootPages, names, trash: trashPage }) => {
+        const roots = rootPages.flatMap((rootPage) =>
+          fileBrowserRoots(rootPage, {
+            ...(tenantID && tenantName ? { [tenantID]: tenantName } : {}),
+            ...(entityNames ?? {}),
+            ...names,
+          })
+        )
         if (recycleBin) {
-          const trash = fileBrowserEntries(
-            await iamApi.trashedFiles(fileEntityID, pageAfter, system)
-          )
+          const trash = fileBrowserEntries(trashPage!)
           if (!active || request !== generation.current) return
           currentNodeID.current = null
           setState({
@@ -260,6 +321,7 @@ export default function FilesPage({
   }, [
     account,
     system,
+    canViewDepartments,
     tenantID,
     tenantName,
     entityID,
@@ -326,6 +388,24 @@ export default function FilesPage({
     }
   }
   const parentID = () => currentNodeID.current
+  const writeParentID = async () => {
+    const current = parentID()
+    if (current) return current
+    if (
+      !account ||
+      !writable ||
+      recycleBin ||
+      visibleState.status !== "ready" ||
+      visibleState.roots.length
+    )
+      throw new Error("invalid_response")
+    const root = await iamApi.createAccountFileRoot()
+    if (!root.id) throw new Error("invalid_response")
+    currentNodeID.current = root.id
+    setLocationScope(scopeKey)
+    setDirectoryLocation(root.id)
+    return root.id
+  }
   const setFileClipboard = (
     action: FileClipboard["action"],
     nodes: readonly FileBrowserNode[]
@@ -532,18 +612,7 @@ export default function FilesPage({
             : undefined
         }
         onRefresh={refresh}
-        onEnsurePersonalRoot={
-          !recycleBin && account && writable
-            ? () =>
-                run(async () => {
-                  const root = await iamApi.createAccountFileRoot()
-                  if (!root.id) throw new Error("invalid_response")
-                  setLocationScope(scopeKey)
-                  setDirectoryLocation(root.id)
-                  refresh()
-                })
-            : undefined
-        }
+        personal={account}
         onEnsureSystemRoot={
           !recycleBin && system && writable && allowed("system_file_create")
             ? () =>
@@ -560,8 +629,7 @@ export default function FilesPage({
           !recycleBin && writable && fileAllowed("create")
             ? (name) =>
                 run(async () => {
-                  const id = parentID()
-                  if (!id) throw new Error("invalid_response")
+                  const id = await writeParentID()
                   await iamApi.createDirectory(fileEntityID, id, name, system)
                   refresh()
                 })
@@ -571,8 +639,7 @@ export default function FilesPage({
           !recycleBin && writable && fileAllowed("create")
             ? (name, mimeType) =>
                 run(async () => {
-                  const id = parentID()
-                  if (!id) throw new Error("invalid_response")
+                  const id = await writeParentID()
                   await iamApi.uploadFile(
                     fileEntityID,
                     id,
@@ -587,8 +654,7 @@ export default function FilesPage({
           !recycleBin && writable && fileAllowed("create")
             ? (entries) =>
                 run(async () => {
-                  const id = parentID()
-                  if (!id) throw new Error("invalid_response")
+                  const id = await writeParentID()
                   try {
                     await materializeDroppedEntries(
                       id,

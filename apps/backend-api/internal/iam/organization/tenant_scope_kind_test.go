@@ -115,7 +115,7 @@ func TestOrdinaryTenantOperationsExcludeAdministrativeRoots(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, rows, 1)
 		assert.Equal(t, tenant.ID, rows[0].ID)
-		page, total, err := service.ListPage(t.Context(), includeDeleted, 0, 1)
+		page, total, err := service.ListPage(t.Context(), includeDeleted, "", 0, 1)
 		require.NoError(t, err)
 		require.Len(t, page, 1)
 		assert.EqualValues(t, 1, total)

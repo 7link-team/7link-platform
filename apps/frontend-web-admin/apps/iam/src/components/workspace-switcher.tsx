@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
+import { Input } from "@workspace/ui/components/input"
 import {
   Popover,
   PopoverContent,
@@ -17,6 +18,9 @@ import {
 } from "@workspace/ui/components/popover"
 import { Alert } from "./alert"
 import type { Entity, Tenant } from "../lib/iam-api"
+
+// Above this many workspaces a list stops being scannable and needs a filter.
+const tenantFilterThreshold = 8
 
 export function WorkspaceSwitcher({
   tenantID,
@@ -35,6 +39,7 @@ export function WorkspaceSwitcher({
   operatingPlatforms = [],
   onOperatingPlatform,
   operatingPlatformID = "",
+  tenantPerspective = false,
 }: {
   tenantID: string
   entityID: string
@@ -52,9 +57,32 @@ export function WorkspaceSwitcher({
   operatingPlatforms?: Tenant[]
   onOperatingPlatform?: (id: string) => void
   operatingPlatformID?: string
+  /** Whether this account has any standing at tenant level. Somebody whose
+   *  grants live inside one entity is not offered the tenant's perspective: the
+   *  shell there is shaped for administering the tenant, and offering it is
+   *  showing a view that is not theirs. */
+  tenantPerspective?: boolean
 }) {
   const t = useTranslations("iam")
   const [open, setOpen] = useState(false)
+  // A filter appears once the list is longer than somebody can scan. Membership
+  // grows with the person rather than with the deployment, so most callers
+  // never see it -- but a platform operator who belongs to dozens of tenants
+  // had no way to find one among them.
+  const [tenantFilter, setTenantFilter] = useState("")
+  const activeTenants = (tenants ?? []).filter(
+    (tenant) => tenant.status === "active"
+  )
+  const filterTenants = activeTenants.length > tenantFilterThreshold
+  const term = tenantFilter.trim().toLowerCase()
+  const shownTenants =
+    filterTenants && term
+      ? activeTenants.filter(
+          (tenant) =>
+            tenant.name.toLowerCase().includes(term) ||
+            tenant.slug.toLowerCase().includes(term)
+        )
+      : activeTenants
   const tenantName =
     tenants?.find((tenant) => tenant.id === tenantID)?.name ||
     tenantID ||
@@ -63,6 +91,11 @@ export function WorkspaceSwitcher({
     entities?.find((entity) => entity.id === entityID)?.name || entityID
   // Only the tenant workspace has a tenant or entity perspective to select.
   const tenantView = !systemView && !operatingPlatformID
+  // Whose entities are a destination and whose tenant is only their heading. Only
+  // asked inside the tenant workspace: in the system area or on a platform the
+  // tenant list is how an operator reaches a tenant at all, and the perspective
+  // they would get there is not what this answer is about.
+  const groupEntitiesUnderTenant = tenantView && !tenantPerspective
   return (
     <Popover
       open={open}
@@ -166,34 +199,68 @@ export function WorkspaceSwitcher({
                 </Button>
               </Alert>
             ) : tenants ? (
-              <div className="max-h-60 space-y-1 overflow-y-auto">
-                {tenants.length === 0 && (
-                  <p className="text-sm">{t("noAvailableTenants")}</p>
+              <>
+                {filterTenants && (
+                  <Input
+                    aria-label={t("searchTenants")}
+                    value={tenantFilter}
+                    onChange={(event) => setTenantFilter(event.target.value)}
+                    className="mb-2 h-9"
+                  />
                 )}
-                {tenants
-                  .filter((tenant) => tenant.status === "active")
-                  .map((tenant) => (
-                    <button
-                      key={tenant.id}
-                      type="button"
-                      aria-pressed={tenant.id === tenantID}
-                      onClick={() => {
-                        onTenant(tenant.id)
-                        setOpen(false)
-                      }}
-                      className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${tenant.id === tenantID ? "bg-accent font-medium" : "hover:bg-muted"}`}
-                    >
-                      <Building2 className="size-4 shrink-0" />
-                      <span className="min-w-0 break-words">
-                        {tenant.name}
-                        <span className="block text-xs text-muted-foreground">
-                          {tenant.slug}
+                <div className="max-h-60 space-y-1 overflow-y-auto">
+                  {activeTenants.length === 0 && (
+                    <p className="text-sm">{t("noAvailableTenants")}</p>
+                  )}
+                  {activeTenants.length > 0 && shownTenants.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      {t("noMatches")}
+                    </p>
+                  )}
+                  {/* A tenant is a destination only for an account with standing
+                      at tenant level. Without it the row stays -- somebody still
+                      has to see which tenant their entities belong to -- and
+                      stops being something that can be entered. Rendered as a
+                      heading rather than a disabled button so nothing offers a
+                      perspective that is not this account's. */}
+                  {shownTenants.map((tenant) =>
+                    !groupEntitiesUnderTenant ? (
+                      <button
+                        key={tenant.id}
+                        type="button"
+                        aria-pressed={tenant.id === tenantID}
+                        onClick={() => {
+                          onTenant(tenant.id)
+                          setOpen(false)
+                        }}
+                        className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${tenant.id === tenantID ? "bg-accent font-medium" : "hover:bg-muted"}`}
+                      >
+                        <Building2 className="size-4 shrink-0" />
+                        <span className="min-w-0 break-words">
+                          {tenant.name}
+                          <span className="block text-xs text-muted-foreground">
+                            {tenant.slug}
+                          </span>
                         </span>
-                      </span>
-                      <ChevronRight className="ms-auto size-4 shrink-0" />
-                    </button>
-                  ))}
-              </div>
+                        <ChevronRight className="ms-auto size-4 shrink-0" />
+                      </button>
+                    ) : (
+                      <h3
+                        key={tenant.id}
+                        className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-sm ${tenant.id === tenantID ? "bg-accent font-medium" : "text-muted-foreground"}`}
+                      >
+                        <Building2 className="size-4 shrink-0" />
+                        <span className="min-w-0 break-words">
+                          {tenant.name}
+                          <span className="block text-xs text-muted-foreground">
+                            {tenant.slug}
+                          </span>
+                        </span>
+                      </h3>
+                    )
+                  )}
+                </div>
+              </>
             ) : (
               <p role="status" className="text-sm">
                 {t("loading")}
@@ -204,21 +271,23 @@ export function WorkspaceSwitcher({
             <h2 className="mb-2 text-sm font-semibold break-words">
               {tenantName}
             </h2>
-            <button
-              type="button"
-              disabled={!tenantID}
-              onClick={() => {
-                onEntity("")
-                setOpen(false)
-              }}
-              className="mb-3 flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-accent"
-            >
-              <Building2 className="size-4 shrink-0" />
-              <span>{t("tenantPerspective")}</span>
-              {tenantView && !entityID && (
-                <Check className="ms-auto size-4 shrink-0" />
-              )}
-            </button>
+            {!groupEntitiesUnderTenant && (
+              <button
+                type="button"
+                disabled={!tenantID}
+                onClick={() => {
+                  onEntity("")
+                  setOpen(false)
+                }}
+                className="mb-3 flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-accent"
+              >
+                <Building2 className="size-4 shrink-0" />
+                <span>{t("tenantPerspective")}</span>
+                {tenantView && !entityID && (
+                  <Check className="ms-auto size-4 shrink-0" />
+                )}
+              </button>
+            )}
             {tenantView && (
               <>
                 <h3 className="mb-2 text-xs font-medium text-muted-foreground">

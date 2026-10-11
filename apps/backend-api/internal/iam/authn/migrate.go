@@ -16,9 +16,14 @@ func (*Module) ModuleName() string { return Name }
 //go:embed sql
 var migrationsFS embed.FS
 
-func (*Module) MigrationSource() goosex.Source {
+// MigrationSource is this module's migration stream. It is a package function
+// so principal erasure can read the stream's version while the module is
+// disabled, without holding a Module.
+func MigrationSource() goosex.Source {
 	return goosex.Source{FS: migrationsFS, TableName: "goose_authn"}
 }
+
+func (*Module) MigrationSource() goosex.Source { return MigrationSource() }
 
 func (*Module) MigrationMilestones() []module.MigrationMilestone {
 	return []module.MigrationMilestone{
@@ -40,6 +45,12 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 		{Name: "account-view-tokens", Version: 16},
 		{Name: "access-view-targets", Version: 17},
 		{Name: "public-ids", Version: 18},
+		// One table of this module's own, with a foreign key to the principals
+		// identity already created at its base milestone.
+		{Name: "phone-verification", Version: 19,
+			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "base"}}},
+		// One column on this module's own challenge table.
+		{Name: "mfa-first-factor", Version: 20},
 	}
 }
 

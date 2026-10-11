@@ -35,6 +35,7 @@ func newMFAChallenge(db *gorm.DB, opts ...gen.DOOption) mFAChallenge {
 	_mFAChallenge.ExpiresAt = field.NewTime(tableName, "expires_at")
 	_mFAChallenge.ConsumedAt = field.NewTime(tableName, "consumed_at")
 	_mFAChallenge.Attempts = field.NewInt(tableName, "attempts")
+	_mFAChallenge.FirstFactor = field.NewString(tableName, "first_factor")
 
 	_mFAChallenge.fillFieldMap()
 
@@ -52,6 +53,7 @@ type mFAChallenge struct {
 	ExpiresAt   field.Time
 	ConsumedAt  field.Time
 	Attempts    field.Int
+	FirstFactor field.String
 
 	fieldMap map[string]field.Expr
 }
@@ -75,6 +77,7 @@ func (m *mFAChallenge) updateTableName(table string) *mFAChallenge {
 	m.ExpiresAt = field.NewTime(table, "expires_at")
 	m.ConsumedAt = field.NewTime(table, "consumed_at")
 	m.Attempts = field.NewInt(table, "attempts")
+	m.FirstFactor = field.NewString(table, "first_factor")
 
 	m.fillFieldMap()
 
@@ -103,7 +106,7 @@ func (m *mFAChallenge) GetFieldByName(fieldName string) (field.OrderExpr, bool) 
 }
 
 func (m *mFAChallenge) fillFieldMap() {
-	m.fieldMap = make(map[string]field.Expr, 7)
+	m.fieldMap = make(map[string]field.Expr, 8)
 	m.fieldMap["id_hash"] = m.IDHash
 	m.fieldMap["principal_id"] = m.PrincipalID
 	m.fieldMap["return_url"] = m.ReturnURL
@@ -111,6 +114,7 @@ func (m *mFAChallenge) fillFieldMap() {
 	m.fieldMap["expires_at"] = m.ExpiresAt
 	m.fieldMap["consumed_at"] = m.ConsumedAt
 	m.fieldMap["attempts"] = m.Attempts
+	m.fieldMap["first_factor"] = m.FirstFactor
 }
 
 func (m mFAChallenge) clone(db *gorm.DB) mFAChallenge {

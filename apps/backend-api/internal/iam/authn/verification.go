@@ -22,7 +22,9 @@ const (
 	maxCodeAttempts               = 5
 )
 
-func emailVerificationCode() (string, error) {
+// verificationCode is the six digits a person reads off a message, shared by
+// every channel that sends one.
+func verificationCode() (string, error) {
 	var data [4]byte
 	if _, err := rand.Read(data[:]); err != nil {
 		return "", err
@@ -78,7 +80,7 @@ func (s *Service) BeginEmailVerification(
 			return fmt.Errorf("generate email verification credential: %w", err)
 		}
 		token := emailVerificationTokenPrefix + secret
-		code, err := emailVerificationCode()
+		code, err := verificationCode()
 		if err != nil {
 			return fmt.Errorf("generate email verification code: %w", err)
 		}

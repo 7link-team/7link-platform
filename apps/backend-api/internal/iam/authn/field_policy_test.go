@@ -91,16 +91,25 @@ func TestProfileProjectionScopesMaskingAndFailClosed(t *testing.T) {
 			assert.Equal(t, strings.Contains(" "+scope+" ", " profile "), view.PreferredUsername != nil)
 			assert.Equal(t, strings.Contains(" "+scope+" ", " email "), view.Email != nil)
 			assert.Equal(t, view.Email != nil, view.EmailVerified != nil)
+			// The number is a contact like the address, so the same scope carries it
+			// and the same rule governs its verification flag.
+			assert.Equal(t, view.Email != nil, view.Phone != nil)
+			assert.Equal(t, view.Phone != nil, view.PhoneVerified != nil)
 		})
 	}
 	for _, mode := range []string{"omit", "redact", "unknown"} {
-		fields.Fields["login_name"], fields.Fields["email"] = authz.FieldDecision{Read: mode}, authz.FieldDecision{Read: mode}
+		fields.Fields["login_name"] = authz.FieldDecision{Read: mode}
+		fields.Fields["email"] = authz.FieldDecision{Read: mode}
+		fields.Fields["phone"] = authz.FieldDecision{Read: mode}
 		view, err := service.ProjectProfile(t.Context(), claims, "profile email")
 		require.NoError(t, err)
 		assert.Nil(t, view.EmailVerified)
+		assert.Nil(t, view.PhoneVerified)
 		if mode == "redact" {
 			require.NotNil(t, view.Email)
+			require.NotNil(t, view.Phone)
 			assert.Equal(t, "[REDACTED]", *view.Email)
+			assert.Equal(t, "[REDACTED]", *view.Phone)
 			assert.Equal(t, "[REDACTED]", *view.PreferredUsername)
 		} else {
 			assert.Equal(t, ProfileClaims{}, view)
@@ -153,7 +162,8 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 	require.NoError(t, db.Exec("INSERT INTO iam_tenant_members (tenant_id,principal_id,status) VALUES (101,?,'active')", subject).Error)
 	_, api := humatest.New(t)
 	RegisterHTTP(api, service, service)
-	login := api.Post("/login", map[string]any{"login_name": "alice", "password": "correct horse battery staple"}, "Origin: https://app.example")
+	login := api.Post("/login", map[string]any{
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer, "login_name": "alice", "password": "correct horse battery staple"}, "Origin: https://app.example")
 	require.Equal(t, http.StatusCreated, login.Code)
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	read := func(path, header string) map[string]any {
@@ -220,4 +230,26 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 	global, _, err := service.IssueAccessToken(t.Context(), principalID, "api", "openid profile email")
 	require.NoError(t, err)
 	assert.NotContains(t, tokenPayload(t, global), "email")
+}
+
+func TestAProfileViewFromATokenFailsClosedWithoutARepository(t *testing.T) {
+	// A bearer or userinfo view re-reads the current profile rather than trusting
+	// what an old token carries, because a field policy may have changed since it
+	// was issued. With nothing to read from, the answer is that the fields are
+	// unavailable -- never the token's stale copy.
+	fields, err := allowProfileFields(t.Context(), 101, 0, authz.ProfileResource, 11)
+	require.NoError(t, err)
+	service := &Service{}
+	WithFieldPermissionChecker(profileCheckerFunc(
+		func(context.Context, guid.ID, guid.ID, string, guid.ID) (authz.FieldConstraint, error) {
+			return fields, nil
+		}))(service)
+
+	_, err = service.ProjectProfile(t.Context(), &authnext.Claims{
+		PrincipalID: 11, OrganizationID: "101",
+		Email: "alice@example.test", EmailVerified: true,
+		Phone: "+8613800138000", PhoneVerified: true,
+		Raw: map[string]any{"scope": "openid profile email"},
+	}, "openid profile email")
+	assert.ErrorIs(t, err, authz.ErrFieldsUnavailable)
 }

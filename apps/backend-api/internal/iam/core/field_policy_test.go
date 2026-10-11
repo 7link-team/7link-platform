@@ -29,12 +29,12 @@ func TestFieldPolicyLifecycleRevisionIsolationAndFailClosed(t *testing.T) {
 		_, err = h.service.GrantPermission(t.Context(), 1, admin.ID, code)
 		require.NoError(t, err)
 	}
-	_, err = h.service.AddMember(t.Context(), 1, admin.ID, 11)
+	_, err = h.service.AddMember(t.Context(), 1, admin.ID, 11, nil)
 	require.NoError(t, err)
 	ctx := authn.WithClaims(t.Context(), &authn.Claims{TenantID: 1, PrincipalID: 11})
 	reader, err := h.service.CreateRole(t.Context(), 1, "Field readers", "")
 	require.NoError(t, err)
-	_, err = h.service.AddMember(t.Context(), 1, reader.ID, 12)
+	_, err = h.service.AddMember(t.Context(), 1, reader.ID, 12, nil)
 	require.NoError(t, err)
 	policy := authz.FieldPolicy{Read: authz.FieldAccess{Default: "deny", AllowRoles: []guid.ID{reader.ID}}, Write: authz.FieldAccess{Default: "deny"}, Mask: "redact"}
 	before, err := h.authorizer.FieldConstraint(t.Context(), 1, 0, "todo", 12)

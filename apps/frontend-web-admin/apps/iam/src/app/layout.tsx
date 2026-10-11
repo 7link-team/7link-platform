@@ -6,7 +6,6 @@ import {
   Outlet,
   useLocation,
   useNavigate,
-  useMatch,
   useParams,
 } from "react-router"
 import { Alert } from "../components/alert"
@@ -30,10 +29,16 @@ import {
   type EffectiveMenu,
   type Tenant,
   type Entity,
-  ApiError,
 } from "../lib/iam-api"
-import { appName } from "../lib/branding"
-import { tenantIDFromPath } from "../lib/organization-scope"
+import {
+  entityWorkspaceView,
+  tenantPerspectiveOffered,
+} from "../lib/navigation"
+import { useBranding } from "../lib/branding"
+import {
+  entityIDFromPath,
+  tenantIDFromPath,
+} from "../lib/organization-scope"
 import { entrancePath } from "../lib/auth-entrance"
 import { getAccountView } from "../lib/account-view"
 import type { EffectivePermissions } from "../lib/permissions"
@@ -41,6 +46,7 @@ import { LanguageSwitcher } from "@workspace/ui/components/i18n/language-switche
 import { useClientLocale } from "@workspace/ui/i18n/intl-provider"
 
 export default function AppLayout() {
+  const { name: appName } = useBranding()
   const t = useTranslations("iam")
 
   const { session, status } = useAuth()
@@ -65,14 +71,11 @@ export default function AppLayout() {
   const [tenantCatalog, setTenantCatalog] = useState<{
     subject: string
     items: Pick<Tenant, "id" | "slug" | "name" | "status">[]
-    platformAccess: boolean
     error: string
   } | null>(null)
   const currentTenants =
     tenantCatalog?.subject === subject ? tenantCatalog : null
   const directoryReady = Boolean(currentTenants && !currentTenants.error)
-  const platformTenantAccess =
-    directoryReady && Boolean(currentTenants?.platformAccess)
   const availableTenants = currentTenants?.items ?? null
   const routeTenantAdmitted = Boolean(
     routeTenantID &&
@@ -93,8 +96,16 @@ export default function AppLayout() {
   // completed load answers both.
   const permissionsResolved = currentMenus !== null
   const menuError = currentMenus?.error ?? ""
-  const [fieldPolicyAccess, setFieldPolicyAccess] = useState("")
+  // Field policy access is read from the caller's own permission codes. It
+  // used to be discovered by requesting the field catalogue and treating the
+  // refusal as the answer: an authorization failure per page load, logged in
+  // everybody's console, to learn something the permission set already said.
+  const fieldPolicyAccess = Boolean(permissions?.has("field_policy_view"))
   const { locale: menuLanguage } = useClientLocale()
+  // The tenant directory is reachable by permission, not by membership: it is
+  // where every tenant in the deployment is administered, paged and searched.
+  // The switcher is the other thing entirely -- see the loader below.
+  const platformTenantAccess = Boolean(permissions?.has("tenant_view"))
   const systemPath = platformTenantAccess
     ? "/system/tenants"
     : permissions?.has("platform_administer")
@@ -120,10 +131,15 @@ export default function AppLayout() {
   }, [status, subject])
 
   const navigate = useNavigate()
-  const entityMatch = useMatch("/admin/:tenantID/entities/:entityID/:view")
-  const entityID = routeParams.entityID ?? entityMatch?.params.entityID ?? ""
-  const entityFileRoute =
-    Boolean(entityID) && location.pathname.endsWith("/files")
+  const entityID = routeParams.entityID ?? entityIDFromPath(location.pathname)
+  // Views that live inside an entity but do not read the entity record itself.
+  // The checks below wait for the entity catalogue and refuse an entity that is
+  // not in it; these pages need neither, and gating them on it turned a page the
+  // account could use into "this entity is unavailable".
+  const entityOwnPage =
+    Boolean(entityID) &&
+    (location.pathname.endsWith("/files") ||
+      location.pathname.endsWith("/departments"))
   const [entityCatalog, setEntityCatalog] = useState<{
     subject: string
     tenant: string
@@ -147,17 +163,23 @@ export default function AppLayout() {
       ),
     [catalog]
   )
-  const [scopedFileAccess, setScopedFileAccess] = useState<{
+  // Whether this account has any standing at tenant level, which is what decides
+  // whether the tenant's perspective may be offered to it at all. Inside an
+  // entity the permission set above is that entity's, so the tenant answer is
+  // asked for separately -- and until it arrives the perspective is not offered,
+  // because a view is shown once it is known to be allowed rather than until it
+  // is known not to be.
+  const [tenantStanding, setTenantStanding] = useState<{
     subject: string
     tenant: string
-    entityID: string
+    standing: boolean
   } | null>(null)
-  const scopedFileEntityID =
-    !entityID &&
-    scopedFileAccess?.subject === subject &&
-    scopedFileAccess.tenant === tenantValue
-      ? scopedFileAccess.entityID
-      : ""
+  const tenantPerspective = tenantPerspectiveOffered(
+    tenantStanding?.subject === subject && tenantStanding.tenant === tenantValue
+      ? tenantStanding.standing
+      : null,
+    (catalog?.items ?? []).some((entity) => entity.status === "active")
+  )
 
   useEffect(() => {
     if (!routeTenantAdmitted) return
@@ -174,22 +196,37 @@ export default function AppLayout() {
     )
       return
     let active = true
-    if (permissionsResolved && !permissions?.has("entity_view")) {
-      void Promise.resolve().then(() => {
-        if (active)
-          setEntityCatalog({
-            subject,
-            tenant: tenantValue,
-            items: [],
-            error: "",
-          })
-      })
-      return () => {
-        active = false
-      }
-    }
+    // No client-side pre-judgement here any more. This used to decide the list
+    // was empty whenever the caller lacked entity_view, because the endpoint it
+    // called refused without it -- and entity_view is the permission to
+    // administer every entity in the tenant, which somebody belonging to one
+    // does not have. The endpoint below answers for the caller, so the caller
+    // is no longer the one deciding what it may see.
     const refresh = () => {
-      void iamApi.entities().then(
+      // file_view is what the console does inside an entity, and the switcher
+      // offers the entities it can take somebody into. Asking for the entities
+      // this caller may administer instead was why a member of exactly one
+      // entity was shown none of them.
+      // The tenant-level answer, asked here because this effect already runs for
+      // the same subject and tenant inside an entity as well as outside one. A
+      // data-scoped grant is absent from this list unless its constraint admits
+      // everything, which is what makes "nothing here" mean "no tenant standing"
+      // rather than "no administration permissions".
+      void iamApi.myPermissions(tenantValue).then(
+        (codes) => {
+          if (active)
+            setTenantStanding({
+              subject,
+              tenant: tenantValue,
+              standing: (codes ?? []).length > 0,
+            })
+        },
+        () => {
+          if (active)
+            setTenantStanding({ subject, tenant: tenantValue, standing: false })
+        }
+      )
+      void iamApi.memberEntities("file_view").then(
         (items) => {
           if (active)
             setEntityCatalog({ subject, tenant: tenantValue, items, error: "" })
@@ -221,67 +258,10 @@ export default function AppLayout() {
     accountView?.scope_type,
   ])
 
-  useEffect(() => {
-    if (status !== "authenticated" || !tenantValue || entityID) return
-    let active = true
-    void iamApi.departments().then(
-      async (departments) => {
-        const entityIDs = [
-          ...new Set(departments.map(({ entity_id }) => entity_id)),
-        ]
-        for (const candidate of entityIDs) {
-          try {
-            await iamApi.files(candidate)
-            if (active)
-              setScopedFileAccess({
-                subject,
-                tenant: tenantValue,
-                entityID: candidate,
-              })
-            return
-          } catch {
-            // Continue through the caller's authorized department entities.
-          }
-        }
-        if (active)
-          setScopedFileAccess({ subject, tenant: tenantValue, entityID: "" })
-      },
-      () => {
-        if (active)
-          setScopedFileAccess({ subject, tenant: tenantValue, entityID: "" })
-      }
-    )
-    return () => {
-      active = false
-    }
-  }, [status, tenantValue, entityID, subject])
   const loginState = useMemo(
     () => ({ from: location.pathname + location.search }),
     [location.pathname, location.search]
   )
-
-  useEffect(() => {
-    if (
-      status !== "authenticated" ||
-      !tenantValue ||
-      !session ||
-      !directoryReady ||
-      accountView?.scope_type === "entity"
-    )
-      return
-    let active = true
-    void iamApi.fieldCatalog().then(
-      () => {
-        if (active) setFieldPolicyAccess(`${tenantValue}:${session.subject}`)
-      },
-      () => {
-        if (active) setFieldPolicyAccess("")
-      }
-    )
-    return () => {
-      active = false
-    }
-  }, [status, tenantValue, session, directoryReady, accountView?.scope_type])
 
   useEffect(() => {
     let active = true
@@ -352,7 +332,6 @@ export default function AppLayout() {
               setTenantCatalog({
                 subject,
                 items: [],
-                platformAccess: false,
                 error: t("identityUnavailable"),
               })
               return
@@ -362,7 +341,6 @@ export default function AppLayout() {
             setTenantCatalog({
               subject,
               items: [tenant],
-              platformAccess: false,
               error: "",
             })
             if (metadata.scope_type === "entity")
@@ -378,29 +356,23 @@ export default function AppLayout() {
               setTenantCatalog({
                 subject,
                 items: [],
-                platformAccess: false,
                 error: cause.message,
               })
           }
         )
         return
       }
-      void Promise.all([
-        iamApi.myTenants(),
-        iamApi.tenants().catch((cause: unknown) => {
-          if (cause instanceof ApiError && cause.status === 403) return null
-          throw cause
-        }),
-      ]).then(
-        ([mine, platform]) => {
+      // The switcher offers the tenants this caller belongs to, and only those.
+      // It deliberately does not add the tenants a permission merely lets them
+      // administer: those are every tenant in the deployment, they would be
+      // indistinguishable here from the caller's own, and the switcher has no
+      // room to page or search them. A privileged caller reaches another tenant
+      // through the account view, which is scoped, time-boxed and can be
+      // read-only -- and which hides this switcher while it is active.
+      void iamApi.myTenants().then(
+        (mine) => {
           if (!active || request !== generation) return
-          const items = [
-            ...new Map(
-              [...mine, ...(platform ?? [])]
-                .filter((tenant) => tenant.status === "active")
-                .map((tenant) => [tenant.id, tenant])
-            ).values(),
-          ]
+          const items = mine.filter((tenant) => tenant.status === "active")
           const selected = routeTenantID || getTenant()
           const admitted = items.some((tenant) => tenant.id === selected)
           const next = admitted
@@ -417,7 +389,6 @@ export default function AppLayout() {
           setTenantCatalog({
             subject,
             items,
-            platformAccess: platform !== null,
             error: "",
           })
         },
@@ -426,7 +397,6 @@ export default function AppLayout() {
             setTenantCatalog({
               subject,
               items: [],
-              platformAccess: false,
               error: cause.message,
             })
         }
@@ -459,6 +429,10 @@ export default function AppLayout() {
     setMenuCatalog(null)
     setTenant(next)
     setTenantValue(next)
+    // The tenant route decides which of its perspectives this caller gets. Not
+    // the workspace home: that answers "nowhere was asked for" and sends an
+    // operator with system authority to /system, which would bounce somebody who
+    // had just picked a tenant straight back out of it.
     navigate(`/admin/${encodeURIComponent(next)}`)
   }
 
@@ -500,13 +474,9 @@ export default function AppLayout() {
                   permissions={permissions}
                   tenantID={tenantValue}
                   entityID={entityID}
-                  scopedFileEntityID={scopedFileEntityID}
                   language={menuLanguage}
                   menus={directoryReady ? (menus ?? []) : []}
-                  fieldPolicyAccess={
-                    Boolean(tenantValue) &&
-                    fieldPolicyAccess === `${tenantValue}:${session.subject}`
-                  }
+                  fieldPolicyAccess={Boolean(tenantValue) && fieldPolicyAccess}
                   className="block h-full w-full border-0"
                 />
               </div>
@@ -537,14 +507,20 @@ export default function AppLayout() {
               onRetryTenants={() =>
                 window.dispatchEvent(new Event("tenant-catalog-change"))
               }
+              tenantPerspective={tenantPerspective}
               entities={catalog?.items ?? null}
-              error={entityFileRoute ? "" : (catalog?.error ?? "")}
+              error={entityOwnPage ? "" : (catalog?.error ?? "")}
               onTenant={commitTenant}
               onEntity={(id) => {
+                const owner = tenantValue
+                // The overview reads the entity itself, which is tenant-wide
+                // entity administration. Sending somebody who merely belongs to
+                // the entity there turned the whole perspective into one refusal,
+                // so they go to the view they do have.
                 navigate(
                   id
-                    ? `/admin/${encodeURIComponent(tenantValue)}/entities/${encodeURIComponent(id)}/overview`
-                    : `/admin/${encodeURIComponent(tenantValue)}`
+                    ? `/admin/${encodeURIComponent(owner)}/entities/${encodeURIComponent(id)}/${entityWorkspaceView(permissions ?? [])}`
+                    : `/admin/${encodeURIComponent(owner)}`
                 )
               }}
             />
@@ -592,13 +568,9 @@ export default function AppLayout() {
           permissions={permissions}
           tenantID={tenantValue}
           entityID={entityID}
-          scopedFileEntityID={scopedFileEntityID}
           language={menuLanguage}
           menus={directoryReady ? (menus ?? []) : []}
-          fieldPolicyAccess={
-            Boolean(tenantValue) &&
-            fieldPolicyAccess === `${tenantValue}:${session.subject}`
-          }
+          fieldPolicyAccess={Boolean(tenantValue) && fieldPolicyAccess}
           className="hidden md:block"
         />
         <main className="min-h-0 min-w-0 flex-1 overflow-auto">
@@ -629,12 +601,12 @@ export default function AppLayout() {
               <p role="status">{t("loading")}</p>
             ) : !tenantValue ? (
               <p>{t("noAvailableTenants")}</p>
-            ) : entityID && !entityFileRoute && catalog?.error ? (
+            ) : entityID && !entityOwnPage && catalog?.error ? (
               <Alert>{catalog.error}</Alert>
-            ) : entityID && !entityFileRoute && !catalog ? (
+            ) : entityID && !entityOwnPage && !catalog ? (
               <p role="status">{t("loading")}</p>
             ) : entityID &&
-              !entityFileRoute &&
+              !entityOwnPage &&
               (!selectedEntity || selectedEntity.status !== "active") ? (
               <Alert>{t("entityUnavailable")}</Alert>
             ) : (
@@ -645,10 +617,7 @@ export default function AppLayout() {
                   permissions,
                   permissionsResolved,
                   platformTenantAccess,
-                  fieldPolicyAccess:
-                    Boolean(tenantValue) &&
-                    fieldPolicyAccess === `${tenantValue}:${session.subject}`,
-                  scopedFileEntityID,
+                  fieldPolicyAccess: Boolean(tenantValue) && fieldPolicyAccess,
                   tenantID: tenantValue,
                   tenantName,
                   entityID,

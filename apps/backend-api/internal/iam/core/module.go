@@ -112,7 +112,13 @@ func (m *Module) ProvideServices(services *module.Services) error {
 		if tx == nil || id <= 0 {
 			return ErrInvalidArgument
 		}
-		return requireNoPrincipalPlatformAccess(ctx, tx, m.runtime.TablePrefix(), id, m.registrar.Registry())
+		// The guard measures at the moment it runs. The deterministic path,
+		// ErasePrincipalData, takes its caller's clock and passes it down; this
+		// connector is called by a module that has none of its own.
+		return requireNoPrincipalPlatformAccess(
+			ctx, tx, m.runtime.TablePrefix(), id, m.registrar.Registry(),
+			time.Now().UTC().Truncate(time.Millisecond),
+		)
 	}); err != nil {
 		return err
 	}
@@ -156,6 +162,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}
 	if err := module.Provide[EntityConstraintOn](services, m.checker.EntityConstraintOn); err != nil {
 		return fmt.Errorf("provide IAM transaction entity authorization: %w", err)
+	}
+	if err := module.Provide[TenantConstraint](services, m.checker.Constraint); err != nil {
+		return fmt.Errorf("provide iam tenant constraint: %w", err)
 	}
 	if err := module.Provide[TenantConstraintOn](services, m.checker.TenantConstraintOn); err != nil {
 		return fmt.Errorf("provide IAM transaction tenant authorization: %w", err)

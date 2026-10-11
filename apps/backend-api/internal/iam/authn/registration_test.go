@@ -322,7 +322,8 @@ func TestPublicEntranceCredentialsUseViewRoutes(t *testing.T) {
 
 func TestRegistrationValidationAndConfiguration(t *testing.T) {
 	assert.Equal(t, authnext.Capabilities{}, (*Service)(nil).Capabilities())
-	disabled, err := NewWebService(authnext.Config{}, nil)
+	disabled, err := NewWebService(authnext.Config{
+		Captcha: authnext.CaptchaConfig{TestAnswer: testCaptchaAnswer}}, nil)
 	require.NoError(t, err)
 	assert.ErrorIs(t, disabled.Register(t.Context(), "user@example.com", "correct registration password", "User"), authnext.ErrRegistrationDisabled)
 

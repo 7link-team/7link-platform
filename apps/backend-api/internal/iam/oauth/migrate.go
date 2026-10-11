@@ -15,9 +15,14 @@ const Name = "oauth"
 //go:embed sql
 var migrationsFS embed.FS
 
-func (*Module) MigrationSource() goosex.Source {
+// MigrationSource is this module's migration stream. It is a package function
+// so principal erasure can read the stream's version while the module is
+// disabled, without holding a Module.
+func MigrationSource() goosex.Source {
 	return goosex.Source{FS: migrationsFS, TableName: "goose_oauth"}
 }
+
+func (*Module) MigrationSource() goosex.Source { return MigrationSource() }
 
 func (*Module) MigrationMilestones() []module.MigrationMilestone {
 	return []module.MigrationMilestone{
@@ -35,6 +40,12 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 		{Name: "principal-erasure", Version: 9,
 			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "lifecycle"}}},
 		{Name: "grant-incarnation", Version: 10},
+		// The device grant and token exchange add two tables of their own and a
+		// foreign key to this module's clients, so the milestone depends on
+		// nothing outside oauth. Rolling it back drops two tables that hold no
+		// migrated data -- a pending device request outlives nothing, and a
+		// withdrawn delegation is written down again -- so it is reversible.
+		{Name: "device-and-exchange", Version: 11},
 	}
 }
 

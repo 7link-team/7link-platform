@@ -279,6 +279,18 @@ func TestReadsOnIdentityTablesRefuseAnUnwiredCapability(t *testing.T) {
 			_, err := r.verifyPrincipalEmail(t.Context(), 1, "a@b.test", repositoryTestNow)
 			return err
 		},
+		"phone login principal": func(r *Repository) error {
+			_, err := r.findPhoneLoginPrincipal(t.Context(), "+8613800138000")
+			return err
+		},
+		"phone verification write": func(r *Repository) error {
+			_, err := r.verifyPrincipalPhone(t.Context(), 1, "+8613800138000", repositoryTestNow)
+			return err
+		},
+		"self registration check": func(r *Repository) error {
+			_, err := r.selfRegistered(t.Context(), 1)
+			return err
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			repository := harness.repository.withDB(harness.db, false)

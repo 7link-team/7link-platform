@@ -31,10 +31,12 @@ func newPrincipal(db *gorm.DB, opts ...gen.DOOption) principal {
 	_principal.ID = field.NewField(tableName, "id")
 	_principal.LoginName = field.NewString(tableName, "login_name")
 	_principal.Email = field.NewString(tableName, "email")
+	_principal.Phone = field.NewString(tableName, "phone")
 	_principal.DisplayName = field.NewString(tableName, "display_name")
 	_principal.Avatar = field.NewString(tableName, "avatar")
 	_principal.Status = field.NewString(tableName, "status")
 	_principal.EmailVerified = field.NewBool(tableName, "email_verified")
+	_principal.PhoneVerified = field.NewBool(tableName, "phone_verified")
 	_principal.ActivationRequired = field.NewBool(tableName, "activation_required")
 	_principal.SelfRegistered = field.NewBool(tableName, "self_registered")
 	_principal.CreatedAt = field.NewTime(tableName, "created_at")
@@ -53,10 +55,12 @@ type principal struct {
 	ID                 field.Field
 	LoginName          field.String
 	Email              field.String
+	Phone              field.String
 	DisplayName        field.String
 	Avatar             field.String
 	Status             field.String
 	EmailVerified      field.Bool
+	PhoneVerified      field.Bool
 	ActivationRequired field.Bool
 	SelfRegistered     field.Bool
 	CreatedAt          field.Time
@@ -81,10 +85,12 @@ func (p *principal) updateTableName(table string) *principal {
 	p.ID = field.NewField(table, "id")
 	p.LoginName = field.NewString(table, "login_name")
 	p.Email = field.NewString(table, "email")
+	p.Phone = field.NewString(table, "phone")
 	p.DisplayName = field.NewString(table, "display_name")
 	p.Avatar = field.NewString(table, "avatar")
 	p.Status = field.NewString(table, "status")
 	p.EmailVerified = field.NewBool(table, "email_verified")
+	p.PhoneVerified = field.NewBool(table, "phone_verified")
 	p.ActivationRequired = field.NewBool(table, "activation_required")
 	p.SelfRegistered = field.NewBool(table, "self_registered")
 	p.CreatedAt = field.NewTime(table, "created_at")
@@ -116,14 +122,16 @@ func (p *principal) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (p *principal) fillFieldMap() {
-	p.fieldMap = make(map[string]field.Expr, 12)
+	p.fieldMap = make(map[string]field.Expr, 14)
 	p.fieldMap["id"] = p.ID
 	p.fieldMap["login_name"] = p.LoginName
 	p.fieldMap["email"] = p.Email
+	p.fieldMap["phone"] = p.Phone
 	p.fieldMap["display_name"] = p.DisplayName
 	p.fieldMap["avatar"] = p.Avatar
 	p.fieldMap["status"] = p.Status
 	p.fieldMap["email_verified"] = p.EmailVerified
+	p.fieldMap["phone_verified"] = p.PhoneVerified
 	p.fieldMap["activation_required"] = p.ActivationRequired
 	p.fieldMap["self_registered"] = p.SelfRegistered
 	p.fieldMap["created_at"] = p.CreatedAt

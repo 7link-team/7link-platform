@@ -3,7 +3,6 @@ package authn
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -19,7 +18,6 @@ import (
 	"7link.com/platform/pkg/appenv"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
-	"7link.com/platform/pkg/extension/passwordx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
@@ -101,6 +99,23 @@ func newRepositoryTestIDs(start int64) *repositoryTestIDs {
 
 func (ids *repositoryTestIDs) Next() (int64, error) { return ids.next.Add(1), nil }
 
+// failReadsAfter lets the first skip reads of table through and fails every
+// later one, leaving the rows in place. It targets one read in a flow that
+// reads the same table earlier, and is how these tests tell a storage fault
+// apart from a missing row.
+func failReadsAfter(t *testing.T, db *gorm.DB, table string, skip int) {
+	t.Helper()
+	reads := 0
+	require.NoError(t, db.Callback().Query().Before("gorm:query").Register("test:fail_reads", func(db *gorm.DB) {
+		if db.Statement.Table != table {
+			return
+		}
+		if reads++; reads > skip {
+			db.AddError(errors.New("storage unavailable"))
+		}
+	}))
+}
+
 type authnRepositoryHarness struct {
 	repository *Repository
 	db         *gorm.DB
@@ -113,11 +128,9 @@ type authnRepositoryHarness struct {
 
 func newAuthnRepositoryHarness(t *testing.T, prefix string) *authnRepositoryHarness {
 	t.Helper()
-	dsn := fmt.Sprintf(
-		"file:%s?_busy_timeout=10000&_journal_mode=WAL",
-		filepath.ToSlash(filepath.Join(t.TempDir(), "authn-repository.sqlite")),
-	)
-	initializeAuthnRepositoryDatabase(t, dsn, prefix)
+	path := filepath.Join(t.TempDir(), "authn-repository.sqlite")
+	cloneTemplateDatabase(t, prefix, path)
+	dsn := authnSQLiteDSN(path)
 	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
 		"primary": {Type: "sqlite", DSN: dsn, Writable: true, Readable: true},
 	})
@@ -199,7 +212,11 @@ func TestModuleMigrationContract(t *testing.T) {
 	module := &Module{}
 	assert.Equal(t, Name, module.ModuleName())
 	assert.Equal(t, "goose_authn", module.MigrationSource().TableName)
-	require.Len(t, module.MigrationMilestones(), 11)
+	require.Len(t, module.MigrationMilestones(), 13)
+	assert.Equal(t, "mfa-first-factor", module.MigrationMilestones()[12].Name)
+	assert.Equal(t, int64(20), module.MigrationMilestones()[12].Version)
+	assert.Equal(t, "phone-verification", module.MigrationMilestones()[11].Name)
+	assert.Equal(t, int64(19), module.MigrationMilestones()[11].Version)
 	assert.Equal(t, "public-ids", module.MigrationMilestones()[10].Name)
 	assert.Equal(t, "access-view-targets", module.MigrationMilestones()[9].Name)
 	assert.Equal(t, "account-view-tokens", module.MigrationMilestones()[8].Name)
@@ -476,8 +493,7 @@ func seedLocalPrincipal(t *testing.T, repository *Repository, login, email, pass
 	require.NotNil(t, db)
 	principalID, err := repository.nextID()
 	require.NoError(t, err)
-	hash, err := passwordx.Hash(password)
-	require.NoError(t, err)
+	hash := hashFixturePassword(t, password)
 
 	// Stored normalized, the way every path that creates a principal stores it:
 	// a login is matched after normalization, so a fixture that skipped this

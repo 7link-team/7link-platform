@@ -58,6 +58,8 @@ type ProfileClaims struct {
 	PreferredUsername *string `json:"preferred_username,omitempty"`
 	Email             *string `json:"email,omitempty"`
 	EmailVerified     *bool   `json:"email_verified,omitempty"`
+	Phone             *string `json:"phone,omitempty"`
+	PhoneVerified     *bool   `json:"phone_verified,omitempty"`
 }
 
 // DirectoryTableNames are the directory tables authn reads without owning them.

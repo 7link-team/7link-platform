@@ -110,10 +110,10 @@ func TestPrincipalLifecycleRequiresSystemRoleRevocation(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, h.db.Exec("INSERT INTO sl_iam_role_members (tenant_id, role_id, principal_id, created_at) VALUES (201, ?, 21, ?)", role.ID, coreErasureTime).Error)
 			require.NoError(t, h.db.Exec("INSERT INTO sl_iam_role_permissions (tenant_id, role_id, permission_code, created_at) VALUES (201, ?, ?, ?)", role.ID, code, coreErasureTime).Error)
-			require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, registry), ErrPrincipalHasPlatformAccess)
+			require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, registry, coreErasureTime), ErrPrincipalHasPlatformAccess)
 			require.ErrorIs(t, ErasePrincipalData(t.Context(), h.db, "sl_", registry, 21, coreErasureTime), ErrPrincipalHasPlatformAccess)
 			require.NoError(t, h.db.Exec("DELETE FROM sl_iam_role_members WHERE principal_id = 21").Error)
-			require.NoError(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, registry))
+			require.NoError(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, registry, coreErasureTime))
 		})
 	}
 }
@@ -126,16 +126,16 @@ func TestPrincipalLifecycleProtectsModuleDeclaredGlobalRolePermissions(t *testin
 	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_role_members (tenant_id, role_id, principal_id, created_at) VALUES (201, ?, 21, ?)", role.ID, coreErasureTime).Error)
 	require.NoError(t, h.db.Exec("INSERT INTO sl_iam_role_permissions (tenant_id, role_id, permission_code, created_at) VALUES (201, ?, 'extension_manage', ?)", role.ID, coreErasureTime).Error)
 	registry := authz.DefaultRegistry()
-	require.NoError(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, registry),
+	require.NoError(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, registry, coreErasureTime),
 		"a code nobody contributed is an ordinary tenant grant")
 	require.NoError(t, registry.Contribute([]authz.Action{{Resource: "extension", Verb: "manage", Scope: authz.ActionScopeSystem}}, nil))
-	require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, registry), ErrPrincipalHasPlatformAccess)
+	require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, registry, coreErasureTime), ErrPrincipalHasPlatformAccess)
 	require.ErrorIs(t, ErasePrincipalData(t.Context(), h.db, "sl_", registry, 21, coreErasureTime), ErrPrincipalHasPlatformAccess)
 }
 
 func TestPrincipalLifecycleRequiresTheSharedRegistry(t *testing.T) {
 	h := newRepositoryHarness(t, "sl_")
-	require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, nil), ErrUnavailable)
+	require.ErrorIs(t, requireNoPrincipalPlatformAccess(t.Context(), h.db, "sl_", 21, nil, coreErasureTime), ErrUnavailable)
 	require.ErrorIs(t, ErasePrincipalData(t.Context(), h.db, "sl_", nil, 21, coreErasureTime), ErrUnavailable)
 }
 

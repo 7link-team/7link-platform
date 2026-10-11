@@ -414,6 +414,7 @@ func (m *Module) Stop(ctx context.Context) error {
 	if m.sharedSecurity != nil {
 		err = errors.Join(err, m.sharedSecurity.client.Close())
 	}
+	m.closeSecurityServer()
 	return err
 }
 

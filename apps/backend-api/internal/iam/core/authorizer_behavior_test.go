@@ -35,14 +35,14 @@ func TestAuthorizerConcurrentTenantDecisionsRemainIsolated(t *testing.T) {
 	require.NoError(t, err)
 	_, err = harness.service.GrantPermission(t.Context(), tenantA, roleA.ID, "role_view")
 	require.NoError(t, err)
-	_, err = harness.service.AddMember(t.Context(), tenantA, roleA.ID, principalA)
+	_, err = harness.service.AddMember(t.Context(), tenantA, roleA.ID, principalA, nil)
 	require.NoError(t, err)
 
 	roleB, err := harness.service.CreateRole(t.Context(), tenantB, "Tenant B reader", "")
 	require.NoError(t, err)
 	_, err = harness.service.GrantPermission(t.Context(), tenantB, roleB.ID, "menu_view")
 	require.NoError(t, err)
-	_, err = harness.service.AddMember(t.Context(), tenantB, roleB.ID, principalB)
+	_, err = harness.service.AddMember(t.Context(), tenantB, roleB.ID, principalB, nil)
 	require.NoError(t, err)
 
 	cases := []struct {
@@ -270,7 +270,7 @@ func TestAuthorizerCompilesSelectedDepartmentAndOwnerConstraints(t *testing.T) {
 	for _, role := range []Role{selected, self} {
 		_, err = harness.service.GrantPermission(t.Context(), tenantID, role.ID, "user_view")
 		require.NoError(t, err)
-		_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID)
+		_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID, nil)
 		require.NoError(t, err)
 	}
 	_, _, err = harness.service.SetRoleDataScope(
@@ -305,7 +305,7 @@ func TestAuthorizerEntityConstraintKeepsRowScopesBelowEntityBoundary(t *testing.
 			require.NoError(t, err)
 			_, err = harness.service.GrantPermission(t.Context(), tenantID, role.ID, "store_view")
 			require.NoError(t, err)
-			_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, subject)
+			_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, subject, nil)
 			require.NoError(t, err)
 			var departments []guid.ID
 			if scope == DataScopeSelectedDepartments {
@@ -548,7 +548,7 @@ func TestAuthorizerDirectoryAssignmentSourcesAndDataScopeDescendants(t *testing.
 	require.NoError(t, err)
 	_, err = harness.service.GrantPermission(t.Context(), tenantID, role.ID, "user_view")
 	require.NoError(t, err)
-	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID)
+	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID, nil)
 	require.NoError(t, err)
 	_, _, err = harness.service.SetRoleDataScope(
 		t.Context(), tenantID, role.ID, DataScopeDepartmentAndDescendants, nil,
@@ -759,7 +759,7 @@ func TestStoredInvalidRoleConditionReturnsEvaluationError(t *testing.T) {
 	require.NoError(t, err)
 	_, err = harness.service.GrantPermission(t.Context(), tenantID, role.ID, "role_view")
 	require.NoError(t, err)
-	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID)
+	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID, nil)
 	require.NoError(t, err)
 	require.NoError(t, harness.db.Table("sl_iam_role_permissions").
 		Where("tenant_id = ? AND role_id = ?", tenantID, role.ID).

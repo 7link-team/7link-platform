@@ -37,7 +37,8 @@ func (s *Service) Capabilities() authnext.Capabilities {
 	}
 	return authnext.Capabilities{
 		Registration: s.RegistrationEnabled(), PasswordRecovery: s.RecoveryEnabled(),
-		Passkey: s.cfg.Enabled && s.web.Enabled && s.cfg.Passkey.Enabled && s.passkeys != nil,
+		Passkey:    s.cfg.Enabled && s.web.Enabled && s.cfg.Passkey.Enabled && s.passkeys != nil,
+		PhoneLogin: s.PhoneLoginEnabled(),
 	}
 }
 
@@ -69,7 +70,7 @@ func (s *Service) RegisterForEntry(ctx context.Context, email, password, display
 	if err != nil {
 		return err
 	}
-	code, err := emailVerificationCode()
+	code, err := verificationCode()
 	if err != nil {
 		return fmt.Errorf("generate verification code: %w", err)
 	}
@@ -123,7 +124,7 @@ func (s *Service) resendRegistrationCode(ctx context.Context, email, password, p
 		return fmt.Errorf("generate resend credential: %w", err)
 	}
 	token := emailVerificationTokenPrefix + secret
-	code, err := emailVerificationCode()
+	code, err := verificationCode()
 	if err != nil {
 		return fmt.Errorf("generate resend code: %w", err)
 	}

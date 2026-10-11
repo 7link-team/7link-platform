@@ -45,7 +45,7 @@ func TestIAMPrincipalLifecycleMigrationsAcrossEngines(t *testing.T) {
 					now := time.Now().UTC().Truncate(time.Millisecond)
 					principal := model.Principal{ID: 1, LoginName: "before-upgrade", DisplayName: "Before", Email: "before@example.test",
 						Status: "disabled", CreatedAt: now, UpdatedAt: now, DisabledAt: &now}
-					require.NoError(t, gdb.Table(prefix+"iam_principals").Omit("Avatar", "SelfRegistered").Create(&principal).Error)
+					require.NoError(t, gdb.Table(prefix+"iam_principals").Omit("Avatar", "SelfRegistered", "Phone", "PhoneVerified").Create(&principal).Error)
 					require.NoError(t, goosex.Migrate(t.Context(), db, source, engine.dialect))
 					var loaded model.Principal
 					require.NoError(t, gdb.Table(prefix+"iam_principals").Where("id = 1").Take(&loaded).Error)

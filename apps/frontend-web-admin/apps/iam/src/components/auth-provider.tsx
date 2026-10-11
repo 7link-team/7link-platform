@@ -82,15 +82,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const login = useCallback(
-    async (loginName: string, password: string, returnUrl: string) => {
+    async (
+      loginName: string,
+      password: string,
+      returnUrl: string,
+      captcha: { type: string; id: string; answer: string }
+    ) => {
       const result = await iamApi.login({
         login_name: loginName.trim(),
         password,
         return_url: returnUrl,
+        captcha_type: captcha.type,
+        captcha_id: captcha.id,
+        captcha_answer: captcha.answer.trim(),
       })
       return finishLogin(result)
     },
     [finishLogin]
+  )
+
+  // Signing in by number is two calls: a code is queued, then it is spent. The
+  // first says nothing about whether the number reaches an account, so the page
+  // moves to the code step either way.
+  const requestPhoneLoginCode = useCallback(
+    async (phone: string, captcha: { type: string; id: string; answer: string }) =>
+      iamApi.requestPhoneLoginCode({
+        phone: phone.trim(),
+        captcha_type: captcha.type,
+        captcha_id: captcha.id,
+        captcha_answer: captcha.answer.trim(),
+      }),
+    []
+  )
+
+  const loginWithPhoneCode = useCallback(
+    async (phone: string, code: string, returnUrl: string) =>
+      finishLogin(
+        await iamApi.loginWithPhoneCode({
+          phone: phone.trim(),
+          code: code.trim(),
+          return_url: returnUrl,
+        })
+      ),
+    [finishLogin]
+  )
+
+  const requestMfaPhoneCode = useCallback(
+    async (challengeId: string) => iamApi.requestMfaPhoneCode(challengeId),
+    []
   )
 
   const verifyLoginMfa = useCallback(
@@ -120,7 +159,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await exitAccountView()
       return
     }
-    const result = await iamApi.logout()
+    // Signing out is a local act that the service is told about, not a request
+    // whose outcome decides whether it happened. A failure here -- the network
+    // is gone, the service is down, the session was already destroyed -- must
+    // not leave somebody holding a console they asked to leave, which is the
+    // one outcome a person cannot recover from on their own.
+    let result: { logout_url: string } | null = null
+    try {
+      result = await iamApi.logout()
+    } catch {
+      // Deliberately ignored: the sign-out below is unconditional. The service
+      // expires the session on its own, and the redirect ends this document.
+    }
     setTenant("")
     setSession(null)
     setStatus("anonymous")
@@ -132,6 +182,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session: verifiedViewID === viewID ? session : null,
       status: verifiedViewID === viewID ? status : ("loading" as AuthStatus),
       login,
+      requestPhoneLoginCode,
+      loginWithPhoneCode,
+      requestMfaPhoneCode,
       verifyLoginMfa,
       loginWithPasskey,
       logout,
@@ -143,6 +196,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifiedViewID,
       viewID,
       login,
+      requestPhoneLoginCode,
+      loginWithPhoneCode,
+      requestMfaPhoneCode,
       verifyLoginMfa,
       loginWithPasskey,
       logout,

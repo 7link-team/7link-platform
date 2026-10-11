@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -24,6 +25,7 @@ import (
 	"7link.com/platform/internal/iam/oauth"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
+	"7link.com/platform/internal/iam/webhook"
 	infraaudit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/migrationstatus"
@@ -104,13 +106,23 @@ func TestIAMMigrationStatusExternalDatabase(t *testing.T) {
 	assertIAMMigrationActionState(t, config, MigrationUp, goosex.StateClean)
 	assertIAMMigrationActionState(t, config, MigrationStatus, goosex.StateClean)
 	assertIAMMigrationStatusEndpoint(t, config)
+	// Downgrading past binding trust is refused, and refused before anything is
+	// undone: the milestone declares itself irreversible, so the request never
+	// reaches the database. The status assertion that follows is what proves it
+	// -- a rollback that had started would leave federation between milestones.
 	_, err = (&App{}).RunMigrations(t.Context(), MigrationConfig{
 		AppConfig: config, MigrationRequest: MigrationRequest{Action: MigrationDownTo, Module: federation.Name, To: 6},
 	})
-	require.ErrorContains(t, err, "binding trust downgrade is forbidden")
+	require.ErrorContains(t, err, "is irreversible")
+	require.ErrorContains(t, err, "nothing was rolled back")
 	assertIAMMigrationActionState(t, config, MigrationStatus, goosex.StateClean)
 	assertIAMMigrationActionState(t, config, MigrationUp, goosex.StateClean)
 }
+
+// historicalFederationVersion is the last federation migration this double
+// presents. Both the milestone list and the embedded files are cut at it, so a
+// migration added after it does not leave the source ahead of the milestones.
+const historicalFederationVersion = 6
 
 type historicalFederationStatusModule struct {
 	module.Module
@@ -122,7 +134,7 @@ func (m historicalFederationStatusModule) MigrationSource() goosex.Source { retu
 func (m historicalFederationStatusModule) MigrationMilestones() []module.MigrationMilestone {
 	var milestones []module.MigrationMilestone
 	for _, milestone := range m.Module.(module.MigrationMilestoneProvider).MigrationMilestones() {
-		if milestone.Version <= 6 {
+		if milestone.Version <= historicalFederationVersion {
 			milestones = append(milestones, milestone)
 		}
 	}
@@ -137,13 +149,19 @@ func historicalFederationStatusSource(t *testing.T, owner module.Module) goosex.
 		if err != nil {
 			return err
 		}
-		if !entry.IsDir() && entry.Name() != "00007_binding_trust.sql" {
-			contents, err := fs.ReadFile(source.FS, path)
-			if err != nil {
-				return err
-			}
-			files[path] = &fstest.MapFile{Data: contents}
+		if entry.IsDir() {
+			return nil
 		}
+		version, parseErr := strconv.ParseInt(strings.SplitN(entry.Name(), "_", 2)[0], 10, 64)
+		require.NoError(t, parseErr, "migration file without a version prefix: %s", path)
+		if version > historicalFederationVersion {
+			return nil
+		}
+		contents, err := fs.ReadFile(source.FS, path)
+		if err != nil {
+			return err
+		}
+		files[path] = &fstest.MapFile{Data: contents}
 		return nil
 	})
 	require.NoError(t, err)
@@ -173,6 +191,7 @@ func iamMigrationStatusAppConfig(database Database, prefix string) AppConfig {
 		MFA: authnext.MFAConfig{EncryptionKey: key},
 	})
 	config.Federation = IAMFederation{Enabled: true, EncryptionKey: key}
+	config.Webhook = IAMWebhook{Enabled: true, EncryptionKey: key}
 	return config
 }
 
@@ -187,7 +206,7 @@ func assertIAMMigrationActionState(t *testing.T, config AppConfig, action Migrat
 
 func assertIAMMigrationReports(t *testing.T, reports []MigrationReport, state goosex.State) {
 	t.Helper()
-	require.Len(t, reports, 14)
+	require.Len(t, reports, 15)
 	names := make([]string, 0, len(reports))
 	for _, report := range reports {
 		names = append(names, report.Module)
@@ -255,13 +274,15 @@ func assertIAMMigrationStatusEndpoint(t *testing.T, config AppConfig) {
 func iamMigrationFlowNames() []string {
 	return []string{
 		dlock.Name, wuid.Name, infraaudit.Name, iamaudit.Name, core.Name, files.Name, iamauthn.Name, identity.Name,
-		organization.Name, oauth.Name, provisioning.Name, governance.Name, federation.Name, todo.Name,
+		organization.Name, oauth.Name, provisioning.Name, governance.Name, federation.Name, webhook.Name, todo.Name,
 	}
 }
 
 func iamMigrationReverseOrder() []string {
 	return []string{
-		federation.Name, iamauthn.Name, oauth.Name, governance.Name, provisioning.Name,
+		// Webhook comes down first: it only reads what the others record, so
+		// nothing depends on it and removing it frees the chain it follows.
+		webhook.Name, federation.Name, iamauthn.Name, oauth.Name, governance.Name, provisioning.Name,
 		organization.Name, files.Name, core.Name, identity.Name, iamaudit.Name,
 		todo.Name, infraaudit.Name, wuid.Name, dlock.Name,
 	}

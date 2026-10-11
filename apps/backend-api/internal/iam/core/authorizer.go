@@ -206,9 +206,17 @@ func (a *Authorizer) CheckBulk(
 	for _, grant := range grants {
 		grantSet[grant.PermissionCode] = true
 	}
-	platformAdministrator, err := a.CheckPlatform(ctx, "platform_administer", subject)
-	if err != nil {
-		return nil, err
+	// The platform answer costs four statements of its own, and for most requests
+	// it cannot change anything: a permission the tenant's own grants already
+	// allow is allowed whoever asks. Reading it before that is known spends those
+	// four round trips on every request that was going to be allowed anyway --
+	// and this is the hottest path in the service, run once per request.
+	platformAdministrator := false
+	if platformAnswerDecides(a.registry, permissions, grantSet) {
+		platformAdministrator, err = a.CheckPlatform(ctx, "platform_administer", subject)
+		if err != nil {
+			return nil, err
+		}
 	}
 	for _, permission := range permissions {
 		action, known := a.registry.Find(permission)
@@ -223,6 +231,33 @@ func (a *Authorizer) CheckBulk(
 		}
 	}
 	return allowed, nil
+}
+
+// platformAnswerDecides reports whether a platform administrator answer could
+// change the verdict on any permission in this request. It is the exact negation
+// of the loop that follows it: a system-scoped permission is decided by nothing
+// else, an operating-platform or unknown one is refused outright, and a
+// tenant-scoped one is already decided once the tenant's own grants allow it.
+// Written this way so the two cannot drift: a new branch there that consults the
+// platform answer has to be admitted here, or the answer is false and the branch
+// silently refuses.
+func platformAnswerDecides(
+	registry *authz.Registry,
+	permissions []string,
+	grantSet map[string]bool,
+) bool {
+	for _, permission := range permissions {
+		action, known := registry.Find(permission)
+		switch {
+		case !known, action.Scope == authz.ActionScopeOperatingPlatform:
+			continue
+		case action.Scope == authz.ActionScopeSystem:
+			return true
+		case !grantSet[permission] && !grantSet["tenant_administer"]:
+			return true
+		}
+	}
+	return false
 }
 
 // CheckOperatingPlatform uses the shared scoped RBAC engine and admits only

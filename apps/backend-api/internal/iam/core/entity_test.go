@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authz"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -113,4 +114,68 @@ func TestEntityRoleBindingsAreTenantScopedAndPreserveNullableExpiry(t *testing.T
 	require.Len(t, bindings, 1)
 	assert.Equal(t, guid.ID(101), bindings[0].PrincipalID)
 	assert.ErrorIs(t, repository.DeleteEntity(t.Context(), 1, entityA.ID), ErrEntityHasBindings)
+}
+
+// The tenant-wide entity listing needs entity_view, which is the permission to
+// administer every entity in the tenant. Belonging to one is a different thing,
+// and somebody who belongs to one without that permission has to be able to see
+// it -- otherwise the console shows them an empty chooser and goes hunting for
+// their entity by provoking authorization failures until one stops.
+func TestAdmittedEntitiesAnswersForTheCallerNotTheAdministrator(t *testing.T) {
+	entities := []Entity{
+		{ID: guid.ID(1), Name: "Finance"},
+		{ID: guid.ID(2), Name: "Operations"},
+		{ID: guid.ID(3), Name: "Logistics"},
+	}
+
+	t.Run("a grant on one entity admits that entity alone", func(t *testing.T) {
+		admitted := admittedEntities(entities, authz.DataConstraint{
+			ResourceIDs: []string{"2"},
+		}, nil)
+		require.Len(t, admitted, 1)
+		assert.Equal(t, "Operations", admitted[0].Name)
+	})
+
+	t.Run("a tenant-wide grant admits every entity", func(t *testing.T) {
+		assert.Len(t, admittedEntities(entities, authz.DataConstraint{AllowAll: true}, nil), 3)
+	})
+
+	// Breadth does not overrule an explicit denial: a tenant-wide grant with
+	// one entity denied is two entities, not three.
+	t.Run("an explicit denial survives a tenant-wide grant", func(t *testing.T) {
+		admitted := admittedEntities(entities, authz.DataConstraint{
+			AllowAll: true, DeniedIDs: []string{"1"},
+		}, nil)
+		require.Len(t, admitted, 2)
+		assert.Equal(t, []string{"Operations", "Logistics"},
+			[]string{admitted[0].Name, admitted[1].Name})
+	})
+
+	t.Run("a denial also removes an entity that was granted", func(t *testing.T) {
+		assert.Empty(t, admittedEntities(entities, authz.DataConstraint{
+			ResourceIDs: []string{"2"}, DeniedIDs: []string{"2"},
+		}, nil))
+	})
+
+	t.Run("no grant admits nothing", func(t *testing.T) {
+		assert.Empty(t, admittedEntities(entities, authz.DataConstraint{}, nil))
+	})
+
+	// A department-scoped grant names the department, never the entity behind
+	// it. Without resolving that, somebody whose access runs through a
+	// department was shown no entity at all while the entity-scoped endpoints
+	// admitted them perfectly well.
+	t.Run("an entity reached through a department is admitted", func(t *testing.T) {
+		admitted := admittedEntities(entities, authz.DataConstraint{
+			DepartmentIDs: []string{"77"},
+		}, []guid.ID{guid.ID(3)})
+		require.Len(t, admitted, 1)
+		assert.Equal(t, "Logistics", admitted[0].Name)
+	})
+
+	t.Run("a denial also removes an entity reached through a department", func(t *testing.T) {
+		assert.Empty(t, admittedEntities(entities, authz.DataConstraint{
+			DepartmentIDs: []string{"77"}, DeniedIDs: []string{"3"},
+		}, []guid.ID{guid.ID(3)}))
+	})
 }

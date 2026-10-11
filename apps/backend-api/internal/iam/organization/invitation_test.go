@@ -477,3 +477,25 @@ func TestInvitationDepartmentMustStayWithinTheInvitersDataScope(t *testing.T) {
 	_, _, err = service.Create(inviter, 1, CreateInvitation{Email: "other@example.com", DepartmentID: department.ID, RoleIDs: []guid.ID{10}})
 	require.ErrorIs(t, err, ErrUnavailable, "a guard that cannot judge the placement fails closed")
 }
+
+// TestInvitationAcceptanceStorageFaultIsNotABadCredential separates an
+// invitation that cannot be found from one that could not be read. Only the
+// first is a bad credential; telling the invitee their link is invalid when the
+// store failed sends them to ask for a new one they do not need.
+func TestInvitationAcceptanceStorageFaultIsNotABadCredential(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	h.seedTenant(t, 1, TenantActive)
+	service := newInvitationService(t, h, &invitationCredentialFixture{}, &atomic.Int64{})
+	_, token, err := service.Create(t.Context(), 1, CreateInvitation{Email: "user@example.test"})
+	require.NoError(t, err)
+
+	table := h.table("iam_invitations")
+	require.NoError(t, h.db.Callback().Query().Before("gorm:query").Register("test:fail_invitation_reads", func(db *gorm.DB) {
+		if db.Statement.Table == table {
+			db.AddError(assert.AnError)
+		}
+	}))
+	_, err = service.Accept(t.Context(), AcceptInvitation{Token: token, LoginName: "user", Password: "correct horse battery staple", DisplayName: "User"})
+	assert.ErrorIs(t, err, assert.AnError)
+	assert.NotErrorIs(t, err, ErrInvitationCredential)
+}

@@ -331,7 +331,8 @@ func TestMFAInvalidAuthenticationAndStorageFailures(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, harness.db.Exec("DROP TABLE iam_mfa_challenges").Error)
 		_, err = service.createLoginChallenge(
-			t.Context(), claims.PrincipalID, service.web.PostLoginURL, service.now(),
+			t.Context(), claims.PrincipalID, "pwd", service.web.PostLoginURL,
+			[]string{"totp", "recovery_code"}, service.now(),
 		)
 		assert.ErrorContains(t, err, "create MFA challenge")
 	})
@@ -480,4 +481,44 @@ func uniqueStrings(values []string) map[string]struct{} {
 		result[value] = struct{}{}
 	}
 	return result
+}
+
+// TestMFAStorageFaultsAreNotReportedAsRefusals holds each MFA read to the
+// difference between a missing row and a failed read: only the first is a
+// wrong challenge or an account without MFA.
+func TestMFAStorageFaultsAreNotReportedAsRefusals(t *testing.T) {
+	login := func(t *testing.T, table string) error {
+		service, harness, _, secret := enabledMFAService(t)
+		started, err := service.BeginLogin(t.Context(), "alice", "correct horse battery staple", "")
+		require.NoError(t, err)
+		failReadsAfter(t, harness.db, table, 0)
+		_, err = service.VerifyLoginMFA(t.Context(), started.ChallengeID, mustTOTP(t, secret, service.now()))
+		return err
+	}
+	t.Run("login challenge", func(t *testing.T) {
+		err := login(t, "iam_mfa_challenges")
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrMFAChallenge)
+	})
+	t.Run("login credential", func(t *testing.T) {
+		err := login(t, "iam_credentials")
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrMFAChallenge)
+	})
+	// The current password is read from the same table first; the read under
+	// test is the one inside the transaction.
+	t.Run("regenerate recovery codes", func(t *testing.T) {
+		service, harness, cookie, secret := enabledMFAService(t)
+		failReadsAfter(t, harness.db, "iam_credentials", 1)
+		_, err := service.RegenerateRecoveryCodes(t.Context(), "", cookie, "correct horse battery staple", mustTOTP(t, secret, service.now()))
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrMFANotEnabled)
+	})
+	t.Run("disable", func(t *testing.T) {
+		service, harness, cookie, secret := enabledMFAService(t)
+		failReadsAfter(t, harness.db, "iam_credentials", 1)
+		err := service.DisableTOTP(t.Context(), "", cookie, "correct horse battery staple", mustTOTP(t, secret, service.now()))
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrMFANotEnabled)
+	})
 }

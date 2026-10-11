@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"7link.com/platform/internal/iam/audit"
 	corei18n "7link.com/platform/internal/iam/core/i18n"
@@ -166,6 +167,13 @@ func DefaultMenus() []Menu {
 		{Label: "Service accounts", Route: "/service-accounts", Icon: "bot", SortOrder: 12, PermissionCode: "service_account_view", Status: MenuActive},
 		{Label: "Entities", Route: "/entities", Icon: "network", SortOrder: 13, PermissionCode: "entity_view", Status: MenuActive},
 		{Label: "Departments", Route: "/departments", Icon: "building-2", SortOrder: 15, PermissionCode: "dept_view", Status: MenuActive},
+		// Managed like every other page. Both were reachable only from a fixed
+		// list in the console before, which is why the console still carries that
+		// list: a tenant seeded before these rows existed has no row to show, and
+		// a row an administrator deleted cannot be told from one that was never
+		// created, so nothing re-creates them behind their back.
+		{Label: "File management", Route: "/files", Icon: "folder", SortOrder: 16, PermissionCode: "file_view", Status: MenuActive},
+		{Label: "Field permissions", Route: "/field-policies", Icon: "sliders-horizontal", SortOrder: 23, PermissionCode: "field_policy_view", Status: MenuActive},
 		{Label: "Groups", Route: "/groups", Icon: "users-round", SortOrder: 19, PermissionCode: "group_view", Status: MenuActive},
 		{Label: "Roles and permissions", Route: "/roles", Icon: "key-round", SortOrder: 20, PermissionCode: "role_view", Status: MenuActive},
 		{Label: "Access requests", Route: "/access-requests", Icon: "clipboard-check", SortOrder: 21, PermissionCode: "access_request_view", Status: MenuActive},
@@ -428,12 +436,14 @@ func (s *Service) ListMembers(ctx context.Context, tenantID, roleID guid.ID) ([]
 	return s.repo.ListMembers(ctx, tenantID, roleID)
 }
 
-// AddMember grants a role permanently to an active tenant member.
+// AddMember grants a role to an active tenant member, until expiresAt when one
+// is given and otherwise with no end.
 func (s *Service) AddMember(
 	ctx context.Context,
 	tenantID, roleID, principalID guid.ID,
+	expiresAt *time.Time,
 ) (bool, error) {
-	return s.changeMember(ctx, tenantID, roleID, principalID, true)
+	return s.changeMember(ctx, tenantID, roleID, principalID, expiresAt, true)
 }
 
 // RemoveMember revokes a permanent role membership while preserving the last
@@ -442,12 +452,13 @@ func (s *Service) RemoveMember(
 	ctx context.Context,
 	tenantID, roleID, principalID guid.ID,
 ) (bool, error) {
-	return s.changeMember(ctx, tenantID, roleID, principalID, false)
+	return s.changeMember(ctx, tenantID, roleID, principalID, nil, false)
 }
 
 func (s *Service) changeMember(
 	ctx context.Context,
 	tenantID, roleID, principalID guid.ID,
+	expiresAt *time.Time,
 	add bool,
 ) (bool, error) {
 	if err := validateRoleRef(tenantID, roleID); err != nil {
@@ -462,6 +473,11 @@ func (s *Service) changeMember(
 	}
 	record := newAuditRecord(ctx, tenantID, eventType, "role", roleID)
 	record.Detail["principal_id"] = principalID
+	if add && expiresAt != nil {
+		// The end date belongs in the audit record: a grant that lapses is still
+		// a grant somebody made, and a reviewer reads the chain to see until when.
+		record.Detail["expires_at"] = expiresAt.UTC().Format(time.RFC3339Nano)
+	}
 	var changed bool
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
 		var err error
@@ -476,7 +492,7 @@ func (s *Service) changeMember(
 			if !active {
 				return ErrMemberInactive
 			}
-			changed, err = repo.AddMember(ctx, tenantID, roleID, principalID)
+			changed, err = repo.AddMember(ctx, tenantID, roleID, principalID, expiresAt)
 		} else {
 			verify, protectErr := s.administrators.Protect(ctx, repo.writer(), tenantID)
 			if protectErr != nil {
@@ -492,6 +508,19 @@ func (s *Service) changeMember(
 		return err
 	})
 	return changed, err
+}
+
+// ListRoleMemberGrantsPage answers what an administration screen shows beside
+// each holder: whether the assignment ends, and when.
+func (s *Service) ListRoleMemberGrantsPage(
+	ctx context.Context,
+	tenantID, roleID guid.ID,
+	offset, limit int,
+) ([]RoleMemberGrant, int64, error) {
+	if err := validateRoleRef(tenantID, roleID); err != nil {
+		return nil, 0, err
+	}
+	return s.repo.ListRoleMemberGrantsPage(ctx, tenantID, roleID, offset, limit)
 }
 
 func validateTenant(tenantID guid.ID) error {

@@ -170,6 +170,7 @@ type systemPrincipalUpdateInput struct {
 	Body struct {
 		DisplayName *string `json:"display_name,omitempty" minLength:"1" maxLength:"128"`
 		Email       *string `json:"email,omitempty" maxLength:"320"`
+		Phone       *string `json:"phone,omitempty" maxLength:"32" doc:"E.164 number, or empty to remove it"`
 	}
 }
 
@@ -247,7 +248,7 @@ func registerSystemPrincipalHTTP(api huma.API, service *Service, registrar *auth
 		if err != nil {
 			return nil, err
 		}
-		item, err := service.UpdateGlobal(ctx, id, in.Body.DisplayName, in.Body.Email)
+		item, err := service.UpdateGlobal(ctx, id, in.Body.DisplayName, in.Body.Email, in.Body.Phone)
 		if err != nil {
 			return nil, identityError(err)
 		}

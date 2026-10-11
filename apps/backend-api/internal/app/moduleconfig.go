@@ -11,9 +11,11 @@ import (
 	"7link.com/platform/internal/iam/oauth"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
+	"7link.com/platform/internal/iam/webhook"
 	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
+	"7link.com/platform/internal/infra/deployment"
 	metrics "7link.com/platform/internal/infra/metrics"
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/internal/infra/pprof"
@@ -90,6 +92,10 @@ func configInspectorConfig(c AppConfig) configinspector.Config {
 	return configinspector.Config{Config: module.Config{Enabled: c.API.ConfigInspector.Enabled}}
 }
 
+func deploymentConfig(c AppConfig) deployment.Config {
+	return deployment.Config{Name: c.Deployment.Name, Organization: c.Deployment.Organization}
+}
+
 func pprofConfig(c AppConfig) pprof.Config {
 	return pprof.Config{Config: module.Config{Enabled: c.Pprof.Enabled}}
 }
@@ -130,9 +136,16 @@ func iamOrganizationConfig(c AppConfig) organization.Config {
 }
 
 func iamOAuthConfig(c AppConfig) oauth.Config {
-	return oauth.Config{Config: iamActivationConfig(c), Consent: oauth.ConsentConfig{
-		Path: c.OAuth.Consent.Path, TemplateFile: c.OAuth.Consent.TemplateFile, TTL: c.OAuth.Consent.TTL,
-	}}
+	return oauth.Config{
+		Config: iamActivationConfig(c),
+		Consent: oauth.ConsentConfig{
+			Path: c.OAuth.Consent.Path, TemplateFile: c.OAuth.Consent.TemplateFile, TTL: c.OAuth.Consent.TTL,
+		},
+		Device: oauth.DeviceConfig{
+			VerificationURI: c.OAuth.Device.VerificationURI,
+			CodeTTL:         c.OAuth.Device.CodeTTL, PollInterval: c.OAuth.Device.PollInterval,
+		},
+	}
 }
 
 func iamProvisioningConfig(c AppConfig) provisioning.Config {
@@ -147,6 +160,21 @@ func iamProvisioningConfig(c AppConfig) provisioning.Config {
 
 func iamGovernanceConfig(c AppConfig) governance.Config {
 	return governance.Config{Config: iamActivationConfig(c)}
+}
+
+func iamWebhookConfig(c AppConfig) webhook.Config {
+	return webhook.Config{
+		Config: module.Config{Enabled: c.Webhook.Enabled}, EncryptionKey: c.Webhook.EncryptionKey,
+		EncryptionKeyFile:          c.Webhook.EncryptionKeyFile,
+		PreviousEncryptionKeys:     c.Webhook.PreviousEncryptionKeys,
+		PreviousEncryptionKeyFiles: c.Webhook.PreviousEncryptionKeyFiles,
+		OutboundAllowPlaintext:     c.Webhook.OutboundAllowPlaintext,
+		OutboundAllowNetworks:      c.Webhook.OutboundAllowNetworks,
+		HTTPTimeout:                c.Webhook.HTTPTimeout, PollInterval: c.Webhook.PollInterval,
+		RetryBase: c.Webhook.RetryBase, MaxAttempts: c.Webhook.MaxAttempts,
+		DeliveryBatch: c.Webhook.DeliveryBatch, FanOutBatch: c.Webhook.FanOutBatch,
+		FanOutSubscriptions: c.Webhook.FanOutSubscriptions,
+	}
 }
 
 func iamFederationConfig(c AppConfig) federation.Config {

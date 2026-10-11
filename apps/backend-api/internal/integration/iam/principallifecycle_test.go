@@ -16,6 +16,7 @@ import (
 	authnmodel "7link.com/platform/internal/iam/authn/model"
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/federation"
+	"7link.com/platform/internal/iam/governance"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/provisioning"
 	"7link.com/platform/internal/infra/guid"
@@ -125,7 +126,7 @@ func runComposedPrincipalErasure(t *testing.T, external *app.Database) {
 			}
 			lateFailure := errors.New("last owner cannot persist redaction")
 			if scenario == "unupgraded-owner" {
-				require.NoError(t, f.db.Table(f.prefix+"goose_governance").Where("version_id = ?", 4).Update("is_applied", false).Error)
+				f.downgradePrincipalErasureOwner(t, governance.MigrationSource(), governance.PrincipalErasureVersion-1)
 			}
 			if scenario == "late-owner-failure" {
 				const callback = "test:fail_erasure_last_owner"
@@ -233,6 +234,66 @@ func runComposedPrincipalErasure(t *testing.T, external *app.Database) {
 	}
 }
 
+// TestPrincipalErasureSkipsAnUninstalledOwner covers the default deployment:
+// federation is disabled and was never migrated, so it holds no records and
+// must not block erasure.
+func TestPrincipalErasureSkipsAnUninstalledOwner(t *testing.T) {
+	f, service := newPrincipalErasureVersionFixture(t, func(config *app.AppConfig) {
+		config.Federation.Enabled = false
+	})
+	source := federation.MigrationSource()
+	source.Prefix = f.prefix
+	installed, err := goosex.CurrentVersion(t.Context(), f.db, source)
+	require.NoError(t, err)
+	require.Zero(t, installed, "a disabled federation module is never migrated")
+
+	principal, version := f.suspendForPrincipalErasure(t, service)
+	require.Positive(t, f.erasureCount(t, "iam_credentials", principal.ID))
+	result, err := service.AnonymizePrincipal(t.Context(), principal.ID, version, principal.LoginName)
+	require.NoError(t, err)
+	assert.NotNil(t, result.AnonymizedAt)
+	assert.Zero(t, f.erasureCount(t, "iam_credentials", principal.ID), "installed owners are still erased")
+}
+
+func newPrincipalErasureVersionFixture(t *testing.T, configure ...func(*app.AppConfig)) (*iamTenantFixture, *identity.Service) {
+	t.Helper()
+	ledger := newPrincipalErasureLedgerFixture(t)
+	database := app.Database{
+		Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "erasure.sqlite"), Writable: true, Readable: true,
+	}
+	f := newIAMTenantFixtureWithDatabase(t, database, "", append([]func(*app.AppConfig){ledger.configure}, configure...)...)
+	return f, requireIAMModule[*identity.Module](t, f, identity.Name).Service
+}
+
+// suspendForPrincipalErasure brings requesterB to the state erasure requires:
+// an expired retention policy and a suspended account.
+func (f *iamTenantFixture) suspendForPrincipalErasure(t *testing.T, service *identity.Service) (identity.Principal, int64) {
+	t.Helper()
+	principal := f.requesterB
+	policy, err := service.SetPrincipalRetention(t.Context(), principal.ID, 0, time.Now().UTC().Add(-time.Hour), false, "case-acceptance")
+	require.NoError(t, err)
+	_, err = service.SetStatus(t.Context(), iamTenantB, principal.ID, "disabled")
+	require.NoError(t, err)
+	return principal, policy.Version
+}
+
+// downgradePrincipalErasureOwner takes one owner's installed schema back to
+// version, leaving it behind what its erasure needs.
+func (f *iamTenantFixture) downgradePrincipalErasureOwner(t *testing.T, source goosex.Source, version int64) {
+	t.Helper()
+	source.Prefix = f.prefix
+	db, err := f.db.DB()
+	require.NoError(t, err)
+	require.NoError(t, goosex.MigrateDownTo(t.Context(), db, source, f.db.Dialector.Name(), version))
+}
+
+func (f *iamTenantFixture) erasureCount(t *testing.T, table string, id guid.ID) int64 {
+	t.Helper()
+	var count int64
+	require.NoError(t, f.db.Table(f.table(table)).Where("principal_id = ?", id).Count(&count).Error)
+	return count
+}
+
 func (f *iamTenantFixture) seedPrincipalErasureOwners(t *testing.T, principal identity.Principal, tenant guid.ID) {
 	t.Helper()
 	now := time.Now().UTC().Truncate(time.Millisecond)
@@ -314,7 +375,7 @@ func (f *iamTenantFixture) assertPrincipalOwnersErased(t *testing.T, principal i
 	assert.Empty(t, after["iam_principals"][0]["email"])
 	name, email := "Restored", "restored@example.test"
 	ctx := authnext.WithClaims(t.Context(), &authnext.Claims{PrincipalID: principal.ID})
-	_, err := requireIAMModule[*identity.Module](t, f, identity.Name).Service.Update(ctx, iamTenantB, principal.ID, &name, &email)
+	_, err := requireIAMModule[*identity.Module](t, f, identity.Name).Service.Update(ctx, iamTenantB, principal.ID, &name, &email, nil)
 	assert.ErrorContains(t, err, "anonymized", "the identity API must not restore a tombstone")
 }
 

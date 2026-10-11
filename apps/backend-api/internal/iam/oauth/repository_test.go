@@ -210,11 +210,9 @@ type oauthHarness struct {
 
 func newOAuthHarness(t *testing.T, prefix string) *oauthHarness {
 	t.Helper()
-	dsn := fmt.Sprintf(
-		"file:%s?_busy_timeout=10000&_journal_mode=WAL",
-		filepath.ToSlash(filepath.Join(t.TempDir(), "oauth.sqlite")),
-	)
-	initializeOAuthDatabase(t, dsn, prefix)
+	path := filepath.Join(t.TempDir(), "oauth.sqlite")
+	cloneSchemaDatabase(t, prefix, path)
+	dsn := templateSQLiteDSN(path)
 	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
 		"primary": {Type: "sqlite", DSN: dsn, Writable: true, Readable: true, MaxOpenConns: 1},
 	})
@@ -238,6 +236,7 @@ func newOAuthHarness(t *testing.T, prefix string) *oauthHarness {
 	harness.service = NewService(
 		harness.runtime, harness.web, newOAuthTestIDs(1000), appender,
 		resolveIdentityPrincipalState(t, harness.runtime), ConsentConfig{},
+		DeviceConfig{VerificationURI: "https://console.example.test/device"},
 	)
 	harness.service.now = func() time.Time { return oauthTestNow }
 	harness.repo = harness.service.repo
@@ -346,7 +345,7 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 		"revoke client refresh": func() error { return repo.revokeClientRefreshTokens(t.Context(), 2, now) },
 		"delete client":         func() error { return repo.deleteClient(t.Context(), 1, 2) },
 		"active client":         func() error { _, err := repo.activeClient(t.Context(), 2); return err },
-		"active member":         func() error { _, err := repo.activeMember(t.Context(), 1, 2); return err },
+		"active member":         func() error { return repo.activeMember(t.Context(), 1, 2) },
 		"consent":               func() error { _, err := repo.consent(t.Context(), 2, 3); return err },
 		"upsert consent":        func() error { return repo.upsertConsent(t.Context(), consent) },
 		"list consents": func() error {
@@ -546,4 +545,12 @@ func TestOAuthRepositoryWritesThatMatchNoRowAreRefused(t *testing.T) {
 		ErrInvalidRequest, "an unknown challenge cannot be resolved")
 	assert.ErrorIs(t, harness.repo.touchServiceAccountCredential(t.Context(), 6202, oauthTestNow),
 		ErrInvalidRequest, "a credential that is gone or revoked cannot record a use")
+}
+
+// claimsFor reads back what a token was issued with, so a test asserts on the
+// token a client actually received rather than on the arguments behind it.
+func (web *oauthWebFixture) claimsFor(token string) *authnext.Claims {
+	web.mu.Lock()
+	defer web.mu.Unlock()
+	return web.tokens[token]
 }

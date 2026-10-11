@@ -36,7 +36,7 @@ func TestPlatformServiceOwnsIndependentRootsAndExcludesTenants(t *testing.T) {
 	require.ErrorIs(t, err, ErrTenantNotFound)
 	_, err = platforms.Get(t.Context(), tenant.ID)
 	require.ErrorIs(t, err, ErrTenantNotFound)
-	items, total, err := platforms.ListPage(t.Context(), false, 0, 1)
+	items, total, err := platforms.ListPage(t.Context(), false, "", 0, 1)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	require.EqualValues(t, 2, total)

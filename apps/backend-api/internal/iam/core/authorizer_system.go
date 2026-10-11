@@ -121,6 +121,7 @@ func (a *Authorizer) systemPermissions(ctx context.Context, fenced bool, subject
 		Joins("JOIN "+names.Tables.Roles.String()+" AS r ON r.tenant_id = rm.tenant_id AND r.id = rm.role_id").
 		Joins("JOIN "+names.Tables.RolePermissions.String()+" AS rp ON rp.tenant_id = rm.tenant_id AND rp.role_id = rm.role_id").
 		Where("rm.tenant_id = ? AND rm.principal_id = ? AND r.name <> ?", owner, subject, SystemSuperadministratorRoleName).
+		Where("rm.expires_at IS NULL OR rm.expires_at > ?", a.now().UTC()).
 		Find(&rows).Error
 	if err != nil {
 		return false, nil, fmt.Errorf("evaluate system role permission: %w", err)

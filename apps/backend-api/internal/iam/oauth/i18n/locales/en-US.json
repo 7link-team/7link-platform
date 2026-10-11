@@ -17,5 +17,10 @@
   "scope_openid": "Confirm who you are",
   "scope_profile": "Read your basic profile",
   "scope_email": "Read your email address",
-  "scope_offline_access": "Stay signed in when you are away"
+  "scope_offline_access": "Stay signed in when you are away",
+  "device_request_missing": "That code does not match a request waiting for approval. Check the code on the device and try again; codes expire a few minutes after they appear.",
+  "exchange_grant_missing": "That token exchange grant does not exist. Refresh the list and choose an existing one.",
+  "exchange_grant_exists": "This client already has a grant for that subject. Edit the existing grant instead of adding another.",
+  "exchange_grant_invalid": "The token exchange grant is not valid. Name an existing client, a subject, and the scopes the delegation may ask for.",
+  "unavailable": "This OAuth operation is unavailable right now. Try again shortly; contact an administrator if it continues."
 }

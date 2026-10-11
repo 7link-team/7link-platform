@@ -33,7 +33,10 @@ authn-create-reauthentication-verification|POST|/principals/{principal_id}/reaut
 authn-login-options|GET|/login/options
 authn-create-registration-captcha|POST|/registrations/captchas
 authn-create-email-verification-request|POST|/email-verifications/requests
+authn-create-phone-verification|POST|/phone-verifications
+authn-create-phone-verification-request|POST|/phone-verifications/requests
 authn-create-email-verification|POST|/email-verifications
+authn-create-login-captcha|POST|/login/captchas
 authn-create-passkey-registration-challenge|POST|/principals/{principal_id}/passkey-registration-challenges
 authn-create-passkey-login-options|POST|/login/passkey/options
 authn-verify-passkey-login|POST|/login/passkey/verify
@@ -43,6 +46,9 @@ authn-create-password-recovery|POST|/password-recoveries
 authn-create-registration|POST|/registrations
 authn-create-session-verification|POST|/login/mfa
 authn-create-session|POST|/login
+authn-create-phone-login-request|POST|/login/phone/requests
+authn-create-mfa-verification-request|POST|/login/mfa/requests
+authn-create-phone-session|POST|/login/phone
 authn-create-step-up-challenge|POST|/sessions/current/step-up-challenges
 authn-create-step-up-verification|POST|/sessions/current/step-up-verifications
 authn-create-totp-enrollment|POST|/principals/{principal_id}/mfa/totp-enrollments
@@ -78,7 +84,7 @@ func TestAuthnRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 41)
+	require.Len(t, got, 47)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -90,6 +96,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 		"authn-me": true, "authn-get-session": true,
 		"authn-list-sessions": true, "authn-delete-session": true, "authn-delete-sessions": true,
 		"authn-update-password": true, "authn-create-email-verification-request": true,
+		"authn-create-phone-verification-request": true, "authn-create-phone-verification": true,
 		"authn-get-mfa": true, "authn-create-totp-enrollment": true,
 		"authn-create-totp-factor": true, "authn-replace-recovery-codes": true,
 		"authn-delete-totp-factor": true, "authn-create-step-up-challenge": true,
@@ -157,7 +164,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, operationIDs, 41)
+	require.Len(t, operationIDs, 47)
 	assert.Equal(t, "session", spec.Components.SecuritySchemes[authz.SessionScheme].Name)
 	for _, path := range []string{"/sessions/{session_id}", "/principals/{principal_id}/passkeys/{passkey_id}"} {
 		name := "session_id"

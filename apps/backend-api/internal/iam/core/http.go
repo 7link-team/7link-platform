@@ -288,6 +288,29 @@ type memberInput struct {
 	Subject string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"immutable local principal ID"`
 }
 
+// memberGrantInput adds the optional end date. The body is optional, so a
+// caller that sends none grants with no end, which is what every caller did
+// before the field existed; sending one replaces whatever end the assignment
+// carried, because this is a PUT of the whole assignment.
+type memberGrantInput struct {
+	RoleID  string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Subject string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"immutable local principal ID"`
+	// The body is a pointer so that it may be absent: a caller that sends none
+	// grants with no end, which is what every caller did before the field
+	// existed.
+	Body *struct {
+		ExpiresAt *time.Time `json:"expires_at,omitempty" format:"date-time" doc:"when the assignment stops granting; omit for no end"`
+	}
+}
+
+// grantExpiry reads the end date out of an optional body.
+func (in *memberGrantInput) grantExpiry() *time.Time {
+	if in == nil || in.Body == nil {
+		return nil
+	}
+	return in.Body.ExpiresAt
+}
+
 type directoryBindingInput struct {
 	RoleID       string                `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	AssigneeType DirectoryAssigneeType `path:"assignee_type" enum:"group"`
@@ -434,6 +457,15 @@ type authorizationConstraintInput struct {
 		PermissionCode string `json:"permission_code" maxLength:"128"`
 		Subject        string `json:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	}
+}
+
+// memberEntitiesInput asks which entities the caller may act in. The permission
+// is named by the caller because "may act in" has no single meaning: a console
+// picking a file workspace and one picking a directory to administer are asking
+// different questions of the same graph.
+type memberEntitiesInput struct {
+	TenantID   string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"tenant authorization boundary"`
+	Permission string `query:"permission" maxLength:"128" doc:"permission code the entity must grant the caller"`
 }
 
 type authorizationExplanationInput struct {
@@ -878,13 +910,31 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
+		OperationID: "iam-list-role-member-grants", Method: http.MethodGet,
+		Path:    "/roles/{role_id}/member-grants",
+		Summary: "List role assignments with the moment each stops granting",
+		Tags:    []string{"access-control"}, Errors: []int{http.StatusNotFound},
+	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "view"},
+		func(ctx context.Context, in *listRoleMembersInput) (*respx.Body[[]RoleMemberGrant], error) {
+			tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
+			if err != nil {
+				return nil, err
+			}
+			grants, total, err := svc.ListRoleMemberGrantsPage(ctx, tenantID, roleID, in.Offset, in.Limit)
+			if err != nil {
+				return nil, apiError("list role member grants", err)
+			}
+			return respx.List(ctx, grants, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
+		})
+
+	authz.RegisterOwned(registrar, a, huma.Operation{
 		OperationID: "iam-add-role-member", Method: http.MethodPut, Path: "/roles/{role_id}/members/{principal_id}", Summary: "Add a local principal to a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
-	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "manage_member"}, func(ctx context.Context, in *memberInput) (*respx.Body[MutationResult], error) {
-		tenantID, roleID, subject, err := memberRef(ctx, in)
+	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "manage_member"}, func(ctx context.Context, in *memberGrantInput) (*respx.Body[MutationResult], error) {
+		tenantID, roleID, subject, err := memberRef(ctx, &memberInput{RoleID: in.RoleID, Subject: in.Subject})
 		if err != nil {
 			return nil, err
 		}
-		changed, err := svc.AddMember(ctx, tenantID, roleID, subject)
+		changed, err := svc.AddMember(ctx, tenantID, roleID, subject, in.grantExpiry())
 		if err != nil {
 			return nil, apiError("add role member", err)
 		}
@@ -1210,6 +1260,53 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, MutationResult{Changed: true, SyncStatus: "not_applicable"}), nil
 	})
+	// The entities a caller may act in, answered for the caller alone.
+	//
+	// The tenant-wide listing beside this one needs entity_view, which is the
+	// permission to administer every entity in the tenant -- a different thing
+	// from belonging to one. Without this, somebody bound to a single entity
+	// saw an empty list and the console went looking for their entity by
+	// listing departments and calling an entity-scoped endpoint on each until
+	// one did not refuse: several deliberate authorization failures per page
+	// load to answer a question the service can answer once.
+	authz.RegisterPrincipalTenantMember(registrar, a, huma.Operation{
+		OperationID: "iam-member-entities", Method: http.MethodGet, Path: "/principals/{principal_id}/entities",
+		Summary: "List the entities in this tenant that grant the caller a permission",
+		Tags:    []string{"directory"}, Errors: []int{http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *memberEntitiesInput) (*respx.Body[[]APIEntity], error) {
+		claims, ok := authnext.FromContext(ctx)
+		if !ok || claims == nil || claims.PrincipalID.Zero() {
+			return nil, huma.Error401Unauthorized(respx.Unauthorized)
+		}
+		tenantID, err := guid.RequireID(in.TenantID)
+		if err != nil {
+			return nil, err
+		}
+		constraint, err := svc.AuthorizationConstraint(ctx, tenantID, in.Permission, claims.PrincipalID)
+		if err != nil {
+			return nil, apiError("list member entities", err)
+		}
+		entities, err := svc.ListEntities(ctx, tenantID)
+		if err != nil {
+			return nil, apiError("list member entities", err)
+		}
+		// A department-scoped grant names departments, not the entities behind
+		// them, so those are resolved before the narrowing.
+		departments := make([]guid.ID, 0, len(constraint.DepartmentIDs))
+		for _, raw := range constraint.DepartmentIDs {
+			id, err := guid.RequireID(raw)
+			if err != nil {
+				return nil, apiError("list member entities", err)
+			}
+			departments = append(departments, id)
+		}
+		throughDepartments, err := svc.EntitiesOwningDepartments(ctx, tenantID, departments)
+		if err != nil {
+			return nil, apiError("list member entities", err)
+		}
+		return respx.OK(ctx, entitiesFromDomain(admittedEntities(entities, constraint, throughDepartments))), nil
+	})
+
 	authz.RegisterPrincipalTenantMember(registrar, a, huma.Operation{OperationID: "iam-effective-menus", Method: http.MethodGet, Path: "/principals/{principal_id}/menus", Summary: "Return the current member's authorized menu tree", Tags: []string{"access-control"}}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]MenuItem], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {

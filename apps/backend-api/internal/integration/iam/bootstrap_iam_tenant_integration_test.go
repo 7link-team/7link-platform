@@ -279,6 +279,7 @@ func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
 	t.Helper()
 	response := f.request(t, http.MethodPost, "/login", 0, "", map[string]any{
 		"login_name": f.requesterB.LoginName, "password": "correct horse battery staple",
+		"captcha_type": "text", "captcha_id": "test", "captcha_answer": integrationCaptchaAnswer,
 	}, map[string]string{"Origin": "https://app.example.test"})
 	requireStatus(t, http.StatusCreated, response)
 	require.NotEmpty(t, response.Cookies)
@@ -443,6 +444,9 @@ func newIAMTenantFixtureWithDatabase(t *testing.T, database app.Database, prefix
 				AllowedOrigins:    []string{"https://app.example.test"},
 			},
 			MFA: authnext.MFAConfig{EncryptionKey: key},
+			// Login presents a challenge on every attempt, so a driven caller
+			// needs the configured answer to it.
+			Captcha: authnext.CaptchaConfig{TestAnswer: integrationCaptchaAnswer},
 		}),
 		// The upstream identity providers and SCIM directories these tests drive
 		// are httptest servers on loopback, which the shipped default refuses.
@@ -907,3 +911,7 @@ func requireStatus(t *testing.T, expected int, response iamHTTPResponse) {
 	}
 	require.Equal(t, expected, response.StatusCode, string(response.Body))
 }
+
+// integrationCaptchaAnswer is the captcha test answer these fixtures configure,
+// so a driven login can carry a solved challenge without reading an image.
+const integrationCaptchaAnswer = "integration-captcha-answer"

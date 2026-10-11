@@ -15,7 +15,6 @@ import (
 	identitymodel "7link.com/platform/internal/iam/identity/model"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
-	"7link.com/platform/pkg/extension/passwordx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -42,8 +41,7 @@ func newVerificationService(t *testing.T) (*Service, *authnRepositoryHarness, *n
 
 func seedUnverifiedPrincipal(t *testing.T, harness *authnRepositoryHarness, id guid.ID, login string) {
 	t.Helper()
-	hash, err := passwordx.Hash("correct horse battery staple")
-	require.NoError(t, err)
+	hash := hashFixturePassword(t, "correct horse battery staple")
 	require.NoError(t, harness.db.Table(harness.runtime.TablePrefix()+"iam_principals").Create(&identitymodel.Principal{
 		ID: id, LoginName: login, Email: login + "@example.test", DisplayName: login,
 		Status: "active", CreatedAt: repositoryTestNow, UpdatedAt: repositoryTestNow,

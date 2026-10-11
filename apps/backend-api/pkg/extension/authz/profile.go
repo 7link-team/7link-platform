@@ -23,6 +23,7 @@ func ProfileFields() []Field {
 		{Resource: ProfileResource, Name: "login_name", Mutability: "readWrite", Returned: "default", Maskable: true, Configurable: true},
 		{Resource: ProfileResource, Name: "display_name", Mutability: "readWrite", Returned: "default", Maskable: true, Configurable: true},
 		{Resource: ProfileResource, Name: "email", Mutability: "readWrite", Returned: "default", Maskable: true, Configurable: true},
+		{Resource: ProfileResource, Name: "phone", Mutability: "readWrite", Returned: "default", Maskable: true, Configurable: true},
 	}
 }
 
@@ -78,10 +79,12 @@ func (c FieldConstraint) ReadString(name, value string) *string {
 	}
 }
 
-// Email verification must not become a side channel when email is hidden or
-// redacted. It is a server-controlled derivative, not an independently writable field.
-func (c FieldConstraint) EmailVerified(value bool) *bool {
-	if c.Fields["email"].Read == "allow" {
+// Verified reports a contact's verification flag only where the contact itself
+// is readable. The flag must not become a side channel when the address or the
+// number is hidden or redacted: it is a server-controlled derivative of a field,
+// not an independently readable one.
+func (c FieldConstraint) Verified(field string, value bool) *bool {
+	if c.Fields[field].Read == "allow" {
 		return &value
 	}
 	return nil

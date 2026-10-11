@@ -282,6 +282,9 @@ func (s *Service) CompletePasswordRecovery(ctx context.Context, token, newPasswo
 			return err
 		}
 		current, err := repository.getActivePrincipal(ctx, recovery.PrincipalID)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		if err != nil || !current.EmailVerified || current.Email != principal.Email {
 			return authnext.ErrInvalidRecovery
 		}

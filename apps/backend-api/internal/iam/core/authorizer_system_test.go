@@ -95,7 +95,7 @@ func TestSystemAuthorizationRequiresActiveUnconditionalDirectRole(t *testing.T) 
 		require.Equal(t, want, allowed)
 	}
 	check(false)
-	_, err = h.repository.AddMember(t.Context(), owner, role.ID, 11)
+	_, err = h.repository.AddMember(t.Context(), owner, role.ID, 11, nil)
 	require.NoError(t, err)
 	check(true)
 	_, _, err = h.repository.SetPermissionCondition(t.Context(), owner, role.ID, "account_view_create", []byte(`{"principal":{"id":"11"}}`))
@@ -127,7 +127,7 @@ func TestSystemReservedFullRoleCannotCreateFullAuthority(t *testing.T) {
 			_, err = h.repository.GrantPermission(t.Context(), owner, role.ID, code)
 			require.NoError(t, err)
 		}
-		_, err = h.repository.AddMember(t.Context(), owner, role.ID, 11)
+		_, err = h.repository.AddMember(t.Context(), owner, role.ID, 11, nil)
 		require.NoError(t, err)
 		allowed, err := h.authorizer.CheckPlatform(t.Context(), "platform_administer", 11)
 		require.NoError(t, err)

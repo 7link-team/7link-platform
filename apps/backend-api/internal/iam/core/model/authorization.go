@@ -43,10 +43,13 @@ type FieldPolicy struct {
 func (FieldPolicy) TableName() string { return "iam_field_policies" }
 
 type RoleMember struct {
-	TenantID    guid.ID   `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
-	RoleID      guid.ID   `gorm:"column:role_id;primaryKey;autoIncrement:false"`
-	PrincipalID guid.ID   `gorm:"column:principal_id;primaryKey;autoIncrement:false"`
-	CreatedAt   time.Time `gorm:"column:created_at;not null"`
+	TenantID    guid.ID `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
+	RoleID      guid.ID `gorm:"column:role_id;primaryKey;autoIncrement:false"`
+	PrincipalID guid.ID `gorm:"column:principal_id;primaryKey;autoIncrement:false"`
+	// ExpiresAt is when the assignment stops granting. Nil is no end, which is
+	// what every assignment made before the column existed means.
+	ExpiresAt *time.Time `gorm:"column:expires_at"`
+	CreatedAt time.Time  `gorm:"column:created_at;not null"`
 }
 
 func (RoleMember) TableName() string { return "iam_role_members" }

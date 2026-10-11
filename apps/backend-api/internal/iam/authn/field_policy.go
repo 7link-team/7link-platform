@@ -59,7 +59,11 @@ func (s *Service) ProjectProfile(ctx context.Context, claims *authnext.Claims, s
 	}
 	if email {
 		view.Email = fields.ReadString("email", claims.Email)
-		view.EmailVerified = fields.EmailVerified(claims.EmailVerified)
+		view.EmailVerified = fields.Verified("email", claims.EmailVerified)
+		// The number travels with the address: both are contacts the same scope
+		// asks for, and both answer to the same field policy.
+		view.Phone = fields.ReadString("phone", claims.Phone)
+		view.PhoneVerified = fields.Verified("phone", claims.PhoneVerified)
 	}
 	return view, nil
 }
@@ -96,6 +100,7 @@ func sessionView(ctx context.Context, service *Service, in *meInput, claims *aut
 	view := meOutput{
 		Subject: claims.Subject, Issuer: claims.Issuer,
 		PreferredUsername: profile.PreferredUsername, Email: profile.Email, EmailVerified: profile.EmailVerified,
+		Phone: profile.Phone, PhoneVerified: profile.PhoneVerified,
 		OrganizationID: claims.OrganizationID, ACR: claims.ACR, AMR: claims.AMR,
 	}
 	if !claims.AuthTime.IsZero() {

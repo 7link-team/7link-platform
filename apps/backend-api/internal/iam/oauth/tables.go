@@ -16,6 +16,9 @@ type GrantTableNames struct {
 	Consents           gormx.TableName
 	ConsentRequests    gormx.TableName
 	RefreshTokens      gormx.TableName
+
+	DeviceAuthorizations gormx.TableName
+	ExchangeGrants       gormx.TableName
 }
 
 // PublishedGrantTableNames binds every name oauth owns to one deployment prefix. It
@@ -30,6 +33,9 @@ func PublishedGrantTableNames(prefix string) GrantTableNames {
 		Consents:           names.Consents,
 		ConsentRequests:    names.ConsentRequests,
 		RefreshTokens:      names.RefreshTokens,
+
+		DeviceAuthorizations: names.DeviceAuthorizations,
+		ExchangeGrants:       names.ExchangeGrants,
 	}
 }
 

@@ -381,7 +381,7 @@ func TestOIDCCodeExchangeFlow(t *testing.T) {
 	assert.ErrorIs(t, err, ErrOIDCToken)
 }
 
-func verifyIDTokenViaFlow(t *testing.T, idp *testIDP, client *oidcClient) (idTokenClaims, error) {
+func verifyIDTokenViaFlow(t *testing.T, idp *testIDP, client *oidcClient) (upstreamIdentity, error) {
 	t.Helper()
 	ctx := context.Background()
 	verifier := "verifier-12345678901234567890123456789012"

@@ -164,7 +164,7 @@ func moduleMigrations() []moduleMigration {
 		{
 			name:    "identity",
 			table:   "iam_principals",
-			target:  7,
+			target:  8,
 			seedSQL: `INSERT INTO iam_principals (id, login_name, display_name, status, created_at, updated_at) VALUES (1, 'first', 'First', 'active', '2026-09-02 00:00:00', '2026-09-02 00:00:00')`,
 			source:  (&identity.Module{}).MigrationSource(),
 		},
@@ -178,7 +178,7 @@ func moduleMigrations() []moduleMigration {
 		{
 			name:         "iam-core",
 			table:        "iam_roles",
-			target:       17,
+			target:       18,
 			seedSQL:      `INSERT INTO iam_roles (tenant_id, id, name, name_key, created_at, updated_at) VALUES (1, 1, 'First', 'first', '2026-09-02 00:00:00', '2026-09-02 00:00:00')`,
 			source:       (&iamcore.Module{}).MigrationSource(),
 			dependencies: []goosex.Source{(&identity.Module{}).MigrationSource()},

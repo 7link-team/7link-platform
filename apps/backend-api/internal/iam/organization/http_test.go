@@ -131,6 +131,7 @@ func organizationDeclarationAPI(t *testing.T) huma.API {
 	require.NoError(t, module.Provide[*authz.Registrar](services, organizationTestRegistrar(members)))
 	require.NoError(t, module.Provide[core.ActiveMemberChecker](services, members))
 	require.NoError(t, module.Provide[core.AdministratorGuard](services, &organizationAdministratorGuard{}))
+	require.NoError(t, module.Provide[core.TenantConstraint](services, allDepartmentsConstraint))
 	require.NoError(t, module.Provide[authn.InvitationCredentials](services, &invitationCredentialFixture{}))
 	require.NoError(t, module.Provide[identity.InvitationPrincipalCreator](services, creator))
 	require.NoError(t, module.Provide[core.TenantBootstrapper](services, newTenantBootstrapStub().capability()))
@@ -642,4 +643,13 @@ func TestErrorMappersKeepChosenStatus(t *testing.T) {
 		require.ErrorAs(t, mapped, &headers, name)
 		assert.Equal(t, "1", headers.GetHeaders().Get("Retry-After"), name)
 	}
+}
+
+// allDepartmentsConstraint stands in for the authorizer where a test is about
+// something other than narrowing. AllowAll is what a tenant administrator's
+// dept_view compiles to, so it keeps every other listing assertion unchanged.
+func allDepartmentsConstraint(
+	context.Context, guid.ID, string, guid.ID,
+) (authz.DataConstraint, error) {
+	return authz.DataConstraint{AllowAll: true}, nil
 }

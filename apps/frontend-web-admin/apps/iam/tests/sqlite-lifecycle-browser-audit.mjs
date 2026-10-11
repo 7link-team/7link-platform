@@ -383,7 +383,8 @@ try {
           issuer: apiURL,
           signing_key_file: join(directory, "signing-key"),
           mfa: { encryption_key_file: join(directory, "mfa-key") },
-          registration: { enabled: true, captcha: { test_answer: "12345678" } },
+          registration: { enabled: true },
+          captcha: { test_answer: "12345678" },
           notification: { url: notificationURL, poll_interval: "100ms" },
           email_verification: {
             enabled: true,
@@ -481,7 +482,7 @@ try {
     ],
     frontend,
     "web",
-    { VITE_API_PROXY_TARGET: apiURL }
+    { VITE_API_PROXY_TARGET: apiURL, VITE_DEV_LOGIN_CAPTCHA_ANSWER: "12345678" }
   )
   await eventually(
     async () => {
@@ -511,7 +512,7 @@ try {
   await anonymous.close()
   const admin = await login(adminLogin, adminPassword)
   if (process.env.IAM_AUTH_ENTRANCES_ONLY === "1") {
-    await authEntrancesAcceptance({ admin, browser, webURL, directory, notifications, eventually, pass, adminLogin, adminPassword })
+    await authEntrancesAcceptance({ captchaAnswer: "12345678", admin, browser, webURL, directory, notifications, eventually, pass, adminLogin, adminPassword })
   } else {
   assert.deepEqual(
     await call(admin.context, "/tenants", "GET", undefined, {
@@ -590,6 +591,7 @@ try {
   )
   if (process.env.IAM_ACCOUNT_VIEW_ONLY !== "1") {
   await externalIdentityAcceptance({
+    captchaAnswer: "12345678",
     browser,
     admin,
     apiURL,
@@ -1565,7 +1567,7 @@ try {
 
   }
   await administrationAccountViewAcceptance({ admin, browser, tenant, webURL, directory, login, eventually, pass, notifications })
-  await authEntrancesAcceptance({ admin, browser, webURL, directory, notifications, eventually, pass, adminLogin, adminPassword })
+  await authEntrancesAcceptance({ captchaAnswer: "12345678", admin, browser, webURL, directory, notifications, eventually, pass, adminLogin, adminPassword })
   const audit = await call(admin.context, "/audit/events?limit=200")
   for (const event of (process.env.IAM_ACCOUNT_VIEW_ONLY === "1" ? ["tenant_bootstrapped"] : [
     "tenant_bootstrapped",

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { auditCaptcha } from "./audit-captcha.mjs"
 
 const apiURL = process.env.IAM_API_URL?.replace(/\/$/u, "")
 const consoleURL = process.env.IAM_CONSOLE_URL?.replace(/\/$/u, "")
@@ -47,6 +48,7 @@ await call("/login", {
     login_name: "admin@example.test",
     password: readFileSync(adminPasswordFile, "utf8").trim(),
     return_url: consoleURL + "/",
+    ...auditCaptcha(),
   },
 })
 
@@ -59,10 +61,16 @@ function passwordFor(id) {
   return { path, password: readFileSync(path, "utf8").trim() }
 }
 
+// A list endpoint answers with `data` as a bare array; paging lives in `meta`.
+function listOf(payload) {
+  return Array.isArray(payload) ? payload : (payload?.items ?? [])
+}
+
 async function ensureFromList(path, match, create) {
-  const listed = await call(path)
-  const items = Array.isArray(listed) ? listed : (listed?.items ?? [])
-  return items.find(match) ?? call(path, { method: "POST", body: create })
+  return (
+    listOf(await call(path)).find(match) ??
+    call(path, { method: "POST", body: create })
+  )
 }
 
 const entity = await ensureFromList(
@@ -86,7 +94,22 @@ const definitions = [
     loginName: "system-admin@example.test",
     displayName: "UAT System Administrator",
     scope: "all",
-    platformPermissions: ["tenant_view"],
+    // This persona demonstrates delegated system browsing, not a tenant-only
+    // observer or a full administrator. Keep mutation/grant permissions absent.
+    platformPermissions: [
+      "system_account_view",
+      "system_department_view",
+      "system_role_view",
+      "system_menu_view",
+      "operating_platform_view",
+      "tenant_view",
+      "system_audit_event_view",
+      "system_file_view",
+      "system_file_list",
+      "system_file_traverse",
+      "system_file_read",
+      "system_file_download",
+    ],
   },
   {
     id: "tenant-admin",
@@ -140,14 +163,14 @@ for (const definition of definitions) {
   const principalPath =
     "/principals?limit=200&search=" + encodeURIComponent(definition.loginName)
   const localPrincipals = await call(principalPath)
-  let principal = localPrincipals.items.find(
+  let principal = listOf(localPrincipals).find(
     (item) => item.login_name === definition.loginName
   )
   if (!principal && sourceTenantID) {
     const sourcePrincipals = await call(principalPath, {
       tenantHeader: sourceTenantID,
     })
-    principal = sourcePrincipals.items.find(
+    principal = listOf(sourcePrincipals).find(
       (item) => item.login_name === definition.loginName
     )
     if (principal)
@@ -295,7 +318,7 @@ const systemAccounts = await call(
   "/system/principals?limit=200&search=" + encodeURIComponent(platformLogin),
   { tenant: false }
 )
-const platformOwner = systemAccounts.items.find(
+const platformOwner = listOf(systemAccounts).find(
   (item) => item.login_name === platformLogin
 ) ?? await call("/system/principals", {
   method: "POST", tenant: false,
@@ -326,7 +349,7 @@ const users = await call(
   "/system/principals?limit=200&search=" + encodeURIComponent(userLogin),
   { tenant: false }
 )
-if (!users.items.some((item) => item.login_name === userLogin))
+if (!listOf(users).some((item) => item.login_name === userLogin))
   await call("/system/principals", {
     method: "POST",
     tenant: false,

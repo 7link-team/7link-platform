@@ -27,6 +27,17 @@ const binary = join(
   process.platform === "win32" ? "api.exe" : "api",
 );
 const initializedPath = join(directory, "admin-initialized");
+// A literal is fine here and only here: this is the local development
+// environment's own throwaway value, it never leaves this machine, and the
+// service refuses anything shorter than eight characters.
+const devCaptchaAnswer = "dev-captcha";
+// Cloudflare's own dummy keys, which pass on any hostname including localhost.
+// Turnstile is off by default here: validating a token means reaching
+// Cloudflare, and starting the application locally must not need the internet.
+// `make dev DEV_CAPTCHA=turnstile` switches it on when the widget is what you
+// are working on.
+const devTurnstileSiteKey = "1x00000000000000000000AA";
+const devTurnstileSecretKey = "1x0000000000000000000000000000000AA";
 const options = new Map();
 for (let i = 2; i < process.argv.length; i += 2) {
   const name = process.argv[i];
@@ -40,6 +51,7 @@ for (let i = 2; i < process.argv.length; i += 2) {
       "--web-port",
       "--demo-accounts",
       "--prefill-account",
+      "--captcha",
     ].includes(name) ||
     process.argv[i + 1] === undefined
   )
@@ -51,6 +63,12 @@ function boolean(name, fallback) {
   if (value !== "true" && value !== "false")
     throw new Error(`${name} requires true or false`);
   return value === "true";
+}
+function captchaOption(fallback) {
+  const value = options.get("--captcha") ?? fallback;
+  if (value !== "image" && value !== "turnstile")
+    throw new Error("--captcha requires image or turnstile");
+  return value;
 }
 function portOption(name, fallback) {
   const value = Number(options.get(name) ?? fallback);
@@ -146,6 +164,7 @@ if (options.has("--stop")) {
   process.exitCode = running ? 0 : 1;
 } else {
   const demoAccounts = boolean("--demo-accounts", "true");
+  const captchaProvider = captchaOption("image");
   const prefill = boolean("--prefill-account", "false");
   if (prefill && !demoAccounts)
     throw new Error("Account prefill requires demo accounts.");
@@ -225,6 +244,18 @@ if (options.has("--stop")) {
     JSON.stringify(
       {
         name: "Local Development",
+        // What people signing in see, as opposed to `name` above, which is what
+        // operators see in logs and on the banner. The console reads this from
+        // the service, so it is configured here rather than built into the client.
+        deployment: {
+          name: "Local Development Console",
+          organization: "Local Development",
+        },
+        // Declared here rather than passed to each command: every invocation
+        // against this configuration is a development one, and the limiter's
+        // in-process store is refused without it -- including by `migrate`,
+        // which reads the same file.
+        debug: true,
         table_prefix: "dev_",
         http_server: { address: "127.0.0.1", port: apiPort },
         grpc_server: { address: "127.0.0.1", port: grpcPort },
@@ -244,6 +275,30 @@ if (options.has("--stop")) {
           signing_key_file: join(directory, "signing-key"),
           mfa: { encryption_key_file: join(directory, "mfa-key") },
           registration: { enabled: true },
+          captcha: {
+            test_answer: devCaptchaAnswer,
+            provider: captchaProvider,
+            ...(captchaProvider === "turnstile"
+              ? {
+                  turnstile: {
+                    site_key: devTurnstileSiteKey,
+                    secret_key: devTurnstileSecretKey,
+                  },
+                }
+              : {}),
+          },
+          // Debug-only, in-process, and gone when this process is: it exists so
+          // the authentication limiter is actually enforced here instead of
+          // being short-circuited by having no Redis. The allowance is low
+          // enough to reach by hand and high enough not to trip a normal run.
+          shared_security: {
+            development_server: true,
+            window: "1m",
+            per_ip: 30,
+            global: 3000,
+            oauth_per_ip: 600,
+            oauth_global: 30000,
+          },
           notification: { url: notificationURL },
           email_verification: {
             enabled: true,
@@ -252,6 +307,16 @@ if (options.has("--stop")) {
           recovery: {
             enabled: true,
             reset_url: settings.webURL + "/user/recover",
+          },
+          // All three are off in a real deployment: proving a number is useful on
+          // its own, signing in with one is a separate decision, and a code to a
+          // number is the weakest second factor on offer. They are on here
+          // because the local mailbox below is where the message lands, so the
+          // flows can actually be walked through without an SMS vendor.
+          phone_verification: {
+            enabled: true,
+            login_enabled: true,
+            second_factor_enabled: true,
           },
           web: {
             enabled: true,
@@ -420,6 +485,7 @@ if (options.has("--stop")) {
       IAM_BROWSER_TENANT_NAME: "Development",
       IAM_BACKEND_DIR: root,
       IAM_BOOTSTRAP_SKIP: "true",
+      IAM_CAPTCHA_ANSWER: devCaptchaAnswer,
     };
     const tenantID = await run(
       "bun",
@@ -460,6 +526,7 @@ if (options.has("--stop")) {
         VITE_API_PROXY_TARGET: settings.apiURL,
         VITE_DEFAULT_TENANT: tenantID,
         VITE_DEV_LOGIN_ACCOUNTS_ENABLED: String(demoAccounts),
+        VITE_DEV_LOGIN_CAPTCHA_ANSWER: devCaptchaAnswer,
         VITE_DEV_LOGIN_PREFILL: String(prefill),
         VITE_DEV_LOGIN_ACCOUNTS: JSON.stringify(accounts),
       },

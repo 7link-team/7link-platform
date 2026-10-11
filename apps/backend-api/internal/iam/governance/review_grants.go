@@ -28,12 +28,12 @@ func (r *Repository) listReviewableGrants(ctx context.Context, tenantID guid.ID,
 		{sql: `
 SELECT members.principal_id, tenant_members.display_name AS principal_name,
        roles.id AS role_id, roles.name AS role_name, 'permanent' AS grant_type, NULL AS grant_id,
-       members.created_at AS grant_created_at, NULL AS grant_expires_at
+       members.created_at AS grant_created_at, members.expires_at AS grant_expires_at
 FROM ` + roleMembers + ` AS members
 JOIN ` + roles + ` AS roles ON roles.tenant_id = members.tenant_id AND roles.id = members.role_id
 JOIN ` + tenantMembers + ` AS tenant_members
   ON tenant_members.tenant_id = members.tenant_id AND tenant_members.principal_id = members.principal_id AND tenant_members.status = 'active'
-WHERE members.tenant_id = ?`, args: []any{tenantID}},
+WHERE members.tenant_id = ? AND (members.expires_at IS NULL OR members.expires_at > ?)`, args: []any{tenantID, now}},
 		{sql: `
 SELECT grants.principal_id, tenant_members.display_name AS principal_name,
        roles.id AS role_id, roles.name AS role_name, 'temporary' AS grant_type, grants.id AS grant_id,

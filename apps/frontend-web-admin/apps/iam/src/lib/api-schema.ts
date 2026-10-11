@@ -143,6 +143,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/deployment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the display identity of this deployment
+         * @description Names the console renders before a session exists. Public because the sign-in page needs them.
+         */
+        get: operations["deployment-identity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/email-verifications": {
         parameters: {
             query?: never;
@@ -462,10 +482,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Replace an OIDC identity provider */
+        /** Replace an identity provider */
         put: operations["federation-update-identity-provider"];
         post?: never;
-        /** Delete an OIDC identity provider and its identity links */
+        /** Delete an identity provider and its identity links */
         delete: operations["federation-delete-identity-provider"];
         options?: never;
         head?: never;
@@ -479,7 +499,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Start an OIDC login for a tenant identity provider */
+        /** Start a login for a tenant identity provider */
         get: operations["federation-start-login"];
         put?: never;
         post?: never;
@@ -558,6 +578,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/login/captchas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue a graphic captcha for login */
+        post: operations["authn-create-login-captcha"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/login/mfa": {
         parameters: {
             query?: never;
@@ -569,6 +606,23 @@ export interface paths {
         put?: never;
         /** Complete an MFA login challenge */
         post: operations["authn-create-session-verification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/login/mfa/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue a second-factor code for an outstanding login challenge */
+        post: operations["authn-create-mfa-verification-request"];
         delete?: never;
         options?: never;
         head?: never;
@@ -620,6 +674,40 @@ export interface paths {
         put?: never;
         /** Verify a WebAuthn assertion and log in */
         post: operations["authn-verify-passkey-login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/login/phone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign in with a code sent to a proven phone number */
+        post: operations["authn-create-phone-session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/login/phone/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue a sign-in code for a proven phone number */
+        post: operations["authn-create-phone-login-request"];
         delete?: never;
         options?: never;
         head?: never;
@@ -748,6 +836,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/oauth-exchange-grants/{grant_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Withdraw a token exchange grant */
+        delete: operations["oauth-delete-exchange-grant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/oauth/authorize": {
         parameters: {
             query?: never;
@@ -794,6 +899,23 @@ export interface paths {
         get: operations["oauth-consent-request"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/device_authorization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a device authorization request */
+        post: operations["oauth-device-authorization"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1093,6 +1215,40 @@ export interface paths {
         put?: never;
         /** Queue a password recovery notification */
         post: operations["authn-create-password-recovery-request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/phone-verifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Consume a phone verification code */
+        post: operations["authn-create-phone-verification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/phone-verifications/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue a verification code for the authenticated principal phone number */
+        post: operations["authn-create-phone-verification-request"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1944,6 +2100,23 @@ export interface paths {
         post?: never;
         /** Remove a group from a role */
         delete: operations["iam-remove-role-directory-binding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roles/{role_id}/member-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List role assignments with the moment each stops granting */
+        get: operations["iam-list-role-member-grants"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4051,6 +4224,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenant_id}/identity-provider-connectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the social connectors this deployment can register */
+        get: operations["federation-list-connectors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenant_id}/identity-providers": {
         parameters: {
             query?: never;
@@ -4061,7 +4251,7 @@ export interface paths {
         /** List tenant identity providers */
         get: operations["federation-list-identity-providers"];
         put?: never;
-        /** Create an OIDC identity provider */
+        /** Create an identity provider */
         post: operations["federation-create-identity-provider"];
         delete?: never;
         options?: never;
@@ -4210,6 +4400,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenant_id}/oauth-exchange-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List token exchange grants */
+        get: operations["oauth-list-exchange-grants"];
+        put?: never;
+        /** Permit one client to act as a subject */
+        post: operations["oauth-create-exchange-grant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenant_id}/oauth/device-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a pending device authorization request by its user code */
+        get: operations["oauth-device-request"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenant_id}/oauth/device-requests/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve or refuse a device authorization request */
+        post: operations["oauth-device-decision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenant_id}/permission-catalog": {
         parameters: {
             query?: never;
@@ -4279,6 +4521,23 @@ export interface paths {
         head?: never;
         /** Update a local principal profile */
         patch: operations["identity-update-principal"];
+        trace?: never;
+    };
+    "/tenants/{tenant_id}/principals/{principal_id}/entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the entities in this tenant that grant the caller a permission */
+        get: operations["iam-member-entities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/tenants/{tenant_id}/principals/{principal_id}/menus": {
@@ -4928,8 +5187,10 @@ export interface components {
             total_events: number;
         };
         AuthenticationCapabilities: {
+            captcha: components["schemas"]["CaptchaCapability"];
             passkey: boolean;
             password_recovery: boolean;
+            phone_login: boolean;
             registration: boolean;
         };
         AuthenticatorAssertionResponse: {
@@ -5036,6 +5297,15 @@ export interface components {
             /** @description keys accepted by the sort parameter */
             sortable: string[] | null;
         };
+        CaptchaCapability: {
+            /**
+             * @description who poses the challenge
+             * @enum {string}
+             */
+            provider: "image" | "turnstile";
+            /** @description Turnstile site key; absent unless the provider is turnstile */
+            site_key?: string;
+        };
         CaptchaOutput: {
             captcha_id: string;
             /** Format: int64 */
@@ -5079,7 +5349,7 @@ export interface components {
              * @enum {string}
              */
             consent_mode: "implicit" | "explicit";
-            grant_types: ("authorization_code" | "refresh_token" | "client_credentials")[] | null;
+            grant_types: ("authorization_code" | "refresh_token" | "client_credentials" | "urn:ietf:params:oauth:grant-type:device_code" | "urn:ietf:params:oauth:grant-type:token-exchange")[] | null;
             name: string;
             public_client: boolean;
             redirect_uris?: string[] | null;
@@ -5097,7 +5367,7 @@ export interface components {
              * @enum {string}
              */
             consent_mode: "implicit" | "explicit";
-            grant_types: ("authorization_code" | "refresh_token" | "client_credentials")[] | null;
+            grant_types: ("authorization_code" | "refresh_token" | "client_credentials" | "urn:ietf:params:oauth:grant-type:device_code" | "urn:ietf:params:oauth:grant-type:token-exchange")[] | null;
             name: string;
             public_client: boolean;
             redirect_uris?: string[] | null;
@@ -5129,6 +5399,12 @@ export interface components {
             status: "processing" | "rejected";
             /** Format: int64 */
             version: number;
+        };
+        ConnectorCatalogEntry: {
+            default_scopes: string;
+            key: string;
+            /** @description False when the provider returns no email address, so just-in-time provisioning cannot apply and the connector can only link an existing account */
+            states_email: boolean;
         };
         ConsentRequest: {
             challenge: string;
@@ -5434,6 +5710,34 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        DeploymentIdentity: {
+            /** @description console display name; empty when the deployment configures none */
+            name: string;
+            /** @description organization named in the console footer; empty when the deployment configures none */
+            organization: string;
+        };
+        DeviceAuthorization: {
+            device_code: string;
+            /** Format: int64 */
+            expires_in: number;
+            /** Format: int64 */
+            interval: number;
+            user_code: string;
+            verification_uri: string;
+            verification_uri_complete?: string;
+        };
+        DeviceDecisionInputBody: {
+            approve: boolean;
+            user_code: string;
+        };
+        DeviceRequest: {
+            client_id: string | null;
+            client_name: string;
+            /** Format: date-time */
+            expires_at: string;
+            scope: string;
+            status: string;
+        };
         Directory: {
             /** Format: date-time */
             created_at: string;
@@ -5463,6 +5767,8 @@ export interface components {
             /** Format: uri */
             authorization_endpoint: string;
             code_challenge_methods_supported: string[] | null;
+            /** Format: uri */
+            device_authorization_endpoint: string;
             grant_types_supported: string[] | null;
             id_token_signing_alg_values_supported: string[] | null;
             /** Format: uri */
@@ -5948,6 +6254,32 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeDeploymentIdentity: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["DeploymentIdentity"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeDeviceRequest: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["DeviceRequest"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeDirectory: {
             /**
              * Format: int64
@@ -5969,6 +6301,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["Event"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeExchangeGrant: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ExchangeGrant"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -6429,6 +6774,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeListConnectorCatalogEntry: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ConnectorCatalogEntry"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeListCredential: {
             /**
              * Format: int64
@@ -6476,6 +6834,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["Event"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeListExchangeGrant: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ExchangeGrant"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -6710,6 +7081,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["RequestableRole"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeListRoleMemberGrant: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["RoleMemberGrant"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -7392,6 +7776,32 @@ export interface components {
             tenant_id: string | null;
             user_agent?: string;
         };
+        ExchangeGrant: {
+            client_id: string | null;
+            /** Format: date-time */
+            created_at: string;
+            id: string | null;
+            /** @description Scopes this delegation may ask for; empty permits none */
+            scope: string;
+            status: string;
+            /** @description Principal identifier, or a prefix ending in * to permit a range */
+            subject_prefix: string;
+            tenant_id: string | null;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ExchangeGrantCreateInputBody: {
+            client_id: string;
+            /** @description Scopes this delegation may ask for */
+            scope: string;
+            /**
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "disabled";
+            /** @description Principal identifier, or a prefix ending in * to permit a range; a bare * is refused */
+            subject_prefix: string;
+        };
         Explanation: {
             allowed: boolean;
             matches: components["schemas"]["DecisionMatch"][] | null;
@@ -7686,6 +8096,9 @@ export interface components {
             tenant_id: string | null;
         };
         LoginInputBody: {
+            captcha_answer: string;
+            captcha_id: string;
+            captcha_type: string;
             login_name: string;
             password: string;
             return_url?: string;
@@ -7717,6 +8130,7 @@ export interface components {
         MFAStatus: {
             /** Format: int64 */
             recovery_codes_remaining: number;
+            sms_available: boolean;
             totp_enabled: boolean;
         };
         ManagedFieldPolicy: {
@@ -7736,8 +8150,17 @@ export interface components {
             email_verified?: boolean;
             issuer: string;
             organization_id?: string;
+            phone?: string;
+            phone_verified?: boolean;
             preferred_username?: string;
             subject: string;
+        };
+        MemberGrantInputBody: {
+            /**
+             * Format: date-time
+             * @description when the assignment stops granting; omit for no end
+             */
+            expires_at?: string;
         };
         MenuDeclaration: {
             children?: components["schemas"]["MenuDeclaration"][] | null;
@@ -7796,6 +8219,9 @@ export interface components {
         };
         MfaPasswordInputBody: {
             current_password: string;
+        };
+        MfaPhoneCodeInputBody: {
+            challenge_id: string;
         };
         MfaVerificationInputBody: {
             code: string;
@@ -8039,6 +8465,20 @@ export interface components {
             revoked_at: string | null;
             tenant_id: string | null;
         };
+        PhoneLoginCompleteInputBody: {
+            code: string;
+            phone: string;
+            return_url?: string;
+        };
+        PhoneLoginStartInputBody: {
+            captcha_answer: string;
+            captcha_id: string;
+            captcha_type: string;
+            phone: string;
+        };
+        PhoneVerificationCompleteInputBody: {
+            code: string;
+        };
         PlatformAdministratorView: {
             /** Format: date-time */
             created_at: string;
@@ -8095,6 +8535,8 @@ export interface components {
             email_verified: boolean;
             id: string | null;
             login_name: string;
+            phone?: string;
+            phone_verified: boolean;
             status: string;
             /** Format: date-time */
             updated_at: string;
@@ -8128,6 +8570,8 @@ export interface components {
         PrincipalUpdateInputBody: {
             display_name?: string;
             email?: string;
+            /** @description E.164 number, or empty to remove it */
+            phone?: string;
         };
         PrincipalView: {
             activation_required: boolean;
@@ -8139,6 +8583,8 @@ export interface components {
             email_verified?: boolean;
             id: string | null;
             login_name?: string;
+            phone?: string;
+            phone_verified?: boolean;
             status: string;
             /** Format: date-time */
             updated_at: string;
@@ -8168,13 +8614,14 @@ export interface components {
             client_secret?: string;
             /** @description Role granted to just-in-time provisioned members */
             default_role_id?: string;
+            /** @description Upstream issuer URL for oidc and saml; a connector key from the connector catalog for oauth2 */
             issuer: string;
             name: string;
             /**
              * @default oidc
              * @enum {string}
              */
-            provider_type: "oidc" | "saml";
+            provider_type: "oidc" | "saml" | "oauth2";
             scopes?: string;
             /**
              * @default active
@@ -8371,6 +8818,13 @@ export interface components {
         };
         RevokedInvitation: {
             revoked: boolean;
+        };
+        RoleMemberGrant: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at?: string;
+            principal_id: string | null;
         };
         RowError: {
             column?: string;
@@ -8582,6 +9036,8 @@ export interface components {
         SystemPrincipalUpdateInputBody: {
             display_name?: string;
             email?: string;
+            /** @description E.164 number, or empty to remove it */
+            phone?: string;
         };
         SystemRoleCreateInputBody: {
             description?: string;
@@ -8663,6 +9119,7 @@ export interface components {
             /** Format: int64 */
             expires_in: number;
             id_token?: string;
+            issued_token_type?: string;
             refresh_token?: string;
             scope?: string;
             token_type: string;
@@ -9573,6 +10030,35 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "deployment-identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeDeploymentIdentity"];
+                };
+            };
+            /** @description Error */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12206,6 +12692,55 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "authn-create-login-captcha": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeCaptchaOutput"];
+                };
+            };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Authentication shared storage unavailable */
             503: {
                 headers: {
@@ -12288,6 +12823,95 @@ export interface operations {
                 };
             };
             /** @description Authentication shared storage unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "authn-create-mfa-verification-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MfaPhoneCodeInputBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeMapStringBool"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -12428,6 +13052,158 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "authn-create-phone-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhoneLoginCompleteInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeLoginResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "authn-create-phone-login-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhoneLoginStartInputBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeMapStringBool"];
                 };
             };
             /** @description Forbidden */
@@ -13286,6 +14062,83 @@ export interface operations {
             };
         };
     };
+    "oauth-delete-exchange-grant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource identifier */
+                grant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeMapStringBool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     "oauth-authorize": {
         parameters: {
             query: {
@@ -13566,6 +14419,78 @@ export interface operations {
             };
         };
     };
+    "oauth-device-authorization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    client_id: string;
+                    scope?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceAuthorization"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: string;
+                        error_description?: string;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: string;
+                        error_description?: string;
+                    };
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: string;
+                        error_description?: string;
+                    };
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     "oauth-introspect": {
         parameters: {
             query?: never;
@@ -13773,11 +14698,17 @@ export interface operations {
                     client_secret?: string;
                     code?: string;
                     code_verifier?: string;
+                    device_code?: string;
                     /** @enum {string} */
-                    grant_type: "authorization_code" | "refresh_token" | "client_credentials";
+                    grant_type: "authorization_code" | "refresh_token" | "client_credentials" | "urn:ietf:params:oauth:grant-type:device_code" | "urn:ietf:params:oauth:grant-type:token-exchange";
                     redirect_uri?: string;
                     refresh_token?: string;
+                    /** @enum {string} */
+                    requested_token_type?: "urn:ietf:params:oauth:token-type:access_token";
                     scope?: string;
+                    subject_token?: string;
+                    /** @enum {string} */
+                    subject_token_type?: "urn:ietf:params:oauth:token-type:access_token";
                 };
             };
         };
@@ -13933,6 +14864,8 @@ export interface operations {
         parameters: {
             query?: {
                 include_deleted?: boolean;
+                /** @description matches name or slug */
+                search?: string;
                 offset?: number;
                 limit?: number;
             };
@@ -15534,6 +16467,180 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "authn-create-phone-verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhoneVerificationCompleteInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeMapStringBool"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "authn-create-phone-verification-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeMapStringBool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21213,6 +22320,86 @@ export interface operations {
             };
         };
     };
+    "iam-list-role-member-grants": {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Resource identifier */
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListRoleMemberGrant"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     "iam-list-role-members": {
         parameters: {
             query?: {
@@ -21305,7 +22492,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MemberGrantInputBody"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33087,6 +34278,8 @@ export interface operations {
         parameters: {
             query?: {
                 include_deleted?: boolean;
+                /** @description matches name or slug */
+                search?: string;
                 offset?: number;
                 limit?: number;
             };
@@ -36251,6 +37444,65 @@ export interface operations {
             };
         };
     };
+    "federation-list-connectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant resource identifier */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListConnectorCatalogEntry"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     "federation-list-identity-providers": {
         parameters: {
             query?: {
@@ -37417,6 +38669,315 @@ export interface operations {
             };
         };
     };
+    "oauth-list-exchange-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant resource identifier */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListExchangeGrant"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "oauth-create-exchange-grant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant resource identifier */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExchangeGrantCreateInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeExchangeGrant"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "oauth-device-request": {
+        parameters: {
+            query?: {
+                user_code?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Tenant resource identifier */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeDeviceRequest"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "oauth-device-decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant resource identifier */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceDecisionInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeMapStringString"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     "iam-permission-catalog": {
         parameters: {
             query?: never;
@@ -37916,6 +39477,88 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "iam-member-entities": {
+        parameters: {
+            query?: {
+                /** @description permission code the entity must grant the caller */
+                permission?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Tenant resource identifier */
+                tenant_id: string;
+                /** @description Authenticated principal identifier */
+                principal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListAPIEntity"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -54,6 +54,13 @@ func (recorder *notificationRecorder) last(t *testing.T) notificationPayload {
 	return recorder.payloads[len(recorder.payloads)-1]
 }
 
+// count is how many messages have left, which is how a test says that none did.
+func (recorder *notificationRecorder) count() int {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	return len(recorder.payloads)
+}
+
 func newRecoveryService(t *testing.T) (*Service, *authnRepositoryHarness, *notificationRecorder) {
 	t.Helper()
 	harness := newAuthnRepositoryHarness(t, "")
@@ -180,7 +187,8 @@ func TestPasswordRecoveryDoesNotEnumeratePrincipals(t *testing.T) {
 	assert.NoError(t, service.BeginPasswordRecovery(t.Context(), "missing@example.test"))
 	assert.ErrorIs(t, service.BeginPasswordRecovery(t.Context(), ""), authnext.ErrInvalidRecovery)
 
-	disabled, err := NewWebService(authnext.Config{}, nil)
+	disabled, err := NewWebService(authnext.Config{
+		Captcha: authnext.CaptchaConfig{TestAnswer: testCaptchaAnswer}}, nil)
 	require.NoError(t, err)
 	assert.ErrorIs(t, disabled.BeginPasswordRecovery(t.Context(), "alice"), authnext.ErrRecoveryDisabled)
 }
@@ -484,4 +492,35 @@ func TestNotificationDeliveryStopsOnCancelledContext(t *testing.T) {
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
 	assert.Empty(t, recorder.payloads)
+}
+
+// TestPasswordRecoveryStorageFaultIsNotAnInvalidRecovery covers the re-read of
+// the principal inside the reset transaction. The same principal is read twice
+// before it: once to check the recovery, once to lock the row.
+func TestPasswordRecoveryStorageFaultIsNotAnInvalidRecovery(t *testing.T) {
+	service, harness, recorder := newRecoveryService(t)
+	bootstrapLocalPrincipal(t, harness, "alice", "correct horse battery staple")
+	require.NoError(t, service.BeginPasswordRecovery(t.Context(), "alice@example.test"))
+	require.NoError(t, service.deliverPendingNotifications(t.Context()))
+	token := recoveryTokenFromPayload(t, recorder.last(t))
+
+	failReadsAfter(t, harness.db, "iam_principals", 2)
+	err := service.CompletePasswordRecovery(t.Context(), token, "different horse battery staple")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, authnext.ErrInvalidRecovery)
+}
+
+func TestAFailedAccountReadIsNotAnUnknownAccount(t *testing.T) {
+	// Recovery answers the same way whether or not the identifier reaches an
+	// account, which is what keeps it from being a way to enumerate addresses.
+	// A failed read must not borrow that silence: nothing was sent, and the one
+	// person who typed their own address would wait for a message forever.
+	service, harness, _ := newRecoveryService(t)
+	bootstrapLocalPrincipal(t, harness, "alice", "correct horse battery staple")
+	failPrincipalReads(t, harness)
+
+	err := service.BeginPasswordRecovery(t.Context(), "alice@example.test")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, authnext.ErrInvalidRecovery)
+	assert.NotErrorIs(t, err, authnext.ErrRecoveryDisabled)
 }

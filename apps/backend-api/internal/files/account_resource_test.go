@@ -696,10 +696,10 @@ func TestAccountResourceOpenPropagatesLookupAndStorageFailures(t *testing.T) {
 		wantErr error
 	}{
 		{name: "binding lookup", table: func(names query.TableNames) string { return names.ResourceBindings.String() }, wantErr: errInjectedTableFault},
-		{name: "space lookup", table: func(names query.TableNames) string { return names.Spaces.String() }, wantErr: ErrNotFound},
-		{name: "node lookup", table: func(names query.TableNames) string { return names.Nodes.String() }, wantErr: ErrNotFound},
-		{name: "version lookup", table: func(names query.TableNames) string { return names.Versions.String() }, wantErr: ErrNotFound},
-		{name: "object lookup", table: func(names query.TableNames) string { return names.Objects.String() }, wantErr: ErrNotFound},
+		{name: "space lookup", table: func(names query.TableNames) string { return names.Spaces.String() }, wantErr: errInjectedTableFault},
+		{name: "node lookup", table: func(names query.TableNames) string { return names.Nodes.String() }, wantErr: errInjectedTableFault},
+		{name: "version lookup", table: func(names query.TableNames) string { return names.Versions.String() }, wantErr: errInjectedTableFault},
+		{name: "object lookup", table: func(names query.TableNames) string { return names.Objects.String() }, wantErr: errInjectedTableFault},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newAccountResourceHarness(t)
@@ -860,4 +860,32 @@ func preparedObjectID(t *testing.T, h *accountResourceHarness, fileID guid.ID) g
 	version, err := h.q.Version.WithContext(t.Context()).Where(h.q.Version.NodeID.Eq(fileID)).Take()
 	require.NoError(t, err)
 	return version.ObjectID
+}
+
+// TestAccountResourcePromoteReportsStorageFaults separates a candidate that
+// is not there from one that could not be read: only the first is ErrNotFound.
+func TestAccountResourcePromoteReportsStorageFaults(t *testing.T) {
+	// Locking the candidate's space goes through the space table twice first;
+	// the statement under test is the ownership check that follows. Each skip
+	// was checked against the previous code, where that read was masked.
+	for name, target := range map[string]struct {
+		table func(h *accountResourceHarness) string
+		skip  int64
+	}{
+		"space": {func(h *accountResourceHarness) string { return h.q.Space.TableName() }, 2},
+		"node":  {func(h *accountResourceHarness) string { return h.q.Node.TableName() }, 0},
+	} {
+		t.Run("promote "+name, func(t *testing.T) {
+			h := newAccountResourceHarness(t)
+			expiry := h.now.Add(time.Hour)
+			h.bind(t, 70, PrincipalAvatarCandidatePurpose, "candidate-a", "new.png", "new", &expiry, false)
+			fault := failTableAfter(t, h.db, target.table(h), target.skip)
+			err := h.db.Transaction(func(tx *gorm.DB) error {
+				return h.resource.Promote(t.Context(), tx, 70, "candidate-a", PrincipalAvatarPurpose, "current", 70, h.now)
+			})
+			require.True(t, fault.Fired())
+			assert.ErrorIs(t, err, errInjectedTableFault)
+			assert.NotErrorIs(t, err, ErrNotFound)
+		})
+	}
 }

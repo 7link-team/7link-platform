@@ -231,6 +231,9 @@ describe("IAM API client", () => {
       login_name: "new-user",
       password: "password",
       return_url: "/",
+      captcha_type: "text",
+      captcha_id: "test",
+      captcha_answer: "test-answer",
     })
     await client.beginTotpEnrollment("password")
     await client.confirmTotpEnrollment("123456")
@@ -270,6 +273,9 @@ describe("IAM API client", () => {
       login_name: "other",
       password: "password",
       return_url: "/",
+      captcha_type: "text",
+      captcha_id: "test",
+      captcha_answer: "test-answer",
     })
     resolveIdentity(Response.json({ code: 0, data: { subject: "101" } }))
     expect(await old).toBeInstanceOf(ApiError)
@@ -1432,7 +1438,13 @@ describe("IAM API client", () => {
           message: "ok",
           data:
             request.method === "GET"
-              ? { registration: true, password_recovery: true, passkey: false }
+              ? {
+                  registration: true,
+                  password_recovery: true,
+                  passkey: false,
+                  phone_login: false,
+                  captcha: { provider: "image" },
+                }
               : { accepted: true },
         })
       },
@@ -1447,6 +1459,8 @@ describe("IAM API client", () => {
       registration: true,
       password_recovery: true,
       passkey: false,
+      phone_login: false,
+      captcha: { provider: "image" },
     })
     expect(
       await client.register({
@@ -1502,7 +1516,11 @@ describe("IAM API client", () => {
           return Response.json({
             code: 0,
             message: "ok",
-            data: { totp_enabled: true, recovery_codes_remaining: 8 },
+            data: {
+              totp_enabled: true,
+              recovery_codes_remaining: 8,
+              sms_available: false,
+            },
           })
         return Response.json({
           code: 0,
@@ -1534,6 +1552,9 @@ describe("IAM API client", () => {
         login_name: "operator",
         password: "password",
         return_url: "/",
+        captcha_type: "text",
+        captcha_id: "test",
+        captcha_answer: "test-answer",
       })
     ).toMatchObject({ status: "mfa_required", challenge_id: "challenge-id" })
     expect(
@@ -1545,6 +1566,7 @@ describe("IAM API client", () => {
     expect(await client.mfaStatus()).toEqual({
       totp_enabled: true,
       recovery_codes_remaining: 8,
+      sms_available: false,
     })
     await client.beginTotpEnrollment("password")
     await client.confirmTotpEnrollment("123456")
@@ -3006,5 +3028,44 @@ describe("IAM API client", () => {
     // Sending an empty header would scope the request to a tenant named "",
     // which reads as a real choice to the service; leaving it off does not.
     expect(requests[0]?.headers.has("x-tenant-id")).toBe(false)
+  })
+
+  // Signing out must not be something the service can refuse on this browser's
+  // behalf. The request is still made, and its failure is still reported, but
+  // the cached identity is dropped either way -- otherwise a console that
+  // cannot reach the service keeps somebody signed into it.
+  it("forgets the cached principal even when the sign-out request fails", async () => {
+    const paths: string[] = []
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const path = new URL(request.url).pathname
+        paths.push(path)
+        if (request.method === "DELETE")
+          return Response.json(
+            { code: 500, message: "unavailable", data: null },
+            { status: 500 }
+          )
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: { subject: "101", login_name: "operator" },
+          meta: {},
+        })
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`)
+
+    await client.session()
+    const discoveries = () => paths.filter((path) => path === "/me").length
+    const before = discoveries()
+    expect(before).toBeGreaterThan(0)
+
+    await expect(client.logout()).rejects.toMatchObject({ status: 500 })
+
+    // A call that needs the principal has to ask again, which it only does
+    // when the failed sign-out still cleared what was cached.
+    await client.sessions()
+    expect(discoveries()).toBeGreaterThan(before)
   })
 })

@@ -72,8 +72,19 @@ func (s *Service) revokePrincipalCredentialsOn(ctx context.Context, tx *gorm.DB,
 	if err := repo.consumePasswordRecoveries(ctx, principalID, now); err != nil {
 		return err
 	}
-	return repo.consumeEmailVerifications(ctx, principalID, now)
+	if err := repo.consumeEmailVerifications(ctx, principalID, now); err != nil {
+		return err
+	}
+	return repo.consumePhoneVerifications(ctx, principalID, now)
 }
+
+// PrincipalErasureVersion is the schema version ErasePrincipalData needs: the
+// later of this module's principal-erasure guard migration and the migration
+// that created the newest table erasure touches. Raise it when erasure reaches
+// a later table: the principallifecycle erasure-version test fails until then.
+// It is 19 because the phone verification code is kept with the number it
+// proves, which is PII this path has to delete.
+const PrincipalErasureVersion = 19
 
 // ErasePrincipalData removes authentication secrets and operational PII using
 // the caller's transaction, which must already lock the suspended principal.
@@ -107,7 +118,8 @@ func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid
 	}
 	for _, table := range []gormx.TableName{
 		names.ReauthenticationChallenges, names.PersonalTokens,
-		names.NotificationOutbox, names.EmailVerificationTokens, names.PasswordRecoveryTokens,
+		names.NotificationOutbox, names.EmailVerificationTokens, names.PhoneVerificationCodes,
+		names.PasswordRecoveryTokens,
 		names.StepUpChallenges, names.PasskeyChallenges, names.Passkeys, names.PasskeyUsers,
 		names.MFAChallenges, names.RecoveryCodes, names.MFAEnrollments, names.PasswordHistory,
 		names.Sessions, names.Credentials,

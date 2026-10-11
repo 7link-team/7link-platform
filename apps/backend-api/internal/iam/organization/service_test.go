@@ -15,6 +15,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
@@ -53,8 +54,9 @@ type organizationHarness struct {
 
 func newOrganizationHarness(t *testing.T, prefix string) *organizationHarness {
 	t.Helper()
-	dsn := fmt.Sprintf("file:%s?_busy_timeout=10000&_journal_mode=WAL&_foreign_keys=on", filepath.ToSlash(filepath.Join(t.TempDir(), "organization.sqlite")))
-	initializeOrganizationDatabase(t, dsn, prefix)
+	path := filepath.Join(t.TempDir(), "organization.sqlite")
+	cloneSchemaDatabase(t, prefix, path)
+	dsn := templateSQLiteDSN(path)
 	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
 		"primary": {Type: "sqlite", DSN: dsn, Writable: true, Readable: true},
 	})
@@ -374,4 +376,60 @@ func TestDepartmentServiceRejectsInvalidInputAndAnUnwiredRepository(t *testing.T
 	failing := newBoundService(t, h.runtime, h.appender, failingOrganizationIDs{})
 	_, err = failing.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
 	assert.ErrorContains(t, err, "generate department id")
+}
+
+func TestDepartmentListingHonoursANarrowedGrant(t *testing.T) {
+	// dept_view can be granted narrowed to named departments. The permission
+	// guard answers whether somebody may view departments and never which ones,
+	// so a listing that asked only the guard handed a caller granted two
+	// departments the entire tenant hierarchy -- the number of departments a
+	// tenant has is itself something an entity's own member has no claim to.
+	h := newOrganizationDirectoryHarness(t, "sl_")
+	granted, err := h.service.Create(t.Context(), 1,
+		CreateDepartment{EntityID: organizationEntityOne, Name: "Finance", SortOrder: 10})
+	require.NoError(t, err)
+	child, err := h.service.Create(t.Context(), 1,
+		CreateDepartment{EntityID: organizationEntityOne, ParentID: granted.ID, Name: "Payroll"})
+	require.NoError(t, err)
+	withheld, err := h.service.Create(t.Context(), 1,
+		CreateDepartment{EntityID: organizationEntityOne, Name: "Legal", SortOrder: 20})
+	require.NoError(t, err)
+
+	var asked []string
+	h.service.scopes = func(
+		_ context.Context, tenantID guid.ID, permission string, subject guid.ID,
+	) (authz.DataConstraint, error) {
+		asked = append(asked, fmt.Sprintf("%d/%s/%d", tenantID, permission, subject))
+		return authz.DataConstraint{DepartmentIDs: []string{granted.ID.String()}}, nil
+	}
+
+	items, total, err := h.service.ListPageVisible(t.Context(), 1, 77, 0, 50)
+	require.NoError(t, err)
+	assert.Equal(t, []guid.ID{granted.ID}, departmentIDs(items),
+		"only the department the grant names")
+	assert.EqualValues(t, 1, total,
+		"the total counts what the caller may see, or it advertises pages nobody will be shown")
+	assert.Equal(t, []string{"1/dept_view/77"}, asked,
+		"the constraint is asked for this caller in this tenant")
+
+	// A child of a granted department is not granted by inheritance: the
+	// authorizer expands department_and_descendants itself, so expanding again
+	// here would hand out rows the compiled constraint refused.
+	assert.NotContains(t, departmentIDs(items), child.ID)
+	assert.NotContains(t, departmentIDs(items), withheld.ID)
+
+	// The administrator's answer is unchanged, and still ordered as a hierarchy.
+	h.service.scopes = allDepartmentsConstraint
+	items, total, err = h.service.ListPageVisible(t.Context(), 1, 77, 0, 50)
+	require.NoError(t, err)
+	assert.EqualValues(t, 3, total)
+	assert.Equal(t, []guid.ID{granted.ID, child.ID, withheld.ID}, departmentIDs(items))
+	assert.Equal(t, []int{0, 1, 0}, []int{items[0].Depth, items[1].Depth, items[2].Depth},
+		"narrowing happens after ordering, so depth is still the real hierarchy's")
+
+	// Without the authorizer the listing refuses rather than falling back to the
+	// whole tenant: an answer nobody could compile is not permission for all rows.
+	h.service.scopes = nil
+	_, _, err = h.service.ListPageVisible(t.Context(), 1, 77, 0, 50)
+	assert.ErrorIs(t, err, ErrUnavailable)
 }

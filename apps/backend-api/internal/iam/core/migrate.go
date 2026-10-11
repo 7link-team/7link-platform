@@ -14,9 +14,14 @@ func (*Module) ModuleName() string { return Name }
 //go:embed sql
 var migrationsFS embed.FS
 
-func (*Module) MigrationSource() goosex.Source {
+// MigrationSource is this module's migration stream. It is a package function
+// so principal erasure can read the stream's version while the module is
+// disabled, without holding a Module.
+func MigrationSource() goosex.Source {
 	return goosex.Source{FS: migrationsFS, TableName: "goose_iam"}
 }
+
+func (*Module) MigrationSource() goosex.Source { return MigrationSource() }
 
 func (*Module) MigrationMilestones() []module.MigrationMilestone {
 	return []module.MigrationMilestone{
@@ -29,6 +34,10 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 		{Name: "resource-menu-routes", Version: 16},
 		{Name: "retire-positions", Version: 17,
 			Dependencies: []module.MigrationMilestoneRef{{Module: "organization", Name: "retire-positions"}}},
+		// A nullable column and an index on this module's own table, so the
+		// milestone depends on nothing outside core and rolls back by dropping
+		// what it added.
+		{Name: "role-member-expiry", Version: 18},
 	}
 }
 

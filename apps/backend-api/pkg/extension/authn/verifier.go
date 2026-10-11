@@ -82,7 +82,9 @@ type Config struct {
 	Notification            NotificationConfig      `mapstructure:"notification" group:"notification"`
 	Recovery                RecoveryConfig          `mapstructure:"recovery" group:"recovery"`
 	EmailVerification       EmailVerificationConfig `mapstructure:"email_verification" group:"email_verification"`
+	PhoneVerification       PhoneVerificationConfig `mapstructure:"phone_verification" group:"phone_verification"`
 	Registration            RegistrationConfig      `mapstructure:"registration" group:"registration"`
+	Captcha                 CaptchaConfig           `mapstructure:"captcha" group:"captcha"`
 	SharedSecurity          SharedSecurityConfig    `mapstructure:"shared_security" group:"shared_security"`
 }
 
@@ -90,57 +92,114 @@ type Config struct {
 // Enabling it requires an explicit outage policy; availability policy is owned by
 // the deployment, not silently selected by the authentication implementation.
 type SharedSecurityConfig struct {
-	RedisMode            string        `mapstructure:"redis_mode" description:"standalone, cluster, or sentinel; empty preserves the legacy URL-file configuration"`
-	RedisAddresses       []string      `mapstructure:"redis_addresses" description:"Redis nodes or Sentinel discovery addresses as host:port, without credentials"`
-	RedisMasterName      string        `mapstructure:"redis_master_name" description:"Sentinel master name; required only in sentinel mode"`
-	RedisDB              int           `mapstructure:"redis_db" description:"database number; cluster requires zero"`
-	RedisUsername        string        `mapstructure:"redis_username" description:"Redis data-node ACL username"`
-	RedisPasswordFile    string        `mapstructure:"redis_password_file" description:"file containing the Redis data-node password"`
-	SentinelUsername     string        `mapstructure:"sentinel_username" description:"Sentinel ACL username"`
-	SentinelPasswordFile string        `mapstructure:"sentinel_password_file" description:"file containing the Sentinel password"`
-	RedisTLSEnabled      bool          `mapstructure:"redis_tls_enabled" description:"verify TLS on every Redis and Sentinel connection"`
-	RedisTLSCAFile       string        `mapstructure:"redis_tls_ca_file" description:"PEM trust roots for Redis and Sentinel; empty uses system roots"`
-	RedisTLSCertFile     string        `mapstructure:"redis_tls_cert_file" description:"PEM client certificate for mutual TLS"`
-	RedisTLSKeyFile      string        `mapstructure:"redis_tls_key_file" description:"PEM private key paired with redis_tls_cert_file"`
-	RedisTLSServerName   string        `mapstructure:"redis_tls_server_name" description:"optional certificate identity override; normally each discovered node hostname is verified"`
-	RedisURLFile         string        `mapstructure:"redis_url_file" description:"file containing redis:// or rediss:// URL; empty retains single-instance captcha storage"`
-	Namespace            string        `mapstructure:"namespace" description:"shared namespace unique to this deployment" default:"iam-security"`
-	FailurePolicy        string        `mapstructure:"failure_policy" description:"required with Redis: closed blocks authentication attempts on Redis failure; open permits attempts and logs a warning; captcha always fails closed"`
-	RequestTimeout       time.Duration `mapstructure:"request_timeout" description:"Redis operation deadline" default:"2s"`
-	Window               time.Duration `mapstructure:"window" description:"fixed authentication request limit window" default:"1m"`
-	PerIP                int           `mapstructure:"per_ip" description:"maximum POST /authn requests per socket peer per window" default:"60"`
-	Global               int           `mapstructure:"global" description:"maximum POST /authn requests across all replicas per window" default:"3000"`
-	OAuthPerIP           int           `mapstructure:"oauth_per_ip" description:"maximum POST /oauth token, revocation and introspection requests per socket peer per window" default:"600"`
-	OAuthGlobal          int           `mapstructure:"oauth_global" description:"maximum POST /oauth token, revocation and introspection requests across all replicas per window" default:"30000"`
+	RedisMode            string   `mapstructure:"redis_mode" description:"standalone, cluster, or sentinel; empty preserves the legacy URL-file configuration"`
+	RedisAddresses       []string `mapstructure:"redis_addresses" description:"Redis nodes or Sentinel discovery addresses as host:port, without credentials"`
+	RedisMasterName      string   `mapstructure:"redis_master_name" description:"Sentinel master name; required only in sentinel mode"`
+	RedisDB              int      `mapstructure:"redis_db" description:"database number; cluster requires zero"`
+	RedisUsername        string   `mapstructure:"redis_username" description:"Redis data-node ACL username"`
+	RedisPasswordFile    string   `mapstructure:"redis_password_file" description:"file containing the Redis data-node password"`
+	SentinelUsername     string   `mapstructure:"sentinel_username" description:"Sentinel ACL username"`
+	SentinelPasswordFile string   `mapstructure:"sentinel_password_file" description:"file containing the Sentinel password"`
+	RedisTLSEnabled      bool     `mapstructure:"redis_tls_enabled" description:"verify TLS on every Redis and Sentinel connection"`
+	RedisTLSCAFile       string   `mapstructure:"redis_tls_ca_file" description:"PEM trust roots for Redis and Sentinel; empty uses system roots"`
+	RedisTLSCertFile     string   `mapstructure:"redis_tls_cert_file" description:"PEM client certificate for mutual TLS"`
+	RedisTLSKeyFile      string   `mapstructure:"redis_tls_key_file" description:"PEM private key paired with redis_tls_cert_file"`
+	RedisTLSServerName   string   `mapstructure:"redis_tls_server_name" description:"optional certificate identity override; normally each discovered node hostname is verified"`
+	RedisURLFile         string   `mapstructure:"redis_url_file" description:"file containing redis:// or rediss:// URL; empty retains single-instance captcha storage"`
+	// DevelopmentServer exists because the limiter is otherwise unreachable
+	// without infrastructure: with no Redis configured the module builds no
+	// shared security at all and the middleware short-circuits, so a developer
+	// cannot see a limit enforced, and a test of the limit cannot run beside
+	// the rest of the suite. It starts an in-process server and points this
+	// configuration at it, which exercises the same client and the same code
+	// path a deployment uses rather than a second implementation.
+	//
+	// It is refused outside debug mode. That refusal is the whole safety of
+	// it, so it is enforced where both this field and the debug flag are
+	// visible -- the application's runtime validation -- and covered by a test.
+	DevelopmentServer bool          `mapstructure:"development_server" description:"debug only: run an in-process Redis for the authentication limiter; refused unless debug mode is on"`
+	Namespace         string        `mapstructure:"namespace" description:"shared namespace unique to this deployment" default:"iam-security"`
+	FailurePolicy     string        `mapstructure:"failure_policy" description:"required with Redis: closed blocks authentication attempts on Redis failure; open permits attempts and logs a warning; captcha always fails closed"`
+	RequestTimeout    time.Duration `mapstructure:"request_timeout" description:"Redis operation deadline" default:"2s"`
+	Window            time.Duration `mapstructure:"window" description:"fixed authentication request limit window" default:"1m"`
+	PerIP             int           `mapstructure:"per_ip" description:"maximum POST /authn requests per socket peer per window" default:"60"`
+	Global            int           `mapstructure:"global" description:"maximum POST /authn requests across all replicas per window" default:"3000"`
+	OAuthPerIP        int           `mapstructure:"oauth_per_ip" description:"maximum POST /oauth token, revocation and introspection requests per socket peer per window" default:"600"`
+	OAuthGlobal       int           `mapstructure:"oauth_global" description:"maximum POST /oauth token, revocation and introspection requests across all replicas per window" default:"30000"`
 }
 
 // RegistrationConfig enables email-verified self-service global principals.
 // Tenant membership is deliberately granted only through invitations.
 type RegistrationConfig struct {
-	Enabled bool                      `mapstructure:"enabled" description:"enable email-verified self-service registration" default:"false"`
-	Captcha RegistrationCaptchaConfig `mapstructure:"captcha" group:"captcha"`
+	Enabled bool `mapstructure:"enabled" description:"enable email-verified self-service registration" default:"false"`
 }
 
-// RegistrationCaptchaConfig is which challenge registration presents and, for
-// an environment that has to be driven by a script, what it will accept instead
-// of one being solved.
-type RegistrationCaptchaConfig struct {
+// CaptchaConfig is which challenge this deployment presents, and, for an
+// environment that has to be driven by a script, what it will accept instead of
+// one being solved.
+//
+// One offering serves every flow that presents a challenge -- login and
+// registration -- because which challenge a deployment is willing to show is a
+// property of the deployment, not of the form the visitor happens to be on.
+type CaptchaConfig struct {
+	// Provider decides what the deployment presents. The drawn challenge needs
+	// nothing but this service; Turnstile hands the work to Cloudflare and so
+	// needs an account, a pair of keys and reachability -- which is why it is
+	// chosen rather than inferred from whichever keys happen to be present.
+	Provider string `mapstructure:"provider" description:"captcha provider: image draws a challenge here, turnstile delegates to Cloudflare" enum:"image,turnstile" default:"image"`
+	// Turnstile is read only when Provider selects it.
+	Turnstile TurnstileConfig `mapstructure:"turnstile" group:"turnstile"`
 	// Kinds is a set rather than one value so a deployment can change what it
 	// presents without a code change, and so the harder challenges stay
 	// available to a deployment that wants them without being the default.
-	Kinds []string `mapstructure:"kinds" description:"registration captcha kinds, picked at random per challenge: text, slide, click; empty offers text only"`
+	Kinds []string `mapstructure:"kinds" description:"captcha kinds, picked at random per challenge: text, slide, click; empty offers text only"`
 	// TestAnswer is the mechanism Cloudflare Turnstile calls a testing key:
 	// the challenge still renders and behaves normally, only its outcome is
 	// known ahead of time. It is a configured value rather than a constant in
 	// the source so that no string in this repository is a bypass everywhere it
 	// was left switched on.
-	TestAnswer string `mapstructure:"test_answer" description:"literal answer accepted for any registration captcha so an automated check can register; must be empty in any deployment real people use" default:"" secret:"true"`
+	TestAnswer string `mapstructure:"test_answer" description:"literal answer accepted for any captcha so an automated check can log in and register; must be empty in any deployment real people use" default:"" secret:"true"`
+}
+
+// TurnstileConfig points the deployment at its Cloudflare Turnstile widget.
+//
+// The site key reaches the browser -- it is published by /login/options,
+// because the widget cannot render without it -- and the secret never leaves
+// this process. Cloudflare publishes dummy keys that always pass or always
+// fail; they are what a development environment and an automated check use,
+// and they are configuration here rather than constants for the same reason
+// the captcha test answer is.
+type TurnstileConfig struct {
+	SiteKey string `mapstructure:"site_key" description:"Turnstile site key; published to the browser, which cannot render the widget without it"`
+	// SecretKey and SecretKeyFile are alternatives, and the file is preferred:
+	// the environment is inherited by every child process and printed by
+	// anything that dumps it on a crash.
+	SecretKey     string `mapstructure:"secret_key" description:"Turnstile secret key; prefer secret_key_file" default:"" secret:"true"`
+	SecretKeyFile string `mapstructure:"secret_key_file" description:"file holding the Turnstile secret key"`
+	// VerifyURL is configurable so a test can point it at a server it controls
+	// rather than reaching Cloudflare, and so a deployment behind an egress
+	// proxy can name it. It defaults to Cloudflare's own address.
+	VerifyURL string `mapstructure:"verify_url" description:"Turnstile server-side validation endpoint" default:"https://challenges.cloudflare.com/turnstile/v0/siteverify"`
+	// RequestTimeout bounds the validation call. A challenge that cannot be
+	// checked refuses the attempt, so this is how long a caller waits to be
+	// refused, not how long they wait to get in.
+	RequestTimeout time.Duration `mapstructure:"request_timeout" description:"deadline for one Turnstile validation call" default:"5s"`
+	// OutboundAllowPlaintext and OutboundAllowNetworks mirror what federation
+	// and provisioning take, so an egress proxy on the internal network can be
+	// named the same way here as it is there.
+	OutboundAllowPlaintext bool     `mapstructure:"outbound_allow_plaintext" description:"permit an http:// validation endpoint; leave off unless TLS terminates at a sidecar" default:"false"`
+	OutboundAllowNetworks  []string `mapstructure:"outbound_allow_networks" description:"CIDR ranges the validation endpoint may resolve to even though they are otherwise blocked"`
 }
 
 type Capabilities struct {
 	Registration     bool `json:"registration"`
 	PasswordRecovery bool `json:"password_recovery"`
 	Passkey          bool `json:"passkey"`
+	// PhoneLogin says whether a code sent to a proven number signs anybody in
+	// here. A client that offers it regardless leads somebody through typing a
+	// number to a refusal, which is the deployment's configuration showing
+	// through as a dead end.
+	PhoneLogin bool `json:"phone_login"`
 }
 
 // NotificationConfig controls the shared durable webhook delivery used by
@@ -185,6 +244,26 @@ type EmailVerificationConfig struct {
 	Enabled   bool          `mapstructure:"enabled" description:"enable primary email verification" default:"false"`
 	TokenTTL  time.Duration `mapstructure:"token_ttl" description:"single-use email verification credential lifetime" default:"24h"`
 	VerifyURL string        `mapstructure:"verify_url" description:"absolute browser URL used to complete email verification"`
+}
+
+// PhoneVerificationConfig controls proof of ownership for a principal's phone
+// number. Delivery uses the shared Notification configuration: there is no SMS
+// vendor here, only the message the notification service is asked to send.
+//
+// There is no verify URL, because a number is proven by a code typed back into
+// the session that asked for it rather than by following a link.
+type PhoneVerificationConfig struct {
+	Enabled bool          `mapstructure:"enabled" description:"enable phone number verification" default:"false"`
+	CodeTTL time.Duration `mapstructure:"code_ttl" description:"single-use phone verification code lifetime" default:"10m"`
+	// LoginEnabled lets somebody sign in with a code sent to a number they have
+	// already proven. It is separate from Enabled because proving a number is
+	// useful on its own -- a deployment may want numbers on file as a contact
+	// without making them a way in.
+	LoginEnabled bool `mapstructure:"login_enabled" description:"allow signing in with a code sent to a proven phone number" default:"false"`
+	// SecondFactorEnabled offers a code to a proven number as a second factor. It
+	// is the weakest one here -- a number can be moved to another SIM by somebody
+	// who talks a carrier into it -- and is off by default for that reason.
+	SecondFactorEnabled bool `mapstructure:"second_factor_enabled" description:"offer a code sent to a proven phone number as a second factor" default:"false"`
 }
 
 // PasskeyConfig pins the WebAuthn relying party trust boundary. Values are
@@ -257,6 +336,11 @@ type Claims struct {
 	PreferredUsername string    `json:"preferred_username,omitempty"`
 	Email             string    `json:"email,omitempty"`
 	EmailVerified     bool      `json:"email_verified,omitempty"`
+	// Phone and PhoneVerified are read from the current profile for a view, the
+	// same as the address beside them. Nothing writes them into a token payload:
+	// a number is a contact, not an assertion a relying party needs.
+	Phone         string `json:"phone,omitempty"`
+	PhoneVerified bool   `json:"phone_verified,omitempty"`
 	// Subject is the OIDC protocol subject. Internal database identity and
 	// authorization scope use the snowflake fields below.
 	//

@@ -392,8 +392,9 @@ turbo 2.9 五条 task：`build` / `lint` / `format` / `typecheck` / `test`），
 
 代码里**一个品牌字面量都不留**，也不留部署假设：
 
-- **展示文案**：`src/lib/branding.ts` 是唯一来源。`VITE_APP_NAME` 给控制台名
-  （缺省中性的 `IAM`），`VITE_ORG_NAME` 给页脚组织名（不配就只显示年份）。
+- **展示文案**：`src/lib/branding.ts` 是唯一来源，它从服务的 `GET /deployment`
+  读取控制台名与页脚组织名，所以一份构建可以服务任何部署。都没配时回落到中性的
+  `IAM`，页脚只显示年份。上一次的答案记在 localStorage，回访者首帧就是对的。
   `document.title` 由 `main.tsx` 从同一个源写入，静态 `<title>` 也是中性的。
   页脚年份**渲染时读取**，不是字面量——否则跨年后的构建会静默显示错误年份。
 - **命名约定**：`localStorage` 键 `iam.tenant`、下载兜底名 `audit-export.ndjson` /

@@ -334,6 +334,9 @@ func (s *InvitationService) Accept(ctx context.Context, input AcceptInvitation) 
 			return err
 		}
 		row, err := getInvitationByID(ctx, repo, id)
+		if err != nil && !errors.Is(err, ErrInvitationNotFound) {
+			return err
+		}
 		if err != nil || !s.credentials.InvitationTokenMatches(input.Token, row.TokenHMAC) {
 			return ErrInvitationCredential
 		}

@@ -45,7 +45,7 @@ func TestListPlatformAdministratorsMergesBothArmsInStatementOrder(t *testing.T) 
 	require.NoError(t, err)
 	_, err = repository.GrantPermission(t.Context(), owner, role.ID, "zz_administer")
 	require.NoError(t, err)
-	_, err = repository.AddMember(t.Context(), owner, role.ID, 11)
+	_, err = repository.AddMember(t.Context(), owner, role.ID, 11, nil)
 	require.NoError(t, err)
 	require.NoError(t, harness.db.Table("sl_iam_role_members").Where("tenant_id = ? AND role_id = ?", owner, role.ID).Update("created_at", repositoryTestTime.Add(-30*24*time.Hour)).Error)
 

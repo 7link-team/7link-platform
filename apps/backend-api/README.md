@@ -500,10 +500,14 @@ variable unset to verify SQL fingerprints without updating the baseline.
 ## Principal Erasure Upgrade Boundary
 
 Principal anonymization is exposed through the platform-admin lifecycle API
-and account administration UI. Apply every owner's erasure migration before enabling
-that workflow: identity lifecycle v4; core/authn v13; OAuth/organization v9;
-federation/provisioning v5; governance v4. Disabled runtime modules may still own
-historical records, so their persisted schemas and cleanup are not skipped.
+and account administration UI. Each owner of principal data declares the schema
+version its erasure needs as `PrincipalErasureVersion` beside its
+`ErasePrincipalData`; erasure reads every owner's migration stream in the same
+transaction and refuses, before writing anything, while an installed owner is
+behind that version. A disabled runtime module may still own historical records,
+so an owner that was ever installed is erased whether or not it is enabled; an
+owner whose stream was never installed holds no records and is skipped. To bring
+a disabled owner forward, enable it for one migration run.
 
 Outbound SCIM replicas additionally require provisioning v6 before serving
 traffic. Do not run old replicas alongside v6 writers: old code does not honor
@@ -533,7 +537,7 @@ For multiple replicas, configure `authn.shared_security.redis_url_file` with a
 private file containing a Redis 6.2+ URL (`rediss://` for TLS). All replicas must
 use the same database and deployment-specific `namespace`. Text, slide and click
 captcha answers expire after five minutes and are atomically consumed even on
-an incorrect answer. Shared mode rejects `registration.captcha.test_answer`.
+an incorrect answer. Shared mode rejects `captcha.test_answer`.
 
 `failure_policy` must explicitly be `closed` (503 on limiter storage outage) or
 `open` (continue requests and log a warning); neither is silently chosen. Captcha

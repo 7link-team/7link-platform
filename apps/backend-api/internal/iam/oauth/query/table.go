@@ -12,6 +12,9 @@ type (
 	Consents           = consent
 	ConsentRequests    = consentRequest
 	RefreshTokens      = refreshToken
+
+	DeviceAuthorizations = deviceAuthorization
+	ExchangeGrants       = tokenExchangeGrant
 )
 
 type Tables struct {
@@ -20,16 +23,21 @@ type Tables struct {
 	Consents           *Consents
 	ConsentRequests    *ConsentRequests
 	RefreshTokens      *RefreshTokens
+
+	DeviceAuthorizations *DeviceAuthorizations
+	ExchangeGrants       *ExchangeGrants
 }
 
 // TableNames is the physical name of every table oauth owns under one
 // deployment prefix.
 type TableNames struct {
-	Clients            gormx.TableName
-	AuthorizationCodes gormx.TableName
-	Consents           gormx.TableName
-	ConsentRequests    gormx.TableName
-	RefreshTokens      gormx.TableName
+	Clients              gormx.TableName
+	AuthorizationCodes   gormx.TableName
+	Consents             gormx.TableName
+	ConsentRequests      gormx.TableName
+	RefreshTokens        gormx.TableName
+	DeviceAuthorizations gormx.TableName
+	ExchangeGrants       gormx.TableName
 }
 
 // BindNames returns the physical name of every table oauth owns. It is the only
@@ -37,11 +45,13 @@ type TableNames struct {
 // cannot end up with half of oauth's tables prefixed.
 func BindNames(prefix string) TableNames {
 	return TableNames{
-		Clients:            gormx.NewTableName(prefix, model.Client{}.TableName()),
-		AuthorizationCodes: gormx.NewTableName(prefix, model.AuthorizationCode{}.TableName()),
-		Consents:           gormx.NewTableName(prefix, model.Consent{}.TableName()),
-		ConsentRequests:    gormx.NewTableName(prefix, model.ConsentRequest{}.TableName()),
-		RefreshTokens:      gormx.NewTableName(prefix, model.RefreshToken{}.TableName()),
+		Clients:              gormx.NewTableName(prefix, model.Client{}.TableName()),
+		AuthorizationCodes:   gormx.NewTableName(prefix, model.AuthorizationCode{}.TableName()),
+		Consents:             gormx.NewTableName(prefix, model.Consent{}.TableName()),
+		ConsentRequests:      gormx.NewTableName(prefix, model.ConsentRequest{}.TableName()),
+		RefreshTokens:        gormx.NewTableName(prefix, model.RefreshToken{}.TableName()),
+		DeviceAuthorizations: gormx.NewTableName(prefix, model.DeviceAuthorization{}.TableName()),
+		ExchangeGrants:       gormx.NewTableName(prefix, model.TokenExchangeGrant{}.TableName()),
 	}
 }
 
@@ -63,5 +73,8 @@ func BindWithNames(db *gorm.DB, names TableNames) *Tables {
 		Consents:           q.Consent.Table(names.Consents.String()),
 		ConsentRequests:    q.ConsentRequest.Table(names.ConsentRequests.String()),
 		RefreshTokens:      q.RefreshToken.Table(names.RefreshTokens.String()),
+
+		DeviceAuthorizations: q.DeviceAuthorization.Table(names.DeviceAuthorizations.String()),
+		ExchangeGrants:       q.TokenExchangeGrant.Table(names.ExchangeGrants.String()),
 	}
 }

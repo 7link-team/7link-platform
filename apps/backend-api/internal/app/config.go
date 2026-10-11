@@ -11,20 +11,25 @@ type AppConfig struct {
 	Name    string `mapstructure:"name" description:"application name" trim:"true" default:""`
 	Version string `mapstructure:"version" description:"application version" trim:"true"`
 
-	Debug        bool            `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
-	Banner       BannerConfig    `mapstructure:"banner" group:"banner"`
-	Pprof        Pprof           `mapstructure:"pprof" group:"pprof"`
-	API          API             `mapstructure:"api" group:"api"`
-	Telemetry    Telemetry       `mapstructure:"telemetry" group:"telemetry"`
-	Audit        Audit           `mapstructure:"audit" group:"audit"`
-	Authn        IAMAuthn        `mapstructure:"authn" group:"authn"`
-	IAM          IAMCore         `mapstructure:"iam" group:"iam"`
-	Files        FilesConfig     `mapstructure:"files" group:"files"`
-	IAMAudit     IAMAudit        `mapstructure:"iam_audit" group:"iam_audit"`
-	Provisioning IAMProvisioning `mapstructure:"provisioning" group:"provisioning"`
-	Federation   IAMFederation   `mapstructure:"federation" group:"federation"`
-	OAuth        IAMOAuth        `mapstructure:"oauth" group:"oauth"`
-	Shutdown     ShutdownConfig  `mapstructure:"shutdown" group:"shutdown"`
+	Debug bool `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
+	// Deployment is what people signing in see. Name above is what operators
+	// see -- in logs and on the banner -- and the two are deliberately separate:
+	// a service called iam-api may well front a console called something else.
+	Deployment   DeploymentConfig `mapstructure:"deployment" group:"deployment"`
+	Banner       BannerConfig     `mapstructure:"banner" group:"banner"`
+	Pprof        Pprof            `mapstructure:"pprof" group:"pprof"`
+	API          API              `mapstructure:"api" group:"api"`
+	Telemetry    Telemetry        `mapstructure:"telemetry" group:"telemetry"`
+	Audit        Audit            `mapstructure:"audit" group:"audit"`
+	Authn        IAMAuthn         `mapstructure:"authn" group:"authn"`
+	IAM          IAMCore          `mapstructure:"iam" group:"iam"`
+	Files        FilesConfig      `mapstructure:"files" group:"files"`
+	IAMAudit     IAMAudit         `mapstructure:"iam_audit" group:"iam_audit"`
+	Provisioning IAMProvisioning  `mapstructure:"provisioning" group:"provisioning"`
+	Federation   IAMFederation    `mapstructure:"federation" group:"federation"`
+	Webhook      IAMWebhook       `mapstructure:"webhook" group:"webhook"`
+	OAuth        IAMOAuth         `mapstructure:"oauth" group:"oauth"`
+	Shutdown     ShutdownConfig   `mapstructure:"shutdown" group:"shutdown"`
 
 	Timezone string `mapstructure:"timezone" description:"timezone" default:"UTC"`
 
@@ -35,6 +40,14 @@ type AppConfig struct {
 	TablePrefix       string              `mapstructure:"table_prefix" description:"prefix prepended to every table this application owns" validate:"^$|^[a-z_][a-z0-9_]{0,20}$"`
 	Database          map[string]Database `mapstructure:"database" group:"database" mapkey:"<dbkey>"`
 	DatasourceMonitor DatasourceMonitor   `mapstructure:"datasource_monitor" group:"datasource_monitor"`
+}
+
+// DeploymentConfig names this deployment for the people using its console. A
+// build hardcodes neither: they describe whoever deployed it, and a deployment
+// that configures neither is served neutral wording by the client.
+type DeploymentConfig struct {
+	Name         string `mapstructure:"name" description:"console display name shown to people signing in; empty leaves the console's neutral wording" default:""`
+	Organization string `mapstructure:"organization" description:"organization named in the console footer; empty shows only the year" default:""`
 }
 
 // IAMAuthn is the application-owned configuration surface for the shared
@@ -102,12 +115,42 @@ type IAMProvisioning struct {
 // stays open.
 type IAMOAuth struct {
 	Consent IAMOAuthConsent `mapstructure:"consent" group:"consent"`
+	Device  IAMOAuthDevice  `mapstructure:"device" group:"device"`
+}
+
+// IAMOAuthDevice configures the device grant. The verification page is the one
+// setting a device flow cannot work without: it is printed on a television for
+// somebody to type into another machine, so only this deployment knows it.
+type IAMOAuthDevice struct {
+	VerificationURI string        `mapstructure:"verification_uri" description:"page where somebody enters the user code a device shows; leave empty to omit it from the response" trim:"true" default:""`
+	CodeTTL         time.Duration `mapstructure:"code_ttl" description:"how long a device code stays usable" default:"10m"`
+	PollInterval    time.Duration `mapstructure:"poll_interval" description:"how often a device may ask whether somebody approved it" default:"5s"`
 }
 
 type IAMOAuthConsent struct {
 	Path         string        `mapstructure:"path" description:"path the authorization endpoint sends a browser to for consent; point it at your own screen to replace the built-in one" trim:"true" default:"/oauth/consent" validate:"^/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$"`
 	TemplateFile string        `mapstructure:"template_file" description:"HTML template replacing the built-in consent screen" trim:"true" default:""`
 	TTL          time.Duration `mapstructure:"ttl" description:"how long an authorization request stays answerable on the consent screen" default:"10m"`
+}
+
+// IAMWebhook configures outbound event delivery. It follows each tenant's audit
+// chain, so enabling it adds no instrumentation anywhere else; what it may reach
+// is bounded here rather than by whatever a tenant types into a receiver URL.
+type IAMWebhook struct {
+	Enabled                    bool          `mapstructure:"enabled" description:"deliver tenant events to registered receivers" default:"false"`
+	EncryptionKey              string        `mapstructure:"encryption_key" description:"base64 32-byte key protecting subscription signing secrets" default:"" secret:"true"`
+	EncryptionKeyFile          string        `mapstructure:"encryption_key_file" description:"file containing the webhook encryption key" default:""`
+	PreviousEncryptionKeys     []string      `mapstructure:"previous_encryption_keys" description:"retired webhook keys that still open stored secrets" secret:"true"`
+	PreviousEncryptionKeyFiles []string      `mapstructure:"previous_encryption_key_files" description:"files containing retired webhook keys"`
+	OutboundAllowPlaintext     bool          `mapstructure:"outbound_allow_plaintext" description:"permit http:// receivers; leave false to require https" default:"false"`
+	OutboundAllowNetworks      []string      `mapstructure:"outbound_allow_networks" description:"CIDR blocks a receiver may resolve to despite being private or reserved"`
+	HTTPTimeout                time.Duration `mapstructure:"http_timeout" description:"receiver request timeout" default:"10s"`
+	PollInterval               time.Duration `mapstructure:"poll_interval" description:"how often the chain is followed and due deliveries are sent" default:"5s"`
+	RetryBase                  time.Duration `mapstructure:"retry_base" description:"first retry delay; each further attempt doubles it" default:"5s"`
+	MaxAttempts                int           `mapstructure:"max_attempts" description:"attempts before a delivery is abandoned" default:"8"`
+	DeliveryBatch              int           `mapstructure:"delivery_batch" description:"deliveries attempted in one pass" default:"50"`
+	FanOutBatch                int           `mapstructure:"fan_out_batch" description:"events read from one tenant's chain in one pass" default:"200"`
+	FanOutSubscriptions        int           `mapstructure:"fan_out_subscriptions" description:"subscriptions caught up in one pass" default:"200"`
 }
 
 type IAMFederation struct {
@@ -335,6 +378,15 @@ func applyRuntimeDefaults(config *AppConfig) {
 }
 
 func validateRuntimeConfig(config AppConfig) error {
+	// The in-process limiter store exists so a developer can watch the limiter
+	// work without standing up Redis. It is a test double reachable by this
+	// process alone, and it must never be what a deployment is limiting
+	// against, so debug mode is the price of asking for it. This is the only
+	// place both the request and the debug flag are visible, which is why the
+	// refusal lives here rather than in the module that honors it.
+	if config.Authn.SharedSecurity.DevelopmentServer && !config.Debug {
+		return fmt.Errorf("authn.shared_security.development_server requires debug mode")
+	}
 	if config.Shutdown.Timeout < 0 {
 		return fmt.Errorf("shutdown.timeout cannot be negative")
 	}

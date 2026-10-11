@@ -27,7 +27,7 @@ func TestSetRoleDataScopeCannotWidenBeyondTheActorsOwnScope(t *testing.T) {
 		return created.ID
 	}
 	own := role("Own tasks", DataScopeSelf, "todo_view", "role_update")
-	_, err := harness.repository.AddMember(t.Context(), tenantID, own, actorID)
+	_, err := harness.repository.AddMember(t.Context(), tenantID, own, actorID, nil)
 	require.NoError(t, err)
 	actor := authn.WithClaims(t.Context(), &authn.Claims{SubjectType: authn.SubjectTypePrincipal, PrincipalID: actorID, TenantID: tenantID})
 	allowAll := func() bool {
@@ -44,7 +44,7 @@ func TestSetRoleDataScopeCannotWidenBeyondTheActorsOwnScope(t *testing.T) {
 
 	// Control: the actor cannot grant a role outside its authority directly.
 	exporters := role("Exporters", DataScopeSelf, "todo_export")
-	_, err = harness.service.AddMember(actor, tenantID, exporters, actorID)
+	_, err = harness.service.AddMember(actor, tenantID, exporters, actorID, nil)
 	require.ErrorIs(t, err, ErrPrivilegeEscalation)
 	for _, scope := range []DataScope{DataScopeDepartment, DataScopeAll} {
 		_, _, err = harness.service.SetRoleDataScope(actor, tenantID, exporters, scope, nil)
@@ -75,7 +75,7 @@ func TestSetRoleDataScopeCannotWidenBeyondTheActorsOwnScope(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, changed, "a platform administrator holds no tenant role yet is a full administrator")
 	administrators := role("Administrators", DataScopeAll, "tenant_administer")
-	_, err = harness.repository.AddMember(t.Context(), tenantID, administrators, actorID)
+	_, err = harness.repository.AddMember(t.Context(), tenantID, administrators, actorID, nil)
 	require.NoError(t, err)
 	_, changed, err = harness.service.SetRoleDataScope(actor, tenantID, peer, DataScopeAll, nil)
 	require.NoError(t, err)

@@ -16,12 +16,14 @@ import (
 )
 
 var (
-	Q                 = new(Query)
-	AuthorizationCode *authorizationCode
-	Client            *client
-	Consent           *consent
-	ConsentRequest    *consentRequest
-	RefreshToken      *refreshToken
+	Q                   = new(Query)
+	AuthorizationCode   *authorizationCode
+	Client              *client
+	Consent             *consent
+	ConsentRequest      *consentRequest
+	DeviceAuthorization *deviceAuthorization
+	RefreshToken        *refreshToken
+	TokenExchangeGrant  *tokenExchangeGrant
 )
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
@@ -30,28 +32,34 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	Client = &Q.Client
 	Consent = &Q.Consent
 	ConsentRequest = &Q.ConsentRequest
+	DeviceAuthorization = &Q.DeviceAuthorization
 	RefreshToken = &Q.RefreshToken
+	TokenExchangeGrant = &Q.TokenExchangeGrant
 }
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:                db,
-		AuthorizationCode: newAuthorizationCode(db, opts...),
-		Client:            newClient(db, opts...),
-		Consent:           newConsent(db, opts...),
-		ConsentRequest:    newConsentRequest(db, opts...),
-		RefreshToken:      newRefreshToken(db, opts...),
+		db:                  db,
+		AuthorizationCode:   newAuthorizationCode(db, opts...),
+		Client:              newClient(db, opts...),
+		Consent:             newConsent(db, opts...),
+		ConsentRequest:      newConsentRequest(db, opts...),
+		DeviceAuthorization: newDeviceAuthorization(db, opts...),
+		RefreshToken:        newRefreshToken(db, opts...),
+		TokenExchangeGrant:  newTokenExchangeGrant(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	AuthorizationCode authorizationCode
-	Client            client
-	Consent           consent
-	ConsentRequest    consentRequest
-	RefreshToken      refreshToken
+	AuthorizationCode   authorizationCode
+	Client              client
+	Consent             consent
+	ConsentRequest      consentRequest
+	DeviceAuthorization deviceAuthorization
+	RefreshToken        refreshToken
+	TokenExchangeGrant  tokenExchangeGrant
 }
 
 func (q *Query) Available() bool { return q.db != nil }
@@ -60,12 +68,14 @@ func (q *Query) UnderlyingDB() *gorm.DB { return q.db }
 
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:                db,
-		AuthorizationCode: q.AuthorizationCode.clone(db),
-		Client:            q.Client.clone(db),
-		Consent:           q.Consent.clone(db),
-		ConsentRequest:    q.ConsentRequest.clone(db),
-		RefreshToken:      q.RefreshToken.clone(db),
+		db:                  db,
+		AuthorizationCode:   q.AuthorizationCode.clone(db),
+		Client:              q.Client.clone(db),
+		Consent:             q.Consent.clone(db),
+		ConsentRequest:      q.ConsentRequest.clone(db),
+		DeviceAuthorization: q.DeviceAuthorization.clone(db),
+		RefreshToken:        q.RefreshToken.clone(db),
+		TokenExchangeGrant:  q.TokenExchangeGrant.clone(db),
 	}
 }
 
@@ -79,30 +89,36 @@ func (q *Query) WriteDB() *Query {
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:                db,
-		AuthorizationCode: q.AuthorizationCode.replaceDB(db),
-		Client:            q.Client.replaceDB(db),
-		Consent:           q.Consent.replaceDB(db),
-		ConsentRequest:    q.ConsentRequest.replaceDB(db),
-		RefreshToken:      q.RefreshToken.replaceDB(db),
+		db:                  db,
+		AuthorizationCode:   q.AuthorizationCode.replaceDB(db),
+		Client:              q.Client.replaceDB(db),
+		Consent:             q.Consent.replaceDB(db),
+		ConsentRequest:      q.ConsentRequest.replaceDB(db),
+		DeviceAuthorization: q.DeviceAuthorization.replaceDB(db),
+		RefreshToken:        q.RefreshToken.replaceDB(db),
+		TokenExchangeGrant:  q.TokenExchangeGrant.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	AuthorizationCode IAuthorizationCodeDo
-	Client            IClientDo
-	Consent           IConsentDo
-	ConsentRequest    IConsentRequestDo
-	RefreshToken      IRefreshTokenDo
+	AuthorizationCode   IAuthorizationCodeDo
+	Client              IClientDo
+	Consent             IConsentDo
+	ConsentRequest      IConsentRequestDo
+	DeviceAuthorization IDeviceAuthorizationDo
+	RefreshToken        IRefreshTokenDo
+	TokenExchangeGrant  ITokenExchangeGrantDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		AuthorizationCode: q.AuthorizationCode.WithContext(ctx),
-		Client:            q.Client.WithContext(ctx),
-		Consent:           q.Consent.WithContext(ctx),
-		ConsentRequest:    q.ConsentRequest.WithContext(ctx),
-		RefreshToken:      q.RefreshToken.WithContext(ctx),
+		AuthorizationCode:   q.AuthorizationCode.WithContext(ctx),
+		Client:              q.Client.WithContext(ctx),
+		Consent:             q.Consent.WithContext(ctx),
+		ConsentRequest:      q.ConsentRequest.WithContext(ctx),
+		DeviceAuthorization: q.DeviceAuthorization.WithContext(ctx),
+		RefreshToken:        q.RefreshToken.WithContext(ctx),
+		TokenExchangeGrant:  q.TokenExchangeGrant.WithContext(ctx),
 	}
 }
 

@@ -141,6 +141,41 @@ func (r *Repository) verifyPrincipalEmail(ctx context.Context, principalID guid.
 	return r.principals.VerifyEmail(ctx, db, principalID, email, now)
 }
 
+// findPhoneLoginPrincipal resolves a number to the one person it signs in. Two
+// accounts carrying the same proven number cannot be told apart by it, so
+// neither is signed in by it -- the same answer recovery gives an ambiguous
+// identifier.
+func (r *Repository) findPhoneLoginPrincipal(ctx context.Context, phone string) (*identity.Principal, error) {
+	_, db, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
+	if r.principals.ActiveHumanByPhone == nil {
+		return nil, errRepositoryUnavailable
+	}
+	rows, err := r.principals.ActiveHumanByPhone(ctx, db, phone)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) != 1 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &rows[0], nil
+}
+
+func (r *Repository) verifyPrincipalPhone(
+	ctx context.Context, principalID guid.ID, phone string, now time.Time,
+) (bool, error) {
+	_, db, err := r.tables()
+	if err != nil {
+		return false, err
+	}
+	if r.principals.VerifyPhone == nil {
+		return false, errRepositoryUnavailable
+	}
+	return r.principals.VerifyPhone(ctx, db, principalID, phone, now)
+}
+
 // selfRegistered reports whether public self-registration created the principal.
 func (r *Repository) selfRegistered(ctx context.Context, principalID guid.ID) (bool, error) {
 	_, db, err := r.tables()
@@ -211,6 +246,7 @@ func (r *Repository) activePrincipalClaims(ctx context.Context, principalID guid
 	principalTable := r.foreign.principal.Principals.String()
 	err = db.WithContext(ctx).Table(principalTable+" AS principal").
 		Select("principal.id, principal.login_name, principal.email, principal.email_verified, "+
+			"principal.phone, principal.phone_verified, "+
 			"principal.activation_required, principal.display_name, principal.status, principal.created_at, "+
 			"principal.updated_at, COALESCE(credential.credential_version, 0) AS credential_version").
 		Joins("LEFT JOIN "+tables.Credentials.TableName()+" AS credential ON credential.principal_id = principal.id").

@@ -28,6 +28,8 @@
   "menu_service_accounts": "服务账号",
   "menu_entities": "业务主体",
   "menu_departments": "组织部门",
+  "menu_files": "文件管理",
+  "menu_field_policies": "字段权限",
   "menu_groups": "用户组",
   "menu_roles": "角色与权限",
   "menu_access_requests": "访问申请",

@@ -17,6 +17,7 @@ import (
 	"7link.com/platform/internal/iam/oauth"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
+	"7link.com/platform/internal/iam/webhook"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
@@ -33,7 +34,7 @@ type iamMigrationContract struct {
 
 func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 	contracts := iamMigrationContracts()
-	owners := make(map[string]string, 73)
+	owners := make(map[string]string, iamOwnedTableCount)
 	versionTables := make(map[string]string, len(contracts))
 	for _, contract := range contracts {
 		t.Run(contract.name, func(t *testing.T) {
@@ -61,8 +62,13 @@ func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 			}
 		})
 	}
-	assert.Len(t, owners, 73)
+	assert.Len(t, owners, iamOwnedTableCount)
 }
+
+// iamOwnedTableCount is how many tables the contracts below claim between them.
+// It is one constant because two tests count the same set: a table added to a
+// contract and not to the database, or the other way round, has to fail in both.
+const iamOwnedTableCount = 78
 
 func iamMigrationContracts() []iamMigrationContract {
 	return []iamMigrationContract{
@@ -75,7 +81,9 @@ func iamMigrationContracts() []iamMigrationContract {
 			"iam_account_view_tokens",
 			"iam_credentials", "iam_email_verification_tokens", "iam_mfa_challenges", "iam_mfa_enrollments",
 			"iam_notification_outbox", "iam_passkey_challenges", "iam_passkey_users", "iam_passkeys",
-			"iam_password_history", "iam_password_recovery_tokens", "iam_personal_tokens", "iam_reauth_challenges", "iam_recovery_codes", "iam_sessions",
+			"iam_password_history", "iam_password_recovery_tokens", "iam_personal_tokens",
+			"iam_phone_verification_codes",
+			"iam_reauth_challenges", "iam_recovery_codes", "iam_sessions",
 			"iam_stepup_challenges",
 		}, module: &authn.Module{}},
 		{name: "identity", tables: []string{
@@ -83,7 +91,7 @@ func iamMigrationContracts() []iamMigrationContract {
 		}, module: &identity.Module{}},
 		{name: "oauth", tables: []string{
 			"iam_oauth_clients", "iam_oauth_codes", "iam_oauth_consent_requests", "iam_oauth_consents",
-			"iam_refresh_tokens",
+			"iam_oauth_device_authorizations", "iam_oauth_exchange_grants", "iam_refresh_tokens",
 		}, module: &oauth.Module{}},
 		{name: "audit", tables: []string{
 			"iam_audit_archive_jobs", "iam_audit_events", "iam_audit_heads", "iam_audit_retention_policies",
@@ -103,6 +111,9 @@ func iamMigrationContracts() []iamMigrationContract {
 		{name: "federation", tables: []string{
 			"iam_federation_replay_claims", "iam_identity_link_transactions", "iam_identity_links", "iam_identity_providers", "iam_saml_idp_keys", "iam_saml_service_providers",
 		}, module: &federation.Module{}},
+		{name: "webhook", tables: []string{
+			"iam_webhook_deliveries", "iam_webhook_subscriptions",
+		}, module: &webhook.Module{}},
 	}
 }
 
