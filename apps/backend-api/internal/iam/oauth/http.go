@@ -381,7 +381,7 @@ func consentError(ctx context.Context, err error) error {
 	if errors.Is(err, ErrInvalidRequest) || errors.Is(err, authnext.ErrInvalidCredentials) {
 		return oauthError(ctx, http.StatusBadRequest, "invalid_request")
 	}
-	return oauthError(ctx, http.StatusInternalServerError, "server_error")
+	return oauthError(ctx, http.StatusInternalServerError, "server_error", err)
 }
 
 // documentConsentPage replaces the generated JSON response with the HTML the
@@ -446,7 +446,7 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 			if errors.Is(err, ErrInvalidRequest) || errors.Is(err, authnext.ErrInvalidCredentials) {
 				return nil, oauthError(ctx, http.StatusBadRequest, "invalid_request")
 			}
-			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error")
+			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error", err)
 		}
 		return &redirectOutput{Status: http.StatusFound, Location: location}, nil
 	})
@@ -495,7 +495,7 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 			case errors.Is(err, ErrInvalidRequest):
 				return nil, oauthError(ctx, http.StatusBadRequest, "invalid_grant")
 			}
-			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error")
+			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error", err)
 		}
 		return &tokenOutput{Status: http.StatusOK, Body: response}, nil
 	})
@@ -520,7 +520,7 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 			if errors.Is(err, ErrInvalidRequest) {
 				return nil, oauthError(ctx, http.StatusUnauthorized, "invalid_client")
 			}
-			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error")
+			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error", err)
 		}
 		return &revokeOutput{Status: http.StatusOK}, nil
 	})
@@ -545,11 +545,11 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 			if errors.Is(err, ErrInvalidRequest) {
 				return nil, oauthError(ctx, http.StatusUnauthorized, "invalid_client")
 			}
-			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error")
+			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error", err)
 		}
 		document, err := decodeOAuthDocument[introspectionDocument](result)
 		if err != nil {
-			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error")
+			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error", err)
 		}
 		return &introspectOutput{Body: document}, nil
 	})
@@ -583,7 +583,7 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 			if errors.Is(err, authz.ErrFieldDenied) {
 				return nil, oauthError(ctx, http.StatusForbidden, "access_denied")
 			}
-			return nil, oauthError(ctx, http.StatusServiceUnavailable, "server_error")
+			return nil, oauthError(ctx, http.StatusServiceUnavailable, "server_error", err)
 		}
 		return &userInfoOutput{Body: userInfoDocument{
 			Subject: claims.Subject, PreferredUsername: profile.PreferredUsername,
@@ -723,7 +723,7 @@ func oauthConsentError(err error) error {
 	if errors.Is(err, ErrInvalidRequest) {
 		return huma.Error404NotFound(oauthi18n.ConsentNotFound)
 	}
-	return huma.Error500InternalServerError(oauthi18n.ServerError)
+	return huma.Error500InternalServerError(oauthi18n.ServerError, err)
 }
 
 func oauthClientError(err error, notFound bool) error {
@@ -736,7 +736,7 @@ func oauthClientError(err error, notFound bool) error {
 		}
 		return huma.Error422UnprocessableEntity(oauthi18n.InvalidClientConfiguration)
 	}
-	return huma.Error500InternalServerError(oauthi18n.ServerError)
+	return huma.Error500InternalServerError(oauthi18n.ServerError, err)
 }
 
 func validAuthorizeInput(in *authorizeInput) bool {
@@ -781,7 +781,11 @@ func decodeOAuthDocument[T any](value any) (T, error) {
 	return document, nil
 }
 
-func oauthError(ctx context.Context, status int, code string) error {
+// oauthError answers with the RFC 6749 error object. It is not the platform
+// envelope, so the shared 5xx reporting does not see it: causes are the internal
+// errors behind a server fault, logged here and never put in the response.
+func oauthError(ctx context.Context, status int, code string, causes ...error) error {
+	respx.ReportCause(ctx, status, causes...)
 	key := map[string]string{
 		"invalid_request":        oauthi18n.InvalidRequest,
 		"invalid_grant":          oauthi18n.InvalidGrant,

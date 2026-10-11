@@ -223,7 +223,7 @@ func httpError(err error) error {
 	case errors.Is(err, ErrVersionConflict):
 		return huma.Error409Conflict(todoi18n.VersionConflict)
 	case errors.Is(err, ErrUnavailable):
-		return huma.Error503ServiceUnavailable(todoi18n.Unavailable)
+		return huma.Error503ServiceUnavailable(todoi18n.Unavailable, err)
 	}
 	var fieldErr FieldError
 	if errors.As(err, &fieldErr) {

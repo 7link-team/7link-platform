@@ -50,7 +50,7 @@ func sessionTenant(ctx context.Context, web *Service, in *meInput, claims *authn
 	}
 	tenantID, err := web.memberTenant(ctx, claims.PrincipalID, 0)
 	if err != nil {
-		return nil, huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable)
+		return nil, huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable, err)
 	}
 	resolved := *claims
 	resolved.OrganizationID, resolved.TenantID = "", tenantID
@@ -539,7 +539,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	}, func(ctx context.Context, _ *captchaInput) (*respx.Body[captchaOutput], error) {
 		out, err := web.IssueCaptcha()
 		if err != nil {
-			return nil, huma.Error500InternalServerError(authni18n.CaptchaUnavailable)
+			return nil, huma.Error500InternalServerError(authni18n.CaptchaUnavailable, err)
 		}
 		return respx.OK(ctx, *out), nil
 	})
@@ -551,7 +551,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	}, func(ctx context.Context, _ *captchaInput) (*respx.Body[captchaOutput], error) {
 		out, err := web.IssueCaptcha()
 		if err != nil {
-			return nil, huma.Error500InternalServerError(authni18n.CaptchaUnavailable)
+			return nil, huma.Error500InternalServerError(authni18n.CaptchaUnavailable, err)
 		}
 		return respx.OK(ctx, *out), nil
 	})
@@ -577,7 +577,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			case errors.Is(err, authnext.ErrRegistrationConflict):
 				return respx.OK(ctx, map[string]bool{"accepted": true}), nil
 			default:
-				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
+				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable, err)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
@@ -605,7 +605,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			case errors.Is(err, authnext.ErrInvalidCredentials):
 				return nil, huma.Error401Unauthorized(authni18n.InvalidLogin)
 			default:
-				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
+				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable, err)
 			}
 		}
 		return loginResponse(ctx, web, result), nil
@@ -634,7 +634,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 				// conflict with how this login was opened rather than a bad request.
 				return nil, huma.Error409Conflict(authni18n.SMSFactorUnavailable)
 			default:
-				return nil, huma.Error503ServiceUnavailable(authni18n.PhoneVerificationUnavailable)
+				return nil, huma.Error503ServiceUnavailable(authni18n.PhoneVerificationUnavailable, err)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
@@ -658,7 +658,10 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			return nil, refusal
 		}
 		if err := web.BeginPhoneLogin(ctx, in.Body.Phone); err != nil {
-			return nil, huma.Error503ServiceUnavailable(authni18n.PhoneLoginUnavailable)
+			if errors.Is(err, authnext.ErrPhoneLoginDisabled) {
+				return nil, huma.Error503ServiceUnavailable(authni18n.PhoneLoginUnavailable)
+			}
+			return nil, huma.Error503ServiceUnavailable(authni18n.PhoneLoginUnavailable, err)
 		}
 		// The same answer whatever was found: whoever typed the number is not
 		// always its owner, so this must not say whether it reaches an account.
@@ -690,7 +693,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			case errors.Is(err, authnext.ErrPhoneLoginDisabled):
 				return nil, huma.Error503ServiceUnavailable(authni18n.PhoneLoginUnavailable)
 			default:
-				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
+				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable, err)
 			}
 		}
 		return loginResponse(ctx, web, result), nil
@@ -709,7 +712,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			if errors.Is(err, authnext.ErrInvalidMFA) || errors.Is(err, authnext.ErrMFAChallenge) {
 				return nil, huma.Error401Unauthorized(authni18n.InvalidMFAChallenge)
 			}
-			return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
+			return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable, err)
 		}
 		return loginResponse(ctx, web, result), nil
 	})
@@ -731,7 +734,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			case errors.Is(err, authnext.ErrPasskeyDisabled):
 				return nil, huma.Error503ServiceUnavailable(authni18n.PasskeyUnavailable)
 			default:
-				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
+				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable, err)
 			}
 		}
 		return respx.OK(ctx, passkeyAssertionOptions{
@@ -758,7 +761,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			case errors.Is(err, authnext.ErrPasskeyDisabled):
 				return nil, huma.Error503ServiceUnavailable(authni18n.PasskeyUnavailable)
 			default:
-				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
+				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable, err)
 			}
 		}
 		return loginResponse(ctx, web, result), nil
@@ -804,7 +807,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		}
 		logoutURL, err := web.Logout(ctx, in.Cookie)
 		if err != nil {
-			return nil, huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable)
+			return nil, huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable, err)
 		}
 		return &logoutOutput{SetCookie: web.ClearCookie(), Body: respx.OK(ctx, logoutData{LogoutURL: logoutURL}).Body}, nil
 	})
@@ -874,7 +877,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			case errors.Is(err, authnext.ErrInvalidRecovery):
 				return nil, huma.Error422UnprocessableEntity(authni18n.InvalidRecoveryRequest)
 			default:
-				return nil, huma.Error503ServiceUnavailable(authni18n.PasswordRecoveryUnavailable)
+				return nil, huma.Error503ServiceUnavailable(authni18n.PasswordRecoveryUnavailable, err)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
@@ -897,7 +900,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			case errors.Is(err, authnext.ErrInvalidRecovery):
 				return nil, huma.Error400BadRequest(authni18n.InvalidRecoveryCredential)
 			default:
-				return nil, huma.Error503ServiceUnavailable(authni18n.PasswordRecoveryUnavailable)
+				return nil, huma.Error503ServiceUnavailable(authni18n.PasswordRecoveryUnavailable, err)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"changed": true}), nil
@@ -921,7 +924,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			case errors.Is(err, authnext.ErrEmailVerificationDisabled):
 				return nil, huma.Error503ServiceUnavailable(authni18n.EmailVerificationUnavailable)
 			default:
-				return nil, huma.Error503ServiceUnavailable(authni18n.EmailVerificationUnavailable)
+				return nil, huma.Error503ServiceUnavailable(authni18n.EmailVerificationUnavailable, err)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
@@ -942,7 +945,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			case errors.Is(err, authnext.ErrEmailVerificationDisabled):
 				return nil, huma.Error503ServiceUnavailable(authni18n.EmailVerificationUnavailable)
 			default:
-				return nil, huma.Error503ServiceUnavailable(authni18n.EmailVerificationUnavailable)
+				return nil, huma.Error503ServiceUnavailable(authni18n.EmailVerificationUnavailable, err)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"verified": true}), nil
@@ -965,7 +968,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			case errors.Is(err, authnext.ErrPhoneRequired):
 				return nil, huma.Error409Conflict(authni18n.PrimaryPhoneRequired)
 			default:
-				return nil, huma.Error503ServiceUnavailable(authni18n.PhoneVerificationUnavailable)
+				return nil, huma.Error503ServiceUnavailable(authni18n.PhoneVerificationUnavailable, err)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
@@ -987,7 +990,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 			case errors.Is(err, authnext.ErrInvalidPhoneVerification):
 				return nil, huma.Error400BadRequest(authni18n.InvalidPhoneVerificationCode)
 			default:
-				return nil, huma.Error503ServiceUnavailable(authni18n.PhoneVerificationUnavailable)
+				return nil, huma.Error503ServiceUnavailable(authni18n.PhoneVerificationUnavailable, err)
 			}
 		}
 		return respx.OK(ctx, map[string]bool{"verified": true}), nil
@@ -1178,7 +1181,7 @@ func authenticationError(err error) error {
 	case errors.Is(err, authz.ErrFieldDenied):
 		return huma.Error403Forbidden(respx.Forbidden)
 	case errors.Is(err, authz.ErrFieldsUnavailable):
-		return huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable)
+		return huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable, err)
 	case errors.Is(err, authnext.ErrInvalidCredentials), errors.Is(err, authnext.ErrInvalidToken), errors.Is(err, authnext.ErrMissingBearer), errors.Is(err, authnext.ErrInvalidSession):
 		return huma.Error401Unauthorized(respx.Unauthorized)
 	case errors.Is(err, authnext.ErrSessionNotFound):
@@ -1210,6 +1213,6 @@ func authenticationError(err error) error {
 	case errors.Is(err, authnext.ErrPasskeyDisabled):
 		return huma.Error503ServiceUnavailable(authni18n.PasskeyUnavailable)
 	default:
-		return huma.Error500InternalServerError(authni18n.AuthenticationUnavailable)
+		return huma.Error500InternalServerError(authni18n.AuthenticationUnavailable, err)
 	}
 }

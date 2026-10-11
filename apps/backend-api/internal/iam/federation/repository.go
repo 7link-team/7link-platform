@@ -542,6 +542,35 @@ func (r *Repository) insertSAMLKey(ctx context.Context, row *samlKeyRow) error {
 	return nil
 }
 
+// countSAMLKeys counts every IdP signing key ever stored, active or retired.
+func (r *Repository) countSAMLKeys(ctx context.Context) (int64, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return 0, err
+	}
+	var count int64
+	if err := r.writer().WithContext(ctx).Table(tables.SAMLIDPKeys.TableName()).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("count SAML signing keys: %w", err)
+	}
+	return count, nil
+}
+
+// insertSAMLKeyIfAbsent stores row unless a key with the same key_id already
+// exists, in which case it writes nothing. The primary key is what admits one
+// of several concurrent writers of the same key_id.
+func (r *Repository) insertSAMLKeyIfAbsent(ctx context.Context, row *samlKeyRow) error {
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
+	if err := r.writer().WithContext(ctx).Table(tables.SAMLIDPKeys.TableName()).
+		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "key_id"}}, DoNothing: true}).
+		Create(row).Error; err != nil {
+		return fmt.Errorf("persist SAML signing key: %w", err)
+	}
+	return nil
+}
+
 func (r *Repository) rotateSAMLKeys(ctx context.Context, row *samlKeyRow, now time.Time) error {
 	return r.runInTx(ctx, func(tx *Repository) error {
 		if err := tx.insertSAMLKey(ctx, row); err != nil {

@@ -1,9 +1,11 @@
 package respx
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"testing"
 
@@ -45,4 +47,112 @@ func TestErrStatusCarriesItsStatusBusinessCodeAndData(t *testing.T) {
 	require.ErrorAs(t, Err(t.Context(), 100001, InvalidArgument), &plain)
 	assert.Nil(t, plain.Data, "Err keeps data null")
 	assert.Equal(t, http.StatusBadRequest, plain.GetStatus())
+}
+
+// recordingHandler captures log records together with the context each was
+// logged with, so a test can tell slog.ErrorContext from slog.Error.
+type recordingHandler struct {
+	records  []slog.Record
+	contexts []context.Context
+}
+
+func (h *recordingHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *recordingHandler) Handle(ctx context.Context, record slog.Record) error {
+	h.records = append(h.records, record)
+	h.contexts = append(h.contexts, ctx)
+	return nil
+}
+func (h *recordingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *recordingHandler) WithGroup(string) slog.Handler      { return h }
+
+func (h *recordingHandler) attr(index int, key string) string {
+	value := ""
+	h.records[index].Attrs(func(attr slog.Attr) bool {
+		if attr.Key == key {
+			value = attr.Value.String()
+			return false
+		}
+		return true
+	})
+	return value
+}
+
+func recordLogs(t *testing.T) *recordingHandler {
+	t.Helper()
+	handler := &recordingHandler{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return handler
+}
+
+type traceKey struct{}
+
+func TestCausesOfKeepsOnlyInternalErrors(t *testing.T) {
+	cause := errors.New("database is down")
+	got := causesOf([]error{nil, &huma.ErrorDetail{Message: "required"}, cause})
+	assert.Equal(t, []error{cause}, got)
+	assert.Empty(t, causesOf(nil))
+}
+
+func TestCausesOfCarriesTheCausesOfAResponseWrittenAgain(t *testing.T) {
+	Install()
+	cause := errors.New("replay store is down")
+	mapped := huma.Error503ServiceUnavailable(ServiceUnavailable, cause)
+	assert.Equal(t, []error{cause}, causesOf([]error{mapped}),
+		"the root cause, not the message key, survives a re-write")
+	assert.Empty(t, causesOf([]error{huma.Error404NotFound(NotFound)}),
+		"a response without a cause contributes none")
+}
+
+func TestInstallRetainsTheCauseWithoutSerializingIt(t *testing.T) {
+	Install()
+	err := huma.Error500InternalServerError(InternalServerError, errors.New("dsn=postgres://secret"))
+	var envelope *errorEnvelope
+	require.ErrorAs(t, err, &envelope)
+	require.Len(t, envelope.causes, 1)
+	raw, marshalErr := json.Marshal(err)
+	require.NoError(t, marshalErr)
+	assert.NotContains(t, string(raw), "secret")
+	assert.NotContains(t, err.Error(), "secret")
+}
+
+func TestReportCauseLogsAServerFaultWithTheRequestContext(t *testing.T) {
+	logs := recordLogs(t)
+	ctx := context.WithValue(t.Context(), traceKey{}, "trace-1")
+
+	ReportCause(ctx, http.StatusServiceUnavailable, errors.New("pool exhausted"), errors.New("retry failed"))
+
+	require.Len(t, logs.records, 1)
+	assert.Equal(t, slog.LevelError, logs.records[0].Level)
+	assert.Equal(t, "trace-1", logs.contexts[0].Value(traceKey{}), "logged with the request context")
+	assert.Contains(t, logs.attr(0, "error"), "pool exhausted")
+	assert.Contains(t, logs.attr(0, "error"), "retry failed")
+	assert.Equal(t, "503", logs.attr(0, "status"))
+	assert.Empty(t, logs.attr(0, "operation"), "no operation is invented")
+}
+
+func TestReportCauseIgnoresClientFaultsAndMissingCauses(t *testing.T) {
+	logs := recordLogs(t)
+	ReportCause(t.Context(), http.StatusUnprocessableEntity, errors.New("bad input"))
+	ReportCause(t.Context(), http.StatusInternalServerError)
+	ReportCause(t.Context(), http.StatusInternalServerError, nil)
+	assert.Empty(t, logs.records)
+}
+
+func TestReportCauseLogsAnAbandonedRequestAtDebug(t *testing.T) {
+	logs := recordLogs(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	ReportCause(ctx, http.StatusInternalServerError, context.Canceled)
+	require.Len(t, logs.records, 1)
+	assert.Equal(t, slog.LevelDebug, logs.records[0].Level)
+}
+
+func TestReportCauseToleratesANilContext(t *testing.T) {
+	logs := recordLogs(t)
+	//nolint:staticcheck // a nil context is exactly what this guards against
+	ReportCause(nil, http.StatusInternalServerError, errors.New("boom"))
+	require.Len(t, logs.records, 1)
+	assert.Equal(t, slog.LevelError, logs.records[0].Level)
 }

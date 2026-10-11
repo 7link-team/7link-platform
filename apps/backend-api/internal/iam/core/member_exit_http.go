@@ -55,7 +55,7 @@ func registerMemberExitHTTP(api huma.API, s *Service, registrar *authz.Registrar
 			return nil, huma.Error403Forbidden("respx.forbidden")
 		}
 		if errors.Is(err, ErrUnavailable) || errors.Is(err, authnext.ErrUnavailable) {
-			return nil, huma.Error503ServiceUnavailable(corei18n.Unavailable)
+			return nil, huma.Error503ServiceUnavailable(corei18n.Unavailable, err)
 		}
 		if err != nil {
 			return nil, apiError("leave membership", err)

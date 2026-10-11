@@ -137,6 +137,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[*authz.Registrar](services, m.registrar); err != nil {
 		return fmt.Errorf("provide authorization registrar: %w", err)
 	}
+	if err := module.Provide[guid.RouteAuthenticator](services, m.registrar); err != nil {
+		return fmt.Errorf("provide GUID route authenticator: %w", err)
+	}
 	if err := module.Provide[*SystemMenus](services, &m.systemMenus); err != nil {
 		return fmt.Errorf("provide IAM system menus: %w", err)
 	}

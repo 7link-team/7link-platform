@@ -167,7 +167,7 @@ func provisioningError(err error) error {
 		return huma.Error403Forbidden(respx.Forbidden)
 	}
 	if errors.Is(err, authz.ErrFieldsUnavailable) {
-		return huma.Error503ServiceUnavailable(provisioningi18n.Unavailable)
+		return huma.Error503ServiceUnavailable(provisioningi18n.Unavailable, err)
 	}
 	switch {
 	case errors.Is(err, ErrInvalidDirectory):
@@ -207,9 +207,9 @@ func provisioningError(err error) error {
 	case errors.Is(err, ErrResourceMissing):
 		return huma.Error404NotFound(provisioningi18n.ResourceNotFound)
 	case errors.Is(err, ErrRemoteUnavailable), errors.Is(err, ErrRemoteResponse):
-		return huma.Error502BadGateway(provisioningi18n.TargetRemoteFailed)
+		return huma.Error502BadGateway(provisioningi18n.TargetRemoteFailed, err)
 	default:
-		return huma.Error500InternalServerError(provisioningi18n.Unavailable)
+		return huma.Error500InternalServerError(provisioningi18n.Unavailable, err)
 	}
 }
 

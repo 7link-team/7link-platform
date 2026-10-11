@@ -1230,19 +1230,60 @@ func assertSelectorSchema(t *testing.T, operation *huma.Operation, name, locatio
 // logCapture records what the registrar decided was worth an operator's
 // attention.
 type logCapture struct {
-	mu      sync.Mutex
-	records []slog.Record
+	mu       sync.Mutex
+	records  []slog.Record
+	contexts []context.Context
 }
 
 func (capture *logCapture) Enabled(context.Context, slog.Level) bool { return true }
 func (capture *logCapture) WithAttrs([]slog.Attr) slog.Handler       { return capture }
 func (capture *logCapture) WithGroup(string) slog.Handler            { return capture }
 
-func (capture *logCapture) Handle(_ context.Context, record slog.Record) error {
+func (capture *logCapture) Handle(ctx context.Context, record slog.Record) error {
 	capture.mu.Lock()
 	defer capture.mu.Unlock()
 	capture.records = append(capture.records, record)
+	capture.contexts = append(capture.contexts, ctx)
 	return nil
+}
+
+type requestMarker struct{}
+
+// TestGuardLogsCarryTheRequestContext pins the *Context logging variants: a
+// guard's record is logged with the request context, so it carries the
+// request's trace instead of standing alone in the log.
+func TestGuardLogsCarryTheRequestContext(t *testing.T) {
+	for name, testCase := range map[string]struct {
+		verifier *fakeVerifier
+		checker  *fakeChecker
+	}{
+		"authentication unavailable": {verifier: &fakeVerifier{err: authn.ErrUnavailable}, checker: &fakeChecker{allowed: true}},
+		"authorization unavailable":  {verifier: validVerifier(), checker: &fakeChecker{err: errors.New("checker is down")}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			capture := &logCapture{}
+			previous := slog.Default()
+			slog.SetDefault(slog.New(capture))
+			t.Cleanup(func() { slog.SetDefault(previous) })
+
+			_, api := humatest.New(t)
+			registrar := authz.NewRegistrar(testRegistry(), testCase.verifier, testCase.checker, &fakeMembership{active: true})
+			authz.Register(registrar, api, huma.Operation{
+				OperationID: "store-view", Method: http.MethodGet, Path: "/stores", Tags: []string{"tenants"},
+			}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
+
+			ctx := context.WithValue(t.Context(), requestMarker{}, "request-1")
+			response := api.DoCtx(ctx, http.MethodGet, "/tenants/11/stores", "Authorization: Bearer test")
+			assert.Equal(t, http.StatusServiceUnavailable, response.Code)
+			require.Equal(t, 1, capture.levels(slog.LevelError))
+			capture.mu.Lock()
+			defer capture.mu.Unlock()
+			for index, record := range capture.records {
+				assert.Equal(t, "request-1", capture.contexts[index].Value(requestMarker{}),
+					"record %q is logged with the request context", record.Message)
+			}
+		})
+	}
 }
 
 func (capture *logCapture) levels(level slog.Level) int {
@@ -1342,4 +1383,41 @@ func TestAuthenticationUnavailableLogsUnlessTheCallerLeft(t *testing.T) {
 			assert.Equal(t, testCase.wantErrors, capture.levels(slog.LevelError), "error records")
 		})
 	}
+}
+
+// The GUID API cannot import this package (this package imports it), so it
+// takes the registrar through its own narrow interface.
+var _ guid.RouteAuthenticator = (*authz.Registrar)(nil)
+
+// TestAuthenticateGuardsAnOperationTheCallerRegisters pins that Authenticate is
+// RegisterAuthenticated minus the registration: the same declaration, security
+// and guard, applied to an operation registered with plain huma.Register.
+func TestAuthenticateGuardsAnOperationTheCallerRegisters(t *testing.T) {
+	_, api := humatest.New(t)
+	registrar := authz.NewAuthenticationOnlyRegistrar(validVerifier())
+	op := huma.Operation{OperationID: "generate", Method: http.MethodGet, Path: "/generate"}
+	registrar.Authenticate(api, &op)
+	huma.Register(api, op, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+		claims, ok := authn.FromContext(ctx)
+		require.True(t, ok, "the handler sees the authenticated caller")
+		return &routeOutput{Body: claims.Subject}, nil
+	})
+	assert.True(t, authz.IsAuthenticatedOperation(&op))
+	assert.NotEmpty(t, op.Security)
+	assert.Contains(t, op.Errors, http.StatusUnauthorized)
+	assert.Equal(t, http.StatusOK, api.Get("/generate", "Authorization: Bearer token").Code)
+
+	_, rejectedAPI := humatest.New(t)
+	rejected := authz.NewAuthenticationOnlyRegistrar(&fakeVerifier{err: authn.ErrInvalidToken})
+	rejectedOp := huma.Operation{OperationID: "generate", Method: http.MethodGet, Path: "/generate"}
+	rejected.Authenticate(rejectedAPI, &rejectedOp)
+	huma.Register(rejectedAPI, rejectedOp, okRoute)
+	assert.Equal(t, http.StatusUnauthorized, rejectedAPI.Get("/generate").Code)
+
+	assert.PanicsWithValue(t, "authenticated operation requires operation id", func() {
+		registrar.Authenticate(api, &huma.Operation{Method: http.MethodGet, Path: "/anonymous"})
+	})
+	assert.PanicsWithValue(t, "authz registrar is nil", func() {
+		(*authz.Registrar)(nil).Authenticate(api, &huma.Operation{OperationID: "x"})
+	})
 }

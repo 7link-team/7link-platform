@@ -1,6 +1,7 @@
 package authn
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/hmac"
@@ -9,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -920,4 +922,35 @@ func TestAccessTokenVerifierAcceptsOnlyEdDSA(t *testing.T) {
 		assert.ErrorIs(t, err, authnext.ErrInvalidToken, malformed)
 	}
 	assert.Equal(t, jwsx.Algorithms{jwsx.EdDSA}, accessTokenAlgorithms)
+}
+
+// TestASecurityAuditThatCannotBeWrittenIsReported pins that a failed security
+// audit write is logged with what it would have recorded, and that it does not
+// change the outcome of the sign-in it describes.
+func TestASecurityAuditThatCannotBeWrittenIsReported(t *testing.T) {
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	service, harness := newLocalService(t)
+	principalID := bootstrapLocalPrincipal(t, harness, "audit-user", "correct horse battery staple")
+	harness.auditErr = errors.New("audit store is down")
+
+	_, err := service.BeginLogin(t.Context(), "audit-user", "correct horse battery staple", "")
+	require.NoError(t, err, "a sign-in does not fail because its audit record could not be written")
+
+	logged := output.String()
+	assert.Contains(t, logged, "level=ERROR")
+	assert.Contains(t, logged, "security audit event was not recorded")
+	assert.Contains(t, logged, "event_type=login")
+	assert.Contains(t, logged, "principal_id="+principalID.String())
+	assert.Contains(t, logged, "outcome=success")
+	assert.Contains(t, logged, "audit store is down")
+
+	output.Reset()
+	harness.auditErr = nil
+	_, err = service.BeginLogin(t.Context(), "audit-user", "correct horse battery staple", "")
+	require.NoError(t, err)
+	assert.NotContains(t, output.String(), "security audit event was not recorded")
 }

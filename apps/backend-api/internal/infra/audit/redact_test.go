@@ -156,3 +156,37 @@ func TestTruncateStringInvalidUTF8(t *testing.T) {
 	assert.True(t, utf8.ValidString(out))
 	assert.LessOrEqual(t, len(out), 3)
 }
+
+func TestRedactJSONRedactsOneTimeCodesAndBearerTokens(t *testing.T) {
+	redactor := newRedactor(nil)
+	out := requireRedactedJSON(t, redactor, []byte(`{"bearer_token":"X","code":"123456"}`))
+	assert.JSONEq(t, `{"bearer_token":"[REDACTED]","code":"[REDACTED]"}`, out)
+
+	out = requireRedactedJSON(t, redactor, []byte(`{
+		"user_code": "WDJB-MJHT", "deviceCode": "dc-leak", "code_verifier": "cv-leak",
+		"recovery_codes": ["rc-leak-1", "rc-leak-2"], "recoveryCode": "rc-leak-3"
+	}`))
+	for _, leaked := range []string{"WDJB-MJHT", "dc-leak", "cv-leak", "rc-leak-1", "rc-leak-2", "rc-leak-3"} {
+		assert.NotContains(t, out, leaked)
+	}
+}
+
+// TestRedactJSONRedactsCredentialSuffixesButKeepsTheirPrefixes pins the suffix
+// rule both ways: a field named for a credential is redacted whatever precedes
+// it, and a field that only begins with such a word is kept.
+func TestRedactJSONRedactsCredentialSuffixesButKeepsTheirPrefixes(t *testing.T) {
+	redactor := newRedactor(nil)
+	out := requireRedactedJSON(t, redactor, []byte(`{
+		"csrf_token": "csrf-leak", "subjectToken": "st-leak", "id-token": "id-leak",
+		"totp_secret": "totp-leak", "webhookSecret": "wh-leak",
+		"confirm_password": "cp-leak", "adminPassword": "ap-leak",
+		"token_type": "Bearer", "tokenTypeHint": "refresh_token", "password_policy": "strong",
+		"secret_name": "signing", "status_code": 201, "zip_code": "50450"
+	}`))
+	for _, leaked := range []string{"csrf-leak", "st-leak", "id-leak", "totp-leak", "wh-leak", "cp-leak", "ap-leak"} {
+		assert.NotContains(t, out, leaked)
+	}
+	for _, kept := range []string{`"Bearer"`, `"refresh_token"`, `"strong"`, `"signing"`, `201`, `"50450"`} {
+		assert.Contains(t, out, kept)
+	}
+}

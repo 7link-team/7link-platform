@@ -2,12 +2,18 @@ package respx
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"7link.com/platform/pkg/i18n"
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/danielgtaylor/huma/v2/validation"
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -148,4 +154,60 @@ func TestEveryFrameworkValidationMessageLocalizes(t *testing.T) {
 			assert.NotContains(t, message, "%!", "%s: %q", locale.Code, token)
 		}
 	}
+}
+
+// TestLocalizeMessageReportsAServerFaultCauseWithoutExposingIt drives real huma
+// responses through the transformer: the cause behind a 5xx reaches the log with
+// the operation and the request context, and never the response body.
+func TestLocalizeMessageReportsAServerFaultCauseWithoutExposingIt(t *testing.T) {
+	initI18n(t)
+	logs := recordLogs(t)
+	router := chi.NewMux()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), traceKey{}, "trace-7")))
+		})
+	})
+	config := huma.DefaultConfig("test", "1.0.0")
+	config.Transformers = append(config.Transformers, LocalizeMessage)
+	Install()
+	api := humachi.New(router, config)
+	huma.Register(api, huma.Operation{OperationID: "fault", Method: http.MethodGet, Path: "/fault"},
+		func(context.Context, *struct{}) (*Body[string], error) {
+			return nil, huma.Error500InternalServerError(InternalServerError, errors.New("dsn=postgres://secret"))
+		})
+	huma.Register(api, huma.Operation{OperationID: "unmapped", Method: http.MethodGet, Path: "/unmapped"},
+		func(context.Context, *struct{}) (*Body[string], error) {
+			return nil, errors.New("unmapped secret failure")
+		})
+	huma.Register(api, huma.Operation{OperationID: "client", Method: http.MethodGet, Path: "/client"},
+		func(context.Context, *struct{}) (*Body[string], error) {
+			return nil, huma.Error422UnprocessableEntity(InvalidArgument, errors.New("client secret detail"))
+		})
+
+	get := func(path string) (int, string) {
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
+		return recorder.Code, recorder.Body.String()
+	}
+
+	status, body := get("/fault")
+	assert.Equal(t, http.StatusInternalServerError, status)
+	assert.NotContains(t, body, "secret")
+	require.Len(t, logs.records, 1)
+	assert.Equal(t, slog.LevelError, logs.records[0].Level)
+	assert.Contains(t, logs.attr(0, "error"), "dsn=postgres://secret")
+	assert.Equal(t, "fault", logs.attr(0, "operation"))
+	assert.Equal(t, "trace-7", logs.contexts[0].Value(traceKey{}), "logged with the request context")
+
+	status, body = get("/unmapped")
+	assert.Equal(t, http.StatusInternalServerError, status)
+	assert.NotContains(t, body, "secret")
+	require.Len(t, logs.records, 2)
+	assert.Contains(t, logs.attr(1, "error"), "unmapped secret failure")
+
+	status, body = get("/client")
+	assert.Equal(t, http.StatusUnprocessableEntity, status)
+	assert.NotContains(t, body, "secret")
+	assert.Len(t, logs.records, 2, "a client fault is not logged as a server error")
 }

@@ -525,7 +525,7 @@ func fileHTTPError(err error) error {
 		errors.Is(err, ErrName), errors.Is(err, ErrLength), errors.Is(err, ErrInvalidKey):
 		return huma.Error422UnprocessableEntity(filesi18n.InvalidFileRequest)
 	case errors.Is(err, errOperationUnavailable), errors.Is(err, context.DeadlineExceeded):
-		return huma.Error503ServiceUnavailable(filesi18n.FileServiceUnavailable)
+		return huma.Error503ServiceUnavailable(filesi18n.FileServiceUnavailable, err)
 	default:
 		return err
 	}

@@ -188,8 +188,8 @@ func webhookError(err error) error {
 	case errors.Is(err, ErrInvalidSubscription):
 		return huma.Error422UnprocessableEntity(webhooki18n.InvalidRequest)
 	case errors.Is(err, ErrUnavailable), errors.Is(err, errRepositoryUnavailable):
-		return huma.Error503ServiceUnavailable(webhooki18n.Unavailable)
+		return huma.Error503ServiceUnavailable(webhooki18n.Unavailable, err)
 	default:
-		return huma.Error500InternalServerError(webhooki18n.Unavailable)
+		return huma.Error500InternalServerError(webhooki18n.Unavailable, err)
 	}
 }

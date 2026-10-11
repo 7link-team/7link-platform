@@ -96,6 +96,17 @@ func localizeBody(ctx context.Context, v any) any {
 // for every response — success, business error, and built-in framework error.
 // Register it via config.Transformers before huma.Register. Non-envelope
 // responses pass through untouched.
+//
+// Every huma response passes through here with its request context, so this is
+// also where a server fault's internal cause is logged (see ReportCause): one
+// place instead of every handler's error mapper.
 func LocalizeMessage(ctx huma.Context, _ string, v any) (any, error) {
+	if fault, ok := v.(*errorEnvelope); ok && len(fault.causes) > 0 {
+		operation := ""
+		if op := ctx.Operation(); op != nil {
+			operation = op.OperationID
+		}
+		reportCause(ctx.Context(), fault.status, operation, fault.causes)
+	}
 	return localizeBody(ctx.Context(), v), nil
 }

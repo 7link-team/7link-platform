@@ -76,7 +76,7 @@ func registerDeviceHTTP(api huma.API, service *Service, registrar *authz.Registr
 			if errors.Is(err, ErrInvalidRequest) {
 				return nil, oauthError(ctx, http.StatusBadRequest, "invalid_scope")
 			}
-			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error")
+			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error", err)
 		}
 		return &deviceAuthorizationOutput{Status: http.StatusOK, Body: answer}, nil
 	})
@@ -215,7 +215,7 @@ func deviceError(err error) error {
 	case errors.Is(err, ErrInvalidExchangeGrant):
 		return huma.Error422UnprocessableEntity(oauthi18n.ExchangeGrantInvalid)
 	default:
-		return huma.Error500InternalServerError(oauthi18n.Unavailable)
+		return huma.Error500InternalServerError(oauthi18n.Unavailable, err)
 	}
 }
 

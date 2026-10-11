@@ -756,7 +756,7 @@ func departmentError(err error) error {
 	case errors.Is(err, ErrInvalid):
 		return huma.Error422UnprocessableEntity(organizationi18n.InvalidDepartment)
 	default:
-		return huma.Error500InternalServerError(organizationi18n.Unavailable)
+		return huma.Error500InternalServerError(organizationi18n.Unavailable, err)
 	}
 }
 
@@ -792,7 +792,7 @@ func groupError(err error) error {
 	case errors.Is(err, ErrGroupInvalid):
 		return huma.Error422UnprocessableEntity(organizationi18n.InvalidGroup)
 	default:
-		return huma.Error500InternalServerError(organizationi18n.Unavailable)
+		return huma.Error500InternalServerError(organizationi18n.Unavailable, err)
 	}
 }
 
@@ -814,7 +814,7 @@ func tenantError(err error) error {
 	case errors.Is(err, ErrTenantOwnerInactive):
 		return huma.Error422UnprocessableEntity(organizationi18n.TenantOwnerInactive)
 	default:
-		return huma.Error500InternalServerError(organizationi18n.Unavailable)
+		return huma.Error500InternalServerError(organizationi18n.Unavailable, err)
 	}
 }
 
@@ -842,6 +842,6 @@ func invitationError(err error) error {
 	case errors.Is(err, ErrInvitationInvalid):
 		return huma.Error422UnprocessableEntity(organizationi18n.InvalidInvitation)
 	default:
-		return huma.Error500InternalServerError(organizationi18n.Unavailable)
+		return huma.Error500InternalServerError(organizationi18n.Unavailable, err)
 	}
 }

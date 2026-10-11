@@ -504,7 +504,7 @@ func identityError(err error) error {
 	case errors.Is(err, ErrPrincipalSharedBeyondTenant):
 		return huma.Error409Conflict(identityi18n.PrincipalSharedBeyondTenant)
 	case errors.Is(err, authz.ErrFieldsUnavailable):
-		return huma.Error503ServiceUnavailable(identityi18n.IdentityUnavailable)
+		return huma.Error503ServiceUnavailable(identityi18n.IdentityUnavailable, err)
 	case errors.Is(err, ErrNotFound):
 		return huma.Error404NotFound(identityi18n.PrincipalNotFound)
 	case errors.Is(err, ErrServiceAccountNotFound):
@@ -528,6 +528,6 @@ func identityError(err error) error {
 	case errors.Is(err, ErrInvalid):
 		return huma.Error422UnprocessableEntity(identityi18n.InvalidPrincipal)
 	default:
-		return huma.Error500InternalServerError(identityi18n.IdentityUnavailable)
+		return huma.Error500InternalServerError(identityi18n.IdentityUnavailable, err)
 	}
 }

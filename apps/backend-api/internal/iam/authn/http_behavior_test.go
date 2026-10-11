@@ -9,6 +9,7 @@ import (
 	"errors"
 	"image"
 	_ "image/png"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -21,6 +22,7 @@ import (
 	"7link.com/platform/internal/iam/authn/model"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/huma/respx"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/mojocn/base64Captcha"
@@ -1311,4 +1313,42 @@ func TestLoginOptionsNameWhoPosesTheChallenge(t *testing.T) {
 	require.NoError(t, json.Unmarshal(api.Get("/login/options").Body.Bytes(), &drawn))
 	assert.Equal(t, "image", drawn.Data.Captcha.Provider)
 	assert.Empty(t, drawn.Data.Captcha.SiteKey, "a drawn challenge has no site key to publish")
+}
+
+// TestPhoneLoginRequestLogsAStorageFaultButNotATurnedOffFeature pins which 503s
+// carry a cause to the error log: a store that broke does, a sign-in route the
+// deployment turned off does not (it would log on every attempt). Neither tells
+// the caller anything more than "unavailable".
+func TestPhoneLoginRequestLogsAStorageFaultButNotATurnedOffFeature(t *testing.T) {
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	service, harness, _ := newPhoneLoginService(t)
+	seedProvenPhone(t, harness, 715, "petra", "+8613800138001")
+	config := huma.DefaultConfig("authn-test", "1.0.0")
+	config.Transformers = append(config.Transformers, respx.LocalizeMessage)
+	respx.Install()
+	_, api := humatest.New(t, config)
+	RegisterHTTP(api, fixedTokenVerifier{}, service)
+	request := func() *httptest.ResponseRecorder {
+		return api.Post("/login/phone/requests", map[string]any{
+			"phone": "+8613800138001", "captcha_type": "text", "captcha_id": "test", "captcha_answer": testCaptchaAnswer,
+		}, "Origin: https://app.example.test")
+	}
+
+	service.cfg.PhoneVerification.LoginEnabled = false
+	response := request()
+	require.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+	assert.NotContains(t, output.String(), "level=ERROR", "a turned-off feature is not a fault")
+
+	service.cfg.PhoneVerification.LoginEnabled = true
+	require.NoError(t, harness.db.Exec("DROP TABLE "+harness.runtime.TablePrefix()+"iam_phone_verification_codes").Error)
+	response = request()
+	require.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+	assert.Contains(t, output.String(), "level=ERROR")
+	assert.Contains(t, output.String(), "authn-create-phone-login-request")
+	assert.Contains(t, output.String(), "iam_phone_verification_codes", "the root cause reaches the log")
+	assert.NotContains(t, response.Body.String(), "iam_phone_verification_codes", "and never the caller")
 }

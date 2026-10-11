@@ -1,6 +1,7 @@
 package guid
 
 import (
+	"net/http"
 	"testing"
 
 	"7link.com/platform/internal/infra/wuid"
@@ -41,6 +42,34 @@ func TestModuleUsesWUIDModuleAndTracksLeaseState(t *testing.T) {
 	assert.ErrorIs(t, guidModule.CheckHealth(t.Context()), ErrUnavailable)
 	_, err = guidModule.Next()
 	assert.Error(t, err)
+}
+
+// TestModuleResolvesTheRouteAuthenticatorWhenOneIsProvided keeps the
+// authenticator optional for the module and mandatory for the HTTP API: the one
+// provided is what guards the operations.
+func TestModuleResolvesTheRouteAuthenticatorWhenOneIsProvided(t *testing.T) {
+	t.Setenv(wuid.EnvKey, "18")
+	rt := appenv.NewRuntime(appenv.NewIdentity("", ""))
+	for name, provided := range map[string]*bearerAuthenticator{"provided": {}, "absent": nil} {
+		t.Run(name, func(t *testing.T) {
+			guidModule := NewModule(rt)
+			services := module.NewServices()
+			require.NoError(t, wuid.NewModule(rt).ProvideServices(services))
+			if provided != nil {
+				require.NoError(t, module.Provide[RouteAuthenticator](services, provided))
+			}
+			require.NoError(t, services.Seal())
+			require.NoError(t, guidModule.InjectServices(services))
+			_, api := humatest.New(t)
+			require.NoError(t, guidModule.RegisterHTTP(t.Context(), api))
+			if provided != nil {
+				assert.Equal(t, []string{"next-guid", "next-guid-batch"}, provided.guarded)
+				assert.Equal(t, http.StatusUnauthorized, api.Get("/guid").Code)
+				return
+			}
+			assert.Equal(t, http.StatusServiceUnavailable, api.Get("/guid", bearer).Code)
+		})
+	}
 }
 
 func TestModuleRequiresWUIDService(t *testing.T) {

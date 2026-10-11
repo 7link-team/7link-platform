@@ -22,10 +22,11 @@ var ErrUnavailable = errors.New("guid: generator unavailable")
 const Name = guidi18n.Namespace
 
 type Module struct {
-	runtime   *appenv.Runtime
-	source    wuid.Source
-	generator *Generator
-	active    atomic.Bool
+	runtime       *appenv.Runtime
+	source        wuid.Source
+	generator     *Generator
+	authenticator RouteAuthenticator
+	active        atomic.Bool
 }
 
 // Source is the GUID service contract exposed to dependent modules.
@@ -64,6 +65,13 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	m.source = source
 	m.generator = newManagedGenerator(source.Current)
+	// Optional: a composition without the authorization layer still generates
+	// IDs for its modules; only the HTTP API then refuses every call.
+	authenticator, err := module.Resolve[RouteAuthenticator](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	m.authenticator = authenticator
 	return nil
 }
 
@@ -120,7 +128,7 @@ func (m *Module) Stop(context.Context) error {
 }
 
 func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
-	registerHTTP(api, m.Next)
+	registerHTTP(api, m.Next, m.authenticator)
 	return nil
 }
 

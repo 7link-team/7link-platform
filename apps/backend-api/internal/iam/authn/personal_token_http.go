@@ -55,7 +55,7 @@ func personalTokenError(err error) error {
 		return huma.Error422UnprocessableEntity(authni18n.InvalidPersonalToken)
 	}
 	if errors.Is(err, authnext.ErrUnavailable) {
-		return huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable)
+		return huma.Error503ServiceUnavailable(authni18n.AuthenticationUnavailable, err)
 	}
 	return authenticationError(err)
 }

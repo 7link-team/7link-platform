@@ -3,6 +3,7 @@ package respx
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -17,6 +18,9 @@ type errorEnvelope struct {
 	status  int
 	summary string
 	details []errorDetail
+	// causes are the internal errors behind the response. They are never
+	// serialized; ReportCause logs them when the response is a server fault.
+	causes []error
 
 	Code    int    `json:"code" doc:"the HTTP status code (1..999); business codes are 100000+"`
 	Message string `json:"message" doc:"human-readable error summary"`
@@ -105,6 +109,7 @@ func Install() {
 			status:  status,
 			summary: summary,
 			details: detailOf(errs),
+			causes:  causesOf(errs),
 			Code:    status,
 			Message: summary,
 			Meta:    Meta{RequestAt: time.Now().UTC()},
@@ -143,6 +148,63 @@ func detailOf(errs []error) []errorDetail {
 		}
 	}
 	return details
+}
+
+// causesOf keeps the errors detailOf leaves out: the internal failures a caller
+// passes to huma.ErrorXxx(key, err) so the response can be traced to its cause
+// without that cause reaching the client. An error response passed on to be
+// written again (huma.WriteErr(api, ctx, mapped.GetStatus(), mapped.Error(),
+// mapped)) contributes the causes it carries rather than its own message key.
+func causesOf(errs []error) []error {
+	var causes []error
+	for _, err := range errs {
+		if err == nil {
+			continue
+		}
+		if _, ok := err.(huma.ErrorDetailer); ok {
+			continue
+		}
+		var envelope *errorEnvelope
+		if errors.As(err, &envelope) {
+			causes = append(causes, envelope.causes...)
+			continue
+		}
+		causes = append(causes, err)
+	}
+	return causes
+}
+
+// ReportCause logs the internal errors behind a server-fault response (5xx),
+// with ctx so the record carries the request's trace. The client sees only the
+// response's i18n key; this record is where the root cause survives. Error
+// responses built by huma.ErrorXxx(key, err) are reported automatically when
+// they are written; a handler that answers with its own error type calls this
+// directly. A request whose caller has already gone away is logged at debug:
+// its context.Canceled is not a fault anyone needs to be woken for.
+func ReportCause(ctx context.Context, status int, causes ...error) {
+	reportCause(ctx, status, "", causes)
+}
+
+func reportCause(ctx context.Context, status int, operation string, causes []error) {
+	if status < http.StatusInternalServerError {
+		return
+	}
+	cause := errors.Join(causes...)
+	if cause == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	attrs := []any{"status", status, "error", cause}
+	if operation != "" {
+		attrs = append(attrs, "operation", operation)
+	}
+	if ctx.Err() != nil {
+		slog.DebugContext(ctx, "request abandoned by the caller", attrs...)
+		return
+	}
+	slog.ErrorContext(ctx, "request failed", attrs...)
 }
 
 func validationMessage(key string, args ...string) string {

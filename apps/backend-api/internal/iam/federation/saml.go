@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -126,8 +127,14 @@ func samlConfigDefaults(cfg SAMLConfig) SAMLConfig {
 }
 
 // loadSAMLSigningMaterial returns PEM-encoded key and certificate. Configured
-// files win; otherwise the newest database key is used, generating one on the
+// files win; otherwise the active database key is used, generating one on the
 // first startup.
+//
+// Replicas starting together against a table with no active key would each
+// generate a key; the in-process lock cannot see the others. So the first key's
+// ID is not random: every replica derives the same one from the table's state
+// (initial-<keys stored so far>), the primary key admits exactly one insert, and
+// every replica then uses whichever key won.
 func (s *Service) loadSAMLSigningMaterial(ctx context.Context, cfg SAMLConfig) (string, string, error) {
 	if cfg.SigningKeyFile != "" || cfg.CertificateFile != "" {
 		if cfg.SigningKeyFile == "" || cfg.CertificateFile == "" {
@@ -154,25 +161,38 @@ func (s *Service) loadSAMLSigningMaterial(ctx context.Context, cfg SAMLConfig) (
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", "", fmt.Errorf("load SAML signing key: %w", err)
 	}
+	stored, err := s.repo.countSAMLKeys(ctx)
+	if err != nil {
+		return "", "", err
+	}
 	key, cert, err := generateSAMLKeyPair()
 	if err != nil {
 		return "", "", err
 	}
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
-	keyID, err := randomToken(18)
-	if err != nil {
-		return "", "", err
-	}
 	ciphertext, err := s.encryptSAMLKey(string(keyPEM))
 	if err != nil {
 		return "", "", err
 	}
 	now := s.now().UTC().Truncate(time.Millisecond)
-	if err := s.repo.insertSAMLKey(ctx, &samlKeyRow{KeyID: keyID, CertPEM: string(certPEM), KeyCiphertext: ciphertext, CreatedAt: now}); err != nil {
+	initial := &samlKeyRow{
+		KeyID: fmt.Sprintf("initial-%d", stored), CertPEM: string(certPEM), KeyCiphertext: ciphertext, CreatedAt: now,
+	}
+	if err := s.repo.insertSAMLKeyIfAbsent(ctx, initial); err != nil {
 		return "", "", err
 	}
-	return string(keyPEM), string(certPEM), nil
+	// Read back rather than use the key generated here: another replica's
+	// insert may be the one the primary key admitted.
+	row, err = s.repo.latestSAMLKey(ctx)
+	if err != nil {
+		return "", "", fmt.Errorf("load SAML signing key after initialization: %w", err)
+	}
+	keyText, err := s.decryptSAMLKey(row.KeyCiphertext)
+	if err != nil {
+		return "", "", err
+	}
+	return keyText, row.CertPEM, nil
 }
 
 // RotateSAMLSigningKey replaces the active IdP signing key and keeps the
@@ -371,7 +391,7 @@ func (s *Service) ServeSAMLMetadata(api huma.API, ctx huma.Context, tenantID gui
 	}
 	buf, err := xml.MarshalIndent(s.samlIDP(ctx, tenantID).Metadata(), "", "  ")
 	if err != nil {
-		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable)
+		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable, err)
 		return
 	}
 	ctx.SetStatus(http.StatusOK)
@@ -421,28 +441,28 @@ func (s *Service) ServeSAMLSSO(api huma.API, ctx huma.Context, tenantID guid.ID)
 			writeSAMLError(api, ctx, http.StatusForbidden, federationi18n.IdentityUnavailable)
 			return
 		}
-		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable)
+		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable, err)
 		return
 	}
 	if err := (saml.DefaultAssertionMaker{}).MakeAssertion(req, session); err != nil {
-		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable)
+		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable, err)
 		return
 	}
 	form, err := req.PostBinding()
 	if err != nil {
-		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable)
+		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable, err)
 		return
 	}
 	ctx.SetStatus(http.StatusOK)
 	ctx.SetHeader("Content-Type", "text/html; charset=utf-8")
 	if err := writeSAMLPostForm(ctx.BodyWriter(), form); err != nil {
-		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable)
+		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable, err)
 		return
 	}
 	event := audit.NewDomainEvent(ctx.Context(), tenantID, "federation_saml_sso", "service_provider", 0)
 	event.Detail["service_provider"] = req.Request.Issuer.Value
 	event.Detail["external_subject"] = session.NameID
-	_ = s.audit(ctx.Context(), s.repo.writer(), event)
+	s.auditSAMLExchange(ctx.Context(), event, principalID)
 }
 
 // ServeSAMLSLO validates a LogoutRequest, revokes the local browser session,
@@ -512,7 +532,7 @@ func (s *Service) ServeSAMLSLO(api huma.API, ctx huma.Context, tenantID guid.ID)
 	}
 	claimed, err := s.replays.claim(ctx.Context(), "logout:"+tenantID.String()+":"+logout.Issuer.Value+"\x00"+logout.ID, expiresAt, now)
 	if err != nil {
-		writeSAMLError(api, ctx, http.StatusServiceUnavailable, federationi18n.SAMLUnavailable)
+		writeSAMLError(api, ctx, http.StatusServiceUnavailable, federationi18n.SAMLUnavailable, err)
 		return
 	}
 	if !claimed {
@@ -521,14 +541,14 @@ func (s *Service) ServeSAMLSLO(api huma.API, ctx huma.Context, tenantID guid.ID)
 	}
 
 	if _, err := s.authn.Logout(ctx.Context(), ctx.Header("Cookie")); err != nil {
-		writeSAMLError(api, ctx, http.StatusServiceUnavailable, federationi18n.SAMLUnavailable)
+		writeSAMLError(api, ctx, http.StatusServiceUnavailable, federationi18n.SAMLUnavailable, err)
 		return
 	}
 	ctx.AppendHeader("Set-Cookie", s.authn.ClearCookie())
 	event := audit.NewDomainEvent(ctx.Context(), tenantID, "federation_saml_slo", "service_provider", 0)
 	event.Detail["service_provider"] = logout.Issuer.Value
 	event.Detail["external_subject"] = logout.NameID
-	_ = s.audit(ctx.Context(), s.repo.writer(), event)
+	s.auditSAMLExchange(ctx.Context(), event, sessionClaims.PrincipalID)
 
 	endpoint := samlSLOEndpoint(ed)
 	if endpoint == "" {
@@ -551,7 +571,7 @@ func (s *Service) ServeSAMLSLO(api huma.API, ctx huma.Context, tenantID guid.ID)
 	}
 	signed, err := s.signSAML(response.Element())
 	if err != nil {
-		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable)
+		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable, err)
 		return
 	}
 	response.Signature = signed.ChildElements()[len(signed.ChildElements())-1]
@@ -559,7 +579,7 @@ func (s *Service) ServeSAMLSLO(api huma.API, ctx huma.Context, tenantID guid.ID)
 	doc.SetRoot(response.Element())
 	buf, err := doc.WriteToBytes()
 	if err != nil {
-		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable)
+		writeSAMLError(api, ctx, http.StatusInternalServerError, federationi18n.SAMLUnavailable, err)
 		return
 	}
 	ctx.SetStatus(http.StatusOK)
@@ -567,6 +587,17 @@ func (s *Service) ServeSAMLSLO(api huma.API, ctx huma.Context, tenantID guid.ID)
 	_ = writeSAMLPostForm(ctx.BodyWriter(), saml.IdpAuthnRequestForm{
 		URL: endpoint, SAMLResponse: base64.StdEncoding.EncodeToString(buf), RelayState: relay,
 	})
+}
+
+// auditSAMLExchange records a completed SAML exchange. The response has already
+// gone to the browser, so a failed write cannot change the outcome, but the
+// missing record is reported with what it would have said rather than dropped.
+func (s *Service) auditSAMLExchange(ctx context.Context, event audit.DomainEvent, principalID guid.ID) {
+	if err := s.audit(ctx, s.repo.writer(), event); err != nil {
+		slog.ErrorContext(ctx, "security audit event was not recorded",
+			"event_type", event.EventType, "principal_id", principalID, "tenant_id", event.TenantID,
+			"service_provider", event.Detail["service_provider"], "error", err)
+	}
 }
 
 // verifySAMLLogoutRequest validates that a LogoutRequest is legitimate by
@@ -828,8 +859,10 @@ func writeSAMLPostForm(w io.Writer, form saml.IdpAuthnRequestForm) error {
 	return nil
 }
 
-func writeSAMLError(api huma.API, ctx huma.Context, status int, key string) {
-	_ = huma.WriteErr(api, ctx, status, key)
+// writeSAMLError answers a SAML endpoint with the platform error envelope;
+// causes are the internal errors behind a server fault, logged and never sent.
+func writeSAMLError(api huma.API, ctx huma.Context, status int, key string, causes ...error) {
+	_ = huma.WriteErr(api, ctx, status, key, causes...)
 }
 
 func samlError(err error) error {
@@ -848,7 +881,7 @@ func samlError(err error) error {
 	case errors.Is(err, ErrInvalidSAMLSP), errors.Is(err, ErrSAMLInvalidRequest):
 		return huma.Error400BadRequest(federationi18n.SAMLInvalidSP)
 	default:
-		return huma.Error500InternalServerError(federationi18n.SAMLUnavailable)
+		return huma.Error500InternalServerError(federationi18n.SAMLUnavailable, err)
 	}
 }
 

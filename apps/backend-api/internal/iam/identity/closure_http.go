@@ -131,7 +131,7 @@ func closureError(err error) error {
 		return huma.Error403Forbidden("respx.forbidden")
 	}
 	if errors.Is(err, ErrUnavailable) || errors.Is(err, authnext.ErrUnavailable) {
-		return huma.Error503ServiceUnavailable(identityi18n.IdentityUnavailable)
+		return huma.Error503ServiceUnavailable(identityi18n.IdentityUnavailable, err)
 	}
 	return identityError(err)
 }

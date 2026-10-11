@@ -128,7 +128,11 @@ IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1 \
 
 IAM_LIFECYCLE_DATABASE_TYPE=mysql \
 IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
-  run_named_tests go test ./internal/iam/federation -run '^TestReplayRegistryExternalDatabase$' -count=1 -v
+  run_named_tests go test ./internal/iam/federation -run '^(TestReplayRegistryExternalDatabase|TestSAMLConcurrentFirstStartExternalDatabase)$' -count=1 -v
+
+# Space initialization inserts if absent and reads back under a lock; on MySQL
+# that insert is ON DUPLICATE KEY UPDATE, which SQLite and PostgreSQL never run.
+IAM_LIFECYCLE_DATABASE_TYPE=mysql IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4"   run_named_tests go test ./internal/files -run '^TestSpaceInitializationConcurrencyExternalDatabase$' -count=1 -v
 
 IAM_LIFECYCLE_DATABASE_TYPE=mysql \
 IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \

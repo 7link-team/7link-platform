@@ -296,7 +296,7 @@ func auditAPIError(err error) error {
 	case errors.Is(err, ErrArchiveIntegrity):
 		return huma.Error409Conflict(auditi18n.ArchiveIntegrity)
 	case errors.Is(err, ErrArchiveUnavailable):
-		return huma.Error503ServiceUnavailable(auditi18n.ArchiveUnavailable)
+		return huma.Error503ServiceUnavailable(auditi18n.ArchiveUnavailable, err)
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		return huma.Error404NotFound(auditi18n.EventNotFound)
 	case errors.Is(err, ErrInvalidEvent), errors.Is(err, ErrInvalidFilter):
@@ -310,12 +310,12 @@ func auditAPIError(err error) error {
 	case errors.Is(err, ErrAnchorAlreadyExists):
 		return huma.Error409Conflict(auditi18n.AnchorAlreadyExists)
 	case errors.Is(err, ErrAnchorUnavailable):
-		return huma.Error503ServiceUnavailable(auditi18n.AnchorUnavailable)
+		return huma.Error503ServiceUnavailable(auditi18n.AnchorUnavailable, err)
 	case errors.Is(err, ErrRetentionInvalid):
 		return huma.Error422UnprocessableEntity(auditi18n.RetentionInvalid)
 	case errors.Is(err, ErrRootSigningDisabled):
 		return huma.Error422UnprocessableEntity(auditi18n.RootSigningDisabled)
 	default:
-		return huma.Error500InternalServerError(auditi18n.Unavailable)
+		return huma.Error500InternalServerError(auditi18n.Unavailable, err)
 	}
 }

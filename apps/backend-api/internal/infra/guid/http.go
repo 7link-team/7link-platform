@@ -2,6 +2,7 @@ package guid
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -34,36 +35,69 @@ func OptionalID(value string) (ID, error) {
 }
 
 type batchInput struct {
-	Count int `path:"count" minimum:"1" maximum:"10000" doc:"number of IDs to generate"`
+	Count int `path:"count" minimum:"1" maximum:"100" doc:"number of IDs to generate"`
 }
 
-func registerHTTP(api huma.API, next func() (int64, error)) {
-	huma.Register(api, huma.Operation{
+// RouteAuthenticator restricts an operation to an authenticated caller. The
+// GUID API is not anonymous (D107): every write in the platform draws on the
+// same generator. The authorization layer that does this imports this package,
+// so it cannot be imported here; its owner provides it instead, and an
+// *authz.Registrar satisfies this interface.
+type RouteAuthenticator interface {
+	Authenticate(api huma.API, op *huma.Operation)
+}
+
+// registerHTTP registers the GUID operations behind authenticator. Without one
+// the operations are still published but refuse every call: an anonymous
+// generator is exactly what D107 rules out.
+func registerHTTP(api huma.API, next func() (int64, error), authenticator RouteAuthenticator) {
+	if authenticator == nil {
+		slog.Warn("GUID HTTP API refuses every call: no authenticator is provided; enable the IAM core module to serve it")
+	}
+	guarded := func(op huma.Operation) huma.Operation {
+		if authenticator != nil {
+			authenticator.Authenticate(api, &op)
+		}
+		return op
+	}
+	refused := func() error {
+		if authenticator == nil {
+			return huma.Error503ServiceUnavailable(guidi18n.NotReady)
+		}
+		return nil
+	}
+	huma.Register(api, guarded(huma.Operation{
 		OperationID: "next-guid",
 		Method:      http.MethodGet,
 		Path:        "/guid",
 		Summary:     "Generate a globally unique ID",
 		Tags:        []string{"system"},
-	}, func(ctx context.Context, _ *struct{}) (*respx.Body[ID], error) {
+	}), func(ctx context.Context, _ *struct{}) (*respx.Body[ID], error) {
+		if err := refused(); err != nil {
+			return nil, err
+		}
 		id, err := next()
 		if err != nil {
-			return nil, huma.Error503ServiceUnavailable(guidi18n.NotReady)
+			return nil, huma.Error503ServiceUnavailable(guidi18n.NotReady, err)
 		}
 		return respx.OK(ctx, ID(id)), nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, guarded(huma.Operation{
 		OperationID: "next-guid-batch",
 		Method:      http.MethodGet,
 		Path:        "/guid/{count}",
 		Summary:     "Generate globally unique IDs",
 		Tags:        []string{"system"},
-	}, func(ctx context.Context, input *batchInput) (*respx.Body[[]ID], error) {
+	}), func(ctx context.Context, input *batchInput) (*respx.Body[[]ID], error) {
+		if err := refused(); err != nil {
+			return nil, err
+		}
 		ids := make([]ID, 0, input.Count)
 		for range input.Count {
 			id, err := next()
 			if err != nil {
-				return nil, huma.Error503ServiceUnavailable(guidi18n.NotReady)
+				return nil, huma.Error503ServiceUnavailable(guidi18n.NotReady, err)
 			}
 			ids = append(ids, ID(id))
 		}

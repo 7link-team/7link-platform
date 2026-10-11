@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -1307,11 +1308,17 @@ func (s *Service) claims(ctx context.Context, principalID guid.ID) (*authnext.Cl
 
 const authnAuditTenant = guid.ID(0)
 
+// audit records a security event. A failed write does not change the outcome of
+// the action it describes, but it must not vanish either: the missing audit
+// record is itself reported, with what it would have said.
 func (s *Service) audit(ctx context.Context, principalID guid.ID, eventType, outcome string) {
 	if s == nil || s.repo == nil {
 		return
 	}
-	_ = s.repo.appendAudit(ctx, securityAudit(principalID, eventType, outcome))
+	if err := s.repo.appendAudit(ctx, securityAudit(principalID, eventType, outcome)); err != nil {
+		slog.ErrorContext(ctx, "security audit event was not recorded",
+			"event_type", eventType, "principal_id", principalID, "outcome", outcome, "error", err)
+	}
 }
 
 func securityAudit(principalID guid.ID, eventType, outcome string) audit.DomainEvent {

@@ -25,6 +25,9 @@ var errUnexpectedToken = errors.New("audit: unexpected JSON token")
 // value. Deployments under a stricter regime add those field names through
 // Config.SensitiveFields. Erasure is irreversible in a log; a value that was
 // never captured cannot be recovered, so the default errs toward recording.
+//
+// Beyond these exact names, every field whose normalized name ends in one of
+// sensitiveKeySuffixes is redacted too.
 var defaultSensitiveKeys = map[string]struct{}{
 	"password":          {},
 	"current_password":  {},
@@ -48,7 +51,21 @@ var defaultSensitiveKeys = map[string]struct{}{
 	"ssn":               {},
 	"client_secret":     {},
 	"client_credential": {},
+	// One-time codes: sign-in, MFA, verification and OAuth authorization codes
+	// are all posted as "code", and each is a credential while it is live.
+	"code":           {},
+	"user_code":      {},
+	"device_code":    {},
+	"code_verifier":  {},
+	"recovery_code":  {},
+	"recovery_codes": {},
 }
+
+// sensitiveKeySuffixes redact any field named for a credential, whatever it is
+// prefixed with: bearer_token, csrf_token, totp_secret, confirm_password. They
+// are matched against the normalized name, so token_type (normalized
+// "tokentype") and other fields that merely begin with these words are kept.
+var sensitiveKeySuffixes = []string{"token", "secret", "password"}
 
 // redactor redacts JSON documents by replacing values under sensitive keys.
 // The key set is immutable once built, so the redactor is safe for concurrent
@@ -214,8 +231,16 @@ func writeScalar(out *bytes.Buffer, value any) error {
 }
 
 func isSensitiveKey(key string, sensitive map[string]struct{}) bool {
-	_, ok := sensitive[normalizeKey(key)]
-	return ok
+	normalized := normalizeKey(key)
+	if _, ok := sensitive[normalized]; ok {
+		return true
+	}
+	for _, suffix := range sensitiveKeySuffixes {
+		if strings.HasSuffix(normalized, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // keySeparators strips the word separators that distinguish otherwise identical

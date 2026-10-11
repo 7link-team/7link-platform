@@ -143,7 +143,7 @@ func lifecycleAPIError(err error) (error, bool) {
 	case errors.Is(err, ErrConfirmationMismatch):
 		return huma.Error422UnprocessableEntity(identityi18n.AnonymizationConfirmation), true
 	case errors.Is(err, ErrUnavailable):
-		return huma.Error503ServiceUnavailable(identityi18n.IdentityUnavailable), true
+		return huma.Error503ServiceUnavailable(identityi18n.IdentityUnavailable, err), true
 	}
 	return nil, false
 }

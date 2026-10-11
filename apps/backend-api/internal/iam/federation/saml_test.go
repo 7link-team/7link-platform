@@ -2,9 +2,13 @@ package federation
 
 import (
 	federationi18n "7link.com/platform/internal/iam/federation/i18n"
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
+	goosex "7link.com/platform/pkg/extension/goose"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/i18n"
 	"bytes"
@@ -29,6 +33,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -36,6 +41,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -1485,4 +1491,198 @@ func TestSAMLLogoutRequestReplayIsRejectedBeforeRevokingNewSession(t *testing.T)
 	_ = unavailable.Body.Close()
 	_, err = env.web.Authenticate(t.Context(), "", secondCookie)
 	assert.NoError(t, err, "a storage outage must not revoke the authenticated session")
+}
+
+// TestSAMLExchangeAuditFailureIsReportedNotDropped pins that a SAML exchange
+// whose audit record cannot be written still completes, and that the lost
+// record is logged with what it would have said instead of being discarded.
+func TestSAMLExchangeAuditFailureIsReportedNotDropped(t *testing.T) {
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	env := newFederationEnvironment(t)
+	startSAML(t, env, SAMLConfig{Enabled: true})
+	tsp := newSAMLSPServer(t)
+	tsp.register(t, env)
+	server := newSAMLServer(t, env)
+	principalID, cookie := samlSessionCookie(t, env)
+	env.auditErr = errors.New("audit store is down")
+
+	ssoURL := server.URL + samlSSOPath(testID("tenant-a"))
+	response := samlBrowserRequest(t, server, http.MethodGet, ssoURL+"?SAMLRequest="+url.QueryEscape(samlAuthnRequestParam(t, tsp, "id-audit-sso", time.Now().UTC(), ssoURL, "")), cookie)
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	assert.Contains(t, samlReadBody(t, response), "SAMLResponse")
+	logged := output.String()
+	assert.Contains(t, logged, "level=ERROR")
+	assert.Contains(t, logged, "security audit event was not recorded")
+	assert.Contains(t, logged, "event_type=federation_saml_sso")
+	assert.Contains(t, logged, "principal_id="+principalID)
+	assert.Contains(t, logged, "service_provider="+tsp.entityID)
+	assert.Contains(t, logged, "audit store is down")
+
+	output.Reset()
+	sloURL := server.URL + samlSLOPath(testID("tenant-a"))
+	notAfter := time.Now().UTC().Add(5 * time.Minute)
+	raw, err := xml.Marshal(&saml.LogoutRequest{
+		ID: "id-audit-slo", Version: "2.0", IssueInstant: time.Now().UTC(),
+		Destination: sloURL, Issuer: &saml.Issuer{Value: tsp.entityID},
+		NameID:       &saml.NameID{Value: principalID, Format: samlNameIDPersistent},
+		NotOnOrAfter: &notAfter,
+	})
+	require.NoError(t, err)
+	var compressed bytes.Buffer
+	writer, err := flate.NewWriter(&compressed, flate.DefaultCompression)
+	require.NoError(t, err)
+	_, err = writer.Write(raw)
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	response = samlBrowserRequest(t, server, http.MethodGet, sloURL+"?SAMLRequest="+url.QueryEscape(base64.StdEncoding.EncodeToString(compressed.Bytes())), cookie)
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	_ = samlReadBody(t, response)
+	logged = output.String()
+	assert.Contains(t, logged, "event_type=federation_saml_slo")
+	assert.Contains(t, logged, "principal_id="+principalID)
+	assert.Contains(t, logged, "audit store is down")
+}
+
+// TestSAMLConcurrentFirstStartLeavesOneActiveSigningKey starts several replicas
+// against an empty key table at once. Each holds them at the moment they would
+// persist a key, so all of them have already seen "no active key": without a
+// database-level guarantee every replica would store and sign with its own.
+func TestSAMLConcurrentFirstStartLeavesOneActiveSigningKey(t *testing.T) {
+	env := newFederationEnvironment(t)
+	const replicas = 4
+	var arrived sync.WaitGroup
+	arrived.Add(replicas)
+	released := make(chan struct{})
+	go func() { arrived.Wait(); close(released) }()
+	services := make([]*Service, replicas)
+	for index := range services {
+		var once sync.Once
+		services[index] = &Service{repo: env.service.repo, keys: env.service.keys, now: func() time.Time {
+			once.Do(func() {
+				arrived.Done()
+				select {
+				case <-released:
+				case <-time.After(10 * time.Second):
+				}
+			})
+			return time.Now()
+		}}
+	}
+
+	results := make(chan error, replicas)
+	for _, service := range services {
+		go func() { results <- service.StartSAML(t.Context(), SAMLConfig{Enabled: true}) }()
+	}
+	for range replicas {
+		require.NoError(t, <-results)
+	}
+
+	var stored, active int64
+	require.NoError(t, env.db.Table("iam_saml_idp_keys").Count(&stored).Error)
+	require.NoError(t, env.db.Table("iam_saml_idp_keys").Where("rotated_at IS NULL").Count(&active).Error)
+	assert.EqualValues(t, 1, stored, "exactly one key is stored")
+	assert.EqualValues(t, 1, active, "exactly one key is active")
+	for _, service := range services[1:] {
+		assert.Equal(t, services[0].samlCert.Raw, service.samlCert.Raw, "every replica signs with the same key")
+	}
+
+	// A later start finds the active key and generates nothing.
+	require.NoError(t, services[0].StartSAML(t.Context(), SAMLConfig{Enabled: true}))
+	require.NoError(t, env.db.Table("iam_saml_idp_keys").Count(&stored).Error)
+	assert.EqualValues(t, 1, stored)
+}
+
+// TestSAMLConcurrentFirstStartExternalDatabase runs the first-start race on a
+// server database, where every replica has its own connection pool. SQLite
+// serializes write transactions, so only a server shows whether the
+// insert-if-absent keeps concurrent replicas to one active signing key -- and
+// on MySQL gorm renders it as ON DUPLICATE KEY UPDATE rather than DO NOTHING.
+func TestSAMLConcurrentFirstStartExternalDatabase(t *testing.T) {
+	dialect, dsn := os.Getenv("IAM_LIFECYCLE_DATABASE_TYPE"), os.Getenv("IAM_LIFECYCLE_DATABASE_DSN")
+	if dialect == "" && dsn == "" {
+		t.Skip("external database is provided by the lifecycle and real MySQL gates")
+	}
+	require.NotEmpty(t, dialect)
+	require.NotEmpty(t, dsn)
+	// Each run owns its own tables, so a rerun against the same server starts
+	// with no key stored.
+	prefix := os.Getenv("IAM_LIFECYCLE_TABLE_PREFIX") + fmt.Sprintf("sk%x_", time.Now().UnixNano()&0xffffff)
+	keys := newFederationEnvironment(t).keys
+	open := func() *Repository {
+		router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
+			"primary": {Type: dialect, DSN: dsn, Writable: true, Readable: true},
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, router.Close()) })
+		return NewRepository(appenv.NewRuntime(appenv.NewIdentity("saml-key-test", "1"),
+			appenv.WithDatabase(router), appenv.WithTablePrefix(prefix)))
+	}
+	const replicas = 4
+	repositories := make([]*Repository, replicas)
+	for index := range repositories {
+		repositories[index] = open()
+	}
+	sqlDB, err := repositories[0].writer().DB()
+	require.NoError(t, err)
+	for _, source := range []goosex.Source{(&identity.Module{}).MigrationSource(), (&Module{}).MigrationSource()} {
+		source.Prefix = prefix
+		require.NoError(t, goosex.Migrate(t.Context(), sqlDB, source, dialect))
+	}
+
+	// Every replica reads "no active key" before any of them inserts.
+	var arrived sync.WaitGroup
+	arrived.Add(replicas)
+	released := make(chan struct{})
+	go func() { arrived.Wait(); close(released) }()
+	services := make([]*Service, replicas)
+	for index := range services {
+		var once sync.Once
+		services[index] = &Service{repo: repositories[index], keys: keys, now: func() time.Time {
+			once.Do(func() {
+				arrived.Done()
+				select {
+				case <-released:
+				case <-time.After(10 * time.Second):
+				}
+			})
+			return time.Now()
+		}}
+	}
+	results := make(chan error, replicas)
+	for _, service := range services {
+		go func() { results <- service.StartSAML(t.Context(), SAMLConfig{Enabled: true}) }()
+	}
+	for range replicas {
+		require.NoError(t, <-results)
+	}
+
+	keyTable := prefix + "iam_saml_idp_keys"
+	var stored, active int64
+	require.NoError(t, repositories[0].writer().Table(keyTable).Count(&stored).Error)
+	require.NoError(t, repositories[0].writer().Table(keyTable).Where("rotated_at IS NULL").Count(&active).Error)
+	assert.EqualValues(t, 1, stored, "exactly one key is stored")
+	assert.EqualValues(t, 1, active, "exactly one key is active")
+	for _, service := range services[1:] {
+		assert.Equal(t, services[0].samlCert.Raw, service.samlCert.Raw, "every replica signs with the same key")
+	}
+}
+
+// TestSAMLFirstStartAfterEveryKeyWasRetiredStoresANewKey covers a table that
+// holds keys but no active one: the derived ID must not collide with them.
+func TestSAMLFirstStartAfterEveryKeyWasRetiredStoresANewKey(t *testing.T) {
+	env := newFederationEnvironment(t)
+	startSAML(t, env, SAMLConfig{Enabled: true})
+	first := env.service.samlCert.Raw
+	require.NoError(t, env.db.Table("iam_saml_idp_keys").Where("rotated_at IS NULL").
+		Update("rotated_at", time.Now().UTC()).Error)
+
+	require.NoError(t, env.service.StartSAML(t.Context(), SAMLConfig{Enabled: true}))
+	assert.NotEqual(t, first, env.service.samlCert.Raw)
+	var keyIDs []string
+	require.NoError(t, env.db.Table("iam_saml_idp_keys").Where("rotated_at IS NULL").Pluck("key_id", &keyIDs).Error)
+	assert.Equal(t, []string{"initial-1"}, keyIDs)
 }

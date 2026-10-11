@@ -381,6 +381,6 @@ func governanceError(err error) error {
 	case errors.Is(err, ErrInvalid):
 		return huma.Error422UnprocessableEntity(governancei18n.InvalidRequest)
 	default:
-		return huma.Error500InternalServerError(governancei18n.Unavailable)
+		return huma.Error500InternalServerError(governancei18n.Unavailable, err)
 	}
 }

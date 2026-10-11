@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -1579,15 +1579,14 @@ func apiError(operation string, err error) error {
 	case errors.Is(err, ErrInvalidRolePermissionCondition):
 		return huma.Error422UnprocessableEntity(corei18n.InvalidRolePermissionCondition)
 	case errors.Is(err, authz.ErrFieldsUnavailable):
-		return huma.Error503ServiceUnavailable(respx.ServiceUnavailable)
+		return huma.Error503ServiceUnavailable(respx.ServiceUnavailable, err)
 	case errors.Is(err, ErrPrivilegeEscalation), errors.Is(err, authz.ErrFieldDenied):
 		return huma.Error403Forbidden(corei18n.PrivilegeEscalationDenied)
 	case errors.Is(err, ErrInvalidArgument):
 		return huma.Error422UnprocessableEntity(corei18n.InvalidRequest)
 	case errors.Is(err, ErrUnavailable):
-		return huma.Error503ServiceUnavailable(corei18n.Unavailable)
+		return huma.Error503ServiceUnavailable(corei18n.Unavailable, err)
 	default:
-		slog.Error("iam request failed", "operation", operation, "err", err)
-		return huma.Error500InternalServerError(respx.InternalServerError)
+		return huma.Error500InternalServerError(respx.InternalServerError, fmt.Errorf("iam %s: %w", operation, err))
 	}
 }

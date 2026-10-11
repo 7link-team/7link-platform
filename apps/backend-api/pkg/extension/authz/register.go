@@ -10,10 +10,10 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/extension/policyx"
+	"7link.com/platform/pkg/guid"
 )
 
 const (
@@ -397,6 +397,16 @@ func RegisterSessionAuthenticated[I, O any](r *Registrar, api huma.API, op huma.
 // the handler can resolve the caller. Use for personal/cross-tenant queries like
 // "my tenants".
 func RegisterAuthenticated[I, O any](r *Registrar, api huma.API, op huma.Operation, handler func(context.Context, *I) (*O, error)) {
+	r.Authenticate(api, &op)
+	preparePrincipalScope(api, &op)
+	huma.Register(api, op, handler)
+}
+
+// Authenticate is RegisterAuthenticated without the registration: it declares op
+// authenticated-only and attaches the same guard, and the caller registers op
+// itself. It serves a package this one imports, which therefore cannot import
+// this one back to call RegisterAuthenticated (the GUID API, D107).
+func (r *Registrar) Authenticate(api huma.API, op *huma.Operation) {
 	if r == nil {
 		panic("authz registrar is nil")
 	}
@@ -407,12 +417,10 @@ func RegisterAuthenticated[I, O any](r *Registrar, api huma.API, op huma.Operati
 		op.Metadata = map[string]any{}
 	}
 	op.Metadata[authenticatedMetadataKey] = true
-	r.prepareAuthenticated(api, &op, false)
+	r.prepareAuthenticated(api, op, false)
 	if r.verifier != nil {
 		op.Middlewares = append(op.Middlewares, r.authenticatedOnly(api))
 	}
-	preparePrincipalScope(api, &op)
-	huma.Register(api, op, handler)
 }
 
 // Authenticated principal mounts address the caller explicitly, without granting
@@ -838,10 +846,11 @@ func (r *Registrar) authenticate(api huma.API, ctx huma.Context) (*authn.Claims,
 		}
 		return claims, true
 	}
-	slog.Debug("authn token rejected", "operation", ctx.Operation().OperationID, "err", err)
+	requestContext := logContext(ctx)
+	slog.DebugContext(requestContext, "authn token rejected", "operation", ctx.Operation().OperationID, "err", err)
 	if errors.Is(err, authn.ErrUnavailable) {
-		if requestContext := ctx.Context(); requestContext == nil || requestContext.Err() == nil {
-			slog.Error("authentication unavailable", "operation", ctx.Operation().OperationID, "err", err)
+		if requestContext.Err() == nil {
+			slog.ErrorContext(requestContext, "authentication unavailable", "operation", ctx.Operation().OperationID, "err", err)
 		}
 		_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthenticationUnavailable)
 		return nil, false
@@ -859,14 +868,24 @@ func (r *Registrar) authenticate(api huma.API, ctx huma.Context) (*authn.Claims,
 // that found this produced ERROR lines for ordinary page navigation, and real
 // failures have to be picked out from among them.
 func authorizationFailed(api huma.API, ctx huma.Context, message string, attrs ...any) {
-	if requestContext := ctx.Context(); requestContext != nil && requestContext.Err() != nil {
-		slog.Debug("authorization abandoned by the caller",
+	requestContext := logContext(ctx)
+	if requestContext.Err() != nil {
+		slog.DebugContext(requestContext, "authorization abandoned by the caller",
 			append([]any{"operation", ctx.Operation().OperationID, "err", requestContext.Err()}, attrs...)...)
 		_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
 		return
 	}
-	slog.Error(message, append([]any{"operation", ctx.Operation().OperationID}, attrs...)...)
+	slog.ErrorContext(requestContext, message, append([]any{"operation", ctx.Operation().OperationID}, attrs...)...)
 	_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
+}
+
+// logContext is the request context a guard logs with, so its records carry the
+// request's trace. A huma context without one logs under the background context.
+func logContext(ctx huma.Context) context.Context {
+	if requestContext := ctx.Context(); requestContext != nil {
+		return requestContext
+	}
+	return context.Background()
 }
 
 func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, func(huma.Context)) {
