@@ -10,16 +10,18 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
+// TenantRegistrationPolicy tells an authenticated principal whether this
+// deployment lets it register a tenant of its own.
+type TenantRegistrationPolicy struct {
+	Enabled bool `json:"enabled"`
+}
+
 func registerTenantRegistrationHTTP(api huma.API, service *TenantService, registrar *authz.Registrar) {
 	authz.RegisterAuthenticated(registrar, api, huma.Operation{
 		OperationID: "organization-tenant-registration-policy", Method: http.MethodGet,
 		Path: "/tenant-registrations/options", Summary: "Get tenant self-registration availability", Tags: []string{"tenant-registrations"},
-	}, func(ctx context.Context, _ *struct{}) (*respx.Body[struct {
-		Enabled bool `json:"enabled"`
-	}], error) {
-		return respx.OK(ctx, struct {
-			Enabled bool `json:"enabled"`
-		}{service.registrationEnabled}), nil
+	}, func(ctx context.Context, _ *struct{}) (*respx.Body[TenantRegistrationPolicy], error) {
+		return respx.OK(ctx, TenantRegistrationPolicy{Enabled: service.registrationEnabled}), nil
 	})
 	authz.RegisterAuthenticated(registrar, api, huma.Operation{
 		OperationID: "organization-register-tenant", Method: http.MethodPost,

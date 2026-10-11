@@ -261,7 +261,7 @@ func samlProtocolResponses(api huma.API, success map[string]*huma.MediaType, red
 		responses["302"] = &huma.Response{
 			Description: http.StatusText(http.StatusFound),
 			Headers: map[string]*huma.Param{
-				"Location": {Name: "Location", In: "header", Required: true, Schema: &huma.Schema{Type: huma.TypeString}},
+				"Location": {Required: true, Schema: &huma.Schema{Type: huma.TypeString}},
 			},
 		}
 	}

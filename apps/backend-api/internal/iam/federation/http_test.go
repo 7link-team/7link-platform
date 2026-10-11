@@ -435,3 +435,20 @@ func TestErrorMappersKeepChosenStatus(t *testing.T) {
 		assert.Equal(t, "1", headers.GetHeaders().Get("Retry-After"), name)
 	}
 }
+
+// TestBrowserRedirectsDeclareHeaderObjects keeps the redirect headers valid
+// OpenAPI: a response Header Object takes its name from the map key and has no
+// location, so name and in are forbidden there.
+func TestBrowserRedirectsDeclareHeaderObjects(t *testing.T) {
+	responses := browserResponses(huma.NewMapRegistry("#/components/schemas/", huma.DefaultSchemaNamer))
+	for _, status := range []string{"302", "303"} {
+		headers := responses[status].Headers
+		require.Contains(t, headers, "Location", status)
+		require.Contains(t, headers, "Set-Cookie", status)
+		assert.True(t, headers["Location"].Required, "%s always carries Location", status)
+		for name, header := range headers {
+			assert.Empty(t, header.Name, "%s %s: a header object has no name", status, name)
+			assert.Empty(t, header.In, "%s %s: a header object has no in", status, name)
+		}
+	}
+}

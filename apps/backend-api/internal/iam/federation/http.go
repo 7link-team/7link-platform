@@ -266,8 +266,8 @@ func browserResponses(schemas huma.Registry) map[string]*huma.Response {
 	redirect := &huma.Response{
 		Description: http.StatusText(http.StatusFound),
 		Headers: map[string]*huma.Param{
-			"Location":   {Name: "Location", In: "header", Required: true, Schema: &huma.Schema{Type: huma.TypeString}},
-			"Set-Cookie": {Name: "Set-Cookie", In: "header", Schema: &huma.Schema{Type: huma.TypeString}},
+			"Location":   {Required: true, Schema: &huma.Schema{Type: huma.TypeString}},
+			"Set-Cookie": {Schema: &huma.Schema{Type: huma.TypeString}},
 		},
 	}
 	errorSchema := errorResponseSchema(schemas)
@@ -323,14 +323,14 @@ func writeLoginCallbackError(api huma.API, ctx huma.Context, service *Service, e
 func writeFederationError(api huma.API, ctx huma.Context, err error) {
 	var mapped huma.StatusError
 	if errors.As(err, &mapped) {
-		_ = huma.WriteErr(api, ctx, mapped.GetStatus(), mapped.Error())
+		_ = huma.WriteErr(api, ctx, mapped.GetStatus(), mapped.Error(), mapped)
 		return
 	}
 	if errors.As(federationError(err), &mapped) {
-		_ = huma.WriteErr(api, ctx, mapped.GetStatus(), mapped.Error())
+		_ = huma.WriteErr(api, ctx, mapped.GetStatus(), mapped.Error(), mapped)
 		return
 	}
-	_ = huma.WriteErr(api, ctx, http.StatusInternalServerError, federationi18n.Unavailable)
+	_ = huma.WriteErr(api, ctx, http.StatusInternalServerError, federationi18n.Unavailable, err)
 }
 
 func intPointer(value int) *int { return &value }
@@ -369,13 +369,13 @@ func federationError(err error) error {
 	case errors.Is(err, authnext.ErrInvalidCredentials), errors.Is(err, authnext.ErrInvalidSession):
 		return huma.Error401Unauthorized(federationi18n.IdentityUnavailable)
 	case errors.Is(err, authnext.ErrUnavailable):
-		return huma.Error503ServiceUnavailable(federationi18n.Unavailable)
+		return huma.Error503ServiceUnavailable(federationi18n.Unavailable, err)
 	case errors.Is(err, ErrIdentityLinkConflict):
 		return huma.Error409Conflict(federationi18n.IdentityLinkConflict)
 	case errors.Is(err, ErrLastLoginMethod):
 		return huma.Error409Conflict(federationi18n.LastLoginMethod)
 	case errors.Is(err, errReplayUnavailable):
-		return huma.Error503ServiceUnavailable(federationi18n.Unavailable)
+		return huma.Error503ServiceUnavailable(federationi18n.Unavailable, err)
 	case errors.Is(err, ErrInvalidProvider), errors.Is(err, ErrOIDCState):
 		return huma.Error400BadRequest(federationi18n.InvalidRequest)
 	case errors.Is(err, ErrProviderNotFound):
@@ -403,6 +403,6 @@ func federationError(err error) error {
 	case errors.Is(err, ErrSAMLResponse):
 		return huma.Error400BadRequest(federationi18n.SAMLInvalidRequest)
 	default:
-		return huma.Error500InternalServerError(federationi18n.Unavailable)
+		return huma.Error500InternalServerError(federationi18n.Unavailable, err)
 	}
 }

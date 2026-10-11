@@ -1,6 +1,11 @@
 package app
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -255,4 +260,147 @@ func TestComposedOpenAPIPagesListsOneWay(t *testing.T) {
 		}
 	}
 	assert.Greater(t, paged, 50, "the walk must reach the paged collections")
+}
+
+// publishedOpenAPIEnv names a document to check instead of the committed one.
+// openapi-check points it at the document it has just generated, so an invalid
+// document is reported as invalid rather than only as different.
+const publishedOpenAPIEnv = "OPENAPI_DOCUMENT"
+
+// publishedOpenAPI reads the published document as plain JSON: the checks below
+// hold the bytes a client generator reads, not huma's in-memory model, which
+// can say things the serialization does not.
+func publishedOpenAPI(t *testing.T) map[string]any {
+	t.Helper()
+	path := os.Getenv(publishedOpenAPIEnv)
+	if path == "" {
+		path = filepath.Join("..", "..", "docs", "openapi.json")
+	}
+	contents, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var document map[string]any
+	require.NoError(t, json.Unmarshal(contents, &document), path)
+	return document
+}
+
+// TestPublishedOpenAPICoversEveryRuntimeRoute holds the published document to
+// the runtime route inventory. The document is exported with a fixed set of
+// modules enabled; one left disabled there drops its routes from the contract
+// while the service still serves them. Every mapping line is checked, so a new
+// route joins the check by joining the inventory.
+func TestPublishedOpenAPICoversEveryRuntimeRoute(t *testing.T) {
+	paths, _ := publishedOpenAPI(t)["paths"].(map[string]any)
+	require.NotEmpty(t, paths)
+	mappings := loadIAMHTTPMappings(t)
+	require.NotEmpty(t, mappings)
+	for _, mapping := range mappings {
+		item, _ := paths[mapping.path].(map[string]any)
+		assert.Contains(t, item, strings.ToLower(mapping.method),
+			"%s %s (%s) is served but not published", mapping.method, mapping.path, mapping.targetOperation)
+	}
+}
+
+// componentName is the OpenAPI 3.1 rule for every key under components.
+var componentName = regexp.MustCompile(`^[a-zA-Z0-9.\-_]+$`)
+
+// TestPublishedOpenAPIIsWellFormed checks the structural rules this document
+// has actually broken and that no other gate reads: component names a Go type
+// literal leaked into, response headers declared as parameters, and references
+// that point at nothing. Each of them passes JSON parsing and the type
+// generator while making the document invalid for stricter tools.
+func TestPublishedOpenAPIIsWellFormed(t *testing.T) {
+	document := publishedOpenAPI(t)
+
+	components, _ := document["components"].(map[string]any)
+	require.NotEmpty(t, components)
+	for kind, entries := range components {
+		named, _ := entries.(map[string]any)
+		for name := range named {
+			assert.Regexp(t, componentName, name, "components.%s has a name OpenAPI forbids", kind)
+		}
+	}
+
+	headers, refs := 0, 0
+	walkOpenAPI(document, "#", func(location string, node map[string]any) {
+		if responseHeaders, ok := node["headers"].(map[string]any); ok && strings.Contains(location, "/responses/") {
+			for name, raw := range responseHeaders {
+				header, _ := raw.(map[string]any)
+				headers++
+				assert.NotContains(t, header, "name", "%s/headers/%s: a header object takes its name from the key", location, name)
+				assert.NotContains(t, header, "in", "%s/headers/%s: a header object has no location", location, name)
+			}
+		}
+		if ref, ok := node["$ref"].(string); ok {
+			refs++
+			_, resolved := resolveOpenAPIPointer(document, ref)
+			assert.True(t, resolved, "%s: $ref %q resolves to nothing", location, ref)
+		}
+	})
+	assert.Positive(t, headers, "the walk must reach the response headers")
+	assert.Greater(t, refs, 100, "the walk must reach the references")
+}
+
+// walkOpenAPI visits every object in the document with its JSON pointer.
+func walkOpenAPI(node any, location string, visit func(string, map[string]any)) {
+	switch value := node.(type) {
+	case map[string]any:
+		visit(location, value)
+		for key, child := range value {
+			walkOpenAPI(child, location+"/"+strings.NewReplacer("~", "~0", "/", "~1").Replace(key), visit)
+		}
+	case []any:
+		for index, child := range value {
+			walkOpenAPI(child, location+"/"+strconv.Itoa(index), visit)
+		}
+	}
+}
+
+// resolveOpenAPIPointer follows a local reference. The document is published as
+// one file, so a reference to anything outside it resolves to nothing.
+func resolveOpenAPIPointer(document map[string]any, ref string) (any, bool) {
+	if ref == "#" {
+		return document, true
+	}
+	if !strings.HasPrefix(ref, "#/") {
+		return nil, false
+	}
+	var current any = document
+	for _, token := range strings.Split(strings.TrimPrefix(ref, "#/"), "/") {
+		token = strings.NewReplacer("~1", "/", "~0", "~").Replace(token)
+		switch value := current.(type) {
+		case map[string]any:
+			child, ok := value[token]
+			if !ok {
+				return nil, false
+			}
+			current = child
+		case []any:
+			index, err := strconv.Atoi(token)
+			if err != nil || index < 0 || index >= len(value) {
+				return nil, false
+			}
+			current = value[index]
+		default:
+			return nil, false
+		}
+	}
+	return current, true
+}
+
+// TestResolveOpenAPIPointerFollowsOnlyLocalReferences pins the resolver the
+// well-formedness check relies on, so a broken resolver cannot pass every
+// reference.
+func TestResolveOpenAPIPointerFollowsOnlyLocalReferences(t *testing.T) {
+	document := map[string]any{
+		"components": map[string]any{"schemas": map[string]any{"A/B~C": map[string]any{"type": "object"}}},
+		"tags":       []any{map[string]any{"name": "first"}},
+	}
+	for ref, want := range map[string]bool{
+		"#": true, "#/components/schemas/A~1B~0C": true, "#/tags/0/name": true,
+		"#/components/schemas/Missing": false, "#/tags/1": false, "#/tags/x": false,
+		"#/tags/0/name/deeper": false, "other.json#/components": false,
+	} {
+		_, resolved := resolveOpenAPIPointer(document, ref)
+		assert.Equal(t, want, resolved, ref)
+	}
 }

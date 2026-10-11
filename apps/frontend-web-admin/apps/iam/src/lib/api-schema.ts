@@ -4752,6 +4752,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenant_id}/webhook-subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List tenant webhook subscriptions */
+        get: operations["webhook-list-subscriptions"];
+        put?: never;
+        /** Create a webhook subscription */
+        post: operations["webhook-create-subscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/todos/{todo_id}": {
         parameters: {
             query?: never;
@@ -4792,6 +4810,41 @@ export interface paths {
          * @description Restores the soft-deleted task. Requires If-Match, so a task cannot be restored from its identifier alone.
          */
         delete: operations["delete-todo-deletion"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-subscriptions/{subscription_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a webhook subscription */
+        put: operations["webhook-update-subscription"];
+        post?: never;
+        /** Delete a webhook subscription and its delivery history */
+        delete: operations["webhook-delete-subscription"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-subscriptions/{subscription_id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a subscription's delivery attempts */
+        get: operations["webhook-list-deliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5691,6 +5744,24 @@ export interface components {
         };
         DeletedResource: {
             deleted: boolean;
+        };
+        Delivery: {
+            /** Format: int64 */
+            attempts: number;
+            /** Format: date-time */
+            available_at: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            delivered_at?: string;
+            event_id: string | null;
+            /** Format: int64 */
+            event_sequence: number;
+            event_type: string;
+            id: string | null;
+            last_error?: string;
+            status: string;
+            subscription_id: string | null;
         };
         Department: {
             /** Format: date-time */
@@ -6800,6 +6871,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeListDelivery: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["Delivery"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeListDepartment: {
             /**
              * Format: int64
@@ -7159,6 +7243,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: string[] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeListSubscription: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["Subscription"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -7677,21 +7774,18 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
-        "EnvelopeStruct { Enabled bool \"json:\\\"enabled\\\"\" }": {
+        EnvelopeSubscription: {
             /**
              * Format: int64
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
             /** @description response payload; null on error */
-            data: components["schemas"]["EnvelopeStruct { Enabled bool \"json:\\\"enabled\\\"\" }DataStruct"];
+            data: components["schemas"]["Subscription"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
-        };
-        "EnvelopeStruct { Enabled bool \"json:\\\"enabled\\\"\" }DataStruct": {
-            enabled: boolean;
         };
         EnvelopeTarget: {
             /**
@@ -7727,6 +7821,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["Tenant"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeTenantRegistrationPolicy: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["TenantRegistrationPolicy"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -8978,6 +9085,39 @@ export interface components {
             challenge_id: string;
             code: string;
         };
+        Subscription: {
+            /**
+             * Format: int64
+             * @description The tenant audit sequence this subscription has been offered up to
+             */
+            after_sequence: number;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Event types to deliver; empty means every type */
+            event_types: string[] | null;
+            id: string | null;
+            name: string;
+            secret_set: boolean;
+            status: string;
+            tenant_id: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            url: string;
+        };
+        SubscriptionBody: {
+            /** @description Event types to deliver; omit for every type */
+            event_types?: string[] | null;
+            name: string;
+            /** @description Signing secret; an empty value keeps the stored secret on update */
+            secret?: string;
+            /**
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "disabled";
+            /** @description Receiver endpoint; https unless the deployment permits plaintext */
+            url: string;
+        };
         SupportedFeature: {
             supported: boolean;
         };
@@ -9113,6 +9253,9 @@ export interface components {
             updated_at: string;
             /** Format: int64 */
             version: number;
+        };
+        TenantRegistrationPolicy: {
+            enabled: boolean;
         };
         TokenResponse: {
             access_token: string;
@@ -11967,8 +12110,35 @@ export interface operations {
                     "application/json": components["schemas"]["EnvelopeID"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11999,8 +12169,44 @@ export interface operations {
                     "application/json": components["schemas"]["EnvelopeListID"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -34233,7 +34439,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopeStruct { Enabled bool \"json:\\\"enabled\\\"\" }"];
+                    "application/json": components["schemas"]["EnvelopeTenantRegistrationPolicy"];
                 };
             };
             /** @description Unauthorized */
@@ -41151,6 +41357,158 @@ export interface operations {
             };
         };
     };
+    "webhook-list-subscriptions": {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Tenant resource identifier */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListSubscription"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "webhook-create-subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant resource identifier */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeSubscription"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     "get-todo": {
         parameters: {
             query?: never;
@@ -41416,6 +41774,253 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvelopeView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "webhook-update-subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource identifier */
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeSubscription"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "webhook-delete-subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource identifier */
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeMapStringBool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "webhook-list-deliveries": {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Resource identifier */
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListDelivery"];
                 };
             };
             /** @description Unauthorized */

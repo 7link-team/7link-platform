@@ -55,7 +55,8 @@ OPENAPI_SECRET_DIR ?= $(OPENAPI_WORK_DIR)/secrets
 OPENAPI_SIGNING_KEY_FILE := $(OPENAPI_SECRET_DIR)/signing-key
 OPENAPI_MFA_KEY_FILE := $(OPENAPI_SECRET_DIR)/mfa-key
 OPENAPI_FEDERATION_KEY_FILE := $(OPENAPI_SECRET_DIR)/federation-key
-OPENAPI_KEY_FILES := $(OPENAPI_SIGNING_KEY_FILE) $(OPENAPI_MFA_KEY_FILE) $(OPENAPI_FEDERATION_KEY_FILE)
+OPENAPI_WEBHOOK_KEY_FILE := $(OPENAPI_SECRET_DIR)/webhook-key
+OPENAPI_KEY_FILES := $(OPENAPI_SIGNING_KEY_FILE) $(OPENAPI_MFA_KEY_FILE) $(OPENAPI_FEDERATION_KEY_FILE) $(OPENAPI_WEBHOOK_KEY_FILE)
 # A throwaway schema. The export composes the real application, and composition
 # expects its tables to be there; nothing is read from this database and nothing
 # survives the run.
@@ -69,7 +70,9 @@ OPENAPI_ARGS = openapi --name "$(OPENAPI_NAME)" --migrate \
 	--authn.web.allowed-return-urls $(OPENAPI_ISSUER)/ \
 	--authn.web.allowed-origins $(OPENAPI_ISSUER) \
 	--federation.enabled \
-	--federation.encryption-key-file $(OPENAPI_FEDERATION_KEY_FILE)
+	--federation.encryption-key-file $(OPENAPI_FEDERATION_KEY_FILE) \
+	--webhook.enabled \
+	--webhook.encryption-key-file $(OPENAPI_WEBHOOK_KEY_FILE)
 COVERAGE_MIN ?= 90
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_RAW_PROFILE ?= coverage.raw.out
@@ -260,9 +263,16 @@ openapi: $(OPENAPI_KEY_FILES)
 # this, an API change lands green and the mismatch is found later by whoever
 # generated a client from the stale document -- a long way from the change
 # that caused it. The fix is always the same, so the failure says so.
+#
+# The generated document is also checked before it is compared: it must
+# publish every served route and be valid OpenAPI (component names, response
+# headers, references). A difference only says the file is stale; this says
+# what is wrong with the document the fix would commit.
 openapi-check: $(OPENAPI_KEY_FILES)
 	@go -C cmd/7link-api run . $(OPENAPI_ARGS) \
 		--out "$(OPENAPI_WORK_DIR)/openapi.expected.json" >/dev/null
+	@OPENAPI_DOCUMENT="$(OPENAPI_WORK_DIR)/openapi.expected.json" \
+		go test -count=1 -run '^TestPublishedOpenAPI' ./internal/app
 	@if ! diff -q "$(OPENAPI_OUTPUT)" "$(OPENAPI_WORK_DIR)/openapi.expected.json" >/dev/null 2>&1; then \
 		echo "$(OPENAPI_OUTPUT) does not match the code; run 'make openapi' and commit the result"; \
 		diff -u "$(OPENAPI_OUTPUT)" "$(OPENAPI_WORK_DIR)/openapi.expected.json" | head -40; \

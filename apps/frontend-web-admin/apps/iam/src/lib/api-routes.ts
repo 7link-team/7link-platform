@@ -272,6 +272,9 @@ export const publishedRoutes: readonly string[] = [
   "/tenants/{tenant_id}/scim-directories",
   "/tenants/{tenant_id}/scim-targets",
   "/tenants/{tenant_id}/service-accounts",
+  "/tenants/{tenant_id}/webhook-subscriptions",
   "/todos/{todo_id}",
   "/todos/{todo_id}/deletion",
+  "/webhook-subscriptions/{subscription_id}",
+  "/webhook-subscriptions/{subscription_id}/deliveries",
 ]

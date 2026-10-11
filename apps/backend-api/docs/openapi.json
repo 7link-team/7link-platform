@@ -3409,6 +3409,73 @@
         ],
         "type": "object"
       },
+      "Delivery": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "available_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "delivered_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "event_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "event_sequence": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "subscription_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "subscription_id",
+          "event_id",
+          "event_sequence",
+          "event_type",
+          "status",
+          "attempts",
+          "available_at",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "Department": {
         "additionalProperties": false,
         "properties": {
@@ -6185,6 +6252,41 @@
         ],
         "type": "object"
       },
+      "EnvelopeListDelivery": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/Delivery"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeListDepartment": {
         "additionalProperties": false,
         "properties": {
@@ -7146,6 +7248,41 @@
             "description": "response payload; null on error",
             "items": {
               "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeListSubscription": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/Subscription"
             },
             "type": [
               "array",
@@ -8328,7 +8465,7 @@
         ],
         "type": "object"
       },
-      "EnvelopeStruct { Enabled bool \"json:\\\"enabled\\\"\" }": {
+      "EnvelopeSubscription": {
         "additionalProperties": false,
         "properties": {
           "code": {
@@ -8337,7 +8474,7 @@
             "type": "integer"
           },
           "data": {
-            "$ref": "#/components/schemas/EnvelopeStruct { Enabled bool \"json:\\\"enabled\\\"\" }DataStruct",
+            "$ref": "#/components/schemas/Subscription",
             "description": "response payload; null on error"
           },
           "message": {
@@ -8354,18 +8491,6 @@
           "message",
           "meta",
           "data"
-        ],
-        "type": "object"
-      },
-      "EnvelopeStruct { Enabled bool \"json:\\\"enabled\\\"\" }DataStruct": {
-        "additionalProperties": false,
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "enabled"
         ],
         "type": "object"
       },
@@ -8437,6 +8562,35 @@
           },
           "data": {
             "$ref": "#/components/schemas/Tenant",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeTenantRegistrationPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/TenantRegistrationPolicy",
             "description": "response payload; null on error"
           },
           "message": {
@@ -13144,6 +13298,118 @@
         ],
         "type": "object"
       },
+      "Subscription": {
+        "additionalProperties": false,
+        "properties": {
+          "after_sequence": {
+            "description": "The tenant audit sequence this subscription has been offered up to",
+            "format": "int64",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "event_types": {
+            "description": "Event types to deliver; empty means every type",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "secret_set": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "url",
+          "secret_set",
+          "event_types",
+          "status",
+          "after_sequence",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "SubscriptionBody": {
+        "additionalProperties": false,
+        "properties": {
+          "event_types": {
+            "description": "Event types to deliver; omit for every type",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "secret": {
+            "description": "Signing secret; an empty value keeps the stored secret on update",
+            "maxLength": 512,
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": "Receiver endpoint; https unless the deployment permits plaintext",
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ],
+        "type": "object"
+      },
       "SupportedFeature": {
         "additionalProperties": false,
         "properties": {
@@ -13638,6 +13904,18 @@
           "version",
           "created_at",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "TenantRegistrationPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
         ],
         "type": "object"
       },
@@ -18367,7 +18645,7 @@
             },
             "description": "OK"
           },
-          "default": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
@@ -18375,9 +18653,47 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Generate a globally unique ID",
         "tags": [
           "guid"
@@ -18396,7 +18712,7 @@
             "schema": {
               "description": "number of IDs to generate",
               "format": "int64",
-              "maximum": 10000,
+              "maximum": 100,
               "minimum": 1,
               "type": "integer"
             }
@@ -18413,7 +18729,7 @@
             },
             "description": "OK"
           },
-          "default": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
@@ -18421,9 +18737,57 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Generate globally unique IDs",
         "tags": [
           "guid"
@@ -18715,16 +19079,12 @@
             "description": "Found",
             "headers": {
               "Location": {
-                "in": "header",
-                "name": "Location",
                 "required": true,
                 "schema": {
                   "type": "string"
                 }
               },
               "Set-Cookie": {
-                "in": "header",
-                "name": "Set-Cookie",
                 "schema": {
                   "type": "string"
                 }
@@ -18735,16 +19095,12 @@
             "description": "See Other",
             "headers": {
               "Location": {
-                "in": "header",
-                "name": "Location",
                 "required": true,
                 "schema": {
                   "type": "string"
                 }
               },
               "Set-Cookie": {
-                "in": "header",
-                "name": "Set-Cookie",
                 "schema": {
                   "type": "string"
                 }
@@ -18867,16 +19223,12 @@
             "description": "Found",
             "headers": {
               "Location": {
-                "in": "header",
-                "name": "Location",
                 "required": true,
                 "schema": {
                   "type": "string"
                 }
               },
               "Set-Cookie": {
-                "in": "header",
-                "name": "Set-Cookie",
                 "schema": {
                   "type": "string"
                 }
@@ -18887,16 +19239,12 @@
             "description": "See Other",
             "headers": {
               "Location": {
-                "in": "header",
-                "name": "Location",
                 "required": true,
                 "schema": {
                   "type": "string"
                 }
               },
               "Set-Cookie": {
-                "in": "header",
-                "name": "Set-Cookie",
                 "schema": {
                   "type": "string"
                 }
@@ -19023,16 +19371,12 @@
             "description": "Found",
             "headers": {
               "Location": {
-                "in": "header",
-                "name": "Location",
                 "required": true,
                 "schema": {
                   "type": "string"
                 }
               },
               "Set-Cookie": {
-                "in": "header",
-                "name": "Set-Cookie",
                 "schema": {
                   "type": "string"
                 }
@@ -19043,16 +19387,12 @@
             "description": "See Other",
             "headers": {
               "Location": {
-                "in": "header",
-                "name": "Location",
                 "required": true,
                 "schema": {
                   "type": "string"
                 }
               },
               "Set-Cookie": {
-                "in": "header",
-                "name": "Set-Cookie",
                 "schema": {
                   "type": "string"
                 }
@@ -34858,8 +35198,6 @@
             "description": "Found",
             "headers": {
               "Location": {
-                "in": "header",
-                "name": "Location",
                 "required": true,
                 "schema": {
                   "type": "string"
@@ -34977,8 +35315,6 @@
             "description": "Found",
             "headers": {
               "Location": {
-                "in": "header",
-                "name": "Location",
                 "required": true,
                 "schema": {
                   "type": "string"
@@ -53641,7 +53977,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopeStruct { Enabled bool \"json:\\\"enabled\\\"\" }"
+                  "$ref": "#/components/schemas/EnvelopeTenantRegistrationPolicy"
                 }
               }
             },
@@ -64069,6 +64405,233 @@
         "x-authz-permission": "service_account_create"
       }
     },
+    "/tenants/{tenant_id}/webhook-subscriptions": {
+      "get": {
+        "operationId": "webhook-list-subscriptions",
+        "parameters": [
+          {
+            "description": "Tenant resource identifier",
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeListSubscription"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List tenant webhook subscriptions",
+        "tags": [
+          "tenants"
+        ],
+        "x-authz-permission": "webhook_subscription_view"
+      },
+      "post": {
+        "operationId": "webhook-create-subscription",
+        "parameters": [
+          {
+            "description": "Tenant resource identifier",
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeSubscription"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create a webhook subscription",
+        "tags": [
+          "tenants"
+        ],
+        "x-authz-permission": "webhook_subscription_create"
+      }
+    },
     "/todos/{todo_id}": {
       "delete": {
         "description": "Soft delete. Requires If-Match: deleting a stale view loses an update just as writing one does.",
@@ -64540,6 +65103,356 @@
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "todo_update"
+      }
+    },
+    "/webhook-subscriptions/{subscription_id}": {
+      "delete": {
+        "operationId": "webhook-delete-subscription",
+        "parameters": [
+          {
+            "description": "Resource identifier",
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMapStringBool"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Delete a webhook subscription and its delivery history",
+        "tags": [
+          "webhook-subscriptions"
+        ],
+        "x-authz-permission": "webhook_subscription_delete"
+      },
+      "put": {
+        "operationId": "webhook-update-subscription",
+        "parameters": [
+          {
+            "description": "Resource identifier",
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeSubscription"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Replace a webhook subscription",
+        "tags": [
+          "webhook-subscriptions"
+        ],
+        "x-authz-permission": "webhook_subscription_update"
+      }
+    },
+    "/webhook-subscriptions/{subscription_id}/deliveries": {
+      "get": {
+        "operationId": "webhook-list-deliveries",
+        "parameters": [
+          {
+            "description": "Resource identifier",
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeListDelivery"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List a subscription's delivery attempts",
+        "tags": [
+          "webhook-subscriptions"
+        ],
+        "x-authz-permission": "webhook_subscription_view"
       }
     }
   }
