@@ -6,7 +6,7 @@ import (
 	"slices"
 	"sort"
 
-	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/guid"
 )
 
 // Field declares an enforced resource attribute, not a client-defined column.

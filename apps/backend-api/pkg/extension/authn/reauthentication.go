@@ -1,7 +1,7 @@
 package authn
 
 import (
-	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/guid"
 	"context"
 	"gorm.io/gorm"
 )

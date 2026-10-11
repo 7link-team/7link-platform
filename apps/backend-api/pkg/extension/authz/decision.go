@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"slices"
 
-	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/guid"
 )
 
 // ResourceRef identifies an authorization scope without coupling IAM to the

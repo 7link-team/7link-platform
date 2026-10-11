@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/guid"
 )
 
 var (
