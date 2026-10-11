@@ -80,7 +80,9 @@ function WorkspaceOptions() {
     // home would send an operator with system authority to /system instead of
     // the tenant they chose.
     navigate(
-      entry === "platform" ? `/platform/${selected.id}` : `/admin/${selected.id}`,
+      entry === "platform"
+        ? `/platform/${selected.id}`
+        : `/admin/${selected.id}`,
       { replace: true }
     )
   }, [status, items, creating, entry, navigate])

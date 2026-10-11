@@ -27,7 +27,7 @@ Redis拓扑代码及相关门禁已经验收；此结论不包含生产部署或
 | Ledger readiness | 原处置过度 | 永久擦除是可选能力，默认关闭不应使所有登录副本不ready。启用时独立可选健康检查；实际擦除仍先写不可变义务并回读 |
 | SCIM worker/readiness | 部分误诊 | 无界扫描和吞同步错误成立；远端故障应反映在独立指标/告警，而非移除所有本地登录副本 |
 | 缺GitHub/K8s/Dockerfile | 不能据此判代码阻塞 | origin在Codeup。平台无关可复跑门禁已补；生产资产可在外部受控仓库，需实际证据，不强制特定云平台/编排器 |
-| react-leaflet许可证 | 撤销IAM制品阻塞 | 用原Vite配置、write:false收集最终chunk.modules：478个emitted modules无leaflet/map-picker/location-field。shared UI其他使用地图的制品仍须另审，不能宣称整个workspace许可证通过 |
+| react-leaflet许可证 | 撤销IAM制品阻塞 | 用原Vite配置、write:false收集最终chunk.modules：478个emitted modules无leaflet/map-picker/location-field。shared UI其他使用地图的制品仍须另审，不能宣称整个workspace许可证通过。D108(2026-10-11)已从 shared UI 移除 react-leaflet，地图改用 leaflet(BSD-2)原生 API |
 | make ci包含全部发布门禁 | 原描述错误 | 实际为fmt/lint/coverage/integration/build/openapi。race、真实MySQL、generate幂等、前端和告警验证是独立目标，本轮由release-check串联 |
 | 前次migration超时 | 无干净失败结论 | 存在并发migration干扰；不能认定资源竞争为唯一根因，更不能沿用该次运行宣称完整CI通过 |
 

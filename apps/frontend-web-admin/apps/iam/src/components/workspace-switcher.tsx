@@ -91,10 +91,13 @@ export function WorkspaceSwitcher({
     entities?.find((entity) => entity.id === entityID)?.name || entityID
   // Only the tenant workspace has a tenant or entity perspective to select.
   const tenantView = !systemView && !operatingPlatformID
-  // Whose entities are a destination and whose tenant is only their heading. Only
-  // asked inside the tenant workspace: in the system area or on a platform the
-  // tenant list is how an operator reaches a tenant at all, and the perspective
-  // they would get there is not what this answer is about.
+  // Whether the current tenant is only the heading over its entities, which are
+  // the destinations. The standing behind it is this tenant's, so it says
+  // nothing about any other tenant in the list: those stay destinations, and
+  // each one's route decides which perspective entering it gives. Only asked
+  // inside the tenant workspace: in the system area or on a platform the tenant
+  // list is how an operator reaches a tenant at all, and the perspective they
+  // would get there is not what this answer is about.
   const groupEntitiesUnderTenant = tenantView && !tenantPerspective
   return (
     <Popover
@@ -217,48 +220,15 @@ export function WorkspaceSwitcher({
                       {t("noMatches")}
                     </p>
                   )}
-                  {/* A tenant is a destination only for an account with standing
-                      at tenant level. Without it the row stays -- somebody still
-                      has to see which tenant their entities belong to -- and
-                      stops being something that can be entered. Rendered as a
-                      heading rather than a disabled button so nothing offers a
-                      perspective that is not this account's. */}
-                  {shownTenants.map((tenant) =>
-                    !groupEntitiesUnderTenant ? (
-                      <button
-                        key={tenant.id}
-                        type="button"
-                        aria-pressed={tenant.id === tenantID}
-                        onClick={() => {
-                          onTenant(tenant.id)
-                          setOpen(false)
-                        }}
-                        className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${tenant.id === tenantID ? "bg-accent font-medium" : "hover:bg-muted"}`}
-                      >
-                        <Building2 className="size-4 shrink-0" />
-                        <span className="min-w-0 break-words">
-                          {tenant.name}
-                          <span className="block text-xs text-muted-foreground">
-                            {tenant.slug}
-                          </span>
-                        </span>
-                        <ChevronRight className="ms-auto size-4 shrink-0" />
-                      </button>
-                    ) : (
-                      <h3
-                        key={tenant.id}
-                        className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-sm ${tenant.id === tenantID ? "bg-accent font-medium" : "text-muted-foreground"}`}
-                      >
-                        <Building2 className="size-4 shrink-0" />
-                        <span className="min-w-0 break-words">
-                          {tenant.name}
-                          <span className="block text-xs text-muted-foreground">
-                            {tenant.slug}
-                          </span>
-                        </span>
-                      </h3>
-                    )
-                  )}
+                  <WorkspaceTenantRows
+                    tenants={shownTenants}
+                    tenantID={tenantID}
+                    groupEntitiesUnderTenant={groupEntitiesUnderTenant}
+                    onTenant={(id) => {
+                      onTenant(id)
+                      setOpen(false)
+                    }}
+                  />
                 </div>
               </>
             ) : (
@@ -342,5 +312,61 @@ export function WorkspaceSwitcher({
         </div>
       </PopoverContent>
     </Popover>
+  )
+}
+
+// WorkspaceTenantRows lists the tenants in the switcher. Rendered apart from the
+// popover so the rows can be checked without opening it.
+//
+// Grouping concerns the tenant the caller is in: without standing at its tenant
+// level, that tenant's row heads its entities -- somebody still has to see which
+// tenant they belong to -- and stops being something that can be entered,
+// rendered as a heading rather than a disabled button so nothing offers a
+// perspective that is not this account's. Every other tenant stays a
+// destination: the standing in hand is this tenant's, and entering another one
+// is decided by that tenant's own route.
+export function WorkspaceTenantRows({
+  tenants,
+  tenantID,
+  groupEntitiesUnderTenant,
+  onTenant,
+}: {
+  tenants: Pick<Tenant, "id" | "slug" | "name">[]
+  tenantID: string
+  groupEntitiesUnderTenant: boolean
+  onTenant: (id: string) => void
+}) {
+  return tenants.map((tenant) =>
+    groupEntitiesUnderTenant && tenant.id === tenantID ? (
+      <h3
+        key={tenant.id}
+        className="flex min-h-11 w-full items-center gap-2 rounded-md bg-accent px-3 py-2 text-sm font-medium"
+      >
+        <Building2 className="size-4 shrink-0" />
+        <span className="min-w-0 break-words">
+          {tenant.name}
+          <span className="block text-xs text-muted-foreground">
+            {tenant.slug}
+          </span>
+        </span>
+      </h3>
+    ) : (
+      <button
+        key={tenant.id}
+        type="button"
+        aria-pressed={tenant.id === tenantID}
+        onClick={() => onTenant(tenant.id)}
+        className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${tenant.id === tenantID ? "bg-accent font-medium" : "hover:bg-muted"}`}
+      >
+        <Building2 className="size-4 shrink-0" />
+        <span className="min-w-0 break-words">
+          {tenant.name}
+          <span className="block text-xs text-muted-foreground">
+            {tenant.slug}
+          </span>
+        </span>
+        <ChevronRight className="ms-auto size-4 shrink-0" />
+      </button>
+    )
   )
 }

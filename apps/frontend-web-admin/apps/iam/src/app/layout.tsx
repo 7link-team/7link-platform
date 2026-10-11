@@ -33,6 +33,7 @@ import {
 import {
   entityWorkspaceView,
   tenantPerspectiveOffered,
+  tenantStanding,
 } from "../lib/navigation"
 import { useBranding } from "../lib/branding"
 import {
@@ -166,17 +167,18 @@ export default function AppLayout() {
   // Whether this account has any standing at tenant level, which is what decides
   // whether the tenant's perspective may be offered to it at all. Inside an
   // entity the permission set above is that entity's, so the tenant answer is
-  // asked for separately -- and until it arrives the perspective is not offered,
-  // because a view is shown once it is known to be allowed rather than until it
-  // is known not to be.
-  const [tenantStanding, setTenantStanding] = useState<{
+  // asked for separately. The perspective is withheld only on evidence: nothing
+  // at tenant level and an entity that admits the account. An answer that has
+  // not arrived, or a lookup that failed, is no evidence and withholds nothing.
+  const [tenantStandingAnswer, setTenantStanding] = useState<{
     subject: string
     tenant: string
-    standing: boolean
+    standing: boolean | null
   } | null>(null)
   const tenantPerspective = tenantPerspectiveOffered(
-    tenantStanding?.subject === subject && tenantStanding.tenant === tenantValue
-      ? tenantStanding.standing
+    tenantStandingAnswer?.subject === subject &&
+      tenantStandingAnswer.tenant === tenantValue
+      ? tenantStandingAnswer.standing
       : null,
     (catalog?.items ?? []).some((entity) => entity.status === "active")
   )
@@ -212,18 +214,10 @@ export default function AppLayout() {
       // data-scoped grant is absent from this list unless its constraint admits
       // everything, which is what makes "nothing here" mean "no tenant standing"
       // rather than "no administration permissions".
-      void iamApi.myPermissions(tenantValue).then(
-        (codes) => {
+      void tenantStanding(iamApi.myPermissions(tenantValue)).then(
+        (standing) => {
           if (active)
-            setTenantStanding({
-              subject,
-              tenant: tenantValue,
-              standing: (codes ?? []).length > 0,
-            })
-        },
-        () => {
-          if (active)
-            setTenantStanding({ subject, tenant: tenantValue, standing: false })
+            setTenantStanding({ subject, tenant: tenantValue, standing })
         }
       )
       void iamApi.memberEntities("file_view").then(

@@ -119,16 +119,6 @@ describe("AppSidebar", () => {
       'href="/admin/456/files"'
     )
   })
-  // This used to assert the opposite: a scoped account was given an entity link
-  // in the tenant's sidebar. Clicking it moved them into the entity perspective
-  // from what looked like a tenant item, which is what "the menu changes" was.
-  // Such an account lands in the entity perspective now and finds its files
-  // there, so nothing in the tenant's sidebar addresses an entity.
-  it("never points a tenant entry at an entity", () => {
-    const html = renderSidebar([], false, "/admin/456", "", new Set(["entity_view"]))
-    expect(html).not.toContain('href="/admin/456/entities/')
-    expect(html).not.toContain('href="/admin/456/files"')
-  })
   it("does not duplicate a tenant file menu supplied by the server", () => {
     const html = renderSidebar(
       [

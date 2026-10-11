@@ -1,12 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import {
-  MapContainer,
-  Marker,
-  TileLayer,
-  ZoomControl,
-  useMap,
-  useMapEvents,
-} from "react-leaflet"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 import { Search } from "lucide-react"
@@ -50,62 +42,6 @@ async function reverseGeocode(
   }
 }
 
-// Map click → pick a point
-function ClickHandler({
-  readonly,
-  onPick,
-}: {
-  readonly: boolean
-  onPick: (lat: number, lng: number) => void
-}) {
-  useMapEvents({
-    click(e) {
-      if (!readonly) onPick(e.latlng.lat, e.latlng.lng)
-    },
-  })
-  return null
-}
-
-// When no point is picked, use the browser geolocation API to center on the user's current location (first time only, fails silently)
-function Locate({ enabled }: { enabled: boolean }) {
-  const map = useMap()
-  const done = useRef(false)
-  useEffect(() => {
-    if (done.current || !enabled) return
-    if (typeof navigator === "undefined" || !navigator.geolocation) return
-    done.current = true
-    navigator.geolocation.getCurrentPosition(
-      (pos) => map.setView([pos.coords.latitude, pos.coords.longitude], 14),
-      () => {},
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
-    )
-  }, [enabled, map])
-  return null
-}
-
-// Only recenter the view when the value change comes from outside the map (search / external set).
-// Don't move the view when the user clicks or drags to pick a point on the map (forcing zoom/pan would be a poor experience).
-function Recenter({
-  lat,
-  lng,
-  skipRef,
-}: {
-  lat: number | null
-  lng: number | null
-  skipRef: React.RefObject<boolean>
-}) {
-  const map = useMap()
-  useEffect(() => {
-    if (lat == null || lng == null) return
-    if (skipRef.current) {
-      skipRef.current = false
-      return
-    }
-    map.setView([lat, lng], Math.max(map.getZoom(), 14))
-  }, [lat, lng, map, skipRef])
-  return null
-}
-
 export interface LeafletMapProps {
   value?: MapLocation | null
   onChange?: (loc: MapLocation) => void
@@ -143,7 +79,17 @@ export default function LeafletMap({
         : null,
     [value]
   )
-
+  const markerLat = marker?.[0] ?? null
+  const markerLng = marker?.[1] ?? null
+  const containerRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<L.Map | null>(null)
+  // The map is created once, from the first render's view and interaction
+  // options; later changes move the view and the layers, not the map.
+  const initialRef = useRef({
+    center: marker ?? DEFAULT_CENTER,
+    zoom: marker ? 14 : 11,
+    readonly,
+  })
   function emit(lat: number, lng: number, name?: string) {
     // A point picked via map interaction should not auto-move/zoom the view
     skipRecenterRef.current = true
@@ -153,6 +99,110 @@ export default function LeafletMap({
       onChange?.({ ...base, address })
     )
   }
+
+  // Map event handlers outlive a render, so they call the latest emit.
+  const emitRef = useRef(emit)
+  useEffect(() => {
+    emitRef.current = emit
+  })
+
+  // Declared before every effect that uses the map, so the map exists by the
+  // time they run and is removed (with its layers) when the component goes.
+  useEffect(() => {
+    const { center, zoom, readonly: fixed } = initialRef.current
+    const map = L.map(containerRef.current!, {
+      center,
+      zoom,
+      scrollWheelZoom: !fixed,
+      dragging: !fixed,
+      doubleClickZoom: !fixed,
+      zoomControl: false,
+    })
+    mapRef.current = map
+    return () => {
+      mapRef.current = null
+      map.remove()
+    }
+  }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || readonly) return
+    const control = L.control.zoom({ position: "topright" }).addTo(map)
+    return () => {
+      control.remove()
+    }
+  }, [readonly])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const layer = L.tileLayer(tileUrl, { attribution }).addTo(map)
+    return () => {
+      layer.remove()
+    }
+  }, [tileUrl, attribution])
+
+  // Map click → pick a point
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || readonly) return
+    const pick = (e: L.LeafletMouseEvent) =>
+      emitRef.current(e.latlng.lat, e.latlng.lng)
+    map.on("click", pick)
+    return () => {
+      map.off("click", pick)
+    }
+  }, [readonly])
+
+  // When no point is picked, use the browser geolocation API to center on the
+  // user's current location (first time only, fails silently)
+  const locateEnabled = geolocate && !readonly && !marker
+  const locatedRef = useRef(false)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || locatedRef.current || !locateEnabled) return
+    if (typeof navigator === "undefined" || !navigator.geolocation) return
+    locatedRef.current = true
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        mapRef.current?.setView(
+          [pos.coords.latitude, pos.coords.longitude],
+          14
+        ),
+      () => {},
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
+    )
+  }, [locateEnabled])
+
+  // Only recenter the view when the value change comes from outside the map
+  // (search / external set). Don't move the view when the user clicks or drags
+  // to pick a point on the map (forcing zoom/pan would be a poor experience).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || markerLat == null || markerLng == null) return
+    if (skipRecenterRef.current) {
+      skipRecenterRef.current = false
+      return
+    }
+    map.setView([markerLat, markerLng], Math.max(map.getZoom(), 14))
+  }, [markerLat, markerLng])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || markerLat == null || markerLng == null) return
+    const pin = L.marker([markerLat, markerLng], {
+      icon: PIN_ICON,
+      draggable: !readonly,
+    }).addTo(map)
+    pin.on("dragend", () => {
+      const ll = pin.getLatLng()
+      emitRef.current(ll.lat, ll.lng)
+    })
+    return () => {
+      pin.remove()
+    }
+  }, [markerLat, markerLng, readonly])
 
   // Search (Nominatim, free and key-less, debounced)
   useEffect(() => {
@@ -246,38 +296,11 @@ export default function LeafletMap({
         </div>
       )}
 
-      <MapContainer
-        center={marker ?? DEFAULT_CENTER}
-        zoom={marker ? 14 : 11}
-        scrollWheelZoom={!readonly}
-        dragging={!readonly}
-        doubleClickZoom={!readonly}
-        zoomControl={false}
-        className={cn("size-full", readonly && "pointer-events-none")}
-      >
-        {!readonly && <ZoomControl position="topright" />}
-        <TileLayer url={tileUrl} attribution={attribution} />
-        <ClickHandler readonly={readonly} onPick={emit} />
-        <Locate enabled={geolocate && !readonly && !marker} />
-        <Recenter
-          lat={marker?.[0] ?? null}
-          lng={marker?.[1] ?? null}
-          skipRef={skipRecenterRef}
-        />
-        {marker && (
-          <Marker
-            position={marker}
-            icon={PIN_ICON}
-            draggable={!readonly}
-            eventHandlers={{
-              dragend(e) {
-                const ll = (e.target as L.Marker).getLatLng()
-                emit(ll.lat, ll.lng)
-              },
-            }}
-          />
-        )}
-      </MapContainer>
+      {/* Leaflet adds its own classes to the element it is given, so that one
+          has a class React never rewrites; the readonly state is set around it. */}
+      <div className={cn("size-full", readonly && "pointer-events-none")}>
+        <div ref={containerRef} className="size-full" />
+      </div>
     </div>
   )
 }

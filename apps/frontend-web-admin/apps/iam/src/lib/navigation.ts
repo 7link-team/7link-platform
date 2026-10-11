@@ -67,6 +67,20 @@ export function tenantPerspectiveOffered(
   return !(tenantStanding === false && anEntityAdmitsCaller)
 }
 
+// tenantStanding reads one tenant-level permission lookup as standing in that
+// tenant: any code is standing and none is its absence. A lookup that failed is
+// no answer at all, which tenantPerspectiveOffered reads as withholding nothing
+// -- the same rule by which a failed lookup moves nobody on entering a tenant.
+export async function tenantStanding(
+  lookup: Promise<readonly string[] | null>
+): Promise<boolean | null> {
+  try {
+    return ((await lookup) ?? []).length > 0
+  } catch {
+    return null
+  }
+}
+
 // entityWorkspaceView says which view entering an entity lands on. The overview
 // reads the entity record itself, which is tenant-wide entity administration:
 // without that permission the page is a single refusal, so an account that

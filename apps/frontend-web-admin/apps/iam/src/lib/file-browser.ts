@@ -389,7 +389,7 @@ export type DroppedDataTransferItem = {
 
 export type DropLimits = { maxDepth?: number; maxEntries?: number }
 
-const fileID = /^[1-9][0-9]*$/
+export const fileID = /^[1-9][0-9]*$/
 
 export async function parseDroppedEntries(
   items: readonly DroppedDataTransferItem[],

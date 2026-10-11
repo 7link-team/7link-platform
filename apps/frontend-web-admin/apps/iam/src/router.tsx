@@ -3,7 +3,9 @@ import { AuthProvider } from "./components/auth-provider"
 import { PendingRoute } from "./components/pending-route"
 import { RouteError } from "./components/route-error"
 import { authEntrances, entrancePath } from "./lib/auth-entrance"
-import { legacyRouteLoader, workspaceHomeLoader,
+import {
+  legacyRouteLoader,
+  workspaceHomeLoader,
   tenantWorkspaceLoader,
 } from "./route-loaders"
 

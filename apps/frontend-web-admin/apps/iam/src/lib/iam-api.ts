@@ -2054,19 +2054,6 @@ export function createIamApi(
           },
         })
       ),
-    trashedFiles: (entityID?: string | null, after = "", system = false) =>
-      request<FilePage>(
-        fileCollectionRoute(
-          entityID,
-          "get",
-          {
-            limit: 100,
-            state: "trashed",
-            after: after || undefined,
-          },
-          system
-        )
-      ),
     createSystemFileRoot: () => {
       const body = new FormData()
       body.set("kind", "directory")
@@ -3004,11 +2991,17 @@ export function createIamApi(
       ),
     // The entities this caller may act in, as opposed to the ones it may
     // administer. Somebody bound to a single entity has the first and not the
-    // second, and the listing above answers only the second.
-    memberEntities: async (permission: string) =>
+    // second, and the listing above answers only the second. A caller that
+    // already knows which tenant it is asking about names it: the selected
+    // tenant follows the address bar, which still shows the previous tenant
+    // while a route loader decides where the next one lands.
+    memberEntities: async (permission: string, tenant?: string) =>
       request<Entity[]>(
         apiRoute("get", "/tenants/{tenant_id}/principals/{principal_id}/entities", {
-          path: { tenant_id: tenantID(), principal_id: await principalID() },
+          path: {
+            tenant_id: tenant || tenantID(),
+            principal_id: await principalID(),
+          },
           query: { permission },
         })
       ),

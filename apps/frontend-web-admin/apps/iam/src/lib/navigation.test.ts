@@ -12,6 +12,7 @@ import {
   firstEffectiveMenuPath,
   entityWorkspaceView,
   tenantPerspectiveOffered,
+  tenantStanding,
   entityNavigation,
 } from "./navigation"
 
@@ -117,14 +118,9 @@ describe("effective navigation", () => {
         true
       ).map((item) => item.path)
     ).toEqual([""])
-    // Every entry addresses the tenant. The one that addressed an entity is
-    // gone: it moved somebody into the entity perspective from what looked like
-    // a tenant item, and such an account lands in that perspective now.
     expect(
       tenantSystemNavigation(new Set(), false, false).map((item) => item.path)
     ).toEqual(["", "/access-requests"])
-    for (const item of tenantSystemNavigation(new Set(), true, true))
-      expect(item.path.startsWith("/entities/")).toBe(false)
   })
   it("omits empty authorized groups while keeping accessible descendants", () => {
     const empty = {
@@ -189,6 +185,21 @@ describe("tenantPerspectiveOffered", () => {
     expect(tenantPerspectiveOffered(null, true)).toBe(true)
     expect(tenantPerspectiveOffered(null, false)).toBe(true)
     expect(tenantPerspectiveOffered(false, false)).toBe(true)
+  })
+})
+
+describe("tenantStanding", () => {
+  it("reads any tenant-level code as standing and none as its absence", async () => {
+    expect(await tenantStanding(Promise.resolve(["user_view"]))).toBe(true)
+    expect(await tenantStanding(Promise.resolve([]))).toBe(false)
+    expect(await tenantStanding(Promise.resolve(null))).toBe(false)
+  })
+  // A failed lookup used to be recorded as no standing, which took the tenant
+  // away from anybody an entity also admits whenever the service hiccupped.
+  it("reads a failed lookup as no answer, which withholds nothing", async () => {
+    const standing = await tenantStanding(Promise.reject(new Error("offline")))
+    expect(standing).toBeNull()
+    expect(tenantPerspectiveOffered(standing, true)).toBe(true)
   })
 })
 

@@ -51,18 +51,23 @@ export function legacyRouteLoader({ request }: LoaderFunctionArgs) {
 // named permission. An account with any tenant standing keeps the tenant
 // perspective, and one the service cannot answer for keeps it too -- a failed
 // lookup must not move anybody.
+//
+// Both lookups name the tenant. A loader runs before the navigation commits, so
+// the address bar -- which the selected tenant follows -- still shows wherever
+// the caller is leaving, another tenant or a platform.
 async function entityWorkspacePath(tenantID: string): Promise<string> {
   if (!tenantID) return ""
-  const none: { id: string }[] = []
+  const none: { id: string; status: string }[] = []
   const [tenantPermissions, entities] = await Promise.all([
     iamApi.myPermissions(tenantID).catch(() => ["unknown"]),
-    iamApi.memberEntities("file_view").catch(() => none),
+    iamApi.memberEntities("file_view", tenantID).catch(() => none),
   ])
   if ((tenantPermissions ?? []).length > 0) return ""
-  // The same listing the switcher offers, so the two name the same entity, and
-  // the files view because an account with no tenant standing has no tenant-wide
-  // entity administration either -- the overview would be one refusal.
-  const entity = entities[0]
+  // The same listing the switcher offers, filtered the way it filters, so the
+  // two name the same entity; and the files view because an account with no
+  // tenant standing has no tenant-wide entity administration either -- the
+  // overview would be one refusal.
+  const entity = entities.find((candidate) => candidate.status === "active")
   if (!entity) return ""
   return `/admin/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entity.id)}/${entityWorkspaceView(tenantPermissions ?? [])}`
 }

@@ -15,7 +15,6 @@ import { Label } from "@workspace/ui/components/label"
 import { SimpleSelect } from "@workspace/ui/components/select"
 import {
   ApiError,
-  businessCode,
   getTenant,
   iamApi,
   setTenant,
@@ -33,7 +32,7 @@ import {
   prefillDevLoginAccount,
   type DevLoginAccount,
 } from "../../lib/dev-login-accounts"
-import { useAuth } from "../../components/auth"
+import { loginError, useAuth } from "../../components/auth"
 import { SessionVerification } from "../../components/session-verification"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { AuthEntranceLinks } from "../../components/auth-entrance-links"
@@ -174,8 +173,8 @@ export default function LoginPage() {
           : { type: captcha!.type, id: captcha!.captcha_id, answer }
       )
       setPhone(typed)
-    } catch {
-      setError(t("identityUnavailable"))
+    } catch (cause) {
+      setError(t(loginError(cause)))
     } finally {
       refreshCaptcha()
       setBusy(false)
@@ -195,11 +194,7 @@ export default function LoginPage() {
       )
       if (result.status === "mfa_required") setChallenge(result)
     } catch (cause) {
-      setError(
-        cause instanceof ApiError && cause.status === 401
-          ? t("invalidPhoneCode")
-          : t("identityUnavailable")
-      )
+      setError(t(loginError(cause, "invalidPhoneCode")))
     } finally {
       setBusy(false)
     }
@@ -238,11 +233,7 @@ export default function LoginPage() {
         String(data.get("code") ?? "").trim()
       )
     } catch (cause) {
-      setError(
-        cause instanceof ApiError && cause.status === 401
-          ? t("invalidChallenge")
-          : t("identityUnavailable")
-      )
+      setError(t(loginError(cause, "invalidChallenge")))
     } finally {
       setBusy(false)
     }
@@ -885,15 +876,4 @@ function FormError({ error }: { error: string }) {
       {t.has(error) ? t(error) : error}
     </p>
   ) : null
-}
-
-function loginError(cause: unknown): string {
-  if (!(cause instanceof ApiError)) return "identityUnavailable"
-  if (cause.status === 401) return "invalidCredentials"
-  // A rejected challenge arrives as 422 with its own code. Without this it
-  // would read as "identity unavailable" and send the person away from a form
-  // that only needed the image typed again.
-  if (cause.businessCode === businessCode.captchaInvalid)
-    return "invalidCaptcha"
-  return "identityUnavailable"
 }

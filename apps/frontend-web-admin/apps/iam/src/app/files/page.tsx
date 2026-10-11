@@ -17,23 +17,19 @@ import {
   type FileBrowserProps,
 } from "../../components/file-browser"
 import {
-  fileBrowserChildren,
-  fileBrowserEntries,
-  fileBrowserRoots,
-  mergeFileCollectionPages,
   materializeDroppedEntries,
   parentFileBrowserDirectoryID,
   type FileBrowserLocation,
   type FileBrowserNode,
   type FileBrowserRoot,
 } from "../../lib/file-browser"
+import { fileBrowserViewLoader } from "../../lib/file-collections"
 import {
   ApiError,
   businessCode,
   clientErrorMessage,
   iamApi,
   type FileOperationInput,
-  type FilePage,
 } from "../../lib/iam-api"
 import {
   confirmedFileOperation,
@@ -136,6 +132,7 @@ export default function FilesPage({
     message: string
   } | null>(null)
   const generation = useRef(0)
+  const [loadView] = useState(() => fileBrowserViewLoader())
   const operationAttempt = useRef<{
     identity: string
     idempotencyKey: string
@@ -179,6 +176,17 @@ export default function FilesPage({
       : state.requestKey === requestKey
         ? state
         : emptyState
+  // Owner names come from the shell and are applied here rather than when the
+  // collections are read: a name arriving is not a reason to read them again.
+  const ownerNames: Record<string, string | undefined> = {
+    ...(tenantID && tenantName ? { [tenantID]: tenantName } : {}),
+    ...entityNames,
+  }
+  const roots = visibleState.roots.map((root) =>
+    root.ownerName || !ownerNames[root.ownerID]
+      ? root
+      : { ...root, ownerName: ownerNames[root.ownerID] }
+  )
   const currentDirectoryID = visibleState.path.at(-1)?.id ?? null
   const directoryBackTarget =
     visibleDirectoryBack.at(-1) ??
@@ -188,123 +196,23 @@ export default function FilesPage({
     const request = ++generation.current
     let active = true
     if (!account && !system && !tenantID) return
-    const loadCollections = async () => {
-      if (account || system)
-        return {
-          rootPages: [await iamApi.files(fileEntityID, "", system)],
-          names: {},
-          trash: recycleBin
-            ? await iamApi.trashedFiles(fileEntityID, pageAfter, system)
-            : null,
-        }
-      const [entities, departments] = await Promise.all([
-        entityID ? Promise.resolve([]) : iamApi.memberEntities("file_view"),
-        canViewDepartments ? iamApi.departments() : Promise.resolve([]),
-      ])
-      const visibleDepartments = departments.filter(
-        (department) => !entityID || department.entity_id === entityID
-      )
-      const entityIDs = entityID
-        ? [entityID]
-        : entities.map((entity) => entity.id)
-      const collections = [
-        ...(!entityID
-          ? [
-              (after: string, state: "active" | "trashed") =>
-                iamApi.files(undefined, after, false, state),
-            ]
-          : []),
-        ...entityIDs.map(
-          (id) => (after: string, state: "active" | "trashed") =>
-            iamApi.files(id, after, false, state)
-        ),
-        ...visibleDepartments.map(
-          (department) => (after: string, state: "active" | "trashed") =>
-            iamApi
-              .departmentFiles(department.id, after, state)
-              .catch((cause: unknown): FilePage => {
-                // Department names may be visible without file access to that owner.
-                if (cause instanceof ApiError && cause.status === 403)
-                  return { items: [] }
-                throw cause
-              })
-        ),
-      ]
-      const rootPages = await Promise.all(
-        collections.map(async (load) => {
-          const pages: FilePage[] = []
-          let after = ""
-          do {
-            const page = await load(after, "active")
-            pages.push(page)
-            if (
-              page.next_after &&
-              BigInt(page.next_after) <= BigInt(after || "0")
-            )
-              throw new Error("invalid_response")
-            after = page.next_after ?? ""
-          } while (after)
-          return pages
-        })
-      )
-      return {
-        rootPages: rootPages.flat(),
-        names: Object.fromEntries(
-          [...entities, ...visibleDepartments].map((owner) => [
-            owner.id,
-            owner.name,
-          ])
-        ),
-        trash: recycleBin
-          ? mergeFileCollectionPages(
-              await Promise.all(
-                collections.map((load) => load(pageAfter, "trashed"))
-              )
-            )
-          : null,
-      }
-    }
-    void loadCollections()
-      .then(async ({ rootPages, names, trash: trashPage }) => {
-        const roots = rootPages.flatMap((rootPage) =>
-          fileBrowserRoots(rootPage, {
-            ...(tenantID && tenantName ? { [tenantID]: tenantName } : {}),
-            ...(entityNames ?? {}),
-            ...names,
-          })
-        )
-        if (recycleBin) {
-          const trash = fileBrowserEntries(trashPage!)
-          if (!active || request !== generation.current) return
-          currentNodeID.current = null
-          setState({
-            requestKey,
-            roots,
-            path: [],
-            ...trash,
-            status: "ready",
-          })
-          return
-        }
-        const selectedID = selectedNodeID ?? roots[0]?.id ?? null
-        if (!selectedID) {
-          if (active && request === generation.current) {
-            currentNodeID.current = null
-            setState({
-              ...emptyState,
-              requestKey,
-              roots,
-              status: "ready",
-            })
-          }
-          return
-        }
-        const children = fileBrowserChildren(
-          await iamApi.fileItems(fileEntityID, selectedID, pageAfter)
-        )
+    void loadView(
+      {
+        account,
+        system,
+        tenantID,
+        entityID,
+        canViewDepartments,
+        recycleBin,
+        reload,
+      },
+      selectedNodeID,
+      pageAfter
+    )
+      .then(({ directoryID, ...view }) => {
         if (!active || request !== generation.current) return
-        currentNodeID.current = selectedID
-        setState({ requestKey, roots, ...children, status: "ready" })
+        currentNodeID.current = directoryID
+        setState({ requestKey, ...view, status: "ready" })
       })
       .catch((cause: unknown) => {
         if (!active || request !== generation.current) return
@@ -319,14 +227,12 @@ export default function FilesPage({
       active = false
     }
   }, [
+    loadView,
     account,
     system,
     canViewDepartments,
     tenantID,
-    tenantName,
     entityID,
-    entityNames,
-    fileEntityID,
     selectedNodeID,
     recycleBin,
     pageAfter,
@@ -526,7 +432,7 @@ export default function FilesPage({
   return (
     <>
       <FileBrowser
-        roots={visibleState.roots}
+        roots={roots}
         path={visibleState.path}
         nodes={visibleState.nodes}
         status={visibleState.status}

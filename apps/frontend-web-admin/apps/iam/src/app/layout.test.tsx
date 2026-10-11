@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { spawnSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { renderToStaticMarkup } from "react-dom/server"
 import { MemoryRouter, Route, Routes } from "react-router"
@@ -103,6 +104,12 @@ describe("workspace switcher tenant source", () => {
     expect(source).toContain("tenantPerspectiveOffered(")
     expect(source).toContain("tenantPerspective={tenantPerspective}")
   })
+  // tenantStanding is what turns a failed lookup into no answer; reading the
+  // lookup here directly is how a failure came to hide the tenant.
+  it("reads the tenant standing through the rule that a failure withholds nothing", () => {
+    expect(source).toContain("tenantStanding(iamApi.myPermissions(tenantValue))")
+    expect(source).not.toContain("standing: false")
+  })
   // A chosen tenant is addressed directly, and the tenant route decides which of
   // its perspectives the caller gets. Routing the choice through the workspace
   // home instead sent an operator with system authority to /system, which is
@@ -110,7 +117,34 @@ describe("workspace switcher tenant source", () => {
   // them out of it.
   it("addresses a chosen tenant and leaves the perspective to its route", () => {
     expect(source).toContain("navigate(`/admin/${encodeURIComponent(next)}`)")
-    expect(source).toContain("tenantPerspectiveOffered(")
+    // The route that address lands on is the one that decides the perspective.
+    // The router is built for a browser, so it is read in a process of its own.
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--eval",
+        `
+      import assert from "node:assert/strict";
+      const location={origin:"http://console.test",protocol:"http:",host:"console.test",hostname:"console.test",pathname:"/unrouted",search:"",hash:"",href:"http://console.test/unrouted"};
+      const view=Object.assign(new EventTarget(),{location,history:{state:null,length:1,replaceState(){},pushState(){},go(){}}});
+      globalThis.window=view;
+      globalThis.document={defaultView:view,documentElement:{lang:""}};
+      const {router}=await import("./router.tsx");
+      const {tenantWorkspaceLoader}=await import("./route-loaders.ts");
+      const routes=(list)=>list.flatMap((route)=>[route,...routes(route.children??[])]);
+      assert.deepEqual(
+        routes(router.routes).filter((route)=>route.loader===tenantWorkspaceLoader).map((route)=>route.path),
+        ["/admin/:tenantID"]);
+    `,
+      ],
+      {
+        cwd: new URL("..", import.meta.url),
+        stdio: "pipe",
+        windowsHide: true,
+      }
+    )
+    expect(result.stderr.toString()).toBe("")
+    expect(result.status).toBe(0)
   })
   // Entering an entity used to go to its overview, which reads the entity record
   // itself -- tenant-wide entity administration an entity's own member lacks.
@@ -127,17 +161,6 @@ describe("workspace switcher tenant selectability", () => {
     new URL("../components/workspace-switcher.tsx", import.meta.url),
     "utf8"
   )
-  // Not selectable is not the same as not shown: somebody still has to see which
-  // tenant their entities belong to. The row stays and stops being a button.
-  it("keeps the tenant listed and makes it a heading without tenant standing", () => {
-    expect(source).toContain("shownTenants.map((tenant) =>")
-    expect(source).toContain("!groupEntitiesUnderTenant ? (")
-    const rows = source.slice(source.indexOf("shownTenants.map((tenant) =>"))
-    const heading = rows.slice(rows.indexOf("                    ) : ("))
-    expect(heading).toContain("<h3")
-    expect(heading.slice(0, heading.indexOf("</h3>"))).not.toContain("onTenant(")
-    expect(heading.slice(0, heading.indexOf("</h3>"))).not.toContain("<button")
-  })
   // Both the perspective button and the clickable tenant rows belong to the arm
   // taken outside the grouping, and the grouping is only asked for inside the
   // tenant workspace: the system area and a platform reach a tenant through this

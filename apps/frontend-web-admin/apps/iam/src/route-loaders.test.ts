@@ -81,7 +81,7 @@ it("sends the console home to the view the caller can use", () => {
     // perspective, not the tenant's: the tenant shell is for somebody who
     // administers the tenant.
     assert.equal(
-      await home({memberships:[active("7")],entities:{file_view:[{id:"6"}]}},"7"),
+      await home({memberships:[active("7")],entities:{file_view:[{id:"6",status:"active"}]}},"7"),
       "/admin/7/entities/6/files");
     // Any standing at tenant level keeps the tenant perspective, even for
     // somebody who also administers an entity.
@@ -104,6 +104,75 @@ it("sends the console home to the view the caller can use", () => {
       assert.equal((await workspaceHomeLoader()).headers.get("Location"),path);
       await exitAccountView();
     }
+  `,
+    ],
+    { cwd: import.meta.dir, stdio: "pipe", windowsHide: true }
+  )
+  expect(result.stderr.toString()).toBe("")
+  expect(result.status).toBe(0)
+})
+
+// Entering a tenant decides its perspective before the navigation commits, so
+// everything this loader asks has to name the tenant being entered rather than
+// follow the address bar, which still shows the tenant or platform being left.
+it("decides the perspective of the tenant being entered", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--eval",
+      `
+    import assert from "node:assert/strict";
+    const saved=new Map();
+    globalThis.sessionStorage={getItem:key=>saved.get(key)??null,setItem:(key,value)=>saved.set(key,value)};
+    globalThis.window=Object.assign(new EventTarget(),{location:{origin:"http://console.test",pathname:"/"},close(){}});
+    const {tenantWorkspaceLoader}=await import("./route-loaders.ts");
+    const {iamApi}=await import("./lib/iam-api.ts");
+    let access;
+    const asked=[];
+    globalThis.fetch=async(input)=>{
+      const url=new URL(String(input),"http://console.test");
+      if(url.pathname.endsWith("/me"))return Response.json({code:0,data:{subject:"9"}});
+      const entities=url.pathname.match(/^.api.tenants.([0-9]+).principals.9.entities$/);
+      if(entities){
+        asked.push(entities[1]);
+        return Response.json({code:0,data:access.entities});
+      }
+      return new Response(null,{status:404});
+    };
+    iamApi.myPermissions=async(tenant)=>{
+      assert.equal(tenant,access.tenant);
+      if(access.fail)throw new Error("offline");
+      return access.permissions;
+    };
+    const enter=async(tenant,next,from="/")=>{
+      access={tenant,permissions:[],entities:[],...next};
+      asked.length=0;
+      window.location.pathname=from;
+      const result=await tenantWorkspaceLoader({params:{tenantID:tenant}});
+      return result?.headers.get("Location")??null;
+    };
+    const active=(id)=>({id,name:"Entity "+id,status:"active"});
+    // Any standing at tenant level keeps the tenant's own perspective.
+    assert.equal(await enter("2",{permissions:["user_view"],entities:[active("5")]}),null);
+    // Nothing at tenant level and an entity that admits the caller.
+    assert.equal(await enter("2",{entities:[active("5")]}),"/admin/2/entities/5/files");
+    // The switcher offers only active entities, so the loader lands in one.
+    assert.equal(
+      await enter("2",{entities:[{id:"4",name:"Old",status:"suspended"},active("5")]}),
+      "/admin/2/entities/5/files");
+    assert.equal(await enter("2",{entities:[{id:"4",name:"Old",status:"suspended"}]}),null);
+    // A failed lookup moves nobody.
+    assert.equal(await enter("2",{fail:true,entities:[active("5")]}),null);
+    // Leaving another tenant or a platform: the entity listing still asks about
+    // the tenant being entered.
+    assert.equal(
+      await enter("2",{entities:[active("5")]},"/admin/1/users"),
+      "/admin/2/entities/5/files");
+    assert.deepEqual(asked,["2"]);
+    assert.equal(
+      await enter("2",{entities:[active("5")]},"/platform/123/roles"),
+      "/admin/2/entities/5/files");
+    assert.deepEqual(asked,["2"]);
   `,
     ],
     { cwd: import.meta.dir, stdio: "pipe", windowsHide: true }

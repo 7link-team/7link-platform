@@ -574,24 +574,84 @@ describe("file browser presentation", () => {
   })
 })
 
-
 describe("organization file collection pagination", () => {
-  const entry = (id: string) => ({ id, name: id, kind: "directory", revision: 1, updated_at: "2026-10-09T00:00:00Z" })
+  const entry = (id: string) => ({
+    id,
+    name: id,
+    kind: "directory",
+    revision: 1,
+    updated_at: "2026-10-09T00:00:00Z",
+  })
   it("merges independent owner pages in file-ID order without duplicates", () => {
-    expect(mergeFileCollectionPages([{ items: [entry("9"), entry("2")] }, { items: [entry("2"), entry("4")] }]).items?.map(item => item.id)).toEqual(["2", "4", "9"])
+    expect(
+      mergeFileCollectionPages([
+        { items: [entry("9"), entry("2")] },
+        { items: [entry("2"), entry("4")] },
+      ]).items?.map((item) => item.id)
+    ).toEqual(["2", "4", "9"])
   })
   it("stops at the earliest incomplete scan, even when that scan has no visible rows", () => {
-    const result = mergeFileCollectionPages([{ items: [], next_after: "5" }, { items: [entry("3"), entry("8")], next_after: "10" }])
-    expect(result.items?.map(item => item.id)).toEqual(["3"])
+    const result = mergeFileCollectionPages([
+      { items: [], next_after: "5" },
+      { items: [entry("3"), entry("8")], next_after: "10" },
+    ])
+    expect(result.items?.map((item) => item.id)).toEqual(["3"])
     expect(result.next_after).toBe("5")
   })
   it("keeps a merged page bounded without rounding snowflake IDs", () => {
     const start = 90071992547409930n
-    const result = mergeFileCollectionPages([{ items: Array.from({ length: 60 }, (_, i) => entry(String(start + BigInt(i)))) }, { items: Array.from({ length: 60 }, (_, i) => entry(String(start + 60n + BigInt(i)))) }])
+    const result = mergeFileCollectionPages([
+      {
+        items: Array.from({ length: 60 }, (_, i) =>
+          entry(String(start + BigInt(i)))
+        ),
+      },
+      {
+        items: Array.from({ length: 60 }, (_, i) =>
+          entry(String(start + 60n + BigInt(i)))
+        ),
+      },
+    ])
     expect(result.items?.length).toBe(100)
     expect(result.next_after).toBe(String(start + 99n))
   })
+  // A cursor is the last file ID a scan has covered, so a row with exactly that
+  // ID belongs to this page; the next page starts after it.
+  it("keeps the row whose ID is the boundary cursor on this page", () => {
+    const result = mergeFileCollectionPages([
+      { items: [entry("3"), entry("5")], next_after: "5" },
+      { items: [entry("7")] },
+    ])
+    expect(result.items?.map((item) => item.id)).toEqual(["3", "5"])
+    expect(result.next_after).toBe("5")
+  })
+  it("returns every row exactly once when the cursor is fed back", () => {
+    const limit = 3
+    const collection = (ids: number[]) => (after: string) => {
+      const rest = ids.filter((id) => id > Number(after || "0"))
+      const items = rest.slice(0, limit)
+      return {
+        items: items.map((id) => entry(String(id))),
+        ...(rest.length > limit ? { next_after: String(items.at(-1)) } : {}),
+      }
+    }
+    const collections = [
+      collection([2, 4, 6, 8, 10]),
+      collection([1, 3, 4, 5, 11]),
+    ]
+    const first = mergeFileCollectionPages(collections.map((load) => load("")))
+    expect(first.next_after).toBeDefined()
+    const second = mergeFileCollectionPages(
+      collections.map((load) => load(first.next_after!))
+    )
+    expect(second.next_after).toBeUndefined()
+    expect(
+      [...(first.items ?? []), ...(second.items ?? [])].map((item) => item.id)
+    ).toEqual(["1", "2", "3", "4", "5", "6", "8", "10", "11"])
+  })
   it("rejects malformed owner results rather than silently hiding them", () => {
-    expect(() => mergeFileCollectionPages([{ items: [entry("bad")] }])).toThrow("invalid_response")
+    expect(() => mergeFileCollectionPages([{ items: [entry("bad")] }])).toThrow(
+      "invalid_response"
+    )
   })
 })

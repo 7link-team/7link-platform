@@ -1,5 +1,10 @@
 import { createContext, useContext } from "react"
-import { ApiError, type LoginResult, type Session } from "../lib/iam-api"
+import {
+  ApiError,
+  businessCode,
+  type LoginResult,
+  type Session,
+} from "../lib/iam-api"
 
 export type AuthStatus = "loading" | "authenticated" | "anonymous" | "error"
 
@@ -7,6 +12,23 @@ export function sessionFailureStatus(cause: unknown): "anonymous" | "error" {
   return cause instanceof ApiError && cause.status === 401
     ? "anonymous"
     : "error"
+}
+
+// loginError names the message for a failed sign-in step. Each step says what
+// an unauthorized answer means for it -- a wrong password, a wrong code, an
+// expired challenge -- and shares the rest.
+export function loginError(
+  cause: unknown,
+  unauthorized = "invalidCredentials"
+): string {
+  if (!(cause instanceof ApiError)) return "identityUnavailable"
+  if (cause.status === 401) return unauthorized
+  // A rejected challenge arrives as 422 with its own code. Without this it
+  // would read as "identity unavailable" and send the person away from a form
+  // that only needed the image typed again.
+  if (cause.businessCode === businessCode.captchaInvalid)
+    return "invalidCaptcha"
+  return "identityUnavailable"
 }
 
 export interface AuthContextValue {
