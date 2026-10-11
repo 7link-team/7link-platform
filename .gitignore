@@ -1,7 +1,11 @@
 *
 
+!.agents
+!.agents/**
 !.claude
 !.claude/**
+# A per-clone link to .agents/skills; see `make skills-link`.
+/.claude/skills
 
 !/apps
 !/apps/**
@@ -10,3 +14,4 @@
 !/.gitignore
 !/Makefile
 !/*.md
+!/*.json
