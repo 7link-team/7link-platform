@@ -218,10 +218,36 @@ func ShutdownPostgres() error {
 		postgresServer = nil
 	}
 	if postgresRoot != "" {
-		stopErr = errors.Join(stopErr, os.RemoveAll(postgresRoot))
+		stopErr = errors.Join(stopErr, removeEventually(postgresRoot, os.RemoveAll, time.Sleep))
 		postgresRoot = ""
 	}
 	return stopErr
+}
+
+// postgresRemoveBudget bounds how long ShutdownPostgres waits for the data
+// directory to become removable.
+const postgresRemoveBudget = 10 * time.Second
+
+// removeEventually removes path, retrying with a doubling delay until the
+// budget is spent. Stop returns once the server has shut down, but on Windows
+// its child processes can still hold the extracted binaries and libraries for a
+// moment, and removing an open file there is refused. A directory that is still
+// refused after the budget is reported with the last error, not ignored.
+func removeEventually(path string, remove func(string) error, sleep func(time.Duration)) error {
+	delay := 100 * time.Millisecond
+	var waited time.Duration
+	for {
+		err := remove(path)
+		if err == nil {
+			return nil
+		}
+		if waited >= postgresRemoveBudget {
+			return fmt.Errorf("remove %s after waiting %s: %w", path, waited, err)
+		}
+		sleep(delay)
+		waited += delay
+		delay = min(delay*2, 2*time.Second)
+	}
 }
 
 // OpenSQLite opens an isolated file-backed SQLite database with foreign keys

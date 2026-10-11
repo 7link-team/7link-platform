@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/mysql"
@@ -101,4 +102,59 @@ func TestPostgresPortConflictClassification(t *testing.T) {
 			require.Equal(t, tt.want, isPostgresPortConflict(tt.err))
 		})
 	}
+}
+
+// flakyRemover refuses the first failures calls, the way Windows refuses to
+// delete a library a just-stopped process still holds open.
+type flakyRemover struct {
+	failures int
+	calls    int
+	slept    []time.Duration
+}
+
+var errFileInUse = errors.New("unlinkat icudt67.dll: Access is denied")
+
+func (r *flakyRemover) remove(string) error {
+	r.calls++
+	if r.calls <= r.failures {
+		return errFileInUse
+	}
+	return nil
+}
+
+func (r *flakyRemover) sleep(delay time.Duration) { r.slept = append(r.slept, delay) }
+
+func (r *flakyRemover) waited() time.Duration {
+	var total time.Duration
+	for _, delay := range r.slept {
+		total += delay
+	}
+	return total
+}
+
+func TestRemoveEventuallyRemovesAtOnceWhenNothingHoldsTheDirectory(t *testing.T) {
+	remover := &flakyRemover{}
+	require.NoError(t, removeEventually("root", remover.remove, remover.sleep))
+	require.Equal(t, 1, remover.calls)
+	require.Empty(t, remover.slept, "a removable directory is not waited on")
+}
+
+func TestRemoveEventuallyRetriesWithDoublingDelayUntilReleased(t *testing.T) {
+	remover := &flakyRemover{failures: 3}
+	require.NoError(t, removeEventually("root", remover.remove, remover.sleep))
+	require.Equal(t, 4, remover.calls)
+	require.Equal(t, []time.Duration{100 * time.Millisecond, 200 * time.Millisecond, 400 * time.Millisecond}, remover.slept)
+}
+
+func TestRemoveEventuallyReportsADirectoryThatStaysHeld(t *testing.T) {
+	remover := &flakyRemover{failures: 1 << 30}
+	err := removeEventually("root", remover.remove, remover.sleep)
+	require.ErrorIs(t, err, errFileInUse, "the refusal is returned, not swallowed")
+	require.ErrorContains(t, err, "root")
+	require.GreaterOrEqual(t, remover.waited(), postgresRemoveBudget, "it waits out the whole budget")
+	require.Less(t, remover.waited(), postgresRemoveBudget+2*time.Second, "and not much beyond it")
+	for _, delay := range remover.slept {
+		require.LessOrEqual(t, delay, 2*time.Second, "no single wait exceeds the cap")
+	}
+	require.Equal(t, len(remover.slept)+1, remover.calls, "every wait is followed by another attempt")
 }
