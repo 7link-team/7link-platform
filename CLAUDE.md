@@ -230,6 +230,8 @@ For the second kind, **give a recommendation and its reason, not a bare menu.** 
 
 **Workspace layout.** `apps/backend-api` is Go. `apps/frontend-web-admin` is a bun + Turborepo workspace (`apps/*` for deployables, `packages/*` for shared code). Run frontend checks from `apps/frontend-web-admin` — `bun run typecheck`, `bun run lint`, `bun run test` fan out to every package. Invoking `tsc` directly from the wrong directory emits `.js` beside the sources and pollutes the tree; if that happens, delete the output before staging.
 
+**Agent skills.** Skills live once, in `.agents/skills`, pinned by `skills-lock.json`. `.claude/skills` is a per-clone link to it and is never committed: run `make skills-link` once after cloning (a junction on Windows, a symlink elsewhere). Add or change a skill under `.agents/skills`, never through the link.
+
 **Windows execution.** Avoid visible command windows that disrupt other desktop applications. Agent `exec_command` calls on Windows use `tty: true` and `login: false` so commands run through ConPTY without profile startup. Node child-process launches use `windowsHide: true`; do not detach Windows test processes into a new console. Background `Start-Process` launches use `-WindowStyle Hidden`. If the user reports flashing windows, stop new launches and fix the execution path before resuming.
 
 **Line endings.** Every area is LF and `core.autocrlf` is `false`. `apps/backend-api` lists its file types; `apps/frontend-web-admin` declares `* text=auto eol=lf`, which also lets Git keep binary assets out of conversion. Confirm with `git ls-files --eol` rather than by eye — a byte dump of a file's first line is easy to misread, and writing CRLF into an LF tree turns a three-line change into a whole-file diff.
