@@ -4212,3 +4212,47 @@ weakening a test to make it pass, so it was not done. Regenerate on the referenc
 machine, and take the `plans` block from that run; the `benchmarks` block already
 in the file was captured on a quiet machine and is the one worth keeping.
 Status: IMPLEMENTED, baseline refresh OUTSTANDING.
+
+## D105 - Principal Deletion Stays Logical; Files Get No Erasure Path (2026-10-11)
+
+Decision: deleting a principal is the existing logical delete (suspension: status
+disabled, everything retained and restorable). Personal files follow it as-is: they are
+kept with the principal and are not trashed or purged by any erasure step. No file
+erasure is implemented. The existing anonymization feature is left untouched.
+Reason: user — "keep it simple: logical delete only, no erasure"; files must be
+consistent with personal data, and personal data is retained under logical delete.
+Supersedes the earlier same-day draft that trashed personal files on erasure.
+Status: accepted.
+
+## D106 - The PAT Ceiling Is Enforced On The Action, Not Only The Route (2026-10-11)
+
+Decision: a personal access token's permission list caps the file action the service
+layer authorizes (file_<action>), in addition to the route guard code. Route guards and
+the published contract are unchanged.
+Reason: PATCH /files/{file_id} is guarded by file_view but renames/restores, and
+file-operations is guarded by file_create but moves; a view-only PAT could change data
+(D35 says a PAT is an additional ceiling). Enforcing at the action covers the whole class.
+Alternatives: split routes by action (rejected: breaking API change); raise route guards
+(rejected: blocks principals holding rename/restore without update).
+Refinement: list, traverse and read are exempt from the ceiling because every file route
+performs them before its main action and the route guard the token must hold already
+bounds them; every other action requires file_<action> in the token. Copy therefore needs
+file_create (plus update/delete when it overwrites). Enforced once in
+nodeAuthorizer.accessMany.
+Status: accepted (user: fix all audit findings).
+
+## D107 - GUID Generation Requires An Authenticated Caller (2026-10-11)
+
+Decision: GET /guid and GET /guid/{count} remain (D84) but are no longer anonymous; the
+batch maximum drops from 10000 to 100. Supersedes the anonymous part of D84.
+Reason: anonymous callers could monopolise the shared ID generator every write uses.
+User chose "not public". Mechanism: pkg/extension/authz imports internal/infra/guid, so
+guid cannot import authz; guid declares a narrow RouteAuthenticator that core provides
+from its *authz.Registrar ((*Registrar).Authenticate, extracted from
+RegisterAuthenticated without behavior change). Without it the routes answer 503
+(fail closed). gRPC GuidService is out of scope. Status: accepted.
+
+## D108 - Map Rendering Uses Leaflet Directly (2026-10-11)
+
+Decision: replace react-leaflet / @react-leaflet/core (Hippocratic-2.1, not OSI) with
+leaflet's own API (BSD-2) in packages/ui. Reason: license; one consumer file. Status: accepted.

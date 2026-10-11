@@ -1,3 +1,44 @@
+## Fix all review + audit findings - 2026-10-11 (user: "全部修好")
+- Phase: IMPLEMENTATION (Hybrid: 5 subagents on disjoint files, main agent integrates).
+- Decisions: D105 erasure soft-deletes personal files; D106 PAT ceiling on file action; D107 /guid auth + max 100; D108 leaflet direct.
+- Units: A files+PAT (internal/files except module.go, pkg/extension/authn, authn/personal_token.go, identity erasure call);
+  B webhook reclaim/fences/fan-out cursor/metrics + files cleanup metric (files/module.go) + iam-alerts rules;
+  C observability/security misc (500 root-cause logging shared layer, audit-write warn logs, redaction keys, /guid, SAML key startup race);
+  D OpenAPI validity (headers, anonymous structs, webhook in OPENAPI_ARGS, spec lint in openapi-check) + Windows testdb teardown;
+  E frontend (switcher F1/F2/F4, files page effect split, loginError, trashedFiles dedupe, leaflet, prettier, tests).
+  Main afterwards: pkg->internal guid ID move + arch gate scope, toolchain go1.26.9 + x/net>=0.60, regenerate openapi/api-schema, full make ci + frontend checks.
+- Out of scope (not in presented list): env prefix, implicit config parse error, login normalization dedupe, tiptap dup, CGO pin, files cleanup scan cost, permission catalog dual track, ui dead code.
+- Progress: A-E DONE (all mutation-verified). D105 revised: logical delete only, files untouched (no code). D106 refinement + D107 mechanism recorded.
+  Main: openapi.json + api-schema.ts/api-routes.ts regenerated (webhook 5 ops, /guid auth max 100); toolchain go1.26.9, x/net v0.61.0 (crypto/sys/text/tools bumped) in root/tests/tools modules;
+  guid.ID moved to pkg/guid with alias in internal/infra/guid; new tests/architecture/layering_test.go (pkg !-> internal, cross-module storage ban for all internal modules); lint 0 issues.
+- Phase: ACCEPTANCE. Gates (2026-10-11): make ci all targets PASS (fmt, lint 0 issues, schema-lock, coverage 91.0% all modules >=90 min authn 90.2,
+  test-integration architecture/goose/testdb/lifecycle/migration/performance ok, build, openapi-check, frontend-contract-check); generate-check PASS; test-alerts SUCCESS;
+  frontend-check (api-types, lint, typecheck, test iam 204 + ui 86, build) PASS. layering gate mutation-verified.
+- test-mysql8-run PASS (2026-10-11, remote docker host 10.0.0.100, mysql 8.4): all gate tests incl. enforced performance thresholds; schema lock 255 files unchanged.
+  Gate script now also runs TestSpaceInitializationConcurrencyExternalDatabase (files) and new TestSAMLConcurrentFirstStartExternalDatabase. Remote host keeps 2 pre-existing Sept gate containers (not ours) and a cached alpine:3 image.
+- test-race PASS (2026-10-11): 84 packages ok, 0 data races (MSYS2 gcc present; earlier "needs cgo" claim was wrong).
+- test-redis-security PASS (plain + TLS; standalone/cluster/sentinel) on remote docker. MySQL-side mutation of the new concurrency tests not run (PG mutation done).
+- Committed locally on chaosplus (user: "继续"), 9 commits 9a4ac32..(test(architecture) commit), NOT pushed; each commit verified to build + vet in a temp worktree. User-owned .agents/, .claude/skills deletions, .gitignore, SKILL.md left unstaged.
+- Next: push only when the user asks.
+
+## Deep review of 006df17..cd2c103 + deep audit - 2026-10-10
+- Phase: REVIEW reported, awaiting user confirmation before any fix (deep-review stage 5). Deep audit (whole repo) next.
+- Verified TRUE: (1) architecture TestQueryGate FAILS: internal/files/basic.go:71 concatenated-table-name + naked-table-literal (pushed branch is red);
+  (2) TestConcurrentOwnRootInitializationReturnsOneRoot passes with pre-fix read-then-insert code (SQLite _txlock=immediate serializes) - not a regression test;
+  (3) tenantWorkspaceLoader asks memberEntities for the OLD tenant on switcher navigation (getTenant reads window.location before commit);
+  (4) workspace-switcher groupEntitiesUnderTenant is global -> every tenant row becomes a heading for an entity-only account; no other way to reach other tenants;
+  (5) FilesPage effect deps include selectedNodeID/pageAfter -> every directory click refetches 1+E+D collections (+D 403s);
+  (6) layout.tsx myPermissions failure => standing:false withholds tenant, contradicting loader's "failed lookup moves nobody"; layout.tsx:166 comment stale.
+- Same class unfixed: read-then-insert space init in account_resource.go:202, root.go:126 (tenant), system.go:92 (system).
+- Latent: MySQL clientFoundRows=true makes DO NOTHING report RowsAffected=1 -> root insert for nonexistent space. Fix by deciding on space.ID==candidate ID via query package (also fixes gate).
+- Deep audit DONE (7 perspectives, main-agent verified): PAT file_view can PATCH /files/{id} rename/restore (http.go:290 guard view);
+  webhook delivering never reclaimed (repository.go:209); erasure leaves user-managed personal files (account_resource Release/PurgeOrphaned resource-only);
+  OpenAPI omits 5 webhook ops (OPENAPI_ARGS lacks --webhook.enabled) + invalid 3.1 headers/component names; 500 fallbacks drop err in 6 IAM modules;
+  authn/federation audit writes `_ =`; Go toolchain 1.26.6 has stdlib vulns (govulncheck, fix 1.26.9; os.Root.MkdirAll used files/local.go:55);
+  react-leaflet Hippocratic-2.1 license; frontend phone-code catch ignores loginError.
+- make ci (2026-10-11): fmt/lint/schema-lock/test-coverage PASS (91.0%); test-integration FAIL = architecture TestQueryGate (real) + zzprobe (agent artefact, removed); rerun pending.
+- Next: user confirms fix scope; then fix by class, mutation-verify, run backend make ci + test-integration and frontend typecheck/lint/test.
+
 ## Commit and push delivery - 2026-10-09
 - User authorized all current changes to be committed and pushed to origin/IAM.
 - Source/test changes reviewed; generated reports, credentials and local runtime files excluded. Prior verification evidence is retained below.
