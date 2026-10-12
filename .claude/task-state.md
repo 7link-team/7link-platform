@@ -48,6 +48,26 @@
   portal-submit|clarify|accept, newProjectWizard/newWorkItem/newIntake/newDelivery). 4 codex exec jobs running (briefs in %TEMP%/myr-codex).
   DONE: 4 codex jobs wrote only their own files; verified: node --check all, 36 routes 0 runtime errors, 9 entry dialogs OK,
   screenshots desktop+mobile; fixes by me: 主导→主管 naming, Heavy branch reviewer→executor (echo), BOM stripped. Committed + pushed.
+- ACTIVE (user: "用 codex cli 在 .mvp 下写最简验证程序，再让它写一个可验收的小项目，如 2048"): .mvp/ (gitignored by whitelist,
+  untracked). I wrote client inputs .mvp/tasks/2048/{requirement.md,task.json,acceptance/game.acceptance.test.mjs}; acceptance suite
+  validated 11/11 against a throwaway reference impl (deleted). Codex is writing the orchestrator (.mvp/myr.mjs, lib/, test/, README)
+  from brief %TEMP%/myr-mvp-brief.md; tasks/ checksums in %TEMP%/myr-tasks.sha256.
+  Next: verify orchestrator (self-tests, tasks/ untouched, quick code read), then run `node myr.mjs run tasks/2048 --auto-approve-if-verified`
+  (codex executors), then independent `verify`, play-check index.html screenshot, report to user; user does L4 `accept`.
+- D111 (user: goals top-down, member plans, daily/weekly/monthly/quarterly/yearly reports bottom-up, reconcile before submit, block or
+  flag 未核对/未确认): PRD §10.9 + nav group + 00 v1.9 DONE by me; spec 10-goals-reports.md being written by fork; then codex prototype page.
+- RESEARCH (user: reference mature methodologies/platforms + new OSS agent-collab projects; closed loop, usable, RELIABLE, truly meets
+  requirements; cover software / video gen / novel gen / human-only teams with AI assist): 3 read-only web research agents running
+  (methodologies+platforms; OSS agent projects + spec-driven/eval practice; domain pipelines video/novel/human). Next: synthesize into
+  docs/myrmidon/research/ report + design upgrade proposal (domain template packs + reliability mechanisms) -> show user BEFORE changing specs.
+  + 4th research agent on Alibaba 云效 (Projex/Testhub/Flow/Codeup/Insight; user: "原来用阿里云效，多借鉴") -> adopt/adapt/integrate.
+- RESEARCH DONE: docs/myrmidon/research/2026-10-collaboration-research.md (4 tracks synthesized, gap analysis, P0/P1/P2 upgrade,
+  decisions A-G awaiting user; §5 MVP results). Do NOT change specs for the upgrade until user confirms A-G.
+- MVP DONE: .mvp/ (codex-built orchestrator, 17/17 self-tests); real run real-2048: 4 WIs, each 1 attempt, 9.2 min, hidden acceptance
+  11/11 (independently re-run), chain ok, state AWAITING_CLIENT. Human look found: uneven board row heights (missing grid-template-rows);
+  logic duplicated in index.html fallback (identical now, unverified). L4 accept/reject left to user. .mvp untracked (gitignored).
+- spec 10 DONE (1030 lines); fork merging CR-10 into 00/02/05/08; prototype.html got 「目标」 nav group + pages-goals.js hook;
+  codex writing prototype/pages-goals.js (goals tree/detail, plans, report editor w/ reconciliation panel, report center).
 - Next: WAIT for user's prototype review feedback (docs/myrmidon/prototype.html). Do not start implementation until told.
   Next: when back -> verification grep pass (dispatch.applied consumers, BudgetGuard, idempotency tables, PENDING_CONFIRM, 176409/176425,
   stream_seq in 03, /pause, /drain, intakes table) + spot re-audit; then prototype.html.
