@@ -97,6 +97,8 @@
 | execution | `verifier_manage`（团队级验证器定义） | 否 | 否 |
 | fleet | `machine_read` `machine_manage` `machine_revoke` `gateway_manage` `agent_read` `agent_manage` `agent_retire` | 否 | `machine_read` `agent_read` |
 | collab | `channel_read` `channel_post` `channel_manage` | 是 | `channel_read` |
+| planning（10，D111） | `goal_read` `goal_manage` `goal_member_manage` `plan_submit` `plan_confirm` `report_read` `report_submit` `report_confirm` | 是 | `goal_read` `report_read` |
+| planning（10） | `planning_settings_manage` | 否 | 否 |
 | knowledge | `knowledge_read` `knowledge_write` `memory_approve` `knowledge_manage`（06 CR-06-06） | `knowledge_read/write`、`memory_approve` 是；`knowledge_manage` 否 | `knowledge_read` |
 | **governance** | `policy_read` `policy_manage` `delegation_grant` `takeover` `audit_read` `spawn_grant_manage`（D110） | 否 | `policy_read` `audit_read` |
 | **governance** | `agent_spawn`（D110，resource=`agent`，verb=`spawn`；**仅策略来源**，见下） | 是 | 否 |
@@ -107,7 +109,7 @@
 - `NonDelegable` = { `scope_change`, `delivery_send`, `project_mode_change`, `policy_manage`, `delegation_grant`, `takeover`, `machine_revoke`, `production_access`, `intake_decline`（01 CR-10）, `memory_approve`（06 CR-06-06）, `project_create`（01 CR-10：以伪动作码表示「新建项目」，见 BR-08-04）, `spawn_grant_manage`（D110）}。
 - `PolicyOnly` = { `agent_spawn` }（D110）：任何角色播种都不授予；S4 的角色允许对其**不生效**（显式拒绝仍生效），只能经 S7 策略规则 `spawn_grant` 放行；不进入 `Delegable`。
 - `Delegable` = { `decision_approve`, `decision_reject`, `decision_request_changes`, `code_merge`, `intake_convert`（仅 AUTONOMOUS 项目、仅转为已有项目的新需求，01 BR-01-22） }。
-- `HumanOnly` = `NonDelegable` ∪ { `interaction_respond` }：Agent / 机器主体即使经角色持有也一律拒绝（BR-08-05）。00 §6.5 中不以权限码表达的仅人类动作（项目阶段迁移到 DELIVERED/CLOSED/CANCELLED、修改预算上限、登记线下验收、确认机器接入、批准 RULE 记忆）由所属模块以 `ActorKind=HUMAN` 守卫（07/04/06 各自规格），本模块不重复判定。
+- `HumanOnly` = `NonDelegable` ∪ { `interaction_respond`, `plan_confirm`, `report_confirm` }（后两者 D111）：Agent / 机器主体即使经角色持有也一律拒绝（BR-08-05）。00 §6.5 中不以权限码表达的仅人类动作（项目阶段迁移到 DELIVERED/CLOSED/CANCELLED、修改预算上限、登记线下验收、确认机器接入、批准 RULE 记忆）由所属模块以 `ActorKind=HUMAN` 守卫（07/04/06 各自规格），本模块不重复判定。
 - 启动校验：`NonDelegable ∪ Delegable ∪ PolicyOnly` 中除 `project_create` 外每个码必须在 Registry 中存在且三集合两两不相交，否则 `Initialize` 失败（防止拼写漂移）。若贡献模块被关闭（`Enabler`），其码缺失只记 WARN 并在播种中跳过（BR-08-03）。
 
 ### 3.3 默认角色播种
@@ -117,12 +119,12 @@
 | role_key | 显示名 key | 授予（业务权限码） | 附加底座码 |
 |---|---|---|---|
 | `team_owner` | `governance.role.team_owner` | §3.2 全部，**除** `production_access`、`agent_spawn`（`PolicyOnly`，D110） | `audit_event_view` `audit_event_export` `access_request_view` `access_request_approve` `role_view` |
-| `delivery_lead` | `…delivery_lead` | 全部，除 `machine_revoke` `policy_manage` `takeover` `gateway_manage` `production_access` `project_mode_change` `delegation_grant` `spawn_grant_manage` `agent_spawn`（模式切换、授予编制与授予委托仅限所有者，00 §6.2 / PRD §12.2） | `audit_event_view` `audit_event_export` `access_request_view` |
-| `engineer` | `…engineer` | 全部 `_read`、`work_item_execute`、`execution_read/start/stop`、`interaction_respond`、`evidence_submit`、`verification_run`、`decision_request_changes`、`channel_post`、`knowledge_write` | — |
-| `agent_executor` | `…agent_executor` | `project_read` `requirement_read` `work_item_read` `delivery_read` `execution_read` `channel_read` `knowledge_read` `work_item_execute` `execution_start` `execution_stop` `evidence_submit` `verification_run` `channel_post` | — |
-| `agent_reviewer` | `…agent_reviewer` | 同上 7 个读 + `agent_read` `verification_run` `channel_post` | — |
-| `agent_coordinator` | `…agent_coordinator` | `intake_read` `intake_triage` + 7 个读 + `channel_post` | — |
-| `agent_lead` | `…agent_lead` | 7 个读 + `agent_read` `channel_post`；**不含** `work_item_assign` / `execution_start`（分派经 POLICY `dispatch_auto`，ENSEMBLE 分支经 POLICY `ensemble_branch`，00 §6.2） | — |
+| `delivery_lead` | `…delivery_lead` | 全部，除 `machine_revoke` `policy_manage` `takeover` `gateway_manage` `production_access` `project_mode_change` `delegation_grant` `spawn_grant_manage` `agent_spawn`（模式切换、授予编制与授予委托仅限所有者，00 §6.2 / PRD §12.2）；planning：除 `planning_settings_manage` 外全部（D111） | `audit_event_view` `audit_event_export` `access_request_view` |
+| `engineer` | `…engineer` | 全部 `_read`、`work_item_execute`、`execution_read/start/stop`、`interaction_respond`、`evidence_submit`、`verification_run`、`decision_request_changes`、`channel_post`、`knowledge_write`；planning：`goal_read` `goal_member_manage`（本人）`plan_submit` `report_read`（本人与所在项目）`report_submit`（D111） | — |
+| `agent_executor` | `…agent_executor` | `project_read` `requirement_read` `work_item_read` `delivery_read` `execution_read` `channel_read` `knowledge_read` `work_item_execute` `execution_start` `execution_stop` `evidence_submit` `verification_run` `channel_post`；planning：`goal_read` `plan_submit` `report_submit`（仅本人；不得确认，D111） | — |
+| `agent_reviewer` | `…agent_reviewer` | 同上 7 个读 + `agent_read` `verification_run` `channel_post`；planning：`goal_read` `plan_submit` `report_submit`（仅本人，D111） | — |
+| `agent_coordinator` | `…agent_coordinator` | `intake_read` `intake_triage` + 7 个读 + `channel_post`；planning：`goal_read` `plan_submit` `report_submit`（仅本人，D111） | — |
+| `agent_lead` | `…agent_lead` | 7 个读 + `agent_read` `channel_post`；**不含** `work_item_assign` / `execution_start`（分派经 POLICY `dispatch_auto`，ENSEMBLE 分支经 POLICY `ensemble_branch`，00 §6.2）；planning：`goal_read` `plan_submit` `report_submit`（仅本人，D111） | — |
 | `intake_api_client` | `…intake_api_client` | `intake_submit`（仅见本主体提交的来件，01） | — |
 | `production_operator` | `…production_operator` | `production_access` | — |
 | `delegated_decision_approve` / `delegated_decision_reject` / `delegated_decision_request_changes` / `delegated_code_merge` / `delegated_intake_convert` | `…delegated_carrier` | 各自唯一一个码 | — |
@@ -240,7 +242,7 @@ type AuthorityDecision struct {
 | `NOT_LEASE_HOLDER` | 02 | 非当前租约持有者 |
 | `AGENT_EXECUTOR` | 02 | 执行者 Agent 不得裁决 |
 | `ESCALATED_HUMAN_ONLY` | 02 | 已升级的工作项只能由人裁决 |
-| `NOT_OWNER` | 03 / 05 | 非资源所有者（如他人的执行、Agent） |
+| `NOT_OWNER` | 03 / 05 / 10 | 非资源所有者（如他人的执行、Agent） |
 | `NOT_MEMBER` | 05 | 非频道 / 项目成员 |
 | `AGENT_NOT_DRAFTER` | 07 | Agent 不是该交付的指定起草者 |
 | `SPAWN_GRANT_MISSING` / `SPAWN_GRANT_SCOPE` / `SPAWN_QUOTA_EXCEEDED` / `SPAWN_DAILY_LIMIT` / `SPAWN_BUDGET_EXHAUSTED` / `SPAWN_NOT_LEAD` | 08 S7（规则 `spawn_grant` 的 Explain）/ `SpawnGrantUsage.Reserve` | 无有效编制授权 / 角色·机器·模型·effort·项目超出范围 / 同时在岗数已满 / 今日新建数已满 / 授权预算已耗尽 / 发起者不是主导 Agent（D110） |
@@ -998,6 +1000,10 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `ENSEMBLE_APPROVAL`（v1.1） | `ensemble.plan_created{requires_approval:true}`（超出预算上限需人批准；复审 #22） | `HOLDERS(work_item_assign)` 项目内人类 | NORMAL | `ensemble.started` / `ensemble.cancelled`（含 24h 过期） | A 批准 / R 拒绝 |
 | `ENSEMBLE_SELECTION`（v1.1） | `ensemble.compared{requires_human:true}` | `LEADS(p)` 人类 | HIGH | `ensemble.selected` / `ensemble.cancelled` | A 打开对比报告择优 / R — |
 | `AGENT_SPAWN_APPROVAL`（D110） | 05 `agent.spawn_requested`（`effective_approval_mode=REQUIRE_APPROVAL`；载荷含 `spawn_request_id`、`spawn_grant_id`、`supervisor_agent_id`、请求事实） | `HOLDERS(agent_manage)` 人类（授权有项目范围时另须对任一范围项目 `project_read`） | NORMAL | 05 `agent.spawned`（同 `spawn_request_id`）/ `agent.spawn_rejected` / `agent.spawn_expired`；授权撤销 / 耗尽 → WITHDRAWN | A 批准 / R 驳回（理由必填）；均调用 05 建 Agent 请求接口 |
+| `PLAN_CONFIRMATION`（D111） | 10 `plan.submitted` | 该计划的确认人（成员上级；Agent 成员 = 其 `owner_principal_id`），仅人类 | NORMAL | 10 `plan.confirmed` / `plan.returned` | A 确认 / R 退回（意见必填）；调用 10 计划确认接口 |
+| `REPORT_CONFIRMATION`（D111） | 10 `report.submitted` | 该报告的确认人（同上），仅人类；载荷含 flags（未核对 n/m、未确认、待佐证） | NORMAL | 10 `report.confirmed` / `report.returned` | A 确认 / R 退回（意见必填）；调用 10 报告确认接口 |
+| `REPORT_BLOCKED`（D111） | 10 `report.checked{result:BLOCKED}` | 报告作者（人类作者；Agent 作者时同时给其 `owner_principal_id`） | HIGH | 后续 `report.checked{result:PASS}` 或 `report.submitted` | 打开报告编辑器（定位首个阻断项） |
+| `REPORT_OVERDUE`（D111） | 10 `report.overdue` | 作者 + 其上级（人类） | HIGH | 10 `report.submitted` | 打开报告编辑器 |
 
 ---
 
@@ -1209,6 +1215,9 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | 团队 | machines | `/t/:tenantID/machines` | `machine_read` | 04 |
 | 团队 | knowledge | `/t/:tenantID/knowledge` | `knowledge_read` | 06 |
 | 团队 | policy | `/t/:tenantID/governance/policy` | `policy_read` | 08 |
+| 目标 | goals | `/t/:tenantID/goals`（目标树） | `goal_read` | 10 |
+| 目标 | my-plans | `/t/:tenantID/plans/me`（我的计划） | `plan_submit` | 10 |
+| 目标 | reports | `/t/:tenantID/reports`（报告中心） | `report_read` | 10 |
 | 治理 | audit | `/t/:tenantID/governance/audit` | `audit_read` | 08 |
 | 治理 | gateway | `/t/:tenantID/gateway`（实验） | `gateway_manage` | 04 |
 

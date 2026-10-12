@@ -17,6 +17,7 @@
 | `06-knowledge-memory.md` | 知识库、切块与检索、记忆与治理、上下文注入 | `knowledge` | 知识库、Agent 记忆 |
 | `07-projects-delivery.md` | 项目（阶段、团队模式、预算）、交付包、甲方验收、返工来件 | `delivery` | 项目、交付 |
 | `08-governance.md` | 权限目录与矩阵、授权委托、升级规则、审计、通知、总览与「我的裁决」 | `governance`（业务）+ 底座 IAM | 授权与策略、审计、总览、我的裁决 |
+| `10-goals-reports.md` | 目标拆解、周期计划、日/周/月/季/年报、上下核对与确认（D111） | `planning` | 目标树、我的计划、报告编辑器、报告汇总、报告中心 |
 | `09-platform-capabilities.md` | 平台通用能力：后台任务队列、领域事件 outbox、实时推送 SSE、对象存储驱动、通知渠道、模块菜单贡献 | 底座 `pkg/*` / `internal/infra/*` | — |
 
 ---
@@ -48,7 +49,7 @@
 | 主键 | `id BIGINT`，底座雪花 ID（`pkg/guid.ID`），JSON 以十进制字符串传输；**禁止 UUID**作为业务主键 |
 | 租户 | 每张业务表必有 `tenant_id BIGINT NOT NULL`，所有查询必须带租户条件 |
 | 项目 | 项目 = 底座 Entity（`type='project'`）；项目内资源带 `project_id BIGINT NOT NULL`（即 entity id），用于 `authz.RegisterEntity` 行过滤 |
-| 表名 | 模块前缀 + 复数（不得出现无前缀的表名；来件主表为 `intake_records`）：`intake_*`、`delivery_*`、`execution_*`、`fleet_*`、`collab_*`、`knowledge_*`、`governance_*`；经 `gormx.TableName` 加部署表前缀；迁移对象名带 `{{.Prefix}}` |
+| 表名 | 模块前缀 + 复数（不得出现无前缀的表名；来件主表为 `intake_records`）：`intake_*`、`delivery_*`、`execution_*`、`fleet_*`、`collab_*`、`knowledge_*`、`governance_*`、`planning_*`；经 `gormx.TableName` 加部署表前缀；迁移对象名带 `{{.Prefix}}` |
 | 迁移 | 三方言目录 `sql/{postgres,mysql,sqlite}/`，goose 版本表 `goose_<module>` |
 | 基础设施表 | 09 的平台表（任务、事件、幂等、通知）允许 `tenant_id=0` 表示系统级、允许 `*_at_ms BIGINT` 存租约/调度时间（与数据库时钟比较）、允许按保留期物理清理 |
 | 时间列 | PostgreSQL `TIMESTAMPTZ(3)`、MySQL `DATETIME(3)`、SQLite `DATETIME`，一律存 UTC（**禁止** MySQL `TIMESTAMP`，见 backend-module 规约与 mysql8 门禁）|
@@ -105,6 +106,10 @@
 | `RuntimeKind` | `CLAUDE_CODE`, `CODEX`（开放扩展，新增需契约变更） | 04 |
 | `AgentState` | `DRAFT`, `ACTIVE`, `STOPPED`, `CRASHED`, `RETIRING`, `RETIRED` | 05 |
 | `AgentRole` | `EXECUTOR`, `REVIEWER`, `COORDINATOR`, `LEAD`（UI 称「主管 Agent」） | 05 |
+| `GoalLevel` / `GoalStatus` | `TEAM`, `PROJECT`, `MEMBER` / `DRAFT`, `ACTIVE`, `AT_RISK`, `ACHIEVED`, `MISSED`, `CANCELLED` | 10 |
+| `PeriodKind` | `DAY`, `WEEK`, `MONTH`, `QUARTER`, `YEAR` | 10 |
+| `ReportLevel` / `ReportState` | `MEMBER`, `PROJECT`, `TEAM` / `DRAFT`, `CHECKING`, `BLOCKED`, `READY`, `SUBMITTED`, `CONFIRMED`, `RETURNED` | 10 |
+| `KRSource` / `CheckSeverity` | `AUTO`, `MANUAL` / `BLOCKING`, `NON_BLOCKING` | 10 |
 | `AgentOrigin` | `HUMAN_CREATED`, `AGENT_SPAWNED`（D110：主管 Agent 在编制授权内创建；收编后仍为 `AGENT_SPAWNED`，另记 `adopted_by`） | 05 |
 | `SpawnGrantState` | `ACTIVE`, `EXHAUSTED`, `EXPIRED`, `REVOKED` | 08 |
 | `DispatchPolicy` | `MANUAL`, `AUTO` | 05 |
@@ -144,6 +149,10 @@
 | `gateway_manage` | API 网关（实验） | 否 | fleet |
 | `agent_read` / `agent_manage` / `agent_retire` | Agent | 否 | fleet |
 | `agent_spawn` | 主管 Agent 创建子 Agent（**不经角色授予**；仅对持 ACTIVE 编制授权的 LEAD Agent 经 08 策略规则 `spawn_grant` 生效） | 否 | fleet |
+| `goal_read` / `goal_manage` / `goal_member_manage` | 目标查看 / 团队与项目级目标管理 / 成员目标管理（本人与上级） | 是（项目级）| planning |
+| `plan_submit` / `plan_confirm` | 提交周期计划 / 确认下级计划（**仅限人类**） | 是 | planning |
+| `report_read` / `report_submit` / `report_confirm` | 报告查看 / 提交 / 确认或退回（**仅限人类**：上级或 Agent 的负责人） | 是 | planning |
+| `planning_settings_manage` | 报告时间、宽限期、模板 | 否 | planning |
 | `spawn_grant_manage` | 授予 / 修改 / 撤销编制授权（名额、预算、可用角色/机器/模型、存活期、审批方式）；仅所有者、**不可委托**、需 step-up | 否 | governance |
 | `channel_read` / `channel_post` / `channel_manage` | 频道 | 是 | collab |
 | `knowledge_read` / `knowledge_write` / `memory_approve` / `knowledge_manage` | 知识库 / 记忆审批 / 知识库设置（检索参数、嵌入配置、重建索引） | 是（PROJECT scope）/ 否（TEAM） | knowledge |
@@ -166,6 +175,8 @@
 | `agent_coordinator` | `intake_read`、`intake_triage`、`*_read`、`channel_post`、`knowledge_read`（不授 `work_item_assign`） |
 | `agent_lead` | `*_read`、`channel_post`、`knowledge_read`；分派与 ENSEMBLE 分支**不经角色码**，而经策略规则 `POLICY:dispatch_auto` / `POLICY:ensemble_branch`（05 贡献、08 判定） |
 
+> **D111 默认授予（CR-10-04，精确码表见 08 §3.3）**：`team_owner` 全部 planning 码；`delivery_lead` 除 `planning_settings_manage` 外全部；`engineer` `goal_read`、`goal_member_manage`（本人）、`plan_submit`、`report_read`（本人与项目）、`report_submit`；各 Agent 角色仅 `goal_read`、`plan_submit`、`report_submit`（仅本人）。`plan_confirm`、`report_confirm` 仅限人类（§6.5）。
+
 ### 6.3 `authority_source` 取值
 
 `ROLE:<role_key>`（种子角色键；底座管理员为 `tenant_administrator`；自定义角色为 `custom.<role_id>`）、`DELEGATION:<delegation_id>`、`POLICY:<rule_id>`（自动规则，如 `POLICY:dispatch_auto`、`POLICY:ensemble_branch`；具体提案 id 放 `detail.dispatch_proposal_id`）、`CLIENT:<intake_contact_id>`（甲方回执）、`SYSTEM:<job_name>`。
@@ -176,7 +187,7 @@
 
 ### 6.5 仅限人类的动作（即使有委托，Agent / 服务账号 / PAT 也不得执行）
 
-回应工具授权与输入请求（`interaction_respond`）；项目阶段迁移到 `DELIVERED` / `CLOSED` / `CANCELLED`；修改预算上限；登记线下验收；正式交付（需 step-up，结构上排除 PAT 与服务账号）；确认机器接入；批准 RULE 记忆；批准主管 Agent 的创建请求；收编（adopt）AI 创建的 Agent。
+回应工具授权与输入请求（`interaction_respond`）；项目阶段迁移到 `DELIVERED` / `CLOSED` / `CANCELLED`；修改预算上限；登记线下验收；正式交付（需 step-up，结构上排除 PAT 与服务账号）；确认机器接入；批准 RULE 记忆；批准主管 Agent 的创建请求；收编（adopt）AI 创建的 Agent；确认或退回下级的周期计划与报告（`plan_confirm`、`report_confirm`）。
 
 ---
 
@@ -201,6 +212,7 @@
 | `delivery.sent`（含 `intake_ids[]`）, `acceptance.received`（含 `intake_ids[]`、`work_item_ids[]`、逐项结果与拒绝理由） | delivery(07) | intake(回执/创建返工来件)、governance、knowledge |
 | `project.members_changed` | delivery(07) | collab（频道成员同步）、governance |
 | `project.hold_changed`, `project.stage_ready`, `delivery.ready`, `delivery.release_notes_requested`, `delivery.withdrawn` | delivery(07) | governance、collab、knowledge；`delivery.release_notes_requested` 另由 fleet(05) 消费（向起草 Agent 下发 `agent.release_notes`） |
+| `goal.created`, `goal.updated`, `goal.status_changed`, `plan.submitted`, `plan.confirmed`, `plan.returned`, `report.generated`, `report.checked`, `report.submitted`, `report.confirmed`, `report.returned`, `report.overdue` | planning(10) | governance（收件箱：计划确认、报告确认、报告被阻止、报告逾期）、knowledge（复盘改进沉淀）、collab |
 | `agent.spawn_requested`, `agent.spawned`, `agent.orphaned`, `agent.adopted` | fleet(05) | governance（创建审批收件箱、编制用量、孤儿通知）、collab、knowledge |
 | `spawn_grant.granted`, `spawn_grant.updated`, `spawn_grant.exhausted`, `spawn_grant.expired`, `spawn_grant.revoked` | governance(08) | fleet（停止子 Agent 接新执行 / 置孤儿） |
 | `ensemble.plan_created`, `ensemble.cancelled` | fleet(05) | governance（Heavy 审批/选择收件箱项）、collab |
@@ -254,6 +266,9 @@
 | `MemoryWriter`, `SkillCatalog`, `Retriever.RecordInclusion/RecordCitations` | knowledge | 记忆写入（经治理）、技能库（上下文第 6 层的唯一来源）、注入记录 | execution、fleet |
 | `VectorConnector` | knowledge | K2 向量扩展点 | knowledgevector（K2 模块） |
 | `IntakeProgressReader`, `AcceptanceReader` | delivery(07) | 门户里程碑进度；验收详情 | intake、knowledge |
+| `GoalReader`（ActiveForPrincipal / KRContributors）, `ReportReader`（Get / OnTimeRate / Coverage） | planning(10) | 成员当前目标与 KR 贡献者；报告读取、准时率、覆盖率 | fleet(05 起草上下文)、knowledge(06)、delivery(07 指标)、governance(08 总览) |
+| `WorkItemReader.ListByAssigneeInPeriod` | delivery(02) | 按成员与周期列出其参与的工作项及状态时间点（报告自动填充、B1 核对） | planning(10) |
+| `AgentDraftRequester.Request` | fleet(05) | 请求 Agent 自撰计划 / 复盘（经 `agent.plan_draft` / `agent.report_draft`）；不可用时返回 `ErrDrafterUnavailable`，由 10 用系统模板 | planning(10) |
 | `ReleaseNotesDrafting.ReportUnavailable` | delivery(07) | 起草 Agent 不可用 / 超时时立即触发交付确认兜底 | fleet(05) |
 | `WorkItemEscalator.Escalate`, `DispatchAssigner.Assign(role=REVIEWER, lease_ttl_seconds)`（REVIEWER 分派不改工作项状态） | delivery(02) | 发布 `work_item.escalated`（唯一发布者）；评审员分派 | fleet(05) |
 | `SpawnGrantReader.Active`, `SpawnGrantUsage.Reserve/Release`（事务内原子占用名额；成本由 08 消费 `execution.cost_updated` 累计） | governance | 主管 Agent 创建子 Agent 时校验与占用编制 | fleet(05) |
@@ -278,7 +293,7 @@
 - 列表：`pkg/query`（`field=op:value`，offset 分页，`capabilities`）。
 - 幂等：所有创建/命令型 POST 支持请求头 `Idempotency-Key`（≤64 字符），由**平台统一幂等辅助**（09 C7，单表 `platform_idempotency_keys`：tenant_id、subject_kind、subject_id、key、operation、request_hash、status_code、response_body、created_at，保留 24h）处理，模块不再各建幂等表；同 key 同请求返回首次结果；同 key 不同请求返回 `176425`；并发进行中返回 `176409`。机器通道（04）不用此头，改用 `dispatch_epoch` + `seq` 去重。
 - 乐观锁：见 §3；冲突返回 `<段>0409`。
-- 业务错误码段：intake `110000–119999`；delivery `120000–126999`（02）与 `127000–129999`（07）；execution `130000–139999`；fleet `140000–141999`（04 机器）与 `142000–143999`（05 Agent/派单），`144000–144999` 预留；collab `145000–149999`；knowledge `150000–159999`；governance `160000–169999`；platform `170000–179999`。权限拒绝统一用本段 `xx0403`，具体原因放 `data.reason_code`。每个规格列出本模块使用的码与 i18n key。
+- 业务错误码段：intake `110000–119999`；delivery `120000–126999`（02）与 `127000–129999`（07）；execution `130000–139999`；fleet `140000–141999`（04 机器）与 `142000–143999`（05 Agent/派单），`144000–144999` 预留；collab `145000–149999`；knowledge `150000–159999`；governance `160000–169999`；platform `170000–179999`；planning `180000–184999`。权限拒绝统一用本段 `xx0403`，具体原因放 `data.reason_code`。每个规格列出本模块使用的码与 i18n key。
 - i18n：每个模块 `i18n/locales/{en-US,zh-CN,ms-MY}.json`，三语齐全。
 - 实时：SSE 主题文法——单项 `tenant/{tenant_id}/{subject_kind}/{id}`（`subject_kind` 为 snake_case 单数，与事件信封 `subject.kind` 一致，如 `work_item`、`intake`）；集合 `tenant/{tenant_id}/{collection}`（复数，如 `intakes`、`machines`、`agents`、`projects`）；项目扇出 `tenant/{tenant_id}/project/{project_id}`；个人收件箱 `tenant/{tenant_id}/inbox/{principal_id}`。不支持通配符；单连接 ≤50 个主题。每个模块在其规格 §7 列出主题并注册 `TopicAuthorizer`（所需权限码）。服务端内部订阅（如唤醒跨实例的机器长轮询）走同一机制（09 定义）。
 
@@ -348,3 +363,4 @@ Then  返回 403，业务码 120403，W 状态不变，审计链追加 delivery.
 | 1.6 | 2026-10-11 | 第三轮复核（4 BLOCKER）：`SubmitInput.from_exit`；`delivery.release_notes_requested.drafter_agent_id` 与 `ReportUnavailable` 原因值对齐；`WorkItemFacts.AssignmentRole/AssigneePrincipalID`，SYSTEM 主体跳过 S3/S4/S6 由策略判定，评审派单记 `POLICY:review_dispatch`；派单提案过期按触发类型判定 | 复核 B1–B4 |
 | 1.7 | 2026-10-11 | PRD §18 Q1–Q11 与各规格 §12 待决项全部按建议采纳（产品负责人「该有的就有」，见 decisions D109） | 产品负责人 |
 | 1.8 | 2026-10-11 | D110 主管 Agent 自建 Agent：`AgentOrigin`、`SpawnGrantState`；权限 `agent_spawn`（仅经策略）、`spawn_grant_manage`（不可委托、仅所有者）；仅限人类动作增加批准创建请求与收编；事件 `agent.spawn_requested/spawned/orphaned/adopted`、`spawn_grant.*`；接口 `SpawnGrantReader`/`SpawnGrantUsage` | 产品负责人 |
+| 1.9 | 2026-10-11 | D111 目标、计划与周期报告：新模块 `planning`（规格 10，错误码段 180000–184999）；枚举 GoalLevel/GoalStatus/PeriodKind/ReportLevel/ReportState/KRSource/CheckSeverity；权限 goal_*、plan_*、report_*、planning_settings_manage（确认类仅限人类）；事件 goal.*、plan.*、report.*；合并 CR-10-01..10：表前缀 `planning_*`、接口 `GoalReader`/`ReportReader`/`WorkItemReader.ListByAssigneeInPeriod`/`AgentDraftRequester`、默认授予、05 `owner_principal_id` 与 `agent.plan_draft`/`agent.report_draft`、08 收件箱 PLAN_CONFIRMATION/REPORT_CONFIRMATION/REPORT_BLOCKED/REPORT_OVERDUE 与「目标」菜单分组 | 产品负责人 |

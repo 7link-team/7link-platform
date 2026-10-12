@@ -383,6 +383,7 @@ const NAV=[
   ["交付",[["intakes","inbox","来件",2],["projects","folder-kanban","项目"],["work","kanban-square","工作项"],["review","scale","评审台"],["executions","terminal-square","执行"],["deliveries","package-check","交付"]]],
   ["协作",[["channels","hash","频道"]]],
   ["团队",[["members","users-round","成员与 Agent"],["machines","server","机器"],["knowledge","library-big","知识库"],["policy","shield-half","授权与策略"]]],
+  ["目标",[["goals","target","目标树"],["plans","calendar-check","我的计划"],["reports","file-chart-column","报告中心"]]],
   ["治理",[["audit","scroll-text","审计"],["gateway","plug-zap","API 网关","实验"]]]
 ];
 const NAVPARENT={workitem:"work",session:"executions",project:"projects"};
@@ -729,6 +730,7 @@ PAGES.portal=()=>`<div class="portal-wrap">
 <script src="prototype/pages-fleet.js"></script>
 <script src="prototype/pages-exec.js"></script>
 <script src="prototype/pages-governance.js"></script>
+<script src="prototype/pages-goals.js"></script>
 <script>route();</script>
 </body>
 </html>

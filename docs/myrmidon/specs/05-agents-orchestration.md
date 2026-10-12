@@ -327,6 +327,7 @@ AgentRole 只决定「这个 Agent 能被安排成什么」；**权限**来自 0
 | origin | ENUM | N | `HUMAN_CREATED` | `AgentOrigin`：HUMAN_CREATED / AGENT_SPAWNED（模块共享枚举，见 §13） | 创建来源；**收编后不变**（谱系可追溯） |
 | created_by_principal_id | ID | N | | | 创建者：人类 principal，或主管 Agent 的服务账号 principal |
 | parent_agent_id | ID | Y | | AGENT_SPAWNED 时必填；所指 Agent 须含 LEAD 角色 | 主管 Agent |
+| owner_principal_id | ID | N | | 必须是人类 principal | **负责人类**（D111）：人工创建 = 创建者；主管创建 = 编制授权授予人；收编后 = 收编人；`agent_manage` 可改。用于计划 / 报告确认人、通知与升级的人类落点 |
 | spawn_grant_id | ID | Y | | AGENT_SPAWNED 时必填（收编后保留历史值） | 08 自建授权 |
 | spawn_request_id | ID | Y | | | 对应 §3.12 请求 |
 | spawn_reason | STR(2000) | Y | | AGENT_SPAWNED 时必填，≥10 字 | 主管给出的创建理由 |
@@ -706,6 +707,8 @@ F15 为人 + Agent 统一投影（**本规格提议**；资源语义卡：Meanin
 | S→M | `agent.lead_plan` | `{command_id, agent_id, proposal_id, candidates[≤5], work_item, criteria[], retrieval_refs[], deadline_at}` | 宿主调用模型，经 `agent.lead_plan_result` 回传 |
 | S→M | `agent.workspace_list` / `agent.workspace_read` | `{request_id, agent_id, path, max_entries\|max_bytes}` | 15 s 超时；结果经 `agent.workspace_result` 回传 |
 | S→M | `agent.review` | `{command_id, agent_id, work_item_id, claim_id, deadline_at}` | 宿主让评审 Agent 读取声明 / 证据 / 验证，并以自身凭证调 02 裁决接口（BR-05-53） |
+| S→M | `agent.plan_draft`（可选，D111） | `{command_id, agent_id, plan_id, period_kind, period_start, deadline_at}` | 宿主让 Agent 依据其目标（10 `GoalReader`）与待办起草下周期计划，并以自身凭证调 10 计划接口写入（只起草、不可确认） |
+| S→M | `agent.report_draft`（可选，D111） | `{command_id, agent_id, report_id, sections:["retrospective"], deadline_at}` | 宿主让 Agent 撰写本周期复盘并以自身凭证调 10 报告接口写入；完成 / 未完成清单由系统自动填充，Agent 不得改动事实部分 |
 | S→M | `agent.triage` | `{command_id, agent_id, intake_id, deadline_at}` | 宿主让协调员读取来件并调 01 分诊卡接口（BR-05-54） |
 | S→M | `agent.release_notes` | `{command_id, agent_id, delivery_id, note, deadline_at}` | 宿主让起草 Agent 读取交付包并调 07 #36 提交发布说明草稿（BR-05-56） |
 | M→S | `agent.status`（亦随 poll `agents[]`） | `{agent_id, status:"STARTING"\|"RUNNING"\|"STOPPING"\|"EXITED", pid?, exit_code?, config_revision, at}`（**唯一**进程状态枚举，04 不另定义） | A04 / A07 |
@@ -749,7 +752,8 @@ F15 为人 + Agent 统一投影（**本规格提议**；资源语义卡：Meanin
 
 | 接口 | 方法 | 使用者 |
 |---|---|---|
-| `AgentDirectory`（00 §8） | `Get`；`ByPrincipal(principal_id)`；`IsAgent(principal_id)`；`Roles(agent_id)`；`Load(agent_id)`；`Stats(agent_id, type, window)`；`RuntimeProfile(agent_id) {system_prompt, runtime, model, effort, authorization_mode, max_context_tokens, mcp_allowlist}`；`ListByProject(project_id)` | 02、03、04、07、08、collab |
+| `AgentDraftRequester`（00 §8，D111） | `Request(ctx, {tenant_id, agent_id, kind: PLAN\|REPORT, target_id, period_kind, period_start, deadline_at}) error`：Agent 为 ACTIVE·RUNNING 时下发 `agent.plan_draft` / `agent.report_draft`（幂等键 `kind:target_id`）；否则返回 `ErrDrafterUnavailable` | 10（planning J1 / J2） |
+| `AgentDirectory`（00 §8） | `Get`；`ByPrincipal(principal_id)`；`IsAgent(principal_id)`；`Roles(agent_id)`；`Load(agent_id)`；`Stats(agent_id, type, window)`；`RuntimeProfile(agent_id) {system_prompt, runtime, model, effort, authorization_mode, max_context_tokens, mcp_allowlist}`；`ListByProject(project_id)`；视图含 `owner_principal_id`（负责人类）、`supervisor_agent_id`（= `parent_agent_id`）、`origin`（CR-10-10） | 02、03、04、07、08、collab |
 | `DispatchProvenance`（00 §8） | `DispatchedBy(ctx, tx, work_item_id) ([]principal_id, error)` | 02（填入 08 `WorkItemFacts.DispatchedByActor`） |
 | `ChannelProvisioner`（collab，新增，CCR-05-05） | `CreateDefaultOn(ctx, tx, {tenant_id, project_id, name, member_principal_ids}) (channel_id, error)`；`RenameDefaultOn(ctx, tx, project_id, name)`；`ArchiveProjectChannelsOn(ctx, tx, project_id)` | 07 |
 | `ChannelPoster`（collab，新增） | `PostSystemOn(ctx, tx, {project_id, channel_id?, kind, payload, fold_key, attention, ref, source_event_id})`（缺省为默认频道） | fleet（DISPATCH_CARD、ensemble 对比卡、Agent 崩溃 / 不可用提示，在 fleet 事务内同步写入）；其他模块的频道呈现经领域事件由 `collab.event_projector` 投影，不直接调用 |
