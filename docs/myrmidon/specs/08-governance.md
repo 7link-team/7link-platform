@@ -18,6 +18,7 @@
 6b. **控制台外壳**（§8.6）：侧栏菜单分组、顶栏裁决徽标、移动端底栏、`⌘K` 命令面板。
 7. **「我的裁决」**：跨模块待办读模型、与源状态的一致性（≤1s）、键盘操作、无批量通过、跨设备移除。
 8. **总览**：各磁贴的数据源与刷新策略。
+9b. **编制授权（D110，主管 Agent 自建 Agent）**：团队所有者给主导 Agent 的建 Agent 配额、角色 / 机器 / 模型范围、预算与审批方式；配额原子占用与释放、成本累计与耗尽、模式切换 / 接管时的收紧（§3.8.13–3.8.15、§4.5、BR-08-50…59）。Agent 的创建、收编、孤儿处理本身归 05。
 9. **危险操作登记表**：step-up 重新认证的用途、目标格式、时效（复用底座 `authn` 重新认证）。
 
 **不解决（边界）**
@@ -57,6 +58,10 @@
 | US-08-15 | 作为团队所有者，我要生产环境访问必须单独申请、他人批准、限时，且 Agent 永远不能获得 | MVP |
 | US-08-16 | 作为团队所有者，我要项目级覆盖升级规则（比团队默认更严） | v1.1 |
 | US-08-17 | 作为团队所有者，我要预约未来生效的委托 | v1.1 |
+| US-08-18 | 作为团队所有者，我要给主导 Agent 一份「编制授权」：最多同时几个 Agent、每天最多建几个、可建哪些角色、用哪些机器和模型、总预算与单 Agent 预算、到期时间，以便它在边界内自己扩编 | MVP |
+| US-08-19 | 作为团队所有者，我要选择主导 Agent 建 Agent 是「每次需人批准」还是「授权内自动」，且混编项目永远需要人批准 | MVP |
+| US-08-20 | 作为团队所有者，我要在编制授权列表里看到配额占用、今日新建数、预算进度与剩余时间，并能立即撤销；接管项目时这些授权自动撤销 | MVP |
+| US-08-21 | 作为审计者，我要按「人创建 / AI 创建」筛选 Agent 相关审计事件，并看到每个 AI 创建的 Agent 来自哪份编制授权 | MVP |
 
 ---
 
@@ -93,15 +98,17 @@
 | fleet | `machine_read` `machine_manage` `machine_revoke` `gateway_manage` `agent_read` `agent_manage` `agent_retire` | 否 | `machine_read` `agent_read` |
 | collab | `channel_read` `channel_post` `channel_manage` | 是 | `channel_read` |
 | knowledge | `knowledge_read` `knowledge_write` `memory_approve` `knowledge_manage`（06 CR-06-06） | `knowledge_read/write`、`memory_approve` 是；`knowledge_manage` 否 | `knowledge_read` |
-| **governance** | `policy_read` `policy_manage` `delegation_grant` `takeover` `audit_read` | 否 | `policy_read` `audit_read` |
+| **governance** | `policy_read` `policy_manage` `delegation_grant` `takeover` `audit_read` `spawn_grant_manage`（D110） | 否 | `policy_read` `audit_read` |
+| **governance** | `agent_spawn`（D110，resource=`agent`，verb=`spawn`；**仅策略来源**，见下） | 是 | 否 |
 | **governance** | `production_access`（CR-08-01，resource=`production`，verb=`access`） | 是 | 否 |
 
 **常量集合（硬编码于 governance 根包，不可配置）**
 
-- `NonDelegable` = { `scope_change`, `delivery_send`, `project_mode_change`, `policy_manage`, `delegation_grant`, `takeover`, `machine_revoke`, `production_access`, `intake_decline`（01 CR-10）, `memory_approve`（06 CR-06-06）, `project_create`（01 CR-10：以伪动作码表示「新建项目」，见 BR-08-04）}。
+- `NonDelegable` = { `scope_change`, `delivery_send`, `project_mode_change`, `policy_manage`, `delegation_grant`, `takeover`, `machine_revoke`, `production_access`, `intake_decline`（01 CR-10）, `memory_approve`（06 CR-06-06）, `project_create`（01 CR-10：以伪动作码表示「新建项目」，见 BR-08-04）, `spawn_grant_manage`（D110）}。
+- `PolicyOnly` = { `agent_spawn` }（D110）：任何角色播种都不授予；S4 的角色允许对其**不生效**（显式拒绝仍生效），只能经 S7 策略规则 `spawn_grant` 放行；不进入 `Delegable`。
 - `Delegable` = { `decision_approve`, `decision_reject`, `decision_request_changes`, `code_merge`, `intake_convert`（仅 AUTONOMOUS 项目、仅转为已有项目的新需求，01 BR-01-22） }。
 - `HumanOnly` = `NonDelegable` ∪ { `interaction_respond` }：Agent / 机器主体即使经角色持有也一律拒绝（BR-08-05）。00 §6.5 中不以权限码表达的仅人类动作（项目阶段迁移到 DELIVERED/CLOSED/CANCELLED、修改预算上限、登记线下验收、确认机器接入、批准 RULE 记忆）由所属模块以 `ActorKind=HUMAN` 守卫（07/04/06 各自规格），本模块不重复判定。
-- 启动校验：`NonDelegable ∪ Delegable` 中除 `project_create` 外每个码必须在 Registry 中存在且两集合不相交，否则 `Initialize` 失败（防止拼写漂移）。若贡献模块被关闭（`Enabler`），其码缺失只记 WARN 并在播种中跳过（BR-08-03）。
+- 启动校验：`NonDelegable ∪ Delegable ∪ PolicyOnly` 中除 `project_create` 外每个码必须在 Registry 中存在且三集合两两不相交，否则 `Initialize` 失败（防止拼写漂移）。若贡献模块被关闭（`Enabler`），其码缺失只记 WARN 并在播种中跳过（BR-08-03）。
 
 ### 3.3 默认角色播种
 
@@ -109,8 +116,8 @@
 
 | role_key | 显示名 key | 授予（业务权限码） | 附加底座码 |
 |---|---|---|---|
-| `team_owner` | `governance.role.team_owner` | §3.2 全部，**除** `production_access` | `audit_event_view` `audit_event_export` `access_request_view` `access_request_approve` `role_view` |
-| `delivery_lead` | `…delivery_lead` | 全部，除 `machine_revoke` `policy_manage` `takeover` `gateway_manage` `production_access` `project_mode_change` `delegation_grant`（模式切换与授予委托仅限所有者，00 §6.2 / PRD §12.2） | `audit_event_view` `audit_event_export` `access_request_view` |
+| `team_owner` | `governance.role.team_owner` | §3.2 全部，**除** `production_access`、`agent_spawn`（`PolicyOnly`，D110） | `audit_event_view` `audit_event_export` `access_request_view` `access_request_approve` `role_view` |
+| `delivery_lead` | `…delivery_lead` | 全部，除 `machine_revoke` `policy_manage` `takeover` `gateway_manage` `production_access` `project_mode_change` `delegation_grant` `spawn_grant_manage` `agent_spawn`（模式切换、授予编制与授予委托仅限所有者，00 §6.2 / PRD §12.2） | `audit_event_view` `audit_event_export` `access_request_view` |
 | `engineer` | `…engineer` | 全部 `_read`、`work_item_execute`、`execution_read/start/stop`、`interaction_respond`、`evidence_submit`、`verification_run`、`decision_request_changes`、`channel_post`、`knowledge_write` | — |
 | `agent_executor` | `…agent_executor` | `project_read` `requirement_read` `work_item_read` `delivery_read` `execution_read` `channel_read` `knowledge_read` `work_item_execute` `execution_start` `execution_stop` `evidence_submit` `verification_run` `channel_post` | — |
 | `agent_reviewer` | `…agent_reviewer` | 同上 7 个读 + `agent_read` `verification_run` `channel_post` | — |
@@ -161,6 +168,14 @@ type AuthorityRequest struct {
     Resource    ResourceRef              // {Kind: work_item|requirement|delivery|execution|interaction|intake|project|machine|agent|memory, ID}
     Environment string                   // DEFAULT（缺省）| PRODUCTION
     Facts       *WorkItemFacts           // 工作项类动作必填；缺失事实一律按不满足处理（失败即拒绝）
+    Spawn       *SpawnRequestFacts       // Code=agent_spawn 时必填（D110）；缺失 → S0 拒绝
+}
+type SpawnRequestFacts struct { // 05 在建 Agent 事务内填充（D110）
+    SupervisorAgentID guid.ID            // 发起的主导 Agent（= PrincipalID 对应的 Agent）
+    ProjectIDs []guid.ID                 // 新 Agent 默认参与的项目（≥1）
+    Role string                          // EXECUTOR | COORDINATOR
+    MachineID guid.ID; Runtime string; Model string; Effort string
+    EstimatedCapMicros int64             // 新 Agent 的单 Agent 预算上限申请值（≤ 授权 per_agent_cap_micros）
 }
 type WorkItemFacts struct { // 02 BR-02-19 输入 + 本规格补充（†，CR-08-06 对 02）
     Type string; Risk string
@@ -197,7 +212,9 @@ type AuthorityDecision struct {
 | S5 | 不可委托门 | `Code ∈ NonDelegable` 且 S4 未允许 → 拒（不进入 S6/S7） | `NON_DELEGABLE` |
 | S6 | 委托 | 仅 `Code ∈ Delegable` 且 ActorKind=AGENT。候选 = `governance_delegations` 中 `state=ACTIVE ∧ grantee=主体 ∧ project=ProjectID ∧ Code∈actions ∧ ends_at>now`，且 S4 matches 中存在对应载体角色在本项目的 allow 匹配（证明 IAM 绑定仍在）。对每个候选按序校验（**适用范围**：码为工作项类 `decision_*` / `code_merge` 时校验 ①–⑨ 与 ⑪；码为 `intake_convert` 时只校验 ⑦⑧⑩，其余条件对来件无意义，复审 #6）：①`Type∈work_item_types`（空=全部）；②`Risk ≤ max_risk`（LOW<MEDIUM；HIGH 永不满足）；③`CostMicros ≤ cost_cap_micros`；④`RequiredVerificationsPassed`；⑤`QualityReworkCount < max_rework`；⑥`!RequireHumanDecision`；⑦无覆盖该工作项或项目的 `hold_delegations=true` 未关闭 incident；⑧07 `ProjectGate.CanDelegatedDecide(project)`；⑨`code_merge` 时 `Risk=LOW`；⑩`intake_convert` 时项目 AUTONOMOUS 且 `IntakeConvertMode=NEW_REQUIREMENT`；⑪工作项当前 claim 的 SENSITIVE_PATH / LOW_SELF_CONFIDENCE 评估回执已落库（`governance_claim_evaluations`，§7.3；未落库 = 评估仍在途，防止委托 APPROVE 抢在升级判定之前）。首个全部通过者胜（按 `ends_at` 升序、`id` 升序）；`tx≠nil` 时对其 `SELECT … FOR SHARE`（PG / MySQL 8 语法 `FOR SHARE`；SQLite 无行锁，依赖单写者，见 BR-08-20）并在锁后复核 `state=ACTIVE ∧ ends_at>now`。来源 `DELEGATION:<id>` | 未通过的首个条件：`DELEGATION_RISK`/`_COST`/`_VERIFICATION`/`_REWORK`/`_TYPE`/`_HUMAN_REQUIRED`/`ESCALATION_HOLD`/`PROJECT_GATE`/`_MERGE_RISK`/`_MODE`/`ESCALATION_PENDING`；无候选 `NO_DELEGATION` |
 | S7 | 策略规则 | `PolicyRegistry` 中声明覆盖该码的规则依次 `Evaluate(ctx, req)`；首个 true → 允许，来源 `POLICY:<rule_id>`（如 `POLICY:dispatch_auto`；调用方把具体提案 id 写入裁决 `detail.dispatch_proposal_id`，不写进来源串，复审 #26）。登记时校验：规则码 ∉ `NonDelegable` 且 ∉ {decision_*} | — |
-| S8 | 默认拒绝 | 以上均未允许 | `NO_AUTHORITY` |
+| S8 | 默认拒绝 | 以上均未允许 | `NO_AUTHORITY`；若命中覆盖该码的规则提供了 `Explain`，用其返回的 reason_code（如 `SPAWN_QUOTA_EXCEEDED`） |
+
+**`agent_spawn` 的评估路径（D110）**：S0 要求 `Spawn` 事实；S1 主体须为 ACTIVE AGENT；S2 不适用（非 HumanOnly）；S3 跳过；S4 只认显式拒绝（`PolicyOnly` 码的角色允许不计入）；S5 不适用；S6 跳过（不可委托给他人建 Agent）；S7 规则 `spawn_grant`（本模块贡献）：主体 Agent 持 `LEAD` 角色 ∧ 存在 `effective_state=ACTIVE` 的编制授权 `grantee_agent_id=主体` ∧ `Spawn.ProjectIDs ⊆ project_ids`（授权为团队级时任意项目）∧ `Role ∈ allowed_roles` ∧ 机器 / 运行时·模型 / effort 在允许清单内 ∧ `active_count < max_active_agents` ∧ `spawned_today < max_spawns_per_day` ∧ `spent_micros < budget_cap_micros` ∧ `EstimatedCapMicros ≤ per_agent_cap_micros`。Check 只读；真正的配额占用在 05 事务内调用 `SpawnGrantUsage.Reserve`（行锁 + CAS 复验，BR-08-53），Check 通过而 Reserve 失败时以 Reserve 的错误为准。
 
 - 理由码到 HTTP：调用方按自身段位返回（02：403 `120403` + `data.reason_code`；04：`140403`；本模块接口：`160403`）。
 
@@ -226,7 +243,10 @@ type AuthorityDecision struct {
 | `NOT_OWNER` | 03 / 05 | 非资源所有者（如他人的执行、Agent） |
 | `NOT_MEMBER` | 05 | 非频道 / 项目成员 |
 | `AGENT_NOT_DRAFTER` | 07 | Agent 不是该交付的指定起草者 |
+| `SPAWN_GRANT_MISSING` / `SPAWN_GRANT_SCOPE` / `SPAWN_QUOTA_EXCEEDED` / `SPAWN_DAILY_LIMIT` / `SPAWN_BUDGET_EXHAUSTED` / `SPAWN_NOT_LEAD` | 08 S7（规则 `spawn_grant` 的 Explain）/ `SpawnGrantUsage.Reserve` | 无有效编制授权 / 角色·机器·模型·effort·项目超出范围 / 同时在岗数已满 / 今日新建数已满 / 授权预算已耗尽 / 发起者不是主导 Agent（D110） |
+| `SPAWNED_NOT_ADOPTED` | 08 BR-08-09 | AI 创建且未被人收编的 Agent 不能成为任何委托的受托人（D110） |
 - 失败即拒：IAM、05、07 依赖不可用 → 返回 error（调用方 503，本模块 `160461`），绝不放行（对齐 02 BR-02-42）。
+- `PolicyRegistry` 初始规则另含本模块贡献的 `spawn_grant`（`agent_spawn`，D110，评估见上）。
 - `PolicyRegistry` 初始规则：`dispatch_auto`（05 贡献：主体为项目 LEAD Agent、07 `DispatchPolicy=AUTO`、`CanAutoDispatch` 为真、`Risk≠HIGH`），`ensemble_branch`（05：`execution_start`，ENSEMBLE 并行上限内），`review_dispatch`（05：`work_item_assign`，仅 `role=REVIEWER`、项目 AUTONOMOUS、受派 Agent 持对应有效委托；复审 #5）。另：05 启动时以 `SystemActions.Register("fleet.review_dispatch", "work_item_assign")` 登记评审派单任务，否则 S1 返回 `SYSTEM_NOT_REGISTERED`。
 
 **本模块提供的其他接口**（根包冻结，`module.Provide`；签名为准，使用方规格须一致）
@@ -248,6 +268,7 @@ type PolicyRule struct {
     ID       string   // 全局唯一，如 "dispatch_auto"、"ensemble_branch"
     Codes    []string // 覆盖的权限码
     Evaluate func(ctx context.Context, req AuthorityRequest) (bool, error) // 只读；error = 失败即拒
+    Explain  func(ctx context.Context, req AuthorityRequest) string        // 可选：不匹配时给出 AuthorityReasonCode（S8 使用）
 }
 // 模块登记系统作业可执行的码（S1 SYSTEM 主体校验）；码 ∈ NonDelegable 时登记失败
 type SystemActions interface {
@@ -256,6 +277,22 @@ type SystemActions interface {
 // 05 退役 / 强制退役 Agent 时在其事务内撤销该 Agent 的全部委托
 type DelegationRevoker interface {
     RevokeAllForOn(ctx context.Context, tx *gorm.DB, tenantID, granteePrincipalID guid.ID, reason string) ([]guid.ID, error)
+}
+// D110：05 读取主导 Agent 的有效编制授权（建 Agent 前预检、UI 展示）；tx 可为 nil
+type SpawnGrantReader interface {
+    Active(ctx context.Context, tx *gorm.DB, tenantID, supervisorAgentID guid.ID) (SpawnGrantView, error) // 无 → ErrNoSpawnGrant（reason SPAWN_GRANT_MISSING）
+}
+type SpawnGrantView struct {
+    GrantID guid.ID; State, EffectiveState string; ApprovalMode string // 已按项目模式折算的 REQUIRE_APPROVAL | AUTO
+    ProjectIDs []guid.ID; AllowedRoles []string; AllowedMachineIDs []guid.ID; AllowedModels []RuntimeModel; MaxEffort string
+    MaxActiveAgents, ActiveCount, MaxSpawnsPerDay, SpawnedToday int
+    BudgetCapMicros, SpentMicros, PerAgentCapMicros int64
+    AgentTTLHours, IdleRetireHours int; EndsAt time.Time; Version int
+}
+// D110：05 在创建 / 退役 / 收编 Agent 的同一事务内占用与释放配额（行锁 + 版本 CAS，BR-08-53）
+type SpawnGrantUsage interface {
+    Reserve(ctx context.Context, tx *gorm.DB, grantID, agentID guid.ID) error // 幂等：同 agentID 重复调用不重复计数；失败返回 160471 / 160472（带 reason_code）
+    Release(ctx context.Context, tx *gorm.DB, grantID, agentID guid.ID, reason string) error // 幂等；reason ∈ RETIRED | ADOPTED | GRANT_ENDED
 }
 ```
 
@@ -501,6 +538,67 @@ type DelegationRevoker interface {
 - 事件消费去重统一用 09 `domain_event_receipts`（Subscriber 模式 Transactional）；一次性业务去重由 incident `once_key` 唯一索引承担。本模块不建 consumed-events 表。
 - 幂等统一用 09 C7 平台幂等表（00 §9）；本模块不建幂等表。
 
+
+#### 3.8.13 `governance_spawn_grants`（D110，编制授权）
+
+| 列 | 类型 | 空 | 默认 | 约束 / 说明 |
+|---|---|---|---|---|
+| grantee_agent_id | ID | N | | 05 Agent，须持 `LEAD` 角色且为人创建或已收编 |
+| grantee_principal_id | ID | N | | 该 Agent 的服务账号 |
+| project_ids | JSON | N | | 项目 entity id 数组；`[]` = 团队级（BR-08-50） |
+| max_active_agents | INT | N | 3 | 1–10；同时在岗（非 RETIRED、未被收编）的 AI 创建 Agent 数上限 |
+| max_spawns_per_day | INT | N | 5 | 1–20；UTC 自然日 |
+| allowed_roles | JSON | N | `["EXECUTOR"]` | ⊆ {`EXECUTOR`, `COORDINATOR`}，≥1；**不得**含 REVIEWER / LEAD |
+| allowed_machine_ids | JSON | N | | 04 机器 id 数组，≥1 |
+| allowed_models | JSON | N | | `[{runtime, model}]`，1–20 |
+| max_effort | STR(16) | N | `medium` | effort 上限（按 04 模型目录的 effort 顺序比较） |
+| budget_cap_micros | BIGINT | N | 50000000 | 1_000_000 … 设置上限；授权内全部 AI 创建 Agent 的累计成本上限 |
+| per_agent_cap_micros | BIGINT | N | 15000000 | ≤ budget_cap_micros |
+| agent_ttl_hours | INT | N | 168 | 24–720；到期由 05 正常退役 |
+| idle_retire_hours | INT | N | 48 | 4–336；无工作项达时长由 05 退役 |
+| approval_mode | ENUM `SpawnApprovalMode` | N | `REQUIRE_APPROVAL` | `REQUIRE_APPROVAL` / `AUTO`；AUTO 仅当范围内项目全部 AUTONOMOUS（BR-08-51） |
+| effective_approval_mode | ENUM | N | 同上 | 任一范围项目为 HYBRID 时为 `REQUIRE_APPROVAL`（不改 `approval_mode` 原值，条件恢复后回到原值） |
+| reason | STR(2000) | N | | ≥10 字 |
+| granted_by | ID | N | | HUMAN（`team_owner`） |
+| starts_at / ends_at | TS | N | | `starts_at+1h < ends_at ≤ starts_at+90d` |
+| state | ENUM `SpawnGrantState` | N | `ACTIVE` | `ACTIVE` / `EXHAUSTED` / `EXPIRED` / `REVOKED` |
+| end_reason | ENUM | Y | | `MANUAL` `TAKEOVER` `WINDOW_ENDED` `GRANTEE_INACTIVE` `REPLACED` |
+| ended_at / ended_by / end_note | TS / ID / STR(2000) | Y | | ended_by 空 = 系统 |
+| active_count | INT | N | 0 | 计数器（BR-08-53），对账任务校正 |
+| spawned_day | STR(10) | N | | `YYYY-MM-DD`（UTC），与 `spawned_today` 配对，跨日惰性归零 |
+| spawned_today | INT | N | 0 | |
+| spent_micros | BIGINT | N | 0 | 成本累计（BR-08-55） |
+| threshold_notified_pct | INT | N | 0 | 已发阈值提醒（0 / 80 / 100），去重 |
+| expiring_notified_at | TS | Y | | 72h 到期提醒已发 |
+| active_key | STR(32) | Y | | `= grantee_agent_id`，仅 ACTIVE / EXHAUSTED 时非空 |
+| replaces_grant_id | ID | Y | | 替换链 |
+
+唯一：`(tenant_id, active_key)`（每个主导 Agent 至多 1 份未终结授权）。索引：`(tenant_id, state, ends_at)`、`(tenant_id, grantee_agent_id)`。
+
+**计数方式（决定：授权行计数器 + 成员表）**：配额判定读授权行计数器（O(1)、可加行锁）；成员表提供按 Agent 的幂等与按 Agent 成本；对账任务以成员表与 05 `AgentDirectory` 为准校正计数器。不采用「每次对用量事件表求和」：配额判定在建 Agent 的热路径上，必须 O(1) 且可加锁。
+
+#### 3.8.14 `governance_spawn_grant_members`（D110）
+
+| 列 | 类型 | 空 | 说明 |
+|---|---|---|---|
+| grant_id | ID | N | |
+| agent_id | ID | N | AI 创建的 Agent；唯一 `(tenant_id, agent_id)` |
+| state | ENUM | N | `ACTIVE` / `RELEASED` |
+| release_reason | ENUM | Y | `RETIRED` `ADOPTED` `GRANT_ENDED` |
+| per_agent_cap_micros | BIGINT | N | 创建时快照 |
+| spent_micros | BIGINT | N | 该 Agent 累计成本（RELEASED 后不再累计） |
+| cap_notified | BOOL | N | 单 Agent 预算触顶已处理 |
+| reserved_at / released_at | TS | N / Y | |
+
+索引 `(tenant_id, grant_id, state)`。
+
+#### 3.8.15 `governance_spawn_cost_cursors`（D110，成本增量游标）
+
+| 列 | 类型 | 空 | 说明 |
+|---|---|---|---|
+| execution_id | ID | N | 唯一 `(tenant_id, execution_id)` |
+| agent_id / grant_id | ID | N | |
+| last_cumulative_micros | BIGINT | N | 已计入的 `cumulative_cost_micros`；增量 = 新值 − 本值（≤0 忽略） |
 ### 3.9 JSON Schema（draft 2020-12 摘要；实现写入 `internal/governance/schema/` 并单测）
 
 #### 3.9.1 委托
@@ -512,6 +610,16 @@ type DelegationRevoker interface {
    "items":{"enum":["FEATURE","BUG","CHORE","DOC","RESEARCH","DESIGN","TEST"]}},
  "iam_bindings": {"type":"array","items":{"type":"object","required":["role_key","role_id"],
    "properties":{"role_key":{"type":"string","pattern":"^delegated_[a-z_]+$"},"role_id":{"type":"string","pattern":"^[1-9][0-9]{0,18}$"}}}}}
+```
+
+#### 3.9.1b 编制授权（D110）
+
+```json
+{"allowed_roles":{"type":"array","minItems":1,"maxItems":2,"uniqueItems":true,"items":{"enum":["EXECUTOR","COORDINATOR"]}},
+ "allowed_machine_ids":{"type":"array","minItems":1,"maxItems":50,"uniqueItems":true,"items":{"type":"string","pattern":"^[1-9][0-9]{0,18}$"}},
+ "allowed_models":{"type":"array","minItems":1,"maxItems":20,"items":{"type":"object","additionalProperties":false,
+   "required":["runtime","model"],"properties":{"runtime":{"enum":["CLAUDE_CODE","CODEX"]},"model":{"type":"string","minLength":1,"maxLength":160}}}},
+ "project_ids":{"type":"array","maxItems":50,"uniqueItems":true,"items":{"type":"string","pattern":"^[1-9][0-9]{0,18}$"}}}
 ```
 
 #### 3.9.2 升级规则（`EscalationRuleKind` 与 params）
@@ -528,6 +636,7 @@ type DelegationRevoker interface {
 | `SENSITIVE_PATH` | `claim.submitted` + 03 `EvidenceReader.DiffSummary(execution_id)` 的变更路径 | 见下 | 否（默认启用） | HOLD_DELEGATIONS, NOTIFY / HOLD_DELEGATIONS, NOTIFY | CRITICAL |
 | `NO_ELIGIBLE_AUTHORITY`（本规格提议） | `work_item.state_changed{to:NEEDS_HUMAN_REVIEW}`，AUTONOMOUS 且 `ListEligible(decision_approve)` 无 AGENT 委托来源；或 05 下发的 Agent 评审超时（REVIEWER 认领 30 min 内无裁决，`work_item.escalated{REVIEW_SLA, reviewer_kind:AGENT}`） | `{"agent_review_timeout_min":{"const":30}}` | 否 | NOTIFY（并为人类建 WORK_ITEM_REVIEW）/ —（HYBRID 不评估） | WARNING |
 | `EXECUTION_STALLED`（本规格提议） | `execution.state_changed{to:INTERRUPTED}` 或 `work_item.state_changed{to:EXECUTION_FAILED}` 持续 ≥ `stall_minutes` 未恢复 / 重试 / 失败处理 | `{"stall_minutes":{"type":"integer","minimum":5,"maximum":1440,"default":30}}` | 否 | NOTIFY / NOTIFY | WARNING |
+| `SPAWN_BUDGET`（D110） | 本模块成本累计（BR-08-55）：编制授权 `spent_micros` 达 80% / 100% | `{}`（阈值固定 80 / 100） | 是 | NOTIFY / NOTIFY（100% 时授权已 EXHAUSTED，不再建 Agent；已建 Agent 继续受单 Agent 预算与 07 项目预算约束） | 80%：WARNING；100%：CRITICAL |
 
 `EscalationAction`：`NOTIFY`（§9 `governance.escalation_triggered`）、`HOLD_DELEGATIONS`（incident `hold_delegations=true`；含「转人」：收件箱对人类发 `ESCALATION_ALERT` 与 `WORK_ITEM_REVIEW`）、`PROJECT_HOLD`（07 `ProjectHoldSetter.AddEscalationHoldOn(tx, tenant, project, rule_id, reason)`，来源 `POLICY:<rule_id>`）。暂停工作项由 02 自行完成，本模块不重复（理由：02 已在同事务置 `require_human_decision`）。
 
@@ -635,6 +744,28 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | 160461 | 503 | authority_unavailable | 依赖不可用，拒绝默认 |
 | 160429 | 429 | rate_limited | 解释接口 ≤60 次/分/主体 |
 | 160428 | 428 | precondition_required | 更新型请求缺少 `If-Match` |
+| 160470 | 422 | spawn_grant_invalid | 编制授权字段越界（角色含 REVIEWER / LEAD、per_agent > budget、窗口越界、机器 / 模型不在 04 目录、受托人非 LEAD 或为未收编的 AI 创建 Agent） |
+| 160471 | 409 | spawn_quota_exceeded | `Reserve`：同时在岗或今日新建数已满（`data.reason_code` = `SPAWN_QUOTA_EXCEEDED` / `SPAWN_DAILY_LIMIT`） |
+| 160472 | 409 | spawn_budget_exhausted | `Reserve`：授权非 ACTIVE（EXHAUSTED / 已终结）或预算已用尽（`SPAWN_BUDGET_EXHAUSTED` / `SPAWN_GRANT_MISSING`） |
+| 160473 | 409 | spawn_grant_active_exists | 该主导 Agent 已有未终结授权（`data.spawn_grant_id`；可用 `replaces_grant_id` 替换） |
+| 160474 | 409 | spawn_grant_not_active | 非法迁移 |
+| 160475 | 422 | spawn_grant_auto_requires_autonomous | `approval_mode=AUTO` 但范围含 HYBRID 项目或为团队级 |
+| 160476 | 422 | spawn_grant_below_usage | 收紧后的上限低于当前用量（`data.usage{}`） |
+
+### 4.5 编制授权 `SpawnGrantState`（D110）
+
+| 当前 | 触发 | 守卫 | 目标 | 副作用 |
+|---|---|---|---|---|
+| — | `POST /spawn-grants` | BR-08-50…52；HUMAN ∧ `spawn_grant_manage`；step-up `spawn_grant_manage` | ACTIVE | 审计 `governance.spawn_grant_granted`；事件 `spawn_grant.granted`；SSE |
+| ACTIVE / EXHAUSTED | `PATCH /spawn-grants/{id}` | 同上；收紧不需 step-up，放宽（任一上限调高、范围扩大、`approval_mode`→AUTO、延长 `ends_at`）需 step-up；新上限 ≥ 当前用量（`160476`） | 不变；EXHAUSTED 且新预算 > 已用 → ACTIVE | 审计 `governance.spawn_grant_updated`（before / after）；事件 `spawn_grant.updated` |
+| ACTIVE | 成本累计达 `budget_cap_micros` | — | EXHAUSTED | 审计 `governance.spawn_grant_exhausted`；事件 `spawn_grant.exhausted`；升级规则 `SPAWN_BUDGET`（CRITICAL）；未决 AGENT_SPAWN_APPROVAL 项撤回 |
+| ACTIVE / EXHAUSTED | `POST /spawn-grants/{id}/revocations` | HUMAN ∧ `spawn_grant_manage`（无 step-up） | REVOKED(`MANUAL`) | 审计 `governance.spawn_grant_revoked`；事件 `spawn_grant.revoked`；未决 AGENT_SPAWN_APPROVAL 项撤回 |
+| ACTIVE / EXHAUSTED | 接管（BR-08-22 ⑥）/ 对账发现主导 Agent 非 ACTIVE 或失去 LEAD | — | REVOKED(`TAKEOVER` / `GRANTEE_INACTIVE`) | 同上 |
+| ACTIVE / EXHAUSTED | 到期任务 `ends_at ≤ now` | — | EXPIRED(`WINDOW_ENDED`) | 事件 `spawn_grant.expired`；审计 `governance.spawn_grant_revoked`（end_reason=WINDOW_ENDED） |
+| ACTIVE / EXHAUSTED | 替换（`replaces_grant_id`） | 同事务新授权通过校验 | REVOKED(`REPLACED`) | ACTIVE 成员行与计数器迁移到新授权 |
+| EXPIRED / REVOKED | 任意命令 | — | — | 409 `160474`；重复撤销同一已撤销授权 → 200 返回当前（幂等） |
+
+授权终结（EXPIRED / REVOKED，`REPLACED` 除外）**不自动退役**已建 Agent：成员行 `RELEASED(GRANT_ENDED)`，05 发布 `agent.orphaned` 并按其规则处理（停止接新工作、提示人收编或退役）。`effective_state`：ACTIVE 且 `ends_at ≤ now` 时显示 EXPIRED（到期任务运行前的 ≤30s 窗口内 Check 已按 EXPIRED 拒绝）。
 
 ---
 
@@ -653,7 +784,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 **委托授予**
 - **BR-08-08** 授予人：HUMAN；路由 `delegation_grant`；Check(`delegation_grant`)；step-up purpose `delegation_grant`，target `project:<project_id>:grantee:<principal_id>`。
-- **BR-08-09** 受托人：05 `AgentDirectory` 中 ACTIVE、为本租户活跃成员；角色要求按动作：`actions` 含任一 `decision_*` 或 `code_merge` → 受托人必须持有 `REVIEWER`（仅 LEAD 不足：主导 Agent 负责分派，裁决须由评审角色承担，职责分离）；仅含 `intake_convert` → 受托人须持有 `COORDINATOR` 或 `REVIEWER`；否则 `160411`。受托人在项目无读权限 → 允许授予但响应 `warnings:["GRANTEE_NO_PROJECT_READ"]`（UI 提示先在项目团队中加入该 Agent）。
+- **BR-08-09** 受托人：05 `AgentDirectory` 中 ACTIVE、为本租户活跃成员；角色要求按动作：`actions` 含任一 `decision_*` 或 `code_merge` → 受托人必须持有 `REVIEWER`（仅 LEAD 不足：主导 Agent 负责分派，裁决须由评审角色承担，职责分离）；仅含 `intake_convert` → 受托人须持有 `COORDINATOR` 或 `REVIEWER`；否则 `160411`。受托人在项目无读权限 → 允许授予但响应 `warnings:["GRANTEE_NO_PROJECT_READ"]`（UI 提示先在项目团队中加入该 Agent）。受托人为 AI 创建且未被人收编的 Agent → `160411`，`data.reason_code=SPAWNED_NOT_ADOPTED`（BR-08-56，D110）。
 - **BR-08-10** 动作：`actions ⊆ Delegable`；含任何 `NonDelegable` → `160410`；含其他码 → `160400`。`code_merge` 要求 `max_risk=LOW`；`intake_convert` 要求项目当前 AUTONOMOUS；否则 `160416`。由于 07 P1 要求切换 AUTONOMOUS 前已有委托，`intake_convert` 只能在切换之后经 `replaces_delegation_id` 以「原动作 ∪ {intake_convert}」替换授予（同事务撤销旧委托为 REPLACED）。委托的 `intake_convert` 覆盖 01 在同事务内调用 02 `RequirementCreator` 创建需求（不再单独检查 `requirement_write`）；NEW_PROJECT / APPEND 仍不可委托，进入人类收件箱 `INTAKE_TRIAGE`。
 - **BR-08-11** 授予者对每个委托码须经 ROLE 来源持有（以 Check 计算，忽略其自身委托）→ 否则 `160403(GRANTOR_LACKS_AUTHORITY)`；另经底座绑定越权防护。
 - **BR-08-12** 每（受托人, 项目）至多 1 条 ACTIVE；冲突 → `160413`；请求带 `replaces_delegation_id` 时同事务先撤销旧委托（REPLACED）再授予。
@@ -668,7 +799,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 - **BR-08-19** 到期：IAM 绑定 `expires_at=ends_at`，在 `ends_at` 时刻判定即刻拒绝（与任务无关）；任务 ≤30s 内补状态。
 - **BR-08-20 撤销与在途裁决**：02 在裁决事务内调用 `Check(tx)`。PG/MySQL：Check 对命中委托行 `FOR SHARE`。(a) 撤销先提交 → 裁决读到 REVOKED → `NO_DELEGATION` 拒绝；(b) 裁决先取得共享锁 → 撤销的 UPDATE 等待裁决事务结束 → 裁决以 `DELEGATION:<id>` 提交，`decided_at < revoked_at`，合法。SQLite：单写者；裁决事务读后升级写锁时若撤销已提交，得到 `SQLITE_BUSY_SNAPSHOT`，02 重试时读到 REVOKED。已提交的裁决不追溯撤回（审计可查，人可另行 REQUEST_CHANGES）。
 - **BR-08-21** 撤销后：受托 Agent 的收件箱无项（Agent 无收件箱）；`delegation.revoked` 被 02 消费以释放该 Agent 的 REVIEWER 认领（02 §7.3）；07 据此评估自治前置条件（BR-07-16）。
-- **BR-08-22 接管**：HUMAN；`takeover`；step-up purpose `project_takeover` target `project:<id>`；单事务：① 撤销项目全部 ACTIVE 委托（`TAKEOVER`）→ ② 07 `ProjectModeSwitcher.TakeOverOn(tx, tenant, project, actor, reason, revokedIDs)`（项目已 HYBRID 时 07 返回 no-op，本模块仍完成撤销）→ ③ 写 `governance_takeovers` → ④ 审计 `governance.takeover_executed` → ⑤ outbox `delegation.revoked`×N、`takeover.executed`（CR-08-05）。任一步失败整体回滚。未关闭 incident 不变（问题未消失），`resolved_by` 仍需人。
+- **BR-08-22 接管**：HUMAN；`takeover`；step-up purpose `project_takeover` target `project:<id>`；单事务：① 撤销项目全部 ACTIVE 委托（`TAKEOVER`）→ ② 07 `ProjectModeSwitcher.TakeOverOn(tx, tenant, project, actor, reason, revokedIDs)`（项目已 HYBRID 时 07 返回 no-op，本模块仍完成撤销）→ ③ 写 `governance_takeovers` → ④ 审计 `governance.takeover_executed` → ⑤ outbox `delegation.revoked`×N、`takeover.executed`（CR-08-05）→ ⑥ 撤销覆盖该项目的编制授权（BR-08-57，D110；outbox `spawn_grant.revoked`×M）。任一步失败整体回滚。未关闭 incident 不变（问题未消失），`resolved_by` 仍需人。
 - **BR-08-49 接管后补投影**：`takeover.executed` 或 `project.mode_changed{to:HYBRID}` 到达时，`inbox_projector` 读取 02 `WorkItemReader` 中该项目全部 NEEDS_HUMAN_REVIEW 工作项，按 `work_item:<id>:claim:<claim_id>` 幂等建 WORK_ITEM_REVIEW（已存在 OPEN 项不重复），保证切回混编后已在等待评审的工作项都有人类接收人。
 - **BR-08-23** 对账（每 5 分钟）：IAM 绑定缺失、Agent 非 ACTIVE、授予者失去 ROLE 来源 → 撤销（理由码见 §3.8.3）。授予者失权撤销为本规格提议：委托的正当性来自授予者的权限。
 
@@ -704,6 +835,18 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 - **BR-08-46** 依赖不可用（IAM、02/03/05/07 读取接口、DB）→ 503 `160461`，判定类一律拒绝；读模型类（总览各节）按节降级返回 `status:"error"`。
 - **BR-08-47** 上限：每租户 ACTIVE 委托 ≤200；每项目升级规则 ≤20；pattern set ≤20×50 glob；收件箱列表单页 ≤100；通知偏好行 ≤100/人。
 - **BR-08-48** 时间：所有判定使用服务端 UTC；客户端时间只用于显示。
+
+**编制授权（D110，主管 Agent 自建 Agent）**
+- **BR-08-50** 授予：仅 HUMAN ∧ `spawn_grant_manage`（种子仅 `team_owner`；该码 ∈ `NonDelegable` ⊆ `HumanOnly`，S2 对一切非人类主体拒绝 `AGENT_PROHIBITED`）；step-up purpose `spawn_grant_manage` target `agent:<grantee_agent_id>`；受托主导 Agent 须 ACTIVE、持 `LEAD`、且为人创建或已收编（否则 `160470`）；`project_ids=[]`（团队级）需二次确认并只能 `REQUIRE_APPROVAL`；`allowed_machine_ids` / `allowed_models` 须存在于 04 机器与模型目录；每主导 Agent 至多 1 份未终结授权（`160473`，可替换）；每租户未终结授权 ≤20。
+- **BR-08-51** 审批模式：`AUTO` 仅当范围内**全部**项目为 AUTONOMOUS（否则 `160475`）；消费 07 `project.mode_changed{to:HYBRID}` 时，所有覆盖该项目的授权（含团队级）`effective_approval_mode` 立即降为 `REQUIRE_APPROVAL`（`approval_mode` 原值不变；范围内全部恢复 AUTONOMOUS 时回到原值），发 `spawn_grant.updated`。混编项目中 AI 建 Agent **永远**需人批准。
+- **BR-08-52** 范围不可越权：`allowed_roles` ⊆ {EXECUTOR, COORDINATOR}——AI 不能创建评审员或主导 Agent（防自建自审与自我繁殖链）；AI 创建且未收编的 Agent 不得持有编制授权（`160470`）。
+- **BR-08-53** 配额原子性：`Reserve` 在 05 建 Agent 的同一事务内执行：PG / MySQL `SELECT … FOR UPDATE` 锁授权行，SQLite 依赖 `_txlock=immediate` 写锁；跨日先把 `spawned_today` 归零并更新 `spawned_day`；校验 `effective_state=ACTIVE ∧ active_count < max_active_agents ∧ spawned_today < max_spawns_per_day ∧ spent_micros < budget_cap_micros`；通过则 `active_count+1`、`spawned_today+1`、`version+1`（`UPDATE … WHERE id=? AND version=?`，影响 0 行 → 重读重试 ≤3 次，仍失败 → `160471`），并插入成员行（唯一 `(tenant_id, agent_id)`；同 agent 重复调用视为已占用、不重复计数）。并发两个建 Agent 只剩 1 个名额时恰一个成功，失败方整个建 Agent 事务回滚。
+- **BR-08-54** 释放：`Release` 把成员行置 `RELEASED` 并 `active_count−1`（不低于 0）；`spawned_today` 不回退（日配额按发起次数计，防止建了即退刷配额）。触发：05 退役（`RETIRED`）、人收编（`ADOPTED`：收编后不再占编制、成本不再计入授权）、授权终结（`GRANT_ENDED`）。建 Agent 事务回滚时 `Reserve` 随之回滚，无需显式释放。
+- **BR-08-55** 成本累计：消费 03 `execution.cost_updated`（09 Transactional 订阅，receipts 去重）；按 `agent_id` 查 ACTIVE 成员行（RELEASED 或非成员不计）；增量 = `cumulative_cost_micros − cursor.last_cumulative_micros`（≤0 忽略，游标单调）；同事务更新游标、成员 `spent_micros`、授权 `spent_micros`。成员 `spent_micros ≥ per_agent_cap_micros` 且 `cap_notified=false` → 发 `spawn_grant.updated{member_cap_reached:agent_id}`（05 消费后停止该 Agent 接新工作）并通知授予人；授权达 80% → 通知（`threshold_notified_pct` 去重）；达 100% → EXHAUSTED（§4.5）。07 项目预算独立约束，两者先到者生效。
+- **BR-08-56** 委托排除：AI 创建且未收编的 Agent（05 `AgentDirectory.origin=AGENT_SPAWNED ∧ adopted_at IS NULL`）不能作为任何委托的受托人（BR-08-09 → `160411`，`data.reason_code=SPAWNED_NOT_ADOPTED`）。人收编后按普通 Agent 对待。
+- **BR-08-57** 接管：BR-08-22 单事务增加 ⑥：撤销 `project_ids` 包含该项目的全部未终结编制授权（`TAKEOVER`）；团队级授权不因单项目接管撤销，但其 `effective_approval_mode` 按 BR-08-51 降级。
+- **BR-08-58** 审批：`effective_approval_mode=REQUIRE_APPROVAL` 时 05 先发布 `agent.spawn_requested`（含 `spawn_request_id`、`spawn_grant_id`、请求事实），本模块投影 `AGENT_SPAWN_APPROVAL`；人〔批准〕/〔驳回〕调用 05 建 Agent 请求接口（05 在批准事务内 `Reserve`；期间授权被撤销 / 耗尽 → 批准失败并提示）；请求 24h 未处理由 05 置过期（`agent.spawn_expired`）。`AUTO` 时 05 直接在建 Agent 事务内 `Reserve`，不建收件箱项。
+- **BR-08-59** 审计与上限：授予、修改、撤销、耗尽、到期均写审计（§7.5，detail 含授权快照）；AI 创建 Agent 的审计（05 `fleet.agent_spawned`）必须带 `spawn_grant_id` 与 `supervisor_agent_id`，供审计页按来源过滤。
 
 ---
 
@@ -743,6 +886,19 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | D7 | POST `/takeovers` | tenants | P · `takeover`；HUMAN；step-up `project_takeover` | `{reason*, reauth_proof*}` | `{takeover, revoked_delegation_ids[], mode_change_id?, previous_mode}`（201） | 160403, 160403(AGENT_PROHIBITED), 160403(REAUTH_REQUIRED), 160461；07 错误透传于 `data.upstream_code` | Idempotency-Key |
 
 `Delegation` 表示：§3.8.3 全部列（`active_key` 除外）+ `grantee{name, avatar, agent_roles[]}`、`grantor{name}`、`project{name, code, team_mode}`、`effective_state`、`remaining_seconds`。
+
+### 6.3b 编制授权（D110）
+
+| # | 方法 路径 | tag | 守卫 · 权限 | 请求 | 响应 `data` | 错误 | 幂等 / 锁 |
+|---|---|---|---|---|---|---|---|
+| SG1 | GET `/spawn-grants` | tenants | T · `policy_read` | query：`state` `grantee_agent_id` `project_id`(contains) `approval_mode` `ends_at`(lt/gt)；排序 `ends_at` `created_at` | `SpawnGrant[]` | — | — |
+| SG2 | POST `/spawn-grants` | tenants | T · `spawn_grant_manage`；HUMAN；step-up `spawn_grant_manage` | `{grantee_agent_id*, project_ids*[], max_active_agents*, max_spawns_per_day*, allowed_roles*[], allowed_machine_ids*[], allowed_models*[], max_effort*, budget_cap_micros*, per_agent_cap_micros*, agent_ttl_hours*, idle_retire_hours*, approval_mode*, duration_hours*, reason*, replaces_grant_id?, reauth_proof*}` | `SpawnGrant`（201）+ `ETag` | 160400, 160403(AGENT_PROHIBITED / REAUTH_REQUIRED / MISSING_PERMISSION), 160470, 160473, 160475 | Idempotency-Key（176425 / 176409） |
+| SG3 | GET `/spawn-grants/{spawn_grant_id}` | spawn-grants | O · `policy_read` | — | `SpawnGrant` + `ETag` | 160404 | — |
+| SG4 | PATCH `/spawn-grants/{spawn_grant_id}` | spawn-grants | O · `spawn_grant_manage`；HUMAN；放宽时 step-up | 可选：上述上限 / 范围字段、`approval_mode`、`ends_at`、`reauth_proof?` | `SpawnGrant` | 160403, 160409, 160428, 160470, 160474, 160475, 160476 | If-Match |
+| SG5 | POST `/spawn-grants/{spawn_grant_id}/revocations` | spawn-grants | O · `spawn_grant_manage`；HUMAN | `{reason*}` | `SpawnGrant`（REVOKED） | 160403, 160404, 160409, 160474 | Idempotency-Key；If-Match |
+| SG6 | GET `/spawn-grants/{spawn_grant_id}/members` | spawn-grants | O · `policy_read` | query `state` | `[{agent{id, name, avatar, roles[], state}, state, release_reason?, spent_micros, per_agent_cap_micros, reserved_at, released_at?}]` | 160404 | — |
+
+`SpawnGrant` 表示：§3.8.13 全部列（`active_key` 除外）+ `grantee{agent_id, name, avatar}`、`granted_by{name}`、`projects[{id, name, team_mode}]`、`effective_state`、`effective_approval_mode`、`remaining_seconds`、`budget_pct`、`quota{active:"x/y", today:"x/y"}`。
 
 ### 6.4 升级规则与事件
 
@@ -806,6 +962,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | op_key | 所有者 | 接口 | purpose | target | 附加确认 |
 |---|---|---|---|---|---|
 | delegation.grant | 08 | D2 | `delegation_grant` | `project:<id>:grantee:<principal>` | 理由 |
+| spawn_grant.manage | 08 | SG2 / SG4（放宽） | `spawn_grant_manage` | `agent:<grantee_agent_id>` | 配额 / 预算 / 审批方式摘要；团队级范围二次确认（D110） |
 | project.takeover | 08 | D7 | `project_takeover` | `project:<id>` | 理由 |
 | escalation_rule.relax | 08 | E2 | `escalation_rule_relax` | `rule:<id>` | 后果说明 |
 | governance.sod_relax | 08 | S2 | `governance_sod_relax` | `tenant:<id>` | 后果说明 |
@@ -840,6 +997,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `EXECUTION_ATTENTION`（subkind INTERRUPTED / EXECUTION_FAILED） | `execution.state_changed{to:INTERRUPTED}`；`work_item.state_changed{to:EXECUTION_FAILED}` | 人类执行者（交互执行）；Agent 执行 → `LEADS(p)` 人类 | HIGH | `execution.state_changed` 离开 INTERRUPTED（恢复 / 失败）、`work_item.state_changed` 离开 EXECUTION_FAILED | A 打开执行（恢复 / 重试）/ R 标记失败 |
 | `ENSEMBLE_APPROVAL`（v1.1） | `ensemble.plan_created{requires_approval:true}`（超出预算上限需人批准；复审 #22） | `HOLDERS(work_item_assign)` 项目内人类 | NORMAL | `ensemble.started` / `ensemble.cancelled`（含 24h 过期） | A 批准 / R 拒绝 |
 | `ENSEMBLE_SELECTION`（v1.1） | `ensemble.compared{requires_human:true}` | `LEADS(p)` 人类 | HIGH | `ensemble.selected` / `ensemble.cancelled` | A 打开对比报告择优 / R — |
+| `AGENT_SPAWN_APPROVAL`（D110） | 05 `agent.spawn_requested`（`effective_approval_mode=REQUIRE_APPROVAL`；载荷含 `spawn_request_id`、`spawn_grant_id`、`supervisor_agent_id`、请求事实） | `HOLDERS(agent_manage)` 人类（授权有项目范围时另须对任一范围项目 `project_read`） | NORMAL | 05 `agent.spawned`（同 `spawn_request_id`）/ `agent.spawn_rejected` / `agent.spawn_expired`；授权撤销 / 耗尽 → WITHDRAWN | A 批准 / R 驳回（理由必填）；均调用 05 建 Agent 请求接口 |
 
 ---
 
@@ -858,6 +1016,11 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `governance.notification_router` | outbox 消费 | §9：解析接收人与类型，调用 09 `Notifier.Send`（携带 `merge_key`、`dedupe_key`、`priority`、模板与链接）；偏好、免打扰、合并窗口与摘要由 09 在投递时经 `PreferenceResolver` 读取本模块偏好执行 | 同上 |
 | `governance.audit_indexer` | 每 2s（每租户游标） | `EventStreamReader(tenant, last_sequence, 500)` → 写索引（project / authority 取 Labels，缺省按 target 反查 02/07）→ 同事务更新游标 → 推 `tenant/{t}/activity` | 游标保证不漏不重 |
 | `governance.seed_reconcile` | 启动 + 每 1h | §3.3 | — |
+| `governance.spawn_grant_expiry` | 每 30s | `state∈{ACTIVE,EXHAUSTED} AND ends_at<=now` → EXPIRED、ACTIVE 成员 RELEASED(GRANT_ENDED)、审计、outbox | 条件更新幂等，下周期重做 |
+| `governance.spawn_grant_day_reset` | 每日 00:00:30 UTC（`Reserve` 另做惰性归零） | `spawned_day <> today` → `spawned_today=0`、`spawned_day=today` | — |
+| `governance.spawn_grant_expiring_notice` | 每 15 min | `ends_at` 在 72h 内且 `expiring_notified_at IS NULL` → 通知授予人，置标记 | — |
+| `governance.spawn_cost_accrual` | outbox 消费 `execution.cost_updated`（Transactional） | BR-08-55 | 09 退避；停放后告警 |
+| `governance.spawn_grant_reconcile` | 每 5 min（每租户一锁）；`agent.*` 事件即时 | 以成员表 + 05 `AgentDirectory` 重算 `active_count`；主导 Agent 非 ACTIVE / 失去 LEAD → REVOKED(`GRANTEE_INACTIVE`) | — |
 
 闭环完整率（07 BR-07-49）：总览请求时实时计算最近 30 天（终态工作项数来自 02 `WorkItemReader` 计数，审计侧来自索引中 `delivery.decision_approved` / `delivery.decision_cancelled` 去重 target 数），服务端缓存 5 min；不建表（本规格提议：数据量小，避免第二份快照）。
 
@@ -870,7 +1033,12 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `delegation.expired` | 到期任务 | `{delegation_id, project_id, grantee_principal_id, ended_at}`（消费方 02 / 05 / 07 对 `delegation.expired` 与 `delegation.revoked` 做相同处理） |
 | `escalation.triggered` | incident 创建 | `{incident_id, project_id, rule_kind, severity, subject{kind,id}, actions_applied[], hold_delegations}` |
 | `escalation.resolved` | RESOLVED / DISMISSED | `{incident_id, project_id, rule_kind, resolution}` |
-| `takeover.executed` | D7 | `{takeover_id, project_id, revoked_delegation_ids[], previous_mode}` |
+| `takeover.executed` | D7 | `{takeover_id, project_id, revoked_delegation_ids[], previous_mode, revoked_spawn_grant_ids[]}` |
+| `spawn_grant.granted` | SG2 | `{spawn_grant_id, grantee_agent_id, project_ids[], max_active_agents, max_spawns_per_day, allowed_roles[], budget_cap_micros, per_agent_cap_micros, approval_mode, ends_at}` |
+| `spawn_grant.updated` | SG4 / 审批方式折算（BR-08-51）/ 单 Agent 预算触顶（BR-08-55） | `{spawn_grant_id, changed_fields[], effective_approval_mode, state, member_cap_reached?:agent_id}` |
+| `spawn_grant.exhausted` | 成本达上限 | `{spawn_grant_id, grantee_agent_id, spent_micros, budget_cap_micros}` |
+| `spawn_grant.revoked` | SG5 / 接管 / 对账 / 替换 | `{spawn_grant_id, grantee_agent_id, end_reason, ended_at}` |
+| `spawn_grant.expired` | 到期任务 | `{spawn_grant_id, grantee_agent_id, ended_at}` |
 
 ### 7.3 消费的事件
 
@@ -895,6 +1063,8 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `budget.threshold_reached` | 07 | BUDGET incident（`once_key` 按 cap_version） |
 | `acceptance.received` | 07 | CLIENT_REJECTION；通知 |
 | `delivery.confirmation_requested`、`delivery.ready`、`delivery.withdrawn`、`delivery.sent` | 07 | DELIVERY_CONFIRM（开 / 关） |
+| `execution.cost_updated` | 03 | 编制授权成本累计（BR-08-55；载荷须含 `agent_id`、`cumulative_cost_micros`） |
+| `agent.spawn_requested` / `agent.spawned` / `agent.spawn_rejected` / `agent.spawn_expired` / `agent.adopted` / `agent.orphaned` | 05 | AGENT_SPAWN_APPROVAL 开 / 关；收编释放核对；孤儿通知（D110） |
 
 ### 7.4 SSE（09 机制）
 
@@ -902,6 +1072,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 |---|---|---|
 | `tenant/{t}/inbox/{principal}` | `inbox.item_added` / `inbox.item_removed` / `inbox.counts` / `notification.added` | `{item_id?, kind?, state?, resolution?, actor_name?, counts{total, by_kind}, revision}` |
 | `tenant/{t}/governance/delegations` | `delegation.changed` | `{delegation_id, state, effective_state, used_count}` |
+| `tenant/{t}/governance/spawn_grants` | `spawn_grant.changed` | `{spawn_grant_id, state, effective_state, effective_approval_mode, active_count, spawned_today, spent_micros}`（`policy_read`） |
 | `tenant/{t}/governance/incidents` | `incident.changed` | `{incident_id, state, project_id}` |
 | `tenant/{t}/activity` | `activity.appended` | 索引行（按订阅者 `project_read` / `audit_read` 过滤） |
 
@@ -937,7 +1108,10 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `knowledge.memory_rule_approved` / `_rejected` | 06 | memory | `memory_id, scope, agent_id` |
 | `governance.delegation_granted` | 08 | delegation | `delegation_id, grantee_principal_id, actions[], max_risk, cost_cap_micros, max_rework, ends_at` |
 | `governance.delegation_revoked` / `governance.delegation_expired` | 08 | delegation | `delegation_id, end_reason, used_count` |
-| `governance.takeover_executed` | 08 | project | `takeover_id, revoked_delegation_ids[], previous_mode` |
+| `governance.takeover_executed` | 08 | project | `takeover_id, revoked_delegation_ids[], previous_mode, revoked_spawn_grant_ids[]` |
+| `governance.spawn_grant_granted` / `governance.spawn_grant_updated` | 08 | spawn_grant | `spawn_grant_id, grantee_agent_id, snapshot{max_active_agents, max_spawns_per_day, allowed_roles[], budget_cap_micros, per_agent_cap_micros, approval_mode, project_ids[], ends_at}, changed_fields[]?` |
+| `governance.spawn_grant_revoked` / `governance.spawn_grant_exhausted` | 08 | spawn_grant | `spawn_grant_id, end_reason?, spent_micros, active_count` |
+| `fleet.agent_spawned` / `fleet.agent_adopted`（05 发出，本表登记） | 05 | agent | `agent_id, origin(AGENT_SPAWNED), supervisor_agent_id, spawn_grant_id, spawn_request_id?, approved_by?`；收编时 `adopted_by`（审计页「AI 创建」筛选依据） |
 | `governance.escalation_triggered` / `_acknowledged` / `_resolved` / `_dismissed` | 08 | escalation_incident | `incident_id, rule_kind, severity, actions_applied[]?, resolution?` |
 | `governance.escalation_rule_changed` / `governance.settings_changed` | 08 | escalation_rule / tenant | `changed_fields[], before{}, after{}` |
 | `governance.role_seed_applied` | 08 | tenant | `manifest_version, roles[{role_key, added_codes[]}]` |
@@ -957,6 +1131,11 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 - **权限矩阵 tab**：行 = 动作（按 PRD 动作分组，组内权限码）；列 = 7 个种子角色 + 自定义角色（首列冻结，横向滚动）。单元格：✅「已授予」/ ⚙「有条件」（hover 显示条件摘要「风险 ∈ LOW」）/ —「无」。行首标：🔒「不可委托」、👤「仅人类」、🤝「可委托」。选中项目时 `agent_reviewer`、`agent_lead` 列下追加「委托中」子行：受托 Agent 头像 + 动作 + `CountdownRing`。列头 → 新标签打开 IAM `/admin/:tenantID/roles`（定位该角色）。顶部「生产访问」条：当前持有人与剩余时间、〔申请生产访问〕跳 IAM `/admin/:tenantID/access-requests`。种子漂移提示（G3 drift 非空）：「engineer 角色比默认少 2 项权限」〔查看〕〔按默认补齐〕（G4，`policy_manage`）。
 - **委托 tab**：表列：受托 Agent、项目、动作 chips、条件（类型 / 风险 ≤ / 成本 ≤ $ / 返工 <）、剩余时间（`CountdownRing`；<24h 琥珀、<1h 红）、已用次数、最近使用、授予人、状态。筛选：状态、项目、Agent。行操作：〔撤销〕（`delegation_grant` ∧ 人 ∧ `effective_state=ACTIVE`；对话框只要理由，无 step-up）、〔替换〕（同条件；打开授予对话框预填并带 `replaces_delegation_id`）、〔使用记录〕（抽屉 D5，每条链到裁决）。空态：「还没有委托。委托可让 Agent 评审员在你设定的范围内裁决低风险工作项」〔授予委托〕。
 - **授予委托对话框**（红色语义头部）：项目*（可见且非终态）；受托 Agent*（ACTIVE；勾选任一裁决类动作或 `code_merge` 时仅列 REVIEWER，仅 `intake_convert` 时列 COORDINATOR / REVIEWER（BR-08-09）；显示其项目读权限状态）；动作*（复选；不可委托动作以锁形图标列出且不可选，tooltip「此动作不可委托（团队治理硬约束）」；选 `code_merge` 时风险锁定 LOW；`intake_convert` 仅 AUTONOMOUS 项目可选）；工作项类型（多选，空=全部）；最高风险*（LOW / MEDIUM）；单项成本上限*（$，默认值，≤上限）；返工上限（1–3，默认 3）；有效期*（4h / 24h / 3d / 7d / 自定义小时，≤max_days）；理由*（≥10 字，计数器）；固定条件只读说明「必需验证全部通过 · 不裁决自己产出或自己分派的工作项 · 触发升级规则时对该工作项失效」；`AuthorityNote`「你以 团队所有者 身份授予 · 来源 ROLE:team_owner」。〔授予〕：必填有效时可用 → `ReauthenticationDialog(purpose=delegation_grant, target)` → D2。`160413` 内联「该 Agent 在此项目已有委托」〔替换它〕。
+- **编制授权 tab（`?tab=spawn-grants`，D110）**：
+  - **列表**：主导 Agent（`ActorAvatar` + 名称）、范围（项目 chips / 红色「团队级」标记）、在岗配额「2 / 3」进度条、今日新建「1 / 5」、预算条（`spent / cap`，≥80% 琥珀、100% 红「已耗尽」）、审批方式（「需人批准」/「授权内自动」；被项目模式降级时显示「已降为需人批准 · 项目 X 为混编」）、剩余时间（同委托 tab）、状态。行展开：成员列表（SG6：AI 创建的 Agent、单 Agent 预算条、状态、〔去收编〕链到 05 Agent 详情）。筛选：状态、主导 Agent、项目。空态：「还没有编制授权。授予后，主导 Agent 可在边界内自己创建执行者」+〔授予编制〕（仅可授予者可见）。
+  - **授予 / 编辑对话框**（红色语义头部；仅 `spawn_grant_manage` ∧ 人可见）：主导 Agent*（只列 ACTIVE、持 LEAD、人创建或已收编的 Agent）；范围*（项目多选；〔团队级〕开关需二次勾选「我了解它可在任何项目为自己扩编」，并锁定审批方式为需人批准）；同时在岗上限*（1–10，默认 3）；每日新建上限*（1–20，默认 5）；可建角色*（执行者 / 协调员复选；评审员、主导以锁形图标列出不可选，tooltip「AI 不能创建评审或主导 Agent」）；可用机器*（多选，来自 04）；可用模型*（按运行时分组多选，来自模型目录）；effort 上限*；总预算 $*（默认 50）与单 Agent 预算 $*（默认 15，≤ 总预算，即时校验）；Agent 有效期*（小时，默认 168）与闲置退役*（默认 48）；审批方式*（范围含混编项目时「授权内自动」禁用并说明原因）；授权有效期*；理由*（≥10 字）。提交 → step-up → SG2；编辑时仅放宽项需要 step-up，对话框底部列出「本次放宽：…」；收紧低于用量时即时报错（160476）。
+  - **撤销**：`spawn_grant_manage` ∧ 人；只要理由，无 step-up；后果说明「已建的 n 个 Agent 不会被退役，将变为待收编状态」。
+  - **实时**：订阅 `tenant/{t}/governance/spawn_grants`，配额与预算条 ≤1s 更新。**移动端**：列表变卡片，对话框全屏 Sheet。
 - **升级规则 tab**：每 kind 一卡：名称、说明、来源事件、启用开关（锁定时灰显 +「全自治项目 X、Y 依赖此规则」）、参数（`LOW_SELF_CONFIDENCE` 滑块 30–90；`SENSITIVE_PATH` pattern set 列表：key、名称、开关、glob 多行框逐行即时校验 + 测试框「输入路径 → 命中 MIGRATIONS: `**/migrations/**`」）、动作（混编 / 全自治两列复选，硬性动作锁定）。〔保存〕：有修改且校验通过；放宽类先 step-up。项目选择器为单项目时编辑项目规则，否则编辑团队默认（说明「新项目创建时复制此默认」）。
 - **升级事件 tab**：列：严重度、规则、项目、主体（链接）、状态、次数、最近触发、处理人；详情抽屉：facts（敏感路径命中、预算数值）、动作执行结果（FAILED 红）、时间线；按钮：〔确认〕（OPEN）、〔恢复项目〕（PROJECT_HOLD 类，调 07，需 `decision_pause` ∧ 人）、〔驳回〕（`policy_manage`；非 PROJECT_HOLD；理由*）、〔一键接管〕。
 - **设置 tab**：S1/S2 表单：默认预算提醒阈值（50–95%，注「100% 暂停不可调」）、委托默认 / 最长天数、默认 / 最高成本上限、人类自批策略（ALLOW_WITH_REASON 红色说明 + step-up）、生产访问最长小时、评审收件箱路由。
@@ -969,6 +1148,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 - **目的**：可证明的历史。入口：侧栏「治理 › 审计」（`audit_read`）。
 - **布局**：顶部完整性徽标（底座完整性接口：绿「链完整 · 已校验 n 条 · 头 #seq」/ 红「链校验失败」/ 灰「校验中」；客户端缓存 60s，〔重新校验〕；无 `audit_event_view` 时显示「需要审计查看权限」）+ 索引滞后提示（`index_lag_seconds>10` 琥珀「最新事件同步中」）；筛选：时间（今天 / 7 天 / 30 天 / 自定义）、项目、模块、事件类型、主体（人 / Agent）、权限来源类型、结果；〔导出〕。
+- **来源筛选（D110）**：「Agent 来源：全部 / 人创建 / AI 创建」；选「AI 创建」时显示 `fleet.agent_spawned`、`fleet.agent_adopted`、`governance.spawn_grant_*` 以及这些 Agent 作为主体的事件，可再按编制授权与主导 Agent 过滤；AI 创建的 Agent 在主体列带「AI 创建 · 由 {supervisor}」角标，已收编者带「已收编」。
 - **列表**：时间、`ActorAvatar` + 名称、动作（事件类型 i18n）、对象（链接）、权限来源 chip（「角色 交付负责人」「委托 #8812」「策略 dispatch_auto」「甲方」「系统」）、结果（denied 红）。行展开：底座明细（reason、evidence_refs 链接、`event_hash` 前 8 位可复制、`previous_hash`、sequence）。
 - **导出**：可用：`audit_event_export` ∧ 完整性有效；对话框说明「导出租户审计链区间（含完整性完成记录），项目筛选不影响导出范围」→ 流式下载 `.ndjson`；链无效禁用并提示联系所有者。
 - **状态**：空态「该范围内没有事件」；错误；无权限。**实时**：`activity.appended` → 顶部「n 条新事件」条，点击插入。**移动端**：筛选进抽屉；卡片列表；导出仅桌面（本规格提议：大文件下载）。
@@ -1113,6 +1293,10 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `execution.attention` | `EXECUTION_ATTENTION` 建项 | 同 §6.10 接收人 | HIGH | ✓ ✓ — | `governance.notify.execution_attention` | 同执行 1 |
 | `intake.triage_needed` | `INTAKE_TRIAGE` 建项 | `HOLDERS(intake_convert)` | 返工来件 HIGH | ✓ ✓ — | `governance.notify.intake_triage` | dedupe 每来件 |
 | `ensemble.approval_requested` / `.selection_requested`（v1.1） | 05 | 同 §6.10 | NORMAL / HIGH | ✓ — — | `fleet.notify.ensemble_*` | 每计划 1 |
+| `governance.spawn_grant_threshold`（D110） | 编制授权预算 80% / 100% | `GRANTOR` + `OWNERS` | 80% NORMAL / 100% HIGH | ✓ ✓ 即 | `governance.notify.spawn_grant_threshold` | dedupe `spawn_grant:<id>:<pct>` |
+| `governance.spawn_grant_expiring`（D110） | 72h 内到期 | `GRANTOR` | NORMAL | ✓ — 摘 | `governance.notify.spawn_grant_expiring` | 每授权 1 |
+| `agent.spawn_requested`（D110） | `AGENT_SPAWN_APPROVAL` 建项 | 同 §6.10 | NORMAL | ✓ ✓ — | `governance.notify.agent_spawn_requested` | merge `spawn_req:<grant>` 10 min |
+| `agent.orphaned`（D110） | 05 `agent.orphaned`（授权终结后遗留的 AI 创建 Agent） | `GRANTOR` + `OWNERS` | HIGH | ✓ ✓ 即 | `governance.notify.agent_orphaned` | merge `orphan:<grant>` 1h |
 | `governance.consumer_dead_letter` ● | 消费死信 | `OWNERS` | CRITICAL | ✓ — 即 | `governance.notify.dead_letter` | 同消费者 1h 1 |
 
 甲方侧通知（01 N0、N8、N10–N13；07 验收提醒）经来源开口发送，不进入本目录与偏好。模板键属于各发出模块的 i18n 命名空间，渲染由 09 `Notifier` 按接收人语言完成；本模块拥有类型目录、接收人路由与偏好（经 `PreferenceResolver`），站内存储、合并窗口执行与投递归 09。
@@ -1127,6 +1311,10 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 - `governance.notify.escalation.EXECUTION_STALLED`：「{project} · {work_item_key} 的执行已中断 {minutes} 分钟未处理，请恢复、重试或标记失败。」
 - `governance.notify.execution_attention`：「{work_item_key} 的执行{state_label}，需要你处理。」
 - `governance.notify.intake_triage`：「新来件 {intake_key} 需要转换（{reason_label}）。」
+- `governance.notify.spawn_grant_threshold`：「{supervisor} 的编制授权预算已用 {pct}%（${spent} / ${cap}）{exhausted_suffix}。」
+- `governance.notify.spawn_grant_expiring`：「{supervisor} 的编制授权将于 {ends_at_local} 到期，当前在岗 {active}/{max}。」
+- `governance.notify.agent_spawn_requested`：「{supervisor} 申请新建{role_label} Agent（{model} · {machine}），用于 {project}。」
+- `governance.notify.agent_orphaned`：「{n} 个由 {supervisor} 创建的 Agent 已失去编制授权，请收编或退役。」
 - `governance.notify.takeover`：「{actor} 接管了 {project}：撤销 {n} 条委托，已切回混编。理由：{reason_80}」
 
 ---
@@ -1533,6 +1721,76 @@ When  架构测试扫描各模块规格声明的 reason_code 常量
 Then  均在清单内；出现 NOT_DELEGABLE / PERMISSION_DENIED / STEP_UP_REQUIRED 即失败
 ```
 
+### 10.10 编制授权（D110）
+
+```
+AC-08-67  [integration]  BR-08-50, US-08-18
+Given 交付负责人 M（种子不含 spawn_grant_manage）
+When  M 调 SG2 为主导 Agent L 授予编制授权
+Then  403 160403 data.reason_code=MISSING_PERMISSION；无授权行；审计追加 outcome=denied
+
+AC-08-68  [integration]  BR-08-50, S2
+Given 主导 Agent L（即使被人工绑定了 team_owner 角色）
+When  L 调 SG2 为自己或其他 Agent 授予编制授权
+Then  403 160403 data.reason_code=AGENT_PROHIBITED（spawn_grant_manage ∈ NonDelegable ⊆ HumanOnly）
+
+AC-08-69  [integration]  BR-08-50
+Given 团队所有者 O；step-up 证明缺失或 purpose ≠ spawn_grant_manage
+When  O 调 SG2
+Then  403 160403 REAUTH_REQUIRED；带有效证明 → 201，state=ACTIVE，事件 spawn_grant.granted，审计 governance.spawn_grant_granted 含快照
+And   allowed_roles 含 REVIEWER → 422 160470
+
+AC-08-70  [integration]  BR-08-51
+Given 项目 P1 AUTONOMOUS、P2 HYBRID
+When  O 以 project_ids=[P1,P2]、approval_mode=AUTO 调 SG2；另以 project_ids=[]（团队级）、AUTO 调 SG2
+Then  均 422 160475
+When  O 以 project_ids=[P1]、AUTO 授予 G；之后 07 发布 project.mode_changed{P1, to:HYBRID}
+Then  G.effective_approval_mode=REQUIRE_APPROVAL、approval_mode 仍为 AUTO，发 spawn_grant.updated；P1 切回 AUTONOMOUS 后恢复 AUTO
+
+AC-08-71  [integration]  BR-08-53（并发，三方言）
+Given 授权 G：max_active_agents=3、active_count=2、spawned_today=0
+When  05 的两个建 Agent 事务同时 Reserve(G, A1) 与 Reserve(G, A2)
+Then  恰一个成功（active_count=3）；另一个 409 160471 SPAWN_QUOTA_EXCEEDED，其建 Agent 事务整体回滚（无服务账号、无 Agent 行）
+And   成功方重复调用 Reserve(G, A1) → 成功且 active_count 仍为 3
+
+AC-08-72  [integration]  BR-08-53 / BR-08-54
+Given max_spawns_per_day=2，今日已建 A1、A2，随后 A1 退役（Release RETIRED）
+When  Reserve(G, A3)
+Then  409 160471 SPAWN_DAILY_LIMIT（日配额不因释放回退）；次日 00:00:30 UTC 后 Reserve 成功
+
+AC-08-73  [integration]  BR-08-55
+Given G：budget_cap=$50、per_agent_cap=$15；成员 A1；03 对 A1 的执行 E 依次发布 cumulative_cost_micros = 10_000_000、16_000_000、16_000_000（重复）、15_000_000（回退）
+When  成本累计消费
+Then  G.spent_micros=16_000_000（重复与回退不计）；A1 达 $15 → spawn_grant.updated{member_cap_reached:A1} 且授予人收到通知（仅一次）
+When  其余成员累计使 G.spent 达 $40 与 $50
+Then  $40 时发 governance.spawn_grant_threshold(80%) 一次；$50 时 → EXHAUSTED、事件 spawn_grant.exhausted、升级 SPAWN_BUDGET（CRITICAL）；此后 Reserve → 409 160472；O 以 SG4 把预算调到 $80（step-up）→ ACTIVE
+
+AC-08-74  [integration]  BR-08-57
+Given AUTONOMOUS 项目 P；G1 project_ids=[P]、G2 project_ids=[P,Q]、G3 团队级；G1 下已建 A1
+When  O 接管 P（D7）
+Then  同一事务内 G1、G2 → REVOKED(TAKEOVER)；G3 不撤销但 effective_approval_mode=REQUIRE_APPROVAL；takeover.executed.revoked_spawn_grant_ids=[G1,G2]
+And   A1 未被退役，成员 RELEASED(GRANT_ENDED)；05 发布 agent.orphaned 后授予人收到 agent.orphaned 通知
+
+AC-08-75  [integration]  BR-08-56
+Given A1 为 AI 创建（origin=AGENT_SPAWNED）且未收编，持 REVIEWER 角色（由人追加）
+When  O 调 D2 把 decision_approve 委托给 A1
+Then  422 160411 data.reason_code=SPAWNED_NOT_ADOPTED
+When  人收编 A1（05 agent.adopted，05 同事务调用 Release(G, A1, ADOPTED)）后重试
+Then  201；G.active_count 减 1，A1 之后的成本不再计入 G
+
+AC-08-76  [unit]  agent_spawn 评估路径（S4 PolicyOnly / S7）
+Given 主导 Agent L 持 ACTIVE 授权 G（allowed_roles=[EXECUTOR]、allowed_models=[{CLAUDE_CODE, sonnet}]）
+When  依次：L 以 Spawn{Role:REVIEWER}；L 以 Spawn{Role:EXECUTOR, Model:opus}；L 以合法事实；人类 O（team_owner）以合法事实 调 Check(agent_spawn)
+Then  依次：拒绝 SPAWN_GRANT_SCOPE；拒绝 SPAWN_GRANT_SCOPE；允许，来源 POLICY:spawn_grant；拒绝 NO_AUTHORITY（PolicyOnly：角色授予不生效）
+And   非 LEAD 的执行者 Agent 调 Check(agent_spawn) → 拒绝 SPAWN_NOT_LEAD
+
+AC-08-77  [integration]  §6.10 AGENT_SPAWN_APPROVAL, BR-08-58
+Given G.effective_approval_mode=REQUIRE_APPROVAL；05 发布 agent.spawn_requested{R}
+When  投影
+Then  agent_manage 持有人的收件箱出现 AGENT_SPAWN_APPROVAL；任一人批准后 05 发布 agent.spawned{R} → 所有人的该项 RESOLVED（他端 ≤1s 移除）
+And   若批准前 O 撤销 G → 该项 WITHDRAWN，05 的批准接口返回授权不可用
+```
+
 ---
 
 ## 11. 度量与埋点（不含代码、消息、反馈正文）
@@ -1551,6 +1809,8 @@ Then  均在清单内；出现 NOT_DELEGABLE / PERMISSION_DENIED / STEP_UP_REQUI
 | `audit_export_requested` | `range_days`, `valid` |
 | `audit_index_lag_seconds`（gauge） | — |
 | `role_seed_applied` | `manifest_version`, `added_codes_count` |
+| `spawn_grant_granted` / `spawn_grant_ended`（D110） | `max_active_agents`, `budget_cap_usd`, `approval_mode`, `scope`(project/team), `end_reason`, `spawned_total`, `spent_pct` |
+| `spawn_reserve`（D110） | `outcome`(ok/quota/daily/budget/inactive), `latency_ms` |
 
 Prometheus：`governance_authority_checks_total{allowed,source_kind}`、`governance_inbox_projection_latency_seconds`（histogram）、`governance_consumer_dead_letters_total{consumer}`、`governance_active_delegations`（gauge）。
 
@@ -1572,6 +1832,8 @@ Prometheus：`governance_authority_checks_total{allowed,source_kind}`、`governa
 | 04 | `MachineDirectory.Summary`；`machine_revoke`、`gateway_key_reveal` step-up | 对齐 |
 | 05 | `AgentDirectory`（状态、AgentRole、负载）；向 `PolicyRegistry` 贡献 `dispatch_auto` / `ensemble_branch`；调用 `DelegationRevoker`；事件 `dispatch.proposed{policy, requires_human}`、`dispatch.expired`、`ensemble.*`（v1.1）；Agent 评审超时由 05 检测并调用 02 `WorkItemEscalator.Escalate(ctx, tx, {work_item_id, kind:REVIEW_SLA, reviewer_kind:AGENT})`，事件 `work_item.escalated` 由 02 发布（复审 #27）；05 登记 `SystemActions` `fleet.review_dispatch`、贡献 `review_dispatch` 规则 | 对齐（00 v1.3） |
 | 06 | `memory.rejected` 事件；`memory_approve` 不可委托 | 对齐 |
+| 05（D110） | `AgentDirectory` 增 `origin`(HUMAN_CREATED / AGENT_SPAWNED)、`supervisor_agent_id`、`spawn_grant_id`、`adopted_at`；建 Agent 事务内 Check(`agent_spawn`, `SpawnRequestFacts`) 后调用 `SpawnGrantUsage.Reserve`，退役 / 收编调用 `Release`；消费 `spawn_grant.updated{member_cap_reached}` 停止该 Agent 接新工作；事件 `agent.spawn_requested` / `agent.spawned` / `agent.spawn_rejected` / `agent.spawn_expired` / `agent.adopted` / `agent.orphaned`；审计 `fleet.agent_spawned` / `fleet.agent_adopted`；建 Agent 请求接口（供收件箱批准 / 驳回） | 需 05 落实 |
+| 03（D110） | `execution.cost_updated` 载荷含 `agent_id` | 需确认 |
 | 07 | `ProjectReader`（含 `HealthList`）、`ProjectGate.CanDelegatedDecide`、`ProjectModeSwitcher.TakeOverOn`、`ProjectHoldSetter.AddEscalationHoldOn`、`DeliveryMetricsReader`；事件 `project.hold_changed`、`project.mode_changed`、`budget.threshold_reached`、`delivery.confirmation_requested`；07 的「委托 72h 内到期」通知由本模块统一发送 | CR-08-06 |
 | 09 | outbox 消费（`domain_event_receipts` 去重、每聚合有序、退避与停放）、SSE 主题授权、`Notifier`（站内存储、推送 / 邮件、渲染、合并窗口执行；读取本模块 `PreferenceResolver`）、平台幂等表、模块菜单贡献（§8.6）、`JobQueue`、`dlock` | 对齐（00 v1.3） |
 
@@ -1600,6 +1862,8 @@ Prometheus：`governance_authority_checks_total{allowed,source_kind}`、`governa
 ---
 
 ## 13. 契约变更请求
+
+> D110（主管 Agent 自建 Agent 的编制授权）已并入 00 v1.8：新增权限码 `spawn_grant_manage`（不可委托、仅人类）与 `agent_spawn`（仅策略来源，`PolicyOnly`）；事件 `spawn_grant.granted / updated / exhausted / revoked / expired`；接口 `SpawnGrantReader` / `SpawnGrantUsage`；`AuthorityReasonCode` 增 `SPAWN_*`、`SPAWNED_NOT_ADOPTED`；`InboxItemKind` 增 `AGENT_SPAWN_APPROVAL`（共 13 个）；`EscalationRuleKind` 增 `SPAWN_BUDGET`；step-up purpose `spawn_grant_manage`。
 
 > 状态：CR-08-01…12 已于 00 v1.3 合入（CR-08-04 中仅 `EscalationRuleKind`、`AuthorityReasonCode` 跨模块共享，其余按 00 §3 作模块内枚举；`EscalationRuleKind` 另增 `EXECUTION_STALLED`；`InboxItemKind` 现为 §6.10 的 12 个；CR-08-06 中 `dispatch.rejected` 保留（00 v1.4 决议 R7））。
 

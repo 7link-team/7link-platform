@@ -104,7 +104,9 @@
 | `MachineState` | `ONLINE`, `OFFLINE`, `DRAINING`, `REVOKED`（接入过程的待确认状态属于模块内枚举 `EnrollmentStatus`；确认后的机器初始为 `OFFLINE`，建立会话后变 `ONLINE`） | 04 |
 | `RuntimeKind` | `CLAUDE_CODE`, `CODEX`（开放扩展，新增需契约变更） | 04 |
 | `AgentState` | `DRAFT`, `ACTIVE`, `STOPPED`, `CRASHED`, `RETIRING`, `RETIRED` | 05 |
-| `AgentRole` | `EXECUTOR`, `REVIEWER`, `COORDINATOR`, `LEAD` | 05 |
+| `AgentRole` | `EXECUTOR`, `REVIEWER`, `COORDINATOR`, `LEAD`（UI 称「主管 Agent」） | 05 |
+| `AgentOrigin` | `HUMAN_CREATED`, `AGENT_SPAWNED`（D110：主管 Agent 在编制授权内创建；收编后仍为 `AGENT_SPAWNED`，另记 `adopted_by`） | 05 |
+| `SpawnGrantState` | `ACTIVE`, `EXHAUSTED`, `EXPIRED`, `REVOKED` | 08 |
 | `DispatchPolicy` | `MANUAL`, `AUTO` | 05 |
 | `KnowledgeScope` | `TEAM`, `PROJECT`, `AGENT` | 06 |
 | `KnowledgeSourceKind` | `REQUIREMENT`, `DECISION`, `FEEDBACK`, `DELIVERY`, `DOCUMENT`, `SKILL`, `MEMORY` | 06 |
@@ -141,6 +143,8 @@
 | `machine_read` / `machine_manage` / `machine_revoke` | 机器 | 否 | fleet |
 | `gateway_manage` | API 网关（实验） | 否 | fleet |
 | `agent_read` / `agent_manage` / `agent_retire` | Agent | 否 | fleet |
+| `agent_spawn` | 主管 Agent 创建子 Agent（**不经角色授予**；仅对持 ACTIVE 编制授权的 LEAD Agent 经 08 策略规则 `spawn_grant` 生效） | 否 | fleet |
+| `spawn_grant_manage` | 授予 / 修改 / 撤销编制授权（名额、预算、可用角色/机器/模型、存活期、审批方式）；仅所有者、**不可委托**、需 step-up | 否 | governance |
 | `channel_read` / `channel_post` / `channel_manage` | 频道 | 是 | collab |
 | `knowledge_read` / `knowledge_write` / `memory_approve` / `knowledge_manage` | 知识库 / 记忆审批 / 知识库设置（检索参数、嵌入配置、重建索引） | 是（PROJECT scope）/ 否（TEAM） | knowledge |
 | `policy_read` / `policy_manage` / `delegation_grant` / `takeover` | 策略 / 委托 / 一键接管 | 否 | governance |
@@ -168,11 +172,11 @@
 
 ### 6.4 不可委托动作（硬编码，不可配置）
 
-`scope_change`、`delivery_send`、`project_mode_change`、`policy_manage`、`delegation_grant`、`takeover`、`machine_revoke`、`intake_decline`、`production_access`、来件转换中的**新建项目**（伪码 `project_create`，`NEW_PROJECT`）与**追加到既有需求**（`APPEND`，等同范围变更）、`memory_approve`、生产环境访问。
+`scope_change`、`delivery_send`、`project_mode_change`、`policy_manage`、`delegation_grant`、`takeover`、`machine_revoke`、`intake_decline`、`production_access`、`spawn_grant_manage`、来件转换中的**新建项目**（伪码 `project_create`，`NEW_PROJECT`）与**追加到既有需求**（`APPEND`，等同范围变更）、`memory_approve`、生产环境访问。
 
 ### 6.5 仅限人类的动作（即使有委托，Agent / 服务账号 / PAT 也不得执行）
 
-回应工具授权与输入请求（`interaction_respond`）；项目阶段迁移到 `DELIVERED` / `CLOSED` / `CANCELLED`；修改预算上限；登记线下验收；正式交付（需 step-up，结构上排除 PAT 与服务账号）；确认机器接入；批准 RULE 记忆。
+回应工具授权与输入请求（`interaction_respond`）；项目阶段迁移到 `DELIVERED` / `CLOSED` / `CANCELLED`；修改预算上限；登记线下验收；正式交付（需 step-up，结构上排除 PAT 与服务账号）；确认机器接入；批准 RULE 记忆；批准主管 Agent 的创建请求；收编（adopt）AI 创建的 Agent。
 
 ---
 
@@ -188,7 +192,7 @@
 | `work_item.created`, `work_item.state_changed`, `work_item.assigned`, `work_item.escalated` | delivery | execution、collab、governance、fleet(派单) |
 | `claim.submitted` | delivery | execution(排队验证) |
 | `decision.made` | delivery | governance(通知/我的裁决)、knowledge、collab（**返工分支不经此事件**：02 在裁决事务内直接调用 `ExecutionLauncher.Launch`，避免重复创建） |
-| `execution.started`, `execution.state_changed`, `execution.cost_updated`（载荷必须含**累计**成本 `cumulative_cost_micros`）, `execution.merged` | execution | delivery(07 预算记账)、collab、governance |
+| `execution.started`, `execution.state_changed`, `execution.cost_updated`（载荷必须含**累计**成本 `cumulative_cost_micros` 与执行者 `agent_id`）, `execution.merged` | execution | delivery(07 预算记账)、governance(08 编制预算累计)、collab |
 | `interaction.requested`, `interaction.decided`, `interaction.closed` | execution | governance(我的裁决/通知) |
 | `evidence.added`, `verification.completed` | execution | delivery(推进工作项) |
 | `machine.state_changed`, `machine.runtimes_changed` | fleet | execution（离线→INTERRUPTED）、fleet(agents)、governance |
@@ -197,6 +201,8 @@
 | `delivery.sent`（含 `intake_ids[]`）, `acceptance.received`（含 `intake_ids[]`、`work_item_ids[]`、逐项结果与拒绝理由） | delivery(07) | intake(回执/创建返工来件)、governance、knowledge |
 | `project.members_changed` | delivery(07) | collab（频道成员同步）、governance |
 | `project.hold_changed`, `project.stage_ready`, `delivery.ready`, `delivery.release_notes_requested`, `delivery.withdrawn` | delivery(07) | governance、collab、knowledge；`delivery.release_notes_requested` 另由 fleet(05) 消费（向起草 Agent 下发 `agent.release_notes`） |
+| `agent.spawn_requested`, `agent.spawned`, `agent.orphaned`, `agent.adopted` | fleet(05) | governance（创建审批收件箱、编制用量、孤儿通知）、collab、knowledge |
+| `spawn_grant.granted`, `spawn_grant.updated`, `spawn_grant.exhausted`, `spawn_grant.expired`, `spawn_grant.revoked` | governance(08) | fleet（停止子 Agent 接新执行 / 置孤儿） |
 | `ensemble.plan_created`, `ensemble.cancelled` | fleet(05) | governance（Heavy 审批/选择收件箱项）、collab |
 | `budget.threshold_reached`（载荷 `threshold_pct`） | delivery(07) | governance(升级规则/通知)、execution(暂停)、fleet(派单停止) |
 | `memory.written`, `memory.approved`, `memory.rejected`, `memory.revoked`, `skill_version.approved` | knowledge | governance、fleet(agents) |
@@ -250,6 +256,7 @@
 | `IntakeProgressReader`, `AcceptanceReader` | delivery(07) | 门户里程碑进度；验收详情 | intake、knowledge |
 | `ReleaseNotesDrafting.ReportUnavailable` | delivery(07) | 起草 Agent 不可用 / 超时时立即触发交付确认兜底 | fleet(05) |
 | `WorkItemEscalator.Escalate`, `DispatchAssigner.Assign(role=REVIEWER, lease_ttl_seconds)`（REVIEWER 分派不改工作项状态） | delivery(02) | 发布 `work_item.escalated`（唯一发布者）；评审员分派 | fleet(05) |
+| `SpawnGrantReader.Active`, `SpawnGrantUsage.Reserve/Release`（事务内原子占用名额；成本由 08 消费 `execution.cost_updated` 累计） | governance | 主管 Agent 创建子 Agent 时校验与占用编制 | fleet(05) |
 | `DelegationReader`, `EscalationRuleReader`, `PolicyRegistry`, `SystemActions` | governance | 读有效委托与升级规则；模块贡献策略规则；系统动作身份 | delivery、fleet |
 | `EntityProvisioner`（事务内建实体与角色绑定）、`DeviceGrants`（设备码授权扩展）、`SecretSealer` | 底座 core / oauth / 09 | 见 §13 | delivery、fleet |
 
@@ -340,3 +347,4 @@ Then  返回 403，业务码 120403，W 状态不变，审计链追加 delivery.
 | 1.5 | 2026-10-11 | 第二轮复审（6 BLOCKER / 21 MAJOR）：`POLICY:<rule_id>` + `detail.dispatch_proposal_id`；登记 `project.members_changed`；`delivery.release_notes_requested` 增 fleet 消费；`AuthorityReasonCode` 规范清单见 08 §3.5（模块改名 NOT_DELEGABLE→NON_DELEGABLE、PERMISSION_DENIED→MISSING_PERMISSION、STEP_UP_REQUIRED→REAUTH_REQUIRED） | 复审 #1–#27 |
 | 1.6 | 2026-10-11 | 第三轮复核（4 BLOCKER）：`SubmitInput.from_exit`；`delivery.release_notes_requested.drafter_agent_id` 与 `ReportUnavailable` 原因值对齐；`WorkItemFacts.AssignmentRole/AssigneePrincipalID`，SYSTEM 主体跳过 S3/S4/S6 由策略判定，评审派单记 `POLICY:review_dispatch`；派单提案过期按触发类型判定 | 复核 B1–B4 |
 | 1.7 | 2026-10-11 | PRD §18 Q1–Q11 与各规格 §12 待决项全部按建议采纳（产品负责人「该有的就有」，见 decisions D109） | 产品负责人 |
+| 1.8 | 2026-10-11 | D110 主管 Agent 自建 Agent：`AgentOrigin`、`SpawnGrantState`；权限 `agent_spawn`（仅经策略）、`spawn_grant_manage`（不可委托、仅所有者）；仅限人类动作增加批准创建请求与收编；事件 `agent.spawn_requested/spawned/orphaned/adopted`、`spawn_grant.*`；接口 `SpawnGrantReader`/`SpawnGrantUsage` | 产品负责人 |

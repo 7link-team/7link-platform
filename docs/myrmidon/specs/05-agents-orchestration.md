@@ -52,6 +52,10 @@
 | US-05-14 | 作为团队所有者，我要只读查看 Agent 之间的私信 | MVP |
 | US-05-15 | 作为团队所有者，我要为频道配置消息钩子（向外推送） | v1.1 |
 | US-05-16 | 作为团队所有者，我要把频道桥接到外部 IM / MQTT / WebSocket / HTTP | v2 |
+| US-05-17 | 作为主管 Agent，我要在团队所有者给定的权限、名额与预算内自行创建执行者 / 协调员 Agent，以便按工作量扩充人手（D110） | MVP |
+| US-05-18 | 作为团队所有者，我要设置自建授权（名额、每日上限、预算、可用角色 / 机器 / 模型、有效期、是否需审批），并随时撤销 | MVP |
+| US-05-19 | 作为交付负责人，我要在成员列表中一眼区分人工创建与 AI 创建的 Agent，并按来源、主管、孤儿状态筛选 | MVP |
+| US-05-20 | 作为团队所有者，我要在主管失效后收编或退役它创建的 Agent，避免无人负责的 Agent 继续消耗预算 | MVP |
 
 ---
 
@@ -314,6 +318,58 @@ AgentRole 只决定「这个 Agent 能被安排成什么」；**权限**来自 0
 
 ---
 
+### 3.11 `fleet_agents` 自建谱系列（D110）
+
+在 §3.2 基础上新增（三方言按 §3.1 记号映射）：
+
+| 列 | 类型 | 空 | 默认 | 约束 | 说明 |
+|---|---|---|---|---|---|
+| origin | ENUM | N | `HUMAN_CREATED` | `AgentOrigin`：HUMAN_CREATED / AGENT_SPAWNED（模块共享枚举，见 §13） | 创建来源；**收编后不变**（谱系可追溯） |
+| created_by_principal_id | ID | N | | | 创建者：人类 principal，或主管 Agent 的服务账号 principal |
+| parent_agent_id | ID | Y | | AGENT_SPAWNED 时必填；所指 Agent 须含 LEAD 角色 | 主管 Agent |
+| spawn_grant_id | ID | Y | | AGENT_SPAWNED 时必填（收编后保留历史值） | 08 自建授权 |
+| spawn_request_id | ID | Y | | | 对应 §3.12 请求 |
+| spawn_reason | STR(2000) | Y | | AGENT_SPAWNED 时必填，≥10 字 | 主管给出的创建理由 |
+| expires_at | TS | Y | | AGENT_SPAWNED 且未收编时 = 创建时间 + 授权 `agent_ttl` | 到期自动正常退役（BR-05-104） |
+| idle_since | TS | Y | | | 最近一次无 ACTIVE 分派的起点；用于闲置退役 |
+| adopted_by | ID | Y | | 仅 HUMAN | 收编人 |
+| adopted_at | TS | Y | | | |
+| orphaned_at | TS | Y | | | 成为孤儿的时间；收编 / 退役后保留历史值 |
+| orphan_reason | ENUM | Y | | SUPERVISOR_RETIRED / SUPERVISOR_CRASHED / GRANT_REVOKED / GRANT_EXPIRED / TAKEOVER | |
+
+派生显示状态 `lineage_status`（不落库）：`HUMAN_CREATED` → 人工创建；`AGENT_SPAWNED ∧ adopted_at IS NULL ∧ orphaned_at IS NULL` → 主管创建（SPAWNED）；`adopted_at IS NOT NULL` → 已收编（ADOPTED）；`orphaned_at IS NOT NULL ∧ adopted_at IS NULL ∧ state≠RETIRED` → 孤儿（ORPHANED）。
+
+索引：`(tenant_id, origin, state)`；`(tenant_id, parent_agent_id, state)`；`(tenant_id, spawn_grant_id, state)`；`(expires_at)`；`(tenant_id, orphaned_at)`。
+
+CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_id IS NOT NULL AND spawn_reason IS NOT NULL)`。
+
+### 3.12 `fleet_agent_spawn_requests`（自建请求，D110）
+
+| 列 | 类型 | 空 | 默认 | 约束 | 说明 |
+|---|---|---|---|---|---|
+| id | ID | N | | PK | 雪花 |
+| tenant_id | ID | N | | | |
+| project_id | ID | Y | | 授权限定项目时必填且 ∈ 授权 `projects` | 新 Agent 加入的项目 |
+| supervisor_agent_id | ID | N | | 须为 LEAD 且非未收编的 AGENT_SPAWNED | 发起的主管 |
+| grant_id | ID | N | | 发起时 08 `SpawnGrantReader.Active` 返回的授权 | |
+| requested_spec | JSON | N | | Schema 见下 | 新 Agent 规格 |
+| reason | STR(2000) | N | | ≥10 字 | 为什么需要这个 Agent |
+| approval_mode | ENUM | N | | REQUIRE_APPROVAL / AUTO（发起时的有效值快照，BR-05-99） | |
+| state | ENUM | N | `PROPOSED` | `SpawnRequestState`：PROPOSED / APPROVED / REJECTED / CREATED / EXPIRED / FAILED | §4.6 |
+| quota_reservation_id | ID | Y | | | 08 `SpawnGrantUsage.Reserve` 返回 |
+| decided_by | ID | Y | | 仅 HUMAN | |
+| decided_at | TS | Y | | | |
+| decision_note | STR(2000) | Y | | 拒绝时必填 ≥10 字 | |
+| created_agent_id | ID | Y | | | 成功创建的 Agent |
+| failure_code | STR(32) | Y | | | FAILED 时的错误码 |
+| source_command_id | STR(64) | Y | | UNIQUE (tenant_id, supervisor_agent_id, source_command_id)（可空列唯一，三方言允许多个 NULL） | 经机器通道发起时的命令 id，去重 |
+| expires_at | TS | N | | 创建时间 + 24 h | PROPOSED 超时 |
+| version | INT | N | 1 | | 乐观锁（ETag） |
+
+另含通用列 `created_at`、`updated_at`、`created_by`、`updated_by`（§3.1）。索引：`(tenant_id, state, created_at)`；`(supervisor_agent_id, created_at)`；`(grant_id, state)`；`(state, expires_at)`。
+
+`requested_spec` JSON Schema（要点）：`{"type":"object","required":["name","role","machine_id","runtime_kind","model_id","system_prompt"],"properties":{"name":{"type":"string","maxLength":64},"role":{"enum":["EXECUTOR","COORDINATOR"]},"machine_id":{"type":"string"},"runtime_kind":{"enum":["CLAUDE_CODE","CODEX"]},"model_id":{"type":"string","maxLength":160},"reasoning_effort":{"type":"string","maxLength":16},"system_prompt":{"type":"string","maxLength":32768},"persona":{"type":"string","maxLength":2000},"skill_ids":{"type":"array","maxItems":20},"mcp_allowlist":{"type":"array","maxItems":32},"capability_tags":{"type":"array","maxItems":20},"max_risk":{"enum":["LOW","MEDIUM"]}},"additionalProperties":false}`。不接受 `authorization_mode`（固定 ON_REQUEST），角色不得为 LEAD / REVIEWER。
+
 ## 4. 状态机
 
 ### 4.1 AgentState（`DRAFT, ACTIVE, STOPPED, CRASHED, RETIRING, RETIRED`）
@@ -400,6 +456,30 @@ AgentRole 只决定「这个 Agent 能被安排成什么」；**权限**来自 0
 
 ---
 
+### 4.6 SpawnRequestState（D110）
+
+| # | 当前 | 事件 / 命令 | 守卫 | 目标 | 副作用 |
+|---|---|---|---|---|---|
+| S01 | — | 主管发起（G01，或机器通道 `agent.spawn_request`） | BR-05-97 / 98 全部通过；08 `SpawnGrantUsage.Reserve` 成功 | PROPOSED（REQUIRE_APPROVAL）/ APPROVED（AUTO） | `agent.spawn_requested`（含 `approval_mode`）；频道「自建请求」卡片；审计 `fleet.agent_spawn_requested` |
+| S02 | PROPOSED | 人批准 G04 `{decision:APPROVE}` | HUMAN；对请求项目持 `agent_manage`；授权仍 ACTIVE；复验 BR-05-98 | APPROVED | `decided_by/at`；同事务继续 S04 |
+| S03 | PROPOSED | 人拒绝 G04 `{decision:REJECT, note}` | HUMAN；`agent_manage` | REJECTED | `SpawnGrantUsage.Release`；`agent.spawn_rejected`；卡片置为已拒绝 |
+| S04 | APPROVED | 系统执行创建（与 S01 / S02 同事务，BR-05-100） | 创建路径 BR-05-01–07 通过 | CREATED | `created_agent_id`；`agent.spawned`；审计 `fleet.agent_spawned` |
+| S05 | APPROVED | 创建失败（名称冲突、机器不可用、底座 503 等） | — | FAILED | `SpawnGrantUsage.Release`；`failure_code`；`agent.spawn_failed`；通知主管与授权人 |
+| S06 | PROPOSED | 24 h 到期；或授权 REVOKED / EXPIRED；或主管退役 | — | EXPIRED | `SpawnGrantUsage.Release`；卡片置灰 |
+
+非法迁移：对非 PROPOSED 的请求裁决 → 409 `142035`（`data.state`）。
+
+### 4.7 Agent 谱系迁移（D110；叠加在 §4.1 之上，不新增 AgentState）
+
+| # | 当前 | 事件 | 守卫 | 结果 | 副作用 |
+|---|---|---|---|---|---|
+| L01 | — | S04 创建 | — | `origin=AGENT_SPAWNED`，DRAFT（随后按 A02 投递凭证并启动） | 写入 `parent_agent_id`、`spawn_grant_id`、`expires_at`；加入请求项目 |
+| L02 | AGENT_SPAWNED·未收编 | 主管 RETIRED；或主管 CRASHED 且 `restart_exhausted` 持续 >24 h；或授权 REVOKED / EXPIRED（含 08 接管撤销授权） | — | 非 RETIRED 者 → STOPPED（经 A05 / A14）；`orphaned_at=now`、`orphan_reason` | 03 E27 中止其 AUTONOMOUS 执行；02 BR-02-16 回收分派；`agent.orphaned`；N-05-14 |
+| L03 | 孤儿 | 人收编 G05 | HUMAN；`agent_manage`；可选新 `machine_id` | 保持 STOPPED（收编后由人启动） | `adopted_by/at`；清 `expires_at`；`SpawnGrantUsage.Release`；`agent.adopted`；审计 `fleet.agent_adopted` |
+| L04 | AGENT_SPAWNED·未收编（非孤儿） | 人主动收编 G05 | 同 L03 | 状态不变 | 同 L03 |
+| L05 | 孤儿 | 7 天未处理（`fleet.spawn_lifecycle`） | — | RETIRING → RETIRED（正常退役；机器离线时按系统强制退役，不需 step-up） | 交接文档由系统摘要生成；`agent.retired{reason:ORPHAN_TIMEOUT}` |
+| L06 | AGENT_SPAWNED·未收编 | `expires_at` 到期，或 `now − idle_since ≥ idle_retire` | — | RETIRING（§4.2 正常退役） | 完成时 `SpawnGrantUsage.Release`；`agent.retired{reason:TTL / IDLE}` |
+
 ## 5. 业务规则与边界情况
 
 ### 5.1 创建与档案
@@ -456,6 +536,7 @@ AgentRole 只决定「这个 Agent 能被安排成什么」；**权限**来自 0
   - E9 `NOT_EXCLUDED`：不在该工作项排除表（BR-05-50）。
   - E10 `NOT_LEAD_AUTO`：policy=AUTO 时排除项目主导 Agent 自身（职责分离，BR-05-70）。
   - E11 `BUDGET`：Agent 在该类型的 CPA（无则团队中位数）≤ 07 `ProjectGate` 返回的项目剩余预算；剩余预算未设 → 通过。
+  - E12 `SPAWN_BUDGET`（D110）：`origin=AGENT_SPAWNED` 且未收编时，所属自建授权须 ACTIVE、未 EXHAUSTED，且该 Agent 未达 `per_agent_cap_micros`，且不是孤儿（BR-05-101 / 102 / 103）。
 - **BR-05-41 评分**（`scoring_version=s1`，整数运算保证确定性）：各分量取 0–10000 基点，四舍五入（half-up）到整数：
   - `skill_bp = round(10000 × |T ∩ A| / |T|)`，T = 工作项必需 ∪ 偏好技能标签，A = Agent 标签；`|T|=0` → 10000。
   - `fpa_bp = round(10000 × (a + 4·p₀) / (n + 4))`：n、a 为该 Agent 在**同 WorkItemType**、90 天窗口的 `first_decisions`、`first_pass_accepts`；p₀ = 团队同类型 90 天 FPA（团队无数据 → 0.5）。即贝叶斯平滑，先验权重 4。
@@ -517,6 +598,19 @@ AgentRole 只决定「这个 Agent 能被安排成什么」；**权限**来自 0
 - **BR-05-96 桥接（v2）**：`transport ∈ {SLACK, WECOM, TELEGRAM, MQTT, WEBSOCKET, HTTP}` 绑定到单一频道，内容为该频道日志投影（B §9.1）；不作为业务状态真相源（评审 P1）。MVP 不建表。
 
 ---
+
+### 5.9 主管 Agent 自建 Agent（D110）
+
+- **BR-05-97 谁能自建**：仅含 `LEAD` 角色、`origin=HUMAN_CREATED`（或已收编）、状态 ACTIVE·RUNNING 的 Agent，且 08 `SpawnGrantReader.Active(ctx, tx, tenant, supervisorAgentID)` 返回 ACTIVE 授权。权限码 `agent_spawn` **从不经角色授予**；08 `AuthorityChecker` 以策略规则 `spawn_grant` 判定（`authority_source=POLICY:spawn_grant`，`detail.grant_id`）。人类不走本流程（人用 F02 新建，`origin=HUMAN_CREATED`）。
+- **BR-05-98 请求校验**（全部满足；失败码见 §6.9）：① 授权 ACTIVE 且在有效窗口内（142031）；② 项目 ∈ 授权 `projects`，且 07 `ProjectGate` 允许该项目执行；③ `role` ∈ 授权 `allowed_roles` ⊆ {EXECUTOR, COORDINATOR}（其他角色 142034；LEAD 或由自建 Agent 发起 142036）；④ `machine_id` ∈ `allowed_machine_ids`，`runtime_kind × model_id` ∈ 允许列表，`reasoning_effort` ≤ `max_effort`（142034）；⑤ `skill_ids` ⊆ 主管已挂载技能，`mcp_allowlist` ⊆ 主管 MCP 白名单（142034，`data.field`）；⑥ 该授权下未收编且非 RETIRED 的 Agent 数 + PROPOSED / APPROVED 请求数 < `max_active_agents`（142032）；⑦ 近 24 h 已创建 + 进行中请求 < `max_spawns_per_day`（142033）；⑧ 授权剩余预算 ≥ `per_agent_cap_micros`（142037）；⑨ 名称按 BR-05-01 校验。⑥–⑧ 由 08 `SpawnGrantUsage.Reserve` 在同一事务内锁定授权行判定，防并发超额。
+- **BR-05-99 审批模式**：授权 `approval_mode=AUTO` 仅在项目 `team_mode=AUTONOMOUS` 时生效；HYBRID 项目一律按 REQUIRE_APPROVAL 处理（快照为 REQUIRE_APPROVAL，响应 `data.downgraded=true`）。REQUIRE_APPROVAL 时 08 生成收件箱项 `AGENT_SPAWN_APPROVAL`（接收人：对该项目持 `agent_manage` 的人类），批准**不需要** step-up。
+- **BR-05-100 创建**：复用 BR-05-02 原子创建路径（服务账号 + 角色绑定 + 技能挂载 + 头像 + 审计 + outbox），差异：`origin=AGENT_SPAWNED`；`authorization_mode` 固定 `ON_REQUEST`（之后 F04 改为 FULL_AUTO 返回 142038）；角色绑定的权限 ⊆ 主管自身权限（底座防提权校验兜底）；`created_by_principal_id` = 主管服务账号；`expires_at = now + agent_ttl`；头像同风格，UI 加「✦」角标。创建后按 A02 自动投递凭证并启动。
+- **BR-05-101 自建 Agent 的限制**（未收编期间）：不得持 LEAD / REVIEWER；不得成为 08 委托的受托方（08 授予时拒绝，`reason_code=SPAWNED_NOT_ADOPTED`）；不得自建；派单预过滤新增 **E12 `SPAWN_BUDGET`**（BR-05-40）。收编后上述限制解除，`origin` 不变。
+- **BR-05-102 预算**：成本由 08 消费 03 `execution.cost_updated` 累加到授权；08 发布 `spawn_grant.exhausted` 后，本模块把该授权下自建 Agent 的 PROPOSED 派单提案置 EXPIRED，并在 E12 中排除（已在跑的执行继续完成）。单个 Agent 达 `per_agent_cap_micros` 时 08 发布 `spawn_grant.agent_cap_reached{agent_id}`，该 Agent 同样被 E12 排除。
+- **BR-05-103 孤儿**：见 §4.7 L02，由 `fleet.spawn_lineage_watch` 判定。孤儿不参与派单、不可被 @（频道成员保留但标「孤儿」），只能收编或退役。
+- **BR-05-104 到期与闲置**：`fleet.spawn_lifecycle` 每 10 min 扫描；`expires_at ≤ now` 或 `now − idle_since ≥ idle_retire` → 正常退役（交接文档由该 Agent 撰写，10 min 超时则系统摘要）。到期前 24 h 发 N-05-15 给授权人（可收编以保留）。`idle_since` 在 Agent 失去最后一个 ACTIVE 分派时写入，获得分派时清空。
+- **BR-05-105 接管**：08 一键接管时同时撤销该项目的自建授权（08 侧），本模块按 L02 处理（`orphan_reason=TAKEOVER`）。
+- **BR-05-106 可观测**：每个自建请求在项目频道发「自建请求」卡片（主管、规格摘要、理由、预计成本上限、授权用量）；批准 / 拒绝 / 创建 / 失败更新同一卡片。全部动作审计，可按 `spawn_grant_id` 过滤。
 
 ## 6. 接口契约
 
@@ -705,6 +799,15 @@ fleet 子段（**本规格提议**，CCR-05-03）：04 用 140000–141999，本
 | 143014 | 422 | fleet.ensemble.selection_invalid | 选中枝无可提交声明 |
 | 143015 | 409 | fleet.dispatch.thrash_limit | 派单次数达上限 |
 | 143016 | 409 | fleet.ensemble.active_exists | 已有活动计划 |
+| 142031 | 422 | fleet.spawn.grant_inactive | 无 ACTIVE 自建授权 / 不在有效窗口 |
+| 142032 | 422 | fleet.spawn.quota_exceeded | 在册自建 Agent 达名额上限 |
+| 142033 | 422 | fleet.spawn.daily_limit | 24 h 内自建次数达上限 |
+| 142034 | 422 | fleet.spawn.not_allowed | 角色 / 机器 / 模型 / 强度 / 技能 / MCP 超出授权（`data.field`） |
+| 142035 | 409 | fleet.spawn.request_not_pending | 请求不在 PROPOSED |
+| 142036 | 422 | fleet.spawn.depth_exceeded | 自建 Agent 不能再自建 / 不能为 LEAD |
+| 142037 | 422 | fleet.spawn.budget_exhausted | 授权剩余预算不足单 Agent 上限 |
+| 142038 | 422 | fleet.spawn.full_auto_forbidden | 未收编的自建 Agent 不可启用 FULL_AUTO |
+| 142039 | 409 | fleet.spawn.not_adoptable | 非自建 Agent 或已收编 |
 | 145001 | 422 | collab.channel.name_taken | 频道名冲突 / 非法 |
 | 145002 | 422 | collab.channel.limit | 自建频道上限 |
 | 145003 | 422 | collab.mention.not_member | 被提及者不是成员 |
@@ -721,9 +824,26 @@ fleet 子段（**本规格提议**，CCR-05-03）：04 用 140000–141999，本
 | 145018 | 409 | collab.channel.last_owner | 不能移除最后一个 OWNER |
 | 145019 | 422 | collab.hook.target_invalid | 钩子目标非 https 或为内网地址 |
 
-权限拒绝不另设码：fleet 用 140403、collab 用 145403，原因放 `data.reason_code`（REAUTH_REQUIRED、NOT_MEMBER、DIRECT_READ_ONLY、MISSING_PERMISSION、SELF_MANAGE、HUMAN_ONLY）。幂等冲突用平台码 176425 / 176409（09 C7）。
+权限拒绝不另设码：fleet 用 140403、collab 用 145403，原因放 `data.reason_code`（REAUTH_REQUIRED、NOT_MEMBER、DIRECT_READ_ONLY、MISSING_PERMISSION、SELF_MANAGE、HUMAN_ONLY、SPAWN_NOT_LEAD、SPAWNED_NOT_ADOPTED；均须在 08 §3.5 登记）。幂等冲突用平台码 176425 / 176409（09 C7）。
 
 ---
+
+### 6.10 自建 Agent（D110）
+
+| # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 `data` | 错误 | 幂等 / 锁 |
+|---|---|---|---|---|---|---|---|
+| G01 | POST `/tenants/{tenant_id}/agent-spawn-requests` | tenants | 调用者 = 主管 Agent 服务账号 · T；08 `Check(agent_spawn)` → `POLICY:spawn_grant` | `project_id?` `requested_spec*` `reason*` `source_command_id?` | `SpawnRequest`（201；AUTO 时 `state=CREATED` 并含 `created_agent_id`；HYBRID 降级时 `downgraded=true`） | 403 140403（`SPAWN_NOT_LEAD` / `NO_AUTHORITY`）；422 142031–142038；503 142030 | `Idempotency-Key` 必填（176425 / 176409）；`source_command_id` 唯一 |
+| G02 | GET `/tenants/{tenant_id}/agent-spawn-requests` | tenants | `agent_read` · T | 过滤 `state`(in) `supervisor_agent_id`(eq) `grant_id`(eq) `project_id`(eq) `created_at`(gte,lte)；排序 `created_at` | `SpawnRequest[]` | — | — |
+| G03 | GET `/agent-spawn-requests/{request_id}` | agent-spawn-requests | `agent_read` · O | — | `SpawnRequest`（含校验快照、授权用量）；ETag | 404 | — |
+| G04 | PUT `/agent-spawn-requests/{request_id}/decision` | agent-spawn-requests | `agent_manage`（请求项目范围）· O；HUMAN | `{decision:"APPROVE" / "REJECT", note?}`（REJECT 时 note 必填 ≥10） | `SpawnRequest` | 409 142035；403 140403（`HUMAN_ONLY`）；422 142031–142037（批准时复验） | `If-Match` 必填（缺 428，冲突 409 142009） |
+| G05 | POST `/agents/{agent_id}/adoption` | agents | `agent_manage` · O；HUMAN | `{machine_id?, note?}` | `Agent`（`lineage_status=ADOPTED`） | 409 142039；403 140403（`HUMAN_ONLY`） | `Idempotency-Key`；`If-Match` |
+| G06 | GET `/agents/{agent_id}/lineage` | agents | `agent_read` · O | — | `{origin, created_by, supervisor, grant{id, name, usage}, spawn_request_id, reason, expires_at, adopted_by, adopted_at, orphaned_at, orphan_reason, children[]}` | 404 | — |
+
+F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：HUMAN_CREATED / SPAWNED / ADOPTED / ORPHANED) `spawn_grant_id`(eq)，排序增加 `origin`；行增加 `origin`、`lineage_status`、`parent_agent{id, name}`、`expires_at`。
+
+机器通道（§6.6 补充）：主管宿主可上行 `agent.spawn_request{command_id, project_id?, requested_spec, reason}`，服务端按 G01 处理（`source_command_id=command_id`）并回 `agent.command_ack{command_id, ok, request_id?, error_code?}`。
+
+本模块使用的 08 接口：`SpawnGrantReader.Active(ctx, tx, tenantID, supervisorAgentID) (*SpawnGrantView, error)`；`SpawnGrantUsage.Reserve(ctx, tx, grantID, {request_id}) (reservationID, error)`、`SpawnGrantUsage.Release(ctx, tx, grantID, {reservation_id?, agent_id?}) error`。成本累计由 08 自行消费 `execution.cost_updated`。
 
 ## 7. 后台任务与事件
 
@@ -751,6 +871,9 @@ fleet 子段（**本规格提议**，CCR-05-03）：04 用 140000–141999，本
 | `collab.agent_mention_delivery` | 消费 `message.posted`（含 AGENT 提及）；Agent 启动时补投 | 任务键 `mention:<message_id>:<principal_id>` | 经 fleet 下发 `agent.inbox`，写 `delivered_at`；BR-05-88 深度限制 | 未运行不投递，保留 24 h |
 | `collab.default_membership_reconcile` | 每 10 min；并**立即**消费 `project.created`、`project.members_changed`（07）、`agent.retired` | dlock `collab:membership:<tenant_id>` | 按 BR-05-81 增删 DERIVED 成员 | — |
 | `collab.hook_delivery`（v1.1） | 消息写入后 | 任务键 `hook:<hook_id>:<message_id>` | BR-05-95 | 5 次退避；20 连败禁用 |
+| `fleet.spawn_request_expiry` | 每 60 s | dlock `fleet:spawn-expiry` | PROPOSED 且 `expires_at<now`，或所属授权已失效 → S06 | — |
+| `fleet.spawn_lineage_watch` | 每 60 s；并立即消费 `agent.retired`、`agent.state_changed{CRASHED}`、`spawn_grant.revoked` / `spawn_grant.expired`、`takeover.executed` | dlock `fleet:spawn-lineage` | 按 L02 标记孤儿（CRASHED 需 exhausted 且持续 >24 h） | — |
+| `fleet.spawn_lifecycle` | 每 10 min | dlock `fleet:spawn-lifecycle` | BR-05-104 到期 / 闲置退役；到期前 24 h N-05-15；L05 孤儿 7 天自动退役 | 退役失败按 §4.2 重试 |
 
 ### 7.2 领域事件
 
@@ -773,6 +896,12 @@ fleet 子段（**本规格提议**，CCR-05-03）：04 用 140000–141999，本
 | `channel.created` / `channel.archived`（CCR-05-08） | C02 / 归档 | `{channel_id, project_id, kind}` |
 | `message.posted`（CCR-05-08） | C09 与系统消息 | `{channel_id, message_id, seq, kind, author{kind,id}, mention_principal_ids[], trigger_depth}`（**不含正文**） |
 
+| `agent.spawn_requested` | S01 | `{request_id, supervisor_agent_id, grant_id, project_id?, approval_mode, role, model_id, reason_excerpt≤140, estimated_cost_cap_micros}` |
+| `agent.spawn_rejected` / `agent.spawn_failed` | S03 / S05 | `{request_id, supervisor_agent_id, grant_id, failure_code?}` |
+| `agent.spawned` | S04 | `{agent_id, request_id, supervisor_agent_id, grant_id, project_id?, role, expires_at}` |
+| `agent.orphaned` | L02 | `{agent_id, supervisor_agent_id, grant_id, orphan_reason}` |
+| `agent.adopted` | L03 / L04 | `{agent_id, adopted_by, grant_id}` |
+
 **消费**：
 
 | 事件 | 来源 | 处理 |
@@ -788,9 +917,14 @@ fleet 子段（**本规格提议**，CCR-05-03）：04 用 140000–141999，本
 | `delivery.release_notes_requested` | 07 | BR-05-56：向起草 Agent 下发 `agent.release_notes` |
 | `project.members_changed` | 07 | 立即触发 `collab.default_membership_reconcile`（新成员可被 @） |
 | `budget.threshold_reached{threshold_pct}` | 07 | EVENT（attention）；`threshold_pct ≥ 100` → 派单循环 G2 命中、ensemble H04 |
+| `spawn_grant.revoked` / `spawn_grant.expired` | 08 | L02 孤儿判定；该授权的 PROPOSED 请求 → S06 |
+| `spawn_grant.exhausted` / `spawn_grant.agent_cap_reached{agent_id}` | 08 | BR-05-102：E12 排除、相关派单提案 EXPIRED；EVENT（attention） |
+| `takeover.executed` | 08 | 08 已撤销该项目自建授权；本模块按 L02（`orphan_reason=TAKEOVER`） |
 | `memory.approved` 等 | 06 | 不消费 |
 
 ### 7.3 审计事件（`audit.Appender`，与业务写同事务；`detail` 含 `reason`、`evidence_refs[]`、`authority_source`）
+
+自建（D110）：`fleet.agent_spawn_requested`、`fleet.agent_spawn_decided`（APPROVE / REJECT，含 `decided_by`）、`fleet.agent_spawned`（含 `grant_id`、`supervisor_agent_id`、`request_id`，`authority_source=POLICY:spawn_grant`）、`fleet.agent_spawn_failed`、`fleet.agent_orphaned`、`fleet.agent_adopted`。
 
 `fleet.agent_created`、`fleet.agent_updated`（字段名 diff，不含提示词正文，仅 hash）、`fleet.agent_full_auto_enabled`、`fleet.agent_started` / `stopped` / `restarted`、`fleet.agent_crashed`、`fleet.agent_restart_exhausted`、`fleet.agent_rebound`、`fleet.agent_credential_issued` / `revoked`、`fleet.agent_retirement_started` / `cancelled`、`fleet.agent_retired`（`mode`）、`fleet.agent_cleanup_abandoned`、`fleet.dispatch_auto_applied`、`fleet.dispatch_confirmed`、`fleet.dispatch_overridden`、`fleet.dispatch_dismissed`、`fleet.ensemble_started`、`fleet.ensemble_budget_stopped`、`fleet.ensemble_selected`、`fleet.ensemble_cancelled`、`collab.channel_created` / `archived`、`collab.member_added` / `removed`、`collab.message_edited` / `retracted`（无正文）、`collab.hook_changed`。权限拒绝（403）写 `outcome=denied` 的同名事件。
 
@@ -809,6 +943,8 @@ fleet 子段（**本规格提议**，CCR-05-03）：04 用 140000–141999，本
 - **目的**：一张表看人与 Agent 的角色、负载、当前工作、状态。
 - **布局**：标题栏〔新建 Agent〕（`agent_manage`）；筛选条：类型（全部 / 人 / Agent）、角色、状态、项目、机器、搜索；表格（`@workspace/ui` auto-table，F15）。
 - **列**：头像 + 名称（Agent 显示 handle）、类型标签、角色（人：项目角色汇总；Agent：AgentRole 芯片）、runtime × 模型（仅 Agent）、负载（`active/max` 进度条，满载琥珀）、当前工作项（≤3 链接）、首次验收率 30 天（样本 <5 显示「样本不足」）、状态、最近活跃。行操作（Agent）：启动 / 停止 / 重启（按 §4.1 可用性）、详情、退役（`agent_retire`）。
+- **来源列（D110）**：徽章「人工创建」（中性）、「主管创建 · {主管名}」（紫色，头像带 ✦ 角标）、「已收编」（绿）、「孤儿」（琥珀虚线，附〔收编〕〔退役〕快捷按钮）；未收编的自建 Agent 另显示到期倒计时（<24 h 琥珀）。
+- **来源筛选（D110）**：chip 组「全部 / 人类 / 人工创建的 Agent / AI 创建的 Agent / 孤儿」（映射 `kind` 与 `lineage_status`），可与「主管」「授权」下拉组合；开关〔按主管分组〕以树展示：主管 → 其自建 Agent（已退役折叠），主管节点显示授权用量「2/3 名额 · $18.40 / $50」。
 - **交互**：点击 Agent 行打开详情抽屉（宽屏）或跳转详情页（移动端）；状态列实时更新（SSE）。
 - **空态**：无 Agent →「还没有 Agent。新建一个，让它接手第一个工作项」〔新建 Agent〕。
 - **无权限**：无 `agent_read` 时只显示人类行并提示「缺少 agent_read，Agent 已隐藏」。
@@ -830,6 +966,7 @@ fleet 子段（**本规格提议**，CCR-05-03）：04 用 140000–141999，本
 
 - **头部**：头像、名称、handle、状态徽章（含 process_status）、机器（链接到 04 机器详情）、runtime × 模型 × 强度、「需重启生效」徽标（修订落后时）；按钮：〔启动〕（DRAFT / STOPPED，且机器 ONLINE、凭证已送达）、〔停止〕（ACTIVE / CRASHED）、〔重启〕（ACTIVE / CRASHED）、〔换绑机器〕（DRAFT / STOPPED / CRASHED 且无运行中执行）、〔编辑〕、〔退役〕（红色次要按钮，`agent_retire`）。不可用按钮悬浮说明原因（如「机器离线」）。CRASHED 且 `restart_exhausted` 时显示红色横幅：「30 分钟内崩溃 4 次，已停止自动重启」+ 最近 3 条崩溃原因 +〔查看进程记录〕。
 - **Tab 概览**：绩效四卡（首次验收率、单位已接受成本、返工率、当前负载，含窗口切换 30 / 90 天与 `computed_at`）、按工作项类型的小表、最近进程事件、所在项目（主导的项目带 LEAD 标）。
+- **谱系卡（D110，概览顶部）**：来源徽章；创建者（人或主管，可点击）、主管、所属自建授权（名称与名额 / 预算计量条）、创建理由（主管原文）、到期时间（`CountdownRing`）、收编人与时间、孤儿原因。主管 Agent 的详情另有「它创建的 Agent」列表与〔调整授权〕（跳 08 授权与策略）。孤儿态顶部琥珀横幅〔收编〕〔退役〕。
 - **Tab 工作项**：复用 02 列表（`assignee_principal_id=eq:<principal>`），进行中 / 历史切换；每行 `CompletionLadder`。
 - **Tab 授权**：AgentRole 与项目角色绑定（只读，链接到 07 项目团队）、08 委托（剩余有效期 `CountdownRing`、使用次数）；FULL_AUTO 红色标签。
 - **Tab 技能**：06 挂载列表（技能、版本、是否跟随最新、归档提示）；〔挂载技能〕调用 06 `PUT /agents/{id}/skills/{skill_id}`。
@@ -881,6 +1018,14 @@ fleet 子段（**本规格提议**，CCR-05-03）：04 用 140000–141999，本
 
 ---
 
+### 8.9 自建请求审批与卡片（D110）
+
+- **入口**：08「我的裁决」`AGENT_SPAWN_APPROVAL` 项、项目频道「自建请求」卡片、`/t/:tenantID/agents/spawn-requests/:requestID`。
+- **内容**：主管头像与名称、理由全文、规格（角色、机器、runtime × 模型 × 强度、技能、MCP、最大风险）、与授权的逐项比对（✓ / ✗）、单 Agent 成本上限、授权用量（名额 2/3、今日 1/5、预算 $18.40 / $50）、剩余审批时间（24 h 倒计时）。
+- **按钮**：〔批准〕（`agent_manage`，无需 step-up；仅 PROPOSED）、〔拒绝〕（理由必填 ≥10）、〔调整授权〕（跳 08）。AUTO 模式下卡片只读，显示「已按授权自动创建」。
+- **状态**：PROPOSED（琥珀）、CREATED（绿，链接新 Agent）、REJECTED / EXPIRED（灰）、FAILED（红，显示 `failure_code` 文案）。
+- **移动端**：卡片全宽，按钮固定底部。
+
 ## 9. 通知
 
 经 09 `Notifier`（站内 inbox + 用户配置的外部渠道）；文案三语 key 化，以下为 zh-CN。
@@ -899,6 +1044,10 @@ fleet 子段（**本规格提议**，CCR-05-03）：04 用 140000–141999，本
 | N-05-12 | 评审派单无合格 Agent / 连续超时（AUTONOMOUS） | 项目所有者 | 站内 | 「{work_item} 没有可用的评审 Agent，已转人工裁决」 | 每项一次（同时交 08 `NO_ELIGIBLE_AUTHORITY`） |
 | N-05-09 | 被 @（人类） | 被提及者（静音频道仍通知提及） | 站内；用户离线 >10 min 且未读时发邮件摘要 | 「{author} 在 #{channel} 提到了你：{excerpt≤140}」 | 同频道 5 min 内合并；邮件每人每小时 ≤1 封 |
 | N-05-10 | 主导 Agent 变为不可用（崩溃用尽 / 退役） | 其主导项目的交付负责人 | 站内 | 「{project} 的主导 Agent {name} 不可用，派单已切回人工确认」 | 每项目每事件一条 |
+
+| N-05-13 | 自建请求待审批（REQUIRE_APPROVAL） | 对请求项目持 `agent_manage` 的人 | 站内（08 收件箱） | 「主管 {supervisor} 申请新增 {role}「{name}」：{reason≤80}」 | 每请求一条 |
+| N-05-14 | 自建 Agent 成为孤儿 | 授权人 + 项目交付负责人 | 站内 + 邮件 | 「{supervisor} 创建的 {n} 个 Agent 已停用（{orphan_reason}），7 天内未收编将自动退役」 | 同授权同原因 1 h 合并 |
+| N-05-15 | 自建 Agent 24 h 内到期 | 授权人 | 站内 | 「{name} 将于 {time} 到期退役，如需保留请收编」 | 每 Agent 一条 |
 
 通知载荷不含消息正文以外的代码；外部渠道（邮件）中的摘录只含 TEXT 前 140 字。
 
@@ -1225,6 +1374,86 @@ When  AUTO 应用
 Then  经 02 DispatchAssigner.Reassign；ASSIGN Decision authority_source=POLICY:dispatch_auto、detail.dispatch_proposal_id=提案 id
 And   阶段 PLANNING 时同一情形不生成提案
 
+
+### 10.x 自建 Agent（D110）
+
+公共夹具：主管 Atlas（LEAD，HUMAN_CREATED，RUNNING）；Sam 授予 Atlas 自建授权 G（项目 P，`max_active_agents=3`，`max_spawns_per_day=5`，`allowed_roles=[EXECUTOR]`，机器 M1，CLAUDE_CODE×sonnet，`max_effort=high`，预算 $50，单 Agent $15，`agent_ttl=7d`，`idle_retire=48h`，`approval_mode=REQUIRE_APPROVAL`）。
+
+AC-05-53  [integration]  US-05-17, BR-05-98/99, S01/S02/S04
+Given P 为 HYBRID；G ACTIVE；Atlas 已自建 1 个在册 Agent
+When  Atlas 以自身凭证 POST agent-spawn-requests {role:EXECUTOR, M1, sonnet, reason≥10}
+Then  201，state=PROPOSED；08 生成 AGENT_SPAWN_APPROVAL；频道出现「自建请求」卡片；名额预占 2/3
+When  Morgan（agent_manage）PUT decision {APPROVE}（If-Match）
+Then  同事务创建 Agent：origin=AGENT_SPAWNED、parent_agent_id=Atlas、spawn_grant_id=G、authorization_mode=ON_REQUEST、expires_at=+7d；请求 CREATED；agent.spawned；审计 fleet.agent_spawned（authority_source=POLICY:spawn_grant）
+
+AC-05-54  [integration]  BR-05-98 ⑥
+Given G 下已有 3 个未收编在册 Agent
+When  Atlas 再发起请求
+Then  422 142032；无请求行；无预占
+
+AC-05-55  [integration]  BR-05-98 ⑦
+Given 近 24 h Atlas 已在 G 下创建 5 个（含已退役）
+Then  第 6 次请求 422 142033
+
+AC-05-56  [integration]  BR-05-98 ⑧, BR-05-102
+Given G 剩余预算 $10 < 单 Agent 上限 $15
+Then  请求 422 142037
+Given 08 发布 spawn_grant.exhausted(G)
+Then  G 下 Agent 在派单预过滤中带 E12 不合格；其 RUNNING 执行继续至结束；相关 PROPOSED 派单提案 EXPIRED
+
+AC-05-57  [integration]  BR-05-98 ③④⑤
+Given 请求分别为 model=opus（不在允许列表）/ role=COORDINATOR（不在 allowed_roles）/ role=LEAD / skill 不在 Atlas 挂载内
+Then  分别 422 142034（data.field=model_id）/ 142034（role）/ 142036 / 142034（skill_ids）
+
+AC-05-58  [integration]  BR-05-97, BR-05-101（深度）
+Given A1 为 Atlas 自建的 EXECUTOR
+When  A1 以自身凭证发起自建请求
+Then  403 140403（reason_code=SPAWN_NOT_LEAD）
+When  管理员尝试给未收编的 A1 加 LEAD 角色
+Then  422 142036
+
+AC-05-59  [integration]  BR-05-99（AUTO 与 HYBRID）
+Given G.approval_mode=AUTO
+When  P 为 AUTONOMOUS 时 Atlas 发起请求
+Then  直接 CREATED（无收件箱项），卡片显示「已按授权自动创建」
+When  P 为 HYBRID 时发起
+Then  state=PROPOSED，data.downgraded=true，需人批准
+
+AC-05-60  [integration]  BR-05-101（FULL_AUTO 与委托）
+Given A1 未收编
+When  PATCH A1 authorization_mode=FULL_AUTO
+Then  422 142038
+When  Sam 授予 A1 decision_approve 委托
+Then  08 拒绝，reason_code=SPAWNED_NOT_ADOPTED
+
+AC-05-61  [integration]  L02, L03, L05, BR-05-103
+Given A1、A2 为 Atlas 在 G 下自建，均 ACTIVE
+When  Atlas 完成正常退役（RETIRED）
+Then  A1、A2 → STOPPED，orphaned_at 写入，orphan_reason=SUPERVISOR_RETIRED；agent.orphaned；N-05-14；成员列表「孤儿」筛选出 2 行
+When  Morgan POST /agents/A1/adoption
+Then  A1 lineage_status=ADOPTED，origin 仍为 AGENT_SPAWNED，expires_at 清空，G 名额释放 1；A1 此后可成为委托受托方
+When  7 天后 A2 仍未处理
+Then  A2 被正常退役，agent.retired{reason:ORPHAN_TIMEOUT}
+
+AC-05-62  [e2e]  BR-05-105（接管）
+Given P 为 AUTONOMOUS，G 限定 P，A1 正在执行
+When  Sam 在 08 执行一键接管
+Then  08 撤销 G；A1 成为孤儿（orphan_reason=TAKEOVER），其执行按 03 置 INTERRUPTED；P 切回 HYBRID
+
+AC-05-63  [integration]  L06, BR-05-104
+Given A1 expires_at 到达（或无 ACTIVE 分派超过 48 h）
+Then  spawn_lifecycle 发起正常退役，交接文档由 A1 撰写（10 min 超时则系统摘要），完成后 G 名额释放；到期前 24 h 授权人收到 N-05-15
+
+AC-05-64  [integration]  G04 并发
+Given 请求 R PROPOSED
+When  Morgan 与 Sam 携带同一 ETag 同时 APPROVE
+Then  一个成功（CREATED），另一个 409 142009；只创建 1 个 Agent
+
+AC-05-65  [e2e]  §8.1 来源列与筛选
+Given 名册含 2 个人类、3 个人工创建 Agent、2 个自建 Agent（其一为孤儿）
+When  选择「AI 创建的 Agent」
+Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；切换〔按主管分组〕显示 Atlas → 2 个子节点与「名额 / 预算」用量
+
 ## 11. 度量与埋点（不含提示词、消息正文、代码）
 
 | 事件 | 属性 |
@@ -1242,6 +1471,9 @@ And   阶段 PLANNING 时同一情形不生成提案
 | `channel_message_posted` | `kind, author_kind, mention_count, has_attachment, trigger_depth` |
 | `mention_delivered` | `target_kind, delivered(bool), delay_ms` |
 | `channel_unread_opened` | `unread_bucket` |
+| `agent_spawn_requested` | `approval_mode, role, runtime_kind, downgraded(bool)` |
+| `agent_spawn_decided` | `decision, wait_ms` |
+| `agent_spawn_lifecycle` | `event(CREATED / ORPHANED / ADOPTED / TTL_RETIRED / IDLE_RETIRED / ORPHAN_RETIRED), lifetime_hours_bucket` |
 
 运维指标：`fleet_watchdog_failures_total`、`fleet_dispatch_cycle_duration_seconds`、`fleet_lead_plan_timeouts_total`、`collab_projection_failures_total`、`collab_messages_posted_total{kind}`。
 
@@ -1261,6 +1493,8 @@ And   阶段 PLANNING 时同一情形不生成提案
 | 08 | `AuthorityChecker`（`Check` 含 `DispatchedByActor` 事实；`ListEligible`）、`PolicyRegistry`（本模块贡献 `dispatch_auto` / `ensemble_branch` / `review_dispatch`）、`DelegationRevoker.RevokeAllForOn(tx, principal)`、我的裁决分类「派单确认」「并行求解待批准」「并行求解待选择」 | 需 08 对齐；`SystemActions.Register("fleet.review_dispatch","work_item_assign")`；ENSEMBLE_APPROVAL 以 `ensemble.plan_created{requires_approval:true}` 触发、ENSEMBLE_SELECTION 以 `ensemble.compared{requires_human:true}` 触发；登记本模块 reason_code（NOT_MEMBER、DIRECT_READ_ONLY、SELF_MANAGE 等） |
 | 09 | JobQueue、Outbox、SSE、Notifier、SecretSealer | 平台 |
 | 底座 | identity `ServiceAccountProvisioner`（事务内创建 / 停用 / 签发 / 吊销凭证，CR-04-08）；`PrincipalAvatarSetter.SetOn(tx)`（服务账号头像）；core `EntityRoleBindingStore{PutOn, RemoveOn, ListByEntity}`（RoleGrantStore 已有 `RemoveEntityRoleBinding`，需补 Put / List）；authn step-up 目的 `agent_full_auto`、`agent_forced_retire` | 底座新增 |
+
+| 08（D110） | 自建授权 `SpawnGrant` 模型与授予 / 撤销界面、`SpawnGrantReader.Active`、`SpawnGrantUsage.Reserve / Release`、成本累计与 `spawn_grant.exhausted` / `agent_cap_reached` / `revoked` / `expired` 事件、策略规则 `spawn_grant`、收件箱 `AGENT_SPAWN_APPROVAL`、接管时撤销自建授权、授予委托时拒绝未收编自建 Agent（`SPAWNED_NOT_ADOPTED`）、登记 reason_code `SPAWN_NOT_LEAD` / `SPAWNED_NOT_ADOPTED` | 需 08 同步修订 |
 
 ### 12.2 风险
 
@@ -1305,3 +1539,5 @@ And   阶段 PLANNING 时同一情形不生成提案
 | CCR-05-10 | §6.3 明确：AUTO 派单的 `authority_source = POLICY:dispatch_auto`、提案 id 放 `detail.dispatch_proposal_id`（**已按 00 v1.5 定稿**；原提议 `POLICY:<proposal_id>` 撤回）；人确认 / 改派使用人自身的 ROLE / DELEGATION 来源 | 00 只给出 `POLICY:<rule_id>` 形式，需明确 rule_id 指向 |
 
 **第二轮复审（00 v1.5）**：#2 REDISPATCH 允许非 READY 并经 `Reassign`；#3 BR-05-56 发布说明起草（`agent.release_notes`）；#4/#5/#27 评审派单 SYSTEM 身份、`lease_ttl_seconds=1800`、超时经 02 `WorkItemEscalator` 升级；#9 阶段 ∈ {ACTIVE, ACCEPTANCE_PENDING}；#14 `pending_claim.head_commit`；#18 §6.6 为 Agent 通道唯一定义；#22 `ensemble.compared.requires_human`；#24 立即消费 `project.members_changed`；#26 `POLICY:dispatch_auto` + `detail.dispatch_proposal_id`（CCR-05-10 按此定稿）；新增 AC-05-50..52。
+
+**D110（主管 Agent 自建 Agent）已并入 00 v1.8**：新增模块共享枚举 `AgentOrigin`（HUMAN_CREATED / AGENT_SPAWNED）、权限码 `agent_spawn`（不经角色授予，仅策略规则 `spawn_grant`）、事件 `agent.spawn_requested` / `agent.spawned` / `agent.spawn_rejected` / `agent.spawn_failed` / `agent.orphaned` / `agent.adopted`（发布者 fleet）与 `spawn_grant.*`（发布者 governance）、08 接口 `SpawnGrantReader` / `SpawnGrantUsage`。本规格新增 US-05-17–20、§3.11–3.12、§4.6–4.7、§5.9（BR-05-97–106）、E12、§6.10（G01–G06）、错误码 142031–142039、§7 三个任务与事件、§8.9、N-05-13–15、AC-05-53–65。

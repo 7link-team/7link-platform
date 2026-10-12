@@ -834,7 +834,7 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 |---|---|---|
 | `execution.started` | 首次 E01 | `{execution_id, work_item_id?, kind, purpose, branch_reason?, seq_no?, parent_execution_id?, agent_id?, machine_id, runtime, model?}` |
 | `execution.state_changed` | 每次 Execution 迁移 | `{execution_id, work_item_id?, kind, purpose, from, to, reason?, failure_kind?:"INFRA"\|"RUNTIME", dispatch_epoch, claim_id?}` —— 供投影、频道与通知；工作项迁移已经由同步回调完成（BR-03-14、E01），消费方不得据此再迁移 |
-| `execution.cost_updated` | BR-03-81 | `{execution_id, work_item_id?, project_id, cumulative_cost_micros, breakdown{model, compute, platform}, cost_source, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens}`（均为累计） |
+| `execution.cost_updated` | BR-03-81 | `{execution_id, work_item_id?, project_id, agent_id?（AGENT 执行时必填，供 08 编制预算按子 Agent 累计，D110）, cumulative_cost_micros, breakdown{model, compute, platform}, cost_source, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens}`（均为累计） |
 | `verification.human_requested` | HUMAN 层验证进入 PENDING·QUEUED | `{verification_id, claim_id, work_item_id, verifier_key, eligible_role_keys[], deadline_at}`（08 我的裁决） |
 | `interaction.requested` | §4.3 PENDING | `{interaction_id, execution_id, work_item_id?, kind, title, expires_at, initiator_id?, assignee_principal_id}`（不含 details 原文） |
 | `interaction.decided` | DECIDED | `{interaction_id, execution_id, action, responder{kind,id}}` |
