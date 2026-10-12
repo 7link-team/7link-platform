@@ -456,6 +456,7 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 | agent_id / model_family | ID / STR(32) | Y | | AGENT_* 阶段的执行主体与模型家族 |
 | family_fallback | BOOL | N | false | 未能满足「不同模型家族」而退化为不同模型时为 true（05 BR-05-109） |
 | state | STR(16) | N | `PENDING` | PENDING / RUNNING / PASSED / FAILED / INCONCLUSIVE / ERROR |
+| waiting_reason | STR(32) | Y | NULL | PENDING 时的等待原因，目前仅 `TOOL_UNCALIBRATED`（BR-03-103） |
 | findings | JSON | N | `[]` | `[{criterion_id?, severity: BLOCKER\|MAJOR\|MINOR, summary, evidence_ids[]}]` |
 | screenshots | JSON | N | `[]` | `[{file_node_id, viewport, route, sha256}]` |
 | rubric_scores | JSON | Y | | 产品验收 Agent 按模板评分标准的逐项得分（11） |
@@ -469,7 +470,7 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 ### 3.23 验证器类型增补
 
-`execution_verifiers.kind` 增加：`VISUAL`（以无头浏览器打开交付物指定路由，按视口截图，检查布局约束：元素尺寸一致性、溢出、对齐、对比度；产出截图证据）与 `INTERACTION`（脚本化交互流程：按键 / 点击序列后断言 DOM 或截图）。二者属确定性检查（AUTOMATED 阶段），由平台在隔离副本执行；截图同时作为产品验收 Agent 的输入。
+`execution_verifiers.kind` 增加：`VISUAL`（以无头浏览器打开交付物指定路由，按视口截图，检查布局约束：元素尺寸一致性、溢出、对齐、对比度；产出截图证据）与 `INTERACTION`（脚本化交互流程：按键 / 点击序列后断言 DOM 或截图）。二者属确定性检查（AUTOMATED 阶段），由平台在隔离副本执行；截图同时作为产品验收 Agent 的输入。截图必须按请求的视口真实排版：页面看到的视口宽高等于请求值，截图像素尺寸也等于请求值；浏览器最小窗口宽度以下的视口须以设备模拟或同尺寸框架渲染，不得以「更宽排版再裁切」代替（由 11 `probe_viewport_fidelity` 探针校验，BR-03-103）。
 
 ## 4. 状态机
 
@@ -753,6 +754,7 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 - **BR-03-99 真实交付形态**：产品验收 Agent 的输入包 = 需求与验收标准 + 模板评分标准（11）+ 交付物的可运行副本（只读）+ AUTOMATED 阶段截图（`VISUAL` 验证器产出，按模板定义的路由与视口：默认 1440×900 与 390×844）+ 成品文件清单；Codex / Claude 以图片输入方式接收截图。产品验收 Agent 不得只看代码判定。
 - **BR-03-100 跨模型家族**：执行开始时快照 `model_family`；AGENT_TEST / AGENT_ACCEPTANCE 的 `model_family` 与被验收交付执行相同时，必须 `family_fallback=true` 且模型不同、主体不同（05 BR-05-109 保证），评审台显示「同家族回退」标记。
 - **BR-03-101 内部轮次计数**：每次 FAILED（Q3/Q6/Q9/Q11）计 1 次内部轮次，交由 02 判断是否达到 `max_internal_rounds`（00 §15.2）；内部失败**不发任何人工通知**，只写事件与执行记录。
+- **BR-03-103 工具校准门槛**（D116）：执行 `VISUAL` / `INTERACTION` 等须工具校准的验证器（11 BR-11-33）前，按 04 `ListEligibleMachines(capabilities=[browser_capture])` 取候选，再以 11 `VerifierCatalog.ToolCalibration` 过滤，只在 CALIBRATED 机器上运行。没有 CALIBRATED 机器时，该 AUTOMATED 运行保持 PENDING（`waiting_reason=TOOL_UNCALIBRATED`，内部验收面板显示「等待已校准的截图机器」），**不在未校准机器上判定、不判 FAILED、不计内部轮次**（BR-03-101），也不通知人；消费 11 `verifier.calibration_changed{state:CALIBRATED}` 后自动开始。等待超过 24 小时 → 升级人工（`MANDATORY_HUMAN_GATE`，detail=`TOOL_UNCALIBRATED`，途径同 Q11），附各机器的 `last_failures`。运行开始后校准状态变化不影响本次结论；证据记录运行时的 `provider_ref` 与校准行 id。
 - **BR-03-102 穿透学习（职责划分）**：`quality.escaped` 由 02 在拒绝裁决 / 甲方拒收的同一事务内发布（02 §4.5、BR-02-58），学习回流（06 `MemoryWriter.Propose`、11 `EvalSetWriter.ProposeCase(ctx, tx, {template_key, template_version?, source: ESCAPE, work_item_id, description, evidence_refs[], expected})`）只由 02 `delivery.escape_learning` 执行。本模块不发布 `quality.escaped`、不重复回流，只经 `InternalQAReader` 向 02 提供：该工作项最近一次 AGENT_TEST / AGENT_ACCEPTANCE 的结论、`internal_qa_run_ids[]`、参与的 TESTER / ACCEPTOR Agent 与截图证据引用（02 据此判断「内部已放行」并填入穿透记录）。
 
 ## 6. 接口契约
@@ -924,7 +926,7 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 | A53 | GET | `/work-items/{work_item_id}/internal-qa-runs` | work-items | `execution_read` · O | `?subject_execution_id=` | 运行列表（含发现、截图、评分、同家族回退标记） | 404 |
 | A54 | GET | `/internal-qa-runs/{run_id}` | internal-qa-runs | `execution_read` · O | — | 单条 | 404 |
 
-接口：`ExecutionLauncher.Launch` 接受 `purpose ∈ {INTERNAL_TEST, INTERNAL_ACCEPTANCE}` 与 `subject_execution_id`（05 调用）；新增 `InternalQAReader{Latest(work_item_id), PassedStages(execution_id)}`（02 / 08 读取）。使用：06 `MemoryWriter.Propose`、11 `EvalSetWriter.ProposeCase`、04 `MachineDirectory`（`browser_capture` 能力）。
+接口：`ExecutionLauncher.Launch` 接受 `purpose ∈ {INTERNAL_TEST, INTERNAL_ACCEPTANCE}` 与 `subject_execution_id`（05 调用）；新增 `InternalQAReader{Latest(work_item_id), PassedStages(execution_id)}`（02 / 08 读取）。使用：06 `MemoryWriter.Propose`、11 `EvalSetWriter.ProposeCase`、11 `VerifierCatalog.ToolCalibration`（BR-03-103）、04 `MachineDirectory`（`browser_capture` 能力）。
 
 错误码：**130451** 验收集已冻结不可修改；**130452** 内部验收运行已终结；**130453** 内部验收执行不能提交完成声明；**130454** 验收集定义不完整；**130455** 交付执行修改了冻结测试（`data.files[]`，同时记 `cheating.suspected`）；**130456** 隐藏验收集校验和不符（平台副本被篡改，升级人工）；**130457** 机器缺少截图能力（`browser_capture`），VISUAL 验证器无法执行（按 BR-03-99 改由其他机器或升级）；**130458** 证据包缺 `unverified` 字段。
 
@@ -982,7 +984,7 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 任务：`execution.platform_rerun`（Q1，每个声明一次，隔离副本 + 可见验收集 + VISUAL / INTERACTION，超时按验证器）；`execution.hidden_acceptance`（Q1，同副本追加隐藏集）。（穿透学习任务归 02 `delivery.escape_learning`，见 BR-03-102。）
 发布：`acceptance_suite.frozen{suite_id, work_item_id, visible_count, hidden_count}`；`internal_qa.passed{work_item_id, subject_execution_id, stage, run_id}`；`internal_qa.failed{work_item_id, subject_execution_id, stage, run_id, findings_summary, counts_as_round: bool}`；`cheating.suspected{execution_id, work_item_id, files[]}`。（`quality.escaped` 由 02 发布。）
-消费：02 `plan.approved`（冻结验收集）。
+消费：02 `plan.approved`（冻结验收集）；11 `verifier.calibration_changed`（`state=CALIBRATED` 时启动等待中的 AUTOMATED 运行，BR-03-103）。
 SSE：`tenant/{t}/work_item/{id}` 推送内部验收阶段变化（仅对有 `execution_read` 的成员；甲方门户不订阅）。
 
 ## 8. 页面规格
@@ -1488,6 +1490,9 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 | AC-03-83 | integration | BR-03-102 | **G** 工作项无内部验收记录（`internal_qa_required=false`）**W** `InternalQAReader.Latest` **T** 返回空结论，02 据此不记穿透 |
 | AC-03-84 | unit | 4.x | **G** 验收集 FROZEN **W** PATCH 文件 **T** 409 130451 |
 | AC-03-85 | integration | Q3, BR-03-101 | **G** AUTOMATED 失败 **W** 内部返工 **T** 任何人的收件箱与通知均无新增；执行详情可见失败记录 |
+| AC-03-86 | integration | BR-03-103 | **G** 机器 A 的 `ui_screenshot` CALIBRATED、B 为 DRIFTED，两台都有 `browser_capture` **W** 平台重跑 UI 工作项 **T** VISUAL 只在 A 执行；证据记录 A 的 `provider_ref` 与校准行 id |
+| AC-03-87 | integration | BR-03-103, BR-03-101 | **G** 所有候选机器的 `ui_screenshot` 均未校准 **W** 平台重跑 **T** AUTOMATED 运行保持 PENDING（`TOOL_UNCALIBRATED`），无 FAILED、内部轮次不增加、无人工通知；任一机器校准通过（`verifier.calibration_changed`）后自动开始；假时钟推进 24 h 仍无 → 升级人工（detail `TOOL_UNCALIBRATED`） |
+| AC-03-88 | e2e | §3.23 | **G** 浏览器最小窗口宽度约 500px 的机器 **W** 以 420×800 视口截图 **T** 截图 420×800，页面自报宽度 420，无裁切（2048 误报案例回归） |
 
 ## 11. 度量与埋点（不得包含代码、消息正文、工具入参、提示词）
 

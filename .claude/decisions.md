@@ -4381,3 +4381,31 @@ Scope: specs 00 §8, 02 BR-02-61, 11. No code.
 
 Status: Accepted.
 
+
+## D116 - Calibrate Deterministic Capture Tools Per Machine (2026-10-12)
+
+Decision (user: 「工具校准可以，加上吧」): deterministic capture / detection verifiers (screenshot, DOM layout,
+a11y, media probes, text statistics) are calibrated per machine against TOOL_PROBE cases (known-good and
+known-bad sample pages with fixed expected verdicts), reusing spec 11's calibration table, eval cases and
+J2/J3 jobs (`method=PROBE`, `machine_id`). All probes matching = CALIBRATED automatically; any mismatch =
+UNCALIBRATED/DRIFTED + quality owner notified. Recalibrate on first capability, browser variant/major change,
+every 30 days, or on demand. 03 BR-03-103 runs VISUAL / INTERACTION only on CALIBRATED machines; with none, the
+AUTOMATED run waits (PENDING, TOOL_UNCALIBRATED): no FAILED, no internal round, no human notice; 24 h -> escalate.
+
+Reason: in the 2048 run a headless-browser crop below ~500px produced a stable false positive that burned two
+internal rounds and wrongly escalated to a human (research §5.1). Quality gates that bypass humans must not trust
+their own tools blindly.
+
+Alternatives Considered: (1) trust deterministic tools (status quo) - rejected, the false positive was real;
+(2) human confirmation for every tool calibration - rejected, probe results are deterministic; (3) fall back to
+running on an uncalibrated machine and marking criteria unverified - rejected, an unverified criterion blocks
+AGENT_ACCEPTANCE (BR-03-98) and would still burn rounds; (4) 02 SetSystemBlock - rejected, it is a pre-start
+readiness block, not a mid-QA wait.
+
+Tradeoffs: one more background job per machine; a UI item can wait up to 24 h when no machine is calibrated.
+Out of scope for now: letting a reviewer mark an internal finding as a tool false positive to auto-create a probe.
+
+Scope: specs 11 §3.5 / §3.6 / §4.2 / §5.6b / §5.7 / §7 / §8 / AC-11-35..38, 03 §3.19 / §3.23 / BR-03-103 /
+AC-03-86..88, 00 §7.1 / §8 / §14, PRD §10.10, prototype template detail (verifier tab). No code.
+
+Status: Accepted.

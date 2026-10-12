@@ -85,6 +85,8 @@
 | `CalibrationState` | `UNCALIBRATED`, `CALIBRATING`, `CALIBRATED`, `DRIFTED` |
 | `RubricDimensionKind` | `HARD_GATE`（一票否决）, `WEIGHTED` |
 | `EvalCaseOrigin` | `SEED`（模板自带）, `ESCAPE`（穿透自动入集）, `MANUAL`（人工添加） |
+| `CalibrationMethod` | `AGREEMENT`（模型打分验证器：与人工标注的一致率）, `PROBE`（确定性采集 / 检测工具：已知样例探针，D116） |
+| `EvalCaseKind` | `JUDGEMENT`（判定用例，默认）, `TOOL_PROBE`（工具探针：已知正确 / 错误的样例页及其必然结论） |
 | `ProviderKind` | `VIDEO_GEN`, `IMAGE_GEN`, `TTS`, `MUSIC_GEN`, `ASR_ALIGN`, `VLM_JUDGE`, `LLM_JUDGE` |
 | `UpgradePolicy` | `PINNED`（默认）, `AUTO_PATCH`（仅自动接受补丁版本） |
 
@@ -139,7 +141,10 @@
 | id | ID | N | — | PK |
 | tenant_id | ID | N | — | 团队级校准（同一一方模板在不同团队可不同） |
 | template_key / verifier_key | STR(64) / STR(64) | N | — | |
-| provider_ref | STR(120) | N | — | 评分模型或工具与版本，如 `arcface:buffalo_l@0.7.3`、`vlm:<model>@<ver>` |
+| provider_ref | STR(120) | N | — | 评分模型或工具与版本，如 `arcface:buffalo_l@0.7.3`、`vlm:<model>@<ver>`、`browser:edge@141`（取自 04 S4 `variant` / `version` 主版本） |
+| method | ENUM CalibrationMethod | N | `AGREEMENT` | `PROBE` 用于 `DETERMINISTIC` 采集 / 检测验证器（BR-11-33） |
+| machine_id | ID | Y | NULL | 仅 `PROBE`：工具结果与具体机器的安装、字体、显示参数相关，按机器校准 |
+| last_failures | JSON | Y | NULL | 仅 `PROBE`：最近一次未通过的探针 `[{case_id, expected, actual, evidence_refs}]` |
 | state | ENUM CalibrationState | N | `UNCALIBRATED` | |
 | threshold | JSON | Y | NULL | 标定后的阈值（覆盖模板默认） |
 | agreement | DEC | Y | NULL | 与人工标注的一致率（Cohen κ 或准确率） |
@@ -148,7 +153,7 @@
 | drift_checked_at | TIME | Y | NULL | |
 | version | INT | N | 1 | |
 
-唯一：`(tenant_id, template_key, verifier_key, provider_ref)`。
+唯一：`(tenant_id, template_key, verifier_key, provider_ref, machine_id)`（`machine_id` 为空视为同一值）。
 
 ### 3.6 `templates_eval_cases`（评测集）
 
@@ -158,6 +163,7 @@
 | tenant_id | ID | N | — | |
 | template_key | STR(64) | N | — | |
 | origin | ENUM EvalCaseOrigin | N | — | |
+| kind | ENUM EvalCaseKind | N | `JUDGEMENT` | `TOOL_PROBE` 用例只用于 `PROBE` 校准与内部 Agent 配置的误报检查（BR-11-34），不计入 BR-11-21 的 20–50 条判定用例 |
 | title | STR(200) | N | — | |
 | input_ref | JSON | N | — | 输入（需求片段、产物文件 ID、截图 ID 等，经 files ResourceBinding） |
 | expected | JSON | N | — | 期望结论：`{verifier_key → VerdictLevel}` 与 / 或 `{rubric_dimension → score_range}` |
@@ -270,6 +276,8 @@
 | C4 | CALIBRATED | 周期复核失败或新增穿透用例导致一致率跌破目标 | — | DRIFTED | 结论降级为建议；通知质量负责人 |
 | C5 | DRIFTED | 重新校准通过 | HUMAN | CALIBRATED | — |
 
+**`PROBE` 方法的迁移**（D116，BR-11-33）：C1 的守卫改为「该验证器的 `TOOL_PROBE` 用例 ≥ 模板要求」，触发为自动（BR-11-35）；C2 不需要人类确认——探针结果是确定性的，**全部探针结论与期望一致**即 CALIBRATED；任一不一致走 C3 / C4（CALIBRATED → DRIFTED），写 `last_failures` 并通知质量负责人；C5 同样自动。人类可在 C1–C5 任何时候手动发起重跑（C2 接口）。
+
 **规则**：`MODEL_SCORED` 验证器在非 CALIBRATED 状态时，结论只能是「建议」，不能单独让工作项通过或拒绝内部验收；产品验收 Agent 汇总时把这类结论作为参考证据，最终结论须由确定性检查与 rubric 维度共同支持（§5.4）。
 
 ### 4.3 项目绑定升级
@@ -326,6 +334,15 @@
 - **BR-11-23 校准周期**：每 30 天（模板参数）或新增 ≥ 5 条 ESCAPE 用例时重跑评测；一致率跌破目标 → DRIFTED。
 - **BR-11-24 隐私**：评测用例只引用文件 ID；跨项目复用用例前须对甲方内容脱敏或取得授权（项目设置开关，默认仅本项目可见）。
 
+### 5.6b 工具校准（D116）
+
+确定性验证器同样依赖工具：浏览器、截图、DOM 检测、媒体探测。工具出错时，确定性检查会**稳定地给出错误结论**；内部质量门越可靠、越不经人，这类误报的代价越大（浪费内部轮次、错误升级给人）。2048 实测中，无头浏览器窗口窄于约 500px 时按更宽的最小宽度排版再裁切，导致「窄视口被裁切」误报两轮并错误升级（研究报告 §5.1）。
+
+- **BR-11-33 适用范围**：模板中 `kind=DETERMINISTIC` 且属于采集或检测类的验证器（SOFTWARE：`ui_screenshot`、`ui_layout_rules`、`a11y_basic`；VIDEO：规格 / 黑场 / 冻帧 / 响度检测；NOVEL：字数与重复率统计）必须声明 `TOOL_PROBE` 用例并按 `method=PROBE`、按机器校准。纯命令类验证器（构建、单元测试、冻结验收集）不需要——其结论由命令退出码决定，已由平台重跑保证（03 BR-03-95）。
+- **BR-11-34 探针内容**：每个探针是一个已知正确或已知错误的样例输入及其必然结论（`expected` 含 `{verifier_key → VerdictLevel}` 与可选的必有 / 必无发现）。每个须校准的验证器至少一个「已知正确」探针（防误报）和一个「已知错误」探针（防漏报）。同一组截图类探针还用于 J2 评测内部 Agent 配置（`target` = ACCEPTOR 角色 + 模型）：产品验收 Agent 对「已知正确」探针提出 BLOCKER / MAJOR 发现即记误报，对「已知错误」探针没有发现即记漏报，计入该配置的 EvalRun，在模板详情「评测集」与 Agent 详情展示（不自动改变 05 派单评分）。
+- **BR-11-35 何时校准**：①机器首次上报具备相关能力（04 `browser_capture` 等）；②04 `machine.runtimes_changed` 中相关工具的 `variant` / 主版本变化（同时把该机器旧行置 DRIFTED）；③J3 周期复核（`calibration_interval_days`，默认 30 天）；④人工发起。校准作为 J2 任务在**该机器上**以平台身份执行，不占用工作项执行槽位，超时 10 分钟记失败。
+- **BR-11-36 生效**：03 执行 `VISUAL` / `INTERACTION` 等须校准的验证器前，经 `VerifierCatalog.ToolCalibration` 查询目标机器状态；只有 CALIBRATED 的机器上的结论计入判定，规则见 03 BR-03-103。探针用例随一方模板发布（`origin=SEED`、`tenant_id=0`）；团队可追加 `MANUAL` 探针，不可删除 SEED 探针。
+
 ### 5.7 SOFTWARE 模板 `software-dev`（v1.0.0）
 
 - **阶段**：S0 需求澄清与需求评审（12 评审单）→ S1 设计（架构 / 接口 / UI 结构契约）→ S2 计划与验收集冻结（含隐藏验收部分）→ S3 实现（并行，工作项类型按 12：需求 / 任务 / 缺陷）→ S4 内部质量门 → S5 团队验收 → S6 交付。
@@ -337,6 +354,14 @@
   - `ui_layout_rules`（DETERMINISTIC）：DOM 检查规则（如网格单元同尺寸、无横向滚动、关键元素可见、焦点可达）。
   - `ui_visual_judge`（MODEL_SCORED，需校准）：VLM 对照 `ui_contract` 与截图判断布局一致性、对齐、明显视觉缺陷，给出带坐标的证据。
   - `a11y_basic`（DETERMINISTIC）：对比度、可访问名称、键盘可达。
+- **工具探针（`TOOL_PROBE`，BR-11-34）**：
+  - `probe_ok_page`：布局正确、无控制台错误的页面 → 所有 UI 验证器 PASS、无发现。
+  - `probe_viewport_fidelity`：页面把 `innerWidth × innerHeight` 写入可见元素并在四边放置定位标记 → 每个视口的截图像素尺寸与页面自报尺寸都等于请求的视口，四个标记都可见（窄于浏览器最小窗口宽度的视口也必须真实渲染，2048 误报即属此类）。
+  - `probe_uneven_rows`：只定义列模板的网格，有内容的行更高 → `ui_layout_rules` FAIL（网格单元不同尺寸）。
+  - `probe_horizontal_overflow`：375 宽下有固定 480px 元素 → FAIL（横向滚动）。
+  - `probe_console_error`：加载时抛出异常 → `ui_screenshot` FAIL。
+  - `probe_file_module`：用模块脚本加载同目录逻辑 → `file://` 方式 FAIL（未初始化），本地 HTTP 方式 PASS。
+  - `probe_low_contrast` / `probe_unreachable_focus` → `a11y_basic` FAIL。
 - **测试 Agent 检查**：补充边界测试；运行交付形态（不仅是模块测试）；探索式操作关键流程并截图；检查同一逻辑是否存在多份实现（重复实现 → 需一致性测试）。
 - **产品验收 Agent 检查**：逐条验收标准对照证据；以甲方视角运行与截图；检查需求中的交付形态要求（如「直接打开即可运行」）是否满足。
 - **rubric**：功能符合验收标准（HARD_GATE，验收集全部通过）、交付形态可用（HARD_GATE，启动与截图无错误）、UI / 交互质量（WEIGHTED 0.25）、代码质量与可维护性（0.20）、测试充分性（0.20）、文档与交付说明（0.15）、需求理解（0.20）；通过线 3.5。
@@ -516,7 +541,7 @@
 | 接口 | 方法 | 消费者 |
 |---|---|---|
 | `TemplateResolver` | `ForProject(ctx, tenant, project) (ResolvedTemplate{version_id, sha256, params(resolved), stages, verifiers, rubric, internal_qa, human_gates}, error)`；`WorkItemBlueprint(ctx, tenant, project, stage_key) ([]WorkItemDraft, error)` | 02（拆解与 DoR 默认值）、03（验证计划）、05（内部质量门派单）、07（项目创建）、10（KR 指标映射） |
-| `VerifierCatalog` | `Get(ctx, tenant, template_version_id, verifier_key) (VerifierDef, CalibrationState, error)` | 03（执行验证器） |
+| `VerifierCatalog` | `Get(ctx, tenant, template_version_id, verifier_key) (VerifierDef, CalibrationState, error)`；`ToolCalibration(ctx, tenant, template_version_id, verifier_key, machine_id) (CalibrationState, error)`（D116：不需工具校准的验证器恒返回 CALIBRATED） | 03（执行验证器、选择截图机器） |
 | `RubricScorer` | `Record(ctx, tx, RubricScoreInput) (score_id, passed, error)`；`Compare(ctx, subject) (Divergence[])` | 03 / 05（产品验收 Agent 结果入库）、07（甲方评分）、08（分歧指标） |
 | `ProviderRegistry` | `Resolve(ctx, tenant, project, kind) (ProviderHandle, error)` | 03（生成类执行） |
 | `EvalSetWriter` | `ProposeCase(ctx, tx, {template_key, template_version?, source: ESCAPE \| MANUAL, work_item_id?, description, evidence_refs[], expected}) (case_id, created bool, error)`：在调用方事务内写 `templates_eval_cases`（`origin` = source；ESCAPE 时 `source_escape_id` 取 02 穿透记录 ID）；幂等键 `(tenant_id, template_key, source, work_item_id, sha256(description))`，重复调用返回已有 `case_id` 且 `created=false`；提交后触发 J5 | 02（BR-02-58 穿透回流，**唯一的穿透入集调用方**）、模板维护者手工添加（MANUAL） |
@@ -533,7 +558,7 @@
 |---|---|---|---|---|
 | J1 `templates.seed_first_party` | 启动时（幂等） | dlock `templates:seed` | 写入 / 升级一方模板版本（按 `definition_sha256` 判断是否新版本）与 SEED 评测用例 | 指数退避 5 次 |
 | J2 `templates.eval_run` | E4 / C2 / 穿透入集 / 周期 | 每 `(template_key, target)` 单实例 | 逐用例运行验证器或内部 Agent 配置，计算一致率，写 EvalRun 与校准结果 | 单用例失败记 `INCONCLUSIVE`，不中断 |
-| J3 `templates.calibration_review` | 每日 03:00（团队时区） | dlock | 到期（30 天）或 ESCAPE 新增 ≥ 5 的校准重跑评测；一致率跌破 → DRIFTED | — |
+| J3 `templates.calibration_review` | 每日 03:00（团队时区） | dlock | 到期（30 天）或 ESCAPE 新增 ≥ 5 的校准重跑评测；一致率跌破 → DRIFTED；`PROBE` 行到期的按机器排队 J2（BR-11-35 ③） | — |
 | J4 `templates.provider_health` | 每 5 min | 每 provider | 健康检查；连续 3 次失败 → UNAVAILABLE 并发事件；恢复后 ENABLED | — |
 | J5 `templates.escape_ingest` | `EvalSetWriter.ProposeCase` 新建用例（`created=true`）后入队 | 每 `template_key` 单实例 | 触发 J2 对相关验证器与内部 Agent 配置重跑评测；累计 ESCAPE ≥ 5 时提前触发 J3 | 指数退避 5 次 |
 
@@ -544,14 +569,14 @@
 | `template.version_published` | T2 | `{template_key, version_id, semver, breaking}` |
 | `template.version_deprecated` | T3 | `{template_key, version_id}` |
 | `template.binding_changed` | B2 / B4 / U1 | `{project_id, from_version_id?, to_version_id}` |
-| `verifier.calibration_changed` | C2–C5 | `{template_key, verifier_key, provider_ref, state, agreement}` |
+| `verifier.calibration_changed` | C2–C5 | `{template_key, verifier_key, provider_ref, method, machine_id?, state, agreement?, failed_probes?}` |
 | `eval.run_completed` | J2 | `{run_id, template_key, agreement, failed}` |
 | `provider.state_changed` | J4 | `{provider_id, kind, state}` |
 | `rubric.divergence_detected` | §5.5 分歧 ≥ 1.0 | `{subject_kind, subject_id, dimensions[]}` |
 
 ### 7.3 消费事件
 
-（穿透用例经 02 同步调用 `EvalSetWriter.ProposeCase` 写入，本模块不消费 `quality.escaped`）；`machine.runtimes_changed`（04，`tools_changed` 非空）→ 重算 `MachineDirectory.ToolAvailability`，工具恢复时经 02 `WorkItemTransitioner.SetSystemBlock(on=false)` 清除 `TOOL_UNAVAILABLE`；`project.created`（07）→ 若创建时带模板则建立绑定；`machine.runtimes_changed`（04）→ 重新评估工具可用性（BR-11-30）。
+（穿透用例经 02 同步调用 `EvalSetWriter.ProposeCase` 写入，本模块不消费 `quality.escaped`）；`machine.runtimes_changed`（04，`tools_changed` 非空）→ 重算 `MachineDirectory.ToolAvailability`；相关工具首次可用或 `variant` / 主版本变化 → 该机器的 `PROBE` 行置 DRIFTED（如有）并排队 J2 工具校准（BR-11-35 ①②）；工具恢复时经 02 `WorkItemTransitioner.SetSystemBlock(on=false)` 清除 `TOOL_UNAVAILABLE`；`project.created`（07）→ 若创建时带模板则建立绑定；`machine.runtimes_changed`（04）→ 重新评估工具可用性（BR-11-30）。
 
 ### 7.4 审计与 SSE
 
@@ -648,6 +673,10 @@
 | AC-11-32 | unit | BR-11-18 | **G** 加权维度分 [4,3,4,3,5] 权重 [0.25,0.15,0.15,0.15,0.30] 且硬门槛全过 **W** 计分 **T** total = 3.95，passed = true；任一硬门槛失败 **T** total = NULL，passed = false |
 | AC-11-33 | integration | 并发 | **G** 两个负责人同时修改 Brief 覆盖 **W** 后提交者用旧 ETag **T** 409 185409 |
 | AC-11-34 | integration | 幂等 | **G** 同一 `Idempotency-Key` 重放 E4 **T** 返回同一 EvalRun；请求体不同 **T** 422 176425 |
+| AC-11-35 | integration | BR-11-35, §4.2 | **G** 机器 M 首次上报 `browser_capture`（`browser:edge@141`）**W** 消费 `machine.runtimes_changed` **T** 建 `PROBE` 行（`machine_id=M`）并排队 J2；SOFTWARE 探针全部与期望一致 → CALIBRATED，无需人工确认；发布 `verifier.calibration_changed{method:PROBE, machine_id:M}` |
+| AC-11-36 | integration | BR-11-34, §5.7 | **G** M 的浏览器以 496px 最小宽度排版后裁切 420 视口截图 **W** 运行 `probe_viewport_fidelity` **T** 页面自报宽度 ≠ 420 → 探针失败；M 的 `ui_screenshot` 行为 UNCALIBRATED（或由 CALIBRATED 转 DRIFTED），`last_failures` 含该探针与截图；通知质量负责人 |
+| AC-11-37 | integration | BR-11-35 ② | **G** M 的 `ui_screenshot` 为 CALIBRATED **W** 04 上报浏览器主版本 141 → 142 **T** 旧行 DRIFTED，新 `provider_ref` 排队校准；校准完成前 `ToolCalibration(M)` 返回非 CALIBRATED |
+| AC-11-38 | integration | BR-11-34 | **G** ACCEPTOR 配置 X **W** J2 用截图类探针评测 X **T** X 对 `probe_ok_page` 提 MAJOR → 记误报 1；对 `probe_uneven_rows` 无发现 → 记漏报 1；EvalRun 展示在模板评测集与 X 的 Agent 详情 |
 
 ---
 
@@ -716,5 +745,6 @@
 | CR-11-07 | §5 | `WorkItemType` 的 `CONTENT` 已登记；建议 02 增加 `template_stage_key` 字段以便工作台按阶段聚合 |
 | CR-11-08 | 08 | 原因码登记：`HUMAN_ONLY`（已有）、`TOOL_UNAVAILABLE`、`PROVIDER_UNAVAILABLE`（用于阻塞原因，非权限拒绝，建议放 02 `BlockReason`） |
 | CR-11-09 | 04 | 机器能力检测扩展：工具清单（ffmpeg、ffprobe、WhisperX、PySceneDetect、无头浏览器）及版本，供 BR-11-09 / BR-11-30 使用 |
+| CR-11-10 | §8 | `VerifierCatalog` 增加 `ToolCalibration`（D116 工具校准，03 调用）；已并入 00 §8 |
 
 > **合并状态（2026-10-12）**：CR-11-01、04、05、06、07、08、09 已并入 00 v2.0（§9 错误码段、§7.1 事件、§8 接口、§3 基础设施表例外、02 `template_stage_key` 与 `BlockReason`、04 工具检测）；另新增 `EvalSetWriter`（本规格 §6.8，替代 02 原写法 `TemplateEvalSink`）。CR-11-02、03 无需变更。
