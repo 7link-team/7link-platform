@@ -96,7 +96,17 @@
   prototype shell + pages-chat/lists/remote + entries; docs in PRD/00-06/08-10 (subagent); Q12 share links v1.1,
   Q13 WebSocket to MVP, SERVER/K8S switches default on (decided under user's 「you call」, recorded in D119).
   Full probe: 71 routes + 9 parameterised routes 0 errors; all docs LF / no BOM.
-  Next: user reviews the whole prototype (all phases are in it, v1.1 labelled). Implementation waits for that review.
+  Later: goals moved to front (team + project nav); project discoverability (我的项目 list, project chip + switcher in top tab);
+  machine remote access = machine detail tab 远程访问; crawler audit (357 pages, 0 broken after fixes, DETAIL_PARENT crumbs,
+  spawn-request entry); chat unread badge + notification bell; Raft research (docs/myrmidon/research/2026-10-raft-comparison.md).
+  Raft logged-in browsing: Chromium 136+ blocks remote debugging on default profiles; user to install Claude in Chrome in
+  Chrome profile "Fan" (gankcode@gmail.com) and run /chrome; fallback = own minimal extension scoped to app.raft.build.
+  D120 DONE (6 items incl. team tool catalog MCP + skills): specs 00/02-10/12 + PRD 10.12 (subagent reviewed the
+  earlier partial edits); prototype pages-agentops.js (+ fleet tabs, remote comments), pages-tools.js (team tool catalog);
+  operation names / permission codes aligned with the 05 manifest; crawl 359 pages 0 broken / 0 errors.
+  Page Reader tool (general, C:/Users/Feather/tools/page-reader, no token, paired with Chrome profile Fan): Raft read
+  logged in, findings in research section 6. Receiver not running now (start: python page_reader.py serve).
+  Next: 01 portal endpoints for client anchored comments (07 BR-07-64), then user reviews the prototype.
   Do not start implementation.
   Proposal for user (not applied): spec 03 visual verifier needs tool calibration with known-good/bad sample pages.
 - RESEARCH DONE: docs/myrmidon/research/2026-10-collaboration-research.md (4 tracks synthesized, gap analysis, P0/P1/P2 upgrade,

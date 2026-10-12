@@ -4552,3 +4552,55 @@ field is `MenuPage.Space` (TEAM / PROJECT) because `Scope` already exists; previ
 project constitution, falling back to template `params.preview`.
 
 Status: Accepted.
+
+## D120 - Adopt Raft-Inspired Agent Protocol, Operations Manifest, Anchored Comments, Lifecycle and Loop Contracts (2026-10-12)
+
+Decision (user: 「you call」 / 「jixu」 after the Raft comparison; scope = my recommendation P0 ×3 + P1 ×2 from
+docs/myrmidon/research/2026-10-raft-comparison.md §5):
+1. Agent inbox protocol (03 / 04 / 05): every Agent has a durable inbox as the single source of truth; wake hints carry no
+   content (poll, hint stream with heartbeat, or signed webhook); acknowledgement by cursor (`since`); a write (claim,
+   message, evidence, status) made while the conversation / work item already has newer events returns
+   `interrupted` with the newer events, and the Agent must re-read and retry with the same idempotency key.
+2. Agent operations manifest (05, with 08 for authorization): a machine-readable list of every operation an Agent may
+   call — input schema, side effects, idempotency, required capability / permission, delegable or not — and every
+   result returns `next` (suggested next operations). Spawn quotas and authority checks are enforced per operation;
+   `CAPABILITY_NOT_AUTHORIZED` maps to 08 reason codes.
+3. Anchored comments (03 artefact viewers, 02 review, 12 defects, 07 client acceptance): comments anchored to a
+   code line range, a table row, an HTML region (selector + rect at a viewport), a video timestamp / range, a text
+   paragraph (novel chapter); a comment can become structured review feedback, a defect, or a client rejection item,
+   and keeps the anchor and the artefact version it was made on.
+4. Agent lifecycle (05): states online / thinking / working / error / offline reported by the runner; three resets —
+   restart (keep session), session reset (clear context, keep workspace), full reset (clear both) — human-only for
+   full reset; workspace and memory viewer limited to the Agent's accountable owner and admins.
+5. Loop contracts (10, with 05 reminders): recurring Agent work (daily / weekly reports, periodic checks) declares
+   cadence, self-checks, budget, escalation conditions and output format; driven by reminders anchored to a thread.
+
+6. Team tool catalog: managed MCP servers + skills (user: 「团队级mcp， skill？」, 2026-10-12; Raft has a
+   workspace MCP catalog, observed logged in): the team keeps one catalog of (a) MCP servers — transport
+   (Streamable HTTP / stdio packaged), provider connection, credentials sealed by the platform (09 key envelope),
+   recommended presets — and (b) skills — versioned, content-hashed packages (like this repo's `.agents/skills` +
+   `skills-lock.json`). Grants: which projects / roles / Agents may use each entry (default none); tool calls are
+   audited; credentials never reach the machine in clear (the runner gets a scoped, short-lived token or a local
+   proxy, as Raft's computer does). Distribution: the runner syncs granted skills into the runtime's skills folder
+   and injects granted MCP servers into the session config at execution start; the execution records the catalog
+   versions it ran with (evidence). Machine-local skills / MCP detected by 04 stay visible but are flagged
+   「本机自带，未纳入团队目录」. Owners: 05 catalog + grants, 04 distribution, 09 sealing, 08 permissions / audit.
+
+Not adopted now: client joint conversation, P2 items, pricing, relationship graph (left for a later round).
+User decisions 2026-10-12: finish the D120 specs (「1 继续写完」); the page reader extension stays click-free (「2 不加」).
+
+Reason: Raft's agent-runtime layer is stronger than ours (stale-context writes, model-readable operations, precise
+comments); these fill gaps without changing our delivery-governance core.
+
+Scope: specs 02, 03, 04, 05, 07, 08, 10, 12, 00, PRD; prototype (artefact viewers with anchored comments, agent
+lifecycle in agent detail, operations manifest page, loop contract in report / reminder config). No code.
+
+Follow-ups (spec writing, 2026-10-12; defaults chosen under the user's delegation, reversible before implementation):
+catalog skills mirror 06 skills (a skill loads only when mounted in 06 and granted in 05; existing mounts migrate to
+Agent-level grants); MCP credentials stay sealed server-side, the machine gets a 15-minute token bound to the execution
+lease and calls go through the runner's local proxy to the platform relay; stdio MCP servers needing credentials are
+v1.1; `tool_catalog_manage` is held by the team owner only; machine-local tools keep working but are flagged (teams
+cannot block them yet); disabling a catalog entry cuts off running executions; a loop contract over its monthly cost
+cap pauses immediately. Open: 01 portal endpoints for client anchored comments (07 BR-07-64) - technically required.
+
+Status: Accepted (decided under the user's delegation; reversible before implementation starts).
