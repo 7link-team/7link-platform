@@ -92,6 +92,11 @@
   main entries; fixed: client disagree / team withdraw / decline need no step-up (only conversion), buttons, hidden note.
   Open for user: projects without tolerance rows never require client approval (BR-07-62 ①) - recommend default rule.
   Next: user reviews the change pages.
+  D118 (project-first) + D119 (remote preview / terminal / files, server & k8s runners) DONE and committed:
+  prototype shell + pages-chat/lists/remote + entries; docs in PRD/00-06/08-10 (subagent); Q12 share links v1.1,
+  Q13 WebSocket to MVP, SERVER/K8S switches default on (decided under user's 「you call」, recorded in D119).
+  Full probe: 71 routes + 9 parameterised routes 0 errors; all docs LF / no BOM.
+  Next: user reviews the whole prototype (all phases are in it, v1.1 labelled). Implementation waits for that review.
   Do not start implementation.
   Proposal for user (not applied): spec 03 visual verifier needs tool calibration with known-good/bad sample pages.
 - RESEARCH DONE: docs/myrmidon/research/2026-10-collaboration-research.md (4 tracks synthesized, gap analysis, P0/P1/P2 upgrade,

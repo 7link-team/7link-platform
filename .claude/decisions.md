@@ -4443,3 +4443,112 @@ rejected (no billing model; price delta is entered by a human).
 Scope: specs 00, 01, 02, 07 (+08 only if a registration is needed), PRD, prototype portal + team change intake page.
 
 Status: Accepted.
+
+## D118 - Top-Level Domains, Contextual Side Nav and a Slack-Style Conversation Space (2026-10-12)
+
+Decision (user: 顶部菜单放 工作台/会话/项目/协作/治理，会话做成 Slack 布局，协作含 目标/需求/任务/测试/缺陷/流水线；
+「如果更好就按照这个来」，其余菜单与页面结构由我重新设计):
+- Top bar: brand · domain tabs 工作台 · 会话 · 协作 · 项目 · 团队 · 治理 · ⌘K search · 裁决徽标 · 通知 · 语言/主题 · 用户.
+  The left side shows only the current domain's sub-nav; 会话 is full-bleed with its own panes.
+- 工作台 (personal): 总览 · 我的裁决 · 我的任务 (new: work assigned to me) · 我的计划.
+- 会话 (Slack 3-pane): left = 提及与线程 · 频道 (grouped by project) · 私信 (人↔人, 人↔Agent; Agent↔Agent read-only for
+  owners) · 执行会话 (running agent sessions, pending permission requests); centre = messages with structured cards
+  (裁决卡、完成声明、停线、派单提案) that act on the real objects; right = thread / details / members.
+  Chat is never the source of truth: a work request to an Agent in a DM becomes a dispatch proposal, as in channels.
+- 协作 (project filter at the top of the side nav, default 全部项目): 规划 目标 · 报告 / 需求 来件 · 需求 (new list) /
+  开发 任务 · 评审台 / 测试 用例与测试计划 · 缺陷 (new list) · 穿透记录 / 流水线 流水线 (new: per work item stage runs
+  平台重跑→隐藏验收→测试 Agent→产品验收 Agent→人工评审→交付, plus external Flow runs) · 执行 / 工时.
+- 项目: 项目组合 · 交付 · 领域工作台 (视频 / 小说 / 团队任务).
+- 团队: 成员与 Agent · 机器 · 知识库 · 模板库.
+- 治理: 策略 授权与策略 · 流转配置 / 连接 集成 · 需求开口 · API 网关 / 记录 审计.
+- Mobile: domains + sub-nav in the drawer; bottom bar 工作台 · 会话 · 协作 · 裁决.
+- Framework: 09 `MenuPage` gains `Domain` (top-level key) next to `Group`; 08 §8.6 shell spec rewritten accordingly.
+
+Reason: 20+ sidebar items in 6 groups were growing (quality, templates, Yunxiao pages were reachable only via buttons);
+domain tabs + contextual side nav scale, match 云效 (Projex / Testhub / Flow) habits, and give conversation the
+full-width layout chat needs.
+
+Alternatives Considered: keep the single sidebar (rejected: does not scale); 项目 as the only container with all work
+inside it (rejected: cross-project views for leads are primary; a project filter covers per-project use);
+naming the work domain 交付 (kept 协作 per the user).
+
+Tradeoffs: one more click for cross-domain jumps (mitigated by ⌘K and the inbox badge); 人↔人 / 人↔Agent DMs extend
+spec 05's channel kinds.
+
+Scope: prototype shell + new pages (chat, my-work, requirements, defects, pipelines); PRD §12; specs 08 §8.6, 09 C6,
+05 §8.8 (+DM kinds). No code.
+
+Follow-ups (spec writing, 2026-10-12): conversations live under the team-level `/t/:tenantID/chat[/:channelID]`
+(`?thread=` opens the right pane); old channel routes redirect there. Member DMs are `ChannelKind.DIRECT`, team-scoped
+(no project), unique per pair; a human↔human DM is readable only by its two participants (no owner / audit access);
+a human↔Agent DM is also readable, read-only, by the Agent's accountable owner and `audit_read` holders.
+Revision (user: 「可以 you call」, 2026-10-12) - the project is the main container (云效 Projex style); 协作 is removed:
+- Top bar: 工作台 · 会话 · 项目 · 团队 · 治理.
+- 工作台: 总览 · 我的裁决 · 我的任务 · 我的计划.
+- 项目, outside a project: 项目组合 · 来件 · 交付总览 / 跨项目: 需求 · 任务 · 缺陷 · 流水线 (team-level lists with a project filter).
+- 项目, inside project P (the URL carries P; side nav top = project switcher + 返回项目组合): 概览 · 项目频道 /
+  规划 目标 / 需求 需求 / 开发 任务 · 评审台 / 测试 用例与测试计划 · 缺陷 · 穿透记录 / 流水线 流水线 · 执行 /
+  交付 交付 · 工时 / 领域工作台 when the project uses a VIDEO / NOVEL / TEAM_TASKS template / 设置 项目设置.
+  Detail pages (任务、缺陷、执行、评审单、内部验收…) render inside the project space of their project.
+- 团队: 成员与 Agent · 机器 · 知识库 · 模板库 · 目标树 · 报告中心 (team-level goals and reports).
+- 治理: unchanged. 会话: unchanged (team-level; project channels grouped by project).
+- Mobile bottom bar: 工作台 · 会话 · 项目 · 裁决. 09 `MenuDomain`: HOME / CHAT / PROJECTS / TEAM / GOVERNANCE plus a
+  menu `Scope` of TEAM or PROJECT for items that render inside the project space.
+Reason: the project is the data boundary (members and Agent bindings, permission scope, budget and tolerance,
+constitution, template, client and delivery); daily work happens inside one project; cross-project views are kept
+for leads under 项目 › 跨项目 and in 工作台.
+
+Status: Accepted.
+
+## D119 - Remote Preview, Terminal and Files Through the Runner Tunnel; Server and k8s Runners (2026-10-12)
+
+Decision (user: 「可以 you call」 on the proposal, all recommendations taken):
+- Transport: the runner's existing outbound connection (WebSocket, multiplexed streams) carries preview traffic,
+  file reads and terminal I/O. Runners never open inbound ports; works for workstations, servers and k8s pods.
+- Two preview classes. (A) Running services (web, API, dashboards): a preview gateway on the server proxies
+  `https://<random-label>.<preview-domain>` to 127.0.0.1:<port> on the runner. HTTP/1.1, WebSocket (HMR), SSE and range
+  requests. (B) Artefacts (video, novel chapters, documents, images, PDFs, reports): no service is started; the runner
+  serves read-only file streams from the execution workspace and the console renders them with built-in viewers
+  (device-framed web view, OpenAPI console, video player with an ffmpeg low-res proxy when needed, chapter reader with
+  diffs, document / image / PDF viewers). File-change notifications push refreshes.
+- Preview domain: a separate registrable domain from the console, from deployment configuration (never hard-coded);
+  one unguessable label per preview for origin isolation (agent-written content is untrusted); access still requires
+  login and execution read permission on the project, exchanged for a preview-domain-scoped short-lived session.
+  Without wildcard DNS, a path-mode fallback is allowed and labelled "some apps may not work".
+- Who starts a service preview: by default the platform, from the project constitution / template preview config
+  {kind, start argv, port, health path, env}; an Agent may also offer a port, but only ports opened by its own
+  execution's process tree — never arbitrary machine ports. Reviews preview the exact claimed commit, restarted in an
+  isolated copy. Idle 30 min auto-stop; max lifetime; stopped with the execution.
+- Client share links: allowed only with human approval, an expiry, read-only, revocable, audited; never expose
+  internal records. Preview is progress, not delivery.
+- Remote terminal: read-only watch of the Agent session by default; interactive shell is a separate permission,
+  human-only, non-delegable, step-up, fully recorded to audit, idle timeout, cwd limited to the workspace. Per-machine
+  switch 「允许远程终端」, off by default on personal workstations.
+- Remote files: read-only browse / diff / download of the workspace (paths limited to the workspace, secret files such
+  as `.env` masked); edit / upload only after the execution is paused or taken over by a human, recorded as a human commit.
+- Machine types: WORKSTATION / SERVER (headless daemon, service-account auth) / K8S_POOL (one ephemeral pod per
+  execution, autoscaled).
+- Prototype covers every phase (user: 「开发可以分期分版本，但是原型要全部做掉我才开工」); each v1.1 feature carries a
+  「v1.1」 label in the prototype. Development phasing:
+  MVP = web / API service preview, artefact preview for documents / images / reports, read-only terminal,
+  read-only file manager, SERVER runner. v1.1 = interactive terminal, file editing, video and novel previews, K8S_POOL.
+
+Reason: humans work from the web or app while Agents run elsewhere; the specs had only after-the-fact evidence and a
+manually entered demo URL. frp-style reverse tunnelling is borrowed but embedded in the runner, because preview access
+must follow project permissions, per-execution isolation, audit, quotas and revocation.
+
+Alternatives Considered: running frp / ngrok (rejected: public ports, shared-secret auth, unaware of executions);
+path-based previews on the console origin (rejected: breaks apps and leaks the console session to untrusted code);
+forwarding arbitrary machine ports (rejected: exposes other services on the worker).
+
+Scope: specs 03 (preview / terminal / file sessions per execution, share links), 04 (tunnel, runner capabilities,
+machine types, switches, k8s pool), 08 (permissions, step-up, audit, approval inbox), 00, PRD; prototype remote
+workspace page and machine types. No code.
+
+Follow-ups (spec writing, decided under the user's 「you call」, 2026-10-12): client share links are v1.1; the runner
+WebSocket channel moves to MVP (long polling stays as control fallback) because MVP previews need multiplexed streams;
+SERVER / K8S_POOL default the terminal and file-edit switches on (tenant-adjustable), workstations stay off; the menu
+field is `MenuPage.Space` (TEAM / PROJECT) because `Scope` already exists; preview config is a `preview` block in the
+project constitution, falling back to template `params.preview`.
+
+Status: Accepted.
