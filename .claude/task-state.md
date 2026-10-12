@@ -106,7 +106,8 @@
   operation names / permission codes aligned with the 05 manifest; crawl 359 pages 0 broken / 0 errors.
   Page Reader tool (general, C:/Users/Feather/tools/page-reader, no token, paired with Chrome profile Fan): Raft read
   logged in, findings in research section 6. Receiver not running now (start: python page_reader.py serve).
-  Next: 01 portal endpoints for client anchored comments (07 BR-07-64), then user reviews the prototype.
+  01 portal client comments DONE (spec + portal-accept prototype, no internal info leaks verified).
+  Next: user reviews the prototype. Do not start implementation.
   Do not start implementation.
   Proposal for user (not applied): spec 03 visual verifier needs tool calibration with known-good/bad sample pages.
 - RESEARCH DONE: docs/myrmidon/research/2026-10-collaboration-research.md (4 tracks synthesized, gap analysis, P0/P1/P2 upgrade,

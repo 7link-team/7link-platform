@@ -52,6 +52,7 @@
 | US-01-21 | 作为交付负责人，我要在变更申请上评估影响（验收标准差异、受影响工作项、进度与成本、容差），超出容差时请甲方确认、容差内直接转化并告知甲方结果，以便范围变化有据可查且不拖慢小改动 | MVP |
 | US-01-22 | 作为甲方联系人，我要在门户对超出容差的变更〔接受〕或〔不接受(理由)〕，以便我对进度与价格的变化有最终发言权 | MVP |
 | US-01-17 | 作为甲方联系人，我要在企业微信 / Slack / Telegram 会话里提需求并答复澄清 | v2 |
+| US-01-23 | 作为甲方联系人，我要在验收页里直接打开交付给我的文件，在代码行、表格行、网页区域或文档段落上留下批注并回复，拒收某项时引用这些批注，以便团队返工时能回到我指出的原处（D120） | MVP（视频时间点与章节段落 v1.1） |
 
 ---
 
@@ -264,7 +265,7 @@ CHECK（三方言同写法）：`kind <> 'CHANGE' OR (change_of_intake_id IS NOT
 | confidence | int | Y | NULL | 0..100，Agent 自评；人工卡为 NULL |
 | knowledge_refs | json | N | `[]` | `[{ "chunk_id": "id", "source_kind": "KnowledgeSourceKind" }]`（06），≤20 |
 | model_ref | str(120) | Y | NULL | runtime×模型标识（不含提示词与正文） |
-| rejected_items | json | N | `[]` | 仅 kind=REWORK：`[{ "work_item_id": "id", "delivery_item_id": "id", "feedback_category": "FeedbackCategory", "comment": "str ≤2000", "suggested_disposition": "REOPEN_WORK_ITEMS|APPEND_TO_REQUIREMENT|NONE" }]`，≤50（BR-01-27） |
+| rejected_items | json | N | `[]` | 仅 kind=REWORK：`[{ "work_item_id": "id", "delivery_item_id": "id", "feedback_category": "FeedbackCategory", "comment": "str ≤2000", "suggested_disposition": "REOPEN_WORK_ITEMS|APPEND_TO_REQUIREMENT|NONE" }]`，≤50（BR-01-27）；D120：元素另含可选 `anchors[]`（BR-01-91） |
 | change_impact | json | Y | NULL | 仅 kind=CHANGE（其他 kind 必须为 NULL，否则 110400）：变更影响评估，Schema 见下。kind=CHANGE 时〔请甲方确认〕（T15）与 `APPEND_TO_REQUIREMENT` 转化前必填（110452）；Agent 可起草（BR-01-78） |
 
 `change_impact` JSON Schema（D117）：
@@ -563,6 +564,13 @@ CHECK（三方言同写法）：`kind <> 'CHANGE' OR (change_of_intake_id IS NOT
 - **BR-01-86** 提醒（任务 J7）：甲方——请求后每满 7 天经原开口发 N15，最多 3 次；团队——请求后每满 14 天发 N17 给请求人与 `HOLDERS(intake_convert)`。任何情况下**不自动决定、不自动撤回、不自动拒绝**（与 T8「超时不自动拒绝」同理：替甲方表态不属于系统）。提醒以 `client_approval` 中的 `next_*_reminder_at` 条件更新去重；撤回或决定后不再提醒。
 - **BR-01-87** 并发：① 同一需求上的两条变更先后转化，后者的 `base_version_no` 已过期 → 110453，须出新 revision 重新评估（若仍需确认则重新请甲方确认，旧确认不沿用）；② 甲方决定与团队撤回并发：以来件 `version` 条件更新，先提交者生效，后者 409 110455；③ 甲方在 T15 后、决定前原需求被其他途径（02 R10 范围变更）升版：甲方的决定照常记录，但转化时 110453，团队须重新评估并在门户说明。
 
+**甲方锚定批注（D120；数据、可见性与转换归 07 / 03，本模块只提供门户端点与页面）**
+
+- **BR-01-88** 面向甲方的文件：`GET /portal-deliveries/{delivery_id}/files` 先按 BR-01-66 校验交付可见（07 `PortalView` 的 `source_intake_ids ∩ 本联系人来件 ≠ ∅`，否则 110404），再调 07 `DeliveryEvidenceReader.ListClientFacing`（CR-13）。只返回 07 BR-07-63 判定为面向甲方的证据：本交付 SENT、`include_mode=FILE`、未被构建剔除；SUMMARY / FULL_LOG 证据、执行、工作项、日志、内部质量门记录与 INTERNAL 线程**永不出现**（BR-01-66、07 BR-07-60）。响应按白名单序列化 `PortalFile{evidence_id, delivery_item_id, name, size, media_type, viewer_kind, version_ref（内容 sha256）, anchor_kinds[], content_url, content_url_expires_at, client_thread_count}`：`content_url` 为预览域上的短时签名地址（≤15 分钟，过期后重新拉取列表），HTML / 报告 / PDF 只在预览域渲染、不与门户同源；遮罩文件与无查看器的二进制文件只列出（`anchor_kinds=[]`）不可批注。`can_comment` = 交付尚未回执且本联系人对该项目 `can_accept=true`（07 BR-07-31）。
+- **BR-01-89** 新建与回复：`POST /portal-deliveries/{delivery_id}/comment-threads` 校验交付可见后调 07 `AcceptanceRecorder.CreateClientComment({delivery_id, evidence_id, intake_contact_id: 会话联系人, anchor_kind, anchor, version_ref, body})`；`POST /portal-comment-threads/{thread_id}/comments` 先确认该线程是本联系人可见交付上的 CLIENT 线程（否则 110404，不区分不存在与不可见），再调 07 `AcceptanceRecorder.ReplyClientComment`（CR-13）。线程可见性固定为 `CommentVisibility.CLIENT`，门户不接受 `visibility` 参数；作者记 `CLIENT:<contact_id>`，不可提及。甲方可用的锚点种类（MVP）：CODE_LINES、TABLE_ROW、HTML_REGION（取点同 03 BR-03-136：门户只接受来自该文件预览源、通过 S9 校验的 `postMessage`，内容只作坐标与引文；不支持元素定位时按位置框选 `RECT_ONLY`）、文档中的 TEXT_PARAGRAPH；MEDIA_TIME 与章节段落为 v1.1；且必须属于该文件的 `anchor_kinds[]`。`version_ref` 须等于列表返回值，内容已变化 → 409 110458。正文 1..2000 字；每线程 ≤200 条（03 BR-03-138）；每联系人每交付每日新建线程 + 回复合计 ≤200，超出 → 429 110433；其余限流同 BR-01-64。交付已回执或不再待验收 → 110440（07 `128030`）；联系人不可签收 → 403 110460；跨交付（证据不属于路径中的交付，含属于同一联系人的另一交付）→ 422 110456。
+- **BR-01-90** 读取：`GET /portal-deliveries/{delivery_id}/comment-threads?evidence_id=&view_version=` 经 07 `AcceptanceRecorder.PortalView` 返回本交付上 `visibility=CLIENT` 的线程（可来自本交付的任一可签收联系人；作者只显示联系人显示名），每线程含批注、`anchor_status` / `relocated_anchor`（相对 `view_version`，03 BR-03-137）与 `converted_to_rejection`；INTERNAL 线程、团队成员与 Agent 信息一律不返回。交付回执后线程只读仍可查看。
+- **BR-01-91** 拒收项引用批注：`PUT /portal-deliveries/{delivery_id}/acceptance` 的 `items[]` 增加 `comment_thread_ids[]?`（≤20，去重），原样传给 07 `Record`（07 BR-07-64）：只允许在 `result=REJECTED` 的项上；须是本交付、本交付项上的 CLIENT 线程；已转为拒收项的线程不可再引用；任一不符 → 422 110459（`data.reason ∈ {NOT_REJECTED, NOT_THIS_ITEM, NOT_CLIENT_THREAD, ALREADY_CONVERTED}`），整份回执不写入。引用批注不替代拒收理由：`feedback_category` 与 10..2000 字 `comment` 仍必填（110427）；`manifest_sha256_ack` 与回执签名不因引用而变。回执生成的返工来件（BR-01-27、§7.4）在 `rejected_items[]` 元素中带入 07 `AcceptanceReader.Get` 返回的 `anchors[]{thread_id, anchor_kind, anchor_excerpt, version_ref, artifact_ref}`，分诊卡与来件详情按原版本展示锚点。
+
 ---
 
 ## 6. 接口契约
@@ -661,9 +669,15 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 | `PUT /portal-intakes/{intake_id}/client-approval/decision` | `approval_round*`,`decision*`(APPROVED/REJECTED),`comment`(REJECTED 必填 10..2000) | `PortalChangeView` | 110400,110404,110427,110455 | Idempotency-Key；同 round 同决定重放 200；T16 / T17 |
 | `PUT /portal-questions/{question_id}/answer` | `answer_text*`,`upload_ids[]`(≤5) | `PortalQuestion` | 110404,110425 | 同文重放 200 |
 | `GET /portal-deliveries/{delivery_id}` | — | 07 定义的 `PortalDeliveryView`：说明、演示链接、交付物清单、证据摘要 | 110404 | — |
-| `PUT /portal-deliveries/{delivery_id}/acceptance` | `manifest_sha256_ack*`（须等于门户展示的交付清单指纹）,`signer_name*`(1..100),`confirmed*`(必须 true),`items*[]`{`delivery_item_id*`,`result*`(ACCEPTED/REJECTED),`feedback_category`(REJECTED 必填，FeedbackCategory),`comment`(REJECTED 必填 10..2000)}（必须覆盖交付包全部条目）,`overall_comment`(≤2000) | 07 返回的回执投影（整体 `result` 由 07 按条目推导：全接受 ACCEPTED、全拒绝 REJECTED、否则 PARTIALLY_ACCEPTED） | 110400,110404,110427,110440 | Idempotency-Key；已有回执 → 110440；指纹不符 → 110440（`data.reason=manifest_changed`） |
+| `PUT /portal-deliveries/{delivery_id}/acceptance` | `manifest_sha256_ack*`（须等于门户展示的交付清单指纹）,`signer_name*`(1..100),`confirmed*`(必须 true),`items*[]`{`delivery_item_id*`,`result*`(ACCEPTED/REJECTED),`feedback_category`(REJECTED 必填，FeedbackCategory),`comment`(REJECTED 必填 10..2000),`comment_thread_ids[]`(仅 REJECTED，≤20，D120 BR-01-91)}（必须覆盖交付包全部条目）,`overall_comment`(≤2000) | 07 返回的回执投影（整体 `result` 由 07 按条目推导：全接受 ACCEPTED、全拒绝 REJECTED、否则 PARTIALLY_ACCEPTED） | 110400,110404,110427,110440,110459 | Idempotency-Key；已有回执 → 110440；指纹不符 → 110440（`data.reason=manifest_changed`） |
+| `GET /portal-deliveries/{delivery_id}/files`（D120） | — | `PortalFile[]`（BR-01-88 白名单）+ `can_comment` | 110404 | — |
+| `GET /portal-deliveries/{delivery_id}/comment-threads`（D120） | 过滤 `evidence_id`；`view_version`；排序 `created_at` asc；limit ≤100 | `PortalCommentThread[]`：id, evidence_id, delivery_item_id, anchor_kind, anchor, anchor_excerpt, version_ref, anchor_status, relocated_anchor?, state, author_display, converted_to_rejection, comments[]{id, seq, author_display, body, created_at}（BR-01-90） | 110404 | — |
+| `POST /portal-deliveries/{delivery_id}/comment-threads`（D120） | `evidence_id*`,`version_ref*`,`anchor_kind*`(CODE_LINES/TABLE_ROW/HTML_REGION/TEXT_PARAGRAPH),`anchor*`(03 S9),`body*`(1..2000) | `PortalCommentThread`（201） | 110400,110404,110433,110440,110456,110457,110458,110460 | Idempotency-Key 必填（前端生成） |
+| `POST /portal-comment-threads/{thread_id}/comments`（D120） | `body*`(1..2000) | `{id, seq, author_display, body, created_at}`（201） | 110400,110404,110433,110440,110460 | Idempotency-Key 必填（前端生成） |
 
 门户 → 07：列表用 `AcceptanceRecorder.ListForIntakes(ctx, tenantID, intakeIDs[])`；详情用 `AcceptanceRecorder.PortalView(ctx, tenantID, deliveryID)`（按 07 portal_settings 裁剪，含 `manifest_sha256`、条目与 `source_intake_ids`）；门户先校验 `source_intake_ids ∩ 本联系人来件 ≠ ∅`（否则 110404），再调用 `AcceptanceRecorder.Record(ctx, {DeliveryID, IntakeContactID: contact_id, Confirmed: true（门户请求 `confirmed` 必须为 true，否则 422 110400）, ManifestSHA256Ack, SignerName, Items[], OverallComment, Source: PORTAL, Actor{kind:CLIENT, id:contact_id, authority_source:"CLIENT:<contact_id>"}})`（幂等由平台 Idempotency-Key 保证）。验收数据、状态与事件全部归 07；07 的「状态不可验收 / 指纹不符」错误映射为 110440，条目校验错误映射为 110400 / 110427。
+
+门户批注（D120）→ 07 / 03 的错误映射（`data.cause_code` 保留原码）：07 `128030` → 110440；07 `127056` → 110456；07 `127057` → 110459（`data.reason` 原样）；03 `130476` / `130469` / `130480` → 110457（`data.reason` 分别为 `ANCHOR_INVALID`（附 `data.field`）/ `MASKED_FILE` / `ANCHOR_KIND_UNAVAILABLE`）；03 `130477` → 110458；03 `130481` → 110433；联系人非 `can_accept` → 110460。批注读写的数据、版本绑定、审计（`delivery.client_comment_created` 等）与事件全部归 07 / 03，批注本身不落本模块表（返工来件的 `rejected_items[].anchors[]` 只是快照副本，BR-01-91）。
 
 ### 6.8 跨模块接口
 
@@ -687,8 +701,9 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 | `WorkItemReopener` | 02 | `ReopenFromAcceptance(ctx, tx, {tenant_id, work_item_ids[], source_acceptance_id, feedback[]{work_item_id, feedback_category, comment}, reason, actor}) → []decisionID`（签名以 02 §6.9 为准；本模块另记 `intake_id` 于审计 detail） | REOPEN_WORK_ITEMS（BR-01-28） |
 | `ProjectCreator` / `ProjectReader` | 07 | `CreateForIntakeOn(ctx, tx, {TenantID, Name, Code?, OriginIntakeID, PrimaryContactID, Actor}) → {ID, ChannelID}`（TeamMode=HYBRID）；`ProjectReader.Get → {Stage, TeamMode, Name}` | NEW_PROJECT；BR-01-23/24/28 守卫 |
 | `IntakeProgressReader` | 07 | `Progress(ctx, tenantID, intakeIDs[]) → map[id]{RequirementID, ProjectStage, TeamMode, DeliveryStates[], LatestAcceptance}` | 里程碑、AI 标签 |
-| `AcceptanceRecorder` | 07 | `ListForIntakes`、`PortalView`、`Record` | 门户验收（§6.7） |
-| `AcceptanceReader` | 07 | `Get(ctx, tenantID, acceptanceID) → {DeliveryID, ProjectID, Result, Items[]{work_item_id, delivery_item_id, result, feedback_category, comment}, ContactID}` | 构造返工来件原文与 `rejected_items` |
+| `AcceptanceRecorder` | 07 | `ListForIntakes`、`PortalView`、`Record`；D120：`CreateClientComment`、`ReplyClientComment`（CR-13）、`Record` 的 `items[].comment_thread_ids[]`、`PortalView` 的 CLIENT 线程 | 门户验收（§6.7）；甲方批注（BR-01-89…91） |
+| `DeliveryEvidenceReader`（D120） | 07 | `ListClientFacing(ctx, tenantID, deliveryID) → []ClientFacingFile`（CR-13；只读） | 门户文件列表与查看器数据（BR-01-88） |
+| `AcceptanceReader` | 07 | `Get(ctx, tenantID, acceptanceID) → {DeliveryID, ProjectID, Result, Items[]{work_item_id, delivery_item_id, result, feedback_category, comment, anchors[]（D120）}, ContactID}` | 构造返工来件原文与 `rejected_items`（含锚点，BR-01-91） |
 | `AuthorityChecker` | 08 | `Check(ctx, tx, AuthorityRequest{Principal, Action, ProjectID, Facts{IntakeConvertMode, TriageCardAuthor}}) → AuthorityDecision{Allowed, AuthoritySource, ReasonCode}` | 转化、拒绝、重开；请甲方确认与登记线下确认（`scope_change`，T15 / T19） |
 | `AgentDirectory` | 05 | `Get(agentID)` 校验协调员角色 | 开口配置 |
 
@@ -744,6 +759,11 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 | 110453 | 409 | `intake.change_impact_stale` | 影响评估所依据的需求版本或容差结果已过期（data.current_version_no、data.breached） |
 | 110454 | 422 | `intake.change_request_required` | 已立项的需求请用〔申请变更〕，不能再补充说明 |
 | 110455 | 409 | `intake.client_approval_not_pending` | 没有待确认的请求，或请求已被撤回 / 更新（data.reason） |
+| 110456 | 422 | `intake.comment_target_not_client_facing` | 该文件未作为文件交付给你，或不属于此交付（07 `127056`，D120） |
+| 110457 | 422 | `intake.comment_anchor_invalid` | 批注位置无效、文件不可批注或该类批注暂不可用（data.reason、data.field，D120） |
+| 110458 | 409 | `intake.comment_content_changed` | 文件内容已变化，请刷新后再批注（03 `130477`，D120） |
+| 110459 | 422 | `intake.rejection_comment_invalid` | 拒收项引用的批注无效（data.reason ∈ NOT_REJECTED / NOT_THIS_ITEM / NOT_CLIENT_THREAD / ALREADY_CONVERTED；07 `127057`，D120） |
+| 110460 | 403 | `intake.portal_not_signatory` | 你不是本项目的签收人，不能批注（07 BR-07-31，D120） |
 | 110502 | 502 | `intake.downstream_failed` | 下游（02/07）失败，已回滚 |
 | 110503 | 503 | `intake.unavailable` | 数据源不可用 |
 
@@ -854,7 +874,7 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 | **需求详情** `/portal/intakes/:intakeID` | 里程碑、原文与附件（只读）、澄清问题（问题文本、状态、回答框 1..10,000 字 + 附件 ≤5、〔提交回答〕；已答显示回答与时间及「由团队记录」标识）、〔补充说明〕（仅 RECEIVED / TRIAGED / CLARIFYING，BR-01-85）、团队给你的话、交付列表（待验收项带〔去验收〕）、DECLINED 时〔重新提交〕（预填原文）。**已立项（CONVERTED）时**：〔补充说明〕替换为〔申请变更〕；新增「版本历史」（v1 原始需求，其后每条已接受变更：vN、标题、日期）与「变更申请」列表（标题、IN 号、提交日期、状态：评估中 / 待你确认（琥珀，带〔去确认〕）/ 已接受（需求 vN）/ 未接受（理由））；文案不出现「容差」「工作项」「成本」等内部词 |
 | **申请变更** `/portal/intakes/:intakeID/changes/new` | 顶部只读摘要「变更：《{原标题}》（当前 v{n}）」；表单同〔提交需求〕：变更标题（1..200）、想改什么（1..20,000，简易 Markdown）、期望日期（≥今天，可空）、附件（≤10）；说明「提交后团队会评估对进度和价格的影响，必要时请你确认」；成功页显示 IN 号并返回需求详情；原来件不可申请时（110449）显示「这条需求目前不能申请变更」 |
 | **变更详情 / 确认** `/portal/intakes/:intakeID/changes/:changeID` | 状态标签（评估中 / 待你确认 / 已接受（需求 vN）/ 未接受（理由））；原文与附件；待答澄清问题（同需求详情）；评估完成后显示「变化」卡：验收标准变化（新增 / 移除 / 改为，逐条通俗文字）、进度（「预计延后 3 天」/「提前 2 天」/「无变化」）、新的预计日期、价格变化（仅在团队填写时，含说明）、团队说明。**待你确认**时底部：〔接受变更〕/〔不接受〕；不接受须填理由（10..2000，计数器）；提交前确认对话框重述进度与价格变化；`approval_round` 随页面数据提交，110455 `superseded` 时提示「团队已更新本次变更，请重新查看」并刷新。已决定时只读显示结果、时间；团队登记的显示「由团队记录（{日期}）」。移动端按钮固定底部，触控 ≥44px |
-| **验收** `/portal/deliveries/:deliveryID` | 07 投影：交付说明、演示链接、交付物清单（逐条）、证据摘要、清单指纹（前 8 位）。每条交付物一行：〔接受〕/〔不接受〕切换；不接受时必选类别（功能缺陷 / 需求不符 / 样式 / 性能 / 安全 / 其他）并填写原因（10..2000 字）。顶部快捷〔全部接受〕。底部：签署人姓名（1..100，必填）、复选框「我已核对以上交付内容，提交后不可修改」（必勾）、整体备注（可空）；〔提交验收〕在每条都有选择、不接受条目信息完整、签名与勾选齐全时才可用；提交前汇总显示「将接受 n 项、不接受 m 项」。110440 `manifest_changed` 时提示「交付内容已更新，请重新核对」并刷新；已回执时只读显示逐条结果、签署人与时间 |
+| **验收** `/portal/deliveries/:deliveryID` | 07 投影：交付说明、演示链接、交付物清单（逐条）、证据摘要、清单指纹（前 8 位）。每条交付物一行：〔接受〕/〔不接受〕切换；不接受时必选类别（功能缺陷 / 需求不符 / 样式 / 性能 / 安全 / 其他）并填写原因（10..2000 字）。顶部快捷〔全部接受〕。底部：签署人姓名（1..100，必填）、复选框「我已核对以上交付内容，提交后不可修改」（必勾）、整体备注（可空）；〔提交验收〕在每条都有选择、不接受条目信息完整、签名与勾选齐全时才可用；提交前汇总显示「将接受 n 项、不接受 m 项」。110440 `manifest_changed` 时提示「交付内容已更新，请重新核对」并刷新；已回执时只读显示逐条结果、签署人与时间。**D120 批注**：每条交付物下列出该项的可批注文件（`GET …/files`，带「n 条批注」计数），〔查看并批注〕在本页内展开面板（不跳转、不新开窗口；移动端为全屏抽屉，关闭后回到原条目且已填写的选择不丢失）：左侧按 `viewer_kind` 渲染文件（代码 / 表格 / 网页与报告 / 文档；网页、报告与 PDF 在预览域 iframe 中），右侧为本交付的批注线程（按锚点位置排序；「基于旧版本」分组同 03 BR-03-137）。〔批注〕模式下选中代码行、表格行、网页区域或文档段落后填写正文（1..2000，计数器）提交；线程内可〔回复〕。不可批注的文件只显示〔下载〕与说明「此文件不支持批注」；视频与章节显示「v1.1 支持」；`can_comment=false` 时面板只读、不出现〔批注〕〔回复〕。110458 时提示「文件内容已更新，请刷新后再批注」并重新拉取；110460 提示「请由本项目的签收人批注」。**不接受**的条目下出现〔引用批注〕：从该项已有的未转换批注中多选（≤20，显示锚点位置与原文摘要），提交后回执逐条显示「引用批注 n 条」并可点开定位；接受的条目不出现引用入口。页面与面板均不出现执行、工作项、Agent、日志或团队内部批注 |
 
 ---
 
@@ -983,6 +1003,10 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 | AC-01-86 | integration | BR-01-85 | **G** IN-5 CONVERTED、IN-6 TRIAGED、IN-7 DECLINED **W** Lee 分别 `POST /portal-intakes/{id}/notes` **T** IN-5 → 422 110454（门户引导〔申请变更〕）；IN-6 → 200 CLIENT_NOTE；IN-7 → 422 110421；Lee 对 IN-5 的邮件回复仍记 CLIENT_NOTE 并发 N6 |
 | AC-01-87 | integration | BR-01-86, J7 | **G** IN-9 于 t0 进入 CLIENT_APPROVAL **W** 时钟推进到 t0+7d、14d、21d、28d、42d **T** Lee 在 7/14/21 天各收一次 N15、第 28 天不再收；团队在 14d、28d、42d 各收一次 N17；两个实例并发运行 J7 不重复；IN-9 始终 CLIENT_APPROVAL，未被自动决定或撤回 |
 | AC-01-88 | integration | BR-01-81 | **G** IN-11（CHANGE）**W** 以 `NEW_REQUIREMENT` 转化到项目 P **T** 02 `CreateFromIntake` 建新需求，原需求 R 与其容差不变，`intake.converted{mode:NEW_REQUIREMENT}`；以 `NEW_PROJECT` 或 `REOPEN_WORK_ITEMS` 转化 → 400 110400；APPEND 的 `requirement_id ≠ target_requirement_id` → 400 110400 |
+| AC-01-89 | e2e | US-01-23, BR-01-88/89/90 | **G** 交付 D（SENT，未回执）的 source_intake 属于 Lee（项目 `can_accept=true`），交付项 I1 选入证据 Ev（`report.csv`，`include_mode=FILE`）**W** Lee 在验收页点 I1 的〔查看并批注〕，选中第 42 行（TABLE_ROW）写批注并提交，再〔回复〕一次 **T** 面板在本页展开，`GET …/files` 返回 Ev 的 `PortalFile`（`viewer_kind`、`version_ref`、`anchor_kinds` 含 TABLE_ROW、≤15 分钟 `content_url`）；POST 201，07 `CreateClientComment` 收到 `intake_contact_id=Lee`，03 线程 `visibility=CLIENT`、作者 `CLIENT:<Lee>`；回复 201；`GET …/comment-threads` 返回该线程与 2 条批注；响应与 DOM 不含执行、工作项、Agent 或 INTERNAL 线程；以旧 `version_ref` 提交 → 409 110458；MEDIA_TIME → 422 110457（`ANCHOR_KIND_UNAVAILABLE`）；`can_accept=false` 的联系人提交 → 403 110460；D 回执后再批注 → 422 110440 |
+| AC-01-90 | integration | BR-01-88/89, 07 BR-07-60/63 | **G** 交付 D 选入 Ev（FILE）、Ev2（SUMMARY）、Ev3（FILE 但被构建剔除）；D 所在执行上有 INTERNAL 线程 T4 **W** Lee `GET …/files` 并分别对 Ev2、Ev3 `POST …/comment-threads` **T** 列表只含 Ev；两次 POST 均 422 110456（`data.cause_code=127056`），03 无新线程；`GET …/comment-threads` 不含 T4 |
+| AC-01-91 | integration | BR-01-89/91 | **G** Lee 可见交付 D1、D2（均 SENT 未回执）；Ev5 只属于 D2；D2 上有 CLIENT 线程 T5；另一联系人 Kim 的交付 D3 上有线程 T6 **W** Lee `POST /portal-deliveries/{D1}/comment-threads {evidence_id: Ev5}`；`POST /portal-comment-threads/{T6}/comments`；对 D1 回执 `items[I1]={REJECTED, …, comment_thread_ids:[T5]}` **T** 分别 422 110456；404 110404（不泄露 T6 是否存在）；422 110459（`NOT_THIS_ITEM`），D1 无回执写入 |
+| AC-01-92 | e2e | US-01-23, BR-01-91, 07 BR-07-64 | **G** 交付 D 的 I1 上有 Lee 的 CLIENT 线程 T1（`report.csv` 第 42 行，`version_ref=v1`）**W** Lee 将 I1 选〔不接受〕（类别、原因 ≥10 字），〔引用批注〕选 T1，I2〔接受〕，签名并提交 **T** 200；07 `Record` 收到 I1 `comment_thread_ids=[T1]`，T1 转为拒收项且锚点快照保留 TABLE_ROW 与 `v1`；回执页 I1 显示「引用批注 1 条」并能定位原行；intake 消费 `acceptance.received` 建 REWORK 来件，分诊卡 `rejected_items[I1].anchors[]` 含 T1 的 `anchor_kind`、`anchor_excerpt`、`version_ref=v1`；即便后续交付使 `report.csv` 变为 v2，来件详情仍按 v1 显示原文；若 I2（ACCEPTED）也带 `[T1]` → 422 110459（`NOT_REJECTED`），无回执写入 |
 
 ---
 
@@ -1023,6 +1047,7 @@ PRD §15 的 `intake_received{channel}`、`intake_converted` 即上表同名事�
 | D-02-2 | 02 | `ChangeImpactPreviewer.Preview`（只读）；`AppendFromIntake` 接受 `Change` 载荷并在同事务调用 07 `ToleranceAdjuster.ApplyApprovedChange`（02 BR-02-63，D117） |
 | D-07-2 | 07 | `ToleranceReader.WouldBreach`（只读）与 `ToleranceAdjuster.ApplyApprovedChange`（未决例外时拒绝 `127055`，07 BR-07-62，D117） |
 | D-07-1 | 07 | `ProjectCreator.CreateForIntakeOn`、`ProjectReader`、`IntakeProgressReader`、`AcceptanceRecorder{ListForIntakes, PortalView, Record}`、`AcceptanceReader.Get`；`delivery.sent` / `acceptance.received` 的 data 含 `intake_ids[]`；07 调用本模块 `IntakeReplySender` 与 `IntakeReader`；**返工来件由 intake 消费事件创建**，07 不直接写来件 |
+| D-07-3 | 07 / 03 | D120 甲方批注：07 `DeliveryEvidenceReader.ListClientFacing`、`AcceptanceRecorder.CreateClientComment` / `ReplyClientComment`、`Record` 的 `comment_thread_ids[]`、`AcceptanceReader.Get` 的 `anchors[]`（07 BR-07-63 / 64）；锚点校验、版本绑定与线程上限由 03 `ArtifactComments` 判定（03 BR-03-133…141）；`ListClientFacing` 与 `ReplyClientComment` 待 07 / 03 按 CR-13 补充 |
 | D-08-1 | 08 | `AuthorityChecker.Check(ctx, tx, req)` 支持 `intake_convert` 委托判定（项目范围、仅 AUTONOMOUS、仅 NEW_REQUIREMENT，覆盖需求创建）；`intake_decline` 与新建项目不可委托；「我的裁决」`INTAKE_TRIAGE`；step-up purpose `intake_convert_privileged` 登记 |
 | D-05-1 | 05 | 订阅 `intake.received` / `intake.triage_requested` 唤醒 `triage_agent_id`；`AgentDirectory`；`agent.retired` |
 | D-09-1..4 | 09 | `JobQueue`（J1–J6）、`OutboxPublisher`、`RealtimeBroadcaster`（含集合主题，CR-09）、`Notifier`（邮件需支持自定义 Message-ID / In-Reply-To / References / Reply-To / Auto-Submitted 头，并回写投递状态） |
@@ -1068,3 +1093,6 @@ PRD §15 的 `intake_received{channel}`、`intake_converted` 即上表同名事�
 | CR-10（已合入 00 v1.1） | 00 §6.4 不可委托 | 增加「新建项目」与 `intake_decline`；写明 `intake_convert` 可委托（仅 NEW_REQUIREMENT、仅 AUTONOMOUS 项目） | PRD §9.2 与 BR-01-24 / BR-01-32 |
 | CR-11 | 00 §8 | 新增 02 `WorkItemReopener.ReopenFromAcceptance`（REOPEN_WORK_ITEMS）与 07 `AcceptanceReader.Get`；`IntakeReader` 方法集按 §6.8 扩充 | 返工来件按条目处置（审计 C27/C8） |
 | CR-12（已合入 00 v2.0，D117） | 00 §5 / §6.5 / §7.1 / §8 | `IntakeStatus` 增 `CLIENT_APPROVAL`；模块内 `IntakeKind` 增 `CHANGE`；§6.5 仅限人类增「请甲方确认变更、登记甲方线下确认」（甲方本人的决定是甲方行为，`CLIENT:<contact_id>`）；§7.1 增事件 `intake.client_approval_requested`、`intake.client_approval_decided`；§8 增 02 `ChangeImpactPreviewer`、07 `ToleranceReader.WouldBreach` 与 `ToleranceAdjuster.ApplyApprovedChange` | 甲方经门户申请变更、超出容差的变更须甲方确认（D117） |
+| CR-13（D120，**已并入** 07 / 03 / 00，2026-10-12） | 07 §6.3 / 03 §6.z / 00 §8 | 07 `DeliveryEvidenceReader` 增 `ListClientFacing(ctx, tenant, delivery_id) ([]ClientFacingFile{evidence_id, delivery_item_id, name, size, media_type, viewer_kind, version_ref, anchor_kinds[], content_url, content_url_expires_at, client_thread_count}, error)`（只读；与 `ClientFacing` 同一判定，`content_url` 为预览域短时签名地址 ≤15 分钟）；07 `AcceptanceRecorder` 增 `ReplyClientComment(ctx, {delivery_id, thread_id, intake_contact_id, body≤2000}) (comment_id, error)`（守卫同 `CreateClientComment` ①②，线程须为本交付的 CLIENT 线程），转调 03 新增 `ArtifactComments.ReplyClientOn(ctx, tx, …)`（只对 CLIENT 线程、作者 `CLIENT:<intake_contact_id>`；团队仍不能回复，03 BR-03-141 不变）；00 §8 登记两项方法。不新增共享枚举、权限码或事件 | 门户文件列表与甲方回复自己交付上的批注（BR-01-88 / 89）；07 现有 `ClientFacing` 只判定单个证据、03 只提供 `CreateClientOn` |
+
+> **D120（2026-10-12，锚定批注）已并入本规格**：US-01-23、BR-01-88…91（面向甲方的文件与查看器数据、甲方批注新建 / 回复 / 读取、拒收项引用批注并在返工来件中保留锚点）、§6.7 四个门户端点与验收 `items[].comment_thread_ids[]`、§6.8 `DeliveryEvidenceReader` / `AcceptanceRecorder` 增补、错误码 110456…110460、§8.4 验收页〔查看并批注〕面板与〔引用批注〕、D-07-3、AC-01-89…92、CR-13。批注数据、可见性（只 `CLIENT`）、版本绑定、转换与审计归 07 / 03；门户永不返回内部记录与 INTERNAL 线程。

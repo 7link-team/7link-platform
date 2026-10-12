@@ -323,8 +323,8 @@
 | `PreviewAccessResolver`（Authorize / ExchangeCode / ExchangeShare / Touch / HolderActive） | execution(03，D119) | 预览网关逐请求访问判定与访问换取 | fleet(04 预览网关) |
 | `OperationRegistry`（Register / Lookup）, `AgentReminderScheduler`（UpsertForLoopOn / PauseForLoopOn / ResumeForLoopOn / CancelForLoopOn）, `AgentInboxHeads`, `ToolsetResolver`（ResolveOn / IssueTokens）（D120） | fleet(05) | 各模块启动期登记 Agent 可调用操作（操作清单）；10 循环契约驱动提醒；04 每批携带本机 Agent 收件箱头；03 派发时解析团队工具集并签发工具令牌 | delivery(02 / 07 / 12)、execution、knowledge、planning、fleet(04) |
 | `WorkItemActivityRecorder.RecordOn`, `WorkItemActivityReader`（HeadOn / Since）（D120） | delivery(02) | 工作项活动流（`activity_seq`）：在调用方事务内追加活动、加锁读取当前序号、读取其后活动（过期上下文写入判定与收件箱投影） | execution、fleet(05)、delivery(12) |
-| `ArtifactComments`（GetOn / MarkConvertedOn / CreateClientOn）（D120） | execution(03) | 读批注线程；在调用方事务内记录批注转为结构化反馈 / 缺陷 / 甲方拒收项；创建甲方批注线程 | delivery(02 / 07 / 12) |
-| `DeliveryEvidenceReader.ClientFacing`, `AcceptanceRecorder.CreateClientComment`（D120） | delivery(07) | 判定证据是否为面向甲方的交付产物；门户中甲方创建批注（经 03 `CreateClientOn`） | execution、intake |
+| `ArtifactComments`（GetOn / MarkConvertedOn / CreateClientOn / ReplyClientOn）（D120） | execution(03) | 读批注线程；在调用方事务内记录批注转为结构化反馈 / 缺陷 / 甲方拒收项；创建甲方批注线程 | delivery(02 / 07 / 12) |
+| `DeliveryEvidenceReader.ClientFacing` / `ListClientFacing`, `AcceptanceRecorder.CreateClientComment` / `ReplyClientComment`（D120） | delivery(07) | 判定证据是否为面向甲方的交付产物、列出交付的面向甲方文件；门户中甲方创建与回复批注（经 03 `CreateClientOn` / `ReplyClientOn`） | execution、intake |
 | `LoopRunRecorder.OpenOn`（D120） | planning(10) | 提醒触发时在 05 事务内开启循环运行（或返回 `skip`） | fleet(05) |
 | `EntityProvisioner`（事务内建实体与角色绑定）、`DeviceGrants`（设备码授权扩展）、`SecretSealer` | 底座 core / oauth / 09 | 见 §13 | delivery、fleet |
 

@@ -4601,6 +4601,7 @@ Agent-level grants); MCP credentials stay sealed server-side, the machine gets a
 lease and calls go through the runner's local proxy to the platform relay; stdio MCP servers needing credentials are
 v1.1; `tool_catalog_manage` is held by the team owner only; machine-local tools keep working but are flagged (teams
 cannot block them yet); disabling a catalog entry cuts off running executions; a loop contract over its monthly cost
-cap pauses immediately. Open: 01 portal endpoints for client anchored comments (07 BR-07-64) - technically required.
+cap pauses immediately. 01 portal endpoints for client anchored comments added (01 BR-01-88..91, CR-13 merged into
+07 / 03 / 00); signatory contacts only may comment; a contact sees all client threads on a delivery they can see.
 
 Status: Accepted (decided under the user's delegation; reversible before implementation starts).
