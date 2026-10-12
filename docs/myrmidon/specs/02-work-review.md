@@ -68,6 +68,13 @@
 | US-02-21 | 作为交付负责人，我要工作项预测将超出时间 / 成本 / 范围容差时自动进入例外，并看到现状、选项与建议，由我决定继续 / 重新塑形 / 暂停 / 终止 | MVP |
 | US-02-22 | 作为团队所有者，我要每次人或甲方发现内部已放行的问题都被记为「穿透」，并回流成测试与验收 Agent 的经验和模板评测用例 | MVP |
 
+### 2.z 用户故事增补（D120）
+
+| ID | 故事 | 版本 |
+|---|---|---|
+| US-02-23 | 作为交付负责人，我要 Agent 在工作项已有新的裁决、认领或批注时提交声明、认领或改状态会被打断并看到这些新事件，以便它不在过期的理解上继续 | MVP |
+| US-02-24 | 作为评审人，我要在裁决时直接把产物上的批注转为结构化反馈，反馈保留锚点与所针对的版本，以便返工的 Agent 能回到原处 | MVP |
+
 ---
 
 ## 3. 领域模型与数据表
@@ -541,6 +548,25 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 | visibility | ENUM(`INTERNAL`) | N | `INTERNAL` | **永不出现在甲方门户**；对团队成员可见 |
 | created_at | TS | N | | |
 
+### 3.26 工作项活动流 `delivery_work_item_activities`（D120，只追加）与 `delivery_work_items.activity_seq`
+
+`delivery_work_items` 增加列 `activity_seq BIGINT NOT NULL DEFAULT 0`：该工作项活动流的当前序号（05 BR-05-127 的 `work_item:<id>` 流）；**不是**乐观锁 `version`（`version` 只随工作项行本身变化，活动流还包括证据、批注等其他模块的事件）。
+
+| 字段 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id / tenant_id / project_id | ID | N | | |
+| work_item_id | ID | N | | UNIQUE(`work_item_id`, `seq`) |
+| seq | BIGINT | N | | = 写入时 `activity_seq+1`，在工作项行锁内分配 |
+| kind | ENUM `WorkItemActivityKind` | N | | STATE_CHANGED / ASSIGNED / ASSIGNMENT_RELEASED / CLAIM_SUBMITTED / DECISION_MADE（含结构化反馈）/ PLAN_DECIDED / ANDON / EVIDENCE_ADDED（03）/ COMMENT_ADDED（03）/ EXECUTION_ENDED（03：终态、INTERRUPTED、PAUSED）/ TRANSITIONED（12 显示状态流转） |
+| actor_kind / actor_id | ENUM / ID | N / Y | | 00 §4 |
+| ref_kind / ref_id | STR(32) / ID | Y | | 分派、声明、裁决、证据、批注线程、执行等 |
+| title | STR(200) | N | | 一行说明，不含正文 |
+| occurred_at | TS | N | | |
+
+索引：(`work_item_id`, `seq`)；(`tenant_id`, `occurred_at`)。不设 `updated_*` / `version`。
+
+`delivery_decision_feedback` 增加列：`comment_thread_id ID NULL`（来源批注线程，03 §3.29）与 `anchor_snapshot JSON NULL`（转换时 03 返回的锚点快照：`{anchor_kind, anchor, version_kind, version_ref, artifact_ref, anchor_excerpt}`，不可变）。
+
 ## 4. 状态机
 
 ### 4.1 需求 RequirementStatus（CCR-02）
@@ -788,6 +814,12 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 - **BR-02-62 缺陷部署守卫（12 §4.2.1 F7）**：`type=BUG` 且 12 `WorkflowResolver` 解析出该工作项生效的缺陷流转矩阵含「merged → deployed」（F6）时，T10 / T11 额外要求 `defect_stage=DEPLOYED`；不满足时不迁移、不算失败，工作项停在（或经 T09 进入）VERIFYING，12 显示「已合入 · 等待部署」。`defect_stage` 推进为 `DEPLOYED` 时，以该声明最近一次验证结论重新评估 T10 / T11（source_ref 幂等）。矩阵不含 F6 或 `WorkflowResolver` 无该项目配置时按原守卫执行；`WorkflowResolver` 不可用 → 视为守卫不满足，保持 VERIFYING 并由 `delivery.stuck_check` 照常提醒（失败即拒）。
 - **BR-02-63 甲方变更申请的影响预览与应用**（D117；01 kind=CHANGE）：① **预览**（`ChangeImpactPreviewer.Preview`，只读）：按需求**当前**版本计算——每条 RETIRE / REPLACE 标准所关联（`delivery_work_item_criteria`）的非 CANCELLED 工作项各给一条 `STALE`（已 ACCEPTED 的同样列出，按 BR-02-33 只标过期）；每条 ADD 给一条 `NEW`（`work_item_id` 为空，表示需新增工作项覆盖）；同一工作项只出现一次；`CANCELLED` 不由预览产生（是否取消由人在 01 分诊卡上决定）。② **应用**（`AppendFromIntake` 带 `Change`）：映射为 BR-02-32 的变更请求——ADD → `criteria.add{text, required:true}`、RETIRE → `criteria.retire`、REPLACE → `criteria.supersede{criterion_id, text, required:true}`；`Impacts` 中 STALE / CANCEL 同 R10 的 `impacts[]`（NEW 不传，新工作项由团队之后拆解）；ChangeRecord 的 `source_intake_id = SourceIntakeID`；按 BR-02-32 ②–⑧ 执行（`base_version_no` ≠ 当前 → 409 `120440`；空 diff → 422 `120400`，BR-02-33）。③ **容差调整**：`ApprovedAdjustment` 非空时，在 ④ 写入 v+1 之后、⑦ 发布事件之前，同事务调用 07 `ToleranceAdjuster.ApplyApprovedChange(ctx, tx, {requirement_id, source_intake_id, schedule_delta_days, cost_delta_micros, scope_delta_criteria})`；07 拒绝（`127055` 有未决例外）或任一步失败 → 整个事务回滚，原样返回 07 错误码（01 映射为 110435）。`ApprovedAdjustment` 为空（容差内变更）时不触碰容差。本规则不改变 BR-02-57「工作项 appetite 只能经 CONTINUE 修改」：甲方确认的调整只作用于 07 的需求 / 项目级容差基线。
 
+### 5.12 D120 规则（过期上下文写入与批注转反馈）
+
+- **BR-02-64 工作项活动流**：本模块每个影响工作项的写入（迁移、分派与释放、声明、裁决与反馈、计划裁决、Andon）在同一事务内追加一条 `delivery_work_item_activities` 并使 `activity_seq+1`；其他模块经 `WorkItemActivityRecorder.RecordOn(ctx, tx, work_item_id, Activity{kind, actor, ref, title})` 在**它们自己的写入事务**内追加（03 证据、批注、执行结束；12 流转），方法内对工作项行加锁（`SELECT … FOR UPDATE`，SQLite 单写者）并返回新 seq。`WorkItemActivityReader.HeadOn(ctx, tx, work_item_id)` 在调用方事务内加锁读取当前 seq，`Since(ctx, work_item_id, after_seq, limit)` 返回其后的活动（05 收件箱投影与 `interrupted` 的 `newer_events` 使用）。活动流保留期与工作项相同（不物理删除）。工作项详情与 W 系列响应增加 `activity_seq`。
+- **BR-02-65 过期上下文写入**（05 BR-05-127 / 128，00 §9）：调用方为 AGENT 时 A1（认领 / 评审认领）、A4（释放）、C1（提交完成声明）、D1（经委托的裁决）须带 `seen_seq`（缺失 → 422 **120470**）；人类可选。事务顺序：取得工作项行锁 → 若 `activity_seq > seen_seq` 且其间存在主体 ≠ 调用者的活动 → 409 **120469**，`data={state:"interrupted", stream:"work_item:<id>", seen_seq, current_seq, newer_events[≤50], truncated}`，**不写任何数据**、不发事件、不审计业务动作（`interrupted` 不入幂等表，可用同一 `Idempotency-Key` 重试）→ 否则按原顺序继续（D1 事务顺序的 ④ 之前插入此判定）。调用者自己产生的活动不构成打断。Andon（AN1 / AN2）、续约（A5）与只读接口不要求 `seen_seq`。竞争认领时 BR-02-14 / BR-02-15 的唯一约束与 CAS 仍是最终防线（先 `interrupted`，以新 `seen_seq` 重试后才可能得到 120426 / 120446）。
+- **BR-02-66 批注转结构化反馈**：D1 的 `feedback[]` 每项可带 `comment_thread_id`：本模块在 D1 事务内调 03 `ArtifactComments.GetOn` 校验线程属于本工作项的执行（否则 422 **120471** `data.reason=NOT_THIS_WORK_ITEM`）、为 INTERNAL 线程（CLIENT 线程 → 422 120471 `CLIENT_THREAD`）；`location` 缺省时由锚点生成（如 `src/app.ts:40-44`、`page /orders · 区域 (120,340) 390×844`、`orders.csv 行 id=42`、`第 3 段`），`detail` 缺省为线程首条批注的前 2000 字符，`anchor_snapshot` 写入反馈行；随后调 `MarkConvertedOn(FEEDBACK, feedback_id)`——线程已转换过 FEEDBACK → 422 120471（`data.reason=ALREADY_CONVERTED`、`data.target_id`），整体回滚。返工执行的上下文包附带锚点快照（03 BR-03-139）。
+
 ## 6. 接口契约
 
 ### 6.1 通用
@@ -959,6 +991,18 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 | X1 | `GET /entities/{entity_id}/escapes` | entities | RegisterOwned · `work_item_read` | pkg/query：`stage`, `category`, `created_at` | `Escape[]` | — |
 
 本模块新增提供接口（00 §8）：`WorkItemTransitioner.PlanProposed(tx, work_item_id, plan)`、`InternalQaCompleted(tx, work_item_id, claim_id, stage, result, verdict)`（03 调用，source_ref 幂等）；`SetSystemBlock(tx, work_item_id, reason ∈ {TOOL_UNAVAILABLE, PROVIDER_UNAVAILABLE}, on, source_ref)`（11 调用，BR-02-61）。新错误码：120461 `readiness_unmet`、120462 `plan_not_approved`、120464 `andon_active`、120465 `exception_pending`、120467 `accountable_human_required`、120468 `exception_continue_requires_new_budget`（i18n `delivery.error.*` 三语）。
+
+### 6.11 D120 接口
+
+| # | 方法 路径 | tag | 守卫 · 权限 | 请求 | 响应 `data` | 错误 |
+|---|---|---|---|---|---|---|
+| W17 | `GET /work-items/{work_item_id}/activities` | work-items | RegisterOwned · `work_item_read` | `?after_seq=&limit≤200&kind=`(in) | `{items: Activity[], activity_seq}`；`Activity{seq, kind, actor{kind,id}, ref{kind,id}?, title, occurred_at}` | 404 |
+
+请求增补：A1、A4、C1、D1 增加 `seen_seq?`（AGENT 必填，BR-02-65）；D1 `feedback[]` 每项增加 `comment_thread_id?`（BR-02-66）。响应增补：W 系列工作项表示增加 `activity_seq`；`Decision.feedback[]` 增加 `comment_thread_id?`、`anchor_snapshot?`。上述写入登记到 05 `OperationRegistry`（`work_item_assignment.create`、`work_item_assignment.release`、`claim.submit`、`work_item_decision.create`），响应带 `meta.next`。
+
+本模块新增提供接口（00 §8）：`WorkItemActivityRecorder.RecordOn(ctx, tx, work_item_id, Activity) (seq, error)`；`WorkItemActivityReader{HeadOn(ctx, tx, work_item_id) (seq, error), Since(ctx, work_item_id, after_seq, limit) ([]Activity, error)}`（使用者 03、05、12）。使用 03 `ArtifactComments.GetOn` / `MarkConvertedOn`（BR-02-66）。
+
+错误码（delivery 02 子段）：**120469** `delivery.error.write_interrupted`（409，工作项已有更新活动，未写入；`data.state="interrupted"`）；**120470** `delivery.error.seen_seq_required`（422）；**120471** `delivery.error.comment_not_convertible`（422，`data.reason ∈ {NOT_THIS_WORK_ITEM, CLIENT_THREAD, ALREADY_CONVERTED}`）。
 
 ## 7. 后台任务与事件
 
@@ -1761,6 +1805,35 @@ When  AppendFromIntake(Change{…})
 Then  409 120440，无写入，未调用 07
 ```
 
+### 10.12 D120 验收标准
+
+```
+AC-02-89  [integration]  关联 US-02-23, BR-02-64, BR-02-65
+Given 工作项 W（AUTONOMOUS，NEEDS_HUMAN_REVIEW，activity_seq=40）；评审 Agent R1、R2 均持对 W 有效的 decision_* 委托
+When  R1、R2 以 seen_seq=40、各自的 Idempotency-Key 并发调 A1 {role:REVIEWER}
+Then  恰好一个 201，W.activity_seq=41（ASSIGNED）；另一个 409 120469，data.state="interrupted"、current_seq=41、newer_events[0].kind=ASSIGNED 且 actor=先到者；无第二个 REVIEWER 分派
+And   后到者以同一 Idempotency-Key、seen_seq=41 重试 → 409 120446（data.holder=先到者）；不出现 176425
+
+AC-02-90  [integration]  关联 BR-02-65
+Given Agent 执行者 Ada 读到 W.activity_seq=12；评审人随后对上一声明 REQUEST_CHANGES（activity_seq=13，DECISION_MADE）
+When  Ada 以 seen_seq=12 调 C1 提交新声明
+Then  409 120469，newer_events 含该裁决（ref=decision）；无 Claim 行、无 claim.submitted
+And   Ada 不带 seen_seq 调 C1 → 422 120470；人类执行者不带 seen_seq → 201
+And   Ada 以 seen_seq=13 拉 Andon（AN1）之前 W 又有新活动 → Andon 仍成功（豁免）
+
+AC-02-91  [integration]  关联 BR-02-64
+Given 03 在提交证据的事务内调 WorkItemActivityRecorder.RecordOn(W, EVIDENCE_ADDED)
+When  该事务回滚
+Then  W.activity_seq 不变、无活动行；提交成功时 seq 连续且 W17 ?after_seq=40 按序返回
+
+AC-02-92  [integration]  关联 US-02-24, BR-02-66
+Given W 当前声明执行 E 上有 INTERNAL 批注线程 T（CODE_LINES src/app.ts 40–44，version c1）
+When  评审人 D1 {action:REQUEST_CHANGES, feedback:[{category:FUNCTIONAL_DEFECT, comment_thread_id:T}]}
+Then  反馈行 location="src/app.ts:40-44"、detail=线程首条批注、comment_thread_id=T、anchor_snapshot.version_ref=c1；03 记 FEEDBACK 转换并把 T 置 RESOLVED；返工分支上下文含该锚点快照
+And   再以 T 提交反馈 → 422 120471（reason=ALREADY_CONVERTED，data.target_id=已有反馈），整个裁决回滚
+And   以另一工作项执行上的线程 → 422 120471（NOT_THIS_WORK_ITEM）；以 CLIENT 线程 → 422 120471（CLIENT_THREAD）
+```
+
 ## 11. 度量与埋点（不得包含代码、需求正文、反馈正文、理由正文）
 
 | 事件 | 属性 |
@@ -1846,3 +1919,5 @@ Then  409 120440，无写入，未调用 07
 > **D117（2026-10-12，甲方变更申请）**：新增只读接口 `ChangeImpactPreviewer.Preview`、`AppendFromIntake` 的 `Change` 载荷、BR-02-63、AC-02-85…88；已登记入 00 §8（v2.0 D117 补充）。需要 07 提供 `ToleranceAdjuster.ApplyApprovedChange`（07 BR-07-62）。
 
 > **D112 / D113（2026-10-11）**：本规格按 00 v2.0 §15 增补（§3.20–3.25、§4.5、§5.11、§6.10、§7.4、§8.6、N11–N14、§10.11、§11）。需要他规格配合：03 `purpose=PLANNING` 只读执行与计划产出格式、冻结 / 隐藏验收集、`InternalQaCompleted` 回调、`CHEATING_SUSPECTED`；05 TESTER / ACCEPTOR 与计划评审 Agent 的派单（跨模型家族）；06 `MemoryWriter`；07 穿透率口径与 `HUMAN_ONLY`；08 新权限码默认授予、`plan_review` 策略、收件箱按 `visibility=INTERNAL` 过滤、N11–N14 路由；11 `EvalSetWriter.ProposeCase` 与模板默认值；12 缺陷流转矩阵与字典。
+
+> **D120（过期上下文写入与批注转反馈，2026-10-12）**：US-02-23 / 24、§3.26（工作项活动流、`activity_seq`、反馈的 `comment_thread_id` / `anchor_snapshot`）、BR-02-64…66、W17 与 A1 / A4 / C1 / D1 的 `seen_seq`、错误码 120469–120471、AC-02-89…92。**CCR-11**（对 00，已登记入 00 v2.0 D120 补充）：§8 新增本模块提供的 `WorkItemActivityRecorder`（03、12 使用）与 `WorkItemActivityReader`（03、05、12 使用）；§9 过期上下文写入约定中的 `work_item:<id>` 流以 `activity_seq` 为准。需要 03 `ArtifactComments`（03 BR-03-139）。

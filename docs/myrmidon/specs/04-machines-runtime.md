@@ -650,6 +650,15 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 - **BR-04-100 K8S_POOL**（v1.1）：一台 K8S_POOL「机器」= 一个集群内的**池控制器**（同一 `machine-runner`，`--mode pool-controller`，以 A32 预签发的凭证认证，在集群内以 Deployment 运行，经 A33 生成的清单安装）。控制器维持唯一的出站 WebSocket 通道；每个执行（及评审预览）在一个临时 Pod 中运行，Pod 内机器程序以 `--mode pod` 启动，经集群内服务主动连接控制器（不对集群外暴露），控制器把 Pod 的消息与流在同一通道上多路复用（Pod 不持有平台凭证）。槽 = Pod：`ReserveSlot` 时绑定 WARM Pod，没有则创建（§4.6），`NO_FREE_SLOT` 语义不变（BOUND + REQUESTED ≤ `max_pods`）。工作区：Pod 启动后按 07 仓库地址克隆（凭证来自 `git_credentials_secret`），不使用 `fleet_workdirs`（`ResolveWorkspace` 对 K8S_POOL 返回 `{mode:"EPHEMERAL_CLONE"}`）；续接只能 CARRYOVER（`PlanMigration` 对 K8S_POOL 恒给 `CARRYOVER`）。运行时登录凭据（API Key）经 `env_from_secrets` 注入 Pod，名称须在 `env_passthrough_names` 中（BR-04-22 不变）。池伸缩见 J9；工具检测在 Pod 镜像首次就绪时执行一次并按镜像摘要缓存。
 - **BR-04-101 类型不可变**：`machine_type` 创建后不可改；WORKSTATION 不能经 A32 预签发；K8S_POOL 的 `slot_count` 只能经 A35 池配置修改（A08 改 → 422 140482）。
 
+### 5.12 Agent 唤醒提示、活动状态与批注辅助脚本的传输（D120）
+
+- **BR-04-102 唤醒提示的传输**：05 的唤醒提示（05 BR-05-122）载荷 `{agent_id, inbox_seq}` 由本模块只做传输：WebSocket 通道上以文本帧 `type:"agent.wake"` 即时推送；长轮询时到达的提示使挂起的 C2 立即返回，在 `ServerBatch.agent_wakes[]` 中携带（同一 Agent 只保留最大 `inbox_seq`）。提示**不进入** `agent_commands[]`：不分配 `command_id`、不要求 ACK、不重发、可合并、可丢失。作为提示流的心跳，**每个** `ServerBatch`（含空批次，≤10 s 一次）与 WebSocket 心跳帧都携带 `agent_inbox_heads[{agent_id, inbox_seq}]`——本机绑定的全部非 RETIRED Agent 的当前收件箱头（数据由 05 `AgentInboxHeads(machine_id)` 提供，每批 ≤64 项，超出按 Agent 轮转）。提示与心跳只发给 Agent 绑定的机器；Agent 换绑后旧机不再收到。
+- **BR-04-103 活动状态与会话代次的转交**：`AgentProcState` 增加 `activity?`、`session_epoch?`（语义以 05 §6.6 / §6.z 为唯一定义）；`agent.status` 的 `activity` 变化由机器程序在同一 Agent 2 s 内合并后经 C3 上报，本模块校验会话、`conn_epoch` 与 Agent 绑定本机后原样转交 05；旧 `conn_epoch` 的上报丢弃（140431）。`agent.reset` 作为 `agent_commands[]` 中的普通命令传输（需 ACK、按 §6.4 重发）。
+- **BR-04-104 预览网关的批注辅助脚本**（03 BR-03-136）：预览网关对某预览会话仅在 03 标记「批注模式」（`PreviewAccessResolver.Authorize` 的 `Grant.annotate=true`，由控制台查看器经 A60 换取时请求）的访问会话中，向 `Content-Type: text/html` 的 200 响应在 `</head>` 前注入 `<script src="/__annotate.js" defer></script>`；`/__annotate.js` 由网关在预览域同源提供（固定版本、带 `sha256` 完整性校验），不访问 Cookie、不发网络请求，只通过 `postMessage` 向父窗口发送选中元素的选择器、包围盒与可见文本。不修改其他响应、不改写应用的 CSP（应用 CSP 拦截该脚本时由 03 退回 RECT_ONLY）；ARTIFACT 查看器（DOCUMENT / REPORT / PDF）同样适用；分享链接（BR-03-130）访问一律不注入。注入只在预览域发生，控制台源仍不渲染任何工作区内容（00 §10）。
+- **BR-04-105 团队工具集的落地**（05 BR-05-144…146、03 BR-03-147）：`execution.start` 携带 `toolset`（载荷语义以 03 §6.3 为唯一定义）时，机器程序在启动运行时之前完成：① **技能**——按 `sha256` 校验每个技能内容后写入**该执行的运行时技能目录**（由运行时适配器决定的、位于运行目录 `{machine_data_dir}/runs/{execution_id}/` 内且只对本执行可见的位置；不写入仓库工作区、不修改用户全局技能目录），目录内放标记文件 `.catalog.json{entry_key, version_no, sha256}`；② **目录 MCP**——生成该执行的运行时 MCP 配置文件（同在运行目录内）：STREAMABLE_HTTP 条目指向机器本地代理 `http://127.0.0.1:<port>/r/<execution 随机段>/<entry_key>`，STDIO_PACKAGE 条目按 `package.integrity` 从包缓存（按完整性哈希内容寻址）安装后以配置中的 `command` / `args` 启动；白名单内的本机自带 MCP 照旧追加；③ 任一技能校验失败或包安装失败 → `execution.rejected{reason:"TOOLSET_UNAVAILABLE", detail}`（不带部分工具集启动）。执行结束（任一终态）后随运行目录清理一并删除技能与配置。
+- **BR-04-106 本地代理与工具令牌**：机器程序在回环地址上运行一个 MCP 本地代理，按执行的随机路径段把请求转发到 05 中继 T13，并在上游请求上附加该执行该条目的工具令牌（`execution.start.toolset.tool_tokens[]`，由 `leases.renew` 响应续签，03 §6.3）；令牌只保存在机器程序内存中。代理拒绝：非回环来源、未知或已结束执行的路径段、超过 05 BR-05-147 的请求体上限。执行进入终态、被栅栏或机器会话的 `conn_epoch` 变化后立即作废该执行的路由与令牌。能力检测（BR-04-41）结果 S3 的技能项增加 `sha256?`（SKILL.md 内容的 SHA-256），供 05 判定「团队目录 v{n}」/「与团队目录不一致」/「本机自带」（05 BR-05-148）；运行目录中的目录技能不在检测范围内。
+- **BR-04-107 凭据不落机器**（PRD §10.2、BR-04-22 的延伸）：团队工具目录的 MCP 凭据从不下发机器（05 BR-05-146）；工具令牌、机器凭证与 Agent 凭证**不得**出现在运行时进程的环境变量、命令行参数、MCP 配置文件、技能文件、执行事件与日志中——运行时只看到本地代理地址；机器程序日志中令牌一律以 `tok_…<后 4 位>` 形式脱敏。违反此条的机器程序版本不得发布（发布检查：在测试夹具中扫描运行目录与子进程环境，出现令牌前缀即失败）。
+
 ---
 
 ## 6. 接口契约
@@ -739,7 +748,9 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 | 字段 | 内容 |
 |---|---|
 | `commands[]` | 03 `PendingCommands(machine, conn_epoch, max=8)` 的 S→M 信封（`execution.start/cancel`、`interaction.response`、`evidence.collect`、`verification.start/cancel`、`merge.start`），出队顺序经 BR-04-55；未 ACK 每 10 s 可重发，≤6 次（03 §3.8） |
-| `agent_commands[]` | 05 `PendingAgentCommands(machine, conn_epoch, max=8)` 的 S→M 信封 `{type, payload}`。**命令集合与载荷以 05 §6.6 为唯一定义**（含 provision、start、stop、cleanup、inbox、lead_plan、review、triage、release_notes、workspace_list、workspace_read），本模块不复述、不校验载荷语义，只做信封、认证、连接栅栏与投递；未 ACK 每 10 s 重发，≤6 次，之后由 05 判定命令失败 |
+| `agent_commands[]` | 05 `PendingAgentCommands(machine, conn_epoch, max=8)` 的 S→M 信封 `{type, payload}`。**命令集合与载荷以 05 §6.6 为唯一定义**（含 provision、start、stop、cleanup、lead_plan、review、triage、release_notes、workspace_list、workspace_read，D120 增 reset；`inbox` 自 D120 废止，由下方 `agent_wakes[]` 取代），本模块不复述、不校验载荷语义，只做信封、认证、连接栅栏与投递；未 ACK 每 10 s 重发，≤6 次，之后由 05 判定命令失败 |
+| `agent_wakes[]`（D120） | 05 唤醒提示 `{agent_id, inbox_seq}`（BR-04-102；不带 `command_id`、不需 ACK、不重发，同一 Agent 只保留最大值） |
+| `agent_inbox_heads[]`（D120） | 本机绑定 Agent 的收件箱头 `{agent_id, inbox_seq}`，每批都带（提示流心跳，BR-04-102） |
 | `cancels[]` | BR-04-36 的未知持有者取消 `{holder_kind, holder_id, dispatch_epoch?}` |
 | `inspections[]` | `{inspection_id, request_id, runtime_kind, cwd, timeout_ms:55000}`（≤1 项） |
 | `model_catalog_requests[]` | `{runtime_kind}` |
@@ -765,7 +776,7 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 
 `SlotState` = `{slot_no, state:"IDLE"|"STARTING"|"RUNNING"|"STOPPING", holder_kind?, holder_id?, dispatch_epoch?, pid?, started_at?}`。
 
-`AgentProcState` = 05 §6.6 `agent.status` 载荷去掉 `at`（`status` 取 05 定义的唯一枚举 `STARTING`/`RUNNING`/`STOPPING`/`EXITED`）。Agent 常驻进程**不占执行槽**（其触发的执行另按 03 占槽）。快照节奏 = 轮询节奏（两次轮询间隔 ≤10 s）；05 以「机器 ONLINE 且连续 3 次快照缺失，或报告 `EXITED` 且 `exit_code≠0`」判定崩溃（≈30 s），机器 OFFLINE 时不判崩溃（05 BR-05-11）。
+`AgentProcState` = 05 §6.6 `agent.status` 载荷去掉 `at`（`status` 取 05 定义的唯一枚举 `STARTING`/`RUNNING`/`STOPPING`/`EXITED`；D120 起含 `activity?`、`session_epoch?`，BR-04-103）。Agent 常驻进程**不占执行槽**（其触发的执行另按 03 占槽）。快照节奏 = 轮询节奏（两次轮询间隔 ≤10 s）；05 以「机器 ONLINE 且连续 3 次快照缺失，或报告 `EXITED` 且 `exit_code≠0`」判定崩溃（≈30 s），机器 OFFLINE 时不判崩溃（05 BR-05-11）。
 
 **机器端行为**（移植 Preview `daemon.go`，数值见 BR-04-30）：长轮询循环；20 s 无成功响应 → 停止全部执行（cancel → 4 s → kill tree）、保留 outbox、继续重连；收到 140431 → 重开会话并按 03 规则补交未 ACK 事件；收到 401 → 重换令牌一次，仍 401 → BR-04-26；某执行 outbox 达 10,000 条 → `execution.lost{OUTBOX_FULL}`（03）。
 
@@ -1322,6 +1333,35 @@ Given fleet.preview.domain 与控制台同一可注册域   Then 启动时预览
 Given mode=PATH   Then A39 path_mode_warning:true；会话 Cookie Path=/p/<label>/
 AC-04-53 [e2e] 机器详情「远程访问」Tab 与接入服务器
 桌面 1440 与手机 390：开关、只读态（无 machine_access_manage）、终端开关的重新认证、关闭开关的确认文案、WORKSTATION 无沙箱红字、路径模式琥珀提示；接入服务器向导的「只显示这一次」提示与离开确认；全部 v1.1 项带「v1.1」标签
+AC-04-54 [integration] BR-04-102 唤醒提示传输（D120）
+Given M1 长轮询（wait_ms=10000），绑定 Agent Ada、Bo
+When  05 在 300 ms 内为 Ada 发出 inbox_seq=5、6 两个提示   Then 挂起的 C2 立即返回，agent_wakes=[{Ada, 6}]（只保留最大值），agent_commands 中无 wake，无 command_id
+When  机器丢弃该批次并在 10 s 内再次 poll   Then 新批次 agent_wakes 为空，但 agent_inbox_heads 含 {Ada,6} 与 {Bo,当前值}；空批次同样携带 agent_inbox_heads
+When  切换到 WebSocket   Then 提示以文本帧 type:"agent.wake" 即时到达，帧中只有 agent_id 与 inbox_seq；Ada 换绑到 M2 后 M1 不再收到 Ada 的提示与头
+AC-04-55 [integration] BR-04-103 活动状态转交（D120）
+Given Ada RUNNING 于 M1（conn_epoch=7）
+When  C3 上报 agent.status{activity:THINKING}   Then 原样转交 05 AgentChannelHandler
+When  以 conn_epoch=6 上报   Then 409 140431，不转交
+When  agent.reset 命令未 ACK   Then 每 10 s 重发，≤6 次（与其他 agent_commands 相同）
+AC-04-56 [integration] BR-04-104 批注辅助脚本注入（D120）
+Given 预览会话 S 的 HTML 页面
+When  以 annotate=true 的访问会话请求页面   Then 响应在 </head> 前含 /__annotate.js（带完整性哈希）；JSON / 图片 / 非 200 响应不变
+When  以普通访问会话或分享链接访问   Then 不注入
+When  请求 /__annotate.js   Then 由网关同源返回固定版本脚本，脚本不读取 document.cookie、不发起 fetch / XHR（静态检查）
+AC-04-57 [integration] BR-04-105 工具集落地（D120）
+Given execution.start 的 toolset 含技能 deploy v4（sha256=h4）、STREAMABLE_HTTP 条目 issue-tracker v2、STDIO_PACKAGE 条目 fmt（integrity=i1），白名单含本机 MCP local-db
+When  机器启动执行   Then 运行目录中出现 deploy/SKILL.md 与 .catalog.json{deploy, 4, h4}，仓库工作区与用户全局技能目录无变化；MCP 配置含 issue-tracker → http://127.0.0.1:<port>/r/<随机段>/issue-tracker、fmt 的启动命令与 local-db
+When  deploy 内容哈希与 h4 不符，或 fmt 安装失败   Then execution.rejected{reason:"TOOLSET_UNAVAILABLE"}，运行时未启动
+When  执行 SUCCEEDED   Then 运行目录中的技能与 MCP 配置被删除，本地代理对该随机段返回 404
+AC-04-58 [integration] BR-04-106 本地代理与令牌续签（D120）
+Given 执行 E 运行中，issue-tracker 令牌剩余 2 分钟
+When  运行时经本地代理调用 tools/call   Then 上游请求带 E 的工具令牌，运行时侧请求不含任何令牌
+When  leases.renew 响应带新令牌   Then 之后的转发使用新令牌
+When  来自非回环地址或未知随机段的请求   Then 拒绝，不转发
+When  能力检测完成   Then S3 技能项带 sha256，运行目录中的目录技能不出现在检测结果中
+AC-04-59 [integration] BR-04-107 凭据不落机器（D120）
+Given 测试夹具扫描执行 E 的运行目录、子进程环境变量与命令行、执行事件与机器日志
+When  E 使用目录 MCP 完成若干次调用，期间团队轮换了凭据   Then 扫描结果中不存在团队凭据（新旧均无）与完整工具令牌；日志中令牌只以 tok_…后 4 位出现
 ```
 
 ## 11. 度量与埋点（不含代码、提示词、路径原文与主机名）
@@ -1420,3 +1460,5 @@ AC-04-53 [e2e] 机器详情「远程访问」Tab 与接入服务器
 **D112 / D113（00 v2.0，2026-10-12）**：新增工具检测与能力标记（§3.14、S4、BR-04-47/48、A30/A31、140447）与模型家族（S2 `model_family`、`manual_model_families`、BR-04-49、A17 `families`、140448）；`MachineDirectory` 增 `Tools`/`HasCapability`/`ToolAvailability`/`ModelFamily` 与 `ListEligibleMachines.capabilities`；`machine.runtimes_changed` 载荷增 `tools_changed`、`capabilities`；新增 AC-04-40..43。使用方 03（VISUAL 验证器、验收截图）、05（跨模型家族选择、ACCEPTOR 资格）、11（`TOOL_UNAVAILABLE`）。已并入 00 v2.0 §8（无新事件）。
 
 **D119（2026-10-12）**：远程访问隧道（§5.10、§6.4b、§4.7、BR-04-90..97）、机器类型 SERVER / K8S_POOL（§3.15–3.17、§4.6、§5.11、BR-04-98..101）、每机远程访问开关与配额、预览网关部署配置；接口 A32–A39；错误码 140482/140484/140485/140486/140488/140491/140492；任务 J9/J10；事件 `machine.access_changed`；通知 N-04-10/11；AC-04-44..53；CR-04-12（已并入 00 v2.0 D119 补充）。分期：SERVER、隧道与 WebSocket 通道、预览开关、配额、预览网关为 MVP；K8S_POOL、终端与编辑开关的生效能力为 v1.1。
+
+**D120（2026-10-12）**：Agent 唤醒提示与收件箱头的传输（`ServerBatch.agent_wakes[]` / `agent_inbox_heads[]`、WebSocket `agent.wake` 帧，BR-04-102）、`AgentProcState.activity` / `session_epoch` 与 `agent.reset` 的转交（BR-04-103）、预览网关的批注辅助脚本注入（BR-04-104，供 03 BR-03-136）；`agent_commands[]` 中的 `inbox` 废止；AC-04-54…56。载荷语义仍以 05 §6.6 / §6.z 与 03 为唯一定义；不新增错误码。D120 第 6 项（团队工具目录）：工具集落地、本地代理与工具令牌、能力检测技能哈希、凭据不落机器（BR-04-105…107）；AC-04-57…59。**CR-04-14**（对 00）：无新增共享枚举、权限码、事件或错误码段；`execution.rejected.reason` 增加取值 `TOOLSET_UNAVAILABLE`（03 定义）；依赖 05 `ToolsetResolver`（经 03 下发）与中继 T13。**CR-04-13**（对 00）：无新增共享枚举、权限码、事件或错误码段，只登记 05 新增的 `AgentInboxHeads(machine_id)` 读取（00 §8，与 `PendingAgentCommands` 同列）。

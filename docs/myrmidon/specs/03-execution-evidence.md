@@ -20,6 +20,7 @@
 | 交互会话（Preview 01 全量对齐）：轮次、消息、工具行、TOOL_PERMISSION / RUNTIME_INPUT、重试、换机器、授权模式、Skills、MCP、附件、限额 | 项目阶段、预算设定、交付包 → **07** |
 | 产物、证据（类型、自动采集、人工观察、来源字段、局限、内容哈希、文件存储）、验证器定义与版本、验证结果、相似度信号、成本计量、`code_merge` 动作 | 后台任务队列、outbox、SSE、对象存储驱动、通知渠道 → **09**；文件与资源绑定、审计哈希链 → 底座 |
 | **远程工作区**（D119）：每个执行的预览会话（服务预览、评审预览、产物预览）与产物查看器、文件浏览（只读）与人工接管后的编辑、终端会话（只读观看 / 交互 shell）、甲方分享链接；预览访问判定 | 隧道传输、端口归属与路径限定的机器端校验、配额、机器类型与远程访问开关、预览网关部署 → **04**；权限码、step-up、审批收件箱、审计目录 → **08** |
+| **锚定批注**（D120）：产物查看器内对代码行区间、表格行、HTML 区域、视频时间点 / 区间、文本段落的批注线程，绑定产物版本，版本更新后的重新定位与「锚点版本已过期」；甲方在交付产物上的批注；批注与证据写入的过期上下文判定（`interrupted`） | 批注 → 结构化反馈（裁决）→ **02**；批注 → 缺陷 → **12**；批注 → 甲方拒收项与门户呈现 → **07**（门户接口 01）；Agent 收件箱投影 → **05**；HTML 区域辅助脚本的注入 → **04** 预览网关 |
 
 **不解决**：token 级 checkpoint；数据库分支；PR 平台连接器（v1.1，PULL_REQUEST 证据 MVP 仅支持人工登记链接）；跨机器自动迁移正在运行的进程。
 
@@ -78,6 +79,16 @@
 | US-03-34 | 作为工程师，我要在暂停或接管执行后编辑文件并保存为一次署名为我的提交 | v1.1 |
 | US-03-35 | 作为团队所有者，我要允许经过重新认证的人类打开交互式终端，全程录制进审计 | v1.1 |
 | US-03-36 | 作为交付负责人，我要在人工批准后把某个预览以只读、有期限、可撤销的链接分享给甲方 | 分期待定（D119 未列入分期，见 §12 Q9） |
+
+### 2.z 用户故事增补（D120 锚定批注与过期上下文写入）
+
+| ID | 故事 | 版本 |
+|---|---|---|
+| US-03-37 | 作为评审人，我要在产物查看器里直接对代码行区间、表格行、网页上的某个区域、文档段落发起批注线程，以便精确指出问题而不是在别处描述位置 | MVP |
+| US-03-38 | 作为评审人，我要对视频的某个时间点 / 区间与小说章节的段落批注 | v1.1（随视频与章节查看器） |
+| US-03-39 | 作为评审人，我要把一条批注一键转为结构化反馈或缺陷，且保留锚点与它所针对的产物版本，以便返工的人能回到原处 | MVP |
+| US-03-40 | 作为工程师，我要在产物更新后看到哪些批注仍对得上、哪些已重新定位、哪些「基于旧版本」，以便不被过期批注误导 | MVP |
+| US-03-41 | 作为交付负责人，我要 Agent 在工作项已有更新事件时提交证据或发起批注被拒为 `interrupted`，以便它先看到新反馈再动手 | MVP |
 
 ## 3. 领域模型与数据表
 
@@ -566,6 +577,77 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 **JSON Schema S8 `PreviewConfig`**：`{key: ^[a-z0-9-]{1,64}$, kind: "WEB"|"API", start: string[1..64]（argv，不经 shell）, cwd?: 相对工作区路径, port: 1024–65535, health_path: 以 / 开头 ≤256（默认 "/"）, env?: {名: 值}（名须在 04 `env_passthrough_names` 或本表声明，值不得含密钥，≤20 项）, openapi_path?: string（API 时 OpenAPI 文档路径）, start_timeout_s?: 10–600（默认 120）, devices?: ["DESKTOP"|"TABLET"|"PHONE"]}`。
 
+### 3.29 `execution_comment_threads`（锚定批注线程，D120，`version` 乐观锁）
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id | ID | N | | |
+| tenant_id / project_id | ID | N | | |
+| execution_id | ID | N | | 产物所属执行（批注按执行的 `execution_read` 授权） |
+| work_item_id | ID | Y | | 冗余（执行关联的工作项），用于工作项流与评审台汇总 |
+| artifact_kind | ENUM `CommentArtifactKind` | N | | WORKSPACE_FILE（执行工作区文件，A63 / A64）/ EVIDENCE_FILE（证据文件，A30）/ ARTIFACT（`execution_artifacts` 行）/ PREVIEW_PAGE（服务预览或评审预览中的页面） |
+| artifact_ref | JSON | N | | S10：`{path?, evidence_id?, artifact_id?, preview_session_id?, url_path?}`（按 kind 必填其一组；`path` 相对工作区，经规范化） |
+| version_kind | ENUM `CommentVersionKind` | N | | COMMIT（已提交文件 / 评审预览）/ CONTENT_SHA256（证据、未提交文件、产物）/ HEAD_COMMIT（运行中服务预览：批注时执行的 `head_commit` + `uncommitted` 标记） |
+| version_ref | STR(64) | N | | commit sha 或内容 sha256；**批注永远绑定它所针对的版本** |
+| version_uncommitted | BOOL | N | false | HEAD_COMMIT 且工作区有未提交改动 |
+| viewer_kind | ENUM `ViewerKind`（§3.28） | N | | 批注时使用的查看器；另含 CODE（文件 Tab 代码视图 / 差异视图） |
+| anchor_kind | ENUM `AnchorKind`（00 §5） | N | | CODE_LINES / TABLE_ROW / HTML_REGION / MEDIA_TIME / TEXT_PARAGRAPH |
+| anchor | JSON | N | | S9（§3.31） |
+| anchor_excerpt | STR(2000) | Y | | 锚定内容的文本快照（代码行、表格行、段落原文、HTML 区域的可见文本）；遮罩文件不可批注（BR-03-135） |
+| anchor_snapshot_file_id | ID | Y | | HTML_REGION 的区域截图（机器有 `browser_capture` 时生成，files purpose `comment_anchor`） |
+| anchor_status | ENUM `AnchorStatus` | N | `CURRENT` | 相对 `anchor_checked_version` 的状态：CURRENT / RELOCATED / OUTDATED（BR-03-137） |
+| anchor_checked_version | STR(64) | Y | | 最近一次判定所针对的版本 |
+| relocated_anchor | JSON | Y | | RELOCATED 时在新版本中的锚点（S9） |
+| visibility | ENUM `CommentVisibility`（00 §5） | N | `INTERNAL` | INTERNAL（团队）/ CLIENT（甲方在交付产物上创建，BR-03-141） |
+| delivery_id / delivery_item_id | ID | Y | | CLIENT 必填：所在交付与交付项（07） |
+| state | ENUM `CommentThreadState` | N | `OPEN` | OPEN / RESOLVED |
+| resolved_by / resolved_at | ID / 时间 | Y | | |
+| created_by_kind / created_by | ENUM / ID | N | | HUMAN / AGENT（principal）/ CLIENT（`intake_contact_id`） |
+| comment_count / last_seq / last_comment_at | INT / BIGINT / 时间 | N / N / Y | 0 / 0 | `last_seq` = 线程内批注序号（`comment_thread` 写入流，BR-03-140） |
+| version | INT | N | 1 | |
+
+索引：(`execution_id`, `state`)；(`tenant_id`, `work_item_id`, `state`)；(`execution_id`, `artifact_kind`, `version_ref`)；(`delivery_id`) WHERE `visibility='CLIENT'`。
+
+### 3.30 `execution_comments`（线程内批注，只追加 + 编辑 / 撤回列）与 `execution_comment_conversions`
+
+`execution_comments`：
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id | ID | N | | |
+| thread_id | ID | N | | UNIQUE(`thread_id`, `seq`) |
+| seq | BIGINT | N | | 线程内单调，从 1 起；在线程行锁内分配 |
+| author_kind / author_id | ENUM / ID | N | | HUMAN / AGENT / CLIENT |
+| body | STR(8000) | N | | 纯文本 + `<@principal_id>` 提及令牌（规则同 05 BR-05-84；CLIENT 不可提及、≤2000） |
+| mention_principal_ids | JSON | N | `[]` | ≤20 |
+| edited_at / edit_count | 时间 / INT | Y / N | / 0 | 作者 15 min 内、≤10 次 |
+| retracted_at | 时间 | Y | | 撤回不物理删除 |
+| created_at | 时间 | N | | |
+
+`execution_comment_conversions`（批注 → 下游对象，只追加）：`id`、`thread_id`、`target_kind ENUM CommentConversionTarget`（FEEDBACK（02 裁决的结构化反馈）/ DEFECT（12 缺陷）/ REJECTION_ITEM（07 甲方拒收项））、`target_id`（02 `delivery_decision_feedback` 行 / 工作项 id / 07 `delivery_acceptance_items` 行）、`anchor_snapshot JSON`（转换时的 `{anchor_kind, anchor, version_kind, version_ref, artifact_ref, anchor_excerpt}`，不随线程后续变化）、`converted_by_kind / converted_by`、`converted_at`；UNIQUE(`thread_id`, `target_kind`)。
+
+### 3.31 S9 锚点 Schema 与模块内枚举增补（D120，不进 00 §5，`AnchorKind` / `CommentVisibility` 除外）
+
+**S9 `Anchor`**（按 `anchor_kind`，`additionalProperties:false`）：
+
+| anchor_kind | 字段 | 适用查看器 | 版本 |
+|---|---|---|---|
+| CODE_LINES | `{path, start_line ≥1, end_line ≥start_line（跨度 ≤500）, side?:"NEW"\|"OLD"（差异视图）, start_col?, end_col?}` | CODE（文件 / 差异）、DOCUMENT 纯文本 | MVP |
+| TABLE_ROW | `{path, row_index ≥0（不含表头）, row_key?:{column, value≤200}（有主键列时）, row_sha256, columns?:[name]≤20}` | DOCUMENT 中的 CSV / TSV / JSON 数组表格、REPORT 中的表格行 | MVP |
+| HTML_REGION | `{url_path ≤2000, selector?（CSS ≤512，辅助脚本可用时）, rect:{x, y, w, h}（CSS 像素，相对文档左上角）, viewport:{w, h, device:"DESKTOP"\|"TABLET"\|"PHONE", dpr}, scroll:{x, y}, text_quote?≤200, precision:"SELECTOR"\|"RECT_ONLY"}` | WEB_DEVICE、REPORT、PDF（rect 相对页，另含 `page`） | MVP |
+| MEDIA_TIME | `{path, start_ms ≥0, end_ms?（区间，> start_ms）, duration_ms, proxy_profile?:"480p"}` | VIDEO | v1.1 |
+| TEXT_PARAGRAPH | `{path, paragraph_index ≥0, paragraph_sha256, quote:{exact≤500, prefix?≤64, suffix?≤64}, chapter_key?}` | DOCUMENT（Markdown / 纯文本）为 MVP；CHAPTER（小说章节）为 v1.1 | MVP / v1.1 |
+
+| 枚举 | 值 |
+|---|---|
+| `CommentArtifactKind` / `CommentVersionKind` | WORKSPACE_FILE, EVIDENCE_FILE, ARTIFACT, PREVIEW_PAGE / COMMIT, CONTENT_SHA256, HEAD_COMMIT |
+| `AnchorStatus` | CURRENT, RELOCATED, OUTDATED |
+| `CommentThreadState` / `CommentConversionTarget` | OPEN, RESOLVED / FEEDBACK, DEFECT, REJECTION_ITEM |
+| `ViewerKind` 增补 | CODE（文件 Tab 代码视图与差异视图） |
+
+### 3.32 执行表增补字段（D120 团队工具集）
+
+`execution_executions` 增加列：`toolset JSON NULL`——S11 工具集快照，派发时由 05 `ToolsetResolver.ResolveOn` 解析后写入，**同一派发内不可变**（`{revision, entries:[{source:"CATALOG"|"MACHINE_LOCAL", kind:"MCP_SERVER"|"SKILL", entry_key, version_no?, content_sha256?, transport?}], warnings[]}`，≤64 KB，不含配置与凭据）；`toolset_revision STR(64) NULL`（= `toolset.revision`，便于按版本检索）。返工 / 重试分支是新的派发，各自记录。
 ## 4. 状态机
 
 所有迁移在**单一数据库事务**内完成：条件更新（`version` 或 `state` CAS）→ 追加审计（如需）→ 写 outbox 领域事件 → `change_seq+1`。事件与审计在提交成功后才对外可见（09 outbox）。
@@ -734,6 +816,22 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 **终端会话**（`TerminalSessionState`）：OPENING →（04 `tunnel.opened`）→ OPEN →（用户关闭 / 空闲 / 最长时长 / 执行终态 / 开关关闭 / 机器离线 / 流 RESET）→ CLOSED。SHELL 关闭时封存录制文件并写审计（BR-03-125）。
 
 **人工接管**（v1.1）：`taken_over_by` 为空 →（A65 PUT，执行 PAUSED 或 INTERRUPTED；RUNNING 时先在同一请求内暂停，`state_reason=USER_PAUSE`）→ 非空 →（A65 DELETE 释放 / 执行终态）→ 空。接管期间 A13 恢复（交还 Agent）须先释放（409 **130466**）。
+
+### 4.z 批注线程与锚点状态（D120）
+
+**线程 `CommentThreadState`**
+
+| # | 当前 | 事件 / 命令 | 守卫 | 目标 | 副作用 |
+|---|---|---|---|---|---|
+| CT1 | — | A77 新建（或 07 经 `ArtifactComments.CreateClientOn` 建 CLIENT 线程） | BR-03-133…136、BR-03-141 | OPEN | 首条批注 seq=1；02 `WorkItemActivityRecorder.RecordOn(COMMENT_ADDED)`（有工作项时）；`comment.thread_created`；审计 `execution.comment_thread_created` |
+| CT2 | OPEN / RESOLVED | A79 回复 | 同 BR-03-134；CLIENT 线程团队不可回复（130479） | 不变（RESOLVED 上回复 → 重新 OPEN） | seq+1；`comment.posted`；工作项活动 |
+| CT3 | OPEN | A80 `{state:RESOLVED}` | 线程创建者、`work_item_write` 或执行者本人；If-Match | RESOLVED | `comment.thread_resolved`；审计 |
+| CT4 | RESOLVED | A80 `{state:OPEN}` | 同上 | OPEN | 同上 |
+| CT5 | OPEN / RESOLVED | 下游转换（02 D1 / 12 A31 / 07 回执）经 `ArtifactComments.MarkConvertedOn` | 同一 `target_kind` 未转换过；CLIENT 线程只能转为 REJECTION_ITEM，INTERNAL 线程不能转为 REJECTION_ITEM | 不变；FEEDBACK / DEFECT 转换后若线程 OPEN 则自动 RESOLVED | 写 `execution_comment_conversions`（锚点快照）；`comment.converted`；审计 |
+
+非法：同一 `target_kind` 重复转换 → 409 **130478**（`data.target_id` 为已有对象，便于调用方幂等处理）；对 CLIENT 线程回复或在团队侧解决 → 409 **130479**。
+
+**锚点 `AnchorStatus`**（相对「正在查看的版本」，BR-03-137）：CURRENT（查看版本 = `version_ref`）→ RELOCATED（版本不同但锚点可映射，`relocated_anchor` 指向新位置）/ OUTDATED（无法映射，显示「基于旧版本」）。RELOCATED 在再下一个版本上重新判定；任何状态都可经〔查看原版本〕回到 `version_ref`。
 
 ## 5. 业务规则与边界情况
 
@@ -919,6 +1017,25 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 - **BR-03-130 甲方访问**：分享入口页（预览域、静态页）读取 fragment 后调用 A74 交换为该 `label` 主机的只读访问 Cookie（`__Host-share`，与 `expires_at` 同时失效）；之后网关对分享访问只放行 GET / HEAD 与 WebSocket 升级，其他方法 405「这是只读预览」；ARTIFACT 只读本就成立。分享页面只显示部署显示名（`GET /deployment`，缺失时中性文案）、申请时的 `note` 与预览本身，**不显示**执行、工作项、Agent、日志、文件浏览、终端或任何内部记录；不显示「下载」。
 - **BR-03-131 失效**：到期、撤销、会话结束 → 网关返回 410 页「此预览链接已失效」，交换接口 A74 对失效令牌返回同一 410（不区分原因，不泄露是否存在）；撤销 ≤1 s 生效（网关缓存以 `share_link` 版本失效）。
 - **BR-03-132 审计**：`execution.share_link_requested` / `_approved` / `_rejected` / `_revoked` / `_expired`、`execution.share_link_accessed`（每 IP 每小时一条，detail 含 IP 前缀 /24 与 UA 摘要）。
+
+### 5.z 锚定批注与过期上下文写入（D120）
+
+- **BR-03-133 锚点与查看器**：创建线程时 `anchor_kind` 必须与 `viewer_kind` 匹配（S9 适用查看器列），坐标必须落在该版本内容内（行号 ≤ 文件行数、`row_index` < 行数、`paragraph_sha256` 与该段一致、`end_ms ≤ duration_ms`、`rect` 在页面尺寸内），否则 422 **130476**（`data.field`）。分期随 D119 查看器：CODE_LINES、TABLE_ROW、HTML_REGION、文档中的 TEXT_PARAGRAPH 为 MVP；MEDIA_TIME 与章节中的 TEXT_PARAGRAPH 为 v1.1（MVP 构建中返回 422 **130480**，与 A75 的 130473 同理）。二进制且无查看器的文件不可批注（130476）。
+- **BR-03-134 权限**：读线程 = 对项目 `execution_read`（CLIENT 线程同样可读，用于返工）；新建与回复 = `artifact_comment_write`（00 §6.1；默认 `team_owner`、`delivery_lead`、`engineer` 与全部 Agent 角色，纯人工项目中 Agent 仍被 08 S2(e) 拒绝）；解决 / 重新打开 = 线程创建者、执行者本人或 `work_item_write`；编辑 / 撤回 = 作者本人（撤回另允许 `work_item_write`）。不满足 → 403 130403（`MISSING_PERMISSION` / `NOT_OWNER`）。提及规则同 05 BR-05-84（被提及者须对该项目有 `execution_read`，否则 422 130476 `data.not_readable[]`），提及 Agent 经 05 投影到其收件箱（MENTION）。
+- **BR-03-135 版本绑定**：每个线程在创建时固定 `version_kind` + `version_ref`：已提交文件与评审预览取 commit；证据文件、产物与未提交的工作区文件取内容 sha256（服务端经 04 `FILE_READ` 读取时计算，客户端提交的 sha 只作校验，不一致 → 409 **130477**「内容已变化，请刷新后再批注」）；运行中的服务预览取执行当时的 `head_commit` 并记 `version_uncommitted`。服务端在同一请求内保存 `anchor_excerpt`（≤2000 字符，按锚点截取；遮罩文件（BR-03-123）不可批注 → 422 130469）。原版本无法再取得（未提交内容已被覆盖、Pod 已删除）时线程仍可读，查看器以 `anchor_excerpt` 与截图替代原文并标「原版本已不可用」。
+- **BR-03-136 HTML 区域的取点**：控制台不向 iframe 注入脚本（BR-03-116 不变）。批注模式下查看器请求预览网关在**预览域**对该会话的 `text/html` 响应注入辅助脚本 `/__annotate.js`（04 BR-04-104；同源于该预览标签，只在批注模式开启时注入）：脚本只读取用户点选元素的 CSS 选择器、包围盒与可见文本，经 `postMessage` 发给控制台；控制台只接受 `event.origin` 等于该会话预览源、且通过 S9 校验的消息，并把内容视为不可信数据（只作坐标与引文，不渲染为 HTML）。应用 CSP 阻止脚本或跨域 iframe 时，退回在覆盖层上框选矩形（`precision:"RECT_ONLY"`，`selector` 为空），页面提示「此页面不支持元素定位，已按位置标注」。PDF 与 REPORT 查看器同样经覆盖层取 `rect`（PDF 另含 `page`）。
+- **BR-03-137 新版本上的定位与「锚点版本已过期」**：打开线程或查看器切换版本时，按「正在查看的版本」判定（结果缓存到 `anchor_checked_version` / `relocated_anchor`）：CODE_LINES —— 用 `git diff version_ref..查看版本` 映射行号，锚定行全部未改动则 RELOCATED 到新行号，否则 OUTDATED；TEXT_PARAGRAPH —— 先找 `paragraph_sha256` 相同的段落，再按 `quote`（前缀 + 原文 + 后缀）模糊匹配，均失败则 OUTDATED；TABLE_ROW —— 有 `row_key` 时按主键找行，行哈希相同为 RELOCATED、不同为 OUTDATED（仍高亮该行并标「此行已修改」），无主键时按 `row_sha256` 查找；HTML_REGION —— 辅助脚本可用时在新页面中解析 `selector` 且可见文本与 `text_quote` 一致为 RELOCATED，否则 OUTDATED（RECT_ONLY 在版本变化后恒为 OUTDATED）；MEDIA_TIME —— 文件内容 sha 变化即 OUTDATED（不尝试对齐时间轴）。OUTDATED 线程不消失：在查看器侧栏「基于旧版本」分组列出，显示原文快照与〔查看原版本〕（打开 `version_ref` 的只读视图）。判定只影响呈现，不改变线程状态、不自动解决。
+- **BR-03-138 线程上限与编辑**：每线程 ≤200 条批注，每执行 ≤2000 个线程（超出 422 **130481**）；正文与提及规则同 05 BR-05-84 / 92（≤8000 字符）；作者 15 min 内可编辑（≤10 次），可撤回（不物理删除，撤回后 `body=null`）；系统不写批注（状态变化只体现在线程字段与事件中）。
+- **BR-03-139 转为结构化反馈与缺陷**：转换只由下游所有者发起：02 D1 的 `feedback[].comment_thread_id`（02 BR-02-66）与 12 A31（12 BR-12-37），二者在自己的事务内调用 `ArtifactComments.MarkConvertedOn(ctx, tx, thread_id, {target_kind, target_id, actor})`，本模块写 `execution_comment_conversions`（锚点快照不可变）并发布 `comment.converted`。同一线程每种目标至多一次（130478，`data.target_id` 返回已存在对象）；FEEDBACK 与 DEFECT 可并存。转换后线程自动 RESOLVED（可重新打开，但转换记录保留）。被转换的反馈 / 缺陷始终带回链（`comment_thread_id`）与锚点快照，返工执行的上下文包第 3 层（裁决反馈）附带该快照（BR-03-28 预算内，超出时只保留路径与行号）。
+- **BR-03-140 过期上下文写入**（05 BR-05-127 / 128，00 §9）：调用方为 AGENT 时，A27（提交证据）、A28（修改证据）、A77（新建线程）须带 `seen_seq`（执行关联工作项时对应 02 `work_item:<id>` 流；ADHOC 未关联工作项的执行不要求），A79（回复）须带 `comment_thread:<id>` 流的 `seen_seq`（线程中他人的批注或线程状态变化）；缺失 → 422 **130475**；有更新事件 → 409 **130474**（`data.state="interrupted"` + `newer_events`），不写任何数据，`interrupted` 不入幂等表，可用同一 `Idempotency-Key` 重试。判定在取得工作项行锁（02 `WorkItemActivityReader.HeadOn` 在调用方事务内加锁读取当前序号）或线程行锁后、其他守卫之前执行。停止 / 暂停执行（A12 / A14）不要求 `seen_seq`。证据提交、线程新建与回复在成功时调用 02 `WorkItemActivityRecorder.RecordOn`（EVIDENCE_ADDED / COMMENT_ADDED），使工作项流前进。
+- **BR-03-141 甲方批注**：CLIENT 线程只能由 07 在甲方门户的验收会话中经 `ArtifactComments.CreateClientOn` 创建（01 门户会话 → 07 `AcceptanceRecorder`），只允许在**面向甲方的产物**上：证据被选入某个 SENT 状态交付、`include_mode=FILE` 且未被构建剔除（07 `delivery_evidence_selections`）；其他产物 → 07 返回 422（07 BR-07-63）。CLIENT 线程：作者为 `CLIENT:<intake_contact_id>`；不可提及；团队只读、不能回复（130479，团队与甲方的沟通仍走 01 澄清）；可被团队在内部另起 INTERNAL 线程引用。**INTERNAL 线程永不出现在门户**；甲方只看到自己所在交付上的 CLIENT 线程。
+- **BR-03-142 事件不含正文**：`comment.*` 事件只含 ID、锚点种类、可见性、作者与提及主体，不含正文、引文或代码（00 §7.1 载荷约定）；05 据此投影 Agent 收件箱（MENTION、执行者的 MESSAGE），被提及的人类由本模块经 09 `Notifier` 通知（§9 N13 / N14，接收偏好按 08）。
+- **BR-03-143 评审台汇总**：A81 按工作项汇总全部执行上的线程（含 OUTDATED 计数与已转换标记），供 02 评审台与工作项详情使用；当前声明执行之外的线程标「来自较早的执行 #n」。
+- **BR-03-144 删除与保留**：线程与批注不物理删除（00 §3）；随执行归档只读；证据与产物的保留期不因批注延长或缩短。
+- **BR-03-145 并发**：同一线程的回复在线程行锁内分配 `seq`；A80 带 If-Match（409 130409）；两人同时把同一线程转为 FEEDBACK → 唯一约束保证只有一条，后到者 409 130478 并得到已有 `target_id`。
+- **BR-03-146 审计**：`execution.comment_thread_created`、`execution.comment_thread_resolved` / `_reopened`、`execution.comment_converted`（含 `target_kind`、`target_id`）、`execution.comment_retracted`；detail 不含正文与引文（只含线程 ID、锚点种类、版本引用）。
+- **BR-03-147 工具集快照即证据**（D120 第 6 项，05 BR-05-144 / 145）：每次派发（`execution.start` 入队）在同一事务内调用 05 `ToolsetResolver.ResolveOn(tx, …)`，把结果写入 `toolset` / `toolset_revision`，并经 `IssueTokens` 取得工具令牌随 `execution.start` 下发（载荷见 §6.z 增补）。快照是该执行的**证据**：执行详情「工具与技能」区按来源列出（「团队目录 issue-tracker v2」「技能 deploy v4」「本机自带 pdf-tools」），声明（02 C1）的证据摘要与证据包 manifest 附带 `toolset_revision` 与条目列表，评审台据此判断某次产出用的是哪一版工具；之后目录发布的新版本不改写已有快照。上下文层 6（`06_skills/`，BR-03-25）只放快照中的目录技能（与运行时技能目录内容一致），不再另行读取 06 挂载。INTERACTIVE / ADHOC 会话的「Skills、MCP」选择只能在 05 判定为 PROJECT 授予覆盖的目录条目与本机自带项中进行。05 不可用 → 本次派发不入队（调用方得到 503，系统派发按既有退避重试），禁止不带快照启动。
+- **BR-03-148 工具授权请求的发起权限**（`interaction_request`，08 §3.3d）：机器回传 `interaction_requested` 时，本模块以该执行的**执行者**（Agent 或人）为主体、执行所属项目为范围调 08 `AuthorityChecker.Check(interaction_request)`：允许 → 按既有 §4.3 创建 PENDING 交互；拒绝 → 不创建待人处理的交互，立即下发 `interaction.response{action:"DENY", content:"CAPABILITY_NOT_AUTHORIZED"}`，写一条 `state=CANCELLED`、`closed_reason=CAPABILITY_NOT_AUTHORIZED`、`reason_code` 为 08 原因码的交互记录（审计 `execution.interaction_denied`），不通知任何人。默认授予覆盖全部会运行执行的角色（08 §3.3d），因此默认行为不变；该码让团队可对某个 Agent 或自定义角色关闭「向人请求工具授权」。回应仍只能由人类以 `interaction_respond` 做出（BR-03-31 不变）。该操作在 05 操作清单中登记为 `interaction.request`。
 
 ## 6. 接口契约
 
@@ -1136,6 +1253,28 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 **错误码增补**：**130460** preview_config_missing（422，无可用预览配置或 `config_key` 不存在）；**130461** preview_start_failed（409，`data.failure_detail`）；**130462** preview_not_ready（409，会话未就绪或已结束）；**130463** preview_limit（429）；**130464** share_link_invalid（410，失效或不存在，不区分）；**130465** share_link_state（409，非法迁移）；**130466** workspace_not_editable（409，执行正在运行、未接管或接管者非本人；`data.reason`）；**130467** workspace_unavailable（409，机器离线、Pod 已删除或目录已清理）；**130468** file_too_large（413）；**130469** file_masked（422）；**130472** edit_conflict（409，`data.conflicts[]`）；**130473** viewer_unsupported（422）。权限类拒绝统一 403 130403，新 `reason_code`：`MACHINE_ACCESS_DISABLED`、`PORT_NOT_OWNED`、`PATH_OUTSIDE_WORKSPACE`（08 §3.5 登记）。
 
+### 6.z 接口增补（D120 锚定批注与过期上下文写入）
+
+| # | 方法 | 路径 | tag | 权限 · 守卫 | 请求 | 响应 | 错误 |
+|---|---|---|---|---|---|---|---|
+| A76 | GET | `/executions/{execution_id}/comment-threads` | executions | `execution_read` · O | `?artifact_kind=&path=&evidence_id=&state=&visibility=&view_version=`（`view_version` 给出时逐线程返回相对该版本的 `anchor_status` 与 `relocated_anchor`） | `CommentThread[]`（含首条批注摘要、计数、`anchor_status`、`conversions[]`） | 404 |
+| A77 | POST | `/executions/{execution_id}/comment-threads` | executions | `artifact_comment_write` · O | `{artifact_kind*, artifact_ref*, version_ref*, viewer_kind*, anchor_kind*, anchor*（S9）, body*≤8000, seen_seq?（AGENT 且执行关联工作项时必填）}` | `CommentThread`（201，含 seq=1 的批注）；`meta.next` | 422 130476/130469/130475/130480/130481；409 130477/130474；403 130403 |
+| A78 | GET | `/comment-threads/{thread_id}` | comment-threads | `execution_read` · O | `?view_version=` | `CommentThread` + `comments[]` + `conversions[]`；ETag | 404 |
+| A79 | POST | `/comment-threads/{thread_id}/comments` | comment-threads | `artifact_comment_write` · O | `{body*≤8000, seen_seq?（AGENT 必填，`comment_thread` 流）}` | `Comment`（201） | 409 130474/130479；422 130475/130476/130481 |
+| A80 | PUT | `/comment-threads/{thread_id}/resolution` | comment-threads | 线程创建者、执行者本人或 `work_item_write` · O；If-Match | `{state*:"RESOLVED"\|"OPEN", note?≤500}` | `CommentThread` | 409 130409/130479；403 130403 |
+| A81 | GET | `/work-items/{work_item_id}/comment-threads` | work-items | `execution_read` · O | `?state=&visibility=&anchor_status=&execution_id=` | `CommentThread[]`（跨执行汇总，BR-03-143） | 404 |
+| A82 | PATCH · DELETE | `/comments/{comment_id}` | comments | 作者本人（DELETE 另允许 `work_item_write`）· O | PATCH `{body*}`（If-Match） | `Comment` / 204（撤回） | 409 130409；422 130476 |
+
+**表示**：`CommentThread{id, execution_id, work_item_id?, artifact_kind, artifact_ref, version_kind, version_ref, version_uncommitted, viewer_kind, anchor_kind, anchor, anchor_excerpt, anchor_snapshot_url?（预览域）, anchor_status, relocated_anchor?, visibility, delivery_id?, state, created_by{kind, id, display}, comment_count, last_seq, last_comment_at, conversions[{target_kind, target_id, converted_by, converted_at}], version}`；`Comment{id, thread_id, seq, author{kind, id, display}, body?, mentions[], edited_at?, retracted, created_at}`。CLIENT 作者只显示联系人显示名，不显示联系方式。
+
+**过期上下文写入增补**：A27 / A28 请求增加 `seen_seq?`（BR-03-140）；A27 / A28 / A77 / A79 在 409 130474 时 `data = {state:"interrupted", stream, seen_seq, current_seq, newer_events[], truncated}`（00 §9）。这些操作登记到 05 `OperationRegistry`（`evidence.create`、`evidence.update`、`artifact_comment_thread.create`、`artifact_comment.reply`），响应带 `meta.next`。
+
+**跨模块接口增补**：本模块提供 `ArtifactComments`（00 §8）：`GetOn(ctx, tx, thread_id) (ThreadView, error)`（含锚点、版本、可见性、`work_item_id`、`delivery_id`）；`MarkConvertedOn(ctx, tx, thread_id, Conversion{target_kind, target_id, actor}) error`（同一 `target_kind` 已存在 → `ErrAlreadyConverted{target_id}`，调用方映射为自己的码或幂等返回；CLIENT / INTERNAL 与目标不匹配 → `ErrTargetNotAllowed`）；`CreateClientOn(ctx, tx, ClientComment{delivery_id, delivery_item_id, evidence_id, intake_contact_id, anchor_kind, anchor, version_ref, body}) (thread_id, error)`（只在面向甲方的产物上，BR-03-141）。本模块使用 02 `WorkItemActivityRecorder.RecordOn` / `WorkItemActivityReader.HeadOn`（BR-03-140）、05 `OperationRegistry`、07 `DeliveryEvidenceReader.ClientFacing(evidence_id)`（判定面向甲方，由 07 BR-07-63 提供）、04 预览网关的批注辅助脚本（04 BR-04-104）。
+
+**错误码增补**：**130474** write_interrupted（409，工作项或批注线程已有更新事件，未写入；`data.state="interrupted"`）；**130475** seen_seq_required（422，Agent 写入未携带 `seen_seq`）；**130476** anchor_invalid（422，锚点与查看器不匹配、坐标越界、提及不可读主体、无查看器的二进制文件；`data.field`）；**130477** artifact_version_changed（409，提交的版本与当前内容不一致或该版本不可取得）；**130478** comment_already_converted（409，同一线程已转换为该类对象；`data.target_id`）；**130479** client_thread_read_only（409，甲方批注线程团队侧只读）；**130480** anchor_kind_unavailable（422，v1.1 锚点种类在 MVP 构建中不可用）；**130481** comment_limit（422，线程或执行的批注数量达上限）。i18n key `execution.error.<名>`，三语齐全。
+
+**工具集与工具授权请求增补（D120 第 6 项）**：`execution.start`（§6.3）载荷增加 `toolset{revision, skills:[{entry_key, version_no, sha256, content?（总量 ≤256 KiB 时内联）| file_ref?}], mcp:[{entry_key, version_no, transport, package?{manager, name, version, integrity, file_id?}, command?, args?, env?}], tool_tokens:[{entry_key, token, expires_at}]}`（MCP 条目不含地址与凭据：STREAMABLE_HTTP 一律经机器本地代理访问 05 中继 T13，04 BR-04-105 / 106）；`leases.renew` 响应每项增加 `tool_tokens?[]`（剩余有效期 <5 min 时由 05 `IssueTokens` 续签；`status≠OK` 的项不签发）；`execution.rejected.reason` 增加 `TOOLSET_UNAVAILABLE`（机器校验技能哈希或安装包失败；E02 → FAILED，失败原因 `TOOLSET_UNAVAILABLE`，按基础设施失败上报 `ExecutionFailed`）。A03 / A43 的 `Execution` 表示增加 `toolset`、`toolset_revision`；列表过滤增加 `toolset_revision`(eq)。交互 `closed_reason` 增加 `CAPABILITY_NOT_AUTHORIZED`（BR-03-148）。本模块使用 05 `ToolsetResolver`（`ResolveOn` / `IssueTokens`），向 05 `OperationRegistry` 登记 `interaction.request`（机器事件 `interaction_requested`，权限码 `interaction_request`）。
+
 ## 7. 后台任务与事件
 
 ### 7.1 后台任务（经 09 `JobQueue`；互斥用底座 `dlock`，锁 TTL = 2×间隔；每批 ≤200 行，批内逐行独立事务，单行失败不影响其他行）
@@ -1200,6 +1339,14 @@ SSE：`tenant/{t}/work_item/{id}` 推送内部验收阶段变化（仅对有 `ex
 消费：04 `machine.access_changed`（BR-03-119）；`decision.made`（REVIEW 会话 CLAIM_DECIDED）；`machine.state_changed`（OFFLINE / REVOKED → 停止会话）。
 SSE：执行主题帧 `kind` 增加 `preview`（会话状态）、`preview_files_changed`、`terminal`（终端会话状态，不含内容）、`share_link`。
 审计（00 §7.2，08 §7.5 登记）：`execution.preview_started` / `_stopped`（detail `session_id, kind, origin, port?, commit?`）、`execution.preview_access_denied`、`execution.workspace_file_downloaded`、`execution.workspace_path_denied`（越界尝试，同主体 10 min 合并）、`execution.terminal_opened` / `execution.terminal_closed`（SHELL 必含 `recording_sha256`、`sandboxed`；WATCH 只记 opened）、`execution.human_takeover_started` / `_released`、`execution.workspace_files_edited`、`execution.share_link_*`（BR-03-132）。
+
+### 7.z 任务与事件增补（D120）
+
+任务：无新增周期任务（锚点判定在读取时进行并缓存；原版本截图由 A77 后的单次任务 `execution.comment_anchor_snapshot` 生成，任务键 `comment-snapshot:<thread_id>`，机器无 `browser_capture` 或离线 → 放弃，不重试）。
+发布（outbox，载荷不含正文，BR-03-142）：`comment.thread_created{thread_id, execution_id, work_item_id?, project_id, anchor_kind, visibility, created_by{kind,id}, mention_principal_ids[]}`、`comment.posted{thread_id, comment_id, seq, author{kind,id}, mention_principal_ids[]}`、`comment.thread_resolved{thread_id, state}`、`comment.converted{thread_id, target_kind, target_id, converted_by}`（可经 SSE 推送完整载荷）。
+消费：无新增（转换由下游在其事务内同步调用 `ArtifactComments`）。
+SSE：执行主题 `tenant/{t}/execution/{id}` 帧 `kind` 增加 `comment_thread`（线程增改，含 `anchor_status`）；工作项汇总由 02 工作项主题转发。
+审计：BR-03-146 所列（08 §7.5 登记）。
 
 ## 8. 页面规格
 
@@ -1286,6 +1433,14 @@ SSE：执行主题帧 `kind` 增加 `preview`（会话状态）、`preview_files
 
 - 网关发现无有效预览 Cookie 时 302 到此页；页面以当前登录会话调用 A60 后跳转预览域；未登录 → 底座登录后回到此页；无权限 → 「你没有访问这个预览的权限或预览已结束」；会话已结束 → 同文案 +〔返回执行〕。页面不渲染任何预览内容。
 
+### 8.9 锚定批注（D120；远程工作区产物 / 文件 / 预览 Tab 与评审台内嵌，不单独成页）
+
+- **入口**：远程工作区（§8.6）各查看器工具栏〔批注〕开关（`artifact_comment_write` 时可用，否则只显示已有批注）；评审台与工作项详情的「批注」分组（A81）；Agent 收件箱与通知中的链接（`?thread=<id>` 定位并高亮锚点）。
+- **取点**：CODE（文件 / 差异视图）—— 拖选行号槽选择行区间；DOCUMENT 表格 —— 点击行首；HTML（设备框 / 报告）—— 开启批注后鼠标悬停高亮元素、点击选中（辅助脚本可用）或拖框（RECT_ONLY，顶部提示「已按位置标注」），记录当前设备档、视口与滚动；PDF —— 拖框；文档段落 —— 选中文字（自动扩展到段落并保存引文）；视频（v1.1）—— 在进度条上点或拖出区间，播放器暂停在该点；章节（v1.1）—— 同文档段落。取点后右侧弹出新线程输入框（支持 @，Enter 发送）。
+- **呈现**：锚点在内容上以编号标记（代码行槽圆点、表格行左侧色条、HTML 区域虚线框、视频进度条刻度、段落左侧竖条）；右侧线程栏分组：「当前版本」/「已重新定位」（显示「已从第 12 行移到第 15 行」）/「基于旧版本」（灰显，原文快照 + 截图，〔查看原版本〕）/「已解决」（折叠）；甲方批注带「甲方」徽章与只读说明「请通过澄清回复甲方」。线程卡：作者（人 / Agent / 甲方）、版本（commit 短哈希或「未提交」）、正文、回复、〔解决〕〔转为反馈〕（评审台裁决对话框中预填该线程，02）〔转为缺陷〕（12 A31，预填标题、重现位置与引文）、已转换徽章（链接到反馈或缺陷）。
+- **状态**：加载骨架；无批注空态「在内容上选择位置即可批注」；版本不可取得时线程显示快照与「原版本已不可用」；MVP 中视频 / 章节查看器的批注按钮带「v1.1」并禁用；离线时批注栏只读并提示重连。
+- **移动端**：线程栏改为底部抽屉；取点改为长按（代码行、段落、表格行）与双指框选（HTML / PDF）；锚点编号在手机上仍 ≥24 px 可点。
+
 ## 9. 通知（经 09 `Notifier`；站内信必达，其余渠道按 08 用户偏好）
 
 | # | 事件 | 接收人 | 渠道 | 文案模板（zh-CN） | 去重 / 合并 |
@@ -1302,6 +1457,8 @@ SSE：执行主题帧 `kind` 增加 `preview`（会话状态）、`preview_files
 | N10 | 分享链接已批准 / 已驳回（分期待定） | 申请人 | 站内 | "{批准人}{批准/驳回}了 {执行} 的预览分享{：理由}" | 每链接一次 |
 | N11 | 预览启动失败（PLATFORM / REVIEW） | 发起者 | 站内 | "{执行} 的预览 {配置名} 启动失败：{摘要}" | 同会话一次 |
 | N12 | 交互终端被打开（v1.1） | 执行的人类执行者 / 发起者（非打开者本人）+ 工作项负责人 | 站内 | "{actor} 在 {执行} 上打开了交互终端（已录制）" | 每会话一次 |
+| N13 | `comment.thread_created` / `comment.posted` 中提及人类（D120） | 被提及的人类 | 站内 + Web Push；离线 >10 min 邮件摘要 | "{author} 在 {执行} 的 {文件名} 上提到了你" | 同线程 5 min 内合并 |
+| N14 | 新批注落在本人执行的产物上 / 甲方在交付产物上批注（D120） | 执行的人类执行者或发起者；CLIENT 线程另通知交付负责人 | 站内 | "{author} 批注了 {执行} 的 {文件名}"；甲方："甲方在交付 {编号} 的 {文件名} 上留下了批注" | 同执行 10 min 内合并；Agent 执行者不发通知（经 05 收件箱） |
 
 所有通知文案三语齐全；不包含消息正文、代码或工具入参原文。
 
@@ -1754,6 +1911,25 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 | AC-03-106 | integration | BR-03-131（安全） | **G** ACTIVE 链接 L **W** 假时钟越过 `expires_at` 后用同一 Cookie 访问、重新打开 `share_url` **T** 均 410「此预览链接已失效」，L EXPIRED，`share_link.ended` 关闭收件箱项 **W** 另一链接被 A73 撤销 **T** ≤1 s 后访问 410；不存在的令牌与失效令牌返回相同响应 |
 | AC-03-107 | e2e | §8.6 | 桌面 1440 与手机 390：四个 Tab 的加载、空、错误、无权限、网关未配置、仅长轮询、工作区不可用状态；v1.1 项带「v1.1」并禁用；分享按钮带「分期待定」；路径模式琥珀标签；无横向滚动，触控 ≥44 px |
 
+### 10.z 验收标准增补（D120 锚定批注与过期上下文写入）
+
+| ID | 层 | 关联 | Given / When / Then |
+|---|---|---|---|
+| AC-03-108 | integration | US-03-37, BR-03-133, BR-03-135 | **G** 执行 E 已提交 `src/app.ts`（commit c1，120 行）**W** 评审人 X A77 `{WORKSPACE_FILE, path, version_ref:c1, viewer_kind:CODE, CODE_LINES{start_line:40, end_line:44}}` **T** 201，`anchor_excerpt` 为第 40–44 行原文，`version_kind=COMMIT`；`end_line:130` → 422 130476（`data.field=end_line`）；对 `.env` 批注 → 422 130469；`viewer_kind=VIDEO` + CODE_LINES → 422 130476 |
+| AC-03-109 | integration | BR-03-133, BR-03-136 | **G** 服务预览 S READY，设备档 PHONE **W** 辅助脚本可用时选中按钮；应用 CSP 禁止脚本时拖框 **T** 前者 `HTML_REGION{selector, rect, viewport{390,844,PHONE}, precision:SELECTOR}`、`version_kind=HEAD_COMMIT`；后者 `precision:RECT_ONLY`、`selector` 为空；来自其他源的 `postMessage` 被忽略；控制台源上无任何注入脚本 |
+| AC-03-110 | integration | BR-03-133 | **G** DOCUMENT 中的 CSV（主键列 `id`）与 Markdown 文档 **W** 对 `id=42` 的行、对第 3 段批注 **T** TABLE_ROW 含 `row_key{column:"id", value:"42"}` 与 `row_sha256`；TEXT_PARAGRAPH 含 `paragraph_sha256` 与引文；MVP 构建中 MEDIA_TIME → 422 130480 |
+| AC-03-111 | integration | US-03-40, BR-03-137 | **G** 线程 T1 锚定 c1 第 40–44 行、T2 锚定第 80 行；c2 只在第 10 行前插入 3 行并改写第 80 行 **W** 以 `view_version=c2` 调 A76 **T** T1 `RELOCATED`、`relocated_anchor` 为 43–47；T2 `OUTDATED`，仍返回原文快照；以 `view_version=c1` → 两者 CURRENT；线程状态均未改变 |
+| AC-03-112 | integration | BR-03-137 | **G** TABLE_ROW 线程 `row_key id=42`；新版本中该行金额被改 **W** 判定 **T** OUTDATED 且仍定位到 id=42 的行并标「此行已修改」；该行被删除 → OUTDATED 无定位；段落线程在段落前插入新段后 → 按 sha 找到，RELOCATED |
+| AC-03-113 | integration | US-03-39, BR-03-139, 02 BR-02-66 | **G** INTERNAL 线程 T（OPEN）**W** 评审人在 02 D1 `REQUEST_CHANGES` 的 `feedback[0].comment_thread_id=T` 提交 **T** 同一事务内写入反馈行（`location` 由锚点生成）、`execution_comment_conversions(FEEDBACK)` 含锚点快照、T 变为 RESOLVED、发布 `comment.converted`；再次以 T 转 FEEDBACK → 02 返回 422 120471（`data.target_id` = 已有反馈）；同一 T 经 12 A31 转缺陷成功（两种转换并存） |
+| AC-03-114 | integration | US-03-41, BR-03-140 | **G** E 关联工作项 W（`activity_seq=12`），执行者 Agent Ada 读到 12 **W** 评审人在 E 的产物上新建批注（W 流到 13）；Ada 以 `seen_seq=12` 调 A27 提交证据 **T** 409 130474，`newer_events` 含 COMMENT_ADDED（线程 ID）；无证据行；Ada 以同一 `Idempotency-Key`、`seen_seq=13` 重试 → 201 且 W 流到 14（EVIDENCE_ADDED）；Ada 不带 `seen_seq` → 422 130475；人类不带 → 201；ADHOC 未关联工作项的执行不要求 `seen_seq` |
+| AC-03-115 | integration | BR-03-140, BR-03-145 | **G** 线程 T 最新 seq=4 **W** Agent 以 `seen_seq=3` 回复；两名人类并发回复 **T** Agent 得 409 130474（`stream="comment_thread:<T>"`）；两条人类回复得到 seq 5、6，无重复 |
+| AC-03-116 | integration | BR-03-134 | **G** Morgan 只有 `execution_read`；纯人工项目中的助理 Agent 持 `artifact_comment_write` **W** 二者调 A77 **T** Morgan 403 130403（`MISSING_PERMISSION`）；助理 403 130403（`HUMAN_ONLY_MODE`，08 S2(e)）；Morgan 仍可 A76 读取 |
+| AC-03-117 | integration | BR-03-141 | **G** 交付 D（SENT）选入证据 Ev（`include_mode=FILE`）；另一证据 Ev2 只入 SUMMARY **W** 07 经门户验收为 Ev 创建 CLIENT 线程、为 Ev2 创建 **T** Ev 成功（`visibility=CLIENT`、作者 `CLIENT:<contact>`）；Ev2 被拒（07 422 127056）；团队成员对该 CLIENT 线程 A79 → 409 130479；门户读取只返回 D 上的 CLIENT 线程，INTERNAL 线程不出现 |
+| AC-03-118 | unit | BR-03-142 | **W** 新建含提及与 2000 字正文的线程 **T** `comment.thread_created` 载荷不含正文、引文与路径原文以外的内容（只含 ID、锚点种类、可见性、作者与提及主体）；Agent 被提及时 05 收件箱新增 MENTION，人类被提及时 N13 |
+| AC-03-119 | e2e | §8.9 | **G** 桌面 1440 与手机 390 **W** 在代码视图、CSV、Markdown、设备框网页、PDF 上依次批注并切换到新版本 **T** 锚点标记、线程栏四个分组（当前 / 已重新定位 / 基于旧版本 / 已解决）、〔查看原版本〕、〔转为反馈〕〔转为缺陷〕可用；甲方线程带徽章且无回复框；视频与章节批注按钮带「v1.1」并禁用；手机上为底部抽屉、长按取点 |
+| AC-03-120 | integration | BR-03-147, 05 BR-05-145 | **G** Ada 在 P 的执行 E1 派发时工具集为 issue-tracker v2、技能 deploy v4、本机 pdf-tools **W** E1 运行中团队发布 issue-tracker v3；E1 返工生成分支 E2；05 在派发时不可用 **T** E1 的 `toolset` 与 `toolset_revision` 不变，执行详情与声明证据摘要列出三项及来源；E2 的快照为 v3；上下文 `06_skills/` 与运行时技能目录内容一致；05 不可用时派发不入队（503），无不带快照的 `execution.start` |
+| AC-03-121 | integration | BR-03-148 | **G** 自定义角色移除了 Agent Bo 的 `interaction_request`；Ada 保留默认授予 **W** 二者的执行各回传一个 TOOL_PERMISSION `interaction_requested` **T** Ada：PENDING 交互、N1 通知；Bo：立即下发 `interaction.response{DENY}`，交互记录 CANCELLED（`closed_reason=CAPABILITY_NOT_AUTHORIZED`），无通知、无收件箱项，审计 `execution.interaction_denied`；任一 Agent 回应 Ada 的交互仍 403 130403 |
+
 ## 11. 度量与埋点（不得包含代码、消息正文、工具入参、提示词）
 
 | 事件名 | 属性 |
@@ -1821,3 +1997,7 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 > **D112 / D113 已并入（00 v2.0 §15）**：新增依赖 06 `MemoryWriter.Propose`（穿透学习）、11 `EvalSetWriter.ProposeCase`（已在 11 §6.8 定义，由 02 调用）、04 `browser_capture` 能力标记、02 `plan.approved` 事件与 `max_internal_rounds` 判断；对 00 无新增变更请求（§15 已定义所用枚举、事件与权限码）。
 
 > **D119（远程工作区，2026-10-12）已并入**：§1 范围、US-03-28..36、表 §3.24–3.28（预览会话、分享链接、终端会话、接管字段、模块内枚举与 S8 `PreviewConfig`）、§4.y 状态机、BR-03-104..132、接口 A55–A75 与机器消息、`PreviewAccessResolver`、错误码 130460–130469 / 130472 / 130473、§7.y 任务与事件、页面 §8.6–8.8、通知 N10–N12、AC-03-89..107。**CR-03-09**（对 00 / 08，已并入 00 v2.0 D119 补充）：权限码 `terminal_interact`、`workspace_file_edit`、`preview_share_approve`（execution 注册，DataScoped；前两者与第三者均仅人类，`terminal_interact`、`preview_share_approve` 不可委托）；事件 `share_link.requested` / `share_link.decided` / `share_link.ended`；接口 `PreviewAccessResolver`（execution → fleet）；08 登记 step-up `terminal_interactive`、收件箱 `PREVIEW_SHARE_APPROVAL`、原因码 `MACHINE_ACCESS_DISABLED` / `PORT_NOT_OWNED` / `PATH_OUTSIDE_WORKSPACE` 与审计事件。分期：服务 / 评审预览、文档图片 PDF 报告查看器、只读文件、只读终端为 MVP；交互终端、文件编辑与接管、视频与章节查看器为 v1.1；分享链接分期待定（Q9）。
+
+> **D120（锚定批注与过期上下文写入，2026-10-12）已并入**：§1 范围、US-03-37…41、表 §3.29–3.31（批注线程、批注、转换记录、S9 锚点与模块内枚举）、§4.z、BR-03-133…146、接口 A76–A82、`ArtifactComments`、错误码 130474–130481、事件 `comment.*`、§8.9、N13 / N14、AC-03-108…119。**CR-03-10**（对 00，已登记入 00 v2.0 D120 补充）：§5 共享枚举 `AnchorKind`（CODE_LINES, TABLE_ROW, HTML_REGION, MEDIA_TIME, TEXT_PARAGRAPH）与 `CommentVisibility`（INTERNAL, CLIENT），所有者 03，02 / 07 / 12 读取；§6.1 权限码 `artifact_comment_write`；§7.1 事件 `comment.thread_created`、`comment.posted`、`comment.thread_resolved`、`comment.converted`；§8 接口 `ArtifactComments`；§9 过期上下文写入约定（与 05 CCR-05-11 同）。依赖：02 `WorkItemActivityRecorder` / `WorkItemActivityReader`（BR-02-64）、07 `DeliveryEvidenceReader.ClientFacing`（BR-07-63）、04 批注辅助脚本注入（BR-04-104）。分期按 D119 查看器：视频时间点与章节段落批注为 v1.1，其余 MVP。
+
+> **D120 第 6 项（团队工具目录）已并入**：§3.32 执行表 `toolset` / `toolset_revision`（S11 快照）、BR-03-147（工具集快照即证据）、BR-03-148（`interaction_request` 判定）、§6.z 增补（`execution.start.toolset`、`leases.renew.tool_tokens`、`TOOLSET_UNAVAILABLE`、交互 `closed_reason` 增加 `CAPABILITY_NOT_AUTHORIZED`）、AC-03-120 / 121。**CR-03-11**（对 00，已登记入 00 v2.0 D120 补充）：§6.1 权限码 `interaction_request`（execution 注册，DataScoped，可委托，默认授予全部会运行执行的角色，08 §3.3d）；依赖 05 `ToolsetResolver`（fleet → execution）；不新增共享枚举与事件。

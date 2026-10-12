@@ -454,6 +454,11 @@
 - **BR-09-82 升级**：任务 `iam_core.menu_contributions_sync`（启动后由 leader 入队 + 每日一次，按租户分页 100）：无台账 → 若同 route 不存在则插入并写台账，存在则只写台账（menu_id 指向已有行）；台账 version < 声明 version → 当前行哈希 == `seeded_hash`（管理员未改）才更新字段与哈希，否则跳过并记 `customized`；台账 `menu_id` 指向的行已被删除 → 置 NULL，**永不复活**（解决 `core/service.go` 注释所述「删除与从未创建无法区分」）；代码中已移除的贡献 → 对应菜单置 `disabled`（不删除）。Domain 与 Space 属于 `seeded_hash` 覆盖的字段：贡献改变 Domain / Space / Group / Route（如 D118 修订重新归位）时必须 Version+1，未被管理员改过的行随同步更新；被改过的行（`customized`）保留管理员值，若其 `domain` / `space` 为空或不在集合内（含 D118 初版写入的 `COLLAB`），`EffectiveMenus` 回退到贡献声明的 Domain / Space（外壳据此归入域标签与空间，保证升级前租户也能正确落位）。
 - **BR-09-83 门控不可削弱**：`EffectiveMenus` 的路由→权限表由「核心默认 + 激活贡献」构成；管理员改动权限码不能弱化贡献页的守卫（与现有内置页规则一致）。模块被禁用时其权限未注册 → 菜单不可见。
 
+### 5.10 D120 增补（过期上下文写入的幂等例外与新密钥用途）
+
+- **BR-09-84 C7 对 `interrupted` 的例外**：业务处理返回 409 且响应 `data.state="interrupted"`（00 §9 过期上下文写入；02 120469、03 130474、05 145021、12 126061）时，幂等辅助**不保存**该结果：事务内模式下键行随业务事务一起回滚；中间件模式下删除本次的 IN_PROGRESS 行（不写 COMPLETED）。因此调用方可用**同一个** `Idempotency-Key` 携带新的 `seen_seq` 重试。`request_hash` 计算时排除请求体顶层字段 `seen_seq`（00 §9）：重试与原请求哈希相同，不会得到 176425；若首次已成功，以任意 `seen_seq` 重放都返回首次结果。其他 409 / 4xx / 5xx 仍按 BR-09-72 / 73 原规则处理（不改变既有语义）。
+- **BR-09-85 C8 新 purpose**：fleet 在 `Initialize` 登记 `fleet.tool_credential`（05 团队工具目录中 MCP 服务器的凭据）与 `fleet.wake_webhook_secret`（05 Agent 唤醒 webhook 秘密，v1.1）；关联数据含行 ID 与租户 ID（BR-09-75）。`fleet.tool_credential` 的明文只在 05 MCP 中继处理单次请求时于进程内存中短暂存在，**绝不**下发机器、不入日志 / 审计 / 事件 / 错误详情；轮换由 05 以新信封整体替换，密钥轮换沿用 `backend-api secrets rewrap --purpose fleet.tool_credential`。本规格不新增 C8 能力或表。
+
 ---
 
 ## 6. 接口契约
@@ -1014,6 +1019,8 @@ export function useRealtime(
 | AC-09-72 | unit | BR-09-75 | **W** 用行 A 的关联数据打开行 B 的密文 / 轮换后旧钥密文 **T** 失败 / 成功且 `NeedsRewrap=true`；未配置密钥 → 模块 Initialize 失败 |
 | AC-09-73 | integration | BR-09-77 | **W** 服务端 StageOn + CreateOn 后业务事务回滚 **T** 不出现可见节点；暂存对象在 deadline 后被清理；提交则节点位于系统目录且普通成员只读 |
 | AC-09-81 | integration | BR-09-80, BR-09-81, BR-09-82 | **G** delivery 贡献 `chat`（Domain=CHAT, Space=TEAM）、`defects`（Domain=PROJECTS, Space=TEAM, Group=跨项目, Route `/t/:tenantID/defects`）、`p-defects`（Domain=PROJECTS, Space=PROJECT, Group=测试, Route `/t/:tenantID/p/:projectID/defects`）**W** 新建租户 **T** `iam_menus` 三行 `domain` / `space` 分别为 CHAT/TEAM、PROJECTS/TEAM、PROJECTS/PROJECT，IAM 应用现有菜单 `domain=''`、`space=''` 且 IAM 导航不变；**W** 老租户（无 domain / space 值，或 D118 初版写入 `domain=COLLAB`）贡献 Version+1 后同步 **T** 未改动行补齐为声明值，管理员改过的行保持原值且 `EffectiveMenus` 返回声明的 Domain / Space；**W** 某 delivery 贡献缺 Domain、Domain=`COLLAB`、缺 Space、`Space=PROJECT` 而 Route 不含 `:projectID`、`Space=TEAM` 而 Route 含 `:projectID`，或 `Space=PROJECT` 且 Domain≠PROJECTS **T** 均启动失败 175400 并点名模块与字段 |
+| AC-09-82 | integration | BR-09-84 | **G** 05 C09 以事务内模式使用 C7；Agent 请求带键 K、`seen_seq=100`，会话已有 seq=101 **W** 首次调用返回 409 145021（`data.state="interrupted"`）；以 K、`seen_seq=101` 重试；再以 K、`seen_seq=105` 重放 **T** 首次后 `platform_idempotency_keys` 无 K 行；重试 201 并写入 COMPLETED；重放返回同一 201 结果（`seen_seq` 不参与哈希，非 176425）；中间件模式下 interrupted 后 IN_PROGRESS 行被删除、重试不得到 176409 |
+| AC-09-83 | unit | BR-09-85 | **G** 未配置密钥 **W** fleet `Initialize` 登记 `fleet.tool_credential` **T** 初始化失败；配置后 `Seal` 的信封挪到另一行（关联数据不符）→ `Open` 失败；日志与审计夹具中不出现明文 |
 
 ### 10.7 架构与门禁
 
@@ -1145,5 +1152,8 @@ Prometheus（模块 Collector；标签不得含 tenant_id、principal_id、载�
 | CR-09-10 | 00 §1 / §10 | 09 增加页面列：「后台任务、计划任务、领域事件（系统控制台）；共享组件 RealtimeStatus、NotificationBell」；§10 共享组件清单加入这两个组件与 `useRealtime` | 00 §1 现写「—」 |
 | CR-09-11 | 底座 `iam_menus` | 新增列 `app VARCHAR(32) NOT NULL DEFAULT 'iam'`，菜单可指向不同前端应用（如 `delivery`） | 00 §10 规定业务应用为独立 `apps/delivery` |
 | CR-09-12 | 底座 `iam_menus` | 新增列 `domain VARCHAR(16) NOT NULL DEFAULT ''`（D118 顶层域键；空 = 不分域，IAM 现有行不变）与 `space VARCHAR(16) NOT NULL DEFAULT ''`（D118 修订：TEAM / PROJECT；空 = 不区分，IAM 现有行不变） | 08 §8.6 控制台改为顶栏域标签 + 当前域侧栏，项目为主容器、项目内页面在项目空间渲染（D118 及其修订） |
+| CR-09-13（D120） | 00 §9 幂等 | 写明 `data.state="interrupted"` 的 409 不入幂等表、`seen_seq` 不参与 `request_hash`（BR-09-84）；C8 purpose 由 fleet 登记（BR-09-85），无新平台能力 | 05 BR-05-128 / 00 §9 过期上下文写入需同键重试 |
 
 **处理状态（00 v1.3 审校后）**：CR-09-01、CR-09-02、CR-09-04、CR-09-06、CR-09-07 已并入 00；CR-09-03 已并入，表名按 00 定为 `platform_idempotency_keys`、列 `operation`/`key`，错误码以 00 为准（176425 = 同键不同请求，176409 = 进行中），本规格已对齐；CR-09-05 记入 00 §13 F10，权限行见 §6.3；CR-09-09 中仅本模块使用的枚举按 00 §3 留在本规格，不进 §5；CR-09-08、CR-09-10、CR-09-11 待主规格下一轮合并。CR-09-12（D118，2026-10-12）同 CR-09-11，为底座表列变更，随 C6 实施，不涉及 00。
+
+> **D120（2026-10-12）已并入本规格**：§5.10（BR-09-84 幂等对 `interrupted` 的例外、BR-09-85 C8 新 purpose `fleet.tool_credential` / `fleet.wake_webhook_secret`）、AC-09-82 / 83、CR-09-13。

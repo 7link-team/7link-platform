@@ -66,6 +66,7 @@
 | US-12-12 | 作为交付负责人，我要让 Codeup 的 MR 与 Flow 的红线结果自动成为工作项的证据 | v1.1 |
 | US-12-13 | 作为过渡期的项目管理员，我要为每个字段指定主控方（Myrmidon 或云效），双向同步不互相覆盖 | v1.1 |
 | US-12-14 | 作为主管 Agent，我要经云效 MCP 读写云效工作项，以便在客户仍用云效时协同 | v2 |
+| US-12-15 | 作为评审人或测试人员，我要把产物上的一条批注一键提为缺陷，缺陷自动带上位置、原文快照与所针对的产物版本，以便修复者能回到原处（D120） | MVP |
 
 ---
 
@@ -180,6 +181,8 @@
 | escaped_from_stage | ENUM `VerificationStage` | Y | | 若该缺陷是人 / 甲方发现的「穿透」（00 §15.2），记录被哪一级内部质量门放过；非空时同步发布 `quality.escaped`（BR-12-14） |
 | reopened_from_work_item_id | ID | Y | | FK → 02 工作项；「再次打开」新建的缺陷指向原缺陷（§4.2.1 F13 / F14） |
 | duplicate_of_work_item_id | ID | Y | | FK → 02 工作项；`resolution=DUPLICATE` 时必填，且不得指向自身 |
+| comment_thread_id | ID | Y | | D120：来源批注线程（03 §3.29），由 A31 写入，不可改（BR-12-37） |
+| anchor_snapshot | JSON | Y | | D120：转换时 03 返回的锚点快照 `{anchor_kind, anchor, version_kind, version_ref, artifact_ref, anchor_excerpt}`，不可变 |
 
 ### 3.8 `delivery_state_definitions`（状态定义：组内自定义显示状态，可变）
 
@@ -554,6 +557,11 @@ UNIQUE(tenant_id, work_item_id, kind, repository, ref)。
 - **BR-12-35** `defect_stage` 只前进不后退，唯一例外是 02 回到 REWORK（F8 / F11 / F12）时清空为 NULL；`DEPLOYED` 需部署证据指向含 `MERGED` 合入提交的制品，证据缺失或提交不符 → 409 `126006`。`VERIFIED` 只由 T33 写入；`CLOSED` 只由 T14 写入。
 - **BR-12-36** 新建「再次打开」缺陷（F13 / F14）时：原缺陷须为 ACCEPTED 或 CANCELLED，否则 409 `126007`；原缺陷为 ACCEPTED 且新缺陷由人类或甲方发现时，按 BR-12-14 记录 `escaped_from_stage` 并发布 `quality.escaped`（同一 `escape_key` 已发布时只引用、不再发布）；由测试 Agent 发现的回归不计穿透。
 
+### 5.9 D120：批注转缺陷与过期上下文写入
+
+- **BR-12-37** 批注转缺陷：A31 `POST /comment-threads/{thread_id}/defects`（守卫 `RegisterOwned`，按线程所属项目判定 `work_item_write`）。请求 `{title?, severity*, priority?, steps?, expected?, actual?, found_in_work_item_id?}`；服务端经 03 `ArtifactComments.GetOn(ctx, tx, thread_id)` 读取线程并按锚点预填缺省值：`title` = 首条批注前 80 字；`steps` = 位置（CODE_LINES `src/app.ts:40-44`、HTML_REGION「页面 /orders · 区域 (120,340) 390×844 · PHONE」、TABLE_ROW `orders.csv 行 id=42`、TEXT_PARAGRAPH「第 3 段」）+ 版本（commit 短哈希或内容哈希前 8 位）+ `anchor_excerpt`；`actual` = 首条批注正文（≤2000 字）；`expected` 无可推断值时须由调用方提供（否则按 BR-12-02 返回 422 `126020`）；`found_in_work_item_id` 缺省 = 线程的 `work_item_id`（为空时不关联）。同一事务内：① 在线程所属项目创建 `type=BUG` 工作项与 §3.7 行（BR-12-02 字段齐全，`found_stage=TEST`，可随后经 A9 修改）；② 写 `comment_thread_id` 与 `anchor_snapshot`；③ 调 03 `ArtifactComments.MarkConvertedOn(ctx, tx, thread_id, {target_kind:DEFECT, target_id:新缺陷工作项 id, actor})`；④ 审计 `delivery.defect_created_from_comment`（detail 只含线程 ID、缺陷 ID、锚点种类与版本引用，不含正文）。只允许 INTERNAL 线程：CLIENT 线程 → 422 **126063**（`data.reason=CLIENT_THREAD`；甲方意见走 07 拒收项）；该线程已转为缺陷 → 422 **126063**（`data.reason=ALREADY_CONVERTED`、`data.target_id` = 已有缺陷，调用方可直接跳转），整体回滚；03 的 `ErrTargetNotAllowed` 同样映射为 126063。转换为 FEEDBACK（02）与 DEFECT 可并存。Agent 调用时适用 BR-12-38 同一 `seen_seq` 规则（线程有关联工作项时取其 `work_item:<id>` 流）。本操作登记到 05 `OperationRegistry`（`defect_from_comment.create`，权限 `work_item_write` · ROLE，副作用 `WRITES_STATE`），响应带 `meta.next`。
+- **BR-12-38** 流转的过期上下文写入（05 BR-05-127 / 128 / 131，00 §9）：A13 调用方为 AGENT 时请求须带 `seen_seq`（02 `work_item:<id>` 流的序号；缺失 → 422 **126062**）；人类可选（传了即同样判定）。事务顺序：取得工作项行锁 → 经 02 `WorkItemActivityReader.HeadOn(ctx, tx, work_item_id)` 读取当前序号 → 若 `activity_seq > seen_seq` 且其间存在主体 ≠ 调用者的活动 → 409 **126061**，`data={state:"interrupted", stream:"work_item:<id>", seen_seq, current_seq, newer_events[≤50], truncated}`（`newer_events` 取自 `WorkItemActivityReader.Since`），**不写任何数据**、不发事件、不审计业务动作，`interrupted` 不入 09 C7 幂等表，Agent 读完更新事件后可用同一 `Idempotency-Key`、新的 `seen_seq` 重试 → 否则按原顺序继续流转条件判定（§3.10）。成功流转在同一事务内调 `WorkItemActivityRecorder.RecordOn(ctx, tx, work_item_id, {kind:TRANSITIONED, actor, ref:{kind:"transition", id}, title})`。调用者自己产生的活动不构成打断；自动化规则（SYSTEM）触发的流转不要求 `seen_seq`。本操作登记为 `work_item_transition.apply`，成功与失败响应都带 `meta.next`。
+
 ---
 
 ## 6. 接口契约
@@ -587,6 +595,9 @@ UNIQUE(tenant_id, work_item_id, kind, repository, ref)。
 | 126050 | 422 | `delivery.error.test_case_criterion_required` | 用例未挂验收标准 |
 | 126051 | 422 | `delivery.error.test_report_plan_limit` | 报告关联计划超过 15 |
 | 126060 | 422 | `delivery.error.automation_invalid` | 规则触发 / 条件 / 动作不合法 |
+| 126061 | 409 | `delivery.error.write_interrupted` | 工作项已有他人的更新活动，流转 / 转缺陷未写入；`data.state="interrupted"` + `newer_events`（BR-12-38，D120） |
+| 126062 | 422 | `delivery.error.seen_seq_required` | Agent 流转未携带 `seen_seq`（BR-12-38，D120） |
+| 126063 | 422 | `delivery.error.comment_not_convertible` | 批注不可转为缺陷：`data.reason ∈ {CLIENT_THREAD, ALREADY_CONVERTED}`，已转换时带 `data.target_id`（BR-12-37，D120） |
 | 190010 | 409 | `integration.error.unmapped_states` | 存在未确认的状态映射 |
 | 190011 | 409 | `integration.error.import_in_progress` | 已有非终态导入任务 |
 | 190012 | 409 | `integration.error.dry_run_required` | 未完成或未确认 dry run |
@@ -629,6 +640,9 @@ UNIQUE(tenant_id, work_item_id, kind, repository, ref)。
 | A28 | GET `/entities/{entity_id}/worklog-summary?from=&to=&group_by=` | `work_item_read` | 汇总（BR-12-23） | — |
 | A29 | GET `/work-items/{work_item_id}/code-links` | `work_item_read` | | — |
 | A30 | POST `/work-items/{work_item_id}/code-links` | `work_item_write` | 手动关联 `{kind, repository, ref, url?}`（本地 git 由 03 机器通道上报自动关联） | ✔ |
+| A31 | POST `/comment-threads/{thread_id}/defects` | `work_item_write`（线程所属项目）· Owned；AGENT 另带 `seen_seq`（BR-12-38） | `{title?, severity*, priority?, steps?, expected?, actual?, found_in_work_item_id?}`，缺省按锚点预填（BR-12-37）→ 201 工作项（BUG）+ 缺陷详情（含 `comment_thread_id`、`anchor_snapshot`）；422 `126063` / `126020`；409 `126061` | ✔ |
+
+**A13 请求增补（D120）**：`seen_seq?`（AGENT 必填，BR-12-38）；409 `126061`、422 `126062`；响应带 `meta.next`。
 
 ### 6.4 Part B 接口（v1.1）
 
@@ -677,7 +691,7 @@ UNIQUE(tenant_id, work_item_id, kind, repository, ref)。
 
 ### 7.4 审计
 
-`delivery.workflow_config_changed`（含 diff）、`delivery.version_lock_changed`、`delivery.review_sheet_closed`、`delivery.worklog_approved`、`integration.credentials_changed`、`integration.mapping_changed`、`integration.import_started` / `finished`、`integration.webhook_signature_failed`（限频合并）。
+`delivery.workflow_config_changed`（含 diff）、`delivery.version_lock_changed`、`delivery.review_sheet_closed`、`delivery.worklog_approved`、`integration.credentials_changed`、`integration.mapping_changed`、`integration.import_started` / `finished`、`integration.webhook_signature_failed`（限频合并）；D120：`delivery.defect_created_from_comment`（BR-12-37，detail 不含正文）。
 
 ---
 
@@ -726,6 +740,7 @@ UNIQUE(tenant_id, work_item_id, kind, repository, ref)。
 - 用例：本工作项相关验收标准的用例与最新结果。
 - 工时：按人与 Agent 的汇总。
 - 自动化：本工作项上的规则执行日志（失败红色可见）。
+- 来源批注（D120）：由批注转来的缺陷显示锚点快照（位置、原文、版本「基于 commit c1」）与〔打开原批注〕（03 远程工作区查看器定位到锚点）；原锚点已过期时标「锚点版本已过期」。
 
 ---
 
@@ -794,6 +809,10 @@ UNIQUE(tenant_id, work_item_id, kind, repository, ref)。
 | AC-12-44 | integration | BR-12-34 | **G** 持 TESTER 角色的 Agent **W** 对 verify 状态缺陷执行关闭 **T** 403，`reason_code=AGENT_CANNOT_ACCEPT`；人类测试成员执行成功，`defect_stage=CLOSED` |
 | AC-12-45 | integration | BR-12-33 | **G** 项目管理员 **W** 保存把 F3「暂不修复」开放给 Agent 的矩阵 **T** 422 `126002` `reason_key=defect_floor` |
 | AC-12-46 | integration | BR-12-07, BR-12-36 | **G** 已关闭缺陷 D **W** 人类发起「再次打开」 **T** 新建 BUG，`reopened_from_work_item_id=D`；D 仍为 ACCEPTED；发布 `quality.escaped`；对处理中的缺陷发起 → 409 `126007` |
+| AC-12-47 | integration | US-12-15, BR-12-37 | **G** 执行 E（关联工作项 W）上的 INTERNAL 线程 T：CODE_LINES `src/app.ts` 40–44（commit c1），首条批注「金额四舍五入错误」**W** 测试人员 A31 `{severity:MAJOR, expected:"保留两位小数"}` **T** 201 新 BUG：`steps` 含 `src/app.ts:40-44`、`c1` 与第 40–44 行原文，`actual` 为首条批注，`found_in_work_item_id=W`；`comment_thread_id=T`、`anchor_snapshot.version_ref=c1`；03 记 DEFECT 转换、T 变 RESOLVED；审计 `delivery.defect_created_from_comment` 不含正文 |
+| AC-12-48 | integration | BR-12-37 | **G** T 已转为缺陷 D1；CLIENT 线程 T2 **W** 再对 T 调 A31；对 T2 调 A31 **T** 422 `126063`（`reason=ALREADY_CONVERTED`、`target_id=D1`），无新工作项；422 `126063`（`reason=CLIENT_THREAD`）；T 经 02 D1 转为结构化反馈仍成功（两种转换并存） |
+| AC-12-49 | integration | BR-12-38 | **G** 缺陷 W（`activity_seq=20`），Agent A 持 `work_item_write`，读到 20 后人类评审人在 W 上新建批注（流到 21）**W** A 以 `seen_seq=20`、键 K 调 A13 **T** 409 `126061`，`data.state="interrupted"`、`current_seq=21`、`newer_events[0].kind=COMMENT_ADDED`；W 状态与流转日志不变；A 以同一键 K、`seen_seq=21` 重试 → 200 流转成功（无 176425），W 流到 22（TRANSITIONED） |
+| AC-12-50 | integration | BR-12-38 | **G** 同上 **W** A 不带 `seen_seq` 调 A13；人类不带 `seen_seq` 调 A13；自动化规则触发流转 **T** 422 `126062`；人类 200；自动化 200（SYSTEM 不要求 `seen_seq`）；A 自己产生的活动在其后不构成打断 |
 
 ---
 
@@ -821,6 +840,9 @@ UNIQUE(tenant_id, work_item_id, kind, repository, ref)。
 | 09 | JobQueue、outbox、SSE、`SecretSealer`、files 业务写入（PDF、入站载荷） |
 | 10 | 报告草稿写入接口（自动化动作 `ADD_REPORT_ENTRY`）、读取工时汇总 |
 | 11 | 软件模板的默认状态 / 矩阵 / 评审类型 / 字典数据文件；穿透评测集 |
+| 02（D120） | `WorkItemActivityRecorder.RecordOn` / `WorkItemActivityReader.HeadOn` / `Since`（02 BR-02-64），用于 A13 与 A31 的 `seen_seq` 判定与 TRANSITIONED 活动 |
+| 03（D120） | `ArtifactComments.GetOn` / `MarkConvertedOn`（03 BR-03-139），A31 读取线程与写 DEFECT 转换 |
+| 05（D120） | `OperationRegistry` 登记 `work_item_transition.apply`、`defect_from_comment.create`；`interrupted` / `meta.next` 规则（05 BR-05-127 / 128 / 131） |
 
 ### 12.2 风险
 
@@ -858,3 +880,6 @@ UNIQUE(tenant_id, work_item_id, kind, repository, ref)。
 | CR-12-07 | §6 / 08 | 收件箱新类型 `REVIEW_SHEET`、`WORKLOG_APPROVAL`；step-up 用途 `integration_credentials`；`authority_source` 新前缀 `EXTERNAL:<provider>:<ref>`（只读外部裁决，不能满足 L3） | BR-12-28 |
 | CR-12-08 | §3 | 入站去重表 `integration_inbound_events` 作为「外部入站」例外：09 receipts 只用于内部领域事件 | BR-12-30 |
 | CR-12-09 | §15.2 / §6.5（reason_code 由 08 登记） | `reason_code` 新值 `AGENT_CANNOT_ACCEPT`（Agent 不得执行映射到 ACCEPTED 的流转，含持 TESTER 角色者）；「验证角色」= 持 TESTER 的**人类**成员或该工作项责任人 | BR-12-34、§4.2.1 F10 |
+| CR-12-10 | §8 / §9（D120） | 使用 02 `WorkItemActivityRecorder` / `WorkItemActivityReader`、03 `ArtifactComments`、05 `OperationRegistry`；A13 适用 §9 过期上下文写入约定（`seen_seq`、`interrupted`）；不新增共享枚举、权限码与事件（批注转缺陷沿用 `work_item_write`） | BR-12-37 / 38 |
+
+> **D120（2026-10-12，批注转缺陷与过期上下文写入）已并入本规格**：US-12-15、§3.7 增列 `comment_thread_id` / `anchor_snapshot`、§5.9（BR-12-37 / 38）、接口 A31 与 A13 的 `seen_seq`、错误码 126061–126063、审计 `delivery.defect_created_from_comment`、§8.6 来源批注区块、AC-12-47…50、CR-12-10。

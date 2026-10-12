@@ -16,6 +16,7 @@
 4. 核对（Reconciliation）：提交前自动核对报告内容与系统事实、下级报告、目标对齐；阻断问题禁止提交，非阻断问题打标并向上传播。
 5. 确认：上级（或 Agent 的负责人类）确认 / 退回；逾期提醒。
 6. 知识回流：已确认报告中的改进项可提议为 06 记忆（EXPERIENCE）。
+7. 循环契约（D120）：Agent 的周期性工作（日报 / 周报、定期检查）以契约声明节奏、自检、预算、升级条件与输出格式，由 05 锚定在线程上的提醒驱动；循环运行产出的报告草稿仍经本模块核对与人类确认。
 
 **不解决（边界）**
 
@@ -62,6 +63,14 @@
 | US-10-18 | 作为作者，当我的状态信心比上一期下降时，我要写出改进计划，以便问题有人跟进 | MVP |
 | US-10-19 | 作为团队所有者，项目与团队报告自动带上穿透率、内部一次通过率与平均内部轮次，以便在复盘中讨论内部质量门 | MVP |
 
+### 2.y D120 增补用户故事（循环契约）
+
+| ID | 用户故事 | 版本 |
+|---|---|---|
+| US-10-20 | 作为 Agent 的负责人类，我要为它的日报 / 周报或定期检查定义循环契约（节奏、自检、预算、升级条件、输出格式），并锚定到一个线程，以便周期性工作按约定自动发生 | MVP |
+| US-10-21 | 作为负责人类，我要循环运行失败、超预算或自检不过时被通知，连续失败时契约自动暂停，以便问题不会被静默重复 | MVP |
+| US-10-22 | 作为确认人，我要由循环运行起草的报告照常经过核对与我的确认，以便自动化不会绕过对账 | MVP |
+
 ## 3. 领域模型与数据表
 
 ### 3.0 类型映射（三方言）
@@ -101,6 +110,9 @@
 | `CheckCode` | `B1_UNBACKED_COMPLETION`, `B2_AGGREGATE_MISMATCH`, `B3_UNLINKED_PLAN_ITEM`, `B4_MISSING_SECTION`, `B5_FOREIGN_KR`, `N1_CHILD_UNSUBMITTED`, `N2_PLAN_UNCONFIRMED`, `N3_KR_NO_EVIDENCE`, `N4_STALE_CHECK` | 模块内 |
 | `ReportFlag` | `UNCHECKED`（未核对）, `UNCONFIRMED`（未确认）, `NEEDS_EVIDENCE`（待佐证）, `OVERDUE`（逾期）, `NEEDS_RECHECK`（需重新核对） | 模块内 |
 | `SubjectKind` | `HUMAN`, `AGENT`（报告 / 计划所属成员类型） | 沿用 00 §4 actor_kind 子集 |
+| `LoopContractKind` | `REPORT`, `CHECK`（D120） | 模块内 |
+| `LoopContractState` | `DRAFT`, `ACTIVE`, `PAUSED`, `ARCHIVED`（D120） | 模块内 |
+| `LoopRunState` | `OPEN`, `SUCCEEDED`, `FAILED`, `ESCALATED`, `SKIPPED`, `TIMED_OUT`（D120） | 模块内 |
 
 ### 3.2 `planning_settings`（团队设置，每租户 1 行）
 
@@ -368,6 +380,55 @@
 
 报告 `content` Schema 增加 `status{declared_confidence, explanation?, computed_progress, expected_progress}`（computed / expected 由系统写入，客户端提交的值被忽略）与 `improvement_plan[]`；`ReportFlag` 增加 `STATUS_EXPLAINED`（「状态已说明」）与 `ABOVE_CHILDREN`（「状态高于下级」）。
 
+### 3.15 `planning_loop_contracts`（循环契约，D120，`version` 乐观锁）
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id | ID | N | | |
+| tenant_id | ID | N | | |
+| project_id | ID | Y | NULL | NULL = 团队级契约 |
+| agent_id | ID | N | | 执行循环的 Agent（05） |
+| owner_principal_id | ID | N | | 负责人类；创建时默认取 05 `AgentDirectory` 的 `owner_principal_id`，须为 ACTIVE 人类成员 |
+| kind | ENUM LoopContractKind | N | | REPORT / CHECK |
+| name | STR(200) | N | | |
+| anchor | JSON | N | | `{channel_id, thread_root_message_id}`：提醒锚定的线程（必填） |
+| schedule_kind | STR(16) | N | | `INTERVAL` / `PERIOD`（取值为 05 `ReminderScheduleKind` 的子集） |
+| interval_minutes | INT | Y | NULL | INTERVAL 必填，15–10080 |
+| period_kind | ENUM PeriodKind | Y | NULL | PERIOD 必填；触发时刻取 `planning_settings.*_report_at` 与团队时区 |
+| report_binding | JSON | Y | NULL | REPORT 必填：`{level: MEMBER\|PROJECT, period_kind}`（PROJECT 要求 `project_id` 非空）；CHECK 必须为空 |
+| self_checks | JSON | N | `[]` | `[{key ^[a-z0-9_]{1,32}$, description ≤500, required: bool}]` ≤20，key 唯一 |
+| budget | JSON | N | | `{max_cost_micros_per_run ≥0, max_duration_minutes 5–240, monthly_cost_cap_micros?}` |
+| escalation | JSON | N | | `{on_required_check_failed: true（固定）, on_budget_exceeded: bool, consecutive_failures_to_pause: 1–10（默认 3）}` |
+| output_format | STR(16) | N | | REPORT → `REPORT_DRAFT`；CHECK → `CHECK_RESULT`（Schema 见 §3.16 `check_result`） |
+| allow_overlap | BOOL | N | false | 上一次运行仍 OPEN 时是否允许开启新运行 |
+| state | ENUM LoopContractState | N | `DRAFT` | §4.4 |
+| reminder_id | ID | Y | NULL | 05 `AgentReminderScheduler.UpsertForLoopOn` 返回；激活后非空 |
+| consecutive_failures | INT | N | 0 | 连续 ESCALATED / TIMED_OUT 计数；SUCCEEDED 清零 |
+| version | INT | N | 1 | |
+
+索引：`(tenant_id, agent_id, state)`、`(tenant_id, project_id, state)`。审计列同 §3.0。
+
+### 3.16 `planning_loop_runs`（循环运行，D120；状态列可变，其余只追加）
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id | ID | N | | |
+| tenant_id | ID | N | | |
+| loop_contract_id | ID | N | | 唯一 `(loop_contract_id, fire_no)` |
+| fire_no | INT | N | | 05 提醒的触发序号 |
+| scheduled_for | TIME | N | | 计划触发时刻 |
+| state | ENUM LoopRunState | N | `OPEN` | §4.4 |
+| report_id | ID | Y | NULL | REPORT：本次运行起草 / 更新的报告（须为 `report_binding` 对应周期与主体的报告） |
+| check_result | JSON | Y | NULL | CHECK：`{status: OK\|WARN\|FAIL, findings: [{title ≤200, severity: INFO\|WARN\|FAIL, ref?{kind, id}}] ≤50}` |
+| self_check_results | JSON | N | `[]` | `[{key, passed: bool, note? ≤500}]` |
+| cost_micros | BIGINT | N | 0 | BR-10-56 |
+| opened_at | TIME | N | | |
+| completed_at | TIME | Y | NULL | |
+| escalation_reason | STR(32) | Y | NULL | `REQUIRED_CHECK_FAILED` / `BUDGET_EXCEEDED` / `MONTHLY_CAP_EXCEEDED` / `TIMED_OUT` / `CHECK_FAILED` / `REPORT_BLOCKED` |
+| note | STR(2000) | Y | NULL | Agent 的运行说明 |
+
+索引：`(loop_contract_id, opened_at DESC)`、`(state, opened_at)`（超时扫描）。不设 `version`（状态迁移以 `WHERE state='OPEN'` CAS）。
+
 ## 4. 状态机
 
 ### 4.1 目标 `GoalStatus`
@@ -422,6 +483,28 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 | R11 | 非 SUBMITTED / CONFIRMED | `due_at` 过（J3） | — | 保持状态，flags + `OVERDUE` | `report.overdue`；收件箱 REPORT_OVERDUE（作者 + 上级） |
 
 非法：BLOCKED 直接提交 → 409 **180430**（`data.issues[]` 前 20 条）；content_hash 与 expected 不一致 → 409 **180431**（他人已改）；核对过期 → 409 **180432**；CONFIRMED 后编辑 → 409 **180433**（需 RETURN 后改，或在下周期更正）；Agent 确认 → 403 `AGENT_PROHIBITED`；自己确认 → 403 `SELF_REVIEW`。
+
+### 4.4 循环契约 `LoopContractState` 与循环运行 `LoopRunState`（D120）
+
+| # | 当前 | 触发 | 守卫 | 目标 | 副作用 |
+|---|---|---|---|---|---|
+| LC1 | — | L2 创建 | BR-10-52、BR-10-58 | DRAFT | 审计 `planning.loop_contract_changed`；`activate=true` 时继续 LC2 |
+| LC2 | DRAFT / PAUSED | L5 `{state:ACTIVE}` | BR-10-52 校验仍成立；Agent ACTIVE | ACTIVE | 同一事务调 05 `UpsertForLoopOn`（DRAFT）或 `ResumeForLoopOn`（PAUSED），写 `reminder_id`；`consecutive_failures=0`；`loop_contract.state_changed` |
+| LC3 | ACTIVE | L5 `{state:PAUSED}`；或连续失败达阈值 / 月度上限超出（BR-10-56 / 57） | — | PAUSED | 同一事务调 05 `PauseForLoopOn`；`loop_contract.state_changed`；自动暂停时 N-10-12 |
+| LC4 | DRAFT / ACTIVE / PAUSED | L5 `{state:ARCHIVED}`；Agent 退役（`agent.retired`） | — | ARCHIVED | 同一事务调 05 `CancelForLoopOn`；OPEN 运行 → FAILED（LR7）；`loop_contract.state_changed` |
+| LC5 | ACTIVE | L4 修改节奏 / 锚点 | BR-10-52 | ACTIVE | 同一事务调 05 `UpsertForLoopOn`（重算下次触发） |
+
+| # | 当前 | 触发 | 守卫 | 目标 | 副作用 |
+|---|---|---|---|---|---|
+| LR1 | — | 05 调 `LoopRunRecorder.OpenOn` | 契约 ACTIVE；无 OPEN 运行或 `allow_overlap=true` | OPEN | 返回 `{loop_run_id, skip:false}` |
+| LR2 | — | 同上 | 契约非 ACTIVE，或上一运行 OPEN 且 `allow_overlap=false` | SKIPPED | 写 SKIPPED 行；返回 `{loop_run_id, skip:true}` |
+| LR3 | OPEN | L7 结果 | BR-10-55 成功条件全部成立；预算未触发升级 | SUCCEEDED | `consecutive_failures=0`；`loop_run.completed` |
+| LR4 | OPEN | L7 结果 | required 自检失败 / CHECK FAIL / 绑定报告核对有阻断或未核对 / 预算超出且 `on_budget_exceeded=true` | ESCALATED | BR-10-57；`loop_run.escalated`；N-10-11 |
+| LR5 | OPEN | L7 结果 | 仅非 required 自检失败或 CHECK WARN，且无升级条件 | SUCCEEDED（运行历史标琥珀） | 同 LR3 |
+| LR6 | OPEN | J8：`opened_at + max_duration_minutes` 已过 | — | TIMED_OUT | 按 BR-10-57 升级；`loop_run.escalated{reason:TIMED_OUT}` |
+| LR7 | OPEN | 契约 ARCHIVED（LC4） | — | FAILED | note「契约已归档」；`loop_run.completed`；不计入连续失败 |
+
+非法：SUCCEEDED / FAILED / ESCALATED / SKIPPED / TIMED_OUT 上再提交结果 → 409 **180512**；ARCHIVED 契约任何迁移、ACTIVE → ACTIVE 等非法迁移 → 409 **180511**；Agent 主体调用 L2 / L4 / L5 → 403 **180403**（`AGENT_PROHIBITED`）。
 
 ---
 
@@ -536,6 +619,16 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 - **BR-10-46 权限拒绝**：统一 403 **180403** + `data.reason_code`（08 `AuthorityReasonCode`：`MISSING_PERMISSION`、`AGENT_PROHIBITED`、`SELF_REVIEW`、`NOT_OWNER`）。
 - **BR-10-47 可见性**：成员可读自己的报告与计划；上级可读下属；`report_read` 持有者可读项目 / 团队报告；Agent 只读自己的与其所在项目的 PROJECT 报告（不读其他成员的 MEMBER 报告）。
 
+### 5.8 循环契约（D120）
+
+- **BR-10-52 定义与校验**：契约的 `agent_id` 须为本租户 ACTIVE 的 Agent（05 `AgentDirectory`）；`owner_principal_id` 须为 ACTIVE 人类成员（缺省取该 Agent 的负责人类）；`anchor` 指向的线程须可读：根消息存在且未撤回、频道未归档、该 Agent 为频道成员（经 05 读接口判定），否则 422 **180514**；`project_id` 非空时 Agent 须在该项目中；REPORT 须有 `report_binding`（MEMBER 级报告主体 = 该 Agent；PROJECT 级要求 `project_id`）；CHECK 的 `report_binding` 必须为空；`self_checks` 键唯一；节奏、预算字段越界或组合非法 → 422 **180510**（`data.field`）。每个 Agent 的 ACTIVE + PAUSED 契约 ≤20（422 **180513**）。契约不授予任何权限：Agent 在运行中调用的每个接口仍按 08 与各模块守卫判定。
+- **BR-10-53 激活与提醒同事务**：激活（LC2）、修改节奏或锚点（LC5）在**同一数据库事务**内调 05 `AgentReminderScheduler.UpsertForLoopOn(ctx, tx, {loop_contract_id, agent_id, anchor{channel_id, thread_root_message_id}, schedule})`（`schedule` = `{schedule_kind, interval_minutes?, period_kind?}`）并写回 `reminder_id`；暂停 / 恢复 / 归档分别调 `PauseForLoopOn` / `ResumeForLoopOn` / `CancelForLoopOn(ctx, tx, loop_contract_id)`。05 返回错误（锚点不可读、提醒上限）→ 整体回滚，分别返回 422 **180514** / **180513**。提醒的触发、离线合并与收件箱投递由 05 负责（05 BR-05-139 / 140），本模块不自建调度；05 消费 `loop_contract.state_changed` 与本表状态核对，修正未同步的提醒。
+- **BR-10-54 运行开启**：本模块提供 `LoopRunRecorder.OpenOn(ctx, tx, loop_contract_id, fire_no, scheduled_for) (LoopRunRef{loop_run_id, skip}, error)`，由 05 在写收件箱 REMINDER 的同一事务内调用：同一 `(loop_contract_id, fire_no)` 重复调用返回已有运行（幂等）；契约非 ACTIVE，或上一运行仍 OPEN 且 `allow_overlap=false` → 写 SKIPPED 行并返回 `skip=true`（LR2）；否则写 OPEN 行（LR1）。离线期间错过的多次触发由 05 合并为一次调用（`fire_no` 取最新）。
+- **BR-10-55 运行结果与报告草稿**：Agent 以自身凭证调 L7 提交结果（仅契约的 Agent 本人；`Idempotency-Key`）。REPORT 类：运行的产出是**报告草稿**——Agent 经既有 R4 写入绑定报告的 `content`、经 R5 核对；L7 中的 `report_id` 须为该契约绑定周期与主体的报告（否则 422 **180510**）。绑定报告仍完整走 §5.5 核对（B1–B7、N1–N6）与 §5.6 提交 / 确认规则：循环运行**不会**自动提交或确认报告，不放宽任何阻断项，`report_confirm` 仍仅限人类；Agent 若要提交，仍以 R7 按 BR-10-37 自行提交。运行 SUCCEEDED 的条件：全部 `required` 自检 `passed=true`，且（REPORT）绑定报告在 L7 时刻为 READY、SUBMITTED 或 CONFIRMED（核对无阻断）；绑定报告为 BLOCKED 或未核对 → ESCALATED（`REPORT_BLOCKED`）。CHECK 类：`check_result` 必填（缺失 422 **180510**），`status=FAIL` → ESCALATED（`CHECK_FAILED`），`WARN` → SUCCEEDED 并在运行历史标琥珀。
+- **BR-10-56 预算**：`cost_micros` = 该 Agent 在 `opened_at` 至 `completed_at`（OPEN 时至 now）之间**启动**的执行的累计成本（消费 03 `execution.cost_updated`，按 `agent_id` 与执行开始时间归属）；超过 `max_cost_micros_per_run` → `on_budget_exceeded=true` 时运行 ESCALATED（`BUDGET_EXCEEDED`），否则只在运行历史标记；契约本月（团队时区自然月）运行成本合计超过 `monthly_cost_cap_micros` → ESCALATED（`MONTHLY_CAP_EXCEEDED`）且契约立即 PAUSED（不论 `consecutive_failures_to_pause`）。`max_duration_minutes` 到期仍 OPEN → J8 置 TIMED_OUT。循环预算只约束循环运行，不替代 07 项目预算与 08 编制预算（三者同时生效）。
+- **BR-10-57 升级**：运行进入 ESCALATED 或 TIMED_OUT 时：`consecutive_failures+1`，通知负责人类（N-10-11，含原因与运行链接），写审计 `planning.loop_run_escalated`，发布 `loop_run.escalated`；`consecutive_failures ≥ consecutive_failures_to_pause` → 契约自动 PAUSED（LC3，经 05 `PauseForLoopOn`）并 N-10-12。FAILED（契约归档）不计入。升级**不在频道发消息**、不改报告状态；Agent 如需在锚定线程说明，须按 05 BR-05-127 携带 `seen_seq` 自行发言。
+- **BR-10-58 权限与可见性**：创建 / 修改 / 状态变更（L2 / L4 / L5）只能由 HUMAN 发起，且为该 Agent 的负责人类或持 `agent_manage`（经 05 `AgentDirectory` 判定）；Agent（含主管 Agent）不能为自己或他人创建 / 修改契约（403 **180403** `AGENT_PROHIBITED`），其他人 403 **180403**（`MISSING_PERMISSION`）。读取（L1 / L3 / L6）：契约负责人类、`report_read` 持有者、该 Agent 本人，其他人 404；L7 只限该 Agent 本人（他人 403 **180403** `NOT_OWNER`）。契约变更与升级写审计（§7.6）。
+
 ---
 
 ## 6. 接口契约
@@ -641,6 +734,32 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 | 09 | `JobQueue`、`OutboxPublisher`、`RealtimeBroadcaster`、`Notifier` |
 | 06 | `MemoryWriter.Propose`（BR-10-41） |
 
+### 6.7 循环契约接口（D120）
+
+| # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 data | 错误 |
+|---|---|---|---|---|---|---|
+| L1 | GET `/tenants/{tenant_id}/loop-contracts` | tenants | BR-10-58 读取 · T（行过滤） | 过滤 `agent_id`(eq) `project_id`(eq) `state`(in) `kind`(eq)；排序 `name` `-updated_at` | LoopContract[]（含最近 5 次运行状态、本月成本） | — |
+| L2 | POST `/tenants/{tenant_id}/loop-contracts` | tenants | 负责人类或 `agent_manage` · T；HUMAN | §3.15 字段 + `activate?:bool` | LoopContract（201，DRAFT；`activate=true` 时 ACTIVE） | 422 180510/180513/180514；403 180403；幂等 |
+| L3 | GET `/loop-contracts/{loop_contract_id}` | loop-contracts | BR-10-58 读取 · O | — | LoopContract + `next_fire_at`（来自 05 提醒） | 404 180404 |
+| L4 | PATCH `/loop-contracts/{loop_contract_id}` | loop-contracts | 同 L2 · O；If-Match | 可选：name、anchor、节奏、report_binding（仅 DRAFT 可改）、self_checks、budget、escalation、allow_overlap | LoopContract | 409 180409/180511；422 180510/180514 |
+| L5 | PUT `/loop-contracts/{loop_contract_id}/state` | loop-contracts | 同 L2 · O；If-Match | `{state*: ACTIVE\|PAUSED\|ARCHIVED, reason?}` | LoopContract | 409 180511；422 180513/180514 |
+| L6 | GET `/loop-contracts/{loop_contract_id}/runs` | loop-contracts | BR-10-58 读取 · O | 过滤 `state`(in) `opened_at`(gte,lte)；排序 `-opened_at` | LoopRun[] | 404 |
+| L7 | POST `/loop-runs/{loop_run_id}/results` | loop-runs | 契约的 Agent 本人 · O | `{self_check_results*[], report_id?, check_result?, note?}` | LoopRun（终态） | 409 180512；422 180510；403 180403（`NOT_OWNER`）；幂等 |
+
+L7 登记到 05 `OperationRegistry`（`loop_run_result.record`，`human_confirmation=NONE`），响应带 `meta.next`（REPORT 类且绑定报告未核对时建议 R5）。
+
+**错误码增补**：
+
+| 码 | HTTP | i18n key | 含义 |
+|---|---|---|---|
+| 180510 | 422 | planning.error.loop_contract_invalid | 契约字段越界或组合非法；结果中的报告不属于该契约；CHECK 结果缺失（`data.field`） |
+| 180511 | 409 | planning.error.loop_contract_state | 契约状态不允许该操作（非法迁移） |
+| 180512 | 409 | planning.error.loop_run_closed | 运行已结束，不能再提交结果 |
+| 180513 | 422 | planning.error.loop_contract_limit | 每 Agent ACTIVE + PAUSED 契约数达上限（或 05 提醒上限） |
+| 180514 | 422 | planning.error.loop_anchor_unreadable | 锚定线程不可读或 Agent 不是该频道成员 |
+
+**跨模块接口增补**：本模块提供 `LoopRunRecorder.OpenOn(ctx, tx, loop_contract_id, fire_no, scheduled_for) (LoopRunRef{loop_run_id, skip}, error)`（使用者 05）；本模块使用 05 `AgentReminderScheduler{UpsertForLoopOn, PauseForLoopOn, ResumeForLoopOn, CancelForLoopOn}`、05 `AgentDirectory`（负责人类、状态；频道成员判定经 05 读接口）、03 `execution.cost_updated`（BR-10-56）。
+
 ---
 
 ## 7. 后台任务与事件
@@ -656,6 +775,7 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 | J5 `planning.goal_close_reminder` | 每日 09:00（本地） | dlock | 周期结束 7 天未关闭目标 → 通知 | — |
 | J6 `planning.recheck_on_change` | 消费 §7.3 事件 | 按报告分区 | READY → 清 `last_check_hash` + `NEEDS_RECHECK`；SUBMITTED → `NEEDS_RECHECK` + 通知；维护父报告 `child_*` | Transactional 订阅 |
 | J7 `planning.unconfirmed_plan_remind` | 每小时 | dlock | 计划 SUBMITTED > 72 h → 标 `UNCONFIRMED` + 提醒一次 | — |
+| J8 `planning.loop_run_timeout` | 每分钟 | dlock `planning:loop-run-timeout` | OPEN 运行超过 `max_duration_minutes` → TIMED_OUT（LR6，`WHERE state='OPEN'` CAS）；按 BR-10-57 升级（D120） | 下轮继续 |
 
 ### 7.2 发布事件
 
@@ -685,6 +805,14 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 ### 7.5 SSE 主题
 
 `tenant/{t}/report/{id}`、`tenant/{t}/plan/{id}`、`tenant/{t}/goal/{id}`；集合 `tenant/{t}/reports`、`tenant/{t}/goals`；`TopicAuthorizer`：`report_read`，或本人 / 上级。
+
+### 7.6 D120 任务与事件增补（循环契约）
+
+- **任务**：J8（§7.1）。
+- **发布**：`loop_contract.state_changed{loop_contract_id, agent_id, from, to}`（LC2–LC4；05 消费以核对提醒）、`loop_run.completed{loop_run_id, loop_contract_id, state, report_id?}`（LR3 / LR5 / LR7）、`loop_run.escalated{loop_run_id, loop_contract_id, reason}`（LR4 / LR6）；载荷不含报告正文与自检说明，均可经 SSE 推送完整载荷。
+- **消费**：03 `execution.cost_updated`（BR-10-56 运行成本）；05 `agent.retired`（LC4 归档）。
+- **审计**：`planning.loop_contract_changed`（创建 / 修改 / 状态，含 from / to 与 reason）、`planning.loop_run_escalated`（含 reason、cost_micros）。
+- **SSE**：`tenant/{t}/loop_contract/{id}`（契约与运行变化；`TopicAuthorizer`：BR-10-58 读取规则）。
 
 ---
 
@@ -747,6 +875,14 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 - **报告汇总**：每行显示声明信心色点与计算进度；`STATUS_EXPLAINED` 与 `ABOVE_CHILDREN` 以琥珀标签展示（「外绿内红风险」「状态高于下级」）；项目 / 团队行显示穿透率、内部一次通过率。
 - **团队报告中心**：日历格增加信心色点；可按「外绿内红风险」筛选。
 
+### 8.8 循环契约编辑器（D120）`/t/:tenantID/agents/:agentID/loops/:loopContractID`（新建 `…/loops/new`）
+
+- **入口**：05 Agent 详情「提醒与循环」标签的〔新建循环契约〕与契约行链接。
+- **布局**：表单分节——类型（报告 / 检查）；节奏（每 n 分钟 / 按周期，按周期时显示团队报告时刻）；锚定线程选择器（只列该 Agent 所在频道的线程，显示根消息摘要）；绑定报告周期与层级（报告类）；自检清单（可增删，标记「必须」）；预算（单次成本上限、单次时长、月度上限）；升级（超预算是否升级、连续失败 n 次自动暂停）；输出格式预览（报告草稿 / 检查结果示例）；〔保存草稿〕〔保存并激活〕。
+- **运行历史**：表格列 次序、计划时间、状态徽章（成功 绿 / 升级 红 / 超时 红 / 跳过 灰 / 进行中 蓝，图标 + 文字）、自检通过数、成本、报告链接或检查结果摘要、升级原因；顶部本月成本条与「下次触发」。
+- **报告编辑器（§8.4）增补**：由循环运行起草的报告头部显示徽标「由循环契约「{name}」第 {n} 次运行起草」（链接到运行），核对面板照常显示，不因运行成功而跳过任何阻断。
+- **状态**：加载骨架；空态「还没有运行记录，激活后将在 {next_fire_at} 首次运行」；错误可重试；无权限说明「仅 Agent 的负责人类或持 agent_manage 者可编辑」；离线横幅。Agent 已退役时只读。移动端：表单单列、运行历史为卡片。
+
 ## 9. 通知
 
 | # | 事件 | 接收人 | 渠道 | 文案 | 去重 |
@@ -761,6 +897,8 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 | N-10-08 | `goal.status_changed{AT_RISK}` | 负责人 + 上级 | 站内 | 「目标「{title}」进度落后时间 {gap}%」 | 每日 ≤1 |
 | N-10-09 | 已提交报告 `NEEDS_RECHECK` | 作者 + 确认人 | 站内 | 「{period}{kind}报告提交后事实发生变化，请重新核对」 | 每报告每日 ≤1 |
 | N-10-10 | 目标周期结束 7 天未关闭 | 负责人 | 站内 | 「目标「{title}」周期已结束，请标记达成或未达成」 | 1 次 |
+| N-10-11 | `loop_run.escalated`（D120） | 契约负责人类 | 站内 + 邮件 | 「{agent} 的循环「{name}」第 {n} 次运行需要你处理：{reason}」 | 同契约 1 h 内合并 |
+| N-10-12 | 契约因连续失败或月度上限自动暂停（D120，BR-10-56 / 57） | 契约负责人类 | 站内 | 「{agent} 的循环「{name}」已自动暂停：{reason}」 | 每次暂停 1 次 |
 
 收件箱新增（08 §6.10）：`PLAN_CONFIRMATION`（关闭：plan.confirmed / returned）、`REPORT_CONFIRMATION`（关闭：report.confirmed / returned）、`REPORT_BLOCKED`（关闭：后续核对 PASS 或已提交）、`REPORT_OVERDUE`（关闭：已提交）。确认类事项的接收人仅限人类。
 
@@ -1027,6 +1165,21 @@ Then  06 MemoryWriter.Propose(kind=EXPERIENCE, scope=AGENT, source=report_id) �
 **AC-10-41**（unit）客户端伪造进度 — 提交请求携带 `computed_progress=0.95` → 被忽略，核对使用系统重算值。
 **AC-10-42**（integration）Agent 成员 — Agent A 起草周报声明 GREEN 且 lag 0.35 → B6 阻断；A 不能自行提交越过阻断；其负责人修改为 YELLOW 后可提交。
 
+### 10.9 D120 循环契约验收标准
+
+**AC-10-43**（integration）激活与提醒同事务 — Given Ada（ACTIVE，频道 C 成员）与负责人 Sam；Sam 建 REPORT 契约 L（PERIOD DAY，锚定 C 中线程 T，绑定 MEMBER·DAY）When L5 `{state:ACTIVE}` Then 同一事务内 05 存在 `anchor_kind=LOOP_CONTRACT` 的提醒且 `L.reminder_id` 非空、发布 `loop_contract.state_changed{DRAFT→ACTIVE}`；令 05 `UpsertForLoopOn` 返回错误 → 整体回滚，L 仍 DRAFT、无提醒。
+**AC-10-44**（integration）锚点与上限 — Ada 不是线程所在频道成员 → 422 `180514`；Ada 已有 20 个 ACTIVE + PAUSED 契约 → 422 `180513`；CHECK 契约带 `report_binding` → 422 `180510`（`data.field=report_binding`）。
+**AC-10-45**（integration）重叠跳过与幂等 — Given L 的第 7 次运行 OPEN、`allow_overlap=false` When 05 以 fire_no=8 调 `OpenOn` Then 写 SKIPPED 行、返回 `skip=true`；同一 fire_no=8 再调 → 返回同一运行；契约 PAUSED 时调用 → SKIPPED。
+**AC-10-46**（integration）报告草稿仍经核对 — Given 运行 OPEN，Ada 经 R4 写入日报（含一条 fact_ref 指向未 ACCEPTED 的工作项）When Ada 调 R5 后调 L7（required 自检全过、`report_id`=该日报）Then 日报为 BLOCKED（B1），运行 ESCALATED（`REPORT_BLOCKED`）、N-10-11；日报未被自动提交或确认；Sam 仍须经 R8 确认。
+**AC-10-47**（integration）成功运行 — 同上但日报核对无阻断（READY）→ 运行 SUCCEEDED、`consecutive_failures=0`、`loop_run.completed`；日报保持 READY，提交仍需 R7。
+**AC-10-48**（integration）预算 — Given `max_cost_micros_per_run=500000`、`on_budget_exceeded=true` When 运行期间 Ada 启动的执行累计 620000 后提交 L7 Then ESCALATED（`BUDGET_EXCEEDED`）；本月合计超过 `monthly_cost_cap_micros` → ESCALATED（`MONTHLY_CAP_EXCEEDED`）且 L 立即 PAUSED、N-10-12。
+**AC-10-49**（integration）连续失败自动暂停 — Given `consecutive_failures_to_pause=3` When 连续 3 次运行 ESCALATED / TIMED_OUT Then L → PAUSED、05 提醒 PAUSED（同事务）、N-10-12 一次；之后 05 再触发 → `OpenOn` 返回 SKIPPED。
+**AC-10-50**（integration）超时 — Given `max_duration_minutes=30` When 运行 OPEN 31 分钟 Then J8 置 TIMED_OUT、`loop_run.escalated{reason:TIMED_OUT}`；之后 Ada 调 L7 → 409 `180512`。
+**AC-10-51**（integration）权限 — Ada 以自身凭证调 L2 → 403 `180403`（`AGENT_PROHIBITED`）；非负责人且无 `agent_manage` 的成员调 L5 → 403 `180403`（`MISSING_PERMISSION`）；Bo（另一 Agent）调 Ada 运行的 L7 → 403 `180403`（`NOT_OWNER`）；Ada 可读 L3 / L6；无 `report_read` 的非负责人成员读 L3 → 404。
+**AC-10-52**（integration）CHECK 类 — CHECK 契约运行提交 `check_result{status:FAIL}` → ESCALATED（`CHECK_FAILED`）；`WARN` 且 required 自检全过 → SUCCEEDED，运行历史标琥珀；`check_result` 缺失 → 422 `180510`。
+**AC-10-53**（integration）归档 — Ada 退役（`agent.retired`）→ L ARCHIVED、05 提醒 CANCELLED、OPEN 运行 FAILED；对 ARCHIVED 的 L 调 L5 → 409 `180511`。
+**AC-10-54**（e2e）编辑器与徽标 — 桌面 1440 与手机 390：新建契约表单各分节、锚定线程选择只列 Ada 所在频道、运行历史状态徽章带文字；由循环起草的日报编辑器头部显示「由循环契约「日报」第 n 次运行起草」且核对面板正常。
+
 ## 11. 度量与埋点
 
 | 指标 | 定义 |
@@ -1044,6 +1197,7 @@ Then  06 MemoryWriter.Propose(kind=EXPERIENCE, scope=AGENT, source=report_id) �
 ---
 
 - **D112 / D113 埋点**：`report_confidence_declared{level, kind, confidence}`、`watermelon_blocked{lag_bucket}`、`watermelon_explained`、`confidence_drop{from, to, plan_items}`。
+- **D120 埋点**：`loop_contract_changed{kind, from, to}`、`loop_run_completed{kind, state, duration_ms_bucket, cost_bucket, self_check_failed}`、`loop_run_escalated{reason}`；指标：循环运行成功率、升级率（按原因）、自动暂停次数、循环起草报告的一次核对通过率。
 
 ## 12. 依赖、风险与待决
 
@@ -1057,6 +1211,9 @@ Then  06 MemoryWriter.Propose(kind=EXPERIENCE, scope=AGENT, source=report_id) �
 | 08 | `AuthorityChecker`；收件箱新增 4 类事项；通知目录新增 N-10-01..10；确认类动作加入「仅限人类」 |
 | 09 | JobQueue（定时任务）、outbox、SSE、Notifier、菜单贡献 |
 | 06 | `MemoryWriter.Propose`（v1.1） |
+| 05（D120） | `AgentReminderScheduler.UpsertForLoopOn` / `PauseForLoopOn` / `ResumeForLoopOn` / `CancelForLoopOn`（提醒锚定线程；触发时写收件箱 REMINDER 并调本模块 `LoopRunRecorder.OpenOn`，05 BR-05-139 / 140）；频道成员与线程可读判定；`agent.retired` |
+| 03（D120） | `execution.cost_updated`（按 `agent_id` 归属循环运行成本，BR-10-56） |
+| 08（D120） | 通知目录新增 N-10-11 / N-10-12；审计目录新增 `planning.loop_contract_changed`、`planning.loop_run_escalated` |
 
 ### 12.2 风险
 
@@ -1076,6 +1233,7 @@ Then  06 MemoryWriter.Propose(kind=EXPERIENCE, scope=AGENT, source=report_id) �
 | Q-10-2 | 报告是否参与绩效 | 不参与（非目标），仅用于对齐与复盘 |
 | Q-10-3 | 上下级是否需要独立的组织架构 | MVP 用 BR-10-19 推导；v1.1 复用底座部门树 |
 | Q-10-4 | 目标是否允许跨项目的成员目标 | 允许挂到 TEAM 目标（`project_id` 为空） |
+| Q-10-5 | 循环契约是否允许 Agent 自行提议（D120） | MVP 只允许人类创建；v1.1 可允许 Agent 提交草稿契约，由负责人类激活 |
 
 ---
 
@@ -1095,5 +1253,8 @@ Then  06 MemoryWriter.Propose(kind=EXPERIENCE, scope=AGENT, source=report_id) �
 | CR-10-08 | §8 / 05 | 05 机器通道可选指令 `agent.plan_draft`、`agent.report_draft`（Agent 自撰计划与复盘） |
 | CR-10-09 | 08 | 收件箱类型 `PLAN_CONFIRMATION`、`REPORT_CONFIRMATION`、`REPORT_BLOCKED`、`REPORT_OVERDUE`；通知目录 N-10-01..10；控制台外壳新增「目标与报告」分组 |
 | CR-10-10 | 05 | `AgentDirectory` 视图增加 `owner_principal_id`（主管创建的 Agent = 编制授权授予人） |
+| CR-10-11 | §7.1 / §8（D120） | 事件 `loop_contract.state_changed`、`loop_run.completed`、`loop_run.escalated`（发布者 planning；消费者 fleet(05)、governance）；接口 `LoopRunRecorder.OpenOn`（planning → fleet）；使用 05 `AgentReminderScheduler`；`LoopContractKind` / `LoopContractState` / `LoopRunState` 为模块内枚举，不进 00 §5 |
 
 > **v2.0（D112 / D113，00 §15）已并入本规格**：声明状态信心与计算进度（§3.14、BR-10-48）、核对项 B6 / B7 / N5 / N6（BR-10-49）、信心必填（BR-10-50）、质量指标填充（BR-10-51）、错误码 180460–180462、页面增补（§8.7）、AC-10-36…42。依赖：07 `DeliveryMetricsReader` 需提供穿透率等三项指标（07 BR-07-61 已定义）。
+
+> **D120（循环契约，2026-10-12）已并入**：§1 范围第 7 项、US-10-20…22、§3.1 模块内枚举 `LoopContractKind` / `LoopContractState` / `LoopRunState`、表 §3.15 `planning_loop_contracts` 与 §3.16 `planning_loop_runs`、§4.4（LC1–LC5、LR1–LR7）、BR-10-52…58、接口 L1–L7 与 `LoopRunRecorder.OpenOn`、错误码 180510–180514、任务 J8、§7.6 事件 / 审计 / SSE、§8.8 循环契约编辑器与报告编辑器徽标、N-10-11 / N-10-12、AC-10-43…54、Q-10-5、CR-10-11（对 00）。依赖 05 `AgentReminderScheduler`（05 BR-05-140）；循环运行产出的报告草稿仍经 §5.5 核对与 §5.6 人类确认。

@@ -17,6 +17,8 @@
 | 主管 Agent 编排 | 派单候选预过滤 + 确定性评分、主管 Agent LLM 提案、提案生命周期、MANUAL / AUTO 护栏、人工改派、无候选、失效重派、饥饿与抖动上限 |
 | Heavy 并行求解（v1.1） | 触发规则、N 枝选择（模型多样性）、预算上限、对比报告、择优 / 合成、落选枝归档 |
 | 频道（collab） | 项目默认频道、自建频道、成员、消息四类、@mention、Agent 回复与「@Agent 请做 X」、事件折叠、未读、编辑 / 撤回、Agent 私信、成员私信与会话空间（D118）、钩子（v1.1）、桥接（v2）、保留、上限、实时 |
+| Agent 运行时协议（D120） | 每个 Agent 的持久收件箱（唯一事实来源）、不带内容的唤醒提示（通道提示流 / 轮询 / 签名 webhook）、游标确认、过期上下文写入返回 `interrupted`；Agent 操作清单（schema、副作用、幂等、所需权限、可否委托、是否需人确认）与结果 `next`；五态活动状态与三种重置；工作目录与记忆查看范围；锚定线程的提醒（循环契约由 10 定义） |
+| 团队工具目录（D120） | 团队级 MCP 服务器与技能目录：条目、不可变版本与内容哈希、推荐预设、授予（项目 / 角色 / Agent，默认无）、MCP 凭据托管（09 封装，经平台中继，凭据不下发机器）、按执行解析有效工具集（供 03 记录、04 分发）、本机自带项的识别与标记；技能内容与版本仍以 06 技能库为准 |
 
 **不解决（边界）**：
 
@@ -76,6 +78,23 @@
 | US-05-25 | 作为团队成员，我要在一个全宽的会话空间里看到提及与线程、按项目分组的频道、私信与运行中的执行会话，以便不在页面间来回跳转 | MVP |
 | US-05-26 | 作为团队成员，我要和同事、和某个 Agent 私信，且人与人的私信只有我们两人能看 | MVP |
 | US-05-27 | 作为团队所有者，我要能只读查看我负责的 Agent 与人之间的私信，以便对 Agent 的行为负责 | MVP |
+
+### 2.z 用户故事增补（D120：Agent 运行时协议、操作清单、生命周期与提醒）
+
+| ID | 故事 | 版本 |
+|---|---|---|
+| US-05-28 | 作为 Agent（宿主进程），我要从一个持久收件箱按游标读取提及、私信、派单、评审反馈、提醒与交互结果，断线或重启后从上次确认处继续，以便不漏事、不重复做 | MVP |
+| US-05-29 | 作为交付负责人，我要 Agent 在会话或工作项已有更新事件时写入被拒为 `interrupted` 并带回更新内容，以便 Agent 不会基于过期上下文抢认领、回复或改状态 | MVP |
+| US-05-30 | 作为 Agent，我要读取一份机器可读的操作清单（输入 schema、副作用、幂等键规则、所需权限、可否委托、是否需人确认），并在每次调用结果中拿到建议的下一步，以便正确调用平台 | MVP |
+| US-05-31 | 作为团队所有者，我要在「治理 › Agent 操作清单」看到全部 Agent 可调用操作及每个 Agent 在某项目中的有效能力，以便知道它能做什么、为什么被拒 | MVP |
+| US-05-32 | 作为 Agent 的负责人，我要看到它在线 / 思考中 / 工作中 / 出错 / 离线的实时状态，并能重启、重置会话或完全重置（完全重置需重新认证），以便处理卡住或被污染的 Agent | MVP |
+| US-05-33 | 作为 Agent 的负责人或团队所有者，我要查看它的工作目录与记忆，而其他成员看不到，以便既能排查又不泄露 Agent 的内部材料 | MVP |
+| US-05-34 | 作为 Agent，我要为自己设锚定在某个线程上的提醒（一次性或周期），到点进入收件箱，以便按约定回到那段对话继续工作；循环契约（10）也经提醒驱动 | MVP |
+| US-05-35 | 作为团队所有者，我要为不经机器程序托管的 Agent 宿主配置签名 webhook 唤醒 | v1.1 |
+| US-05-36 | 作为团队所有者，我要在「团队 › 工具与技能」维护团队的 MCP 服务器（可从推荐预设开始）与技能目录，每个条目有版本和内容哈希，以便所有 Agent 用同一套经过审核的工具 | MVP |
+| US-05-37 | 作为团队所有者，我要把目录条目授予指定的项目、角色或 Agent（默认谁都不能用），以便工具按需开放、撤销即时生效 | MVP |
+| US-05-38 | 作为团队所有者，我要由平台保管 MCP 服务器的凭据并能轮换，机器上永远拿不到明文，每次经平台的工具调用都有审计 | MVP |
+| US-05-39 | 作为 Agent 的负责人，我要在 Agent 详情「技能」标签看到每个技能 / MCP 的来源（团队目录 vX / 本机自带）与是否可用，以便知道它实际带着什么工具在干活 | MVP |
 
 ## 3. 领域模型与数据表
 
@@ -397,6 +416,181 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 - 编制授权（08）`allowed_roles` 可包含 `TESTER`；**`ACCEPTOR` 只能由人类创建**（主管创建请求中出现 ACCEPTOR → 422 **142040**）；`LEAD` / `REVIEWER` 仍不可由主管创建。
 - 派单提案 `trigger` 增加 `INTERNAL_QA`（`role ∈ {TESTER, ACCEPTOR}`，`requires_human=false`，SYSTEM 自动应用）；提案新增字段 `subject_execution_id`、`family_fallback BOOL`。
 
+### 3.z 数据增补（D120）
+
+三方言按 §3.1 记号映射；通用列同 §3.1（下文不再重复）。
+
+**`fleet_agent_inbox_events`**（Agent 收件箱，只追加；唯一事实来源，BR-05-120）
+
+| 列 | 类型 | 空 | 默认 | 约束 | 说明 |
+|---|---|---|---|---|---|
+| id | ID | N | | PK | 雪花 |
+| agent_id | ID | N | | | |
+| seq | BIGINT | N | | UNIQUE(agent_id, seq) | 每 Agent 单调，从 1 起；在 `fleet_agent_live_states` 行锁内分配 |
+| kind | ENUM | N | | `InboxEventKind`（§3.z 枚举） | |
+| project_id | ID | Y | | | 行过滤；团队级私信为空 |
+| subject_kind / subject_id | STR(32) / ID | N | | | 事件所属对象：`channel` / `thread` / `work_item` / `execution` / `interaction` / `comment_thread` / `dispatch_proposal` / `reminder` / `loop_run` / `intake` / `delivery` / `report` / `plan` |
+| stream_key | STR(64) | Y | | `^(channel\|thread\|work_item\|comment_thread):[0-9]{1,19}$` | 该事件所在的写入流（BR-05-127）；无写入流的事件为空 |
+| stream_seq | BIGINT | Y | | | 事件发生时该流的序号；Agent 写入时作为 `seen_seq` 传回 |
+| ref_kind / ref_id | STR(32) / ID | Y | | | 具体对象（消息、裁决、批注、交互、提醒触发等） |
+| actor_kind / actor_id | ENUM / ID | Y | | 00 §4 | 引起事件的主体；SYSTEM 为空 |
+| title | STR(200) | N | | | 一行说明（不含代码、消息正文与工具入参） |
+| payload | JSON | N | `{}` | ≤8 KB，按 kind 的 Schema | 只含 ID、序号、截止时间等引用；正文经各模块读接口取得 |
+| source_event_id | STR(64) | N | | UNIQUE(agent_id, source_event_id) | 投影幂等键（领域事件 `event_id`，或 `reminder:<id>:<fire_no>`、`command:<command_id>`） |
+| expires_at | TS | N | | 创建 + 30 天 | 保留期（BR-05-125） |
+
+索引：`(agent_id, seq)`；`(tenant_id, agent_id, kind, seq DESC)`；`(expires_at)`。不设 `updated_*` / `version`（只追加）。
+
+**`fleet_agent_live_states`**（Agent 运行态，每 Agent 1 行；非聚合根，无乐观锁，避免高频上报与 `fleet_agents.version` 冲突）
+
+| 列 | 类型 | 空 | 默认 | 约束 | 说明 |
+|---|---|---|---|---|---|
+| agent_id | ID | N | | PK | 与 `fleet_agents` 同时创建（BR-05-02 事务内） |
+| inbox_head_seq | BIGINT | N | 0 | | 已分配的最大 seq |
+| inbox_ack_seq | BIGINT | N | 0 | 0 ≤ ack ≤ head，只增不减 | 游标（BR-05-121） |
+| inbox_acked_at | TS | Y | | | |
+| last_wake_seq / last_wake_at | BIGINT / TS | Y | | | 最近一次发出的唤醒提示 |
+| wake_mode | ENUM | N | `CHANNEL` | `WakeMode`：CHANNEL / POLL / WEBHOOK（v1.1） | BR-05-122 |
+| wake_webhook_url | STR(512) | Y | | 仅 https，非内网地址 | v1.1 |
+| wake_webhook_secret_sealed | STR(512) | Y | | | 09 `SecretSealer`；只在创建时返回一次 |
+| activity_status | ENUM | N | `OFFLINE` | `AgentActivityStatus` | BR-05-134 |
+| activity_changed_at | TS | Y | | | |
+| activity_detail | JSON | Y | | `{execution_id?, error_code?≤64, since?}` | 不含提示词与输出 |
+| session_epoch | INT | N | 1 | | 会话重置 / 完全重置 +1；宿主据此丢弃旧会话（BR-05-135） |
+| workspace_epoch | INT | N | 1 | | 完全重置 +1 |
+
+**`fleet_agent_resets`**（重置记录，只追加 + 状态列）
+
+| 列 | 类型 | 空 | 默认 | 约束 | 说明 |
+|---|---|---|---|---|---|
+| id | ID | N | | PK | |
+| agent_id | ID | N | | 部分唯一 `(agent_id) WHERE state='REQUESTED'` | 同时只有一个进行中的重置 |
+| kind | ENUM | N | | `AgentResetKind`：SESSION / FULL | 重启（RESTART）沿用 F06 与 `fleet_agent_process_events`，不入本表 |
+| state | ENUM | N | `REQUESTED` | `AgentResetState`：REQUESTED / DONE / FAILED / TIMED_OUT | §4.z R-状态 |
+| reason | STR(2000) | N | | ≥10 字 | |
+| requested_by | ID | N | | 仅 HUMAN | |
+| reauth_at | TS | Y | | FULL 必填 | step-up `agent_full_reset` |
+| command_id | STR(64) | N | | | `agent.reset` 命令 |
+| removed_bytes | BIGINT | Y | | | FULL 时机器回报 |
+| failure_code | STR(32) | Y | | | |
+| completed_at | TS | Y | | | |
+
+索引：`(tenant_id, agent_id, created_at DESC)`。
+
+**`fleet_agent_reminders`**（Agent 提醒，`version` 乐观锁）
+
+| 列 | 类型 | 空 | 默认 | 约束 | 说明 |
+|---|---|---|---|---|---|
+| id | ID | N | | PK | |
+| agent_id | ID | N | | | 被提醒的 Agent |
+| project_id | ID | Y | | | 锚点所属项目（团队级私信为空） |
+| anchor_kind | ENUM | N | | `ReminderAnchorKind`：THREAD / WORK_ITEM / LOOP_CONTRACT | |
+| channel_id / thread_root_message_id | ID / ID | Y | | THREAD 时必填；LOOP_CONTRACT 时取契约的锚定线程 | 「锚定在线程上」：到点事件指向该线程 |
+| work_item_id | ID | Y | | WORK_ITEM 时必填 | |
+| loop_contract_id | ID | Y | | LOOP_CONTRACT 时必填；部分唯一 `(loop_contract_id) WHERE state IN ('ACTIVE','PAUSED')` | 10 循环契约 |
+| title | STR(200) | N | | | |
+| note | STR(2000) | Y | | | Agent 写给未来自己的说明（经收件箱读取） |
+| schedule_kind | ENUM | N | | `ReminderScheduleKind`：ONCE / INTERVAL / PERIOD（按 10 `PeriodKind` 的报告时刻）；CRON 待 00 F12 批准后启用 | |
+| fire_at | TS | Y | | ONCE 必填 | |
+| interval_minutes | INT | Y | | INTERVAL：15–10080 | |
+| period_kind | ENUM | Y | | PERIOD 必填，`PeriodKind`（00 §5） | 时刻取 10 `planning_settings` 的 `*_report_at` 与团队时区 |
+| next_fire_at | TS | Y | | | 终态为空 |
+| last_fired_at / fire_count | TS / INT | Y / N | / 0 | | |
+| max_fires | INT | Y | | 1–1000 | 达到后 DONE |
+| state | ENUM | N | `ACTIVE` | `ReminderState`：ACTIVE / PAUSED / DONE / CANCELLED | §4.z |
+| created_by_kind / created_by | ENUM / ID | N / Y | | AGENT（本人）/ HUMAN / SYSTEM（10 循环契约） | |
+| version | INT | N | 1 | | |
+
+索引：`(state, next_fire_at)`（触发扫描）；`(tenant_id, agent_id, state)`；`(channel_id, thread_root_message_id)`。
+
+**`fleet_operation_manifest_versions`**（Agent 操作清单的发布版本；系统级只读数据，`tenant_id=0`，同 00 §3「基础设施表」中一方系统数据的处理方式，见 §13 CCR-05-11）
+
+| 列 | 类型 | 空 | 默认 | 约束 | 说明 |
+|---|---|---|---|---|---|
+| id | ID | N | | PK | |
+| manifest_version | STR(32) | N | | UNIQUE；语义化版本 `MAJOR.MINOR.PATCH` | BR-05-129 |
+| sha256 | STR(64) | N | | UNIQUE | 规范化文档（JCS）的哈希，作为 ETag |
+| document | JSON | N | | Schema S-M1（§6.z），≤2 MB | 完整清单 |
+| operation_count | INT | N | | | |
+| published_at | TS | N | | | |
+| supersedes_version | STR(32) | Y | | | |
+
+**`fleet_tool_entries`**（团队工具目录条目，`version` 乐观锁；BR-05-141）
+
+| 列 | 类型 | 空 | 默认 | 约束 | 说明 |
+|---|---|---|---|---|---|
+| id | ID | N | | PK | |
+| kind | ENUM | N | | `ToolEntryKind`：MCP_SERVER / SKILL | |
+| entry_key | STR(64) | N | | `^[a-z0-9][a-z0-9-]{1,63}$`；UNIQUE(tenant_id, entry_key) | 运行时中的名称（MCP server 名 / 技能目录名）；SKILL 条目 = 06 `skill_key` |
+| title / description | STR(200) / STR(1024) | N / Y | | | |
+| skill_id | ID | Y | | SKILL 必填；UNIQUE(tenant_id, skill_id) | 06 `knowledge_skills.id`；版本与内容以 06 为准（06 BR-06-67） |
+| transport | ENUM | Y | | MCP_SERVER 必填：`McpTransport` | |
+| credential_mode | ENUM | N | `NONE` | `ToolCredentialMode`；STDIO_PACKAGE 在 MVP 只允许 NONE（BR-05-142） | |
+| current_version_no | INT | Y | | MCP_SERVER：最新 ACTIVE 版本；SKILL 为空（取 06 当前版本） | |
+| preset_key | STR(64) | Y | | | 由推荐预设创建时记录（BR-05-149） |
+| state | ENUM | N | `DRAFT` | `ToolEntryState`；SKILL 条目创建即 ACTIVE | §4.z TE-状态 |
+| upstream_auth_failures | INT | N | 0 | | 中继连续收到上游 401 / 403 的次数，成功即清零（BR-05-147） |
+| version | INT | N | 1 | | |
+
+索引：`(tenant_id, kind, state)`。
+
+**`fleet_tool_entry_versions`**（MCP 条目的不可变版本，只追加 + 状态列；SKILL 条目的版本即 06 技能版本，不在本表）
+
+| 列 | 类型 | 空 | 默认 | 约束 | 说明 |
+|---|---|---|---|---|---|
+| id | ID | N | | PK | |
+| entry_id | ID | N | | UNIQUE(entry_id, version_no) | |
+| version_no | INT | N | | 从 1 起 | |
+| config | JSON | N | | Schema S-T1（§6.z），≤16 KB，不含任何机密 | |
+| content_sha256 | STR(64) | N | | = sha256(JCS(config)) | 版本内容哈希；执行证据记录此值（03 BR-03-147） |
+| change_note | STR(500) | Y | | | |
+| state | ENUM | N | `ACTIVE` | `ToolVersionState`：ACTIVE / SUPERSEDED / REVOKED | 新版本发布 → 旧 ACTIVE 变 SUPERSEDED；REVOKED 由人工撤回（BR-05-142） |
+| published_by / published_at | ID / TS | N | | | |
+
+**`fleet_tool_credentials`**（每个 MCP 条目至多 1 行；明文永不出库、不下发机器）
+
+| 列 | 类型 | 空 | 默认 | 约束 | 说明 |
+|---|---|---|---|---|---|
+| entry_id | ID | N | | PK | |
+| sealed | STR(4096) | N | | 09 `SecretSealer` purpose `fleet.tool_credential`，关联数据 = (tenant_id, entry_id)（09 BR-09-85） | |
+| header_name | STR(64) | Y | | CUSTOM_HEADER 必填；`^[A-Za-z0-9-]{1,64}$` | BEARER_TOKEN 固定为 `Authorization: Bearer` |
+| last4 | STR(4) | N | | | 只用于显示 |
+| rotated_by / rotated_at | ID / TS | N | | | |
+
+**`fleet_tool_grants`**（授予，只追加 + 状态列；BR-05-143）
+
+| 列 | 类型 | 空 | 默认 | 约束 | 说明 |
+|---|---|---|---|---|---|
+| id | ID | N | | PK | |
+| entry_id | ID | N | | | |
+| subject_kind | ENUM | N | | `ToolGrantSubjectKind`：PROJECT / ROLE / AGENT | |
+| project_id | ID | Y | | PROJECT 必填；ROLE / AGENT 可选（为空 = 全部项目与团队级） | |
+| role | ENUM | Y | | ROLE 必填，`AgentRole`（00 §5） | |
+| agent_id | ID | Y | | AGENT 必填 | |
+| state | ENUM | N | `ACTIVE` | ACTIVE / REVOKED；部分唯一 `(entry_id, subject_kind, coalesce(project_id,0), coalesce(role,''), coalesce(agent_id,0)) WHERE state='ACTIVE'` | |
+| granted_by_kind / granted_by | ENUM / ID | N / Y | | HUMAN；迁移种子为 SYSTEM（BR-05-150） | |
+| revoked_by / revoked_at / revoke_reason | ID / TS / STR(500) | Y | | | |
+
+索引：`(tenant_id, entry_id, state)`；`(tenant_id, agent_id, state)`；`(tenant_id, project_id, state)`。
+
+**`fleet_tool_presets`**（推荐预设；系统级只读 `tenant_id=0`，随版本发布，同 §13 CCR-05-11 的处理）：`preset_key`（UNIQUE）、`title`、`description`、`transport`、`config_template JSON`（S-T1，含 `{{placeholder}}`）、`credential_mode`、`credential_help STR(500)`（如何在服务方取得令牌）、`docs_url`、`phase`。
+**模块内枚举增补**（00 §3：仅本模块使用，不进 00 §5）
+
+| 枚举 | 值 |
+|---|---|
+| `InboxEventKind` | MESSAGE（Agent 参与的私信、线程回复，或其执行产物上的新批注）, MENTION（频道或批注中被 @）, DISPATCH（派单生效与派给它的工作：评审、测试、验收、分诊、发布说明、主管规划、计划 / 复盘起草）, REVIEW_FEEDBACK（对其声明的裁决与结构化反馈、内部验收失败反馈、转为反馈的批注）, REMINDER（提醒到点，含循环契约运行）, INTERACTION（其执行的工具授权 / 输入请求已被人回应、到期或取消） |
+| `WakeMode` | CHANNEL（经机器通道的提示流，默认）, POLL（宿主轮询）, WEBHOOK（签名 webhook，v1.1） |
+| `AgentActivityStatus` | ONLINE（在线空闲）, THINKING（模型思考中）, WORKING（执行工具或有运行中的执行）, ERROR（出错）, OFFLINE（离线） |
+| `AgentResetKind` / `AgentResetState` | SESSION, FULL / REQUESTED, DONE, FAILED, TIMED_OUT |
+| `ReminderAnchorKind` / `ReminderScheduleKind` / `ReminderState` | THREAD, WORK_ITEM, LOOP_CONTRACT / ONCE, INTERVAL, PERIOD / ACTIVE, PAUSED, DONE, CANCELLED |
+| `OperationSideEffect` | READ_ONLY, WRITES_STATE, POSTS_MESSAGE, STARTS_EXECUTION, SPENDS_BUDGET, NOTIFIES_HUMANS, CREATES_PRINCIPAL |
+| `HumanConfirmation` | NONE（直接生效）, ALWAYS（只生成待人确认的卡片，如频道派单请求）, BY_POLICY（按授权或策略决定，如自建请求的审批方式） |
+| `ToolEntryKind` / `ToolEntryState` | MCP_SERVER, SKILL / DRAFT, ACTIVE, DISABLED, ARCHIVED |
+| `McpTransport` | STREAMABLE_HTTP（经平台中继，BR-05-147）, STDIO_PACKAGE（机器按完整性哈希安装并在执行内启动） |
+| `ToolCredentialMode` | NONE, BEARER_TOKEN, CUSTOM_HEADER；OAUTH_CLIENT 为 v1.1 |
+| `ToolVersionState` / `ToolGrantSubjectKind` | ACTIVE, SUPERSEDED, REVOKED / PROJECT, ROLE, AGENT |
+| `ToolSource` | CATALOG（团队目录）, MACHINE_LOCAL（04 能力检测到、未纳入团队目录，「本机自带」） |
+
 ## 4. 状态机
 
 ### 4.1 AgentState（`DRAFT, ACTIVE, STOPPED, CRASHED, RETIRING, RETIRED`）
@@ -518,6 +712,54 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 | IQ4 | 候选 Agent 拒绝 / 30 min 未开始（`agent.qa_ack{accepted:false}` 或超时） | 重派次数 < 2 | 换下一候选重派；≥2 次 → 同 IQ3 |
 | IQ5 | HUMAN_ONLY 项目收到 IQ1 / IQ2 触发 | | 不派 Agent；内部验收由 02 直接进入人工（L2 只含 AUTOMATED，00 §15 对纯人工模式的例外） |
 
+### 4.z 活动状态、重置、提醒与收件箱（D120；叠加在 §4.1 之上，不新增 AgentState）
+
+**活动状态 `AgentActivityStatus`**（由机器上报 + 服务端派生，BR-05-134）
+
+| # | 当前 | 事件 | 守卫 | 目标 | 副作用 |
+|---|---|---|---|---|---|
+| AS1 | OFFLINE | `agent.status{RUNNING}` 到达（A04 / A09） | conn_epoch 当前 | ONLINE（宿主同时报告 `activity` 时取其值） | SSE `tenant/{t}/agent/{id}` |
+| AS2 | ONLINE / THINKING / WORKING | 宿主上报 `activity` 变化 | 同一 Agent 上报间隔 ≥2 s（更密的合并为最后一个值） | 上报值（ONLINE / THINKING / WORKING / ERROR） | SSE；不写领域事件、不审计 |
+| AS3 | 任意非 OFFLINE | process_status 离开 RUNNING（STOPPING / EXITED / UNREACHABLE），或机器 OFFLINE，或 AgentState ∉ {ACTIVE} | — | OFFLINE；AgentState=CRASHED 时为 ERROR | SSE |
+| AS4 | ERROR | 宿主上报 ONLINE / THINKING / WORKING，或人工重启后 RUNNING | — | 上报值 | 关闭 N-05-16 计时 |
+| AS5 | ERROR | 持续 ≥10 min | — | ERROR（不变） | N-05-16（每次进入 ERROR 一次） |
+
+**重置 `AgentResetState`**（BR-05-135 / 136）
+
+| # | 当前 | 事件 / 命令 | 守卫 | 目标 | 副作用 |
+|---|---|---|---|---|---|
+| RS1 | — | F21 `{kind:SESSION}` | HUMAN；`agent_manage`；AgentState ∈ {ACTIVE, STOPPED, CRASHED}；无进行中的重置 | REQUESTED | `session_epoch+1`；ACTIVE·RUNNING 时下发 `agent.reset{SESSION}`，否则机器下次启动时按新 `session_epoch` 丢弃旧会话并直接 DONE；审计 `fleet.agent_session_reset` |
+| RS2 | — | F21 `{kind:FULL}` | HUMAN；`agent_manage`；step-up `agent_full_reset`（≤5 min）；`confirm_name` 完全相等；03 报告该 Agent 无非终态执行；机器 ONLINE | REQUESTED | `session_epoch+1`、`workspace_epoch+1`；ACTIVE 时先 STOPPING；下发 `agent.reset{FULL}`；审计 `fleet.agent_full_reset` |
+| RS3 | REQUESTED | 机器 `agent.command_ack{ok:true, removed_bytes?}` | conn_epoch 当前 | DONE | 原为 ACTIVE 的 FULL 重置 → 按 A03 自动启动；收件箱游标不变 |
+| RS4 | REQUESTED | ACK `ok:false` | — | FAILED | `failure_code`；详情页显示原因与〔重试〕（新请求） |
+| RS5 | REQUESTED | 5 min 无 ACK | — | TIMED_OUT | FULL：`pending_cleanup_machine_id` 置为该机，机器重连后按 `workspace_epoch` 补做清理 |
+
+非法：RETIRING / RETIRED / DRAFT 上任何重置 → 409 142010；FULL 有非终态执行 → 409 142012；已有 REQUESTED → 409 142045。
+
+**提醒 `ReminderState`**（BR-05-138 / 139）
+
+| # | 当前 | 事件 | 守卫 | 目标 | 副作用 |
+|---|---|---|---|---|---|
+| RM1 | — | F23 创建（Agent 本人 / 人类 `agent_manage`）或 10 `AgentReminderScheduler.UpsertForLoopOn` | BR-05-138 | ACTIVE | 计算 `next_fire_at`；审计 `fleet.agent_reminder_changed` |
+| RM2 | ACTIVE | `next_fire_at ≤ now`（`fleet.reminder_fire`） | Agent 非 RETIRED；锚点仍可读 | ACTIVE（ONCE / 达 `max_fires` → DONE） | 写收件箱 REMINDER + 唤醒；LOOP_CONTRACT 先调 10 `LoopRunRecorder.OpenOn` |
+| RM3 | ACTIVE | 锚点不可读（频道归档、Agent 离开项目、工作项取消） | — | CANCELLED | 收件箱 REMINDER（`payload.cancelled_reason`） |
+| RM4 | ACTIVE ⇄ PAUSED | F24 `{state}`；或 10 契约 PAUSED / ACTIVE | 创建者本人、Agent 负责人或 `agent_manage` | PAUSED / ACTIVE | 恢复时从 now 重算，不补发错过的触发 |
+| RM5 | ACTIVE / PAUSED | F24 `{state:CANCELLED}`；Agent 退役；10 契约 ARCHIVED | — | CANCELLED | — |
+
+**收件箱事件**：只追加，无状态迁移；`seq ≤ inbox_ack_seq` 视为已确认，`expires_at` 过后由 `fleet.inbox_retention` 物理清理（收件箱是派生投影，原始事实留在各模块；按 §13 CCR-05-11 登记为 00 §3 的保留期清理例外）。
+
+**团队工具目录条目 `ToolEntryState`**（BR-05-141 / 142 / 152；SKILL 条目只有 ACTIVE ⇄ DISABLED 与随 06 归档的 ARCHIVED）
+
+| # | 当前 | 事件 / 命令 | 守卫 | 目标 | 副作用 |
+|---|---|---|---|---|---|
+| TE1 | — | T02 新建 MCP 条目（或从预设 / 本机导入）；06 首个技能版本批准（SKILL 条目，`skill_version.approved`） | HUMAN；`tool_catalog_manage`；BR-05-142 | DRAFT（MCP）/ ACTIVE（SKILL） | 审计 `fleet.tool_entry_changed` |
+| TE2 | DRAFT / DISABLED | T07 `{state:ACTIVE}` | 至少 1 个 ACTIVE 版本；`credential_mode≠NONE` 时已设置凭据；If-Match | ACTIVE | `tool_catalog.changed{STATE_CHANGED}` |
+| TE3 | ACTIVE | T07 `{state:DISABLED, reason}` | HUMAN；`tool_catalog_manage` | DISABLED | 新执行不再解析该条目；中继立即拒绝持该条目令牌的调用（BR-05-152） |
+| TE4 | DRAFT / DISABLED | T07 `{state:ARCHIVED, reason}`；SKILL：06 技能归档 | — | ARCHIVED（终态） | 授予保留记录但不再生效 |
+| TE5 | ACTIVE | T05 发布新版本 | 配置哈希与当前版本不同（否则 409 142058） | ACTIVE（`current_version_no+1`） | 旧版本 SUPERSEDED；已开始的执行仍用旧版本（BR-05-145）；`tool_catalog.changed{VERSION_PUBLISHED}` |
+
+非法：对 ARCHIVED 的任何迁移、DRAFT → DISABLED、ACTIVE → ARCHIVED（须先 DISABLED）→ 409 **142053**。
+
 ## 5. 业务规则与边界情况
 
 ### 5.1 创建与档案
@@ -540,7 +782,7 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 - **BR-05-13 并发命令**：同一 Agent 的 run-state / restarts / machine-binding / retirements 在 Agent 行 `SELECT … FOR UPDATE`（SQLite 单写者）下串行；第二个请求看到中间态（STARTING / STOPPING）→ 409 142011 `agent.transition_in_progress`（`Retry-After: 5`）。run-state 与当前一致 → 200 原样返回（天然幂等）。
 - **BR-05-14 换绑机器**：`PUT /agents/{id}/machine-binding {machine_id, runtime_kind, model_id, reasoning_effort?}`（If-Match）：Agent 须 DRAFT / STOPPED / CRASHED（否则 409 142010）；03 报告该 Agent 无非终态执行（否则 409 142012）；目标 = 当前 → 422 142013；目标须满足 BR-05-04/05（白名单中目标机不存在的 MCP 项 → 422 142007，需先编辑白名单）。同事务：旧凭证吊销并签发新凭证（`credential_delivery=PENDING`）、旧机 ONLINE 则下发 `agent.cleanup`，否则写 `pending_cleanup_machine_id`；审计 `fleet.agent_rebound`。
 - **BR-05-15 机器吊销 / 排空**：04 `machine.state_changed{REVOKED}` → 该机全部 Agent → STOPPED（A19），需人工换绑；DRAINING 时 Agent 保持 ACTIVE 但不合格派单（E3）。
-- **BR-05-16 工作目录浏览**：`GET /agents/{id}/workspace-entries?path=` 经 04 新增通道请求 `agent.workspace_list`（CCR-05-06），根限定为 Agent 私有目录与其执行工作目录，路径规范化后不得越出（`..`、符号链接越界 → 422 142027）；单次 ≤1000 项；文件内容 `…/workspace-entries/content?path=` ≤1 MiB（超出 413 142028）；机器离线 → 409 142002；只读。权限：`agent_read` + `machine_read`。
+- **BR-05-16 工作目录浏览**：`GET /agents/{id}/workspace-entries?path=` 经 04 新增通道请求 `agent.workspace_list`（CCR-05-06），根限定为 Agent 私有目录与其执行工作目录，路径规范化后不得越出（`..`、符号链接越界 → 422 142027）；单次 ≤1000 项；文件内容 `…/workspace-entries/content?path=` ≤1 MiB（超出 413 142028）；机器离线 → 409 142002；只读。权限：`agent_read` + `machine_read`（**D120 收窄**：只限该 Agent 的负责人类与持 `agent_workspace_read` 者，见 BR-05-137）。
 
 ### 5.3 退役
 
@@ -622,7 +864,7 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 - **BR-05-82 权限**：读频道 = `channel_read`（项目）且（DEFAULT 或为成员 或 持 `channel_manage`）；发消息 = `channel_post` 且为成员；建 / 改名 / 归档 / 管成员 = `channel_manage` 或该频道 OWNER（创建者）。不满足：缺权限码 403 145403（`reason_code=MISSING_PERMISSION`，`data.missing_permission`）；有权限但非成员 403 145403（`reason_code=NOT_MEMBER`）；他项目 / 他租户频道 404 145404。
 - **BR-05-83 消息种类**：TEXT 由人或 Agent 发；EVENT / DECISION_CARD / DISPATCH_CARD 只由系统（collab 投影器）写，HTTP 发送 kind≠TEXT → 422 145017。DECISION_CARD 投影 02 的「待裁决」（NEEDS_HUMAN_REVIEW），按钮调用 02 D1（权限仍由 02 判定，频道只是入口）；拒绝必须填写结构化反馈（复用 `StructuredFeedbackForm`）。
 - **BR-05-84 @mention**：客户端拾取器插入令牌 `<@principal_id>`；服务端解析令牌（不做显示名模糊匹配）：每个被提及者须为该频道当前成员（DEFAULT 频道按 BR-05-81 判定），否则 422 145003（`data.not_members[]`，UI 提示「X 不在本频道」，频道 OWNER / `channel_manage` 可〔邀请并发送〕）；已退役 Agent → 422 145016；每条 ≤20 个提及（422 145004）；不支持 `@all`/`@channel`（**本规格提议**：防通知风暴）。runtime 进程、机器、甲方联系人不是 Principal 或不是成员，无法被提及（PRD §5.3）。
-- **BR-05-85 Agent 收到提及**：collab 写 `collab_message_mentions` → outbox `message.posted`；fleet 消费后经 04 通道 `agent.inbox{channel_id, message_id, seq, excerpt≤2000}` 投递给 ACTIVE·RUNNING 的 Agent（非运行 → 不投递，频道内系统 EVENT 提示「Ada 当前未运行，消息将在其启动后送达」，启动时补投最近 24 h 未投递项）。Agent 以自身凭证 `POST /channels/{id}/messages` 回复（`reply_to_message_id`）。
+- **BR-05-85 Agent 收到提及**：collab 写 `collab_message_mentions` → outbox `message.posted`；fleet 消费后经 04 通道 `agent.inbox{channel_id, message_id, seq, excerpt≤2000}` 投递给 ACTIVE·RUNNING 的 Agent（非运行 → 不投递，频道内系统 EVENT 提示「Ada 当前未运行，消息将在其启动后送达」，启动时补投最近 24 h 未投递项）。**D120 取代投递方式**：提及写入 Agent 收件箱（MENTION），通道只发不带内容的唤醒提示 `agent.wake`，Agent 按游标读取（BR-05-120…126）；「启动后送达」由收件箱保证，不再有 24 h 补投窗口。Agent 以自身凭证 `POST /channels/{id}/messages` 回复（`reply_to_message_id`）。
 - **BR-05-86 「@Agent 请做 X」**：Agent 可做的唯一状态相关动作：(a) 以自身凭证创建 02 工作项草稿（需其角色允许，如 COORDINATOR）；(b) 若为主管 Agent，创建 `trigger=CHANNEL_REQUEST` 派单提案（`POST /entities/{p}/dispatch-proposals`，`requested_by`=原消息作者）。两者都产生 DISPATCH_CARD / 草稿卡片待人确认（BR-05-51）。执行者 Agent 被 @ 要求「开始做 W」→ 只能回复说明，不能自认领（02 BR-02-11）。
 - **BR-05-87 事件折叠**（服务端提供 `fold_key`，客户端渲染）：同一频道中**连续**（中间无其他 kind 或其他 fold_key 消息）的 EVENT 且 fold_key 相同 → 折叠为一行（显示最新事件 + 「另 n 条」，可展开）；单组 ≤50 条，超出起新组；`attention=true` 的 EVENT（执行失败、Agent 崩溃 / 重启用尽、预算阈值、无合格候选）不折叠；DECISION_CARD **永不折叠**；DISPATCH_CARD 在 PROPOSED / SELECTION_PENDING 时不折叠，处理后可与同 fold_key 事件折叠。
 - **BR-05-88 Agent 互 @ 防环**：由 Agent 消息中的提及触发投递时，新消息 `trigger_depth = 父 + 1`；`trigger_depth ≥3` 的消息中的 Agent 提及不再投递（消息照常保存，显示「已达 Agent 连锁上限」）；Agent 发消息速率 ≤10 条/min/频道，人 ≤30 条/min/频道，超出 429 145010（`Retry-After`）。
@@ -670,6 +912,64 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 - **BR-05-118 参与者离开**：Agent 退役或人类成员被停用 / 移出租户后，DIRECT 保留历史、另一方仍可读，发送 → 422 145016；退役 Agent 的人↔Agent 私信仍按 BR-05-115 对其负责人与审计员只读。保留沿用 BR-05-93（不物理删除）。
 - **BR-05-119 会话聚合与执行会话**：C17 只返回调用者自己的会话：可读的项目频道（BR-05-82）、本人参与的 DIRECT、按 BR-05-91 可只读的 AGENT_DIRECT（`include_agent_directs=true` 时）；不返回仅因审计而可读的人↔Agent 私信。「执行会话」区不由本模块存储：数据取自 03 A43（本人的执行，`kind=eq:INTERACTIVE` 且 `state=in:RUNNING,PAUSED`，或 `pending_interaction_count=gt:0`）与 08 我的裁决 I1 的「工具授权与输入」分类（本人可回应的交互），客户端合并去重并链到 03 交互会话工作台；回应仍走 03 / 08 接口与 `interaction_respond` 判定。03 目前没有「全租户内本人可回应的交互会话」读接口，超出这两个来源的会话不在此列（§12.1）。甲方联系人不是 Principal，C15 / C17 / C18 都不会返回甲方。
 
+### 5.z 业务规则增补（D120：Agent 运行时协议、操作清单、生命周期与提醒）
+
+**收件箱与唤醒**
+
+- **BR-05-120 收件箱是唯一事实来源**：Agent 需要处理的一切经 `fleet_agent_inbox_events` 到达，宿主不得依赖任何推送内容判断「有什么事」。投影来源（`fleet.inbox_projector`，按 `source_event_id` 幂等）：MENTION ← collab `message.posted` 的 AGENT 提及、03 `comment.thread_created` / `comment.posted` 的提及；MESSAGE ← DIRECT / AGENT_DIRECT 中对方的消息（BR-05-117 隐式提及只记一条，以 MENTION 为准）、Agent 发过言的线程中他人的回复、03 批注落在该 Agent 执行的产物上；DISPATCH ← 派单生效（`dispatch.applied` 受派者为 Agent）及本规格下发的工作命令（`agent.review` / `test` / `accept` / `triage` / `release_notes` / `lead_plan` / `plan_draft` / `report_draft`，与命令同事务写入，`source_event_id=command:<command_id>`）；REVIEW_FEEDBACK ← 02 `decision.made`（对象为该 Agent 的声明，含 `REQUEST_CHANGES` / `REJECT` 的结构化反馈）、03 `internal_qa.failed`（被验收执行的执行者）、03 `comment.converted{target_kind:FEEDBACK}`；REMINDER ← 本模块提醒触发（BR-05-139）；INTERACTION ← 03 `interaction.decided` / `interaction.closed`（交互所属执行的执行者为该 Agent）。不投影：EVENT 类频道消息、Agent 自己产生的事件、Agent 无读权限的对象（投影时按读权限复验，失去权限的事件不写入）。RETIRED Agent 不再写入。
+- **BR-05-121 序号与游标**：`seq` 在 `fleet_agent_live_states` 行锁内 `inbox_head_seq+1` 分配，与事件插入同事务。宿主读取 F17 `?since=<seq>`（返回 `seq > since` 的事件，升序，`limit ≤200`）并在处理完成后 PUT F18 `{ack_seq}`：只增不减（小于当前值 → 200 不变，天然幂等），大于 `inbox_head_seq` → 422 **142044**。确认只表示「已读到这里」，不撤销任何业务对象；未确认的事件在下次唤醒或轮询时仍会返回（至少一次）。会话重置与完全重置**不改变**游标（BR-05-135）。
+- **BR-05-122 唤醒提示不带内容**：每次写入收件箱后（同事务登记、提交后发送）向该 Agent 发唤醒提示，载荷只有 `{agent_id, inbox_seq}`（最新 head），不含标题、正文、对象 ID 或类型；提示可丢失、可重复、可合并（同一 Agent 1 s 内多次写入只发最后一个）。按 `wake_mode`：**CHANNEL**（默认）经 04 机器通道 `agent.wake`（WebSocket 即时推送；长轮询时立即返回本次 poll，04 BR-04-102）；**POLL** 不发提示，宿主每 ≤30 s 调 F17；**WEBHOOK**（v1.1）见 BR-05-124。Agent 不在 ACTIVE·RUNNING 时只写收件箱，不发提示（启动后宿主先按游标补读）。
+- **BR-05-123 提示流心跳与兜底**：CHANNEL 模式下每个 `ServerBatch`（≤10 s 一次）都携带本机全部 Agent 的 `agent_inbox_heads[{agent_id, inbox_seq}]`（04 BR-04-102），作为提示流的心跳：宿主发现 `inbox_seq > 已确认 seq` 即读取，因此单个提示丢失最多延迟一个轮询周期。控制台与外部宿主可订阅 SSE 主题 `tenant/{t}/agent_inbox/{agent_id}`（F19），服务端每 15 s 发一次心跳帧 `{inbox_seq}`；30 s 未收到任何帧的订阅方须退回轮询。
+- **BR-05-124 签名 webhook（v1.1）**：`wake_mode=WEBHOOK` 时向 `wake_webhook_url`（仅 https，拒绝回环 / 私网 / 链路本地地址，同 145019 规则）POST `{agent_id, inbox_seq, sent_at}`，头 `X-Wake-Timestamp`（Unix 秒）与 `X-Wake-Signature: sha256=<HMAC-SHA256(secret, timestamp + "." + body)>`；接收方须拒绝时间差 >300 s 的请求以防重放；超时 5 s，重试 5 次指数退避；连续 20 次失败 → 自动改为 POLL 并通知负责人（N-05-17）。秘密经 09 `SecretSealer` 存储，只在 F20 设置时返回一次；轮换即替换。webhook 不携带任何内容，接收方仍须以 Agent 凭证调 F17 读取。
+- **BR-05-125 上限与保留**：每 Agent 未确认事件 ≤10,000；超出时最旧的未确认 DISPATCH / REVIEW_FEEDBACK / INTERACTION 保留，最旧的 MESSAGE / MENTION / REMINDER 被丢弃并写一条 `kind=MESSAGE, title="收件箱积压，已丢弃 n 条较早的消息与提醒"` 的系统事件（不静默丢失），同时 N-05-17；事件保留 30 天（`expires_at`），过期即使未确认也清理。ACTIVE·RUNNING 的 Agent 存在 >1 h 未确认事件 → N-05-17（每 Agent 每 24 h 一次）。
+- **BR-05-126 与旧投递的关系**：`agent.inbox`（§6.6）废止；BR-05-85 中「启动后补投最近 24 h」由收件箱取代（启动后宿主按游标补读，保留期 30 天）。工作命令（§6.6 的 `agent.review` 等）保持原载荷（只含 ID 与截止时间，不含正文）与 ACK 语义，同时写 DISPATCH 事件；宿主以收件箱为准去重（`payload.command_id`）。
+
+**过期上下文写入（`interrupted`）**
+
+- **BR-05-127 写入流与 `seen_seq`**：下列写入在调用方为 **AGENT** 时必须携带请求字段 `seen_seq`（调用方读到的该流最新序号；缺失 → 本模块段 422「seen_seq_required」：collab **145022**、02 **120470**、03 **130475**、12 **126062**）；人类调用方可选（传了即同样判定）。流的定义与「更新事件」的判定（00 §9）：
+  - `channel:<id>`（会话）：C09 发顶层消息时，`collab_messages` 中 `seq > seen_seq`、作者 ≠ 调用者、`kind ∈ {TEXT, DECISION_CARD, DISPATCH_CARD}`、非线程回复、未撤回的消息；
+  - `thread:<root_message_id>`（线程，序号仍用频道 `seq`）：C09 带 `reply_to_message_id` 时，根消息被编辑 / 撤回或该线程中 `seq > seen_seq` 的他人回复；
+  - `work_item:<id>`（工作项）：02 `delivery_work_items.activity_seq`，判定为 02 `delivery_work_item_activities` 中 `seq > seen_seq` 且主体 ≠ 调用者的活动（02 BR-02-64）；适用 02 A1（认领 / 评审认领）、A4（释放）、C1（提交完成声明）、D1（经委托的裁决）、12 A13（流转）、03 A27 / A28（证据提交 / 修改，执行关联工作项时）、03 A77（新建批注线程，产物所属执行关联工作项时）；
+  - `comment_thread:<id>`：03 A79 回复批注时，该线程中 `seq > seen_seq` 的他人批注或线程状态变化。
+  **豁免**：Andon 停线、停止 / 暂停自己的执行、收件箱确认、编辑 / 撤回自己的消息——这些动作不能因上下文过期而被阻止。
+- **BR-05-128 `interrupted` 响应与重试**：判定在写入事务内、取得流的行锁之后、其他业务守卫之前执行；存在更新事件 → **不写任何数据**，返回 HTTP 409，业务码为所属模块的 `write_interrupted`（collab **145021**、02 **120469**、03 **130474**、12 **126061**），`data = {state:"interrupted", stream, seen_seq, current_seq, newer_events:[…] ≤50, truncated}`（结构见 00 §9；会话流的 `newer_events` 为完整 `Message` 表示，其他流为 `{seq, kind, actor{kind,id}, ref{kind,id}, occurred_at, title}`），`meta.next = [{operation:"inbox_events.list"…}, {operation:<原操作>, reason:"RETRY_WITH_SAME_IDEMPOTENCY_KEY"}]`。`interrupted` 响应**不记入** 09 C7 幂等表，且 `seen_seq` 不参与请求哈希（00 §9）：Agent 读完更新事件后可用**同一个 `Idempotency-Key`**、新的 `seen_seq` 重试；若决定放弃，则不重试。重试仍可能再次 `interrupted`（又有新事件），宿主应在 3 次后改为回复或升级而不是无限重试。
+- **BR-05-129 竞争认领**：两个 Agent 基于同一 `seen_seq` 竞争同一写入（如两个持委托的评审 Agent 对同一工作项评审认领）时，先提交者成功并使流前进；后到者得到 `interrupted`（`newer_events` 含前者的认领）；它若仍以同一幂等键重试，则落到原有冲突规则（02 BR-02-14 / BR-02-15：409 120426 / 120446，`data.holder`）。`interrupted` 不替代任何既有的唯一约束或 CAS，只是让 Agent 在冲突前先看到原因。
+
+**操作清单与 `next`**
+
+- **BR-05-130 清单内容与发布**：每个模块在启动时经本模块 `OperationRegistry.Register(op)`（00 §8）登记它允许 Agent 调用的每个操作；清单 = 全部登记项按名称排序后的文档（Schema S-M1，§6.z），每项含：`name`（`<资源>.<动词>`，如 `channel_message.post`）、`summary`、`transport`（HTTP `{method, path}` 或机器通道消息类型）、`input_schema` / `output_schema`（JSON Schema 2020-12，取自该接口的请求 / 响应定义）、`side_effects[]`（`OperationSideEffect`）、`idempotency{required, key_rule}`（如「每个逻辑动作一个新键，`interrupted` 后用原键重试」）、`stale_context{stream, seen_seq_required}`（BR-05-127）、`permission{code, via: ROLE|DELEGATION|POLICY|RELATION|SELF, policy_rule?, relation?}`（权限码取自 00 §6.1，与路由守卫登记的码一致，08 BR-08-67；`SELF` = 只要求调用者是该 Agent 本人的服务账号，`code` 为空——收件箱、提醒、能力视图、本人可用工具；`RELATION` = 关系授权，如项目主管 Agent、负责人类，`relation` 写明关系名）、`delegable`（码 ∉ 00 §6.4）、`human_only`（码 ∈ 00 §6.5 / 08 `HumanOnly` 时恒为 true，Agent 永远不可调用，仍列出以便解释）、`human_confirmation`（`HumanConfirmation`）、`quota`（NONE / SPAWN_GRANT / PROJECT_BUDGET / RATE_LIMIT）、`phase`、`deprecated_since?`。启动时 `fleet.manifest_publish` 计算规范化文档的 sha256，与最新版本不同则写入新版本：只增加操作或可选字段 → MINOR+1；删除操作、收紧输入 → MAJOR+1（旧版本保留可读）；文案变化 → PATCH+1。登记项缺 `input_schema` 或权限码未在 00 §6.1 登记 → 启动失败（禁止静默降级）。
+- **BR-05-131 结果带 `next`**：清单内操作的成功与失败响应都在 `meta.next` 返回建议的下一步（数组，可为空，≤5 项）：`{operation, reason, args?}`，`reason` 取值：`READ_NEWER_EVENTS`、`RETRY_WITH_SAME_IDEMPOTENCY_KEY`、`ACK_INBOX`、`ATTACH_EVIDENCE`、`SUBMIT_CLAIM`、`WAIT_FOR_HUMAN`（结果需人确认时）、`REPLY_IN_THREAD`、`ESCALATE_TO_OWNER`、`NONE_AVAILABLE`。`next` 只是建议，平台不据此授权；`next` 中的操作仍按清单与权限判定。人类调用方同样收到（控制台忽略）。
+- **BR-05-132 能力判定与 `CAPABILITY_NOT_AUTHORIZED`**：Agent 调用清单内操作被拒时，响应仍为所属模块段 `xx0403`，`data.reason_code` 为 08 §3.5 的原因码（不变），另加 `data.result = "CAPABILITY_NOT_AUTHORIZED"` 与 `data.operation`；原因码到该结果类别的映射由 08 §3.5c 唯一定义。M03 能力视图对每个操作给出 `status ∈ {AVAILABLE, CAPABILITY_NOT_AUTHORIZED, QUOTA_EXHAUSTED, NOT_APPLICABLE}` 与原因码，判定使用 08 `AuthorityChecker.Check` 的只读路径（不写库、不占配额）。调用清单外的接口不受影响（仍按各模块守卫），但 `meta.next` 为空且不保证向后兼容。
+- **BR-05-133 按操作的配额与人确认**：`quota=SPAWN_GRANT` 的操作（`agent_spawn_request.create`，D110 G01）在处理前先做只读预检（08 `SpawnGrantReader.Active` + 用量），失败按原码返回（422 142031–142038），权威占用仍是同事务内的 `SpawnGrantUsage.Reserve`（BR-05-98，防并发超额）；`quota=PROJECT_BUDGET` 的操作（启动执行、并行求解）预检 07 `ProjectGate`；`quota=RATE_LIMIT` 的操作沿用各自限流（如 BR-05-88）。`human_confirmation=ALWAYS` 的操作（频道 / 私信派单请求 D02 `CHANNEL_REQUEST`）返回的对象处于待人确认状态，`meta.next=[{reason:"WAIT_FOR_HUMAN"}]`；`BY_POLICY`（自建请求、计划提交）在响应中标明实际生效方式（如 `downgraded=true`）。
+
+**活动状态、重置与查看范围**
+
+- **BR-05-134 五态上报与派生**：宿主在 `agent.status` 上附带 `activity`（ONLINE / THINKING / WORKING / ERROR）与 `activity_detail`，状态变化即报（同一 Agent ≥2 s 一次，合并），并随每次 poll 的 `agents[]` 快照上报（04 `AgentProcState`）。服务端派生规则（优先级从高到低）：AgentState=CRASHED → ERROR；process_status ≠ RUNNING、机器 OFFLINE、AgentState ≠ ACTIVE → OFFLINE；否则取宿主上报值；旧版宿主不报 `activity` → ONLINE，且有本 Agent 的 RUNNING 执行时为 WORKING。活动状态只经 SSE 推送与 F03 / F01 返回，不发领域事件、不审计；ERROR 持续 ≥10 min → N-05-16。
+- **BR-05-135 三种重置**：**重启**（RESTART）= 既有 F06 / A12 / A13：重启宿主进程，保留会话与工作目录。**会话重置**（SESSION）：清空 Agent 宿主的常驻会话上下文（宿主丢弃 `session_epoch` 之前的会话与原生会话 ID），保留工作目录（Agent 私有目录中的笔记、仓库等）与 06 长期记忆；进行中的宿主轮次取消，Agent 的执行（03）不受影响。**完全重置**（FULL）：会话重置 + 清空 Agent 私有目录（`scope:"AGENT_HOME"`，与退役清理同范围，**不碰项目工作目录与执行工作区**）；06 长期记忆不在重置范围（撤销记忆走 06）。三种重置都不改变收件箱游标、角色、授权、技能挂载与凭证。
+- **BR-05-136 完全重置仅限人类**：FULL 只能由人类发起（Agent / 服务账号 → 403 140403 `AGENT_PROHIBITED`），需 `agent_manage` + step-up `agent_full_reset`（target `agent:<id>`，08 §6.9）+ 输入 Agent 名称完全相等（不符 422 **142050**）；该 Agent 有非终态执行 → 409 142012（先停止或等待结束）；机器非 ONLINE → 409 142002。SESSION 需 `agent_manage` 与 HUMAN，不需 step-up。两者均审计（`reason` 必填 ≥10 字）。
+- **BR-05-137 工作目录与记忆的查看范围**：F12 / F13（工作目录）与 Agent 详情「记忆」标签（数据来自 06 A30 `GET /agents/{agent_id}/memories`）只对两类人类开放：该 Agent 的负责人类（`owner_principal_id`，经 08 关系授权隐式持有）与持 `agent_workspace_read` 的成员（默认仅 `team_owner`，08 §3.3d）；其他人（含持 `agent_read` 的成员与其他 Agent）→ 403 140403（`MISSING_PERMISSION`，`data.missing_permission=agent_workspace_read`）。Agent 自身读自己的记忆不受影响（06 BR）。每次读取文件内容审计 `fleet.agent_workspace_read`（路径 SHA-256，不含路径原文与内容）。06 A30 的人类读者按同一规则收窄（06 BR-06-66，§13 CCR-05-14）。负责人关系由本模块 `AgentDirectory` 提供的 `owner_principal_id` 作为判定事实交给 08（08 BR-08-69）。
+
+**提醒**
+
+- **BR-05-138 创建与上限**：Agent 以自身凭证为**自己**创建提醒（为他人创建 → 403 140403 `NOT_OWNER`）；人类为某 Agent 创建需 `agent_manage`；锚点须当前可读（THREAD：频道成员且根消息未撤回；WORK_ITEM：`work_item_read`），否则 422 **142047**。每 Agent ACTIVE + PAUSED 提醒 ≤50（422 **142046**）；INTERVAL ≥15 min、ONCE 的 `fire_at` 在 now+1 min 至 now+365 天之间（422 142047）；LOOP_CONTRACT 提醒只由 10 经接口创建 / 修改 / 取消，HTTP 修改 → 409 **142048**。
+- **BR-05-139 触发**：`fleet.reminder_fire` 每 30 s 扫描 `state='ACTIVE' AND next_fire_at ≤ now`（每批 ≤500，逐条 CAS）：写收件箱 REMINDER（`stream_key` = 锚定线程 `thread:<root>` 或 `work_item:<id>`，`stream_seq` = 触发时该流的最新序号，`payload{reminder_id, fire_no, loop_run_id?}`）并唤醒；Agent 离线时同样写入（错过的多次触发**合并为一条**，`payload.missed_fires=n`）。提醒不向线程发任何消息；Agent 收到后如需发言，按 BR-05-127 携带 `seen_seq` 发到该线程。
+- **BR-05-140 循环契约提醒**：10 激活循环契约时在同一事务内调 `AgentReminderScheduler.UpsertForLoopOn(ctx, tx, {loop_contract_id, agent_id, anchor{channel_id, thread_root_message_id}, schedule})`，暂停 / 归档时调 `PauseForLoopOn` / `CancelForLoopOn`；触发时本模块在写收件箱的同一事务内调 10 `LoopRunRecorder.OpenOn(ctx, tx, loop_contract_id, fire_no, scheduled_for)` 取得 `loop_run_id`（10 返回 `skip=true` 时——如上一次运行仍未结束且契约不允许重叠——只写一条 `payload.skipped=true` 的 REMINDER）。运行的预算、自检、升级与报告核对全部由 10 判定（10 BR-10-52…58）。
+
+**团队工具目录（MCP 服务器与技能）**
+
+- **BR-05-141 目录与条目**：每个团队一个工具目录，条目两类：**MCP_SERVER**（本模块保存传输、配置版本与凭据）与 **SKILL**（06 技能库中的技能在目录中的镜像：06 首个版本批准时自动建条目、`entry_key = skill_key`，06 归档时条目 ARCHIVED；版本号、内容与 `content_hash` 一律取 06 已批准的技能版本，本模块不复制内容，06 BR-06-67）。管理（建、改、发布版本、启停、授予、凭据）只限 HUMAN 且持 `tool_catalog_manage`（08 §3.3d：仅限人类、不可委托，默认仅 `team_owner`）；Agent / 服务账号调用 → 403 140403（`AGENT_PROHIBITED`）；人缺码 → 403 140403（`MISSING_PERMISSION`）。读取目录沿用 `agent_read`。SKILL 条目经 T02 新建 → 422 142052（`data.field=kind`，「技能请在知识库中创建」）。
+- **BR-05-142 MCP 条目、版本与传输**：`STREAMABLE_HTTP` 的 `config.url` 须为 https，拒绝回环 / 私网 / 链路本地地址（同 145019 规则）；`STDIO_PACKAGE` 的 `config.package` 须带完整性哈希（npm `integrity`、PyPI sha256 或 files 的 `file_id` + sha256），MVP 中 `credential_mode` 只能为 NONE（需要凭据的本地进程会把明文放到机器上，违反「凭据不下发机器」，v1.1 再议）——违反任一 → 422 **142052**（`data.field`）。T05 发布的版本不可变，`content_sha256 = sha256(JCS(config))`；与当前版本哈希相同 → 409 **142058**。版本可被人工 REVOKED（T07 版本子操作 `{version_no, state:"REVOKED"}`）：REVOKED 版本不再被新执行解析，中继拒绝持该版本令牌的调用；当前版本被撤回时 `current_version_no` 回退到最近一个未撤回版本，没有则条目自动 DISABLED。
+- **BR-05-143 授予（默认无）**：条目只有被授予才可被使用；授予主体为 **PROJECT**（该项目内的全部执行）、**ROLE**（持该 `AgentRole` 的 Agent，可限定项目）、**AGENT**（单个 Agent，可限定项目）。覆盖判定 `covered(entry, agent, project)` = 存在 ACTIVE 授予满足以下任一：PROJECT 且 `project_id=project`；ROLE 且 `role ∈ agent.roles` 且（`project_id` 为空或 = project）；AGENT 且 `agent_id=agent` 且（`project_id` 为空或 = project）。授予与撤销只经 T09 / T10（HUMAN、`tool_catalog_manage`）；Agent 不能为自己或他人授予。同一主体重复授予 → 200 返回已有行（天然幂等）；主体不存在、角色非法、条目 ARCHIVED → 422 **142054**。撤销对新执行立即生效，对运行中的执行在 ≤60 s 内生效（中继按调用复验覆盖，缓存 ≤60 s）。
+- **BR-05-144 有效工具集（按执行解析）**：03 派发执行时在派发事务内调 `ToolsetResolver.ResolveOn`（§6.z），按「授予是闸门、Agent 配置是选择」解析：**目录 MCP** = ACTIVE 条目中 `covered(…)` 为真且被选中的（Agent 执行：`catalog:<entry_key>` ∈ Agent `mcp_allowlist`；人类发起的 INTERACTIVE / ADHOC：会话配置中选中的、仅 PROJECT 授予覆盖的条目），版本取解析时的 `current_version_no`；**目录技能** = 06 `SkillCatalog.ForAgent` 返回的已挂载技能中 `covered(…)` 为真且条目未 DISABLED 的，版本取 06 解析出的版本；**本机自带**（`ToolSource=MACHINE_LOCAL`）= 绑定机器最近一次 04 能力检测中不属于目录的 MCP（仍按 BR-05-05 只在 `mcp_allowlist` 中时注入）与运行时自行发现的本机技能。结果 `Toolset{revision, entries[{source, kind, entry_key, version_no?, content_sha256?, transport?}], warnings[]}`（`revision` = 规范化条目列表的 sha256）返回 03 记录为执行证据（03 BR-03-147）。被覆盖但缺凭据、版本已撤回的条目不进入工具集，记入 `warnings[]`。单个执行 ≤30 个技能、≤20 个 MCP，超出按条目名排序截断并记 warning。
+- **BR-05-145 分发与版本冻结**：工具集随 03 `execution.start` 下发（载荷见 03 §6.3 增补），由 04 机器程序落地（04 BR-04-105）：技能内容按版本写入该执行的运行时技能目录；目录 MCP 写入该执行的运行时 MCP 配置——STREAMABLE_HTTP 指向机器本地代理，经本模块中继 T13 访问上游；STDIO_PACKAGE 由机器按完整性哈希安装后在执行内启动。**版本在执行开始时冻结**：之后发布的新版本（含 06 批准的新技能版本）只影响之后开始的执行；同一执行的重试 / 返工分支是新的派发，重新解析。Agent 常驻宿主（F16）只取技能（AGENT / ROLE 授予且未限定项目者），目录 MCP 只注入执行。
+- **BR-05-146 凭据与工具令牌**：凭据经 T08 设置或轮换（HUMAN、`tool_catalog_manage`、step-up `tool_credential_manage`，08 §6.9），用 09 `SecretSealer` 封装存储；任何接口只回显 `last4` 与 `rotated_at`；明文只在中继处理单次请求时于内存中解封，**永不**下发机器、写入执行载荷、日志、审计或事件。轮换即替换（旧密文不保留），下一次中继调用起使用新凭据，运行中的执行无需重启。机器只拿到**工具令牌**：由 `ToolsetResolver.IssueTokens` 为每个（执行 × 目录 MCP 条目）签发，HMAC 签名、不透明，绑定 `{tenant_id, execution_id, dispatch_epoch, entry_id, version_no}`，有效期 ≤15 min，随 03 `leases.renew` 续签；执行进入终态、被栅栏（FENCED）或租约过期后令牌立即失效。令牌只保存在机器程序内存中，不进入运行时进程环境、参数或配置文件（04 BR-04-107）。
+- **BR-05-147 MCP 中继**：T13 为 Streamable HTTP 透传端点（JSON-RPC，不使用 `respx` 信封）。每个请求依次校验：令牌签名与有效期（否则 HTTP 401，`data.code=142056`）→ 执行非终态且 `dispatch_epoch` 当前（经 03 `ExecutionReader.Get`）→ 条目 ACTIVE、令牌版本未 REVOKED → `covered(…)` 仍为真；后三项不满足 → HTTP 403，JSON-RPC 错误 `{code:-32001, message:"capability not authorized", data:{reason_code:"TOOL_NOT_GRANTED"|"EXECUTION_NOT_ACTIVE"|"TOOL_DISABLED"}}`，审计 `fleet.tool_call_denied`。通过后按令牌中的版本配置连接上游、注入凭据头并透传；每个 `tools/call` 写审计 `fleet.tool_called`（`entry_key`、`version_no`、工具名、`execution_id`、`agent_id`、入参 SHA-256、结果 ok / error、耗时；**不含**入参与结果内容，08 BR-08-68）。上限：请求体 ≤4 MiB、响应 ≤16 MiB、每执行并发 ≤10（超出 429）、上游超时取版本配置（≤120 s，超时 502 `142057`）。上游连续 5 次返回 401 / 403 → N-05-18（每条目每 24 h 一次），条目保持 ACTIVE 并在目录中标「凭据可能失效」。STDIO_PACKAGE 与本机自带 MCP 的调用不经中继，只以 03 执行事件的 `tool` 行记录。
+- **BR-05-148 本机自带项**：04 能力检测（S3）列出机器上运行时可见的技能与 MCP；本模块在 T12 与 Agent 详情中逐项标注：名称与目录条目相同且（技能）内容哈希等于某个目录版本 → 「团队目录 v{n}」；名称相同但哈希不同 →「与团队目录 v{n} 不一致」；其余 → 「本机自带，未纳入团队目录」。本机自带项保持既有可用性（MCP 仍按 BR-05-05 白名单注入；技能由运行时自行发现），但不受授予约束、不经中继、不托管凭据，执行证据中记为 `MACHINE_LOCAL`。持 `tool_catalog_manage` 者可对本机 MCP〔纳入团队目录〕（T02 `from_local`：按检测结果预填名称与传输，凭据须重新在平台设置）；本机技能须先导入 06 技能库（06 A51）。
+- **BR-05-149 推荐预设**：T11 列出系统内置预设（如代码托管、项目管理、错误监控、浏览器自动化等常用 MCP 服务器）；T02 `{preset_key}` 按预设生成 DRAFT 条目与 v1 配置草稿，占位符未填或凭据未设置时不可激活（422 142052 / 142055）。预设只是模板，不自动授予任何主体。
+- **BR-05-150 上线迁移与兼容**：本功能上线时（一次性任务 `fleet.tool_catalog_migration`）为每个已存在的 06 挂载（`knowledge_agent_skills`）生成 AGENT 授予（`granted_by_kind=SYSTEM`，`SYSTEM:fleet.tool_catalog_migration`），使既有 Agent 的技能不因「默认无」而丢失；既有 `mcp_allowlist` 中的名称视为本机自带项，行为不变。迁移幂等、审计一次汇总事件。
+- **BR-05-151 上限**：每团队 ≤200 个 MCP 条目；每条目 ACTIVE 授予 ≤500；每条目版本不删除（列表分页）；凭据 ≤8 KB。超出 422 142052（`data.field=limit`）/ 142054。
+- **BR-05-152 停用与撤回的效果**：DISABLED 是紧急止血：新执行不再解析，运行中的执行在下一次调用即被中继拒绝（`TOOL_DISABLED`）；已下发到机器的技能文件不追删（执行结束随运行目录清理），但 03 证据如实记录该执行使用过的版本。重新 ACTIVE 后只对之后开始的执行生效。
+
 ## 6. 接口契约
 
 约定（与 02/03/04/07 一致）：huma v2 + `respx` 信封；ID 十进制字符串；OpenAPI tag = 最终路径首段（CR-03-07 / CR-04-02）；守卫记号 **T** = `authz.Register`（租户级，路径前缀 `/tenants/{tenant_id}`）、**E** = `authz.RegisterEntity`（`entity_id` = 项目实体）、**O** = `authz.RegisterOwned`（全局短地址，按资源反查所属项目 / 租户后授权；作用域地址为同一操作，归属不符 404）；乐观锁 = 响应头 `ETag: "<version>"`、写请求 `If-Match`（缺 428、不符 409，表中记「v」）；「✔」= 支持 `Idempotency-Key`（09 C7 平台辅助，24 h；同 key 不同请求 176425，进行中 176409）。权限拒绝统一 `<段>403` + `data.reason_code`（MISSING_PERMISSION / NOT_MEMBER / DIRECT_READ_ONLY / REAUTH_REQUIRED / SELF_MANAGE / HUMAN_ONLY 等）。列表一律 `pkg/query`（`field=op:value`，offset 分页，`capabilities` 声明）。fleet 通用码沿用 04：140400 / 140403 / 140404 / 140409 / 140428；collab：145400 / 145403 / 145404 / 145409 / 145428。
@@ -689,7 +989,7 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 | F09 | GET `/agents/{agent_id}/process-events` | agents | `agent_read` · O | 过滤 `kind`(in) `occurred_at`(gte,lte)；排序 `occurred_at` | `ProcessEvent[]` | 404 | — |
 | F10 | GET `/agents/{agent_id}/stats` | agents | `agent_read` · O | `?window_days=30\|90&work_item_type=` | `{fpa, fpa_n, cpa_micros, rework_rate, claims, accepted_items, load{active_items, max_parallel_items, running_executions}, computed_at, by_type[]}` | 404 | — |
 | F11 | GET `/agents/{agent_id}/avatar-candidates` | agents | `agent_read` · O | `?style=` | `[{style, seed, url}] ×6` | 404 | — |
-| F12 | GET `/agents/{agent_id}/workspace-entries` | agents | `agent_read`+`machine_read` · O | `?path=`（相对根） | `{root, path, entries:[{name, kind, size, modified_at}] ≤1000, truncated}` | 409 142002；422 142027 | — |
+| F12 | GET `/agents/{agent_id}/workspace-entries` | agents | `agent_read`+`machine_read` · O（D120：另须为负责人类或持 `agent_workspace_read`，BR-05-137） | `?path=`（相对根） | `{root, path, entries:[{name, kind, size, modified_at}] ≤1000, truncated}` | 409 142002；422 142027 | — |
 | F13 | GET `/agents/{agent_id}/workspace-entries/content` | agents | 同上 | `?path=` | 文本 / 二进制流（≤1 MiB，`Cache-Control: no-store`） | 413 142028；422 142027 | — |
 | F14 | GET `/agents/{agent_id}/direct-channels` | agents | `agent_read` · O + 每频道按项目 `channel_read` 行过滤 | 过滤 `project_id`(eq) | `Channel[]`（AGENT_DIRECT） | — | — |
 | F15 | GET `/tenants/{tenant_id}/roster-entries` | tenants | 租户成员 · T；Agent 行另需 `agent_read` | 过滤 `kind`(eq HUMAN\|AGENT) `role`(eq) `state`(in) `project_id`(eq) `q`(contains)；排序 `name` `load_ratio` `kind` | `RosterEntry[]`：`{kind, principal_id, agent_id?, name, avatar, roles[], state, load{active_items, max?}, current_work_items[≤3], last_active_at}` | — | — |
@@ -760,7 +1060,7 @@ F15 为人 + Agent 统一投影（**本规格提议**；资源语义卡：Meanin
 | S→M | `agent.provision` | `{command_id, agent_id, principal_id, client_id, client_secret, config_revision}` | 机器加密落盘；ACK → `credential_delivery=DELIVERED`；秘密只出现在此命令，重投 = 签发新凭证 |
 | S→M | `agent.start` / `agent.stop` | `{command_id, agent_id, config_revision}` / `{command_id, agent_id, grace_ms:20000}` | 宿主以 Agent 凭证调 F16 取完整配置 |
 | S→M | `agent.cleanup` | `{command_id, agent_id, scope:"AGENT_HOME"}` | 只删 Agent 私有目录；ACK `{removed_bytes}` |
-| S→M | `agent.inbox` | `{command_id, agent_id, items:[{channel_id, message_id, seq, excerpt≤2000, trigger_depth}]}` | 宿主转交 Agent |
+| S→M | `agent.inbox`（**D120 起废止**，由 `agent.wake` 取代，§6.z） | `{command_id, agent_id, items:[{channel_id, message_id, seq, excerpt≤2000, trigger_depth}]}` | 宿主转交 Agent |
 | S→M | `agent.lead_plan` | `{command_id, agent_id, proposal_id, candidates[≤5], work_item, criteria[], retrieval_refs[], deadline_at}` | 宿主调用模型，经 `agent.lead_plan_result` 回传 |
 | S→M | `agent.workspace_list` / `agent.workspace_read` | `{request_id, agent_id, path, max_entries\|max_bytes}` | 15 s 超时；结果经 `agent.workspace_result` 回传 |
 | S→M | `agent.review` | `{command_id, agent_id, work_item_id, claim_id, deadline_at}` | 宿主让评审 Agent 读取声明 / 证据 / 验证，并以自身凭证调 02 裁决接口（BR-05-53） |
@@ -919,6 +1219,129 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 - 提供：`ModelFamilyOf(ctx, agent_id) (string, error)`（08 计划审批策略、03 记录使用）；`AgentDirectory` 视图增加 `model_family` 与 `roles` 中的新角色。
 - 错误码：**142040** 主管不得创建产品验收 Agent；**142041** 纯人工项目不可把执行 / 内部验收分派给 Agent；**142042** 角色组合非法（ACCEPTOR+EXECUTOR / ASSISTANT+其他）；**142043** 无合格内部验收候选（仅用于接口查询与审计，派单路径走 IQ3 升级）。
 
+### 6.z 接口增补（D120）
+
+**收件箱、唤醒、重置与提醒**（fleet；记号同 §6 约定）
+
+| # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 `data` | 错误 | 幂等 / 锁 |
+|---|---|---|---|---|---|---|---|
+| F17 | GET `/agents/{agent_id}/inbox-events` | agents | 调用者 = 该 Agent 服务账号；或负责人类 / `agent_workspace_read`（只读查看）· O | `?since=<seq>`（默认 = 当前 `inbox_ack_seq`）`&limit≤200&kind=`(in) | `{events: InboxEvent[], head_seq, ack_seq, truncated}`；`InboxEvent{seq, kind, project_id?, subject{kind,id}, stream{key, seq}?, ref{kind,id}?, actor{kind,id}?, title, payload, created_at}` | 403 140403（`NOT_OWNER`） | — |
+| F18 | PUT `/agents/{agent_id}/inbox-cursor` | agents | 调用者 = 该 Agent 服务账号 · O | `{ack_seq*}` | `{ack_seq, head_seq, acked_at}` | 422 142044 | 天然幂等（只增） |
+| F19 | SSE 主题 `tenant/{t}/agent_inbox/{agent_id}`（09 SSE） | — | 该 Agent 服务账号；负责人类 / `agent_workspace_read` | 订阅 | 帧 `{type:"wake", inbox_seq}`；每 15 s `{type:"heartbeat", inbox_seq}`（BR-05-123） | 订阅拒绝 | — |
+| F20 | PUT `/agents/{agent_id}/wake-config` | agents | `agent_manage` · O；HUMAN | `{wake_mode*:"CHANNEL"\|"POLL"\|"WEBHOOK", webhook_url?, rotate_secret?:bool}`（WEBHOOK 为 v1.1） | `{wake_mode, webhook_url?, secret?（仅新设或轮换时返回一次）}` | 422 142049；409 140409 | v |
+| F21 | POST `/agents/{agent_id}/resets` | agents | `agent_manage` · O；HUMAN；FULL 另需 step-up `agent_full_reset` | `{kind*:"SESSION"\|"FULL", reason*≥10, confirm_name?(FULL 必填), reauth_proof?(FULL 必填)}` | `Reset`（202，REQUESTED；未运行的 SESSION 直接 DONE） | 409 142002/142010/142012/142045；422 142050；403 140403（`REAUTH_REQUIRED` / `AGENT_PROHIBITED`） | ✔ |
+| F22 | GET `/agents/{agent_id}/resets` | agents | 负责人类 / `agent_workspace_read` / `agent_manage` · O | 过滤 `kind`(in) `state`(in)；排序 `created_at` | `Reset[]` | — | — |
+| F23 | GET · POST `/agents/{agent_id}/reminders` | agents | GET：该 Agent、负责人类、`agent_read`；POST：该 Agent 本人或 `agent_manage`（HUMAN）· O | POST `{anchor_kind*:"THREAD"\|"WORK_ITEM", channel_id?, thread_root_message_id?, work_item_id?, title*, note?, schedule_kind*:"ONCE"\|"INTERVAL"\|"PERIOD", fire_at?, interval_minutes?, period_kind?, max_fires?}`；GET 过滤 `state`(in) `anchor_kind`(eq) `loop_contract_id`(eq) | `Reminder`（201）/ `Reminder[]` | 422 142046/142047；403 140403（`NOT_OWNER`） | ✔ |
+| F24 | PATCH `/agent-reminders/{reminder_id}` | agent-reminders | 创建者本人、负责人类或 `agent_manage` · O | `{title?, note?, state?:"ACTIVE"\|"PAUSED"\|"CANCELLED", fire_at?, interval_minutes?, max_fires?}` | `Reminder` | 409 142048/140409；422 142047 | v |
+
+F03 / F01 响应增加 `activity{status, changed_at, detail?}`、`inbox{head_seq, ack_seq, unacked}`、`session_epoch`；F01 增加过滤 `activity_status`(in)。`Reset{id, agent_id, kind, state, reason, requested_by, removed_bytes?, failure_code?, created_at, completed_at?}`；`Reminder` = §3.z 列（不含 `version` 之外的内部列）。
+
+**操作清单与能力**
+
+| # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 `data` | 错误 | 幂等 / 锁 |
+|---|---|---|---|---|---|---|---|
+| M01 | GET `/tenants/{tenant_id}/agent-operation-manifest` | tenants | 租户成员（人）或任一本租户 Agent 服务账号 · T | `?version=`（缺省 = 最新） | 清单文档 S-M1；`ETag: "<sha256>"`，`If-None-Match` 命中 → 304 | 404 140404（版本不存在） | — |
+| M02 | GET `/tenants/{tenant_id}/agent-operation-manifest-versions` | tenants | 同 M01 · T | 排序 `published_at` | `[{manifest_version, sha256, operation_count, published_at, supersedes_version}]` | — | — |
+| M03 | GET `/agents/{agent_id}/capabilities` | agents | 该 Agent 本人，或 `agent_read`（人）· O | `?project_id=`（缺省 = 团队级操作）`&manifest_version=` | `{manifest_version, project_id?, operations:[{name, status, reason_code?, via?, human_confirmation, quota_state?}]}`（BR-05-132；只读判定，不占配额） | 404 | — |
+
+**S-M1 清单文档**：`{"manifest_version":"1.4.0","published_at":"…","conventions":{"envelope":"respx","next_field":"meta.next","seen_seq_field":"seen_seq","idempotency_header":"Idempotency-Key"},"operations":[{"name":"channel_message.post","summary":"…","transport":{"http":{"method":"POST","path":"/channels/{channel_id}/messages"}},"input_schema":{…},"output_schema":{…},"side_effects":["POSTS_MESSAGE"],"idempotency":{"required":true,"key_rule":"…"},"stale_context":{"stream":"channel|thread","seen_seq_required":true},"permission":{"code":"channel_post","via":"ROLE"},"delegable":true,"human_only":false,"human_confirmation":"NONE","quota":"RATE_LIMIT","phase":"MVP"}]}`（`additionalProperties:false`；每项 `name` 唯一，`^[a-z_]+\.[a-z_]+$`）。
+
+**MVP 清单初版（节选；完整内容以各模块登记为准）**
+
+| name | 接口 | 权限 · 来源 | 副作用 | `seen_seq` 流 | 人确认 | 配额 |
+|---|---|---|---|---|---|---|
+| `inbox_events.list` / `inbox_cursor.ack` | F17 / F18 | — · SELF | READ_ONLY / WRITES_STATE | — | NONE | — |
+| `capabilities.list` / `agent_tools.list` | M03 / T12 | — · SELF | READ_ONLY | — | NONE | — |
+| `channel_message.post` | 05 C09 | `channel_post` · ROLE | POSTS_MESSAGE | channel / thread | NONE | RATE_LIMIT |
+| `dispatch_proposal.request` | 05 D02（`CHANNEL_REQUEST`） | `work_item_assign` · RELATION `project_lead_agent`（Agent 不持该码，只能以本项目主管身份生成待人确认的提案） | WRITES_STATE, NOTIFIES_HUMANS | — | ALWAYS | — |
+| `agent_spawn_request.create` | 05 G01 | `agent_spawn` · POLICY `spawn_grant` | CREATES_PRINCIPAL, SPENDS_BUDGET | — | BY_POLICY | SPAWN_GRANT |
+| `agent_reminder.create` | F23 | — · SELF | WRITES_STATE | — | NONE | — |
+| `work_item_assignment.create`（评审认领） | 02 A1 | `work_item_read` + 委托 · DELEGATION | WRITES_STATE | work_item | NONE | — |
+| `claim.submit` | 02 C1 | `work_item_execute` · ROLE | WRITES_STATE, NOTIFIES_HUMANS | work_item | NONE | — |
+| `evidence.create` | 03 A27 | `evidence_submit` · ROLE | WRITES_STATE | work_item | NONE | — |
+| `artifact_comment_thread.create` / `artifact_comment.reply` | 03 A77 / A79 | `artifact_comment_write` · ROLE | WRITES_STATE, NOTIFIES_HUMANS | work_item / comment_thread | NONE | — |
+| `work_item_transition.apply` | 12 A13 | `work_item_write` · ROLE（再经流转条件） | WRITES_STATE | work_item | NONE | — |
+| `report_content.update` / `report.submit` | 10 R4 / R7 | `report_submit` · ROLE（仅本人） | WRITES_STATE | — | BY_POLICY（确认仅人类） | — |
+| `loop_run_result.record` | 10 L7 | — · SELF（契约的 Agent 本人） | WRITES_STATE | — | NONE | — |
+| `memory.write` | 06 A31 | `knowledge_read` · ROLE（另按 06 BR-06-30 主体规则：只写自己的记忆、需执行出处） | WRITES_STATE | — | BY_POLICY（RULE 记忆待人审批） | — |
+| `interaction.request`（工具授权 / 输入请求） | 03 机器事件 `interaction_requested`（运行中执行内） | `interaction_request` · ROLE（判定主体 = 执行的执行者，03 BR-03-148） | NOTIFIES_HUMANS | — | ALWAYS（回应需 `interaction_respond`，仅人类） | RATE_LIMIT（每派发 ≤100，03） |
+| `defect_from_comment.create` | 12 A31 | `work_item_write` · ROLE | WRITES_STATE | — | NONE | — |
+| `andon.pull` | 02 Andon | `andon_pull` · ROLE | WRITES_STATE, NOTIFIES_HUMANS | 豁免 | NONE | — |
+| `interaction.respond` | 03 A21 | `interaction_respond`（仅人类） | — | — | — | —（`human_only=true`，列出以便解释拒绝） |
+
+**机器通道（§6.6 唯一定义的增补）**
+
+| 方向 | 类型 | 载荷 | 处理 |
+|---|---|---|---|
+| S→M | `agent.wake` | `{agent_id, inbox_seq}`（不带 `command_id`、不需 ACK、可合并；04 BR-04-102） | 宿主比较已确认 seq，必要时调 F17 读取；取代 `agent.inbox` |
+| S→M | `agent.reset` | `{command_id, agent_id, kind:"SESSION"\|"FULL", session_epoch, workspace_epoch, scope:"AGENT_HOME"}` | SESSION：丢弃常驻会话；FULL：停止进程、清空 Agent 私有目录、丢弃会话；ACK 经 `agent.command_ack{command_id, ok, removed_bytes?, code?}`（RS3 / RS4） |
+| M→S | `agent.status`（增补字段） | 原载荷 + `activity?:"ONLINE"\|"THINKING"\|"WORKING"\|"ERROR"`、`activity_detail?{execution_id?, error_code?≤64}`、`session_epoch?` | BR-05-134；`session_epoch` 小于服务端值 → 服务端回 `agent.reset{SESSION}` 补发 |
+
+poll 请求 `agents[]` 快照（04 `AgentProcState`）同样增加 `activity`、`session_epoch`。`ServerBatch` 增加 `agent_inbox_heads[]`（04 BR-04-102）。
+
+**collab 增补**：C09 请求增加 `seen_seq?`（AGENT 必填，BR-05-127）；409 **145021**（`interrupted`）、422 **145022**。C08 响应 `meta.max_seq` 即会话流当前序号；`Message` 增加 `stream_seq`（= `seq`）。
+
+**跨模块接口增补**（本模块提供）
+
+| 接口 | 方法 | 使用者 |
+|---|---|---|
+| `OperationRegistry`（00 §8） | `Register(op OperationSpec) error`（启动期调用；重复名称或缺必填字段返回错误并阻止启动）；`Lookup(name)` | 全部登记 Agent 可调用操作的模块（02、03、05、06、07、10、12） |
+| `AgentReminderScheduler`（00 §8） | `UpsertForLoopOn(ctx, tx, LoopReminderSpec) (reminder_id, error)`；`PauseForLoopOn` / `ResumeForLoopOn` / `CancelForLoopOn(ctx, tx, loop_contract_id)` | 10 |
+
+**本模块使用**：02 `WorkItemActivityReader.Since`（收件箱投影 `stream_seq`）；03 `comment.*` 事件；10 `LoopRunRecorder.OpenOn`；08 `AuthorityChecker.Check`（M03 只读判定）与 §3.5c 映射；09 `SecretSealer`（webhook 秘密，v1.1）。
+
+**团队工具目录**（fleet；记号同 §6 约定）
+
+| # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 `data` | 错误 | 幂等 / 锁 |
+|---|---|---|---|---|---|---|---|
+| T01 | GET `/tenants/{tenant_id}/tool-entries` | tenants | `agent_read` · T | 过滤 `kind`(eq) `state`(in) `q`(contains)；排序 `entry_key` `updated_at` | `ToolEntry[]` | — | — |
+| T02 | POST `/tenants/{tenant_id}/tool-entries` | tenants | `tool_catalog_manage` · T；HUMAN | `{kind*:"MCP_SERVER", entry_key*, title*, description?, transport*, credential_mode?, preset_key?, from_local?{machine_id, runtime_kind, name}}` | `ToolEntry`（201，DRAFT） | 409 142051；422 142052；403 140403（`AGENT_PROHIBITED` / `MISSING_PERMISSION`） | ✔ |
+| T03 | GET `/tool-entries/{entry_id}` | tool-entries | `agent_read` · O | — | `ToolEntry` + `versions[≤20]` + `grants[]` + `credential{set, last4?, rotated_at?, upstream_auth_failing}`；ETag | 404 140404 | — |
+| T04 | PATCH `/tool-entries/{entry_id}` | tool-entries | `tool_catalog_manage` · O；HUMAN | `{title?, description?, credential_mode?}` | `ToolEntry` | 422 142052；409 140409 | v |
+| T05 | POST `/tool-entries/{entry_id}/versions` | tool-entries | `tool_catalog_manage` · O；HUMAN | `{config*（S-T1）, change_note?}`（仅 MCP_SERVER） | `ToolEntryVersion`（201，成为当前版本） | 422 142052；409 142053/142058 | ✔ |
+| T06 | GET `/tool-entries/{entry_id}/versions` | tool-entries | `agent_read` · O | 排序 `version_no` | MCP：`ToolEntryVersion[]`；SKILL：06 已批准版本 `[{version_no, content_hash, approved_at}]`（经 06 `SkillCatalog` 读取） | — | — |
+| T07 | PUT `/tool-entries/{entry_id}/state` | tool-entries | `tool_catalog_manage` · O；HUMAN | `{state*:"ACTIVE"\|"DISABLED"\|"ARCHIVED", reason?≥10（DISABLED / ARCHIVED 必填）}`；或版本撤回 `{version_no*, version_state*:"REVOKED", reason*}` | `ToolEntry` | 409 142053/140409；422 142055 | v |
+| T08 | PUT `/tool-entries/{entry_id}/credential` | tool-entries | `tool_catalog_manage` · O；HUMAN；step-up `tool_credential_manage`（target `tool_entry:<id>`） | `{secret*≤8KB, header_name?, reauth_proof*}` | `{set:true, last4, rotated_at}`（明文永不回显） | 422 142055；403 140403（`REAUTH_REQUIRED`） | — |
+| T09 | GET · POST `/tool-entries/{entry_id}/grants` | tool-entries | GET：`agent_read`；POST：`tool_catalog_manage`（HUMAN）· O | POST `{subject_kind*:"PROJECT"\|"ROLE"\|"AGENT", project_id?, role?, agent_id?}`；GET 过滤 `subject_kind`(eq) `state`(in) | `ToolGrant`（201；同主体已有 ACTIVE → 200）/ `ToolGrant[]` | 422 142054 | 天然幂等 |
+| T10 | DELETE `/tool-grants/{grant_id}` | tool-grants | `tool_catalog_manage` · O；HUMAN | `?reason=`（≥10 字） | 204（REVOKED） | 404 | 天然幂等 |
+| T11 | GET `/tenants/{tenant_id}/tool-presets` | tenants | `agent_read` · T | 过滤 `transport`(eq) | `ToolPreset[]` | — | — |
+| T12 | GET `/agents/{agent_id}/tools` | agents | 该 Agent 本人，或 `agent_read`（人）· O | `?project_id=`（缺省 = 团队级） | `{toolset_preview{revision}, entries:[{source, kind, entry_key, title, version_no?, content_sha256?, status:"AVAILABLE"\|"NOT_GRANTED"\|"NOT_SELECTED"\|"NOT_MOUNTED"\|"DISABLED"\|"CREDENTIAL_MISSING"\|"LOCAL_MISMATCH"\|"LOCAL_ONLY", covered_by[{grant_id, subject_kind}], local?{machine_id, scope?, path?}}]}`（与 BR-05-144 同一解析，只读） | 404 | — |
+| T13 | POST · GET · DELETE `/mcp-relay/{entry_key}` | mcp-relay | 工具令牌（`Authorization: Bearer`，BR-05-146）；不经 `authz.Register*` 的成员守卫 | MCP Streamable HTTP（JSON-RPC 透传，`Mcp-Session-Id` 原样转发） | 上游响应（流式） | 401（142056）；403 JSON-RPC `-32001`；429；502（142057） | — |
+
+`ToolEntry{id, kind, entry_key, title, description?, skill_id?, transport?, credential_mode, current_version_no?, current_content_sha256?, preset_key?, state, grant_summary{projects, roles, agents}, credential{set, last4?}, version}`；`ToolEntryVersion{entry_id, version_no, config, content_sha256, change_note?, state, published_by, published_at}`；`ToolGrant{id, entry_id, subject_kind, project_id?, role?, agent_id?, state, granted_by_kind, granted_by?, granted_at, revoked_at?}`。
+
+**S-T1 MCP 版本配置**（`additionalProperties:false`，不含机密）：STREAMABLE_HTTP `{"url":"https://…","timeout_ms":≤120000,"headers":{名称: 非机密值}?}`；STDIO_PACKAGE `{"package":{"manager":"NPM"|"PYPI"|"FILE","name","version","integrity","file_id"?},"command","args":[]≤32,"env":{名称: 非机密值}?}`。凭据只经 T08 设置，由中继注入，不得出现在配置中（检测到形如令牌的值 → 422 142052 `data.field=config`）。
+
+**跨模块接口增补（团队工具目录）**
+
+| 接口 | 方法 | 使用者 |
+|---|---|---|
+| `ToolsetResolver`（00 §8） | `ResolveOn(ctx, tx, ToolsetRequest{tenant_id, execution_id, dispatch_epoch, project_id, agent_id?, initiator_principal_id?, machine_id, runtime_kind, selected_entry_keys?}) (Toolset, error)`（BR-05-144；只读，在 03 派发事务内调用）；`IssueTokens(ctx, execution_id, dispatch_epoch) ([]ToolToken{entry_key, token, expires_at}, error)`（BR-05-146；执行非当前派发 → `ErrFenced`） | 03 |
+| `AgentInboxHeads`（00 §8） | `AgentInboxHeads(ctx, machine_id) ([]{agent_id, inbox_seq}, error)`（本机绑定的非 RETIRED Agent 的收件箱头，04 BR-04-102 每批携带） | 04 |
+
+本模块使用（工具目录）：06 `SkillCatalog`（技能版本与挂载）与 `skill_version.approved` / 技能归档事件；04 `MachineDirectory` 能力检测结果（S3，含 D120 增补的技能哈希，04 BR-04-106）；03 `ExecutionReader.Get`（中继校验执行状态与派发代次）；09 `SecretSealer`（purpose `fleet.tool_credential`）；08 step-up `tool_credential_manage`。
+**错误码增补**（fleet 子段 142000–143999、collab 145000–149999）
+
+| 码 | HTTP | i18n key | 含义 |
+|---|---|---|---|
+| 142044 | 422 | fleet.inbox.cursor_ahead | `ack_seq` 大于收件箱最新序号 |
+| 142045 | 409 | fleet.reset.in_progress | 已有进行中的重置 |
+| 142046 | 422 | fleet.reminder.limit_reached | 提醒数量达上限 |
+| 142047 | 422 | fleet.reminder.invalid | 锚点不可读、时间或间隔越界 |
+| 142048 | 409 | fleet.reminder.managed_by_loop | 循环契约的提醒只能经 10 修改 |
+| 142049 | 422 | fleet.wake.webhook_invalid | webhook 地址非 https / 内网地址（v1.1） |
+| 142050 | 422 | fleet.reset.name_mismatch | 完全重置确认名称不符 |
+| 145021 | 409 | collab.message.write_interrupted | 会话 / 线程已有更新消息，未写入（`data.state="interrupted"`） |
+| 145022 | 422 | collab.message.seen_seq_required | Agent 发消息未携带 `seen_seq` |
+| 142051 | 409 | fleet.tool.entry_key_taken | 目录中已有同名条目 |
+| 142052 | 422 | fleet.tool.entry_invalid | 条目或版本配置非法（`data.field`：传输、地址、完整性哈希、STDIO 带凭据、配置中含疑似机密、经 T02 建技能、上限） |
+| 142053 | 409 | fleet.tool.entry_state | 条目状态不允许该操作（§4.z TE-状态） |
+| 142054 | 422 | fleet.tool.grant_invalid | 授予主体不存在、角色非法、条目已归档或授予数达上限 |
+| 142055 | 422 | fleet.tool.credential_invalid | 激活时缺凭据、凭据格式不符或 `credential_mode=NONE` 时提交凭据 |
+| 142056 | 401 | fleet.tool.token_invalid | 工具令牌无效或过期（中继） |
+| 142057 | 502 | fleet.tool.upstream_failed | 上游 MCP 服务器不可达、超时或返回非协议响应（中继） |
+| 142058 | 409 | fleet.tool.version_unchanged | 新版本配置与当前版本相同 |
+
 ## 7. 后台任务与事件
 
 ### 7.1 任务（经 09 `JobQueue`；周期互斥用 `internal/infra/dlock`，锁名 `fleet:<job>` / `collab:<job>`，`maxHold` = 周期 ×2）
@@ -1015,6 +1438,26 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 发布：`dispatch.proposed` / `dispatch.applied`（`trigger=INTERNAL_QA`，`requires_human=false`，08 不为其建收件箱项）。
 消费：03 `internal_qa.passed`、`quality.escaped`（02 / 07 / 12 Part A）；07 `project.mode_changed`（切到 HUMAN_ONLY 时：撤销该项目非 ASSISTANT Agent 的项目绑定与未开始分派，经 02 `DispatchAssigner.Release`；进行中的执行按 02 规则处理）。
 登记 08 `SystemActions`：`fleet.internal_qa_dispatch` → `work_item_assign`。
+
+### 7.z 任务与事件增补（D120）
+
+| 任务 | 触发 / 频率 | 互斥 | 处理 | 重试 / 失败 |
+|---|---|---|---|---|
+| `fleet.inbox_projector` | 消费 BR-05-120 列出的领域事件（AtLeastOnce，09 `domain_event_receipts`） | 按 `(agent_id, source_event_id)` 唯一键幂等 | 解析受影响的 Agent → 复验读权限 → 写收件箱 → 登记唤醒 | 失败重试 8 次，之后 `fleet_inbox_projection_failures_total` 告警 |
+| `fleet.agent_wake` | 收件箱写入提交后（同 Agent 1 s 去抖） | 任务键 `wake:<agent_id>` | 按 `wake_mode` 发 `agent.wake` / SSE 帧 / webhook（v1.1）；更新 `last_wake_*` | 提示可丢失，不重试（CHANNEL 由心跳兜底）；WEBHOOK 按 BR-05-124 |
+| `fleet.inbox_retention` | 每小时 | dlock `fleet:inbox-retention` | 删除 `expires_at < now` 的事件（每批 5000）；BR-05-125 积压检查与 N-05-17 | 下轮继续 |
+| `fleet.reminder_fire` | 每 30 s | dlock `fleet:reminder-fire` | BR-05-139 / 140 | 单条失败下轮重试；10 `LoopRunRecorder` 不可用 → 推迟 60 s，不丢触发 |
+| `fleet.reset_timeout` | 每个 `agent.reset` 发出后延迟 5 min | 任务键 `reset:<id>` | 未 ACK → RS5 | — |
+| `fleet.manifest_publish` | 服务启动；每次部署 | dlock `fleet:manifest`（全局） | BR-05-130 计算并发布新版本 | 失败阻止启动（只读模式不阻止，读最新已发布版本） |
+| `fleet.activity_error_watch` | 每 60 s | dlock 全局 | ERROR 持续 ≥10 min → N-05-16 | — |
+| `fleet.tool_catalog_sync` | 消费 06 `skill_version.approved` 与技能归档 | 按 `(tenant_id, skill_id)` 幂等 | 建 / 归档 SKILL 条目（BR-05-141）；`tool_catalog.changed{VERSION_PUBLISHED}` | 失败重试 8 次 |
+| `fleet.tool_catalog_migration` | 上线时一次 | dlock `fleet:tool-catalog-migration` | BR-05-150 | 可重入（按挂载行幂等） |
+| `fleet.tool_upstream_watch` | 中继每次上游 401 / 403 后去抖 60 s | 任务键 `tool-upstream:<entry_id>` | 连续 ≥5 次 → N-05-18 | — |
+
+**发布**：收件箱、活动状态、唤醒均为本模块内部，重置与提醒只审计，不发领域事件；团队工具目录发布 `tool_catalog.changed{entry_id, entry_key, kind, change:"VERSION_PUBLISHED"|"STATE_CHANGED"|"GRANTS_CHANGED"|"CREDENTIAL_ROTATED", version_no?, state?}`（不含配置与凭据；消费者：本模块 agents（受影响 Agent 的 `config_revision+1`，常驻宿主重取 F16）、governance（通知与审计索引）；可经 SSE 推送完整载荷）。
+**消费**（新增）：03 `comment.thread_created` / `comment.posted` / `comment.converted`、`internal_qa.failed`、`interaction.decided` / `interaction.closed`；02 `decision.made`（反馈投影）；10 `loop_contract.state_changed`（与提醒状态核对：若接口调用因故未同步，按契约状态修正提醒）。
+**审计**（`audit.Appender`，与业务写同事务）：`fleet.agent_session_reset`、`fleet.agent_full_reset`（含 `reauth_purpose=agent_full_reset`、`removed_bytes`）、`fleet.agent_reset_failed`、`fleet.agent_workspace_read`（路径 SHA-256）、`fleet.agent_reminder_changed`（创建 / 暂停 / 取消，含 `created_by_kind`）、`fleet.agent_wake_config_changed`（不含秘密）、`fleet.operation_manifest_published`（版本、sha256、操作数）、`fleet.tool_entry_changed`、`fleet.tool_version_published`（含 `content_sha256`）、`fleet.tool_grant_changed`（主体、授予 / 撤销、理由）、`fleet.tool_credential_rotated`（只含 `last4` 与 `reauth_purpose=tool_credential_manage`）、`fleet.tool_called` / `fleet.tool_call_denied`（BR-05-147，不含入参与结果内容）。权限拒绝写 `outcome=denied` 的同名事件。
+**实时**：`tenant/{t}/agent/{id}` 增加 `activity` 子流；新主题 `tenant/{t}/agent_inbox/{agent_id}`（F19；`TopicAuthorizer`：该 Agent 服务账号、负责人类或 `agent_workspace_read`）。
 
 ## 8. 页面规格
 
@@ -1119,6 +1562,21 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 - **项目「团队编排」卡片**：新增「内部质量门」区块：测试 Agent 池、产品验收 Agent 池（各自模型家族分布，单一家族时黄色提示「无法满足跨家族验收」）、`max_internal_rounds`（只读，来自模板参数 / 项目设置）；纯人工项目显示「内部验收由人完成，Agent 仅为助理」。
 - **新建 Agent**：角色选择 ACCEPTOR 时提示「产品验收 Agent 需与执行者使用不同模型家族以保证独立性」，并按团队现有执行者家族推荐模型。
 
+### 8.z 页面增补（D120）
+
+- **Agent 详情头部**：状态徽章旁增加活动状态点（在线 绿实心「在线」、思考中 蓝色脉冲「思考中」、工作中 蓝实心「工作中 · {执行标题}」、出错 红「出错 · {error_code 文案}」、离线 灰空心「离线」；图标 + 文字，不只靠颜色）；〔重启〕旁增加下拉〔重置会话〕〔完全重置…〕（`agent_manage`；完全重置仅在无运行中执行时可用，否则悬浮说明「请先停止它的执行」）。
+- **Tab 生命周期**（`/t/:tenantID/agents/:agentID/lifecycle`）：上部为状态机示意（AgentState 与活动状态两行，当前态高亮）；中部为三种重置的说明卡（「重启：保留会话与工作目录」「重置会话：清空上下文，保留工作目录与长期记忆」「完全重置：清空上下文与工作目录，保留长期记忆；需要重新认证」）与按钮；下部为时间线（F09 进程事件 + F22 重置记录，按时间合并，崩溃红、重置琥珀）。完全重置对话框：红色语义、后果清单（「Agent 私有目录将被清空（不影响项目代码与执行工作区）」「当前对话上下文丢失」「长期记忆不受影响，如需清除请到记忆标签撤销」）、理由（≥10 字）、输入 Agent 名称、step-up；提交后进度「已请求 → 机器确认 → 完成（释放 {size}）」，5 分钟未确认显示「机器未确认，将在其重连后完成清理」。
+- **Tab 收件箱**（`/t/:tenantID/agents/:agentID/inbox`；负责人类与 `agent_workspace_read` 可见，只读）：顶部计量「已确认 {ack_seq} / 最新 {head_seq} · 未确认 {n}」与唤醒方式（通道 / 轮询 / webhook）；列表按 `seq` 倒序（类型图标与筛选：提及 / 消息 / 派单 / 评审反馈 / 提醒 / 交互），未确认行加粗，`seq ≤ ack_seq` 灰显；每行可跳转到对象（线程、工作项、批注、交互）；积压 >1 h 时琥珀横幅「{name} 有 {n} 条事件超过 1 小时未处理」。实时：订阅 `tenant/{t}/agent_inbox/{agent_id}`。人不能在此代 Agent 确认。
+- **Tab 提醒与循环**（`/t/:tenantID/agents/:agentID/reminders`）：两段——「循环契约」（10 L1 `agent_id=eq:<id>`：名称、类型 报告 / 检查、节奏、预算用量条、最近 5 次运行结果点，链接到 10 循环契约详情；〔新建循环契约〕跳 10）；「提醒」（F23：标题、锚点（线程 / 工作项链接）、计划（一次 / 每 n 分钟 / 按周期）、下次触发、状态、创建者「Agent 自设 / {人} / 循环契约」；行操作〔暂停〕〔恢复〕〔取消〕；循环契约提醒只读并注明「由循环契约管理」）。
+- **Tab 记忆 / 工作目录**：仅负责人类与 `agent_workspace_read` 持有者可见（BR-05-137）；其他人不显示这两个标签（直接访问 → 无权限态「仅 Agent 的负责人与团队所有者可查看」）。
+- **治理 › Agent 操作清单**（`/t/:tenantID/governance/agent-operations`；菜单由本模块贡献，08 §8.6 登记；`agent_read`）：顶部版本选择（M02，显示发布时间与「与上一版差异」：新增 / 删除 / 变更的操作）与〔下载 JSON〕；表格列：操作名、说明、接口、副作用芯片、所需权限码与来源（角色 / 委托 / 策略）、可委托、仅人类、需人确认、配额、`seen_seq` 流、分期；行展开显示输入 / 输出 schema（只读代码块）。第二个标签「Agent 能力」：选择 Agent 与项目 → M03 结果，每行 `可用` 绿 / `未授权` 红（附原因码中文与「缺少 {权限码}」或「仅限人类」等说明，08 §3.5c）/ `配额不足` 琥珀 / `不适用` 灰。空态：清单未发布 →「服务尚未发布操作清单」。移动端：卡片列表，schema 折叠。
+- **团队 › 工具与技能**（`/t/:tenantID/tools`，菜单项 `tool-catalog`，08 §8.6；`agent_read` 可读，`tool_catalog_manage` 可写，无该码时所有写按钮隐藏并显示「只有团队所有者可以管理工具目录」）：两个标签——
+  - **MCP 服务器**：表格列 名称（`entry_key` + 标题）、传输（「远程 · 经平台中继」/「本地包」）、凭据（「已设置 ••••{last4}」/「未设置」琥珀 /「可能失效」红）、当前版本 v{n}、状态徽章、授予摘要「项目 2 · 角色 1 · Agent 3」；〔新建〕下拉：从推荐预设（T11 卡片网格）/ 自定义 / 从本机导入（列出 04 检测到的本机 MCP）。**条目抽屉**（右侧，手机全屏）：「概览」当前版本配置（只读代码块，无机密）、凭据卡〔设置凭据〕/〔轮换凭据〕（输入框只写不回显，提交前 step-up，完成后提示「新凭据从下一次调用起生效，机器上不会保存凭据」）、〔停用〕〔启用〕〔归档〕；「版本」列表（版本号、内容哈希前 8 位、说明、发布人、状态）与〔发布新版本〕（配置编辑器 + 与当前版本差异，提示「只影响之后开始的执行」）、〔撤回此版本〕；「授予」按 项目 / 角色 / Agent 分组列出，〔添加授予〕选择器，行操作〔撤销〕（填写理由，提示「运行中的执行将在 1 分钟内失去访问」）；「使用情况」选中该条目的 Agent 与最近 7 天经中继的调用数（来自审计索引）。
+  - **技能**：数据为 06 技能库镜像：技能名、当前版本 v{n}、内容哈希前 8 位、授予摘要、已挂载的 Agent 数；**条目抽屉**：「版本」（06 已批准版本与哈希，链接到知识库技能页）、「授予」（同上）、「挂载」（06 挂载列表，标出「已挂载但未授予，不会加载」）。
+  - 页底「在机器上检测到、未纳入团队目录」折叠区：按机器列出本机自带的 MCP 与技能（琥珀标签「本机自带，未纳入团队目录」），行操作〔纳入团队目录〕（MCP）/〔导入知识库〕（技能）。
+  - 五态：骨架；空态「团队还没有纳入目录的 MCP 服务器，可以从推荐预设开始」〔浏览推荐预设〕；错误可重试；无权限说明 `agent_read`；离线横幅。移动端：表格改卡片列表，抽屉全屏，标签吸顶。
+- **Agent 详情 Tab 技能（D120 增补）**：在既有 06 挂载列表之上改为两段「技能」「MCP 服务器」，数据为 T12（选择项目切换有效范围）；每行来源徽章：「团队目录 v{n}」（绿，链接到目录条目抽屉）/「本机自带」（琥珀，悬浮说明「未纳入团队目录：不受授予约束，凭据不由平台托管」）/「与团队目录 v{n} 不一致」（红）/「已挂载但未授予，不会加载」（灰）/「已选择但未授予」（灰）/「缺凭据」（琥珀）；〔挂载技能〕仍调用 06 A59，〔编辑 MCP 白名单〕仍走 F04（选择器分「团队目录」与「本机自带」两组）。
+
 ## 9. 通知
 
 经 09 `Notifier`（站内 inbox + 用户配置的外部渠道）；文案三语 key 化，以下为 zh-CN。
@@ -1141,6 +1599,9 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 | N-05-13 | 自建请求待审批（REQUIRE_APPROVAL） | 对请求项目持 `agent_manage` 的人 | 站内（08 收件箱） | 「主管 {supervisor} 申请新增 {role}「{name}」：{reason≤80}」 | 每请求一条 |
 | N-05-14 | 自建 Agent 成为孤儿 | 授权人 + 项目交付负责人 | 站内 + 邮件 | 「{supervisor} 创建的 {n} 个 Agent 已停用（{orphan_reason}），7 天内未收编将自动退役」 | 同授权同原因 1 h 合并 |
 | N-05-15 | 自建 Agent 24 h 内到期 | 授权人 | 站内 | 「{name} 将于 {time} 到期退役，如需保留请收编」 | 每 Agent 一条 |
+| N-05-16 | Agent 活动状态 ERROR 持续 ≥10 min（D120，BR-05-134） | 负责人类 | 站内 + 邮件 | 「{name} 已出错 {minutes} 分钟：{error_code 文案}。可尝试重启或重置会话」 | 每次进入 ERROR 一条 |
+| N-05-17 | 收件箱积压 >1 h、积压丢弃或 webhook 连续失败改为轮询（D120，BR-05-124 / 125） | 负责人类 | 站内 | 「{name} 有 {n} 条事件超过 1 小时未处理」/「{name} 的唤醒 webhook 连续失败，已改为轮询」 | 每 Agent 每 24 h 一条 |
+| N-05-18 | 团队工具目录条目经中继连续 5 次收到上游 401 / 403（D120，BR-05-147） | `tool_catalog_manage` 持有者 | 站内 + 邮件 | 「MCP 服务器 {title} 的凭据可能已失效（上游连续 5 次拒绝），请轮换凭据」 | 每条目每 24 h 一条 |
 
 通知载荷不含消息正文以外的代码；外部渠道（邮件）中的摘录只含 TEXT 前 140 字。
 
@@ -1578,6 +2039,41 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 | AC-05-84 | e2e | §8.8 | **G** 视口 1440，阿澈有 1 个 RUNNING 交互会话（待处理 1）**W** 打开 `/t/T/chat` **T** 三栏呈现（左：提及与线程 / 频道 / 私信 / 执行会话；中：消息；右：线程 / 详情），执行会话区显示该会话，点击打开 03 交互会话工作台；DECISION_CARD 与 PROPOSED 的 DISPATCH_CARD 夹在 50 条同 fold_key 事件之间仍单独显示、不折叠；访问 `/t/T/p/P/channels/C` → 重定向 `/t/T/chat/C`；视口 375 → 列表 → 消息 → 线程单栏堆叠 |
 | AC-05-85 | unit | §7.2, BR-05-114 | **W** 在 DIRECT 中发送 TEXT **T** `message.posted` 载荷含 `channel_kind=DIRECT`、不含正文；C18 创建时 `channel.created` 的 `project_id=null`；collab 事件投影器不向 DIRECT 写任何 EVENT / 卡片（BR-05-116 的提案链接 EVENT 除外） |
 
+### 10.z 验收标准增补（D120）
+
+| ID | 层 | 关联 | Given / When / Then |
+|---|---|---|---|
+| AC-05-86 | integration | US-05-28, BR-05-120, BR-05-121 | **G** Ada（ACTIVE·RUNNING，`ack_seq=7`）**W** Morgan 在 P 默认频道 @Ada、02 对 Ada 的声明 `REQUEST_CHANGES`、Ada 的执行的工具授权被 Sam 批准 **T** Ada 收件箱依次新增 MENTION、REVIEW_FEEDBACK、INTERACTION（seq 8–10），每条 `payload` 只含 ID，`title` 不含正文；同一领域事件重复投递 → 仍为 3 条；F17 `since=7` 返回 3 条，PUT F18 `{ack_seq:10}` 后 `since` 缺省返回空；PUT `{ack_seq:9}` → 200 仍为 10；PUT `{ack_seq:11}` → 422 142044 |
+| AC-05-87 | integration | BR-05-122, BR-05-123, 04 BR-04-102 | **G** Ada 在 M1（WebSocket），`wake_mode=CHANNEL` **W** 1 s 内写入 3 条事件 **T** M1 只收到 1 个 `agent.wake{agent_id, inbox_seq:10}`，帧中无任何标题、ID 或正文字段；断开 WebSocket 丢弃该帧后，M1 下一次 `ServerBatch` 的 `agent_inbox_heads` 含 `{Ada, 10}`，宿主据此读取（≤10 s） |
+| AC-05-88 | integration | BR-05-122, BR-05-126 | **G** Ada 为 STOPPED **W** 被 @ 两次后启动 **T** 期间无唤醒提示发出；启动后宿主按游标读到 2 条 MENTION；旧命令 `agent.inbox` 不再下发；频道 EVENT 仍提示「Ada 当前未运行」 |
+| AC-05-89 | integration | US-05-29, BR-05-127, BR-05-128 | **G** 频道 C 最新 seq=100，Ada 读到 100 后起草回复 **W** Morgan（人）发消息 seq=101 改变了需求；Ada 以 `seen_seq=100`、键 K 调 C09 **T** 409 145021，`data.state="interrupted"`、`current_seq=101`、`newer_events[0]` 为 Morgan 的完整消息；C 中无 Ada 新消息；`meta.next` 含 `inbox_events.list` 与 `RETRY_WITH_SAME_IDEMPOTENCY_KEY`；Ada 以同一键 K、`seen_seq=101` 重试 → 201（无 176425）；再次以 K 重放 → 返回同一条消息 |
+| AC-05-90 | integration | BR-05-127 | **G** 线程 T（根 seq=50）与频道其他顶层消息 seq=51…60 **W** Ada 以 `seen_seq=50`、`reply_to_message_id=T` 回复 **T** 201（顶层消息不打断线程回复）；线程中他人回复 seq=61 后 Ada 再以 `seen_seq=60` 回复 → 409 145021；Ada 发顶层消息不带 `seen_seq` → 422 145022；人类不带 `seen_seq` → 201 |
+| AC-05-91 | integration | BR-05-129, 02 BR-02-64 | **G** AUTONOMOUS 项目工作项 W 处于 NEEDS_HUMAN_REVIEW，`activity_seq=40`；评审 Agent R1、R2 均持有效委托 **W** 二者以 `seen_seq=40` 并发调 02 A1 `{role:REVIEWER}` **T** 恰好一个 201；另一个 409 120469 `interrupted`，`newer_events` 含对方的认领，无新分派行；后者以同一键、`seen_seq=41` 重试 → 409 120446（`data.holder`=先到者）；审计无重复认领 |
+| AC-05-92 | integration | BR-05-127 豁免 | **G** W 有更新事件，Ada 的 `seen_seq` 已过期 **W** Ada 拉 Andon；停止自己的执行；确认收件箱 **T** 三者均成功，不要求 `seen_seq`、不返回 `interrupted` |
+| AC-05-93 | integration | US-05-30, BR-05-130 | **G** 新部署增加操作 `agent_reminder.create` **W** 服务启动 **T** 发布新版本（MINOR+1），sha256 变化，M01 返回 ETag 新值，`If-None-Match` 旧值 → 200、新值 → 304；M02 列出新旧两版且旧版仍可按 `?version=` 读取；某模块登记缺 `input_schema` 的操作 → 启动失败并在日志指明 |
+| AC-05-94 | integration | BR-05-131, BR-05-132 | **G** Ada（agent_executor）在 P **W** 调 `channel_message.post` 成功；调 02 D1 `APPROVE`（无委托）**T** 前者 `meta.next` 为数组；后者 403 120403，`data.reason_code=NO_AUTHORITY`（原码不变），`data.result="CAPABILITY_NOT_AUTHORIZED"`、`data.operation="work_item_decision.create"`；M03 中同一操作 `status=CAPABILITY_NOT_AUTHORIZED`、`reason_code=NO_AUTHORITY`；调 03 A21 → `reason_code=AGENT_PROHIBITED` 且清单中该项 `human_only=true` |
+| AC-05-95 | integration | BR-05-133 | **G** 主管 Atlas 的编制授权名额已满 **W** M03 查询后再调 G01 **T** M03 中 `agent_spawn_request.create` 为 `QUOTA_EXHAUSTED`（未占用名额）；G01 返回 422 142032（原码），授权用量不变；名额释放后两个并发 G01 只有一个成功（`Reserve` 行锁） |
+| AC-05-96 | integration | US-05-32, BR-05-134 | **G** Ada RUNNING **W** 宿主上报 THINKING → WORKING（`execution_id`）→ 连续 5 次 1 s 内的变化 → 进程 EXITED **T** SSE 依次推送 THINKING、WORKING、合并后的最后值、OFFLINE；崩溃（A07）后为 ERROR，持续 10 min 发 N-05-16 一次；旧版宿主不报 `activity` 且有运行中执行 → WORKING；无领域事件、无审计 |
+| AC-05-97 | integration | BR-05-135 | **G** Ada RUNNING，`session_epoch=3`，私有目录有 notes.md **W** Sam POST F21 `{kind:SESSION, reason}` **T** 202；下发 `agent.reset{SESSION, session_epoch:4}`；ACK 后 DONE；notes.md 仍在；收件箱游标不变；Ada 的运行中执行不受影响；机器离线期间请求 → 记录 DONE，机器重连后上报 `session_epoch:3` 时服务端补发 `agent.reset{SESSION}` |
+| AC-05-98 | integration | BR-05-136 | **G** Ada STOPPED，无非终态执行 **W** Sam 带 step-up `agent_full_reset` 与正确名称 POST F21 `{kind:FULL}` **T** 202，ACK `removed_bytes` 后 DONE，审计 `fleet.agent_full_reset`（含 `reauth_purpose`）；Ada 的 06 记忆条数不变，项目工作目录未被触碰；无 step-up → 403 140403 `REAUTH_REQUIRED`；名称不符 → 422 142050；Ada 有 RUNNING 执行 → 409 142012；主管 Agent 以自身凭证调用 → 403 140403 `AGENT_PROHIBITED`；已有 REQUESTED → 409 142045 |
+| AC-05-99 | integration | US-05-33, BR-05-137 | **G** Ada 的负责人为 Sam；Morgan 持 `agent_read`、`machine_read`，不是负责人也无 `agent_workspace_read`；Lee 被授予 `agent_workspace_read` **W** 三人分别调 F12 / F13 与记忆标签 **T** Sam、Lee 200；Morgan 403 140403（`MISSING_PERMISSION`，`missing_permission=agent_workspace_read`），详情页不显示「工作目录」「记忆」「收件箱」标签；Sam 读文件内容 → 审计 `fleet.agent_workspace_read` 只含路径哈希 |
+| AC-05-100 | integration | US-05-34, BR-05-138, BR-05-139 | **G** Ada 是线程 T 所在频道成员 **W** Ada 为自己建 `INTERVAL 15 min` 提醒锚定 T；为 Bo 建提醒；建 `interval_minutes=5`；第 51 个提醒 **T** 201；403 `NOT_OWNER`；422 142047；422 142046；到点写入 REMINDER（`stream_key=thread:<T>`、`stream_seq` = 当时最新 seq）并唤醒；Ada 离线 1 h → 上线后只有 1 条 REMINDER，`missed_fires=3`；频道归档 → 提醒 CANCELLED 并有一条说明事件 |
+| AC-05-101 | integration | BR-05-140, 10 BR-10-53 | **G** 10 激活 Ada 的日报循环契约 L **W** 激活事务提交、到点触发 **T** 存在 `anchor_kind=LOOP_CONTRACT` 的提醒；触发时 REMINDER `payload.loop_run_id` 与 10 新建的运行一致；用 F24 修改该提醒 → 409 142048；10 暂停 L → 提醒 PAUSED |
+| AC-05-102 | e2e | §8.z | **G** Sam 为 Ada 负责人，视口 1440 / 390 **W** 打开 Agent 详情「生命周期」「收件箱」「提醒与循环」与「治理 › Agent 操作清单」 **T** 活动状态点带文字；完全重置对话框含后果清单、名称输入与重新认证；收件箱未确认行加粗、实时增加；操作清单可切换版本并显示差异，「Agent 能力」标签对 Ada × P 显示可用 / 未授权（附原因）/ 配额不足；Morgan（非负责人）看不到收件箱、记忆、工作目录标签；手机为卡片列表 |
+| AC-05-103 | integration | BR-05-124（v1.1） | **G** Ada `wake_mode=WEBHOOK`，接收方校验签名 **W** 写入事件 **T** 收到 POST，body 只有 `{agent_id, inbox_seq, sent_at}`，签名 = HMAC-SHA256(secret, timestamp.body)；重放 6 min 前的请求被接收方拒绝；webhook 地址为 `http://10.0.0.5` → 422 142049；连续 20 次失败 → `wake_mode=POLL` 且 N-05-17 |
+| AC-05-104 | integration | US-05-36, BR-05-141, BR-05-142, BR-05-149 | **G** Sam 为 `team_owner`；Morgan 为 `delivery_lead`；主管 Agent Atlas **W** Sam 以预设 `issue-tracker` 调 T02；未设凭据即 T07 `{ACTIVE}`；T08 带 step-up 设置凭据后再激活；Morgan 调 T02；Atlas 以自身凭证调 T09 **T** DRAFT 条目含 v1 配置草稿；422 142055；T08 返回 `{set:true, last4}`，T03 / T01 / 审计 `fleet.tool_credential_rotated` 中均无明文；激活成功；Morgan 403 140403（`MISSING_PERMISSION`）；Atlas 403 140403（`AGENT_PROHIBITED`） |
+| AC-05-105 | integration | US-05-37, BR-05-143, BR-05-144, BR-05-147 | **G** 条目 `issue-tracker` ACTIVE（v2），Ada 的 `mcp_allowlist` 含 `catalog:issue-tracker`，无任何授予 **W** 03 为 Ada 在 P 派发执行 E1；Ada 的宿主用伪造或属于其他条目的令牌调 T13 **T** E1 工具集不含该条目，`warnings` 为空，T12 中状态 `NOT_GRANTED`；T13 → 401 142056 / 403 `-32001`（`TOOL_NOT_GRANTED`）并审计 `fleet.tool_call_denied`；Sam 授予 PROJECT=P 后派发 E2 → 工具集含 `issue-tracker` v2（`content_sha256` 一致），经中继的 `tools/call` 成功且审计 `fleet.tool_called` 只含入参 SHA-256；Ada 在项目 Q 的执行 E3 不含该条目 |
+| AC-05-106 | integration | BR-05-143, BR-05-152 | **G** E2 运行中且已成功调用 **W** Sam T10 撤销 PROJECT 授予；另一条目由 Sam T07 `{DISABLED}` **T** 撤销后 ≤60 s 内 E2 的调用得到 `TOOL_NOT_GRANTED`；停用后下一次调用立即得到 `TOOL_DISABLED`；之后新派发的执行工具集均不含二者；授予行状态 REVOKED 且保留 |
+| AC-05-107 | integration | US-05-38, BR-05-146 | **G** `issue-tracker` 凭据 last4=`a1b2`，E2 运行中，上游桩记录收到的凭据 **W** Sam 带 step-up 轮换为新凭据；不带 step-up 再轮换 **T** 下一次中继调用上游收到新凭据，E2 无需重启；M1 收到的 `execution.start` 载荷、`leases.renew` 响应、机器日志与运行时环境变量中均不含新旧凭据（只有工具令牌与本地代理地址）；第二次 403 140403（`REAUTH_REQUIRED`）；审计只含 last4 |
+| AC-05-108 | integration | BR-05-145, 03 BR-03-147 | **G** E4 以 `issue-tracker` v2、技能 `deploy` v4 开始运行 **W** Sam 发布 `issue-tracker` v3（url 变更）；06 批准 `deploy` v5；之后派发 E5 **T** E4 后续中继调用仍连向 v2 的地址，E4 证据中的工具集仍为 v2 / v4；E5 工具集为 v3 / v5；E4 的返工分支是新派发，解析为 v3 / v5；以相同配置再次 T05 → 409 142058 |
+| AC-05-109 | integration | US-05-39, BR-05-148 | **G** M1 的 04 能力检测含技能 `pdf-tools`（目录中无）、技能 `deploy`（哈希等于 06 v4）与本机 MCP `local-db`；Ada 白名单含 `local-db` **W** 调 T12 并派发执行 E6 **T** `pdf-tools` 为 `LOCAL_ONLY`（「本机自带，未纳入团队目录」）、`deploy` 为团队目录 v4、`local-db` 为 `LOCAL_ONLY`；E6 工具集中三者来源分别为 MACHINE_LOCAL / CATALOG / MACHINE_LOCAL，`local-db` 调用不经中继、无 `fleet.tool_called`；Sam 对 `local-db`〔纳入团队目录〕→ DRAFT 条目，凭据须重新设置 |
+| AC-05-110 | integration | BR-05-142, BR-05-151 | **W** 新建条目：`entry_key` 重复；STDIO_PACKAGE 且 `credential_mode=BEARER_TOKEN`；url `https://10.0.0.5/mcp`；STDIO 包缺 `integrity`；配置 `headers` 中含 `Bearer sk-…`；kind=SKILL **T** 依次 409 142051；422 142052（`data.field` 分别为 credential_mode / url / package.integrity / config / kind）；ACTIVE → ARCHIVED 直接迁移 → 409 142053 |
+| AC-05-111 | integration | BR-05-150 | **G** 上线前 Ada 挂载 06 技能 S1、S2，Bo 挂载 S1 **W** 运行 `fleet.tool_catalog_migration` 两次 **T** 恰好生成 3 条 AGENT 授予（`granted_by_kind=SYSTEM`）；Ada、Bo 之后的执行工具集仍含原技能；一条汇总审计 |
+| AC-05-112 | integration | BR-05-146, 04 BR-04-107 | **G** E7 运行中持有令牌 K（剩余 2 min）**W** 机器 `leases.renew`；E7 进入 SUCCEEDED 后机器再用新令牌调用；以旧 `dispatch_epoch` 的令牌调用 **T** 续签响应含新令牌（有效期 ≤15 min）；终态后 403 `-32001`（`EXECUTION_NOT_ACTIVE`）；旧代次令牌同样被拒；运行时进程环境与 MCP 配置文件中只有 `http://127.0.0.1:<port>/…` 本地代理地址 |
+| AC-05-113 | integration | BR-05-147 | **G** 上游连续返回 401 **W** 第 5 次 **T** N-05-18 发给 `tool_catalog_manage` 持有者（24 h 内不重复），T03 `credential.upstream_auth_failing=true`；之后一次成功调用清零 |
+| AC-05-114 | e2e | §8.z | **G** 视口 1440 / 390，Sam 为所有者，Morgan 只有 `agent_read` **W** 打开「团队 › 工具与技能」两个标签、条目抽屉与 Agent 详情「技能」标签 **T** MCP 与技能列表、凭据只显示 last4、发布新版本显示差异与「只影响之后开始的执行」、授予撤销提示、页底本机自带折叠区；Agent 技能标签来源徽章正确；Morgan 看不到任何写按钮；手机为卡片与全屏抽屉 |
+| AC-05-115 | unit | BR-05-130, 08 BR-08-67 | **G** 某模块登记 `agent_reminder.create`（`via:SELF`，`code` 空）、`interaction.request`（`interaction_request` · ROLE）与一个 `via:ROLE` 但码未在 00 §6.1 登记的操作 **W** 启动 **T** 前两者通过；第三个导致启动失败并指明操作名；M01 文档中 SELF 操作的 `permission.code` 为 null |
+
 ## 11. 度量与埋点（不含提示词、消息正文、代码）
 
 | 事件 | 属性 |
@@ -1608,6 +2104,23 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 
 `internal_qa_dispatch_total{role, family_fallback}`、`internal_qa_no_candidate_total{role}`、`acceptor_escape_rate`（按 Agent）、`human_only_assistant_drafts_total{kind, confirmed}`。
 
+### 11.z 度量增补（D120）
+
+| 事件 | 属性 |
+|---|---|
+| `agent_inbox_event_written` | `kind, wake_mode, agent_running(bool)` |
+| `agent_inbox_ack_latency` | `kind, latency_ms_bucket`（写入到确认） |
+| `agent_write_interrupted` | `stream_kind(channel/thread/work_item/comment_thread), operation, newer_count_bucket, retried(bool), retry_outcome` |
+| `agent_capability_denied` | `operation, reason_code, via` |
+| `agent_reset` | `kind, result, removed_bytes_bucket` |
+| `agent_activity_error` | `error_code, duration_bucket` |
+| `agent_reminder_fired` | `anchor_kind, schedule_kind, missed_fires_bucket` |
+| `tool_entry_changed` | `kind, change, transport` |
+| `tool_relay_call` | `entry_key_hash, outcome, duration_ms_bucket`（不含工具入参） |
+| `toolset_resolved` | `catalog_mcp_count, catalog_skill_count, local_count, warnings_count` |
+
+运维指标：`fleet_inbox_projection_failures_total`、`fleet_inbox_unacked_events{bucket}`、`fleet_wake_sent_total{mode}`、`fleet_wake_webhook_failures_total`（v1.1）、`fleet_manifest_version_info{version}`、`fleet_tool_relay_requests_total{outcome}`、`fleet_tool_relay_upstream_seconds`、`fleet_tool_token_rejections_total{reason}`。
+
 ## 12. 依赖、风险与待决
 
 ### 12.1 依赖
@@ -1626,6 +2139,14 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 | 08（D110） | 自建授权 `SpawnGrant` 模型与授予 / 撤销界面、`SpawnGrantReader.Active`、`SpawnGrantUsage.Reserve / Release`、成本累计与 `spawn_grant.exhausted` / `agent_cap_reached` / `revoked` / `expired` 事件、策略规则 `spawn_grant`、收件箱 `AGENT_SPAWN_APPROVAL`、接管时撤销自建授权、授予委托时拒绝未收编自建 Agent（`SPAWNED_NOT_ADOPTED`）、登记 reason_code `SPAWN_NOT_LEAD` / `SPAWNED_NOT_ADOPTED` | 需 08 同步修订 |
 | 03 / 08（D118） | 会话「执行会话」区复用 03 A43 与 08 I1「工具授权与输入」分类（BR-05-119），本模块只列出与链接，不代答；03 尚无「全租户内本人可回应（`interaction_respond`）的交互会话」读接口——若要覆盖非本人发起的会话，需 03 新增 | 03 待定 |
 | 08（D118） | §8.6 菜单项 `chat`（Domain=CHAT，`channel_read`）替代原 `channels`；项目空间菜单项 `p-channel`（Domain=PROJECTS，Space=PROJECT，D118 修订）重定向到项目默认频道；会话域全宽无侧栏；旧频道路由重定向（§8.8） | 已在 08 §8.6 登记 |
+| 02 / 03 / 12（D120） | 02 `delivery_work_items.activity_seq` 与活动日志、`WorkItemActivityRecorder` / `WorkItemActivityReader`、写入的 `seen_seq` 与 `interrupted`（120469 / 120470）；03 锚定批注、`comment.*` 事件、证据与批注写入的 `interrupted`（130474 / 130475）；12 A13 的 `interrupted`（126061 / 126062） | 已在 02 BR-02-64…66、03 BR-03-133…146、12 BR-12-37 / 38 定义 |
+| 04（D120） | `ServerBatch.agent_inbox_heads[]`、`agent.wake` 推送与长轮询唤醒、`AgentProcState.activity` / `session_epoch` 转交 | 已在 04 BR-04-102 / 103 定义 |
+| 08（D120） | 权限码 `agent_workspace_read`（负责人类关系授权）、`tool_catalog_manage`、`interaction_request`、`artifact_comment_write`；§3.5c `CAPABILITY_NOT_AUTHORIZED` 映射与 `via` 取值；原因码 `TOOL_NOT_GRANTED`；step-up `agent_full_reset` / `tool_credential_manage`；菜单项 `agent-operations` / `tool-catalog`；审计目录与通知目录；BR-08-67…69 | 已在 08 §3.3d / §3.5c / §5.y / §6.9 / §8.6 / §7.5 / §9.2 登记 |
+| 10（D120） | 循环契约、`LoopRunRecorder.OpenOn`；使用本模块 `AgentReminderScheduler` | 已在 10 §3.15–3.16、BR-10-52…58 定义 |
+| 06（D120） | A30 人类读者按 BR-05-137 收窄（负责人类 + `agent_workspace_read`）；技能库作为团队工具目录 SKILL 条目的内容与版本来源（`SkillCatalog`、`skill_version.approved`、技能归档） | 已在 06 BR-06-66 / 67 定义 |
+| 04（D120 工具目录） | 工具集落地：技能写入执行的运行时技能目录、目录 MCP 写入运行时配置并经本地代理访问中继、STDIO 包按完整性哈希安装、令牌只在机器程序内存；能力检测 S3 增加技能内容哈希 | 已在 04 BR-04-105…107 定义 |
+| 03（D120 工具目录） | 派发时调用 `ToolsetResolver`、`execution.start` 携带工具集、`leases.renew` 续签工具令牌、执行记录工具集快照作为证据、`interaction_request` 判定 | 已在 03 BR-03-147 / 148 定义 |
+| 09（D120） | C7 幂等辅助：`interrupted`（`data.state="interrupted"` 的 409）不入幂等表、`seen_seq` 不参与请求哈希（00 §9）；C8 purpose `fleet.tool_credential`、`fleet.wake_webhook_secret` | 已在 09 BR-09-84 / 85 定义 |
 
 ### 12.2 风险
 
@@ -1649,6 +2170,11 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 | Q-05-04 | 频道消息保留期 | v2：项目关闭 365 天后清理正文、保留元数据与审计；需法务确认 |
 | Q-05-05 | 评分权重是否允许团队调整 | MVP 固定（可复算、便于比较）；v1.1 允许项目级覆盖并在 `scoring_version` 中体现 |
 | Q-05-06 | 是否开放人 ↔ Agent 私信 | 不开放；对 Agent 的请求应在项目频道中可见、可审计 |
+| Q-05-07 | 不经机器程序托管的「外部 Agent 宿主」如何取得 Agent 凭证（D120 webhook 唤醒的前提） | v1.1 与 webhook 同期：负责人在 F20 旁〔签发外部宿主凭证〕（step-up，凭证只显示一次，复用 BR-05-03 的服务账号凭证），外部宿主只能调用清单内操作；MVP 所有 Agent 仍由机器程序托管 |
+| Q-05-08 | 收件箱事件保留 30 天是否足够 | MVP 30 天；未确认事件到期前 24 h 在 N-05-17 中提示；若有审计需要，原始事实仍在各模块中可查 |
+| Q-05-09 | `tool_catalog_manage` 是否默认授予交付负责人 | MVP 仅团队所有者（目录托管团队凭据，与 `machine_access_manage` 同级）；如交付负责人需要为本项目开放工具，v1.1 增加「项目级授予」委派 |
+| Q-05-10 | 是否允许团队禁止本机自带的 MCP / 技能 | MVP 保持既有行为（白名单内的本机 MCP 可用，本机技能由运行时发现），只标记与记录；v1.1 提供团队设置「只允许团队目录中的工具」，开启后本机自带项不注入、并要求机器程序隔离用户技能目录 |
+| Q-05-11 | 需要凭据的本地（STDIO）MCP 服务器 | MVP 不支持（凭据会落到机器上）；v1.1 评估由中继提供令牌交换或改为远程部署 |
 
 ---
 
@@ -1668,6 +2194,11 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 | CCR-05-08 | §7.1 新增事件：`agent.created`、`dispatch.expired`、`ensemble.started`、`ensemble.selected`（发布者 fleet）；`channel.created`、`channel.archived`、`message.posted`（发布者 collab，载荷不含正文） | 投影、通知与 Agent 投递需要；00 现表缺失 |
 | CCR-05-09 | §7.2 必须审计增加：派单策略下的自动生效 / 人工改派 / 驳回、Ensemble 启动 / 预算停止 / 选择、Agent 换绑与凭证签发 / 吊销 | PRD §10.6「为什么派给它永远可追溯」 |
 | CCR-05-10 | §6.3 明确：AUTO 派单的 `authority_source = POLICY:dispatch_auto`、提案 id 放 `detail.dispatch_proposal_id`（**已按 00 v1.5 定稿**；原提议 `POLICY:<proposal_id>` 撤回）；人确认 / 改派使用人自身的 ROLE / DELEGATION 来源 | 00 只给出 `POLICY:<rule_id>` 形式，需明确 rule_id 指向 |
+| CCR-05-11 | §3（D120）：`fleet_operation_manifest_versions` 以 `tenant_id=0` 存系统级只读清单（同 11 一方模板的处理）；`fleet_agent_inbox_events` 作为派生投影允许按 `expires_at` 物理清理（原始事实留在各模块）。§9（D120）：登记「过期上下文写入」约定（`seen_seq`、`interrupted` 响应结构、幂等例外）与清单操作的 `meta.next` | 清单与部署版本绑定、不属任何租户；收件箱量大且可由事实重建；`interrupted` 是跨 02 / 03 / 05 / 12 的统一语义 |
+| CCR-05-12 | §8（D120）：新增本模块提供的 `OperationRegistry`（全部模块登记 Agent 可调用操作）与 `AgentReminderScheduler`（10 使用）；使用 02 `WorkItemActivityReader`、10 `LoopRunRecorder` | 清单须由各模块在启动期登记，循环契约由提醒驱动 |
+| CCR-05-13 | §6.1 / §6.5（D120）：新权限码 `agent_workspace_read`（fleet，团队级，仅限人类；默认 `team_owner`，Agent 负责人类经关系授权隐式持有）；仅限人类动作增加「Agent 完全重置」（`agent_manage` + step-up `agent_full_reset`） | 工作目录与记忆只给负责人与管理员；完全重置不可由 Agent 自行触发 |
+| CCR-05-14 | 06（非 00）：A30 `GET /agents/{agent_id}/memories` 的人类读者从「`knowledge_read` + `agent_read`」收窄为「负责人类或 `agent_workspace_read`」（BR-05-137） | D120「工作区与记忆查看只限负责人与管理员」；06 不在 D120 修订范围，待其修订 |
+| CCR-05-15 | §6.1 / §6.4 / §6.5（D120）：权限码 `tool_catalog_manage`（fleet，团队级，仅限人类、不可委托，默认仅 `team_owner`）；§7.1 事件 `tool_catalog.changed`；§8 接口 `ToolsetResolver`（fleet → execution）与 `AgentInboxHeads`（fleet → 04）；§3 基础设施表例外增加 `fleet_tool_presets`（`tenant_id=0`，同 CCR-05-11） | 团队工具目录（D120 第 6 项）：授予、凭据托管与按执行解析工具集 |
 
 **第二轮复审（00 v1.5）**：#2 REDISPATCH 允许非 READY 并经 `Reassign`；#3 BR-05-56 发布说明起草（`agent.release_notes`）；#4/#5/#27 评审派单 SYSTEM 身份、`lease_ttl_seconds=1800`、超时经 02 `WorkItemEscalator` 升级；#9 阶段 ∈ {ACTIVE, ACCEPTANCE_PENDING}；#14 `pending_claim.head_commit`；#18 §6.6 为 Agent 通道唯一定义；#22 `ensemble.compared.requires_human`；#24 立即消费 `project.members_changed`；#26 `POLICY:dispatch_auto` + `detail.dispatch_proposal_id`（CCR-05-10 按此定稿）；新增 AC-05-50..52。
 
@@ -1676,3 +2207,7 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 > **D112 / D113 已并入（00 v2.0 §15）**：依赖 02 `DispatchAssigner.Assign(role ∈ TESTER / ACCEPTOR)` 非迁移分派与 `WorkItemEscalator`；03 `internal_qa.*`、`ExecutionLauncher.Launch(purpose=INTERNAL_*)`；02 / 07 / 12 Part A `quality.escaped`（D114）；04 能力标记 `browser_capture` 与模型目录的 `model_family`；08 登记 reason `SAME_MODEL_FAMILY`、`HUMAN_ONLY_MODE` 与策略 `plan_approve` 使用 `ModelFamilyOf`；10 助理草稿。对 00 无新增变更请求。
 
 > **D118（会话空间与成员私信，2026-10-12）已并入本规格**：US-05-25…27；`ChannelKind` 增 `DIRECT`（团队级，`project_id` 为空；模块内枚举，按 00 §3 留在本规格）；BR-05-114…119；C08 线程过滤、C14 含私信、C17 / C18 / C19；错误码 145020；`message.posted` 载荷增 `channel_kind`；§8.8 改为会话页 `/t/:tenantID/chat`（旧频道路由重定向）；AC-05-79…85。沿用既有权限码、事件与通知类型，对 00 无新增变更请求。
+
+> **D120（Agent 运行时协议、操作清单、生命周期与提醒，2026-10-12）已并入本规格**：§1 范围、US-05-28…35、§3.z（收件箱、运行态、重置、提醒、清单版本与模块内枚举）、§4.z 状态机、BR-05-120…140、§6.z（F17–F24、M01–M03、S-M1 清单文档、`agent.wake` / `agent.reset` / `agent.status` 增补、`OperationRegistry` / `AgentReminderScheduler`、错误码 142044–142050 与 145021 / 145022）、§7.z、§8.z（Agent 详情「生命周期」「收件箱」「提醒与循环」标签与「治理 › Agent 操作清单」）、N-05-16 / 17、AC-05-86…103、§11.z。BR-05-16（工作目录权限）与 BR-05-85、§6.6 `agent.inbox`（投递方式）按 D120 收窄 / 取代。对 00 的请求为 CCR-05-11…13、CCR-05-15（已登记入 00 v2.0 D120 补充）；CCR-05-14 已由 06 BR-06-66 落实。
+
+> **D120 第 6 项（团队工具目录：MCP 服务器与技能，2026-10-12）已并入本规格**：§1 范围、US-05-36…39、§3.z（`fleet_tool_entries`、`fleet_tool_entry_versions`、`fleet_tool_credentials`、`fleet_tool_grants`、`fleet_tool_presets` 与枚举 `ToolEntryKind` / `ToolEntryState` / `McpTransport` / `ToolCredentialMode` / `ToolVersionState` / `ToolGrantSubjectKind` / `ToolSource`）、§4.z TE-状态、BR-05-141…152、§6.z（T01–T13、S-T1、`ToolsetResolver`、`AgentInboxHeads`）、错误码 142051–142058、§7.z（`fleet.tool_catalog_sync` / `_migration`、`fleet.tool_upstream_watch`、事件 `tool_catalog.changed` 与审计）、§8.z（「团队 › 工具与技能」与 Agent 详情「技能」标签来源徽章）、N-05-18、AC-05-104…115、§11.z、Q-05-09…11、CCR-05-15。操作清单的权限码按 08 §3.5c 落实：`via` 增加 RELATION / SELF，`interaction.request` 使用 `interaction_request`（08 §3.3d）。

@@ -74,6 +74,14 @@
 | US-08-24 | 作为团队所有者，人或甲方发现了内部已放行的问题时，我要看到穿透记录，并让测试 / 验收 Agent 从中学习 | MVP |
 | US-08-25 | 作为交付负责人，我要确保 Agent 的执行计划由人或不同模型家族的评审者批准，且主管 Agent 不能批准自己派出的计划 | MVP |
 
+### 2.y D120 增补用户故事（Agent 运行时协议、操作清单、锚定批注、团队工具目录）
+
+| ID | 用户故事 | 版本 |
+|---|---|---|
+| US-08-26 | 作为团队所有者，我要 Agent 被拒时得到与人一致的原因码，并在「Agent 操作清单」里看到每个操作「可用 / 未授权 / 配额不足」的统一口径，以便解释和修正授权 | MVP |
+| US-08-27 | 作为团队所有者，我要团队工具目录（MCP 服务器与技能）的管理与凭据只由人类掌握、不能委托给 Agent，凭据轮换需要重新认证，且每次经平台中继的工具调用都可审计 | MVP |
+| US-08-28 | 作为 Agent 的负责人，我要只有我和被明确授权的人能查看该 Agent 的工作目录、收件箱与记忆，完全重置只能由人在重新认证后执行 | MVP |
+
 ## 3. 领域模型与数据表
 
 ### 3.1 IAM 复用与新建（总表）
@@ -175,6 +183,17 @@
 | `machine_access_manage` | fleet(04) | 否 | ✓ | ✓ | — | 仅 `team_owner`（每机远程访问开关，04 A35；`delivery_lead` 的排除清单增加此码） |
 
 查看预览、产物、文件与只读终端**不新增权限码**：沿用项目 `execution_read`（D119：访问预览须有项目上的执行读取权限）；启动预览与申请分享沿用 `execution_start`；接入服务器沿用 `machine_manage`。`HumanOnly` 增加 `terminal_interact`、`workspace_file_edit`、`preview_share_approve`、`machine_access_manage`；`NonDelegable` 增加 `terminal_interact`、`preview_share_approve`、`machine_access_manage`。Agent 角色一律不授予上述 4 码。播种升级按 BR-08-04 追加，不回收。
+
+### 3.3d D120 权限码登记与默认授予（Agent 运行时、锚定批注、团队工具目录）
+
+| 权限码 | 注册模块 | DataScoped | NonDelegable | HumanOnly | PolicyOnly | 默认授予 |
+|---|---|---|---|---|---|---|
+| `agent_workspace_read` | fleet(05) | 否 | — | ✓ | — | 仅 `team_owner`；Agent 的负责人类（05 `owner_principal_id`）经关系授权隐式持有（同 `andon_clear` 的 S4 关系授权写法，BR-08-69）；`delivery_lead` 的排除清单增加此码。用途：Agent 工作目录 F12 / F13、收件箱 F17 / F19、重置记录 F22、记忆标签（06 A30） |
+| `artifact_comment_write` | execution(03) | 是 | — | — | — | `team_owner`、`delivery_lead`、`engineer` 与**全部 Agent 角色**（新建与回复锚定批注，03 BR-03-134；纯人工项目中 Agent 仍被 S2(e) 拒绝） |
+| `interaction_request` | execution(03) | 是 | — | — | — | `team_owner`、`delivery_lead`、`engineer` 与**全部 Agent 角色**（同 `andon_pull` 的授予方式）：在自己运行中的执行内发起工具授权 / 输入请求（03 `interaction_requested`，03 BR-03-148）；批准仍需 `interaction_respond`（仅人类）。这是 05 操作清单中 `interaction.request` 的权限码（原型占位「D120 请求权限待定义」由此确定） |
+| `tool_catalog_manage` | fleet(05) | 否 | ✓ | ✓ | — | 仅 `team_owner`（`delivery_lead` 的排除清单增加此码）：团队工具目录的条目、版本、授予与凭据（05 T02–T10）；设置 / 轮换凭据另需 step-up `tool_credential_manage`（§6.9）。读取目录沿用 `agent_read` |
+
+`HumanOnly` 增加 `agent_workspace_read`、`tool_catalog_manage`；`NonDelegable` 增加 `tool_catalog_manage`。Agent 完全重置不新增权限码：仍用 `agent_manage`，但要求 HUMAN + step-up `agent_full_reset`（05 BR-05-136，§6.9）。播种升级按 BR-08-04 追加，不回收。
 
 ### 3.4 环境维度（生产访问）
 
@@ -289,6 +308,7 @@ type AuthorityDecision struct {
 | `MACHINE_ACCESS_DISABLED` | 03 / 04（D119） | 机器的远程访问开关（远程预览 / 远程终端 / 人工接管后编辑文件）关闭 |
 | `PORT_NOT_OWNED` | 03 / 04（D119） | 请求预览的端口不属于该执行（或评审预览）的进程树，或不在回环地址 |
 | `PATH_OUTSIDE_WORKSPACE` | 03 / 04（D119） | 文件路径越出执行工作区或指向机器程序目录 |
+| `TOOL_NOT_GRANTED` | 05（D120） | 团队工具目录条目未授予该 Agent / 其角色 / 该项目，或授予已撤销（MCP 中继与工具集解析） |
 - 失败即拒：IAM、05、07 依赖不可用 → 返回 error（调用方 503，本模块 `160461`），绝不放行（对齐 02 BR-02-42）。
 - `PolicyRegistry` 初始规则另含本模块贡献的 `spawn_grant`（`agent_spawn`，D110，评估见上）。
 - `PolicyRegistry` 初始规则：`dispatch_auto`（05 贡献：主体为项目 LEAD Agent、07 `DispatchPolicy=AUTO`、`CanAutoDispatch` 为真、`Risk≠HIGH`），`ensemble_branch`（05：`execution_start`，ENSEMBLE 并行上限内），`review_dispatch`（05：`work_item_assign`，仅 `role=REVIEWER`、项目 AUTONOMOUS、受派 Agent 持对应有效委托；复审 #5）。另：05 启动时以 `SystemActions.Register("fleet.review_dispatch", "work_item_assign")` 登记评审派单任务，否则 S1 返回 `SYSTEM_NOT_REGISTERED`。
@@ -372,6 +392,28 @@ type SpawnGrantUsage interface {
 - **策略命名**：策略规则名为 `plan_review`，它授权的权限码是 `plan_approve`；05 / 02 文中“08 策略规则 `plan_approve`”均指本策略（`policy_id=plan_review`，`authority_source=POLICY:plan_review`）。不另设名为 `plan_approve` 的策略。
 - **新原因码**（并入 §3.5 规范清单）：`ACCOUNTABLE_HUMAN_MISSING`（08，负责人缺失或非 ACTIVE 人类）、`SAME_MODEL_FAMILY`（08，评审 / 验收 / 计划批准主体与执行者或作者同模型家族；02 / 05 共用）、`HUMAN_ONLY_MODE`（08 登记、05 使用，项目 `team_mode=HUMAN_ONLY` 时 Agent 主体对除只读与起草外的任何码请求 → 403）、`NO_INTERNAL_QA_AGENT`（08 登记、05 使用，无合格 TESTER / ACCEPTOR 候选；不作为 403 返回，只作为 02 升级 `MANDATORY_HUMAN_GATE` 的 detail.reason 与收件箱项说明）。
 - **S2(e) 纯人工模式**：项目 `team_mode=HUMAN_ONLY` 且主体为 AGENT，码 ∉ {只读码（`*_read`）、`andon_pull`} → 拒 `HUMAN_ONLY_MODE`；助理起草（报告草稿、记忆提议）不经 AuthorityChecker，由 05 / 06 / 10 以草稿态落库并需人确认（在 S7 策略之前判定，策略不可放行）。
+
+### 3.5c D120 操作清单的能力判定映射（`CAPABILITY_NOT_AUTHORIZED`）
+
+- **规则**：Agent 调用 05 操作清单（05 BR-05-130）内的操作被拒时，响应仍为所属模块段 `xx0403` + `data.reason_code`（取值仍为 §3.5 规范清单，不变），另带 `data.result`（结果类别）与 `data.operation`（清单操作名）；05 M03 能力视图中每个操作的 `status` 由本表**唯一**决定。M03 以 `AuthorityChecker.Check(ctx, nil, req)` 的只读路径判定（tx 为 nil，不加锁、不写库、不占配额）。
+- **`via` 取值**（清单 `permission.via`）：`ROLE`（角色授予）、`DELEGATION`（委托，S6）、`POLICY`（策略规则，S7，附 `policy_rule`）、`RELATION`（关系授权，如本项目主管 Agent、Agent 的负责人类，附 `relation`）、`SELF`（只要求调用者是该 Agent 本人的服务账号；`permission.code` 为空，不经 `AuthorityChecker`，如收件箱、提醒、能力视图，BR-08-69）。
+- 未在本表列出的原因码不可能由清单内操作的权限判定产生；若出现，M03 记为 `CAPABILITY_NOT_AUTHORIZED` 并告警（`governance_unmapped_reason_total`）。
+
+| reason_code | M03 `status` | 403 / 422 响应的 `data.result` | 建议 `meta.next.reason`（05 BR-05-131） |
+|---|---|---|---|
+| `INVALID_REQUEST` / `PRINCIPAL_INACTIVE` / `SYSTEM_NOT_REGISTERED` | `CAPABILITY_NOT_AUTHORIZED` | `CAPABILITY_NOT_AUTHORIZED` | `ESCALATE_TO_OWNER` |
+| `MISSING_PERMISSION` / `NO_AUTHORITY` / `EXPLICIT_DENY` / `NOT_MEMBER` / `NOT_OWNER` / `TOOL_NOT_GRANTED` | `CAPABILITY_NOT_AUTHORIZED` | `CAPABILITY_NOT_AUTHORIZED` | `ESCALATE_TO_OWNER` |
+| `NON_DELEGABLE` / `HUMAN_ONLY` / `AGENT_PROHIBITED` / `HUMAN_ONLY_MODE` / `AGENT_CANNOT_ACCEPT` / `ESCALATED_HUMAN_ONLY` / `AGENT_EXECUTOR` | `CAPABILITY_NOT_AUTHORIZED` | `CAPABILITY_NOT_AUTHORIZED` | `WAIT_FOR_HUMAN` |
+| `SELF_REVIEW` / `SEPARATION_OF_DUTIES` / `SAME_MODEL_FAMILY` / `ACCOUNTABLE_HUMAN_MISSING` | `CAPABILITY_NOT_AUTHORIZED` | `CAPABILITY_NOT_AUTHORIZED` | `WAIT_FOR_HUMAN` |
+| `DELEGATION_RISK` / `DELEGATION_COST` / `DELEGATION_VERIFICATION` / `DELEGATION_REWORK` / `DELEGATION_TYPE` / `DELEGATION_HUMAN_REQUIRED` / `DELEGATION_MERGE_RISK` / `DELEGATION_MODE` / `DELEGATION_CONDITION` / `NO_DELEGATION` | `CAPABILITY_NOT_AUTHORIZED` | `CAPABILITY_NOT_AUTHORIZED` | `WAIT_FOR_HUMAN` |
+| `ESCALATION_HOLD` / `ESCALATION_PENDING` / `PROJECT_GATE` | `CAPABILITY_NOT_AUTHORIZED` | `CAPABILITY_NOT_AUTHORIZED` | `WAIT_FOR_HUMAN` |
+| `SPAWN_GRANT_MISSING` / `SPAWN_GRANT_SCOPE` / `SPAWN_NOT_LEAD` / `SPAWNED_NOT_ADOPTED` | `CAPABILITY_NOT_AUTHORIZED` | `CAPABILITY_NOT_AUTHORIZED`（05 以 422 142031–142038 返回时同样带此值） | `ESCALATE_TO_OWNER` |
+| `SPAWN_QUOTA_EXCEEDED` / `SPAWN_DAILY_LIMIT` / `SPAWN_BUDGET_EXHAUSTED` | `QUOTA_EXHAUSTED` | `QUOTA_EXHAUSTED`（05 以 422 142031–142038 返回） | `ESCALATE_TO_OWNER` |
+| `REAUTH_REQUIRED` / `FULL_AUTO_FORBIDDEN` / `PRODUCTION_ACCESS_REQUIRED` / `PRODUCTION_GRANT_TOO_LONG` / `PRODUCTION_GRANT_NOT_TEMPORARY` | `CAPABILITY_NOT_AUTHORIZED` | `CAPABILITY_NOT_AUTHORIZED` | `WAIT_FOR_HUMAN` |
+| `NOT_LEASE_HOLDER` / `AGENT_NOT_DRAFTER` / `MACHINE_ACCESS_DISABLED` / `PORT_NOT_OWNED` / `PATH_OUTSIDE_WORKSPACE` | `NOT_APPLICABLE` | `CAPABILITY_NOT_AUTHORIZED` | `NONE_AVAILABLE` |
+| `NO_INTERNAL_QA_AGENT` | —（不作为拒绝返回，§3.5b） | — | — |
+
+`NOT_APPLICABLE` 表示「当前对象 / 环境不满足操作前提」（不是该 Agent 的租约、不是指定起草者、机器关闭了远程访问等），与授权缺失区分；M03 对未给出具体对象的操作（如未指定工作项的认领）不判定对象类前提，返回其余检查的结果。05 的 M03 其余状态 `AVAILABLE`（判定允许）不在本表。委托缺失的原因码为 `NO_AUTHORITY`（S8，附 `data.missing_permission`），有委托但条件不满足时为 `DELEGATION_*`。
 
 ### 3.6 委托在 IAM 上的落地
 
@@ -942,6 +984,12 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 - **BR-08-65 总览质量磁贴**：总览增加「穿透率」与「内部一次通过率」磁贴（数据源 07 `DeliveryMetricsReader`，刷新 ≤60 s），穿透率 > 10% 显示琥珀、> 20% 显示红色（模板可覆盖）。
 - **BR-08-66 远程工作区授权（D119）**：① 预览、产物、文件与只读终端的访问只看项目 `execution_read`，每次访问由 03 判定（不缓存超过 30 s），Agent 与服务账号不能换取预览访问；② `terminal_interact`、`preview_share_approve`、`machine_access_manage` 不可委托、仅限人类，经 `AuthorityChecker` 判定（委托来源 → `NON_DELEGABLE`，Agent → `AGENT_PROHIBITED`）；③ `preview_share_approve` 适用职责分离：批准人 = 申请人 → `SELF_REVIEW`；④ 机器开关不是权限码而是机器属性，关闭时由 03 / 04 以 `MACHINE_ACCESS_DISABLED` 拒绝，即使主体持有对应权限码。
 
+### 5.y D120 增补规则（操作清单、团队工具目录、Agent 运行时）
+
+- **BR-08-67 操作清单登记一致性**：05 `OperationRegistry.Register` 登记的每个操作，其 `permission.code` 必须是 §3.2 目录中的码（`via=SELF` 时为空，`via=RELATION` 时附 `relation`），且与该接口路由守卫（`authz.Register*`）及服务内 `AuthorityChecker.Check` 使用的码一致；`human_only` 必须等于该码 ∈ `HumanOnly`，`delegable` 必须等于该码 ∉ `NonDelegable`。本模块在 `Start` 时向 05 提供校验器，逐项比对，任一不一致 → 启动失败并在日志指明操作名与差异（禁止静默降级）；架构测试另对路由表与清单做静态比对（本规格提议）。被拒响应的 `data.result` 与 M03 状态按 §3.5c。
+- **BR-08-68 团队工具目录治理**：① 目录条目（MCP 服务器、技能）的授予默认**无**：未被授予给某项目 / 角色 / Agent 的条目对任何 Agent 都不可用。② `tool_catalog_manage` 仅限人类、不可委托（§3.3d）；Agent（含持自定义角色者）调用目录管理接口 → S2 拒 `AGENT_PROHIBITED`；Agent 不能管理目录，也不能给自己或其他 Agent 授予条目。③ 设置 / 轮换 MCP 凭据需 step-up `tool_credential_manage`（§6.9，target `tool_entry:<id>`），凭据只写不回显。④ 05 MCP 中继拒绝未授予的调用时 `reason_code=TOOL_NOT_GRANTED`。⑤ 每次经中继的工具调用追加审计 `fleet.tool_called`（detail 只含 `entry_key`、`version_no`、`tool_name`、`execution_id`、`agent_id`、`args_sha256`、`outcome`、`duration_ms`，不含参数与结果原文），拒绝写 `fleet.tool_call_denied`（outcome=denied）；审计页（§8.2）增加「工具调用」分类筛选（`event_type ∈ {fleet.tool_called, fleet.tool_call_denied}`）。
+- **BR-08-69 Agent 运行时的授权口径**：① `agent_workspace_read` 为关系授权：Agent 的负责人类（05 `owner_principal_id`）隐式持有，S4 判定时把 `owner_principal_id = 主体` 视为匹配（同 `andon_clear` 的负责人关系）；其他人须显式授予（默认仅 `team_owner`），Agent 主体一律拒（`AGENT_PROHIBITED`）。② Agent 完全重置仅限人类：`agent_manage` + HUMAN + step-up `agent_full_reset`（§6.9）；Agent 或服务账号发起 → `AGENT_PROHIBITED`。③ `interaction_request` 的判定主体是该执行的**执行者**（Agent 执行为该 Agent，人类交互会话为发起者），资源为该执行；批准仍为 `interaction_respond`（仅人类）。④ 收件箱读取与确认、自设提醒、读取本人能力视图与有效工具集等 `via=SELF` 操作不经权限码，只校验调用者是该 Agent 本人的服务账号（05 BR-05-130）。
+
 ## 6. 接口契约
 
 ### 6.1 通用
@@ -1074,6 +1122,8 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | execution.terminal_interactive | 03 | A67 打开交互终端（v1.1，D119） | `terminal_interactive` | `execution:<id>` | 红色说明「全程录制并写入审计」；无沙箱时追加目录风险说明 |
 | machine.terminal_enable | 04 | A35 把「允许远程终端」由关改开（D119） | `machine_terminal_enable` | `machine:<id>` | 后果说明；关闭不需 step-up |
 | machine.credential_issue | 04 | A32 预签发 SERVER / K8S_POOL 凭证；SERVER 的 A13 轮换（D119） | `machine_credential_issue` | `tenant:<id>`（新建）/ `machine:<id>`（轮换） | 「凭证只显示这一次」 |
+| agent.full_reset | 05 | F21 `{kind:FULL}` 完全重置 Agent（D120） | `agent_full_reset` | `agent:<id>` | 输入 Agent 名称；后果清单（私有目录清空、会话丢失、长期记忆不受影响） |
+| tool.credential_manage | 05 | T08 设置 / 轮换团队工具目录 MCP 凭据（D120） | `tool_credential_manage` | `tool_entry:<id>` | 「凭据只写不回显」 |
 
 上述 purpose 由各所属模块在启动时经底座 `authn.RegisterReauthenticationPurpose` 登记（00 §13 F4）。**本表是唯一登记源**：各模块规格的 purpose / target 必须与本表一致，冲突时以本表为准回推修订。step-up 失败统一返回调用方段 `xx0403` + `data.reason_code=REAUTH_REQUIRED`。
 
@@ -1253,6 +1303,15 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `fleet.machine_created` / `fleet.machine_credential_issued` / `fleet.machine_fingerprint_mismatch`（D119） | 04 | machine | `machine_id, machine_type, credential_origin`（不含秘密） |
 | `fleet.machine_access_changed` / `fleet.pool_config_changed`（D119） | 04 | machine | `machine_id, before{}, after{}` |
 | `fleet.tunnel_stream_rejected`（D119，安全事件） | 04 | machine | `machine_id, holder_kind, holder_id, kind, code` |
+| `fleet.agent_session_reset` / `fleet.agent_full_reset` / `fleet.agent_reset_failed`（D120） | 05 | agent | `agent_id, reset_id, kind, removed_bytes?, failure_code?`；FULL 另含 `reauth_purpose=agent_full_reset` |
+| `fleet.agent_workspace_read`（D120） | 05 | agent | `agent_id, path_sha256`（不含路径原文与内容）、`relation(OWNER\|GRANTED)` |
+| `fleet.agent_reminder_changed` / `fleet.agent_wake_config_changed`（D120） | 05 | agent | `agent_id, reminder_id?, change, created_by_kind?, wake_mode?`（不含秘密） |
+| `fleet.operation_manifest_published`（D120） | 05 | tenant（`tenant_id=0` 系统级） | `manifest_version, sha256, operation_count, supersedes_version?` |
+| `fleet.tool_entry_changed` / `fleet.tool_version_published` / `fleet.tool_grant_changed` / `fleet.tool_credential_rotated`（D120） | 05 | tool_entry | `entry_id, entry_key, kind, version_no?, content_sha256?, grant{subject_kind, subject_id?, project_id?}?, before{}?, after{}?`（凭据只记 `key_id` 与末 4 位；`tool_credential_rotated` 含 `reauth_purpose=tool_credential_manage`） |
+| `fleet.tool_called` / `fleet.tool_call_denied`（D120，BR-08-68） | 05 | execution | `entry_key, version_no, tool_name, execution_id, agent_id, args_sha256, outcome, duration_ms`；denied 另含 `reason_code` |
+| `execution.comment_thread_created` / `execution.comment_thread_resolved` / `execution.comment_thread_reopened` / `execution.comment_converted` / `execution.comment_retracted`（D120） | 03 | comment_thread | `thread_id, execution_id, anchor_kind, visibility, version_ref, target_kind?, target_id?`（不含正文与引文） |
+| `planning.loop_contract_changed` / `planning.loop_run_escalated`（D120） | 10 | loop_contract | `loop_contract_id, agent_id, from_state?, to_state?, loop_run_id?, escalation_reason?` |
+| `delivery.defect_created_from_comment`（D120） | 12 Part A | work_item | `work_item_id, comment_thread_id, execution_id, anchor_kind, version_ref` |
 
 委托「使用」不单独写事件：使用该委托的裁决事件本身带 `authority_source=DELEGATION:<id>` 与 `delegation_id`，避免同一动作两条记录（与 02「Check 不写库」一致）。工作项事件 `project_id` 取工作项所属项目；团队级事件为 null。
 
@@ -1378,9 +1437,11 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | 团队 | 团队 | 团队资产 | members | 成员与 Agent | `/t/:tenantID/members` | `agent_read` | 05 |
 | 团队 | 团队 | 团队资产 | machines | 机器 | `/t/:tenantID/machines` | `machine_read` | 04 |
 | 团队 | 团队 | 团队资产 | knowledge | 知识库 | `/t/:tenantID/knowledge` | `knowledge_read` | 06 |
+| 团队 | 团队 | 团队资产 | tool-catalog | 工具与技能 | `/t/:tenantID/tools`（05 §8.z：MCP 服务器 / 技能 两个标签与条目抽屉；无 `tool_catalog_manage` 时只读，D120） | `agent_read` | 05 |
 | 团队 | 团队 | 团队资产 | templates | 模板库 | `/t/:tenantID/templates` | `project_read` | 11 |
 | 治理 | 团队 | 策略 | policy | 授权与策略 | `/t/:tenantID/governance/policy` | `policy_read` | 08 |
 | 治理 | 团队 | 策略 | workflow-config | 流转配置 | `/t/:tenantID/settings/workflows`（无 `workflow_manage` 时只读） | `work_item_read` | 12 Part A |
+| 治理 | 团队 | 策略 | agent-operations | Agent 操作清单 | `/t/:tenantID/governance/agent-operations`（05 §8.z：操作清单与「Agent 能力」两个标签，D120） | `agent_read` | 05 |
 | 治理 | 团队 | 连接 | integration | 集成 | `/t/:tenantID/settings/integrations/yunxiao`（v1.1） | `integration_manage` | 12 Part B |
 | 治理 | 团队 | 连接 | intake-channels | 需求开口 | `/t/:tenantID/settings/intake-channels`（无 `intake_channel_manage` 时只读） | `intake_read` | 01 |
 | 治理 | 团队 | 连接 | gateway | API 网关 | `/t/:tenantID/gateway`（实验） | `gateway_manage` | 04 |
@@ -1486,6 +1547,13 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `agent.spawn_requested`（D110） | `AGENT_SPAWN_APPROVAL` 建项 | 同 §6.10 | NORMAL | ✓ ✓ — | `governance.notify.agent_spawn_requested` | merge `spawn_req:<grant>` 10 min |
 | `agent.orphaned`（D110） | 05 `agent.orphaned`（授权终结后遗留的 AI 创建 Agent） | `GRANTOR` + `OWNERS` | HIGH | ✓ ✓ 即 | `governance.notify.agent_orphaned` | merge `orphan:<grant>` 1h |
 | `governance.consumer_dead_letter` ● | 消费死信 | `OWNERS` | CRITICAL | ✓ — 即 | `governance.notify.dead_letter` | 同消费者 1h 1 |
+| `fleet.agent_error_persisting`（D120） | 05 N-05-16 | Agent 负责人类 | HIGH | ✓ — 即 | `fleet.notify.agent_error_persisting` | 每次进入 ERROR 1 |
+| `fleet.agent_inbox_backlog`（D120） | 05 N-05-17（积压 / 丢弃 / webhook 改轮询） | Agent 负责人类 | NORMAL | ✓ — — | `fleet.notify.agent_inbox_backlog` | dedupe 每 Agent 24h |
+| `fleet.tool_credential_failing`（D120） | 05 N-05-18（中继连续收到上游 401 / 403） | `HOLDERS(tool_catalog_manage)` | HIGH | ✓ — 即 | `fleet.notify.tool_credential_failing` | dedupe 每条目 24h |
+| `execution.comment_mentioned`（D120） | 03 N13 | 被提及的人类 | NORMAL | ✓ ✓ 摘 | `execution.notify.comment_mentioned` | merge 同线程 5 min |
+| `execution.comment_on_my_execution`（D120） | 03 N14（本人执行产物上的新批注；甲方批注另给交付负责人） | 执行的人类执行者 / 发起者；CLIENT 线程另加交付负责人 | NORMAL | ✓ — — | `execution.notify.comment_on_my_execution` | merge 同执行 10 min |
+| `planning.loop_run_escalated`（D120） | 10 N-10-11 | 循环契约负责人类 | HIGH | ✓ ✓ 即 | `planning.notify.loop_run_escalated` | dedupe 每运行 |
+| `planning.loop_contract_auto_paused`（D120） | 10 N-10-12 | 循环契约负责人类 + Agent 负责人类 | HIGH | ✓ — 即 | `planning.notify.loop_contract_auto_paused` | dedupe 每契约每次暂停 |
 
 甲方侧通知（01 N0、N8、N10–N13；07 验收提醒）经来源开口发送，不进入本目录与偏好。模板键属于各发出模块的 i18n 命名空间，渲染由 09 `Notifier` 按接收人语言完成；本模块拥有类型目录、接收人路由与偏好（经 `PreferenceResolver`），站内存储、合并窗口执行与投递归 09。
 
@@ -2042,6 +2110,16 @@ And   若批准前 O 撤销 G → 该项 WITHDRAWN，05 的批准接口返回授
 **AC-08-97**（integration）分享审批收件箱 — Given R 申请分享（03 `share_link.requested`），项目内持 `preview_share_approve` 的人类为 R、Q、O When 投影 Then 只有 Q、O 收到 `PREVIEW_SHARE_APPROVAL`（R 不收到）；Q 在收件箱批准 → 03 A72 成功，链接只在 Q 的界面显示一次；`share_link.decided` 到达后 O 的项 ≤1 s 移除；会话结束触发 `share_link.ended` → 未处理的项关闭。
 **AC-08-98**（integration）危险操作登记 — G6 返回的登记表含 `terminal_interactive`、`machine_terminal_enable`、`machine_credential_issue` 三行，purpose 与 03 A67、04 A35 / A32 / A13 使用值一致；缺少任一 purpose 登记时模块启动失败。
 
+### 10.14 D120 增补验收标准（操作清单、团队工具目录、Agent 运行时）
+
+**AC-08-99**（integration）D120 权限播种 — Given 已有租户升级到含 D120 的 catalog When `governance.seed_reconcile` 运行 Then `team_owner` 增加 `agent_workspace_read`、`artifact_comment_write`、`interaction_request`、`tool_catalog_manage`；`delivery_lead`、`engineer` 与全部 Agent 角色增加 `artifact_comment_write`、`interaction_request`；`delivery_lead` **不含** `agent_workspace_read`、`tool_catalog_manage`；`HumanOnly` 含 `agent_workspace_read`、`tool_catalog_manage`，`NonDelegable` 含 `tool_catalog_manage`；再次运行无变化、不写审计。
+**AC-08-100**（unit）仅人类与不可委托 — Given 自定义角色含 `tool_catalog_manage` 并绑给 Agent A When A 请求 `Check(tool_catalog_manage)` Then 拒 `AGENT_PROHIBITED`；授予委托 `actions:[tool_catalog_manage]` → 422（不可委托），Check 对委托来源返回 `NON_DELEGABLE`；A 请求 `agent_workspace_read` → `AGENT_PROHIBITED`；服务账号请求 F21 `{kind:FULL}` 所需的 `agent_manage` + step-up → `AGENT_PROHIBITED`。
+**AC-08-101**（integration）负责人关系授权 — Given Agent Ada 的 `owner_principal_id`=Sam（角色 `engineer`，无 `agent_workspace_read`）；Morgan 为 `delivery_lead` When 二者请求 `Check(agent_workspace_read, resource=agent:Ada)` Then Sam 允许（来源为负责人关系，`Steps` 中 S4 记 `RELATION:owner`）；Morgan 拒 `MISSING_PERMISSION`；Ada 换负责人为 Lee 后 Sam 立即被拒。
+**AC-08-102**（unit）§3.5c 映射夹具 — 对 §3.5 规范清单中的每个码调用映射函数 Then 与 §3.5c 表一致：`NO_AUTHORITY`、`TOOL_NOT_GRANTED` → `CAPABILITY_NOT_AUTHORIZED` / `ESCALATE_TO_OWNER`；`HUMAN_ONLY_MODE` → `CAPABILITY_NOT_AUTHORIZED` / `WAIT_FOR_HUMAN`；`SPAWN_QUOTA_EXCEEDED` → `QUOTA_EXHAUSTED`；`NOT_LEASE_HOLDER` → `NOT_APPLICABLE`；清单中不存在未映射的码（`NO_INTERNAL_QA_AGENT` 除外）；M03 判定期间 `Check` 以 tx=nil 调用，`SpawnGrantUsage.Reserve` 未被调用。
+**AC-08-103**（integration）BR-08-67 启动校验 — Given 某模块向 `OperationRegistry` 登记 `claim.submit` 的 `permission.code=work_item_write`，而路由守卫与 Check 使用 `work_item_execute` When 服务启动 Then 启动失败，日志含操作名与两个码；登记 `via=SELF` 且 code 非空 → 同样失败；`human_only` 与 `HumanOnly` 集合不一致 → 失败。
+**AC-08-104**（integration）危险操作登记与工具审计 — G6 登记表含 `agent_full_reset`（target `agent:<id>`）与 `tool_credential_manage`（target `tool_entry:<id>`）两行，purpose 与 05 F21 / T08 一致；无 step-up 调 T08 → 403 `140403`（`REAUTH_REQUIRED`）；经 05 中继的一次成功调用与一次未授予调用分别追加 `fleet.tool_called` 与 `fleet.tool_call_denied`（`reason_code=TOOL_NOT_GRANTED`），两者 detail 中不出现工具参数或结果原文（只有 `args_sha256`）；审计页「工具调用」筛选只返回这两类事件。
+**AC-08-105**（e2e）菜单项 — Given 成员 X 有 `agent_read`、无 `tool_catalog_manage`；成员 Y 无 `agent_read` When 打开外壳 Then X 在「团队 › 团队资产」看到「工具与技能」（`/t/:tenantID/tools`，只读）、在「治理 › 策略」看到「Agent 操作清单」；Y 两项都不显示，直接访问显示无权限态「缺少权限 `agent_read`」。
+
 ## 11. 度量与埋点（不含代码、消息、反馈正文）
 
 | 事件 | 属性 |
@@ -2069,6 +2147,8 @@ Prometheus：`governance_authority_checks_total{allowed,source_kind}`、`governa
 
 `andon_pulled{actor_kind}`、`andon_cleared{minutes_open}`、`escape_recorded{stage, category}`、`escape_learning_decided{state, days_pending}`、`plan_approval_decided{approver_kind, cross_family}`、`inbox_suppressed_internal{count}`（每日聚合，证明内部失败被拦截）。
 
+**D120 增补埋点**：`agent_capability_denied{operation, reason_code, via, result}`（与 05 §11.z 同名事件共用口径，result 取 §3.5c）、`tool_call_audited{outcome, entry_kind}`（每日聚合，不含工具名以外的参数）、`agent_workspace_read{relation}`、`agent_full_reset_requested{reauth_ok}`；Prometheus：`governance_unmapped_reason_total{reason_code}`（§3.5c 告警）、`governance_manifest_permission_mismatch_total`（BR-08-67，启动期）。
+
 ## 12. 依赖、风险与待决
 
 ### 12.1 依赖
@@ -2089,6 +2169,10 @@ Prometheus：`governance_authority_checks_total{allowed,source_kind}`、`governa
 | 03（D110） | `execution.cost_updated` 载荷含 `agent_id` | 需确认 |
 | 07 | `ProjectReader`（含 `HealthList`）、`ProjectGate.CanDelegatedDecide`、`ProjectModeSwitcher.TakeOverOn`、`ProjectHoldSetter.AddEscalationHoldOn`、`DeliveryMetricsReader`；事件 `project.hold_changed`、`project.mode_changed`、`budget.threshold_reached`、`delivery.confirmation_requested`；07 的「委托 72h 内到期」通知由本模块统一发送 | CR-08-06 |
 | 09 | outbox 消费（`domain_event_receipts` 去重、每聚合有序、退避与停放）、SSE 主题授权、`Notifier`（站内存储、推送 / 邮件、渲染、合并窗口执行；读取本模块 `PreferenceResolver`）、平台幂等表、模块菜单贡献（§8.6）、`JobQueue`、`dlock` | 对齐（00 v1.3） |
+| 05（D120） | `OperationRegistry` 与 M03 能力视图使用 §3.5c 映射与 BR-08-67 启动校验；`agent_workspace_read`（负责人关系授权）、`agent_full_reset` step-up；团队工具目录 T02–T10 以 `tool_catalog_manage` 守卫、T08 用 step-up `tool_credential_manage`；MCP 中继的 `TOOL_NOT_GRANTED` 与 `fleet.tool_called` / `fleet.tool_call_denied` 审计；菜单项 `tool-catalog`、`agent-operations`；通知 N-05-16…18 | 已在 05 D120 增补中定义 |
+| 03（D120） | `artifact_comment_write`（锚定批注）、`interaction_request`（发起工具授权 / 输入请求，判定主体 = 执行者）；`execution.comment_*` 审计；通知 N13 / N14 | 已在 03 BR-03-134 / BR-03-148 定义 |
+| 10（D120） | 循环契约审计 `planning.loop_contract_changed` / `planning.loop_run_escalated`；通知 N-10-11 / N-10-12 | 10 D120 增补 |
+| 12（D120） | 批注转缺陷审计 `delivery.defect_created_from_comment`；A13 流转的 `interrupted` 原因不经本模块 | 12 D120 增补 |
 
 ### 12.2 风险
 
@@ -2134,9 +2218,13 @@ Prometheus：`governance_authority_checks_total{allowed,source_kind}`、`governa
 | CR-08-10 | 底座 governance | 访问申请支持按角色设最长授权时长 | 生产访问 ≤8h |
 | CR-08-11 | §6.4 | 不可委托清单补入 `intake_decline`、新建项目（伪码 `project_create`）、`memory_approve`（同 01 CR-10、06 CR-06-06）；`Delegable` 写明 `intake_convert` 的条件 | 与 01 / 06 对齐，单一清单 |
 | CR-08-12 | §3 | 时间类型改为 `TIMESTAMPTZ(3)` / `DATETIME(3)` / `DATETIME`（同 01 CR-01、02 CCR-01）；§9 tag 规则改为发布路径首段（同 02 CCR-08） | 与仓库规约及已实施的路由规则一致 |
+| CR-08-14 | §6.1 / §6.4 / §6.5 / §9 / 08 §6.9 / §8.6（D120） | §6.1 新增 `agent_workspace_read`（fleet，团队级，仅人类，负责人关系授权）、`artifact_comment_write`（execution，DataScoped）、`interaction_request`（execution，DataScoped）、`tool_catalog_manage`（fleet，团队级，不可委托、仅人类）；§6.4 增 `tool_catalog_manage`；§6.5 增「Agent 完全重置」「团队工具目录管理与凭据」「查看 Agent 工作目录 / 收件箱 / 记忆」；原因码 `TOOL_NOT_GRANTED` 与 §3.5c 结果类别 `CAPABILITY_NOT_AUTHORIZED` / `QUOTA_EXHAUSTED` / `NOT_APPLICABLE`；step-up `agent_full_reset`、`tool_credential_manage`；菜单项 `tool-catalog`、`agent-operations` | D120：操作清单需可判定的权限码与统一拒绝口径；工具凭据与 Agent 内部材料只给人 |
 
 > **v2.0（D112 / D113，00 §15）已并入本规格**：权限码登记与授予（§3.3b）、判定规则 S2(d) / S3(f) / 策略 `plan_review` / `internal_qa` 与新原因码（§3.5b）、穿透记录表（§3.8.16）、错误码 160480–160483、BR-08-60…65、接口 Q1–Q3、收件箱类型（§6.10b）、任务与事件（§7.6）、页面（§8.7）、通知（§9.4）、AC-08-78…87。**CR-08-13**（对 00）：§15.5 增补原因码 `ACCOUNTABLE_HUMAN_MISSING`、`SAME_MODEL_FAMILY`、`ANDON_ACTIVE`（02）；事件 `quality.escape_recorded`、`quality.escape_learning_decided`；05 `AgentDirectory` 需暴露 `model_family`；02 需在 `WorkItemFacts` 填 `AccountablePrincipalID`、`PlanAuthorID`，并在 `work_item.state_changed{to:REWORK}` 载荷携带 `cause`。
 
 > **D118（控制台信息架构，2026-10-12）已并入本规格**：§8.6 改为顶栏域标签（工作台 · 会话 · 协作 · 项目 · 团队 · 治理）+ 当前域侧栏子导航，菜单表增「域」列并按 D118 重新归位，补登 01 / 11 / 12 / 08 已有页面与新页面（我的任务、需求、缺陷、流水线、会话）；协作域项目筛选、记住子页面、移动端抽屉与底栏 工作台 · 会话 · 协作 · 裁决；AC-08-61 更新，新增 AC-08-91…93。依赖 09 C6 `MenuPage.Domain`（09 BR-09-80）与 05 §8.8 会话页；对 00 无新增变更请求。 **D118 修订（项目是主容器，2026-10-12）已并入**：删除协作域，域标签为 工作台 · 会话 · 项目 · 团队 · 治理；菜单表增「范围」列（团队 / 项目），全部行重新归位：项目域分项目外（项目组合 · 来件 · 交付总览 / 跨项目 需求 · 任务 · 缺陷 · 流水线）与项目空间（路由带 `:projectID`），团队域增目标树 · 报告中心；当前域与当前项目只由路由决定、详情页在所属项目空间内渲染、切换项目保持子页面、〔返回项目组合〕、项目切换器；移动端底栏 工作台 · 会话 · 项目 · 裁决；AC-08-61、AC-08-91…93 原地更新，新增 AC-08-94。依赖 09 C6 `MenuPage.Space`（09 BR-09-80）与 05 §8.8 项目频道重定向；对 00 无新增变更请求。
 
 > **D119（远程预览、终端与文件；服务器与集群执行机器，2026-10-12）已并入本规格**：权限码登记与默认授予（§3.3c：`terminal_interact`、`workspace_file_edit`、`preview_share_approve`、`machine_access_manage`）、原因码 `MACHINE_ACCESS_DISABLED` / `PORT_NOT_OWNED` / `PATH_OUTSIDE_WORKSPACE`（§3.5）、BR-08-66、step-up 用途 `terminal_interactive` / `machine_terminal_enable` / `machine_credential_issue`（§6.9）、收件箱 `PREVIEW_SHARE_APPROVAL`（§6.10b，分期待定）、审计事件（§7.5）、通知（§9.4）、AC-08-95…98。来源 03 CR-03-09、04 CR-04-12；已并入 00 v2.0 D119 补充。
+
+
+> **D120（Agent 运行时协议、操作清单、锚定批注、生命周期、循环契约与团队工具目录，2026-10-12）已并入本规格**：US-08-26…28；权限码登记与默认授予（§3.3d：`agent_workspace_read`、`artifact_comment_write`、`interaction_request`、`tool_catalog_manage`）；原因码 `TOOL_NOT_GRANTED`（§3.5）；操作清单能力判定映射与 `via` 取值（§3.5c）；BR-08-67…69（§5.y）；step-up 用途 `agent_full_reset`、`tool_credential_manage`（§6.9）；审计事件（§7.5）；菜单项 `tool-catalog`（`/t/:tenantID/tools`）与 `agent-operations`（§8.6）；通知类型（§9.2）；AC-08-99…105；D120 埋点（§11.x）；依赖（§12.1）；CR-08-14（对 00）。

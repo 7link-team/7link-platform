@@ -67,6 +67,12 @@
 | US-07-22 | 作为交付负责人，我要给项目与需求设定时间 / 成本 / 范围预算与容差，按预测越界时收到例外报告并做出决定，以便杜绝静默延期 | MVP |
 | US-07-23 | 作为团队所有者，我要看到穿透率、内部一次通过率与平均内部轮次，以便判断内部质量门是否可靠 | MVP |
 
+### 2.y D120 增补用户故事（锚定批注）
+
+| ID | 故事 | 版本 |
+|---|---|---|
+| US-07-24 | 作为甲方联系人，我要在门户里直接对交付给我的文件（代码行、表格行、网页区域、文档段落）留下批注，并在拒收某项时引用这些批注，以便团队返工时能回到我指出的原处 | MVP（视频时间点与章节段落 v1.1） |
+
 ## 3. 领域模型与数据表
 
 ### 3.1 实体关系
@@ -398,6 +404,7 @@ JSON Schema：
 | result | VARCHAR(32) | N | `ACCEPTED`/`REJECTED`（`AcceptanceResult` 子集） |
 | feedback_category | VARCHAR(32) | Y | `FeedbackCategory`；REJECTED 必填（CHECK） |
 | comment | 短文本 | Y | REJECTED 必填，≥10 字符 |
+| comment_thread_ids | JSON | N | 默认 `[]`；D120：本拒收项引用的甲方批注线程（≤20，仅 REJECTED 项，BR-07-64） |
 
 ### 3.16 `delivery_acceptance_reminders`
 
@@ -748,6 +755,11 @@ JSON Schema：
   - 来源事件：02 / 03 的 `internal_qa.passed` / `internal_qa.failed`、`work_item.state_changed{to:NEEDS_HUMAN_REVIEW}`、`quality.escaped`（HUMAN_REVIEW 阶段由 02 发布，CLIENT_ACCEPTANCE 阶段由本模块在甲方逐项拒收时发布，判定：被拒工作项曾通过内部质量门）。
 - **BR-07-62 甲方变更的容差检查与基线调整**（D117；01 kind=CHANGE）：① **检查**（`ToleranceReader.WouldBreach`，只读）：取需求 R 的 `REQUIREMENT` 容差行与 R 所属项目的 `PROJECT` 容差行（无行的主体跳过；两者都没有 → 返回空集，即不需要甲方确认）；对每个主体以最近一次预测（尚无预测时以 appetite 本身）加上变更增量——时间：`forecast_end_at + schedule_delta_days`；成本：`forecast_cost_micros + cost_delta_micros`；范围：`forecast_scope_criteria + scope_delta_criteria`——按 §4.7 同一判定式（超出 appetite ×（1 + 容差））得出越界维度；只计算增量造成或加剧的越界，增量为 0 或负的维度不报越界；返回 `breached[]{dimension, subject_kind}` 与快照 `{subjects[{kind, id, appetite, tolerance_pct, forecast, forecast_after}], baseline_no, low_confidence}`。② **调整**（`ToleranceAdjuster.ApplyApprovedChange`，只在调用方事务内、由 02 `AppendFromIntake` 调用）：对 R 的 `REQUIREMENT` 行按增量调整 appetite（`appetite_end_at += schedule_delta_days`；`appetite_cost_micros`、`appetite_scope_criteria` 非空时加上增量）；对 `PROJECT` 行只调整按 ① 会越界的维度；被调整的每行 `baseline_no+1`、按新基线重算状态、`version+1`；审计 `delivery.tolerance_changed`（detail：`source=CLIENT_APPROVED_CHANGE`、`source_intake_id`、各维增量、新旧 `baseline_no`）。任一被调整主体 `open_exception_id` 非空 → 409 `127055 tolerance_exception_open`，不改任何值（与 BR-07-59「例外期间不得修改预算或截止时间」一致：例外须先由人决定）。该调整代表甲方已同意的新承诺，不是静默延期；未经甲方确认（含容差内变更）不得调用。幂等由调用方保证（01 BR-01-26 转化幂等，同一 `source_intake_id` 只转化一次）。
 
+### 5.11 D120 增补（甲方批注与拒收项锚点）
+
+- **BR-07-63 面向甲方的产物与甲方批注**：本模块提供 `DeliveryEvidenceReader.ClientFacing(ctx, tenant, evidence_id) (ClientFacingRef{delivery_id, delivery_item_id}, ok bool, error)`：当且仅当该证据被选入某个 **SENT** 交付（§3.12 `delivery_evidence_selections`），`include_mode=FILE` 且 `excluded_reason` 为空时 `ok=true`（同一证据在多个 SENT 交付中时取最新发送的一个）；只入 SUMMARY / FULL_LOG、被构建剔除、交付非 SENT → `ok=false`。甲方批注只经 `AcceptanceRecorder.CreateClientComment(ctx, ClientCommentInput{delivery_id, evidence_id, intake_contact_id, anchor_kind, anchor, version_ref, body≤2000})` 创建（门户端点属 01，转调本方法）：同一事务内 ① 校验交付为 SENT 且尚未收到回执（否则 409 `128030` acceptance_not_awaited）；② 联系人为该项目 `can_accept=true` 的联系人且调用来自 01 门户会话（否则 01 返回 403）；③ `ClientFacing(evidence_id)` 为真且 `delivery_id` 一致（否则 422 **127056** `delivery.errors.comment_not_client_facing`）；④ 调 03 `ArtifactComments.CreateClientOn(ctx, tx, ClientComment{delivery_id, delivery_item_id, evidence_id, intake_contact_id, anchor_kind, anchor, version_ref, body})`（锚点校验、版本绑定与上限由 03 判定，03 的 422 原样返回）；⑤ 审计 `delivery.client_comment_created`（detail 只含线程 ID、交付、交付项与锚点种类，不含正文）。锚点种类按门户查看器：CODE_LINES、TABLE_ROW、HTML_REGION、文档中的 TEXT_PARAGRAPH 为 MVP；MEDIA_TIME 与章节段落为 v1.1（03 返回 130480）。**INTERNAL 线程永不进入门户**：门户读取经 `AcceptanceRecorder.PortalView` 只返回该交付上 `visibility=CLIENT` 的线程；团队对 CLIENT 线程只读（03 BR-03-141），与甲方的往来仍走 01 澄清。
+- **BR-07-64 拒收项保留锚点**：`AcceptanceInput.items[]` 增加 `comment_thread_ids[]?`（≤20，去重）：只允许在 `result=REJECTED` 的项上携带（ACCEPTED 项带线程 → 422 **127057**，`data.reason=NOT_REJECTED`）；每个线程须是该交付、该交付项上的 CLIENT 线程（经 03 `ArtifactComments.GetOn` 校验：`delivery_id` / `delivery_item_id` 不符 → 422 127057 `NOT_THIS_ITEM`；INTERNAL 线程 → `NOT_CLIENT_THREAD`）。`Record` 在写入回执的同一事务内对每个线程调 03 `ArtifactComments.MarkConvertedOn(ctx, tx, thread_id, {target_kind:REJECTION_ITEM, target_id:acceptance_item_id, actor:CLIENT:<intake_contact_id>})`；线程已转换为拒收项 → 422 127057 `ALREADY_CONVERTED`（`data.target_id`），整份回执回滚。`delivery_acceptance_items` 增列 `comment_thread_ids JSON NOT NULL DEFAULT []`（§3.15 增补）。`receipt_sha256`（BR-07-33）计算**不变**：线程 ID 不入签名——签名证明的是甲方的逐项结论与理由，批注是可追溯的附件，其锚点快照已由 03 转换记录不可变地保存。`AcceptanceReader.Get` 的 `items[]` 增加 `anchors[]{thread_id, anchor_kind, anchor_excerpt, version_ref, artifact_ref}`（取自 03 转换记录的锚点快照）；01 建返工来件时带入，02 T26 产生的返工执行上下文据此回到原处。BR-07-32 不变：拒收项仍必须填写 `feedback_category` 与 ≥10 字的 `comment`，批注只作补充。
+
 ## 6. 接口契约
 
 约定：响应信封 `respx`；ID 为十进制字符串；`P` = `authz.RegisterEntity`（`entity_id` = 项目实体）；`O` = `authz.RegisterOwned`（按资源反查所属项目实体后授权；短地址与 `/entities/{entity_id}/…` 作用域地址同一操作，归属不符 404）；`T` = `authz.Register`（租户级，DataScoped 权限以 `FilterData` 过滤行）。step-up：请求带 `Cookie` + `Origin`（CSRF 校验）+ body `reauth_proof`，底座 `ReauthenticationConsumer` 在业务事务内消费（purpose 见行内）。OpenAPI tag = 最终发布路径第一段（00 §9；`tenants` / `entities` / `deliveries` / `project-repositories`）。乐观锁：GET 返回 `ETag`，标「If-Match」的写操作必须带 `If-Match`（缺失 428 `120400`，不符 409 `120409`），请求体不含 `version`。权限拒绝统一 403 `120403` + `data.reason_code`。幂等：平台 `176425`（同 key 不同请求）/ `176409`（进行中）。通用码 `120400/120403/120404/120409` 不逐行重复。
@@ -831,6 +843,8 @@ JSON Schema：
 | `DeliveryMetricsReader` | `ProjectKPIs(window)`、`TeamKPIs(window, filter)` | 08 总览 |
 | `ToleranceReader`（D112 / D117） | `ForSubject(ctx, tenant, kind, id)`（§6.5）；`WouldBreach(ctx, tenant, requirement_id, {schedule_delta_days, cost_delta_micros, scope_delta_criteria}) (breached[]{dimension TIME\|COST\|SCOPE, subject_kind REQUIREMENT\|PROJECT}, snapshot, error)`——只读，不写库，不改预测（BR-07-62 ①）；需求不存在 / 跨租户 → `120404` | 02、08；01（`WouldBreach`） |
 | `ToleranceAdjuster`（D117） | `ApplyApprovedChange(ctx, tx, {tenant_id, requirement_id, source_intake_id, schedule_delta_days, cost_delta_micros, scope_delta_criteria}) (adjusted[]{subject_kind, tolerance_id, baseline_no}, error)`——在调用方事务内执行（BR-07-62 ②）；未决例外 → 409 `127055` | 02（`AppendFromIntake`，经 01 转化甲方已确认的变更） |
+| `DeliveryEvidenceReader`（D120） | `ClientFacing(ctx, tenant, evidence_id) (ClientFacingRef{delivery_id, delivery_item_id}, ok, error)`（BR-07-63；只读） | 03（甲方批注只能落在面向甲方的产物上，03 BR-03-141） |
+| `AcceptanceRecorder`（D120 增补） | `CreateClientComment(ctx, ClientCommentInput{delivery_id, evidence_id, intake_contact_id, anchor_kind, anchor, version_ref, body}) (thread_id, error)`（BR-07-63）；`Record` 的 `items[]` 增加 `comment_thread_ids[]?`（BR-07-64）；`PortalView` 增加每项的 CLIENT 线程摘要 | 01 |
 
 本模块使用：01 `IntakeReplySender{SendDelivery, SendAcceptanceReminder}`、01 `IntakeReader{Contacts, ChannelAvailable, AttentionByDay, OpenClarifications}`；02 `WorkItemReader`、`DecisionRecorder`（同模块）；03 `ExecutionReader{ActiveCount, AttentionByDay, Get}`、`EvidenceReader{ExecutionCost, SecretFlags, …}`；05 `ChannelProvisioner.CreateDefaultOn`、`AgentDirectory`；08 `DelegationReader`、`EscalationRuleReader`、`AuthorityChecker.Check`；08 `SystemActions` 登记 `SYSTEM:delivery.autonomous_compose`（`delivery_compose`）；core `EntityProvisioner`、`EntityRoleBindingStore.PutOn`。
 
@@ -889,6 +903,7 @@ JSON Schema：
 
 **本模块新增提供的接口**：`ConstitutionReader.Active(ctx, tenant, project) (version_no, body, sha256, error)`（03、05 使用）；`ToleranceReader.ForSubject(ctx, tenant, kind, id)`（02、08 使用）。
 **新错误码**：`127050` constitution_too_large（422）、`127051` human_only_to_autonomous（409）、`127052` constitution_not_in_review（409）、`127053` tolerance_locked_by_exception（409）、`127054` exception_report_missing（409）、`127055` tolerance_exception_open（409，D117：有未决例外时拒绝按甲方确认的变更调整基线，BR-07-62）。
+**D120 增补错误码**：`127056` comment_not_client_facing（422，产物未作为文件交付给甲方或交付非 SENT，BR-07-63）、`127057` rejection_comment_invalid（422，`data.reason ∈ {NOT_REJECTED, NOT_THIS_ITEM, NOT_CLIENT_THREAD, ALREADY_CONVERTED}`，BR-07-64）。
 
 ## 7. 后台任务与事件
 
@@ -1056,6 +1071,11 @@ JSON Schema：
 - **团队模式选择**增加「纯人工 + AI 协助」：说明 Agent 只做助理；从全自治切换时提示将撤销委托。
 - **指标页**新增三张磁贴：穿透率、内部一次通过率、平均内部轮次（附趋势与按模板拆分）。
 - **甲方门户**：不新增元素；回归要求门户视图与证据包中不出现任何内部质量门信息（BR-07-60）。
+
+### 8.10 D120 增补页面（甲方批注）
+
+- **交付详情 → 逐项结果**：每个交付项下列出该项上的甲方批注线程（「甲方」徽章、锚点位置与原文快照、版本、联系人显示名）；点击在 03 远程工作区查看器中打开并定位锚点（03 §8.9）。团队侧只读，提示「请通过澄清回复甲方」〔发起澄清〕（01）；拒收项显示「引用批注 n 条」并链接到对应线程。
+- **甲方门户**（页面属 01）：甲方只看到本交付上的 CLIENT 线程；内部批注、内部质量门记录一律不出现（BR-07-60、BR-07-63）。
 
 ## 9. 通知（09 `Notifier`；收件箱由 08 聚合）
 
@@ -1374,6 +1394,12 @@ When  人类 DELIVER → 422 128016，meta.work_item_ids=[W1]；D 仍 DRAFT
 **AC-07-60**（integration）按甲方确认调整基线（BR-07-62 ②）— Given R 的 REQUIREMENT 行 baseline_no=1、P 的 PROJECT 行按增量只在 TIME 维越界 When 02 在事务内调 `ApplyApprovedChange(R, IN-9, {4, 0, 1})` Then R 行 appetite_end_at+4 天、appetite_scope_criteria+1、baseline_no=2；P 行只调整 appetite_end_at、baseline_no+1；审计 `delivery.tolerance_changed{source:CLIENT_APPROVED_CHANGE, source_intake_id:IN-9}`；外层事务回滚后两行不变。
 **AC-07-61**（integration）例外期间拒绝调整 — Given R 的容差 EXCEPTION（open_exception_id 非空）When 调 `ApplyApprovedChange` Then 409 `127055`，R 与 P 两行均不变；人类以 CONTINUE 决定该例外后再调用 → 成功。
 
+### 10.y D120 增补验收标准
+
+**AC-07-62**（integration）甲方批注只落在面向甲方的产物上（BR-07-63）— Given 交付 D（SENT，未回执）选入证据 Ev（`include_mode=FILE`）与 Ev2（`include_mode=SUMMARY`），联系人 C 可签收 When 01 门户经 `CreateClientComment` 对 Ev 的 CSV 第 42 行（TABLE_ROW）批注、对 Ev2 批注 Then 前者 201，03 线程 `visibility=CLIENT`、作者 `CLIENT:<C>`，审计 `delivery.client_comment_created` 不含正文；后者 422 `127056`；D 收到回执后再批注 → 409 `128030`；`ClientFacing(Ev2)` 返回 `ok=false`。
+**AC-07-63**（integration）拒收项保留锚点（BR-07-64）— Given D 的交付项 I1 上有 CLIENT 线程 T1、T2 When 甲方回执 I1=REJECTED（`feedback_category`、comment ≥10 字）且 `comment_thread_ids=[T1,T2]` Then 同一事务写回执与 2 条 03 转换记录（`REJECTION_ITEM`，`target_id`=I1 的验收项）；`delivery_acceptance_items.comment_thread_ids=[T1,T2]`；`receipt_sha256` 与不带线程时相同；`AcceptanceReader.Get` 的 I1 `anchors[]` 含两条锚点快照；01 生成的返工来件带入锚点。
+**AC-07-64**（integration）非法线程与内部批注隔离（BR-07-63 / 64）— Given D 的交付项 I1、I2；I2 上 CLIENT 线程 T3；E 执行上有 INTERNAL 线程 T4 When 回执 I1 引用 T3 / 引用 T4 / ACCEPTED 项引用 T3 Then 分别 422 `127057`（`NOT_THIS_ITEM` / `NOT_CLIENT_THREAD` / `NOT_REJECTED`），无回执写入；`PortalView(D)` 只含 CLIENT 线程，T4 不出现。
+
 ## 11. 度量与埋点（不含代码、评论与消息正文）
 
 | 事件 | 属性 |
@@ -1416,6 +1442,8 @@ When  人类 DELIVER → 422 128016，meta.work_item_ids=[W1]；D 仍 DRAFT
 | 06 | 消费 `project.created` 初始化项目 scope；交付 ACCEPTED 入知识库 | 需 06 对齐 |
 | 08 | `DelegationReader`、`EscalationRuleReader`（规则 kind 枚举含 4 类）、`AuthorityChecker`、`SystemActions`（登记 `SYSTEM:delivery.autonomous_compose`）；消费 `delivery.confirmation_requested` / `delivery.withdrawn` 生成与关闭「交付确认」收件箱项；`project.stage_ready` 站内通知；接管时调 `ProjectModeSwitcher.TakeOverOn`；规则触发调 `ProjectHoldSetter`；消费 `budget.threshold_reached`、`acceptance.received`；总览读 `DeliveryMetricsReader` | 需 08 对齐 |
 | 09 | `JobQueue`、`OutboxPublisher`、`RealtimeBroadcaster`（主题 `tenant/{t}/projects`、`tenant/{t}/project/{id}`、`tenant/{t}/delivery/{id}`）、`Notifier`、`dlock` | 平台建设中 |
+| 01（D120） | 门户新增批注读写端点：读取本交付 CLIENT 线程、创建甲方批注（转调 `AcceptanceRecorder.CreateClientComment`）；验收提交可在拒收项上携带 `comment_thread_ids[]`（BR-07-63 / 64）；门户查看器的取点交互 | **待 01 修订**（01 不在 D120 修订范围） |
+| 03（D120） | `ArtifactComments.GetOn` / `CreateClientOn` / `MarkConvertedOn`（03 BR-03-139 / 141）；本模块提供 `DeliveryEvidenceReader.ClientFacing` | 已在 03 §6.z 定义 |
 
 ### 12.2 风险
 
@@ -1460,3 +1488,5 @@ When  人类 DELIVER → 422 128016，meta.work_item_ids=[W1]；D 仍 DRAFT
 > **v2.0（D112 / D113，00 §15）已并入本规格**：`HUMAN_ONLY` 模式（§4.5、BR-07-56）、项目宪法（§3.19、§4.6、BR-07-57）、项目 / 需求级预算容差与例外（§3.20–3.21、§4.7、BR-07-58/59）、交付不外泄内部记录（BR-07-60）、质量指标（§3.17b、BR-07-61）、接口 #50–#57、错误码 127050–127054、AC-07-50…58。**CR-07-11**（对 00）：§8 登记 `ConstitutionReader`、`ToleranceReader`（delivery 07 提供）；`quality.escaped` 发布者为 02（HUMAN_REVIEW）、07（CLIENT_ACCEPTANCE）与 12 Part A（带 `escaped_from_stage` 的缺陷），统一 `escape_key`，学习只经 02 `delivery.escape_learning`（D114，已并入 00 §7.1）；`exception.*` 的 subject_kind 含 PROJECT / REQUIREMENT（07）与 WORK_ITEM（02）。
 
 > **D117（2026-10-12，甲方变更申请）已并入本规格**：`ToleranceReader.WouldBreach`、`ToleranceAdjuster.ApplyApprovedChange`（§6.3）、BR-07-62、错误码 `127055`、AC-07-59…61。**CR-07-12**（对 00，已合入 00 v2.0 D117 补充）：§8 登记 `ToleranceReader`（ForSubject / WouldBreach）与 `ToleranceAdjuster`（delivery 07 提供）。
+
+> **D120（2026-10-12，锚定批注）已并入本规格**：US-07-24、BR-07-63 / 64（面向甲方的产物、甲方批注只经 `AcceptanceRecorder.CreateClientComment`、拒收项引用批注并保留锚点）、`delivery_acceptance_items.comment_thread_ids`、§6.3 `DeliveryEvidenceReader` 与 `AcceptanceRecorder` 增补、错误码 `127056` / `127057`、§8.10、AC-07-62…64。**CR-07-13**（对 00）：§8 登记 `DeliveryEvidenceReader.ClientFacing`（07 → 03）与 `AcceptanceRecorder.CreateClientComment`（07 → 01）；使用 03 `ArtifactComments`；不新增共享枚举、权限码或事件。门户端点待 01 修订（§12.1）。

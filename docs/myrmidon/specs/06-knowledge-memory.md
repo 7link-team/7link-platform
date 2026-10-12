@@ -605,6 +605,11 @@ ASSIGN / PAUSE / RESUME / DELIVER 裁决不入库（噪声，**本规格提议**
 - **BR-06-64 降级**：查询嵌入超时（`timeout_ms`，默认 1500）、HTTP 错误、429、配置 DEGRADED、或 `coverage_ppm < 500000` → 仅 K1，`mode=K2_FALLBACK`，`fallback_reason` 记原因；调用方收到正常结果（不报错），日志与指标 `knowledge_embedding_fallback{reason}` 可见。查询嵌入结果进程内 LRU 缓存（1000 条，10 分钟，键 = `model_key + sha256(text)`）。
 - **BR-06-65 MySQL / SQLite**：恒为 K1；设置页显示"当前数据库仅支持全文检索"。K3（重排模型、知识图谱）不在本规格，待 §11 数据决定。
 
+### 5.13 D120 增补
+
+- **BR-06-66 Agent 记忆的人类读者收窄**：A30 与 Agent 详情「记忆」标签（05 §8.z）的人类读者除原有 `knowledge_read` + `agent_read` 外，还须满足其一：是该 Agent 的负责人类（05 `AgentDirectory` 的 `owner_principal_id`，经 08 关系授权隐式持有）或持 `agent_workspace_read`（团队级，仅限人类，默认仅 `team_owner`，08 §3.3d）；否则 403 `150403`（`data.reason_code=MISSING_PERMISSION`、`data.permission=agent_workspace_read`），列表不返回部分结果。Agent 读自己的记忆不变（A30「AGENT 只能看自己」）；记忆审批人经 A38 / A32 / A35 的审批视图不受本规则影响（`memory_approve` 判定不变，审批需要看到待审条目）；检索注入（`BuildInjection`）不受影响。理由：D120「工作目录与记忆查看只限负责人与管理员」，与 05 BR-05-137 同一规则。
+- **BR-06-67 技能库与团队工具目录**：06 技能库是 05 团队工具目录中 SKILL 条目的内容与版本来源：目录条目的版本 = 已批准（APPROVED / 当前）的 `knowledge_skill_versions`（`version_no`、`content_hash`），05 不另存技能正文；**谁可以用**由 05 的授予判定（有效技能 = 06 挂载（`SkillCatalog.ForAgent`）∩ 05 授予覆盖，05 团队工具目录规则），分发到运行时技能目录由 05 / 04 负责。06 的挂载（A59 / A60）、版本审批（A57）与 `skill_version.approved` 语义不变；新版本只影响此后开始的执行（执行开始时解析并记录版本，03）。多文件技能包（脚本、参考文件）为 v1.1：需在技能版本上附加包文件并纳入 `content_hash`，届时另提 CR。
+
 ---
 
 ## 6. 接口契约
@@ -649,7 +654,7 @@ A01/A02 `pkg/query` 字段：过滤 `source_kind`(eq,in)、`state`(eq,in)、`for
 
 | # | 方法 路径 | tag | 权限码 / 守卫 | 请求 | 响应 `data` | 错误 | 幂等/锁 |
 |---|---|---|---|---|---|---|---|
-| A30 | GET `/agents/{agent_id}/memories` | agents | knowledge_read / O(agent)；HUMAN 另需 agent_read；AGENT 只能看自己 | query：`kind`、`state`(eq,in)、`project_id`(eq,isNull)、`origin`、`created_at`；排序 `-created_at`、`-last_used_at`、`use_count` | `Memory[]` | 403；404 | — |
+| A30 | GET `/agents/{agent_id}/memories` | agents | knowledge_read / O(agent)；HUMAN 另需 agent_read；AGENT 只能看自己（D120：人类读者另须为该 Agent 的负责人类或持 `agent_workspace_read`，BR-06-66） | query：`kind`、`state`(eq,in)、`project_id`(eq,isNull)、`origin`、`created_at`；排序 `-created_at`、`-last_used_at`、`use_count` | `Memory[]` | 403；404 | — |
 | A31 | POST `/agents/{agent_id}/memories` | agents | knowledge_read / O(agent) + BR-06-30 主体规则 | `{kind, title, body, project_id?, source_execution_id?, evidence_refs[]?, ttl_days?, tags[]?}` | `{memory, escalated, deduplicated}`（201；去重 200） | 403；422 150422/150424/150425；429 150429 | ✔ |
 | A32 | GET `/memories/{memory_id}` | memories | knowledge_read / O(memory) | — | `Memory` + `reviews[]` + `conflicts[]`（冲突条目摘要） | 404 | — |
 | A33 | PATCH `/memories/{memory_id}` | memories | knowledge_write / O(memory)（Agent 仅自身 EXPERIENCE） | `{title?, body?, ttl_days?}` | `{superseded_id, memory}`（新条目） | 409；422 150423/150425 | V |
@@ -927,6 +932,8 @@ SSE（09 C3；主题种类 = `subject.kind` 单数，集合为复数，00 §9）
 | AC-06-47 | integration | §6 约定 V | When PATCH `/memories/{id}` 不带 If-Match Then 428 `150420`；If-Match 过期 Then 409 `150409`；GET 返回 `ETag` |
 | AC-06-48 | e2e | §8.4 | Given 执行 E 的上下文含 2 条第 4 层反馈 `[F1][F2]` 与 3 条 `[Kn]`，声明摘要引用 [F1] When 打开评审台 compact 面板 Then 先显示 [F1][F2]（类别代替得分，[F1] 带"已引用"），展开后按第 1/4/5 层分组 |
 | AC-06-49 | integration | BR-06-37 | Given 人类 H 在无 `memory_approve` 时写入 RULE M（PENDING_REVIEW），之后 H 被授予 `memory_approve` When H 审批 M Then 403 `150403` `reason_code=SELF_REVIEW`；Agent 审批 → `reason_code=HUMAN_ONLY`（注：持 `memory_approve` 的人类写 RULE 时直接 ACTIVE，见 §4.2 与 Q2） |
+| AC-06-50 | integration | BR-06-66 | Given Agent Ada 的负责人为 Sam；Morgan 持 `knowledge_read`、`agent_read`，不是负责人也无 `agent_workspace_read`；Lee 持 `agent_workspace_read`；Ada 有 3 条 ACTIVE 记忆、1 条 PENDING_REVIEW RULE；Rita 持 `memory_approve` When 四人与 Ada 自身分别调 A30，Rita 调 A38 / A32 Then Sam、Lee、Ada 200；Morgan 403 `150403`（`reason_code=MISSING_PERMISSION`、`permission=agent_workspace_read`），无部分结果；Rita 经 A38 / A32 仍可看到待审 RULE 并审批 |
+| AC-06-51 | integration | BR-06-67 | Given 技能 S 当前版本 v2（`content_hash=h2`）已挂载给 Ada When 审批 v3（`h3`）Then `skill_version.approved` 发出，06 挂载行不变（跟随 current）；05 目录中 S 的条目显示 v3 / h3；挂载与审批接口的行为与 D120 前一致（06 不做授予判定） |
 
 ---
 
@@ -1023,3 +1030,6 @@ K2 上线判据（Q11 数据驱动，**本规格提议**）：K1 命中率 <60% 
 | CR-06-10（已合入 00 §8 / §13） | 模块清单 / 00 §1 | 新增可选模块 `knowledgevector`（`goose_knowledge_vector`，表前缀 `knowledge_`，实现 `Enabler`，默认关闭） | pgvector 扩展不能无条件迁移 |
 | CR-06-11 | PRD §13.2 路由示意 | `/knowledge/search` → `/knowledge-searches`；`/memories/{id}/approval` → `/memories/{id}/reviews`；块不提供租户级集合 | 遵循 http-resource-routing 规范（名词子资源、kebab-case） |
 | CR-06-12 | 00 §8 | 新增 `SkillMounter`、`MemoryPolicyValidator`（knowledge → fleet），`ResolvedSkill.Tags` | 05 Agent 原子创建与派单技能匹配（接口审计 #3、#30） |
+| CR-06-13（D120） | 00 §6.1（经 05 / 08 登记） | A30 人类读者使用 `agent_workspace_read`（BR-06-66）；技能库作为 05 团队工具目录 SKILL 条目的内容来源（BR-06-67），不新增 06 的共享枚举、事件或接口 | D120 工作目录与记忆查看范围；团队工具目录 |
+
+> **D120（2026-10-12）已并入本规格**：A30 人类读者收窄（BR-06-66，回应 05 CCR-05-14）、技能库作为团队工具目录 SKILL 条目的内容与版本来源（BR-06-67）、AC-06-50 / 51、CR-06-13。
