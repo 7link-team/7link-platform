@@ -4671,3 +4671,28 @@ Supersedes the corresponding parts of D118 (project-first revision). Specs (PRD 
 updated with the D121 spec pass.
 
 Status: Accepted.
+
+## D124 - No Separate Client Portal: Clients Are External Members; Remove Redundancy (2026-10-12)
+
+Decision (user: 「其实不需要单独的甲方门户，正常的项目视图都是甲方可以看的，会话频道就是甲方沟通的地方」, then 「冗余的东西都去掉」
+on the proposal, taking its three recommendations):
+- Clients are external members of the same app with real accounts (email invite; Google / email login), not portal
+  access links. Their top bar: 待办 (things awaiting their sign-off, acceptance or change confirmation) · 会话 (shared
+  channels and DMs with their 对接人 only) · 协作 (their projects only).
+- In a project a client sees only: 概览 (milestone level), 需求确认单 (versions, sign-off), 变更 (confirm per D117),
+  交付与验收 (with D120 anchored comments), 预览与产物 (client-facing items only), 问题反馈 (raise issues; triaged by the team
+  into internal defects). Never: tasks, review desk, pipelines, executions, internal QA, internal defects, internal
+  channels, Agent internals, goals / plans.
+- Client communication happens in a shared channel in 会话, explicitly marked 「甲方在此频道」 and created by a human;
+  channels are internal by default. D121's rules carry over: requirement drafts, 需求确认单, change and acceptance cards
+  live there; Agent messages to the client need human approval by default; scope / dates / price / commitments are
+  human only; the team's 内部旁注 is never visible to the client.
+- Same routes, two views: a page renders the client view when the viewer is a client (server-side projection in the
+  product; preview-as-client mode for the team). An automated leak check over every client-visible page stays.
+- Removed as redundant: the separate client portal (all portal pages and layout), the 甲方对接 list and engagement
+  workspace (merged into the shared channel and the 需求确认单 page), the old intake list and intake detail (intake
+  channel configuration stays), and all legacy alias / redirect routes (links point to canonical routes).
+Supersedes the client-portal parts of D117 / D120 / D121 / D122 / D123 (their rules carry over into the shared channel
+and the client view). Specs (01 major, 02 / 05 / 07 / 08 / 10, PRD) to be rewritten after the prototype review.
+
+Status: Accepted.
