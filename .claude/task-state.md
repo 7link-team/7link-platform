@@ -87,7 +87,12 @@
   Research §5.1 updated.
   D116 tool calibration (user approved) DONE in 11/03/00/PRD + prototype SOFTWARE verifier tab (probe 0 errors, screenshot).
   User did L4 accept on real-2048-qa2 (HUMAN:fan) -> COMPLETED, chain 74 ok; recorded in research §5.1.
-  Next: WAIT for user's prototype review. Do not start implementation.
+  D117 DONE (client change requests): specs 00/01/02/07/08 + PRD by subagent (US-01-20..22, T15-T19, BR-01-76..87,
+  110449-110455, AC-01-73..88, BR-02-63, BR-07-62, 127055); prototype pages-change.js (4 routes, ids IN-2028/2033/2042) +
+  main entries; fixed: client disagree / team withdraw / decline need no step-up (only conversion), buttons, hidden note.
+  Open for user: projects without tolerance rows never require client approval (BR-07-62 ①) - recommend default rule.
+  Next: user reviews the change pages.
+  Do not start implementation.
   Proposal for user (not applied): spec 03 visual verifier needs tool calibration with known-good/bad sample pages.
 - RESEARCH DONE: docs/myrmidon/research/2026-10-collaboration-research.md (4 tracks synthesized, gap analysis, P0/P1/P2 upgrade,
   decisions A-G awaiting user; §5 MVP results). Do NOT change specs for the upgrade until user confirms A-G.

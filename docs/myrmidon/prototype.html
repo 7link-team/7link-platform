@@ -467,8 +467,8 @@ PAGES.inbox=()=>head("决策优先","我的裁决","所有需要人类决定的�
 /* ================= 来件（01） ================= */
 PAGES.intakes=()=>head("需求开口","来件","甲方是谁不重要——门户、邮件、API 都是开口。协调员 Agent 先出分诊卡，人确认后转为需求。",`<button class="btn" onclick="go('intake-channels')">${I("settings-2")}开口设置</button><button class="btn primary" onclick="(window.newIntake||(()=>toast('新建来件')))()">${I("plus")}新建来件</button>`)+
 `<div class="grid g12"><div class="c4">${card("",[
-  ["IN-2041","导出权限仅限财务？","门户 · Lee","TRIAGED",true],["IN-2040","结算对账 API 增加分页","API · Fabrikam","CLARIFYING"],["IN-2039","返工：交付包 BIL#2 第 3 项","门户 · Lee · 返工来件","TRIAGED"],["IN-2036","文档站英文版","邮件 · docs@adatum","CONVERTED"],["IN-2031","帮我们做个抽奖小程序","邮件 · 未知发件人","DECLINED"]
-].map(([id,t,src,s,on])=>`<div class="inbox-item" style="${on?"background:var(--primary-soft)":""};cursor:pointer" onclick="go('intake/${id}')"><span class="ico" style="background:var(--muted)">${I(src.startsWith("API")?"webhook":src.startsWith("邮件")?"mail":"globe")}</span><div class="grow"><b class="small">${t}</b><div class="muted xs mono">${id} · ${src}</div></div>${({TRIAGED:S("NEEDS_HUMAN_REVIEW","待转换"),CLARIFYING:S("INCONCLUSIVE","澄清中"),CONVERTED:S("ACCEPTED","已转需求"),DECLINED:S("CANCELLED","已拒绝")})[s]}</div>`).join(""),{pad:0})}</div>
+  ["IN-2042","变更：导出增加 Excel 并支持按部门筛选","门户 · Lee · 变更申请","CLIENT_APPROVAL"],["IN-2041","导出权限仅限财务？","门户 · Lee","TRIAGED",true],["IN-2040","结算对账 API 增加分页","API · Fabrikam","CLARIFYING"],["IN-2039","返工：交付包 BIL#2 第 3 项","门户 · Lee · 返工来件","TRIAGED"],["IN-2036","文档站英文版","邮件 · docs@adatum","CONVERTED"],["IN-2031","帮我们做个抽奖小程序","邮件 · 未知发件人","DECLINED"]
+].map(([id,t,src,s,on])=>`<div class="inbox-item" style="${on?"background:var(--primary-soft)":""};cursor:pointer" onclick="go(s==='CLIENT_APPROVAL'?'change-intake/'+'${id}':'intake/${id}')"><span class="ico" style="background:var(--muted)">${I(src.startsWith("API")?"webhook":src.startsWith("邮件")?"mail":"globe")}</span><div class="grow"><b class="small">${t}</b><div class="muted xs mono">${id} · ${src}</div></div>${({TRIAGED:S("NEEDS_HUMAN_REVIEW","待转换"),CLARIFYING:S("INCONCLUSIVE","澄清中"),CONVERTED:S("ACCEPTED","已转需求"),DECLINED:S("CANCELLED","已拒绝"),CLIENT_APPROVAL:S("INCONCLUSIVE","待甲方确认")})[s]}</div>`).join(""),{pad:0})}</div>
 <div class="c8 stack">
   ${card("IN-2041 · 导出权限仅限财务？",`<div class="row muted small" style="margin-bottom:10px">${A("lee")} Lee（甲方联系人）· 门户提交 · 41 分钟前 · 原文不可修改</div><div class="bubble" style="max-width:none">CSV 导出这个功能希望只有财务能用，我们的审计同事偶尔也需要导出，但不要能看到客户手机号。能不能下周五前上线？</div>`,{icon:"globe",right:S("NEEDS_HUMAN_REVIEW","待转换")})}
   ${card("分诊卡 · 由 Iris（协调员 Agent）起草",`<div class="note info" style="margin-bottom:12px">${I("sparkles")}<span>草案，需人确认。追加到既有需求属于<b>范围变更</b>，不可委托给 Agent，需要 step-up。</span></div>
@@ -720,7 +720,7 @@ PAGES.gateway=()=>head("实验性","API 网关","把某台机器上已登录的 
 PAGES.portal=()=>`<div class="portal-wrap">
  <div class="portal-head"><div class="brand-mark" style="background:#0f766e">N</div><div><b style="font-family:var(--font-head);font-size:18px">Northwind Studio · 需求门户</b><div class="muted small">你好，Lee（Contoso）· 品牌来自团队配置</div></div><a class="btn sm" style="margin-left:auto" href="#/overview">${I("arrow-left")}返回团队控制台（原型导航）</a></div>
  <div class="tabs">${[["我的需求","portal"],["提交新需求","portal-submit"],["待回答 · 1","portal-clarify"],["待验收 · 1","portal-accept"]].map(([t,r],i)=>`<button class="${i?"":"on"}" onclick="go('${r}')">${t}</button>`).join("")}</div>
- <div class="stack">${[["账单导出支持 CSV","cur",3,"由 AI 与工程师协作完成"],["导出权限仅限财务？","cur",1,""],["账单列表分页性能","done",5,""]].map(([t,s,step,tag])=>card(t,`<div class="milestones">${["已接收","澄清中","进行中","待验收","已交付"].map((m,i)=>`<div class="${i<step-1?"done":i===step-1?"cur":""}">${m}</div>`).join("")}</div>${tag?`<div class="muted xs" style="margin-top:10px">${I("sparkles")} ${tag}</div>`:""}`,{right:step===1?`<button class="btn sm primary" onclick="toast('澄清：审计角色是否可导出金额字段？')">回答 1 个问题</button>`:""})).join("")}
+ <div class="stack">${[["账单导出支持 CSV","cur",3,"由 AI 与工程师协作完成"],["导出权限仅限财务？","cur",1,""],["账单列表分页性能","done",5,""]].map(([t,s,step,tag])=>card(t,`<div class="milestones">${["已接收","澄清中","进行中","待验收","已交付"].map((m,i)=>`<div class="${i<step-1?"done":i===step-1?"cur":""}">${m}</div>`).join("")}</div>${tag?`<div class="muted xs" style="margin-top:10px">${I("sparkles")} ${tag}</div>`:""}`,{right:step===1?`<button class="btn sm primary" onclick="toast('澄清：审计角色是否可导出金额字段？')">回答 1 个问题</button>`:t==="账单导出支持 CSV"?`<button class="btn sm" onclick="go('portal-intake/IN-2028')">查看详情 · 变更待你确认</button>`:""})).join("")}
  ${card("待验收 · 交付包 BIL#3",`<div class="muted small" style="margin-bottom:10px">3 项交付物 · 演示链接 · 证据摘要（不含代码与内部细节）</div><table><tbody>${["CSV 导出","导出字段按模板排序","导出任务失败重试提示"].map(t=>`<tr><td>${t}</td><td style="text-align:right"><span class="chip on">接受</span> <span class="chip">拒绝</span></td></tr>`).join("")}</tbody></table>
   <label class="f">签署人<span class="req">*</span></label><input class="input" value="Lee"><label class="row small" style="margin-top:10px"><input type="checkbox"> 我已查看交付清单（指纹 sha256 e1c0…4ad2）</label>
   <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn primary" onclick="toast('验收已提交 · 团队将收到回执')">提交验收</button></div>`,{icon:"stamp"})}</div></div>`;
@@ -734,6 +734,7 @@ PAGES.portal=()=>`<div class="portal-wrap">
 <script src="prototype/pages-quality.js"></script>
 <script src="prototype/pages-templates.js"></script>
 <script src="prototype/pages-yunxiao.js"></script>
+<script src="prototype/pages-change.js"></script>
 <script>route();</script>
 </body>
 </html>

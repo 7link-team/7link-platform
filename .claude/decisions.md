@@ -4409,3 +4409,37 @@ Scope: specs 11 §3.5 / §3.6 / §4.2 / §5.6b / §5.7 / §7 / §8 / AC-11-35..3
 AC-03-86..88, 00 §7.1 / §8 / §14, PRD §10.10, prototype template detail (verifier tab). No code.
 
 Status: Accepted.
+
+## D117 - Client Change Requests Through the Portal (2026-10-12)
+
+Decision (user: 「可以 更新完我看下」 on the proposal, incl. "beyond-tolerance changes need client agreement"):
+- 01: IntakeKind += `CHANGE` (portal 〔申请变更〕 on a CONVERTED intake, API `kind=CHANGE`; email v1.1).
+  intake_records += `change_of_intake_id`, `target_requirement_id` (both required for CHANGE), `client_approval` JSON.
+  Triage card += `change_impact` {base_version_no, criteria_diff[{op ADD|RETIRE|REPLACE, criterion_ref?, text}],
+  affected_work_items[{work_item_id, effect STALE|NEW|CANCELLED}], schedule_delta_days, new_expected_date,
+  internal_cost_delta_micros (team only), client_price_delta? {amount, currency, note} (human-entered, client-visible,
+  no billing model), tolerance_check {breached[TIME|COST|SCOPE], snapshot}, requires_client_approval = breached≠∅}.
+  Agents may draft the impact; affected items come from 02 `ChangeImpactPreviewer`, breach from 07 `ToleranceReader.WouldBreach`.
+- IntakeStatus (00) += `CLIENT_APPROVAL`. TRIAGED→CLIENT_APPROVAL: human with `scope_change` submits (kind=CHANGE,
+  requires_client_approval). CLIENT_APPROVAL→TRIAGED on: client APPROVED / REJECTED(comment) in the portal; team
+  withdraws; team records offline approval (human, evidence file required, shown 「由团队记录」). No new card revision
+  while CLIENT_APPROVAL. Reminders: client 7 d, team 14 d; never auto-decide.
+- Conversion of a CHANGE: default APPEND_TO_REQUIREMENT to target_requirement_id (NEW_REQUIREMENT allowed); needs
+  change_impact, base_version_no = current, and if requires_client_approval an APPROVED decision for the same card
+  revision. 02 `AppendFromIntake` applies diff + impacts (BR-02-32) and, when approved, 07
+  `ToleranceAdjuster.ApplyApprovedChange` in the same tx (baseline_no+1; refused while an exception is open).
+  Within tolerance: no client approval, client is told the result and impact. DECLINE of a CHANGE requires client_message.
+- Portal: 〔补充说明〕 only while RECEIVED/TRIAGED/CLARIFYING; CONVERTED shows 〔申请变更〕. Client sees change status
+  评估中 / 待你确认 / 已接受（需求 vN） / 未接受（理由）, criteria diff in plain words, schedule delta, new date, price delta if
+  set; never internal cost, work item ids or internal QA.
+
+Reason: requirements were changeable only implicitly (new intake + team triage); the client had no entry, no visibility
+and no say on schedule/price impact. Baseline integrity (no in-place edits) is kept.
+
+Alternatives Considered: client edits the requirement in place - rejected (breaks the acceptance baseline);
+client approval for every change - rejected (slow for changes absorbed within tolerance); computing a client price -
+rejected (no billing model; price delta is entered by a human).
+
+Scope: specs 00, 01, 02, 07 (+08 only if a registration is needed), PRD, prototype portal + team change intake page.
+
+Status: Accepted.

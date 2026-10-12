@@ -786,6 +786,7 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 - **BR-02-61 模板系统阻塞原因**：`TOOL_UNAVAILABLE`（确定性验证器所需工具在所有在线机器都不可用，04 工具清单）与 `PROVIDER_UNAVAILABLE`（项目所选生成 provider 不可用）为**系统**阻塞原因：由 11 经 `WorkItemTransitioner.SetSystemBlock(tx, work_item_id, reason, on bool, source_ref)` 设置 / 清除（幂等，`source_ref` 去重），与其他系统原因同样参与 `ready_guard`；不可经 W12 人工设置或删除（422 120400）；原因全部消除后按 §4.2 自动回到 READY。
 - **BR-02-60 L2 展示**：完成阶梯 L2 文案「内部验收通过」，悬停显示 AUTOMATED / AGENT_TEST / AGENT_ACCEPTANCE 三段结论与轮次；`internal_qa_required=false` 时 L2 只含 AUTOMATED 并标注「未经内部验收」。
 - **BR-02-62 缺陷部署守卫（12 §4.2.1 F7）**：`type=BUG` 且 12 `WorkflowResolver` 解析出该工作项生效的缺陷流转矩阵含「merged → deployed」（F6）时，T10 / T11 额外要求 `defect_stage=DEPLOYED`；不满足时不迁移、不算失败，工作项停在（或经 T09 进入）VERIFYING，12 显示「已合入 · 等待部署」。`defect_stage` 推进为 `DEPLOYED` 时，以该声明最近一次验证结论重新评估 T10 / T11（source_ref 幂等）。矩阵不含 F6 或 `WorkflowResolver` 无该项目配置时按原守卫执行；`WorkflowResolver` 不可用 → 视为守卫不满足，保持 VERIFYING 并由 `delivery.stuck_check` 照常提醒（失败即拒）。
+- **BR-02-63 甲方变更申请的影响预览与应用**（D117；01 kind=CHANGE）：① **预览**（`ChangeImpactPreviewer.Preview`，只读）：按需求**当前**版本计算——每条 RETIRE / REPLACE 标准所关联（`delivery_work_item_criteria`）的非 CANCELLED 工作项各给一条 `STALE`（已 ACCEPTED 的同样列出，按 BR-02-33 只标过期）；每条 ADD 给一条 `NEW`（`work_item_id` 为空，表示需新增工作项覆盖）；同一工作项只出现一次；`CANCELLED` 不由预览产生（是否取消由人在 01 分诊卡上决定）。② **应用**（`AppendFromIntake` 带 `Change`）：映射为 BR-02-32 的变更请求——ADD → `criteria.add{text, required:true}`、RETIRE → `criteria.retire`、REPLACE → `criteria.supersede{criterion_id, text, required:true}`；`Impacts` 中 STALE / CANCEL 同 R10 的 `impacts[]`（NEW 不传，新工作项由团队之后拆解）；ChangeRecord 的 `source_intake_id = SourceIntakeID`；按 BR-02-32 ②–⑧ 执行（`base_version_no` ≠ 当前 → 409 `120440`；空 diff → 422 `120400`，BR-02-33）。③ **容差调整**：`ApprovedAdjustment` 非空时，在 ④ 写入 v+1 之后、⑦ 发布事件之前，同事务调用 07 `ToleranceAdjuster.ApplyApprovedChange(ctx, tx, {requirement_id, source_intake_id, schedule_delta_days, cost_delta_micros, scope_delta_criteria})`；07 拒绝（`127055` 有未决例外）或任一步失败 → 整个事务回滚，原样返回 07 错误码（01 映射为 110435）。`ApprovedAdjustment` 为空（容差内变更）时不触碰容差。本规则不改变 BR-02-57「工作项 appetite 只能经 CONTINUE 修改」：甲方确认的调整只作用于 07 的需求 / 项目级容差基线。
 
 ## 6. 接口契约
 
@@ -929,10 +930,11 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 | `WorkItemEscalator`（复审 #27） | `Escalate(ctx, tx, EscalateInput{work_item_id, kind REWORK_LIMIT\|SPINNING\|INCONCLUSIVE\|REVIEW_SLA, detail{reviewer_kind?(HUMAN\|AGENT), assignment_id?, waited_ms?}, actor}) error` | 05（Agent 评审超时：kind=REVIEW_SLA、reviewer_kind=AGENT） | 本模块是 `work_item.escalated` 的唯一发布者：同事务写升级标记（AUTONOMOUS 项目置暂停 `ESCALATION_RULE`、`require_human_decision=true`）、审计 `delivery.work_item_escalated`、outbox；同一工作项同一 kind 在未解除前幂等 |
 | `ClaimSubmitter`（00） | `SubmitOn(ctx, tx, SubmitInput{work_item_id, execution_id, from_exit bool（03 E06 传 true，Heavy 择优传 false；原样传给 03 `ValidateClaimable`）, claimed_by_principal_id, summary, self_confidence?, head_commit?, evidence_ids[], criteria_map[{criterion_id, evidence_id?, coverage, note?}], cited_evidence_ids[], authority_source}) (claimID, error)` | 03（E06 代 Agent 提交）、05（Heavy 择优） | 在调用方事务内按 T08 / BR-02-17 执行（含 `EvidenceBinder`） |
 | `DecisionReader`（00） | `Get(ctx, tenantID, decisionID) (DecisionView{action, reason, failure_category, feedback[{category, location, expected, detail, criterion_id?}], actor, authority_source, work_item_id?, created_at}, error)`；`FeedbackChain(ctx, workItemID) ([]DecisionView, error)`（该工作项全部 REJECT / REQUEST_CHANGES，按时间） | 06（反馈入库）、03（第 4 层上下文） | 只读 |
-| `RequirementCreator`（00） | `CreateFromIntake(ctx, tx, CreateFromIntakeInput{TenantID, ProjectID, IntakeID, TriageCardID, Title, Description, Criteria[{text, required}], Priority, Actor}) (RequirementRef{ID, ProjectID, Version}, error)`；`AppendFromIntake(ctx, tx, AppendFromIntakeInput{TenantID, RequirementID, IntakeID, BaseVersionNo, Summary, Diff{criteria_added[], criteria_retired[], impacts[]}, Actor}) (changeRecordID, error)` | 01 | Create：DRAFT 需求（`source_intake_id`），同事务；Append：= BR-02-32 SCOPE 变更（不可委托）；**step-up 由 01 在调用前以 purpose `intake_convert_privileged` 校验**，本接口不再接收或校验重新认证证明（复审 #11；08 §6.9 登记该用途覆盖追加） |
+| `RequirementCreator`（00） | `CreateFromIntake(ctx, tx, CreateFromIntakeInput{TenantID, ProjectID, IntakeID, TriageCardID, Title, Description, Criteria[{text, required}], Priority, Actor}) (RequirementRef{ID, ProjectID, Version}, error)`；`AppendFromIntake(ctx, tx, AppendFromIntakeInput{TenantID, RequirementID, IntakeID, BaseVersionNo, Summary, Diff{criteria_added[], criteria_retired[], impacts[]}, Change *IntakeChange{CriteriaDiff[]{op ADD\|RETIRE\|REPLACE, criterion_id?, text}, Impacts[]{work_item_id, action STALE\|CANCEL}, SourceIntakeID, ApprovedAdjustment *{ScheduleDeltaDays, CostDeltaMicros, ScopeDeltaCriteria}}, Actor}) (changeRecordID, error)` | 01 | Create：DRAFT 需求（`source_intake_id`），同事务；Append：= BR-02-32 SCOPE 变更（不可委托）；`Diff` 与 `Change` 互斥（都给或都不给 → 120400），`Change` 为甲方变更申请载荷（01 kind=CHANGE，BR-02-63），有 `ApprovedAdjustment` 时同事务调用 07 `ToleranceAdjuster.ApplyApprovedChange`；**step-up 由 01 在调用前以 purpose `intake_convert_privileged` 校验**，本接口不再接收或校验重新认证证明（复审 #11；08 §6.9 登记该用途覆盖追加） |
+| `ChangeImpactPreviewer`（00，D117） | `Preview(ctx, tenantID, requirementID, baseVersionNo, criteriaDiff[]{op ADD\|RETIRE\|REPLACE, criterion_id?, text}) (ChangeImpactPreview{AffectedWorkItems[]{work_item_id?, effect STALE\|NEW, criterion_id?}, CurrentVersionNo}, error)` | 01 | **只读，不写库**（可在调用方事务内或独立读取）；规则见 BR-02-63。`baseVersionNo ≠ 当前` 不报错，照常按当前版本计算并返回 `CurrentVersionNo`，由调用方判定过期（01 → 110453）；需求不存在 / 跨租户 → 120404；需求非 BASELINED → 120439；`criterion_id` 不属于该需求或已退役 → 120430 |
 | `WorkItemReopener` | `ReopenFromAcceptance(ctx, tx, {tenant_id, work_item_ids[], source_acceptance_id, feedback[], reason, actor}) ([]decisionID, error)` | 01（返工来件 `REOPEN_WORK_ITEMS`） | 逐项执行 T26 |
 
-**本模块使用的他方接口**（与 §12.1 一致）：03 `ExecutionLauncher{Launch, Pause, Resume, Cancel, CancelExecution}`、03 `EvidenceReader{… , ChangeSimilarity, LiveExecution, WorkItemCost}`、03 `EvidenceBinder{ValidateClaimable, Attach}`；05 `AgentDirectory`、`DispatchProvenance.DispatchedBy`；07 `ProjectGate`、`ProjectReader`、`AcceptanceReader`；08 `AuthorityChecker{Check, ListEligible}`；01 `ClarificationRequester.RequestFromWorkItem`；12 `WorkflowResolver`（BR-02-62 缺陷部署守卫）；09 `JobQueue`、`OutboxPublisher`、`RealtimeBroadcaster`、`Notifier`。
+**本模块使用的他方接口**（与 §12.1 一致）：03 `ExecutionLauncher{Launch, Pause, Resume, Cancel, CancelExecution}`、03 `EvidenceReader{… , ChangeSimilarity, LiveExecution, WorkItemCost}`、03 `EvidenceBinder{ValidateClaimable, Attach}`；05 `AgentDirectory`、`DispatchProvenance.DispatchedBy`；07 `ProjectGate`、`ProjectReader`、`AcceptanceReader`、`ToleranceAdjuster.ApplyApprovedChange`（BR-02-63）；08 `AuthorityChecker{Check, ListEligible}`；01 `ClarificationRequester.RequestFromWorkItem`；12 `WorkflowResolver`（BR-02-62 缺陷部署守卫）；09 `JobQueue`、`OutboxPublisher`、`RealtimeBroadcaster`、`Notifier`。
 
 ---
 
@@ -1729,6 +1731,34 @@ AC-02-84  [integration]  关联 BR-02-53
 Given 团队模式 HUMAN_ONLY 或执行者为人类且模板未要求内部验收
 When  T10 发生
 Then  直接 → NEEDS_HUMAN_REVIEW，L2 标注「未经内部验收」
+
+AC-02-85  [integration]  关联 ChangeImpactPreviewer, BR-02-63（D117）
+Given 需求 R 当前 v2，标准 c3 关联 W7（IN_PROGRESS）与 W8（ACCEPTED），W9（CANCELLED）也曾关联 c3
+When  01 调用 Preview(R, 2, [ADD "导出 CSV", RETIRE c3])
+Then  返回 CurrentVersionNo=2、AffectedWorkItems = [W7 STALE, W8 STALE, {work_item_id:null, NEW}]，不含 W9；数据库无任何写入（行数与 version 不变）
+When  以 baseVersionNo=1 调用
+Then  不报错，CurrentVersionNo=2
+When  RETIRE 的 criterion_id 属于其他需求 / 需求为 DRAFT
+Then  依次 422 120430 / 409 120439
+
+AC-02-86  [integration]  关联 RequirementCreator.AppendFromIntake, BR-02-63
+Given R 当前 v2，01 已完成 step-up
+When  01 调用 AppendFromIntake(Change{CriteriaDiff=[ADD a, REPLACE c2→"…"], Impacts=[W7 CANCEL], SourceIntakeID=IN-9, ApprovedAdjustment=nil})
+Then  同事务写 v3 快照、ChangeRecord(SCOPE, source_intake_id=IN-9)、Decision(SCOPE_CHANGE)；c2 被替换，关联工作项 baseline_stale；W7 按 T23 取消；发布 requirement.versioned；未调用 07 ToleranceAdjuster
+When  同时给 Diff 与 Change，或都不给
+Then  422 120400，无写入
+
+AC-02-87  [integration]  关联 BR-02-63, 07 BR-07-62
+Given R 当前 v2，R 的需求级容差 baseline_no=1
+When  01 调用 AppendFromIntake(Change{…, ApprovedAdjustment{ScheduleDeltaDays:4, CostDeltaMicros:0, ScopeDeltaCriteria:1}})
+Then  同事务：v3、ChangeRecord，以及 07 ApplyApprovedChange 使 baseline_no=2；外层事务回滚时三者都不存在
+When  R 的容差有未决例外（07 返回 127055）
+Then  整体回滚：R 仍为 v2、无 ChangeRecord、无 requirement.versioned 事件，错误码 127055 原样返回
+
+AC-02-88  [integration]  关联 BR-02-63, BR-02-32 ②
+Given 01 以 BaseVersionNo=2 调用，但 R 已被 R10 升到 v3
+When  AppendFromIntake(Change{…})
+Then  409 120440，无写入，未调用 07
 ```
 
 ## 11. 度量与埋点（不得包含代码、需求正文、反馈正文、理由正文）
@@ -1812,5 +1842,7 @@ Then  直接 → NEEDS_HUMAN_REVIEW，L2 标注「未经内部验收」
 | CCR-08 | 修改 00 §9 tag 规则 | OpenAPI tag = 最终发布路径首段（2026-09-26 已实施规则），删除「工作流域词汇」表述 | `api-routing-inspection-2026-09-26.md` 已取代 workflow-group 规则，构建期 hook 会按首段重设 tag  **状态：已合并（00 v1.1）** |
 | CCR-09 | 补充 00 §11 示例 | AC 示例中的 120403 保持为「授权拒绝」通用码，具体原因用 `data.reason_code`（MISSING_PERMISSION / SELF_REVIEW / AGENT_EXECUTOR / NON_DELEGABLE / DELEGATION_CONDITION / ESCALATED_HUMAN_ONLY / AGENT_SELF_CLAIM / HUMAN_ONLY） | 统一各模块拒绝码，前端一处翻译  **状态：已合并（00 v1.1）** |
 | CCR-10 | 补充 00 §8 | 新增本模块提供的 `WorkItemReopener`（01 使用）；`WorkItemReader` 增 `Owner` / `RequirementBaseline` / `LoadByPrincipal`；`WorkItemTransitioner` 增 `EnsembleFailed`（v1.1） | 审计 C7 / C65 / C58 |
+
+> **D117（2026-10-12，甲方变更申请）**：新增只读接口 `ChangeImpactPreviewer.Preview`、`AppendFromIntake` 的 `Change` 载荷、BR-02-63、AC-02-85…88；已登记入 00 §8（v2.0 D117 补充）。需要 07 提供 `ToleranceAdjuster.ApplyApprovedChange`（07 BR-07-62）。
 
 > **D112 / D113（2026-10-11）**：本规格按 00 v2.0 §15 增补（§3.20–3.25、§4.5、§5.11、§6.10、§7.4、§8.6、N11–N14、§10.11、§11）。需要他规格配合：03 `purpose=PLANNING` 只读执行与计划产出格式、冻结 / 隐藏验收集、`InternalQaCompleted` 回调、`CHEATING_SUSPECTED`；05 TESTER / ACCEPTOR 与计划评审 Agent 的派单（跨模型家族）；06 `MemoryWriter`；07 穿透率口径与 `HUMAN_ONLY`；08 新权限码默认授予、`plan_review` 策略、收件箱按 `visibility=INTERNAL` 过滤、N11–N14 路由；11 `EvalSetWriter.ProposeCase` 与模板默认值；12 缺陷流转矩阵与字典。

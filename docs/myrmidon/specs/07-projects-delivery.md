@@ -472,7 +472,7 @@ JSON Schema：
 | forecast_at | 时间 | Y | NULL | |
 | state | STR(16) | N | `OK` | `OK` / `AT_RISK` / `EXCEPTION`（模块内枚举 `ToleranceState`） |
 | open_exception_id | ID | Y | NULL | 指向 §3.21 |
-| baseline_no | INT | N | 1 | 每次 CONTINUE / RESHAPE 决定后 +1 |
+| baseline_no | INT | N | 1 | 每次 CONTINUE / RESHAPE 决定后 +1；甲方确认的变更经 `ToleranceAdjuster.ApplyApprovedChange` 调整后亦 +1（BR-07-62，D117） |
 | version | INT | N | 1 | ETag |
 
 唯一：`(subject_kind, subject_id)`。
@@ -583,7 +583,7 @@ JSON Schema：
 
 ### 4.7 容差 `ToleranceState` 与例外 `ExceptionState`
 
-`OK → AT_RISK`（预测超出预算但在容差内）`→ EXCEPTION`（预测超出 预算 ×（1 + 容差））；`AT_RISK → OK`（预测回落）。进入 EXCEPTION 同事务创建 `delivery_exceptions(RAISED)` 并发布 `exception.raised`。`RAISED → REPORTED`（例外报告提交）`→ DECIDED`：CONTINUE（新基线，`baseline_no+1`，容差回 OK）、RESHAPE（调 02 范围变更，基线按新范围重算）、HOLD（项目 hold `TOLERANCE_EXCEPTION`，暂停新派发，恢复条件写入 payload）、KILL（项目阶段 → CANCELLED 的既有人工流程，需 step-up）。EXCEPTION 期间修改 `appetite_end_at` / 交付截止时间 → 409 `127053`（禁止静默延期）。
+`OK → AT_RISK`（预测超出预算但在容差内）`→ EXCEPTION`（预测超出 预算 ×（1 + 容差））；`AT_RISK → OK`（预测回落）。进入 EXCEPTION 同事务创建 `delivery_exceptions(RAISED)` 并发布 `exception.raised`。`RAISED → REPORTED`（例外报告提交）`→ DECIDED`：CONTINUE（新基线，`baseline_no+1`，容差回 OK）、RESHAPE（调 02 范围变更，基线按新范围重算）、HOLD（项目 hold `TOLERANCE_EXCEPTION`，暂停新派发，恢复条件写入 payload）、KILL（项目阶段 → CANCELLED 的既有人工流程，需 step-up）。EXCEPTION 期间修改 `appetite_end_at` / 交付截止时间 → 409 `127053`（禁止静默延期）。甲方确认的变更（D117）是 CONTINUE / RESHAPE 之外唯一的基线调整来源：`ToleranceAdjuster.ApplyApprovedChange` 只在主体无未决例外（`open_exception_id IS NULL`）时执行，调整后 `baseline_no+1` 并按新基线重算 `OK` / `AT_RISK`；有未决例外 → 409 `127055`，不改任何值（BR-07-62）。
 
 ## 5. 业务规则与边界情况
 
@@ -746,6 +746,7 @@ JSON Schema：
   - 内部一次通过率 = Σ internal_first_pass ÷ Σ internal_qa_completed；
   - 平均内部轮次 = Σ internal_rounds_sum ÷ Σ internal_qa_completed；
   - 来源事件：02 / 03 的 `internal_qa.passed` / `internal_qa.failed`、`work_item.state_changed{to:NEEDS_HUMAN_REVIEW}`、`quality.escaped`（HUMAN_REVIEW 阶段由 02 发布，CLIENT_ACCEPTANCE 阶段由本模块在甲方逐项拒收时发布，判定：被拒工作项曾通过内部质量门）。
+- **BR-07-62 甲方变更的容差检查与基线调整**（D117；01 kind=CHANGE）：① **检查**（`ToleranceReader.WouldBreach`，只读）：取需求 R 的 `REQUIREMENT` 容差行与 R 所属项目的 `PROJECT` 容差行（无行的主体跳过；两者都没有 → 返回空集，即不需要甲方确认）；对每个主体以最近一次预测（尚无预测时以 appetite 本身）加上变更增量——时间：`forecast_end_at + schedule_delta_days`；成本：`forecast_cost_micros + cost_delta_micros`；范围：`forecast_scope_criteria + scope_delta_criteria`——按 §4.7 同一判定式（超出 appetite ×（1 + 容差））得出越界维度；只计算增量造成或加剧的越界，增量为 0 或负的维度不报越界；返回 `breached[]{dimension, subject_kind}` 与快照 `{subjects[{kind, id, appetite, tolerance_pct, forecast, forecast_after}], baseline_no, low_confidence}`。② **调整**（`ToleranceAdjuster.ApplyApprovedChange`，只在调用方事务内、由 02 `AppendFromIntake` 调用）：对 R 的 `REQUIREMENT` 行按增量调整 appetite（`appetite_end_at += schedule_delta_days`；`appetite_cost_micros`、`appetite_scope_criteria` 非空时加上增量）；对 `PROJECT` 行只调整按 ① 会越界的维度；被调整的每行 `baseline_no+1`、按新基线重算状态、`version+1`；审计 `delivery.tolerance_changed`（detail：`source=CLIENT_APPROVED_CHANGE`、`source_intake_id`、各维增量、新旧 `baseline_no`）。任一被调整主体 `open_exception_id` 非空 → 409 `127055 tolerance_exception_open`，不改任何值（与 BR-07-59「例外期间不得修改预算或截止时间」一致：例外须先由人决定）。该调整代表甲方已同意的新承诺，不是静默延期；未经甲方确认（含容差内变更）不得调用。幂等由调用方保证（01 BR-01-26 转化幂等，同一 `source_intake_id` 只转化一次）。
 
 ## 6. 接口契约
 
@@ -828,6 +829,8 @@ JSON Schema：
 | `AcceptanceReader` | `Get(ctx, tenant, acceptanceID) (AcceptanceView{delivery_id, project_id, contact_id, result, items[]{delivery_item_id, work_item_id, result, feedback_category, comment}, signer_name, received_at}, error)`（`project_id`/`contact_id`/`delivery_item_id` 供 01 构建返工来件，复审 #13）（含评论正文，事件中不带） | 01、06 |
 | `ProjectProvisioningIssueRecorder` | `Record(tenant, project, step, eventID, errorCode)` | 01、06、08 |
 | `DeliveryMetricsReader` | `ProjectKPIs(window)`、`TeamKPIs(window, filter)` | 08 总览 |
+| `ToleranceReader`（D112 / D117） | `ForSubject(ctx, tenant, kind, id)`（§6.5）；`WouldBreach(ctx, tenant, requirement_id, {schedule_delta_days, cost_delta_micros, scope_delta_criteria}) (breached[]{dimension TIME\|COST\|SCOPE, subject_kind REQUIREMENT\|PROJECT}, snapshot, error)`——只读，不写库，不改预测（BR-07-62 ①）；需求不存在 / 跨租户 → `120404` | 02、08；01（`WouldBreach`） |
+| `ToleranceAdjuster`（D117） | `ApplyApprovedChange(ctx, tx, {tenant_id, requirement_id, source_intake_id, schedule_delta_days, cost_delta_micros, scope_delta_criteria}) (adjusted[]{subject_kind, tolerance_id, baseline_no}, error)`——在调用方事务内执行（BR-07-62 ②）；未决例外 → 409 `127055` | 02（`AppendFromIntake`，经 01 转化甲方已确认的变更） |
 
 本模块使用：01 `IntakeReplySender{SendDelivery, SendAcceptanceReminder}`、01 `IntakeReader{Contacts, ChannelAvailable, AttentionByDay, OpenClarifications}`；02 `WorkItemReader`、`DecisionRecorder`（同模块）；03 `ExecutionReader{ActiveCount, AttentionByDay, Get}`、`EvidenceReader{ExecutionCost, SecretFlags, …}`；05 `ChannelProvisioner.CreateDefaultOn`、`AgentDirectory`；08 `DelegationReader`、`EscalationRuleReader`、`AuthorityChecker.Check`；08 `SystemActions` 登记 `SYSTEM:delivery.autonomous_compose`（`delivery_compose`）；core `EntityProvisioner`、`EntityRoleBindingStore.PutOn`。
 
@@ -885,7 +888,7 @@ JSON Schema：
 | 57 | POST | `/exceptions/{exception_id}/decision` | exceptions | `exception_decide` · O；HUMAN；KILL 另需 step-up `project_cancel` | `{decision*, payload, reason*}` | DECIDED；403 `120403`（NON_DELEGABLE / HUMAN_ONLY）；409 `127054`（未提交报告） |
 
 **本模块新增提供的接口**：`ConstitutionReader.Active(ctx, tenant, project) (version_no, body, sha256, error)`（03、05 使用）；`ToleranceReader.ForSubject(ctx, tenant, kind, id)`（02、08 使用）。
-**新错误码**：`127050` constitution_too_large（422）、`127051` human_only_to_autonomous（409）、`127052` constitution_not_in_review（409）、`127053` tolerance_locked_by_exception（409）、`127054` exception_report_missing（409）。
+**新错误码**：`127050` constitution_too_large（422）、`127051` human_only_to_autonomous（409）、`127052` constitution_not_in_review（409）、`127053` tolerance_locked_by_exception（409）、`127054` exception_report_missing（409）、`127055` tolerance_exception_open（409，D117：有未决例外时拒绝按甲方确认的变更调整基线，BR-07-62）。
 
 ## 7. 后台任务与事件
 
@@ -1367,6 +1370,9 @@ When  人类 DELIVER → 422 128016，meta.work_item_ids=[W1]；D 仍 DRAFT
 **AC-07-56**（integration）内部记录不外泄 — Given 工作项 W 内部质量门失败 2 轮后通过并被接受 When 生成证据包并在门户查看交付 Then manifest 与门户响应中不含 AGENT_TEST / AGENT_ACCEPTANCE 结果、内部轮次与反馈（逐字段断言）。
 **AC-07-57**（unit）质量指标夹具 — 某周 l3_entered=20、escapes_human=1、escapes_client=1、internal_qa_completed=20、internal_first_pass=14、internal_rounds_sum=31 → 穿透率 10.0%、内部一次通过率 70.0%、平均内部轮次 1.55。
 **AC-07-58**（integration）甲方拒收穿透 — Given W 曾通过内部质量门并被接受 When 甲方逐项拒收 W Then 发布 `quality.escaped{stage:CLIENT_ACCEPTANCE}` 且 escapes_client +1；未经过内部质量门的历史工作项（迁移数据）不计入。
+**AC-07-59**（integration）变更越界检查（D117，BR-07-62 ①）— Given 需求 R 容差：appetite_end_at=D、时间容差 20%，最近预测完成 D − 1 天；项目 P 无越界 When 01 调 `WouldBreach(R, {schedule_delta_days:10, cost_delta_micros:0, scope_delta_criteria:0})` Then 返回 `[{TIME, REQUIREMENT}]` 与含 forecast_after 的快照，库中无任何写入；增量为 `{0, 0, -1}` → 空集；R 与 P 都无容差行 → 空集。
+**AC-07-60**（integration）按甲方确认调整基线（BR-07-62 ②）— Given R 的 REQUIREMENT 行 baseline_no=1、P 的 PROJECT 行按增量只在 TIME 维越界 When 02 在事务内调 `ApplyApprovedChange(R, IN-9, {4, 0, 1})` Then R 行 appetite_end_at+4 天、appetite_scope_criteria+1、baseline_no=2；P 行只调整 appetite_end_at、baseline_no+1；审计 `delivery.tolerance_changed{source:CLIENT_APPROVED_CHANGE, source_intake_id:IN-9}`；外层事务回滚后两行不变。
+**AC-07-61**（integration）例外期间拒绝调整 — Given R 的容差 EXCEPTION（open_exception_id 非空）When 调 `ApplyApprovedChange` Then 409 `127055`，R 与 P 两行均不变；人类以 CONTINUE 决定该例外后再调用 → 成功。
 
 ## 11. 度量与埋点（不含代码、评论与消息正文）
 
@@ -1452,3 +1458,5 @@ When  人类 DELIVER → 422 128016，meta.work_item_ids=[W1]；D 仍 DRAFT
 | CCR-07-10 | §7.1 登记 `project.stage_ready`、`project.members_changed`、`delivery.confirmation_requested`（已列）、`delivery.withdrawn`、`project.hold_changed`、`delivery.ready`、`delivery.release_notes_requested`（发布者 delivery 07）；§8 登记 `ProjectCreator.CreateForIntakeOn`、`RepositoryReader.Get`、`IntakeProgressReader.Progress`、`AcceptanceRecorder{ListForIntakes, PortalView, Record}`、`AcceptanceReader.Get`、`ProjectReader.HealthList/Members`；01 `IntakeReader` 增 `OpenClarifications`；08 `SystemActions` 登记 `SYSTEM:delivery.autonomous_compose` | 审计 C3/C4/C8/C11/C16/C18/C19/C42/C48/C65 修复所需 |
 
 > **v2.0（D112 / D113，00 §15）已并入本规格**：`HUMAN_ONLY` 模式（§4.5、BR-07-56）、项目宪法（§3.19、§4.6、BR-07-57）、项目 / 需求级预算容差与例外（§3.20–3.21、§4.7、BR-07-58/59）、交付不外泄内部记录（BR-07-60）、质量指标（§3.17b、BR-07-61）、接口 #50–#57、错误码 127050–127054、AC-07-50…58。**CR-07-11**（对 00）：§8 登记 `ConstitutionReader`、`ToleranceReader`（delivery 07 提供）；`quality.escaped` 发布者为 02（HUMAN_REVIEW）、07（CLIENT_ACCEPTANCE）与 12 Part A（带 `escaped_from_stage` 的缺陷），统一 `escape_key`，学习只经 02 `delivery.escape_learning`（D114，已并入 00 §7.1）；`exception.*` 的 subject_kind 含 PROJECT / REQUIREMENT（07）与 WORK_ITEM（02）。
+
+> **D117（2026-10-12，甲方变更申请）已并入本规格**：`ToleranceReader.WouldBreach`、`ToleranceAdjuster.ApplyApprovedChange`（§6.3）、BR-07-62、错误码 `127055`、AC-07-59…61。**CR-07-12**（对 00，已合入 00 v2.0 D117 补充）：§8 登记 `ToleranceReader`（ForSubject / WouldBreach）与 `ToleranceAdjuster`（delivery 07 提供）。

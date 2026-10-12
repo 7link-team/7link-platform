@@ -1071,7 +1071,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `ESCALATION_ALERT` | `escalation.triggered` | `OWNERS` + `LEADS(p)` | 按严重度 | incident 任一人 ACK / RESOLVED / DISMISSED | A 确认 / R —；附〔接管〕〔恢复项目〕 |
 | `MEMORY_RULE_APPROVAL` | `memory.written{kind:RULE, state:PENDING_REVIEW}` | `ELIGIBLE(memory_approve)` 人类，**排除该记忆的写入者**（06 BR：写入者不可自批） | NORMAL | `memory.approved` / `memory.rejected` / `memory.revoked`（含过期、被取代） | A 批准 / R 驳回（理由） |
 | `DISPATCH_PROPOSAL` | `dispatch.proposed{requires_human:true}`（MANUAL 策略，或 AUTO 下被护栏 G1–G9 拦截的提案；05 在载荷中给出 `policy`、`requires_human`） | `HOLDERS(work_item_assign)` 项目内人类 | NORMAL | `dispatch.applied` / `dispatch.rejected` / `dispatch.expired`（任何结局）/ `work_item.assigned` | A 采纳 / R 驳回（理由；调用 05 提案接口） |
-| `INTAKE_TRIAGE` | `intake.received` 为返工来件（`origin_acceptance_id` 非空）；`intake.triaged` 且分诊卡建议 NEW_PROJECT / APPEND（不可委托）；AUTONOMOUS 下协调员无有效委托 | `HOLDERS(intake_convert)` 人类（团队级，`project_id` 可空） | 返工来件 HIGH，否则 NORMAL | `intake.converted` / `intake.merged` / `intake.declined` | A 打开来件转换 / R 拒绝（理由） |
+| `INTAKE_TRIAGE` | `intake.received` 为返工来件（`origin_acceptance_id` 非空）或变更申请（`kind=CHANGE`，D117）；`intake.triaged` 且分诊卡建议 NEW_PROJECT / APPEND（不可委托）；AUTONOMOUS 下协调员无有效委托；`intake.client_approval_decided{decision:APPROVED\|REJECTED}`（甲方已决定，source_key 含 round，D117） | `HOLDERS(intake_convert)` 人类（团队级，`project_id` 可空） | 返工来件与甲方已决定 HIGH，否则 NORMAL | `intake.converted` / `intake.merged` / `intake.declined`；`intake.client_approval_requested`（转为等待甲方，关闭当前项） | A 打开来件转换 / R 拒绝（理由） |
 | `EXECUTION_ATTENTION`（subkind INTERRUPTED / EXECUTION_FAILED） | `execution.state_changed{to:INTERRUPTED}`；`work_item.state_changed{to:EXECUTION_FAILED}` | 人类执行者（交互执行）；Agent 执行 → `LEADS(p)` 人类 | HIGH | `execution.state_changed` 离开 INTERRUPTED（恢复 / 失败）、`work_item.state_changed` 离开 EXECUTION_FAILED | A 打开执行（恢复 / 重试）/ R 标记失败 |
 | `ENSEMBLE_APPROVAL`（v1.1） | `ensemble.plan_created{requires_approval:true}`（超出预算上限需人批准；复审 #22） | `HOLDERS(work_item_assign)` 项目内人类 | NORMAL | `ensemble.started` / `ensemble.cancelled`（含 24h 过期） | A 批准 / R 拒绝 |
 | `ENSEMBLE_SELECTION`（v1.1） | `ensemble.compared{requires_human:true}` | `LEADS(p)` 人类 | HIGH | `ensemble.selected` / `ensemble.cancelled` | A 打开对比报告择优 / R — |
@@ -1157,7 +1157,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `work_item.state_changed{to:EXECUTION_FAILED}`、`execution.state_changed{to:INTERRUPTED}` | 02 / 03 | EXECUTION_ATTENTION；EXECUTION_STALLED |
 | `interaction.requested` / `.decided` / `.closed` | 03 | INTERACTION |
 | `verification.completed`、`verification.human_requested`、`execution.state_changed` | 03 | HUMAN_VERIFICATION；EXECUTION_ATTENTION；通知 |
-| `intake.*`（received、triaged、clarification_answered、clarification_expired、converted、declined、merged） | 01 | CLARIFICATION_REPLY；INTAKE_TRIAGE；CLIENT_REJECTION incident 自动关闭（返工来件终态）；通知 |
+| `intake.*`（received、triaged、clarification_answered、clarification_expired、converted、declined、merged、client_approval_requested、client_approval_decided） | 01 | CLARIFICATION_REPLY；INTAKE_TRIAGE；CLIENT_REJECTION incident 自动关闭（返工来件终态）；通知 |
 | `machine.state_changed` | 04 | 通知；总览 |
 | `agent.state_changed`、`agent.retired`、`dispatch.proposed` / `.applied` / `.rejected` / `.expired` | 05 | 委托对账；DISPATCH_PROPOSAL；通知 |
 | `ensemble.plan_created` / `.started` / `.compared` / `.selected` / `.cancelled`（v1.1） | 05 | ENSEMBLE_APPROVAL / ENSEMBLE_SELECTION |
@@ -1372,6 +1372,8 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `intake.closed_message` | 01 N6 | 终态执行人 | NORMAL | ✓ — — | `intake.notify.closed_message` | merge 1h |
 | `intake.channel_fault` | 01 N7 | `HOLDERS(intake_channel_manage)` | HIGH | ✓ — 即 | `intake.notify.channel_fault` | dedupe 每开口每原因 24h |
 | `intake.link_expiring` | 01 N9 | 签发人 | NORMAL | ✓ — — | `intake.notify.link_expiring` | dedupe 每链接 |
+| `intake.client_approval_decided`（D117） | 01 N16 | T15 请求人 + 最近处理人 + `HOLDERS(intake_convert)` | HIGH | ✓ ✓ 即 | `intake.notify.client_approval_decided` | dedupe 每（来件, round） |
+| `intake.client_approval_overdue`（D117） | 01 N17 | T15 请求人 + `HOLDERS(intake_convert)` | NORMAL | ✓ — 即 | `intake.notify.client_approval_overdue` | dedupe 每（来件, round, 序号） |
 | `work_item.assigned` | 02 N1 | `ASSIGNEE` | NORMAL | ✓ ✓ 摘 | `delivery.notify.assigned` | dedupe `assigned:<assignment>` |
 | `work_item.review_ready` ● | 02 N2 | §6.10 WORK_ITEM_REVIEW 接收人 | NORMAL（HIGH 风险 → HIGH） | ✓ ✓ — | `delivery.notify.review_ready` | merge `review:<project>` 5 min |
 | `work_item.rework` | 02 N3 | 执行者（人）+ `LEADS` | NORMAL | ✓ — — | `delivery.notify.rework` | dedupe `rework:<decision>` |

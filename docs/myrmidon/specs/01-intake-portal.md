@@ -19,7 +19,7 @@
 | 转为需求（调用 02 的接口）、合并重复、拒绝（理由必填） | 文件存储与 ResourceBinding 本身 → 底座 `files` |
 | 邮件收件（解析、线程、附件上限、垃圾与未知发件人隔离） | Webhook 订阅与签名投递 → 底座 `iam/webhook` |
 | API 来件（PAT / OAuth 客户端）与回执回调（经底座 webhook） | PAT、服务账号、OAuth 客户端凭证 → 底座 `iam/authn`、`iam/identity`、`iam/oauth` |
-| 甲方门户页面与 API 面：提交需求、我的需求（里程碑）、澄清作答、验收入口（调用 07） | 门户之外的任何甲方组织建模（PRD §2.4 非目标） |
+| 甲方门户页面与 API 面：提交需求、我的需求（里程碑）、澄清作答、验收入口（调用 07）、申请变更与变更确认（kind=CHANGE，D117；版本与容差落在 02 / 07） | 门户之外的任何甲方组织建模（PRD §2.4 非目标） |
 | 品牌（部署 / 租户配置）与「AI 参与展示」设置 | — |
 
 **不解决**：自动报价、合同、甲方侧多角色与组织管理、IM 与 Webhook 开口的具体协议（仅定义扩展位）。
@@ -48,6 +48,9 @@
 | US-01-16 | 作为甲方工单系统，我要通过 Webhook 开口推送工单 | v1.1 |
 | US-01-18 | 作为交付负责人，我要把甲方拒收形成的返工来件按条目处置为「重开被拒工作项」或「追加到需求（范围变更）」，以便质量返工与范围变更分开处理 | MVP |
 | US-01-19 | 作为执行中被需求疑点阻塞的工作项负责人，我要沿原来件线程向甲方追问，以便不另起沟通渠道 | MVP |
+| US-01-20 | 作为甲方联系人，我要在已立项的需求上〔申请变更〕，并看到变更的处理状态（评估中 / 待你确认 / 已接受 / 未接受）以及对进度、日期和价格的影响，以便不用直接改需求也能提出新要求 | MVP |
+| US-01-21 | 作为交付负责人，我要在变更申请上评估影响（验收标准差异、受影响工作项、进度与成本、容差），超出容差时请甲方确认、容差内直接转化并告知甲方结果，以便范围变化有据可查且不拖慢小改动 | MVP |
+| US-01-22 | 作为甲方联系人，我要在门户对超出容差的变更〔接受〕或〔不接受(理由)〕，以便我对进度与价格的变化有最终发言权 | MVP |
 | US-01-17 | 作为甲方联系人，我要在企业微信 / Slack / Telegram 会话里提需求并答复澄清 | v2 |
 
 ---
@@ -190,7 +193,7 @@ Tenant ─┬─ intake_channels (1 PORTAL / n EMAIL / n API)
 | ref_no | int | N | — | 租户内递增展示号，显示为 `IN-<ref_no>`；`UNIQUE(tenant_id, ref_no)`，分配时冲突重试 ≤3 次 |
 | channel_id / channel_kind | id / enum | N | — | channel_kind 冗余，便于列表过滤 |
 | contact_id | id | N | — | |
-| kind | enum `IntakeKind` | N | `NEW` | `NEW` / `REWORK`（07 拒收触发的返工来件）（§13 CR-03） |
+| kind | enum `IntakeKind` | N | `NEW` | `NEW` / `REWORK`（07 拒收触发的返工来件）/ `CHANGE`（甲方对已转化需求的变更申请，D117）（§13 CR-03、CR-12） |
 | status | enum `IntakeStatus` | N | `RECEIVED` | 00 §5 |
 | title | str(200) | N | — | 门户/API 为提交标题；邮件为 Subject（去掉 `Re:`/`Fwd:`，空则取正文首行前 80 字） |
 | raw_content | text64k | Y | NULL | **不可变**原文（纯文本或 Markdown）；>64KB 时为 NULL 并以 `intake.attachment` 槽位 `raw-overflow` 存文件 |
@@ -215,10 +218,28 @@ Tenant ─┬─ intake_channels (1 PORTAL / n EMAIL / n API)
 | resolved_actor_kind / resolved_actor_id / resolved_authority_source | enum / id / str(80) | Y | NULL | 终态动作主体三元组（00 §4） |
 | origin_delivery_id / origin_acceptance_id | id | Y | NULL | REWORK 来源；`UNIQUE(tenant_id, origin_acceptance_id)` 保证一次拒收至多一条返工来件 |
 | last_client_activity_at / last_team_activity_at | ts | Y | NULL | 列表排序与「待你处理」 |
+| change_of_intake_id | id | Y | NULL | 仅 kind=CHANGE：甲方在哪条已转化来件上〔申请变更〕（同租户、≠ id；BR-01-76） |
+| target_requirement_id | id | Y | NULL | 仅 kind=CHANGE：被变更的 02 需求，创建时取原来件的 `requirement_id` 并固定 |
+| client_approval | json | Y | NULL | 仅 kind=CHANGE：当前（最近一轮）甲方确认请求，Schema 见下；历次请求见审计与线程消息 |
+| result_version_no | int | Y | NULL | 仅 kind=CHANGE 且 CONVERTED：转化后需求的版本号 vN（门户「已接受（需求 vN）」与版本历史用；技术必需列，BR-01-84） |
 | version | int | N | 1 | |
 
-索引：`(tenant_id, status, received_at, id)`、`(tenant_id, contact_id, received_at)`、`(tenant_id, channel_id, received_at)`、`(tenant_id, requirement_id)`、`(tenant_id, merged_into_intake_id)`。
-不可变性：`raw_content`、`raw_content_hash`、`title`、`channel_*`、`contact_id`、`received_at`、`source_message_id`、`external_ref` 在仓储层没有任何更新路径（`Updates` 只允许白名单列），由单元测试固定。
+CHECK（三方言同写法）：`kind <> 'CHANGE' OR (change_of_intake_id IS NOT NULL AND target_requirement_id IS NOT NULL)`；`kind = 'CHANGE' OR (change_of_intake_id IS NULL AND target_requirement_id IS NULL AND client_approval IS NULL)`；`change_of_intake_id IS NULL OR change_of_intake_id <> id`。
+
+`client_approval` JSON Schema（D117；服务端写入，客户端不可直接提交）：
+
+```json
+{ "state": "PENDING|APPROVED|REJECTED|WITHDRAWN", "round": "int ≥1（同一来件第几次请甲方确认）", "card_revision": "int（请求所依据的分诊卡 revision）",
+  "requested_at": "ts", "requested_by": "principal id（HUMAN）", "request_message_id": "id（给甲方的说明，intake_messages OUTBOUND）",
+  "decided_at": "ts|null", "decided_via": "PORTAL|RECORDED_BY_TEAM|null", "decided_actor_kind": "CLIENT|HUMAN|null", "decided_actor_id": "id|null",
+  "authority_source": "CLIENT:<contact_id>（门户）| ROLE:*（团队代录）| null", "comment": "str 10..2000（REJECTED 必填）|null",
+  "evidence_file_ids": ["id（RECORDED_BY_TEAM 时 1..5，intake.attachment 槽位 client-approval:<round>）"], "offline_note": "str 1..2000（RECORDED_BY_TEAM 必填）|null",
+  "withdrawn_reason": "str 1..2000（WITHDRAWN 必填）|null",
+  "client_reminders_sent": "int 0..3", "next_client_reminder_at": "ts|null", "next_team_reminder_at": "ts|null" }
+```
+
+索引：`(tenant_id, status, received_at, id)`、`(tenant_id, contact_id, received_at)`、`(tenant_id, channel_id, received_at)`、`(tenant_id, requirement_id)`、`(tenant_id, merged_into_intake_id)`、`(tenant_id, change_of_intake_id)`。
+不可变性：`raw_content`、`raw_content_hash`、`title`、`channel_*`、`contact_id`、`received_at`、`source_message_id`、`external_ref`、`change_of_intake_id`、`target_requirement_id` 在仓储层没有任何更新路径（`Updates` 只允许白名单列），由单元测试固定。
 
 ### 3.9 `intake_triage_cards` 分诊卡（不可变，修改 = 新 revision）
 
@@ -244,6 +265,22 @@ Tenant ─┬─ intake_channels (1 PORTAL / n EMAIL / n API)
 | knowledge_refs | json | N | `[]` | `[{ "chunk_id": "id", "source_kind": "KnowledgeSourceKind" }]`（06），≤20 |
 | model_ref | str(120) | Y | NULL | runtime×模型标识（不含提示词与正文） |
 | rejected_items | json | N | `[]` | 仅 kind=REWORK：`[{ "work_item_id": "id", "delivery_item_id": "id", "feedback_category": "FeedbackCategory", "comment": "str ≤2000", "suggested_disposition": "REOPEN_WORK_ITEMS|APPEND_TO_REQUIREMENT|NONE" }]`，≤50（BR-01-27） |
+| change_impact | json | Y | NULL | 仅 kind=CHANGE（其他 kind 必须为 NULL，否则 110400）：变更影响评估，Schema 见下。kind=CHANGE 时〔请甲方确认〕（T15）与 `APPEND_TO_REQUIREMENT` 转化前必填（110452）；Agent 可起草（BR-01-78） |
+
+`change_impact` JSON Schema（D117）：
+
+```json
+{ "base_version_no": "int ≥1（评估所依据的目标需求版本，须 = 02 当前版本，否则 110453）",
+  "criteria_diff": [{ "op": "ADD|RETIRE|REPLACE", "criterion_ref": "id（02 验收标准 id；RETIRE/REPLACE 必填，ADD 为空）", "text": "str 1..1000（ADD/REPLACE 为新表述；RETIRE 为被移除条目的通俗表述，供甲方阅读）" }]（1..30）,
+  "affected_work_items": [{ "work_item_id": "id|null（NEW 时为空）", "effect": "STALE|NEW|CANCELLED" }]（≤200；仅团队可见）,
+  "schedule_delta_days": "int -365..365", "new_expected_date": "date|null",
+  "internal_cost_delta_micros": "int64（仅团队可见）",
+  "client_price_delta": { "amount": "十进制字符串，可为负", "currency": "ISO 4217 三字母", "note": "str ≤500" } | null,
+  "tolerance_check": { "breached": ["TIME|COST|SCOPE"], "snapshot": "07 ToleranceReader.WouldBreach 返回的快照（仅团队可见）", "checked_at": "ts" },
+  "requires_client_approval": "bool = breached ≠ ∅" }
+```
+
+服务端规则：`affected_work_items` 以 02 `ChangeImpactPreviewer.Preview` 结果为准（STALE / NEW 条目必须保留，作者只能把 STALE 改为 CANCELLED）；`tolerance_check` 与 `requires_client_approval` 一律由服务端在写卡事务内经 07 `ToleranceReader.WouldBreach` 计算，请求中的同名值被忽略；`client_price_delta` 只能由 HUMAN 作者填写（AGENT 卡带该字段 → 400 110400，BR-01-78）；`scope_delta_criteria` = ADD 条数 − RETIRE 条数（REPLACE 计 0）。
 
 ### 3.10 `intake_clarification_rounds` 澄清轮
 
@@ -340,7 +377,7 @@ Tenant ─┬─ intake_channels (1 PORTAL / n EMAIL / n API)
 
 | purpose | resource_kind | slot | 版本 | 过期 | 说明 |
 |---|---|---|---|---|---|
-| `intake.attachment` | `intake` | `submission` / `message:<message_id>` / `raw-overflow` | pinned | 否 | 来件与回答附件 |
+| `intake.attachment` | `intake` | `submission` / `message:<message_id>` / `raw-overflow` / `client-approval:<round>` | pinned | 否 | 来件与回答附件；`client-approval:<round>` 为团队登记甲方线下确认的证据（T19） |
 | `intake.upload` | `intake_contact` | `pending` | pinned | 是（24h） | 门户 / API 先上传后提交；提交时同事务解绑并改绑到来件 |
 | `intake.raw-mime` | `intake_email_message` | `raw` | pinned | 否 | 原始 .eml |
 | `intake.branding` | `intake_client_settings` | `logo` | head | 否 | |
@@ -353,11 +390,11 @@ Tenant ─┬─ intake_channels (1 PORTAL / n EMAIL / n API)
 
 ### 4.1 来件 `IntakeStatus`
 
-00 将 PRD §6.1 的 `ACCEPTED_AS_REQUIREMENT` 定名为 `CONVERTED`，本文沿用 00。
+00 将 PRD §6.1 的 `ACCEPTED_AS_REQUIREMENT` 定名为 `CONVERTED`，本文沿用 00。`CLIENT_APPROVAL`（待甲方确认，D117）只出现在 kind=CHANGE 的来件上，经 T15 进入、T16–T19 离开，不是终态。
 
 | # | 当前 | 触发命令 / 事件 | 守卫 | 目标 | 副作用 |
 |---|---|---|---|---|---|
-| T1 | — | 提交（门户 / 邮件 / API / 团队代录 / 07 拒收） | 开口 ENABLED；联系人 ACTIVE；配额与大小限制 | RECEIVED | 事件 `intake.received`；审计 `intake.intake_received`；回执（send_receipt=true 时经原开口）；通知 §9 N1 |
+| T1 | — | 提交（门户 / 邮件 / API / 团队代录 / 07 拒收 / 变更申请 kind=CHANGE） | 开口 ENABLED；联系人 ACTIVE；配额与大小限制；kind=CHANGE 另见 BR-01-76/77 | RECEIVED | 事件 `intake.received`；审计 `intake.intake_received`；回执（send_receipt=true 时经原开口）；通知 §9 N1 |
 | T2 | RECEIVED | 提交分诊卡（revision=1） | 卡片校验通过；作者有 `intake_triage` | TRIAGED | `intake.triaged`；通知 N2 |
 | T3 | TRIAGED / CLARIFYING | 提交分诊卡（新 revision） | 同上 | 不变 | `intake.triaged`（含 revision） |
 | T4 | RECEIVED / TRIAGED | 发送澄清轮 | ≥1 条 DRAFT 问题且 ≤10；无 OPEN 轮；轮数 <20 | CLARIFYING | 新建 OPEN 轮；问题 DRAFT→SENT；经原开口发送；`intake.clarification_requested`；审计 |
@@ -365,12 +402,17 @@ Tenant ─┬─ intake_channels (1 PORTAL / n EMAIL / n API)
 | T6 | CLARIFYING | 甲方回答使本轮全部问题非 SENT | — | TRIAGED | 轮→ANSWERED(ALL_ANSWERED)；`intake.clarification_answered{round_closed:true}`；自动发出 `intake.triage_requested`（协调员重新分诊）；通知 N4 |
 | T7 | CLARIFYING | 团队取消本轮 | 有 `intake_triage` | TRIAGED | 轮→CANCELLED；未答问题→WITHDRAWN |
 | T8 | CLARIFYING | 超时任务：now ≥ due_at | 轮 OPEN | TRIAGED | 轮→EXPIRED(TIMEOUT)；SENT 问题→EXPIRED；client_unresponsive=true；`intake.clarification_expired`；通知 N5。「本规格提议」超时**不自动拒绝**：拒绝属产品决定，交负责人判断 |
-| T9 | TRIAGED | 转为需求 | 见 BR-01-20..28 | CONVERTED | 同事务调用 02（及 07）创建 / 追加 / 重开；`intake.converted`；审计；通知甲方 N8 |
+| T9 | TRIAGED | 转为需求 | 见 BR-01-20..28；kind=CHANGE 另见 BR-01-81 | CONVERTED | 同事务调用 02（及 07）创建 / 追加 / 重开；`intake.converted`；审计；通知甲方 N8 |
 | T10 | CLARIFYING | 转为需求 + `open_questions_ack=true` | 同 T9；调用者为 HUMAN | CONVERTED | OPEN 轮→CANCELLED(INTAKE_RESOLVED)，未答问题→WITHDRAWN；其余同 T9 |
 | T11 | RECEIVED / TRIAGED / CLARIFYING | 合并 | 目标同租户、≠自身、状态 ∉ {MERGED, DECLINED} | MERGED | OPEN 轮关闭；`intake.merged`；审计；通知甲方（可选） |
 | T12 | RECEIVED / TRIAGED / CLARIFYING | 拒绝 | `decline_reason_code` + `decline_reason` 必填 | DECLINED | OPEN 轮关闭；`intake.declined`；审计；`notify_client`=true 时经原开口发 client_message |
-| T13 | 任意 | 甲方新消息（邮件回复 / 门户留言） | — | 不变 | 记 CLIENT_NOTE；终态来件时通知 N6（「已结束来件收到新消息」），不改变状态 |
+| T13 | 任意 | 甲方新消息（邮件回复 / 门户留言） | 门户留言（〔补充说明〕）仅限 RECEIVED / TRIAGED / CLARIFYING（BR-01-85） | 不变 | 记 CLIENT_NOTE；终态来件时通知 N6（「已结束来件收到新消息」），不改变状态 |
 | T14 | CONVERTED | 02 `ClarificationRequester.RequestFromWorkItem`（工作项因澄清阻塞） | 无 OPEN 轮；轮数 <20；问题 1..10 | 不变（仍 CONVERTED） | 新建 OPEN 轮（`work_item_id` 非空）并立即经原开口发送；`intake.clarification_requested{work_item_id}`；回答 / 超时事件同样携带 `work_item_id`，由 02 解除阻塞；有 OPEN 轮时问题追加为 DRAFT 并通知 N4（「本规格提议」：转化后的澄清不改变来件状态，只是线程延续） |
+| T15 | TRIAGED | 请甲方确认（`PUT /intakes/{id}/client-approval`） | kind=CHANGE；无 OPEN 轮；最新卡片含 `change_impact` 且 `requires_client_approval=true`；`triage_card_revision` = 最新；`base_version_no` = 02 当前版本；actor_kind=HUMAN 且对目标需求所属项目持 `scope_change`（经 `AuthorityChecker`，不可委托）（BR-01-79） | CLIENT_APPROVAL | `client_approval` = {PENDING, round+1, card_revision}；写给甲方的说明（OUTBOUND）；`intake.client_approval_requested`；审计 `intake.client_approval_requested`；通知甲方 N14（经原开口） |
+| T16 | CLIENT_APPROVAL | 甲方在门户〔接受〕（`decision=APPROVED`） | 门户会话联系人 = 来件联系人；`approval_round` = 当前 round；actor_kind=CLIENT | TRIAGED | `client_approval.state=APPROVED`、`decided_via=PORTAL`、`authority_source=CLIENT:<contact_id>`；`intake.client_approval_decided{decision:APPROVED}`；审计；通知团队 N16 |
+| T17 | CLIENT_APPROVAL | 甲方在门户〔不接受〕（`decision=REJECTED`） | 同 T16；`comment` 10..2000 | TRIAGED | `client_approval.state=REJECTED` + comment；`intake.client_approval_decided{decision:REJECTED}`；审计；通知团队 N16。团队可改卡后再次 T15、按容差内方案转化（需新 revision 且 `requires_client_approval=false`）或拒绝（BR-01-83） |
+| T18 | CLIENT_APPROVAL | 团队撤回确认请求 | actor_kind=HUMAN；`intake_triage`；`reason` 1..2000 | TRIAGED | `client_approval.state=WITHDRAWN`；`intake.client_approval_decided{decision:WITHDRAWN}`；审计 `intake.client_approval_withdrawn`；通知甲方 N8（「团队已撤回本次确认请求」） |
+| T19 | CLIENT_APPROVAL | 团队登记甲方线下确认（电话、会议、邮件） | actor_kind=HUMAN；对目标项目持 `scope_change`（经 `AuthorityChecker`）；`evidence_file_ids` 1..5；`offline_note` 1..2000 | TRIAGED | `client_approval.state=APPROVED`、`decided_via=RECORDED_BY_TEAM`、`decided_actor_kind=HUMAN`；证据绑定 `client-approval:<round>`；`intake.client_approval_decided{decision:APPROVED, decided_via:RECORDED_BY_TEAM}`；审计 `intake.client_approval_recorded_offline`；门户显示「由团队记录」 |
 
 **非法迁移**（全部不改变数据，审计记 `outcome=denied` 仅针对权限类）：
 
@@ -387,6 +429,16 @@ Tenant ─┬─ intake_channels (1 PORTAL / n EMAIL / n API)
 | 任意非终态 | 合并到自身 / MERGED / DECLINED / 他租户来件 | 110426 `intake.merge_target_invalid`（他租户返回 110404） | 422 / 404 |
 | 任意非终态 | 拒绝缺理由 | 110427 `intake.reason_required` | 422 |
 | 任意 | 版本号不匹配 | 110409 `intake.version_conflict` | 409 |
+| CLIENT_APPROVAL | 提交新分诊卡 revision、发送澄清轮、转化、合并、拒绝（须先 T18 撤回） | 110451 `intake.awaiting_client_approval` | 409 |
+| TRIAGED（kind=CHANGE） | 转化，`requires_client_approval=true` 而 `client_approval` 非 APPROVED，或 APPROVED 的 `card_revision` ≠ 转化所依据的 revision | 110450 `intake.client_approval_required` | 422 |
+| TRIAGED（kind=CHANGE） | T15 或 `APPEND_TO_REQUIREMENT` 转化时最新卡片无 `change_impact` | 110452 `intake.change_impact_required` | 422 |
+| RECEIVED / TRIAGED / CLARIFYING（kind=CHANGE） | 写入含 `change_impact` 的分诊卡、T15 或转化时 `change_impact.base_version_no` ≠ 02 当前版本，或转化时 `WouldBreach` 复核结果与卡片不一致（`data.current_version_no`, `data.breached`） | 110453 `intake.change_impact_stale` | 409 |
+| TRIAGED（kind=CHANGE） | T15 但 `requires_client_approval=false`（容差内无需甲方确认） | 110420 `intake.illegal_transition` | 422 |
+| 非 CLIENT_APPROVAL | 甲方决定（T16 / T17）、撤回（T18）、登记线下确认（T19）；或甲方提交的 `approval_round` ≠ 当前 round | 110455 `intake.client_approval_not_pending`（`data.reason ∈ {not_pending, superseded}`） | 409 |
+| CONVERTED（门户） | 〔补充说明〕（`POST /portal-intakes/{id}/notes`）——应改用〔申请变更〕 | 110454 `intake.change_request_required` | 422 |
+| RECEIVED / TRIAGED / CLARIFYING（kind=CHANGE） | 拒绝但缺 `client_message`（变更申请的拒绝必须告诉甲方理由） | 110427 `intake.reason_required`（`data.field=client_message`） | 422 |
+| 原来件 ≠ CONVERTED（或无 `requirement_id`） | 在其上创建 kind=CHANGE 来件 | 110449 `intake.change_original_not_converted` | 422 |
+| TRIAGED / CLIENT_APPROVAL（kind=CHANGE） | T15 / T18 / T19 由 AGENT（或服务账号、PAT）发起；任何团队主体调用门户决定接口 | 110403，`reason_code` = `NON_DELEGABLE`（T15 / T19，`scope_change` 不可委托）/ `HUMAN_ONLY`（T18）；门户决定只接受该来件联系人的 CLIENT 会话（其他会话 110404） | 403 / 404 |
 
 ### 4.2 澄清轮 `ClarificationRoundState`
 
@@ -496,6 +548,21 @@ Tenant ─┬─ intake_channels (1 PORTAL / n EMAIL / n API)
 - **BR-01-73** 数据源不可用：路由照常注册并返回 110503，`slog.Warn` 说明原因（backend-module §五）。
 - **BR-01-74** 离线：团队控制台断网时命令不排队，按钮禁用并显示重连态；门户提交表单本地保留草稿（sessionStorage，含失败重试），不自动重发命令。
 
+**需求变更申请（kind=CHANGE，D117）**
+
+- **BR-01-76** 创建：甲方不能原地修改已提交的需求（BR-01-01）；来件 CONVERTED 后门户在该来件上提供〔申请变更〕（`POST /portal-intakes/{id}/change-requests`），API 调用方以 `POST /tenants/{tenant_id}/intakes {kind: CHANGE, change_of_intake_id}` 提交，团队可代录（同一接口，需 `intake_submit`）；邮件开口 v1.1 支持（MVP 中对已转化来件的邮件回复仍按 T13 记 CLIENT_NOTE 并通知 N6，由团队代为创建变更申请）。原来件须 CONVERTED 且 `requirement_id` 非空，否则 110449；原来件本身可以是已转化的 CHANGE（链式变更，`target_requirement_id` 取其 `requirement_id`）。新来件 `contact_id` = 原来件联系人（团队代录时强制取原联系人）、`channel_id` = 提交所用开口、`target_requirement_id` = 原来件 `requirement_id`，走 T1，计入 BR-01-04 配额，标题 / 描述 / 附件限制同 BR-01-02/03。同一原来件可有多条进行中的变更申请（各自评估；并发见 BR-01-87）。
+- **BR-01-77** 可见性：门户只能在**本联系人**可见的原来件上申请变更（BR-01-66，否则 110404）；API 调用方只能在自己提交的原来件上申请（BR-01-51，否则 110404）。原来件被合并或拒绝的不可申请（110449）。变更申请在门户中挂在原来件之下展示（§8.4），不进入「我的需求」顶层列表，原来件卡片显示「变更待你确认 n」徽标。
+- **BR-01-78** 影响评估起草：协调员 Agent 与人都可提交含 `change_impact` 的分诊卡（`intake_triage`）。写卡事务内服务端依次：① 调用 02 `ChangeImpactPreviewer.Preview(ctx, tenant, target_requirement_id, base_version_no, criteria_diff)`（只读）——`current_version_no` ≠ `base_version_no` → 409 110453；`criterion_ref` 不属于目标需求或已退役 → 400 110400；以返回的 STALE / NEW 条目为 `affected_work_items` 基础，作者只能把 STALE 改为 CANCELLED；② 调用 07 `ToleranceReader.WouldBreach(ctx, tenant, target_requirement_id, {schedule_delta_days, cost_delta_micros: internal_cost_delta_micros, scope_delta_criteria})`，写入 `tolerance_check{breached, snapshot, checked_at}` 与 `requires_client_approval = breached ≠ ∅`（07 不可用 → 110503，不写卡；不得按「无越界」降级）。`client_price_delta` 是对甲方的价格表态，只能由 HUMAN 填写（AGENT 卡带该字段 → 400 110400）；系统不计算价格（无计费模型）。Agent 草拟的卡片照常需要人确认后才能请甲方确认或转化。
+- **BR-01-79** 请甲方确认（T15）：仅 HUMAN，且经 `AuthorityChecker.Check(ctx, tx, {action: scope_change, project_id: 目标需求所属项目})` 允许（`scope_change` 不可委托，00 §6.4；Agent → 403 110403 `NON_DELEGABLE`）；请求带 `triage_card_revision`（须为最新，否则 110443）与可选 `message`（≤2000，甲方可见）；重新校验 `base_version_no`（110453）。确认期间不得产生新卡片 revision、澄清轮、合并、拒绝或转化（110451）；需要修改影响时先撤回（T18）再改卡、再次 T15（round+1，旧决定失效）。
+- **BR-01-80** 甲方决定是甲方行为：只有该来件联系人的已验证门户会话可以〔接受〕/〔不接受〕（`authority_source=CLIENT:<contact_id>`）；任何团队主体、Agent、服务账号、PAT 都不能代为做出门户决定，Agent 也不能登记线下确认（T19 仅 HUMAN 且须 `scope_change`）。线下确认（电话、会议、邮件「同意」）由团队经 T19 登记，必须附 1..5 个证据文件（如邮件原件、会议纪要），门户显示「由团队记录」与登记时间；邮件中的「同意」字样**不会**被自动识别为确认。请求须带 `approval_round` 等于当前 round（防止对已撤回 / 已更新的请求作决定，否则 110455 `superseded`）；同一决定重放幂等返回 200，不同决定 → 110455。
+- **BR-01-81** 转化 CHANGE（T9）：默认模式 `APPEND_TO_REQUIREMENT`，`requirement_id` 必须 = `target_requirement_id`（否则 400 110400）；允许 `NEW_REQUIREMENT`（把变更作为独立新需求，项目任选可写项目）；`NEW_PROJECT` 与 `REOPEN_WORK_ITEMS` 不适用（400 110400）。守卫在 BR-01-21/22/23 之上追加：① 最新卡片含 `change_impact`（APPEND 时必需，110452）；② `change_impact.base_version_no` = 当前版本，且服务端重新调用 `WouldBreach` 的 `breached` 与卡片一致（否则 110453，须出新 revision 重新评估）；③ `requires_client_approval=true` 时 `client_approval.state=APPROVED` 且 `client_approval.card_revision` = 本次 `triage_card_revision`（否则 110450）。APPEND 在同事务调用 02 `RequirementCreator.AppendFromIntake`，传入 `Change{CriteriaDiff, Impacts（STALE→STALE、CANCELLED→CANCEL；NEW 不传，由团队之后拆解）, SourceIntakeID, ApprovedAdjustment?}`；`ApprovedAdjustment = {schedule_delta_days, cost_delta_micros: internal_cost_delta_micros, scope_delta_criteria}` 仅在需要且已获甲方确认时传入，由 02 在同事务调用 07 `ToleranceAdjuster.ApplyApprovedChange` 调整容差基线（02 BR-02-63、07 BR-07-62）。下游错误映射：02 `120440` → 409 110453；02 `120439`（需求非 BASELINED）与 07 `127055`（目标需求或项目有未决例外，`data.reason=tolerance_exception_open`）→ 422 110435；其余按 BR-01-25。`NEW_REQUIREMENT` 不调整原需求与项目的容差基线（新需求按 07 常规建立自己的容差；如因此导致项目预测越界，走 07 例外流程）。成功后写 `result_version_no`、发布 `intake.converted`，通知甲方 N8（含新版本号与影响）。
+- **BR-01-82** 容差内变更：`requires_client_approval=false` 时不需要甲方确认，团队按 BR-01-81 直接转化；甲方必须被告知结果与影响——N8 转化通知与门户变更详情给出「已接受（需求 vN）」、验收标准变化、进度变化天数、新的预计日期与价格变化（如有）。
+- **BR-01-83** 未接受：甲方〔不接受〕（T17）后来件回到 TRIAGED，`client_approval.state=REJECTED` 保留甲方理由；团队可 ① 改卡（新 revision）后再次 T15；② 出容差内的方案（新 revision 且 `requires_client_approval=false`）直接转化；③ 拒绝。拒绝 CHANGE（T12）必须填写 `client_message`（110427），且 `notify_client` 强制为 true（`decline_reason_code=SPAM` 除外）；门户显示「未接受（{client_message}）」。原需求不受任何影响。
+- **BR-01-84** 甲方可见投影（门户 `PortalChangeView`、API `change_view`，白名单序列化）：变更标题、IN 号、状态标签（`ASSESSING` 评估中 = RECEIVED / TRIAGED / CLARIFYING；`AWAITING_YOUR_APPROVAL` 待你确认 = CLIENT_APPROVAL；`ACCEPTED` 已接受（需求 v`result_version_no`）= CONVERTED；`NOT_ACCEPTED` 未接受（理由 = `client_message`）= DECLINED；MERGED 按 BR-01-31）、验收标准差异（新增 / 移除 / 改为，通俗文字取 `criteria_diff[].text`）、`schedule_delta_days`、`new_expected_date`、`client_price_delta`（仅在已填写时）、团队说明（T15 的 `message`）、确认记录（状态、时间、`decided_via`，团队登记时标「由团队记录」）、待答澄清问题。**永不包含**：`internal_cost_delta_micros`、`affected_work_items` 与任何工作项 id、`tolerance_check`（含越界维度与快照）、分诊卡其余字段、内部质量门与内部返工信息（07 BR-07-60）、Agent 信息，以及 BR-01-66 已列项。原来件详情另给出「版本历史」：v1 = 原始需求，之后每条已接受变更一行（vN、变更标题、接受日期）。
+- **BR-01-85** 〔补充说明〕边界：门户留言只在来件 RECEIVED / TRIAGED / CLARIFYING 时可用；CONVERTED → 422 110454（引导〔申请变更〕）；CLIENT_APPROVAL → 409 110451（引导在确认页给出意见）；MERGED / DECLINED → 422 110421（DECLINED 提供〔重新提交〕）。邮件回复不受此限（无法拒收邮件），仍按 T13 记录。
+- **BR-01-86** 提醒（任务 J7）：甲方——请求后每满 7 天经原开口发 N15，最多 3 次；团队——请求后每满 14 天发 N17 给请求人与 `HOLDERS(intake_convert)`。任何情况下**不自动决定、不自动撤回、不自动拒绝**（与 T8「超时不自动拒绝」同理：替甲方表态不属于系统）。提醒以 `client_approval` 中的 `next_*_reminder_at` 条件更新去重；撤回或决定后不再提醒。
+- **BR-01-87** 并发：① 同一需求上的两条变更先后转化，后者的 `base_version_no` 已过期 → 110453，须出新 revision 重新评估（若仍需确认则重新请甲方确认，旧确认不沿用）；② 甲方决定与团队撤回并发：以来件 `version` 条件更新，先提交者生效，后者 409 110455；③ 甲方在 T15 后、决定前原需求被其他途径（02 R10 范围变更）升版：甲方的决定照常记录，但转化时 110453，团队须重新评估并在门户说明。
+
 ---
 
 ## 6. 接口契约
@@ -530,16 +597,19 @@ Tenant ─┬─ intake_channels (1 PORTAL / n EMAIL / n API)
 | 方法 路径 | 权限 / 守卫 | 请求 | 响应 data | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|
 | `GET /tenants/{tenant_id}/intakes` | `intake_read` / R | `pkg/query` 过滤：`status`,`channel_kind`,`channel_id`,`contact_id`,`kind`,`client_unresponsive`,`project_id`,`received_at`(gte,lte),`ref_no`(eq),`title`(like)；排序：`received_at`(默认 desc),`last_client_activity_at`,`ref_no`；offset 分页，limit ≤100 | `IntakeSummary[]`：id, ref_no, title, status, kind, channel_kind, contact{id,display_name}, received_at, latest_card{revision,size_estimate,suggested_project_id}, open_round{round_no,due_at,answered,total}, client_unresponsive, possible_duplicate_of | — | — |
-| `POST /tenants/{tenant_id}/intakes` | `intake_submit` / R | `channel_id*`（API 开口，或团队代录时的任一开口）,`title*`,`description*`,`format`(PLAIN/MARKDOWN),`desired_by`,`external_ref`,`contact{display_name,email}`,`upload_ids[]`(≤10) | `Intake` | 110400,110403,110413,110430,110433,110439；`external_ref` 重复 → 200 返回已有来件 + `replayed:true` | Idempotency-Key；201 |
+| `POST /tenants/{tenant_id}/intakes` | `intake_submit` / R | `channel_id*`（API 开口，或团队代录时的任一开口）,`title*`,`description*`,`format`(PLAIN/MARKDOWN),`desired_by`,`external_ref`,`contact{display_name,email}`,`upload_ids[]`(≤10),`kind`(NEW 默认 / CHANGE),`change_of_intake_id`(CHANGE*；CHANGE 时忽略 `contact`，取原来件联系人) | `Intake` | 110400,110403,110404（原来件不可见，BR-01-77）,110413,110430,110433,110439,110449；`external_ref` 重复 → 200 返回已有来件 + `replayed:true` | Idempotency-Key；201 |
 | `GET /intakes/{intake_id}` | `intake_read` / O | — | `Intake`：全部列 + attachments[{file_id,name,size,mime}] + latest_card + open_round + milestone | 110404 | ETag = version |
 | `GET /intakes/{intake_id}/content` | `intake_read` / O | — | 原文 `text/plain; charset=utf-8`；overflow 时 302 到文件下载 | 110404 | — |
 | `GET /intakes/{intake_id}/messages` | `intake_read` / O | 排序 `created_at` asc；limit ≤200 | `IntakeMessage[]` | 110404 | — |
-| `POST /intakes/{intake_id}/triage-cards` | `intake_triage` / O | `based_on_revision`(人工必填),`summary*`,`draft_title*`,`draft_description*`,`draft_acceptance_criteria*`,`suggested_project_id` \| `suggest_new_project`+`new_project_name`,`risks`,`open_questions`,`size_estimate*`,`size_rationale`,`confidence`,`knowledge_refs`,`model_ref` | `TriageCard` + 来件新 status/version | 110400,110409,110421,110443 | Idempotency-Key；201 |
+| `POST /intakes/{intake_id}/triage-cards` | `intake_triage` / O | `based_on_revision`(人工必填),`summary*`,`draft_title*`,`draft_description*`,`draft_acceptance_criteria*`,`suggested_project_id` \| `suggest_new_project`+`new_project_name`,`risks`,`open_questions`,`size_estimate*`,`size_rationale`,`confidence`,`knowledge_refs`,`model_ref`,`change_impact`(kind=CHANGE；`tolerance_check`、`requires_client_approval` 由服务端计算，BR-01-78) | `TriageCard` + 来件新 status/version | 110400,110409,110421,110443,110451,110453,110503 | Idempotency-Key；201 |
 | `GET /intakes/{intake_id}/triage-cards` | `intake_read` / O | — | `TriageCard[]`（全部 revision，倒序） | 110404 | — |
 | `POST /intakes/{intake_id}/triage-requests` | `intake_triage` / O | `note`(≤2000) | `{requested_at}`；发布 `intake.triage_requested` | 110421；未配置协调员 → 110400 | Idempotency-Key；同来件 10 分钟内重复请求合并（202） |
-| `PUT /intakes/{intake_id}/conversion` | `intake_convert` / O（处理器内再经 `AuthorityChecker`） | `mode*`,`triage_card_revision*`,`project_id`(NEW_REQUIREMENT/APPEND/REOPEN*),`requirement_id`(APPEND*),`base_version_no`(APPEND*),`criteria_retired[]`(APPEND，可空),`work_item_ids[]`(REOPEN*),`new_project{name*, code?}`(NEW_PROJECT*),`reauth_proof`(NEW_PROJECT/APPEND*),`title*`,`description*`(REOPEN 时可空),`acceptance_criteria*[]`(1..30；REOPEN 时可空),`priority`,`open_questions_ack`,`client_message` | `{intake, requirement{id,project_id,version}, project{id,created,channel_id?}, change_record_id?, reopened_work_item_ids?, authority_source}` | 110400,110403,110409,110421,110422,110435,110436,110443,110446,110447,110448,110502 | If-Match + Idempotency-Key；BR-01-26 |
-| `PUT /intakes/{intake_id}/merger` | `intake_convert` / O | `target_intake_id*`,`reason*`,`client_message`,`notify_client`(默认 true) | `Intake` | 110404,110409,110421,110426,110427 | If-Match |
-| `PUT /intakes/{intake_id}/declination` | `intake_decline` / O（HUMAN 守卫） | `reason_code*`,`reason*`,`client_message`,`notify_client`(默认 true) | `Intake` | 110403,110409,110421,110427,110446 | If-Match |
+| `PUT /intakes/{intake_id}/conversion` | `intake_convert` / O（处理器内再经 `AuthorityChecker`） | `mode*`,`triage_card_revision*`,`project_id`(NEW_REQUIREMENT/APPEND/REOPEN*),`requirement_id`(APPEND*),`base_version_no`(APPEND*),`criteria_retired[]`(APPEND，可空),`work_item_ids[]`(REOPEN*),`new_project{name*, code?}`(NEW_PROJECT*),`reauth_proof`(NEW_PROJECT/APPEND*),`title*`,`description*`(REOPEN 时可空),`acceptance_criteria*[]`(1..30；REOPEN 时可空),`priority`,`open_questions_ack`,`client_message` | `{intake, requirement{id,project_id,version}, project{id,created,channel_id?}, change_record_id?, reopened_work_item_ids?, authority_source}` | 110400,110403,110409,110421,110422,110435,110436,110443,110446,110447,110448,110450,110451,110452,110453,110502 | If-Match + Idempotency-Key；BR-01-26；kind=CHANGE 另见 BR-01-81（响应另含 `result_version_no`、`tolerance_adjusted`） |
+| `PUT /intakes/{intake_id}/merger` | `intake_convert` / O | `target_intake_id*`,`reason*`,`client_message`,`notify_client`(默认 true) | `Intake` | 110404,110409,110421,110426,110427,110451 | If-Match |
+| `PUT /intakes/{intake_id}/declination` | `intake_decline` / O（HUMAN 守卫） | `reason_code*`,`reason*`,`client_message`（kind=CHANGE 必填）,`notify_client`(默认 true；kind=CHANGE 强制 true，SPAM 除外) | `Intake` | 110403,110409,110421,110427,110446,110451 | If-Match |
+| `PUT /intakes/{intake_id}/client-approval` | `intake_convert` / O（HUMAN；处理器内经 `AuthorityChecker` 校验目标项目 `scope_change`） | `triage_card_revision*`,`message`(≤2000，甲方可见) | `Intake` + `client_approval` | 110400,110403(NON_DELEGABLE / MISSING_PERMISSION),110409,110420,110421,110443,110451,110452,110453,110446 | If-Match + Idempotency-Key；T15 |
+| `PUT /intakes/{intake_id}/client-approval/withdrawal` | `intake_triage` / O（HUMAN） | `reason*`(1..2000) | `Intake` + `client_approval` | 110403(HUMAN_ONLY),110409,110427,110446,110455 | If-Match；T18；已撤回的同 round 重放返回 200 |
+| `PUT /intakes/{intake_id}/client-approval/recorded-decision` | `intake_convert` / O（HUMAN；`AuthorityChecker` 校验 `scope_change`） | `approval_round*`,`evidence_file_ids*[]`(1..5，调用者可读的 `files` 节点),`offline_note*`(1..2000),`decided_on*`(date，≤今天) | `Intake` + `client_approval` | 110400,110403(NON_DELEGABLE),110409,110446,110455 | If-Match + Idempotency-Key；T19 |
 | `POST /intakes/{intake_id}/attention-heartbeats` | `intake_read` / O（仅 HUMAN） | `elapsed_ms*`(1..20000) | 204 | 110400,110404 | 无（按日累加；重复心跳以 `X-Heartbeat-Seq` 去重 60s） |
 
 ### 6.4 澄清
@@ -567,7 +637,7 @@ Tenant ─┬─ intake_channels (1 PORTAL / n EMAIL / n API)
 | 方法 路径 | 权限 / 守卫 | 请求 | 响应 data | 错误 |
 |---|---|---|---|---|
 | `GET /tenants/{tenant_id}/intake-submissions` | `intake_submit` / R（行过滤 submitted_by = 调用者） | 过滤 `status`,`external_ref`,`received_at` | `Submission[]`：id, ref_no, external_ref, status, milestone, open_questions_count, updated_at | — |
-| `GET /intake-submissions/{intake_id}` | `intake_submit` / O（+ 行过滤） | — | `Submission` + `questions[]`（SENT/ANSWERED/EXPIRED） + `client_message` + `deliveries[]{id, state, manifest, download_url（72h 签名）}` | 110404 |
+| `GET /intake-submissions/{intake_id}` | `intake_submit` / O（+ 行过滤） | — | `Submission` + `questions[]`（SENT/ANSWERED/EXPIRED） + `client_message` + `deliveries[]{id, state, manifest, download_url（72h 签名）}` + kind=CHANGE 时 `change_view`（同门户 `PortalChangeView`，BR-01-84；API 调用方不能作确认决定，确认经门户或团队登记） | 110404 |
 | `PUT /intake-submissions/{intake_id}/answers/{question_id}` | `intake_submit` / O（+ 行过滤） | `answer_text*`,`upload_ids[]`(≤5) | `Question`（外部投影） | 110404,110425,110413 |
 
 ### 6.7 甲方门户（全部 **P**）
@@ -584,8 +654,11 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 | `POST /portal-uploads` | multipart 单文件 | `{upload_id, name, size, expires_at}` | 110413,110415,110429 | Idempotency-Key |
 | `GET /portal-intakes` | 过滤 `milestone`；排序 `received_at` desc；limit ≤50 | `PortalIntake[]`：id, ref_no, title, received_at, milestone, milestone_steps[5], open_questions_count, awaiting_acceptance, ai_label? | 110401 | — |
 | `POST /portal-intakes` | `title*`,`description*`,`desired_by`,`upload_ids[]` | `PortalIntake` | 110400,110413,110430,110433,110439 | Idempotency-Key 必填（前端生成） |
-| `GET /portal-intakes/{intake_id}` | — | `PortalIntake` + 原文 + 附件 + `questions[]` + `client_message` + `merged_into_ref?` + `deliveries[]{id,title,sent_at,state}` | 110404 | — |
-| `POST /portal-intakes/{intake_id}/notes` | `body*`(≤10,000),`upload_ids[]`(≤5) | `{message_id}`（CLIENT_NOTE） | 110404；每来件每日 >50 条 → 110433 | Idempotency-Key |
+| `GET /portal-intakes/{intake_id}` | — | `PortalIntake` + 原文 + 附件 + `questions[]` + `client_message` + `merged_into_ref?` + `deliveries[]{id,title,sent_at,state}` + `change_request_available`（CONVERTED 且有需求）+ `changes[]{id, ref_no, title, status_label, received_at, result_version_no?}` + `version_history[]{version_no, change_intake_ref?, title, accepted_at}`（BR-01-84）；kind=CHANGE 时另含 `change_of_ref` | 110404 | — |
+| `POST /portal-intakes/{intake_id}/notes` | `body*`(≤10,000),`upload_ids[]`(≤5) | `{message_id}`（CLIENT_NOTE） | 110404；CONVERTED → 110454；CLIENT_APPROVAL → 110451；MERGED / DECLINED → 110421（BR-01-85）；每来件每日 >50 条 → 110433 | Idempotency-Key |
+| `POST /portal-intakes/{intake_id}/change-requests` | `title*`(1..200),`description*`(1..20,000),`desired_by`,`upload_ids[]`(≤10) | `PortalIntake`（kind=CHANGE，`change_of_ref`） | 110400,110404,110413,110430,110433,110439,110449 | Idempotency-Key 必填（前端生成）；201 |
+| `GET /portal-intakes/{intake_id}/change-impact` | — | `PortalChangeView`（BR-01-84 白名单）：`status_label`,`criteria_changes[]{op, text}`,`schedule_delta_days?`,`new_expected_date?`,`price_delta?{amount,currency,note}`,`team_message?`,`approval?{round, state, requested_at, decided_at?, decided_via?, comment?, recorded_by_team}`,`result_version_no?`,`client_message?`；评估未完成时只有 `status_label=ASSESSING` | 110404（非 CHANGE 或非本联系人） | — |
+| `PUT /portal-intakes/{intake_id}/client-approval/decision` | `approval_round*`,`decision*`(APPROVED/REJECTED),`comment`(REJECTED 必填 10..2000) | `PortalChangeView` | 110400,110404,110427,110455 | Idempotency-Key；同 round 同决定重放 200；T16 / T17 |
 | `PUT /portal-questions/{question_id}/answer` | `answer_text*`,`upload_ids[]`(≤5) | `PortalQuestion` | 110404,110425 | 同文重放 200 |
 | `GET /portal-deliveries/{delivery_id}` | — | 07 定义的 `PortalDeliveryView`：说明、演示链接、交付物清单、证据摘要 | 110404 | — |
 | `PUT /portal-deliveries/{delivery_id}/acceptance` | `manifest_sha256_ack*`（须等于门户展示的交付清单指纹）,`signer_name*`(1..100),`confirmed*`(必须 true),`items*[]`{`delivery_item_id*`,`result*`(ACCEPTED/REJECTED),`feedback_category`(REJECTED 必填，FeedbackCategory),`comment`(REJECTED 必填 10..2000)}（必须覆盖交付包全部条目）,`overall_comment`(≤2000) | 07 返回的回执投影（整体 `result` 由 07 按条目推导：全接受 ACCEPTED、全拒绝 REJECTED、否则 PARTIALLY_ACCEPTED） | 110400,110404,110427,110440 | Idempotency-Key；已有回执 → 110440；指纹不符 → 110440（`data.reason=manifest_changed`） |
@@ -608,16 +681,18 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 
 | 接口 | 提供者 | 调用（签名以提供者为准） | intake 用途 |
 |---|---|---|---|
-| `RequirementCreator` | 02 | `CreateFromIntake(ctx, tx, {ProjectID, IntakeID, TriageCardID, Title, Description, Criteria[], Priority, Actor}) → {RequirementID, Version}`；`AppendFromIntake(ctx, tx, {TenantID, RequirementID, IntakeID, BaseVersionNo, Summary, Diff{criteria_added[], criteria_retired[], impacts[]}, Actor}) → ChangeRecordID`（**不**传 ReauthProof：`intake_convert_privileged` step-up 由本模块在 BR-01-21 校验，02 信任调用方已校验，见 08 §6.9 登记） | NEW_REQUIREMENT / NEW_PROJECT / APPEND |
+| `RequirementCreator` | 02 | `CreateFromIntake(ctx, tx, {ProjectID, IntakeID, TriageCardID, Title, Description, Criteria[], Priority, Actor}) → {RequirementID, Version}`；`AppendFromIntake(ctx, tx, {TenantID, RequirementID, IntakeID, BaseVersionNo, Summary, Diff{criteria_added[], criteria_retired[], impacts[]}, Change?{CriteriaDiff[]{op, criterion_id?, text}, Impacts[]{work_item_id, action STALE\|CANCEL}, SourceIntakeID, ApprovedAdjustment?{ScheduleDeltaDays, CostDeltaMicros, ScopeDeltaCriteria}}, Actor}) → ChangeRecordID`（`Diff` 与 `Change` 互斥；kind=CHANGE 传 `Change`，BR-01-81；**不**传 ReauthProof：`intake_convert_privileged` step-up 由本模块在 BR-01-21 校验，02 信任调用方已校验，见 08 §6.9 登记） | NEW_REQUIREMENT / NEW_PROJECT / APPEND |
+| `ChangeImpactPreviewer` | 02 | `Preview(ctx, tenantID, requirementID, baseVersionNo, criteriaDiff[]{op, criterion_id?, text}) → {AffectedWorkItems[]{work_item_id?, effect STALE\|NEW}, CurrentVersionNo}`（只读，不写库） | CHANGE 影响评估（BR-01-78） |
+| `ToleranceReader` | 07 | `WouldBreach(ctx, tenantID, requirementID, {ScheduleDeltaDays, CostDeltaMicros, ScopeDeltaCriteria}) → (breached[]{dimension TIME\|COST\|SCOPE, subject_kind}, snapshot, error)`（只读） | CHANGE 容差检查（BR-01-78、BR-01-81 复核）；`ToleranceAdjuster.ApplyApprovedChange` 由 02 在 `AppendFromIntake` 内调用，本模块不直接调用 |
 | `WorkItemReopener` | 02 | `ReopenFromAcceptance(ctx, tx, {tenant_id, work_item_ids[], source_acceptance_id, feedback[]{work_item_id, feedback_category, comment}, reason, actor}) → []decisionID`（签名以 02 §6.9 为准；本模块另记 `intake_id` 于审计 detail） | REOPEN_WORK_ITEMS（BR-01-28） |
 | `ProjectCreator` / `ProjectReader` | 07 | `CreateForIntakeOn(ctx, tx, {TenantID, Name, Code?, OriginIntakeID, PrimaryContactID, Actor}) → {ID, ChannelID}`（TeamMode=HYBRID）；`ProjectReader.Get → {Stage, TeamMode, Name}` | NEW_PROJECT；BR-01-23/24/28 守卫 |
 | `IntakeProgressReader` | 07 | `Progress(ctx, tenantID, intakeIDs[]) → map[id]{RequirementID, ProjectStage, TeamMode, DeliveryStates[], LatestAcceptance}` | 里程碑、AI 标签 |
 | `AcceptanceRecorder` | 07 | `ListForIntakes`、`PortalView`、`Record` | 门户验收（§6.7） |
 | `AcceptanceReader` | 07 | `Get(ctx, tenantID, acceptanceID) → {DeliveryID, ProjectID, Result, Items[]{work_item_id, delivery_item_id, result, feedback_category, comment}, ContactID}` | 构造返工来件原文与 `rejected_items` |
-| `AuthorityChecker` | 08 | `Check(ctx, tx, AuthorityRequest{Principal, Action, ProjectID, Facts{IntakeConvertMode, TriageCardAuthor}}) → AuthorityDecision{Allowed, AuthoritySource, ReasonCode}` | 转化、拒绝、重开 |
+| `AuthorityChecker` | 08 | `Check(ctx, tx, AuthorityRequest{Principal, Action, ProjectID, Facts{IntakeConvertMode, TriageCardAuthor}}) → AuthorityDecision{Allowed, AuthoritySource, ReasonCode}` | 转化、拒绝、重开；请甲方确认与登记线下确认（`scope_change`，T15 / T19） |
 | `AgentDirectory` | 05 | `Get(agentID)` 校验协调员角色 | 开口配置 |
 
-里程碑推导（`PortalMilestone`，CR-03）：RECEIVED/TRIAGED → `RECEIVED`；CLARIFYING → `CLARIFYING`；CONVERTED 且无 SENT 交付 → `IN_PROGRESS`；存在 SENT 未回执交付 → `AWAITING_ACCEPTANCE`；最近交付 ACCEPTED → `DELIVERED`；MERGED / DECLINED 为旁支终态，进度条显示灰色终止节点。
+里程碑推导（`PortalMilestone`，CR-03）：RECEIVED/TRIAGED → `RECEIVED`；CLARIFYING → `CLARIFYING`；CONVERTED 且无 SENT 交付 → `IN_PROGRESS`；存在 SENT 未回执交付 → `AWAITING_ACCEPTANCE`；最近交付 ACCEPTED → `DELIVERED`；MERGED / DECLINED 为旁支终态，进度条显示灰色终止节点。kind=CHANGE 的来件不使用里程碑，门户改用 BR-01-84 的变更状态标签（CLIENT_APPROVAL 只出现在变更申请上）。
 
 ### 6.9 错误码（i18n namespace `intake`，三语齐全）
 
@@ -662,6 +737,13 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 | 110446 | 428 | `intake.precondition_required` | 缺 `If-Match` |
 | 110447 | 401 | `intake.reauthentication_required` | NEW_PROJECT / APPEND 缺少或过期的 step-up 证明（purpose `intake_convert_privileged`） |
 | 110448 | 422 | `intake.reopen_requires_rework_intake` | `REOPEN_WORK_ITEMS` 仅适用于返工来件，且工作项须在 `rejected_items` 中 |
+| 110449 | 422 | `intake.change_original_not_converted` | 只能在已转化（有需求）的来件上申请变更（D117） |
+| 110450 | 422 | `intake.client_approval_required` | 超出容差的变更须先获甲方对同一分诊卡 revision 的确认 |
+| 110451 | 409 | `intake.awaiting_client_approval` | 待甲方确认期间不可改卡、澄清、转化、合并、拒绝或留言（先撤回） |
+| 110452 | 422 | `intake.change_impact_required` | 变更申请缺少影响评估 |
+| 110453 | 409 | `intake.change_impact_stale` | 影响评估所依据的需求版本或容差结果已过期（data.current_version_no、data.breached） |
+| 110454 | 422 | `intake.change_request_required` | 已立项的需求请用〔申请变更〕，不能再补充说明 |
+| 110455 | 409 | `intake.client_approval_not_pending` | 没有待确认的请求，或请求已被撤回 / 更新（data.reason） |
 | 110502 | 502 | `intake.downstream_failed` | 下游（02/07）失败，已回滚 |
 | 110503 | 503 | `intake.unavailable` | 数据源不可用 |
 
@@ -679,6 +761,7 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 | J4 `intake.access.expiry` | 定时 | 15 分钟 | dlock `intake:access-expiry` | 吊销过期链接下的会话；删除过期超 12h 的会话行；链接 72h 内到期且联系人有非终态来件 → N9（每链接一次） |
 | J5 `intake.triage.watchdog` | 定时 | 5 分钟 | dlock `intake:triage-watchdog` | RECEIVED 且 received_at ≤ now−30min 且未通知 → N3 |
 | J6 `intake.housekeeping` | 定时 | 1 小时 | dlock `intake:housekeeping` | `intake.upload` 到期绑定由 files `Expire` 回收（幂等键由 09 平台清理） |
+| J7 `intake.client_approval.reminder`（D117） | 定时 | 1 小时 | dlock `intake:client-approval-reminder`，TTL 50 分钟 | 取 status=CLIENT_APPROVAL 且 `next_client_reminder_at` 或 `next_team_reminder_at` ≤ now 的来件 ≤100 条；先以 `version` 条件更新 `client_reminders_sent` / `next_*_reminder_at` 再入队 N15 / N17（BR-01-86）；**不改变来件状态** |
 
 重启语义：任务只依赖表状态，重启后从表继续；条件更新保证已完成的通知不重放。
 
@@ -688,19 +771,21 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 
 | 事件 | data |
 |---|---|
-| `intake.received` | `{ref_no, channel_kind, channel_id, contact_id, kind, triage_agent_id?, origin_delivery_id?, origin_acceptance_id?, possible_duplicate_of?}` |
+| `intake.received` | `{ref_no, channel_kind, channel_id, contact_id, kind（NEW / REWORK / CHANGE）, triage_agent_id?, origin_delivery_id?, origin_acceptance_id?, possible_duplicate_of?, change_of_intake_id?, target_requirement_id?}`（kind=CHANGE 时后两项必有） |
 | `intake.triaged` | `{revision, author_kind, size_estimate, suggested_project_id?, suggest_new_project, risk_max, open_questions_count}` |
 | `intake.triage_requested` | `{triage_agent_id, reason: ROUND_ANSWERED \| MANUAL}` |
 | `intake.clarification_requested` | `{round_id, round_no, question_count, sent_via, due_at, work_item_id?}` |
 | `intake.clarification_answered` | `{question_id, round_id, answered_via, round_closed, work_item_id?}` |
 | `intake.clarification_expired` | `{round_id, unanswered_count, work_item_id?}` |
-| `intake.converted` | `{mode, project_id, requirement_id, project_created, triage_card_revision, change_record_id?, reopened_work_item_ids?, authority_source}` |
+| `intake.converted` | `{mode, project_id, requirement_id, project_created, triage_card_revision, change_record_id?, reopened_work_item_ids?, authority_source, result_version_no?, tolerance_adjusted?}`（后两项仅 kind=CHANGE） |
 | `intake.merged` | `{target_intake_id}` |
 | `intake.declined` | `{reason_code, client_notified}` |
+| `intake.client_approval_requested`（D117） | `{round, card_revision, target_requirement_id, breached[]（TIME / COST / SCOPE）}`；不含金额与工作项 |
+| `intake.client_approval_decided`（D117） | `{round, card_revision, target_requirement_id, decision: APPROVED \| REJECTED \| WITHDRAWN, decided_via: PORTAL \| RECORDED_BY_TEAM \| TEAM_WITHDRAWN}`；不含甲方意见正文 |
 
 ### 7.3 审计（`audit.Appender` 同事务）与 webhook 回执
 
-审计事件：`intake.intake_received`、`intake.clarification_requested`、`intake.clarification_answered`、`intake.intake_converted`、`intake.conversion_denied`（outcome=denied）、`intake.intake_merged`、`intake.intake_declined`、`intake.decline_denied`、`intake.access_link_issued`、`intake.access_link_revoked`、`intake.contact_blocked`、`intake.channel_changed`、`intake.client_settings_changed`、`intake.email_released`、`intake.email_discarded`、`intake.portal_acceptance_submitted`。`target_type="intake"`（链接、开口类为各自资源）；`detail` 含 `reason`、`authority_source`、`evidence_refs:[]`（00 §7.2）。API 开口回执即这些审计事件经 `callback_subscription_id` 订阅投递（BR-01-52）。
+审计事件：`intake.intake_received`、`intake.clarification_requested`、`intake.clarification_answered`、`intake.intake_converted`、`intake.conversion_denied`（outcome=denied）、`intake.intake_merged`、`intake.intake_declined`、`intake.decline_denied`、`intake.access_link_issued`、`intake.access_link_revoked`、`intake.contact_blocked`、`intake.channel_changed`、`intake.client_settings_changed`、`intake.email_released`、`intake.email_discarded`、`intake.portal_acceptance_submitted`、`intake.client_approval_requested`、`intake.client_approval_decided`（门户决定，actor=CLIENT）、`intake.client_approval_withdrawn`、`intake.client_approval_recorded_offline`（detail 含 `evidence_refs` = 证据文件）、`intake.client_approval_denied`（outcome=denied）。`target_type="intake"`（链接、开口类为各自资源）；`detail` 含 `reason`、`authority_source`、`evidence_refs:[]`（00 §7.2）。API 开口回执即这些审计事件经 `callback_subscription_id` 订阅投递（BR-01-52）。
 
 ### 7.4 消费的事件
 
@@ -720,7 +805,7 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 ### 8.1 来件列表 `/t/:tenantID/intakes`
 
 - **目的**：一眼看到要接手的来件。**权限**：`intake_read`。
-- **布局**：筛选条（状态分段：全部 / 待分诊 / 已分诊 / 澄清中 / 已结束；开口类型多选；联系人；时间范围；「甲方无响应」开关）+ 搜索（标题、IN 号）。表格列：开口图标、IN 号、标题（「可能重复」琥珀标签、REWORK 紫色「返工来件」标签）、联系人（`ActorAvatar` 甲方样式）、状态 `StateBadge`、分诊（规模 + 建议项目，或「待分诊 12 分钟」）、澄清进度（`2/3 · 剩 3 天` + `CountdownRing`）、收到时间。右上〔代录来件〕（需 `intake_submit`）、〔隔离邮件 n〕（需 `intake_triage`，n>0 才显示）。
+- **布局**：筛选条（状态分段：全部 / 待分诊 / 已分诊 / 澄清中 / 待甲方确认 / 已结束；变更申请显示蓝色「变更申请 · IN-x」标签；开口类型多选；联系人；时间范围；「甲方无响应」开关）+ 搜索（标题、IN 号）。表格列：开口图标、IN 号、标题（「可能重复」琥珀标签、REWORK 紫色「返工来件」标签）、联系人（`ActorAvatar` 甲方样式）、状态 `StateBadge`、分诊（规模 + 建议项目，或「待分诊 12 分钟」）、澄清进度（`2/3 · 剩 3 天` + `CountdownRing`）、收到时间。右上〔代录来件〕（需 `intake_submit`）、〔隔离邮件 n〕（需 `intake_triage`，n>0 才显示）。
 - **空态**：无开口 →「还没有开口」〔去设置开口〕；有开口无来件 → 显示收件地址与〔签发门户链接〕。
 - **实时**：订阅 SSE 集合主题 `tenant/{t}/intakes`（00 §9 / 09 C3；本模块注册 `TopicAuthorizer`：集合需 `intake_read`，单项需 `intake_read` 且同租户），新来件插入顶部高亮 3s，≤1s 呈现；不匹配当前筛选的更新只更新分段计数。
 - **移动端**：表格变两行卡片（标题 + 状态 / 联系人 + 时间），筛选收进底部 Sheet。
@@ -739,6 +824,11 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 | 〔编辑分诊卡〕 | `intake_triage`；非终态 | 以当前 revision 为底稿的 `auto-form`，提交带 `based_on_revision`；110443 时提示「协调员刚提交了新版本」并显示对比 |
 | 〔合并〕 | `intake_convert`；非终态 | 目标搜索（排除自身、MERGED、DECLINED），理由必填 |
 | 〔拒绝〕 | `intake_decline`；非终态 | 原因码 + 内部理由（1..2000）+ 给甲方的话 + 「通知甲方」开关（SPAM 时强制关闭） |
+| 〔请甲方确认〕 | kind=CHANGE；状态 TRIAGED；最新卡片 `requires_client_approval=true`；HUMAN 且对目标项目有 `scope_change` | 对话框：甲方将看到的内容预览（标准差异通俗文字、进度变化、新日期、价格变化；**不含**内部成本与工作项）+ 给甲方的说明（≤2000）；显示「超出容差：时间 / 成本 / 范围」；110453 时提示「需求已更新到 vN，请重新评估」 |
+| 〔撤回确认请求〕 | 状态 CLIENT_APPROVAL；HUMAN | 理由必填（1..2000）；提示「甲方将收到撤回通知，之前的确认链接失效」 |
+| 〔登记线下确认〕 | 状态 CLIENT_APPROVAL；HUMAN 且有 `scope_change` | 确认日期、说明（1..2000）、证据文件 1..5（邮件原件 / 会议纪要）；红色语义说明「将以团队名义记录甲方已同意，门户显示『由团队记录』」 |
+
+- **变更申请（kind=CHANGE）**：左栏来源卡增加「变更自 IN-x」链接、目标需求（REQ-n · 当前 vN）；中栏分诊卡增加「变更影响」区块：标准差异表（新增 / 移除 / 改为）、受影响工作项（STALE / NEW / CANCELLED，STALE 可改为 CANCELLED）、进度变化天数与新预计日期、内部成本变化（仅团队）、给甲方的价格变化（仅人可填，Agent 草稿显示「待人填写」）、容差检查徽章（OK / 越界维度）与「需要甲方确认」标记；头部在 CLIENT_APPROVAL 时显示琥珀横幅「等待甲方确认（第 n 轮，已 d 天）」，`client_approval` 结果（接受 / 不接受 + 甲方理由 / 撤回 / 由团队记录 + 证据）以时间线卡片显示在右栏。〔转为需求〕对 CHANGE 默认「追加到已有需求」并锁定目标需求，可切换为「作为新需求」；需要确认而未获确认时按钮禁用并说明原因（110450）。
 
 - **校验**：标题 1..200；验收标准 1..30 条、每条 1..1000；问题 1..2000；理由 1..2000；超长实时计数并禁用提交。
 - **终态**：按钮区替换为结果条（CONVERTED → 需求与项目链接；MERGED → 目标来件链接；DECLINED → 原因码、内部理由、给甲方的话）。
@@ -759,21 +849,23 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 | 页面 | 内容与交互 |
 |---|---|
 | **验证** `/portal/:accessToken` | 自动 `POST /portal-sessions` 后 replaceState 到 `/portal`；需访问码时显示 6 格输入（支持粘贴、填满自动提交）、「已发送到 l***@example.com」、60s 倒计时后〔重新发送〕、剩余尝试次数；锁定后提示联系团队 |
-| **我的需求** `/portal` | 卡片：标题、IN 号、提交时间、5 节里程碑进度条（当前节点高亮；MERGED/DECLINED 显示灰色终止节点及团队的话）、「有 n 个问题待你回答」琥珀徽标、「待你验收」徽标、AI 标签（BR-01-68）；顶部〔提交新需求〕；空态「还没有需求」〔提交第一条需求〕；页面可见时 30s 轮询（「本规格提议」：门户主体非 Principal，不接入 SSE） |
+| **我的需求** `/portal` | 卡片：标题、IN 号、提交时间、5 节里程碑进度条（当前节点高亮；MERGED/DECLINED 显示灰色终止节点及团队的话）、「有 n 个问题待你回答」琥珀徽标、「待你验收」徽标、「变更待你确认 n」琥珀徽标（变更申请不单独成卡，BR-01-77）、AI 标签（BR-01-68）；顶部〔提交新需求〕；空态「还没有需求」〔提交第一条需求〕；页面可见时 30s 轮询（「本规格提议」：门户主体非 Principal，不接入 SSE） |
 | **提交需求** `/portal/new` | 标题（1..200）、描述（1..20,000，简易 Markdown 工具栏）、期望日期（≥今天）、附件（≤10 个、单个 ≤25MB、合计 ≤50MB，进度条与禁止类型即时提示）；〔提交〕在必填齐全且无上传中文件时可用；Idempotency-Key 由前端生成并在重试时复用；成功页显示 IN 号；开口停用时显示「暂不接收新需求」并隐藏表单 |
-| **需求详情** `/portal/intakes/:intakeID` | 里程碑、原文与附件（只读）、澄清问题（问题文本、状态、回答框 1..10,000 字 + 附件 ≤5、〔提交回答〕；已答显示回答与时间及「由团队记录」标识）、〔补充说明〕、团队给你的话、交付列表（待验收项带〔去验收〕）、DECLINED 时〔重新提交〕（预填原文） |
+| **需求详情** `/portal/intakes/:intakeID` | 里程碑、原文与附件（只读）、澄清问题（问题文本、状态、回答框 1..10,000 字 + 附件 ≤5、〔提交回答〕；已答显示回答与时间及「由团队记录」标识）、〔补充说明〕（仅 RECEIVED / TRIAGED / CLARIFYING，BR-01-85）、团队给你的话、交付列表（待验收项带〔去验收〕）、DECLINED 时〔重新提交〕（预填原文）。**已立项（CONVERTED）时**：〔补充说明〕替换为〔申请变更〕；新增「版本历史」（v1 原始需求，其后每条已接受变更：vN、标题、日期）与「变更申请」列表（标题、IN 号、提交日期、状态：评估中 / 待你确认（琥珀，带〔去确认〕）/ 已接受（需求 vN）/ 未接受（理由））；文案不出现「容差」「工作项」「成本」等内部词 |
+| **申请变更** `/portal/intakes/:intakeID/changes/new` | 顶部只读摘要「变更：《{原标题}》（当前 v{n}）」；表单同〔提交需求〕：变更标题（1..200）、想改什么（1..20,000，简易 Markdown）、期望日期（≥今天，可空）、附件（≤10）；说明「提交后团队会评估对进度和价格的影响，必要时请你确认」；成功页显示 IN 号并返回需求详情；原来件不可申请时（110449）显示「这条需求目前不能申请变更」 |
+| **变更详情 / 确认** `/portal/intakes/:intakeID/changes/:changeID` | 状态标签（评估中 / 待你确认 / 已接受（需求 vN）/ 未接受（理由））；原文与附件；待答澄清问题（同需求详情）；评估完成后显示「变化」卡：验收标准变化（新增 / 移除 / 改为，逐条通俗文字）、进度（「预计延后 3 天」/「提前 2 天」/「无变化」）、新的预计日期、价格变化（仅在团队填写时，含说明）、团队说明。**待你确认**时底部：〔接受变更〕/〔不接受〕；不接受须填理由（10..2000，计数器）；提交前确认对话框重述进度与价格变化；`approval_round` 随页面数据提交，110455 `superseded` 时提示「团队已更新本次变更，请重新查看」并刷新。已决定时只读显示结果、时间；团队登记的显示「由团队记录（{日期}）」。移动端按钮固定底部，触控 ≥44px |
 | **验收** `/portal/deliveries/:deliveryID` | 07 投影：交付说明、演示链接、交付物清单（逐条）、证据摘要、清单指纹（前 8 位）。每条交付物一行：〔接受〕/〔不接受〕切换；不接受时必选类别（功能缺陷 / 需求不符 / 样式 / 性能 / 安全 / 其他）并填写原因（10..2000 字）。顶部快捷〔全部接受〕。底部：签署人姓名（1..100，必填）、复选框「我已核对以上交付内容，提交后不可修改」（必勾）、整体备注（可空）；〔提交验收〕在每条都有选择、不接受条目信息完整、签名与勾选齐全时才可用；提交前汇总显示「将接受 n 项、不接受 m 项」。110440 `manifest_changed` 时提示「交付内容已更新，请重新核对」并刷新；已回执时只读显示逐条结果、签署人与时间 |
 
 ---
 
 ## 9. 通知
 
-经 09 `Notifier`，路由与偏好由 08 统一（本表与 08 §9 通知目录一致）；团队侧同时进入 08「我的裁决」（`INTAKE_TRIAGE`：新建项目 / 追加 / 返工来件待处置；澄清回复与甲方无响应为通知）。模板键 `intake.notify.<name>`，三语；甲方模板使用 BR-01-40 显示名与 BR-01-68 AI 文案，**不含**团队成员与 Agent 名称。
+经 09 `Notifier`，路由与偏好由 08 统一（本表与 08 §9 通知目录一致）；团队侧同时进入 08「我的裁决」（`INTAKE_TRIAGE`：新建项目 / 追加 / 返工来件待处置 / 变更申请待评估 / 甲方已对变更作出决定；澄清回复与甲方无响应为通知）。模板键 `intake.notify.<name>`，三语；甲方模板使用 BR-01-40 显示名与 BR-01-68 AI 文案，**不含**团队成员与 Agent 名称。
 
 | # | 事件 | 接收人 | 渠道 | 文案要点（zh-CN） | 去重 / 合并 |
 |---|---|---|---|---|---|
 | N0 | 来件创建（send_receipt=true） | 甲方联系人 | 原开口（邮件回复 / 门户 / webhook） | 「我们已收到你的需求《{title}》（编号 {ref}）」 | 每来件一次；AUTO_REPLY 来源不发 |
-| N1 | `intake.received` | 开口 notify 对象 | 站内 + 邮件摘要（08 §9） | 「新来件 {ref}：{title}（{contact}，{channel}）」 | 同开口 5 分钟内合并为「n 条新来件」 |
+| N1 | `intake.received` | 开口 notify 对象 | 站内 + 邮件摘要（08 §9） | 「新来件 {ref}：{title}（{contact}，{channel}）」；kind=CHANGE：「{contact} 对 {原 ref} 申请变更：{title}」 | 同开口 5 分钟内合并为「n 条新来件」 |
 | N2 | `intake.triaged`（rev=1） | 同 N1 | 站内 | 「{ref} 分诊卡已就绪：规模 {size}，建议 {project}」 | 每来件一次 |
 | N3 | 分诊超时 30 分钟 | 同 N1 | 站内 + 邮件 | 「{ref} 已等待分诊 30 分钟」 | 每来件一次 |
 | N4 | 甲方回答 / 轮次答完 | 发送该轮的成员 + 最近处理人 | 站内 | 「{contact} 回答了 {ref} 的 {n} 个问题」 | 同来件 10 分钟内合并 |
@@ -781,13 +873,17 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 | N5 | `intake.clarification_expired` | 同 N4 + 开口 notify 对象 | 站内 + 邮件 | 「{contact} 已 {days} 天未回复 {ref} 的澄清，请决定：按假设转化 / 再次询问 / 拒绝」 | 每轮一次 |
 | N6 | 终态来件收到甲方新消息 | 终态动作执行人 | 站内 | 「已结束的 {ref} 收到甲方新消息」 | 同来件 1 小时内合并 |
 | N7 | 解析失败 / IMAP 故障 / 协调员失效 | `intake_channel_manage` 持有者 | 站内 + 邮件 | 「开口 {name} 异常：{reason}」 | 同开口同原因 24h 一次 |
-| N8 | 澄清 / 提醒 / 转化 / 合并 / 拒绝 | 甲方联系人 | 原开口 | 澄清：「为准确理解你的需求，请回答以下问题：Q1 …」+ 门户入口说明（不含链接明文）；提醒：「仍有 {n} 个问题待回答（{due} 前）」；转化：「你的需求已立项，进入进行中」；合并 / 拒绝：client_message | 提醒按（轮, 序号）去重 |
+| N8 | 澄清 / 提醒 / 转化 / 合并 / 拒绝 | 甲方联系人 | 原开口 | 澄清：「为准确理解你的需求，请回答以下问题：Q1 …」+ 门户入口说明（不含链接明文）；提醒：「仍有 {n} 个问题待回答（{due} 前）」；转化：「你的需求已立项，进入进行中」；变更转化（BR-01-82）：「你的变更《{title}》已接受，需求更新为 v{n}：{标准变化摘要}；进度 {schedule_delta}，预计 {new_date}{；价格变化 {price}}」；撤回确认（T18）：「团队已撤回《{title}》的确认请求，正在重新评估」；合并 / 拒绝：client_message | 提醒按（轮, 序号）去重 |
 | N9 | 链接 72h 内到期且有未结来件 | 链接签发人 | 站内 | 「{contact} 的门户链接将于 {date} 到期」 | 每链接一次 |
 | N10 | `IntakeReplySender.SendDelivery`（07 发送任务） | 甲方联系人 | 原开口 | 「《{title}》的交付已就绪，请在门户中验收」 | 每（交付, 联系人, attempt）一次；`delivery.sent` 事件不再触发 |
 | N10b | `IntakeReplySender.SendAcceptanceReminder` | 甲方联系人 | 原开口 | 「《{title}》仍待你验收（已 {days} 天）」 | 每（交付, 联系人, 序号）一次 |
 | N11 | `acceptance.received` | 甲方联系人 | 原开口 | 「我们已收到你的验收结果：{result}」 | 每回执一次 |
 | N12 | 访问码 | 联系人登记邮箱 | 邮件（即时，不合并） | 「你的访问码是 {code}，10 分钟内有效；如非本人操作请忽略」 | 冷却 60s，每链接每小时 ≤5 |
 | N13 | 签发链接且 send_email=true | 联系人 | 邮件 | 「{team} 邀请你通过以下链接提交和跟进需求（{date} 前有效）」 | 每签发一次 |
+| N14 | `intake.client_approval_requested`（T15） | 甲方联系人 | 原开口（门户可见 + 有邮箱时邮件；API → webhook 元数据） | 「你的变更《{title}》需要你确认：进度 {schedule_delta}，预计 {new_date}{，价格变化 {price}}。请在门户中查看并确认」+ 门户入口说明（不含链接明文；邮件回复不视为确认） | 每（来件, round）一次 |
+| N15 | J7 甲方提醒（每 7 天，≤3 次） | 甲方联系人 | 原开口 | 「《{title}》的变更仍等待你确认（已 {days} 天）」 | 每（来件, round, 序号）一次 |
+| N16 | `intake.client_approval_decided`（APPROVED / REJECTED） | T15 请求人 + 最近处理人 + `HOLDERS(intake_convert)` | 站内 + 邮件 | 接受：「{contact} 已接受 {ref} 的变更（{via}），可以转化」；不接受：「{contact} 未接受 {ref} 的变更：{comment 前 80 字}」 | 每（来件, round）一次 |
+| N17 | J7 团队提醒（每 14 天） | T15 请求人 + `HOLDERS(intake_convert)` | 站内 + 邮件 | 「{ref} 的变更已等待甲方确认 {days} 天，可联系甲方、登记线下确认或撤回」 | 每（来件, round, 序号）一次 |
 
 出站邮件：From = 开口地址（PORTAL / API 来件用部署配置 `intake.email.outbound_from`），显示名按 BR-01-40；Reply-To = `<local>+r<reply_token>@<inbound_domain>`；`In-Reply-To` / `References` 延续线程；Subject `Re: {原主题} [{ref}]`；回执与提醒带 `Auto-Submitted: auto-replied` 防自动回复环路。
 
@@ -871,6 +967,22 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 | AC-01-70 | integration | §6.8 IntakeReplySender, 复审 #12 | **G** 07 以 `AttemptNo=1`、`IntakeIDs=[IN-3, IN-4]` 调 `SendDelivery` **W** 同参数重调 **T** 返回原 MessageRef，IN-3、IN-4 各 1 条 DELIVERY_NOTICE；**W** `AttemptNo=2` **T** 视为新的一次发送 |
 | AC-01-71 | integration | §7.4, 复审 #23 | **G** 澄清消息 M（delivery_state=PENDING）**W** 消费 `notification.delivery_state_changed{source_ref=M, state=SUPPRESSED}` **T** M.delivery_state=SUPPRESSED；重复投递不重复处理；未知 source_ref 无副作用 |
 | AC-01-72 | integration | BR-01-21, 复审 #11 | **G** APPEND 转换且 step-up 已通过 **W** 调 02 `AppendFromIntake` **T** 入参含 `TenantID`、`Summary`，不含 ReauthProof；step-up 缺失时本模块先 401 110447，不调用 02 |
+| AC-01-73 | e2e | US-01-20, BR-01-76/77, T1 | **G** IN-5 已 CONVERTED 为需求 R（v2），联系人 Lee 已验证门户会话 **W** Lee 在需求详情点〔申请变更〕提交标题、描述与 1 个附件 **T** 201，新来件 IN-9 kind=CHANGE、RECEIVED、`change_of_intake_id=IN-5`、`target_requirement_id=R`、`contact_id=Lee`；outbox 有 `intake.received{kind:CHANGE, change_of_intake_id, target_requirement_id}`；团队收到 N1「对 IN-5 申请变更」；门户 IN-5 详情变更列表显示 IN-9「评估中」，「我的需求」无 IN-9 单独卡片 |
+| AC-01-74 | integration | BR-01-76/77, §4.1 非法 | **W** ① 在 TRIAGED 的 IN-6 上申请变更 ② 在 DECLINED / MERGED 来件上申请 ③ Lee 对其他联系人的 CONVERTED 来件申请 ④ API 调用方 S 以 `kind=CHANGE` 对 S3 提交的来件申请 ⑤ `kind=CHANGE` 缺 `change_of_intake_id` **T** 依次 422 110449 / 422 110449 / 404 110404 / 404 110404 / 400 110400；均无新来件；库层 CHECK 拒绝 kind=CHANGE 而 `target_requirement_id` 为 NULL 的直接插入 |
+| AC-01-75 | integration | US-01-21, BR-01-78 | **G** IN-9（CHANGE，R 当前 v2），协调员 C 起草卡片：`criteria_diff=[ADD 1 条, RETIRE c3]`、`schedule_delta_days=4`、并在请求中写 `requires_client_approval=false` **W** C 提交分诊卡 **T** 服务端调用 02 `Preview(R, 2, diff)`，`affected_work_items` 含 c3 关联的 W7(STALE) 与 1 条 NEW；调用 07 `WouldBreach(R, {4, cost, scope_delta=0})` 返回 [TIME]，卡片落库 `tolerance_check.breached=[TIME]`、`requires_client_approval=true`（请求值被忽略）；C 的卡带 `client_price_delta` → 400 110400；`base_version_no=1` → 409 110453；07 不可用 → 503 110503 且无新 revision |
+| AC-01-76 | integration | T15, BR-01-79 | **G** IN-9 TRIAGED，最新卡 rev3 `requires_client_approval=true` **W** 负责人 M（持 `scope_change`）`PUT /intakes/IN-9/client-approval {triage_card_revision:3, message}` **T** IN-9 → CLIENT_APPROVAL，`client_approval={PENDING, round:1, card_revision:3}`；`intake.client_approval_requested{round:1, breached:[TIME]}`；审计；Lee 收到 N14，邮件不含链接明文；**W** 协调员 Agent C 或持委托的 Agent 发起同一请求 **T** 403 110403 `NON_DELEGABLE`，审计 `intake.client_approval_denied`；**W** 工程师 E（无 `scope_change`）**T** 403 110403 `MISSING_PERMISSION` |
+| AC-01-77 | integration | T15, §4.1 非法 | **W** ① 对 `requires_client_approval=false` 的卡 T15 ② 对 kind=NEW 来件 T15 ③ 卡片无 `change_impact` 时 T15 ④ `triage_card_revision=2`（最新为 3）**T** 依次 422 110420 / 422 110420 / 422 110452 / 409 110443；来件均不变 |
+| AC-01-78 | e2e | US-01-22, T16, BR-01-80/84 | **G** IN-9 CLIENT_APPROVAL round 1 **W** Lee 打开门户变更详情 **T** 显示标准变化（新增 1 条、移除 1 条的通俗文字）、「预计延后 4 天」、新日期、团队说明；响应与 DOM 均不含 `internal_cost_delta_micros`、工作项 id、`tolerance_check`、「容差」字样；**W** Lee〔接受变更〕`{approval_round:1, decision:APPROVED}` **T** IN-9 → TRIAGED，`client_approval.state=APPROVED`、`decided_via=PORTAL`、`authority_source=CLIENT:<Lee>`；`intake.client_approval_decided{decision:APPROVED}`；M 收到 N16；同请求重放 200 |
+| AC-01-79 | integration | T17, BR-01-83 | **G** IN-9 CLIENT_APPROVAL **W** Lee〔不接受〕不填理由 **T** 前端禁用；直调 → 422 110427；**W** 理由 15 字 **T** IN-9 → TRIAGED、`state=REJECTED` 含理由，N16 发出；**W** 团队随后以 APPEND 转化 rev3 **T** 422 110450；**W** 团队拒绝不带 `client_message` **T** 422 110427；带 `client_message` → DECLINED，门户显示「未接受（{client_message}）」，原需求 R 版本不变 |
+| AC-01-80 | integration | T18, T19, BR-01-80 | **G** IN-9 CLIENT_APPROVAL round 1 **W** M 撤回（理由）**T** → TRIAGED、`state=WITHDRAWN`，Lee 收到撤回通知；Lee 随后以 `approval_round:1` 决定 → 409 110455（`not_pending`）；**W** M 改卡为 rev4 并再次 T15 **T** round=2；Lee 用旧页面提交 `approval_round:1` → 409 110455（`superseded`）；**W** M 以 T19 登记线下确认但不附证据 **T** 400 110400；附 1 个邮件原件 **T** `state=APPROVED`、`decided_via=RECORDED_BY_TEAM`，门户显示「由团队记录」；Agent 调用 T19 → 403 110403 `NON_DELEGABLE` |
+| AC-01-81 | integration | BR-01-80 | **G** IN-9 CLIENT_APPROVAL **W** M 以团队会话调用门户决定接口、Agent 以服务账号调用、另一联系人 Ann 的门户会话调用 **T** 前两者无门户会话 401 110401，Ann 404 110404；`client_approval` 不变 |
+| AC-01-82 | e2e | T9, BR-01-81, 02 BR-02-63, 07 BR-07-62 | **G** IN-9 TRIAGED，rev4 已获甲方 APPROVED（card_revision=4），R 当前 v2，R 的容差 appetite_end_at=D、baseline_no=1 **W** M 带 reauth_proof 以 `APPEND_TO_REQUIREMENT, requirement_id=R, base_version_no=2, triage_card_revision=4` 转化 **T** 同事务：02 `AppendFromIntake(Change{…, ApprovedAdjustment{4 天,…}})` 产生 v3、ChangeRecord（`source_intake_id=IN-9`）、W7 `baseline_stale`；07 R 的 appetite_end_at=D+4 天、baseline_no=2、审计 `delivery.tolerance_changed`；IN-9 CONVERTED、`result_version_no=3`；`intake.converted{tolerance_adjusted:true}`；Lee 收到 N8「需求更新为 v3」，门户 IN-5 版本历史含 v3 |
+| AC-01-83 | integration | BR-01-82 | **G** IN-10（CHANGE）最新卡 `requires_client_approval=false` **W** M 直接 APPEND 转化 **T** 成功，不调用 `ApplyApprovedChange`（无 `ApprovedAdjustment`），容差 baseline_no 不变；Lee 收到含新版本、标准变化与进度影响的 N8；门户状态「已接受（需求 v3）」 |
+| AC-01-84 | integration | BR-01-81/87 | **G** IN-9、IN-10 都基于 R v2 评估且都可转化 **W** 先转化 IN-10（R → v3），再转化 IN-9 **T** IN-9 409 110453（`data.current_version_no=3`），无部分写入；**G** 转化时 07 `WouldBreach` 返回与卡片不同的越界集合 **T** 409 110453；**G** R 的容差有未决例外 **W** 转化已获确认的 IN-9 **T** 07 返回 127055，整体回滚，422 110435 `data.reason=tolerance_exception_open` |
+| AC-01-85 | integration | §4.1 非法, BR-01-79 | **G** IN-9 CLIENT_APPROVAL **W** 协调员提交新分诊卡、发送澄清轮、转化、合并、拒绝 **T** 均 409 110451；**W** Lee 在门户对 IN-9 留言 **T** 409 110451 |
+| AC-01-86 | integration | BR-01-85 | **G** IN-5 CONVERTED、IN-6 TRIAGED、IN-7 DECLINED **W** Lee 分别 `POST /portal-intakes/{id}/notes` **T** IN-5 → 422 110454（门户引导〔申请变更〕）；IN-6 → 200 CLIENT_NOTE；IN-7 → 422 110421；Lee 对 IN-5 的邮件回复仍记 CLIENT_NOTE 并发 N6 |
+| AC-01-87 | integration | BR-01-86, J7 | **G** IN-9 于 t0 进入 CLIENT_APPROVAL **W** 时钟推进到 t0+7d、14d、21d、28d、42d **T** Lee 在 7/14/21 天各收一次 N15、第 28 天不再收；团队在 14d、28d、42d 各收一次 N17；两个实例并发运行 J7 不重复；IN-9 始终 CLIENT_APPROVAL，未被自动决定或撤回 |
+| AC-01-88 | integration | BR-01-81 | **G** IN-11（CHANGE）**W** 以 `NEW_REQUIREMENT` 转化到项目 P **T** 02 `CreateFromIntake` 建新需求，原需求 R 与其容差不变，`intake.converted{mode:NEW_REQUIREMENT}`；以 `NEW_PROJECT` 或 `REOPEN_WORK_ITEMS` 转化 → 400 110400；APPEND 的 `requirement_id ≠ target_requirement_id` → 400 110400 |
 
 ---
 
@@ -891,6 +1003,10 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 | `portal_session` | outcome（created / code_sent / verified / unknown_token / expired / revoked / locked / rate_limited） |
 | `portal_submission` | outcome, attachments_count |
 | `portal_acceptance_submitted` | result |
+| `intake_change_requested`（D117） | channel_kind, original_age_days（原来件转化至今天数） |
+| `intake_change_assessed` | author_kind, criteria_ops（ADD / RETIRE / REPLACE 计数）, affected_count, breached（维度集合）, requires_client_approval, latency_ms（距 received） |
+| `intake_client_approval` | outcome（requested / approved / rejected / withdrawn / recorded_offline）, round, hours_open, reminders_sent |
+| `intake_change_converted` | mode, requires_client_approval, tolerance_adjusted, time_to_convert_ms |
 | 告警 | `portal_session{outcome=unknown_token}` 5 分钟 >100（疑似 token 枚举）；J1 出现 FAILED；J3 积压（最早 next_reminder_at < now−15min） |
 
 PRD §15 的 `intake_received{channel}`、`intake_converted` 即上表同名事件。
@@ -904,6 +1020,8 @@ PRD §15 的 `intake_received{channel}`、`intake_converted` 即上表同名事�
 | ID | 依赖 | 内容 |
 |---|---|---|
 | D-02-1 | 02 | `RequirementCreator.CreateFromIntake` / `AppendFromIntake`、`WorkItemReopener.ReopenFromAcceptance`（在调用方事务内执行）；需求记录 `source_intake_id`；调用本模块 `ClarificationRequester` |
+| D-02-2 | 02 | `ChangeImpactPreviewer.Preview`（只读）；`AppendFromIntake` 接受 `Change` 载荷并在同事务调用 07 `ToleranceAdjuster.ApplyApprovedChange`（02 BR-02-63，D117） |
+| D-07-2 | 07 | `ToleranceReader.WouldBreach`（只读）与 `ToleranceAdjuster.ApplyApprovedChange`（未决例外时拒绝 `127055`，07 BR-07-62，D117） |
 | D-07-1 | 07 | `ProjectCreator.CreateForIntakeOn`、`ProjectReader`、`IntakeProgressReader`、`AcceptanceRecorder{ListForIntakes, PortalView, Record}`、`AcceptanceReader.Get`；`delivery.sent` / `acceptance.received` 的 data 含 `intake_ids[]`；07 调用本模块 `IntakeReplySender` 与 `IntakeReader`；**返工来件由 intake 消费事件创建**，07 不直接写来件 |
 | D-08-1 | 08 | `AuthorityChecker.Check(ctx, tx, req)` 支持 `intake_convert` 委托判定（项目范围、仅 AUTONOMOUS、仅 NEW_REQUIREMENT，覆盖需求创建）；`intake_decline` 与新建项目不可委托；「我的裁决」`INTAKE_TRIAGE`；step-up purpose `intake_convert_privileged` 登记 |
 | D-05-1 | 05 | 订阅 `intake.received` / `intake.triage_requested` 唤醒 `triage_agent_id`；`AgentDirectory`；`agent.retired` |
@@ -949,3 +1067,4 @@ PRD §15 的 `intake_received{channel}`、`intake_converted` 即上表同名事�
 | CR-09（已合入 00 v1.1） | 00 §9 实时 | 增加集合主题 `tenant/{tenant_id}/<resources>`（如 `tenant/{t}/intakes`），订阅时按集合读权限过滤 | 列表页新来件需 ≤1s 呈现 |
 | CR-10（已合入 00 v1.1） | 00 §6.4 不可委托 | 增加「新建项目」与 `intake_decline`；写明 `intake_convert` 可委托（仅 NEW_REQUIREMENT、仅 AUTONOMOUS 项目） | PRD §9.2 与 BR-01-24 / BR-01-32 |
 | CR-11 | 00 §8 | 新增 02 `WorkItemReopener.ReopenFromAcceptance`（REOPEN_WORK_ITEMS）与 07 `AcceptanceReader.Get`；`IntakeReader` 方法集按 §6.8 扩充 | 返工来件按条目处置（审计 C27/C8） |
+| CR-12（已合入 00 v2.0，D117） | 00 §5 / §6.5 / §7.1 / §8 | `IntakeStatus` 增 `CLIENT_APPROVAL`；模块内 `IntakeKind` 增 `CHANGE`；§6.5 仅限人类增「请甲方确认变更、登记甲方线下确认」（甲方本人的决定是甲方行为，`CLIENT:<contact_id>`）；§7.1 增事件 `intake.client_approval_requested`、`intake.client_approval_decided`；§8 增 02 `ChangeImpactPreviewer`、07 `ToleranceReader.WouldBreach` 与 `ToleranceAdjuster.ApplyApprovedChange` | 甲方经门户申请变更、超出容差的变更须甲方确认（D117） |
