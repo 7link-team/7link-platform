@@ -1,3 +1,49 @@
+## Myrmidon product PRD + HTML prototype - 2026-10-11 (docs only, no code)
+- Goal: design a brand-new product integrating old MyrmidonAI (D:\Projects\MyrmidonAI: PRD.md v2, chaosplus.md, docs/*, Preview 01 code)
+  with docs/0[1-4]_Myrmidon_*.docx (2026-10-10 review drafts), built on THIS repo as base framework. Deep PRD + beautiful HTML prototype via .agents/skills.
+- Constraints (user): old project code/docs read-only; outputs live in this repo (docs/myrmidon/). Do not touch backend/frontend code.
+- Done: read old PRD/chaosplus/README/preview; subagent summary of old docs+code; read 4 docx; ui-ux-pro-max design system
+  (AI-Native UI, violet #7C3AED + cyan #0891B2, Space Grotesk/DM Sans/JetBrains Mono); misplaced file in MyrmidonAI deleted.
+- User direction: 乙方 team = agents+humans or all-agent; 甲方 = just a requirement intake. Added: lead/orchestrator agent assigning to
+  multi-model agents (Grok-Heavy-like ensemble branches), built-in memory + DB-retrieval knowledge base (K1 full-text 3 dialects, K2 pgvector).
+- DONE: docs/myrmidon/PRD.md (positioning, 4-layer completion ladder, domain model, state machines, failure/rework, permission matrix +
+  delegation, intake/portal, fleet/execution, §10.6 lead agent, §10.7 knowledge, framework mapping §13, design system, metrics, 8-week plan, Q1-Q11).
+- User: PRD (~700 lines) not enough; must be 完整 可落地 可执行. Plan approved: PRD.md stays master; specs/00-conventions.md (DONE,
+  binding contract: modules/tables/enums/permission codes/events/interfaces/error ranges/AC format) + 9 module specs written in parallel by
+  subagents: 01 intake-portal, 02 work-review, 03 execution-evidence, 04 machines-runtime, 05 agents-orchestration(+collab channels),
+  06 knowledge-memory, 07 projects-delivery, 08 governance, 09 platform-capabilities. Added collab+governance modules to PRD §13.2.
+- Returned DONE: 01(895) 02(1317) 03(1291) 04(1102) 06(1000) 07(1199). 05/08/09 hit gateway 503/timeouts, resumed with chunked writes
+  (05 has §1-5). 00 bumped to v1.1 merging all CRs from 01-04,06,07 (+§13 framework change list F1-F10, §14 changelog); PRD runner name fixed.
+- 2026-10-11 later: ALL 9 specs DONE (05:1197, 08:1404, 09:1124; total ~10.9k lines). 00 now v1.3 (merged CRs from all 9).
+  Active: 3 read-only auditors (A: specs vs 00 mechanical; B: cross-module interfaces + known conflicts 1-9; C: end-to-end scenarios S1-S7).
+  Audits DONE (~120 findings: A mechanical 56, B interfaces 45+9 conflicts, C scenarios 9 blockers/31 major). Resolutions R1-R20 decided
+  (in conversation): platform idempotency table + 176425/176409; 09 receipts only; tag incl mount prefix; ETag/If-Match; 403+reason_code
+  (08 owns, SEPARATION_OF_DUTIES); intake_records, /suspension, /draining; sync DispatchAssigner (+dispatch.rejected kept); 02 owns
+  ClaimSubmitter/DecisionReader/RequirementCreator; RETRY_INFRA re-dispatch; crash/revoke -> INTERRUPTED; T20b, T26 ACCEPTED->REWORK, T12
+  SYSTEM decision; REOPEN_WORK_ITEMS; ACTIVE-only autonomy; REVIEWER dispatch MVP + agent.review/agent.triage; new inbox kinds + shell §8.6;
+  ProjectGate (no BudgetGuard); notifications storage=09; HOLD_DELEGATIONS on client rejection; ensemble fixes; step-up list = 08 §6.9.
+  DONE by me: 00 -> v1.4; PRD fixes (C56 retry semantics, routes, refresh targets, §0.2 spec index).
+  7 fork fix units DONE. Main verification: residual greps clean; aligned names (SELF_REVIEW + SEPARATION_OF_DUTIES both in 08 S3 & 00;
+  dispatch.rejected restored in 08; 07 OpenClarifications; 01 WorkItemReopener.ReopenFromAcceptance; 07 BR-07-08③ uses 02 scope-change CANCEL).
+  Totals: PRD+specs 12,242 lines, all LF/UTF-8. Round-2 re-audit found 6 BLOCKER/21 MAJOR -> fixed by 4 fork units + me (00 v1.5,
+  07 ReleaseNotesDrafting). Residual greps clean. Round-3 blocker-only verification running.
+  Prototype DONE: docs/myrmidon/prototype.html (684 lines, 19 routes, Aurora + 5 framework themes, light/dark, mobile tabbar, cmdk,
+  machine device-code wizard, reject/structured feedback, takeover, delegation, retire). Verified in headless Edge: all routes 0 runtime
+  errors; all modal functions OK; screenshots desktop/mobile(500px; headless min viewport 496, scrollWidth 481 = no h-scroll)/light/neo.
+  Round-3 (blocker-only, S1-S4) found 4 BLOCKERs -> fixed by me: B1 SubmitInput.from_exit (02, 03 E06 passes true); B2 drafter_agent_id
+  + ReportUnavailable reasons (05/07); B3 WorkItemFacts.AssignmentRole/AssigneePrincipalID, SYSTEM skips S3/S4/S6, POLICY:review_dispatch
+  (02/05/08); B4 P08 expiry by trigger type (05); notes n1/n3/n4/n5 fixed; 00 v1.6. S2 had no blocker.
+- Phase: DELIVERED (docs only). Final: PRD.md + specs 00-09 + prototype.html = 13,119 lines, all LF/UTF-8.
+- Not done: no 4th re-audit after B1-B4 (fixes grep-verified only). docs/ ignored by user's whitelist .gitignore (not committed, not changed).
+- User (2026-10-11): "docs 都进git" -> .gitignore whitelists /docs, docs committed locally (not pushed); "该有的就有" -> all PRD §18
+  Q1-Q11 + spec §12 open questions adopt recommendations (decisions D109, PRD §18 note, 00 v1.7); "先不开工，等我过完原型再说".
+- Next: WAIT for user's prototype review feedback (docs/myrmidon/prototype.html). Do not start implementation until told.
+  Next: when back -> verification grep pass (dispatch.applied consumers, BudgetGuard, idempotency tables, PENDING_CONFIRM, 176409/176425,
+  stream_seq in 03, /pause, /drain, intakes table) + spot re-audit; then prototype.html.
+- NOTE: repo .gitignore (user-modified, whitelist with `*`) ignores docs/ -> specs not tracked; tell user, don't change.
+- Next: when all return -> consistency review (enums/permission codes/events/routes/error codes vs 00; cross-spec interface calls match;
+  contract change requests merged into 00), fix, add spec index to PRD; THEN prototype.html based on specs; browser check; deliver.
+
 ## Fix all review + audit findings - 2026-10-11 (user: "全部修好")
 - Phase: IMPLEMENTATION (Hybrid: 5 subagents on disjoint files, main agent integrates).
 - Decisions: D105 erasure soft-deletes personal files; D106 PAT ceiling on file action; D107 /guid auth + max 100; D108 leaflet direct.

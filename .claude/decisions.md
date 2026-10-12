@@ -4256,3 +4256,24 @@ RegisterAuthenticated without behavior change). Without it the routes answer 503
 
 Decision: replace react-leaflet / @react-leaflet/core (Hippocratic-2.1, not OSI) with
 leaflet's own API (BSD-2) in packages/ui. Reason: license; one consumer file. Status: accepted.
+
+## D109 - Myrmidon Pending Product Questions Adopt The Recommendations (2026-10-11)
+
+Decision: every open product question in the Myrmidon design docs is decided as its
+recommendation column says. That covers PRD §18 Q1–Q11 (working name Myrmidon with
+the display name from deployment config; first ICP = AI software studio; MVP does
+not expose a DAG engine, templates only generate work-item trees; storage follows the
+framework's three dialects with PostgreSQL recommended; machines enrol through OAuth
+device code; delegated merge only for non-self-produced, all-verified, LOW-risk items;
+client portal shows AI participation by mode, configurable; ad-hoc sessions must link a
+work item before a claim; no Matrix/A2A in MVP; lead dispatch MANUAL in hybrid and AUTO
+in autonomous; knowledge K1 full-text first, K2 pgvector later) and the open questions
+in section 12 of specs 01–09.
+
+Reason: the product owner answered "该有的就有" when asked to settle them.
+
+Scope: docs/myrmidon only; no code. Implementation has not started — the owner will
+review the prototype first. Reversing any item means editing PRD §18 and this record.
+
+Status: accepted.
+
