@@ -82,9 +82,9 @@
   pages-yunxiao.js verified (6 routes 0 errors, screenshots). real-2048-qa ended NEEDS_HUMAN: W2 rounds 1-3 (round 2 caught row
   heights!); found 2 MVP QA bugs -> fixed in .mvp (acceptor judges only item acceptanceRefs + engine guard; screenshots only for
   item owning the page; <500px viewports via same-size iframe). .mvp tests 41/41 incl real Edge. Research §5.1 written.
-  Commits 9ba538c (docs) + d70b9f2 (.mvp). RUNNING: real-2048-qa2 (fresh run with fixes, log .mvp/run-real-2048-qa2.log).
-  Next: commit .claude + research, push chaosplus; when qa2 ends -> check W1-W4 internal QA outcome, re-run hidden acceptance
-  independently, view final 900/420 screenshots, append result to research §5.1, commit + push, report to user.
+  Commits 9ba538c (docs) + d70b9f2 (.mvp) + 749f71b (state), pushed. real-2048-qa2 DONE: AWAITING_CLIENT, 4/4 internal pass,
+  W3 round1 caught by tester (file:// 0 tiles) then fixed; hidden acceptance 11/11 re-run independently; screenshots OK; chain 68.
+  Research §5.1 updated. Next: WAIT for user (prototype review; calibration proposal; optional L4 on runs/real-2048-qa2).
   Proposal for user (not applied): spec 03 visual verifier needs tool calibration with known-good/bad sample pages.
 - RESEARCH DONE: docs/myrmidon/research/2026-10-collaboration-research.md (4 tracks synthesized, gap analysis, P0/P1/P2 upgrade,
   decisions A-G awaiting user; §5 MVP results). Do NOT change specs for the upgrade until user confirms A-G.
