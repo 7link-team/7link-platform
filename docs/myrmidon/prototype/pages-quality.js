@@ -9,7 +9,7 @@ function qaTable(qaHeads,qaRows){return `<div class="table-wrap"><table><thead><
 function qaBadge(qaText,qaKind='info'){return `<span class="badge b-${qaKind}">${qaText}</span>`;}
 function qaWork(qaId){return WI.find(qaW=>qaW.id===qaId);}
 function qaMissing(){return head('可靠性闭环','未找到工作项','请检查编号。')+card('无记录','<div class="empty">当前编号没有可展示的工作项。</div>');}
-function qaNav(qaId){return `${qaState.stops[qaId]?`<div class="note danger">已停线 · ${qaState.stops[qaId].actor==='agent'?'执行 Agent':'你'} · ${qaEsc(qaState.stops[qaId].reason)}；下游依赖 2 项已阻塞。只有人类负责人 / 交付负责人能解除。</div>`:''}<div class="row wrap">${[['readiness','就绪检查'],['plan-review','计划审批'],['internal-qa','内部验收']].map(qaR=>`<a class="btn ghost sm" href="#/${qaR[0]}/${qaEsc(qaId)}">${qaR[1]}</a>`).join('')}<a class="btn ghost sm" href="#/escapes">穿透学习</a>${qaButton('拉 Andon 停线',`qaAndon('${qaId}')`,'danger sm')}</div>`;}
+function qaNav(qaId){return `${qaState.stops[qaId]?`<div class="note danger">已停线 · ${qaState.stops[qaId].actor==='agent'?'执行 Agent':'你'} · ${qaEsc(qaState.stops[qaId].reason)}；下游依赖 2 项已阻塞。只有人类负责人 / 交付负责人能解除。</div>`:''}`;}
 function qaModal(qaTitle,qaBody,qaFooter){openModal(`<div class="stack" style="padding:24px"><h3>${qaTitle}</h3>${qaBody}<div id="qaError" class="note danger" role="alert" hidden></div><div class="row wrap">${qaButton('取消','closeModal()','ghost')}${qaFooter}</div></div>`);}
 function qaError(qaMessage){const qaEl=document.getElementById('qaError');if(qaEl){qaEl.hidden=false;qaEl.textContent=qaMessage;}else toast(qaMessage);}
 function qaField(qaLabel,qaId,qaValue='',qaType='text'){return `<label class="stack small">${qaLabel}<input id="${qaId}" type="${qaType}" style="${qaStyle}" value="${qaEsc(qaValue)}"></label>`;}

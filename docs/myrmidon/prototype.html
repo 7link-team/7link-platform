@@ -77,6 +77,7 @@ a{color:inherit;text-decoration:none} button{font:inherit;color:inherit}
 .crumb{display:flex;align-items:center;gap:6px;color:var(--muted-fg);font-size:13px;white-space:nowrap;overflow:hidden}
 .crumb b{color:var(--fg);font-weight:600}
 .search{flex:1;max-width:340px;margin:0 0 0 auto;display:flex;align-items:center;gap:8px;padding:8px 12px;border:var(--bw) solid var(--border);border-radius:12px;background:var(--card);color:var(--muted-fg);cursor:pointer}
+.search span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .search kbd{margin-left:auto;font-family:var(--font-mono);font-size:11px;border:1px solid var(--border-strong);border-radius:6px;padding:0 6px}
 .tools{display:flex;align-items:center;gap:6px}
 .iconbtn{position:relative;width:36px;height:36px;display:grid;place-items:center;border-radius:10px;border:var(--bw) solid transparent;background:transparent;cursor:pointer;color:var(--muted-fg)}
@@ -93,6 +94,9 @@ a{color:inherit;text-decoration:none} button{font:inherit;color:inherit}
 .topnav a{display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:10px;color:var(--muted-fg);font-weight:500;white-space:nowrap;transition:background .16s var(--ease),color .16s var(--ease)}
 .topnav a:hover{background:var(--muted);color:var(--fg)}
 .topnav a.on{background:var(--primary-soft);color:var(--primary);font-weight:600}
+.proj-select{display:flex;align-items:center;gap:6px;height:34px;padding:0 10px;border-radius:10px;border:var(--bw) solid var(--border);background:var(--card);color:var(--fg);font:inherit;font-size:13px;font-weight:600;cursor:pointer;max-width:200px;flex:none}
+.proj-select span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.proj-select:hover{background:var(--muted)}
+.proj-menu{width:240px}
 .topnav .proj-chip{font-size:12px;font-weight:600;background:var(--card);border:var(--bw) solid var(--border);border-radius:999px;padding:0 8px;color:var(--fg)}
 .topnav .proj-switch{display:grid;place-items:center;width:22px;height:22px;border-radius:6px;margin-left:-4px}.topnav .proj-switch:hover{background:var(--muted)}
 .topnav a .cnt.chat{background:var(--info-soft,var(--primary-soft));color:var(--info,var(--primary))} .topnav a .cnt.at{background:var(--danger-soft,var(--warn-soft));color:var(--danger,var(--warn))}
@@ -259,7 +263,7 @@ body.portal .app{display:block} body.portal .side,body.portal .top,body.portal .
   body.nav-open .side{transform:none}
   .menu-btn{display:grid}
   .top{padding:0 12px} .search span,.search kbd,.live span,.crumb-bar,.topnav,.top .brand small{display:none} .search{flex:0;margin:0 0 0 auto}
-  .side{top:0;height:100vh} .side-domains{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px} .side-domains a{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border-radius:10px;font-size:12px;color:var(--muted-fg);border:var(--bw) solid var(--border)} .side-domains a.on{background:var(--primary-soft);color:var(--primary);border-color:transparent} .side-domains a .cnt{display:none}
+  .side{top:0;height:100vh} .proj-select{max-width:130px;padding:0 8px} .side-domains{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px} .side-domains a{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border-radius:10px;font-size:12px;color:var(--muted-fg);border:var(--bw) solid var(--border)} .side-domains a.on{background:var(--primary-soft);color:var(--primary);border-color:transparent} .side-domains a .cnt{display:none}
   .view{padding:18px 16px 96px}
   .c3,.c4,.c5,.c6,.c7,.c8,.c9,.c12{grid-column:span 12}
   .tabbar{display:grid;grid-template-columns:repeat(4,1fr);position:fixed;z-index:30;left:0;right:0;bottom:0;background:var(--card);border-top:var(--bw) solid var(--border);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
@@ -278,6 +282,7 @@ body.portal .app{display:block} body.portal .side,body.portal .top,body.portal .
     <header class="top">
       <button class="iconbtn menu-btn" aria-label="打开菜单" onclick="document.body.classList.toggle('nav-open')"><i data-lucide="menu"></i></button>
       <div class="brand" title="工作区切换（团队 / 项目）" onclick="toast('工作区切换：团队 → 项目（复用底座 WorkspaceSwitcher）')"><div class="brand-mark">M</div><div><b>Myrmidon</b><small id="wsName"></small></div></div>
+      <button class="proj-select" id="projSelect" aria-haspopup="menu" aria-label="选择项目" onclick="openProjectMenu(event)"></button>
       <nav class="topnav" id="topnav" aria-label="主导航"></nav>
       <div class="search" role="button" tabindex="0" onclick="openCmdk()" onkeydown="if(event.key==='Enter')openCmdk()"><i data-lucide="search"></i><span>搜索来件、工作项、执行、Agent…</span><kbd>⌘K</kbd></div>
       <div class="tools">
@@ -299,6 +304,7 @@ body.portal .app{display:block} body.portal .side,body.portal .top,body.portal .
 <nav class="tabbar" id="tabbar"></nav>
 
 <div class="menu notice-menu" id="noticeMenu"></div>
+<div class="menu proj-menu" id="projMenu"></div>
 <div class="menu" id="themeMenu">
   <small>主题（底座 [data-theme] 机制）</small>
   <button onclick="setTheme('aurora')"><span class="sw" style="background:linear-gradient(135deg,#7C3AED,#0891B2)"></span>Aurora<span class="muted xs" style="margin-left:auto">Myrmidon 默认</span></button>
@@ -403,7 +409,7 @@ function money(v){return "$"+v.toFixed(2)}
 const DOMAINS=[
   ["home","工作台","layout-dashboard",[["",[["overview","layout-dashboard","总览"],["inbox","gavel","我的裁决",INBOX.length],["my-work","list-todo","我的任务"],["plans","calendar-check","我的计划"]]]]],
   ["chat","会话","messages-square",[]],
-  ["projects","项目","folder-kanban",[["",[["projects","folder-kanban","项目组合"],["intakes","inbox","来件",2],["deliveries","package-check","交付总览"]]],["跨项目",[["requirements","file-text","需求"],["work","kanban-square","任务"],["defects","bug","缺陷"],["pipelines","workflow","流水线"]]]]],
+  ["projects","协作","kanban-square",[]],
   ["team","团队","users-round",[["目标与报告",[["goals","target","目标树"],["reports","file-chart-column","报告中心"]]],["团队资产",[["members","users-round","成员与 Agent"],["machines","server","机器"],["knowledge","library-big","知识库"],["tool-catalog","wrench","工具与技能"],["templates","layout-template","模板库"]]]]],
   ["gov","治理","shield-half",[["策略",[["policy","shield-half","授权与策略"],["workflow-config","git-branch","流转配置"],["agent-ops","list-tree","Agent 操作清单"]]],["连接",[["integration","plug","集成"],["intake-channels","radio-tower","需求开口"],["gateway","plug-zap","API 网关","实验"]]],["记录",[["audit","scroll-text","审计"]]]]]
 ];
@@ -411,28 +417,33 @@ const DOMAINS=[
 const PROJECT_EXTRA={p5:{name:"品牌短片",studio:["video-studio","clapperboard","视频工作台"]},p6:{name:"潮汐之城",studio:["novel-studio","book-open","小说工作台"]},p7:{name:"市场活动筹备",studio:["team-tasks","list-checks","团队任务工作台"]}};
 const projectName=id=>(PROJECTS.find(x=>x.id===id)||{}).name||(PROJECT_EXTRA[id]||{}).name||id;
 function projectNav(pid){const ex=PROJECT_EXTRA[pid];return [
-  ["",[["project/"+pid,"layout-dashboard","概览"],["goals/"+pid,"target","目标"],["chat/billing","hash","项目频道"]]],
+  ["",[["project/"+pid,"layout-dashboard","概览"],["goals/"+pid,"target","目标"],["chat/billing","hash","项目频道"],["engagements/"+pid,"handshake","甲方对接",2]]],
   ["需求",[["requirements/"+pid,"file-text","需求"]]],
   ["开发",[["work/"+pid,"kanban-square","任务"],["review/"+pid,"scale","评审台"]]],
   ["测试",[["test-cases/"+pid,"clipboard-check","用例与测试计划"],["defects/"+pid,"bug","缺陷"],["escapes/"+pid,"shield-alert","穿透记录"]]],
   ["流水线",[["pipelines/"+pid,"workflow","流水线"],["executions/"+pid,"terminal-square","执行"]]],
-  ["交付",[["deliveries/"+pid,"package-check","交付"],["worklog/"+pid,"timer","工时"]]],
+  ["交付",[["previews/"+pid,"monitor-play","预览与产物"],["deliveries/"+pid,"package-check","交付"],["worklog/"+pid,"timer","工时"]]],
   ...(ex?[["领域工作台",[[ex.studio[0]+"/"+pid,ex.studio[1],ex.studio[2]]]]]:[]),
   ["设置",[["project-settings/"+pid,"settings-2","项目设置"]]]]}
 /* Always rendered inside a project space (project = route argument, else the current project). */
-const PROJECT_ROUTES=new Set(["project","project-settings","review","test-cases","escapes","executions","worklog","workitem","readiness","plan-review","internal-qa","exception","heavy","defect","review-sheet","requirement","execution","workspace","delivery","dispatch","video-studio","novel-studio","team-tasks"]);
+const PROJECT_ROUTES=new Set(["projects","engagements","engagement","intakes","intake","change-intake","requirements","work","defects","pipelines","deliveries","previews","project","project-settings","review","test-cases","escapes","executions","worklog","workitem","readiness","plan-review","internal-qa","exception","heavy","defect","review-sheet","requirement","execution","workspace","delivery","dispatch","video-studio","novel-studio","team-tasks"]);
 /* Team-level lists that become project-scoped when the route carries a project id. */
-const DUAL_ROUTES=new Set(["goals","requirements","work","defects","pipelines","deliveries"]);
+const DUAL_ROUTES=new Set(["goals"]);
+/* Routes that keep the same sub-page when another project is chosen. */
+const KEEP_ON_SWITCH=["project","project-settings","review","test-cases","escapes","executions","worklog","previews","engagements","requirements","work","defects","pipelines","deliveries","goals"];
 /* Routes that are not side-nav items and have no listed ancestor. */
-const DOMAIN_EXTRA={chat:"chat",channels:"chat",session:"chat",settings:"home"};
+const DOMAIN_EXTRA={chat:"chat",channels:"chat",session:"chat",settings:"profile"};
+const PROFILE=["profile","个人","user-round",[["个人",[["settings","settings","个人设置"]]],["原型",[["portal","external-link","预览甲方门户"]]]]];
 const LASTSUB={};let CURPROJ=null;
 const navKey=r=>r.split("/")[0];
 const isProjectId=a=>/^p\d+$/.test(a||"");
-function listedDomain(k){for(const [d,,,gs] of DOMAINS)for(const [,items] of gs)for(const it of items)if(navKey(it[0])===k)return d;return null}
+function listedDomain(k){for(const [d,,,gs] of [...DOMAINS,PROFILE])for(const [,items] of gs)for(const it of items)if(navKey(it[0])===k)return d;return null}
 function navItemOf(k,keys){let c=k,n=0;while(c&&n++<6){if(keys?keys.includes(c):listedDomain(c))return c;c=NAVPARENT[c]}return null}
+/* Detail pages of a work item belong to that item's project, whatever project was selected before. */
+function ownerProject(key,arg){if(["workitem","readiness","plan-review","internal-qa","heavy"].includes(key)){const w=WI.find(x=>x.id===arg);return w&&w.p}return null}
 function contextOf(key,arg){
   if(DOMAIN_EXTRA[key])return {dom:DOMAIN_EXTRA[key]};
-  if(PROJECT_ROUTES.has(key)||(DUAL_ROUTES.has(key)&&isProjectId(arg)))return {dom:"projects",proj:isProjectId(arg)?arg:(CURPROJ||"p1")};
+  if(PROJECT_ROUTES.has(key)||(DUAL_ROUTES.has(key)&&isProjectId(arg)))return {dom:"projects",proj:isProjectId(arg)?arg:(ownerProject(key,arg)||CURPROJ||"p1")};
   return {dom:listedDomain(navItemOf(key)||"")||"home"};
 }
 /* Sub-pages of a detail page: the breadcrumb links back to that detail, not only to its list. */
@@ -447,29 +458,31 @@ const NOTICES=[
   {ic:"file-diff",t:"变更 IN-2042 超出时间容差，已提交甲方确认",at:"1 小时前",go:"change-intake/IN-2042"},
   {ic:"octagon-alert",t:"BIL-145 被停线：上游接口字段未确定",at:"今天 09:12",go:"workitem/BIL-145",read:true}];
 function openNotices(e){const m=document.getElementById("noticeMenu");m.innerHTML=`<small>通知 · ${NOTICES.filter(x=>!x.read).length} 条未读</small>${NOTICES.map((x,i)=>`<button onclick="NOTICES[${i}].read=true;document.getElementById('noticeMenu').classList.remove('open');go('${x.go}')" style="${x.read?"opacity:.6":""}">${I(x.ic)}<span style="flex:1;min-width:0;white-space:normal;text-align:left">${x.t}<span class="muted xs" style="display:block">${x.at}</span></span>${x.read?"":`<span class="dot-unread"></span>`}</button>`).join("")}<div class="row" style="justify-content:space-between;padding:6px 8px 2px"><a class="small" href="javascript:void 0" onclick="NOTICES.forEach(x=>x.read=true);route()">全部标为已读</a><a class="small" href="#/settings">通知设置</a></div>`;icons();toggleMenu(e,"noticeMenu")}
-function domainHome(d){return LASTSUB[d[0]]||(d[0]==="chat"?"chat":d[3][0][1][0][0])}
-function goProject(cur,id){const keep=DUAL_ROUTES.has(cur)||["project","project-settings","review","test-cases","escapes","executions","worklog"].includes(cur);const ex=PROJECT_EXTRA[id];go(keep&&!(ex&&(cur==="project"||cur==="project-settings"))?cur+"/"+id:ex?ex.studio[0]+"/"+id:"project/"+id)}
-function switchProject(){const cur=location.hash.replace(/^#\/?/,"").split("/")[0];openModal(`<div class="modal-h">${I("folder-kanban")}<h3>切换项目</h3></div><div class="modal-b stack">${[...PROJECTS.map(x=>x.id),...Object.keys(PROJECT_EXTRA)].map(id=>`<button class="btn" style="justify-content:flex-start" onclick="closeModal();goProject('${cur}','${id}')">${projectName(id)}</button>`).join("")}</div><div class="modal-f"><button class="btn" onclick="closeModal();go('projects')">${I("arrow-left")}返回项目组合</button></div>`)}
+function domainHome(d){return LASTSUB[d[0]]||(d[0]==="chat"?"chat":d[0]==="projects"?"project/"+(CURPROJ||"p1"):d[3][0][1][0][0])}
+function goProject(cur,id){const keep=KEEP_ON_SWITCH.includes(cur);const ex=PROJECT_EXTRA[id];go(keep&&!(ex&&(cur==="project"||cur==="project-settings"))?cur+"/"+id:ex?ex.studio[0]+"/"+id:"project/"+id)}
+function openProjectMenu(e){const cur=location.hash.replace(/^#\/?/,"").split("/")[0];const ids=[...PROJECTS.map(x=>x.id),...Object.keys(PROJECT_EXTRA)];
+  document.getElementById("projMenu").innerHTML=`<small>切换项目</small>${ids.map(id=>`<button onclick="document.getElementById('projMenu').classList.remove('open');goProject('${cur}','${id}')">${I("folder")}<span style="flex:1;text-align:left">${projectName(id)}</span>${(CURPROJ||"p1")===id?I("check"):""}</button>`).join("")}<div class="sep" style="margin:6px 0"></div><button onclick="document.getElementById('projMenu').classList.remove('open');(window.newProjectWizard||(()=>toast('新建项目')))()">${I("plus")}<span style="flex:1;text-align:left">新建项目</span></button>`;
+  icons();toggleMenu(e,"projMenu")}
 const NAVPARENT={workitem:"work",session:"executions",project:"projects"};
 const TITLES={overview:"总览",inbox:"我的裁决",intakes:"来件",projects:"项目组合",project:"项目概览",work:"任务",workitem:"任务详情",review:"评审台",executions:"执行",session:"交互会话",deliveries:"交付",channels:"频道",members:"成员与 Agent",machines:"机器",knowledge:"知识库",policy:"授权与策略",audit:"审计",gateway:"API 网关",portal:"甲方门户"};
 function renderSide(cur,arg){
-  const ctx=contextOf(cur,arg),dom=ctx.dom,D=DOMAINS.find(d=>d[0]===dom);
-  if(ctx.proj)CURPROJ=ctx.proj;else if(dom==="projects")CURPROJ=null;
+  const ctx=contextOf(cur,arg),dom=ctx.dom,D=dom==="profile"?PROFILE:DOMAINS.find(d=>d[0]===dom);
+  if(ctx.proj)CURPROJ=ctx.proj;
   LASTSUB[dom]=location.hash.replace(/^#\/?/,"")||"overview";
-  const groups=ctx.proj?projectNav(ctx.proj):dom==="projects"?[...D[3],["我的项目",[...PROJECTS.map(x=>["project/"+x.id,"folder",x.name.split(" ")[0]]),...Object.keys(PROJECT_EXTRA).map(id=>[PROJECT_EXTRA[id].studio[0]+"/"+id,"folder",PROJECT_EXTRA[id].name])]]]:D[3];
+  const groups=ctx.proj?projectNav(ctx.proj):D[3];
   const keys=groups.flatMap(g=>g[1]).map(it=>navKey(it[0]));
   const act=ctx.proj?navItemOf(cur,keys):navItemOf(cur);
   const chat=chatUnread();
-  const tab=d=>`<a href="#/${domainHome(d)}" class="${d[0]===dom?"on":""}">${I(d[2])}<span>${d[1]}</span>${d[0]==="home"?`<span class="cnt">${INBOX.length}</span>`:""}${d[0]==="chat"&&chat.n?`<span class="cnt chat${chat.at?" at":""}">${chat.at?"@ ":""}${chat.n}</span>`:""}${d[0]==="projects"&&CURPROJ?`<span class="proj-chip">${projectName(CURPROJ).split(" ")[0]}</span><span class="proj-switch" role="button" aria-label="切换项目" onclick="event.preventDefault();event.stopPropagation();switchProject()">${I("chevron-down")}</span>`:""}</a>`;
+  const tab=d=>`<a href="#/${domainHome(d)}" class="${d[0]===dom?"on":""}">${I(d[2])}<span>${d[1]}</span>${d[0]==="home"?`<span class="cnt">${INBOX.length}</span>`:""}${d[0]==="chat"&&chat.n?`<span class="cnt chat${chat.at?" at":""}">${chat.at?"@ ":""}${chat.n}</span>`:""}</a>`;
   document.getElementById("topnav").innerHTML=DOMAINS.map(tab).join("");
   document.getElementById("wsName").textContent=TEAM.name;
+  document.getElementById("projSelect").innerHTML=`${I("folder")}<span>${projectName(CURPROJ||"p1")}</span>${I("chevron-down")}`;
   const items=groups.map(([g,its])=>(g?`<div class="nav-group">${g}</div>`:"")+its.map(([k,ic,t,c])=>`<a href="#/${k}" class="${navKey(k)===act?"on":""}">${I(ic)}<span>${t}</span>${c?(typeof c==="number"?`<span class="cnt">${c}</span>`:`<span class="tag">${c}</span>`):""}</a>`).join("")).join("");
-  const head=ctx.proj?`<div class="ws" onclick="switchProject()"><div class="ava">${I("folder")}</div><div class="grow"><b style="font-size:13px">${projectName(ctx.proj)}</b><div class="muted xs">项目空间 · 切换项目</div></div>${I("chevrons-up-down")}</div><a class="muted small" style="padding:0 10px 6px;display:flex;gap:6px;align-items:center" href="#/projects">${I("arrow-left")}返回项目组合</a>`
+  const head=ctx.proj?`<div class="side-title">${projectName(ctx.proj)}</div>`
     :dom==="chat"?`<div class="side-title">会话</div><div class="muted small" style="padding:0 10px 8px">频道、私信与执行会话在会话页左栏。</div><nav class="nav"><a href="#/chat" class="on">${I("messages-square")}<span>打开会话</span></a></nav>`
     :`<div class="side-title">${D[1]}</div>`;
-  document.getElementById("side").innerHTML=`<div class="side-domains">${DOMAINS.map(tab).join("")}</div>${head}<nav class="nav">${items}</nav>
-  <a class="side-foot" href="#/portal"><div class="row">${I("external-link")}<b style="color:var(--fg)">预览甲方门户</b></div><div style="margin-top:4px">甲方 = 需求开口：提交、澄清、验收</div></a>`;
-  document.getElementById("tabbar").innerHTML=[["overview","layout-dashboard","工作台","home"],["chat","messages-square","会话","chat"],[domainHome(DOMAINS[2]),"folder-kanban","项目","projects"],["inbox","gavel","裁决",""]].map(([k,ic,t,d])=>`<a href="#/${k}" class="${(d?d===dom&&cur!=="inbox":cur==="inbox")?"on":""}">${I(ic)}<span>${t}</span>${k==="inbox"?`<span class="dot">${INBOX.length}</span>`:k==="chat"&&chat.n?`<span class="dot">${chat.n}</span>`:""}</a>`).join("");
+  document.getElementById("side").innerHTML=`<div class="side-domains">${DOMAINS.map(tab).join("")}</div>${head}<nav class="nav">${items}</nav>`;
+  document.getElementById("tabbar").innerHTML=[["overview","layout-dashboard","工作台","home"],["chat","messages-square","会话","chat"],[domainHome(DOMAINS[2]),"kanban-square","协作","projects"],["inbox","gavel","裁决",""]].map(([k,ic,t,d])=>`<a href="#/${k}" class="${(d?d===dom&&cur!=="inbox":cur==="inbox")?"on":""}">${I(ic)}<span>${t}</span>${k==="inbox"?`<span class="dot">${INBOX.length}</span>`:k==="chat"&&chat.n?`<span class="dot">${chat.n}</span>`:""}</a>`).join("");
   document.getElementById("bellDot").textContent=NOTICES.filter(x=>!x.read).length||"";
   document.getElementById("inboxDot").textContent=INBOX.length;
   document.getElementById("inboxSr").textContent=INBOX.length+" 项待你裁决";
@@ -501,7 +514,7 @@ function closeModal(){document.getElementById("overlay").classList.remove("open"
 function openDrawer(html){const d=document.getElementById("drawer");d.innerHTML=html;d.classList.add("open");icons()}
 function closeDrawer(){document.getElementById("drawer").classList.remove("open")}
 function toast(t,ic="check"){const el=document.getElementById("toast");el.innerHTML=I(ic)+t;el.classList.add("show");icons();clearTimeout(window._tt);window._tt=setTimeout(()=>el.classList.remove("show"),2600)}
-function toggleMenu(e,id){e.stopPropagation();const m=document.getElementById(id);const r=e.currentTarget.getBoundingClientRect();m.style.top=(r.bottom+8)+"px";m.style.left=Math.min(r.left-180,innerWidth-240)+"px";m.classList.toggle("open")}
+function toggleMenu(e,id){e.stopPropagation();const m=document.getElementById(id);const r=e.currentTarget.getBoundingClientRect();m.style.top=(r.bottom+8)+"px";m.style.left=Math.max(8,Math.min(r.left<innerWidth/2?r.left:r.left-180,innerWidth-260))+"px";m.classList.toggle("open")}
 document.addEventListener("click",()=>document.querySelectorAll(".menu.open").forEach(m=>m.classList.remove("open")));
 function setTheme(t){document.documentElement.dataset.theme=t;try{localStorage.setItem("myr-theme",t)}catch(e){}toast("主题："+t,"palette")}
 function toggleDark(){const d=document.documentElement.classList.toggle("dark");try{localStorage.setItem("myr-dark",d?"1":"0")}catch(e){}}
@@ -583,18 +596,21 @@ PAGES.work=()=>head("交付","工作项","看板列受状态机约束：Agent �
  `<div class="kanban">${COLS.map(([k,t,sts])=>{const items=WI.filter(w=>sts.includes(w.s));return `<div class="col"><div class="col-h">${t}<span class="badge">${items.length}</span></div>${items.map(w=>`<div class="wi" onclick="go('workitem/${w.id}')"><div class="row"><span class="mono muted xs">${w.id}</span><span style="margin-left:auto">${ladder(w.l)}</span></div><div class="t">${w.t}</div><div class="row">${w.who?A(w.who):""}<span class="badge">${w.type}</span>${w.risk==="HIGH"?S("EXECUTION_FAILED","HIGH"):""}${w.br>1?`<span class="badge b-primary">${I("git-branch")}${w.br}</span>`:""}<span style="margin-left:auto">${S(w.s)}</span></div>${w.block?`<div class="note" style="margin-top:8px;font-size:12px">${I("circle-slash")}${w.block}</div>`:""}</div>`).join("")||`<div class="empty xs">暂无</div>`}</div>`}).join("")}</div>`;
 
 PAGES.workitem=(id)=>{const w=WI.find(x=>x.id===id)||WI[0];
- return head(w.id+" · "+w.type,w.t,`账单中心 · <a href=\"#/requirement/R-12\" style=\"text-decoration:underline\">R-12 v4</a> · 风险 ${w.risk} · 累计成本 ${money(w.cost)}`,`${S(w.s)}<button class="btn" onclick="go('readiness/'+'${w.id}')">${I("list-checks")}就绪检查</button><button class="btn" onclick="go('internal-qa/'+'${w.id}')">${I("shield-check")}内部验收</button><button class="btn" onclick="go('workspace/EX-9080')">${I("monitor-play")}远程预览</button><button class="btn" style="color:var(--danger)" onclick="(window.qaAndon||(()=>toast('停线')))('${w.id}')">${I("octagon-pause")}停线</button><button class="btn" onclick="go('review')">${I("scale")}去评审台</button>`)+
+ return head(w.id+" · "+w.type,w.t,`账单中心 · <a href=\"#/requirement/R-12\" style=\"text-decoration:underline\">R-12 v4</a> · 风险 ${w.risk} · 累计成本 ${money(w.cost)}`,`${S(w.s)}<button class="btn" style="color:var(--danger)" onclick="(window.qaAndon||(()=>toast('停线')))('${w.id}')">${I("octagon-pause")}停线</button><button class="btn" onclick="go('review')">${I("scale")}去评审台</button>`)+
  `<div style="margin-bottom:16px">${ladderBig(w.l)}</div>
- <div class="tabs" role="tablist">${["执行分支","验收标准 ↔ 证据","验证","裁决与审计"].map((t,i)=>`<button class="${i?"":"on"}" onclick="wiTab(this,${i})">${t}</button>`).join("")}</div>
- <div id="wiTab">${branchTree()}</div>`};
+ <div class="tabs" role="tablist">${WI_TABS.map((t,i)=>`<button class="${i===(WITAB[w.id]||0)?"on":""}" onclick="WITAB['${w.id}']=${i};route()">${t}</button>`).join("")}</div>
+ <div id="wiTab">${wiTabBody(w.id,WITAB[w.id]||0)}</div>`};
+/* Readiness, plan review and internal QA render inside the task detail (their own page header removed). */
+const WI_TABS=["执行分支","验收标准 ↔ 证据","验证","就绪检查","计划审批","内部验收","裁决与审计"],WITAB={};
+const QA_PAGES={};
+function qaEmbed(key,id){const t=document.createElement("template");t.innerHTML=QA_PAGES[key](id);const h=t.content.querySelector(".page-head");h&&h.remove();return t.innerHTML}
+function wiTabBody(id,i){return [()=>branchTree(),()=>coverage(),()=>verifs(),()=>qaEmbed("readiness",id),()=>qaEmbed("plan-review",id),()=>qaEmbed("internal-qa",id),()=>auditTimeline()][i]()}
 function ladderBig(l){const L=[["L1","Agent 声明完成","circle-check","执行者提交声明 + 证据"],["L2","验证通过","shield-check","自动 / AI 辅助（记版本）"],["L3","团队已接受","badge-check","有裁决权的主体"],["L4","甲方已验收","stamp","需求开口回执"]];return `<div class="ladder-big">${L.map(([k,t,ic,d],i)=>`<div class="${i<l?"done":i===l?"cur":""}"><b>${I(ic)}${k} ${t}</b><span class="xs">${i<l?"已完成":i===l?"当前":d}</span></div>`).join("")}</div>`}
 function branchTree(){return `<div class="grid g12"><div class="c8">${card("执行分支树",`<div class="branch">
  <div class="bnode"><div class="row"><b>#1 · 初始</b>${S("SUCCEEDED")}<span class="muted xs" style="margin-left:auto">Ada · studio-mini · Claude Code Opus · $1.24</span></div><div class="muted xs">声明后被 Morgan 拒绝：需求偏差 · 「导出列顺序应按甲方模板」</div></div>
- <div class="branch"><div class="bnode cur"><div class="row"><b>#2 · 质量返工 1</b>${S("SUCCEEDED")}<span class="muted xs" style="margin-left:auto">Ada · $2.18</span></div><div class="muted xs">注入：结构化反馈 [F1]、知识 [K3]「甲方模板列顺序」；产出声明 → 验证 4/4 通过 → 待裁决</div></div></div>
+ <div class="branch"><div class="bnode cur"><div class="row"><b>#2 · 质量返工 1</b>${S("SUCCEEDED")}<span class="muted xs" style="margin-left:auto">Ada · $2.18</span><a class="btn sm ghost" href="#/workspace/EX-9080">${I("monitor-play")}远程工作区</a></div><div class="muted xs">注入：结构化反馈 [F1]、知识 [K3]「甲方模板列顺序」；产出声明 → 验证 4/4 通过 → 待裁决</div></div></div>
  </div><div class="sep"></div><div class="row muted small">${I("info")}返工产生子执行，旧产物与证据保留，不被覆盖；同一工作项第 3 次质量返工会自动暂停并升级给人。</div>`,{icon:"git-branch",right:`<a class="btn sm ghost" href="#/heavy/BIL-139">${I("columns-3")}Heavy 对比示例</a>`})}</div>
  <div class="c4">${card("分派",`<div class="stack"><div class="row">${who("ada")}<span class="badge b-info" style="margin-left:auto">执行者</span></div><div class="muted xs">派单：主管 Agent Atlas 提案（82.6 分：技能 0.9 · 首次验收 0.78 · 负载 0.67），Morgan 确认</div><div class="sep"></div><div class="row">${who("morgan")}<span class="badge b-warn" style="margin-left:auto">裁决人</span></div></div>`,{icon:"user-check"})}</div></div>`}
-function wiTab(btn,i){btn.parentNode.querySelectorAll("button").forEach(b=>b.classList.remove("on"));btn.classList.add("on");
- document.getElementById("wiTab").innerHTML=[branchTree(),coverage(),verifs(),auditTimeline()][i];icons()}
 function coverage(){return card("验收标准 ↔ 证据（覆盖 3/3）",`<table><thead><tr><th>验收标准</th><th>证据</th><th>状态</th></tr></thead><tbody>${[["导出文件为 UTF-8 CSV，含表头","测试报告 test_export_csv · 截图 #2","COVERED"],["列顺序与甲方模板一致","测试报告 test_column_order","COVERED"],["10 万行导出 < 30 秒","性能日志 perf-run-17（AI 辅助判定：参考）","COVERED"]].map(r=>`<tr><td>${r[0]}</td><td class="small">${r[1]}</td><td>${S("PASSED","已覆盖")}</td></tr>`).join("")}</tbody></table>`,{pad:0})}
 function verifs(){return card("验证",`<table><thead><tr><th>验证器</th><th>层级</th><th>版本</th><th>结果</th><th>耗时</th></tr></thead><tbody>${[["go test ./billing/...","自动化","v3","PASSED","41s"],["golangci-lint","自动化","v2","PASSED","12s"],["CSV 契约校验","自动化","v1","PASSED","3s"],["需求比对（Cy）","AI 辅助 · 仅参考","v1","PASSED","58s"]].map(r=>`<tr><td class="mono">${r[0]}</td><td>${r[1]}</td><td class="mono">${r[2]}</td><td>${S(r[3])}</td><td>${r[4]}</td></tr>`).join("")}</tbody></table>`,{pad:0})}
 function auditTimeline(){return card("裁决与审计（哈希链）",`<div class="stack small">${[["morgan","REJECT · QUALITY_REJECTION","来源 ROLE:delivery_lead · 理由：导出列顺序应按甲方模板 · 证据 EV-311, EV-312","昨天 18:20"],["lead","ASSIGN → Ada","来源 POLICY:proposal-8842 · Morgan 确认","昨天 09:02"],["ada","CLAIM（L1）","证据 5 条 · head 9f3c2a1","今天 07:41"]].map(([k,a,d,t])=>`<div class="row" style="align-items:flex-start">${A(k)}<div class="grow"><b>${a}</b><div class="muted xs">${d}</div></div><span class="muted xs">${t}</span></div>`).join("")}<div class="note ok">${I("link-2")}<span>链完整 · event_hash 0x7a91…e04c · 可导出</span></div></div>`)}
@@ -814,12 +830,18 @@ PAGES.portal=()=>`<div class="portal-wrap">
 <script src="prototype/pages-templates.js"></script>
 <script src="prototype/pages-yunxiao.js"></script>
 <script src="prototype/pages-change.js"></script>
+<script src="prototype/pages-media.js"></script>
 <script src="prototype/pages-chat.js"></script>
 <script src="prototype/pages-lists.js"></script>
 <script src="prototype/pages-remote.js"></script>
 <script src="prototype/pages-agentops.js"></script>
 <script src="prototype/pages-tools.js"></script>
-<script>Object.assign(NAVPARENT,{requirement:"requirements",defect:"defects","review-sheet":"requirements",dispatch:"project",workspace:"executions","project-settings":"project"});
+<script src="prototype/pages-engage.js"></script>
+<script src="prototype/pages-engage-team.js"></script>
+<script src="prototype/pages-previews.js"></script>
+<script>["readiness","plan-review","internal-qa"].forEach((k,n)=>{QA_PAGES[k]=PAGES[k];PAGES[k]=id=>{id=id||"BIL-142";WITAB[id]=3+n;setTimeout(()=>location.replace("#/workitem/"+id),0);return ""}});
+PAGES.projects=()=>{setTimeout(()=>location.replace("#/project/"+(CURPROJ||"p1")),0);return ""};
+Object.assign(NAVPARENT,{workspace:"previews",intakes:"engagements",engagement:"engagements",requirement:"requirements",defect:"defects","review-sheet":"requirements",dispatch:"project",workspace:"executions","project-settings":"project"});
 TITLES["project-settings"]="项目设置";PAGES["project-settings"]=id=>{setTimeout(()=>{const b=[...document.querySelectorAll("#view .tabs button")].find(x=>x.textContent.trim()==="设置");b&&b.click()},0);return PAGES.project(id)};
 route();</script>
 </body>

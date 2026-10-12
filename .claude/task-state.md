@@ -107,7 +107,12 @@
   Page Reader tool (general, C:/Users/Feather/tools/page-reader, no token, paired with Chrome profile Fan): Raft read
   logged in, findings in research section 6. Receiver not running now (start: python page_reader.py serve).
   01 portal client comments DONE (spec + portal-accept prototype, no internal info leaks verified).
-  Next: user reviews the prototype. Do not start implementation.
+  ACTIVE D121 (client engagement conversation-first; user: 对接优化, internal flow flexible, show prototype first):
+  RUNNING two codex jobs: prototype/pages-engage.js (client portal: portal three-pane conversation, portal-baseline/BL-7,
+  portal-progress; portal-submit/clarify redirect) and prototype/pages-engage-team.js (engagements list, engagement/T1
+  workspace). Main file done: nav 项目 › 甲方对接 (engagements) replaces 来件; NAVPARENT.intakes=engagements; script tags.
+  Next: verify both (check, LF/BOM, crawl, no internal leaks on portal pages, screenshots), commit, push, ask user to
+  review; specs 01 (major) / 02 / 05 / 07 / 08 / 10 + PRD after the user's review.
   Do not start implementation.
   Proposal for user (not applied): spec 03 visual verifier needs tool calibration with known-good/bad sample pages.
 - RESEARCH DONE: docs/myrmidon/research/2026-10-collaboration-research.md (4 tracks synthesized, gap analysis, P0/P1/P2 upgrade,

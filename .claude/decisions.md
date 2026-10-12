@@ -4605,3 +4605,69 @@ cap pauses immediately. 01 portal endpoints for client anchored comments added (
 07 / 03 / 00); signatory contacts only may comment; a contact sees all client threads on a delivery they can see.
 
 Status: Accepted (decided under the user's delegation; reversible before implementation starts).
+
+## D121 - Client Engagement Is Conversation-First (2026-10-12)
+
+Decision (user: 「ok 主要是对接优化，内部反正都是动态的灵活的，按具体需求业务场景来的。更新原型给我看下」 on the proposal):
+- The client side becomes one 「对接会话」 per client account, with a thread per requirement topic, linked to the project
+  after conversion. Waterfall (SOW / requirement document with phases and milestones), checklist (list / spreadsheet)
+  and conversational styles all live in it; an intake Agent turns each into a structured requirement draft.
+- The source of truth is the 「需求确认单」 (items, acceptance criteria, priority, milestones, out of scope), signed off by
+  the client as the baseline; the conversation is not. Waterfall and checklist need sign-off before work starts; small
+  conversational requests may take a fast lane judged by tolerance, with a confirmation notice to the client.
+- The 乙方 assigns an 「对接组」: an accountable human 对接人 + an intake Agent (+ domain Agents). Agents draft, summarise,
+  ask and report; scope, dates, price and commitments are human only. Outgoing Agent messages need human approval by
+  default; a team may allow Agents to answer factual / progress questions on their own. The team has an internal side
+  thread the client never sees.
+- Clarification, change (D117), milestone progress (drafted by an Agent, approved by a human; ties to D111 reports) and
+  delivery / acceptance (with D120 anchored comments) appear as structured cards in the conversation.
+- After conversion the internal flow (requirement → goals / KR drafted by an Agent and confirmed by a human → plan →
+  tasks → execution → quality gates → acceptance → delivery) stays flexible per project and scenario; the client sees it
+  at milestone level only. Channels: portal, email (thread = conversation thread), API; IM connectors v2.
+
+Reason: clients work in different styles; a single conversational container absorbs them and keeps one traceable
+baseline, while commitments stay with an accountable human.
+
+Scope: prototype first (client portal + team engagement workspace); specs 01 (major), 02 / 05 / 07 / 08 / 10, PRD after
+the user reviews the prototype.
+
+Status: Accepted.
+
+## D122 - Rich Media, Voice and Web Search in Conversations (2026-10-12)
+
+Decision (user: 「会话要支持各种图片视频 word pdf 文件 markdown 语音等等等，还有联网搜索等等？」; design proposed and adopted
+under the user's standing delegation, reversible before implementation):
+- Applies to the client portal conversation (D121), the team engagement workspace (D121) and the team 会话 space (D118).
+- Messages carry attachments with inline viewers: images (gallery, zoom), video (player, seek), PDF (paged), Word / Excel /
+  PowerPoint (server-side converted preview, original downloadable), Markdown (rendered), code blocks (highlighted),
+  other files as file cards. Drag-and-drop, paste, multi-upload with progress; malware scan and size limits on upload.
+- Voice messages: hold to record; transcribed to editable text (machine tool such as whisperx per 04, or a platform
+  transcription service); clients may speak requirements in the portal.
+- Agents read attachments (text extraction, OCR, transcription) to build requirement drafts; anchored comments (D120)
+  work on attachments.
+- Web search is an Agent tool from the D120 team tool catalog (granted per project / role, default off). Results appear as
+  a search-result card; every claim carries source links. Queries exclude client-confidential content (project / client
+  names, internal data) unless a human explicitly allows it; every search is audited. Clients do not search in the
+  portal; Agent answers may cite search results with sources, and commitments still follow D121 (human only).
+
+Scope: prototype (shared media components used by portal, engagement workspace and 会话), then specs 01 / 05 / 03 / 09 /
+08 / 00 and PRD with the D121 spec pass.
+
+Status: Accepted.
+
+## D123 - 协作 Is Always One Project; Project Selector Next to the Logo; Previews Have a Home (2026-10-12)
+
+Decision (user, 2026-10-12): 「顶部的项目菜单改为协作，项目切换器单独一个选择器放到左上角 logo 右侧下拉查看和切换，协作里面
+不展示我的项目列表菜单」; 「先不做项目组合和全部项目视图吧」; and, asking where live previews are, the answer adopted here:
+- Top bar: 工作台 · 会话 · 协作 · 团队 · 治理 (协作 replaces 项目). A project selector sits right of the logo; it always shows
+  one project (the last used, default the first) and lists projects plus 〔新建项目〕. No 「全部项目」 option.
+- 协作 is always the selected project's space; the portfolio, cross-project lists and 交付总览 are dropped for now. Old
+  team-level routes (projects, work, requirements, defects, pipelines, deliveries, engagements, intakes) open the
+  current project's page. 甲方对接 moves into the project space top group. Team goals stay under 团队 › 目标树.
+- Work-item detail pages open in the item's own project, regardless of the selected one.
+- Project space › 交付 gains 「预览与产物」 (`previews/<project>`): running local services (web / API) and deliverables by
+  task (web, API, video, documents, source, files, novel), each opening the remote workspace (D119) viewer.
+Supersedes the corresponding parts of D118 (project-first revision). Specs (PRD §12, 08 §8.6, 09 MenuDomain label) to be
+updated with the D121 spec pass.
+
+Status: Accepted.
