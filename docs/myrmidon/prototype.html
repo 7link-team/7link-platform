@@ -404,8 +404,8 @@ const DOMAINS=[
   ["home","工作台","layout-dashboard",[["",[["overview","layout-dashboard","总览"],["inbox","gavel","我的裁决",INBOX.length],["my-work","list-todo","我的任务"],["plans","calendar-check","我的计划"]]]]],
   ["chat","会话","messages-square",[]],
   ["projects","项目","folder-kanban",[["",[["projects","folder-kanban","项目组合"],["intakes","inbox","来件",2],["deliveries","package-check","交付总览"]]],["跨项目",[["requirements","file-text","需求"],["work","kanban-square","任务"],["defects","bug","缺陷"],["pipelines","workflow","流水线"]]]]],
-  ["team","团队","users-round",[["目标与报告",[["goals","target","目标树"],["reports","file-chart-column","报告中心"]]],["团队资产",[["members","users-round","成员与 Agent"],["machines","server","机器"],["knowledge","library-big","知识库"],["templates","layout-template","模板库"]]]]],
-  ["gov","治理","shield-half",[["策略",[["policy","shield-half","授权与策略"],["workflow-config","git-branch","流转配置"]]],["连接",[["integration","plug","集成"],["intake-channels","radio-tower","需求开口"],["gateway","plug-zap","API 网关","实验"]]],["记录",[["audit","scroll-text","审计"]]]]]
+  ["team","团队","users-round",[["目标与报告",[["goals","target","目标树"],["reports","file-chart-column","报告中心"]]],["团队资产",[["members","users-round","成员与 Agent"],["machines","server","机器"],["knowledge","library-big","知识库"],["tool-catalog","wrench","工具与技能"],["templates","layout-template","模板库"]]]]],
+  ["gov","治理","shield-half",[["策略",[["policy","shield-half","授权与策略"],["workflow-config","git-branch","流转配置"],["agent-ops","list-tree","Agent 操作清单"]]],["连接",[["integration","plug","集成"],["intake-channels","radio-tower","需求开口"],["gateway","plug-zap","API 网关","实验"]]],["记录",[["audit","scroll-text","审计"]]]]]
 ];
 /* Project space: the side nav inside one project; every route carries the project id. */
 const PROJECT_EXTRA={p5:{name:"品牌短片",studio:["video-studio","clapperboard","视频工作台"]},p6:{name:"潮汐之城",studio:["novel-studio","book-open","小说工作台"]},p7:{name:"市场活动筹备",studio:["team-tasks","list-checks","团队任务工作台"]}};
@@ -817,6 +817,8 @@ PAGES.portal=()=>`<div class="portal-wrap">
 <script src="prototype/pages-chat.js"></script>
 <script src="prototype/pages-lists.js"></script>
 <script src="prototype/pages-remote.js"></script>
+<script src="prototype/pages-agentops.js"></script>
+<script src="prototype/pages-tools.js"></script>
 <script>Object.assign(NAVPARENT,{requirement:"requirements",defect:"defects","review-sheet":"requirements",dispatch:"project",workspace:"executions","project-settings":"project"});
 TITLES["project-settings"]="项目设置";PAGES["project-settings"]=id=>{setTimeout(()=>{const b=[...document.querySelectorAll("#view .tabs button")].find(x=>x.textContent.trim()==="设置");b&&b.click()},0);return PAGES.project(id)};
 route();</script>
