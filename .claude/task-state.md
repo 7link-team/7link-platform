@@ -107,18 +107,12 @@
   Page Reader tool (general, C:/Users/Feather/tools/page-reader, no token, paired with Chrome profile Fan): Raft read
   logged in, findings in research section 6. Receiver not running now (start: python page_reader.py serve).
   01 portal client comments DONE (spec + portal-accept prototype, no internal info leaks verified).
-  D121-D123 prototype committed (1345cf5). D124 main pass DONE (uncommitted): portal / intakes / engagements / old channels
-  page / portfolio removed, all alias routes + redirects removed (0 location.replace), LASTSUB removed, VIEWER client mode
-  (avatar menu 以甲方身份预览; client top bar 待办/会话/协作; clientProjectNav; CLIENT_ALLOWED guard; CLIENT_PAGES wrapper),
-  project nav 需求 = 需求确认单/需求/变更/问题反馈 + per-project channel + 甲方共享频道, task detail tabs incl. readiness /
-  plan review / internal QA (openWorkItem), machine remote access tab (openMachine), work/executions/deliveries per
-  project, header buttons duplicating side nav removed, dead intake code removed from pages-exec.js, portal code removed
-  from pages-governance.js, pages-engage*.js deleted; pages-client.js, pages-baseline.js, pages-project.js (overview +
-  real settings) added by codex. RUNNING codex: project param + no 全部项目 in lists/yunxiao/quality, per-project chat
-  channels, client filter in chat. Audits DONE (old MyrmidonAI, docx, PRD/specs vs prototype, user requests).
-  Next: verify (check, crawl, pseudo-menu, redirects, client leak, screenshots), commit, push; write
-  docs/myrmidon/research/2026-10-requirements-audit.md (gap list + decisions needed: visual workflow D125, MVP re-scope,
-  tech review gate, pilot plan, metrics, specs/PRD sync for D121-D124, missing page specs), report to user.
+  D124 prototype DONE + pushed (2b09160): client = external member (VIEWER client view, 以甲方身份预览), portal / intakes /
+  engagements / portfolio / alias routes / redirects removed, task tabs, machine access tab, per-project lists and channels,
+  project overview + real settings. Verified: crawl 325 pages 0 broken 0 errors, 0 pseudo-menus, 0 redirects, client view
+  no leaks (14 routes), screenshots. Gap list: docs/myrmidon/research/2026-10-requirements-audit.md (A old design incl.
+  visual workflow A1/A2, B docx incl. MVP re-scope, C specs/PRD vs prototype incl. D121-D124 spec rewrite, D user asks).
+  Next: WAIT for user decisions E1-E4 (flow definition + visual editor; MVP re-scope; human override; auto-fix the rest).
   Do not start implementation.
   Proposal for user (not applied): spec 03 visual verifier needs tool calibration with known-good/bad sample pages.
 - RESEARCH DONE: docs/myrmidon/research/2026-10-collaboration-research.md (4 tracks synthesized, gap analysis, P0/P1/P2 upgrade,
