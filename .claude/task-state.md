@@ -61,6 +61,31 @@
   (methodologies+platforms; OSS agent projects + spec-driven/eval practice; domain pipelines video/novel/human). Next: synthesize into
   docs/myrmidon/research/ report + design upgrade proposal (domain template packs + reliability mechanisms) -> show user BEFORE changing specs.
   + 4th research agent on Alibaba 云效 (Projex/Testhub/Flow/Codeup/Insight; user: "原来用阿里云效，多借鉴") -> adopt/adapt/integrate.
+- 2026-10-11 user: (1) A-G all adopted = D112; (2) D113 internal QA gates, no leak to humans/client (tester agent + product acceptance
+  agent must pass before human); (3) .mvp into git -> committed 94fe7b2 (runs/ and *.log ignored; NOT pushed yet).
+  DONE by me: 00 v2.0 §15 (shared defs), PRD §10.10 + roles + HUMAN_ONLY + spec index 11/12, decisions D112/D113.
+  RUNNING: forks upgrading 02 / 03+05 / 07+08+10, new spec 11 (domain templates) and 12 (Yunxiao); codex upgrading .mvp with internal QA
+  (tester + acceptor w/ headless screenshots) -> then rerun 2048 fresh (run-id real-2048-qa) to see if internal QA catches row-height bug.
+  After: prototype pages for D112/D113 (codex), consistency audit, commit + push.
+  2026-10-12: 02 DONE, 03+05 DONE, 11 DONE (717 lines); 07/08/10 and 12 hit 503 -> resumed (07/08 mostly applied, 10 pending; 12 partial 75KB).
+  .mvp QA upgrade DONE (lib/qa.mjs; 39/39 incl. real Edge screenshot test); stray .mvp/.claude removed. Real run real-2048-qa RUNNING.
+  Pending cross-spec items for audit: 04 browser_capture tool + model_family in catalog (no fork owns 04); eval-set interface name
+  mismatch (03 EvalSetWriter.ProposeCase vs 02 TemplateEvalSink vs 11 interfaces); 11 CRs (tenant_id=0 templates, 02 template_stage_key,
+  BlockReason TOOL_/PROVIDER_UNAVAILABLE, 04 tool detection, 7 events, 4 interfaces).
+  2026-10-12 later: leftovers unit DONE (11 provides EvalSetWriter.ProposeCase; 04 tools/capabilities/model_family; 11 CRs in 00;
+  02 BR-02-61 SetSystemBlock). 12 DONE (858 lines). RUNNING: subagent merging CR-12-01..09 into 00/02/08 + D114 (quality.escaped
+  publishers 02/07/12 with escape_key; learning only via 02 escape_learning; 08 keeps record+confirm) + D115 + residual grep sweep.
+  Prototype: pages-quality.js + pages-templates.js DONE & verified (node --check, LF/no BOM, Edge probe 0 errors on 14 routes,
+  screenshots); fixed full-width buttons in both helpers. pages-yunxiao.js codex job still RUNNING.
+  real-2048-qa RUNNING: round1 internal QA rejected W2 (AC7 FAIL: no index.html, BLOCKER) -> internal rework, not leaked to human.
+  DONE later 2026-10-12: CR-12 merged + D114/D115 (+ escape_learning_proposed event, worklog.returned/withdrawn, 主导→主管 in 03/06);
+  pages-yunxiao.js verified (6 routes 0 errors, screenshots). real-2048-qa ended NEEDS_HUMAN: W2 rounds 1-3 (round 2 caught row
+  heights!); found 2 MVP QA bugs -> fixed in .mvp (acceptor judges only item acceptanceRefs + engine guard; screenshots only for
+  item owning the page; <500px viewports via same-size iframe). .mvp tests 41/41 incl real Edge. Research §5.1 written.
+  Commits 9ba538c (docs) + d70b9f2 (.mvp). RUNNING: real-2048-qa2 (fresh run with fixes, log .mvp/run-real-2048-qa2.log).
+  Next: commit .claude + research, push chaosplus; when qa2 ends -> check W1-W4 internal QA outcome, re-run hidden acceptance
+  independently, view final 900/420 screenshots, append result to research §5.1, commit + push, report to user.
+  Proposal for user (not applied): spec 03 visual verifier needs tool calibration with known-good/bad sample pages.
 - RESEARCH DONE: docs/myrmidon/research/2026-10-collaboration-research.md (4 tracks synthesized, gap analysis, P0/P1/P2 upgrade,
   decisions A-G awaiting user; §5 MVP results). Do NOT change specs for the upgrade until user confirms A-G.
 - MVP DONE: .mvp/ (codex-built orchestrator, 17/17 self-tests); real run real-2048: 4 WIs, each 1 attempt, 9.2 min, hidden acceptance

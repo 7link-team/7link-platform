@@ -4298,3 +4298,86 @@ Scope: docs/myrmidon (PRD §10.8, specs 00 v1.8, 03, 05, 08, prototype). No code
 
 Status: accepted.
 
+## D112 - Adopt The Research Upgrade A-G (2026-10-11)
+
+Decision: the product owner accepted all seven recommendations of
+docs/myrmidon/research/2026-10-collaboration-research.md: (A) every work item has an
+accountable human, agents only execute; (B) the readiness gate is hard for agent dispatch and
+advisory for humans; (C) the software template follows Alibaba Yunxiao's work item types,
+defect model and transition conditions; (D) a HUMAN_ONLY team mode where agents only assist;
+(E) first domain templates software / video / novel / team tasks, model-scored thresholds
+marked as needing calibration; (F) Yunxiao import and Codeup / Flow evidence in v1.1, MCP
+read/write in v2; (G) the ten P0 reliability mechanisms enter the MVP.
+
+Scope: specs 00 v2.0 §15, 02, 03, 05, 07, 08, 10, new 11 and 12, PRD §10.10, prototype.
+
+Status: accepted.
+
+## D113 - Internal Quality Gates; Internal Issues Never Reach Humans Or The Client (2026-10-11)
+
+Decision: after an executor claims completion, the platform re-runs deterministic checks, then a
+tester agent and a product acceptance agent check the work; all three must pass (L2 "internal
+acceptance") before any human sees it. Any internal failure returns to the executor with
+structured feedback without notifying humans. Humans are involved only when internal rounds
+(default 5) are exhausted, a requirement conflict is found, the line is stopped, a tolerance
+exception or budget threshold occurs, or the template mandates a human gate. The client sees
+only delivery packages of L3-accepted items. Issues found by humans or the client after internal
+QA passed are recorded as escapes and fed back into the QA agents' memory and the template eval
+set; the escape rate is a core quality metric. The acceptance agent judges the real delivered
+form (run, screenshots, files) and must use a different model family from the executor.
+
+Reason: the product owner wants humans to focus on acceptance; whatever the agent team can fix
+internally must not leak to humans, let alone the client. The 2048 MVP showed automated tests
+alone miss visual defects, which a screenshot-reviewing acceptance agent should catch.
+
+Status: accepted.
+
+## D114 - Escape Events Have Several Publishers But One Learning Executor (2026-10-12)
+
+Decision: `quality.escaped` is published by 02 (HUMAN_REVIEW, at T15 / T26), 07
+(CLIENT_ACCEPTANCE, item-level client rejection) and 12 Part A (defects carrying
+`escaped_from_stage`; Part A lives in the delivery module). All publishers use one
+idempotency key `escape_key = (work_item_id, claim_id or acceptance_id)`; a key is published
+once, and a later publisher (for example a defect created from a rejection that 07 already
+published) only references the existing escape. 03 never publishes. 02
+`delivery.escape_learning` is the only learning executor: it consumes every `quality.escaped`,
+upserts `delivery_escapes` by `escape_key`, proposes EXPERIENCE memory drafts through 06
+`MemoryWriter.Propose` and calls 11 `EvalSetWriter.ProposeCase` (11's existing semantics).
+08 keeps its record table (idempotent on event id), notifications, the "quality escapes" page
+and the human confirm / dismiss step; RECORDED activates the drafts 02 proposed, DISMISSED
+needs a reason and withdraws them (02 acts on `quality.escape_learning_decided`). 08 no longer
+calls MemoryWriter or submits eval cases.
+
+Reason: the specs contradicted each other: 00 named 02 the sole publisher while 07 and 12 also
+published, 05 consumed the event "from 03", and 08 wrote memory and eval drafts itself,
+duplicating 02's claim to be the only learning executor.
+
+Alternatives Considered: 02 as the sole publisher with 07 / 12 calling into 02 (rejected:
+07 and 12 own the client-acceptance and defect facts and already share the delivery module);
+08 as the learning executor (rejected: learning would run outside the delivery transaction
+that knows the internal QA verdicts and template).
+
+Tradeoffs: consumers must tolerate several publishers and dedupe by `escape_key`; activation
+and withdrawal of drafts become an extra 02 consumption of an 08 event.
+
+Scope: specs 00 §7.1 / §14 / §15, 02 BR-02-58 / §3.24 / §7.4, 05 BR-05-113, 07, 08 BR-08-63 /
+AC-08-85, 11, 12 BR-12-14 / BR-12-36. No code.
+
+Follow-ups (main agent, 2026-10-12): after the 08 human confirm/dismiss, 08 publishes
+`quality.escape_learning_decided` and 02 escape_learning activates or withdraws the drafts (accepted). 02 also
+publishes `quality.escape_learning_proposed{escape_key, memory_ids[], eval_case_ref}` so 08 can fill its read-only
+columns. 12 adds `worklog.returned` / `worklog.withdrawn` so the WORKLOG_APPROVAL inbox item can close.
+
+Status: Accepted.
+
+## D115 - Keep WorkItemTransitioner.SetSystemBlock (2026-10-12)
+
+Decision: keep 02 `WorkItemTransitioner.SetSystemBlock` (BR-02-61).
+
+Reason: technically necessary so 11 can set and clear the system block reasons
+TOOL_UNAVAILABLE / PROVIDER_UNAVAILABLE; these reasons must not be set or cleared by hand.
+
+Scope: specs 00 §8, 02 BR-02-61, 11. No code.
+
+Status: Accepted.
+
