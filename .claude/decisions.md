@@ -4277,3 +4277,24 @@ review the prototype first. Reversing any item means editing PRD §18 and this r
 
 Status: accepted.
 
+## D110 - Supervisor Agents May Create Agents Inside A Human-Set Spawn Grant (2026-10-11)
+
+Decision: a supervisor (LEAD) agent may create sub-agents, but only inside a spawn
+grant that the team owner sets (non-delegable, step-up): projects, concurrent head
+count (default 3), daily creations (5), total and per-agent budget ($50 / $15), allowed
+roles (executor, coordinator), machines and models, max effort, lifetime (7 d) and idle
+retirement (48 h), and approval mode (per-request human approval by default; automatic
+only for autonomous projects). Sub-agents cannot be supervisors or spawn (depth 1), stay
+within the supervisor's permissions, skills and MCP, cannot run full-auto, and cannot be
+delegated decision authority until a human adopts them. When the supervisor retires or the
+grant ends they become orphans; a human adopts or retires them (auto-retire after 7 d).
+Every agent records its origin (HUMAN_CREATED / AGENT_SPAWNED, plus adopted / orphan), and
+the UI marks and filters by it and groups sub-agents under their supervisor.
+
+Reason: the product owner wants the team to grow itself where it makes sense, while humans
+keep control of permissions, head count and money, and can always tell who created whom.
+
+Scope: docs/myrmidon (PRD §10.8, specs 00 v1.8, 03, 05, 08, prototype). No code.
+
+Status: accepted.
+

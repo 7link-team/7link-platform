@@ -37,6 +37,9 @@
 - Not done: no 4th re-audit after B1-B4 (fixes grep-verified only). docs/ ignored by user's whitelist .gitignore (not committed, not changed).
 - User (2026-10-11): "docs 都进git" -> .gitignore whitelists /docs, docs committed locally (not pushed); "该有的就有" -> all PRD §18
   Q1-Q11 + spec §12 open questions adopt recommendations (decisions D109, PRD §18 note, 00 v1.7); "先不开工，等我过完原型再说".
+- D110 (user: supervisor agents create agents; humans set permissions/quota/budget; UI marks human- vs AI-created): DONE in PRD §10.8,
+  00 v1.8, 03 (cost event agent_id), 05 (origin/lineage, spawn requests, orphan/adopt), 08 (spawn grants, policy rule, inbox), prototype
+  (members source filter + supervisor tree, lineage drawer, spawn approval, grant dialog, policy section, channel card); runtime-tested; commit f0a1fa8.
 - Next: WAIT for user's prototype review feedback (docs/myrmidon/prototype.html). Do not start implementation until told.
   Next: when back -> verification grep pass (dispatch.applied consumers, BudgetGuard, idempotency tables, PENDING_CONFIRM, 176409/176425,
   stream_seq in 03, /pause, /drain, intakes table) + spot re-audit; then prototype.html.
