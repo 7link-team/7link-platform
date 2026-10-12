@@ -800,7 +800,7 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 
 ## 8. 页面规格
 
-团队页面位于 `apps/delivery`，外壳复用 IAM 应用（侧栏「交付 → 来件」；「团队 → 开口设置」）。组件：`@workspace/ui` 的 `crud/common-table`、`auto-form`、`tabs`、`sheet`、`dialog`、`badge`、`skeleton`、`pickers/file-input`、`pickers/date-picker`，以及 00 §10 共享组件 `StateBadge`、`ActorAvatar`、`CountdownRing`、`AuthorityNote`。**通用状态**：加载 = 骨架屏；空 = 说明 + 下一步按钮；错误 = 文案 + 错误码 + 〔重试〕；无权限 = 「需要权限 `<code>`，请联系团队所有者」；离线 = 顶部琥珀条「连接已断开，正在重连…」，命令按钮全部禁用，已加载数据保留。
+团队页面位于 `apps/delivery`，外壳复用 IAM 应用（侧栏「项目 › 来件」（项目外，团队级）；「治理 › 连接 › 需求开口」，08 §8.6）。组件：`@workspace/ui` 的 `crud/common-table`、`auto-form`、`tabs`、`sheet`、`dialog`、`badge`、`skeleton`、`pickers/file-input`、`pickers/date-picker`，以及 00 §10 共享组件 `StateBadge`、`ActorAvatar`、`CountdownRing`、`AuthorityNote`。**通用状态**：加载 = 骨架屏；空 = 说明 + 下一步按钮；错误 = 文案 + 错误码 + 〔重试〕；无权限 = 「需要权限 `<code>`，请联系团队所有者」；离线 = 顶部琥珀条「连接已断开，正在重连…」，命令按钮全部禁用，已加载数据保留。
 
 ### 8.1 来件列表 `/t/:tenantID/intakes`
 

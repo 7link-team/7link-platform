@@ -690,7 +690,7 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 
 ## 8. 页面规格
 
-路由前缀 `/t/:tenantID`；侧栏新增分组「目标与报告」：目标（`/goals`）、我的计划（`/plans`）、报告（`/reports`），菜单经 09 C6 贡献（权限 `goal_read` / `plan_submit` / `report_read`）。
+路由前缀 `/t/:tenantID`；菜单经 09 C6 贡献（08 §8.6，D118 修订）：团队 › 目标树（`/goals`，`goal_read`）与报告中心（`/reports`，`report_read`）、工作台 › 我的计划（`/plans/me`，`plan_submit`）、项目空间 › 规划 › 目标（`/p/:projectID/goals`，同 §8.1 页面固定为本项目的 PROJECT 目标子树，`goal_read`）。
 
 ### 8.1 目标树 `/goals`
 

@@ -15,12 +15,14 @@
 | 机器端程序（下称「机器程序」，CLI 名 `machine-runner`，见 BR-04-01）的分发、安装命令、本地 profile 与凭据存储 | Agent 成员、生命周期、派单 → **05** |
 | 基于底座 OAuth 设备码的接入：发码、附加机器信息、控制台确认/拒绝、过期、机器端撤回、签发机器服务账号凭证 | 执行生命周期、执行租约、`dispatch_epoch`、执行级命令/事件载荷、工作目录写锁 → **03** |
 | 机器凭证轮换（24 h 宽限）与吊销（立即断开） | 项目仓库定义（`delivery_project_repositories`）→ **07** |
-| 机器通道传输：会话、连接代次 `conn_epoch`、长轮询/短轮询、消息信封、认证头、心跳；v1.1 WebSocket 升级 | 后台任务队列、outbox、SSE、通知渠道 → **09** |
+| 机器通道传输：会话、连接代次 `conn_epoch`、长轮询/短轮询、消息信封、认证头、心跳；WebSocket 通道（原 v1.1，D119 起 MVP） | 后台任务队列、outbox、SSE、通知渠道 → **09** |
 | `MachineState` 状态机、心跳阈值、离线判定、排空（DRAINING） | 权限目录与矩阵、step-up 策略、审计视图 → **08** / 底座 |
 | 运行时检测（版本/路径）、能力检测（Skills / MCP，不调用模型）、模型目录（Claude `supportedModels`、Codex 末次成功缓存、手填模型 ID）与模型单价 | 执行页的换机器交互、carryover 文本拼接 → **03**（本规格只给判定输入） |
 | 执行槽（每机槽数、预留/释放、排队公平性）、放置规则、工作目录登记（机器 × 项目仓库 → 本地路径）、离线迁移判定输入 | 甲方门户、交付 → 01 / 07 |
 | 桌面本地服务（回环静态页 + 代理）与 Desktop 壳（可选客户端） | |
 | API 网关（实验）：配置、密钥显示/轮换、`/v1/models` 与 `/v1/responses` 兼容子集、请求记录 | |
+| **远程访问隧道**（D119）：在机器出站 WebSocket 通道上多路复用预览 / 文件 / 终端流；机器端进程树端口归属校验；工作区路径限定的原始读写流；带宽与并发配额；预览网关（独立预览域名、通配证书、路径模式回退）的部署配置与反向代理 | 预览会话、产物查看器、文件浏览与编辑、终端会话、甲方分享链接的生命周期与权限判定 → **03** |
+| **机器类型**（D119）：WORKSTATION（设备码接入）/ SERVER（无头守护进程，预签发服务账号凭证）/ K8S_POOL（每个执行一个临时 Pod，池伸缩）；每机远程访问开关 允许远程预览 / 允许远程终端 / 允许人工接管后编辑文件 | 权限码、step-up 用途、审计目录与收件箱 → **08** |
 | 页面：机器列表、接入向导、机器详情、API 网关 | 成员与 Agent 页、执行页 → 05 / 03 |
 
 **目标数值**（MVP）：单租户 ≥5 台在线机器、每台 ≤8 执行槽（沿用旧 PRD 容量验收目标；默认 1 槽）；接入从机器端运行命令到控制台「已上线」≤20 s（不含人工输入）；离线判定 ≤35 s；吊销后机器下一次请求即被拒（≤1 s）。
@@ -45,7 +47,15 @@
 | US-04-12 | 作为团队所有者，当机器离线超过 1 分钟时我要收到通知，以便及时处理 | MVP |
 | US-04-13 | 作为团队所有者，我要把一台机器上已登录的 Codex 暴露为 OpenAI 兼容 Responses API（实验），查看/轮换密钥并看最近请求 | MVP（实验） |
 | US-04-14 | 作为工程师，我要在本机通过回环页面查看机器程序状态并用桌面托盘管理它 | v1.1 |
-| US-04-15 | 作为运维，我要机器通道在支持的网络上升级为 WebSocket，降低轮询开销 | v1.1 |
+| US-04-15 | 作为运维，我要机器通道在支持的网络上升级为 WebSocket，降低轮询开销 | v1.1 → MVP（D119） |
+| US-04-16 | 作为工程师，我要在手机或浏览器里打开 Agent 正在开发的网页 / API，而机器不开放任何入站端口，以便随时看进展（D119） | MVP |
+| US-04-17 | 作为运维，我要把一台无界面的服务器以服务账号接入为执行机器，不需要有人坐在它前面输入接入码（D119） | MVP |
+| US-04-18 | 作为运维，我要接入一个 Kubernetes 执行池，每个执行在一个用完即删的 Pod 里运行，并按排队量自动伸缩（D119） | v1.1 |
+| US-04-19 | 作为团队所有者，我要按机器决定是否允许远程预览、远程终端、人工接管后编辑文件，个人电脑默认不开放终端（D119） | MVP（预览开关）/ v1.1（终端与编辑开关） |
+| US-04-20 | 作为团队所有者，我要限制每台机器经隧道的带宽与并发，以免预览拖垮执行（D119） | MVP |
+| US-04-21 | 作为部署管理员，我要用配置给出与控制台不同的预览域名与通配证书；没有通配 DNS 时退回路径模式（D119） | MVP |
+
+> US-04-15 分期变更（D119）：WebSocket 通道作为远程预览 / 文件 / 终端流的承载，随 D119 的 MVP 能力提前到 MVP（BR-04-90）；长轮询仍是控制消息的回退。
 
 ---
 
@@ -346,6 +356,49 @@ Tenant ─┬─ fleet_model_prices（运行时 × 模型单价，供 03 计费�
 
 派生能力标记（不落库，读时计算，BR-04-48）：`browser_capture`、`media_probe`、`media_transcode`、`speech_transcribe`、`scene_detect`。
 
+### 3.15 `fleet_machines` 增补列（D119）
+
+| 列 | 类型 | 空 | 默认 | 约束 / 说明 |
+|---|---|---|---|---|
+| machine_type | ENUM `MachineType` | N | `WORKSTATION` | WORKSTATION / SERVER / K8S_POOL（00 §5）；创建后不可改（422 **140482**） |
+| allow_remote_preview | BOOL | N | true | 允许远程预览（服务预览与产物预览）；关闭时不得为该机器的任何执行开流（BR-04-95） |
+| allow_remote_terminal | BOOL | N | WORKSTATION=false；SERVER / K8S_POOL=true | 允许远程终端（交互式 shell，v1.1）；只读观看不受此开关约束（03 BR-03-124）。**本规格提议**：SERVER / K8S_POOL 默认开启（无个人数据，且有沙箱，BR-04-96） |
+| allow_file_edit | BOOL | N | WORKSTATION=false；SERVER / K8S_POOL=true | 允许人工接管后编辑文件（v1.1）；默认值为**本规格提议**，理由同上 |
+| tunnel_bandwidth_kbps | INT | N | 20000 | 该机经隧道的出站带宽上限（KiB/s 取整为 kbps），范围 1000–1000000（BR-04-97） |
+| tunnel_max_streams | INT | N | 256 | 该机并发流上限，范围 16–4096 |
+| access_version | INT | N | 1 | 远程访问字段变更计数，随 `machine.access_changed` 发布；不参与 `version` 乐观锁以外的语义 |
+| credential_origin | ENUM | N | `DEVICE_CODE` | DEVICE_CODE（WORKSTATION 接入）/ PRE_ISSUED（SERVER、K8S_POOL 预签发，BR-04-99） |
+
+`fleet_machines.enrollment_id` 对 PRE_ISSUED 机器为 NULL（列改为可空；WORKSTATION 仍必填，CHECK `credential_origin='DEVICE_CODE' ⇔ enrollment_id IS NOT NULL`）。`slot_count` 的 CHECK 改为：WORKSTATION / SERVER 1–8；K8S_POOL 1–200（= 池最大 Pod 数，BR-04-100）。
+
+### 3.16 `fleet_pool_configs`（K8S_POOL，每机 1 行，v1.1）
+
+| 列 | 类型 | 空 | 默认 | 约束 / 说明 |
+|---|---|---|---|---|
+| machine_id | ID | N | | PK；机器 `machine_type=K8S_POOL` |
+| namespace | STR(63) | N | | DNS-1123 标签 |
+| pod_template | JSON | N | | 受限 Pod 模板：`{image, image_pull_secret?, cpu_request, cpu_limit, memory_request, memory_limit, ephemeral_storage, node_selector{}, tolerations[], service_account?, env_from_secrets[], git_credentials_secret?}`；**不允许** `hostPath`、`privileged`、`hostNetwork`、`hostPID`（422 **140488**） |
+| min_warm | INT | N | 0 | 预热空闲 Pod 数 0–20 |
+| max_pods | INT | N | 4 | = `fleet_machines.slot_count`，1–200 |
+| scale_down_idle_s | INT | N | 600 | 超出 `min_warm` 的空闲 Pod 存活秒数 60–3600 |
+| pod_start_timeout_s | INT | N | 300 | Pod 就绪超时 60–1800 |
+| version | INT | N | 1 | 乐观锁 |
+
+### 3.17 `fleet_pool_pods`（K8S_POOL 的临时 Pod，v1.1）
+
+| 列 | 类型 | 空 | 默认 | 约束 / 说明 |
+|---|---|---|---|---|
+| id | ID | N | | PK |
+| machine_id | ID | N | | 所属池 |
+| pod_name | STR(253) | N | | 池控制器生成；UNIQUE(`machine_id`,`pod_name`) |
+| state | ENUM `PoolPodState` | N | `REQUESTED` | §4.6 |
+| slot_no | INT | Y | | 绑定的执行槽（BOUND 时） |
+| holder_kind / holder_id | ENUM `SlotHolderKind` / ID | Y | | 绑定的持有者（执行、验证、评审预览等） |
+| requested_at / ready_at / bound_at / terminated_at | TS | Y | | |
+| failure | STR(500) | Y | | 调度失败、镜像拉取失败等摘要（不含密钥） |
+
+索引：(`machine_id`,`state`)；(`state`,`requested_at`)（J9）。终态行保留 7 天后物理删除（Pod 是基础设施记录，不是业务记录，**本规格提议**）。
+
 ---
 
 ## 4. 状态机
@@ -420,6 +473,26 @@ Tenant ─┬─ fleet_model_prices（运行时 × 模型单价，供 03 计费�
 QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED；QUEUED / RUNNING →（客户端断开、操作员取消、轮换密钥、关闭网关、换机器、180 s 到期）CANCELLED / FAILED；机器上报 active 不含某 RUNNING 请求 → FAILED「节点丢失执行，请求未重放」；机器 epoch 变化 → FAILED「节点已重启，请求未重放」（沿用 Preview `gatewayRunner`）。终态不可再迁移（迟到结果忽略）。
 
 ---
+
+### 4.6 `PoolPodState`（K8S_POOL，v1.1）
+
+| # | 当前 | 触发 | 目标 | 副作用 |
+|---|---|---|---|---|
+| K1 | — | `ReserveSlot` 成功且无可用 WARM Pod，或 J9 补足 `min_warm` | REQUESTED | 池控制器下发 `pool.pod_create{pod_id}`（§6.4b） |
+| K2 | REQUESTED | 控制器回报 `pool.pod_state{SCHEDULING}` | SCHEDULING | — |
+| K3 | REQUESTED / SCHEDULING | 回报 READY（Pod 内机器程序已连上控制器） | WARM（无持有者）或 BOUND（为持有者创建） | `ready_at` |
+| K4 | WARM | `ReserveSlot` 选中 | BOUND | `bound_at`、`slot_no`、持有者 |
+| K5 | BOUND | 持有者 `ReleaseSlot`（执行终态 / INTERRUPTED，或评审预览停止） | TERMINATING | 下发 `pool.pod_delete`；Pod 不回到 WARM（一次执行一个 Pod，工作区不复用） |
+| K6 | WARM | 超出 `min_warm` 且空闲 > `scale_down_idle_s`（J9） | TERMINATING | 同上 |
+| K7 | TERMINATING | 回报 GONE 或 120 s 无回报（J9 再下发一次后强制） | GONE | `terminated_at` |
+| K8 | REQUESTED / SCHEDULING | 超过 `pod_start_timeout_s` 或回报 FAILED | FAILED | 有持有者 → 释放槽并以 `SPAWN_FAILED` 回调 03；N-04-10 |
+| K9 | 任意非终态 | 池机器 OFFLINE / REVOKED / 排空完成 | TERMINATING | 控制器重连后按服务端清单对账：服务端无记录的 Pod 一律删除 |
+
+终态：GONE、FAILED。PAUSED 的执行**保留**其 BOUND Pod（工作区仍在，便于人工接管，03 BR-03-126）；保留上限 24 h，超时由 03 转 INTERRUPTED（`MACHINE_OFFLINE` 同语义，原因 `POD_RETENTION_EXPIRED`）后释放。
+
+### 4.7 隧道流（`TunnelStreamState`，D119；只存内存与指标，不落库）
+
+`OPENING`（服务端已发 `tunnel.open`）→ `OPEN`（机器 `tunnel.opened`）→ `HALF_CLOSED`（一端 FIN）→ `CLOSED`（双端 FIN）；任一状态 → `RESET`（任一端 RST、机器 `tunnel.rejected`、连接代次变化、通道断开、开关关闭、配额超限、所属执行或会话结束）。OPENING 10 s 无回应 → RESET（`open_timeout`）。机器端与服务端都以 `stream_id` 识别；服务端分配偶数、机器端不得发起流（机器发起的 `tunnel.open` → 连接级协议错误，关闭 WebSocket 并记 `fleet_tunnel_protocol_errors_total`）。
 
 ## 5. 业务规则与边界情况
 
@@ -554,6 +627,29 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 - **BR-04-80 本地服务**：`machine-runner serve [--port 4318]`（端口被占用自动选空闲端口并打印）：只监听 `127.0.0.1`/`::1`；拒绝 Host 不是 `127.0.0.1`/`localhost`/`::1` 的请求（403）；有 `Origin` 头时须与 Host 一致（403）；响应头 `Referrer-Policy: no-referrer`、`X-Content-Type-Options: nosniff`、静态页 CSP `frame-ancestors 'none'; object-src 'none'; base-uri 'self'`（沿用 Preview `ComputerHandler`）。提供：`/health`；本机状态静态页（profile、连接状态、`conn_epoch`、槽位、最近 50 行日志摘要、重新登录指引）；`/v1/*` 透明转发到服务端网关（转发前删除 `Cookie` 与 `Origin`，`ResponseHeaderTimeout` 190 s、`/v1` 写超时 205 s、不缓冲 SSE）。不代理控制台 API（控制台在浏览器/Desktop 中直连服务端，使用底座会话 Cookie）。本地停止端点 `POST /local/stop` 须携带有效控制台访问令牌，先向服务端核验（5 s 超时）再停止（沿用 Preview）。
 - **BR-04-81 Desktop 壳**：Electron 单实例（按 profile），窗口加载服务端控制台 URL（非本地副本）；`nodeIntegration=false`、`contextIsolation=true`、`sandbox=true`；仅允许本源的 `clipboard-sanitized-write` 权限；外链交给系统浏览器；关闭窗口收至托盘。托盘菜单（三语，产品名取自 `GET /deployment`）：〔打开控制台〕〔在浏览器中打开〕〔本机状态：在线/离线 · 槽 n/m〕（只读）〔暂停接单〕（= 请求排空，需当前登录用户有 `machine_manage`，否则置灰并提示缺少的权限）〔仅退出桌面（机器程序继续运行）〕〔停止机器程序并退出〕（有运行中执行时确认「n 个执行将被中断」）。`--profile` 选择 profile；双击托盘图标显示窗口。
 
+### 5.10 远程访问隧道（D119）
+
+- **BR-04-90 承载通道**：预览、文件读写与终端流只经机器已建立的**出站** WebSocket 通道（§6.4 WebSocket 小节）多路复用传输；机器不监听任何入站端口（本地服务 BR-04-80 仍只绑回环，与隧道无关）。机器不支持 WebSocket（代理拦截、10 分钟内升级失败 3 次而回退 LONG_POLL）时：控制消息照常走长轮询，**远程访问能力不可用**，控制台显示「这台机器的网络不支持实时通道，无法远程预览、浏览文件或观看终端」（错误 409 **140484**）。分期：WebSocket 通道由 v1.1 提前到 MVP（D119 的 MVP 能力依赖它；US-04-15）。
+- **BR-04-91 端口归属（机器端判定，服务端不信任 Agent 的自述）**：`HTTP_PROXY` 流只能连接机器回环地址（`127.0.0.1` / `::1`）上的端口，且该端口的**监听进程**必须属于该流所属持有者（执行或评审预览）的进程树：机器程序在启动持有者时记录根进程（Windows 为 Job Object，POSIX 为进程组 + 子孙 PID 集），开流时按操作系统接口（Linux `/proc/net/tcp*` + `/proc/<pid>/fd`；macOS `libproc`；Windows `GetExtendedTcpTable`）取监听者 PID 并判定是否在树内；不在树内、或监听在非回环地址以外的接口但仅回环可达以外的情况一律拒绝（`tunnel.rejected{code:140485}`）。流打开后每 10 s 复查一次，归属变化（进程退出、端口被他人占用）→ RESET。目标主机永远是回环地址，不接受主机名、局域网地址或 Unix 套接字（D119：从不转发任意机器端口）。
+- **BR-04-92 路径限定**：`FILE_*` 与 `FS_*` 流的路径为相对工作区根的路径；机器端先规范化（拒绝 `..` 段、绝对路径、Windows 盘符与 UNC、NUL），再解析符号链接与 junction 后检查真实路径仍在工作区根之内，否则拒绝（`140491`）；工作区根 = 该持有者的工作目录（执行的 worktree / 共享目录，评审预览的隔离副本）。机器程序 profile 目录、凭据文件永远不可读，即使位于工作区内。遮罩规则（哪些文件内容不得读出）由 03 在 `tunnel.open.target.mask` 中下发，机器端照做（BR-03-123）。
+- **BR-04-93 流的语义来源**：隧道只做帧、流控、配额、归属与路径校验；流的种类、目标与生命周期（谁能开、何时关）由 03 经 `TunnelBroker`（§6.7）决定。04 不接受来自浏览器或机器的直接开流请求。
+- **BR-04-94 预览网关**（服务端组件，本模块部署与运行；访问判定交 03 `PreviewAccessResolver`）：
+  - 配置（`fleet.preview.*`，部署配置，不写入代码或数据库）：`domain`（**必须**是与控制台不同的可注册域名，如控制台 `console.example.com`、预览 `example-preview.net`；与控制台同一可注册域 → 启动失败，`fleet.preview` 视为未配置）、`mode`（`SUBDOMAIN` 默认 / `PATH`）、`listen`、`tls.cert_file` / `tls.key_file`（`*.<domain>` 通配证书，由部署方经 DNS-01 等方式签发与轮换，进程收到 SIGHUP 或文件变化时热加载）、`max_session_minutes`、`trusted_proxies`。未配置 `domain` → 远程预览整体不可用（A39 返回 `enabled:false`，03 的预览接口 503 **140492**），绝不退回控制台源（D119 已否决）。
+  - **子域模式**：每个预览会话一个不可猜测的标签（03 生成，26 位 base32，≥128 bit）→ `https://<label>.<domain>/`；不同会话不同源，Agent 写的页面无法读取其他预览或控制台的 Cookie 与存储。
+  - **路径模式回退**（无通配 DNS 时）：`https://<domain>/p/<label>/...`，Cookie 以 `Path=/p/<label>/` 限定；网关不改写响应体，绝对路径资源与 Service Worker 会失效，控制台在预览框上常驻琥珀标签「路径模式：部分应用可能无法正常工作」。
+  - 代理能力：HTTP/1.1（含分块与 `Range`）、WebSocket 升级（HMR）、SSE（不缓冲、15 s 写超时、每 30 s 注释心跳）；请求体 ≤50 MiB；去掉入站 `Cookie` 中网关自己的会话 Cookie 后再转发，绝不转发控制台 Cookie（不同源，浏览器本不会发送）；响应补 `X-Content-Type-Options: nosniff`、`Referrer-Policy: no-referrer`，不改写应用自己的 CSP。
+  - 访问：网关对每个请求取会话 Cookie（`__Host-preview`，HttpOnly、Secure、SameSite=Lax、15 min 滑动）→ 03 判定（BR-03-114）；无 Cookie 或失效 → 302 到控制台换取页（03 §8.6，接口 A60），不在预览域上显示登录表单。
+- **BR-04-95 开关判定**：`TunnelBroker.Open` 在开流前读机器开关：`HTTP_PROXY`、`FILE_READ`、`FS_LIST`、`FS_WATCH`、`MEDIA_PROXY` 需 `allow_remote_preview`；`TERMINAL_SHELL` 需 `allow_remote_terminal`；`FILE_WRITE` 需 `allow_file_edit`；`TERMINAL_WATCH` 不受开关约束（与执行日志同属执行读取）。开关关闭 → `ErrAccessDisabled`（03 映射为 403 130403 `reason_code=MACHINE_ACCESS_DISABLED`）。开关改为关闭时，本模块在同一事务发布 `machine.access_changed`，并在 ≤1 s 内对该机该类全部 OPEN 流发 RST（03 同时把会话置 STOPPED）。
+- **BR-04-96 终端沙箱**（v1.1）：`TERMINAL_SHELL` 在机器端以最小环境（03 BR-03-70 白名单，不含机器凭证与访问令牌）启动，初始 cwd = 工作区根；Linux / K8S_POOL 用文件系统沙箱（landlock，不可用时 bubblewrap）把写限制在工作区与临时目录、禁止读取机器程序 profile；macOS / Windows 工作站无可用沙箱时，开流响应带 `sandbox:false`，03 在终端顶部常驻红色说明「这台机器无法限制目录，终端可访问该系统账户能访问的全部文件」。这是 WORKSTATION 默认关闭终端开关的原因。
+- **BR-04-97 配额**：每机并发流 ≤ `tunnel_max_streams`（默认 256）；每持有者 `HTTP_PROXY` 流 ≤64、`TERMINAL_WATCH` ≤8、`TERMINAL_SHELL` ≤1、`FILE_*` ≤16；超出 → 429 **140486**（`data.limit`）。带宽：每机出站（机器→服务端）令牌桶 `tunnel_bandwidth_kbps`，单流公平分配；执行控制消息与证据上传（C3 / C4）不计入且优先（流量整形在服务端读取侧做背压，机器端按 `tunnel.window` 信用发送）。每流窗口 256 KiB；连接级窗口 4 MiB。超过带宽不报错，只限速；隧道累计流量计入指标 `fleet_tunnel_bytes_total{machine_type,kind}`。
+
+### 5.11 机器类型（D119）
+
+- **BR-04-98 WORKSTATION**：现有设备码接入（§5.2）不变；`credential_origin=DEVICE_CODE`；开关默认值见 §3.15。
+- **BR-04-99 SERVER 无头接入**（MVP）：控制台 A32 `POST /machines {machine_type:"SERVER", name, slot_count?, labels?}`（HUMAN、`machine_manage`、step-up purpose `machine_credential_issue`）在一个事务内：建机器服务账号与 `fleet_machines`（OFFLINE，`credential_origin=PRE_ISSUED`）、签发凭证并**仅在本响应中返回一次**明文 `{client_id, client_secret}`，同时返回无头安装命令（`machine-runner login --server {server} --tenant {tenant} --credential-file <path>` 或环境变量 `MACHINE_RUNNER_CLIENT_ID` / `MACHINE_RUNNER_CLIENT_SECRET`；`machine-runner service install --headless` 安装为 systemd 系统单元 / Windows 服务，以专用低权限系统账户运行）。机器首次开会话时上报的主机信息写入行；`host_fingerprint` 首次写入后，同一凭证从不同指纹开会话 → 409 140430 并审计 `fleet.machine_fingerprint_mismatch`（凭证被复制到另一台主机）。凭证丢失 → 轮换（A13，SERVER 机器的轮换明文同样只在 A13 响应中返回一次，而非经轮询下发，因为丢失凭证的机器无法轮询）。审计 `fleet.machine_created`、`fleet.machine_credential_issued`。
+- **BR-04-100 K8S_POOL**（v1.1）：一台 K8S_POOL「机器」= 一个集群内的**池控制器**（同一 `machine-runner`，`--mode pool-controller`，以 A32 预签发的凭证认证，在集群内以 Deployment 运行，经 A33 生成的清单安装）。控制器维持唯一的出站 WebSocket 通道；每个执行（及评审预览）在一个临时 Pod 中运行，Pod 内机器程序以 `--mode pod` 启动，经集群内服务主动连接控制器（不对集群外暴露），控制器把 Pod 的消息与流在同一通道上多路复用（Pod 不持有平台凭证）。槽 = Pod：`ReserveSlot` 时绑定 WARM Pod，没有则创建（§4.6），`NO_FREE_SLOT` 语义不变（BOUND + REQUESTED ≤ `max_pods`）。工作区：Pod 启动后按 07 仓库地址克隆（凭证来自 `git_credentials_secret`），不使用 `fleet_workdirs`（`ResolveWorkspace` 对 K8S_POOL 返回 `{mode:"EPHEMERAL_CLONE"}`）；续接只能 CARRYOVER（`PlanMigration` 对 K8S_POOL 恒给 `CARRYOVER`）。运行时登录凭据（API Key）经 `env_from_secrets` 注入 Pod，名称须在 `env_passthrough_names` 中（BR-04-22 不变）。池伸缩见 J9；工具检测在 Pod 镜像首次就绪时执行一次并按镜像摘要缓存。
+- **BR-04-101 类型不可变**：`machine_type` 创建后不可改；WORKSTATION 不能经 A32 预签发；K8S_POOL 的 `slot_count` 只能经 A35 池配置修改（A08 改 → 422 140482）。
+
 ---
 
 ## 6. 接口契约
@@ -604,6 +700,15 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 | A29 | POST `/gateway-config/key-rotations` | tenants | `gateway_manage` · T；HUMAN | `{}` | `{key, revision, cancelled_request_count}`（201） | — | ✔ |
 | A30 | POST `/gateway-config/test-responses` | tenants | `gateway_manage` · T | `{prompt 1–64000}` | SSE 透传 `/v1/responses` 流（服务端以当前密钥代发，浏览器不接触密钥） | 503 140470/140471 | — |
 | A31 | DELETE `/gateway-requests/{request_id}` | gateway-requests | `gateway_manage` · O | — | `GatewayRequest`（CANCELLED「操作员取消」；已终态返回现状） | 404 | 幂等 |
+| A32 | POST `/machines` | tenants | `machine_manage` · T；HUMAN；step-up `machine_credential_issue` | `{machine_type:"SERVER"\|"K8S_POOL", name 1–100, slot_count?, labels?, reauth_proof}`（D119；K8S_POOL 为 v1.1） | `{machine, credential:{client_id, client_secret}, install:{linux:{login, service}, windows:{login, service}, kubernetes?:{manifest_url}}}`（201，`no-store`；明文只此一次） | 403 140403（REAUTH_REQUIRED / HUMAN_ONLY）；422 140416/140481/140482 | ✔ |
+| A33 | GET `/machines/{machine_id}/pool-manifest` | machines | `machine_manage` · O | — | `text/yaml`：Namespace、ServiceAccount、Role（只允许在 `namespace` 内增删 Pod）、控制器 Deployment；凭证以 Secret 引用占位，不含明文 | 404；422 140482（非 K8S_POOL） | — |
+| A34 | GET `/machines/{machine_id}/remote-access` | machines | `machine_read` · O | — | `MachineRemoteAccess`；`ETag`（机器 `version`） | 404 | — |
+| A35 | PUT `/machines/{machine_id}/remote-access` | machines | `machine_access_manage`（不可委托）· O；HUMAN；把 `allow_remote_terminal` 由 false 改为 true 时另需 step-up `machine_terminal_enable` | `{allow_remote_preview, allow_remote_terminal, allow_file_edit, tunnel_bandwidth_kbps, tunnel_max_streams, reason ≤2000, reauth_proof?}` | `MachineRemoteAccess` | 403 140403（NON_DELEGABLE / REAUTH_REQUIRED）；409 140421；422 140400 | v |
+| A36 | GET / PUT `/machines/{machine_id}/pool-config` | machines | 读 `machine_read`、写 `machine_manage` · O | PUT `{namespace, pod_template, min_warm, max_pods, scale_down_idle_s, pod_start_timeout_s}`（v1.1） | `PoolConfig` | 422 140482/140488 | v（PUT） |
+| A37 | GET `/machines/{machine_id}/pool-pods` | machines | `machine_read` · O | `?state=`（v1.1） | `PoolPod[]` | 404 | — |
+| A38 | GET `/machines/{machine_id}/tunnel-streams` | machines | `machine_manage` · O | — | `{active:[{stream_id, kind, holder_kind, holder_id, opened_at, bytes_in, bytes_out}], totals:{streams, kbps_1m}}`（运维视图；不含路径与内容） | 404 | — |
+| A39 | GET `/preview-gateway` | tenants | `machine_read` 或 `execution_read` · T | — | `{enabled, mode:"SUBDOMAIN"\|"PATH", domain, tls:{wildcard, expires_at?}, path_mode_warning:bool}`（只读；配置来自部署） | — | — |
+
 
 ### 6.3 机器端公开接口（接入前，P）
 
@@ -664,7 +769,26 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 
 **机器端行为**（移植 Preview `daemon.go`，数值见 BR-04-30）：长轮询循环；20 s 无成功响应 → 停止全部执行（cancel → 4 s → kill tree）、保留 outbox、继续重连；收到 140431 → 重开会话并按 03 规则补交未 ACK 事件；收到 401 → 重换令牌一次，仍 401 → BR-04-26；某执行 outbox 达 10,000 条 → `execution.lost{OUTBOX_FULL}`（03）。
 
-**v1.1 WebSocket 升级**：C1 响应可协商 `transport=WEBSOCKET`；机器 `GET /tenants/{t}/runner/channel`（`Upgrade: websocket`，子协议 `runner.v1`，同样的 Bearer 与会话/代次头）。帧 = 同一信封：S→M 推送 `ServerBatch` 各项，M→S 发送 C3 消息与 `heartbeat`（每 10 s）；服务端 ping 每 20 s，连续 2 次无 pong 关闭。代次、30 s 租约、20 s 自停、去重语义不变；10 分钟内升级失败或被中间设备中断 3 次 → 回退 LONG_POLL 并记录到会话 `transport`。blob 仍走 C4。
+**WebSocket 通道**（原 v1.1，D119 起 MVP；BR-04-90）：C1 响应可协商 `transport=WEBSOCKET`；机器 `GET /tenants/{t}/runner/channel`（`Upgrade: websocket`，子协议 `runner.v1`，同样的 Bearer 与会话/代次头）。帧 = 同一信封：S→M 推送 `ServerBatch` 各项，M→S 发送 C3 消息与 `heartbeat`（每 10 s）；服务端 ping 每 20 s，连续 2 次无 pong 关闭。代次、30 s 租约、20 s 自停、去重语义不变；10 分钟内升级失败或被中间设备中断 3 次 → 回退 LONG_POLL 并记录到会话 `transport`。blob 仍走 C4。
+
+#### 6.4b 隧道流（D119，只在 WebSocket 通道上；MVP，K8S_POOL 帧为 v1.1）
+
+控制帧是**文本帧**，内容为本节信封（`type` 如下）；数据帧是**二进制帧**：`stream_id`（u32，大端）· `flags`（u8：0x1 DATA、0x2 FIN、0x4 RST）· 保留 3 字节 · 负载（≤64 KiB）。同一流的数据帧有序；不同流之间不保证顺序。
+
+| 方向 | type | payload | 处理 |
+|---|---|---|---|
+| S→M | `tunnel.open` | `{stream_id, kind, holder:{kind:"EXECUTION"\|"PREVIEW", id, dispatch_epoch?}, target, limits:{window_bytes:262144, idle_ms}}`；`kind` ∈ `HTTP_PROXY`（target `{port}`）、`FILE_READ`（`{path, offset?, length?, mask[]}`）、`FS_LIST`（`{path, depth≤2, mask[]}`）、`FS_WATCH`（`{paths[] ≤20, debounce_ms:500}`）、`MEDIA_PROXY`（`{path, profile:"480p"}`，v1.1）、`FILE_WRITE`（`{path, base_sha256?, mode:"REPLACE"\|"CREATE"}`，v1.1）、`TERMINAL_WATCH`（`{}`）、`TERMINAL_SHELL`（`{shell?, cols, rows}`，v1.1）；`target` 的业务语义由 03 定义 | 机器按 BR-04-91 / 92 / 95 / 96 校验后回 `tunnel.opened` 或 `tunnel.rejected` |
+| M→S | `tunnel.opened` | `{stream_id, info?:{size?, sha256?, mime?, sandbox?:bool}}` | OPENING → OPEN |
+| M→S | `tunnel.rejected` | `{stream_id, code:140485\|140491\|140484\|140486\|140423, detail ≤500}` | → RESET；`code` 原样交 03 映射 |
+| 双向 | `tunnel.window` | `{stream_id, credit_bytes}` | 流控信用；累计未确认 > 窗口 → 发送方暂停 |
+| 双向 | `tunnel.resize` | `{stream_id, cols, rows}` | 仅 `TERMINAL_SHELL` |
+| M→S | `tunnel.event` | `{stream_id, event:"FS_CHANGED", paths[] ≤200, truncated:bool}` | 仅 `FS_WATCH`；03 据此推送刷新（BR-03-118） |
+| M→S | `ports.report` | `{holder:{kind, id}, ports:[{port, pid, process_name}]}` | 持有者进程树内的回环监听端口快照（变化即发，最多每 5 s 一次）；03 用于 Agent 提供端口（BR-03-113）；不在树内的端口**从不上报** |
+| S→M | `pool.pod_create` / `pool.pod_delete` | `{pod_id, pod_name, holder?}`（v1.1，仅 K8S_POOL） | §4.6 |
+| M→S | `pool.pod_state` | `{pod_id, state:"SCHEDULING"\|"READY"\|"FAILED"\|"GONE", failure?}`（v1.1） | §4.6；未知 `pod_id` → 控制器须删除该 Pod |
+
+机器端每持有者结束（执行终态 / INTERRUPTED、评审预览停止）时对其全部流发 RST；连接代次变化时双方丢弃全部流（不跨连接续传，客户端重开）。
+
 
 ### 6.5 响应模型
 
@@ -672,6 +796,9 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 - `Machine`：`{id, name, state, drain:{requested, mode?, requested_at?, drained_at?}, host:{hostname, os, os_version, arch, profile_name}, runner_version, upgrade_available, slot_count, slots:[{slot_no, state, holder_kind?, holder_id?, execution?:{id, title, project_id}（不可读项目显示「其他项目的执行」）, reserved_at?}], runtimes:[{kind, version, path, status, detected_at, missing_since?}], labels, env_passthrough_names, last_seen_at, last_address, online_since, offline_since, conn_epoch, current_session?:{id, transport, opened_at}, agent_count, credential_summary:{active_since, rotation?:{state, retire_at}}, enrolled:{at, by}, revoked?:{at, by, reason}, version}`。
 - `MachineCredential`：`{id, state, origin, issued_at?, delivered_at?, retire_at?, revoked_at?, revoke_reason?, last_used_at?, delivery_attempts}`。
 - `ModelCatalog` / `CapabilityInspection` / `Workdir` / `ModelPrice` / `GatewayRequest{id, created_at, model, state, error?, duration_ms?}`：字段同 §3 对应表，内部锁键与密文不返回。
+- `MachineRemoteAccess`（D119）：`{machine_id, machine_type, allow_remote_preview, allow_remote_terminal, allow_file_edit, tunnel_bandwidth_kbps, tunnel_max_streams, websocket_available:bool, sandbox_available:bool, access_version, version}`。
+- `PoolConfig` / `PoolPod`（v1.1）：字段同 §3.16 / §3.17；`pod_template.env_from_secrets` 只返回 Secret 名称。
+- `Machine` 增加 `machine_type`、`credential_origin`、`remote_access:{preview, terminal, file_edit}`（D119）。
 
 ### 6.6 列表查询字段
 
@@ -686,10 +813,12 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 |---|---|---|
 | `MachineDirectory`（00 §8） | `Get`；`ListEligibleMachines(tenant, {runtime, model?, project_id?, repository_id?, agent_machine_id?, require_workdir})`；`ResolveWorkspace(machine, project, repository?)`；`ReserveSlot(tx, …)` / `ReleaseSlot(tx, …)`；`OrderPending(machine, candidates)`；`ModelCatalog(machine, runtime)`；`ModelPrice(tenant, runtime, model)`；`EnvPassthroughNames(machine)`；`PlanMigration(execution_ref)`；`ConnEpoch(machine)`；`Tools(machine) → S4`；`HasCapability(machine, capability) bool`；`ToolAvailability(tenant, tool_key \| capability) → {online_machine_ids[], versions[]}`（11 BR-11-30）；`ModelFamily(tenant, machine, runtime, model) (ModelFamily, error)`（BR-04-49；05 `ModelFamilyOf`、03 执行快照）；`ListEligibleMachines` 另接受 `capabilities?[]`（03 VISUAL / 截图放置、05 ACCEPTOR 候选）；`Summary(tenant) → {total, online, offline, draining, slots_total, slots_busy, runtimes_missing}`（08 总览「机器状态」磁贴） | 03、05、08 |
 | `MachineChannelNotifier` | `Wake(machine_id)`（新执行命令或 Agent 命令入队后唤醒长轮询；跨副本经 09 服务端内部订阅） | 03、05 |
+| `TunnelBroker`（D119） | `Open(ctx, OpenRequest{tenant, machine_id, holder{kind, id, dispatch_epoch?}, kind, target, client_ip?}) (Stream, error)`：读开关与配额、选副本（流须在持有该机通道的副本上打开，跨副本经 09 内部订阅转发字节）、发 `tunnel.open` 并等待 ≤10 s；`Stream` 为 `io.ReadWriteCloser` + `Info()` + `Reset(code)`；错误 `ErrAccessDisabled` / `ErrNoWebSocket` / `ErrQuota` / `ErrRejected{code}` / `ErrMachineOffline`；`ResetHolder(ctx, holder, reason)` 关闭某持有者的全部流；`Ports(ctx, holder) []PortInfo`（最近一次 `ports.report`） | 03 |
+| `MachineDirectory` 增补（D119） | `Type(machine) MachineType`；`RemoteAccess(machine) {preview, terminal, file_edit, websocket, sandbox}`；`ReserveSlot` 接受 `holder_kind=PREVIEW`（评审预览占槽，K8S_POOL 为其创建 Pod） | 03 |
 
 > 执行槽经 `MachineDirectory.ReserveSlot/ReleaseSlot` 占用与释放（00 §8 不另设 `SlotReserver`）。
 
-**本模块使用**：03 `ExecutionDispatchHandler`（CR-03-05）；05 `AgentChannelHandler` / `PendingAgentCommands`（机器通道上的 Agent 命令与状态，05 §6.6）；07 `RepositoryReader.Get(ctx, tenant, repository_id) → {project_id, url, archived}`（07 §6.3）；05 `AgentDirectory`；08 `AuthorityChecker`；底座 oauth `DeviceGrants`（新增，CR-04-06）、identity `ServiceAccountProvisioner`（新增事务内版本，CR-04-08）、authn `ReauthenticationConsumer`、`audit.Appender`、`dlock`、`guid`；09 `JobQueue`、`OutboxPublisher`、`RealtimeBroadcaster`、`Notifier`、`SecretSealer`（CR-04-07）。
+**本模块使用**：03 `ExecutionDispatchHandler`（CR-03-05）；03 `PreviewAccessResolver`（D119，预览网关的访问判定，03 §6.4）；05 `AgentChannelHandler` / `PendingAgentCommands`（机器通道上的 Agent 命令与状态，05 §6.6）；07 `RepositoryReader.Get(ctx, tenant, repository_id) → {project_id, url, archived}`（07 §6.3）；05 `AgentDirectory`；08 `AuthorityChecker`；底座 oauth `DeviceGrants`（新增，CR-04-06）、identity `ServiceAccountProvisioner`（新增事务内版本，CR-04-08）、authn `ReauthenticationConsumer`、`audit.Appender`、`dlock`、`guid`；09 `JobQueue`、`OutboxPublisher`、`RealtimeBroadcaster`、`Notifier`、`SecretSealer`（CR-04-07）。
 
 ### 6.8 错误码（04 子段 140000–141999，00 §9；i18n 命名空间 `fleet`，key 形如 `fleet.error.<名>`，三语齐全）
 
@@ -737,6 +866,13 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 | 140476 | 422 | gateway_codex_unavailable | |
 | 140480 | 422 | slot_count_invalid | |
 | 140481 | 422 | machine_limit | |
+| 140482 | 422 | machine_type_invalid | 类型不可改、WORKSTATION 不能预签发、操作不适用于该类型（D119） |
+| 140484 | 409 | tunnel_unavailable | 机器未使用 WebSocket 通道，远程预览 / 文件 / 终端不可用（BR-04-90） |
+| 140485 | 403 | port_not_owned | 端口不属于该持有者的进程树或不在回环地址（BR-04-91；03 映射为 130403 `PORT_NOT_OWNED`） |
+| 140486 | 429 | tunnel_quota_exceeded | 并发流超出配额（`data.limit`，BR-04-97） |
+| 140488 | 422 | pool_config_invalid | 池配置不合法或含禁止的 Pod 字段（v1.1） |
+| 140491 | 403 | path_outside_workspace | 路径越出工作区或指向机器程序目录（BR-04-92；03 映射为 130403 `PATH_OUTSIDE_WORKSPACE`） |
+| 140492 | 503 | preview_gateway_unconfigured | 部署未配置独立预览域名，远程预览不可用（BR-04-94） |
 
 ---
 
@@ -754,6 +890,8 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 | J6 | `fleet.offline_notifier` | 每 15 s | dlock `fleet:offline-notifier` | OFFLINE 且 `offline_since < now−60s` 且未通知 → N-04-01；离线超 15 min → 邮件摘要；确认接入后 >10 min 仍从未在线（`online_since IS NULL`）且未通知 → N-04-09 |
 | J7 | `fleet.drain_monitor` | 槽释放事件驱动 + 每 10 s | dlock `fleet:drain-monitor` | DRAINING 且占用槽 0 → `drained_at`；`drain_mode=DISCONNECT` → 下次轮询下发 `stop{DRAINED}`（M9） |
 | J8 | `fleet.gateway_reaper` | 每 5 s | dlock `fleet:gateway-reaper` | 超 180 s → FAILED「生成超时」；路由机器离线 → FAILED；每租户只保留最新 100 行（请求元数据不是业务记录，允许物理删除，**本规格提议**） |
+| J9 | `fleet.pool_autoscaler` | 每 10 s + 槽释放 / 预留事件驱动（v1.1） | dlock `fleet:pool-autoscaler` | 每个 ONLINE K8S_POOL：WARM 少于 `min_warm` 且总数 < `max_pods` → 创建；超出 `min_warm` 的 WARM 空闲 > `scale_down_idle_s` → 删除；REQUESTED / SCHEDULING 超 `pod_start_timeout_s` → FAILED（K8）；TERMINATING 超 120 s → 重发删除后 GONE（K7）；终态行 >7 天删除 |
+| J10 | `fleet.tunnel_ownership_audit` | 每 60 s（D119） | 每副本本地 | 对本副本持有的 OPEN `HTTP_PROXY` 流核对持有者是否仍为非终态执行或 READY 会话（03 `PreviewAccessResolver.HolderActive`），否则 RST；只读核对，不改业务数据 |
 
 ### 7.2 发布的领域事件（09 outbox）
 
@@ -761,8 +899,9 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 |---|---|---|
 | `machine.state_changed`（00） | 每次 MachineState 迁移（含 M1） | `{machine_id, from?, to, reason:"ENROLLED"\|"SESSION_OPENED"\|"LEASE_EXPIRED"\|"DISCONNECTED"\|"DRAIN_REQUESTED"\|"DRAIN_CANCELLED"\|"DRAIN_STOP"\|"REVOKED", conn_epoch, offline_since?, revoked_by?}` |
 | `machine.runtimes_changed`（**CR-04-03**） | 运行时或工具新增 / MISSING / 恢复 / 版本变化，或能力标记变化（BR-04-47/48） | `{machine_id, runtimes:[{kind, status, version, previous_version?}], tools_changed?:[{tool_key, status, version?, previous_version?}], capabilities:[string]}` |
+| `machine.access_changed`（D119，CR-04-12） | A35 改变任一远程访问开关，或机器 OFFLINE 后通道类型变化（`websocket` 可用性） | `{machine_id, machine_type, allow_remote_preview, allow_remote_terminal, allow_file_edit, websocket_available, access_version, changed:[field]}` |
 
-消费方：03（OFFLINE/REVOKED → 中断该机执行；runtimes_changed → 放置校验）、05（REVOKED → Agent STOPPED；runtimes_changed → 运行时缺失告警、ACCEPTOR 候选资格）、11（`tools_changed` → 重算 `TOOL_UNAVAILABLE`）、08（通知与审计视图）。
+消费方：03（OFFLINE/REVOKED → 中断该机执行；runtimes_changed → 放置校验；access_changed → 停止被关闭类别的预览 / 终端会话与编辑，BR-03-119）、05（REVOKED → Agent STOPPED；runtimes_changed → 运行时缺失告警、ACCEPTOR 候选资格）、11（`tools_changed` → 重算 `TOOL_UNAVAILABLE`）、08（通知与审计视图）。
 
 ### 7.3 消费的事件
 
@@ -773,11 +912,11 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 
 ### 7.4 审计事件（底座哈希链）
 
-`fleet.machine_enrollment_confirmed`、`fleet.machine_enrollment_denied`、`fleet.enrollment_lookup_throttled`、`fleet.machine_revoked`、`fleet.machine_revoke_denied`（outcome=denied：权限、step-up、不可委托）、`fleet.revoked_machine_access_attempted`（同机 10 分钟合并）、`fleet.machine_credential_rotated`、`fleet.machine_credential_retired`、`fleet.machine_drain_started`、`fleet.machine_drain_cancelled`、`fleet.machine_updated`、`fleet.workdir_registered`、`fleet.workdir_archived`、`fleet.model_price_changed`、`fleet.gateway_config_changed`、`fleet.gateway_key_rotated`、`fleet.gateway_key_revealed`。
+`fleet.machine_enrollment_confirmed`、`fleet.machine_enrollment_denied`、`fleet.enrollment_lookup_throttled`、`fleet.machine_revoked`、`fleet.machine_revoke_denied`（outcome=denied：权限、step-up、不可委托）、`fleet.revoked_machine_access_attempted`（同机 10 分钟合并）、`fleet.machine_credential_rotated`、`fleet.machine_credential_retired`、`fleet.machine_drain_started`、`fleet.machine_drain_cancelled`、`fleet.machine_updated`、`fleet.workdir_registered`、`fleet.workdir_archived`、`fleet.model_price_changed`、`fleet.gateway_config_changed`、`fleet.gateway_key_rotated`、`fleet.gateway_key_revealed`。D119 增补：`fleet.machine_created`（SERVER / K8S_POOL）、`fleet.machine_credential_issued`（预签发与 SERVER 轮换明文下发，detail 不含秘密）、`fleet.machine_fingerprint_mismatch`、`fleet.machine_access_changed`（detail `before{} / after{}`、`reauth_purpose?`）、`fleet.pool_config_changed`、`fleet.tunnel_stream_rejected`（`code ∈ {140485, 140491}` 的拒绝属安全事件，detail `{holder_kind, holder_id, kind, code}`，同持有者同码 10 分钟合并一条；不含路径原文，只含 SHA-256）。
 
 ### 7.5 实时（09 SSE）
 
-主题（09 主题语法：单项为 `tenant/{t}/<subject_kind 单数蛇形>/{id}`，集合为复数）：`tenant/{t}/machine/{id}`（状态、心跳、槽、运行时、目录、检测进度；心跳时间每机 5 s 节流）；`tenant/{t}/machines`（列表行增删改，集合主题）；`tenant/{t}/machine_enrollment/{id}`（向导）；`tenant/{t}/gateway_config/{id}`（网关状态与请求记录）。本模块向 09 注册 `TopicAuthorizer`：`machine`、`machines` 需 `machine_read`；`machine_enrollment` 需 `machine_manage`；`gateway_config` 需 `gateway_manage`；`machine/{id}/channel` 仅服务端内部订阅。SSE 不可用时列表/详情每 10 s 轮询，向导每 2 s。
+主题（09 主题语法：单项为 `tenant/{t}/<subject_kind 单数蛇形>/{id}`，集合为复数）：`tenant/{t}/machine/{id}`（状态、心跳、槽、运行时、目录、检测进度；心跳时间每机 5 s 节流）；`tenant/{t}/machines`（列表行增删改，集合主题）；`tenant/{t}/machine_enrollment/{id}`（向导）；`tenant/{t}/gateway_config/{id}`（网关状态与请求记录）。本模块向 09 注册 `TopicAuthorizer`：`machine`、`machines` 需 `machine_read`；`machine_enrollment` 需 `machine_manage`；`gateway_config` 需 `gateway_manage`；`machine/{id}/channel` 仅服务端内部订阅。 D119：`machine/{id}` 帧增加 `remote_access` 与 `pool`（Pod 计数）；`machine/{id}/tunnel` 仅服务端内部订阅（跨副本转发流字节与 RST）。SSE 不可用时列表/详情每 10 s 轮询，向导每 2 s。
 
 ---
 
@@ -787,12 +926,12 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 
 ### 8.1 机器列表 `/t/:tenantID/machines`
 
-- **目的**：一眼看清有哪些机器、能跑什么、空不空。入口：侧栏「团队 → 机器」；⌘K「接入机器」直达向导。
+- **目的**：一眼看清有哪些机器、能跑什么、空不空。入口：侧栏「团队 › 机器」；⌘K「接入机器」直达向导。
 - **布局**：页头（标题、〔接入机器〕主按钮）→ 筛选条 → 卡片网格（≥1024 px 3 列、768 px 2 列）/ 表格切换（记忆在 localStorage）→ 分页（每页 24 卡 / 50 行）。
-- **筛选**：状态多选（默认 在线·排空中·离线）、运行时（Claude Code / Codex）、标签、「仅看有空闲槽」、操作系统、搜索（名称/主机名，300 ms 防抖）、「显示已吊销」开关。筛选写入 URL 查询串。
-- **卡片字段**：机器图标 + 名称；`StateBadge`；系统图标 + 主机名 · 架构；运行时芯片（`Claude Code 2.x` / `Codex 0.15x`，MISSING 划线 + 提示）；槽位条「已用 n / m」；最近心跳相对时间（`<time>` 带绝对时间 title）；托管 Agent 数；「有新版本」小徽标。表格列：名称、状态、运行时、槽、最近心跳、Agent 数、系统、操作（详情 / 排空，按权限）。
+- **筛选**：状态多选（默认 在线·排空中·离线）、类型（个人电脑 / 服务器 / 集群池，D119）、运行时（Claude Code / Codex）、标签、「仅看有空闲槽」、操作系统、搜索（名称/主机名，300 ms 防抖）、「显示已吊销」开关。筛选写入 URL 查询串。
+- **卡片字段**：机器图标 + 名称 + 类型徽章（个人电脑 / 服务器 / 集群池「v1.1」）；`StateBadge`；远程访问图标组（预览 / 终端 / 编辑，关闭的灰显，D119）；系统图标 + 主机名 · 架构；运行时芯片（`Claude Code 2.x` / `Codex 0.15x`，MISSING 划线 + 提示）；槽位条「已用 n / m」；最近心跳相对时间（`<time>` 带绝对时间 title）；托管 Agent 数；「有新版本」小徽标。表格列：名称、状态、运行时、槽、最近心跳、Agent 数、系统、操作（详情 / 排空，按权限）。
 - **状态**：加载 = 6 张卡骨架；空（无机器）= 插画 +「还没有机器。把一台装有 Claude Code 或 Codex 的电脑接入团队」+〔接入第一台机器〕（无 `machine_manage` 时按钮替换为「请联系团队所有者接入机器（需要 machine_manage）」）；筛选无结果 =「没有符合条件的机器」+〔清除筛选〕；无 `machine_read` → 无权限态。
-- **按钮**：〔接入机器〕需 `machine_manage`；卡片菜单〔排空〕/〔取消排空〕需 `machine_manage` 且非 REVOKED。
+- **按钮**：〔接入机器〕需 `machine_manage`，为分裂按钮：个人电脑（设备码向导 §8.2）/ 服务器（§8.5）/ 集群池（§8.5，「v1.1」）；卡片菜单〔排空〕/〔取消排空〕需 `machine_manage` 且非 REVOKED。
 - **实时**：订阅集合主题；状态变化 ≤1 s 更新卡片，ONLINE→OFFLINE 时卡片边框变虚线并以 `role="status"` 播报「机器 X 已离线」（同一分钟内合并播报）。
 - **移动端（375）**：单列卡片；筛选收入底部 Sheet；〔接入机器〕成为右下浮动按钮（≥44 px）。
 
@@ -842,12 +981,25 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 | 执行记录 | 03 执行列表 `machine_id=` 过滤（状态、所属工作项、运行时、开始/结束、成本），按调用者可读项目过滤 | 无 `execution_read` → Tab 内无权限态 |
 | 凭证 | 当前凭证（ID、创建时间、最近使用）；轮换状态（新凭证待下发 / 已下发；旧凭证宽限倒计时至 `retire_at`）；历史凭证列表；〔轮换凭证〕（`machine_manage`，无 PENDING_DELIVERY 时可用；确认框「机器将在下一次连接时自动换用新凭证；旧凭证保留 24 小时」）；**危险区**〔吊销机器〕 | 吊销需 `machine_revoke`（无权限时按钮禁用并显示「需要 machine_revoke」） |
 
+- **D119 增补 Tab**：
+
+| Tab | 内容 | 交互与按钮条件 |
+|---|---|---|
+| 远程访问 | 三个开关（`role="switch"`）：允许远程预览（MVP）、允许远程终端（「v1.1」）、允许人工接管后编辑文件（「v1.1」），每个下方一行说明（终端：「只允许人类在重新认证后使用，全部输入输出录制进审计」；WORKSTATION 未开沙箱时红字「这台机器无法限制终端目录」）；带宽上限、并发流上限；通道状态（WebSocket 已连接 / 仅长轮询：远程访问不可用）；预览网关状态（A39：子域模式 / 路径模式「部分应用可能无法正常工作」/ 未配置）；当前活动流（A38，仅 `machine_manage`） | 修改需 `machine_access_manage`（默认仅团队所有者；无权限时开关只读并提示「需要 machine_access_manage」）；打开终端开关 → 底座 `ReauthenticationDialog`（`machine_terminal_enable`）→ A35；关闭任一开关确认框「正在使用的 n 个预览 / 终端会话会立即断开」；冲突 140409 刷新 |
+| 池（仅 K8S_POOL，「v1.1」） | 池配置表单（命名空间、镜像、资源、预热数、最大 Pod 数、缩容空闲时间、启动超时）、Pod 列表（状态、持有者链接、就绪耗时、失败原因）、〔下载安装清单〕（A33） | 写需 `machine_manage`；含禁止字段 → 422 140488 内联提示字段 |
+
 - **吊销对话框**（红色语义 `--destructive`）：后果清单（「n 个正在运行的执行将立即中断，需人工检查副作用后再继续」「m 个托管的 Agent 将停止」「这台机器的凭证立即失效，且无法恢复；再次接入会成为一台新机器」）；输入框「输入机器名称以确认」（完全一致才启用）；原因（必填，≤2000）；〔吊销〕→ 底座 `ReauthenticationDialog`（step-up）→ 提交 A11；失败 140424 时重新弹认证。成功后横幅与 toast「已吊销 X，n 个执行已中断」。
 - **排空对话框**：选项「排空后保持连接」/「排空后让机器程序退出」；说明「不再接受新执行，正在运行的 n 个执行会继续直到结束」。
 - **实时**：订阅 `machines/{id}`；槽与心跳 ≤1 s 更新（心跳 5 s 节流）。
 - **移动端**：页头操作收入「更多」菜单；槽网格变为列表；表格转卡片。
 
-### 8.4 API 网关 `/t/:tenantID/gateway`（侧栏「治理 → API 网关（实验）」）
+### 8.5 接入服务器 / 集群池 `/t/:tenantID/machines/new?type=SERVER|K8S_POOL`（D119；SERVER 为 MVP，K8S_POOL 为 v1.1）
+
+- **步骤**：① 名称、槽数（SERVER 1–8；K8S_POOL 为最大 Pod 数 1–200）、标签 → ② 〔生成凭证〕→ 底座 `ReauthenticationDialog`（`machine_credential_issue`）→ A32 → ③ 显示凭证（`client_id`、`client_secret` 遮罩 +〔显示〕〔复制〕，琥珀提示「只显示这一次，关闭后无法再次查看；丢失请轮换」）与安装命令（Linux systemd / Windows 服务两个 Tab；K8S_POOL 为〔下载安装清单〕+ `kubectl apply` 命令，凭证写入 Secret 的命令单列）→ ④ 等待上线（与 §8.2 进度清单同组件：✓ 已创建 → ✓ 机器已连接 → ✓ 已上线；10 分钟未上线同 N-04-09）。
+- **状态**：未配置预签发（WORKSTATION 不可选）；step-up 取消 → 停留在步骤 ①；离开步骤 ③ 前确认「凭证只显示这一次」；无 `machine_manage` → 无权限态。
+- **移动端**：单列，命令块横向滚动；复制按钮 ≥44 px。
+
+### 8.4 API 网关 `/t/:tenantID/gateway`（侧栏「治理 › 连接 › API 网关（实验）」）
 
 - **页头**：标题「API 网关」+ 常驻「实验性」徽章 + 副标题「Codex · Responses API」；说明条：「把一台机器上已登录的 Codex 提供给你信任的 OpenAI 兼容客户端。只支持文本、函数/自定义工具；不是加固的公共服务。」
 - **状态卡**：开关（`role="switch"`，启用条件：已选在线 Codex 机器且已填模型）；状态文字「已开启 / 机器离线 / 已关闭」；机器选择（仅列出有 Codex 的机器，离线项标「离线」，开启状态下禁用切换——须先关闭）；模型选择器（目录 + 手填 + 自由输入，≤160）；模型变化时出现〔保存默认模型〕。
@@ -872,6 +1024,8 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 | N-04-07 | 运行时缺失（MISSING 且有绑定 Agent 或排队执行） | 持 `machine_manage` + 受影响 Agent 管理者 | 站内 | 「机器 {name} 上的 {runtime} 不可用，相关执行无法启动。」 | 每机每运行时每 24 h 一条 |
 | N-04-09 | 确认接入后 10 min 仍未上线 | 接入确认人 + 持 `machine_manage` | 站内 | 「机器 {name} 已确认接入，但 10 分钟内没有上线。请在该电脑上运行 `{command} start` 并检查网络。」〔查看机器〕 | 每台机器一条 |
 | N-04-08 | 网关密钥轮换 | 持 `gateway_manage` 的其他成员 | 站内 | 「{actor} 轮换了 API 网关密钥，旧密钥已失效。」 | 不合并 |
+| N-04-10 | 集群池 Pod 启动失败（K8，v1.1） | 持 `machine_manage` | 站内 | 「集群池 {name} 无法启动 Pod：{failure}。{k} 个执行在排队。」〔查看池〕 | 每池每 30 分钟一条 |
+| N-04-11 | 远程访问开关被修改（D119） | 持 `machine_access_manage` 的其他成员 | 站内 | 「{actor} {开启/关闭}了机器 {name} 的{远程预览/远程终端/文件编辑}。」 | 不合并 |
 
 通知不含代码、提示词或消息正文；三语模板 key `fleet.notification.*`。
 
@@ -1110,6 +1264,66 @@ Then  ServerBatch.agent_commands 原样携带两条信封，本模块不校验�
 Then  r1 原样转交 05；c9 项 409 140452，同批其他项照常处理
 And   A 绑定的不是 M 时 M 上报的 agent.status{A} 不转交（409 140452 同码返回）
 
+**远程访问隧道与机器类型（D119）**
+
+```
+AC-04-44 [integration] BR-04-91 端口归属（安全）
+Given 夹具机器 M（WebSocket 通道）上执行 E 的进程树监听 127.0.0.1:5173；同机另一进程（不在树内）监听 127.0.0.1:8080；E 的子进程监听 0.0.0.0:9000
+When  03 经 TunnelBroker.Open 为 E 开 HTTP_PROXY{port:5173}
+Then  OPEN，代理 HTTP 与 WebSocket 升级均可用
+When  开 HTTP_PROXY{port:8080}
+Then  tunnel.rejected{code:140485}；审计 fleet.tunnel_stream_rejected 一条；ports.report 从未包含 8080
+When  开 HTTP_PROXY{port:9000}   Then 允许，但连接目标为 127.0.0.1:9000（不连其他地址）
+When  5173 的进程退出、另一非树内进程在 10 s 内占用 5173
+Then  下一次复查对该流 RST；新开流被 140485 拒绝
+AC-04-45 [integration] BR-04-92 路径限定（安全）
+Given E 的工作区根 W；W/link → /etc（符号链接）；W/.env 存在
+When  开 FILE_READ{path:"../x"}、{path:"/etc/passwd"}、{path:"C:\Windows\win.ini"}、{path:"link/hosts"}
+Then  均 tunnel.rejected{code:140491}，审计合并为一条
+When  开 FILE_READ{path:".env", mask:[".env"]}   Then 机器按 03 遮罩规则返回遮罩内容，不返回原值
+When  路径指向机器程序 profile 目录（即使被链接进 W）   Then 140491
+AC-04-46 [integration] BR-04-90 无 WebSocket
+Given M 10 分钟内 3 次升级失败已回退 LONG_POLL
+When  TunnelBroker.Open 任一类型
+Then  ErrNoWebSocket（03 返回 409 140484）；执行命令照常经长轮询下发；A34 websocket_available=false
+AC-04-47 [integration] BR-04-95 开关与断流
+Given WORKSTATION 机器 M（allow_remote_terminal 默认 false），E 有 2 个 OPEN HTTP_PROXY 流
+When  Open(TERMINAL_SHELL)   Then ErrAccessDisabled（03：403 130403 MACHINE_ACCESS_DISABLED）
+When  Open(TERMINAL_WATCH)   Then 允许（只读观看不受开关约束）
+When  所有者 A35 allow_remote_preview=false
+Then  同一事务发布 machine.access_changed；≤1 s 内两个 HTTP_PROXY 流 RST；随后 Open(HTTP_PROXY) → ErrAccessDisabled
+AC-04-48 [integration] A35 权限与 step-up
+Given 交付负责人 L（无 machine_access_manage）与所有者 O
+When  L PUT remote-access   Then 403 140403 MISSING_PERMISSION
+When  Agent 或持委托者调用   Then 403 140403 NON_DELEGABLE / HUMAN_ONLY
+When  O 把 allow_remote_terminal false→true 不带 reauth_proof   Then 403 140403 REAUTH_REQUIRED，状态不变
+When  O 带有效 reauth_proof   Then 200；审计 fleet.machine_access_changed{before, after, reauth_purpose:machine_terminal_enable}；N-04-11 发给其他持码者
+When  O 把 allow_remote_terminal true→false   Then 不需要 step-up
+AC-04-49 [integration] BR-04-97 配额与限速
+Given tunnel_max_streams=16，tunnel_bandwidth_kbps=1000
+When  同一执行开第 17 个流   Then 429 140486（data.limit=16）
+When  预览流持续下行   Then 机器→服务端吞吐 ≤1000 kbps ±10%；同期 C3 执行事件与 C4 证据上传不被延迟超过 1 s
+AC-04-50 [integration] BR-04-99 SERVER 预签发
+Given 所有者 O
+When  A32{machine_type:SERVER} 带有效 step-up
+Then  201 返回一次 client_secret（no-store）；再次 GET 机器或凭证列表不含明文；审计 fleet.machine_created 与 fleet.machine_credential_issued（不含秘密）
+When  夹具无头机器程序用该凭证开会话   Then ONLINE，credential_origin=PRE_ISSUED，host_fingerprint 写入
+When  同一凭证从另一指纹的主机开会话   Then 409 140430，审计 fleet.machine_fingerprint_mismatch
+When  A32{machine_type:WORKSTATION}   Then 422 140482；无 step-up → 403 140403 REAUTH_REQUIRED
+AC-04-51 [integration] BR-04-100 / §4.6 K8S_POOL（v1.1）
+Given 池 P：min_warm=1，max_pods=2，夹具控制器
+Then  J9 创建 1 个 WARM Pod
+When  03 ReserveSlot 两次   Then 第一次绑定 WARM Pod（BOUND），第二次创建新 Pod；第三次 NO_FREE_SLOT
+When  第一个执行 SUCCEEDED   Then 其 Pod → TERMINATING → GONE（不回到 WARM）；J9 补足 1 个 WARM
+When  新 Pod 超过 pod_start_timeout_s 未就绪   Then FAILED，槽释放，03 收到 SPAWN_FAILED，N-04-10 一条
+When  控制器重连后上报服务端无记录的 Pod   Then 控制器删除该 Pod
+AC-04-52 [unit] BR-04-94 预览网关配置
+Given fleet.preview.domain 与控制台同一可注册域   Then 启动时预览视为未配置，A39 enabled:false，03 预览接口 503 140492
+Given mode=PATH   Then A39 path_mode_warning:true；会话 Cookie Path=/p/<label>/
+AC-04-53 [e2e] 机器详情「远程访问」Tab 与接入服务器
+桌面 1440 与手机 390：开关、只读态（无 machine_access_manage）、终端开关的重新认证、关闭开关的确认文案、WORKSTATION 无沙箱红字、路径模式琥珀提示；接入服务器向导的「只显示这一次」提示与离开确认；全部 v1.1 项带「v1.1」标签
+```
+
 ## 11. 度量与埋点（不含代码、提示词、路径原文与主机名）
 
 | 事件 | 属性 |
@@ -1125,8 +1339,10 @@ And   A 绑定的不是 M 时 M 上报的 agent.status{A} 不转交（409 140452
 | `tool_detection_reported` | `tool_key`, `status`, `variant?`, `can_screenshot?`, `probe_ms?`（不含路径） |
 | `machine_credential_rotated` / `machine_revoked` | `delivery_attempts` / `interrupted_executions` |
 | `gateway_request` | `state`, `duration_ms`, `stream:bool`, `model_listed:bool`, `error_code?` |
+| `tunnel_stream_closed`（D119） | `kind`, `machine_type`, `result`（CLOSED / RESET）, `reset_code?`, `duration_ms`, `bytes_bucket` |
+| `pool_pod_ready`（v1.1） | `wait_ms`, `warm_hit:bool`, `result` |
 
-服务端指标（Prometheus）：`fleet_machines{state}`、`fleet_channel_requests_total{endpoint,code}`、`fleet_longpoll_wake_latency_seconds`、`fleet_watchdog_lag_seconds`、`fleet_gateway_active_requests`。
+服务端指标（Prometheus）：`fleet_machines{state,machine_type}`、`fleet_tunnel_streams{kind}`、`fleet_tunnel_bytes_total{machine_type,kind}`、`fleet_tunnel_protocol_errors_total`、`fleet_pool_pods{state}`（D119）、`fleet_channel_requests_total{endpoint,code}`、`fleet_longpoll_wake_latency_seconds`、`fleet_watchdog_lag_seconds`、`fleet_gateway_active_requests`。
 
 ---
 
@@ -1144,17 +1360,25 @@ And   A 绑定的不是 M 时 M 上报的 agent.status{A} 不转交（409 140452
 | 底座 oauth | `DeviceGrants` 窄接口 + 客户端属性（CR-04-06） |
 | 底座 identity | 事务内服务账号/凭证操作（CR-04-08） |
 | 底座 authn | step-up purpose `machine_revoke`、`gateway_key_reveal`；服务账号令牌逐请求状态校验（已有） |
+| 03（D119） | `PreviewAccessResolver`（网关访问判定、`HolderActive`）；流的种类、目标与生命周期；消费 `machine.access_changed` |
+| 08（D119） | 权限码 `machine_access_manage`（不可委托、仅人类）；step-up `machine_credential_issue`、`machine_terminal_enable`；审计目录 |
+| 部署（D119） | 独立预览域名、通配 DNS 与通配证书（或路径模式）；K8S_POOL 需集群与命名空间权限（v1.1） |
 
 **风险**
 
 | 风险 | 缓解 |
 |---|---|
-| 长轮询被企业代理截断 | 自动回退 350 ms 短轮询（BR-04-30）；v1.1 WebSocket |
-| 机器数增长导致轮询负载 | 长轮询 10 s；每机 ≤20 req/s；v1.1 WebSocket |
+| 长轮询被企业代理截断 | 自动回退 350 ms 短轮询（BR-04-30）；WebSocket 通道（D119 起 MVP） |
+| 机器数增长导致轮询负载 | 长轮询 10 s；每机 ≤20 req/s；WebSocket 通道（D119 起 MVP） |
 | 吊销凭证使同服务账号全部令牌失效（token_version） | 机器 401 后先重换令牌（BR-04-24） |
 | Codex 无模型目录命令 | 保留末次成功 + 手填（BR-04-42/43） |
 | 网关的机器端工具禁用未被完整证明 | 实验标识、可信访问域声明、只读沙箱（BR-04-77） |
 | 领取响应丢失导致孤儿凭证 | 一次性消费 + 重接入替换 + J5 清理（BR-04-15） |
+| 预览把机器上其他服务暴露出去 | 只连回环 + 进程树归属在机器端判定 + 周期复查（BR-04-91），拒绝即审计 |
+| Agent 写的网页窃取控制台会话 | 独立可注册预览域 + 每会话独立子域，控制台 Cookie 永不到达预览源（BR-04-94） |
+| 工作站上的交互终端无法限制目录 | 默认关闭、仅所有者可开且需 step-up；无沙箱时常驻红字（BR-04-96） |
+| 预览流量挤占执行通道 | 每机令牌桶 + 控制消息优先 + 流窗口（BR-04-97） |
+| WebSocket 被企业代理拦截 | 长轮询回退保证执行不受影响；远程访问明确提示不可用（BR-04-90） |
 
 **待决（附建议）**
 
@@ -1167,6 +1391,8 @@ And   A 绑定的不是 M 时 M 上报的 agent.status{A} 不转交（409 140452
 | Q5 | `/v1` 是否作为根路径协议端点 | 保留 `/v1/*`（同 `/oauth/*` 属协议端点豁免资源命名规则） | 客户端只配置 base_url，需与 OpenAI 路径一致 |
 | Q6 | 本地服务与 Desktop 壳是否进 MVP | v1.1（PRD §17 W3 只要求接入与检测） | 控制台可在浏览器直接使用；不阻塞闭环 |
 | Q7 | 自动迁移 | 不做；由 03 / 人决定（BR-04-57） | 有副作用的工作不得自动交给另一台机器（Preview 原则） |
+| Q8 | WebSocket 通道提前到 MVP（D119） | **已决（2026-10-12）：提前**：D119 的 MVP 预览 / 文件 / 只读终端都依赖多路复用流 | D119 未单列通道分期；长轮询无法承载 HMR WebSocket 与 SSE |
+| Q9 | SERVER / K8S_POOL 默认开启远程终端与文件编辑 | **已决（2026-10-12）：开启**（§3.15）；租户可改 | 服务器与 Pod 不含个人数据且有沙箱；D119 只规定工作站默认关闭 |
 
 ---
 
@@ -1185,9 +1411,12 @@ And   A 绑定的不是 M 时 M 上报的 agent.status{A} 不转交（409 140452
 | CR-04-09 | PRD §6.8 | 命令示例 `myrmidon-runner` 改为中性 `machine-runner`（包名/命令可配置） | 仓库规约：部署身份是配置，不得写入代码与产物名 |
 | CR-04-10 | 00 §6.1 / §9 | 记录：机器通道（R）以服务账号 + `RegisterTenantMember` + 本模块机器守卫鉴权，不新增权限码；通道以自然键去重，不适用 `Idempotency-Key` | 机器身份无角色，仅能访问通道 |
 | CR-04-11 | 00 §8 | `MachineDirectory` 方法集按 §6.7 冻结；新增 `MachineChannelNotifier`（fleet 提供，03 使用） | 与 03 CR-03-05 `ExecutionDispatchHandler` 对接 |
+| CR-04-12 | 00 §5 / §6 / §7.1 / §8（D119） | ① 共享枚举 `MachineType`（WORKSTATION, SERVER, K8S_POOL；所有者 04，03 读取）；模块内枚举 `PoolPodState`（REQUESTED, SCHEDULING, WARM, BOUND, TERMINATING, GONE, FAILED）、`TunnelStreamKind`（§6.4b）、`TunnelStreamState`、`CredentialOrigin`（DEVICE_CODE, PRE_ISSUED）不进 §5；`SlotHolderKind` 增 `PREVIEW`；② 权限码 `machine_access_manage`（fleet 注册，非 DataScoped，不可委托、仅人类）；③ 事件 `machine.access_changed`（fleet → execution）；④ 接口 `TunnelBroker`（fleet → execution）、`MachineDirectory.Type/RemoteAccess`、03 `PreviewAccessResolver`（execution → fleet） | 远程预览、文件与终端经机器隧道（D119） |
 
 **处理状态（00 v1.3 审校后）**：CR-04-01 已决——`MachineState` 去掉 `PENDING_CONFIRM`；其余为模块内枚举，按 00 §3 不进 §5。CR-04-02、CR-04-03、CR-04-04、CR-04-05、CR-04-07、CR-04-11 已并入 00（主题语法以 09 为准；`SlotReserver` 取消，经 `MachineDirectory`）。CR-04-06、CR-04-08 列入 00 §13 F2/F3。CR-04-09 已改 PRD。CR-04-10 已记录。幂等改用 09 C7 平台表；step-up purpose 完整清单以 08 危险操作登记表为准（本模块使用 `machine_revoke`、`gateway_key_reveal`）。
 
 **第二轮复审（00 v1.5）**：Agent 机器通道消息改为引用 05 §6.6 唯一定义（#18），本模块只保留传输帧（`agent_commands[]`、`agents[]`、C3 转交）与 140452 判定；新增 AC-04-39。
 
 **D112 / D113（00 v2.0，2026-10-12）**：新增工具检测与能力标记（§3.14、S4、BR-04-47/48、A30/A31、140447）与模型家族（S2 `model_family`、`manual_model_families`、BR-04-49、A17 `families`、140448）；`MachineDirectory` 增 `Tools`/`HasCapability`/`ToolAvailability`/`ModelFamily` 与 `ListEligibleMachines.capabilities`；`machine.runtimes_changed` 载荷增 `tools_changed`、`capabilities`；新增 AC-04-40..43。使用方 03（VISUAL 验证器、验收截图）、05（跨模型家族选择、ACCEPTOR 资格）、11（`TOOL_UNAVAILABLE`）。已并入 00 v2.0 §8（无新事件）。
+
+**D119（2026-10-12）**：远程访问隧道（§5.10、§6.4b、§4.7、BR-04-90..97）、机器类型 SERVER / K8S_POOL（§3.15–3.17、§4.6、§5.11、BR-04-98..101）、每机远程访问开关与配额、预览网关部署配置；接口 A32–A39；错误码 140482/140484/140485/140486/140488/140491/140492；任务 J9/J10；事件 `machine.access_changed`；通知 N-04-10/11；AC-04-44..53；CR-04-12（已并入 00 v2.0 D119 补充）。分期：SERVER、隧道与 WebSocket 通道、预览开关、配额、预览网关为 MVP；K8S_POOL、终端与编辑开关的生效能力为 v1.1。

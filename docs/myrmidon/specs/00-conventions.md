@@ -11,9 +11,9 @@
 | `00-conventions.md` | 共享契约 | — | — |
 | `01-intake-portal.md` | 需求开口、来件、分诊、澄清、甲方门户 | `intake` | 来件、甲方门户 |
 | `02-work-review.md` | 需求基线、验收标准、工作项、分派、完成声明、裁决、范围变更、拆解模板 | `delivery` | 工作项看板/详情、评审台 |
-| `03-execution-evidence.md` | 执行与分支、交互会话、产物、证据、验证器与验证 | `execution` | 执行列表、交互会话工作台、证据/验证面板 |
-| `04-machines-runtime.md` | 机器接入（设备码）、心跳与通道、运行时与能力检测、模型目录、执行槽调度、API 网关 | `fleet` | 机器、机器详情、API 网关 |
-| `05-agents-orchestration.md` | Agent 成员、生命周期与退役、主管 Agent 派单、Heavy 并行求解、频道 | `fleet` + `collab` | 成员与 Agent、Agent 详情、频道 |
+| `03-execution-evidence.md` | 执行与分支、交互会话、产物、证据、验证器与验证 | `execution` | 执行列表、交互会话工作台、证据/验证面板、远程工作区（预览 / 产物 / 文件 / 终端，D119） |
+| `04-machines-runtime.md` | 机器接入（设备码）、心跳与通道、运行时与能力检测、模型目录、执行槽调度、API 网关 | `fleet` | 机器、机器详情（含远程访问设置，D119）、接入服务器 / 集群池（D119）、API 网关 |
+| `05-agents-orchestration.md` | Agent 成员、生命周期与退役、主管 Agent 派单、Heavy 并行求解、频道 | `fleet` + `collab` | 成员与 Agent、Agent 详情、会话 |
 | `06-knowledge-memory.md` | 知识库、切块与检索、记忆与治理、上下文注入 | `knowledge` | 知识库、Agent 记忆 |
 | `07-projects-delivery.md` | 项目（阶段、团队模式、预算）、交付包、甲方验收、返工来件 | `delivery` | 项目、交付 |
 | `08-governance.md` | 权限目录与矩阵、授权委托、升级规则、审计、通知、总览与「我的裁决」 | `governance`（业务）+ 底座 IAM | 授权与策略、审计、总览、我的裁决 |
@@ -112,6 +112,7 @@
 | `VerificationResult` | `PENDING`, `PASSED`, `FAILED`, `INCONCLUSIVE` | 03 |
 | `MachineState` | `ONLINE`, `OFFLINE`, `DRAINING`, `REVOKED`（接入过程的待确认状态属于模块内枚举 `EnrollmentStatus`；确认后的机器初始为 `OFFLINE`，建立会话后变 `ONLINE`） | 04 |
 | `RuntimeKind` | `CLAUDE_CODE`, `CODEX`（开放扩展，新增需契约变更） | 04 |
+| `MachineType` | `WORKSTATION`（设备码接入的个人电脑）, `SERVER`（无头守护进程，预签发服务账号凭证）, `K8S_POOL`（集群池：每个执行一个临时 Pod，v1.1）（D119） | 04 |
 | `AgentState` | `DRAFT`, `ACTIVE`, `STOPPED`, `CRASHED`, `RETIRING`, `RETIRED` | 05 |
 | `AgentRole` | `EXECUTOR`, `REVIEWER`, `COORDINATOR`, `LEAD`（UI 称「主管 Agent」）, `TESTER`（测试 Agent）, `ACCEPTOR`（产品验收 Agent）, `ASSISTANT`（纯人工模式下的助理） | 05 |
 | `GoalLevel` / `GoalStatus` | `TEAM`, `PROJECT`, `MEMBER` / `DRAFT`, `ACTIVE`, `AT_RISK`, `ACHIEVED`, `MISSED`, `CANCELLED` | 10 |
@@ -173,6 +174,8 @@
 | `test_case_manage` / `test_plan_manage` / `test_run_execute` | 用例管理 / 测试计划与报告 / 执行用例 | 是 | delivery |
 | `worklog_submit` / `worklog_approve` | 填报工时（本人）/ 审批工时（**仅限人类，且非本人**） | 否 | delivery |
 | `integration_manage` | 云效集成连接、映射、导入（已在 §15.5 登记；**仅限人类、需 step-up** `integration_credentials`，CR-12-03） | 否 | integration |
+| `terminal_interact` / `workspace_file_edit` / `preview_share_approve` | 交互终端（**不可委托、仅限人类**、需 step-up `terminal_interactive`）/ 人工接管后编辑执行工作区文件（仅限人类）/ 批准甲方预览分享链接（**不可委托、仅限人类**，不得批准本人申请）（D119；查看预览、文件与只读终端沿用 `execution_read`） | 是 | execution |
+| `machine_access_manage` | 每机远程访问开关：允许远程预览 / 远程终端 / 人工接管后编辑文件（**不可委托、仅限人类**；默认仅 `team_owner`；开启终端需 step-up `machine_terminal_enable`）（D119） | 否 | fleet |
 
 ### 6.2 默认角色（随租户初始化，经底座 `core` 角色创建）
 
@@ -196,11 +199,11 @@
 
 ### 6.4 不可委托动作（硬编码，不可配置）
 
-`scope_change`、`delivery_send`、`project_mode_change`、`policy_manage`、`delegation_grant`、`takeover`、`machine_revoke`、`intake_decline`、`production_access`、`spawn_grant_manage`、来件转换中的**新建项目**（伪码 `project_create`，`NEW_PROJECT`）与**追加到既有需求**（`APPEND`，等同范围变更）、`memory_approve`、生产环境访问。
+`scope_change`、`delivery_send`、`project_mode_change`、`policy_manage`、`delegation_grant`、`takeover`、`machine_revoke`、`intake_decline`、`production_access`、`spawn_grant_manage`、来件转换中的**新建项目**（伪码 `project_create`，`NEW_PROJECT`）与**追加到既有需求**（`APPEND`，等同范围变更）、`memory_approve`、生产环境访问、`terminal_interact`、`preview_share_approve`、`machine_access_manage`（D119）。
 
 ### 6.5 仅限人类的动作（即使有委托，Agent / 服务账号 / PAT 也不得执行）
 
-回应工具授权与输入请求（`interaction_respond`）；项目阶段迁移到 `DELIVERED` / `CLOSED` / `CANCELLED`；修改预算上限；登记线下验收；正式交付（需 step-up，结构上排除 PAT 与服务账号）；确认机器接入；批准 RULE 记忆；批准主管 Agent 的创建请求；收编（adopt）AI 创建的 Agent；确认或退回下级的周期计划与报告（`plan_confirm`、`report_confirm`）；需求评审单的 `PASS` / `REJECT` 意见（Agent 意见只作 AI 建议，不计数）；工时审批（`worklog_approve`，且不得审批本人）；集成凭据管理（`integration_manage`，需 step-up）（CR-12-04）；执行映射到 `ACCEPTED` 的流转（含关闭缺陷；Agent 即使持 `TESTER` 角色也不可，`reason_code=AGENT_CANNOT_ACCEPT`，由 08 登记；「验证角色」= 持 `TESTER` 角色的**人类**成员或该工作项负责人，CR-12-09）；请甲方确认变更、登记甲方线下确认（01 T15 / T19，经 `scope_change` 判定，D117）。甲方本人对变更的〔接受〕/〔不接受〕是**甲方行为**（`CLIENT:<intake_contact_id>`，只经门户会话），任何团队主体与 Agent 都不能代为做出。
+回应工具授权与输入请求（`interaction_respond`）；项目阶段迁移到 `DELIVERED` / `CLOSED` / `CANCELLED`；修改预算上限；登记线下验收；正式交付（需 step-up，结构上排除 PAT 与服务账号）；确认机器接入；批准 RULE 记忆；批准主管 Agent 的创建请求；收编（adopt）AI 创建的 Agent；确认或退回下级的周期计划与报告（`plan_confirm`、`report_confirm`）；需求评审单的 `PASS` / `REJECT` 意见（Agent 意见只作 AI 建议，不计数）；工时审批（`worklog_approve`，且不得审批本人）；集成凭据管理（`integration_manage`，需 step-up）（CR-12-04）；执行映射到 `ACCEPTED` 的流转（含关闭缺陷；Agent 即使持 `TESTER` 角色也不可，`reason_code=AGENT_CANNOT_ACCEPT`，由 08 登记；「验证角色」= 持 `TESTER` 角色的**人类**成员或该工作项负责人，CR-12-09）；请甲方确认变更、登记甲方线下确认（01 T15 / T19，经 `scope_change` 判定，D117）；打开交互终端、人工接管后编辑工作区文件、批准甲方预览分享链接、修改机器远程访问开关、预签发服务器 / 集群机器凭证（D119）。甲方本人对变更的〔接受〕/〔不接受〕是**甲方行为**（`CLIENT:<intake_contact_id>`，只经门户会话），任何团队主体与 Agent 都不能代为做出。
 
 > 12 增补（CR-12-07，由 08 登记）：收件箱类型 `REVIEW_SHEET`、`WORKLOG_APPROVAL`（08 §6.10）；step-up 用途 `integration_credentials`（08 §6.9 危险操作登记表）。
 
@@ -240,6 +243,8 @@
 | `template.version_published`, `template.version_deprecated`, `template.binding_changed`, `verifier.calibration_changed`, `eval.run_completed`, `provider.state_changed`, `rubric.divergence_detected` | templates(11) | governance（通知）、delivery（拆解默认值刷新；`provider.state_changed` → `PROVIDER_UNAVAILABLE`）、execution（`verifier.calibration_changed` → 启动等待已校准机器的 AUTOMATED 运行，D116） |
 | `iteration.state_changed`, `version.locked`, `version.released`, `workflow.config_changed`, `review_sheet.opened`, `review_sheet.closed`, `test_run.recorded`, `test_report.generated`, `worklog.submitted`, `worklog.approved`, `worklog.returned`, `worklog.withdrawn`, `code_link.created`, `automation.run_failed`（CR-12-05） | delivery(12 Part A) | governance（通知；收件箱 `REVIEW_SHEET` / `WORKLOG_APPROVAL`）、integration（出站同步）、planning(10，工时与迭代)、collab |
 | `integration.connection_state_changed`, `integration.import_finished`, `integration.sync_conflict`（CR-12-05） | integration(12 Part B) | governance（通知） |
+| `machine.access_changed`（D119：远程访问开关或 WebSocket 可用性变化） | fleet(04) | execution（停止被关闭类别的预览 / 终端会话与编辑） |
+| `share_link.requested`, `share_link.decided`, `share_link.ended`（D119，分期待定） | execution(03) | governance（收件箱 `PREVIEW_SHARE_APPROVAL` 的创建与关闭、通知） |
 
 事件载荷统一：`{event_id, event_type, schema_version, stream_seq, tenant_id, project_id?, occurred_at, actor{kind,id,authority_source}, subject{kind,id,version}, topics[], correlation_id, causation_id, data{...}}`，`data` 字段在发布者规格中定义；同一聚合的事件保序（09 C2）。各发布者规格须声明每类事件可否经 SSE 推送完整载荷。
 
@@ -303,6 +308,8 @@
 | `WorklogReader` | delivery(12 Part A，v2.0) | 读工时与汇总（按人 / Agent、项目、迭代、类别，CR-12-06） | planning(10) |
 | `WorkflowResolver` | delivery(12 Part A，v2.0) | 解析工作项的生效显示状态（含按 `defect_stage` 区分 `merged` / `deployed`）与流转矩阵、流转条件（CR-12-06） | delivery(02) |
 | `TestCoverageReader` | delivery(12 Part A，v2.0) | 读验收标准的用例覆盖与最新执行结果（CR-12-06） | execution(03)、delivery(07) |
+| `TunnelBroker`（Open / ResetHolder / Ports）；`MachineDirectory.Type` / `RemoteAccess`；`ReserveSlot(holder_kind=PREVIEW)` | fleet(04，D119) | 在机器出站 WebSocket 通道上打开预览 / 文件 / 终端流（端口归属、路径限定、开关与配额在 04 判定）；读机器类型与远程访问开关 | execution |
+| `PreviewAccessResolver`（Authorize / ExchangeCode / ExchangeShare / Touch / HolderActive） | execution(03，D119) | 预览网关逐请求访问判定与访问换取 | fleet(04 预览网关) |
 | `EntityProvisioner`（事务内建实体与角色绑定）、`DeviceGrants`（设备码授权扩展）、`SecretSealer` | 底座 core / oauth / 09 | 见 §13 | delivery、fleet |
 
 | `Notifier` | 09 平台 | 发送通知 | 全部 |
@@ -333,6 +340,7 @@
 
 - 应用：`apps/frontend-web-admin/apps/delivery`（Vite + React，依赖 `@workspace/ui`），复用 IAM 应用的认证、外壳、工作区切换；甲方门户为同应用内独立布局，入口 `/portal#t=<token>`（令牌放在 fragment，不进日志与 Referer；兼容旧 `/portal/:token` 跳转）。
 - 路由前缀：`/t/:tenantID/...`；项目内 `/t/:tenantID/p/:projectID/...`。
+- 预览域（D119）：远程预览只在部署配置给出的**独立可注册域名**上提供（每会话一个随机子域；无通配 DNS 时为路径模式），从不在控制台源上渲染执行工作区内容；控制台只以 iframe 嵌入（04 BR-04-94、03 BR-03-112）。
 - 共享组件（在 `packages/ui` 新增或在 delivery 应用 `components/` 内，规格中标明）：`CompletionLadder`（L1–L4）、`ActorAvatar`（人圆形 / Agent 圆角方形 + 芯片角标 / 机器图标 / 甲方）、`StateBadge`（图标 + 文字 + 语义色）、`EvidenceCard`（来源卡）、`DecisionPanel`、`StructuredFeedbackForm`、`ExecutionBranchTree`、`CountdownRing`、`AuthorityNote`（"你以 X 身份 · 来源 Y"）。
 - 状态语义色 Token：见 PRD §14.2，只引用语义 Token。
 - 每页必须定义：加载骨架、空态（含下一步按钮）、错误态（可重试）、无权限态（说明缺哪个权限码）、离线/重连态。
@@ -394,7 +402,7 @@ Then  返回 403，业务码 120403，W 状态不变，审计链追加 delivery.
 | 1.7 | 2026-10-11 | PRD §18 Q1–Q11 与各规格 §12 待决项全部按建议采纳（产品负责人「该有的就有」，见 decisions D109） | 产品负责人 |
 | 1.8 | 2026-10-11 | D110 主管 Agent 自建 Agent：`AgentOrigin`、`SpawnGrantState`；权限 `agent_spawn`（仅经策略）、`spawn_grant_manage`（不可委托、仅所有者）；仅限人类动作增加批准创建请求与收编；事件 `agent.spawn_requested/spawned/orphaned/adopted`、`spawn_grant.*`；接口 `SpawnGrantReader`/`SpawnGrantUsage` | 产品负责人 |
 | 1.9 | 2026-10-11 | D111 目标、计划与周期报告：新模块 `planning`（规格 10，错误码段 180000–184999）；枚举 GoalLevel/GoalStatus/PeriodKind/ReportLevel/ReportState/KRSource/CheckSeverity；权限 goal_*、plan_*、report_*、planning_settings_manage（确认类仅限人类）；事件 goal.*、plan.*、report.*；合并 CR-10-01..10：表前缀 `planning_*`、接口 `GoalReader`/`ReportReader`/`WorkItemReader.ListByAssigneeInPeriod`/`AgentDraftRequester`、默认授予、05 `owner_principal_id` 与 `agent.plan_draft`/`agent.report_draft`、08 收件箱 PLAN_CONFIRMATION/REPORT_CONFIRMATION/REPORT_BLOCKED/REPORT_OVERDUE 与「目标」菜单分组 | 产品负责人 |
-| 2.0 | 2026-10-11 | D112（研究方案 A–G 采纳：可靠性 P0、云效对齐、领域模板、纯人工模式、集成排期）与 D113（内部质量门、不穿透）：新状态 DRAFT / PLAN_REVIEW / INTERNAL_QA / STOPPED / EXCEPTION；新角色 TESTER / ACCEPTOR / ASSISTANT；TeamMode HUMAN_ONLY；VerificationStage、StateGroup、ExceptionDecision、EscalationReason、TemplateDomain、StatusConfidence；§15；规格 11、12。**合并（2026-10-12）**：CR-11-01/04/05/06/07/08/09——templates 错误码段 185000–189999、templates 事件、接口 TemplateResolver / VerifierCatalog / RubricScorer / ProviderRegistry / EvalSetWriter（替代 02 原写法 `TemplateEvalSink`）、一方模板 `tenant_id=0` 基础设施表例外、02 `template_stage_key` 与模块内 `BlockReason` 新值 TOOL_UNAVAILABLE / PROVIDER_UNAVAILABLE、04 工具检测与模型家族；D112/D113 接口 `WorkItemTransitioner.PlanProposed/InternalQaCompleted/SetSystemBlock`、`InternalQAReader`、`ModelFamilyOf`、`MachineDirectory.Tools/HasCapability/ToolAvailability/ModelFamily` 与事件 plan.* / andon.* / exception.* / internal_qa.* / acceptance_suite.frozen / cheating.suspected / quality.escaped 登记入 §7.1 / §8；穿透学习唯一执行方为 02。**合并（2026-10-12）**：CR-12-01..09——delivery 错误码段细分（02 120000–125999、12 Part A 126000–126999、07 127000–129999）与 integration 段 190000–194999；模块 `integration`（`integration_*`、`goose_integration`）；12 权限码与仅人类动作；12 事件；接口 WorklogReader / WorkflowResolver / TestCoverageReader；收件箱 `REVIEW_SHEET` / `WORKLOG_APPROVAL`、step-up `integration_credentials`、`EXTERNAL:<provider>:<ref>`；外部入站去重例外；`AGENT_CANNOT_ACCEPT`。D114：`quality.escaped` 发布者为 02 / 07 / 12 Part A，统一 `escape_key`，学习只经 02 `delivery.escape_learning` | 产品负责人；CR-11-01..09；CR-12-01..09；D114 补充（D116，2026-10-12）：工具校准——11 `VerifierCatalog.ToolCalibration`、03 BR-03-103 只在已校准机器上判定视觉 / 交互验证器。补充（D117，2026-10-12）：甲方变更申请——`IntakeStatus` 增 `CLIENT_APPROVAL`；事件 `intake.client_approval_requested` / `intake.client_approval_decided`；接口 02 `ChangeImpactPreviewer`、07 `ToleranceReader.WouldBreach` / `ToleranceAdjuster.ApplyApprovedChange`；§6.5 增请甲方确认与登记线下确认（甲方决定为 `CLIENT:` 行为）（01 CR-12、07 CR-07-12）。 |
+| 2.0 | 2026-10-11 | D112（研究方案 A–G 采纳：可靠性 P0、云效对齐、领域模板、纯人工模式、集成排期）与 D113（内部质量门、不穿透）：新状态 DRAFT / PLAN_REVIEW / INTERNAL_QA / STOPPED / EXCEPTION；新角色 TESTER / ACCEPTOR / ASSISTANT；TeamMode HUMAN_ONLY；VerificationStage、StateGroup、ExceptionDecision、EscalationReason、TemplateDomain、StatusConfidence；§15；规格 11、12。**合并（2026-10-12）**：CR-11-01/04/05/06/07/08/09——templates 错误码段 185000–189999、templates 事件、接口 TemplateResolver / VerifierCatalog / RubricScorer / ProviderRegistry / EvalSetWriter（替代 02 原写法 `TemplateEvalSink`）、一方模板 `tenant_id=0` 基础设施表例外、02 `template_stage_key` 与模块内 `BlockReason` 新值 TOOL_UNAVAILABLE / PROVIDER_UNAVAILABLE、04 工具检测与模型家族；D112/D113 接口 `WorkItemTransitioner.PlanProposed/InternalQaCompleted/SetSystemBlock`、`InternalQAReader`、`ModelFamilyOf`、`MachineDirectory.Tools/HasCapability/ToolAvailability/ModelFamily` 与事件 plan.* / andon.* / exception.* / internal_qa.* / acceptance_suite.frozen / cheating.suspected / quality.escaped 登记入 §7.1 / §8；穿透学习唯一执行方为 02。**合并（2026-10-12）**：CR-12-01..09——delivery 错误码段细分（02 120000–125999、12 Part A 126000–126999、07 127000–129999）与 integration 段 190000–194999；模块 `integration`（`integration_*`、`goose_integration`）；12 权限码与仅人类动作；12 事件；接口 WorklogReader / WorkflowResolver / TestCoverageReader；收件箱 `REVIEW_SHEET` / `WORKLOG_APPROVAL`、step-up `integration_credentials`、`EXTERNAL:<provider>:<ref>`；外部入站去重例外；`AGENT_CANNOT_ACCEPT`。D114：`quality.escaped` 发布者为 02 / 07 / 12 Part A，统一 `escape_key`，学习只经 02 `delivery.escape_learning` | 产品负责人；CR-11-01..09；CR-12-01..09；D114 补充（D116，2026-10-12）：工具校准——11 `VerifierCatalog.ToolCalibration`、03 BR-03-103 只在已校准机器上判定视觉 / 交互验证器。补充（D117，2026-10-12）：甲方变更申请——`IntakeStatus` 增 `CLIENT_APPROVAL`；事件 `intake.client_approval_requested` / `intake.client_approval_decided`；接口 02 `ChangeImpactPreviewer`、07 `ToleranceReader.WouldBreach` / `ToleranceAdjuster.ApplyApprovedChange`；§6.5 增请甲方确认与登记线下确认（甲方决定为 `CLIENT:` 行为）（01 CR-12、07 CR-07-12）。补充（D118，2026-10-12）：控制台信息架构——顶栏域标签（工作台 · 会话 · 协作 · 项目 · 团队 · 治理）+ 当前域侧栏（08 §8.6）、09 C6 `MenuPage.Domain` 与底座 `iam_menus.domain` 列（09 CR-09-12）、05 会话页 `/t/:tenantID/chat` 与成员私信 `ChannelKind.DIRECT`；不新增共享枚举、权限码、事件或跨模块接口（`MenuDomain`、`ChannelKind` 为模块内枚举，留在 09 / 05）。补充（D118 修订，2026-10-12）：项目为主容器——删除协作域，域标签为 工作台 · 会话 · 项目 · 团队 · 治理；项目域分项目外（项目组合 · 来件 · 交付总览 / 跨项目 需求 · 任务 · 缺陷 · 流水线）与项目空间（路由 `/t/:tenantID/p/:projectID/...`，详情页在所属项目空间渲染），团队域增目标树 · 报告中心，移动端底栏 工作台 · 会话 · 项目 · 裁决（08 §8.6）；09 `MenuDomain` 去掉 `COLLAB`，`MenuPage` 增 `Space`（TEAM / PROJECT）与 `iam_menus.space` 列（09 BR-09-80、CR-09-12）；同样不新增共享枚举、权限码、事件或接口。补充（D119，2026-10-12）：远程预览、终端与文件经机器隧道；服务器与集群执行机器——共享枚举 `MachineType`（04）；权限码 `terminal_interact`、`workspace_file_edit`、`preview_share_approve`（03）与 `machine_access_manage`（04），§6.4 / §6.5 同步；事件 `machine.access_changed`（04）与 `share_link.requested` / `decided` / `ended`（03）；接口 `TunnelBroker`、`MachineDirectory.Type` / `RemoteAccess`（04）与 `PreviewAccessResolver`（03）；错误码在既有段内使用（03：130460–130473；04：140482–140492）；08 登记 step-up `terminal_interactive` / `machine_terminal_enable` / `machine_credential_issue`、收件箱 `PREVIEW_SHARE_APPROVAL`、原因码 `MACHINE_ACCESS_DISABLED` / `PORT_NOT_OWNED` / `PATH_OUTSIDE_WORKSPACE` 与审计事件；§10 预览域约定（03 CR-03-09、04 CR-04-12）。分期按 D119：服务 / API 预览、文档图片报告预览、只读终端、只读文件、SERVER 为 MVP（WebSocket 通道随之提前到 MVP）；交互终端、文件编辑、视频与小说预览、K8S_POOL 为 v1.1；甲方分享链接 D119 未列分期，待定。 |
 ---
 
 ## 15. 可靠性闭环与内部质量门（D112 / D113，v2.0）

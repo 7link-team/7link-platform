@@ -16,7 +16,7 @@
 | Agent 绩效 | 首次验收率、单位已接受成本、返工率、当前负载（公式、刷新节奏） |
 | 主管 Agent 编排 | 派单候选预过滤 + 确定性评分、主管 Agent LLM 提案、提案生命周期、MANUAL / AUTO 护栏、人工改派、无候选、失效重派、饥饿与抖动上限 |
 | Heavy 并行求解（v1.1） | 触发规则、N 枝选择（模型多样性）、预算上限、对比报告、择优 / 合成、落选枝归档 |
-| 频道（collab） | 项目默认频道、自建频道、成员、消息四类、@mention、Agent 回复与「@Agent 请做 X」、事件折叠、未读、编辑 / 撤回、Agent 私信、钩子（v1.1）、桥接（v2）、保留、上限、实时 |
+| 频道（collab） | 项目默认频道、自建频道、成员、消息四类、@mention、Agent 回复与「@Agent 请做 X」、事件折叠、未读、编辑 / 撤回、Agent 私信、成员私信与会话空间（D118）、钩子（v1.1）、桥接（v2）、保留、上限、实时 |
 
 **不解决（边界）**：
 
@@ -68,6 +68,14 @@
 | US-05-22 | 作为团队所有者，我要内部验收 Agent 优先使用与执行者不同的模型家族，以便避免「自己审自己」 | MVP |
 | US-05-23 | 作为纯人工团队的成员，我要 Agent 只做助理（分诊、拆解草稿、纪要转任务草稿、状态与报告草稿、风险与对账提示），以便人仍是唯一的执行者与验收者 | MVP |
 | US-05-24 | 作为团队所有者，我要编制授权可以允许主管创建测试 Agent，但产品验收 Agent 只能由人创建，以便验收者的独立性有保证 | MVP |
+
+### 2.y 用户故事增补（D118）
+
+| ID | 故事 | 版本 |
+|---|---|---|
+| US-05-25 | 作为团队成员，我要在一个全宽的会话空间里看到提及与线程、按项目分组的频道、私信与运行中的执行会话，以便不在页面间来回跳转 | MVP |
+| US-05-26 | 作为团队成员，我要和同事、和某个 Agent 私信，且人与人的私信只有我们两人能看 | MVP |
+| US-05-27 | 作为团队所有者，我要能只读查看我负责的 Agent 与人之间的私信，以便对 Agent 的行为负责 | MVP |
 
 ## 3. 领域模型与数据表
 
@@ -279,11 +287,11 @@ AgentRole 只决定「这个 Agent 能被安排成什么」；**权限**来自 0
 | 列 | 类型 | 空 | 默认 | 约束 | 说明 |
 |---|---|---|---|---|---|
 | id | ID | N | | PK | |
-| project_id | ID | N | | | 项目实体（DataScoped） |
-| kind | ENUM | N | | `ChannelKind`：PROJECT_DEFAULT / CUSTOM / AGENT_DIRECT | |
-| name | STR(40) | N | | BR-05-80 | DEFAULT 名 = 项目名截断（随 07 改名同步）；AGENT_DIRECT 名 = `dm-<agentA>-<agentB>` |
+| project_id | ID | Y | | `kind='DIRECT'` ⇔ 为空 | 项目实体（DataScoped）；DIRECT（D118）为团队级，恒为空 |
+| kind | ENUM | N | | `ChannelKind`：PROJECT_DEFAULT / CUSTOM / AGENT_DIRECT / DIRECT（D118：人↔人、人↔Agent 成员私信，BR-05-114） | |
+| name | STR(40) | N | | BR-05-80 | DEFAULT 名 = 项目名截断（随 07 改名同步）；AGENT_DIRECT 名 = `dm-<agentA>-<agentB>`；DIRECT 名固定为 `dm`（显示名由客户端按对方渲染） |
 | topic | STR(200) | Y | | | |
-| direct_pair_key | STR(48) | Y | | `<小id>:<大id>` | 部分唯一 `(project_id, direct_pair_key) WHERE kind='AGENT_DIRECT'` |
+| direct_pair_key | STR(48) | Y | | `<小id>:<大id>` | 部分唯一 `(project_id, direct_pair_key) WHERE kind='AGENT_DIRECT'`；DIRECT 取两名参与者的 principal_id，部分唯一 `(tenant_id, direct_pair_key) WHERE kind='DIRECT'` |
 | last_seq | BIGINT | N | 0 | | 行锁分配消息序号 |
 | last_message_at | TS | Y | | | |
 | archived_at | TS | Y | | | 归档 = 只读 |
@@ -299,7 +307,7 @@ AgentRole 只决定「这个 Agent 能被安排成什么」；**权限**来自 0
 |---|---|---|---|---|---|
 | id | ID | N | | PK | |
 | channel_id | ID | N | | UNIQUE(channel_id, seq) | |
-| project_id | ID | N | | | 冗余，行过滤 |
+| project_id | ID | Y | | | 冗余，行过滤；DIRECT 频道的消息为空 |
 | seq | BIGINT | N | | | 频道内单调，从 1 起 |
 | kind | ENUM | N | | `MessageKind`：TEXT / EVENT / DECISION_CARD / DISPATCH_CARD | |
 | author_kind | ENUM | N | | HUMAN / AGENT / SYSTEM | |
@@ -469,7 +477,7 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 
 ### 4.5 频道与消息
 
-频道：`ACTIVE`（`archived_at IS NULL`）⇄ `ARCHIVED`。PROJECT_DEFAULT 只能随项目进入 CLOSED / CANCELLED 被系统归档（消费 07 `project.stage_changed`），人工归档 → 409 145011；AGENT_DIRECT 不可归档 / 改名（145011）。归档频道写消息 / 加成员 → 409 145008；项目重开（不存在此迁移）不适用。
+频道：`ACTIVE`（`archived_at IS NULL`）⇄ `ARCHIVED`。PROJECT_DEFAULT 只能随项目进入 CLOSED / CANCELLED 被系统归档（消费 07 `project.stage_changed`），人工归档 → 409 145011；AGENT_DIRECT 与 DIRECT 不可归档 / 改名（145011）；DIRECT 不属项目，不受项目关闭影响（BR-05-114）。归档频道写消息 / 加成员 → 409 145008；项目重开（不存在此迁移）不适用。
 
 消息：`POSTED → EDITED*（≤10 次，作者，15 min 内，仅 TEXT）→ RETRACTED`（终态）。EVENT / DECISION_CARD / DISPATCH_CARD 只由系统写，作者不可编辑 / 撤回（409 145006）；卡片的「已处理」状态由 `payload.status` 投影更新（`message.updated`，不计 edit_count）。RETRACTED 上编辑 / 撤回 → 409 145006。
 
@@ -653,6 +661,15 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 - **BR-05-112 编制授权的角色边界**：主管创建请求 `role=TESTER` 受授权 `allowed_roles` 约束；`role=ACCEPTOR` 一律拒绝（142040）；已存在的 ACCEPTOR 被收编或退役不影响其他内部验收者资格。
 - **BR-05-113 学习回流**：消费 `quality.escaped`（发布者 02 / 07 / 12 Part A，按 `escape_key` 去重；03 不发布，00 §7.1）：对参与该工作项内部验收的 TESTER / ACCEPTOR Agent 记一次「放行后穿透」，更新其内部验收绩效（BR-05-109 评分输入），并在 Agent 详情「记忆」标签显示经验条目（由 02 `delivery.escape_learning` 经 06 提出）。
 
+### 5.y 业务规则增补（D118：会话空间与成员私信）
+
+- **BR-05-114 成员私信（DIRECT）的范围**：DIRECT 是**团队级**会话，不属于任何项目（`project_id` 为空，不随项目关闭归档），恰好 2 名参与者：人↔人，或人↔Agent；Agent↔Agent 仍只用项目内 AGENT_DIRECT（BR-05-91）。只能由人类经 C18 创建（Agent 调用 → 403 145403，`reason_code=HUMAN_ONLY`）；对方须为本租户在职人类成员，或非 RETIRING / RETIRED 的 Agent（对方为 Agent 时调用者另需 `agent_read`，否则 403 145403 `MISSING_PERMISSION`）；对方为自己、非本租户主体、Agent 调用者想与 Agent 私信，或经 C02 传 `kind=DIRECT` → 422 **145020**。唯一键 `direct_pair_key = <小 principal_id>:<大 principal_id>`，部分唯一 `(tenant_id, direct_pair_key) WHERE kind='DIRECT'`；已存在 → 200 返回既有（幂等，并发创建只成功一行）。成员固定两行（`source=EXPLICIT`），不可改名、归档、加人、退出（409 145011）。
+- **BR-05-115 私信可见性**：读、发、移动已读标记**只限两名参与者**。人↔人私信：任何第三方——包括团队所有者、`channel_manage`、`audit_read` 持有者——都不能读取消息、成员或修订（C03 / C05 / C08 / C12 → 403 145403 `NOT_MEMBER`，SSE 订阅拒绝），也不能撤回其中的消息；审计事件照常记录但不含正文（§7.3）。人↔Agent 私信：为对 Agent 行为可追责，另允许该 Agent 的负责人类（`fleet_agents.owner_principal_id`）与 `audit_read` 持有者**只读**（C03 / C05 / C08 / C12；不能发送、不能移动已读标记，发送 → 403 145403 `NOT_MEMBER`），入口为 Agent 详情「私信」标签（§8.3），不出现在其本人的会话左栏；人类参与者在详情栏与会话顶部看到「此私信对 Agent 的负责人与审计员可见」。他租户的私信 id → 404 145404。
+- **BR-05-116 私信里的工作请求**：私信不是真相源，规则与 BR-05-86 相同：Agent 在私信中收到「请做 X」时，唯一可做的状态相关动作是 (a) 以自身凭证创建 02 工作项草稿（角色允许时），或 (b) 若为主管 Agent，在**已指明的项目**中创建 `trigger=CHANNEL_REQUEST` 派单提案（`requested_by` = 私信中的人类）；项目不明确时只回复询问。提案卡片（DISPATCH_CARD）照常写入该项目默认频道并待人确认（`requires_human=true`），私信中由系统写一条链接到提案的 EVENT（`ref_kind=dispatch_proposal`）。执行者 Agent 被要求「开始做 W」→ 只能回复说明，不能自认领、不能直接执行（02 BR-02-11）。Agent 在私信中可读取的数据不超出其自身授权。
+- **BR-05-117 私信的提及与投递**：DIRECT 中每条 TEXT 自动对另一参与者写一行 `collab_message_mentions`（隐式提及）：对方为 Agent → 按 BR-05-85 投递（未运行时同样提示并在启动后补投）；对方为人 → N-05-09（私信变体）并计入 `mention_unread`。显式 `<@…>` 只能指向两名参与者，其他 → 422 145003（无〔邀请并发送〕）。速率与大小沿用 BR-05-88 / BR-05-92。
+- **BR-05-118 参与者离开**：Agent 退役或人类成员被停用 / 移出租户后，DIRECT 保留历史、另一方仍可读，发送 → 422 145016；退役 Agent 的人↔Agent 私信仍按 BR-05-115 对其负责人与审计员只读。保留沿用 BR-05-93（不物理删除）。
+- **BR-05-119 会话聚合与执行会话**：C17 只返回调用者自己的会话：可读的项目频道（BR-05-82）、本人参与的 DIRECT、按 BR-05-91 可只读的 AGENT_DIRECT（`include_agent_directs=true` 时）；不返回仅因审计而可读的人↔Agent 私信。「执行会话」区不由本模块存储：数据取自 03 A43（本人的执行，`kind=eq:INTERACTIVE` 且 `state=in:RUNNING,PAUSED`，或 `pending_interaction_count=gt:0`）与 08 我的裁决 I1 的「工具授权与输入」分类（本人可回应的交互），客户端合并去重并链到 03 交互会话工作台；回应仍走 03 / 08 接口与 `interaction_respond` 判定。03 目前没有「全租户内本人可回应的交互会话」读接口，超出这两个来源的会话不在此列（§12.1）。甲方联系人不是 Principal，C15 / C17 / C18 都不会返回甲方。
+
 ## 6. 接口契约
 
 约定（与 02/03/04/07 一致）：huma v2 + `respx` 信封；ID 十进制字符串；OpenAPI tag = 最终路径首段（CR-03-07 / CR-04-02）；守卫记号 **T** = `authz.Register`（租户级，路径前缀 `/tenants/{tenant_id}`）、**E** = `authz.RegisterEntity`（`entity_id` = 项目实体）、**O** = `authz.RegisterOwned`（全局短地址，按资源反查所属项目 / 租户后授权；作用域地址为同一操作，归属不符 404）；乐观锁 = 响应头 `ETag: "<version>"`、写请求 `If-Match`（缺 428、不符 409，表中记「v」）；「✔」= 支持 `Idempotency-Key`（09 C7 平台辅助，24 h；同 key 不同请求 176425，进行中 176409）。权限拒绝统一 `<段>403` + `data.reason_code`（MISSING_PERMISSION / NOT_MEMBER / DIRECT_READ_ONLY / REAUTH_REQUIRED / SELF_MANAGE / HUMAN_ONLY 等）。列表一律 `pkg/query`（`field=op:value`，offset 分页，`capabilities` 声明）。fleet 通用码沿用 04：140400 / 140403 / 140404 / 140409 / 140428；collab：145400 / 145403 / 145404 / 145409 / 145428。
@@ -768,15 +785,20 @@ F15 为人 + Agent 统一投影（**本规格提议**；资源语义卡：Meanin
 | C05 | GET `/channels/{channel_id}/members` | channels | 同 C03 | 过滤 `member_kind`(eq) `q`(contains) | `ChannelMember[]` | — | — |
 | C06 | PUT `/channels/{channel_id}/members/{principal_id}` | channels | `channel_manage` 或 OWNER · O | `{role?:"MEMBER"\|"OWNER"}` | `ChannelMember` | 409 145011/145008；422 145012/145016；404 | 天然幂等 |
 | C07 | DELETE `/channels/{channel_id}/members/{principal_id}` | channels | 同 C06；本人可退出 CUSTOM | — | 204 | 409 145011/145018 | 幂等 |
-| C08 | GET `/channels/{channel_id}/messages` | channels | 同 C03 | 过滤 `seq`(lt,gt,lte,gte) `kind`(in) `fold_key`(eq) `ref_id`(eq) `author_id`(eq)；排序 `seq`（默认 desc）；`limit ≤100` | `Message[]` + `meta.max_seq` | — | — |
+| C08 | GET `/channels/{channel_id}/messages` | channels | 同 C03 | 过滤 `seq`(lt,gt,lte,gte) `kind`(in) `fold_key`(eq) `ref_id`(eq) `author_id`(eq) `reply_to_message_id`(eq，D118 线程)；排序 `seq`（默认 desc）；`limit ≤100` | `Message[]` + `meta.max_seq` | — | — |
 | C09 | POST `/channels/{channel_id}/messages` | channels | `channel_post` · O + 成员 | `{body*≤8000, reply_to_message_id?, attachment_file_ids?[]≤5}`（kind 恒为 TEXT） | `Message`（201） | 422 145003/145004/145016/145017；413 145005；409 145008；403 145403（NOT_MEMBER / DIRECT_READ_ONLY）；429 145010 | ✔ |
 | C10 | PATCH `/messages/{message_id}` | messages | 作者本人 · O | `{body*}` | `Message` | 409 145006/145409 | v |
 | C11 | DELETE `/messages/{message_id}` | messages | 作者（24 h 内）或 `channel_manage` · O | — | 204（撤回，不物理删除） | 409 145006 | 幂等 |
 | C12 | GET `/messages/{message_id}/revisions` | messages | `audit_read` · O | — | `Revision[]` | 403 | — |
 | C13 | PUT `/channels/{channel_id}/members/{principal_id}/read-marker` | channels | 本人 · O | `{seq*}` | `{last_read_seq, unread, mention_unread}` | 404 | 天然幂等（只增） |
-| C14 | GET `/principals/{principal_id}/channel-unreads` | principals | 本人 · RegisterPrincipalTenantMember | `?project_id=` | `[{channel_id, project_id, unread, mention_unread}]` + 合计 | 403 | — |
+| C14 | GET `/principals/{principal_id}/channel-unreads` | principals | 本人 · RegisterPrincipalTenantMember | `?project_id=` | `[{channel_id, project_id, unread, mention_unread}]` + 合计（含 DIRECT，其 `project_id=null`；传 `project_id` 时不含 DIRECT） | 403 | — |
 | C15 | GET `/channels/{channel_id}/mention-candidates` | channels | `channel_post` · O | `?q=&limit≤20` | `[{principal_id, kind, name, handle, avatar, state}]`（仅成员，不含退役） | — | — |
 | C16 | GET/POST `/channels/{channel_id}/hooks`；PATCH `/channel-hooks/{hook_id}` | channels / channel-hooks | `channel_manage` · O（v1.1） | `{kind, target_url*, filter, enabled}` | `ChannelHook`（秘密仅创建时返回一次） | 422 145019 | ✔ / v |
+| C17 | GET `/tenants/{tenant_id}/conversations` | tenants | RegisterTenantMember；服务内按 BR-05-119 行过滤（D118） | 过滤 `q`(name contains)；`include_agent_directs`(bool，默认 false) | `{channels:[{project{id,name}, items: Channel[]}], directs: Channel[]（含 `peer{kind,id,name,avatar,state}`）, agent_directs?: Channel[], totals{unread, mention_unread}}`（每项含 `unread`、`mention_unread`） | — | — |
+| C18 | POST `/tenants/{tenant_id}/direct-channels` | tenants | RegisterTenantMember · 调用者须为 HUMAN；对方为 Agent 时另需 `agent_read`（D118，BR-05-114） | `{peer_principal_id*}` | `Channel`（201；已存在 → 200） | 422 145020/145016；403 145403（HUMAN_ONLY / MISSING_PERMISSION） | ✔ |
+| C19 | GET `/principals/{principal_id}/mentions` | principals | 本人 · RegisterPrincipalTenantMember（D118） | 过滤 `read`(eq) `reason`(in：MENTION / REPLY) `created_at`(lt)；`limit ≤50` | `[{message: Message, channel{id, kind, name, project_id?}, reason}]`（REPLY = 对本人消息的回复） | 403 | — |
+
+**DIRECT 的守卫（D118）**：DIRECT 不属项目，C03 / C05 / C08 / C09 / C11 / C12 / C13 / C15 的 O 守卫反查到租户后按 BR-05-115 判定（参与者；人↔Agent 另含负责人与 `audit_read` 只读），不使用项目级 `channel_read` / `channel_post`；C04 / C06 / C07 / C16 对 DIRECT 一律 409 145011。
 
 `Message`：`id, channel_id, seq, kind, author{kind, id, name, avatar, retired?}, body?, mentions[{principal_id, kind}], payload?, fold_key?, attention, ref{kind,id}?, reply_to_message_id?, trigger_depth, edited_at?, edit_count, retracted, created_at, version`。
 
@@ -867,6 +889,7 @@ fleet 子段（**本规格提议**，CCR-05-03）：04 用 140000–141999，本
 | 145017 | 422 | collab.message.kind_forbidden | 只能发送 TEXT |
 | 145018 | 409 | collab.channel.last_owner | 不能移除最后一个 OWNER |
 | 145019 | 422 | collab.hook.target_invalid | 钩子目标非 https 或为内网地址 |
+| 145020 | 422 | collab.direct.member_peer_invalid | 成员私信对象无效：自己、非本租户成员、Agent 发起或 Agent↔Agent（应用 AGENT_DIRECT）、经 C02 创建 DIRECT（D118） |
 
 权限拒绝不另设码：fleet 用 140403、collab 用 145403，原因放 `data.reason_code`（REAUTH_REQUIRED、NOT_MEMBER、DIRECT_READ_ONLY、MISSING_PERMISSION、SELF_MANAGE、HUMAN_ONLY、SPAWN_NOT_LEAD、SPAWNED_NOT_ADOPTED；均须在 08 §3.5 登记）。幂等冲突用平台码 176425 / 176409（09 C7）。
 
@@ -944,8 +967,8 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 | `ensemble.started`（00） | H02 / 自动 RUNNING | `{plan_id, work_item_id, branches:[{agent_id, model_id, execution_id}], budget_cap_micros}` |
 | `ensemble.compared`（00） | H05 | `{plan_id, work_item_id, system_pick_branch_id, lead_pick_branch_id, requires_human}`（`requires_human=true` 时 08 建 ENSEMBLE_SELECTION 待办；AUTO 且系统与主管一致时为 false） |
 | `ensemble.selected`（CCR-05-08） | H07 / H08 / H09 | `{plan_id, work_item_id, selected_branch_id, selected_by, synthesized:bool}` |
-| `channel.created` / `channel.archived`（CCR-05-08） | C02 / 归档 | `{channel_id, project_id, kind}` |
-| `message.posted`（CCR-05-08） | C09 与系统消息 | `{channel_id, message_id, seq, kind, author{kind,id}, mention_principal_ids[], trigger_depth}`（**不含正文**） |
+| `channel.created` / `channel.archived`（CCR-05-08） | C02 / 归档 | `{channel_id, project_id, kind}`（DIRECT 经 C18 创建，`project_id=null`，D118） |
+| `message.posted`（CCR-05-08） | C09 与系统消息 | `{channel_id, channel_kind, message_id, seq, kind, author{kind,id}, mention_principal_ids[], trigger_depth}`（`channel_kind` 为 D118 新增，供消费方识别并排除私信）（**不含正文**） |
 
 | `agent.spawn_requested` | S01 | `{request_id, supervisor_agent_id, grant_id, project_id?, approval_mode, role, model_id, reason_excerpt≤140, estimated_cost_cap_micros}` |
 | `agent.spawn_rejected` / `agent.spawn_failed` | S03 / S05 | `{request_id, supervisor_agent_id, grant_id, failure_code?}` |
@@ -981,7 +1004,7 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 
 ### 7.4 实时（09 SSE）
 
-主题（00 §9 语法：单项 = 单数 snake_case kind，集合 = 复数，项目扇出 = `tenant/{t}/project/{p}`）：`tenant/{t}/agent/{id}`（状态、进程、负载、统计更新时间）、`tenant/{t}/agents`（列表行）、`tenant/{t}/project/{p}`（`dispatch_proposal` 增改子流）、`tenant/{t}/ensemble_plan/{id}`、`tenant/{t}/channel/{id}`（`message.created` / `message.updated` / `message.retracted` / `member.changed`，载荷含完整 `Message` 表示，订阅时按 C03 授权过滤）、`tenant/{t}/inbox/{principal_id}`（未读与提及计数）。客户端断线重连以 `after_seq` 调 C08 补齐；目标 ≤1 s 呈现。本模块向 09 注册 `TopicAuthorizer`：`agent` / `agents` 需 `agent_read`；`project` 的 `dispatch_proposal` 子流与 `ensemble_plan` 需项目 `work_item_read`；`channel` 按 C03 授权。
+主题（00 §9 语法：单项 = 单数 snake_case kind，集合 = 复数，项目扇出 = `tenant/{t}/project/{p}`）：`tenant/{t}/agent/{id}`（状态、进程、负载、统计更新时间）、`tenant/{t}/agents`（列表行）、`tenant/{t}/project/{p}`（`dispatch_proposal` 增改子流）、`tenant/{t}/ensemble_plan/{id}`、`tenant/{t}/channel/{id}`（`message.created` / `message.updated` / `message.retracted` / `member.changed`，载荷含完整 `Message` 表示，订阅时按 C03 授权过滤）、`tenant/{t}/inbox/{principal_id}`（未读与提及计数）。客户端断线重连以 `after_seq` 调 C08 补齐；目标 ≤1 s 呈现。本模块向 09 注册 `TopicAuthorizer`：`agent` / `agents` 需 `agent_read`；`project` 的 `dispatch_proposal` 子流与 `ensemble_plan` 需项目 `work_item_read`；`channel` 按 C03 授权（DIRECT 按 BR-05-115，D118）。
 
 ---
 
@@ -1030,7 +1053,7 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 - **Tab 授权**：AgentRole 与项目角色绑定（只读，链接到 07 项目团队）、08 委托（剩余有效期 `CountdownRing`、使用次数）；FULL_AUTO 红色标签。
 - **Tab 技能**：06 挂载列表（技能、版本、是否跟随最新、归档提示）；〔挂载技能〕调用 06 `PUT /agents/{id}/skills/{skill_id}`。
 - **Tab 记忆**：06 提供的记忆组件（条目、写入审计、撤销）；本页只放容器与链接「在知识库中打开」。
-- **Tab 私信**：左侧 AGENT_DIRECT 列表（对方头像、项目、最近消息时间），右侧只读消息流（与频道同组件，无输入框，顶部提示「Agent 之间的私信，仅可查看」）。
+- **Tab 私信**：左侧 AGENT_DIRECT 列表（对方头像、项目、最近消息时间），右侧只读消息流（与频道同组件，无输入框，顶部提示「Agent 之间的私信，仅可查看」）。另列该 Agent 与人类之间的 DIRECT（D118，BR-05-115）：仅对该 Agent 的负责人类与 `audit_read` 持有者显示，同为只读，顶部提示「人与 Agent 的私信，仅供负责人与审计查看」。
 - **Tab 工作目录**：面包屑 + 文件列表（F12）+ 只读预览（代码高亮，≤1 MiB）；机器离线 → 离线态「机器离线，无法浏览」。
 - **实时**：头部状态、负载、统计更新时间经 SSE；离线时顶部横幅并冻结按钮。
 - **移动端**：Tab 变为横向滚动；头部按钮收入「更多」菜单，〔退役〕在菜单底部红色。
@@ -1065,15 +1088,18 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 - **落选枝**：灰显 + 「已归档（保留证据）」，可展开查看执行详情。
 - **移动端**：横向滑动的枝卡片，比较项纵向排列。
 
-### 8.8 频道（`/t/:tenantID/p/:projectID/channels/:channelID`；团队级入口 `/t/:tenantID/channels` 按项目分组列出本人可读频道与未读，点击进入项目内路由）
+### 8.8 会话（D118；`/t/:tenantID/chat`）
 
-- **布局**：左栏频道列表（默认频道置顶、自建频道、未读数与 @ 标记；〔新建频道〕）；中栏消息流（虚拟滚动，>500 条流畅）；右栏（宽屏）成员列表 / 频道信息。
-- **消息渲染**：TEXT（头像、名称、Agent 芯片、时间、已编辑标记、回复引用、附件）；EVENT 折叠行（最新事件 + 「另 n 条」，展开显示全部；attention 事件红 / 琥珀单独显示）；DECISION_CARD（完成阶梯、验证 n/n、证据覆盖、〔通过〕〔要求修改〕〔拒绝〕——按钮按 02 权限可用，拒绝弹 `StructuredFeedbackForm`；已裁决显示结果与 `AuthorityNote`）；DISPATCH_CARD（推荐人、分数、理由摘录、护栏、〔确认〕〔改派〕→ 跳 8.6 或内嵌对话框；处理后变为结果行）。撤回消息显示「消息已撤回」。
-- **输入框**：多行；`@` 弹出候选（C15，人与 Agent 分组，显示状态；退役 Agent 不出现）；选中插入令牌并渲染为 chip；超 8000 字符禁用发送；附件 ≤5；发送失败保留草稿可重试；Enter 发送、Shift+Enter 换行。提及非成员（服务端 145003）时内联提示并提供〔邀请并发送〕（有权限时）。
-- **未读**：进入频道定位到第一条未读，滚动到底部时 PUT read-marker（节流 2 s）；「n 条新消息」浮条。
-- **状态**：归档频道只读横幅；非成员（CUSTOM）显示〔加入频道〕（有权限时）；Agent 私信在此页不出现（见 8.3）。
-- **实时**：SSE 新消息 ≤1 s 呈现；断线横幅「正在重新连接…」，恢复后按 `after_seq` 补齐。
-- **移动端**：频道列表与消息流分页切换；底部快捷栏「频道」显示总未读；长按消息出编辑 / 撤回菜单。
+- **路由（唯一方案）**：所有会话都在团队级 `/t/:tenantID/chat` 之下，不再按项目分路由：`/t/:tenantID/chat`（默认打开「提及与线程」）、`/t/:tenantID/chat/:channelID`（任意 `ChannelKind`：项目默认频道、自建频道、DIRECT、AGENT_DIRECT）、`?thread=<message_id>` 打开右栏线程、`?details=1` 打开右栏详情 / 成员。旧路由 `/t/:tenantID/channels` → `/t/:tenantID/chat`，`/t/:tenantID/p/:projectID/channels/:channelID` → `/t/:tenantID/chat/:channelID`（客户端替换式重定向，保证其他规格与通知里的旧链接可用）；项目空间菜单项「项目频道」`/t/:tenantID/p/:projectID/channel` → 该项目默认频道 `/t/:tenantID/chat/:channelID`（同为替换式重定向，进入会话域；D118 修订）；项目归属由频道自身的 `project_id` 决定，不由路由携带。外壳归属：08 §8.6 会话域（无侧栏、全宽）。
+- **左栏**（数据 C17，未读 C14；≥1024 时宽 280px，可折叠）：① **提及与线程**（C19：@我的消息与对我消息的回复，未读加粗，点击定位到原消息并打开线程）；② **频道**：按项目分组（组头 = 项目名，可折叠；组内默认频道置顶，其后自建频道；未读数与 @ 标记；组头〔新建频道〕按 C02 权限显示）；③ **私信**：DIRECT（人↔人、人↔Agent，对方头像 + 状态点，Agent 带芯片角标）按最近消息排序，〔新建私信〕打开对话框（人员 / Agent 选择器，C18）；有权只读的 AGENT_DIRECT（BR-05-91）收在折叠子组「Agent 之间（只读）」；④ **执行会话**（BR-05-119）：本人运行中的交互会话与待我处理的工具授权 / 输入请求，显示执行标题、项目、待处理数与倒计时，点击打开 03 §8.2 交互会话工作台（本模块不内嵌、不代答）。顶部搜索框按名称过滤（C17 `q`）。
+- **中栏**（消息流，虚拟滚动，>500 条流畅）：头部 = 频道名 / 私信对方、所属项目 chip（DIRECT 无）、主题、〔详情〕。**消息渲染**：TEXT（头像、名称、Agent 芯片、时间、已编辑标记、回复引用与「n 条回复」→ 打开线程、附件）；EVENT 折叠行（最新事件 + 「另 n 条」，展开显示全部；attention 事件红 / 琥珀单独显示）；**结构化卡片永不折叠**，按钮直接作用于真实对象（权限仍由对象所属模块判定，会话只是入口）：DECISION_CARD（完成阶梯、验证 n/n、证据覆盖、〔通过〕〔要求修改〕〔拒绝〕——按 02 权限可用，拒绝弹 `StructuredFeedbackForm`；已裁决显示结果与 `AuthorityNote`）、完成声明与停线（来自 02 / 03 事件，以 `attention=true` 的 EVENT 呈现为卡片样式，含〔打开工作项〕〔清除停线〕等跳转，动作在对象页执行）、DISPATCH_CARD（推荐人、分数、理由摘录、护栏、〔确认〕〔改派〕→ 跳 8.6 或内嵌对话框；处理后变为结果行）。撤回消息显示「消息已撤回」。
+- **右栏**（≥1280 常驻，较窄时为覆盖式抽屉）：**线程**（根消息 + C08 `reply_to_message_id=eq:<root>` 的回复，底部回复输入框）/ **详情**（频道主题、所属项目、成员列表 C05；私信时显示对方资料，人↔Agent 私信另显示「此私信对 Agent 的负责人与审计员可见」，BR-05-115）。
+- **输入框**：多行；`@` 弹出候选（C15，人与 Agent 分组，显示状态；退役 Agent 不出现；DIRECT 中只有对方）；选中插入令牌并渲染为 chip；超 8000 字符禁用发送；附件 ≤5；发送失败保留草稿可重试；Enter 发送、Shift+Enter 换行。提及非成员（服务端 145003）时内联提示并提供〔邀请并发送〕（有权限时；DIRECT 不提供）。无发送权的可读会话（AGENT_DIRECT、审计只读的人↔Agent 私信）不显示输入框，顶部提示只读原因。
+- **未读**：进入会话定位到第一条未读，滚动到底部时 PUT read-marker（节流 2 s）；「n 条新消息」浮条；会话域标签与移动端底栏「会话」显示 C14 合计。
+- **状态**：加载骨架（三栏占位）；空态（没有任何频道与私信：「还没有会话」〔新建私信〕）；归档频道只读横幅；非成员（CUSTOM）显示〔加入频道〕（有权限时）；对方已退役 / 停用的私信只读横幅；错误态可重试；离线横幅「正在重新连接…」，恢复后按 `after_seq` 补齐。
+- **实时**：SSE 新消息 ≤1 s 呈现（主题 `tenant/{t}/channel/{id}`；左栏计数经 `tenant/{t}/inbox/{principal_id}`）。
+- **甲方**：甲方联系人不是 Principal，不出现在会话的任何位置（候选、成员、私信对象、消息作者）；与甲方的沟通只在 01 来件澄清线程与门户中进行。
+- **移动端**：单栏堆叠：左栏列表 → 消息流 → 线程（返回键逐级退回）；长按消息出编辑 / 撤回 / 回复菜单；底部快捷栏「会话」显示总未读。
 
 ---
 
@@ -1109,7 +1135,7 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 | N-05-08 | Ensemble 待选择 | 同上 | 站内（我的裁决 `ENSEMBLE_SELECTION`） | 「{work_item} 的 {n} 枝结果已可比较」 | 进入时一次；之后每 24 h 提醒，≤3 次（H12） |
 | N-05-11 | Ensemble 待批准 | 项目内持 `work_item_assign` 的人（超默认预算另含 `project_manage` 持有者） | 站内（我的裁决 `ENSEMBLE_APPROVAL`） | 「{work_item} 的并行求解（{n} 枝，预算 ${cap}）等待批准，24 小时后自动取消」 | 每计划一次 |
 | N-05-12 | 评审派单无合格 Agent / 连续超时（AUTONOMOUS） | 项目所有者 | 站内 | 「{work_item} 没有可用的评审 Agent，已转人工裁决」 | 每项一次（同时交 08 `NO_ELIGIBLE_AUTHORITY`） |
-| N-05-09 | 被 @（人类） | 被提及者（静音频道仍通知提及） | 站内；用户离线 >10 min 且未读时发邮件摘要 | 「{author} 在 #{channel} 提到了你：{excerpt≤140}」 | 同频道 5 min 内合并；邮件每人每小时 ≤1 封 |
+| N-05-09 | 被 @（人类） | 被提及者（静音频道仍通知提及） | 站内；用户离线 >10 min 且未读时发邮件摘要 | 「{author} 在 #{channel} 提到了你：{excerpt≤140}」；DIRECT 的隐式提及（BR-05-117，D118）用同一通知类型，文案为「{author} 在私信中给你发了消息：{excerpt≤140}」 | 同频道 5 min 内合并；邮件每人每小时 ≤1 封 |
 | N-05-10 | 主管 Agent 变为不可用（崩溃用尽 / 退役） | 其主管项目的交付负责人 | 站内 | 「{project} 的主管 Agent {name} 不可用，派单已切回人工确认」 | 每项目每事件一条 |
 
 | N-05-13 | 自建请求待审批（REQUIRE_APPROVAL） | 对请求项目持 `agent_manage` 的人 | 站内（08 收件箱） | 「主管 {supervisor} 申请新增 {role}「{name}」：{reason≤80}」 | 每请求一条 |
@@ -1540,6 +1566,18 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 | AC-05-77 | integration | BR-05-113 | **G** ACCEPTOR Y 放行的工作项被甲方拒收 **W** 07 发布 `quality.escaped{stage:CLIENT_ACCEPTANCE}`（同一 `escape_key` 重复投递只计一次）**T** Y 的穿透计数 +1，下次派单评分下降；记忆标签出现经验条目 |
 | AC-05-78 | integration | 7.x | **G** 项目切换为 HUMAN_ONLY，有 2 个未开始的 Agent 执行分派 **W** `project.mode_changed` **T** 两个分派被释放；EXECUTOR Agent 的项目绑定被撤销 |
 
+### 10.y 验收标准增补（D118：会话空间与成员私信）
+
+| ID | 层 | 关联 | Given / When / Then |
+|---|---|---|---|
+| AC-05-79 | integration | BR-05-114, C18 | **G** 阿澈与 Morgan 为租户成员 **W** 阿澈 POST C18 `{peer_principal_id: Morgan}`（含 10 个并发）**T** 首次 201、其余 200 同一频道，`kind=DIRECT`、`project_id=null`、成员 2 行；Morgan 反向创建 → 200 同一频道；`peer=阿澈本人` → 422 145020；C02 传 `kind=DIRECT` → 422 145020；Agent Ada 调 C18 → 403 145403（HUMAN_ONLY）；PATCH 改名 / 归档、PUT 加成员 → 409 145011 |
+| AC-05-80 | integration | BR-05-115 | **G** 阿澈↔Morgan 的 DIRECT 有 3 条消息；Sam 为 team_owner 且持 `audit_read`、`channel_manage` **W** Sam 调 C03 / C05 / C08 / C12、订阅 `tenant/T/channel/{id}`、DELETE 其中一条消息 **T** 全部 403 145403（NOT_MEMBER），SSE 订阅被拒，消息未撤回；审计有 `collab.channel_created` 但无正文；他租户用户用该 id → 404 145404 |
+| AC-05-81 | integration | BR-05-115, BR-05-118 | **G** Ada 的 `owner_principal_id`=Sam；阿澈与 Ada 有 DIRECT；Lee 持 `audit_read` **W** Sam 读 C08；Lee 读 C08；Morgan（非参与者、非负责人、无 `audit_read`）读 C08；Sam 发消息 **T** 200 / 200 / 403 NOT_MEMBER / 403 NOT_MEMBER；Sam 的 C17 不含该私信；Ada 退役后阿澈仍可读，发送 → 422 145016 |
+| AC-05-82 | integration | BR-05-116, BR-05-117 | **G** P 的主管 Agent L（RUNNING），W 为 READY **W** Morgan 在与 L 的 DIRECT 中写「把 P 的 W 派给 Bo」**T** L 经隐式提及收到投递；生成 `trigger=CHANNEL_REQUEST`、`requested_by=Morgan`、`requires_human=true` 的提案，DISPATCH_CARD 出现在 P 默认频道，私信中出现链接该提案的 EVENT；W 的状态与分派不变；执行者 Ada 在私信中被要求「开始做 W」→ 只回复，无分派、无执行；未指明项目时 L 只回复询问，无提案 |
+| AC-05-83 | integration | BR-05-119, C17, C19 | **G** 阿澈可读 P1、P2 的频道，有 1 个 DIRECT，被 @ 2 次 **W** 调 C17、C19 **T** C17 频道按 P1 / P2 分组、私信 1 条、无 AGENT_DIRECT（未传 `include_agent_directs`）；C19 返回 2 条 `reason=MENTION`；结果中无任何甲方联系人；C14 合计含 DIRECT 未读 |
+| AC-05-84 | e2e | §8.8 | **G** 视口 1440，阿澈有 1 个 RUNNING 交互会话（待处理 1）**W** 打开 `/t/T/chat` **T** 三栏呈现（左：提及与线程 / 频道 / 私信 / 执行会话；中：消息；右：线程 / 详情），执行会话区显示该会话，点击打开 03 交互会话工作台；DECISION_CARD 与 PROPOSED 的 DISPATCH_CARD 夹在 50 条同 fold_key 事件之间仍单独显示、不折叠；访问 `/t/T/p/P/channels/C` → 重定向 `/t/T/chat/C`；视口 375 → 列表 → 消息 → 线程单栏堆叠 |
+| AC-05-85 | unit | §7.2, BR-05-114 | **W** 在 DIRECT 中发送 TEXT **T** `message.posted` 载荷含 `channel_kind=DIRECT`、不含正文；C18 创建时 `channel.created` 的 `project_id=null`；collab 事件投影器不向 DIRECT 写任何 EVENT / 卡片（BR-05-116 的提案链接 EVENT 除外） |
+
 ## 11. 度量与埋点（不含提示词、消息正文、代码）
 
 | 事件 | 属性 |
@@ -1586,6 +1624,8 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 | 底座 | identity `ServiceAccountProvisioner`（事务内创建 / 停用 / 签发 / 吊销凭证，CR-04-08）；`PrincipalAvatarSetter.SetOn(tx)`（服务账号头像）；core `EntityRoleBindingStore{PutOn, RemoveOn, ListByEntity}`（RoleGrantStore 已有 `RemoveEntityRoleBinding`，需补 Put / List）；authn step-up 目的 `agent_full_auto`、`agent_forced_retire` | 底座新增 |
 
 | 08（D110） | 自建授权 `SpawnGrant` 模型与授予 / 撤销界面、`SpawnGrantReader.Active`、`SpawnGrantUsage.Reserve / Release`、成本累计与 `spawn_grant.exhausted` / `agent_cap_reached` / `revoked` / `expired` 事件、策略规则 `spawn_grant`、收件箱 `AGENT_SPAWN_APPROVAL`、接管时撤销自建授权、授予委托时拒绝未收编自建 Agent（`SPAWNED_NOT_ADOPTED`）、登记 reason_code `SPAWN_NOT_LEAD` / `SPAWNED_NOT_ADOPTED` | 需 08 同步修订 |
+| 03 / 08（D118） | 会话「执行会话」区复用 03 A43 与 08 I1「工具授权与输入」分类（BR-05-119），本模块只列出与链接，不代答；03 尚无「全租户内本人可回应（`interaction_respond`）的交互会话」读接口——若要覆盖非本人发起的会话，需 03 新增 | 03 待定 |
+| 08（D118） | §8.6 菜单项 `chat`（Domain=CHAT，`channel_read`）替代原 `channels`；项目空间菜单项 `p-channel`（Domain=PROJECTS，Space=PROJECT，D118 修订）重定向到项目默认频道；会话域全宽无侧栏；旧频道路由重定向（§8.8） | 已在 08 §8.6 登记 |
 
 ### 12.2 风险
 
@@ -1634,3 +1674,5 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 **D110（主管 Agent 自建 Agent）已并入 00 v1.8**：新增模块共享枚举 `AgentOrigin`（HUMAN_CREATED / AGENT_SPAWNED）、权限码 `agent_spawn`（不经角色授予，仅策略规则 `spawn_grant`）、事件 `agent.spawn_requested` / `agent.spawned` / `agent.spawn_rejected` / `agent.spawn_failed` / `agent.orphaned` / `agent.adopted`（发布者 fleet）与 `spawn_grant.*`（发布者 governance）、08 接口 `SpawnGrantReader` / `SpawnGrantUsage`。本规格新增 US-05-17–20、§3.11–3.12、§4.6–4.7、§5.9（BR-05-97–106）、E12、§6.10（G01–G06）、错误码 142031–142039、§7 三个任务与事件、§8.9、N-05-13–15、AC-05-53–65。
 
 > **D112 / D113 已并入（00 v2.0 §15）**：依赖 02 `DispatchAssigner.Assign(role ∈ TESTER / ACCEPTOR)` 非迁移分派与 `WorkItemEscalator`；03 `internal_qa.*`、`ExecutionLauncher.Launch(purpose=INTERNAL_*)`；02 / 07 / 12 Part A `quality.escaped`（D114）；04 能力标记 `browser_capture` 与模型目录的 `model_family`；08 登记 reason `SAME_MODEL_FAMILY`、`HUMAN_ONLY_MODE` 与策略 `plan_approve` 使用 `ModelFamilyOf`；10 助理草稿。对 00 无新增变更请求。
+
+> **D118（会话空间与成员私信，2026-10-12）已并入本规格**：US-05-25…27；`ChannelKind` 增 `DIRECT`（团队级，`project_id` 为空；模块内枚举，按 00 §3 留在本规格）；BR-05-114…119；C08 线程过滤、C14 含私信、C17 / C18 / C19；错误码 145020；`message.posted` 载荷增 `channel_kind`；§8.8 改为会话页 `/t/:tenantID/chat`（旧频道路由重定向）；AC-05-79…85。沿用既有权限码、事件与通知类型，对 00 无新增变更请求。

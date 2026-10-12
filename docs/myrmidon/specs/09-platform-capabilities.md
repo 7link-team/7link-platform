@@ -18,7 +18,7 @@
 | C3 | 实时推送 SSE | 每标签页一条流、主题订阅（实体 + 集合 + 收件箱）、逐主题授权与周期复查、15 s 心跳、`Last-Event-ID` 续传、`resync_required`、跨副本扇出、服务端内部订阅（唤醒长轮询） | `internal/infra/realtime` + `pkg/extension/authz`（流式注册）+ `packages/ui` | `realtime` / 无表 |
 | C4 | S3 兼容对象存储驱动 | 为 `internal/files` 现有 `Driver` 合同新增 `s3` 实现（范围读、multipart、服务端复制、预签名下载、SSE、校验、重试），本地→S3 迁移 | `internal/files/s3.go` | 沿用 `file_*` |
 | C5 | 通知渠道 | `Notifier`：站内信、邮件（SMTP，支持自定义头与投递状态回写）、Web Push（v1.1）、i18n 模板、偏好钩子（语义归 08）、限流、去重合并 | `internal/notification` | `notification` / `notification*` |
-| C6 | 模块菜单贡献 | 以模块能力接口替代硬编码 `core.DefaultMenus`，按权限门控，按租户播种/升级且不复活管理员删除项 | `internal/iam/core` | `iam_menu_contributions` |
+| C6 | 模块菜单贡献 | 以模块能力接口替代硬编码 `core.DefaultMenus`，按权限门控，按顶层域（Domain，D118）、空间（Space：团队 / 项目，D118 修订）与分组归类，按租户播种/升级且不复活管理员删除项 | `internal/iam/core` | `iam_menu_contributions` |
 | C7 | 幂等键助手 | 00 §9 `Idempotency-Key` 的共享实现：事务内模式 + 非事务中间件模式 | `internal/infra/idempotency` | `platform_idempotency_keys` |
 | C8 | 密钥封装 `SecretSealer` | 业务模块可逆加密存储机密（网关密钥、外部凭据），带 purpose 与关联数据、可轮换 | `internal/infra/secrets`（包装 `pkg/extension/keyringx`） | 无表 |
 | C9 | 租户级业务文件写入 | 服务端（非 HTTP 上传）向租户系统目录写文件并按 purpose 绑定业务资源，与 `AccountResourceFiles` 同形 | `internal/files/tenant_resource.go` | 沿用 `file_*` |
@@ -295,7 +295,7 @@
 | seeded_hash | CHAR(64) | N | — | 播种时字段快照哈希，用于判断是否被管理员改过 |
 | seeded_at / updated_at | 时间列 | N | — | |
 
-`UNIQUE (tenant_id, module, page_key)`。另：`iam_menus` 增加 `app VARCHAR(32) NOT NULL DEFAULT 'iam'`（**本规格提议**：菜单项需指向不同前端应用，如 `delivery`；现有行默认 `iam`，行为不变）。
+`UNIQUE (tenant_id, module, page_key)`。另：`iam_menus` 增加 `app VARCHAR(32) NOT NULL DEFAULT 'iam'`（**本规格提议**：菜单项需指向不同前端应用，如 `delivery`；现有行默认 `iam`，行为不变）。同法增加 `domain VARCHAR(16) NOT NULL DEFAULT ''`（D118：顶层域键，取值见 BR-09-80 `MenuDomain`；空串 = 不分域，IAM 应用现有行与系统区菜单保持空值，导航行为不变）与 `space VARCHAR(16) NOT NULL DEFAULT ''`（D118 修订：`TEAM` / `PROJECT`，取值见 BR-09-80 `MenuSpace`；空串 = 不区分，IAM 现有行保持空值）；三方言迁移同 `app` 列，无需回填（已有 delivery 行由 BR-09-82 同步补齐）。
 
 ### 3.12 C3 / C4 / C8 / C9
 
@@ -449,9 +449,9 @@
 
 ### 5.9 菜单贡献（C6）
 
-- **BR-09-80 声明**：`MenuPage{Key, Scope(TENANT|PLATFORM|SYSTEM), App, Group, Route, Icon, SortOrder, PermissionCode, TranslationKey, Version}`；Group 为同模块声明的分组（无 Route）或核心既有分组标签；PermissionCode 必须已在 authz 目录注册且 scope 匹配；Route 在同 `(scope, app)` 内唯一；违者启动失败（**175400**，日志列出字段）。
-- **BR-09-81 播种**：新租户：核心页 + 全部激活模块贡献，同事务写 `iam_menu_contributions`。
-- **BR-09-82 升级**：任务 `iam_core.menu_contributions_sync`（启动后由 leader 入队 + 每日一次，按租户分页 100）：无台账 → 若同 route 不存在则插入并写台账，存在则只写台账（menu_id 指向已有行）；台账 version < 声明 version → 当前行哈希 == `seeded_hash`（管理员未改）才更新字段与哈希，否则跳过并记 `customized`；台账 `menu_id` 指向的行已被删除 → 置 NULL，**永不复活**（解决 `core/service.go` 注释所述「删除与从未创建无法区分」）；代码中已移除的贡献 → 对应菜单置 `disabled`（不删除）。
+- **BR-09-80 声明**：`MenuPage{Key, Scope(TENANT|PLATFORM|SYSTEM), App, Domain, Space, Group, Route, Icon, SortOrder, PermissionCode, TranslationKey, Version}`；Domain 为顶层域键（D118 修订），取值集合 `MenuDomain` = `HOME`（工作台）、`CHAT`（会话）、`PROJECTS`（项目）、`TEAM`（团队）、`GOVERNANCE`（治理），顺序即域标签顺序，标签 i18n key `menu.domain.<key 小写>`（本模块内枚举，按 00 §3 不进 00 §5；D118 初版的 `COLLAB` 已删除，从未发布）；Space 为菜单空间（D118 修订；字段不叫 Scope，因为 `Scope` 已表示 TENANT / PLATFORM / SYSTEM 组织层级），取值集合 `MenuSpace` = `TEAM`（团队级页面，Route 不含 `:projectID`）、`PROJECT`（只在项目空间内渲染，Route 必须以 `/t/:tenantID/p/:projectID` 开头，外壳以当前项目填入，08 §8.6），本模块内枚举；`App=delivery` 的贡献 Domain 与 Space 必填且须在集合内，`Space=PROJECT` 只允许 `Domain=PROJECTS`，Space 与 Route 是否含 `:projectID` 必须一致，其他应用 Domain 与 Space 必须为空；Group 为同模块声明的分组（无 Route）或核心既有分组标签，在同一 `(Domain, Space)` 内归类（不同 Domain 或 Space 可有同名 Group，如 `PROJECTS` 的项目空间与 `GOVERNANCE` 都可有「设置」类分组）；PermissionCode 必须已在 authz 目录注册且 scope 匹配；Route 在同 `(scope, app)` 内唯一；违者启动失败（**175400**，日志列出字段）。
+- **BR-09-81 播种**：新租户：核心页 + 全部激活模块贡献，同事务写 `iam_menu_contributions`；`iam_menus.domain`、`iam_menus.space` 写入声明的 Domain 与 Space。
+- **BR-09-82 升级**：任务 `iam_core.menu_contributions_sync`（启动后由 leader 入队 + 每日一次，按租户分页 100）：无台账 → 若同 route 不存在则插入并写台账，存在则只写台账（menu_id 指向已有行）；台账 version < 声明 version → 当前行哈希 == `seeded_hash`（管理员未改）才更新字段与哈希，否则跳过并记 `customized`；台账 `menu_id` 指向的行已被删除 → 置 NULL，**永不复活**（解决 `core/service.go` 注释所述「删除与从未创建无法区分」）；代码中已移除的贡献 → 对应菜单置 `disabled`（不删除）。Domain 与 Space 属于 `seeded_hash` 覆盖的字段：贡献改变 Domain / Space / Group / Route（如 D118 修订重新归位）时必须 Version+1，未被管理员改过的行随同步更新；被改过的行（`customized`）保留管理员值，若其 `domain` / `space` 为空或不在集合内（含 D118 初版写入的 `COLLAB`），`EffectiveMenus` 回退到贡献声明的 Domain / Space（外壳据此归入域标签与空间，保证升级前租户也能正确落位）。
 - **BR-09-83 门控不可削弱**：`EffectiveMenus` 的路由→权限表由「核心默认 + 激活贡献」构成；管理员改动权限码不能弱化贡献页的守卫（与现有内置页规则一致）。模块被禁用时其权限未注册 → 菜单不可见。
 
 ---
@@ -663,9 +663,18 @@ type TenantResourceFiles interface { // C9，与 AccountResourceFiles 同形
 
 // ---- internal/iam/core ----
 type MenuPage struct {
-    Key string; Scope MenuScope; App string; Group string
+    Key string; Scope MenuScope; App string; Domain MenuDomain; Space MenuSpace; Group string
     Route, Icon, PermissionCode, TranslationKey string; SortOrder, Version int
 }
+type MenuDomain string // D118 修订；IAM / 系统区菜单为空串
+const (
+    MenuDomainHome MenuDomain = "HOME"; MenuDomainChat MenuDomain = "CHAT"; MenuDomainProjects MenuDomain = "PROJECTS"
+    MenuDomainTeam MenuDomain = "TEAM"; MenuDomainGovernance MenuDomain = "GOVERNANCE"
+)
+type MenuSpace string // D118 修订；PROJECT 项只在项目空间渲染，Route 含 :projectID；IAM / 系统区菜单为空串
+const (
+    MenuSpaceTeam MenuSpace = "TEAM"; MenuSpaceProject MenuSpace = "PROJECT"
+)
 type MenuContributor interface { module.Module; MenuPages() []MenuPage }
 type MenuSink interface { ContributeMenus(owner string, pages ...MenuPage) error } // core 实现；files 现有 SystemMenus.Contribute 迁移至此
 ```
@@ -1004,6 +1013,7 @@ export function useRealtime(
 | AC-09-71 | unit | BR-09-71 | **G** 01 门户联系人（subject_kind=CONTACT）与主体使用相同键值 **T** 互不冲突 |
 | AC-09-72 | unit | BR-09-75 | **W** 用行 A 的关联数据打开行 B 的密文 / 轮换后旧钥密文 **T** 失败 / 成功且 `NeedsRewrap=true`；未配置密钥 → 模块 Initialize 失败 |
 | AC-09-73 | integration | BR-09-77 | **W** 服务端 StageOn + CreateOn 后业务事务回滚 **T** 不出现可见节点；暂存对象在 deadline 后被清理；提交则节点位于系统目录且普通成员只读 |
+| AC-09-81 | integration | BR-09-80, BR-09-81, BR-09-82 | **G** delivery 贡献 `chat`（Domain=CHAT, Space=TEAM）、`defects`（Domain=PROJECTS, Space=TEAM, Group=跨项目, Route `/t/:tenantID/defects`）、`p-defects`（Domain=PROJECTS, Space=PROJECT, Group=测试, Route `/t/:tenantID/p/:projectID/defects`）**W** 新建租户 **T** `iam_menus` 三行 `domain` / `space` 分别为 CHAT/TEAM、PROJECTS/TEAM、PROJECTS/PROJECT，IAM 应用现有菜单 `domain=''`、`space=''` 且 IAM 导航不变；**W** 老租户（无 domain / space 值，或 D118 初版写入 `domain=COLLAB`）贡献 Version+1 后同步 **T** 未改动行补齐为声明值，管理员改过的行保持原值且 `EffectiveMenus` 返回声明的 Domain / Space；**W** 某 delivery 贡献缺 Domain、Domain=`COLLAB`、缺 Space、`Space=PROJECT` 而 Route 不含 `:projectID`、`Space=TEAM` 而 Route 含 `:projectID`，或 `Space=PROJECT` 且 Domain≠PROJECTS **T** 均启动失败 175400 并点名模块与字段 |
 
 ### 10.7 架构与门禁
 
@@ -1073,7 +1083,7 @@ Prometheus（模块 Collector；标签不得含 tenant_id、principal_id、载�
 | `pkg/extension/authz` | `RegisterTenantMemberStream` | 新增（与 `RegisterEntityAdapter` 同构） |
 | `pkg/extension/gorm` | `Notify`/`Listen`；sqlite DSN 默认 `_busy_timeout` | 新增 |
 | `internal/iam/identity` | `RecipientDirectory`（邮箱、语言、显示名、是否活跃） | 新增窄接口 |
-| `internal/iam/core` | `MenuContributor`/`MenuSink`、`iam_menus.app` 列、台账表；files 改用新接口 | 新增 |
+| `internal/iam/core` | `MenuContributor`/`MenuSink`、`iam_menus.app` 与 `iam_menus.domain`（D118）列、台账表；files 改用新接口 | 新增 |
 | `internal/principallifecycle` | 擦除时调用 notification 清理 | 新增一步 |
 | 08 | `PreferenceResolver`、`ListEligible`、通知中心页 | 08 提供；缺省时用 BR-09-64 默认 |
 | 中间件 | metrics/telemetry/audit 的 ResponseWriter 包装须支持 `Unwrap`（`http.ResponseController` Flush/SetWriteDeadline） | 实施时验证；audit README 已声明支持流会话 |
@@ -1134,5 +1144,6 @@ Prometheus（模块 Collector；标签不得含 tenant_id、principal_id、载�
 | CR-09-09 | 00 §5 枚举 | 登记 09 拥有的枚举：`JobState`(PENDING, RUNNING, SUCCEEDED, DEAD, CANCELLED)、`ParkedState`(PARKED, REDELIVERING, DELIVERED, DISCARDED)、`NotificationSeverity`(INFO, ACTION, URGENT)、`NotificationChannel`(IN_APP, EMAIL, WEB_PUSH)、`DeliveryState`(PENDING, SENDING, SENT, FAILED, SUPPRESSED)、`RealtimeMode`(NONE, SIGNAL, FULL) | 00 §5 为唯一定义处 |
 | CR-09-10 | 00 §1 / §10 | 09 增加页面列：「后台任务、计划任务、领域事件（系统控制台）；共享组件 RealtimeStatus、NotificationBell」；§10 共享组件清单加入这两个组件与 `useRealtime` | 00 §1 现写「—」 |
 | CR-09-11 | 底座 `iam_menus` | 新增列 `app VARCHAR(32) NOT NULL DEFAULT 'iam'`，菜单可指向不同前端应用（如 `delivery`） | 00 §10 规定业务应用为独立 `apps/delivery` |
+| CR-09-12 | 底座 `iam_menus` | 新增列 `domain VARCHAR(16) NOT NULL DEFAULT ''`（D118 顶层域键；空 = 不分域，IAM 现有行不变）与 `space VARCHAR(16) NOT NULL DEFAULT ''`（D118 修订：TEAM / PROJECT；空 = 不区分，IAM 现有行不变） | 08 §8.6 控制台改为顶栏域标签 + 当前域侧栏，项目为主容器、项目内页面在项目空间渲染（D118 及其修订） |
 
-**处理状态（00 v1.3 审校后）**：CR-09-01、CR-09-02、CR-09-04、CR-09-06、CR-09-07 已并入 00；CR-09-03 已并入，表名按 00 定为 `platform_idempotency_keys`、列 `operation`/`key`，错误码以 00 为准（176425 = 同键不同请求，176409 = 进行中），本规格已对齐；CR-09-05 记入 00 §13 F10，权限行见 §6.3；CR-09-09 中仅本模块使用的枚举按 00 §3 留在本规格，不进 §5；CR-09-08、CR-09-10、CR-09-11 待主规格下一轮合并。
+**处理状态（00 v1.3 审校后）**：CR-09-01、CR-09-02、CR-09-04、CR-09-06、CR-09-07 已并入 00；CR-09-03 已并入，表名按 00 定为 `platform_idempotency_keys`、列 `operation`/`key`，错误码以 00 为准（176425 = 同键不同请求，176409 = 进行中），本规格已对齐；CR-09-05 记入 00 §13 F10，权限行见 §6.3；CR-09-09 中仅本模块使用的枚举按 00 §3 留在本规格，不进 §5；CR-09-08、CR-09-10、CR-09-11 待主规格下一轮合并。CR-09-12（D118，2026-10-12）同 CR-09-11，为底座表列变更，随 C6 实施，不涉及 00。

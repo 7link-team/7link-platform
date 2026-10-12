@@ -19,6 +19,7 @@
 | 执行环境加固（不注入控制面令牌、环境变量白名单、每执行工作目录/worktree、同目录单写） | 预算阈值与升级规则（`budget.threshold_reached`、`escalation.triggered`）、委托条件判定、"我的裁决"聚合 → **08** |
 | 交互会话（Preview 01 全量对齐）：轮次、消息、工具行、TOOL_PERMISSION / RUNTIME_INPUT、重试、换机器、授权模式、Skills、MCP、附件、限额 | 项目阶段、预算设定、交付包 → **07** |
 | 产物、证据（类型、自动采集、人工观察、来源字段、局限、内容哈希、文件存储）、验证器定义与版本、验证结果、相似度信号、成本计量、`code_merge` 动作 | 后台任务队列、outbox、SSE、对象存储驱动、通知渠道 → **09**；文件与资源绑定、审计哈希链 → 底座 |
+| **远程工作区**（D119）：每个执行的预览会话（服务预览、评审预览、产物预览）与产物查看器、文件浏览（只读）与人工接管后的编辑、终端会话（只读观看 / 交互 shell）、甲方分享链接；预览访问判定 | 隧道传输、端口归属与路径限定的机器端校验、配额、机器类型与远程访问开关、预览网关部署 → **04**；权限码、step-up、审批收件箱、审计目录 → **08** |
 
 **不解决**：token 级 checkpoint；数据库分支；PR 平台连接器（v1.1，PULL_REQUEST 证据 MVP 仅支持人工登记链接）；跨机器自动迁移正在运行的进程。
 
@@ -63,6 +64,20 @@
 | US-03-25 | 作为团队，我要测试 Agent 与产品验收 Agent 在内部先验收，以便只有内部验收通过的成果才到人面前 | MVP |
 | US-03-26 | 作为产品验收 Agent，我要拿到真实交付形态（运行应用、截图、成品文件），以便按需求与评分标准判断而不只看代码 | MVP |
 | US-03-27 | 作为团队，我要人或甲方发现内部放行的问题时自动沉淀为经验与评测用例，以便内部质量门越来越准 | MVP |
+
+### 2.y 用户故事增补（D119 远程工作区）
+
+| ID | 故事 | 版本 |
+|---|---|---|
+| US-03-28 | 作为交付负责人，我要在手机上打开 Agent 正在做的网页 / API 的实时预览，而不需要等它提交完成声明 | MVP |
+| US-03-29 | 作为评审人，我要一键预览完成声明对应的那个提交（在隔离副本里重新启动），以便看到的就是要裁决的版本 | MVP |
+| US-03-30 | 作为评审人，我要直接查看执行产出的文档、图片、PDF 与测试报告，不必下载 | MVP |
+| US-03-31 | 作为评审人，我要观看视频产物的低清代理版本与小说章节（含与上一版的差异） | v1.1 |
+| US-03-32 | 作为工程师，我要只读浏览执行工作区的文件与差异，密钥文件自动遮罩 | MVP |
+| US-03-33 | 作为工程师，我要只读观看 Agent 正在运行的命令输出 | MVP |
+| US-03-34 | 作为工程师，我要在暂停或接管执行后编辑文件并保存为一次署名为我的提交 | v1.1 |
+| US-03-35 | 作为团队所有者，我要允许经过重新认证的人类打开交互式终端，全程录制进审计 | v1.1 |
+| US-03-36 | 作为交付负责人，我要在人工批准后把某个预览以只读、有期限、可撤销的链接分享给甲方 | 分期待定（D119 未列入分期，见 §12 Q9） |
 
 ## 3. 领域模型与数据表
 
@@ -472,6 +487,85 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 `execution_verifiers.kind` 增加：`VISUAL`（以无头浏览器打开交付物指定路由，按视口截图，检查布局约束：元素尺寸一致性、溢出、对齐、对比度；产出截图证据）与 `INTERACTION`（脚本化交互流程：按键 / 点击序列后断言 DOM 或截图）。二者属确定性检查（AUTOMATED 阶段），由平台在隔离副本执行；截图同时作为产品验收 Agent 的输入。截图必须按请求的视口真实排版：页面看到的视口宽高等于请求值，截图像素尺寸也等于请求值；浏览器最小窗口宽度以下的视口须以设备模拟或同尺寸框架渲染，不得以「更宽排版再裁切」代替（由 11 `probe_viewport_fidelity` 探针校验，BR-03-103）。
 
+### 3.24 `execution_preview_sessions`（D119，`version` 乐观锁）
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id | ID | N | | |
+| tenant_id / project_id | ID | N | | |
+| execution_id | ID | N | | SERVICE / ARTIFACT：被预览的执行；REVIEW：声明所属执行 |
+| claim_id | ID | Y | | 仅 REVIEW |
+| kind | ENUM `PreviewSessionKind` | N | | SERVICE（执行工作区内的运行服务）/ REVIEW（声明提交的隔离副本，BR-03-107）/ ARTIFACT（只读文件流，不启动服务） |
+| origin | ENUM `PreviewOrigin` | N | | PLATFORM（按预览配置由平台启动）/ AGENT_OFFERED（Agent 进程树内已监听的端口，BR-03-113）/ FILES（ARTIFACT） |
+| config_key | STR(64) | Y | | 预览配置项 key（PLATFORM） |
+| config_snapshot | JSON | Y | | `PreviewConfig` 快照（S8，§3.28） |
+| port | INT | Y | | 机器回环端口（SERVICE / REVIEW） |
+| commit | STR(64) | Y | | REVIEW：声明的 `head_commit` |
+| machine_id | ID | N | | |
+| holder_kind / holder_id | STR(16) / ID | N | | 隧道持有者：EXECUTION=execution_id；PREVIEW=本会话 id（REVIEW 占槽，04 `SlotHolderKind=PREVIEW`） |
+| label | STR(26) | N | | 预览子域标签，26 位 base32 小写（≥128 bit 随机，BR-03-111）；UNIQUE |
+| state | ENUM `PreviewSessionState` | N | `REQUESTED` | §4.y |
+| stop_reason | ENUM | Y | | USER, IDLE, MAX_LIFETIME, EXECUTION_ENDED, CLAIM_DECIDED, ACCESS_DISABLED, MACHINE_OFFLINE, HEALTH_FAILED, START_TIMEOUT, PROCESS_EXITED, PORT_LOST |
+| started_by | ID | N | | 发起主体（人或系统） |
+| ready_at / last_access_at / expires_at / ended_at | 时间 | Y | | `expires_at` = 创建 + 最长存活（BR-03-108） |
+| failure_detail | STR(500) | Y | | 启动日志末 20 行摘要（脱敏） |
+| version | INT | N | 1 | |
+
+索引：(`execution_id`,`state`)；(`state`,`last_access_at`)（空闲回收）；(`state`,`expires_at`)；UNIQUE(`label`)。
+
+### 3.25 `execution_share_links`（D119）
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id | ID | N | | |
+| tenant_id / project_id / execution_id / preview_session_id | ID | N | | |
+| state | ENUM `ShareLinkState` | N | `PENDING_APPROVAL` | §4.y |
+| requested_by / decided_by / revoked_by | ID | N / Y / Y | | 申请人、批准或驳回人（人类）、撤销人 |
+| note | STR(500) | Y | | 给审批人与甲方看的说明（甲方页只显示这一项） |
+| ttl_hours | INT | N | 24 | 1–168 |
+| token_hash | HASH | Y | | 批准时生成 32 字节随机令牌，只存 SHA-256；UNIQUE |
+| approved_at / expires_at / revoked_at / ended_at | 时间 | Y | | `expires_at` = 批准时刻 + `ttl_hours` |
+| end_reason | ENUM | Y | | EXPIRED, REVOKED, REJECTED, SESSION_ENDED |
+| access_count / last_access_at | INT / 时间 | N / Y | 0 | 访问计数（每 IP 每小时去重） |
+| version | INT | N | 1 | |
+
+### 3.26 `execution_terminal_sessions`（D119）
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id | ID | N | | |
+| tenant_id / project_id / execution_id / machine_id | ID | N | | |
+| mode | ENUM `TerminalMode` | N | | WATCH（只读观看，MVP）/ SHELL（交互，v1.1） |
+| principal_id | ID | N | | 打开者（SHELL 必须为人类） |
+| state | ENUM `TerminalSessionState` | N | `OPENING` | §4.y |
+| sandboxed | BOOL | Y | | SHELL：机器端是否有目录沙箱（04 BR-04-96） |
+| recording_file_id | ID | Y | | SHELL：asciicast v2 录制文件（files purpose `terminal_recording`） |
+| recording_sha256 | HASH | Y | | 关闭时计算，写入审计 |
+| opened_at / last_input_at / closed_at | 时间 | Y | | |
+| close_reason | ENUM | Y | | USER, IDLE, MAX_DURATION, EXECUTION_ENDED, ACCESS_DISABLED, MACHINE_OFFLINE, STREAM_RESET |
+
+### 3.27 执行表增补字段（D119）
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| taken_over_by | ID | Y | | 人工接管者（人类，v1.1，BR-03-126）；非空时 Agent 不得继续该执行 |
+| taken_over_at | 时间 | Y | | |
+
+人工保存的编辑写入 `execution_artifacts`（`kind=COMMIT`，`producer_kind=HUMAN`，`producer_id=taken_over_by`），不新建表。
+
+### 3.28 模块内枚举增补（D119，不进 00 §5）
+
+| 枚举 | 值 |
+|---|---|
+| `PreviewSessionKind` / `PreviewOrigin` | SERVICE, REVIEW, ARTIFACT / PLATFORM, AGENT_OFFERED, FILES |
+| `PreviewSessionState` | REQUESTED, STARTING, READY, STOPPED, FAILED |
+| `PreviewKind`（预览配置的 kind） | WEB, API |
+| `ViewerKind` | WEB_DEVICE（设备框网页）, OPENAPI（接口控制台）, DOCUMENT（Markdown / 纯文本 / HTML 报告）, IMAGE, PDF, REPORT（测试报告）, VIDEO（v1.1）, CHAPTER（v1.1） |
+| `ShareLinkState` | PENDING_APPROVAL, ACTIVE, REJECTED, EXPIRED, REVOKED |
+| `TerminalMode` / `TerminalSessionState` | WATCH, SHELL / OPENING, OPEN, CLOSED |
+
+**JSON Schema S8 `PreviewConfig`**：`{key: ^[a-z0-9-]{1,64}$, kind: "WEB"|"API", start: string[1..64]（argv，不经 shell）, cwd?: 相对工作区路径, port: 1024–65535, health_path: 以 / 开头 ≤256（默认 "/"）, env?: {名: 值}（名须在 04 `env_passthrough_names` 或本表声明，值不得含密钥，≤20 项）, openapi_path?: string（API 时 OpenAPI 文档路径）, start_timeout_s?: 10–600（默认 120）, devices?: ["DESKTOP"|"TABLET"|"PHONE"]}`。
+
 ## 4. 状态机
 
 所有迁移在**单一数据库事务**内完成：条件更新（`version` 或 `state` CAS）→ 追加审计（如需）→ 写 outbox 领域事件 → `change_seq+1`。事件与审计在提交成功后才对外可见（09 outbox）。
@@ -618,6 +712,29 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 非法：对 PASSED / FAILED 的运行再写结果 → 409 **130452**；INTERNAL_* 执行试图提交完成声明 → 409 **130453**。
 
+### 4.y 预览、分享与终端（D119）
+
+**预览会话**（`PreviewSessionState`）：
+
+| # | 当前 | 触发 | 守卫 | 目标 | 副作用 |
+|---|---|---|---|---|---|
+| V1 | — | A56 / A57 / 系统（模板 `auto_preview`） | 执行非终态（SERVICE）或声明未裁决（REVIEW）；机器 ONLINE、WebSocket 可用、`allow_remote_preview`；配额（BR-03-110） | REQUESTED | 生成 `label`；PLATFORM：下发 `preview.start`；REVIEW：先 `ReserveSlot(holder=PREVIEW)` |
+| V2 | REQUESTED | 机器 `preview.state{STARTING}` | | STARTING | |
+| V3 | STARTING | 健康检查 `health_path` 返回 2xx/3xx（经隧道） | 在 `start_timeout_s` 内 | READY | `ready_at`；SSE |
+| V4 | REQUESTED | AGENT_OFFERED：端口在 04 `ports.report` 中且开流成功 | | READY | 直接就绪（不启动进程） |
+| V5 | REQUESTED | ARTIFACT | 工作区存在 | READY | 不启动进程 |
+| V6 | STARTING | 超时 / 进程退出 | | FAILED（START_TIMEOUT / PROCESS_EXITED） | `failure_detail`；释放 REVIEW 槽 |
+| V7 | READY | 连续 3 次健康检查失败（每 30 s）或进程退出 / 端口失去归属 | | FAILED（HEALTH_FAILED / PROCESS_EXITED / PORT_LOST） | 04 `ResetHolder`；下发 `preview.stop` |
+| V8 | REQUESTED / STARTING / READY | 用户停止（A59）/ 空闲 30 min / 到 `expires_at` / 执行终态或 INTERRUPTED / 声明已裁决（REVIEW）/ `machine.access_changed{allow_remote_preview:false}` / 机器离线 | | STOPPED（对应 `stop_reason`） | 同 V7 副作用；关联 ACTIVE 分享链接 → EXPIRED（SESSION_ENDED） |
+
+终态 STOPPED、FAILED；重新预览 = 新会话（新 `label`，旧链接失效）。
+
+**分享链接**（`ShareLinkState`）：PENDING_APPROVAL →（A72 APPROVE，人类、`preview_share_approve`、非申请人）→ ACTIVE；PENDING_APPROVAL →（A72 REJECT / 会话结束 / 72 h 无人处理）→ REJECTED；ACTIVE →（到 `expires_at`）→ EXPIRED；ACTIVE →（A73）→ REVOKED；ACTIVE →（所属会话 STOPPED / FAILED）→ EXPIRED（SESSION_ENDED）。终态不可再迁移（409 **130465**）。
+
+**终端会话**（`TerminalSessionState`）：OPENING →（04 `tunnel.opened`）→ OPEN →（用户关闭 / 空闲 / 最长时长 / 执行终态 / 开关关闭 / 机器离线 / 流 RESET）→ CLOSED。SHELL 关闭时封存录制文件并写审计（BR-03-125）。
+
+**人工接管**（v1.1）：`taken_over_by` 为空 →（A65 PUT，执行 PAUSED 或 INTERRUPTED；RUNNING 时先在同一请求内暂停，`state_reason=USER_PAUSE`）→ 非空 →（A65 DELETE 释放 / 执行终态）→ 空。接管期间 A13 恢复（交还 Agent）须先释放（409 **130466**）。
+
 ## 5. 业务规则与边界情况
 
 ### 5.1 分支、序号与种类
@@ -756,6 +873,52 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 - **BR-03-101 内部轮次计数**：每次 FAILED（Q3/Q6/Q9/Q11）计 1 次内部轮次，交由 02 判断是否达到 `max_internal_rounds`（00 §15.2）；内部失败**不发任何人工通知**，只写事件与执行记录。
 - **BR-03-103 工具校准门槛**（D116）：执行 `VISUAL` / `INTERACTION` 等须工具校准的验证器（11 BR-11-33）前，按 04 `ListEligibleMachines(capabilities=[browser_capture])` 取候选，再以 11 `VerifierCatalog.ToolCalibration` 过滤，只在 CALIBRATED 机器上运行。没有 CALIBRATED 机器时，该 AUTOMATED 运行保持 PENDING（`waiting_reason=TOOL_UNCALIBRATED`，内部验收面板显示「等待已校准的截图机器」），**不在未校准机器上判定、不判 FAILED、不计内部轮次**（BR-03-101），也不通知人；消费 11 `verifier.calibration_changed{state:CALIBRATED}` 后自动开始。等待超过 24 小时 → 升级人工（`MANDATORY_HUMAN_GATE`，detail=`TOOL_UNCALIBRATED`，途径同 Q11），附各机器的 `last_failures`。运行开始后校准状态变化不影响本次结论；证据记录运行时的 `provider_ref` 与校准行 id。
 - **BR-03-102 穿透学习（职责划分）**：`quality.escaped` 由 02 在拒绝裁决 / 甲方拒收的同一事务内发布（02 §4.5、BR-02-58），学习回流（06 `MemoryWriter.Propose`、11 `EvalSetWriter.ProposeCase(ctx, tx, {template_key, template_version?, source: ESCAPE, work_item_id, description, evidence_refs[], expected})`）只由 02 `delivery.escape_learning` 执行。本模块不发布 `quality.escaped`、不重复回流，只经 `InternalQAReader` 向 02 提供：该工作项最近一次 AGENT_TEST / AGENT_ACCEPTANCE 的结论、`internal_qa_run_ids[]`、参与的 TESTER / ACCEPTOR Agent 与截图证据引用（02 据此判断「内部已放行」并填入穿透记录）。
+
+### 5.y 远程工作区（D119）
+
+**预览**
+
+- **BR-03-104 类别与分期**：服务预览（WEB / API）与评审预览为 MVP；产物预览中文档、图片、PDF、测试报告与设备框网页、OpenAPI 控制台为 MVP，视频（低清代理）与小说章节阅读器为 v1.1；分享链接分期待定（D119 未列）。所有预览都是**进度，不是交付**：页面常驻说明「预览只反映当前工作区，不代表已验收」，预览内容不作为证据（需要证据时由人另行截图登记为 OBSERVATION / SCREENSHOT）。
+- **BR-03-105 预览配置来源**：按序取第一个有值者：① 项目 ACTIVE 宪法（07 `ConstitutionReader.Active`）正文中信息串为 `preview` 的围栏代码块（JSON 数组，元素为 S8 `PreviewConfig`）；② 项目模板解析参数 `params.preview`（11 `TemplateResolver.ForProject`）。解析失败 → 该来源视为无配置并在远程工作区页显示「预览配置无效：{字段}」；两者都没有 → 只能使用 Agent 提供的端口（BR-03-113）或产物预览（A56 `config_key` 请求 → 422 **130460**）。配置在会话创建时快照，之后宪法变更不影响已有会话。
+- **BR-03-106 平台启动服务预览**：PLATFORM 会话由机器程序在执行工作区（`cwd` 相对工作区根）以 `start` argv 启动（不经 shell；环境 = BR-03-70 白名单 + 配置 `env`；不注入机器凭证与访问令牌），进程挂在该执行的进程树下（04 BR-04-91 据此判定归属），日志写入执行日志的独立段落 `preview/<key>`。同一执行同一 `config_key` 至多一个非终态会话（重复请求返回现有会话，200）。执行 PAUSED 时预览进程**继续运行**（便于人工查看），INTERRUPTED / 终态时停止。
+- **BR-03-107 评审预览**：评审台对某声明〔预览此版本〕→ A57：在声明执行所在机器（离线或无工作区时，按 04 `ListEligibleMachines(require_workdir)` 选同项目仓库已登记的机器；K8S_POOL 为新 Pod）以 `git worktree add --detach <隔离目录> <claim.head_commit>` 建隔离副本（只读挂载可见验收集以外的内容不变），在副本内按配置启动；会话 `holder=PREVIEW` 占一个执行槽（04 `SlotHolderKind=PREVIEW`）。副本与执行工作区互不影响；会话结束删除副本并释放槽。声明被裁决（`decision.made` 对该 claim）后 REVIEW 会话停止（CLAIM_DECIDED）。
+- **BR-03-108 生命周期**：空闲 = 30 min 内网关没有为该会话转发任何请求（WebSocket 帧计为活动）；最长存活默认 8 h（部署配置 `execution.preview.max_lifetime_hours`，1–24）；SERVICE 随执行进入终态或 INTERRUPTED 停止；全部停止都向机器下发 `preview.stop`，机器 4 s 后杀进程树。
+- **BR-03-109 健康检查**：经隧道对 `health_path` 发 GET（超时 5 s）；STARTING 期间每 2 s，READY 后每 30 s；跟随至多 3 次同源重定向。
+- **BR-03-110 并发**：每执行非终态 SERVICE 会话 ≤3、REVIEW 会话每声明 ≤1、每项目非终态会话 ≤20；超出 429 **130463**。
+- **BR-03-111 标签**：26 位小写 base32（130 bit，CSPRNG），一次性，会话结束后不复用；URL 不含执行、项目或租户 ID。路径模式下为 `/p/<label>/`（04 BR-04-94）。
+- **BR-03-112 产物查看器**：ARTIFACT 会话按扩展名与内容嗅探选择 `ViewerKind`：`.md/.txt/.log/.csv/.json` → DOCUMENT（纯文本或安全 Markdown 渲染，禁原始 HTML）；`.html`（测试报告目录内）→ REPORT（在预览域 iframe 中渲染，`sandbox="allow-scripts"`，不与控制台同源）；`.png/.jpg/.gif/.webp/.svg` → IMAGE（SVG 只在预览域渲染）；`.pdf` → PDF（预览域内置查看器）；`.mp4/.webm/.mov/.mkv` → VIDEO（v1.1）；小说模板章节目录（11 产物 schema）→ CHAPTER（v1.1）；SERVICE 会话的 WEB 配置 → WEB_DEVICE；API 配置且有 `openapi_path` → OPENAPI。其他类型只提供下载（BR-03-121）。所有文件字节只从预览域（`https://<label>.<preview-domain>/__files/<path>`）提供，控制台只嵌入，不在控制台源上渲染工作区内容。
+- **BR-03-113 Agent 提供端口**：Agent 经运行时工具输出声明「预览端口 N」时（事件 `preview_offered{port, title?}`），或人在远程工作区从 04 `TunnelBroker.Ports(holder)`（只含执行进程树内的回环监听端口）中选择时，创建 `origin=AGENT_OFFERED` 会话；端口不在列表中 → 403 130403 `reason_code=PORT_NOT_OWNED`（不开流、不请求机器）；开流时机器再次判定（04 BR-04-91），拒绝同码。Agent 不能提供其他执行或机器上其他进程的端口。
+- **BR-03-114 访问判定**（`PreviewAccessResolver.Authorize`，04 网关逐请求调用，结果按 Cookie 缓存 ≤30 s）：会话 READY；Cookie 中的预览访问会话属于该 `label`、未过期、未撤销；访问者（人类主体，Agent / 服务账号恒拒）对会话所属项目仍有 `execution_read`（成员被移出项目、权限被撤销后 ≤30 s 失效）；机器开关仍允许。任一不满足 → 网关 403 页「你没有访问这个预览的权限或预览已结束」（不暴露项目名）。分享链接访问另见 BR-03-130。
+- **BR-03-115 访问换取**：控制台换取页（§8.8）调用 A60（Cookie 会话 + `execution_read`）→ 返回一次性 `code`（32 字节随机，60 s、单次）与 `url = https://<label>.<preview-domain>/__access?code=…`；网关以 `code` 换取 `__Host-preview` Cookie（15 min 滑动，最长到会话 `expires_at`）后 302 去掉查询串；`code` 只存哈希；重复使用 → 网关 403 并审计 `execution.preview_access_denied`。访问会话不扩大权限：每个请求仍经 BR-03-114。
+- **BR-03-116 设备框**：WEB_DEVICE 查看器提供 桌面 1440×900 / 平板 820×1180 / 手机 390×844 三档（配置 `devices` 可收窄）、旋转、刷新、在新标签打开（同样经换取）；iframe 指向预览域，控制台对 iframe 不注入任何脚本。
+- **BR-03-117 视频与章节**（v1.1）：VIDEO：浏览器可直接播放（mp4 H.264 / webm）且 ≤200 MiB → 直接以 Range 流播放；否则若机器有 `media_transcode`（04 BR-04-48）→ 经 `MEDIA_PROXY` 流按需转码为 480p H.264 低清代理（缓存于机器临时目录、不写工作区、执行结束清理），页面标「低清预览」；两者都不满足 → 只提供下载。CHAPTER：按模板章节顺序列出，Markdown 渲染，提供「与上一版对比」（上一版 = 同章节在 `base_commit` 或上一个声明提交中的内容，行级 diff）。
+- **BR-03-118 刷新推送**：ARTIFACT / SERVICE 会话打开期间，服务端为其开 `FS_WATCH`（04 §6.4b，路径为当前查看的文件及其目录，去抖 500 ms），`FS_CHANGED` 经 SSE 推送 `preview_files_changed{session_id, paths[]}`；查看器自动刷新（DOCUMENT / IMAGE / PDF）或显示「文件已更新〔刷新〕」（VIDEO / REPORT / WEB_DEVICE 的 HMR 由应用自身处理）。
+- **BR-03-119 开关与离线**：消费 04 `machine.access_changed`：`allow_remote_preview=false` → 该机全部非终态预览会话 STOPPED（ACCESS_DISABLED）；`allow_remote_terminal=false` → 全部 SHELL 会话 CLOSED（ACCESS_DISABLED）；`allow_file_edit=false` → 后续 A66 一律 403；`websocket_available=false` → 会话 STOPPED（MACHINE_OFFLINE）。`machine.state_changed{OFFLINE|REVOKED}` 同样停止全部会话。
+
+**文件**
+
+- **BR-03-120 浏览（只读，MVP）**：A62 列目录（深度 1，≤2000 项，按名称排序，目录在前）、A63 读文件（文本 ≤2 MiB 内联返回，超出或二进制只提供下载）；`.git/` 不列出（差异经 A64）；全部经 04 `FILE_READ` / `FS_LIST` 流，路径限定由机器端判定（04 BR-04-92），越界 → 403 130403 `reason_code=PATH_OUTSIDE_WORKSPACE`。执行终态后工作区仍在（SHARED_DIR / 未清理的 worktree）且机器在线时仍可浏览；K8S_POOL 的 Pod 已删除、机器离线或目录已清理 → 409 **130467**，页面引导到证据文件。
+- **BR-03-121 下载**：单文件 ≤100 MiB，`Content-Disposition: attachment`、`X-Content-Type-Options: nosniff`、`Content-Type: application/octet-stream`（控制台源上从不以可执行类型返回工作区内容）；每次下载审计 `execution.workspace_file_downloaded`（路径 SHA-256 + 大小）。
+- **BR-03-122 差异**：A64 返回相对执行 `base_commit` 的变更列表与单文件统一 diff（≤1 MiB，超出截断并标注）；未提交的工作区改动一并列出（标「未提交」）。
+- **BR-03-123 密钥遮罩**：遮罩模式 = 内置（`.env`、`.env.*`、`*.pem`、`*.key`、`id_rsa*`、`id_ed25519*`、`*.p12`、`*.pfx`、`.npmrc`、`.netrc`、`.pypirc`、`credentials*.json`、`*secret*`（不区分大小写））∪ 项目宪法 `preview` 块同级的 `mask` 数组；随每个 `FILE_READ` / `FS_LIST` 流下发，机器端执行：命中文件在列表中显示但标「已遮罩」，读取时 `.env` 类按行返回 `KEY=••••`（只保留键名），其他类型不返回内容；下载、编辑、分享一律拒绝（422 **130469**）。遮罩不是授权边界的替代：有 `execution_read` 才能看到键名。
+
+**终端**
+
+- **BR-03-124 只读观看（MVP）**：WATCH 会话经 04 `TERMINAL_WATCH` 流镜像该执行内运行时所执行命令的 stdout / stderr（执行桥在启动工具子进程时复制其输出）与执行桥状态行；流单向，客户端发来的任何输入帧 → RST。需 `execution_read`；不受「允许远程终端」开关约束（同执行日志）；不录制（内容已在执行事件与日志中）。每执行 WATCH ≤8（04 配额）。
+- **BR-03-125 交互 shell（v1.1）**：SHELL 会话要求：调用者为**人类**且对项目持 `terminal_interact`（不可委托、仅人类，08）；step-up purpose `terminal_interactive`、target `execution:<id>`；机器 `allow_remote_terminal=true`（否则 403 130403 `MACHINE_ACCESS_DISABLED`）；执行非终态且工作区存在。机器端以工作区根为初始 cwd、最小环境、可用时目录沙箱（04 BR-04-96；`sandboxed=false` 时页面常驻红字）。全部输入与输出以 asciicast v2 录制，实时写入 files（purpose `terminal_recording`，按 1 MiB 分块追加），关闭时计算 SHA-256 并写审计 `execution.terminal_closed{recording_sha256}`；录制保留 180 天（`execution.terminal.recording_retention_days`），与审计同等只读。空闲 15 min 无输入关闭，最长 2 h；每执行同时 ≤1 个 SHELL（04 配额）。执行 RUNNING 时允许打开，但终端顶部琥珀提示「Agent 正在运行，你的操作可能与它冲突；需要独占时请先接管」。
+
+**人工接管与编辑（v1.1）**
+
+- **BR-03-126 人工接管**：A65 PUT：人类，持 `execution_stop` 与 `workspace_file_edit`；执行 RUNNING → 同请求内暂停（BR-03-40 规则）；PAUSED / INTERRUPTED → 直接记录；其他状态 409 130410。接管后：Agent 不再收到该执行的新轮次与恢复；K8S_POOL 的 Pod 在接管与 PAUSED 期间保留（04 §4.6，≤24 h）。释放（A65 DELETE）后才能恢复交还 Agent；交还时上下文包增加一条 SYSTEM 说明「人工在 {时间} 编辑了 n 个文件，提交 {sha}」。
+- **BR-03-127 编辑与上传**：A66 只在 `taken_over_by = 调用者` 且执行 PAUSED / INTERRUPTED、机器 `allow_file_edit=true` 时可用；否则：执行 RUNNING → 409 **130466**「执行正在运行，请先暂停或接管」；未接管或接管者非本人 → 409 130466；开关关闭 → 403 130403 `MACHINE_ACCESS_DISABLED`。每次保存为一批变更（≤50 个文件，单文件 ≤10 MiB，文本或上传文件 `file_id`），每项带 `base_sha256`（与机器上当前内容不一致 → 409 **130472**，返回当前 sha）；遮罩文件不可写（422 130469）；越界路径 403 `PATH_OUTSIDE_WORKSPACE`。机器端写入后在执行分支上提交，作者 = 接管人显示名与中性邮箱 `<principal_id>@users.noreply.invalid`（不含部署品牌），提交信息首行为用户填写的说明，追加 trailer `Edited-By-Human: <principal_id>`；结果登记为产物 COMMIT（`producer_kind=HUMAN`）；审计 `execution.workspace_files_edited{commit, paths_sha256[], count}`。人工提交与 Agent 提交在评审台中分别标注。
+
+**分享链接（分期待定）**
+
+- **BR-03-128 申请**：A70：对 READY 的 SERVICE / ARTIFACT 会话（REVIEW 不可分享），申请人为人类且对项目持 `execution_start`；`ttl_hours` 1–168；同一会话非终态链接 ≤1。发布 `share_link.requested` → 08 收件箱 `PREVIEW_SHARE_APPROVAL`。
+- **BR-03-129 审批**：A72：人类、`preview_share_approve`（不可委托、仅人类）、**不得是申请人**（403 130403 `SELF_REVIEW`）；批准时生成令牌，响应一次性返回 `share_url = https://share.<preview-domain>/#t=<token>`（令牌在 fragment，不进日志与 Referer）；令牌只存哈希，申请人与批准人此后都无法再次取得，遗失须撤销后重新申请。
+- **BR-03-130 甲方访问**：分享入口页（预览域、静态页）读取 fragment 后调用 A74 交换为该 `label` 主机的只读访问 Cookie（`__Host-share`，与 `expires_at` 同时失效）；之后网关对分享访问只放行 GET / HEAD 与 WebSocket 升级，其他方法 405「这是只读预览」；ARTIFACT 只读本就成立。分享页面只显示部署显示名（`GET /deployment`，缺失时中性文案）、申请时的 `note` 与预览本身，**不显示**执行、工作项、Agent、日志、文件浏览、终端或任何内部记录；不显示「下载」。
+- **BR-03-131 失效**：到期、撤销、会话结束 → 网关返回 410 页「此预览链接已失效」，交换接口 A74 对失效令牌返回同一 410（不区分原因，不泄露是否存在）；撤销 ≤1 s 生效（网关缓存以 `share_link` 版本失效）。
+- **BR-03-132 审计**：`execution.share_link_requested` / `_approved` / `_rejected` / `_revoked` / `_expired`、`execution.share_link_accessed`（每 IP 每小时一条，detail 含 IP 前缀 /24 与 UA 摘要）。
 
 ## 6. 接口契约
 
@@ -930,6 +1093,49 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 错误码：**130451** 验收集已冻结不可修改；**130452** 内部验收运行已终结；**130453** 内部验收执行不能提交完成声明；**130454** 验收集定义不完整；**130455** 交付执行修改了冻结测试（`data.files[]`，同时记 `cheating.suspected`）；**130456** 隐藏验收集校验和不符（平台副本被篡改，升级人工）；**130457** 机器缺少截图能力（`browser_capture`），VISUAL 验证器无法执行（按 BR-03-99 改由其他机器或升级）；**130458** 证据包缺 `unverified` 字段。
 
+### 6.y 接口增补（D119 远程工作区）
+
+| # | 方法 | 路径 | tag | 权限 · 守卫 | 请求 | 响应 | 错误 |
+|---|---|---|---|---|---|---|---|
+| A55 | GET | `/executions/{execution_id}/preview-sessions` | executions | `execution_read` · O | `?state=&kind=` | `PreviewSession[]` + `meta.configs[]`（可用预览配置，BR-03-105）+ `meta.gateway{enabled, mode}` | 404 |
+| A56 | POST | `/executions/{execution_id}/preview-sessions` | executions | `execution_start` · O | `{kind:"SERVICE", config_key}` \| `{kind:"SERVICE", port}`（AGENT_OFFERED）\| `{kind:"ARTIFACT"}` | `PreviewSession`（201 / 200 已存在） | 422 130460；403 130403（`PORT_NOT_OWNED` / `MACHINE_ACCESS_DISABLED`）；409 140484 / 130467 / 130410（执行终态）；429 130463；503 140492 |
+| A57 | POST | `/claims/{claim_id}/preview-sessions` | claims | `execution_read` · O（评审人；REVIEW 只读） | `{config_key?}` | `PreviewSession`（201） | 同 A56；409 130410（声明已裁决） |
+| A58 | GET | `/preview-sessions/{session_id}` | preview-sessions | `execution_read` · O | — | `PreviewSession` | 404 |
+| A59 | PUT | `/preview-sessions/{session_id}/termination` | preview-sessions | 发起者，或 `execution_stop` · O | `{}` | `PreviewSession`（STOPPED，USER） | 幂等 |
+| A60 | POST | `/preview-sessions/{session_id}/access-grants` | preview-sessions | `execution_read` · O；HUMAN（Cookie 会话） | `{return_path? ≤2000}` | `{url, expires_in:60}`（`no-store`） | 409 130462（未就绪 / 已结束） |
+| A61 | GET | `/executions/{execution_id}/offered-ports` | executions | `execution_read` · O | — | `[{port, process_name, offered_by_agent:bool}]`（04 `TunnelBroker.Ports`，只含执行进程树内端口） | 409 140484 |
+| A62 | GET | `/executions/{execution_id}/workspace/entries` | executions | `execution_read` · O | `?path=`（相对，默认根） | `[{name, path, type:"FILE"\|"DIR"\|"LINK", size?, modified_at?, masked:bool, changed?:"A"\|"M"\|"D"}]` | 403 130403（`PATH_OUTSIDE_WORKSPACE` / `MACHINE_ACCESS_DISABLED`）；409 130467 / 140484 |
+| A63 | GET | `/executions/{execution_id}/workspace/content` | executions | `execution_read` · O | `?path=&download=0\|1` | 文本 JSON `{text, sha256, truncated}` 或下载流 | 同 A62；413 130468；422 130469 |
+| A64 | GET | `/executions/{execution_id}/workspace/diff` | executions | `execution_read` · O | `?path=`（缺省 = 变更列表） | `{base_commit, files:[{path, status, additions, deletions, uncommitted}]}` 或 `{path, unified_diff, truncated}` | 同 A62 |
+| A65 | PUT / DELETE | `/executions/{execution_id}/human-takeover` | executions | `execution_stop` + `workspace_file_edit` · O；HUMAN（v1.1） | PUT `{reason ≤2000}` | `Execution`（含 `taken_over_by`） | 409 130410 / 130466；403 130403 |
+| A66 | POST | `/executions/{execution_id}/workspace-commits` | executions | `workspace_file_edit` · O；HUMAN；接管者本人（v1.1） | `{message 1–200, changes:[{path, base_sha256?, text? \| file_id? \| delete?:true}] 1..50}` | `{artifact, commit}`（201） | 409 130466 / 130472；422 130469；403 130403（`PATH_OUTSIDE_WORKSPACE` / `MACHINE_ACCESS_DISABLED`） |
+| A67 | POST | `/executions/{execution_id}/terminal-sessions` | executions | WATCH：`execution_read`；SHELL：`terminal_interact` + HUMAN + step-up `terminal_interactive`（v1.1） · O | `{mode:"WATCH"\|"SHELL", cols?, rows?, reauth_proof?}` | `TerminalSession`（201）+ `channel_url` | 403 130403（`MACHINE_ACCESS_DISABLED` / `REAUTH_REQUIRED` / `NON_DELEGABLE` / `AGENT_PROHIBITED`）；409 140484 / 130467；429 140486 |
+| A68 | GET · PUT | `/terminal-sessions/{session_id}` · `/terminal-sessions/{session_id}/termination` | terminal-sessions | 打开者或 `execution_stop` · O | — | `TerminalSession` | 404 |
+| A69 | GET（WebSocket 升级） | `/terminal-sessions/{session_id}/channel` | terminal-sessions | 打开者本人（同一 Cookie 会话） · O | 文本帧 `{type:"input", data}`（仅 SHELL）、`{type:"resize", cols, rows}`；服务端帧 `{type:"output", data}`、`{type:"closed", reason}` | — | 403；WATCH 收到 input → 关闭（1008） |
+| A70 | POST | `/preview-sessions/{session_id}/share-links` | preview-sessions | `execution_start` · O；HUMAN（分期待定） | `{ttl_hours 1–168, note? ≤500}` | `ShareLink`（201，PENDING_APPROVAL） | 409 130462 / 130465 |
+| A71 | GET | `/executions/{execution_id}/share-links` · `/share-links/{link_id}` | executions · share-links | `execution_read` · O | — | `ShareLink[]` / `ShareLink`（从不含令牌） | 404 |
+| A72 | PUT | `/share-links/{link_id}/decision` | share-links | `preview_share_approve`（不可委托）· O；HUMAN；非申请人 | `{action:"APPROVE"\|"REJECT", reason? ≤2000}` + If-Match | APPROVE：`{share_link, share_url}`（`no-store`，只此一次）；REJECT：`ShareLink` | 403 130403（`SELF_REVIEW` / `NON_DELEGABLE`）；409 130465 / 130462 |
+| A73 | PUT | `/share-links/{link_id}/revocation` | share-links | 申请人、批准人或 `preview_share_approve` · O；HUMAN | `{reason ≤2000}` | `ShareLink`（REVOKED） | 409 130465 |
+| A74 | POST | `/share-access`（预览域，公开；`authz.RegisterPublic` + 限流 10 次/分钟/IP） | share-access | 令牌即凭据 | `{token}` | 204 + `Set-Cookie: __Host-share` + `Location` | 410 130464（失效 / 不存在，不区分） |
+| A75 | GET | `/executions/{execution_id}/artifact-views` | executions | `execution_read` · O | `?path=` | `{viewer:ViewerKind, src_url（预览域）, proxy?:{available, profile}, previous?:{commit, src_url}}` | 409 130467；422 130473（v1.1 查看器在 MVP 构建中返回此码） |
+
+**表示**：`PreviewSession{id, execution_id, claim_id?, kind, origin, config_key?, preview_kind?, viewers[], port?, commit?, machine{id, name, type}, state, stop_reason?, url_mode:"SUBDOMAIN"\|"PATH", path_mode_warning, ready_at?, last_access_at?, expires_at, failure_detail?, share_link_count, version}`（**不含** `label`，URL 只经 A60 换取取得）；`TerminalSession{id, execution_id, mode, state, sandboxed?, opened_by, opened_at, closed_at?, close_reason?, recording?:{file_id, sha256}}`（录制只对 `audit_read` 可见）；`ShareLink{id, preview_session_id, state, note, ttl_hours, requested_by, decided_by?, approved_at?, expires_at?, revoked_at?, end_reason?, access_count, last_access_at?, version}`。
+
+**机器执行级消息增补**（§6.3 同表语义；传输属 04 §6.4 / §6.4b）：
+
+| 方向 | 消息 | 载荷要点 | 服务端处理 |
+|---|---|---|---|
+| S→M | `preview.start` | `{command_id, session_id, holder:{kind, id}, config:S8, workdir:{mode:"EXECUTION"\|"ISOLATED_COPY", commit?}}` | 机器启动预览进程（REVIEW 先建隔离副本）；回 `preview.state` |
+| S→M | `preview.stop` | `{command_id, session_id, reason}` | 杀进程树（4 s），REVIEW 删除副本 |
+| M→S | `preview.state` | `{session_id, state:"STARTING"\|"RUNNING"\|"EXITED", exit_code?, log_tail? ≤4 KiB}` | §4.y V2 / V6 / V7 |
+| M→S | `execution.events` 新事件类型 | `preview_offered{port, title?}` | BR-03-113 |
+| S→M | `workspace.commit` | `{command_id, execution_id, dispatch_epoch, changes:[{path, base_sha256?, file_id? \| inline_b64? \| delete?}], author:{name, email}, message, trailer}`（v1.1） | BR-03-127 |
+| M→S | `workspace.commit_result` | `{command_id, ok, commit?, conflicts?:[{path, current_sha256}], code?}` | 写产物、审计；冲突 → 130472 |
+
+**跨模块接口增补**：本模块提供 `PreviewAccessResolver`（04 网关使用）：`Authorize(ctx, label, cookie, method) (Grant{session_id, tenant, project, machine_id, holder, port, read_only}, error)`、`ExchangeCode(ctx, label, code) (cookie, error)`、`ExchangeShare(ctx, token) (label, cookie, error)`、`Touch(session_id)`（空闲计时）、`HolderActive(ctx, holder) bool`（04 J10）。本模块使用 04 `TunnelBroker`（`Open` / `ResetHolder` / `Ports`）、`MachineDirectory.Type / RemoteAccess`、07 `ConstitutionReader.Active`、11 `TemplateResolver.ForProject`（`params.preview`）、08 `AuthorityChecker`（`terminal_interact`、`preview_share_approve`、`workspace_file_edit`）。
+
+**错误码增补**：**130460** preview_config_missing（422，无可用预览配置或 `config_key` 不存在）；**130461** preview_start_failed（409，`data.failure_detail`）；**130462** preview_not_ready（409，会话未就绪或已结束）；**130463** preview_limit（429）；**130464** share_link_invalid（410，失效或不存在，不区分）；**130465** share_link_state（409，非法迁移）；**130466** workspace_not_editable（409，执行正在运行、未接管或接管者非本人；`data.reason`）；**130467** workspace_unavailable（409，机器离线、Pod 已删除或目录已清理）；**130468** file_too_large（413）；**130469** file_masked（422）；**130472** edit_conflict（409，`data.conflicts[]`）；**130473** viewer_unsupported（422）。权限类拒绝统一 403 130403，新 `reason_code`：`MACHINE_ACCESS_DISABLED`、`PORT_NOT_OWNED`、`PATH_OUTSIDE_WORKSPACE`（08 §3.5 登记）。
+
 ## 7. 后台任务与事件
 
 ### 7.1 后台任务（经 09 `JobQueue`；互斥用底座 `dlock`，锁 TTL = 2×间隔；每批 ≤200 行，批内逐行独立事务，单行失败不影响其他行）
@@ -987,6 +1193,14 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 消费：02 `plan.approved`（冻结验收集）；11 `verifier.calibration_changed`（`state=CALIBRATED` 时启动等待中的 AUTOMATED 运行，BR-03-103）。
 SSE：`tenant/{t}/work_item/{id}` 推送内部验收阶段变化（仅对有 `execution_read` 的成员；甲方门户不订阅）。
 
+### 7.y 任务与事件增补（D119）
+
+任务：`execution.preview_reaper`（每 30 s，dlock `execution:preview-reaper`：空闲 30 min、到 `expires_at`、REVIEW 声明已裁决 → STOPPED；STARTING 超时 → FAILED；健康检查调度）；`execution.share_link_expirer`（每 60 s：ACTIVE 到期 → EXPIRED；PENDING_APPROVAL 超 72 h → REJECTED）；`execution.terminal_idle`（每 60 s：SHELL 空闲 15 min / 满 2 h → CLOSED；封存录制）；`execution.terminal_recording_retention`（每日：超保留期录制解绑删除，审计事件保留哈希）。
+发布（outbox）：`share_link.requested{link_id, execution_id, preview_session_id, requested_by, ttl_hours}`、`share_link.decided{link_id, action, decided_by}`、`share_link.ended{link_id, end_reason}`（EXPIRED / REVOKED / SESSION_ENDED；08 据此关闭收件箱项）。预览与终端会话状态只经 SSE，不发领域事件。
+消费：04 `machine.access_changed`（BR-03-119）；`decision.made`（REVIEW 会话 CLAIM_DECIDED）；`machine.state_changed`（OFFLINE / REVOKED → 停止会话）。
+SSE：执行主题帧 `kind` 增加 `preview`（会话状态）、`preview_files_changed`、`terminal`（终端会话状态，不含内容）、`share_link`。
+审计（00 §7.2，08 §7.5 登记）：`execution.preview_started` / `_stopped`（detail `session_id, kind, origin, port?, commit?`）、`execution.preview_access_denied`、`execution.workspace_file_downloaded`、`execution.workspace_path_denied`（越界尝试，同主体 10 min 合并）、`execution.terminal_opened` / `execution.terminal_closed`（SHELL 必含 `recording_sha256`、`sandboxed`；WATCH 只记 opened）、`execution.human_takeover_started` / `_released`、`execution.workspace_files_edited`、`execution.share_link_*`（BR-03-132）。
+
 ## 8. 页面规格
 
 > 应用 `apps/frontend-web-admin/apps/delivery`；组件只引用语义 Token；所有页面具备加载骨架、空态、错误态（可重试）、无权限态（写明缺少的权限码）、离线/重连态（顶部条"正在重连… 显示的可能不是最新状态"，保留已加载内容）。文案称"你"；不出现 Runner / Daemon / Computer（技术详情面板除外）。
@@ -994,14 +1208,14 @@ SSE：`tenant/{t}/work_item/{id}` 推送内部验收阶段变化（仅对有 `ex
 ### 8.1 执行列表
 
 - **目的**：查看项目内全部执行与会话，快速进入待你决定的那一个。
-- **入口与路由**：侧栏「交付 → 执行」；`/t/:tenantID/p/:projectID/executions`；"我的执行" `/t/:tenantID/executions?mine=1`（A43）。
+- **入口与路由**：项目空间侧栏「流水线 › 执行」（08 §8.6）；`/t/:tenantID/p/:projectID/executions`；"我的执行" `/t/:tenantID/executions?mine=1`（A43）。
 - **布局**：顶部筛选条（状态多选、种类、机器、runtime、执行者、工作项、分支原因、"仅待你决定"开关、时间范围、"显示已归档"）；右上〔新建临时会话〕；主体 AutoTable。
 - **列**：标题（ADHOC 显示"临时"徽标）/ 所属工作项链接；分支标签（`#3 · 质量返工 2`，紫色）；`StateBadge`（RUNNING 且有未决交互时显示琥珀"待你决定 n"）；执行者 `ActorAvatar`；机器（在线点）；runtime · 模型；成本（`$0.42` / 估算前缀 `≈` / 未知显示 `—` + token 数）；开始时间；时长。
 - **交互**：行点击 → INTERACTIVE/ADHOC 进工作台，AUTONOMOUS 进详情；行菜单〔停止〕（BR-03-40 可用时）、〔归档〕（终态）。〔新建临时会话〕需 `execution_start`，弹窗字段：机器（离线/无 runtime 置灰并注明原因）、runtime（无"自动"降级：未安装即不可选）、模型（04 目录 + 手填 ≤160）、推理强度（随模型）、授权模式（FULL_AUTO 红色并触发重新认证）、工具开关（Codex 置灰并说明"CLI exec 不支持网页审批"）、工作目录模式；创建中按钮显示进度，失败保留表单。
 - **实时**：订阅项目列表主题；≤1 s 更新状态与成本。
 - **空态**："还没有执行。工作项分派给 Agent 后会自动开始；你也可以〔新建临时会话〕"。
 - **无权限**："需要 execution_read 权限"。
-- **移动端**：表格改卡片（标题、状态、分支、成本、机器），筛选收进底部 Sheet；底部快捷栏"执行"即此页。
+- **移动端**：表格改卡片（标题、状态、分支、成本、机器），筛选收进底部 Sheet；经底栏「项目」进入项目空间后由抽屉「流水线 › 执行」到达（底栏为 工作台 · 会话 · 项目 · 裁决，08 §8.6）。
 
 ### 8.2 交互会话工作台（Preview 01 全量对齐）
 
@@ -1053,6 +1267,25 @@ SSE：`tenant/{t}/work_item/{id}` 推送内部验收阶段变化（仅对有 `ex
 - **作弊嫌疑提示**：执行详情显示红色横幅「本次执行修改了冻结测试：files…」，提供 diff 链接。
 - **证据卡**：新增「未验证项」区块（`unverified[]`），为空时显示「执行者声明：无未验证项」。
 
+### 8.6 远程工作区 `/t/:tenantID/p/:projectID/executions/:executionID/workspace`（D119）
+
+- **入口**：执行详情与交互会话工作台头部〔远程工作区〕；评审台声明卡〔预览此版本〕（直达预览 Tab 并创建 REVIEW 会话）；会话卡片中的 `preview_offered` 事件「Agent 提供了预览：端口 5173〔打开〕」。渲染在所属项目的项目空间内（08 §8.6，高亮「流水线 › 执行」）。
+- **布局**：头部同 §8.2（标题、状态、机器 + 类型徽章、分支）；Tab（URL `?tab=`）：**预览** · **产物** · **文件** · **终端**；Tab 内各功能按机器开关与分期显示：v1.1 功能带「v1.1」标签（MVP 构建中禁用并说明「将在 v1.1 提供」）；分享相关按钮带「分期待定」标签。
+- **预览 Tab**：会话列表（配置名 / Agent 提供端口、状态徽章 启动中 / 就绪 / 已停止 / 失败、剩余存活时间、空闲倒计时、分享链接数）；〔启动预览〕菜单列出可用配置（BR-03-105）与 Agent 提供的端口（A61；只列执行进程树内端口）；就绪会话展开为查看器：WEB_DEVICE（设备档切换 桌面 / 平板 / 手机、旋转、刷新、〔在新标签打开〕）、OPENAPI（接口列表 + 试调用面板，请求经预览域发送）；路径模式时查看器顶部常驻琥珀标签「路径模式：部分应用可能无法正常工作」；顶部常驻说明「预览是进度，不是交付」。失败会话显示 `failure_detail`（等宽）与〔重新启动〕。〔停止〕需发起者或 `execution_stop`。〔申请分享〕（`execution_start`）→ 对话框（有效期 1–168 h、说明）→ 提交后显示「等待批准」。
+- **产物 Tab**：左侧工作区产物树（按查看器类型分组：文档、图片、PDF、报告、视频「v1.1」、章节「v1.1」），右侧查看器（A75 返回的预览域地址，iframe）；文件变化时 DOCUMENT / IMAGE / PDF 自动刷新，其余显示「文件已更新〔刷新〕」；CHAPTER 提供〔与上一版对比〕；VIDEO 低清代理标「低清预览」。
+- **文件 Tab**：目录树 + 文件查看（只读代码视图，等宽、行号、语法高亮在客户端以纯文本安全渲染）；变更徽标 A / M / D；〔差异〕（A64）；〔下载〕（遮罩文件禁用并提示「含密钥，已遮罩」）；遮罩文件显示锁图标与 `KEY=••••`。**编辑**（v1.1）：〔接管并编辑〕→ 确认框（RUNNING 时「将暂停 Agent」）→ A65；接管后编辑器可写、〔上传文件〕、〔保存为提交〕（说明必填）→ A66；冲突 130472 时显示三方对比与〔用我的版本覆盖〕（重新提交带最新 `base_sha256`）；〔结束接管〕→ A65 DELETE。执行 RUNNING 且未接管时编辑按钮禁用并 tooltip「执行正在运行，请先暂停或接管」；开关关闭时「这台机器不允许远程编辑文件」。
+- **终端 Tab**：默认 WATCH（xterm 只读，无光标，顶部「只读：Agent 运行的命令输出」）；〔打开交互终端〕（v1.1，需 `terminal_interact`）→ 底座 `ReauthenticationDialog`（`terminal_interactive`）→ A67{SHELL} → 终端顶部常驻红色条「本终端全程录制并写入审计」，`sandboxed=false` 时追加「这台机器无法限制目录」，执行 RUNNING 时琥珀提示（BR-03-125）；空闲 14 min 时提示「1 分钟后因空闲关闭」。开关关闭时按钮禁用并说明「这台机器未开启远程终端（由团队所有者在机器设置中开启）」。
+- **状态**：加载骨架；无 `execution_read` → 无权限态；预览网关未配置 → 预览与产物 Tab 显示「部署未配置预览域名」；机器只用长轮询 → 「这台机器的网络不支持实时通道」；机器离线 / Pod 已删除 → 「工作区不可用，可在执行详情的证据中查看已采集文件」；连接中断 → 顶部琥珀条，终端自动重连 WATCH（SHELL 不自动重开，需再次认证）。
+- **移动端**（<768px）：Tab 改为底部分段；预览默认「手机」设备档并占满宽度；文件树为抽屉；终端字号 12 px、横向滚动，交互终端在手机上显示软键盘工具条（Esc / Tab / Ctrl / 方向键）。
+
+### 8.7 分享查看页（预览域 `https://share.<preview-domain>/#t=…`，分期待定）
+
+- 静态页读取 fragment → A74 → 跳转到该预览；页头只显示部署显示名（`GET /deployment`，缺失时「预览」）、`note`、到期时间与「只读预览」标签；无登录、无内部链接、无下载。失效（410）→「此预览链接已失效，请联系发送者」。语言按浏览器（en-US / zh-CN / ms-MY）。
+
+### 8.8 预览换取页 `/t/:tenantID/preview-access?session=<id>&return=<path>`（控制台）
+
+- 网关发现无有效预览 Cookie 时 302 到此页；页面以当前登录会话调用 A60 后跳转预览域；未登录 → 底座登录后回到此页；无权限 → 「你没有访问这个预览的权限或预览已结束」；会话已结束 → 同文案 +〔返回执行〕。页面不渲染任何预览内容。
+
 ## 9. 通知（经 09 `Notifier`；站内信必达，其余渠道按 08 用户偏好）
 
 | # | 事件 | 接收人 | 渠道 | 文案模板（zh-CN） | 去重 / 合并 |
@@ -1066,6 +1299,9 @@ SSE：`tenant/{t}/work_item/{id}` 推送内部验收阶段变化（仅对有 `ex
 | N6 | `verification.completed`（必需项 FAILED / INCONCLUSIVE） | 执行者、工作项 REVIEWER | 站内 | "{工作项} 验证{未通过/不确定}：{验证器}（{原因}）" | 同 claim 汇总为一条，全部完成后发送 |
 | N7 | HUMAN 验证进入 QUEUED | `eligible_role_keys` 中且非执行者的成员 | 站内（我的裁决） | "请为 {工作项} 记录人工验证：{验证器}" | 每验证一条 |
 | N9 | 合并 CONFLICT / FAILED / MERGED | 发起合并者 | 站内 | "合并{成功/冲突/失败}：{分支} → {目标}" | 每合并一次 |
+| N10 | 分享链接已批准 / 已驳回（分期待定） | 申请人 | 站内 | "{批准人}{批准/驳回}了 {执行} 的预览分享{：理由}" | 每链接一次 |
+| N11 | 预览启动失败（PLATFORM / REVIEW） | 发起者 | 站内 | "{执行} 的预览 {配置名} 启动失败：{摘要}" | 同会话一次 |
+| N12 | 交互终端被打开（v1.1） | 执行的人类执行者 / 发起者（非打开者本人）+ 工作项负责人 | 站内 | "{actor} 在 {执行} 上打开了交互终端（已录制）" | 每会话一次 |
 
 所有通知文案三语齐全；不包含消息正文、代码或工具入参原文。
 
@@ -1494,6 +1730,30 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 | AC-03-87 | integration | BR-03-103, BR-03-101 | **G** 所有候选机器的 `ui_screenshot` 均未校准 **W** 平台重跑 **T** AUTOMATED 运行保持 PENDING（`TOOL_UNCALIBRATED`），无 FAILED、内部轮次不增加、无人工通知；任一机器校准通过（`verifier.calibration_changed`）后自动开始；假时钟推进 24 h 仍无 → 升级人工（detail `TOOL_UNCALIBRATED`） |
 | AC-03-88 | e2e | §3.23 | **G** 浏览器最小窗口宽度约 500px 的机器 **W** 以 420×800 视口截图 **T** 截图 420×800，页面自报宽度 420，无裁切（2048 误报案例回归） |
 
+### 10.y 验收标准增补（D119 远程工作区）
+
+| ID | 层 | 关联 | Given / When / Then |
+|---|---|---|---|
+| AC-03-89 | integration | BR-03-105/106, V1–V3 | **G** 项目宪法含 `preview` 块 `{key:"web", kind:"WEB", start:["npm","run","dev"], port:5173, health_path:"/"}`，执行 E RUNNING，机器 WebSocket 可用 **W** A56{config_key:"web"} **T** 201 REQUESTED → 机器收到 `preview.start` → STARTING → 健康检查 200 后 READY；同请求重复 → 200 返回同一会话；会话 JSON 不含 `label` |
+| AC-03-90 | e2e | BR-03-114/115, A60 | **G** 会话 READY **W** 成员 M（有 `execution_read`）点〔打开〕 **T** 经换取页 → 预览域 `https://<label>.<preview-domain>/` 渲染页面，HMR WebSocket 可用；地址栏不含 `code`；控制台 Cookie 未出现在发往预览域的请求中 |
+| AC-03-91 | integration | BR-03-114（安全） | **G** 会话 READY，成员 N 对该项目无 `execution_read`，成员 M 有 **W** N 调 A60；N 直接访问预览 URL；M 的预览 Cookie 被 N 复制使用后 M 被移出项目 **T** A60 → 403 130403 `MISSING_PERMISSION`；N 直接访问 → 302 换取页 → 无权限页；M 被移出后 ≤30 s 内该 Cookie 的请求 → 403；Agent 主体调 A60 → 403 130403 `AGENT_PROHIBITED` |
+| AC-03-92 | integration | BR-03-113（安全） | **G** E 的进程树监听 5173；同机另一项目执行 F 监听 3000；机器上其他进程监听 8080 **W** A61 **T** 只返回 5173 **W** A56{port:3000} 与 A56{port:8080} **T** 均 403 130403 `PORT_NOT_OWNED`，不向机器发 `tunnel.open`；伪造 `preview_offered{port:8080}` 事件 → 会话 FAILED（机器端 140485 拒绝），审计 `fleet.tunnel_stream_rejected` |
+| AC-03-93 | integration | BR-03-107 | **G** 声明 C（`head_commit=abc`）之后执行又产生提交 def **W** 评审人 A57 **T** 机器在隔离副本检出 abc 并启动；预览内容来自 abc；执行工作区未被改动；会话占一个 PREVIEW 槽；02 对 C 裁决后会话 STOPPED（CLAIM_DECIDED）、副本删除、槽释放 |
+| AC-03-94 | integration | BR-03-108 | **G** 会话 READY **W** 假时钟推进 30 min 无请求 **T** STOPPED（IDLE），机器收到 `preview.stop` **W** 另一会话持续访问至 8 h **T** STOPPED（MAX_LIFETIME） **W** 执行 SUCCEEDED **T** 其 SERVICE 会话 STOPPED（EXECUTION_ENDED），ARTIFACT 会话可新建 |
+| AC-03-95 | integration | BR-03-119 | **G** 机器上 2 个 READY 会话、1 个 SHELL **W** 所有者关闭 `allow_remote_preview` **T** ≤1 s 两会话 STOPPED（ACCESS_DISABLED）、SHELL 保持；**W** 关闭 `allow_remote_terminal` **T** SHELL CLOSED（ACCESS_DISABLED），录制封存 |
+| AC-03-96 | integration | BR-03-112/118 | **G** 工作区有 `docs/spec.md`、`out/chart.png`、`report/index.html`、`a.pdf` **W** A75 逐个 **T** viewer 分别为 DOCUMENT / IMAGE / REPORT / PDF，`src_url` 全在预览域；修改 `docs/spec.md` 后 ≤2 s SSE 推送 `preview_files_changed` |
+| AC-03-97 | integration | BR-03-117（v1.1） | **G** `demo.mov`（ProRes）且机器有 `media_transcode` **W** 打开 **T** 经 MEDIA_PROXY 播放 480p 代理，工作区无新文件；无 ffmpeg 的机器 → 只提供下载；MVP 构建中 A75 对 VIDEO → 422 130473 |
+| AC-03-98 | integration | BR-03-120/123（安全） | **G** 工作区有 `.env`（`DB_PASSWORD=x`）、`src/a.ts`、符号链接 `link → /etc` **W** A62 根目录 **T** 含 `.env`（masked）与 `src`，不含 `.git` **W** A63 `.env` **T** 返回 `DB_PASSWORD=••••` **W** A63 `.env&download=1` **T** 422 130469 **W** A63 `../../etc/passwd`、`link/hosts` **T** 403 130403 `PATH_OUTSIDE_WORKSPACE`，审计 `execution.workspace_path_denied` 一条（合并） |
+| AC-03-99 | integration | BR-03-121 | **G** `bin/app.html`（含脚本）**W** A63 `download=1` **T** 响应 `Content-Type: application/octet-stream`、`Content-Disposition: attachment`、`nosniff`；审计 `execution.workspace_file_downloaded` 含路径 SHA-256 |
+| AC-03-100 | integration | BR-03-124 | **G** E RUNNING，Agent 执行 `npm test` **W** M（只有 `execution_read`）A67{WATCH} 并通过 A69 发送 input 帧 **T** 收到 `npm test` 输出；input 帧导致通道以 1008 关闭；WORKSTATION 开关关闭时 WATCH 仍可打开 |
+| AC-03-101 | integration | BR-03-125（v1.1，安全） | **G** WORKSTATION 机器 `allow_remote_terminal=false`，所有者 O 持 `terminal_interact` **W** A67{SHELL} 带有效 step-up **T** 403 130403 `MACHINE_ACCESS_DISABLED`，不开流 **W** 开关开启后不带 `reauth_proof` **T** 403 `REAUTH_REQUIRED` **W** 持委托的 Agent / 服务账号调用 **T** 403 `AGENT_PROHIBITED`（不可委托） **W** O 带 step-up **T** 201，审计 `execution.terminal_opened`；初始 cwd 为工作区根；15 min 无输入后 CLOSED（IDLE），审计 `execution.terminal_closed{recording_sha256}` 与录制文件 SHA-256 一致；N12 通知执行者 |
+| AC-03-102 | integration | BR-03-126/127（v1.1） | **G** E RUNNING，工程师 X 持 `workspace_file_edit`，机器 `allow_file_edit=true` **W** X 直接 A66 **T** 409 130466（执行正在运行）**W** X A65 PUT **T** E PAUSED（USER_PAUSE），`taken_over_by=X` **W** X A66 改 `src/a.ts`（`base_sha256` 正确）**T** 201，机器提交作者为 X、trailer `Edited-By-Human`，产物 COMMIT `producer_kind=HUMAN`，审计 `execution.workspace_files_edited` **W** `base_sha256` 过期 **T** 409 130472 带当前 sha **W** 另一工程师 Y A66 **T** 409 130466 **W** A13 恢复 **T** 409 130466，A65 DELETE 后恢复成功，上下文含人工编辑说明 |
+| AC-03-103 | integration | BR-03-127 | **G** WORKSTATION `allow_file_edit=false`（默认）**W** 接管者 A66 **T** 403 130403 `MACHINE_ACCESS_DISABLED`；编辑 `.env` → 422 130469 |
+| AC-03-104 | integration | BR-03-128/129（分期待定） | **G** 会话 READY **W** 申请人 R A70{ttl_hours:24} **T** PENDING_APPROVAL，`share_link.requested` → 08 收件箱 `PREVIEW_SHARE_APPROVAL`（不含 R）**W** R 自己 A72 APPROVE **T** 403 130403 `SELF_REVIEW` **W** 审批人 Q APPROVE **T** 返回 `share_url`（fragment 令牌），库中只有哈希；再次 GET 不含令牌 |
+| AC-03-105 | e2e | BR-03-130（安全） | **G** ACTIVE 链接 **W** 未登录浏览器打开 `share_url` **T** 显示预览与部署显示名、`note`、「只读预览」；页面与网络请求中不含执行 ID、Agent 名、日志、文件或终端入口；POST 表单 → 405「这是只读预览」 |
+| AC-03-106 | integration | BR-03-131（安全） | **G** ACTIVE 链接 L **W** 假时钟越过 `expires_at` 后用同一 Cookie 访问、重新打开 `share_url` **T** 均 410「此预览链接已失效」，L EXPIRED，`share_link.ended` 关闭收件箱项 **W** 另一链接被 A73 撤销 **T** ≤1 s 后访问 410；不存在的令牌与失效令牌返回相同响应 |
+| AC-03-107 | e2e | §8.6 | 桌面 1440 与手机 390：四个 Tab 的加载、空、错误、无权限、网关未配置、仅长轮询、工作区不可用状态；v1.1 项带「v1.1」并禁用；分享按钮带「分期待定」；路径模式琥珀标签；无横向滚动，触控 ≥44 px |
+
 ## 11. 度量与埋点（不得包含代码、消息正文、工具入参、提示词）
 
 | 事件名 | 属性 |
@@ -1520,11 +1780,13 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 
 `internal_qa_stage_result{stage, result, family_fallback}`、`internal_rounds_per_item`、`cheating_suspected_total`、`platform_rerun_mismatch_total`（执行者声称通过但平台重跑失败的次数）。
 
+**D119**：`preview_session{kind, origin, result, start_ms, stop_reason}`、`preview_access{device:"desktop"|"mobile", mode:"SUBDOMAIN"|"PATH"}`、`artifact_view{viewer}`、`workspace_file{action:"list"|"read"|"download"|"diff", masked:bool}`、`terminal_session{mode, duration_bucket, sandboxed}`、`human_edit_commit{files_bucket}`、`share_link{state_transition}`（不含路径、内容与令牌）。
+
 ## 12. 依赖、风险与待决
 
 **依赖**：02（WorkItemReader、WorkItemTransitioner 方法集 §6.9、ClaimSubmitter、Claim 端点与 criteria_map / 祖先证据引用的存储、在裁决事务内调用 `ExecutionLauncher`、自动 RETRY_INFRA 与有界自治暂停；已按 `02-work-review.md` 当前稿对齐，`claim.submitted` 载荷须含 `claim_id, execution_id, head_commit`）；04（通道传输与 `ExecutionDispatchHandler` 接线、`ResolveWorkspace`、执行槽、模型目录与单价、能力检测、附加环境变量名单、连接代次）；05（Agent 资料、`max_context_tokens`、授权模式、主管 Agent 判定、ENSEMBLE 选择与 `CancelExecution` 调用）；06（`Retriever.BuildInjection` / `RecordInclusion` / `RecordCitations`、`SkillCatalog.ForAgent`（第 6 层技能）、`MemoryWriter.Propose`）；07（`allow_full_auto`、`infra_retry_limit`、ENSEMBLE 上限、单工作项预算、`ProjectGate.CanStartExecution`、预算事件 `budget.threshold_reached{threshold_pct}`）；08（AuthorityChecker 含 code_merge 委托条件与 `POLICY:ensemble_branch`、升级规则消费 INCONCLUSIVE 与相似度）；09（JobQueue、outbox、SSE、Notifier、对象存储）；底座 files（需提供"服务端以系统身份写入项目 entity 根并绑定"的能力 —— 见 Q2）、audit、dlock、authn step-up。
 
-**风险**：① 运行时 SDK 事件形态变化 → 适配器契约测试（夹具桥）隔离；② 证据量大（日志）→ 对象存储驱动（09）与保留策略；③ 运行时副作用不可撤销 → 栅栏 + 中断不重放 + UI 强提示；④ token 估算偏差 → 偏保守，并在 `context_bundle_built` 埋点回看。
+**风险**：① 运行时 SDK 事件形态变化 → 适配器契约测试（夹具桥）隔离；⑤ 预览中运行的是 Agent 写的不可信代码 → 独立预览域 + 每会话子域 + 访问判定逐请求（BR-03-114，04 BR-04-94）；⑥ 交互终端在无沙箱的工作站上可越出工作区 → 开关默认关闭、仅所有者开启、step-up、全程录制（BR-03-125）；② 证据量大（日志）→ 对象存储驱动（09）与保留策略；③ 运行时副作用不可撤销 → 栅栏 + 中断不重放 + UI 强提示；④ token 估算偏差 → 偏保守，并在 `context_bundle_built` 埋点回看。
 
 | # | 待决 | 建议 |
 |---|---|---|
@@ -1536,6 +1798,8 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 | Q6 | ON_REQUEST 对 Codex 的支持 | 待 Codex 提供可回传审批的通道后再开放，不绕过官方客户端限制（Preview 结论） |
 | Q7 | 相似度最小并集 `\|U\| ≥ 5`（BR-03-67） | **已决**：02 BR-02-27 采纳，MVP 固定 |
 | Q8 | INTERRUPTED 上报 `kind=RUNTIME` 后工作项进入 EXECUTION_FAILED，人工恢复同一执行时工作项如何回到 IN_PROGRESS | **已决**：02 T20b（`current_execution_id` 人工恢复，不计重试次数） |
+| Q9 | 甲方分享链接的分期（D119 未列） | **已决（2026-10-12）：v1.1**：MVP 先完成内部预览闭环；分享涉及对外暴露与审批收件箱，按「预览是进度不是交付」放在交付流程成熟之后 |
+| Q10 | 预览配置的结构化来源 | 本规格约定宪法内 `preview` 围栏块与模板 `params.preview`（BR-03-105）；若 07 / 11 希望改为独立字段，由其规格提出，03 只依赖解析结果 |
 
 ---
 
@@ -1555,3 +1819,5 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 | CR-03-08 | ETag / If-Match / 428 | 已并入 00 §3 |
 
 > **D112 / D113 已并入（00 v2.0 §15）**：新增依赖 06 `MemoryWriter.Propose`（穿透学习）、11 `EvalSetWriter.ProposeCase`（已在 11 §6.8 定义，由 02 调用）、04 `browser_capture` 能力标记、02 `plan.approved` 事件与 `max_internal_rounds` 判断；对 00 无新增变更请求（§15 已定义所用枚举、事件与权限码）。
+
+> **D119（远程工作区，2026-10-12）已并入**：§1 范围、US-03-28..36、表 §3.24–3.28（预览会话、分享链接、终端会话、接管字段、模块内枚举与 S8 `PreviewConfig`）、§4.y 状态机、BR-03-104..132、接口 A55–A75 与机器消息、`PreviewAccessResolver`、错误码 130460–130469 / 130472 / 130473、§7.y 任务与事件、页面 §8.6–8.8、通知 N10–N12、AC-03-89..107。**CR-03-09**（对 00 / 08，已并入 00 v2.0 D119 补充）：权限码 `terminal_interact`、`workspace_file_edit`、`preview_share_approve`（execution 注册，DataScoped；前两者与第三者均仅人类，`terminal_interact`、`preview_share_approve` 不可委托）；事件 `share_link.requested` / `share_link.decided` / `share_link.ended`；接口 `PreviewAccessResolver`（execution → fleet）；08 登记 step-up `terminal_interactive`、收件箱 `PREVIEW_SHARE_APPROVAL`、原因码 `MACHINE_ACCESS_DISABLED` / `PORT_NOT_OWNED` / `PATH_OUTSIDE_WORKSPACE` 与审计事件。分期：服务 / 评审预览、文档图片 PDF 报告查看器、只读文件、只读终端为 MVP；交互终端、文件编辑与接管、视频与章节查看器为 v1.1；分享链接分期待定（Q9）。

@@ -15,7 +15,7 @@
 4. **升级规则**：规则种类与参数（含敏感路径模式）、触发事件、动作（项目 hold、委托冻结、转人、通知）、去重；升级事件（incident）状态机。
 5. **业务审计视图**：在底座 `iam/audit` 哈希链上的事件类型目录与 detail Schema、项目级索引、完整性徽标、导出与保留（复用底座）。
 6. **通知中心**：全产品通知类型的**规范目录**（接收人规则、渠道、模板键、合并 / 去重、免打扰）与用户偏好（经 `PreferenceResolver` 供 09 读取）；站内通知存储、收件 HTTP 与投递归 09。
-6b. **控制台外壳**（§8.6）：侧栏菜单分组、顶栏裁决徽标、移动端底栏、`⌘K` 命令面板。
+6b. **控制台外壳**（§8.6）：顶栏域标签与当前域侧栏子导航（D118）、项目空间与项目切换器（D118 修订）、顶栏裁决徽标、移动端底栏、`⌘K` 命令面板。
 7. **「我的裁决」**：跨模块待办读模型、与源状态的一致性（≤1s）、键盘操作、无批量通过、跨设备移除。
 8. **总览**：各磁贴的数据源与刷新策略。
 9b. **编制授权（D110，主管 Agent 自建 Agent）**：团队所有者给主管 Agent 的建 Agent 配额、角色 / 机器 / 模型范围、预算与审批方式；配额原子占用与释放、成本累计与耗尽、模式切换 / 接管时的收紧（§3.8.13–3.8.15、§4.5、BR-08-50…59）。Agent 的创建、收编、孤儿处理本身归 05。
@@ -165,6 +165,17 @@
 
 `HumanOnly` 集合扩为：`NonDelegable` ∪ {`interaction_respond`, `andon_clear`, `acceptance_suite_manage`, `template_manage`}；`NonDelegable` 增加 `exception_decide`、`acceptance_suite_manage`、`integration_manage`；`PolicyOnly` 增加「`plan_approve` 对 AGENT 主体」。播种升级：已有租户在 catalog 升级时按 BR-08-04 追加授予，不回收已有自定义。
 
+### 3.3c D119 权限码登记与默认授予（远程工作区与机器访问）
+
+| 权限码 | 注册模块 | DataScoped | NonDelegable | HumanOnly | PolicyOnly | 默认授予 |
+|---|---|---|---|---|---|---|
+| `terminal_interact` | execution(03) | 是 | ✓ | ✓ | — | `team_owner`、`delivery_lead`（交互终端，v1.1；另需 step-up `terminal_interactive` 与机器开关，03 BR-03-125） |
+| `workspace_file_edit` | execution(03) | 是 | — | ✓ | — | `team_owner`、`delivery_lead`、`engineer`（人工接管后编辑文件，v1.1；另需机器开关，03 BR-03-127） |
+| `preview_share_approve` | execution(03) | 是 | ✓ | ✓ | — | `team_owner`、`delivery_lead`（批准甲方分享链接；申请人不得自批，BR-08-66） |
+| `machine_access_manage` | fleet(04) | 否 | ✓ | ✓ | — | 仅 `team_owner`（每机远程访问开关，04 A35；`delivery_lead` 的排除清单增加此码） |
+
+查看预览、产物、文件与只读终端**不新增权限码**：沿用项目 `execution_read`（D119：访问预览须有项目上的执行读取权限）；启动预览与申请分享沿用 `execution_start`；接入服务器沿用 `machine_manage`。`HumanOnly` 增加 `terminal_interact`、`workspace_file_edit`、`preview_share_approve`、`machine_access_manage`；`NonDelegable` 增加 `terminal_interact`、`preview_share_approve`、`machine_access_manage`。Agent 角色一律不授予上述 4 码。播种升级按 BR-08-04 追加，不回收。
+
 ### 3.4 环境维度（生产访问）
 
 - `Environment` 枚举：`DEFAULT`、`PRODUCTION`（CR-08-04）。任何作用于生产环境的动作（如 v1.1 生产部署、生产密钥读取）在 `AuthorityRequest.environment=PRODUCTION` 时**额外**要求 `production_access`。
@@ -275,6 +286,9 @@ type AuthorityDecision struct {
 | `NO_INTERNAL_QA_AGENT` | 05 IQ3 | 无合格 TESTER / ACCEPTOR；不以 403 返回，仅作 02 `MANDATORY_HUMAN_GATE` 升级的 detail.reason（D113） |
 | `SPAWNED_NOT_ADOPTED` | 08 BR-08-09 | AI 创建且未被人收编的 Agent 不能成为任何委托的受托人（D110） |
 | `AGENT_CANNOT_ACCEPT` | 12（BR-12-34，delivery 段 `120403` 返回） | Agent（含持 `TESTER` 角色者）不得执行映射到 `ACCEPTED` 的流转（含关闭缺陷）；验证角色 = 持 `TESTER` 的人类成员或工作项负责人（CR-12-09） |
+| `MACHINE_ACCESS_DISABLED` | 03 / 04（D119） | 机器的远程访问开关（远程预览 / 远程终端 / 人工接管后编辑文件）关闭 |
+| `PORT_NOT_OWNED` | 03 / 04（D119） | 请求预览的端口不属于该执行（或评审预览）的进程树，或不在回环地址 |
+| `PATH_OUTSIDE_WORKSPACE` | 03 / 04（D119） | 文件路径越出执行工作区或指向机器程序目录 |
 - 失败即拒：IAM、05、07 依赖不可用 → 返回 error（调用方 503，本模块 `160461`），绝不放行（对齐 02 BR-02-42）。
 - `PolicyRegistry` 初始规则另含本模块贡献的 `spawn_grant`（`agent_spawn`，D110，评估见上）。
 - `PolicyRegistry` 初始规则：`dispatch_auto`（05 贡献：主体为项目 LEAD Agent、07 `DispatchPolicy=AUTO`、`CanAutoDispatch` 为真、`Risk≠HIGH`），`ensemble_branch`（05：`execution_start`，ENSEMBLE 并行上限内），`review_dispatch`（05：`work_item_assign`，仅 `role=REVIEWER`、项目 AUTONOMOUS、受派 Agent 持对应有效委托；复审 #5）。另：05 启动时以 `SystemActions.Register("fleet.review_dispatch", "work_item_assign")` 登记评审派单任务，否则 S1 返回 `SYSTEM_NOT_REGISTERED`。
@@ -926,6 +940,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 - **BR-08-63 穿透处理**（D114）：消费 `quality.escaped`（任一发布者：02 / 07 / 12 Part A）→ 建 `governance_quality_escapes`（幂等于事件 id）→ 通知所有者与项目交付负责人 → `learning_state=PENDING` 进入「质量穿透」页待人确认。学习条目**不由本模块生成**：EXPERIENCE 记忆草稿（「漏检：{category}：{summary}」，经 06 `MemoryWriter.Propose`）与评测用例（11 `EvalSetWriter.ProposeCase`）只由 02 `delivery.escape_learning` 提出；本模块不调用 `MemoryWriter`、不向 11 提交评测用例。人工确认：RECORDED → 02 已提出的记忆草稿生效、评测用例保留；DISMISSED → 理由必填，撤回这些草稿与用例。确认结果经 `quality.escape_learning_decided` 发布，由 02 `delivery.escape_learning` 执行生效 / 撤回。
 - **BR-08-64 负责人检查**：每日任务扫描处于 READY 及之后状态但 `accountable_principal_id` 为空或指向已停用成员的工作项 → 给交付负责人建 `ESCALATION_ALERT`（subkind `ACCOUNTABLE_MISSING`）；负责人离职时其工作项自动转给项目交付负责人并通知。
 - **BR-08-65 总览质量磁贴**：总览增加「穿透率」与「内部一次通过率」磁贴（数据源 07 `DeliveryMetricsReader`，刷新 ≤60 s），穿透率 > 10% 显示琥珀、> 20% 显示红色（模板可覆盖）。
+- **BR-08-66 远程工作区授权（D119）**：① 预览、产物、文件与只读终端的访问只看项目 `execution_read`，每次访问由 03 判定（不缓存超过 30 s），Agent 与服务账号不能换取预览访问；② `terminal_interact`、`preview_share_approve`、`machine_access_manage` 不可委托、仅限人类，经 `AuthorityChecker` 判定（委托来源 → `NON_DELEGABLE`，Agent → `AGENT_PROHIBITED`）；③ `preview_share_approve` 适用职责分离：批准人 = 申请人 → `SELF_REVIEW`；④ 机器开关不是权限码而是机器属性，关闭时由 03 / 04 以 `MACHINE_ACCESS_DISABLED` 拒绝，即使主体持有对应权限码。
 
 ## 6. 接口契约
 
@@ -1056,6 +1071,9 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | execution.full_auto | 03 | 授权模式 | `execution_full_auto` | `execution:<id>` | 红色语义 |
 | gateway.key_reveal | 04 | A28 查看网关密钥 | `gateway_key_reveal` | `gateway:<id>` | 红色确认（轮换为内联确认，不需 step-up，04） |
 | integration.credentials | 12 | B1 新建 / 修改云效连接 | `integration_credentials` | `tenant:<id>`（新建）/ `integration_connection:<id>` | 令牌只写不回显（CR-12-07） |
+| execution.terminal_interactive | 03 | A67 打开交互终端（v1.1，D119） | `terminal_interactive` | `execution:<id>` | 红色说明「全程录制并写入审计」；无沙箱时追加目录风险说明 |
+| machine.terminal_enable | 04 | A35 把「允许远程终端」由关改开（D119） | `machine_terminal_enable` | `machine:<id>` | 后果说明；关闭不需 step-up |
+| machine.credential_issue | 04 | A32 预签发 SERVER / K8S_POOL 凭证；SERVER 的 A13 轮换（D119） | `machine_credential_issue` | `tenant:<id>`（新建）/ `machine:<id>`（轮换） | 「凭证只显示这一次」 |
 
 上述 purpose 由各所属模块在启动时经底座 `authn.RegisterReauthenticationPurpose` 登记（00 §13 F4）。**本表是唯一登记源**：各模块规格的 purpose / target 必须与本表一致，冲突时以本表为准回推修订。step-up 失败统一返回调用方段 `xx0403` + `data.reason_code=REAUTH_REQUIRED`。
 
@@ -1095,6 +1113,13 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `QUALITY_ESCAPE` | 本模块 BR-08-63 记录建立 | 所有者 + `LEADS(p)` | NORMAL | `learning_state` ≠ PENDING | A 确认学习 / R 驳回 |
 | `REVIEW_SHEET`（12，CR-12-07） | 12 `review_sheet.opened` | 被邀请的人类评审人 | NORMAL | 本人已提交意见、`review_sheet.closed` | A 打开评审单 / R — |
 | `WORKLOG_APPROVAL`（12，CR-12-07） | 12 `worklog.submitted` | 持 `worklog_approve` 的人类审批人（不含提交人本人） | NORMAL | `worklog.approved`、`worklog.returned`、`worklog.withdrawn` | A 打开工时审批 / R 退回（理由必填） |
+
+
+**D119 收件箱类型**（追加到 §6.10 表；共计数随之 +1）：
+
+| kind | 创建事件 | 接收人 | 优先级 | 关闭事件 | A / R |
+|---|---|---|---|---|---|
+| `PREVIEW_SHARE_APPROVAL`（03，分期待定） | 03 `share_link.requested` | `HOLDERS(preview_share_approve)` 项目内人类，**排除申请人** | NORMAL | 03 `share_link.decided`、`share_link.ended` | A 批准（调用 03 A72 APPROVE，成功后在收件箱内一次性显示链接）/ R 驳回（理由必填） |
 
 明确**不投影**：`internal_qa.failed`、内部阶段的 `verification.completed`、`work_item.state_changed{to:REWORK, cause:INTERNAL_QA}`（BR-08-60）。
 
@@ -1220,6 +1245,14 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `governance.escalation_triggered` / `_acknowledged` / `_resolved` / `_dismissed` | 08 | escalation_incident | `incident_id, rule_kind, severity, actions_applied[]?, resolution?` |
 | `governance.escalation_rule_changed` / `governance.settings_changed` | 08 | escalation_rule / tenant | `changed_fields[], before{}, after{}` |
 | `governance.role_seed_applied` | 08 | tenant | `manifest_version, roles[{role_key, added_codes[]}]` |
+| `execution.preview_started` / `execution.preview_stopped` / `execution.preview_access_denied`（D119） | 03 | preview_session | `session_id, execution_id, kind, origin, port?, commit?, stop_reason?` |
+| `execution.workspace_file_downloaded` / `execution.workspace_path_denied` / `execution.workspace_files_edited`（D119） | 03 | execution | `execution_id, path_sha256[]（不含路径原文）, size?, commit?` |
+| `execution.terminal_opened` / `execution.terminal_closed`（D119） | 03 | terminal_session | `session_id, execution_id, mode, sandboxed?, recording_sha256?（SHELL 关闭时必填）, close_reason?, reauth_purpose?` |
+| `execution.human_takeover_started` / `_released`（D119） | 03 | execution | `execution_id, previous_state` |
+| `execution.share_link_requested` / `_approved` / `_rejected` / `_revoked` / `_expired` / `_accessed`（D119） | 03 | share_link | `link_id, preview_session_id, ttl_hours?, ip_prefix?（accessed）` |
+| `fleet.machine_created` / `fleet.machine_credential_issued` / `fleet.machine_fingerprint_mismatch`（D119） | 04 | machine | `machine_id, machine_type, credential_origin`（不含秘密） |
+| `fleet.machine_access_changed` / `fleet.pool_config_changed`（D119） | 04 | machine | `machine_id, before{}, after{}` |
+| `fleet.tunnel_stream_rejected`（D119，安全事件） | 04 | machine | `machine_id, holder_kind, holder_id, kind, code` |
 
 委托「使用」不单独写事件：使用该委托的裁决事件本身带 `authority_source=DELEGATION:<id>` 与 `delegation_id`，避免同一动作两条记录（与 02「Check 不写库」一致）。工作项事件 `project_id` 取工作项所属项目；团队级事件为 null。
 
@@ -1238,7 +1271,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 ### 8.1 授权与策略 `/t/:tenantID/governance/policy?tab=matrix|delegations|rules|incidents|settings&project_id=`
 
-- **目的**：看清「谁能做什么」，管理委托、升级规则与默认值，一键接管。入口：侧栏「团队 › 授权与策略」（`policy_read`）；07 项目页「模式与策略」卡〔管理委托〕〔一键接管〕带 `project_id`。
+- **目的**：看清「谁能做什么」，管理委托、升级规则与默认值，一键接管。入口：「治理 › 策略 › 授权与策略」（`policy_read`）；07 项目页「模式与策略」卡〔管理委托〕〔一键接管〕带 `project_id`。
 - **页头**：标题、项目选择器（「全部项目」/ 单项目）、选中 AUTONOMOUS 项目时显示 `ModeBadge` 与红色〔一键接管〕。
 - **权限矩阵 tab**：行 = 动作（按 PRD 动作分组，组内权限码）；列 = 7 个种子角色 + 自定义角色（首列冻结，横向滚动）。单元格：✅「已授予」/ ⚙「有条件」（hover 显示条件摘要「风险 ∈ LOW」）/ —「无」。行首标：🔒「不可委托」、👤「仅人类」、🤝「可委托」。选中项目时 `agent_reviewer`、`agent_lead` 列下追加「委托中」子行：受托 Agent 头像 + 动作 + `CountdownRing`。列头 → 新标签打开 IAM `/admin/:tenantID/roles`（定位该角色）。顶部「生产访问」条：当前持有人与剩余时间、〔申请生产访问〕跳 IAM `/admin/:tenantID/access-requests`。种子漂移提示（G3 drift 非空）：「engineer 角色比默认少 2 项权限」〔查看〕〔按默认补齐〕（G4，`policy_manage`）。
 - **委托 tab**：表列：受托 Agent、项目、动作 chips、条件（类型 / 风险 ≤ / 成本 ≤ $ / 返工 <）、剩余时间（`CountdownRing`；<24h 琥珀、<1h 红）、已用次数、最近使用、授予人、状态。筛选：状态、项目、Agent。行操作：〔撤销〕（`delegation_grant` ∧ 人 ∧ `effective_state=ACTIVE`；对话框只要理由，无 step-up）、〔替换〕（同条件；打开授予对话框预填并带 `replaces_delegation_id`）、〔使用记录〕（抽屉 D5，每条链到裁决）。空态：「还没有委托。委托可让 Agent 评审员在你设定的范围内裁决低风险工作项」〔授予委托〕。
@@ -1258,7 +1291,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 ### 8.2 审计 `/t/:tenantID/governance/audit`
 
-- **目的**：可证明的历史。入口：侧栏「治理 › 审计」（`audit_read`）。
+- **目的**：可证明的历史。入口：「治理 › 记录 › 审计」（`audit_read`）。
 - **布局**：顶部完整性徽标（底座完整性接口：绿「链完整 · 已校验 n 条 · 头 #seq」/ 红「链校验失败」/ 灰「校验中」；客户端缓存 60s，〔重新校验〕；无 `audit_event_view` 时显示「需要审计查看权限」）+ 索引滞后提示（`index_lag_seconds>10` 琥珀「最新事件同步中」）；筛选：时间（今天 / 7 天 / 30 天 / 自定义）、项目、模块、事件类型、主体（人 / Agent）、权限来源类型、结果；〔导出〕。
 - **来源筛选（D110）**：「Agent 来源：全部 / 人创建 / AI 创建」；选「AI 创建」时显示 `fleet.agent_spawned`、`fleet.agent_adopted`、`governance.spawn_grant_*` 以及这些 Agent 作为主体的事件，可再按编制授权与主管 Agent 过滤；AI 创建的 Agent 在主体列带「AI 创建 · 由 {supervisor}」角标，已收编者带「已收编」。
 - **列表**：时间、`ActorAvatar` + 名称、动作（事件类型 i18n）、对象（链接）、权限来源 chip（「角色 交付负责人」「委托 #8812」「策略 dispatch_auto」「甲方」「系统」）、结果（denied 红）。行展开：底座明细（reason、evidence_refs 链接、`event_hash` 前 8 位可复制、`previous_hash`、sequence）。
@@ -1303,33 +1336,63 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 ### 8.6 控制台外壳（delivery 应用全局，本模块拥有）
 
-- **目的**：统一导航、全局入口与裁决徽标；各模块页面只贡献菜单项，不各自实现外壳。路由前缀 `/t/:tenantID`（00 §10）；复用 IAM 应用的认证、`WorkspaceSwitcher`、`LanguageSwitcher`、主题切换与 `UserMenu`。
-- **侧栏菜单**：由 09 C6 模块菜单贡献机制生成（`MenuPage{Key, Group, Route, PermissionCode, Icon, Order}`），按权限码过滤；无权限的项不显示（菜单可见性不是授权机制，页面自身仍做守卫）。
+- **目的**：统一导航、全局入口与裁决徽标；各模块页面只贡献菜单项，不各自实现外壳。路由前缀 `/t/:tenantID`（00 §10）；复用 IAM 应用的认证、`WorkspaceSwitcher`、`LanguageSwitcher`、主题切换与 `UserMenu`。导航为「顶栏域标签 + 当前域的侧栏子导航」两级（D118）；项目是主容器，项目内的工作在项目空间中进行（D118 修订）。
+- **顶栏**（左 → 右）：移动端菜单按钮；品牌区（含 `WorkspaceSwitcher`）；**域标签** 工作台 · 会话 · 项目 · 团队 · 治理（顺序固定；`aria-current` 标当前域；会话标签带未读数，数据为 05 C14 合计）；全局搜索框（点击或 `⌘K` / `Ctrl+K` 打开命令面板）；裁决徽标（订阅 `tenant/{t}/inbox/{me}`，数字 = I2 `total`，`role="status"` 播报「n 项待你决定」，点击 → `/inbox`）；通知铃铛（09 未读数）；连接状态点（SSE 已连接 / 重连中 / 断开）；语言 / 主题；用户菜单。
+- **侧栏**：只显示当前域的子导航，按 `Group` 分节（无 Group 的项置顶不加标题）；**会话域没有侧栏**，内容区全宽（05 §8.8 三栏）。项目域有两种侧栏（D118 修订，项目是主容器）：**项目外**显示范围为团队的项目域项（项目组合 · 来件 · 交付总览 / 跨项目 需求 · 任务 · 缺陷 · 流水线）；**项目内**（路由带 `:projectID`）显示**项目空间**——范围为项目的全部项，侧栏顶部为项目切换器与〔返回项目组合〕。侧栏与域标签都由 09 C6 模块菜单贡献机制生成（`MenuPage{Key, Domain, Space, Group, Route, PermissionCode, Icon, SortOrder}`）：先按 `Domain` 归入域标签，再按 `Space`（TEAM / PROJECT，即下表「范围」）决定出现在项目外还是项目空间，再在域内按 `Group`、`SortOrder` 排列；按权限码过滤，无权限的项不显示（范围为项目的项按当前项目判定）；**一个域的项全部被过滤时，该域标签也不显示**（菜单可见性不是授权机制，页面自身仍做守卫；直接打开 URL 仍按页面守卫给出无权限态）。
 
-| 分组 | Key | 路由 | 权限码 | 贡献模块 |
-|---|---|---|---|---|
-| 工作台 | overview | `/t/:tenantID/overview` | （租户成员） | 08 |
-| 工作台 | inbox | `/t/:tenantID/inbox` | （租户成员） | 08 |
-| 交付 | intakes | `/t/:tenantID/intakes` | `intake_read` | 01 |
-| 交付 | projects | `/t/:tenantID/projects` | `project_read` | 07 |
-| 交付 | work-items | `/t/:tenantID/work-items`（团队级，按项目筛选） | `work_item_read` | 02 |
-| 交付 | review | `/t/:tenantID/review`（团队级评审台） | `work_item_read` | 02 |
-| 交付 | executions | `/t/:tenantID/executions` | `execution_read` | 03 |
-| 交付 | deliveries | `/t/:tenantID/deliveries` | `delivery_read` | 07 |
-| 协作 | channels | `/t/:tenantID/channels` | `channel_read` | 05 |
-| 团队 | members | `/t/:tenantID/members` | `agent_read` | 05 |
-| 团队 | machines | `/t/:tenantID/machines` | `machine_read` | 04 |
-| 团队 | knowledge | `/t/:tenantID/knowledge` | `knowledge_read` | 06 |
-| 团队 | policy | `/t/:tenantID/governance/policy` | `policy_read` | 08 |
-| 目标 | goals | `/t/:tenantID/goals`（目标树） | `goal_read` | 10 |
-| 目标 | my-plans | `/t/:tenantID/plans/me`（我的计划） | `plan_submit` | 10 |
-| 目标 | reports | `/t/:tenantID/reports`（报告中心） | `report_read` | 10 |
-| 治理 | audit | `/t/:tenantID/governance/audit` | `audit_read` | 08 |
-| 治理 | gateway | `/t/:tenantID/gateway`（实验） | `gateway_manage` | 04 |
+  表中「范围」列：**团队** = 团队级页面，路由不含项目；**项目** = 只在项目空间内渲染，路由形如 `/t/:tenantID/p/:projectID/...`（00 §10 项目内路由），`:projectID` 取当前项目。同一页面既有团队级列表又有项目内版本时，两行分别登记（Key 不同，项目内 Key 加 `p-` 前缀）。
 
-- **顶栏**：左：移动端菜单按钮、`WorkspaceSwitcher`（团队 → 项目，选中项目后项目内页面带 `project_id`）；中：全局搜索框（点击或 `⌘K` / `Ctrl+K` 打开命令面板）；右：裁决徽标（订阅 `tenant/{t}/inbox/{me}`，数字 = I2 `total`，`role="status"` 播报「n 项待你决定」，点击 → `/inbox`）、通知铃铛（09 未读数）、连接状态点（SSE 已连接 / 重连中 / 断开）、语言、主题、用户菜单。
-- **移动端底栏**（<768px 常驻，4 项，触控 ≥44px）：总览 / 裁决（带徽标）/ 执行 / 频道；其余菜单进左侧抽屉（底座 Sheet）。
-- **命令面板（`⌘K`）**：底座 `Command` 组件；分组「跳转」（上表全部菜单，按权限过滤）、「搜索」（来件、项目、工作项、执行、Agent、机器：各模块列表接口 `q` 参数，每组前 5 条，150ms 防抖）、「动作」：
+| 域 | 范围 | 分组 | Key | 标签 | 路由 | 权限码 | 贡献模块 |
+|---|---|---|---|---|---|---|---|
+| 工作台 | 团队 | — | overview | 总览 | `/t/:tenantID/overview` | （租户成员） | 08 |
+| 工作台 | 团队 | — | inbox | 我的裁决 | `/t/:tenantID/inbox` | （租户成员） | 08 |
+| 工作台 | 团队 | — | my-work | 我的任务 | `/t/:tenantID/my-work`（D118 新页；数据 = 02 W14 `executor_principal_id=eq:<me>`） | `work_item_read` | 02 |
+| 工作台 | 团队 | — | my-plans | 我的计划 | `/t/:tenantID/plans/me` | `plan_submit` | 10 |
+| 会话 | 团队 | — | chat | 会话 | `/t/:tenantID/chat`（05 §8.8；原 channels 项迁入，旧路由 `/t/:tenantID/channels` 重定向至此） | `channel_read` | 05 |
+| 项目 | 团队 | — | projects | 项目组合 | `/t/:tenantID/projects` | `project_read` | 07 |
+| 项目 | 团队 | — | intakes | 来件 | `/t/:tenantID/intakes` | `intake_read` | 01 |
+| 项目 | 团队 | — | deliveries | 交付总览 | `/t/:tenantID/deliveries`（07 §8.5 团队版） | `delivery_read` | 07 |
+| 项目 | 团队 | 跨项目 | requirements | 需求 | `/t/:tenantID/requirements`（D118 新页，团队级列表，页内项目筛选） | `requirement_read` | 02 |
+| 项目 | 团队 | 跨项目 | work-items | 任务 | `/t/:tenantID/work-items`（02 W14 团队级，页内项目筛选） | `work_item_read` | 02 |
+| 项目 | 团队 | 跨项目 | defects | 缺陷 | `/t/:tenantID/defects`（D118 新页；数据 = 02 W14 `type=in:BUG,INCIDENT` + 12 A9 缺陷详情） | `work_item_read` | 12 Part A |
+| 项目 | 团队 | 跨项目 | pipelines | 流水线 | `/t/:tenantID/pipelines`（D118 新页：每个工作项的阶段运行 平台重跑 → 隐藏验收 → 测试 Agent → 产品验收 Agent → 人工评审 → 交付，外加外部 Flow 运行） | `execution_read` | 03 |
+| 项目 | 项目 | — | p-overview | 概览 | `/t/:tenantID/p/:projectID`（07 §8.3 项目总览） | `project_read` | 07 |
+| 项目 | 项目 | — | p-channel | 项目频道 | `/t/:tenantID/p/:projectID/channel`（替换式重定向到该项目默认频道 `/t/:tenantID/chat/:channelID`，进入会话域；05 §8.8） | `channel_read` | 05 |
+| 项目 | 项目 | 规划 | p-goals | 目标 | `/t/:tenantID/p/:projectID/goals`（10 §8.1 目标树，固定为本项目的 PROJECT 目标及其子树；团队全树见团队 › 目标树） | `goal_read` | 10 |
+| 项目 | 项目 | 需求 | p-requirements | 需求 | `/t/:tenantID/p/:projectID/requirements`（02 §8.5；团队级列表见上） | `requirement_read` | 02 |
+| 项目 | 项目 | 开发 | p-work-items | 任务 | `/t/:tenantID/p/:projectID/work-items`（02 §8.1 / §8.2；团队级列表见上） | `work_item_read` | 02 |
+| 项目 | 项目 | 开发 | p-review | 评审台 | `/t/:tenantID/p/:projectID/review`（02 §8.4；团队级 `/t/:tenantID/review`（D5）保留为「我的裁决」评审类项的直达入口，不进菜单） | `work_item_read` | 02 |
+| 项目 | 项目 | 测试 | p-test-cases | 用例与测试计划 | `/t/:tenantID/p/:projectID/test-cases`（12 §8.3） | `work_item_read` | 12 Part A |
+| 项目 | 项目 | 测试 | p-defects | 缺陷 | `/t/:tenantID/p/:projectID/defects`（同缺陷页，固定本项目；团队级列表见上） | `work_item_read` | 12 Part A |
+| 项目 | 项目 | 测试 | p-escapes | 穿透记录 | `/t/:tenantID/p/:projectID/escapes`（§8.7，固定本项目；团队级 `/t/:tenantID/governance/escapes` 保留，供审计员跨项目查看，不进菜单） | `audit_read` | 08 |
+| 项目 | 项目 | 流水线 | p-pipelines | 流水线 | `/t/:tenantID/p/:projectID/pipelines`（固定本项目；团队级列表见上） | `execution_read` | 03 |
+| 项目 | 项目 | 流水线 | p-executions | 执行 | `/t/:tenantID/p/:projectID/executions`（03 §8.1；「我的执行」`/t/:tenantID/executions?mine=1` 为团队级，不进菜单） | `execution_read` | 03 |
+| 项目 | 项目 | 交付 | p-deliveries | 交付 | `/t/:tenantID/p/:projectID/deliveries`（07 §8.5 项目版；团队级「交付总览」见上） | `delivery_read` | 07 |
+| 项目 | 项目 | 交付 | p-worklogs | 工时 | `/t/:tenantID/p/:projectID/worklogs`（12 §8.4 汇总，固定本项目；团队级 `/t/:tenantID/worklogs` 保留为个人填报与审批入口，经通知与我的任务到达，不进菜单） | `worklog_submit` | 12 Part A |
+| 项目 | 项目 | 领域工作台 | p-video | 视频 | `/t/:tenantID/p/:projectID/video`（11 §8.4；仅当项目模板领域为 VIDEO） | `work_item_read` | 11 |
+| 项目 | 项目 | 领域工作台 | p-novel | 小说 | `/t/:tenantID/p/:projectID/novel`（11 §8.5；仅当项目模板领域为 NOVEL） | `work_item_read` | 11 |
+| 项目 | 项目 | 领域工作台 | p-team-tasks | 团队任务 | `/t/:tenantID/p/:projectID/team-tasks`（11 §8.6；仅当项目模板领域为 TEAM_TASKS） | `work_item_read` | 11 |
+| 项目 | 项目 | 设置 | p-settings | 项目设置 | `/t/:tenantID/p/:projectID/settings`（07 §8.4，含 11 §8.3 模板与 12 项目流转 `/t/:tenantID/p/:projectID/settings/workflows`） | `project_read` | 07 |
+| 团队 | 团队 | — | members | 成员与 Agent | `/t/:tenantID/members` | `agent_read` | 05 |
+| 团队 | 团队 | — | machines | 机器 | `/t/:tenantID/machines` | `machine_read` | 04 |
+| 团队 | 团队 | — | knowledge | 知识库 | `/t/:tenantID/knowledge` | `knowledge_read` | 06 |
+| 团队 | 团队 | — | templates | 模板库 | `/t/:tenantID/templates` | `project_read` | 11 |
+| 团队 | 团队 | — | goals | 目标树 | `/t/:tenantID/goals`（10 §8.1，团队 → 项目 → 成员全树） | `goal_read` | 10 |
+| 团队 | 团队 | — | reports | 报告中心 | `/t/:tenantID/reports`（10 §8.5 / §8.6） | `report_read` | 10 |
+| 治理 | 团队 | 策略 | policy | 授权与策略 | `/t/:tenantID/governance/policy` | `policy_read` | 08 |
+| 治理 | 团队 | 策略 | workflow-config | 流转配置 | `/t/:tenantID/settings/workflows`（无 `workflow_manage` 时只读） | `work_item_read` | 12 Part A |
+| 治理 | 团队 | 连接 | integration | 集成 | `/t/:tenantID/settings/integrations/yunxiao`（v1.1） | `integration_manage` | 12 Part B |
+| 治理 | 团队 | 连接 | intake-channels | 需求开口 | `/t/:tenantID/settings/intake-channels`（无 `intake_channel_manage` 时只读） | `intake_read` | 01 |
+| 治理 | 团队 | 连接 | gateway | API 网关 | `/t/:tenantID/gateway`（实验） | `gateway_manage` | 04 |
+| 治理 | 团队 | 记录 | audit | 审计 | `/t/:tenantID/governance/audit` | `audit_read` | 08 |
+
+  表注：① 权限码均取自所属规格的读接口（01 §8.3、02 W14 / R2、03 A01、10 §8、11 L1 / W1–W3、12 A9 / A10 / A21 / A26、B1、08 Q1）；范围为项目的项按当前项目判定（项目范围权限与项目可见性，00 §6）。② 以下数据接口在所属规格中**尚不存在**，本表只登记菜单与路由，不代为定义接口：团队级需求列表（02 只有项目级 R2，跨项目需 02 新增或由前端按可见项目逐个调用 R2）；流水线的按工作项阶段聚合（03 现有 A01 / A04 / A53 与 12 Flow 镜像需组合，聚合读接口待 03 定义）；我的任务、缺陷直接复用 02 W14 过滤，无缺口。③ 标「固定本项目」的项目内路由复用同一页面组件，以路由中的 `:projectID` 作为不可清除的项目过滤（列表接口带 `project_id=eq:`），不新增接口。④ 领域工作台在一个项目空间内至多出现一项，按项目的模板领域（11 模板绑定）决定。
+- **当前域与当前项目判定**：二者**只由路由决定**，不另存状态。外壳以「最长路由前缀匹配」把当前路由归到菜单项与域：`/t/:tenantID/p/:projectID/**` → 项目域的项目空间，当前项目 = 路由中的 `:projectID`（如 `/p/:projectID/work-items/:id` → 项目 › 开发 › 任务；`/p/:projectID/executions/:executionID/session` → 项目 › 流水线 › 执行）。**详情页**（工作项、缺陷、执行与交互会话、评审单、内部验收、例外、交付等，路由均带 `/p/:projectID/`）一律在所属项目的项目空间内渲染，从跨项目列表、我的裁决、会话卡片或通知打开时也是如此。`/t/:tenantID/agents/:agentID` → 团队 › 成员与 Agent；`/chat/**` 与旧频道路由归会话域；`/settings/notifications` 归工作台；未进菜单的团队级路由（如 `/t/:tenantID/review`、`/t/:tenantID/governance/escapes`、`/t/:tenantID/worklogs`）归项目域的项目外侧栏，不高亮任何项。无法匹配的路由不改变当前域。路由中的项目本人不可见（无 `project_read` 或已被移出）→ 页面 404 态「项目不存在或你无权访问」并提供〔返回项目组合〕，不泄露项目名。
+- **项目空间**：侧栏顶部为**项目切换器**（只列本人 `project_read` 可见的项目，非终态在前，含最近访问 5 个与搜索）与〔返回项目组合〕（→ `/t/:tenantID/projects`）。**切换项目保持子页面**：切换器把路由中的 `:projectID` 换成目标项目并保留当前菜单项（列表页保留与项目无关的查询参数，如视图与排序；详情页 → 目标项目中同一菜单项的列表页，因为详情对象属于原项目）；目标项目没有该项（权限不足，或领域工作台与其模板领域不符）→ 目标项目概览，并以 toast 说明「该项目没有『视频』，已打开概览」。`WorkspaceSwitcher` 的项目选择等同于项目切换器：在项目外选择项目 → 进入该项目概览；在项目空间内选择 → 同上保持子页面；团队切换仍在品牌区，切团队回到工作台总览。
+- **跨项目列表**：项目外「跨项目」各页在页内提供项目筛选（只列本人可见项目，默认全部，筛选值写入 URL `project_id=`，属于页面状态而非外壳状态）；〔新建〕类操作要求先选项目，或在项目空间内进行。
+- **记住子页面**：每个域记住本人最近访问的子页面（含路由与查询参数；项目域记住的可以是项目外页面，也可以是某个项目空间内的页面），点击域标签回到该页；从未访问、该页已不可见或其项目已不可见 → 该域第一个可见项（项目域 = 项目组合）。记忆保存在浏览器本地存储，读写失败时退回第一个可见项（不影响导航）。
+- **移动端**（<768px）：域标签与当前域子导航收入左侧抽屉（底座 Sheet；抽屉顶部为域列表，下方为当前域子导航，项目空间内子导航顶部为项目切换器与〔返回项目组合〕）。**底栏**常驻 4 项（触控 ≥44px）：工作台（回到工作台记住的子页，默认总览）/ 会话（带未读数）/ 项目（回到项目域记住的子页，默认项目组合）/ 裁决（带徽标，→ `/inbox`）。会话在移动端为单栏堆叠（列表 → 消息 → 线程，05 §8.8）。
+- **命令面板（`⌘K`）**：底座 `Command` 组件；分组「跳转」（上表全部菜单，按权限过滤，显示为「域 · 标签」，如「项目 · 缺陷」；范围为项目的项对最近 5 个项目展开，显示为「项目名 · 标签」；另列最近 5 个会话，数据 05 C17）、「搜索」（来件、需求、项目、工作项、执行、Agent、机器：各模块列表接口 `q` 参数，每组前 5 条，150ms 防抖）、「动作」：
 
 | 命令 | 权限码 | 去向 |
 |---|---|---|
@@ -1338,19 +1401,20 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | 新建工作项 | `work_item_write`（当前项目） | 02 工作项新建 |
 | 新建交互会话 | `execution_start` | 03 新建会话对话框 |
 | 新建 Agent | `agent_manage` | 05 新建 Agent |
+| 新建私信 | （成员） | 05 §8.8 新建私信对话框（C18） |
 | 接入机器 | `machine_manage` | 04 接入向导 |
 | 授予委托 | `delegation_grant` | §8.1 授予对话框 |
 | 打开我的裁决 | （成员） | `/inbox` |
 | 切换主题 / 语言 | （成员） | 外壳 |
 
-- **状态**：外壳加载骨架（侧栏与顶栏占位）；租户无权限 → 跳工作区选择；SSE 断开 >5s 显示琥珀连接点并降级轮询（I2 每 10s）。
+- **状态**：外壳加载骨架（顶栏域标签与侧栏占位）；租户无权限 → 跳工作区选择；SSE 断开 >5s 显示琥珀连接点并降级轮询（I2 每 10s）。
 
 ---
 
 ### 8.7 D112 / D113 增补页面
 
 - **总览**：新增「穿透率」「内部一次通过率」磁贴（BR-08-65）；「待你裁决」不显示任何内部质量门失败。
-- **质量穿透** `/t/:tenantID/governance/escapes`：列表（项目、工作项、发现阶段 人 / 甲方、类别、放行它的内部关口与模型家族、学习状态），详情含记忆草稿与评测用例草稿，人类可「确认学习」或「驳回（理由）」。
+- **质量穿透** `/t/:tenantID/governance/escapes`（入口：项目空间「测试 › 穿透记录」`/t/:tenantID/p/:projectID/escapes`；团队级路由供审计员跨项目查看；`audit_read`，D118 修订）：列表（项目、工作项、发现阶段 人 / 甲方、类别、放行它的内部关口与模型家族、学习状态），详情含记忆草稿与评测用例草稿，人类可「确认学习」或「驳回（理由）」。
 - **授权与策略 → 矩阵**新增列：停线、清除停线、例外决定、计划批准、验收集管理、模板、集成；在「计划批准」格对 Agent 显示「策略：跨模型家族、风险 ≤ 中」。
 - **我的裁决**分类筛选增加：内部升级、需求冲突、停线、例外决定、计划批准、质量穿透。
 
@@ -1453,6 +1517,13 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | EXCEPTION_DECISION | 见 §6.10b | 例外决定人 | 站内 + 邮件 | `governance.notify.exception_raised` |
 | PLAN_APPROVAL | 见 §6.10b | 计划批准人 | 站内（15 分钟合并） | `governance.notify.plan_approval` |
 | QUALITY_ESCAPE | BR-08-63 | 所有者 + 交付负责人 | 站内 + 每日摘要 | `governance.notify.quality_escape` |
+
+
+**D119 增补通知**：
+
+| 类型 | 触发 | 接收人 | 渠道 | 模板 key |
+|---|---|---|---|---|
+| PREVIEW_SHARE_APPROVAL | 见 §6.10b D119 | 分享批准人（不含申请人） | 站内 + 推送 | `governance.notify.preview_share_approval`：「{requester} 申请把 {execution} 的预览分享给甲方（有效 {ttl} 小时）：{note_80}」 |
 
 **与 02 N11–N14 的对应**（均为升级类，08 负责收件箱投影与投递；02 定义触发与文案 key，08 不重复发送，同一去重键只投递一次）：
 
@@ -1839,7 +1910,7 @@ Then  T/P/M/TM 守卫操作 tag=tenants；D3–D5=delegations、E2=escalation-ru
 AC-08-61  [e2e]  §8.6
 Given engineer 登录（无 machine_read、policy_read 以外权限按种子）
 When  打开外壳与 ⌘K
-Then  侧栏不含「机器」等无权限项；底栏为 总览/裁决/执行/频道；⌘K「接入机器」不出现；裁决徽标随 inbox SSE ≤1s 更新并以 role=status 播报
+Then  团队域侧栏不含「机器」等无权限项；顶栏域标签为 工作台 · 会话 · 项目 · 团队 · 治理（无「协作」），底栏为 工作台/会话/项目/裁决（D118 修订）；⌘K「接入机器」不出现、「跳转」项显示为「域 · 标签」；裁决徽标随 inbox SSE ≤1s 更新并以 role=status 播报
 
 AC-08-62  [unit]  S6 适用范围, 复审 #6
 Given AUTONOMOUS 项目 P；协调员 Agent C 持 intake_convert 委托（NEW_REQUIREMENT），无 hold，ProjectGate 允许
@@ -1957,6 +2028,20 @@ And   若批准前 O 撤销 G → 该项 WITHDRAWN，05 的批准接口返回授
 **AC-08-89**（unit）纯人工模式 — `team_mode=HUMAN_ONLY` 项目的 ASSISTANT Agent 请求 `decision_approve` → 403 `HUMAN_ONLY_MODE`；请求 `report_read` → 允许；即使存在放行 `decision_approve` 的策略仍拒。
 **AC-08-90**（integration）N11–N14 路由 — 依次触发四类升级 → 各产生一条对应类型收件箱项、接收人如 §9.4 对应表；重复事件按去重键只产生一条。
 
+### 10.12 D118 控制台外壳增补验收标准（含 D118 修订：项目是主容器）
+
+**AC-08-91**（e2e）域内记住子页面 — Given Morgan 在项目 P 的项目空间打开「测试 › 缺陷」（`/t/:tenantID/p/P/defects?sort=-severity`），再切到团队域打开「机器」 When 点击「项目」域标签 Then 回到 `/t/:tenantID/p/P/defects?sort=-severity`，侧栏为 P 的项目空间且项目切换器显示 P；点击「团队」回到机器页；Morgan 被移出 P 后点击「项目」→ 项目组合（记住的页面已不可见），不出现 P 的名称；清空浏览器本地存储后点击「项目」→ 项目组合，导航不报错；项目外侧栏只含 项目组合 · 来件 · 交付总览 与「跨项目」分组 需求 · 任务 · 缺陷 · 流水线。
+**AC-08-92**（e2e）按权限隐藏菜单项与整个域 — Given 成员 X 的角色只含 `work_item_read`、`execution_read` When 打开外壳 Then 顶栏域标签只有 工作台 · 项目 · 治理（会话与团队的项全部被过滤，标签不显示；任何情况下都没有「协作」）；项目域项目外侧栏只含「跨项目 › 任务 · 缺陷 · 流水线」（无项目组合、来件、交付总览、需求）；治理域只含「流转配置」；再撤销 `work_item_read` 后刷新 → 治理域标签也不显示，项目域只剩「跨项目 › 流水线」，工作台不含「我的任务」；直接访问 `/t/:tenantID/governance/audit` → 页面无权限态「缺少权限 `audit_read`」（菜单隐藏不替代页面守卫）。
+**AC-08-93**（e2e）会话全宽 — Given 视口 1440 When 点击「会话」域标签 Then 不渲染侧栏，内容区占满顶栏以下全宽并呈现 05 §8.8 三栏（左：提及与线程 / 频道 / 私信 / 执行会话；中：消息；右：线程 / 详情）；访问旧路由 `/t/:tenantID/p/:projectID/channels/:channelID` → 重定向到 `/t/:tenantID/chat/:channelID` 且当前域为会话；在项目 P 的项目空间点击「项目频道」→ 替换式重定向到 P 默认频道 `/t/:tenantID/chat/:channelID`，当前域为会话；视口 375 时为单栏堆叠，底栏为 工作台 · 会话 · 项目 · 裁决，「会话」显示未读数。
+**AC-08-94**（e2e）项目空间 — Given Morgan 可见项目 P（软件模板）与 Q（VIDEO 模板），不可见项目 R When 从「跨项目 › 缺陷」点击 P 的缺陷 D Then 打开 `/t/:tenantID/p/P/work-items/D`，当前域为项目、侧栏为 P 的项目空间且高亮「开发 › 任务」，侧栏顶部为项目切换器（P）与〔返回项目组合〕；When 在 `/t/:tenantID/p/P/executions?status=RUNNING` 用切换器选 Q Then 到 `/t/:tenantID/p/Q/executions?status=RUNNING`（保持子页面与无关查询参数）；When 在 P 的工作项详情切到 Q Then 到 `/t/:tenantID/p/Q/work-items`（详情 → 同项列表）；When 在 Q 的「领域工作台 › 视频」切到 P Then 到 P 概览并 toast「该项目没有『视频』，已打开概览」，P 的项目空间不显示任何领域工作台项；When 点击〔返回项目组合〕 Then 到 `/t/:tenantID/projects` 且侧栏为项目外；When 直接访问 `/t/:tenantID/p/R/defects` Then 404 态「项目不存在或你无权访问」+〔返回项目组合〕，页面与切换器中均不出现 R 的名称；`⌘K` 输入「缺陷」列出「项目 · 缺陷」与「P · 缺陷」「Q · 缺陷」。
+
+### 10.13 D119 远程工作区增补验收标准
+
+**AC-08-95**（integration）D119 权限播种 — Given 已有租户升级到含 D119 的 catalog When `governance.seed_reconcile` 运行 Then `team_owner` 增加 `terminal_interact`、`workspace_file_edit`、`preview_share_approve`、`machine_access_manage`；`delivery_lead` 增加前三者、**不含** `machine_access_manage`；`engineer` 只增加 `workspace_file_edit`；全部 Agent 角色不增加任何一码；管理员此前手工移除的码不补回；审计 `governance.role_seed_applied` 一条。
+**AC-08-96**（unit）不可委托与仅人类 — 对 `terminal_interact`、`preview_share_approve`、`machine_access_manage` 分别以「委托来源的人类」「持角色的 Agent」「服务账号」请求 `AuthorityChecker.Check` → 依次拒 `NON_DELEGABLE`、`AGENT_PROHIBITED`、`AGENT_PROHIBITED`；`workspace_file_edit` 对 Agent → `AGENT_PROHIBITED`，对持角色的人类 → 允许；`preview_share_approve` 主体 = 申请人 → `SELF_REVIEW`。
+**AC-08-97**（integration）分享审批收件箱 — Given R 申请分享（03 `share_link.requested`），项目内持 `preview_share_approve` 的人类为 R、Q、O When 投影 Then 只有 Q、O 收到 `PREVIEW_SHARE_APPROVAL`（R 不收到）；Q 在收件箱批准 → 03 A72 成功，链接只在 Q 的界面显示一次；`share_link.decided` 到达后 O 的项 ≤1 s 移除；会话结束触发 `share_link.ended` → 未处理的项关闭。
+**AC-08-98**（integration）危险操作登记 — G6 返回的登记表含 `terminal_interactive`、`machine_terminal_enable`、`machine_credential_issue` 三行，purpose 与 03 A67、04 A35 / A32 / A13 使用值一致；缺少任一 purpose 登记时模块启动失败。
+
 ## 11. 度量与埋点（不含代码、消息、反馈正文）
 
 | 事件 | 属性 |
@@ -2051,3 +2136,7 @@ Prometheus：`governance_authority_checks_total{allowed,source_kind}`、`governa
 | CR-08-12 | §3 | 时间类型改为 `TIMESTAMPTZ(3)` / `DATETIME(3)` / `DATETIME`（同 01 CR-01、02 CCR-01）；§9 tag 规则改为发布路径首段（同 02 CCR-08） | 与仓库规约及已实施的路由规则一致 |
 
 > **v2.0（D112 / D113，00 §15）已并入本规格**：权限码登记与授予（§3.3b）、判定规则 S2(d) / S3(f) / 策略 `plan_review` / `internal_qa` 与新原因码（§3.5b）、穿透记录表（§3.8.16）、错误码 160480–160483、BR-08-60…65、接口 Q1–Q3、收件箱类型（§6.10b）、任务与事件（§7.6）、页面（§8.7）、通知（§9.4）、AC-08-78…87。**CR-08-13**（对 00）：§15.5 增补原因码 `ACCOUNTABLE_HUMAN_MISSING`、`SAME_MODEL_FAMILY`、`ANDON_ACTIVE`（02）；事件 `quality.escape_recorded`、`quality.escape_learning_decided`；05 `AgentDirectory` 需暴露 `model_family`；02 需在 `WorkItemFacts` 填 `AccountablePrincipalID`、`PlanAuthorID`，并在 `work_item.state_changed{to:REWORK}` 载荷携带 `cause`。
+
+> **D118（控制台信息架构，2026-10-12）已并入本规格**：§8.6 改为顶栏域标签（工作台 · 会话 · 协作 · 项目 · 团队 · 治理）+ 当前域侧栏子导航，菜单表增「域」列并按 D118 重新归位，补登 01 / 11 / 12 / 08 已有页面与新页面（我的任务、需求、缺陷、流水线、会话）；协作域项目筛选、记住子页面、移动端抽屉与底栏 工作台 · 会话 · 协作 · 裁决；AC-08-61 更新，新增 AC-08-91…93。依赖 09 C6 `MenuPage.Domain`（09 BR-09-80）与 05 §8.8 会话页；对 00 无新增变更请求。 **D118 修订（项目是主容器，2026-10-12）已并入**：删除协作域，域标签为 工作台 · 会话 · 项目 · 团队 · 治理；菜单表增「范围」列（团队 / 项目），全部行重新归位：项目域分项目外（项目组合 · 来件 · 交付总览 / 跨项目 需求 · 任务 · 缺陷 · 流水线）与项目空间（路由带 `:projectID`），团队域增目标树 · 报告中心；当前域与当前项目只由路由决定、详情页在所属项目空间内渲染、切换项目保持子页面、〔返回项目组合〕、项目切换器；移动端底栏 工作台 · 会话 · 项目 · 裁决；AC-08-61、AC-08-91…93 原地更新，新增 AC-08-94。依赖 09 C6 `MenuPage.Space`（09 BR-09-80）与 05 §8.8 项目频道重定向；对 00 无新增变更请求。
+
+> **D119（远程预览、终端与文件；服务器与集群执行机器，2026-10-12）已并入本规格**：权限码登记与默认授予（§3.3c：`terminal_interact`、`workspace_file_edit`、`preview_share_approve`、`machine_access_manage`）、原因码 `MACHINE_ACCESS_DISABLED` / `PORT_NOT_OWNED` / `PATH_OUTSIDE_WORKSPACE`（§3.5）、BR-08-66、step-up 用途 `terminal_interactive` / `machine_terminal_enable` / `machine_credential_issue`（§6.9）、收件箱 `PREVIEW_SHARE_APPROVAL`（§6.10b，分期待定）、审计事件（§7.5）、通知（§9.4）、AC-08-95…98。来源 03 CR-03-09、04 CR-04-12；已并入 00 v2.0 D119 补充。

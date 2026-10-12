@@ -800,7 +800,7 @@ SSE（09 C3；主题种类 = `subject.kind` 单数，集合为复数，00 §9）
 ### 8.1 知识库
 
 - **目的**：按 scope 浏览、全文检索、预览、上传与查看索引状态。
-- **入口与路由**：侧栏「团队 › 知识库」→ `/t/:tenantID/knowledge`；项目内 `/t/:tenantID/p/:projectID/knowledge`（默认选中该项目节点）。URL 参数：`?q=&scope=&kinds=&tags=&source=`（可分享）。
+- **入口与路由**：侧栏「团队 › 知识库」→ `/t/:tenantID/knowledge`；项目内 `/t/:tenantID/p/:projectID/knowledge`（默认选中该项目节点；在该项目的项目空间内渲染，不进菜单，从项目概览进入，08 §8.6）。URL 参数：`?q=&scope=&kinds=&tags=&source=`（可分享）。
 - **布局**（≥1024）：左 260 px scope 树；中 检索框 + 筛选芯片 + 结果列表 / 来源列表；右 420 px 预览抽屉（可关闭）。
 - **scope 树**：「团队」（需租户 knowledge_read，否则不显示）→「项目」（列出调用者有 knowledge_read 的项目，`knowledge_project_scopes` + 计数，已关闭项目置灰）→「Agent 记忆」（需 agent_read；列 Agent，点击跳 Agent 详情「记忆」标签）。节点后显示块数徽标。
 - **检索框**：1–500 字；回车或 300 ms 防抖后（≥2 字符）调用 A20/A21；〔全部词 / 任一词〕切换（ALL/ANY）。校验：仅符号时内联提示"请输入至少一个汉字或两个字母"（对应 150422）。
