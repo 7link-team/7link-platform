@@ -4,10 +4,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { start, resume, review, accept, load, independentVerify } from './lib/engine.mjs';
 
-const usage = '用法：node myr.mjs run <taskDir> [--executor codex|mock] [--auto-approve-if-verified] [--run-id id]\n       node myr.mjs review <runDir> <W1> approve|reject [--category X --detail 内容 --by 姓名]\n       node myr.mjs resume|verify|status <runDir>\n       node myr.mjs accept <runDir> --by 姓名 [--reject --detail 内容]';
+const usage = '用法：node myr.mjs run <taskDir> [--executor codex|mock] [--auto-approve-if-verified] [--run-id id] [--acceptor-model model] [--qa-screenshot index.html --qa-viewports 900x900,420x800]\n       node myr.mjs review <runDir> <W1> approve|reject [--category X --detail 内容 --by 姓名]\n       node myr.mjs resume|verify|status <runDir>\n       node myr.mjs accept <runDir> --by 姓名 [--reject --detail 内容]';
 function parse(args) {
   const positional = [], options = {};
-  const names = { '--executor': 'executor', '--run-id': 'runId', '--by': 'by', '--category': 'category', '--detail': 'detail' };
+  const names = { '--executor': 'executor', '--run-id': 'runId', '--by': 'by', '--category': 'category', '--detail': 'detail',
+    '--acceptor-model': 'acceptorModel', '--qa-screenshot': 'qaScreenshot', '--qa-viewports': 'qaViewports' };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--auto-approve-if-verified') options.autoApprove = true;
     else if (args[i] === '--reject') options.reject = true;

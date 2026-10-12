@@ -4,11 +4,12 @@ import { inside, readJSON, writeText, saveState, treeHashes, copyTree } from './
 import { runCommand, passed } from './process.mjs';
 import { emit, checkChain } from './events.mjs';
 import { report } from './report.mjs';
+import { screenshotConfig, screenshots, validConclusion, severe } from './qa.mjs';
 
 const workspaceOf = dir => path.join(dir, 'workspace');
 const executorOf = name => import(`./executors/${name}.mjs`);
 async function git(dir, args) {
-  const result = await runCommand(['git', ...args], { cwd: workspaceOf(dir) });
+  const result = await runCommand(['git', '-c', 'core.quotepath=false', ...args], { cwd: workspaceOf(dir) });
   if (!passed(result)) throw new Error(`git ${args[0]} 失败: ${result.stderr || result.error}`);
   return result.stdout.trim();
 }
@@ -29,7 +30,8 @@ async function pause(dir, state, status, item, reason) {
   return status === 'NEEDS_HUMAN_REVIEW' ? 2 : 3;
 }
 function validateTask(task, taskDir) {
-  if (!task.name || !Number.isInteger(task.maxAttempts) || task.maxAttempts < 1 || !Number.isInteger(task.maxWorkItems) || task.maxWorkItems < 1) throw new Error('任务名称/尝试上限/工作项上限无效');
+  task.maxInternalRounds = task.maxInternalRounds ?? task.maxAttempts ?? 5;
+  if (!task.name || !Number.isInteger(task.maxInternalRounds) || task.maxInternalRounds < 1 || !Number.isInteger(task.maxWorkItems) || task.maxWorkItems < 1) throw new Error('任务名称/尝试上限/工作项上限无效');
   inside(taskDir, task.requirement);
   inside(taskDir, task.acceptance?.dir);
   if (!Array.isArray(task.verify) || !task.verify.length) throw new Error('至少需要一条 verify 命令');
@@ -60,7 +62,10 @@ async function invoke(dir, state, method, context, item, attempt) {
     try { result = await executor[method]({ ...context, call }); }
     catch (err) { result = { invocation: { exitCode: null, error: err.message, durationMs: 0, outputFile: null } }; }
     invocations.push(result.invocation);
-    await emit(dir, 'EXECUTOR_COMPLETED', { method, call, ...result.invocation }, item?.id, { kind: 'AGENT', id: state.executor });
+    if (result.invocation.reportedModel && method === 'execute') state.executorModel = result.invocation.reportedModel;
+    if (result.invocation.reportedModel && method === 'acceptAgent') state.acceptorModel = result.invocation.reportedModel;
+    await emit(dir, 'EXECUTOR_COMPLETED', { method, call, ...result.invocation }, item?.id,
+      { kind: 'AGENT', id: ['testAgent', 'acceptAgent'].includes(method) ? `${state.executor}:${method}` : state.executor });
     await saveState(dir, state);
     if (passed(result.invocation)) return result;
   }
@@ -70,6 +75,7 @@ export async function start(taskDir, options = {}) {
   taskDir = path.resolve(taskDir);
   const task = await readJSON(path.join(taskDir, 'task.json'));
   validateTask(task, taskDir);
+  const qaScreenshot = screenshotConfig(task, options);
   const runId = options.runId ?? new Date().toISOString().replace(/[:.]/g, '-');
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(runId)) throw new Error('runId 只能包含字母、数字、下划线、短横线');
   const dir = path.resolve('runs', runId);
@@ -86,7 +92,8 @@ export async function start(taskDir, options = {}) {
   await fs.mkdir(lock);
   try {
     await fs.mkdir(workspaceOf(dir));
-    const state = { version: 1, runId, taskDir, task, executor, autoApprove: !!options.autoApprove,
+    const state = { version: 2, runId, taskDir, task, executor, autoApprove: !!options.autoApprove,
+      qaScreenshot, executorModel: task.executorModel ?? 'CLI_DEFAULT_UNRESOLVED', acceptorModel: options.acceptorModel ?? 'CLI_DEFAULT_UNRESOLVED',
       startedAt: new Date().toISOString(), status: 'PLANNING', requirement, acceptanceHashes, workItems: [] };
     await emit(dir, 'RUN_STARTED', { task, taskDir, executor, autoApprove: state.autoApprove, acceptanceHashes });
     await writeText(path.join(workspaceOf(dir), 'requirement.md'), requirement);
@@ -100,7 +107,97 @@ export async function start(taskDir, options = {}) {
 async function verifyCommands(dir, state) {
   const results = [];
   for (const spec of state.task.verify) results.push({ name: spec.name, ...await runCommand(spec.command, { cwd: workspaceOf(dir) }) });
+  const qa = await workspaceSnapshot(path.join(workspaceOf(dir), 'tests', 'qa'));
+  const tests = [...qa.keys()].filter(file => /\.test\.(?:mjs|cjs|js)$/.test(file));
+  if (tests.length) results.push({ name: 'qa-tests', ...await runCommand(['node', '--test', ...tests.map(file => path.join('tests', 'qa', file))], { cwd: workspaceOf(dir) }) });
   return results;
+}
+
+// Include untracked/ignored files as well as git diff; QA cannot hide scope violations via .gitignore.
+async function workspaceSnapshot(root, prefix = '', result = new Map(), excludeGit = true) {
+  for (const entry of await fs.readdir(root, { withFileTypes: true }).catch(err => { if (err.code === 'ENOENT') return []; throw err; })) {
+    if (!prefix && entry.name === '.git' && excludeGit) continue;
+    const file = path.join(root, entry.name), relative = prefix + entry.name;
+    if (entry.isSymbolicLink()) result.set(relative, { link: await fs.readlink(file) });
+    else if (entry.isDirectory()) await workspaceSnapshot(file, relative + '/', result, excludeGit);
+    else result.set(relative, { bytes: await fs.readFile(file) });
+  }
+  return result;
+}
+async function enforceScope(dir, before, allowed) {
+  const root = workspaceOf(dir), after = await workspaceSnapshot(root, '', new Map(), false), violations = [];
+  for (const file of new Set([...before.keys(), ...after.keys()])) {
+    const a = before.get(file), b = after.get(file);
+    const equal = a && b && (a.bytes && b.bytes ? a.bytes.equals(b.bytes) : a.link === b.link);
+    if (equal || (allowed(file) && b && !a?.link && !b?.link)) continue;
+    violations.push(file);
+  }
+  // Remove replaced directory links before touching descendants: never follow a QA-created link.
+  for (const file of violations.filter(file => after.get(file)?.link)) await fs.rm(inside(root, file), { force: true });
+  for (const file of [...violations].sort((a, b) => b.length - a.length)) {
+    await fs.rm(inside(root, file), { recursive: true, force: true }).catch(err => { if (err.code !== 'ENOTDIR') throw err; });
+  }
+  for (const file of [...violations].sort((a, b) => a.length - b.length)) {
+    const a = before.get(file), target = inside(root, file);
+    if (a) {
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      if (a.link) await fs.symlink(a.link, target);
+      else await fs.writeFile(target, a.bytes);
+    }
+  }
+  return violations;
+}
+async function internalQA(dir, state, item, attempt, completed, previous) {
+  const qa = attempt.internalQA;
+  const ctx = { runDir: dir, workspace: workspaceOf(dir), task: state.task, workItem: item, attempt: attempt.number, completed };
+  const input = `需求全文：\n${state.requirement}\n当前工作项：${JSON.stringify(item)}\n已完成工作项摘要：${JSON.stringify(completed)}`;
+  const before = await workspaceSnapshot(ctx.workspace, '', new Map(), false);
+  const testCalls = { invocations: [] };
+  const result = await invoke(dir, state, 'testAgent', { ...ctx,
+    prompt: `你是独立测试 Agent。对照需求补充边界/回归测试和探索式检查。仅允许在 tests/qa/ 新增或修改测试，不得删除测试或修改任何其他文件。输出结论 JSON {pass,findings:[{severity:BLOCKER|MAJOR|MINOR,title,evidence,expected}]}。\n${input}` }, item, testCalls);
+  const violations = await enforceScope(dir, before, file => file.startsWith('tests/qa/'));
+  const testDiff = await git(dir, ['diff', '--name-only', 'HEAD']);
+  const gitScopeOK = testDiff.split('\n').filter(Boolean).every(file => file.startsWith('tests/qa/'));
+  if (violations.length) await emit(dir, 'QA_SCOPE_VIOLATION', { stage: 'AGENT_TEST', files: violations, rolledBack: true }, item.id);
+  const verificationBefore = await workspaceSnapshot(ctx.workspace, '', new Map(), false);
+  const verification = await verifyCommands(dir, state);
+  const integrity = await enforceScope(dir, verificationBefore, () => false);
+  const conclusion = result?.conclusion;
+  qa.AGENT_TEST = { ok: !!result && validConclusion(conclusion) && !(conclusion.pass === false && severe(conclusion.findings))
+    && gitScopeOK && !violations.length && !integrity.length && verification.every(passed), conclusion: conclusion ?? null, violations, verification,
+    invocations: testCalls.invocations, diff: testDiff, gitScopeOK, integrityViolations: integrity };
+  await emit(dir, 'AGENT_TEST_COMPLETED', { round: attempt.number, ...qa.AGENT_TEST }, item.id);
+  if (!qa.AGENT_TEST.ok) return 'AGENT_TEST';
+  // QA evidence must not disappear just because an implementation .gitignore excludes tests/qa.
+  if ((await workspaceSnapshot(path.join(ctx.workspace, 'tests', 'qa'))).size) await git(dir, ['add', '-f', '--', 'tests/qa']);
+  attempt.implementationCommit = attempt.commit;
+  attempt.commit = await commit(dir, `${item.id} round ${attempt.number} QA tests`);
+  attempt.filesChanged = (await git(dir, ['diff', '--name-only', previous, attempt.commit])).split('\n').filter(Boolean);
+  await emit(dir, 'EVIDENCE_COMMITTED', { attempt: attempt.number, stage: 'AGENT_TEST', commit: attempt.commit, filesChanged: attempt.filesChanged }, item.id);
+  // Only the work item that delivers the page is judged on how the page looks.
+  qa.screenshots = state.qaScreenshot && item.files.includes(state.qaScreenshot.page)
+    ? await screenshots(dir, ctx.workspace, item, attempt.number, state.qaScreenshot)
+    : { files: [], unverified: [], notes: [], invocations: [] };
+  const stat = await git(dir, ['diff', '--stat', previous, attempt.commit]);
+  const contents = [];
+  for (const file of [...new Set([...item.files, ...attempt.filesChanged])].slice(0, 20)) {
+    const content = await fs.readFile(inside(ctx.workspace, file), 'utf8').catch(() => '[deleted/unreadable]');
+    contents.push({ file, content: content.slice(0, 12000), truncated: content.length > 12000 });
+  }
+  const acceptanceBefore = await workspaceSnapshot(ctx.workspace, '', new Map(), false);
+  const acceptCalls = { invocations: [] };
+  const accepted = await invoke(dir, state, 'acceptAgent', { ...ctx, model: state.acceptorModel === 'CLI_DEFAULT_UNRESOLVED' ? undefined : state.acceptorModel,
+    screenshots: qa.screenshots.files,
+    prompt: `你是独立产品验收 Agent，只读检查需求与当前交付及实际截图；不得修改文件。只判定当前工作项 acceptanceRefs 列出的验收标准（${item.acceptanceRefs.join('、')}），其余标准属于其他工作项，不得列入 criteria，也不得据此提出 uxFindings；其中任一不符记 FAIL，无法验证记 UNVERIFIED。输出 JSON {pass,criteria:[{ref,verdict:PASS|FAIL|UNVERIFIED,evidence}],uxFindings:[{severity:BLOCKER|MAJOR|MINOR,title,evidence,expected}]}。\n${input}\n本次 diff stat：\n${stat}\n关键文件内容：${JSON.stringify(contents)}\n截图证据：${JSON.stringify(qa.screenshots)}。没有截图时不得声称已验证视觉体验。` }, item, acceptCalls);
+  const readOnlyViolations = await enforceScope(dir, acceptanceBefore, () => false);
+  if (readOnlyViolations.length) await emit(dir, 'QA_SCOPE_VIOLATION', { stage: 'AGENT_ACCEPTANCE', files: readOnlyViolations, rolledBack: true }, item.id);
+  const verdict = accepted?.conclusion;
+  qa.AGENT_ACCEPTANCE = { ok: !!accepted && validConclusion(verdict, true) && verdict.pass && !verdict.criteria.some(c => c.verdict === 'FAIL' && item.acceptanceRefs.includes(c.ref))
+    && !severe(verdict.uxFindings) && !readOnlyViolations.length, conclusion: verdict ?? null, violations: readOnlyViolations,
+    invocations: acceptCalls.invocations, model: state.acceptorModel };
+  if (validConclusion(verdict, true)) for (const evidence of qa.screenshots.unverified) verdict.criteria.push({ ref: 'SCREENSHOT', verdict: 'UNVERIFIED', evidence });
+  await emit(dir, 'AGENT_ACCEPTANCE_COMPLETED', { round: attempt.number, ...qa.AGENT_ACCEPTANCE }, item.id);
+  return qa.AGENT_ACCEPTANCE.ok ? null : 'AGENT_ACCEPTANCE';
 }
 function feedbackFor(results) {
   return { category: 'FUNCTIONAL_DEFECT', detail: results.filter(x => !passed(x)).map(x => `${x.name}: exit=${x.exitCode}, timeout=${x.timedOut}\n${x.stdout ?? ''}\n${x.stderr ?? ''}\n${x.error ?? ''}`).join('\n'),
@@ -134,7 +231,7 @@ export async function continueRun(dir, state) {
     if (!result) return pause(dir, state, 'NEEDS_HUMAN', null, '规划执行故障，已重试一次');
     try { validatePlan(result.plan, state.task, workspaceOf(dir)); }
     catch (err) { return pause(dir, state, 'NEEDS_HUMAN', null, err.message); }
-    state.workItems = result.plan.workItems.map(item => ({ ...item, status: 'PENDING', attempts: [], attemptLimit: state.task.maxAttempts }));
+    state.workItems = result.plan.workItems.map(item => ({ ...item, status: 'PENDING', attempts: [], attemptLimit: state.task.maxInternalRounds ?? state.task.maxAttempts ?? 5 }));
     await emit(dir, 'PLAN_CREATED', result.plan, undefined, { kind: 'AGENT', id: state.executor });
     state.status = 'RUNNING';
     await persist(dir, state);
@@ -143,11 +240,13 @@ export async function continueRun(dir, state) {
     if (item.status === 'ACCEPTED') continue;
     while (item.status !== 'VERIFIED' && item.attempts.length < item.attemptLimit) {
       const attempt = { number: item.attempts.length + 1, feedback: item.feedback ?? null, invocations: [] };
+      attempt.internalQA = { round: attempt.number };
       item.attempts.push(attempt);
       item.status = 'EXECUTING';
       state.status = 'RUNNING';
       await fs.rm(path.join(workspaceOf(dir), 'claim.json'), { force: true });
       await emit(dir, 'ATTEMPT_STARTED', { attempt: attempt.number, feedback: attempt.feedback }, item.id);
+      await emit(dir, 'INTERNAL_QA_STARTED', { round: attempt.number }, item.id);
       await persist(dir, state);
       const completed = state.workItems.filter(x => x.status === 'ACCEPTED').map(x => ({ id: x.id, summary: x.attempts.at(-1)?.claim?.summary }));
       const prompt = `你是乙方执行 Agent。仅在当前工作区内修改文件；不要访问外部任务或隐藏验收。必须为自己的改动写/更新 tests/*.test.mjs。不得修改 requirement.md、.git 或创建 acceptance/。完成后在工作区根写 claim.json，格式 {workItemId,summary,filesChanged:[相对路径],selfConfidence:0..1}。声明不能代替验证。\n需求全文：\n${state.requirement}\n当前工作项：${JSON.stringify(item)}\n已完成工作项摘要：${JSON.stringify(completed)}\n上次失败结构化反馈：${JSON.stringify(attempt.feedback)}`;
@@ -159,6 +258,7 @@ export async function continueRun(dir, state) {
         return pause(dir, state, 'NEEDS_HUMAN', item, '执行故障，已重试一次（非质量问题）');
       }
       Object.assign(attempt, await readClaim(dir, item));
+      attempt.executorModel = state.executorModel;
       await emit(dir, 'CLAIM_SUBMITTED', { claim: attempt.claim ?? null, error: attempt.claimError ?? null }, item.id, { kind: 'AGENT', id: state.executor });
       // Evidence comes from Git, never from filesChanged in the claim.
       const previous = await git(dir, ['rev-parse', 'HEAD']);
@@ -175,18 +275,27 @@ export async function continueRun(dir, state) {
       }
       if (!unchanged || !acceptanceAbsent) attempt.verification.push({ name: 'workspace-contract', exitCode: 1, error: '需求被修改或工作区出现 acceptance/' });
       if (await git(dir, ['status', '--porcelain'])) attempt.verification.push({ name: 'evidence-integrity', exitCode: 1, error: '验证命令修改了提交后的工作区' });
-      const ok = attempt.verification.every(passed);
+      let ok = attempt.verification.every(passed);
+      attempt.internalQA.AUTOMATED = { ok, results: attempt.verification };
       await emit(dir, 'VERIFICATION_COMPLETED', { attempt: attempt.number, ok, results: attempt.verification }, item.id);
+      let failedStage = ok ? await internalQA(dir, state, item, attempt, completed, previous) : 'AUTOMATED';
+      ok = !failedStage;
+      attempt.internalQA.ok = ok;
+      attempt.internalQA.failedStage = failedStage;
+      await emit(dir, ok ? 'INTERNAL_QA_PASSED' : 'INTERNAL_QA_FAILED', { round: attempt.number, stage: failedStage,
+        findings: failedStage === 'AUTOMATED' ? feedbackFor(attempt.verification).failures : attempt.internalQA[failedStage] }, item.id);
       if (ok) { item.status = 'VERIFIED'; item.feedback = null; }
       else {
-        item.status = 'REWORK'; item.feedback = feedbackFor(attempt.verification);
+        item.status = 'REWORK'; item.feedback = failedStage === 'AUTOMATED' ? feedbackFor(attempt.verification)
+          : { category: 'INTERNAL_QA_FAILURE', stage: failedStage, detail: JSON.stringify(attempt.internalQA[failedStage]), findings: attempt.internalQA[failedStage] };
         await emit(dir, 'REWORK_SCHEDULED', { feedback: item.feedback, bounded: true, attemptLimit: item.attemptLimit }, item.id);
       }
       await persist(dir, state);
     }
     if (item.status !== 'VERIFIED') {
       item.status = 'NEEDS_HUMAN';
-      return pause(dir, state, 'NEEDS_HUMAN', item, '尝试预算耗尽');
+      item.attempts.at(-1).escalatedToHuman = true;
+      return pause(dir, state, 'NEEDS_HUMAN', item, 'INTERNAL_ROUNDS_EXHAUSTED');
     }
     if (!state.autoApprove) return pause(dir, state, 'NEEDS_HUMAN_REVIEW', item, 'L2 通过，等待 L3 人工裁决');
     await approveItem(dir, state, item, 'POLICY:auto_verified', { kind: 'POLICY', id: 'auto_verified' });
@@ -244,7 +353,7 @@ export async function review(dir, id, decision, options = {}) {
     item.feedback = { category: options.category, detail: options.detail };
     item.status = 'REWORK'; item.authoritySource = source;
     // A human rejection explicitly opens one new bounded rework budget.
-    item.attemptLimit = item.attempts.length + state.task.maxAttempts;
+    item.attemptLimit = item.attempts.length + (state.task.maxInternalRounds ?? state.task.maxAttempts ?? 5);
     state.status = 'RUNNING';
     await emit(dir, 'DECISION_MADE', { decision, authority_source: source, feedback: item.feedback, attemptLimit: item.attemptLimit }, id, actor);
     await emit(dir, 'REWORK_SCHEDULED', { feedback: item.feedback, attemptLimit: item.attemptLimit }, id);

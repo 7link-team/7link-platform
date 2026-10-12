@@ -9,3 +9,14 @@ export const planSchema = {
     },
   } } },
 };
+
+const finding = { type: 'object', additionalProperties: false, required: ['severity', 'title', 'evidence', 'expected'],
+  properties: { severity: { type: 'string', enum: ['BLOCKER', 'MAJOR', 'MINOR'] },
+    title: { type: 'string' }, evidence: { type: 'string' }, expected: { type: 'string' } } };
+export const testSchema = { type: 'object', additionalProperties: false, required: ['pass', 'findings'],
+  properties: { pass: { type: 'boolean' }, findings: { type: 'array', items: finding } } };
+export const acceptanceSchema = { type: 'object', additionalProperties: false, required: ['pass', 'criteria', 'uxFindings'],
+  properties: { pass: { type: 'boolean' }, criteria: { type: 'array', items: {
+    type: 'object', additionalProperties: false, required: ['ref', 'verdict', 'evidence'],
+    properties: { ref: { type: 'string' }, verdict: { type: 'string', enum: ['PASS', 'FAIL', 'UNVERIFIED'] }, evidence: { type: 'string' } },
+  } }, uxFindings: { type: 'array', items: finding } } };

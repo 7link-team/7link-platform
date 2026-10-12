@@ -27,6 +27,39 @@ export async function report(dir, state) {
     }
     lines.push(`- 当前反馈：${JSON.stringify(item.feedback ?? null)}`, '');
   }
+  lines.push('## 内部质量门（D113）', '',
+    `- 执行者模型：${state.executorModel ?? 'CLI_DEFAULT_UNRESOLVED'}；验收者模型：${state.acceptorModel ?? 'CLI_DEFAULT_UNRESOLVED'}`);
+  if (!state.executorModel || state.executorModel === state.acceptorModel || [state.executorModel, state.acceptorModel].includes('CLI_DEFAULT_UNRESOLVED')) {
+    lines.push('- 未满足跨模型家族要求，已降级为不同主体（CLI 默认模型无法确认时保守降级）。');
+  }
+  const rounds = state.workItems.flatMap(item => item.attempts.map(attempt => ({ item, attempt })));
+  const intercepted = rounds.filter(({ item, attempt }) => {
+    if (attempt.internalQA?.ok !== false) return false;
+    const recovered = item.attempts.find(next => next.number > attempt.number && next.internalQA?.ok);
+    return recovered && !item.attempts.some(next => next.number >= attempt.number && next.number < recovered.number && next.escalatedToHuman);
+  });
+  const started = state.workItems.filter(item => item.attempts.length).length;
+  const firstPass = state.workItems.filter(item => item.attempts[0]?.internalQA?.ok).length;
+  lines.push(`- 内部一次通过率：${started ? (firstPass / started * 100).toFixed(1) : '0.0'}%`,
+    `- 平均内部轮次：${started ? (rounds.length / started).toFixed(2) : '0.00'}`,
+    `- 内部拦截的问题数（未打扰人）：${intercepted.reduce((total, { attempt }) => {
+      const qa = attempt.internalQA;
+      const stage = qa[qa.failedStage];
+      return total + Math.max(1, stage?.conclusion?.findings?.length ?? stage?.conclusion?.uxFindings?.length ?? 0,
+        stage?.conclusion?.criteria?.filter(c => c.verdict === 'FAIL').length ?? 0, stage?.violations?.length ?? 0,
+        (stage?.results ?? stage?.verification ?? []).filter(r => r.exitCode !== 0 || r.error || r.timedOut).length,
+        stage?.integrityViolations?.length ?? 0);
+    }, 0)}`, '');
+  for (const { item, attempt } of rounds) {
+    lines.push(`### ${item.id} 第 ${attempt.number} 轮`, '');
+    lines.push(`- 执行者模型：${attempt.executorModel ?? '未确认'}；验收者模型：${attempt.internalQA?.AGENT_ACCEPTANCE?.model ?? '未执行'}`);
+    for (const stage of ['AUTOMATED', 'AGENT_TEST', 'AGENT_ACCEPTANCE']) {
+      const value = attempt.internalQA?.[stage];
+      lines.push(`- ${stage}：${value ? (value.ok ? '通过' : '失败') : '未执行'}；发现/证据：${JSON.stringify(value ?? null)}`);
+    }
+    lines.push(`- 截图：${attempt.internalQA?.screenshots?.files.map(file => path.basename(file)).join('、') || '无'}`,
+      `- 未验证：${JSON.stringify(attempt.internalQA?.screenshots?.unverified ?? [])}`, '');
+  }
   lines.push('## 甲方自动验收', '');
   if (state.acceptance) {
     lines.push(`- 结果：${state.acceptance.ok ? '通过，等待人工确认' : '失败'}`,

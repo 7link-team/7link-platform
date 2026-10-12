@@ -39,6 +39,7 @@ export async function runCommand(command, { cwd, input = '', timeoutMs = 300_000
   return new Promise(resolve => {
     const stdoutHash = createHash('sha256'), stderrHash = createHash('sha256');
     let stdout = Buffer.alloc(0), stderr = Buffer.alloc(0), timedOut = false, error = null;
+    let outputHeader = '', reportedModel = null;
     const env = { ...process.env };
     // A nested node --test must create its own harness instead of inheriting the parent's worker context.
     delete env.NODE_TEST_CONTEXT;
@@ -46,6 +47,10 @@ export async function runCommand(command, { cwd, input = '', timeoutMs = 300_000
       cwd, env, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
     });
     const collect = (chunk, stream) => {
+      if (outputHeader.length < 8192) {
+        outputHeader += chunk.toString('utf8');
+        reportedModel = outputHeader.match(/^model:\s*(\S+)/m)?.[1] ?? null;
+      }
       if (stream === 'stdout') { stdoutHash.update(chunk); stdout = Buffer.concat([stdout, chunk]).subarray(-4096); }
       else { stderrHash.update(chunk); stderr = Buffer.concat([stderr, chunk]).subarray(-4096); }
     };
@@ -58,7 +63,7 @@ export async function runCommand(command, { cwd, input = '', timeoutMs = 300_000
     child.on('close', (exitCode, signal) => {
       clearTimeout(timer);
       const hashes = { stdout: stdoutHash.digest('hex'), stderr: stderrHash.digest('hex') };
-      resolve({ command, spawnedCommand, exitCode, signal, timedOut, error, durationMs: Date.now() - started,
+      resolve({ command, spawnedCommand, exitCode, signal, timedOut, error, durationMs: Date.now() - started, reportedModel,
         stdout: stdout.toString('utf8'), stderr: stderr.toString('utf8'),
         outputSha256: createHash('sha256').update(JSON.stringify(hashes)).digest('hex'), streamSha256: hashes });
     });

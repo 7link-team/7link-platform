@@ -27,3 +27,20 @@ export async function execute(ctx) {
   });
   return { invocation: { exitCode: 0, durationMs: 0, outputFile } };
 }
+
+async function qa(ctx, method) {
+  const config = ctx.task.mock?.[method] ?? {};
+  const bad = config.alwaysFail || (config.failFirst && ctx.workItem.id === 'W1' && ctx.attempt === 1);
+  for (const [file, content] of Object.entries(config.files ?? {})) await writeText(inside(ctx.workspace, file), content);
+  if (method === 'testAgent' && config.scopeViolation && ctx.attempt === 1) {
+    await writeText(path.join(ctx.workspace, 'src/value.mjs'), 'export const value = 99;\n');
+    await writeText(path.join(ctx.workspace, 'outside.txt'), 'forbidden\n');
+  }
+  const findings = bad ? [{ severity: 'MAJOR', title: 'mock QA failure', evidence: 'reproduced', expected: 'pass' }] : [];
+  const conclusion = config.conclusion ?? (method === 'testAgent' ? { pass: !bad, findings }
+    : { pass: !bad, criteria: [{ ref: 'AC1', verdict: bad ? 'FAIL' : 'PASS', evidence: 'mock inspection' }], uxFindings: findings });
+  await writeJSON(path.join(ctx.runDir, `${ctx.workItem.id}.round${ctx.attempt}.${method}.context.json`), { prompt: ctx.prompt, screenshots: ctx.screenshots ?? [] });
+  return { invocation: { exitCode: config.executorFailure ? 1 : 0, durationMs: 0, outputFile: null }, conclusion };
+}
+export const testAgent = ctx => qa(ctx, 'testAgent');
+export const acceptAgent = ctx => qa(ctx, 'acceptAgent');

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { runCommand } from '../lib/process.mjs';
 import { readJSON, writeJSON, writeText, treeHashes } from '../lib/files.mjs';
 import { checkChain } from '../lib/events.mjs';
+import { screenshotConfig } from '../lib/qa.mjs';
 
 const cli = fileURLToPath(new URL('../myr.mjs', import.meta.url));
 async function fixture(t, overrides = {}, acceptanceFail = false) {
@@ -211,4 +212,184 @@ test('maxWorkItems 限制计划，runId 不得覆盖或越界', async t => {
   assert.equal((await f.state()).workItems.length, 0);
   exit(await f.run(), 1);
   exit(await f.call('run', f.taskDir, '--executor', 'mock', '--run-id', '../escape'), 1);
+});
+
+for (const method of ['testAgent', 'acceptAgent']) {
+  test(`${method} 首轮失败自动返工，内部通过后才裁决，不暂停人`, async t => {
+    const f = await fixture(t, { mock: { [method]: { failFirst: true } } });
+    exit(await f.run(), 0);
+    const state = await f.state(), item = state.workItems[0], events = await f.events();
+    assert.equal(item.attempts.length, 2);
+    assert.equal(item.attempts[0].internalQA.failedStage, method === 'testAgent' ? 'AGENT_TEST' : 'AGENT_ACCEPTANCE');
+    assert.equal(item.attempts[1].feedback.category, 'INTERNAL_QA_FAILURE');
+    assert.match((await readJSON(path.join(f.dir, 'W1.attempt2.context.json'))).prompt, /mock QA failure/);
+    assert.ok(!events.some(e => ['RUN_PAUSED', 'ESCALATED_TO_HUMAN'].includes(e.type)));
+    for (const accepted of state.workItems) {
+      const sequence = events.filter(e => e.workItemId === accepted.id);
+      assert.ok(sequence.findLastIndex(e => e.type === 'INTERNAL_QA_PASSED') < sequence.findIndex(e => e.type === 'DECISION_MADE'));
+      assert.equal(accepted.attempts.at(-1).internalQA.AGENT_ACCEPTANCE.ok, true);
+    }
+    const report = await fs.readFile(path.join(f.dir, 'report.md'), 'utf8');
+    assert.match(report, /内部一次通过率：50.0%/);
+    assert.match(report, /平均内部轮次：1.50/);
+    assert.match(report, /内部拦截的问题数（未打扰人）：1/);
+  });
+}
+
+test('内部轮次优先于旧预算，用尽才升级且 reason 固定', async t => {
+  const f = await fixture(t, { maxAttempts: 1, maxInternalRounds: 2, mock: { acceptAgent: { alwaysFail: true } } });
+  exit(await f.run(), 3);
+  assert.equal((await f.state()).workItems[0].attempts.length, 2);
+  const events = await f.events();
+  assert.equal(events.filter(e => e.type === 'RUN_PAUSED').length, 1);
+  assert.deepEqual(events.filter(e => e.type === 'ESCALATED_TO_HUMAN').map(e => e.data.reason), ['INTERNAL_ROUNDS_EXHAUSTED']);
+  assert.equal(events.filter(e => e.type === 'INTERNAL_QA_FAILED').length, 2);
+  assert.ok(!events.some(e => e.type === 'DECISION_MADE'));
+});
+
+test('非自动 L3 也只在内部返工全部通过后暂停一次', async t => {
+  const f = await fixture(t, { mock: { testAgent: { failFirst: true } } });
+  exit(await f.run(false), 2);
+  assert.equal((await f.state()).workItems[0].attempts.length, 2);
+  const events = await f.events();
+  assert.equal(events.filter(e => e.type === 'RUN_PAUSED').length, 1);
+  assert.ok(!events.some(e => e.type === 'ESCALATED_TO_HUMAN'));
+  assert.ok(events.findIndex(e => e.type === 'INTERNAL_QA_PASSED') < events.findIndex(e => e.type === 'RUN_PAUSED'));
+});
+
+test('测试 Agent 越界改动恢复 tracked 文件并删除 untracked 文件，判失败', async t => {
+  const f = await fixture(t, { maxInternalRounds: 1, mock: { testAgent: { scopeViolation: true } } });
+  exit(await f.run(), 3);
+  assert.equal(await fs.readFile(path.join(f.dir, 'workspace/src/value.mjs'), 'utf8'), 'export const value = 42;\n');
+  await assert.rejects(fs.access(path.join(f.dir, 'workspace/outside.txt')), { code: 'ENOENT' });
+  const item = (await f.state()).workItems[0];
+  assert.equal(item.attempts[0].internalQA.AGENT_TEST.ok, false);
+  assert.deepEqual(new Set(item.attempts[0].internalQA.AGENT_TEST.violations), new Set(['src/value.mjs', 'outside.txt']));
+  assert.ok((await f.events()).some(e => e.type === 'QA_SCOPE_VIOLATION' && e.data.rolledBack));
+});
+
+test('新增 QA 测试即使原有命令未覆盖也必跑，失败不能进入验收 Agent', async t => {
+  const f = await fixture(t, { maxInternalRounds: 1, mock: { testAgent: { files: {
+    'tests/qa/boundary.test.mjs': "import { test } from 'node:test'; test('QA_BOUNDARY', () => { throw new Error('boundary failed'); });\n",
+  } } } });
+  exit(await f.run(), 3);
+  const qa = (await f.state()).workItems[0].attempts[0].internalQA;
+  assert.equal(qa.AGENT_TEST.verification.find(v => v.name === 'qa-tests').exitCode, 1);
+  assert.equal(qa.AGENT_ACCEPTANCE, undefined);
+});
+
+test('通过的 QA 测试纳入最终 Git 证据，旧 review 和独立复验仍可用', async t => {
+  const f = await fixture(t, { mock: { testAgent: { files: {
+    'tests/qa/中文回归.test.mjs': "import { test } from 'node:test'; test('regression', () => {});\n",
+  } } } });
+  exit(await f.run(false), 2);
+  const attempt = (await f.state()).workItems[0].attempts[0];
+  assert.ok(attempt.filesChanged.includes('tests/qa/中文回归.test.mjs'));
+  assert.equal(attempt.internalQA.AGENT_TEST.verification.find(v => v.name === 'qa-tests').exitCode, 0);
+  exit(await f.call('review', f.dir, 'W1', 'approve', '--by', 'lead'), 0);
+  exit(await f.call('resume', f.dir), 2);
+  exit(await f.call('review', f.dir, 'W2', 'approve', '--by', 'lead'), 0);
+  exit(await f.call('resume', f.dir), 0);
+  exit(await f.call('verify', f.dir), 0);
+});
+
+test('截图失败记录 UNVERIFIED，仍调用验收 Agent；CLI 覆盖配置不改输入', async t => {
+  const f = await fixture(t, { qa: { screenshot: { page: 'other.html', viewports: [[100, 100]] } } });
+  const original = process.env.MYR_BROWSER;
+  process.env.MYR_BROWSER = path.join(f.root, 'missing-browser.exe');
+  try {
+    exit(await f.call('run', f.taskDir, '--executor', 'mock', '--run-id', 'case', '--auto-approve-if-verified',
+      '--qa-screenshot', 'src/value.mjs', '--qa-viewports', '900x900,420x800', '--acceptor-model', 'different-model'), 0);
+  } finally { if (original === undefined) delete process.env.MYR_BROWSER; else process.env.MYR_BROWSER = original; }
+  const state = await f.state();
+  assert.deepEqual(state.qaScreenshot, { page: 'src/value.mjs', viewports: [[900, 900], [420, 800]] });
+  assert.equal(state.acceptorModel, 'different-model');
+  for (const item of state.workItems) {
+    const qa = item.attempts[0].internalQA;
+    assert.ok(qa.screenshots.unverified.some(e => e.includes('未能截图')));
+    assert.ok(qa.AGENT_ACCEPTANCE.conclusion.criteria.some(c => c.verdict === 'UNVERIFIED'));
+  }
+  assert.match(await fs.readFile(path.join(f.dir, 'report.md'), 'utf8'), /未能截图/);
+});
+
+test('工作项不交付被截图页面时不截图，也不因此记 UNVERIFIED', async t => {
+  const f = await fixture(t);
+  const original = process.env.MYR_BROWSER;
+  process.env.MYR_BROWSER = path.join(f.root, 'missing-browser.exe');
+  try {
+    exit(await f.call('run', f.taskDir, '--executor', 'mock', '--run-id', 'case', '--auto-approve-if-verified', '--qa-screenshot', 'index.html'), 0);
+  } finally { if (original === undefined) delete process.env.MYR_BROWSER; else process.env.MYR_BROWSER = original; }
+  for (const item of (await f.state()).workItems) {
+    const qa = item.attempts[0].internalQA;
+    assert.deepEqual([qa.screenshots.files, qa.screenshots.unverified, qa.screenshots.invocations], [[], [], []]);
+    assert.ok(!qa.AGENT_ACCEPTANCE.conclusion.criteria.some(c => c.ref === 'SCREENSHOT'));
+  }
+});
+
+test('缺省内部预算为五轮；截图参数校验拒绝越界和无效视口', async t => {
+  const f = await fixture(t, { maxAttempts: undefined });
+  exit(await f.run(), 0);
+  assert.equal((await f.state()).task.maxInternalRounds, 5);
+  assert.throws(() => screenshotConfig({}, { qaScreenshot: '../index.html' }), /越界/);
+  for (const viewport of ['0x800', '900', '900xNaN', '900x800,']) {
+    assert.throws(() => screenshotConfig({}, { qaScreenshot: 'index.html', qaViewports: viewport }));
+  }
+});
+
+test('ignored 越界文件和 Git 元数据也会恢复，不能躲过范围检查', async t => {
+  const f = await fixture(t, { maxInternalRounds: 1, mock: { files: { '.gitignore': 'ignored.txt\n' }, testAgent: { files: {
+    'ignored.txt': 'forbidden\n', '.git/config': '[broken]\n',
+  } } } });
+  exit(await f.run(), 3);
+  await assert.rejects(fs.access(path.join(f.dir, 'workspace/ignored.txt')), { code: 'ENOENT' });
+  assert.match(await fs.readFile(path.join(f.dir, 'workspace/.git/config'), 'utf8'), /autocrlf = false/);
+  assert.ok((await f.state()).workItems[0].attempts[0].internalQA.AGENT_TEST.violations.includes('.git/config'));
+});
+
+test('只读验收 Agent 越界写入也恢复并返工，不能凭 pass 声明穿透', async t => {
+  const f = await fixture(t, { maxInternalRounds: 1, mock: { acceptAgent: { files: { 'src/value.mjs': 'export const value = 99;\n' } } } });
+  exit(await f.run(), 3);
+  assert.equal(await fs.readFile(path.join(f.dir, 'workspace/src/value.mjs'), 'utf8'), 'export const value = 42;\n');
+  assert.equal((await f.state()).workItems[0].attempts[0].internalQA.failedStage, 'AGENT_ACCEPTANCE');
+});
+
+test('即使实现者忽略 QA 路径，通过的新测试仍进入最终 commit', async t => {
+  const f = await fixture(t, { mock: { files: { '.gitignore': 'tests/qa/\n' }, testAgent: { files: {
+    'tests/qa/ignored.test.mjs': "import { test } from 'node:test'; test('QA_IGNORED', () => {});\n",
+  } } } });
+  exit(await f.run(), 0);
+  assert.ok((await f.state()).workItems[0].attempts[0].filesChanged.includes('tests/qa/ignored.test.mjs'));
+  exit(await f.call('verify', f.dir), 0);
+});
+
+test('测试 Agent 持续调用故障作为内部失败，完整消耗预算后才升级', async t => {
+  const f = await fixture(t, { maxInternalRounds: 2, mock: { testAgent: { executorFailure: true } } });
+  exit(await f.run(), 3);
+  const item = (await f.state()).workItems[0];
+  assert.equal(item.attempts.length, 2);
+  for (const attempt of item.attempts) {
+    assert.equal(attempt.internalQA.failedStage, 'AGENT_TEST');
+    assert.equal(attempt.internalQA.AGENT_TEST.invocations.length, 2);
+  }
+  assert.equal((await f.events()).filter(e => e.type === 'RUN_PAUSED').length, 1);
+});
+
+for (const conclusion of [
+  { pass: true, criteria: [{ ref: 'AC1', verdict: 'FAIL', evidence: 'missing' }], uxFindings: [] },
+  { pass: true, criteria: [], uxFindings: [{ severity: 'BLOCKER', title: 'unusable', evidence: 'cannot play', expected: 'playable' }] },
+  { pass: true },
+  { pass: true, criteria: [null], uxFindings: [] },
+]) {
+  test(`产品验收 fail/严重体验问题/无效契约均不可穿透：${JSON.stringify(conclusion)}`, async t => {
+    const f = await fixture(t, { maxInternalRounds: 1, mock: { acceptAgent: { conclusion } } });
+    exit(await f.run(), 3);
+    assert.equal((await f.state()).workItems[0].attempts[0].internalQA.failedStage, 'AGENT_ACCEPTANCE');
+  });
+}
+
+test('产品验收只按当前工作项的验收标准判定，其他工作项的 FAIL 不阻塞', async t => {
+  const conclusion = { pass: true, criteria: [{ ref: 'AC99', verdict: 'FAIL', evidence: 'belongs to another item' }], uxFindings: [] };
+  const f = await fixture(t, { maxInternalRounds: 1, mock: { acceptAgent: { conclusion } } });
+  exit(await f.run(), 0);
+  assert.ok((await f.state()).workItems.every(item => item.attempts[0].internalQA.AGENT_ACCEPTANCE.ok));
 });
