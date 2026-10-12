@@ -40,6 +40,14 @@
 - D110 (user: supervisor agents create agents; humans set permissions/quota/budget; UI marks human- vs AI-created): DONE in PRD §10.8,
   00 v1.8, 03 (cost event agent_id), 05 (origin/lineage, spawn requests, orphan/adopt), 08 (spawn grants, policy rule, inbox), prototype
   (members source filter + supervisor tree, lineage drawer, spawn approval, grant dialog, policy section, channel card); runtime-tested; commit f0a1fa8.
+- Pushed chaosplus to origin; remote warns committer email != Codeup account (warning only). Spawn approval default
+  stays REQUIRE_APPROVAL (user confirmed).
+- ACTIVE (user: "二级页面补充，能用 codex cli 做的让他去做"): main prototype.html now loads prototype/pages-{project,fleet,exec,
+  governance}.js after core; NAVPARENT + crumb parent; portal-* sub-routes; entry links wired (execution/, machine/, agent/, intake/,
+  intake-channels, requirement/, delivery/, ksource/, retrieval-debug, audit-event/, delegation/, spawn-grant/, heavy/, settings,
+  portal-submit|clarify|accept, newProjectWizard/newWorkItem/newIntake/newDelivery). 4 codex exec jobs running (briefs in %TEMP%/myr-codex).
+  DONE: 4 codex jobs wrote only their own files; verified: node --check all, 36 routes 0 runtime errors, 9 entry dialogs OK,
+  screenshots desktop+mobile; fixes by me: 主导→主管 naming, Heavy branch reviewer→executor (echo), BOM stripped. Committed + pushed.
 - Next: WAIT for user's prototype review feedback (docs/myrmidon/prototype.html). Do not start implementation until told.
   Next: when back -> verification grep pass (dispatch.applied consumers, BudgetGuard, idempotency tables, PENDING_CONFIRM, 176409/176425,
   stream_seq in 03, /pause, /drain, intakes table) + spot re-audit; then prototype.html.
