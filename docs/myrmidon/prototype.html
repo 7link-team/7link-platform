@@ -382,7 +382,7 @@ const NAV=[
   ["工作台",[["overview","layout-dashboard","总览"],["inbox","gavel","我的裁决",INBOX.length]]],
   ["交付",[["intakes","inbox","来件",2],["projects","folder-kanban","项目"],["work","kanban-square","工作项"],["review","scale","评审台"],["executions","terminal-square","执行"],["deliveries","package-check","交付"]]],
   ["协作",[["channels","hash","频道"]]],
-  ["团队",[["members","users-round","成员与 Agent"],["machines","server","机器"],["knowledge","library-big","知识库"],["policy","shield-half","授权与策略"]]],
+  ["团队",[["members","users-round","成员与 Agent"],["machines","server","机器"],["knowledge","library-big","知识库"],["templates","layout-template","模板库"],["policy","shield-half","授权与策略"]]],
   ["目标",[["goals","target","目标树"],["plans","calendar-check","我的计划"],["reports","file-chart-column","报告中心"]]],
   ["治理",[["audit","scroll-text","审计"],["gateway","plug-zap","API 网关","实验"]]]
 ];
@@ -500,11 +500,11 @@ function toggleMode(m){if(m==="AUTONOMOUS"){openModal(`<div class="modal-h" styl
 
 /* ================= 工作项（02） ================= */
 const COLS=[["READY","就绪",["READY"]],["DOING","进行中",["CLAIMED","IN_PROGRESS"]],["VERIFY","声明与验证",["AGENT_CLAIMED_DONE","VERIFYING"]],["REVIEW","待裁决",["NEEDS_HUMAN_REVIEW"]],["BAD","返工 / 阻塞 / 失败",["REWORK","BLOCKED","EXECUTION_FAILED"]],["DONE","已接受",["ACCEPTED"]]];
-PAGES.work=()=>head("交付","工作项","看板列受状态机约束：Agent 只能把工作项推进到「已声明完成」，接受必须是裁决。",`<span class="chip on">全部项目</span><span class="chip">账单中心</span><span class="chip">商户控制台</span><button class="btn primary" onclick="(window.newWorkItem||(()=>toast('新建工作项')))()">${I("plus")}新建</button>`)+
+PAGES.work=()=>head("交付","工作项","看板列受状态机约束：Agent 只能把工作项推进到「已声明完成」，接受必须是裁决。",`<span class="chip on">全部项目</span><span class="chip">账单中心</span><span class="chip">商户控制台</span><button class="btn" onclick="go('test-cases')">${I("flask-conical")}用例与测试</button><button class="btn" onclick="go('worklog')">${I("timer")}工时</button><button class="btn primary" onclick="(window.newWorkItem||(()=>toast('新建工作项')))()">${I("plus")}新建</button>`)+
  `<div class="kanban">${COLS.map(([k,t,sts])=>{const items=WI.filter(w=>sts.includes(w.s));return `<div class="col"><div class="col-h">${t}<span class="badge">${items.length}</span></div>${items.map(w=>`<div class="wi" onclick="go('workitem/${w.id}')"><div class="row"><span class="mono muted xs">${w.id}</span><span style="margin-left:auto">${ladder(w.l)}</span></div><div class="t">${w.t}</div><div class="row">${w.who?A(w.who):""}<span class="badge">${w.type}</span>${w.risk==="HIGH"?S("EXECUTION_FAILED","HIGH"):""}${w.br>1?`<span class="badge b-primary">${I("git-branch")}${w.br}</span>`:""}<span style="margin-left:auto">${S(w.s)}</span></div>${w.block?`<div class="note" style="margin-top:8px;font-size:12px">${I("circle-slash")}${w.block}</div>`:""}</div>`).join("")||`<div class="empty xs">暂无</div>`}</div>`}).join("")}</div>`;
 
 PAGES.workitem=(id)=>{const w=WI.find(x=>x.id===id)||WI[0];
- return head(w.id+" · "+w.type,w.t,`账单中心 · <a href=\"#/requirement/R-12\" style=\"text-decoration:underline\">R-12 v4</a> · 风险 ${w.risk} · 累计成本 ${money(w.cost)}`,`${S(w.s)}<button class="btn" onclick="go('review')">${I("scale")}去评审台</button>`)+
+ return head(w.id+" · "+w.type,w.t,`账单中心 · <a href=\"#/requirement/R-12\" style=\"text-decoration:underline\">R-12 v4</a> · 风险 ${w.risk} · 累计成本 ${money(w.cost)}`,`${S(w.s)}<button class="btn" onclick="go('readiness/'+'${w.id}')">${I("list-checks")}就绪检查</button><button class="btn" onclick="go('internal-qa/'+'${w.id}')">${I("shield-check")}内部验收</button><button class="btn" style="color:var(--danger)" onclick="(window.qaAndon||(()=>toast('停线')))('${w.id}')">${I("octagon-pause")}停线</button><button class="btn" onclick="go('review')">${I("scale")}去评审台</button>`)+
  `<div style="margin-bottom:16px">${ladderBig(w.l)}</div>
  <div class="tabs" role="tablist">${["执行分支","验收标准 ↔ 证据","验证","裁决与审计"].map((t,i)=>`<button class="${i?"":"on"}" onclick="wiTab(this,${i})">${t}</button>`).join("")}</div>
  <div id="wiTab">${branchTree()}</div>`};
@@ -690,7 +690,7 @@ PAGES.knowledge=()=>head("记忆与知识","知识库","基于数据库检索：
 /* ================= 授权与策略（08） ================= */
 PAGES.policy=()=>{const acts=["读取","执行","分派","提交证据","验证","通过/拒绝","要求修改","范围变更","合并","正式交付","管理"];
  const rows=[["团队所有者","yyyyyyyyyyy"],["交付负责人","yyyyyyyyyyn"],["工程师","yyn yynynnnn".replace(" ","")],["Agent 执行者","yyn yynnnnnn".replace(" ","")],["Agent 评审员","ynnyydd ndnn".replace(/ /g,"")],["Agent 主导","ypnnnnnnnnn"],["Agent 协调员","ynnnnnnnnnn"]];
- return head("治理","授权与策略","拒绝默认优先；裁决是权限动作。全自治模式下裁决经「委托」临时授予 Agent，范围、期限、条件都受限。",`<button class="btn" onclick="toast('升级规则编辑器')">${I("siren")}升级规则</button><button class="btn" onclick="grantSpawn()">${I("id-card")}编制授权</button><button class="btn primary" onclick="grantDelegation()">${I("key-round")}授予委托</button>`)+
+ return head("治理","授权与策略","拒绝默认优先；裁决是权限动作。全自治模式下裁决经「委托」临时授予 Agent，范围、期限、条件都受限。",`<button class="btn" onclick="toast('升级规则编辑器')">${I("siren")}升级规则</button><button class="btn" onclick="go('workflow-config')">${I("workflow")}流转配置</button><button class="btn" onclick="go('integration')">${I("plug")}云效集成</button><button class="btn" onclick="grantSpawn()">${I("id-card")}编制授权</button><button class="btn primary" onclick="grantDelegation()">${I("key-round")}授予委托</button>`)+
  `<div class="grid g12"><div class="c12">${card("权限矩阵（角色 × 动作）",`<div class="table-wrap"><table class="matrix"><thead><tr><th>角色</th>${acts.map(a=>`<th>${a}</th>`).join("")}</tr></thead><tbody>${rows.map(([r,m])=>`<tr><td><b>${r}</b></td>${[...m].map(c=>`<td>${c==="y"?`<span class="mx y">${I("check")}</span>`:c==="d"?`<span class="mx d">委托</span>`:c==="p"?`<span class="mx d">策略</span>`:`<span class="mx n">${I("minus")}</span>`}</td>`).join("")}</tr>`).join("")}</tbody></table></div><div class="muted xs" style="padding:10px 14px">不可委托：范围变更、正式交付、模式切换、授予委托、接管、吊销机器、拒绝来件、新建项目、批准规则记忆、生产访问。</div>`,{pad:0,icon:"grid-3x3"})}</div>
  <div class="c7">${card("委托",`<table><thead><tr><th>受托 Agent</th><th>动作</th><th>范围与条件</th><th>剩余</th><th>状态</th></tr></thead><tbody>${[["cy","通过 / 要求修改","商户控制台 · 风险 ≤ LOW · 成本 ≤ $5 · 非自产 · 验证全过","2 天 4 小时","冻结"],["cy","合并","商户控制台 · 风险 ≤ LOW · 验证全过","2 天 4 小时","冻结"],["iris","来件转换（新需求）","商户控制台 · 仅 NEW_REQUIREMENT","6 天","有效"]].map((r,i)=>`<tr class="click" onclick="go('delegation/D-${17+i}')"><td>${who(r[0])}</td><td>${r[1]}</td><td class="small">${r[2]}</td><td class="small">${r[3]}</td><td>${r[4]==="冻结"?S("INCONCLUSIVE","已冻结 · 预算"):S("PASSED","有效")}</td></tr>`).join("")}</tbody></table>`,{pad:0,icon:"key-round"})}</div>
  <div class="c12">${card("编制授权（主管 Agent 自建 Agent）",`<div class="table-wrap"><table><thead><tr><th>主管</th><th>范围</th><th>在岗名额</th><th>今日创建</th><th>预算</th><th>可建角色</th><th>审批</th><th>剩余</th><th>状态</th></tr></thead><tbody>${[["SG-3","账单中心、商户控制台",[2,3],[1,5],[18.4,50],"执行者 / 协调员","逐个人工","6 天","PASSED","有效"],["SG-2","商户控制台",[0,2],[0,3],[9.1,20],"协调员","自动（全自治）","已到期","CANCELLED","已到期"]].map(g=>`<tr class="click" onclick="go('spawn-grant/${g[0]}')"><td>${who("lead")}<div class="mono xs muted">${g[0]}</div></td><td class="small">${g[1]}</td><td style="min-width:90px">${g[2][0]}/${g[2][1]}<div class="progress"><i style="width:${g[2][0]/g[2][1]*100}%"></i></div></td><td>${g[3][0]}/${g[3][1]}</td><td style="min-width:120px">$${g[4][0].toFixed(2)} / $${g[4][1]}<div class="progress"><i style="width:${g[4][0]/g[4][1]*100}%"></i></div></td><td class="small">${g[5]}</td><td class="small">${g[6]}</td><td class="small">${g[7]}</td><td>${S(g[8],g[9])}</td></tr>`).join("")}</tbody></table></div><div class="row wrap" style="padding:10px 14px;justify-content:space-between"><span class="muted xs">子 Agent 成本同时计入编制预算与项目预算；80% 通知，100% 耗尽后子 Agent 停止接新执行。授权到期 / 撤销 → 子 Agent 停机并标记「孤儿」。</span><button class="btn sm primary" onclick="grantSpawn()">${I("plus")}授予编制授权</button></div>`,{pad:0,icon:"id-card"})}</div>
@@ -731,6 +731,9 @@ PAGES.portal=()=>`<div class="portal-wrap">
 <script src="prototype/pages-exec.js"></script>
 <script src="prototype/pages-governance.js"></script>
 <script src="prototype/pages-goals.js"></script>
+<script src="prototype/pages-quality.js"></script>
+<script src="prototype/pages-templates.js"></script>
+<script src="prototype/pages-yunxiao.js"></script>
 <script>route();</script>
 </body>
 </html>

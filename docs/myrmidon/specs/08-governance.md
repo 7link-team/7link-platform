@@ -18,7 +18,7 @@
 6b. **控制台外壳**（§8.6）：侧栏菜单分组、顶栏裁决徽标、移动端底栏、`⌘K` 命令面板。
 7. **「我的裁决」**：跨模块待办读模型、与源状态的一致性（≤1s）、键盘操作、无批量通过、跨设备移除。
 8. **总览**：各磁贴的数据源与刷新策略。
-9b. **编制授权（D110，主管 Agent 自建 Agent）**：团队所有者给主导 Agent 的建 Agent 配额、角色 / 机器 / 模型范围、预算与审批方式；配额原子占用与释放、成本累计与耗尽、模式切换 / 接管时的收紧（§3.8.13–3.8.15、§4.5、BR-08-50…59）。Agent 的创建、收编、孤儿处理本身归 05。
+9b. **编制授权（D110，主管 Agent 自建 Agent）**：团队所有者给主管 Agent 的建 Agent 配额、角色 / 机器 / 模型范围、预算与审批方式；配额原子占用与释放、成本累计与耗尽、模式切换 / 接管时的收紧（§3.8.13–3.8.15、§4.5、BR-08-50…59）。Agent 的创建、收编、孤儿处理本身归 05。
 9. **危险操作登记表**：step-up 重新认证的用途、目标格式、时效（复用底座 `authn` 重新认证）。
 
 **不解决（边界）**
@@ -28,7 +28,7 @@
 | 裁决本身（Decision 表、状态迁移、返工计数、原地打转检测、INCONCLUSIVE 暂停） | 02 |
 | 交互授权与人工验证的写入、执行暂停 | 03 |
 | 机器吊销流程 | 04 |
-| Agent 生命周期、主导 Agent 派单策略、`AgentRole` | 05 |
+| Agent 生命周期、主管 Agent 派单策略、`AgentRole` | 05 |
 | 记忆审批流程 | 06 |
 | 项目模式、holds、预算记账与阈值（`budget.threshold_reached` 由 07 发布）、KPI 计算 | 07 |
 | 通知渠道投递（Web Push、邮件发送）、站内通知存储与收件 HTTP、outbox、SSE、JobQueue、平台幂等、模块菜单贡献机制 | 09 |
@@ -58,12 +58,21 @@
 | US-08-15 | 作为团队所有者，我要生产环境访问必须单独申请、他人批准、限时，且 Agent 永远不能获得 | MVP |
 | US-08-16 | 作为团队所有者，我要项目级覆盖升级规则（比团队默认更严） | v1.1 |
 | US-08-17 | 作为团队所有者，我要预约未来生效的委托 | v1.1 |
-| US-08-18 | 作为团队所有者，我要给主导 Agent 一份「编制授权」：最多同时几个 Agent、每天最多建几个、可建哪些角色、用哪些机器和模型、总预算与单 Agent 预算、到期时间，以便它在边界内自己扩编 | MVP |
-| US-08-19 | 作为团队所有者，我要选择主导 Agent 建 Agent 是「每次需人批准」还是「授权内自动」，且混编项目永远需要人批准 | MVP |
+| US-08-18 | 作为团队所有者，我要给主管 Agent 一份「编制授权」：最多同时几个 Agent、每天最多建几个、可建哪些角色、用哪些机器和模型、总预算与单 Agent 预算、到期时间，以便它在边界内自己扩编 | MVP |
+| US-08-19 | 作为团队所有者，我要选择主管 Agent 建 Agent 是「每次需人批准」还是「授权内自动」，且混编项目永远需要人批准 | MVP |
 | US-08-20 | 作为团队所有者，我要在编制授权列表里看到配额占用、今日新建数、预算进度与剩余时间，并能立即撤销；接管项目时这些授权自动撤销 | MVP |
 | US-08-21 | 作为审计者，我要按「人创建 / AI 创建」筛选 Agent 相关审计事件，并看到每个 AI 创建的 Agent 来自哪份编制授权 | MVP |
 
 ---
+
+### 2.x D112 / D113 增补用户故事（v2.0，00 §15）
+
+| ID | 用户故事 | 版本 |
+|---|---|---|
+| US-08-22 | 作为交付负责人，我只想在 Agent 团队内部（测试 Agent、产品验收 Agent）都通过之后才收到待裁决项；内部不通过的不应打扰我 | MVP |
+| US-08-23 | 作为任何成员（含 Agent），我发现严重问题时可以拉 Andon 停线，由人确认处置后恢复 | MVP |
+| US-08-24 | 作为团队所有者，人或甲方发现了内部已放行的问题时，我要看到穿透记录，并让测试 / 验收 Agent 从中学习 | MVP |
+| US-08-25 | 作为交付负责人，我要确保 Agent 的执行计划由人或不同模型家族的评审者批准，且主管 Agent 不能批准自己派出的计划 | MVP |
 
 ## 3. 领域模型与数据表
 
@@ -142,6 +151,20 @@
 
 **触发**：模块 `Start` 后对全部租户执行一次；`governance.seed_reconcile` 每 1 小时；任一 governance API 首次访问某租户且无种子行时同步执行。底座无「租户已创建」钩子（CR-08-08 可选），最长 1 小时滞后由首次访问兜底。
 
+### 3.3b D112 / D113 权限码登记与默认授予（00 §15.5）
+
+| 权限码 | 注册模块 | DataScoped | NonDelegable | HumanOnly | PolicyOnly | 默认授予 |
+|---|---|---|---|---|---|---|
+| `andon_pull` | delivery(02) | 是 | — | — | — | 全部成员：`team_owner`、`delivery_lead`、`engineer` 与**全部 Agent 角色**（执行者、评审、协调、主管、测试、验收、助理） |
+| `andon_clear` | delivery(02) | 是 | — | ✓ | — | `team_owner`、`delivery_lead`；工作项的 `accountable_principal_id` 隐式持有（S4 关系授权） |
+| `exception_decide` | delivery(02/07) | 是 | ✓ | ✓ | — | `team_owner`、`delivery_lead` |
+| `plan_approve` | delivery(02) | 是 | — | — | 人：角色；Agent：仅策略 `plan_review` | `team_owner`、`delivery_lead`、`engineer`（条件：风险 ≤ MEDIUM）；Agent 不经角色授予 |
+| `acceptance_suite_manage` | execution(03) | 是 | ✓ | ✓ | — | `team_owner`、`delivery_lead` |
+| `template_manage` | templates(11) | 否 | — | ✓ | — | `team_owner`、`delivery_lead` |
+| `integration_manage` | integration(12) | 否 | ✓ | ✓ | — | `team_owner` |
+
+`HumanOnly` 集合扩为：`NonDelegable` ∪ {`interaction_respond`, `andon_clear`, `acceptance_suite_manage`, `template_manage`}；`NonDelegable` 增加 `exception_decide`、`acceptance_suite_manage`、`integration_manage`；`PolicyOnly` 增加「`plan_approve` 对 AGENT 主体」。播种升级：已有租户在 catalog 升级时按 BR-08-04 追加授予，不回收已有自定义。
+
 ### 3.4 环境维度（生产访问）
 
 - `Environment` 枚举：`DEFAULT`、`PRODUCTION`（CR-08-04）。任何作用于生产环境的动作（如 v1.1 生产部署、生产密钥读取）在 `AuthorityRequest.environment=PRODUCTION` 时**额外**要求 `production_access`。
@@ -173,7 +196,7 @@ type AuthorityRequest struct {
     Spawn       *SpawnRequestFacts       // Code=agent_spawn 时必填（D110）；缺失 → S0 拒绝
 }
 type SpawnRequestFacts struct { // 05 在建 Agent 事务内填充（D110）
-    SupervisorAgentID guid.ID            // 发起的主导 Agent（= PrincipalID 对应的 Agent）
+    SupervisorAgentID guid.ID            // 发起的主管 Agent（= PrincipalID 对应的 Agent）
     ProjectIDs []guid.ID                 // 新 Agent 默认参与的项目（≥1）
     Role string                          // EXECUTOR | COORDINATOR
     MachineID guid.ID; Runtime string; Model string; Effort string
@@ -209,7 +232,7 @@ type AuthorityDecision struct {
 | S0 | 默认拒绝与输入 | 初值 `Allowed=false`；未知码、缺租户、工作项类码缺 `Facts` → 拒 | `INVALID_REQUEST` |
 | S1 | 主体状态 | HUMAN/AGENT/MACHINE：IAM explain 的 `inactive_membership/inactive_tenant` → 拒；AGENT：05 `AgentDirectory` 状态须 ACTIVE；SYSTEM：`(SystemJob, Code)` 须在 `SystemActions` 登记（各模块启动时登记，governance 校验不含 `NonDelegable`） | `PRINCIPAL_INACTIVE` / `SYSTEM_NOT_REGISTERED` |
 | S2 | 不可委托与环境硬约束 | (a) `Code ∈ HumanOnly` 且 ActorKind≠HUMAN → 拒；(b) `Environment=PRODUCTION`：非 HUMAN 拒；HUMAN 须 `production_access` 且来源为 `temporary_role`（§3.4）；(c) `intake_convert` 且 `IntakeConvertMode=NEW_PROJECT` → 视为 `project_create`，按 (a) 处理 | `AGENT_PROHIBITED` / `PRODUCTION_ACCESS_REQUIRED` / `NON_DELEGABLE` |
-| S3 | 职责分离 | （`ActorKind=SYSTEM` 时跳过 S3/S4/S6，由 S7 策略规则判定）码 ∈ {`decision_approve`,`decision_reject`,`decision_request_changes`,`code_merge`}：(a) AGENT 且 `SelfProduced` → 拒（任何来源）；(b) HUMAN 且 `SelfProduced` 且码 ∈ {approve, merge} → 设置 `sod_human_self_approval=DENY` 时拒，`ALLOW_WITH_REASON` 时放行并在 detail 标 `sod_override=true`（02 须要求理由 ≥20 字）；(c) AGENT 且 `DispatchedByActor` → 只允许 S6 委托来源（S4 结果中的 ROLE 匹配被忽略）；(d) 码 = `intake_convert` 且主体 = `TriageCardAuthorID` → 拒（不得转换自己起草的分诊卡，复审 #6） | `SELF_REVIEW`（(a)(b)(d)：裁决/合并自己产出的工作、转换自己起草的分诊卡）/ `SEPARATION_OF_DUTIES`（(c) 及其他：如主导 Agent 裁决其派出的工作，detail 给子原因）|
+| S3 | 职责分离 | （`ActorKind=SYSTEM` 时跳过 S3/S4/S6，由 S7 策略规则判定）码 ∈ {`decision_approve`,`decision_reject`,`decision_request_changes`,`code_merge`}：(a) AGENT 且 `SelfProduced` → 拒（任何来源）；(b) HUMAN 且 `SelfProduced` 且码 ∈ {approve, merge} → 设置 `sod_human_self_approval=DENY` 时拒，`ALLOW_WITH_REASON` 时放行并在 detail 标 `sod_override=true`（02 须要求理由 ≥20 字）；(c) AGENT 且 `DispatchedByActor` → 只允许 S6 委托来源（S4 结果中的 ROLE 匹配被忽略）；(d) 码 = `intake_convert` 且主体 = `TriageCardAuthorID` → 拒（不得转换自己起草的分诊卡，复审 #6） | `SELF_REVIEW`（(a)(b)(d)：裁决/合并自己产出的工作、转换自己起草的分诊卡）/ `SEPARATION_OF_DUTIES`（(c) 及其他：如主管 Agent 裁决其派出的工作，detail 给子原因）|
 | S4 | IAM 角色授权 | `policyx.WithResourceContext(ctx, {Type, ID, Owner, Attrs})`，Attrs = `risk`、`work_item_type`、`verification`（`ALL_PASSED`/`NOT_PASSED`）、`project_mode`、`environment`（全部服务端事实，供角色权限条件如 `{"version":1,"in":[{"context":"resource.attr.risk"},{"value":["LOW"]}]}` 使用）；调 `ExplainResource`（Resource 为项目时 `ExplainEntity`）。`reason=explicit_deny` → 拒（显式拒绝优先于一切，含委托）。把 matches 分成「载体角色匹配」与「其他匹配」；其他匹配允许 → **允许**，来源 `ROLE:<key>`（§3.5.1） | `EXPLICIT_DENY` |
 | S5 | 不可委托门 | `Code ∈ NonDelegable` 且 S4 未允许 → 拒（不进入 S6/S7） | `NON_DELEGABLE` |
 | S6 | 委托 | 仅 `Code ∈ Delegable` 且 ActorKind=AGENT。候选 = `governance_delegations` 中 `state=ACTIVE ∧ grantee=主体 ∧ project=ProjectID ∧ Code∈actions ∧ ends_at>now`，且 S4 matches 中存在对应载体角色在本项目的 allow 匹配（证明 IAM 绑定仍在）。对每个候选按序校验（**适用范围**：码为工作项类 `decision_*` / `code_merge` 时校验 ①–⑨ 与 ⑪；码为 `intake_convert` 时只校验 ⑦⑧⑩，其余条件对来件无意义，复审 #6）：①`Type∈work_item_types`（空=全部）；②`Risk ≤ max_risk`（LOW<MEDIUM；HIGH 永不满足）；③`CostMicros ≤ cost_cap_micros`；④`RequiredVerificationsPassed`；⑤`QualityReworkCount < max_rework`；⑥`!RequireHumanDecision`；⑦无覆盖该工作项或项目的 `hold_delegations=true` 未关闭 incident；⑧07 `ProjectGate.CanDelegatedDecide(project)`；⑨`code_merge` 时 `Risk=LOW`；⑩`intake_convert` 时项目 AUTONOMOUS 且 `IntakeConvertMode=NEW_REQUIREMENT`；⑪工作项当前 claim 的 SENSITIVE_PATH / LOW_SELF_CONFIDENCE 评估回执已落库（`governance_claim_evaluations`，§7.3；未落库 = 评估仍在途，防止委托 APPROVE 抢在升级判定之前）。首个全部通过者胜（按 `ends_at` 升序、`id` 升序）；`tx≠nil` 时对其 `SELECT … FOR SHARE`（PG / MySQL 8 语法 `FOR SHARE`；SQLite 无行锁，依赖单写者，见 BR-08-20）并在锁后复核 `state=ACTIVE ∧ ends_at>now`。来源 `DELEGATION:<id>` | 未通过的首个条件：`DELEGATION_RISK`/`_COST`/`_VERIFICATION`/`_REWORK`/`_TYPE`/`_HUMAN_REQUIRED`/`ESCALATION_HOLD`/`PROJECT_GATE`/`_MERGE_RISK`/`_MODE`/`ESCALATION_PENDING`；无候选 `NO_DELEGATION` |
@@ -231,7 +254,7 @@ type AuthorityDecision struct {
 | `PRODUCTION_ACCESS_REQUIRED` | 08 S2 | 生产环境需临时授权 |
 | `NON_DELEGABLE` | 08 S2 / S5 | 不可委托动作 |
 | `SELF_REVIEW` | 08 S3 / 03 / 06 | 裁决、验证、审批自己产出的工作或记忆；转换自己起草的分诊卡 |
-| `SEPARATION_OF_DUTIES` | 08 S3 | 其他职责分离（如主导 Agent 裁决其派出的工作；子原因放 detail） |
+| `SEPARATION_OF_DUTIES` | 08 S3 | 其他职责分离（如主管 Agent 裁决其派出的工作；子原因放 detail） |
 | `EXPLICIT_DENY` | 08 S4 | IAM 显式拒绝 |
 | `DELEGATION_RISK` / `DELEGATION_COST` / `DELEGATION_VERIFICATION` / `DELEGATION_REWORK` / `DELEGATION_TYPE` / `DELEGATION_HUMAN_REQUIRED` / `DELEGATION_MERGE_RISK` / `DELEGATION_MODE` | 08 S6 | 委托条件未满足（`DELEGATION_CONDITION` 为模块无法细分时的通用码） |
 | `ESCALATION_HOLD` / `ESCALATION_PENDING` / `PROJECT_GATE` / `NO_DELEGATION` | 08 S6 | 升级冻结 / 升级评估在途 / 项目闸门 / 无可用委托 |
@@ -245,8 +268,13 @@ type AuthorityDecision struct {
 | `NOT_OWNER` | 03 / 05 / 10 | 非资源所有者（如他人的执行、Agent） |
 | `NOT_MEMBER` | 05 | 非频道 / 项目成员 |
 | `AGENT_NOT_DRAFTER` | 07 | Agent 不是该交付的指定起草者 |
-| `SPAWN_GRANT_MISSING` / `SPAWN_GRANT_SCOPE` / `SPAWN_QUOTA_EXCEEDED` / `SPAWN_DAILY_LIMIT` / `SPAWN_BUDGET_EXHAUSTED` / `SPAWN_NOT_LEAD` | 08 S7（规则 `spawn_grant` 的 Explain）/ `SpawnGrantUsage.Reserve` | 无有效编制授权 / 角色·机器·模型·effort·项目超出范围 / 同时在岗数已满 / 今日新建数已满 / 授权预算已耗尽 / 发起者不是主导 Agent（D110） |
+| `SPAWN_GRANT_MISSING` / `SPAWN_GRANT_SCOPE` / `SPAWN_QUOTA_EXCEEDED` / `SPAWN_DAILY_LIMIT` / `SPAWN_BUDGET_EXHAUSTED` / `SPAWN_NOT_LEAD` | 08 S7（规则 `spawn_grant` 的 Explain）/ `SpawnGrantUsage.Reserve` | 无有效编制授权 / 角色·机器·模型·effort·项目超出范围 / 同时在岗数已满 / 今日新建数已满 / 授权预算已耗尽 / 发起者不是主管 Agent（D110） |
+| `ACCOUNTABLE_HUMAN_MISSING` | 08 S2(d) | 需要负责人的码，但工作项未指定负责人或负责人不是 ACTIVE 人类成员（D112） |
+| `HUMAN_ONLY_MODE` | 08 S2(e)（05 使用） | 项目为纯人工模式，Agent 只能读与起草（D112） |
+| `SAME_MODEL_FAMILY` | 08 S3(f) / 策略 `internal_qa`（02 / 05 使用） | 评审、验收或计划批准主体与执行者 / 计划作者同模型家族（D113） |
+| `NO_INTERNAL_QA_AGENT` | 05 IQ3 | 无合格 TESTER / ACCEPTOR；不以 403 返回，仅作 02 `MANDATORY_HUMAN_GATE` 升级的 detail.reason（D113） |
 | `SPAWNED_NOT_ADOPTED` | 08 BR-08-09 | AI 创建且未被人收编的 Agent 不能成为任何委托的受托人（D110） |
+| `AGENT_CANNOT_ACCEPT` | 12（BR-12-34，delivery 段 `120403` 返回） | Agent（含持 `TESTER` 角色者）不得执行映射到 `ACCEPTED` 的流转（含关闭缺陷）；验证角色 = 持 `TESTER` 的人类成员或工作项负责人（CR-12-09） |
 - 失败即拒：IAM、05、07 依赖不可用 → 返回 error（调用方 503，本模块 `160461`），绝不放行（对齐 02 BR-02-42）。
 - `PolicyRegistry` 初始规则另含本模块贡献的 `spawn_grant`（`agent_spawn`，D110，评估见上）。
 - `PolicyRegistry` 初始规则：`dispatch_auto`（05 贡献：主体为项目 LEAD Agent、07 `DispatchPolicy=AUTO`、`CanAutoDispatch` 为真、`Risk≠HIGH`），`ensemble_branch`（05：`execution_start`，ENSEMBLE 并行上限内），`review_dispatch`（05：`work_item_assign`，仅 `role=REVIEWER`、项目 AUTONOMOUS、受派 Agent 持对应有效委托；复审 #5）。另：05 启动时以 `SystemActions.Register("fleet.review_dispatch", "work_item_assign")` 登记评审派单任务，否则 S1 返回 `SYSTEM_NOT_REGISTERED`。
@@ -280,7 +308,7 @@ type SystemActions interface {
 type DelegationRevoker interface {
     RevokeAllForOn(ctx context.Context, tx *gorm.DB, tenantID, granteePrincipalID guid.ID, reason string) ([]guid.ID, error)
 }
-// D110：05 读取主导 Agent 的有效编制授权（建 Agent 前预检、UI 展示）；tx 可为 nil
+// D110：05 读取主管 Agent 的有效编制授权（建 Agent 前预检、UI 展示）；tx 可为 nil
 type SpawnGrantReader interface {
     Active(ctx context.Context, tx *gorm.DB, tenantID, supervisorAgentID guid.ID) (SpawnGrantView, error) // 无 → ErrNoSpawnGrant（reason SPAWN_GRANT_MISSING）
 }
@@ -304,6 +332,8 @@ type SpawnGrantUsage interface {
 
 种子角色 → `ROLE:<role_key>`；底座 `Administrator`（经 `tenant_administer` 的 `administrator_grant`）→ `ROLE:tenant_administrator`；其他自定义角色 → `ROLE:custom.<role_id>`（CR-08-02）。多角色同时允许时取优先级 `team_owner > delivery_lead > tenant_administrator > engineer > agent_* > custom.<最小 role_id>`。
 
+**`EXTERNAL:<provider>:<ref>`**（v2.0，CR-12-07，00 §6.3）：外部系统裁决的只读镜像（如 12 BR-12-28 的 `EXTERNAL:YUNXIAO_FLOW:<pipeline>`），只由写入外部镜像记录的模块赋值，`AuthorityChecker` **从不**返回该来源；它不能满足 L3，也不能作为任何 `decision_*` / `delivery_send` 的授权来源。
+
 #### 3.5.2 与路由守卫的组合
 
 | 端点类型 | 路由守卫（`authz.Register*`） | 服务内 |
@@ -317,6 +347,17 @@ type SpawnGrantUsage interface {
 #### 3.5.3 解释输出（UI）
 
 `POST /authority-explanations` 返回 `AuthorityDecision` + 渲染字段：`actor_label`（「你以 交付负责人 身份」）、`source_label`（「来源：角色 delivery_lead」/「委托 #8812，剩余 2 天 3 小时」）、`steps[]`（i18n key `governance.authority.step.<step>.<outcome>` + 参数）、`missing_permission?`、`fix_hint?`（如「请所有者授予委托」「需要申请生产访问」）。前端组件 `AuthorityNote`（00 §10）使用此输出。
+
+### 3.5b D112 / D113 判定规则增补
+
+- **Facts 增补**（`WorkItemFacts`）：`AccountablePrincipalID guid.ID`（02 填充）、`PlanAuthorID guid.ID`（计划作者主体，02 填充）、`ExecutorModelFamily string`、`ActorModelFamily string`（05 `AgentDirectory` 的 `model_family`，如 `anthropic` / `openai` / `google` / `open`）。
+- **S2(d) 负责人存在**：码 ∈ {`decision_*`, `code_merge`, `plan_approve`, `exception_decide`, `delivery_send`} 且 `AccountablePrincipalID` 为空或不是 ACTIVE 人类成员 → 拒 `ACCOUNTABLE_HUMAN_MISSING`。
+- **S3(f) 计划审批职责分离**：码 = `plan_approve`：主体 = `PlanAuthorID` → `SELF_REVIEW`；主体为主管 Agent 且 `DispatchedByActor=true` → `SEPARATION_OF_DUTIES`（detail `LEAD_DISPATCHED`）；主体为 AGENT 且 `ActorModelFamily == ExecutorModelFamily` → `SAME_MODEL_FAMILY`。
+- **S7 策略 `plan_review`**（08 贡献）：允许 AGENT 主体对 `plan_approve`，当且仅当：角色含 REVIEWER、状态 ACTIVE、跨模型家族（S3(f) 已校验）、`Risk ≤ MEDIUM`、未处于升级冻结；HIGH 风险计划只允许人类批准。
+- **S7 策略 `internal_qa`**（08 贡献）：允许角色含 TESTER / ACCEPTOR 的 AGENT 对 `verification_run`（内部质量门阶段 AGENT_TEST / AGENT_ACCEPTANCE），要求与执行者不同主体、ACCEPTOR 与执行者跨模型家族（不可用时由 05 降级为不同模型 + 不同主体并在 detail 标 `FAMILY_FALLBACK`）。
+- **策略命名**：策略规则名为 `plan_review`，它授权的权限码是 `plan_approve`；05 / 02 文中“08 策略规则 `plan_approve`”均指本策略（`policy_id=plan_review`，`authority_source=POLICY:plan_review`）。不另设名为 `plan_approve` 的策略。
+- **新原因码**（并入 §3.5 规范清单）：`ACCOUNTABLE_HUMAN_MISSING`（08，负责人缺失或非 ACTIVE 人类）、`SAME_MODEL_FAMILY`（08，评审 / 验收 / 计划批准主体与执行者或作者同模型家族；02 / 05 共用）、`HUMAN_ONLY_MODE`（08 登记、05 使用，项目 `team_mode=HUMAN_ONLY` 时 Agent 主体对除只读与起草外的任何码请求 → 403）、`NO_INTERNAL_QA_AGENT`（08 登记、05 使用，无合格 TESTER / ACCEPTOR 候选；不作为 403 返回，只作为 02 升级 `MANDATORY_HUMAN_GATE` 的 detail.reason 与收件箱项说明）。
+- **S2(e) 纯人工模式**：项目 `team_mode=HUMAN_ONLY` 且主体为 AGENT，码 ∉ {只读码（`*_read`）、`andon_pull`} → 拒 `HUMAN_ONLY_MODE`；助理起草（报告草稿、记忆提议）不经 AuthorityChecker，由 05 / 06 / 10 以草稿态落库并需人确认（在 S7 策略之前判定，策略不可放行）。
 
 ### 3.6 委托在 IAM 上的落地
 
@@ -575,7 +616,7 @@ type SpawnGrantUsage interface {
 | active_key | STR(32) | Y | | `= grantee_agent_id`，仅 ACTIVE / EXHAUSTED 时非空 |
 | replaces_grant_id | ID | Y | | 替换链 |
 
-唯一：`(tenant_id, active_key)`（每个主导 Agent 至多 1 份未终结授权）。索引：`(tenant_id, state, ends_at)`、`(tenant_id, grantee_agent_id)`。
+唯一：`(tenant_id, active_key)`（每个主管 Agent 至多 1 份未终结授权）。索引：`(tenant_id, state, ends_at)`、`(tenant_id, grantee_agent_id)`。
 
 **计数方式（决定：授权行计数器 + 成员表）**：配额判定读授权行计数器（O(1)、可加行锁）；成员表提供按 Agent 的幂等与按 Agent 成本；对账任务以成员表与 05 `AgentDirectory` 为准校正计数器。不采用「每次对用量事件表求和」：配额判定在建 Agent 的热路径上，必须 O(1) 且可加锁。
 
@@ -677,6 +718,27 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 ---
 
+### 3.8.16 `governance_quality_escapes`（穿透记录，D113）
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id / tenant_id / project_id | ID | N | | |
+| work_item_id | ID | N | | |
+| stage | ENUM `VerificationStage` | N | | `HUMAN_REVIEW` / `CLIENT_ACCEPTANCE` |
+| source_event_id | ID | N | | `quality.escaped` 事件 id（唯一，幂等） |
+| found_by_kind / found_by | STR(16) / ID | N | | 人或甲方联系人 |
+| decision_ref / acceptance_ref | ID | Y | NULL | |
+| passed_by | JSON | N | | `[{stage, principal_id, agent_id?, model_family, verifier_version}]` 曾放行该工作项的内部关口 |
+| category | ENUM `FeedbackCategory` | N | | |
+| summary | STR(2000) | N | | 结构化反馈摘要（不含代码正文） |
+| learning_state | STR(16) | N | `PENDING` | `PENDING` / `RECORDED` / `DISMISSED`（模块内枚举 `EscapeLearningState`） |
+| memory_ids | JSON | N | `[]` | 02 `delivery.escape_learning` 经 06 提出的经验记忆草稿 id（只读展示，由 02 `quality.escape_learning_proposed` 回填） |
+| eval_case_ref | STR(200) | Y | NULL | 02 `delivery.escape_learning` 提交的 11 模板评测集用例引用（只读展示，由 02 `quality.escape_learning_proposed` 回填） |
+| decided_by / decided_at | ID / 时间 | Y | NULL | RECORDED / DISMISSED 的人类 |
+| created_at / version | 时间 / INT | N | | |
+
+唯一：`(source_event_id)`。
+
 ## 4. 状态机
 
 ### 4.1 委托 `DelegationState`
@@ -749,7 +811,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | 160470 | 422 | spawn_grant_invalid | 编制授权字段越界（角色含 REVIEWER / LEAD、per_agent > budget、窗口越界、机器 / 模型不在 04 目录、受托人非 LEAD 或为未收编的 AI 创建 Agent） |
 | 160471 | 409 | spawn_quota_exceeded | `Reserve`：同时在岗或今日新建数已满（`data.reason_code` = `SPAWN_QUOTA_EXCEEDED` / `SPAWN_DAILY_LIMIT`） |
 | 160472 | 409 | spawn_budget_exhausted | `Reserve`：授权非 ACTIVE（EXHAUSTED / 已终结）或预算已用尽（`SPAWN_BUDGET_EXHAUSTED` / `SPAWN_GRANT_MISSING`） |
-| 160473 | 409 | spawn_grant_active_exists | 该主导 Agent 已有未终结授权（`data.spawn_grant_id`；可用 `replaces_grant_id` 替换） |
+| 160473 | 409 | spawn_grant_active_exists | 该主管 Agent 已有未终结授权（`data.spawn_grant_id`；可用 `replaces_grant_id` 替换） |
 | 160474 | 409 | spawn_grant_not_active | 非法迁移 |
 | 160475 | 422 | spawn_grant_auto_requires_autonomous | `approval_mode=AUTO` 但范围含 HYBRID 项目或为团队级 |
 | 160476 | 422 | spawn_grant_below_usage | 收紧后的上限低于当前用量（`data.usage{}`） |
@@ -762,7 +824,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | ACTIVE / EXHAUSTED | `PATCH /spawn-grants/{id}` | 同上；收紧不需 step-up，放宽（任一上限调高、范围扩大、`approval_mode`→AUTO、延长 `ends_at`）需 step-up；新上限 ≥ 当前用量（`160476`） | 不变；EXHAUSTED 且新预算 > 已用 → ACTIVE | 审计 `governance.spawn_grant_updated`（before / after）；事件 `spawn_grant.updated` |
 | ACTIVE | 成本累计达 `budget_cap_micros` | — | EXHAUSTED | 审计 `governance.spawn_grant_exhausted`；事件 `spawn_grant.exhausted`；升级规则 `SPAWN_BUDGET`（CRITICAL）；未决 AGENT_SPAWN_APPROVAL 项撤回 |
 | ACTIVE / EXHAUSTED | `POST /spawn-grants/{id}/revocations` | HUMAN ∧ `spawn_grant_manage`（无 step-up） | REVOKED(`MANUAL`) | 审计 `governance.spawn_grant_revoked`；事件 `spawn_grant.revoked`；未决 AGENT_SPAWN_APPROVAL 项撤回 |
-| ACTIVE / EXHAUSTED | 接管（BR-08-22 ⑥）/ 对账发现主导 Agent 非 ACTIVE 或失去 LEAD | — | REVOKED(`TAKEOVER` / `GRANTEE_INACTIVE`) | 同上 |
+| ACTIVE / EXHAUSTED | 接管（BR-08-22 ⑥）/ 对账发现主管 Agent 非 ACTIVE 或失去 LEAD | — | REVOKED(`TAKEOVER` / `GRANTEE_INACTIVE`) | 同上 |
 | ACTIVE / EXHAUSTED | 到期任务 `ends_at ≤ now` | — | EXPIRED(`WINDOW_ENDED`) | 事件 `spawn_grant.expired`；审计 `governance.spawn_grant_revoked`（end_reason=WINDOW_ENDED） |
 | ACTIVE / EXHAUSTED | 替换（`replaces_grant_id`） | 同事务新授权通过校验 | REVOKED(`REPLACED`) | ACTIVE 成员行与计数器迁移到新授权 |
 | EXPIRED / REVOKED | 任意命令 | — | — | 409 `160474`；重复撤销同一已撤销授权 → 200 返回当前（幂等） |
@@ -770,6 +832,10 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 授权终结（EXPIRED / REVOKED，`REPLACED` 除外）**不自动退役**已建 Agent：成员行 `RELEASED(GRANT_ENDED)`，05 发布 `agent.orphaned` 并按其规则处理（停止接新工作、提示人收编或退役）。`effective_state`：ACTIVE 且 `ends_at ≤ now` 时显示 EXPIRED（到期任务运行前的 ≤30s 窗口内 Check 已按 EXPIRED 拒绝）。
 
 ---
+
+### 4.6 D112 / D113 错误码
+
+`160480` escape_not_found（404）、`160481` escape_learning_already_decided（409）、`160482` andon_clear_requires_human（403 + reason `HUMAN_ONLY`，由 02 端点返回时用 120403）、`160483` plan_review_policy_denied（仅 explain 用）。
 
 ## 5. 业务规则与边界情况
 
@@ -786,7 +852,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 **委托授予**
 - **BR-08-08** 授予人：HUMAN；路由 `delegation_grant`；Check(`delegation_grant`)；step-up purpose `delegation_grant`，target `project:<project_id>:grantee:<principal_id>`。
-- **BR-08-09** 受托人：05 `AgentDirectory` 中 ACTIVE、为本租户活跃成员；角色要求按动作：`actions` 含任一 `decision_*` 或 `code_merge` → 受托人必须持有 `REVIEWER`（仅 LEAD 不足：主导 Agent 负责分派，裁决须由评审角色承担，职责分离）；仅含 `intake_convert` → 受托人须持有 `COORDINATOR` 或 `REVIEWER`；否则 `160411`。受托人在项目无读权限 → 允许授予但响应 `warnings:["GRANTEE_NO_PROJECT_READ"]`（UI 提示先在项目团队中加入该 Agent）。受托人为 AI 创建且未被人收编的 Agent → `160411`，`data.reason_code=SPAWNED_NOT_ADOPTED`（BR-08-56，D110）。
+- **BR-08-09** 受托人：05 `AgentDirectory` 中 ACTIVE、为本租户活跃成员；角色要求按动作：`actions` 含任一 `decision_*` 或 `code_merge` → 受托人必须持有 `REVIEWER`（仅 LEAD 不足：主管 Agent 负责分派，裁决须由评审角色承担，职责分离）；仅含 `intake_convert` → 受托人须持有 `COORDINATOR` 或 `REVIEWER`；否则 `160411`。受托人在项目无读权限 → 允许授予但响应 `warnings:["GRANTEE_NO_PROJECT_READ"]`（UI 提示先在项目团队中加入该 Agent）。受托人为 AI 创建且未被人收编的 Agent → `160411`，`data.reason_code=SPAWNED_NOT_ADOPTED`（BR-08-56，D110）。
 - **BR-08-10** 动作：`actions ⊆ Delegable`；含任何 `NonDelegable` → `160410`；含其他码 → `160400`。`code_merge` 要求 `max_risk=LOW`；`intake_convert` 要求项目当前 AUTONOMOUS；否则 `160416`。由于 07 P1 要求切换 AUTONOMOUS 前已有委托，`intake_convert` 只能在切换之后经 `replaces_delegation_id` 以「原动作 ∪ {intake_convert}」替换授予（同事务撤销旧委托为 REPLACED）。委托的 `intake_convert` 覆盖 01 在同事务内调用 02 `RequirementCreator` 创建需求（不再单独检查 `requirement_write`）；NEW_PROJECT / APPEND 仍不可委托，进入人类收件箱 `INTAKE_TRIAGE`。
 - **BR-08-11** 授予者对每个委托码须经 ROLE 来源持有（以 Check 计算，忽略其自身委托）→ 否则 `160403(GRANTOR_LACKS_AUTHORITY)`；另经底座绑定越权防护。
 - **BR-08-12** 每（受托人, 项目）至多 1 条 ACTIVE；冲突 → `160413`；请求带 `replaces_delegation_id` 时同事务先撤销旧委托（REPLACED）再授予。
@@ -839,9 +905,9 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 - **BR-08-48** 时间：所有判定使用服务端 UTC；客户端时间只用于显示。
 
 **编制授权（D110，主管 Agent 自建 Agent）**
-- **BR-08-50** 授予：仅 HUMAN ∧ `spawn_grant_manage`（种子仅 `team_owner`；该码 ∈ `NonDelegable` ⊆ `HumanOnly`，S2 对一切非人类主体拒绝 `AGENT_PROHIBITED`）；step-up purpose `spawn_grant_manage` target `agent:<grantee_agent_id>`；受托主导 Agent 须 ACTIVE、持 `LEAD`、且为人创建或已收编（否则 `160470`）；`project_ids=[]`（团队级）需二次确认并只能 `REQUIRE_APPROVAL`；`allowed_machine_ids` / `allowed_models` 须存在于 04 机器与模型目录；每主导 Agent 至多 1 份未终结授权（`160473`，可替换）；每租户未终结授权 ≤20。
+- **BR-08-50** 授予：仅 HUMAN ∧ `spawn_grant_manage`（种子仅 `team_owner`；该码 ∈ `NonDelegable` ⊆ `HumanOnly`，S2 对一切非人类主体拒绝 `AGENT_PROHIBITED`）；step-up purpose `spawn_grant_manage` target `agent:<grantee_agent_id>`；受托主管 Agent 须 ACTIVE、持 `LEAD`、且为人创建或已收编（否则 `160470`）；`project_ids=[]`（团队级）需二次确认并只能 `REQUIRE_APPROVAL`；`allowed_machine_ids` / `allowed_models` 须存在于 04 机器与模型目录；每主管 Agent 至多 1 份未终结授权（`160473`，可替换）；每租户未终结授权 ≤20。
 - **BR-08-51** 审批模式：`AUTO` 仅当范围内**全部**项目为 AUTONOMOUS（否则 `160475`）；消费 07 `project.mode_changed{to:HYBRID}` 时，所有覆盖该项目的授权（含团队级）`effective_approval_mode` 立即降为 `REQUIRE_APPROVAL`（`approval_mode` 原值不变；范围内全部恢复 AUTONOMOUS 时回到原值），发 `spawn_grant.updated`。混编项目中 AI 建 Agent **永远**需人批准。
-- **BR-08-52** 范围不可越权：`allowed_roles` ⊆ {EXECUTOR, COORDINATOR}——AI 不能创建评审员或主导 Agent（防自建自审与自我繁殖链）；AI 创建且未收编的 Agent 不得持有编制授权（`160470`）。
+- **BR-08-52** 范围不可越权：`allowed_roles` ⊆ {EXECUTOR, COORDINATOR}——AI 不能创建评审员或主管 Agent（防自建自审与自我繁殖链）；AI 创建且未收编的 Agent 不得持有编制授权（`160470`）。
 - **BR-08-53** 配额原子性：`Reserve` 在 05 建 Agent 的同一事务内执行：PG / MySQL `SELECT … FOR UPDATE` 锁授权行，SQLite 依赖 `_txlock=immediate` 写锁；跨日先把 `spawned_today` 归零并更新 `spawned_day`；校验 `effective_state=ACTIVE ∧ active_count < max_active_agents ∧ spawned_today < max_spawns_per_day ∧ spent_micros < budget_cap_micros`；通过则 `active_count+1`、`spawned_today+1`、`version+1`（`UPDATE … WHERE id=? AND version=?`，影响 0 行 → 重读重试 ≤3 次，仍失败 → `160471`），并插入成员行（唯一 `(tenant_id, agent_id)`；同 agent 重复调用视为已占用、不重复计数）。并发两个建 Agent 只剩 1 个名额时恰一个成功，失败方整个建 Agent 事务回滚。
 - **BR-08-54** 释放：`Release` 把成员行置 `RELEASED` 并 `active_count−1`（不低于 0）；`spawned_today` 不回退（日配额按发起次数计，防止建了即退刷配额）。触发：05 退役（`RETIRED`）、人收编（`ADOPTED`：收编后不再占编制、成本不再计入授权）、授权终结（`GRANT_ENDED`）。建 Agent 事务回滚时 `Reserve` 随之回滚，无需显式释放。
 - **BR-08-55** 成本累计：消费 03 `execution.cost_updated`（09 Transactional 订阅，receipts 去重）；按 `agent_id` 查 ACTIVE 成员行（RELEASED 或非成员不计）；增量 = `cumulative_cost_micros − cursor.last_cumulative_micros`（≤0 忽略，游标单调）；同事务更新游标、成员 `spent_micros`、授权 `spent_micros`。成员 `spent_micros ≥ per_agent_cap_micros` 且 `cap_notified=false` → 发 `spawn_grant.updated{member_cap_reached:agent_id}`（05 消费后停止该 Agent 接新工作）并通知授予人；授权达 80% → 通知（`threshold_notified_pct` 去重）；达 100% → EXHAUSTED（§4.5）。07 项目预算独立约束，两者先到者生效。
@@ -851,6 +917,15 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 - **BR-08-59** 审计与上限：授予、修改、撤销、耗尽、到期均写审计（§7.5，detail 含授权快照）；AI 创建 Agent 的审计（05 `fleet.agent_spawned`）必须带 `spawn_grant_id` 与 `supervisor_agent_id`，供审计页按来源过滤。
 
 ---
+
+### 5.x D112 / D113 增补规则
+
+- **BR-08-60 内部失败不进收件箱（D113）**：以下事件**不创建任何收件箱项、不发任何通知**，只计入指标：`internal_qa.failed`、`verification.completed` 中 stage ∈ {AUTOMATED, AGENT_TEST, AGENT_ACCEPTANCE} 的 FAILED / INCONCLUSIVE、`work_item.state_changed{to:REWORK}` 且 `cause ∈ INTERNAL_QA`、内部返工分支的 `execution.*`。投影器以 allowlist 实现（只有 §6.10 列出的事件会产生收件箱项），并有架构测试防止新事件误入。另加**可见性过滤**：任何事件信封或载荷带 `visibility=INTERNAL`（02 BR-02-54 定义）时，即使事件类型在 allowlist 内，投影器与通知发件箱也**一律丢弃**——不建收件箱项、不发通知、不在频道发人类可见卡片；只计入 07 指标与审计。过滤先于类型匹配执行。
+- **BR-08-61 升级路由**：02 发布 `work_item.escalated{reason}` 时按 `EscalationReason` 路由：`INTERNAL_ROUNDS_EXHAUSTED` → `ESCALATION_INTERNAL_EXHAUSTED`；`REQUIREMENT_CONFLICT` → `REQUIREMENT_CONFLICT`（只给交付负责人，**不**直达甲方）；`ANDON` → `ANDON`；`TOLERANCE_EXCEPTION` → `EXCEPTION_DECISION`；`BUDGET` → 既有 `ESCALATION_ALERT`；`MANDATORY_HUMAN_GATE` → `WORK_ITEM_REVIEW`。
+- **BR-08-62 Andon**：任何持 `andon_pull` 的主体（含 Agent）可停线（理由必填，≥10 字）；`andon_clear` 仅人类；停线期间对该工作项 / 项目的派发、裁决、交付在 AuthorityChecker 前由 02 守卫拒绝（reason `ANDON_ACTIVE`，02 登记）；Agent 一小时内拉线超过 3 次 → 自动升级 `ESCALATION_ALERT`（防滥用）。
+- **BR-08-63 穿透处理**（D114）：消费 `quality.escaped`（任一发布者：02 / 07 / 12 Part A）→ 建 `governance_quality_escapes`（幂等于事件 id）→ 通知所有者与项目交付负责人 → `learning_state=PENDING` 进入「质量穿透」页待人确认。学习条目**不由本模块生成**：EXPERIENCE 记忆草稿（「漏检：{category}：{summary}」，经 06 `MemoryWriter.Propose`）与评测用例（11 `EvalSetWriter.ProposeCase`）只由 02 `delivery.escape_learning` 提出；本模块不调用 `MemoryWriter`、不向 11 提交评测用例。人工确认：RECORDED → 02 已提出的记忆草稿生效、评测用例保留；DISMISSED → 理由必填，撤回这些草稿与用例。确认结果经 `quality.escape_learning_decided` 发布，由 02 `delivery.escape_learning` 执行生效 / 撤回。
+- **BR-08-64 负责人检查**：每日任务扫描处于 READY 及之后状态但 `accountable_principal_id` 为空或指向已停用成员的工作项 → 给交付负责人建 `ESCALATION_ALERT`（subkind `ACCOUNTABLE_MISSING`）；负责人离职时其工作项自动转给项目交付负责人并通知。
+- **BR-08-65 总览质量磁贴**：总览增加「穿透率」与「内部一次通过率」磁贴（数据源 07 `DeliveryMetricsReader`，刷新 ≤60 s），穿透率 > 10% 显示琥珀、> 20% 显示红色（模板可覆盖）。
 
 ## 6. 接口契约
 
@@ -980,6 +1055,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | system_event.replay | 09 | 事件重放 | `system_event_replay` | `subscriber:<key>` | 范围说明 |
 | execution.full_auto | 03 | 授权模式 | `execution_full_auto` | `execution:<id>` | 红色语义 |
 | gateway.key_reveal | 04 | A28 查看网关密钥 | `gateway_key_reveal` | `gateway:<id>` | 红色确认（轮换为内联确认，不需 step-up，04） |
+| integration.credentials | 12 | B1 新建 / 修改云效连接 | `integration_credentials` | `tenant:<id>`（新建）/ `integration_connection:<id>` | 令牌只写不回显（CR-12-07） |
 
 上述 purpose 由各所属模块在启动时经底座 `authn.RegisterReauthenticationPurpose` 登记（00 §13 F4）。**本表是唯一登记源**：各模块规格的 purpose / target 必须与本表一致，冲突时以本表为准回推修订。step-up 失败统一返回调用方段 `xx0403` + `data.reason_code=REAUTH_REQUIRED`。
 
@@ -1007,6 +1083,29 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 ---
 
+### 6.10b D112 / D113 收件箱类型（追加到 §6.10 表）
+
+| kind | 创建事件 | 接收人 | 优先级 | 关闭事件 | A / R |
+|---|---|---|---|---|---|
+| `ESCALATION_INTERNAL_EXHAUSTED` | 02 `work_item.escalated{reason:INTERNAL_ROUNDS_EXHAUSTED}` | 工作项负责人（`accountable_principal_id`）+ `LEADS(p)` 人类 | HIGH | 工作项离开 REWORK / 进入 NEEDS_HUMAN_REVIEW / 取消 | 打开工作项（显示各轮内部反馈） |
+| `REQUIREMENT_CONFLICT` | 02 `work_item.escalated{reason:REQUIREMENT_CONFLICT}` | `LEADS(p)` 人类 | HIGH | `requirement.versioned` 或升级被 DISMISSED | A 打开需求 / R 驳回冲突判定（理由） |
+| `ANDON` | 02 `andon.pulled` | 负责人 + `LEADS(p)` 人类 | CRITICAL | 02 `andon.cleared` | A 打开处置 |
+| `EXCEPTION_DECISION` | 02 / 07 `exception.raised` | `HOLDERS(exception_decide)` 人类 | HIGH | `exception.decided` | A 打开例外页 |
+| `PLAN_APPROVAL` | 02 `plan.proposed{requires_human:true}`（HIGH 风险或无可用跨家族评审 Agent） | `ELIGIBLE(plan_approve)` 人类，排除计划作者与派出它的主管的负责人以外者不限 | NORMAL | `plan.approved` / `plan.rejected` / 工作项取消 | A 批准 / R 驳回（理由） |
+| `QUALITY_ESCAPE` | 本模块 BR-08-63 记录建立 | 所有者 + `LEADS(p)` | NORMAL | `learning_state` ≠ PENDING | A 确认学习 / R 驳回 |
+| `REVIEW_SHEET`（12，CR-12-07） | 12 `review_sheet.opened` | 被邀请的人类评审人 | NORMAL | 本人已提交意见、`review_sheet.closed` | A 打开评审单 / R — |
+| `WORKLOG_APPROVAL`（12，CR-12-07） | 12 `worklog.submitted` | 持 `worklog_approve` 的人类审批人（不含提交人本人） | NORMAL | `worklog.approved`、`worklog.returned`、`worklog.withdrawn` | A 打开工时审批 / R 退回（理由必填） |
+
+明确**不投影**：`internal_qa.failed`、内部阶段的 `verification.completed`、`work_item.state_changed{to:REWORK, cause:INTERNAL_QA}`（BR-08-60）。
+
+### 6.11 D112 / D113 增补接口
+
+| # | 方法 | 路径 | tag | 权限 · 守卫 | 说明 |
+|---|---|---|---|---|---|
+| Q1 | GET | `/tenants/{tenant_id}/quality-escapes` | tenants | `audit_read` · T | 过滤 `project_id`、`stage`、`learning_state`、`category`；排序 `created_at` |
+| Q2 | GET | `/quality-escapes/{escape_id}` | quality-escapes | `audit_read` · O | 详情含 `passed_by` 与记忆 / 评测草稿 |
+| Q3 | PUT | `/quality-escapes/{escape_id}/learning` | quality-escapes | `policy_manage` 或项目 `delivery_lead` · O；HUMAN | `{state:"RECORDED"\|"DISMISSED", reason?}` + If-Match；409 `160481` |
+
 ## 7. 后台任务与事件
 
 ### 7.1 任务（09 `JobQueue`；周期任务互斥 `dlock`，锁名 `governance:<job>[:tenant]`，TTL = 2×周期；每批 ≤500 行，单行失败不影响其他行）
@@ -1026,7 +1125,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | `governance.spawn_grant_day_reset` | 每日 00:00:30 UTC（`Reserve` 另做惰性归零） | `spawned_day <> today` → `spawned_today=0`、`spawned_day=today` | — |
 | `governance.spawn_grant_expiring_notice` | 每 15 min | `ends_at` 在 72h 内且 `expiring_notified_at IS NULL` → 通知授予人，置标记 | — |
 | `governance.spawn_cost_accrual` | outbox 消费 `execution.cost_updated`（Transactional） | BR-08-55 | 09 退避；停放后告警 |
-| `governance.spawn_grant_reconcile` | 每 5 min（每租户一锁）；`agent.*` 事件即时 | 以成员表 + 05 `AgentDirectory` 重算 `active_count`；主导 Agent 非 ACTIVE / 失去 LEAD → REVOKED(`GRANTEE_INACTIVE`) | — |
+| `governance.spawn_grant_reconcile` | 每 5 min（每租户一锁）；`agent.*` 事件即时 | 以成员表 + 05 `AgentDirectory` 重算 `active_count`；主管 Agent 非 ACTIVE / 失去 LEAD → REVOKED(`GRANTEE_INACTIVE`) | — |
 
 闭环完整率（07 BR-07-49）：总览请求时实时计算最近 30 天（终态工作项数来自 02 `WorkItemReader` 计数，审计侧来自索引中 `delivery.decision_approved` / `delivery.decision_cancelled` 去重 target 数），服务端缓存 5 min；不建表（本规格提议：数据量小，避免第二份快照）。
 
@@ -1126,6 +1225,13 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 ---
 
+### 7.6 D112 / D113 增补任务与事件
+
+- 任务：`governance.accountable_check`（每日 02:00 团队时区，dlock）；`governance.escape_learning_reminder`（每日，PENDING > 3 天提醒一次）。
+- 消费：`work_item.escalated`、`andon.pulled` / `andon.cleared`、`exception.raised` / `exception.decided`、`plan.proposed` / `plan.approved` / `plan.rejected`、`quality.escaped`、`quality.escape_learning_proposed`（回填 §3.8.16 展示列）、`internal_qa.passed` / `internal_qa.failed`（仅指标，不投影）；12 `review_sheet.opened` / `review_sheet.closed`、`worklog.submitted` / `worklog.approved` / `worklog.returned` / `worklog.withdrawn`（收件箱 `REVIEW_SHEET` / `WORKLOG_APPROVAL`，CR-12-07）。
+- 发布：`quality.escape_recorded{escape_id, work_item_id, stage}`、`quality.escape_learning_decided{state}`。
+- 审计：`governance.escape_learning_recorded` / `_dismissed`；`andon_*`、`exception_*`、`plan_*` 的审计由 02 / 07 在各自事务内追加。
+
 ## 8. 页面规格
 
 共通：路由前缀 `/t/:tenantID`；骨架屏加载；错误态（可重试，显示 `meta.request_id`）；无权限态（「缺少权限 `<code>`」+「请联系团队所有者」）；离线态（顶部条「已离线，正在重连…」，写按钮禁用，重连后整页重取）；状态色均配图标 + 文字；触控目标 ≥44px；实时计数用单一 `role="status"`；组件 `AuthorityNote`、`ActorAvatar`、`CountdownRing`、`StateBadge` 取自 `packages/ui`（00 §10），`ReauthenticationDialog` 需从 IAM 应用迁入 `packages/ui`（CR-08-09）。
@@ -1138,8 +1244,8 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 - **委托 tab**：表列：受托 Agent、项目、动作 chips、条件（类型 / 风险 ≤ / 成本 ≤ $ / 返工 <）、剩余时间（`CountdownRing`；<24h 琥珀、<1h 红）、已用次数、最近使用、授予人、状态。筛选：状态、项目、Agent。行操作：〔撤销〕（`delegation_grant` ∧ 人 ∧ `effective_state=ACTIVE`；对话框只要理由，无 step-up）、〔替换〕（同条件；打开授予对话框预填并带 `replaces_delegation_id`）、〔使用记录〕（抽屉 D5，每条链到裁决）。空态：「还没有委托。委托可让 Agent 评审员在你设定的范围内裁决低风险工作项」〔授予委托〕。
 - **授予委托对话框**（红色语义头部）：项目*（可见且非终态）；受托 Agent*（ACTIVE；勾选任一裁决类动作或 `code_merge` 时仅列 REVIEWER，仅 `intake_convert` 时列 COORDINATOR / REVIEWER（BR-08-09）；显示其项目读权限状态）；动作*（复选；不可委托动作以锁形图标列出且不可选，tooltip「此动作不可委托（团队治理硬约束）」；选 `code_merge` 时风险锁定 LOW；`intake_convert` 仅 AUTONOMOUS 项目可选）；工作项类型（多选，空=全部）；最高风险*（LOW / MEDIUM）；单项成本上限*（$，默认值，≤上限）；返工上限（1–3，默认 3）；有效期*（4h / 24h / 3d / 7d / 自定义小时，≤max_days）；理由*（≥10 字，计数器）；固定条件只读说明「必需验证全部通过 · 不裁决自己产出或自己分派的工作项 · 触发升级规则时对该工作项失效」；`AuthorityNote`「你以 团队所有者 身份授予 · 来源 ROLE:team_owner」。〔授予〕：必填有效时可用 → `ReauthenticationDialog(purpose=delegation_grant, target)` → D2。`160413` 内联「该 Agent 在此项目已有委托」〔替换它〕。
 - **编制授权 tab（`?tab=spawn-grants`，D110）**：
-  - **列表**：主导 Agent（`ActorAvatar` + 名称）、范围（项目 chips / 红色「团队级」标记）、在岗配额「2 / 3」进度条、今日新建「1 / 5」、预算条（`spent / cap`，≥80% 琥珀、100% 红「已耗尽」）、审批方式（「需人批准」/「授权内自动」；被项目模式降级时显示「已降为需人批准 · 项目 X 为混编」）、剩余时间（同委托 tab）、状态。行展开：成员列表（SG6：AI 创建的 Agent、单 Agent 预算条、状态、〔去收编〕链到 05 Agent 详情）。筛选：状态、主导 Agent、项目。空态：「还没有编制授权。授予后，主导 Agent 可在边界内自己创建执行者」+〔授予编制〕（仅可授予者可见）。
-  - **授予 / 编辑对话框**（红色语义头部；仅 `spawn_grant_manage` ∧ 人可见）：主导 Agent*（只列 ACTIVE、持 LEAD、人创建或已收编的 Agent）；范围*（项目多选；〔团队级〕开关需二次勾选「我了解它可在任何项目为自己扩编」，并锁定审批方式为需人批准）；同时在岗上限*（1–10，默认 3）；每日新建上限*（1–20，默认 5）；可建角色*（执行者 / 协调员复选；评审员、主导以锁形图标列出不可选，tooltip「AI 不能创建评审或主导 Agent」）；可用机器*（多选，来自 04）；可用模型*（按运行时分组多选，来自模型目录）；effort 上限*；总预算 $*（默认 50）与单 Agent 预算 $*（默认 15，≤ 总预算，即时校验）；Agent 有效期*（小时，默认 168）与闲置退役*（默认 48）；审批方式*（范围含混编项目时「授权内自动」禁用并说明原因）；授权有效期*；理由*（≥10 字）。提交 → step-up → SG2；编辑时仅放宽项需要 step-up，对话框底部列出「本次放宽：…」；收紧低于用量时即时报错（160476）。
+  - **列表**：主管 Agent（`ActorAvatar` + 名称）、范围（项目 chips / 红色「团队级」标记）、在岗配额「2 / 3」进度条、今日新建「1 / 5」、预算条（`spent / cap`，≥80% 琥珀、100% 红「已耗尽」）、审批方式（「需人批准」/「授权内自动」；被项目模式降级时显示「已降为需人批准 · 项目 X 为混编」）、剩余时间（同委托 tab）、状态。行展开：成员列表（SG6：AI 创建的 Agent、单 Agent 预算条、状态、〔去收编〕链到 05 Agent 详情）。筛选：状态、主管 Agent、项目。空态：「还没有编制授权。授予后，主管 Agent 可在边界内自己创建执行者」+〔授予编制〕（仅可授予者可见）。
+  - **授予 / 编辑对话框**（红色语义头部；仅 `spawn_grant_manage` ∧ 人可见）：主管 Agent*（只列 ACTIVE、持 LEAD、人创建或已收编的 Agent）；范围*（项目多选；〔团队级〕开关需二次勾选「我了解它可在任何项目为自己扩编」，并锁定审批方式为需人批准）；同时在岗上限*（1–10，默认 3）；每日新建上限*（1–20，默认 5）；可建角色*（执行者 / 协调员复选；评审员、主管以锁形图标列出不可选，tooltip「AI 不能创建评审或主管 Agent」）；可用机器*（多选，来自 04）；可用模型*（按运行时分组多选，来自模型目录）；effort 上限*；总预算 $*（默认 50）与单 Agent 预算 $*（默认 15，≤ 总预算，即时校验）；Agent 有效期*（小时，默认 168）与闲置退役*（默认 48）；审批方式*（范围含混编项目时「授权内自动」禁用并说明原因）；授权有效期*；理由*（≥10 字）。提交 → step-up → SG2；编辑时仅放宽项需要 step-up，对话框底部列出「本次放宽：…」；收紧低于用量时即时报错（160476）。
   - **撤销**：`spawn_grant_manage` ∧ 人；只要理由，无 step-up；后果说明「已建的 n 个 Agent 不会被退役，将变为待收编状态」。
   - **实时**：订阅 `tenant/{t}/governance/spawn_grants`，配额与预算条 ≤1s 更新。**移动端**：列表变卡片，对话框全屏 Sheet。
 - **升级规则 tab**：每 kind 一卡：名称、说明、来源事件、启用开关（锁定时灰显 +「全自治项目 X、Y 依赖此规则」）、参数（`LOW_SELF_CONFIDENCE` 滑块 30–90；`SENSITIVE_PATH` pattern set 列表：key、名称、开关、glob 多行框逐行即时校验 + 测试框「输入路径 → 命中 MIGRATIONS: `**/migrations/**`」）、动作（混编 / 全自治两列复选，硬性动作锁定）。〔保存〕：有修改且校验通过；放宽类先 step-up。项目选择器为单项目时编辑项目规则，否则编辑团队默认（说明「新项目创建时复制此默认」）。
@@ -1154,7 +1260,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 - **目的**：可证明的历史。入口：侧栏「治理 › 审计」（`audit_read`）。
 - **布局**：顶部完整性徽标（底座完整性接口：绿「链完整 · 已校验 n 条 · 头 #seq」/ 红「链校验失败」/ 灰「校验中」；客户端缓存 60s，〔重新校验〕；无 `audit_event_view` 时显示「需要审计查看权限」）+ 索引滞后提示（`index_lag_seconds>10` 琥珀「最新事件同步中」）；筛选：时间（今天 / 7 天 / 30 天 / 自定义）、项目、模块、事件类型、主体（人 / Agent）、权限来源类型、结果；〔导出〕。
-- **来源筛选（D110）**：「Agent 来源：全部 / 人创建 / AI 创建」；选「AI 创建」时显示 `fleet.agent_spawned`、`fleet.agent_adopted`、`governance.spawn_grant_*` 以及这些 Agent 作为主体的事件，可再按编制授权与主导 Agent 过滤；AI 创建的 Agent 在主体列带「AI 创建 · 由 {supervisor}」角标，已收编者带「已收编」。
+- **来源筛选（D110）**：「Agent 来源：全部 / 人创建 / AI 创建」；选「AI 创建」时显示 `fleet.agent_spawned`、`fleet.agent_adopted`、`governance.spawn_grant_*` 以及这些 Agent 作为主体的事件，可再按编制授权与主管 Agent 过滤；AI 创建的 Agent 在主体列带「AI 创建 · 由 {supervisor}」角标，已收编者带「已收编」。
 - **列表**：时间、`ActorAvatar` + 名称、动作（事件类型 i18n）、对象（链接）、权限来源 chip（「角色 交付负责人」「委托 #8812」「策略 dispatch_auto」「甲方」「系统」）、结果（denied 红）。行展开：底座明细（reason、evidence_refs 链接、`event_hash` 前 8 位可复制、`previous_hash`、sequence）。
 - **导出**：可用：`audit_event_export` ∧ 完整性有效；对话框说明「导出租户审计链区间（含完整性完成记录），项目筛选不影响导出范围」→ 流式下载 `.ndjson`；链无效禁用并提示联系所有者。
 - **状态**：空态「该范围内没有事件」；错误；无权限。**实时**：`activity.appended` → 顶部「n 条新事件」条，点击插入。**移动端**：筛选进抽屉；卡片列表；导出仅桌面（本规格提议：大文件下载）。
@@ -1240,6 +1346,13 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 - **状态**：外壳加载骨架（侧栏与顶栏占位）；租户无权限 → 跳工作区选择；SSE 断开 >5s 显示琥珀连接点并降级轮询（I2 每 10s）。
 
 ---
+
+### 8.7 D112 / D113 增补页面
+
+- **总览**：新增「穿透率」「内部一次通过率」磁贴（BR-08-65）；「待你裁决」不显示任何内部质量门失败。
+- **质量穿透** `/t/:tenantID/governance/escapes`：列表（项目、工作项、发现阶段 人 / 甲方、类别、放行它的内部关口与模型家族、学习状态），详情含记忆草稿与评测用例草稿，人类可「确认学习」或「驳回（理由）」。
+- **授权与策略 → 矩阵**新增列：停线、清除停线、例外决定、计划批准、验收集管理、模板、集成；在「计划批准」格对 Agent 显示「策略：跨模型家族、风险 ≤ 中」。
+- **我的裁决**分类筛选增加：内部升级、需求冲突、停线、例外决定、计划批准、质量穿透。
 
 ## 9. 通知
 
@@ -1328,6 +1441,30 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 ---
 
+### 9.4 D112 / D113 增补通知
+
+| 类型 | 触发 | 接收人 | 渠道 | 模板 key |
+|---|---|---|---|---|
+| ANDON | `andon.pulled` | 负责人 + 交付负责人 | 站内 + 推送 + 邮件（立即，CRITICAL） | `governance.notify.andon_pulled` |
+| ESCALATION_INTERNAL_EXHAUSTED | 见 §6.10b | 负责人 + 交付负责人 | 站内 + 推送 | `governance.notify.internal_exhausted` |
+| REQUIREMENT_CONFLICT | 见 §6.10b | 交付负责人 | 站内 + 推送 | `governance.notify.requirement_conflict` |
+| EXCEPTION_DECISION | 见 §6.10b | 例外决定人 | 站内 + 邮件 | `governance.notify.exception_raised` |
+| PLAN_APPROVAL | 见 §6.10b | 计划批准人 | 站内（15 分钟合并） | `governance.notify.plan_approval` |
+| QUALITY_ESCAPE | BR-08-63 | 所有者 + 交付负责人 | 站内 + 每日摘要 | `governance.notify.quality_escape` |
+
+**与 02 N11–N14 的对应**（均为升级类，08 负责收件箱投影与投递；02 定义触发与文案 key，08 不重复发送，同一去重键只投递一次）：
+
+| 02 通知 | 触发 | 08 收件箱类型 | 优先级 | 去重 |
+|---|---|---|---|---|
+| N11 | `work_item.escalated{INTERNAL_ROUNDS_EXHAUSTED}` | ESCALATION_INTERNAL_EXHAUSTED | HIGH | 02 键 `esc:{wi}:…` |
+| N12 | 需求质量冲突 / 歧义（BR-02-50，`work_item.escalated{REQUIREMENT_CONFLICT}`） | REQUIREMENT_CONFLICT（只给交付负责人，不给甲方） | NORMAL | 02 键 `rq:{r}:…` |
+| N13 | `andon.pulled` | ANDON | CRITICAL（+推送） | 02 键 `andon:{id}` |
+| N14 | `exception.raised` | EXCEPTION_DECISION | HIGH | 02 键 `exc:…` |
+
+02 的 N1–N10 以外、N11–N14 以外的内部事件（T12 / T32 Agent 拒绝 / T34 等，BR-02-54）不在本表，按 BR-08-60 丢弃。
+
+**内部质量门失败不通知任何人**（BR-08-60）；在通知偏好页不可开启此类通知。
+
 ## 10. 验收标准
 
 > 测试层：unit（服务层、假时钟）/ integration（PostgreSQL、MySQL 8、SQLite 三方言真实库，IAM 真实模块，跨模块读取接口用夹具）/ e2e（Playwright，1440 与 390 视口）/ manual。时间相关一律假时钟。
@@ -1404,7 +1541,7 @@ When  所有者经 step-up 设为 ALLOW_WITH_REASON 后 E 再调 Check(decision_
 Then  允许，Steps 中 sod_override=true
 
 AC-08-10  [integration]  S3(c)
-Given 主导 Agent L 分派了 W（DispatchedByActor=true），L 被管理员授予 decision_approve 角色
+Given 主管 Agent L 分派了 W（DispatchedByActor=true），L 被管理员授予 decision_approve 角色
 When  L 调 Check(decision_approve)                    Then 拒绝 SEPARATION_OF_DUTIES（ROLE 来源被忽略）
 When  所有者给 L 授予满足条件的委托后再调            Then 允许 DELEGATION:<id>
 ```
@@ -1735,11 +1872,11 @@ Then  均在清单内；出现 NOT_DELEGABLE / PERMISSION_DENIED / STEP_UP_REQUI
 ```
 AC-08-67  [integration]  BR-08-50, US-08-18
 Given 交付负责人 M（种子不含 spawn_grant_manage）
-When  M 调 SG2 为主导 Agent L 授予编制授权
+When  M 调 SG2 为主管 Agent L 授予编制授权
 Then  403 160403 data.reason_code=MISSING_PERMISSION；无授权行；审计追加 outcome=denied
 
 AC-08-68  [integration]  BR-08-50, S2
-Given 主导 Agent L（即使被人工绑定了 team_owner 角色）
+Given 主管 Agent L（即使被人工绑定了 team_owner 角色）
 When  L 调 SG2 为自己或其他 Agent 授予编制授权
 Then  403 160403 data.reason_code=AGENT_PROHIBITED（spawn_grant_manage ∈ NonDelegable ⊆ HumanOnly）
 
@@ -1788,7 +1925,7 @@ When  人收编 A1（05 agent.adopted，05 同事务调用 Release(G, A1, ADOPTE
 Then  201；G.active_count 减 1，A1 之后的成本不再计入 G
 
 AC-08-76  [unit]  agent_spawn 评估路径（S4 PolicyOnly / S7）
-Given 主导 Agent L 持 ACTIVE 授权 G（allowed_roles=[EXECUTOR]、allowed_models=[{CLAUDE_CODE, sonnet}]）
+Given 主管 Agent L 持 ACTIVE 授权 G（allowed_roles=[EXECUTOR]、allowed_models=[{CLAUDE_CODE, sonnet}]）
 When  依次：L 以 Spawn{Role:REVIEWER}；L 以 Spawn{Role:EXECUTOR, Model:opus}；L 以合法事实；人类 O（team_owner）以合法事实 调 Check(agent_spawn)
 Then  依次：拒绝 SPAWN_GRANT_SCOPE；拒绝 SPAWN_GRANT_SCOPE；允许，来源 POLICY:spawn_grant；拒绝 NO_AUTHORITY（PolicyOnly：角色授予不生效）
 And   非 LEAD 的执行者 Agent 调 Check(agent_spawn) → 拒绝 SPAWN_NOT_LEAD
@@ -1801,6 +1938,22 @@ And   若批准前 O 撤销 G → 该项 WITHDRAWN，05 的批准接口返回授
 ```
 
 ---
+
+### 10.11 D112 / D113 增补验收标准
+
+**AC-08-78**（integration）内部失败不打扰人 — Given W 处于 INTERNAL_QA When 产品验收 Agent 判定不通过、W → REWORK Then 无任何收件箱项、无任何通知记录；指标 internal_rounds +1。
+**AC-08-79**（integration）内部轮次用尽 — Given max_internal_rounds=5，W 第 5 轮内部失败 When 02 发布 `work_item.escalated{INTERNAL_ROUNDS_EXHAUSTED}` Then 负责人与交付负责人各得 1 条 `ESCALATION_INTERNAL_EXHAUSTED`；W 进入 NEEDS_HUMAN_REVIEW 后该项关闭。
+**AC-08-80**（integration）需求冲突不直达甲方 — `REQUIREMENT_CONFLICT` 只投影给交付负责人；甲方门户、来件联系人无任何新消息。
+**AC-08-81**（integration）Andon — Agent A 拉线成功（`andon_pull`）；A 清除停线 → 403 `120403`（reason `HUMAN_ONLY`）；负责人清除成功并关闭 ANDON 项；A 一小时内第 4 次拉线 → 生成 `ESCALATION_ALERT`。
+**AC-08-82**（unit）例外决定 — Agent 调 Check(`exception_decide`) → 拒 `NON_DELEGABLE`；人类 `delivery_lead` → 允许（ROLE）。
+**AC-08-83**（unit）计划批准 — 执行者模型家族 `anthropic`：评审 Agent 家族 `anthropic` → `SAME_MODEL_FAMILY`；家族 `openai` 且风险 MEDIUM → 允许（`POLICY:plan_review`）；风险 HIGH → 拒 `NO_AUTHORITY`；主管 Agent 批准自己派出工作项的计划 → `SEPARATION_OF_DUTIES`（`LEAD_DISPATCHED`）；计划作者自批 → `SELF_REVIEW`。
+**AC-08-84**（unit）负责人缺失 — `AccountablePrincipalID` 为空时对 `decision_approve` → `ACCOUNTABLE_HUMAN_MISSING`；指向停用成员 → 同上。
+**AC-08-85**（integration）穿透学习 — Given W 曾由 TESTER T（openai）与 ACCEPTOR P（google）放行 When 人类 REJECT 触发 `quality.escaped{HUMAN_REVIEW}` Then 建穿透记录（重复事件不重复建）、通知所有者与交付负责人；本模块**不**调用 06 `MemoryWriter` 或 11 `EvalSetWriter`（T 与 P 的 EXPERIENCE 草稿与评测用例由 02 `delivery.escape_learning` 提出，详情页只读展示）；人类「确认学习」后 `learning_state=RECORDED`，发布 `quality.escape_learning_decided`，02 据此使草稿生效；「驳回」须填理由，草稿与用例被撤回；Agent 调 Q3 → 403。
+**AC-08-86**（integration）总览磁贴 — 07 指标穿透率 12% → 磁贴琥珀；25% → 红色。
+**AC-08-87**（architecture）收件箱 allowlist — 投影器只订阅 §6.10 / §6.10b 列出的事件；新增未登记事件类型的投影 → 架构测试失败。
+**AC-08-88**（integration）可见性过滤 — 发布 `work_item.state_changed`（allowlist 内类型）且 `visibility=INTERNAL` → 收件箱项 0、通知发件箱 0、频道人类可见消息 0；同事件 `visibility` 缺省 → 正常投影。
+**AC-08-89**（unit）纯人工模式 — `team_mode=HUMAN_ONLY` 项目的 ASSISTANT Agent 请求 `decision_approve` → 403 `HUMAN_ONLY_MODE`；请求 `report_read` → 允许；即使存在放行 `decision_approve` 的策略仍拒。
+**AC-08-90**（integration）N11–N14 路由 — 依次触发四类升级 → 各产生一条对应类型收件箱项、接收人如 §9.4 对应表；重复事件按去重键只产生一条。
 
 ## 11. 度量与埋点（不含代码、消息、反馈正文）
 
@@ -1824,6 +1977,10 @@ And   若批准前 O 撤销 G → 该项 WITHDRAWN，05 的批准接口返回授
 Prometheus：`governance_authority_checks_total{allowed,source_kind}`、`governance_inbox_projection_latency_seconds`（histogram）、`governance_consumer_dead_letters_total{consumer}`、`governance_active_delegations`（gauge）。
 
 ---
+
+### 11.x D112 / D113 增补埋点
+
+`andon_pulled{actor_kind}`、`andon_cleared{minutes_open}`、`escape_recorded{stage, category}`、`escape_learning_decided{state, days_pending}`、`plan_approval_decided{approver_kind, cross_family}`、`inbox_suppressed_internal{count}`（每日聚合，证明内部失败被拦截）。
 
 ## 12. 依赖、风险与待决
 
@@ -1890,3 +2047,5 @@ Prometheus：`governance_authority_checks_total{allowed,source_kind}`、`governa
 | CR-08-10 | 底座 governance | 访问申请支持按角色设最长授权时长 | 生产访问 ≤8h |
 | CR-08-11 | §6.4 | 不可委托清单补入 `intake_decline`、新建项目（伪码 `project_create`）、`memory_approve`（同 01 CR-10、06 CR-06-06）；`Delegable` 写明 `intake_convert` 的条件 | 与 01 / 06 对齐，单一清单 |
 | CR-08-12 | §3 | 时间类型改为 `TIMESTAMPTZ(3)` / `DATETIME(3)` / `DATETIME`（同 01 CR-01、02 CCR-01）；§9 tag 规则改为发布路径首段（同 02 CCR-08） | 与仓库规约及已实施的路由规则一致 |
+
+> **v2.0（D112 / D113，00 §15）已并入本规格**：权限码登记与授予（§3.3b）、判定规则 S2(d) / S3(f) / 策略 `plan_review` / `internal_qa` 与新原因码（§3.5b）、穿透记录表（§3.8.16）、错误码 160480–160483、BR-08-60…65、接口 Q1–Q3、收件箱类型（§6.10b）、任务与事件（§7.6）、页面（§8.7）、通知（§9.4）、AC-08-78…87。**CR-08-13**（对 00）：§15.5 增补原因码 `ACCOUNTABLE_HUMAN_MISSING`、`SAME_MODEL_FAMILY`、`ANDON_ACTIVE`（02）；事件 `quality.escape_recorded`、`quality.escape_learning_decided`；05 `AgentDirectory` 需暴露 `model_family`；02 需在 `WorkItemFacts` 填 `AccountablePrincipalID`、`PlanAuthorID`，并在 `work_item.state_changed{to:REWORK}` 载荷携带 `cause`。

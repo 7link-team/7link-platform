@@ -54,6 +54,14 @@
 
 ---
 
+### 2.x D112 / D113 增补用户故事（v2.0，00 §15）
+
+| ID | 用户故事 | 版本 |
+|---|---|---|
+| US-10-17 | 作为上级，我要在报告里同时看到系统计算的进度和作者声明的状态（绿 / 黄 / 红），声明为绿但实际明显落后的报告不能直接提交，以便杜绝「外绿内红」 | MVP |
+| US-10-18 | 作为作者，当我的状态信心比上一期下降时，我要写出改进计划，以便问题有人跟进 | MVP |
+| US-10-19 | 作为团队所有者，项目与团队报告自动带上穿透率、内部一次通过率与平均内部轮次，以便在复盘中讨论内部质量门 | MVP |
+
 ## 3. 领域模型与数据表
 
 ### 3.0 类型映射（三方言）
@@ -342,6 +350,24 @@
 
 ---
 
+### 3.14 D112 / D113 增补字段（防西瓜与质量指标）
+
+`planning_reports` 增列：
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| declared_confidence | ENUM `StatusConfidence` | Y | NULL | 作者声明的状态信心 GREEN / YELLOW / RED；提交时必填（B4 增补） |
+| computed_progress | DEC(5,4) | Y | NULL | 系统计算进度 0–1（BR-10-48），核对时快照 |
+| expected_progress | DEC(5,4) | Y | NULL | 期望进度 0–1（BR-10-48） |
+| progress_lag | DEC(5,4) | Y | NULL | `expected_progress − computed_progress`（负数表示超前） |
+| status_explanation | STR(2000) | Y | NULL | 声明 GREEN 但落后超阈值时的说明（≥ 20 字，B6） |
+| improvement_plan | JSON | Y | NULL | `[{action, owner_principal_id, due_date, kr_id?}]`，信心下降时必填（B7） |
+| quality_metrics | JSON | Y | NULL | PROJECT / TEAM 级：`{escape_rate, internal_first_pass_rate, avg_internal_rounds, l3_entered, escapes}`；Agent 执行者的 MEMBER 级：`{internal_first_pass_rate, avg_internal_rounds}` |
+
+`planning_settings` 增列：`watermelon_lag_threshold DEC NOT NULL DEFAULT 0.30`（0.10–0.60）、`confidence_required_kinds JSON NOT NULL DEFAULT ["WEEK","MONTH","QUARTER","YEAR"]`（日报可不声明信心）。
+
+报告 `content` Schema 增加 `status{declared_confidence, explanation?, computed_progress, expected_progress}`（computed / expected 由系统写入，客户端提交的值被忽略）与 `improvement_plan[]`；`ReportFlag` 增加 `STATUS_EXPLAINED`（「状态已说明」）与 `ABOVE_CHILDREN`（「状态高于下级」）。
+
 ## 4. 状态机
 
 ### 4.1 目标 `GoalStatus`
@@ -477,6 +503,22 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 - **BR-10-35 过期判定**：报告 READY 后，若被引用的事实（工作项状态、裁决、交付、下级报告 content_hash）发生变化，事件消费者（J6）把 `last_check_hash` 置空并加 `NEEDS_RECHECK`；提交时校验 `last_check_hash = content_hash` 且无 `NEEDS_RECHECK`，否则 409 **180432**（客户端自动重核）。
 - **BR-10-36 证据口径**：B1 判定以提交时刻的事实为准；周期结束后才变为 ACCEPTED 的工作项不计入本周期 completed（应进入下一周期），作者可在 note 中说明。
 
+- **BR-10-48 计算进度与期望进度（D112 §15.4 防西瓜）**：
+  - MEMBER：`computed_progress` = 作者本周期计划项按权重的完成比例，完成以系统事实为准（工作项 ACCEPTED、交付 SENT 等，与 B1 同口径）；无计划项时取作者成员目标 KR 进度的加权平均。
+  - PROJECT / TEAM：取下级已提交报告 `computed_progress` 按目标权重加权；无下级时取本级目标 KR 进度。
+  - `expected_progress`：有计划基线时 = 截至报告时刻**按计划应完成**的权重占比；否则 = 周期已流逝工作日占比。
+- **BR-10-49 核对项增补**（并入 BR-10-30 表）：
+
+| 码 | 级别 | 规则 | 示例提示 |
+|---|---|---|---|
+| B6_WATERMELON | 阻断 | `declared_confidence = GREEN` 且 `progress_lag ≥ watermelon_lag_threshold`（默认 0.30），且 `status_explanation` 为空或少于 20 字 | 「你声明为绿，但系统计算进度 45%，应达 80%（落后 35%）。请调整状态或说明原因。」 |
+| B7_CONFIDENCE_DROP_NO_PLAN | 阻断 | 本期 `declared_confidence` 低于同主体上一期同周期报告（GREEN→YELLOW/RED、YELLOW→RED），且 `improvement_plan` 为空或缺负责人 / 期限 | 「状态由绿降为黄，请填写改进计划（至少 1 项，含负责人与期限）。」 |
+| N5_STATUS_EXPLAINED | 非阻断 | B6 条件成立但已填写合格说明 → flag `STATUS_EXPLAINED`（上级视图高亮「外绿内红风险」） | |
+| N6_ABOVE_CHILDREN | 非阻断 | 汇总报告声明信心高于下级已提交报告中最差者（如下级有 RED 而本级 GREEN） → flag `ABOVE_CHILDREN` | 「2 份下级周报为红，本报告为绿」 |
+
+- **BR-10-50 信心必填**：`confidence_required_kinds` 内的周期，提交时 `declared_confidence` 为空 → 归入 B4（缺章节）；Agent 成员的信心由 Agent 起草、作者负责人（`owner_principal_id`）确认时可修改。
+- **BR-10-51 质量指标填充**：PROJECT / TEAM 报告生成时从 07 `DeliveryMetricsReader` 读取本周期穿透率、内部一次通过率、平均内部轮次写入 `quality_metrics`，并在 `completed` 摘要中生成一行「质量」概述；穿透率超过 07 / 08 阈值时自动在 `retrospective.problems` 生成草稿条目（作者可编辑，不可删除事实数字）。
+
 ### 5.6 提交、确认与逾期
 
 - **BR-10-37 提交者**：MEMBER 报告由本人提交（Agent 以自身凭证）；Agent 不可用（STOPPED / CRASHED / RETIRED）时负责人类可代为提交（`submitted_by` 记人类，`detail.on_behalf_of=agent`）。PROJECT 报告由交付负责人提交；TEAM 报告由所有者提交。
@@ -577,6 +619,8 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 | 180441 | 422 | planning.error.content_schema | 报告内容不符合 Schema |
 | 180503 | 503 | planning.error.dependency_unavailable | 02 / 05 / 07 读取失败（核对 fail-closed，不给 PASS） |
 
+- **D112 / D113 增补错误码**：`180460` invalid_confidence（422，非枚举值）、`180461` improvement_plan_invalid（422，缺负责人 / 期限 / 超过 10 项）、`180462` status_explanation_too_short（422，< 20 字时用于字段校验提示；提交时仍以 B6 阻断返回）。报告更新接口 `PUT /reports/{report_id}`（既有）接受 `status.declared_confidence`、`status.explanation`、`improvement_plan`；computed / expected 只读。
+
 ### 6.6 跨模块接口
 
 **本模块提供**
@@ -627,6 +671,8 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 | `report.overdue` | R11 | `{report_id, principal_id?, due_at}` |
 
 均可经 SSE 推送完整载荷（不含报告正文）。
+
+- **D112 / D113**：`report.checked` 载荷增加 `issues[]` 中的 B6 / B7 / N5 / N6；`report.submitted` 载荷增加 `declared_confidence`、`progress_lag`、`flags`；新增消费 07 指标快照完成事件（或按需读取 `DeliveryMetricsReader`）以填充 `quality_metrics`。
 
 ### 7.3 消费事件
 
@@ -693,6 +739,13 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 - 汇总行：按时提交率、核对通过率；〔批量催交〕（只发提醒）。
 
 ---
+
+### 8.7 D112 / D113 页面增补
+
+- **报告编辑器头部**新增「状态」区：绿 / 黄 / 红单选；旁边并列「计算进度 x% / 应达 y%」双条与落后差值；落后 ≥ 阈值且选择绿时，右侧核对面板出现 B6 阻断项并在状态区展开「说明」输入框；信心下降时展开「改进计划」表格（行动、负责人、期限、关联 KR）。
+- **核对面板**：B6 / B7 归入阻断组，N5 / N6 归入标记组；提交按钮文案在仅剩 N 项时显示「提交（带标记：状态已说明）」。
+- **报告汇总**：每行显示声明信心色点与计算进度；`STATUS_EXPLAINED` 与 `ABOVE_CHILDREN` 以琥珀标签展示（「外绿内红风险」「状态高于下级」）；项目 / 团队行显示穿透率、内部一次通过率。
+- **团队报告中心**：日历格增加信心色点；可按「外绿内红风险」筛选。
 
 ## 9. 通知
 
@@ -964,6 +1017,16 @@ Then  06 MemoryWriter.Propose(kind=EXPERIENCE, scope=AGENT, source=report_id) �
 
 ---
 
+### 10.8 D112 / D113 增补验收标准
+
+**AC-10-36**（unit）B6 阻断 — Given 周报计划 5 项（等权），截至提交应完成 4 项（expected 0.80），系统事实完成 2 项（computed 0.40，lag 0.40），声明 GREEN、无说明 When 核对 Then 出现 B6，提交返回阻断；补写 ≥20 字说明后再核对 → 无 B6、出现 N5，提交成功且 flags 含 `STATUS_EXPLAINED`。
+**AC-10-37**（unit）阈值边界 — lag 0.25、GREEN → 无 B6；lag 0.30、GREEN → B6；lag 0.40、YELLOW → 无 B6。
+**AC-10-38**（unit）B7 — 上期 GREEN，本期 RED、改进计划为空 → B7；补 1 项含负责人与期限 → 通过；改进计划某项缺期限 → 422 `180461`。
+**AC-10-39**（integration）N6 — 项目周报声明 GREEN，下级 3 份已提交中 1 份 RED → flag `ABOVE_CHILDREN`，可提交；上级视图显示「状态高于下级」。
+**AC-10-40**（integration）质量指标 — 07 返回本周穿透率 10.0%、内部一次通过率 70.0%、平均内部轮次 1.55 → 团队周报 `quality_metrics` 与 `completed` 摘要一致；作者删除摘要中的事实数字后再核对 → B2 阻断。
+**AC-10-41**（unit）客户端伪造进度 — 提交请求携带 `computed_progress=0.95` → 被忽略，核对使用系统重算值。
+**AC-10-42**（integration）Agent 成员 — Agent A 起草周报声明 GREEN 且 lag 0.35 → B6 阻断；A 不能自行提交越过阻断；其负责人修改为 YELLOW 后可提交。
+
 ## 11. 度量与埋点
 
 | 指标 | 定义 |
@@ -979,6 +1042,8 @@ Then  06 MemoryWriter.Propose(kind=EXPERIENCE, scope=AGENT, source=report_id) �
 埋点：`goal_activated{level}`、`plan_submitted{subject_kind,items}`、`plan_confirmed{latency_h}`、`report_generated{level,period_kind}`、`report_checked{result,blocking,non_blocking,duration_ms}`、`report_submitted{late,flags}`、`report_confirmed{latency_h}`、`report_returned`。不采集报告正文。
 
 ---
+
+- **D112 / D113 埋点**：`report_confidence_declared{level, kind, confidence}`、`watermelon_blocked{lag_bucket}`、`watermelon_explained`、`confidence_drop{from, to, plan_items}`。
 
 ## 12. 依赖、风险与待决
 
@@ -1030,3 +1095,5 @@ Then  06 MemoryWriter.Propose(kind=EXPERIENCE, scope=AGENT, source=report_id) �
 | CR-10-08 | §8 / 05 | 05 机器通道可选指令 `agent.plan_draft`、`agent.report_draft`（Agent 自撰计划与复盘） |
 | CR-10-09 | 08 | 收件箱类型 `PLAN_CONFIRMATION`、`REPORT_CONFIRMATION`、`REPORT_BLOCKED`、`REPORT_OVERDUE`；通知目录 N-10-01..10；控制台外壳新增「目标与报告」分组 |
 | CR-10-10 | 05 | `AgentDirectory` 视图增加 `owner_principal_id`（主管创建的 Agent = 编制授权授予人） |
+
+> **v2.0（D112 / D113，00 §15）已并入本规格**：声明状态信心与计算进度（§3.14、BR-10-48）、核对项 B6 / B7 / N5 / N6（BR-10-49）、信心必填（BR-10-50）、质量指标填充（BR-10-51）、错误码 180460–180462、页面增补（§8.7）、AC-10-36…42。依赖：07 `DeliveryMetricsReader` 需提供穿透率等三项指标（07 BR-07-61 已定义）。

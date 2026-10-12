@@ -14,7 +14,7 @@
 |---|---|
 | Execution（尝试树：`parent_execution_id`、`BranchReason`、序号与"#3 · 质量返工 2"标签）；种类 AUTONOMOUS / INTERACTIVE / ADHOC | 工作项状态机、Claim 表与 `POST /work-items/{id}/claims`、Decision、结构化反馈表单 → **02** |
 | 执行生命周期、执行租约与 `dispatch_epoch` 栅栏（移植 Preview 01：30 s 租约、服务重启/机器离线即中断、不自动重放） | 机器接入、心跳、通道传输（HTTP 轮询 / WebSocket）、执行槽调度、运行时与能力（Skills/MCP）检测、模型目录 → **04** |
-| 执行级派发消息（start / cancel / 交互回应 / 证据采集 / 验证 / 合并）、事件流 `seq`、outbox 确认语义 | Agent 资料（系统提示、runtime×model、`max_context_tokens`、技能、授权模式）、主导 Agent 选择 ENSEMBLE 胜者（`ensemble.compared`）→ **05** |
+| 执行级派发消息（start / cancel / 交互回应 / 证据采集 / 验证 / 合并）、事件流 `seq`、outbox 确认语义 | Agent 资料（系统提示、runtime×model、`max_context_tokens`、技能、授权模式）、主管 Agent 选择 ENSEMBLE 胜者（`ensemble.compared`）→ **05** |
 | 注入运行时的**七层上下文包**、`maxContextTokens` 预算与裁剪顺序、"使用的知识"记录 | 检索与注入包生成（`Retriever`）→ **06** |
 | 执行环境加固（不注入控制面令牌、环境变量白名单、每执行工作目录/worktree、同目录单写） | 预算阈值与升级规则（`budget.threshold_reached`、`escalation.triggered`）、委托条件判定、"我的裁决"聚合 → **08** |
 | 交互会话（Preview 01 全量对齐）：轮次、消息、工具行、TOOL_PERMISSION / RUNTIME_INPUT、重试、换机器、授权模式、Skills、MCP、附件、限额 | 项目阶段、预算设定、交付包 → **07** |
@@ -46,12 +46,23 @@
 | US-03-16 | 作为有 `code_merge` 权限的主体，我要在工作项被接受且验证全过后把执行分支合并到主分支 | MVP |
 | US-03-17 | 作为工程师，我要在会话里用 `/`、`$` 插入 Skill、查看 MCP 列表、附加最多 8 个文本文件 | MVP |
 | US-03-18 | 作为执行者，我要在会话里看到"使用的知识"：本次注入了哪些知识条目、得分与引用 | MVP |
-| US-03-19 | 作为主导 Agent，我要对高风险工作项启动 ≤3 个 ENSEMBLE 并行分支并获得对比数据 | v1.1 |
+| US-03-19 | 作为主管 Agent，我要对高风险工作项启动 ≤3 个 ENSEMBLE 并行分支并获得对比数据 | v1.1 |
 | US-03-20 | 作为团队所有者，我要开启"全自动授权"时被要求重新认证，且该动作写入审计链 | MVP |
 | US-03-21 | 作为评审者，我要以**人工验证器**身份记录 PASSED / FAILED / INCONCLUSIVE 与观察 | MVP |
 | US-03-22 | 作为交付负责人，执行在 PAUSED（上下文不足 / Agent 放弃 / 成本上限）时我要能恢复或改为新分支 | MVP |
 
 ---
+
+
+### 2.x 用户故事增补（D112 / D113，00 v2.0 §15）
+
+| ID | 故事 | 版本 |
+|---|---|---|
+| US-03-23 | 作为交付负责人，我要在计划批准时冻结验收测试（可见部分 + 隐藏部分），以便执行者无法通过改测试「通过」 | MVP |
+| US-03-24 | 作为团队，我要平台在隔离环境重跑所有确定性检查，以便不依赖执行者贴出的日志 | MVP |
+| US-03-25 | 作为团队，我要测试 Agent 与产品验收 Agent 在内部先验收，以便只有内部验收通过的成果才到人面前 | MVP |
+| US-03-26 | 作为产品验收 Agent，我要拿到真实交付形态（运行应用、截图、成品文件），以便按需求与评分标准判断而不只看代码 | MVP |
+| US-03-27 | 作为团队，我要人或甲方发现内部放行的问题时自动沉淀为经验与评测用例，以便内部质量门越来越准 | MVP |
 
 ## 3. 领域模型与数据表
 
@@ -405,6 +416,61 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 ---
 
+
+### 3.19 执行表增补字段（D112 / D113，00 v2.0 §15）
+
+`execution_executions` 增加：
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| model_family | STR(32) | N | | 执行所用模型家族（如 `anthropic` / `openai` / `google` / `local:<name>`），派发时由 04 模型目录解析并快照，跨模型家族规则据此判定 |
+| verification_stage | ENUM `VerificationStage` | Y | NULL | 仅 `purpose ∈ {INTERNAL_TEST, INTERNAL_ACCEPTANCE}` 时为 `AGENT_TEST` / `AGENT_ACCEPTANCE` |
+| subject_execution_id | ID | Y | NULL | 内部验收执行所验收的那次交付执行 |
+| acceptance_suite_id | ID | Y | NULL | 本执行适用的冻结验收集 |
+
+`ExecutionPurpose` 增加 `INTERNAL_TEST`（测试 Agent 执行）、`INTERNAL_ACCEPTANCE`（产品验收 Agent 执行）；二者不进分支树、不能提交完成声明、不得写入交付工作区（工作区以只读快照挂载，测试 Agent 新增的测试写入其自己的输出目录，经 BR-03-97 合入）。
+
+### 3.20 `execution_acceptance_suites`（验收集，`version` 乐观锁）
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id | ID | N | | |
+| tenant_id / project_id / work_item_id | ID | N | | 工作项级；需求级验收集可被多个工作项引用（`work_item_id` 可空时为需求级） |
+| requirement_version_no | INT | N | | 冻结时的需求基线版本 |
+| state | STR(16) | N | `DRAFT` | DRAFT / FROZEN / SUPERSEDED |
+| visible_files | JSON | N | `[]` | `[{path, sha256, file_node_id}]`，复制进执行者工作区，执行者只读 |
+| hidden_files | JSON | N | `[]` | `[{path, sha256, file_node_id}]`，**永不进入执行者工作区**，仅在平台副本中运行 |
+| command | JSON | N | | 运行命令数组（不经 shell） |
+| frozen_at / frozen_by | 时间 / ID | Y | | 计划批准时冻结（02 `plan.approved`）；冻结人须有 `acceptance_suite_manage` 或为计划批准动作本身 |
+| superseded_by | ID | Y | | 范围变更生成新版本时指向新集 |
+
+### 3.21 `execution_internal_qa_runs`
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id | ID | N | | |
+| tenant_id / project_id / work_item_id | ID | N | | |
+| subject_execution_id | ID | N | | 被验收的交付执行 |
+| stage | ENUM `VerificationStage` | N | | AUTOMATED / AGENT_TEST / AGENT_ACCEPTANCE |
+| qa_execution_id | ID | Y | | AGENT_* 阶段对应的内部验收执行 |
+| agent_id / model_family | ID / STR(32) | Y | | AGENT_* 阶段的执行主体与模型家族 |
+| family_fallback | BOOL | N | false | 未能满足「不同模型家族」而退化为不同模型时为 true（05 BR-05-109） |
+| state | STR(16) | N | `PENDING` | PENDING / RUNNING / PASSED / FAILED / INCONCLUSIVE / ERROR |
+| findings | JSON | N | `[]` | `[{criterion_id?, severity: BLOCKER\|MAJOR\|MINOR, summary, evidence_ids[]}]` |
+| screenshots | JSON | N | `[]` | `[{file_node_id, viewport, route, sha256}]` |
+| rubric_scores | JSON | Y | | 产品验收 Agent 按模板评分标准的逐项得分（11） |
+| started_at / ended_at | 时间 | Y | | |
+
+索引：`(work_item_id, subject_execution_id, stage)`；`(tenant_id, state, stage)`。
+
+### 3.22 证据包增补
+
+`execution_evidence_collections` 增加 `unverified JSON NOT NULL DEFAULT '[]'`：`[{criterion_id?, what, reason}]`，**必填**（可为空数组，不可缺省）；Claim 提交（02 `ClaimSubmitter`）时一并写入；评审台与内部验收面板显著展示。
+
+### 3.23 验证器类型增补
+
+`execution_verifiers.kind` 增加：`VISUAL`（以无头浏览器打开交付物指定路由，按视口截图，检查布局约束：元素尺寸一致性、溢出、对齐、对比度；产出截图证据）与 `INTERACTION`（脚本化交互流程：按键 / 点击序列后断言 DOM 或截图）。二者属确定性检查（AUTOMATED 阶段），由平台在隔离副本执行；截图同时作为产品验收 Agent 的输入。
+
 ## 4. 状态机
 
 所有迁移在**单一数据库事务**内完成：条件更新（`version` 或 `state` CAS）→ 追加审计（如需）→ 写 outbox 领域事件 → `change_seq+1`。事件与审计在提交成功后才对外可见（09 outbox）。
@@ -528,6 +594,29 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 ---
 
+
+### 4.x 内部验收与验收集状态（D112 / D113，00 v2.0 §15）
+
+**验收集**：DRAFT →（02 `plan.approved` 或人工 `PUT state=FROZEN`）→ FROZEN →（02 范围变更产生新版本）→ SUPERSEDED。FROZEN 后 `visible_files` / `hidden_files` / `command` 不可改（409 **130451**）。
+
+**内部验收运行**（每个交付执行的每个阶段一条）：
+
+| # | 当前 | 触发 | 守卫 | 目标 | 副作用 |
+|---|---|---|---|---|---|
+| Q1 | — | 交付执行 SUCCEEDED 且已提交声明 | — | AUTOMATED: RUNNING | 平台在隔离副本重跑确定性检查（BR-03-95）与隐藏验收（BR-03-96） |
+| Q2 | AUTOMATED RUNNING | 全部通过 且 无测试 diff 违规 | | PASSED | `internal_qa.passed{stage:AUTOMATED}` → 05 派测试 Agent |
+| Q3 | AUTOMATED RUNNING | 任一失败 / 测试 diff 违规 | | FAILED | `internal_qa.failed`；违规另发 `cheating.suspected`；02 → REWORK（内部，不通知人） |
+| Q4 | — | 05 派单生效 | | AGENT_TEST: RUNNING | Launch(purpose=INTERNAL_TEST) |
+| Q5 | AGENT_TEST RUNNING | 无 BLOCKER/MAJOR 发现 | | PASSED | 测试 Agent 新增测试经 BR-03-97 合入；→ 05 派产品验收 Agent |
+| Q6 | AGENT_TEST RUNNING | 有 BLOCKER/MAJOR | | FAILED | 发现作为结构化反馈 → 02 REWORK |
+| Q7 | — | 05 派单生效 | | AGENT_ACCEPTANCE: RUNNING | Launch(purpose=INTERNAL_ACCEPTANCE)，输入含截图 |
+| Q8 | AGENT_ACCEPTANCE RUNNING | 逐条验收标准通过 且 评分达模板阈值 | | PASSED | `internal_qa.passed{stage:AGENT_ACCEPTANCE}` → 02 L2 达成 → NEEDS_HUMAN_REVIEW |
+| Q9 | AGENT_ACCEPTANCE RUNNING | 任一验收标准不通过 / 评分不足 | | FAILED | 反馈 → 02 REWORK |
+| Q10 | 任一 RUNNING | 执行故障 / 超时 | | ERROR | 不计内部轮次；重派一次，仍 ERROR → 升级（`INTERNAL_ROUNDS_EXHAUSTED` 之外的执行故障按 02 T19） |
+| Q11 | AGENT_* RUNNING | 判断无法得出结论（证据不足） | | INCONCLUSIVE | 视同 FAILED 返工一次；连续两次 INCONCLUSIVE → 升级人工（`MANDATORY_HUMAN_GATE`，detail=`INTERNAL_QA_INCONCLUSIVE`） |
+
+非法：对 PASSED / FAILED 的运行再写结果 → 409 **130452**；INTERNAL_* 执行试图提交完成声明 → 409 **130453**。
+
 ## 5. 业务规则与边界情况
 
 ### 5.1 分支、序号与种类
@@ -536,7 +625,7 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 - **BR-03-02 起点**：INITIAL / STRATEGY / ENSEMBLE → `BASELINE`（项目基线分支，04 `ResolveWorkspace`）；QUALITY 按 02 传入的 `workspace_mode`：REJECT 默认 `RESTART`（父的 `base_commit`，重开工作区）、REQUEST_CHANGES 默认 `CONTINUE`（父 `head_commit`）；SCOPE / RETRY_INFRA → `CONTINUE`（父无提交时退化为父 `base_commit`）。父执行及其产物、证据**永不修改**（PRD I5）。
 - **BR-03-03 序号**：创建事务内 `seq_no = max(seq_no)+1`（同工作项）、`reason_ordinal = count(同 reason)+1`；唯一冲突时整事务重试 ≤3 次，仍失败 → 409 130409。标签 `#{seq_no} · {原因}{ordinal}`；INITIAL 不带序数（"#1 · 初始"）；原因中文：初始 / 故障重试 / 质量返工 / 策略替代 / 并行求解 / 范围变更。
 - **BR-03-04 ADHOC 关联**（PRD Q8）：`PUT /executions/{id}/work-item-link` 守卫：调用者是该执行发起者且为工作项当前 EXECUTOR 分派者；工作项 ∈ {CLAIMED, IN_PROGRESS, REWORK}；关联后 `kind` 改为 INTERACTIVE，`branch_reason` = 工作项无 DELIVERY 执行时 INITIAL，否则 STRATEGY；分配 `seq_no`；审计 `execution.linked`。已关联再关联 → 409 130426。
-- **BR-03-05 ENSEMBLE**：同组 ≤3（PRD §10.6；项目可在 07 调为 1–5）；超出 → 409 130439。发起者：人须持 `work_item_assign` + `execution_start`；项目主导 Agent 不经角色码，经 08 `AuthorityChecker`（`POLICY:ensemble_branch`）判定。组内各分支可用不同 Agent / runtime / 模型；各分支对应 02 的 ENSEMBLE 分派行（02 `ensemble_plan_id`），工作项 `current_execution_id` 在选中前保持 NULL。
+- **BR-03-05 ENSEMBLE**：同组 ≤3（PRD §10.6；项目可在 07 调为 1–5）；超出 → 409 130439。发起者：人须持 `work_item_assign` + `execution_start`；项目主管 Agent 不经角色码，经 08 `AuthorityChecker`（`POLICY:ensemble_branch`）判定。组内各分支可用不同 Agent / runtime / 模型；各分支对应 02 的 ENSEMBLE 分派行（02 `ensemble_plan_id`），工作项 `current_execution_id` 在选中前保持 NULL。
 - **BR-03-06 返工建枝**（与 02 BR-02-26、§5.7 对齐）：由 02 在**裁决事务内**同步调用 `ExecutionLauncher.Launch(tx, …)`（委派模式：本模块在调用方事务里写自己的行），本模块**不**再依据 `decision.made` 事件建枝，避免双建。映射：REJECT/REQUEST_CHANGES（QUALITY_REJECTION）→ QUALITY；REQUEST_CHANGES（STRATEGY_CHANGE）→ STRATEGY；REQUEST_CHANGES（SCOPE_CHANGE）→ SCOPE；执行故障 → RETRY_INFRA（02 决定，见 BR-03-14）。执行者为 Agent 且 `autostart=true` → 立即派发 AUTONOMOUS；`autostart=false` → AUTONOMOUS 停在 CREATED 等人启动（A13）；执行者为人 → 建 INTERACTIVE（CREATED）等其打开会话。同一 `source_decision_id` 重复调用返回已建执行（UNIQUE 约束），不报错。
 - **BR-03-07 同工作项并发**：同一工作项同时最多 1 个非终态 DELIVERY 执行（ENSEMBLE 组内除外，受 BR-03-05 约束）；违反 → 409 130426。改派时 02 T07 先对旧执行调 `CancelExecution`（或 BR-03-01 的 RETRY_INFRA 取代），再 `Launch`。
 - **BR-03-08 ENSEMBLE 声明与收尾**：分支退出码 0 → 写 `pending_claim`（E06 例外），证据照常 DRAFT，验证按 BR-03-60 直接排队，**不**回调 02（`VerificationQueued/Completed` 仅在选中后对正式 Claim 执行）。05 选中某分支后在其事务内调 02 `ClaimSubmitter.SubmitOn(tx, {…pending_claim, execution_id, authority_source:POLICY:<plan_id>})`，本模块随之把该分支已完成的验证结果关联到新 Claim（不重跑）；落选或截止时间到 → 05 调 `CancelExecution(tx, execution_id, ENSEMBLE_STOPPED)`，已 SUCCEEDED 的落选分支只置 `archived_at`，证据与产物保留。全部分支失败 → 05 调 02 `WorkItemTransitioner.EnsembleFailed`。
@@ -654,6 +743,18 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 ---
 
+
+### 5.x 业务规则增补（D112 / D113，00 v2.0 §15）
+
+- **BR-03-95 平台重跑**：AUTOMATED 阶段的一切确定性检查（`verify` 命令、`VISUAL` / `INTERACTION` 验证器、构建）由平台在**干净的隔离副本**（交付执行 `head_commit` 的检出 + 可见验收集）中执行；执行者在会话中贴出或写入的任何测试 / 构建日志**一律不作为证据**，只作参考附件。
+- **BR-03-96 隐藏验收**：隐藏文件只在平台副本中复制并运行；任何执行（含测试 / 验收 Agent）的工作区与上下文包都不包含隐藏文件内容或路径列表（只告知「存在隐藏验收集」与数量）；隐藏集的 sha256 在每次运行时校验并写入证据。
+- **BR-03-97 测试 diff 检测**：对比交付执行 diff 与 FROZEN 可见集的路径：任何对冻结测试文件的修改、删除、重命名、或通过配置跳过（如修改测试命令、`skip` / `only` 标记）→ 自动 FAILED、发布 `cheating.suspected{execution_id, files[]}`，并在反馈中写明「不得修改冻结的验收测试」；测试 Agent 新增的测试放在独立目录，不得覆盖冻结文件，合入后成为下一次执行的可见测试（不进入冻结集，除非人工冻结新版本）。
+- **BR-03-98 诚实证据包**：Claim 必须带 `unverified[]`；为空数组时，系统仍检查验收标准覆盖映射，存在无证据的标准 → 自动补入 `unverified` 并标黄；「缺验证不算完成」：存在 `unverified` 项时 AGENT_ACCEPTANCE 不得给 PASSED，除非该项在验证计划中明确为 `HUMAN`。
+- **BR-03-99 真实交付形态**：产品验收 Agent 的输入包 = 需求与验收标准 + 模板评分标准（11）+ 交付物的可运行副本（只读）+ AUTOMATED 阶段截图（`VISUAL` 验证器产出，按模板定义的路由与视口：默认 1440×900 与 390×844）+ 成品文件清单；Codex / Claude 以图片输入方式接收截图。产品验收 Agent 不得只看代码判定。
+- **BR-03-100 跨模型家族**：执行开始时快照 `model_family`；AGENT_TEST / AGENT_ACCEPTANCE 的 `model_family` 与被验收交付执行相同时，必须 `family_fallback=true` 且模型不同、主体不同（05 BR-05-109 保证），评审台显示「同家族回退」标记。
+- **BR-03-101 内部轮次计数**：每次 FAILED（Q3/Q6/Q9/Q11）计 1 次内部轮次，交由 02 判断是否达到 `max_internal_rounds`（00 §15.2）；内部失败**不发任何人工通知**，只写事件与执行记录。
+- **BR-03-102 穿透学习（职责划分）**：`quality.escaped` 由 02 在拒绝裁决 / 甲方拒收的同一事务内发布（02 §4.5、BR-02-58），学习回流（06 `MemoryWriter.Propose`、11 `EvalSetWriter.ProposeCase(ctx, tx, {template_key, template_version?, source: ESCAPE, work_item_id, description, evidence_refs[], expected})`）只由 02 `delivery.escape_learning` 执行。本模块不发布 `quality.escaped`、不重复回流，只经 `InternalQAReader` 向 02 提供：该工作项最近一次 AGENT_TEST / AGENT_ACCEPTANCE 的结论、`internal_qa_run_ids[]`、参与的 TESTER / ACCEPTOR Agent 与截图证据引用（02 据此判断「内部已放行」并填入穿透记录）。
+
 ## 6. 接口契约
 
 ### 6.1 通用
@@ -674,7 +775,7 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 | A04 | GET `/tenants/{t}/entities/{e}/verifications` | tenants | execution_read | E | query：`claim_id, work_item_id, result, layer, required` | `Verification[]` | 403 | — |
 | A05 | GET `/work-items/{work_item_id}/executions` | work-items | execution_read | O(work_item_id) | `?include=tree` | `{nodes: ExecutionTreeNode[], groups: EnsembleGroup[]}` | 404 | — |
 | A06 | POST `/work-items/{work_item_id}/executions` | work-items | execution_start + work_item_execute | O(work_item_id) | `{kind:"INTERACTIVE", machine_id, runtime, model?, effort?, authorization_mode?, tools_enabled?, workdir_mode?:"WORKTREE"}` | `Execution`（201） | 409 130426/130413；422 130414/130441 | ✔ |
-| A07 | POST `/work-items/{work_item_id}/ensembles` | work-items | execution_start + work_item_assign（人）；主导 Agent 经 `POLICY:ensemble_branch`（BR-03-05） | O(work_item_id) | `{branches:[{agent_id, runtime?, model?, effort?}] 2..3, reason≤2000}` | `{ensemble_group_id, executions: Execution[]}` | 409 130439；403 | ✔ |
+| A07 | POST `/work-items/{work_item_id}/ensembles` | work-items | execution_start + work_item_assign（人）；主管 Agent 经 `POLICY:ensemble_branch`（BR-03-05） | O(work_item_id) | `{branches:[{agent_id, runtime?, model?, effort?}] 2..3, reason≤2000}` | `{ensemble_group_id, executions: Execution[]}` | 409 130439；403 | ✔ |
 | A08 | GET `/work-items/{work_item_id}/execution-comparisons` | work-items | execution_read | O(work_item_id) | `?execution_ids=a,b[,c]`（2–5，同工作项） | `ComparisonRow[]` | 422 | — |
 | A09 | GET `/executions/{execution_id}` | executions | execution_read | O(execution_id) | — | `Execution`（含 `change_seq`、`branch_label`、当前轮、未决交互数） | 404 | — |
 | A10 | PATCH `/executions/{execution_id}` | executions | execution_start（设置）；FULL_AUTO 另需 step-up | O(execution_id) | `{title?, model?, effort?, authorization_mode?, tools_enabled?, machine_id?, workdir_mode?, archived?:bool}` | `Execution` | 409 130409/130424/130411；422 130446；403 130403（`FULL_AUTO_FORBIDDEN` / `REAUTH_REQUIRED`） | v |
@@ -812,6 +913,21 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 ---
 
+
+### 6.x 接口增补（D112 / D113，00 v2.0 §15）
+
+| # | 方法 | 路径 | tag | 权限 · 守卫 | 请求 | 响应 | 错误 |
+|---|---|---|---|---|---|---|---|
+| A50 | GET | `/work-items/{work_item_id}/acceptance-suites` | work-items | `execution_read` · O | — | 列表（隐藏文件只返回数量与 sha256，不返回路径与内容） | 404 |
+| A51 | POST | `/work-items/{work_item_id}/acceptance-suites` | work-items | `acceptance_suite_manage` · O；HUMAN | `{visible_files[], hidden_files[], command[]}`（文件为 files 节点 id） | 集（DRAFT） | 422 130454（命令为空 / 文件缺失） |
+| A52 | PUT | `/acceptance-suites/{suite_id}/state` | acceptance-suites | `acceptance_suite_manage` · O；HUMAN；If-Match | `{state:"FROZEN"}` | 集 | 409 130451 |
+| A53 | GET | `/work-items/{work_item_id}/internal-qa-runs` | work-items | `execution_read` · O | `?subject_execution_id=` | 运行列表（含发现、截图、评分、同家族回退标记） | 404 |
+| A54 | GET | `/internal-qa-runs/{run_id}` | internal-qa-runs | `execution_read` · O | — | 单条 | 404 |
+
+接口：`ExecutionLauncher.Launch` 接受 `purpose ∈ {INTERNAL_TEST, INTERNAL_ACCEPTANCE}` 与 `subject_execution_id`（05 调用）；新增 `InternalQAReader{Latest(work_item_id), PassedStages(execution_id)}`（02 / 08 读取）。使用：06 `MemoryWriter.Propose`、11 `EvalSetWriter.ProposeCase`、04 `MachineDirectory`（`browser_capture` 能力）。
+
+错误码：**130451** 验收集已冻结不可修改；**130452** 内部验收运行已终结；**130453** 内部验收执行不能提交完成声明；**130454** 验收集定义不完整；**130455** 交付执行修改了冻结测试（`data.files[]`，同时记 `cheating.suspected`）；**130456** 隐藏验收集校验和不符（平台副本被篡改，升级人工）；**130457** 机器缺少截图能力（`browser_capture`），VISUAL 验证器无法执行（按 BR-03-99 改由其他机器或升级）；**130458** 证据包缺 `unverified` 字段。
+
 ## 7. 后台任务与事件
 
 ### 7.1 后台任务（经 09 `JobQueue`；互斥用底座 `dlock`，锁 TTL = 2×间隔；每批 ≤200 行，批内逐行独立事务，单行失败不影响其他行）
@@ -860,6 +976,14 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 主题 `tenant/{t}/execution/{id}`（`TopicAuthorizer`：`execution_read`，按归属项目判定）：帧 `{change_seq, kind:"state"|"message"|"message_delta"|"tool"|"interaction"|"cost"|"turn"|"artifact"|"evidence"|"verification", payload}`；文本增量在服务端按 250 ms 合并后推送。客户端发现 `change_seq` 跳号 → 重取 A09 + A19（`after_msg_no`）。主题 `tenant/{t}/project/{project_id}`（项目扇出，帧 `subject.kind=execution`）：列表行变化（状态、成本、未决交互数）。"我的裁决"由 08 订阅 `interaction.*` 聚合，≤1 s 移除已处理项。
 
 ---
+
+
+### 7.x 任务与事件增补（D112 / D113，00 v2.0 §15）
+
+任务：`execution.platform_rerun`（Q1，每个声明一次，隔离副本 + 可见验收集 + VISUAL / INTERACTION，超时按验证器）；`execution.hidden_acceptance`（Q1，同副本追加隐藏集）。（穿透学习任务归 02 `delivery.escape_learning`，见 BR-03-102。）
+发布：`acceptance_suite.frozen{suite_id, work_item_id, visible_count, hidden_count}`；`internal_qa.passed{work_item_id, subject_execution_id, stage, run_id}`；`internal_qa.failed{work_item_id, subject_execution_id, stage, run_id, findings_summary, counts_as_round: bool}`；`cheating.suspected{execution_id, work_item_id, files[]}`。（`quality.escaped` 由 02 发布。）
+消费：02 `plan.approved`（冻结验收集）。
+SSE：`tenant/{t}/work_item/{id}` 推送内部验收阶段变化（仅对有 `execution_read` 的成员；甲方门户不订阅）。
 
 ## 8. 页面规格
 
@@ -918,6 +1042,14 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 - **VerificationPanel**：按必需/参考分组；每行：层级图标（自动化/AI 辅助"仅参考"/人工）、验证器名 + 版本、结果（PENDING 显示 QUEUED/DISPATCHED/RUNNING 子状态与已等待时长）、原因、工具版本、耗时；展开：exitCode、stdoutTail/stderrTail（等宽、可复制）、报告文件链接、AI findings；顶部汇总"必需 3/4 通过 · 1 不确定"。按钮：〔重跑〕（`verification_run`，非 PENDING 行）；HUMAN 行〔记录结果〕（BR-03-65，自验时禁用并说明"不能验证自己执行的产出"）。
 
 ---
+
+
+### 8.x 页面增补（D112 / D113，00 v2.0 §15）
+
+- **内部验收面板**（执行详情与评审台共用组件 `InternalQAPanel`）：三段进度 AUTOMATED → AGENT_TEST → AGENT_ACCEPTANCE，每段状态、执行主体（Agent 头像 + 模型家族，「同家族回退」黄标）、发现列表（严重度、关联验收标准、证据）、截图缩略图（点击放大，标注视口与路由）、评分（模板评分标准逐项）。内部失败记录只在执行详情可见；评审台只在全部通过后出现该工作项，并显示「内部验收已通过 · 第 n 轮」。
+- **验收集卡片**（工作项详情）：状态 DRAFT / FROZEN、可见文件列表、隐藏文件数量与校验和（不显示路径）、冻结人与时间；冻结按钮仅人类且有 `acceptance_suite_manage`。
+- **作弊嫌疑提示**：执行详情显示红色横幅「本次执行修改了冻结测试：files…」，提供 diff 链接。
+- **证据卡**：新增「未验证项」区块（`unverified[]`），为空时显示「执行者声明：无未验证项」。
 
 ## 9. 通知（经 09 `Notifier`；站内信必达，其余渠道按 08 用户偏好）
 
@@ -1000,7 +1132,7 @@ Then  同一事务内创建子执行 #2，branch_label="#2 · 质量返工 1"，
 Given autostart=false   Then #2 停在 CREATED、无 START 命令；人工 POST /resumptions 后才派发
 
 AC-03-11  [integration]  US-03-19, BR-03-05
-Given 项目主导 Agent L
+Given 项目主管 Agent L
 When  L 调 A07 创建 3 个 ENSEMBLE 分支（不同 Agent/模型），再追加第 4 个
 Then  前 3 个共享 ensemble_group_id；第 4 个 409 130439；A08 返回 3 行对比数据，且不自动标记胜者
 
@@ -1337,6 +1469,26 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 
 ---
 
+
+### 10.x 验收标准增补（D112 / D113，00 v2.0 §15）
+
+| ID | 层 | 关联 | Given / When / Then |
+|---|---|---|---|
+| AC-03-72 | integration | BR-03-95 | **G** 执行者在会话中贴出「全部测试通过」日志，实际有 1 个失败 **W** 提交声明 **T** 平台副本重跑得 FAILED，内部返工，日志不作为证据 |
+| AC-03-73 | integration | BR-03-96 | **G** 工作项有 3 个隐藏验收文件 **W** 交付执行、测试执行、验收执行运行 **T** 三者工作区与上下文包均不含隐藏文件内容或路径；平台副本运行并记录 sha256 |
+| AC-03-74 | integration | BR-03-97 | **G** 冻结集含 `tests/a.test.mjs` **W** 交付 diff 修改该文件 **T** AUTOMATED FAILED（130455），发布 `cheating.suspected`，反馈含「不得修改冻结的验收测试」，无人收到通知 |
+| AC-03-75 | integration | BR-03-97 | **G** 测试命令被改为跳过某文件 **W** 平台重跑 **T** 判定为跳过冻结测试，同 AC-03-74 |
+| AC-03-76 | unit | BR-03-98 | **G** Claim 缺 `unverified` 字段 **W** 提交 **T** 422 130458 |
+| AC-03-77 | integration | BR-03-98 | **G** 验收标准 AC2 无证据且 `unverified=[]` **W** 进入 AGENT_ACCEPTANCE **T** AC2 自动补入 unverified；验收 Agent 不得给 PASSED |
+| AC-03-78 | e2e | BR-03-99 | **G** Web 交付物，模板定义路由 `/` **W** AUTOMATED **T** 产出 1440 与 390 两张截图，作为图片输入进入产品验收执行 |
+| AC-03-79 | e2e | Q8, BR-03-99 | **G** 页面逻辑测试全过但棋盘行高不一致（2048 实测案例）**W** 产品验收 Agent 审查截图 **T** 给出 MAJOR 发现「棋盘行高不一致」并 FAILED，工作项内部返工；人未收到任何通知 |
+| AC-03-80 | integration | BR-03-100 | **G** 交付执行与可选验收 Agent 均为 `openai` 家族 **W** 派验收 **T** 运行记录 `family_fallback=true`，模型不同、主体不同；评审台显示「同家族回退」 |
+| AC-03-81 | integration | Q11 | **G** 验收 Agent 连续两次 INCONCLUSIVE **W** 第二次结束 **T** 升级人工（MANDATORY_HUMAN_GATE，detail INTERNAL_QA_INCONCLUSIVE） |
+| AC-03-82 | integration | BR-03-102 | **G** 工作项 AGENT_TEST 与 AGENT_ACCEPTANCE 均 PASSED（含截图证据）**W** 02 处理人工拒绝时调用 `InternalQAReader.Latest(work_item_id)` **T** 返回两阶段结论、`internal_qa_run_ids[]`、TESTER / ACCEPTOR Agent 与截图证据引用；本模块不发布 `quality.escaped`、不调用 06 / 11 |
+| AC-03-83 | integration | BR-03-102 | **G** 工作项无内部验收记录（`internal_qa_required=false`）**W** `InternalQAReader.Latest` **T** 返回空结论，02 据此不记穿透 |
+| AC-03-84 | unit | 4.x | **G** 验收集 FROZEN **W** PATCH 文件 **T** 409 130451 |
+| AC-03-85 | integration | Q3, BR-03-101 | **G** AUTOMATED 失败 **W** 内部返工 **T** 任何人的收件箱与通知均无新增；执行详情可见失败记录 |
+
 ## 11. 度量与埋点（不得包含代码、消息正文、工具入参、提示词）
 
 | 事件名 | 属性 |
@@ -1358,9 +1510,14 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 
 ---
 
+
+### 11.x 度量增补（D112 / D113，00 v2.0 §15）
+
+`internal_qa_stage_result{stage, result, family_fallback}`、`internal_rounds_per_item`、`cheating_suspected_total`、`platform_rerun_mismatch_total`（执行者声称通过但平台重跑失败的次数）。
+
 ## 12. 依赖、风险与待决
 
-**依赖**：02（WorkItemReader、WorkItemTransitioner 方法集 §6.9、ClaimSubmitter、Claim 端点与 criteria_map / 祖先证据引用的存储、在裁决事务内调用 `ExecutionLauncher`、自动 RETRY_INFRA 与有界自治暂停；已按 `02-work-review.md` 当前稿对齐，`claim.submitted` 载荷须含 `claim_id, execution_id, head_commit`）；04（通道传输与 `ExecutionDispatchHandler` 接线、`ResolveWorkspace`、执行槽、模型目录与单价、能力检测、附加环境变量名单、连接代次）；05（Agent 资料、`max_context_tokens`、授权模式、主导 Agent 判定、ENSEMBLE 选择与 `CancelExecution` 调用）；06（`Retriever.BuildInjection` / `RecordInclusion` / `RecordCitations`、`SkillCatalog.ForAgent`（第 6 层技能）、`MemoryWriter.Propose`）；07（`allow_full_auto`、`infra_retry_limit`、ENSEMBLE 上限、单工作项预算、`ProjectGate.CanStartExecution`、预算事件 `budget.threshold_reached{threshold_pct}`）；08（AuthorityChecker 含 code_merge 委托条件与 `POLICY:ensemble_branch`、升级规则消费 INCONCLUSIVE 与相似度）；09（JobQueue、outbox、SSE、Notifier、对象存储）；底座 files（需提供"服务端以系统身份写入项目 entity 根并绑定"的能力 —— 见 Q2）、audit、dlock、authn step-up。
+**依赖**：02（WorkItemReader、WorkItemTransitioner 方法集 §6.9、ClaimSubmitter、Claim 端点与 criteria_map / 祖先证据引用的存储、在裁决事务内调用 `ExecutionLauncher`、自动 RETRY_INFRA 与有界自治暂停；已按 `02-work-review.md` 当前稿对齐，`claim.submitted` 载荷须含 `claim_id, execution_id, head_commit`）；04（通道传输与 `ExecutionDispatchHandler` 接线、`ResolveWorkspace`、执行槽、模型目录与单价、能力检测、附加环境变量名单、连接代次）；05（Agent 资料、`max_context_tokens`、授权模式、主管 Agent 判定、ENSEMBLE 选择与 `CancelExecution` 调用）；06（`Retriever.BuildInjection` / `RecordInclusion` / `RecordCitations`、`SkillCatalog.ForAgent`（第 6 层技能）、`MemoryWriter.Propose`）；07（`allow_full_auto`、`infra_retry_limit`、ENSEMBLE 上限、单工作项预算、`ProjectGate.CanStartExecution`、预算事件 `budget.threshold_reached{threshold_pct}`）；08（AuthorityChecker 含 code_merge 委托条件与 `POLICY:ensemble_branch`、升级规则消费 INCONCLUSIVE 与相似度）；09（JobQueue、outbox、SSE、Notifier、对象存储）；底座 files（需提供"服务端以系统身份写入项目 entity 根并绑定"的能力 —— 见 Q2）、audit、dlock、authn step-up。
 
 **风险**：① 运行时 SDK 事件形态变化 → 适配器契约测试（夹具桥）隔离；② 证据量大（日志）→ 对象存储驱动（09）与保留策略；③ 运行时副作用不可撤销 → 栅栏 + 中断不重放 + UI 强提示；④ token 估算偏差 → 偏保守，并在 `context_bundle_built` 埋点回看。
 
@@ -1391,3 +1548,5 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 | CR-03-06 | 模块幂等表附加列 | 取代：统一 09 C7 平台幂等表 |
 | CR-03-07 | OpenAPI tag 规则 | 已并入 00 §9（路径首段） |
 | CR-03-08 | ETag / If-Match / 428 | 已并入 00 §3 |
+
+> **D112 / D113 已并入（00 v2.0 §15）**：新增依赖 06 `MemoryWriter.Propose`（穿透学习）、11 `EvalSetWriter.ProposeCase`（已在 11 §6.8 定义，由 02 调用）、04 `browser_capture` 能力标记、02 `plan.approved` 事件与 `max_internal_rounds` 判断；对 00 无新增变更请求（§15 已定义所用枚举、事件与权限码）。

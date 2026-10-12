@@ -695,7 +695,7 @@ A01/A02 `pkg/query` 字段：过滤 `source_kind`(eq,in)、`state`(eq,in)、`for
 ```go
 type Retriever interface {
     BuildInjection(ctx context.Context, req InjectionRequest) (InjectionResult, error)      // 03
-    Search(ctx context.Context, actor Actor, req SearchRequest) (SearchResult, error)        // 05 主导 Agent（purpose=LEAD）
+    Search(ctx context.Context, actor Actor, req SearchRequest) (SearchResult, error)        // 05 主管 Agent（purpose=LEAD）
     RecordInclusion(ctx context.Context, logID guid.ID, items []Inclusion) error             // 03
     RecordCitations(ctx context.Context, logID guid.ID, labels []string) error               // 03
 }

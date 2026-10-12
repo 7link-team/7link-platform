@@ -60,6 +60,7 @@ Tenant ─┬─ fleet_machine_enrollments（每个设备码一行；接入前�
               ├─ fleet_runner_sessions（每个 conn_epoch 一行）
               ├─ fleet_machine_runtimes（每 RuntimeKind 一行）
               │     └─ fleet_model_catalogs（每 runtime 一行；含手填模型）
+              ├─ fleet_machine_tools（每工具一行：无头浏览器、ffmpeg、ffprobe、whisperx、pyscenedetect、node、python）
               ├─ fleet_capability_inspections（每 runtime × 工作目录一行，缓存最新）
               ├─ fleet_workdirs（机器 × 项目仓库 → 本地路径）
               └─ fleet_slot_reservations（执行槽占用）
@@ -208,6 +209,7 @@ Tenant ─┬─ fleet_model_prices（运行时 × 模型单价，供 03 计费�
 | source | ENUM `CatalogSource` | N | `DETECTED` | DETECTED（本次检测成功）/ CACHED（本次失败，展示上次成功结果） |
 | errors | JSON | N | `[]` | 最近一次检测错误，≤10 条 × ≤500 字符 |
 | manual_model_ids | JSON | N | `[]` | 手填模型 ID，≤50 项，每项 ≤160 字符、无空白与换行 |
+| manual_model_families | JSON | N | `{}` | 手填 / 覆盖的模型家族 `{model_id: ModelFamily}`（BR-04-49），键须 ∈ entries ∪ manual_model_ids |
 | checked_at | TS | Y | | 最近一次检测（成功或失败） |
 | last_success_at | TS | Y | | |
 | refresh_requested_at | TS | Y | | 手动刷新挂起中（非空即排队） |
@@ -322,9 +324,27 @@ Tenant ─┬─ fleet_model_prices（运行时 × 模型单价，供 03 计费�
 ### 3.13 JSON Schema
 
 - **S1 runtimes**：`array ≤4 of {kind: RuntimeKind, version: string ≤64, path: string ≤1024}`，`kind` 唯一。
-- **S2 model entries**：`array ≤1000 of {id: string ≤160 /^[^\s]+$/, label?: ≤200, resolved_model?: ≤160, efforts?: string[] ≤12（每项 ≤32）, default_effort?: ≤32, is_default?: bool, description?: ≤500}`；整体 ≤512 KB（沿用 Preview）。
+- **S2 model entries**：`array ≤1000 of {id: string ≤160 /^[^\s]+$/, label?: ≤200, resolved_model?: ≤160, efforts?: string[] ≤12（每项 ≤32）, default_effort?: ≤32, is_default?: bool, description?: ≤500, model_family?: ModelFamily}`（`model_family` 机器可不报，服务端按 BR-04-49 补全后存储）；整体 ≤512 KB（沿用 Preview）。
 - **S3 capability result**：`{runtime: RuntimeKind, kind: "skills"|"mcp", entries: array ≤2000 of {name ≤200, description? ≤2000, status? ("enabled"|"disabled"|"error"|"unknown"), auth? ≤64, tools? string[] ≤500, path? ≤1024, scope? ("user"|"project"|"plugin"|"builtin"), label? ≤200}, errors: string[] ≤20}`；skills + mcp 合计 ≤900 KB（沿用 Preview）。
+- **S4 tools**：`array ≤16 of {tool_key: "browser"|"ffmpeg"|"ffprobe"|"whisperx"|"pyscenedetect"|"node"|"python", status: "AVAILABLE"|"MISSING"|"ERROR", variant?: ≤32（browser：`edge`/`chrome`/`chromium`）, version?: ≤64, path?: ≤1024, probe?: {can_screenshot: bool, duration_ms, error? ≤500}（仅 browser）, error?: ≤500}`，`tool_key` 唯一；未知 `tool_key` 忽略（向前兼容）。
+- **ModelFamily**：`anthropic` / `openai` / `google` / `other` / `local:<name>`（`<name>` ≤24，`^[a-z0-9-]+$`）；模块内值域，经 `MachineDirectory.ModelFamily` 提供给 03 / 05。
 - **labels / env_passthrough_names / manual_model_ids**：见对应列约束。
+
+### 3.14 `fleet_machine_tools`（D112 / D113：验证器与内部质量门所需工具）
+
+| 列 | 类型 | 空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id | ID | N | | PK |
+| machine_id | ID | N | | UNIQUE(`machine_id`,`tool_key`) |
+| tool_key | STR(32) | N | | S4 `tool_key` |
+| variant | STR(32) | Y | | browser：`edge` / `chrome` / `chromium` |
+| version / path | STR(64) / STR(1024) | Y | | 检测到的版本与绝对路径 |
+| status | ENUM | N | `MISSING` | AVAILABLE / MISSING / ERROR |
+| can_screenshot | BOOL | Y | | 仅 browser：最近一次截图探测结果；NULL = 未探测 |
+| probe_error | STR(500) | Y | | |
+| detected_at / probed_at | TS | Y | | |
+
+派生能力标记（不落库，读时计算，BR-04-48）：`browser_capture`、`media_probe`、`media_transcode`、`speech_transcribe`、`scene_detect`。
 
 ---
 
@@ -483,6 +503,13 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 - **BR-04-43 手填模型**：每机每运行时 ≤50 个手填 ID（第三方代理未列出的模型）；放置与 03 设置校验时，模型 ∈ 目录 ∪ 手填 ∪ 执行已保存的自定义模型 即可；不在其中的仍允许由 03 显式提交（Preview：「未在目录中列出的模型仍可手动填写」），本模块只在 UI 标「未在目录中」。目录刷新绝不替换已保存的自定义模型。
 - **BR-04-44 effort**：目录项有 `efforts` 时按项提供；否则用 03 BR-03-33 列出的运行时通用集。
 - **BR-04-45 单价**：`fleet_model_prices` 由 `machine_manage` 维护；03 计费时：运行时自报 `cost_usd` 优先，否则按单价 × token；均缺失 → 成本记 0 并标 `source=UNKNOWN`（03 定义）。
+- **BR-04-47 工具检测**（D112 / D113，供 03 VISUAL 验证器与验收 Agent 截图、11 确定性验证器）：机器在运行时检测（BR-04-40）之后检测工具，同一触发时机，独立 60 s 总预算、单工具 10 s：
+  - **browser**：依次取环境变量 `MACHINE_RUNNER_BROWSER` → Windows 常见安装路径（Edge `%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe`、`%ProgramFiles%` 同路径，Chrome `%ProgramFiles%\Google\Chrome\Application\chrome.exe`、`%LocalAppData%` 同路径）→ macOS `/Applications/{Microsoft Edge,Google Chrome,Chromium}.app` → PATH 中 `chromium`、`chromium-browser`、`google-chrome`、`microsoft-edge`；版本取 `--version`（Windows 读可执行文件版本资源，不启动窗口）。
+  - **can_screenshot 探测**：以 `--headless=new --disable-gpu --hide-scrollbars --window-size=320,240 --screenshot=<临时目录>/probe.png` 渲染内置的单色 `data:` 页面，15 s 超时；PNG 签名有效且尺寸 = 320×240 → true。只在开会话时、手动检测（A14）时、浏览器路径或版本变化时执行（不随 10 分钟周期重复启动浏览器）；子进程不经 shell、Windows `windowsHide`；临时目录随后删除。
+  - **ffmpeg / ffprobe**：`-version` 首行；**whisperx**（可选）、**pyscenedetect**：`<cmd> --version`，缺失记 MISSING，不报错；**node / python**：`--version`（python 依次试 `python3`、`python`）。
+  - 只上报 S4 字段，不上报环境变量值、不上报用户目录以外的目录列表；`path` 在页面中对无 `machine_manage` 者隐藏（与运行时路径一致）。
+- **BR-04-48 能力标记**：`browser_capture` = browser AVAILABLE ∧ `can_screenshot=true`；`media_probe` = ffprobe AVAILABLE；`media_transcode` = ffmpeg AVAILABLE；`speech_transcribe` = whisperx AVAILABLE；`scene_detect` = pyscenedetect AVAILABLE。消费：03（VISUAL / INTERACTION 验证器与 AGENT_ACCEPTANCE 截图只放置到具备 `browser_capture` 的机器；无则该验证结论 `INCONCLUSIVE` 并写入证据包 `unverified[]`）；05（ACCEPTOR 候选资格 BR-05-108）；11（BR-11-09 / BR-11-30：所需工具在全部在线机器都不可用 → 工作项 `TOOL_UNAVAILABLE`）。机器离线时其工具不计入 `ToolAvailability`。
+- **BR-04-49 模型家族**：模型目录每项带 `model_family`：机器上报值优先；否则按前缀推断（`claude-` → `anthropic`；`gpt-`、`o1`、`o3`、`o4`、`codex-` → `openai`；`gemini-` → `google`）；仍无法判断 → 按运行时默认（CLAUDE_CODE → `anthropic`，CODEX → `openai`）。经第三方代理的模型可由 `machine_manage` 在 A17 以 `families` 覆盖（存 `manual_model_families`），覆盖优先于推断。05 `ModelFamilyOf` 与 03 执行快照 `model_family` 只经 `MachineDirectory.ModelFamily` 取值，不各自推断。
 - **BR-04-46 透传环境变量名校验**：名称不得等于 `MACHINE_RUNNER_*` 或匹配本机凭证存储变量；名称列表变更审计 `fleet.machine_updated`（含 diff 名单，不含值——值从不经过服务端）。
 
 ### 5.6 工作目录、执行槽与调度
@@ -560,7 +587,7 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 | A14 | POST `/machines/{machine_id}/runtime-detections` | machines | `machine_manage` · O | — | `{requested_at}`（202） | 409 140423/140421 | ✔；30 s 内合并 |
 | A15 | GET `/machines/{machine_id}/model-catalogs` | machines | `machine_read` · O | — | `ModelCatalog[]` | 404 | — |
 | A16 | POST `/machines/{machine_id}/model-catalog-refreshes` | machines | `machine_read` · O | `{runtime_kind}` | `{requested_at}`（202） | 409 140423；422 140441 | ✔；合并 |
-| A17 | PUT `/machines/{machine_id}/model-catalogs/{runtime_kind}/manual-models` | machines | `machine_manage` · O | `{model_ids: string[] ≤50}` | `ModelCatalog` | 422 140400/140441 | v（目录 `version`） |
+| A17 | PUT `/machines/{machine_id}/model-catalogs/{runtime_kind}/manual-models` | machines | `machine_manage` · O | `{model_ids: string[] ≤50, families?: {model_id: ModelFamily}}`（BR-04-49） | `ModelCatalog` | 422 140400/140441/140448 | v（目录 `version`） |
 | A18 | GET `/machines/{machine_id}/capability-inspections` | machines | `machine_read` · O | `?runtime_kind=&workdir_id=` | `CapabilityInspection`（无则 `state:null`） | 404 | — |
 | A19 | POST `/machines/{machine_id}/capability-inspections` | machines | `machine_read` · O | `{runtime_kind, workdir_id?}` | `CapabilityInspection`（202，QUEUED 或合并后的现行） | 409 140423；422 140441；404 140446 | ✔ |
 | A20 | GET `/machines/{machine_id}/workdirs` | machines | `machine_read` · O | `?project_id=&status=` | `Workdir[]`（按调用者可读项目过滤） | — | — |
@@ -572,6 +599,8 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 | A26 | GET `/gateway-config` | tenants | `gateway_manage` · T | — | `GatewayConfig{enabled, machine?:{id,name,online}, default_model, base_url, key_masked, revision, online, limits:{concurrency:8, contexts:8, timeout_s:180, request_bytes:1048576, output_bytes:921600, log:100}, requests: GatewayRequest[≤100], experimental:true, version}` | — | ETag |
 | A27 | PUT `/gateway-config` | tenants | `gateway_manage` · T | `{enabled, machine_id?, default_model}` | `GatewayConfig` | 409 140471/140409；422 140476/140400 | v |
 | A28 | POST `/gateway-config/key-reveals` | tenants | `gateway_manage` · T；HUMAN；step-up `gateway_key_reveal` | `{reauth_proof}` | `{key}`（`no-store`） | 403 140403（REAUTH_REQUIRED） | — |
+| A30 | GET `/machines/{machine_id}/tools` | machines | `machine_read` · O | — | `{tools:S4（无 `machine_manage` 时省略 `path`）, capabilities: string[], detected_at?}` | 404 140404 | — |
+| A31 | GET `/tool-availability` | tenants | `machine_read` 或 `project_read` · T | `?tool_key=`（可多值）`&capability=` | `[{tool_key \| capability, online_machines, versions[], can_screenshot_machines?}]`（只计 ONLINE / DRAINING 机器） | 422 140447 | — |
 | A29 | POST `/gateway-config/key-rotations` | tenants | `gateway_manage` · T；HUMAN | `{}` | `{key, revision, cancelled_request_count}`（201） | — | ✔ |
 | A30 | POST `/gateway-config/test-responses` | tenants | `gateway_manage` · T | `{prompt 1–64000}` | SSE 透传 `/v1/responses` 流（服务端以当前密钥代发，浏览器不接触密钥） | 503 140470/140471 | — |
 | A31 | DELETE `/gateway-requests/{request_id}` | gateway-requests | `gateway_manage` · O | — | `GatewayRequest`（CANCELLED「操作员取消」；已终态返回现状） | 404 | 幂等 |
@@ -622,7 +651,7 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 | type | payload | 处理 |
 |---|---|---|
 | `heartbeat` | `{slots:[SlotState]}`（WebSocket 模式每 10 s） | 更新 `last_seen_at`；BR-04-36 |
-| `runtimes.report` | `{runtimes:S1, detected_at, errors[]}` | BR-04-40；变化发 `machine.runtimes_changed` |
+| `runtimes.report` | `{runtimes:S1, tools?:S4, detected_at, errors[]}` | BR-04-40 / 47；运行时或工具（含能力标记）变化发 `machine.runtimes_changed`；旧版机器程序不带 `tools` → 工具保持原值 |
 | `model_catalog.report` | `{runtime_kind, entries:S2, errors[] ≤10, checked_at}` | BR-04-42；本机无此运行时 → 422 140441 |
 | `inspection.result` | `{inspection_id, request_id, skills?:S3, mcp?:S3, error?}` | §4.4；不匹配 → 409 140450 |
 | `workdir_probe.result` | `{workdir_id, exists, is_dir, writable, git?:{is_repo, remote_url?, head?, branch?}, error?}` | BR-04-50 |
@@ -648,14 +677,14 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 
 | 列表 | 可过滤 | 可排序 | 默认 |
 |---|---|---|---|
-| A06 机器 | `state`(eq,in)、`runtime_kind`(eq,in)、`labels`(contains)、`has_free_slot`(eq)、`drain_requested`(eq)、`os`(eq,in)、`name`/`hostname`(like)、`last_seen_at`(gte,lte)、`include_revoked`(eq) | `name`、`state`、`last_seen_at`、`created_at`、`free_slots` | `include_revoked=false`，`sort=name` |
+| A06 机器 | `state`(eq,in)、`runtime_kind`(eq,in)、`capability`(eq,in；BR-04-48，未知值 422 140447)、`labels`(contains)、`has_free_slot`(eq)、`drain_requested`(eq)、`os`(eq,in)、`name`/`hostname`(like)、`last_seen_at`(gte,lte)、`include_revoked`(eq) | `name`、`state`、`last_seen_at`、`created_at`、`free_slots` | `include_revoked=false`，`sort=name` |
 | A20/A24 工作目录 | `project_id`、`repository_id`、`machine_id`(eq)、`status`(eq,in)、`archived`(eq) | `created_at`、`path` | `archived=false` |
 
 ### 6.7 跨模块接口（`internal/fleet` 根包冻结）
 
 | 接口 | 方法 | 使用者 |
 |---|---|---|
-| `MachineDirectory`（00 §8） | `Get`；`ListEligibleMachines(tenant, {runtime, model?, project_id?, repository_id?, agent_machine_id?, require_workdir})`；`ResolveWorkspace(machine, project, repository?)`；`ReserveSlot(tx, …)` / `ReleaseSlot(tx, …)`；`OrderPending(machine, candidates)`；`ModelCatalog(machine, runtime)`；`ModelPrice(tenant, runtime, model)`；`EnvPassthroughNames(machine)`；`PlanMigration(execution_ref)`；`ConnEpoch(machine)`；`Summary(tenant) → {total, online, offline, draining, slots_total, slots_busy, runtimes_missing}`（08 总览「机器状态」磁贴） | 03、05、08 |
+| `MachineDirectory`（00 §8） | `Get`；`ListEligibleMachines(tenant, {runtime, model?, project_id?, repository_id?, agent_machine_id?, require_workdir})`；`ResolveWorkspace(machine, project, repository?)`；`ReserveSlot(tx, …)` / `ReleaseSlot(tx, …)`；`OrderPending(machine, candidates)`；`ModelCatalog(machine, runtime)`；`ModelPrice(tenant, runtime, model)`；`EnvPassthroughNames(machine)`；`PlanMigration(execution_ref)`；`ConnEpoch(machine)`；`Tools(machine) → S4`；`HasCapability(machine, capability) bool`；`ToolAvailability(tenant, tool_key \| capability) → {online_machine_ids[], versions[]}`（11 BR-11-30）；`ModelFamily(tenant, machine, runtime, model) (ModelFamily, error)`（BR-04-49；05 `ModelFamilyOf`、03 执行快照）；`ListEligibleMachines` 另接受 `capabilities?[]`（03 VISUAL / 截图放置、05 ACCEPTOR 候选）；`Summary(tenant) → {total, online, offline, draining, slots_total, slots_busy, runtimes_missing}`（08 总览「机器状态」磁贴） | 03、05、08 |
 | `MachineChannelNotifier` | `Wake(machine_id)`（新执行命令或 Agent 命令入队后唤醒长轮询；跨副本经 09 服务端内部订阅） | 03、05 |
 
 > 执行槽经 `MachineDirectory.ReserveSlot/ReleaseSlot` 占用与释放（00 §8 不另设 `SlotReserver`）。
@@ -694,6 +723,8 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 | 140444 | 409 | workdir_path_conflict | |
 | 140445 | 409 | workdir_repository_conflict | |
 | 140446 | 404 | workdir_not_found | |
+| 140447 | 422 | tool_key_unknown | `tool_key` / `capability` 不在 S4 / BR-04-48 值域 |
+| 140448 | 422 | model_family_invalid | `families` 值不在 `ModelFamily` 值域，或键不在目录 ∪ 手填 |
 | 140450 | 409 | inspection_stale | |
 | 140452 | 409 | agent_command_unknown | `agent.command_ack` / `agent.review_ack` / `agent.workspace_result` 指向本机未知或已过期的命令 / 请求 |
 | 140460 | 409 | credential_rotation_in_progress | |
@@ -729,9 +760,9 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 | 事件 | 时机 | `data` |
 |---|---|---|
 | `machine.state_changed`（00） | 每次 MachineState 迁移（含 M1） | `{machine_id, from?, to, reason:"ENROLLED"\|"SESSION_OPENED"\|"LEASE_EXPIRED"\|"DISCONNECTED"\|"DRAIN_REQUESTED"\|"DRAIN_CANCELLED"\|"DRAIN_STOP"\|"REVOKED", conn_epoch, offline_since?, revoked_by?}` |
-| `machine.runtimes_changed`（**CR-04-03**） | 运行时新增 / MISSING / 恢复 / 版本变化 | `{machine_id, runtimes:[{kind, status, version, previous_version?}]}` |
+| `machine.runtimes_changed`（**CR-04-03**） | 运行时或工具新增 / MISSING / 恢复 / 版本变化，或能力标记变化（BR-04-47/48） | `{machine_id, runtimes:[{kind, status, version, previous_version?}], tools_changed?:[{tool_key, status, version?, previous_version?}], capabilities:[string]}` |
 
-消费方：03（OFFLINE/REVOKED → 中断该机执行；runtimes_changed → 放置校验）、05（REVOKED → Agent STOPPED；runtimes_changed → 运行时缺失告警）、08（通知与审计视图）。
+消费方：03（OFFLINE/REVOKED → 中断该机执行；runtimes_changed → 放置校验）、05（REVOKED → Agent STOPPED；runtimes_changed → 运行时缺失告警、ACCEPTOR 候选资格）、11（`tools_changed` → 重算 `TOOL_UNAVAILABLE`）、08（通知与审计视图）。
 
 ### 7.3 消费的事件
 
@@ -804,7 +835,7 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 | Tab | 内容 | 交互与按钮条件 |
 |---|---|---|
 | 概览 | 身份（ID、principal、接入时间与确认人）；主机（主机名、系统、版本、架构、profile、最近地址）；机器程序版本（有新版本时给升级命令）；连接（会话、传输方式、连接代次、在线时长）；**执行槽网格**（每槽：空闲 / 运行中→执行链接与开始时间 / 启动中 / 停止中；不可读项目显示「其他项目的执行」）；槽数编辑（1–8）；标签；透传环境变量名；**工作目录**（项目、仓库、路径、状态徽章、探测详情、〔探测〕〔归档〕〔登记工作目录〕表单：项目选择 → 仓库选择 → 绝对路径） | 编辑类需 `machine_manage`；冲突（140409）弹「机器信息已被其他人修改」并刷新；离线时〔探测〕禁用并提示「机器离线」 |
-| 运行时 | 表：种类、版本、路径、状态（可用 / 缺失自 …）、检测时间、错误；〔重新检测〕 | `machine_manage` 且 ONLINE/DRAINING |
+| 运行时 | 表：种类、版本、路径、状态（可用 / 缺失自 …）、检测时间、错误；〔重新检测〕（同时重检工具与截图探测）。下方「工具」小节：无头浏览器（类型 Edge / Chrome / Chromium、版本、路径、「可截图 ✓ / ✗ + 探测错误」）、ffprobe、ffmpeg、WhisperX（可选，缺失显示「未安装（可选）」）、PySceneDetect、Node、Python 各一行；顶部能力芯片 `可截图`、`媒体探测`、`转码`、`语音转写`、`镜头检测`（缺失灰显并悬停说明影响：如「无法截图：视觉验证与产品验收截图不会派到这台机器」） | 〔重新检测〕需 `machine_manage` 且 ONLINE/DRAINING；路径列需 `machine_manage` |
 | 模型目录 | 每运行时一节：来源徽章（已检测 / 缓存·可能过期）、检测时间、错误列表；模型表（ID、名称、推理强度、默认标记）支持搜索；手填模型列表（芯片 + 删除、输入框添加，校验 ≤160 无空白，≤50 个）；〔刷新〕 | 刷新需 `machine_read` 且在线；手填需 `machine_manage` |
 | 能力 | 运行时选择 + 范围选择（用户目录 / 某工作目录）；状态（排队中 / 检测中（显示已用秒数，65 s 上限）/ 就绪 / 失败）；Skills 列表（名称、说明、启用状态、来源路径、作用域）、MCP 列表（名称、状态、认证、工具清单折叠、错误）；说明「检测只读取本机配置，不调用模型；MCP 列表不代表实时连接状态；本机配置改动后请刷新」；〔刷新〕 | `machine_read` 且在线；检测中按钮显示进度且禁用（重复请求会合并） |
 | Agent | 05 提供的列表：头像（圆角方形 + 芯片角标）、名称、角色、运行时 × 模型、状态、当前工作项；搜索 | 无 `agent_read` → Tab 内无权限态 |
@@ -1028,7 +1059,24 @@ AC-04-33 [e2e] 页面状态
 机器列表 / 向导 / 详情 / 网关 各自的加载、空、错误（可重试）、无权限（写明权限码）、重连态截图通过；390 px 无横向滚动，触控目标 ≥44 px
 
 AC-04-34 [manual] 真实运行时
-在 Windows 与 macOS 各一台真实机器上完成接入、Claude Code 与 Codex 运行时检测、模型目录（Claude supportedModels 非空）、能力检测；记录版本与结果（不以夹具结果代替）
+在 Windows 与 macOS 各一台真实机器上完成接入、Claude Code 与 Codex 运行时检测、模型目录（Claude supportedModels 非空）、能力检测、工具检测（含 Edge 或 Chrome 截图探测）；记录版本与结果（不以夹具结果代替）
+AC-04-40 [integration] BR-04-47/48 工具检测与能力标记
+Given 夹具机器 M 上报 runtimes.report{tools:[browser{variant:edge, version, probe:{can_screenshot:true}}, ffprobe AVAILABLE, ffmpeg AVAILABLE, whisperx MISSING]}
+Then  A30 返回 capabilities ⊇ [browser_capture, media_probe, media_transcode]，不含 speech_transcribe；无 machine_manage 的调用者看不到 path
+When  下一次上报 browser probe.can_screenshot=false
+Then  browser_capture 移除；发布 machine.runtimes_changed{tools_changed:[{tool_key:browser…}], capabilities} 一次；ListEligibleMachines(capabilities:[browser_capture]) 不再返回 M
+When  旧版机器程序上报不带 tools 的 runtimes.report   Then 工具与能力保持原值，不发事件
+AC-04-41 [integration] BR-04-47 截图探测节奏
+Given M ONLINE 且浏览器版本未变   When 10 分钟周期检测   Then 夹具断言未启动浏览器进程；When A14 手动检测 Then 执行一次探测，子进程不经 shell 且隐藏窗口
+AC-04-42 [integration] A31 工具可用性
+Given 两台机器：M1 ONLINE 有 ffmpeg，M2 OFFLINE 有 ffmpeg   When GET /tool-availability?tool_key=ffmpeg   Then online_machines=1
+When  M1 离线   Then ToolAvailability(ffmpeg) 为空（11 据此置 TOOL_UNAVAILABLE）；?tool_key=blender → 422 140447
+AC-04-43 [integration] BR-04-49 模型家族
+Given CLAUDE_CODE 目录项 claude-sonnet-x 未报家族；CODEX 目录项 gpt-x；手填 proxy-model-x
+Then  ModelFamily 分别为 anthropic、openai、openai（CODEX 运行时默认）
+When  A17 families{proxy-model-x: google}   Then ModelFamily(proxy-model-x)=google，05 ModelFamilyOf 同值
+When  families{proxy-model-x: "Google AI"} 或键不在目录 ∪ 手填   Then 422 140448
+
 AC-04-35 [integration] §6.4 Agent 命令（关联 BR-04-30、05 §6.6）
 Given 机器 M ONLINE，05 为绑定 M 的 Agent A 入队 agent.start{command_id=c1}
 When  M 的长轮询在途
@@ -1073,7 +1121,8 @@ And   A 绑定的不是 M 时 M 上报的 agent.status{A} 不转交（409 140452
 | `slot_reservation` | `result`（OK / NO_FREE_SLOT / OFFLINE / DRAINING）, `wait_ms`（排队到获得） |
 | `slot_utilization`（每 5 min 采样） | `machines_online`, `slots_total`, `slots_used` |
 | `capability_inspection_completed` | `runtime_kind`, `result`, `duration_ms`, `skill_count`, `mcp_count` |
-| `model_catalog_reported` | `runtime_kind`, `entry_count`, `source`, `error_count` |
+| `model_catalog_reported` | `runtime_kind`, `entry_count`, `source`, `error_count`, `family_inferred_count` |
+| `tool_detection_reported` | `tool_key`, `status`, `variant?`, `can_screenshot?`, `probe_ms?`（不含路径） |
 | `machine_credential_rotated` / `machine_revoked` | `delivery_attempts` / `interrupted_executions` |
 | `gateway_request` | `state`, `duration_ms`, `stream:bool`, `model_listed:bool`, `error_code?` |
 
@@ -1140,3 +1189,5 @@ And   A 绑定的不是 M 时 M 上报的 agent.status{A} 不转交（409 140452
 **处理状态（00 v1.3 审校后）**：CR-04-01 已决——`MachineState` 去掉 `PENDING_CONFIRM`；其余为模块内枚举，按 00 §3 不进 §5。CR-04-02、CR-04-03、CR-04-04、CR-04-05、CR-04-07、CR-04-11 已并入 00（主题语法以 09 为准；`SlotReserver` 取消，经 `MachineDirectory`）。CR-04-06、CR-04-08 列入 00 §13 F2/F3。CR-04-09 已改 PRD。CR-04-10 已记录。幂等改用 09 C7 平台表；step-up purpose 完整清单以 08 危险操作登记表为准（本模块使用 `machine_revoke`、`gateway_key_reveal`）。
 
 **第二轮复审（00 v1.5）**：Agent 机器通道消息改为引用 05 §6.6 唯一定义（#18），本模块只保留传输帧（`agent_commands[]`、`agents[]`、C3 转交）与 140452 判定；新增 AC-04-39。
+
+**D112 / D113（00 v2.0，2026-10-12）**：新增工具检测与能力标记（§3.14、S4、BR-04-47/48、A30/A31、140447）与模型家族（S2 `model_family`、`manual_model_families`、BR-04-49、A17 `families`、140448）；`MachineDirectory` 增 `Tools`/`HasCapability`/`ToolAvailability`/`ModelFamily` 与 `ListEligibleMachines.capabilities`；`machine.runtimes_changed` 载荷增 `tools_changed`、`capabilities`；新增 AC-04-40..43。使用方 03（VISUAL 验证器、验收截图）、05（跨模型家族选择、ACCEPTOR 资格）、11（`TOOL_UNAVAILABLE`）。已并入 00 v2.0 §8（无新事件）。

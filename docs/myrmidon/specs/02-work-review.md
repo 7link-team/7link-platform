@@ -27,11 +27,17 @@
 | 来件、分诊、澄清线程、来件 → 需求转换的界面与流程 | 01（经 §6.9 `RequirementCreator` 调用本模块） |
 | 执行、分支树数据、交互会话、证据行、验证器与验证结果、改动相似度计算 | 03（本规格只引用其 ID 与读接口） |
 | 机器、执行槽 | 04 |
-| Agent 档案与角色、主导 Agent 派单提案、Heavy 并行 | 05（经本规格 §6.9 `DispatchAssigner` **同步**落库分派与 ASSIGN 裁决；本规格不消费 `dispatch.applied`） |
+| Agent 档案与角色、主管 Agent 派单提案、Heavy 并行 | 05（经本规格 §6.9 `DispatchAssigner` **同步**落库分派与 ASSIGN 裁决；本规格不消费 `dispatch.applied`） |
 | 知识注入与「使用的知识」数据 | 06（评审台只嵌入展示） |
 | 项目阶段、团队模式、预算、交付包、甲方验收、DELIVER 裁决 | 07 |
 | 权限目录维护、委托、升级规则、通知渠道、「我的裁决」聚合、审计页 | 08 |
 | 后台任务队列、outbox、SSE、通知发送 | 09 |
+| 内部验收的执行（测试 Agent / 产品验收 Agent 执行种类、视觉验证器）、平台重跑、冻结与隐藏验收集、测试 diff 检测、`unverified[]` | 03 |
+| TESTER / ACCEPTOR 的派单与跨模型家族约束 | 05 |
+| 云效对齐的流转矩阵配置、状态组、需求评审单、用例即验收标准、工时 | 12 |
+| 领域模板中的就绪默认值、验证计划默认、`max_internal_rounds`、评分标准 | 11 |
+
+> **D112 / D113（00 §15，v2.0）在本规格的落地**：就绪闸门、计划审批、内部质量门与不穿透路由、人类负责人、Andon 停线、容差与例外、穿透记录、云效缺陷字段——见 §3.20–§3.25、§4.5、§5.11、§6.10、§7.4、§8.6、§9（N11–N14）、§10.11、§11。**L2 的含义改为「内部验收通过」**（自动检查 + 测试 Agent + 产品验收 Agent）。
 
 ---
 
@@ -55,6 +61,12 @@
 | US-02-14 | 作为交付负责人，我要维护依赖并被阻止形成环，以便调度顺序可靠 | MVP |
 | US-02-15 | 作为团队所有者，我要维护团队自定义拆解模板并版本化，以便不同类型项目复用 | v1.1 |
 | US-02-16 | 作为评审者，我要对比策略变更产生的两个并行分支的证据后择一，以便保留替代方案 | v1.1（MVP 仅创建分支 + 详情页并列查看） |
+| US-02-17 | 作为交付负责人，我要工作项在派给 Agent 前必须写清目标、带编号的验收标准、每条标准的验证方式、预算与人类负责人，以便 Agent 不会在含糊的需求上开工 | MVP |
+| US-02-18 | 作为交付负责人，我要中高风险工作项先出计划、经人或不同模型的评审者批准后才实现，以便方向错误在动手前被拦住 | MVP |
+| US-02-19 | 作为交付负责人，我只想看到已通过内部验收（自动检查、测试 Agent、产品验收 Agent）的工作项；内部不通过的直接打回内部返工，不打扰我 | MVP |
+| US-02-20 | 作为任何成员（含 Agent），我要能拉 Andon 停线，以便发现严重问题时下游立即停止 | MVP |
+| US-02-21 | 作为交付负责人，我要工作项预测将超出时间 / 成本 / 范围容差时自动进入例外，并看到现状、选项与建议，由我决定继续 / 重新塑形 / 暂停 / 终止 | MVP |
+| US-02-22 | 作为团队所有者，我要每次人或甲方发现内部已放行的问题都被记为「穿透」，并回流成测试与验收 Agent 的经验和模板评测用例 | MVP |
 
 ---
 
@@ -171,8 +183,34 @@
 | first_accepted_at | TS | Y | | 首次 ACCEPTED 时间（T26 重开不清除，07 指标用） |
 | self_confidence | SMALLINT | Y | | 冗余自最近声明（0–100），供 08 `WorkItemFacts` |
 | decomposition_id / template_node_key | ID / STR(64) | Y | | 模板来源 |
+| template_stage_key | STR(64) | Y | | 领域模板阶段键（11 `TemplateResolver.WorkItemBlueprint` 产出，如 `A4`、`tech_spec`）；工作台与评审台按阶段聚合 / 过滤（W 系列列表 `template_stage_key`(eq,in)）；创建后只读，非模板来源为空 |
 | state_changed_at | TS | N | | |
 | archived_at | TS | Y | | 仅 CANCELLED 可归档 |
+| accountable_principal_id | ID | N | | **人类负责人**（D112 A）：创建时必填，默认 = 需求负责人；必须是 HUMAN 成员；全自治项目 = 委托授予人（BR-02-49） |
+| autonomy_level | ENUM(`LOW`,`MEDIUM`,`HIGH`) | N | `MEDIUM` | 就绪字段；决定是否需要计划审批（BR-02-51） |
+| objective | STR(2000) | Y | | 就绪字段：本工作项要达成的结果 |
+| out_of_scope | JSON | N | `[]` | 就绪字段：`string[]` ≤20 |
+| context_refs | JSON | N | `[]` | 就绪字段：`[{kind: FILE\|DOC\|URL\|WORK_ITEM\|KNOWLEDGE, ref}]` ≤50 |
+| verification_plan | JSON | N | `[]` | 就绪字段：`[{criterion_id, method: TEST\|COMMAND\|AGENT_JUDGE\|HUMAN\|VISUAL, detail}]`，须覆盖本工作项负责的每条验收标准（BR-02-48） |
+| budget | JSON | Y | | 就绪字段：`{tokens?, usd_micros?, wall_clock_minutes?, max_internal_rounds}`；`max_internal_rounds` 缺省取模板（默认 5） |
+| readiness_ok | BOOL | N | false | 最近一次就绪检查是否通过 |
+| readiness_issues | JSON | N | `[]` | `[{code, field?, criterion_id?, message_key}]`；code ∈ `MISSING_FIELD` / `AC_WITHOUT_METHOD` / `NO_ACCOUNTABLE_HUMAN` / `REQUIREMENT_CONFLICT` / `REQUIREMENT_AMBIGUOUS` / `UNVERIFIABLE_AC` |
+| readiness_override_by | ID | Y | | 人类在 DRAFT 上强行认领时记录（BR-02-47） |
+| plan_required | BOOL | N | false | 由 BR-02-51 计算 |
+| current_plan_id | ID | Y | | 最近一次计划（§3.21） |
+| internal_qa_required | BOOL | N | true | 执行者为 AGENT 且团队模式 ≠ HUMAN_ONLY 时恒为 true；人类执行者按模板（默认 false，只做 AUTOMATED） |
+| internal_round_count | SMALLINT | N | 0 | 当前声明链上内部不通过的轮次（D113，BR-02-54） |
+| escalation_reason | ENUM `EscalationReason` | Y | | 00 §5；最近一次升级到人的原因 |
+| appetite_minutes | INT | Y | | 时间预算（Shape Up）；与 tolerance 共同决定例外（BR-02-57） |
+| tolerance | JSON | N | `{"time_pct":20,"cost_pct":20,"scope":"NO_NEW_CRITERIA"}` | 容差 |
+| stopped_from_state | ENUM `WorkItemState` | Y | | Andon 前的状态（§3.22） |
+| active_exception_id | ID | Y | | §3.23 |
+| escape_count | SMALLINT | N | 0 | 本工作项累计穿透次数（§3.24） |
+| severity / priority | ENUM(`FATAL`,`CRITICAL`,`NORMAL`,`MINOR`) / ENUM(`URGENT`,`HIGH`,`MEDIUM`,`LOW`) | Y | | 缺陷字段（云效：致命 / 严重 / 一般 / 轻微；紧急 / 高 / 中 / 低）；`type ∈ {BUG, INCIDENT}` 时必填 |
+| reproducibility | ENUM(`ALWAYS`,`HIGH`,`MEDIUM`,`LOW`,`UNABLE`) | Y | | 缺陷：复现率 |
+| found_version / fixed_version | STR(64) | Y | | 缺陷：发现版本 / 修复版本 |
+| introduced_stage / introduced_reason / module | STR(64) / STR(200) / STR(100) | Y | | 缺陷：引入阶段 / 引入原因 / 所属模块（取值字典由 12 配置） |
+| defect_stage | ENUM(`MERGED`,`DEPLOYED`,`VERIFIED`,`CLOSED`) | Y | | 缺陷生命周期（云效「已修复」拆为 已合入 → 已部署 → 已验证 → 已关闭）；推进条件由 12 的流转矩阵配置，`CLOSED` 等价于 ACCEPTED |
 | version / updated_* | | | | 每次迁移 +1 |
 
 索引：`(tenant_id, project_id, state, number)`；`(tenant_id, project_id, requirement_id)`；`(tenant_id, parent_id)`；`(tenant_id, project_id, baseline_stale)`；`(tenant_id, state, state_changed_at)`（SLA 扫描）。上限：每项目 ≤5000 个未归档工作项，每父 ≤200 子项。
@@ -414,6 +452,95 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 
 ---
 
+### 3.20 就绪检查记录 `delivery_readiness_checks`（不可变）
+
+| 字段 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id / tenant_id / project_id | ID | N | | |
+| work_item_id | ID | N | | |
+| trigger | ENUM(`EDIT`,`DISPATCH`,`REQUIREMENT_VERSIONED`,`MANUAL`) | N | | |
+| ok | BOOL | N | | |
+| issues | JSON | N | `[]` | 同 §3.6 `readiness_issues` |
+| checked_by | ENUM(`SYSTEM`,`AGENT_JUDGE`) | N | `SYSTEM` | 歧义 / 冲突 / 不可验证由 AGENT_JUDGE（需求质量检查，BR-02-50）给出 |
+| created_at | TS | N | | |
+
+索引：`(tenant_id, work_item_id, created_at DESC)`。
+
+### 3.21 计划 `delivery_plans`（每次提案一行；不可变，仅 `state` 更新）
+
+| 字段 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id / tenant_id / project_id | ID | N | | |
+| work_item_id / execution_id | ID | N | | 产出计划的只读执行（03 `purpose=PLANNING`） |
+| round | SMALLINT | N | 1 | 同一工作项的计划轮次；≤3（BR-02-51） |
+| content | JSON | N | | `{files[], criteria_coverage[{criterion_id, approach, verification}], risks[], out_of_scope_confirmed: bool}`（JSON Schema 由 03 定义产出格式，本模块校验覆盖） |
+| coverage_ok | BOOL | N | | 计划是否覆盖本工作项全部验收标准 |
+| state | ENUM(`PROPOSED`,`APPROVED`,`REJECTED`,`SUPERSEDED`) | N | `PROPOSED` | |
+| decided_by / authority_source / decided_at | ID / STR(128) / TS | Y | | 批准者（人或不同模型家族的评审 Agent） |
+| feedback | JSON | Y | | 拒绝时的结构化反馈（同 §3.13） |
+| created_at | TS | N | | |
+
+### 3.22 Andon 记录 `delivery_andon_events`
+
+| 字段 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id / tenant_id / project_id | ID | N | | |
+| scope | ENUM(`WORK_ITEM`,`PROJECT`) | N | | |
+| work_item_id | ID | Y | | scope=WORK_ITEM 时必填 |
+| pulled_by_kind / pulled_by | ENUM `ActorKind` / ID | N | | 任何成员，含 AGENT |
+| reason | STR(2000) | N | | ≥10 字 |
+| evidence_refs | JSON | N | `[]` | |
+| state | ENUM(`ACTIVE`,`CLEARED`) | N | `ACTIVE` | |
+| cleared_by / clearance_note / cleared_at | ID / STR(2000) / TS | Y | | 清除者必须是人类（`andon_clear`） |
+| created_at | TS | N | | |
+
+唯一约束：同一 `work_item_id` 同时最多一条 ACTIVE（MySQL 用生成列 `active_key`）。
+
+### 3.23 例外 `delivery_exceptions`
+
+| 字段 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id / tenant_id / project_id | ID | N | | |
+| work_item_id | ID | Y | | 需求级例外时为空并填 `requirement_id` |
+| requirement_id | ID | Y | | |
+| dimension | ENUM(`TIME`,`COST`,`SCOPE`) | N | | |
+| forecast | JSON | N | | `{appetite, consumed, predicted_total, tolerance, method}` |
+| raised_by_kind | ENUM(`SYSTEM`,`HUMAN`,`AGENT`) | N | | 系统预测越界或成员手动提出 |
+| report | JSON | N | | 例外报告：`{situation, options[{option, impact}], recommendation}`；系统 / 主管 Agent 起草，人可修改 |
+| state | ENUM(`OPEN`,`DECIDED`) | N | `OPEN` | |
+| decision | ENUM `ExceptionDecision` | Y | | 00 §5：CONTINUE / RESHAPE / HOLD / KILL |
+| decided_by / decision_reason / new_appetite_minutes / decided_at | ID / STR(2000) / INT / TS | Y | | 仅人类；CONTINUE 必须给出新的 appetite 或新容差 |
+| previous_state | ENUM `WorkItemState` | N | | 进入 EXCEPTION 前的状态 |
+| created_at | TS | N | | |
+
+### 3.24 穿透记录 `delivery_escapes`（不可变）
+
+| 字段 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id / tenant_id / project_id | ID | N | | |
+| work_item_id / claim_id | ID | N | | 内部验收已放行的那次声明 |
+| escape_key | STR(64) | N | | `(work_item_id, claim_id 或 acceptance_id)`（00 §7.1，D114）；唯一，`delivery.escape_learning` 按此 upsert，07 / 12 Part A 发布的穿透亦落此表 |
+| stage | ENUM(`HUMAN_REVIEW`,`CLIENT_ACCEPTANCE`) | N | | 在哪一层被发现 |
+| decision_id / acceptance_id | ID | Y | | 发现它的裁决或甲方回执 |
+| category | ENUM `FeedbackCategory` | N | | |
+| internal_verdicts | JSON | N | | 当时 AGENT_TEST / AGENT_ACCEPTANCE 的结论摘要（03 `EvidenceReader`） |
+| learning_state | ENUM(`PENDING`,`FORWARDED`,`FAILED`) | N | `PENDING` | 回流到 06 记忆与 11 评测集的状态（§7.4） |
+| created_at | TS | N | | |
+
+### 3.25 内部验收轮次 `delivery_internal_qa_rounds`（不可变）
+
+| 字段 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id / tenant_id / project_id | ID | N | | |
+| work_item_id / claim_id | ID | N | | |
+| round | SMALLINT | N | | 1..max_internal_rounds |
+| stage | ENUM `VerificationStage` | N | | `AUTOMATED` / `AGENT_TEST` / `AGENT_ACCEPTANCE` |
+| result | ENUM(`PASSED`,`FAILED`,`CHEATING_SUSPECTED`) | N | | 03 回调结果 |
+| verifier_agent_id | ID | Y | | TESTER / ACCEPTOR |
+| feedback_decision_id | ID | Y | | 失败时生成的系统裁决（REQUEST_CHANGES，`authority_source=SYSTEM:internal_qa`） |
+| visibility | ENUM(`INTERNAL`) | N | `INTERNAL` | **永不出现在甲方门户**；对团队成员可见 |
+| created_at | TS | N | | |
+
 ## 4. 状态机
 
 ### 4.1 需求 RequirementStatus（CCR-02）
@@ -441,7 +568,7 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 |---|---|---|---|---|---|
 | T01 | — | 创建（命令 / 模板） | `work_item_write`；需求同项目且非 ARCHIVED；上限 | READY 或 BLOCKED | `work_item.created`；审计 `delivery.work_item_created` |
 | T02 | READY | 自认领（命令 `POST assignments` 指向自己） | HUMAN；`work_item_execute`；非暂停；项目 ACTIVE | CLAIMED | 分派 ACTIVE + 租约；`work_item.assigned` |
-| T03 | READY | ASSIGN（裁决；人经 A1，或 05 经 `DispatchAssigner.Assign` 同步调用） | AuthorityChecker(`work_item_assign`，主导 Agent AUTO 派单为 `POLICY:dispatch_auto`，提案 id 记 Decision `detail.dispatch_proposal_id`)；受派者校验 BR-02-10 | CLAIMED | 同上 + Decision；受派者为 Agent 时请求 03 `Launch(autostart)`，分支原因按 BR-02-44 |
+| T03 | READY | ASSIGN（裁决；人经 A1，或 05 经 `DispatchAssigner.Assign` 同步调用） | AuthorityChecker(`work_item_assign`，主管 Agent AUTO 派单为 `POLICY:dispatch_auto`，提案 id 记 Decision `detail.dispatch_proposal_id`)；受派者校验 BR-02-10 | CLAIMED | 同上 + Decision；受派者为 Agent 时请求 03 `Launch(autostart)`，分支原因按 BR-02-44 |
 | T04 | CLAIMED | 执行开始（系统 `ExecutionStarted`） | 执行属于本工作项，且执行的 `assignment_id` = 当前 ACTIVE EXECUTOR 分派（比较**受派人**，不比较执行发起者：autostart 执行的发起者为 SYSTEM，C17） | IN_PROGRESS | `current_execution_id`；`first_claimed_at` |
 | T04e | CLAIMED / IN_PROGRESS | Heavy 并行分支开始（系统 `ExecutionStarted`，`branch_reason=ENSEMBLE`，v1.1） | 分支分派 `ensemble_plan_id` 非空 | IN_PROGRESS（已是则不变） | **不写** `current_execution_id`（保持为空直到择优，BR-02-45） |
 | T05 | CLAIMED / IN_PROGRESS | 释放（命令 `PATCH assignment status=RELEASED`） | 分派人本人或 `work_item_assign`；无 RUNNING/PAUSED 执行 | READY（ready_guard 不满足 → BLOCKED） | 分派 RELEASED；通知负责人 |
@@ -449,8 +576,8 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 | T07 | CLAIMED / IN_PROGRESS / REWORK / EXECUTION_FAILED | ASSIGN 改派（裁决；A1 或 `DispatchAssigner.Reassign`） | AuthorityChecker(`work_item_assign`)；无 RUNNING 执行 | CLAIMED | 同事务：① 对旧受派人的非终态 DELIVERY 执行：CREATED（未启动的返工分支）调 03 `ExecutionLauncher.CancelExecution(tx, execution_id, REASSIGNED)`（C25）；**INTERRUPTED / PAUSED 且将作为本次 RETRY_INFRA 父执行的不取消**，由 ④ 的 `Launch(RETRY_INFRA, parent=该执行)` 按 03 BR-03-01 在同事务置其 FAILED(`SUPERSEDED_BY_RETRY`)（复审 #7）；不作为父执行的 INTERRUPTED / PAUSED 执行照常 `CancelExecution`；② 旧分派 REVOKED（`REASSIGNED`）；③ 新分派；④ 受派者为 Agent 时自动启动：REWORK 中未启动的返工分支 → 以**相同** branch_reason / parent 为新受派人重新 Launch（旧 CREATED 分支已在 ① 取消）；其他情况按 BR-02-44 |
 | T08 | IN_PROGRESS | 提交声明（命令 `POST claims`） | 执行分派人本人；`work_item_execute`；BR-02-17 | AGENT_CLAIMED_DONE | Claim；`claim.submitted`；相似度检查 BR-02-27 |
 | T09 | AGENT_CLAIMED_DONE | 验证开始（系统 `VerificationQueued`） | source_ref 去重 | VERIFYING | — |
-| T10 | AGENT_CLAIMED_DONE / VERIFYING | 验证完成（系统 `VerificationCompleted`）：必需全 PASSED，或无必需验证 | | NEEDS_HUMAN_REVIEW | N2；`needs_judgement=false` |
-| T11 | VERIFYING | 验证完成：无 FAILED、≥1 INCONCLUSIVE | | NEEDS_HUMAN_REVIEW | `needs_judgement=true`；AUTONOMOUS 项目 → 暂停 `ESCALATION_RULE` + `work_item.escalated`（PRD §2.3） |
+| T10 | AGENT_CLAIMED_DONE / VERIFYING | 验证完成（系统 `VerificationCompleted`）：必需全 PASSED，或无必需验证 | BUG 部署守卫（BR-02-62） | **INTERNAL_QA**（D113；`internal_qa_required=false` 时 → NEEDS_HUMAN_REVIEW） | 03 排队内部验收；`needs_judgement=false`；**不发 N2**（N2 改在 T33） |
+| T11 | VERIFYING | 验证完成：无 FAILED、≥1 INCONCLUSIVE | BUG 部署守卫（BR-02-62） | **INTERNAL_QA**（产品验收 Agent 先判；`internal_qa_required=false` 时 → NEEDS_HUMAN_REVIEW） | `needs_judgement=true`；AUTONOMOUS 项目 → 暂停 `ESCALATION_RULE` + `work_item.escalated`（PRD §2.3） |
 | T12 | VERIFYING | 验证完成：≥1 必需 FAILED | | REWORK | 同事务写**系统裁决** Decision（`action=REQUEST_CHANGES`，`failure_category=QUALITY_REJECTION`，`actor_kind=SYSTEM`，`authority_source=SYSTEM:verification`，反馈 = 每个 FAILED 必需验证一条 `{category: FUNCTIONAL_DEFECT, location: 验证器名, expected: "验证通过", detail: 输出摘要 ≤500 字}`）；以该 decision_id 作 `feedback_ref` 调 03 `Launch(QUALITY, parent=claim.execution, CONTINUE)`（C5）；`quality_rework_count+1`；N3；`decision.made`（06 据此入库反馈）；BR-02-26 |
 | T13 | NEEDS_HUMAN_REVIEW | 重新验证（系统 `VerificationQueued`；人经 03 `verification_run` 发起） | | VERIFYING | — |
 | T14 | NEEDS_HUMAN_REVIEW | APPROVE（裁决） | BR-02-19 ~ 25 | ACCEPTED | Claim ACCEPTED；EXECUTOR / REVIEWER 分派 COMPLETED；`accepted_at`、`first_pass`；后继依赖重算；N9 |
@@ -514,6 +641,46 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 
 ---
 
+### 4.5 D112 / D113 新增状态与迁移
+
+**状态所有者补充**：DRAFT = 交付负责人；PLAN_REVIEW = 计划批准者；INTERNAL_QA = 系统（内部质量门）；STOPPED = 人类负责人；EXCEPTION = 有 `exception_decide` 的人类。**完成阶梯 L2 = 内部验收通过**。
+
+**状态优先级**：系统阻塞（BLOCKED）> 就绪未满足（DRAFT）> READY。新建工作项：`ready_guard` 不满足 → BLOCKED；满足但就绪检查（BR-02-47）不通过 → DRAFT；都满足 → READY。
+
+| # | 当前 | 触发 | 守卫 | 目标 | 副作用 |
+|---|---|---|---|---|---|
+| T27 | DRAFT | 就绪检查通过（系统；编辑后自动重跑或 W15） | BR-02-47 全部通过；`ready_guard` | READY | `work_item.ready_checked{ok:true}` |
+| T28 | READY | 就绪检查不通过（编辑删去验收标准 / 验证方式等、需求升版本） | — | DRAFT | `work_item.ready_checked{ok:false, issues}`；已有提案作废（05） |
+| T29 | DRAFT | 人类自认领（命令 `POST assignments` 指向自己，带 `acknowledge_readiness_issues=true`） | HUMAN；`work_item_execute` | CLAIMED | `readiness_override_by`；审计 `delivery.readiness_overridden`；页面持续显示就绪告警 |
+| T30 | CLAIMED / REWORK | 计划提交（系统：03 `PLANNING` 执行完成并回调 `PlanProposed`） | `plan_required=true` | PLAN_REVIEW | §3.21 新行；`plan.proposed`；按 BR-02-51 路由给批准者（Agent 批准者经 05 派单，不进入人类收件箱） |
+| T31 | PLAN_REVIEW | 批准（P3 `APPROVE`） | BR-02-51 批准者资格；`coverage_ok=true` | CLAIMED | 计划 APPROVED；`plan.approved`；**同事务请求 03 冻结验收集**（`acceptance_suite.frozen`）并 `Launch(INITIAL / 当前分支原因, autostart)` 实现执行 |
+| T32 | PLAN_REVIEW | 拒绝（P3 `REJECT`，反馈必填） | 同上 | CLAIMED | 计划 REJECTED；`plan.rejected`；03 以反馈重新出计划；第 3 次被拒 → T35 规则升级（`INTERNAL_ROUNDS_EXHAUSTED`） |
+| T33 | INTERNAL_QA | 内部验收全部通过（系统 `InternalQaCompleted{passed}`：AGENT_TEST 与 AGENT_ACCEPTANCE 均 PASSED） | 两阶段结论都属于当前声明 | NEEDS_HUMAN_REVIEW | `internal_qa.passed`；**N2**（此时才通知人）；L2 = 内部验收通过 |
+| T34 | INTERNAL_QA | 内部验收不通过（任一阶段 FAILED 或 CHEATING_SUSPECTED） | `internal_round_count + 1 < max_internal_rounds` | REWORK | `internal_round_count+1`；系统裁决 REQUEST_CHANGES（`authority_source=SYSTEM:internal_qa`，反馈 = 测试 / 验收 Agent 的结构化结论）；03 `Launch(QUALITY, CONTINUE, feedback)`；**不发任何人类通知、不建收件箱项、频道不发卡片**（BR-02-54） |
+| T35 | INTERNAL_QA / PLAN_REVIEW | 内部轮次用尽（同 T34 触发但 `internal_round_count + 1 ≥ max_internal_rounds`，或计划第 3 次被拒） | — | NEEDS_HUMAN_REVIEW | `escalation_reason=INTERNAL_ROUNDS_EXHAUSTED`；`require_human_decision=true`；`work_item.escalated`；N11（附各轮内部结论） |
+| T36 | 任意非终态（含 DRAFT） | Andon 拉绳（AN1，或项目级 AN2 对项目内全部非终态项） | `andon_pull`（全员含 Agent）；理由 ≥10 字 | STOPPED | `stopped_from_state`；同事务调 03 `Pause` 暂停活跃执行；下游后继加阻塞原因 `ANDON_UPSTREAM`；`andon.pulled`；N13 |
+| T37 | STOPPED | 清除（AN3） | **仅人类**，`andon_clear`；处置说明必填 | `stopped_from_state` | 03 `Resume`；移除下游 `ANDON_UPSTREAM`；`andon.cleared` |
+| T38 | READY / CLAIMED / PLAN_REVIEW / IN_PROGRESS / REWORK / INTERNAL_QA | 预测越界（系统 `delivery.tolerance_forecast`）或成员提出（E4） | BR-02-57 | EXCEPTION | §3.23 新行（报告草稿由系统 / 主管 Agent 生成）；03 `Pause`；`exception.raised`；N14 |
+| T39 | EXCEPTION | 例外决定（E3） | **仅人类**，`exception_decide`（不可委托）；理由 | CONTINUE → `previous_state`（appetite / 容差更新）；RESHAPE → DRAFT（同事务建 ChangeRecord，需求按范围变更流程升版本）；HOLD → BLOCKED（原因 `HOLD`）；KILL → CANCELLED（同 T23 副作用） | `exception.decided`；CONTINUE 时 03 `Resume` |
+
+**内部失败不穿透**：T12（自动检查失败）与 T34（内部验收失败）一律只走内部返工；T12 原有的 N3 通知**取消**（由本节覆盖），T12 同样累加 `internal_round_count`，到上限按 T35 升级。
+
+**穿透**：T15（人工 REJECT / REQUEST_CHANGES，QUALITY 类）与 T26（甲方拒收重开）发生时，若被拒的声明曾经 T33 内部验收通过，则同事务按 `escape_key` 写 §3.24 并发布 `quality.escaped`（BR-02-58）；同一 `escape_key` 已有穿透（如 07 已就同一甲方回执发布）时只引用、不再发布（D114）。
+
+**非法迁移补充**：
+
+| 尝试 | 错误 |
+|---|---|
+| 把 DRAFT 工作项派给 Agent（T03 / `DispatchAssigner.Assign` / AUTO 派单） | 409 `120461` `readiness_unmet`（`data.readiness_issues`） |
+| `plan_required=true` 且无 APPROVED 计划时开始实现执行 | 409 `120462` `plan_not_approved` |
+| 执行者 / 派出该工作项的主管 Agent / 与执行者同模型家族的 Agent 批准计划 | 403 `120403` `reason_code=SEPARATION_OF_DUTIES`（detail `PLAN_SELF_APPROVAL` / `PLAN_SAME_MODEL_FAMILY`） |
+| STOPPED 上的认领、分派、声明、裁决（Andon 清除除外） | 409 `120464` `andon_active` |
+| EXCEPTION 上除例外决定、CANCEL 以外的任何迁移 | 409 `120465` `exception_pending` |
+| INTERNAL_QA 上的 APPROVE / REJECT / REQUEST_CHANGES（人工裁决须等内部验收结束或升级） | 409 `120420` `internal_qa_pending` |
+| Agent 清除 Andon；Agent 作出例外决定 | 403 `120403` `reason_code=HUMAN_ONLY` |
+| 创建 / 修改工作项使 `accountable_principal_id` 为空或非人类 | 422 `120467` `accountable_human_required` |
+| 例外决定 CONTINUE 未给出新 appetite / 容差 | 422 `120468` `exception_continue_requires_new_budget` |
+
 ## 5. 业务规则与边界情况
 
 ### 5.1 需求与标准
@@ -534,7 +701,7 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 ### 5.3 分派与租约
 
 - **BR-02-10** 受派者：团队 ACTIVE 成员；HUMAN 须具备项目 `work_item_execute`；AGENT 须 05 `AgentDirectory` 返回 `state=ACTIVE` 且角色含 `EXECUTOR`；否则 422 `120444`（`data.reason`: `not_member`/`lacks_execute`/`agent_inactive`/`agent_not_executor`）。
-- **BR-02-11** **Agent 不可自认领**（PRD §3.2「执行被分配的工作项」）：AGENT 对自己创建 EXECUTOR 分派 → 403 `120403`（`reason_code=AGENT_SELF_CLAIM`）。Agent 只经 ASSIGN（人或主导 Agent 按 05 派单策略）获得工作。
+- **BR-02-11** **Agent 不可自认领**（PRD §3.2「执行被分配的工作项」）：AGENT 对自己创建 EXECUTOR 分派 → 403 `120403`（`reason_code=AGENT_SELF_CLAIM`）。Agent 只经 ASSIGN（人或主管 Agent 按 05 派单策略）获得工作。
 - **BR-02-12** 租约 TTL（本规格提议的具体数，PRD 只要求「租约 + 过期回收」）：HUMAN 执行者默认 4h（15min–24h，认领 / 续约时可指定）；AGENT 执行者默认 10min（2–30min），由 03 执行心跳（≤每 60s）调用 `RenewLease` 续约；REVIEWER 评审认领默认 15min（5–60min），评审台心跳续约。回收宽限 60s。续约须分派人本人（或 03 代 Agent），否则 403 `120403`（`reason_code=NOT_LEASE_HOLDER`）。**执行者租约挂起**（`lease_expires_at=NULL`，C6）：工作项处于 BLOCKED、暂停覆盖层、AGENT_CLAIMED_DONE、VERIFYING、NEEDS_HUMAN_REVIEW、REWORK、EXECUTION_FAILED 期间；离开这些状态进入 CLAIMED / IN_PROGRESS（T18、T20、T20b、T07、T22）时重置为 now+ttl。
 - **BR-02-13** 过期不打断活跃执行：03 报告该工作项有**非终态 DELIVERY 执行**（CREATED〔含等待执行槽，04 最长 60min〕/ RUNNING / PAUSED / INTERRUPTED）时，回收任务不迁移状态，记录 `lease_overdue` 并延长 1 个 TTL，连续最多 3 次，之后通知负责人且不再延长（执行存活以 03 心跳为准）。
 - **BR-02-14** 抢占：两人同时自认领同一 READY 工作项，CAS（`state='READY' AND version=?`）+ 唯一索引保证仅一人成功，另一人 409 `120426`（`data.holder`）。
@@ -550,7 +717,7 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 
 - **BR-02-19 授权**：每个裁决在业务事务内调用 08 `AuthorityChecker.Check(ctx, tx, AuthorityRequest)`，`Facts` 由本模块填充：`{type, risk, cost_micros（03 `EvidenceReader.WorkItemCost`：该工作项全部 DELIVERY 执行累计，不含 VERIFICATION，C28）, quality_rework_count, self_produced, required_verifications_passed, require_human_decision, paused（bool，不外泄模块内 `PauseReason`）, dispatched_by_actor（05 `DispatchProvenance.DispatchedBy(work_item_id)`，供 08 S3(c) 职责分离）}`，输出 `AuthorityDecision{allowed, authority_source, delegation_id?, reason_code}`。动作 → 权限码：APPROVE→`decision_approve`、REJECT→`decision_reject`、REQUEST_CHANGES→`decision_request_changes`、PAUSE/RESUME→`decision_pause`、ASSIGN→`work_item_assign`、CANCEL→`work_item_cancel`（CCR-03）、SCOPE_CHANGE→`scope_change`。拒绝 → 403 `120403`（`data.reason_code`），审计 `delivery.decision_denied`（outcome=denied，独立事务）。；ASSIGN 裁决另填 `assignment_role`（EXECUTOR / REVIEWER）与 `assignee_principal_id`（供 08 策略规则 `review_dispatch` / `dispatch_auto` 判定，复审 B3）
 - **BR-02-20 不可委托**：`scope_change`（00 §6.4）的 authority 为 DELEGATION 一律拒绝（`reason_code=NON_DELEGABLE`）；本模块在 AuthorityChecker 之外再硬编码校验一次（纵深防御）。
-- **BR-02-21 职责分离**（硬编码）：以下主体对该工作项的 APPROVE / REJECT / REQUEST_CHANGES 被拒（`reason_code=SELF_REVIEW`）：(a) 任一时刻持有该工作项 EXECUTOR 分派者；(b) 任一声明的声明者；(c) 03 报告的任一分支执行的**执行受派人**（不含仅确认派单、仅作为 SYSTEM autostart 发起的人，C17）；(d) 以 ASSIGN 分派该工作项的 AGENT（主导 Agent，PRD §10.6），除非其 authority 为 DELEGATION 且 (a)–(c) 不成立。另外，**05 中无 `REVIEWER` 角色的 AGENT，任何裁决（PAUSE 除外）均拒绝**（`reason_code=AGENT_EXECUTOR`），即使存在委托。人类同样受 (a)–(c) 约束（§12 Q1）。
+- **BR-02-21 职责分离**（硬编码）：以下主体对该工作项的 APPROVE / REJECT / REQUEST_CHANGES 被拒（`reason_code=SELF_REVIEW`）：(a) 任一时刻持有该工作项 EXECUTOR 分派者；(b) 任一声明的声明者；(c) 03 报告的任一分支执行的**执行受派人**（不含仅确认派单、仅作为 SYSTEM autostart 发起的人，C17）；(d) 以 ASSIGN 分派该工作项的 AGENT（主管 Agent，PRD §10.6），除非其 authority 为 DELEGATION 且 (a)–(c) 不成立。另外，**05 中无 `REVIEWER` 角色的 AGENT，任何裁决（PAUSE 除外）均拒绝**（`reason_code=AGENT_EXECUTOR`），即使存在委托。人类同样受 (a)–(c) 约束（§12 Q1）。
 - **BR-02-22 理由**：REJECT、REQUEST_CHANGES、SCOPE_CHANGE、PAUSE、RESUME、CANCEL、改派（替换已有分派的 ASSIGN）理由必填 5–2000 字符（PRD 只强制 REJECT / SCOPE_CHANGE；本规格提议扩展，依据 doc3「每个决定必须记录理由」）；APPROVE 理由可选，但存在未覆盖必需标准、`needs_judgement=true` 时必填；缺失 → 422 `120434`。
 - **BR-02-23 结构化反馈**：REJECT / REQUEST_CHANGES 必须 ≥1 条反馈（`category`、`detail` 必填，PRD §7）且 `failure_category` ∈ {QUALITY_REJECTION, STRATEGY_CHANGE, SCOPE_CHANGE}；否则 422 `120435` / `120436`。其他动作携带反馈或 failure_category → 422 `120436`。EXECUTION_FAILURE、BLOCKED 只由系统 / 阻塞命令产生。
 - **BR-02-24 验证门（L3 不能跳过 L2）**：APPROVE 要求 03 报告的必需验证全部 PASSED；有 INCONCLUSIVE（无 FAILED）→ 仅 HUMAN 可 APPROVE 且理由必填；AGENT（经委托）APPROVE 还要求 ≥1 条 AUTOMATED 层 PASSED 且无 INCONCLUSIVE；AI_ASSISTED 结果不能单独支撑 APPROVE（PRD §11.2）。违反 → 409 `120438`（`data.missing_verifications[]`）。
@@ -601,6 +768,25 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 
 ---
 
+### 5.11 D112 / D113 规则
+
+- **BR-02-47 就绪检查（DoR）**：字段 `objective`、`acceptance_criteria`（本工作项负责的标准 ≥1，均有编号）、`out_of_scope`（可为空数组但须显式确认）、`context_refs`、`verification_plan`、`budget`、`autonomy_level`、`accountable_principal_id`。触发：创建、编辑就绪字段、需求升版本、派单前（DISPATCH）、W15 手动。**对 Agent 是硬闸门**（DRAFT 不可派发，120461）；**对人类是提示**：人类可在 DRAFT 上自认领（T29），记录 `readiness_override_by` 并在详情页持续告警。
+- **BR-02-48 验证计划**：每条负责的验收标准恰好一个主方法（`TEST` / `COMMAND` / `AGENT_JUDGE` / `HUMAN` / `VISUAL`），可附辅方法；工作项类型 FEATURE / CONTENT 且涉及界面或成品观感时，模板默认追加 `VISUAL`；仅 `AGENT_JUDGE` 的标准在 risk=HIGH 时不允许（需 TEST / COMMAND / HUMAN 之一）。
+- **BR-02-49 人类负责人**：每个工作项必须有人类负责人；默认取需求负责人，否则交付负责人；全自治项目默认委托授予人。负责人对结果负责、接收升级（N11–N14），可以不是执行者。Agent 永远不能成为负责人（422 120467）。负责人离开项目 → 工作项进入 BLOCKED（`NO_ACCOUNTABLE_HUMAN`）直到重新指定。
+- **BR-02-50 需求质量检查**：需求基线化（R 系列）与来件转换时，由 AGENT_JUDGE 检查歧义、自相矛盾、不可验证的验收标准与交付形态冲突（例：「直接打开即可运行」与「模块化引入」）。发现问题 → 相关工作项 `readiness_issues` 加 `REQUIREMENT_CONFLICT` / `REQUIREMENT_AMBIGUOUS` / `UNVERIFIABLE_AC` 并保持 DRAFT；升级给**交付负责人**（N12，`escalation_reason=REQUIREMENT_CONFLICT`），由人决定修改需求或向甲方澄清（经 01 `ClarificationRequester`）——**不自动打扰甲方**。
+- **BR-02-51 计划审批**：`plan_required = risk ≥ MEDIUM ∨ autonomy_level ≥ MEDIUM ∨ 模板要求`。计划由 03 只读执行产出（`purpose=PLANNING`）；`coverage_ok` 要求每条负责标准都有覆盖方式与验证方式。批准者：持 `plan_approve` 的人类，或经 08 策略 `plan_review` 的评审 Agent（必须与执行者**不同模型家族**，且不是执行者、不是派出该工作项的主管 Agent）。Agent 批准者的待办经 05 派单下发，不进入人类收件箱。计划轮次上限 3。
+- **BR-02-52 冻结验收集**：T31 同事务请求 03 冻结验收集（可见部分 + 隐藏部分）；无需计划时在 T04（首次执行开始）冻结。冻结后执行者对测试只读；03 检测到冻结测试被改动 → 回调 `CHEATING_SUSPECTED`，按 T34 处理并累加轮次；同一工作项第 2 次作弊嫌疑直接 T35 升级。
+- **BR-02-53 内部质量门**：`internal_qa_required=true` 时，T10 / T11 进入 INTERNAL_QA；03 依次执行 AGENT_TEST（测试 Agent）与 AGENT_ACCEPTANCE（产品验收 Agent，检查实际交付形态，含截图 / 运行 / 成品文件），05 负责派单与跨模型家族约束。两阶段均 PASSED → T33；任一 FAILED → T34 / T35。
+- **BR-02-54 不穿透**：T12、T32（Agent 批准者拒绝时）、T34 的结果**只记录不打扰**：不发 N2 / N3、不建 08 收件箱项、不向频道发人类可见卡片（07 / 08 / 05 消费者按事件 `visibility=INTERNAL` 过滤），工作项卡片仅显示「内部第 n / N 轮」。`internal_round_count` 在新的声明链（T26 重开或人工 REJECT 后）清零。人工 REJECT 的质量返工上限沿用 BR-02-26（3 次）；内部轮次与人工返工分别计数。
+- **BR-02-55 升级到人的唯一入口**：只有 `EscalationReason` 所列原因会产生人类待办：内部轮次用尽（T35）、需求冲突（BR-02-50）、Andon（T36）、容差例外（T38）、预算阈值（07）、模板必经人工关口（`MANDATORY_HUMAN_GATE`，例如视频脚本确认、小说大纲确认）。
+- **BR-02-56 Andon**：任何成员（含 Agent）持 `andon_pull` 可停线，理由 ≥10 字；Agent 拉绳时同时附证据引用。项目级 Andon（AN2）停止项目内全部非终态工作项并暂停 05 派单。清除仅人类（`andon_clear`：人类负责人或交付负责人）。同一工作项 ACTIVE Andon 最多一条；重复拉绳返回现有记录（幂等）。
+- **BR-02-57 容差与例外**：`delivery.tolerance_forecast` 每 15 分钟预测：时间 = 已用墙钟 + 同类工作项剩余中位数；成本 = 03 `WorkItemCost` + 剩余预测；范围 = 新增验收标准数。预测 > appetite × (1 + tolerance) → T38。例外报告由系统起草（主管 Agent 可补充），人可修改；决定仅人类、不可委托。禁止静默延期：appetite / 容差只能经 CONTINUE 决定修改。
+- **BR-02-58 穿透记录与回流**（D114）：满足 §4.5「穿透」条件时写 §3.24。`quality.escaped` 的发布者为本模块（`HUMAN_REVIEW`，T15 / T26）、07（`CLIENT_ACCEPTANCE`）与 12 Part A（带 `escaped_from_stage` 的缺陷），统一幂等键 `escape_key`。`delivery.escape_learning` 消费**任一发布者**的 `quality.escaped`，按 `escape_key` upsert §3.24，把穿透摘要经 06 `MemoryWriter.Propose` 写为相关 TESTER / ACCEPTOR 的 EXPERIENCE 记忆**草稿**，并调用 11 `EvalSetWriter.ProposeCase(ctx, tx, {template_key, template_version, source: ESCAPE, work_item_id, description, evidence_refs[], expected})` 追加为模板评测用例（按 11 BR-11-22 自动入集，维护者可停用；幂等，重复调用不重复建用例）。本任务是穿透学习的**唯一**执行方：03 不发布 `quality.escaped`、不回流（03 BR-03-102 只提供内部验收记录），08 不调用 06 / 11（只做记录、通知与人工确认，BR-08-63），11 不直接消费 `quality.escaped`；本任务另消费 08 `quality.escape_learning_decided`：RECORDED → 使草稿生效，DISMISSED → 撤回草稿与用例；草稿与用例建成后发布 `quality.escape_learning_proposed{escape_key, memory_ids[], eval_case_ref}`，供 08 回填穿透记录的只读展示列；失败重试 5 次后 `learning_state=FAILED` 并通知团队所有者。
+- **BR-02-59 缺陷（云效对齐）**：`type ∈ {BUG, INCIDENT}` 必填严重程度、优先级、复现率；`defect_stage` 推进：已合入（有合入提交证据）→ 已部署（交付 / 部署证据）→ 已验证（验证者通过）→ 已关闭（= ACCEPTED，仅验证角色可关闭）；状态组、流转矩阵与字典由 12 配置，本规格只保证字段与守卫钩子。
+- **BR-02-61 模板系统阻塞原因**：`TOOL_UNAVAILABLE`（确定性验证器所需工具在所有在线机器都不可用，04 工具清单）与 `PROVIDER_UNAVAILABLE`（项目所选生成 provider 不可用）为**系统**阻塞原因：由 11 经 `WorkItemTransitioner.SetSystemBlock(tx, work_item_id, reason, on bool, source_ref)` 设置 / 清除（幂等，`source_ref` 去重），与其他系统原因同样参与 `ready_guard`；不可经 W12 人工设置或删除（422 120400）；原因全部消除后按 §4.2 自动回到 READY。
+- **BR-02-60 L2 展示**：完成阶梯 L2 文案「内部验收通过」，悬停显示 AUTOMATED / AGENT_TEST / AGENT_ACCEPTANCE 三段结论与轮次；`internal_qa_required=false` 时 L2 只含 AUTOMATED 并标注「未经内部验收」。
+- **BR-02-62 缺陷部署守卫（12 §4.2.1 F7）**：`type=BUG` 且 12 `WorkflowResolver` 解析出该工作项生效的缺陷流转矩阵含「merged → deployed」（F6）时，T10 / T11 额外要求 `defect_stage=DEPLOYED`；不满足时不迁移、不算失败，工作项停在（或经 T09 进入）VERIFYING，12 显示「已合入 · 等待部署」。`defect_stage` 推进为 `DEPLOYED` 时，以该声明最近一次验证结论重新评估 T10 / T11（source_ref 幂等）。矩阵不含 F6 或 `WorkflowResolver` 无该项目配置时按原守卫执行；`WorkflowResolver` 不可用 → 视为守卫不满足，保持 VERIFYING 并由 `delivery.stuck_check` 照常提醒（失败即拒）。
+
 ## 6. 接口契约
 
 ### 6.1 通用
@@ -613,7 +799,7 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 - **权限拒绝**：一律 403 `120403` + `data.reason_code`（00 §9），不再为单个原因设独立 403 码。
 - **路由注册顺序**：静态段（如 `/entities/{entity_id}/work-item-board`）先于参数段注册。
 
-**业务错误码（02 子段 120000–126999，本规格使用 1204xx；07 使用 127000–129999）**：
+**业务错误码（02 子段 120000–125999，本规格使用 1204xx；12 Part A 使用 126000–126999；07 使用 127000–129999；00 §9，CR-12-01）**：
 
 | 码 | HTTP | i18n key | 含义 |
 |---|---|---|---|
@@ -746,9 +932,31 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 | `RequirementCreator`（00） | `CreateFromIntake(ctx, tx, CreateFromIntakeInput{TenantID, ProjectID, IntakeID, TriageCardID, Title, Description, Criteria[{text, required}], Priority, Actor}) (RequirementRef{ID, ProjectID, Version}, error)`；`AppendFromIntake(ctx, tx, AppendFromIntakeInput{TenantID, RequirementID, IntakeID, BaseVersionNo, Summary, Diff{criteria_added[], criteria_retired[], impacts[]}, Actor}) (changeRecordID, error)` | 01 | Create：DRAFT 需求（`source_intake_id`），同事务；Append：= BR-02-32 SCOPE 变更（不可委托）；**step-up 由 01 在调用前以 purpose `intake_convert_privileged` 校验**，本接口不再接收或校验重新认证证明（复审 #11；08 §6.9 登记该用途覆盖追加） |
 | `WorkItemReopener` | `ReopenFromAcceptance(ctx, tx, {tenant_id, work_item_ids[], source_acceptance_id, feedback[], reason, actor}) ([]decisionID, error)` | 01（返工来件 `REOPEN_WORK_ITEMS`） | 逐项执行 T26 |
 
-**本模块使用的他方接口**（与 §12.1 一致）：03 `ExecutionLauncher{Launch, Pause, Resume, Cancel, CancelExecution}`、03 `EvidenceReader{… , ChangeSimilarity, LiveExecution, WorkItemCost}`、03 `EvidenceBinder{ValidateClaimable, Attach}`；05 `AgentDirectory`、`DispatchProvenance.DispatchedBy`；07 `ProjectGate`、`ProjectReader`、`AcceptanceReader`；08 `AuthorityChecker{Check, ListEligible}`；01 `ClarificationRequester.RequestFromWorkItem`；09 `JobQueue`、`OutboxPublisher`、`RealtimeBroadcaster`、`Notifier`。
+**本模块使用的他方接口**（与 §12.1 一致）：03 `ExecutionLauncher{Launch, Pause, Resume, Cancel, CancelExecution}`、03 `EvidenceReader{… , ChangeSimilarity, LiveExecution, WorkItemCost}`、03 `EvidenceBinder{ValidateClaimable, Attach}`；05 `AgentDirectory`、`DispatchProvenance.DispatchedBy`；07 `ProjectGate`、`ProjectReader`、`AcceptanceReader`；08 `AuthorityChecker{Check, ListEligible}`；01 `ClarificationRequester.RequestFromWorkItem`；12 `WorkflowResolver`（BR-02-62 缺陷部署守卫）；09 `JobQueue`、`OutboxPublisher`、`RealtimeBroadcaster`、`Notifier`。
 
 ---
+
+### 6.10 D112 / D113 接口
+
+| # | 方法 路径 | tag | 守卫 · 权限 | 请求 | 响应 `data` | 错误 |
+|---|---|---|---|---|---|---|
+| W15 | `POST /work-items/{work_item_id}/readiness-checks` | work-items | RegisterOwned · `work_item_read` | — | §3.20 记录 | 404 |
+| W16 | `PATCH /work-items/{work_item_id}`（扩展 W 系列已有 PATCH） | work-items | RegisterOwned · `work_item_write`；If-Match | 新增就绪字段、缺陷字段、appetite / 容差（仅在 EXCEPTION 决定中修改，直接 PATCH 返回 409 120465） | WorkItem | 120467、120468 |
+| P1 | `GET /work-items/{work_item_id}/plans` | work-items | RegisterOwned · `work_item_read` | — | `Plan[]` | — |
+| P2 | `GET /plans/{plan_id}` | plans | RegisterOwned · `work_item_read` | — | Plan | 404 |
+| P3 | `POST /plans/{plan_id}/decisions` | plans | RegisterOwned · `plan_approve`（人类）或 08 策略 `plan_review`（评审 Agent）| `{action: APPROVE\|REJECT, feedback?[]}`；REJECT 反馈必填 | Plan + WorkItem | 403 120403、409 120420（非 PLAN_REVIEW）、422 coverage |
+| AN1 | `POST /work-items/{work_item_id}/andon-pulls` | work-items | RegisterOwned · `andon_pull` | `{reason≥10, evidence_refs?[]}`；Idempotency-Key | AndonEvent | 409 已 ACTIVE 时返回现有记录 200 |
+| AN2 | `POST /entities/{entity_id}/andon-pulls` | entities | RegisterOwned · `andon_pull` | 同上（项目级） | AndonEvent | — |
+| AN3 | `POST /andon-pulls/{andon_id}/clearance` | andon-pulls | RegisterOwned · `andon_clear`（仅人类） | `{clearance_note}` | AndonEvent + WorkItem[] | 403 HUMAN_ONLY |
+| AN4 | `GET /entities/{entity_id}/andon-pulls?state=` | entities | RegisterOwned · `work_item_read` | pkg/query：`state`, `scope`, `created_at` | `AndonEvent[]` | — |
+| E1 | `GET /work-items/{work_item_id}/exceptions` | work-items | RegisterOwned · `work_item_read` | — | `Exception[]` | — |
+| E2 | `GET /exceptions/{exception_id}` | exceptions | RegisterOwned · `work_item_read` | — | Exception | 404 |
+| E3 | `POST /exceptions/{exception_id}/decision` | exceptions | RegisterOwned · `exception_decide`（仅人类，不可委托） | `{decision, reason, new_appetite_minutes?, new_tolerance?}`；If-Match | Exception + WorkItem | 403 HUMAN_ONLY / NON_DELEGABLE、422 120468 |
+| E4 | `POST /work-items/{work_item_id}/exceptions` | work-items | RegisterOwned · `work_item_write` 或负责人 | `{dimension, report}` | Exception | 409 120465（已有 OPEN） |
+| Q1 | `GET /work-items/{work_item_id}/internal-qa-rounds` | work-items | RegisterOwned · `work_item_read`（团队成员；甲门户无此路由） | — | `InternalQaRound[]` | — |
+| X1 | `GET /entities/{entity_id}/escapes` | entities | RegisterOwned · `work_item_read` | pkg/query：`stage`, `category`, `created_at` | `Escape[]` | — |
+
+本模块新增提供接口（00 §8）：`WorkItemTransitioner.PlanProposed(tx, work_item_id, plan)`、`InternalQaCompleted(tx, work_item_id, claim_id, stage, result, verdict)`（03 调用，source_ref 幂等）；`SetSystemBlock(tx, work_item_id, reason ∈ {TOOL_UNAVAILABLE, PROVIDER_UNAVAILABLE}, on, source_ref)`（11 调用，BR-02-61）。新错误码：120461 `readiness_unmet`、120462 `plan_not_approved`、120464 `andon_active`、120465 `exception_pending`、120467 `accountable_human_required`、120468 `exception_continue_requires_new_budget`（i18n `delivery.error.*` 三语）。
 
 ## 7. 后台任务与事件
 
@@ -787,6 +995,18 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 | `acceptance.received`（07，同模块直接调用） | 不改变工作项状态；仅刷新 L4 投影 | — |
 
 ---
+
+### 7.4 D112 / D113 任务与事件
+
+| 任务 | 触发 / 频率 | 互斥 | 说明 |
+|---|---|---|---|
+| `delivery.readiness_recheck` | 消费 `requirement.versioned`、就绪字段编辑 | 按工作项 | 重跑 BR-02-47，执行 T27 / T28 |
+| `delivery.requirement_quality_check` | 需求基线化、来件转换 | 按需求 | BR-02-50；调用 AGENT_JUDGE（经 03 只读执行） |
+| `delivery.tolerance_forecast` | 每 15 分钟 | dlock `delivery:tolerance-forecast` | BR-02-57，越界执行 T38 |
+| `delivery.escape_learning` | 消费 `quality.escaped`（02 / 07 / 12 Part A）与 08 `quality.escape_learning_decided` | 按 `escape_key` | BR-02-58 回流 06 / 11（唯一执行方）；指数退避重试 5 次 |
+
+发布：`work_item.ready_checked`、`plan.proposed`、`plan.approved`、`plan.rejected`、`andon.pulled`、`andon.cleared`、`exception.raised`、`exception.decided`、`quality.escaped`、`quality.escape_learning_proposed`，以及带 `escalation_reason` 的 `work_item.escalated`。内部失败相关事件（T12、T34、Agent 批准者的 T32）载荷带 `visibility: "INTERNAL"`，08 收件箱与 07 / 05 的人类可见投影**必须**过滤。
+消费：03 `internal_qa.passed` / `internal_qa.failed` / `cheating.suspected` / `acceptance_suite.frozen`（经 `WorkItemTransitioner` 同步回调为主，事件作为审计与投影）。
 
 ## 8. 页面规格
 
@@ -878,6 +1098,17 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 
 ---
 
+### 8.6 D112 / D113 页面增补
+
+- **看板列**：在「声明与验证」与「待裁决」之间新增「**内部验收**」列（INTERNAL_QA），卡片显示「内部第 n / N 轮」与当前阶段（测试 Agent / 产品验收 Agent）；新增「**草稿（就绪未满足）**」列（DRAFT，卡片列出缺项数）；STOPPED 卡片红色停线条，EXCEPTION 卡片琥珀色「例外待决定」。内部失败在看板上只表现为卡片回到「返工」并轮次 +1，**不弹任何通知**。
+- **就绪检查面板**（工作项详情右栏顶部）：逐项打勾（目标、验收标准与编号、每条标准的验证方式、范围外、上下文、预算、自治级别、人类负责人）；缺项给出「补全」入口；需求冲突问题链接到需求页；人类自认领时弹出「就绪未满足，确认仍要开始？」并记录。
+- **计划审批面板**（PLAN_REVIEW）：左为计划（改动文件、每条验收标准的实现与验证方式、风险），右为覆盖检查（未覆盖标准标红）与批准 / 拒绝（拒绝必填反馈）；显示批准者资格说明（「执行者与派单主管不可批准；评审 Agent 须为不同模型家族」）。
+- **内部验收记录**（工作项详情标签）：按轮次列出 AUTOMATED / AGENT_TEST / AGENT_ACCEPTANCE 结论、截图与证据、作弊嫌疑标记；仅团队可见。
+- **Andon 按钮**：工作项详情与卡片菜单「拉 Andon 停线」，对话框要求理由与证据；停线条显示拉绳人（人或 Agent）、时间、下游受影响数；清除按钮仅对人类负责人 / 交付负责人可用（Agent 视角隐藏并说明）。
+- **例外报告对话框**：维度、预测（appetite / 已用 / 预测总量 / 容差图）、现状、选项与影响、建议；四个决定按钮（继续需填写新 appetite），仅人类可操作，显示「不可委托」。
+- **穿透徽标**：工作项与评审台显示「穿透 ×n」，点开查看当时内部验收结论；团队指标卡显示穿透率趋势。
+- **评审台**：进入评审台的只有 INTERNAL_QA 通过或已升级的工作项；顶部显示「内部验收：自动 ✓ 测试 Agent ✓ 产品验收 Agent ✓（第 2 轮通过）」与升级原因（如有）。
+
 ## 9. 通知（经 09 `Notifier`；渠道：站内 inbox + SSE 必发，邮件按 08 用户偏好；Agent 不接收通知，其工作经 03 下发）
 
 | # | 事件 | 接收人 | 渠道 | 模板（zh-CN；en-US / ms-MY 同 key） | 去重 / 合并 |
@@ -891,6 +1122,11 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 | N7 | 执行故障超自动重试上限 / RUNTIME 故障 | 执行者、交付负责人 | inbox、邮件 | `delivery.notify.execution_failed`：「{key} 执行失败（{kind}），自动重试已用尽，请重试、换机器或转交。」 | 键 `fail:{execution_id}` |
 | N8 | `requirement.versioned`（v≥2） | 交付负责人、受影响工作项执行者 | inbox | `delivery.notify.requirement_versioned`：「{req_key} 升至 v{version}，{count} 个工作项基线过期。」 | 键 `ver:{requirement_id}:{version}` |
 | N9 | APPROVE | 执行者（人）；执行者为 Agent 时通知分派人 | inbox | `delivery.notify.accepted`：「{key} 已被 {actor} 接受。」 | 同执行者 10 分钟内合并 |
+| N11 | `work_item.escalated{INTERNAL_ROUNDS_EXHAUSTED}`（T35） | 人类负责人、交付负责人 | inbox（HIGH） | `delivery.notify.internal_rounds_exhausted`：「{wi_key} 内部 {n} 轮仍未通过验收，需要你判断。」 | 键 `esc:{wi}:{claim_chain}` |
+| N12 | 需求质量检查发现冲突 / 歧义（BR-02-50） | 交付负责人（不通知甲方） | inbox | `delivery.notify.requirement_conflict`：「{req_key} 有 {n} 处需求冲突或歧义，相关工作项暂不可派给 Agent。」 | 键 `rq:{req}:{version}` |
+| N13 | `andon.pulled` | 人类负责人、交付负责人；项目级另通知团队所有者 | inbox（CRITICAL）+ 浏览器推送 | `delivery.notify.andon_pulled`：「{actor} 对 {target} 拉了 Andon：{reason}」 | 键 `andon:{id}` |
+| N14 | `exception.raised` | 人类负责人、持 `exception_decide` 的人 | inbox（HIGH） | `delivery.notify.exception_raised`：「{wi_key} 预测将超出{dimension}容差，需要你决定：继续 / 重新塑形 / 暂停 / 终止。」 | 键 `exc:{id}` |
+| — | **内部失败（T12、T34、Agent 批准者的 T32）** | **无人类通知**（D113 不穿透） | — | — | — |
 | N10 | 前驱 CANCELLED | 后继执行者、交付负责人 | inbox | `delivery.notify.dependency_cancelled`：「{key} 依赖的 {dep_key} 已取消，请调整依赖。」 | 键 `depc:{work_item_id}:{dep}` |
 
 ---
@@ -1025,7 +1261,7 @@ Then  403 120403（SELF_REVIEW）；评审台队列默认不显示 W；N2 不发
 
 ```
 AC-02-16  [integration]  关联 BR-02-21(d), PRD §10.6
-Given 主导 Agent Lead（角色 LEAD+REVIEWER）以 POLICY 规则把 W 分派给 Ada，Lead 无委托
+Given 主管 Agent Lead（角色 LEAD+REVIEWER）以 POLICY 规则把 W 分派给 Ada，Lead 无委托
 When  Lead 对 W 提交 APPROVE
 Then  403 120403（SELF_REVIEW）
 ```
@@ -1407,6 +1643,94 @@ Then  ASSIGN Decision.authority_source=POLICY:dispatch_auto，detail.dispatch_pr
 
 ---
 
+### 10.11 D112 / D113 验收标准
+
+```
+AC-02-69  [integration]  关联 BR-02-47, US-02-17
+Given 工作项 W 缺少验收标准 C2 的验证方式，Agent A 为候选执行者
+When  主管 Agent 经 DispatchAssigner.Assign 把 W 派给 A
+Then  409 120461，data.readiness_issues 含 AC_WITHOUT_METHOD(C2)；W 保持 DRAFT；无分派、无执行
+
+AC-02-70  [integration]  关联 BR-02-47 T29
+Given 同上的 DRAFT 工作项 W
+When  工程师阿澈带 acknowledge_readiness_issues=true 自认领
+Then  W → CLAIMED；readiness_override_by=阿澈；审计 delivery.readiness_overridden；详情页持续显示就绪告警
+
+AC-02-71  [integration]  关联 BR-02-49
+When  创建工作项时 accountable_principal_id 为空或为 Agent 的主体
+Then  422 120467；全自治项目创建时默认填入委托授予人
+
+AC-02-72  [integration]  关联 BR-02-50, US-02-17
+Given 需求同时要求「直接打开即可运行」与「通过模块引入 ./src/game.mjs」
+When  需求基线化触发需求质量检查
+Then  相关工作项 readiness_issues 含 REQUIREMENT_CONFLICT 并保持 DRAFT；交付负责人收到 N12；甲方门户无任何通知
+
+AC-02-73  [integration]  关联 BR-02-51 T30-T31, US-02-18
+Given risk=MEDIUM 的工作项 W 由主管 Agent L 派给执行者 Ada（模型家族 Claude）
+When  L 或 Ada 或同为 Claude 家族的评审 Agent 对计划 APPROVE
+Then  均 403 120403 reason_code=SEPARATION_OF_DUTIES；由 Codex 家族评审 Agent Cy2 批准则成功，W → CLAIMED，03 收到冻结验收集请求
+
+AC-02-74  [integration]  关联 BR-02-51
+Given plan_required=true 且无 APPROVED 计划
+When  03 尝试开始实现执行
+Then  409 120462；W 不变
+
+AC-02-75  [integration]  关联 BR-02-53/54 T34, US-02-19
+Given W 在 INTERNAL_QA，产品验收 Agent 给出 FAILED（「棋盘行高不一致」）
+When  03 回调 InternalQaCompleted(FAILED)
+Then  W → REWORK，internal_round_count=1，系统裁决 authority_source=SYSTEM:internal_qa 携带结构化反馈并以 CONTINUE 启动 QUALITY 分支；08 收件箱、通知发件箱、频道人类可见消息中均无新增记录（事件 visibility=INTERNAL）
+
+AC-02-76  [integration]  关联 BR-02-55 T35
+Given max_internal_rounds=5，W 已内部失败 4 次
+When  第 5 次内部验收 FAILED
+Then  W → NEEDS_HUMAN_REVIEW，escalation_reason=INTERNAL_ROUNDS_EXHAUSTED，require_human_decision=true；负责人收到 N11（附 5 轮结论）；前 4 次失败期间无任何人类通知
+
+AC-02-77  [integration]  关联 T33
+Given W 在 INTERNAL_QA
+When  AGENT_TEST 与 AGENT_ACCEPTANCE 均 PASSED
+Then  W → NEEDS_HUMAN_REVIEW；此时才发 N2；L2 显示「内部验收通过（第 n 轮）」
+
+AC-02-78  [integration]  关联 BR-02-52
+Given 验收集已冻结
+When  执行者的提交改动了冻结测试文件，03 回调 CHEATING_SUSPECTED
+Then  按 T34 返工并累加轮次；同一工作项第 2 次作弊嫌疑直接 T35 升级，N11 注明作弊嫌疑
+
+AC-02-79  [integration]  关联 BR-02-56 T36-T37, US-02-20
+Given Agent Bo 对 W 拉 Andon（理由 12 字，附证据）
+Then  W → STOPPED，活跃执行被暂停，后继加 ANDON_UPSTREAM；负责人收到 N13
+When  Bo 调用 AN3 清除
+Then  403 120403 reason_code=HUMAN_ONLY
+When  负责人 Morgan 清除并填写处置说明
+Then  W 回到 stopped_from_state，执行恢复，后继阻塞移除
+
+AC-02-80  [integration]  关联 BR-02-57 T38-T39, US-02-21
+Given W appetite=240 分钟、time_pct=20，预测总时长 320 分钟
+When  delivery.tolerance_forecast 运行
+Then  W → EXCEPTION，生成例外报告草稿，执行暂停，N14
+When  Agent 或持委托的 Agent 调用 E3
+Then  403 120403 HUMAN_ONLY / NON_DELEGABLE
+When  Morgan 选择 CONTINUE 但不给新 appetite
+Then  422 120468；给出 new_appetite_minutes=360 后 W 回到原状态并恢复执行
+
+AC-02-81  [integration]  关联 T39
+When  Morgan 选择 RESHAPE / HOLD / KILL
+Then  分别 → DRAFT（同事务 ChangeRecord）/ BLOCKED(HOLD) / CANCELLED
+
+AC-02-82  [integration]  关联 BR-02-58, US-02-22
+Given W 的声明 K 曾在第 2 轮内部验收通过
+When  Morgan 在评审台以 QUALITY_REJECTION REJECT（反馈：样式）
+Then  同事务写 delivery_escapes(stage=HUMAN_REVIEW, claim=K)，发布 quality.escaped；escape_learning 把摘要写为 TESTER / ACCEPTOR 的 EXPERIENCE 记忆草稿（06 `MemoryWriter.Propose`）并提交 11 评测用例（`EvalSetWriter.ProposeCase`）；W.escape_count=1
+
+AC-02-83  [integration]  关联 BR-02-59
+When  创建 type=BUG 工作项缺少 severity 或 reproducibility
+Then  422（字段校验）；defect_stage 只能按 MERGED → DEPLOYED → VERIFIED → CLOSED 推进，CLOSED 与 ACCEPTED 同时发生
+
+AC-02-84  [integration]  关联 BR-02-53
+Given 团队模式 HUMAN_ONLY 或执行者为人类且模板未要求内部验收
+When  T10 发生
+Then  直接 → NEEDS_HUMAN_REVIEW，L2 标注「未经内部验收」
+```
+
 ## 11. 度量与埋点（不得包含代码、需求正文、反馈正文、理由正文）
 
 | 事件 | 属性 |
@@ -1426,6 +1750,11 @@ Then  ASSIGN Decision.authority_source=POLICY:dispatch_auto，detail.dispatch_pr
 派生指标（PRD §15）：**以 07 §5.8 为唯一定义**（公式、时间窗与快照表均由 07 维护，C67）；本模块只提供原始事实：`first_pass`、`first_accepted_at`、`delivery_attention_sessions.active_ms`、迁移记录（REWORK 进入 / ACCEPTED 时间）、声明与证据计数。闭环完整率的原始核验（终态工作项具备迁移记录与审计）由 `dependency_sweep` 顺带完成。
 
 ---
+| `internal_qa_round`（D113） | `work_item_type`, `round`, `stage`, `result`, `verifier_model_family` |
+| `quality_escaped` | `stage`, `category`, `internal_rounds_before` |
+| `andon_pulled` / `exception_raised` | `actor_kind`, `scope` / `dimension` |
+
+派生指标（07 统一定义口径）：**穿透率**、内部一次通过率、平均内部轮次、就绪闸门拦截率、计划一次批准率。
 
 ## 12. 依赖、风险与待决
 
@@ -1474,7 +1803,7 @@ Then  ASSIGN Decision.authority_source=POLICY:dispatch_auto，detail.dispatch_pr
 | # | 类型 | 请求 | 理由 |
 |---|---|---|---|
 | CCR-01 | 修改 00 §3 | 时间列类型改为 PostgreSQL `TIMESTAMPTZ(3)` / MySQL `DATETIME(3)` / SQLite `DATETIME` | 00 写的 `TIMESTAMP`/`DATETIME(6)`/`TEXT` 与 backend-module 规约冲突；MySQL `TIMESTAMP` 有 2038 上限且被 `iam-schema-lock` 门禁禁止  **状态：已合并（00 v1.1）** |
-| CCR-02 | 新增 00 §5 枚举（所有者 02） | `RequirementStatus`: DRAFT, BASELINED, ARCHIVED；`AssignmentStatus`: ACTIVE, RELEASED, EXPIRED, REVOKED, COMPLETED；`ClaimOutcome`: PENDING, ACCEPTED, REWORK, SUPERSEDED, CANCELLED；`BlockReason`: DEPENDENCY, DEPENDENCY_CANCELLED, ESTIMATE_MISSING, CHILDREN_OPEN, REQUIREMENT_DRAFT, CLARIFICATION, EXTERNAL；`PauseReason`: MANUAL, BUDGET, AUTONOMY_REWORK_LIMIT, AUTONOMY_SPINNING, ESCALATION_RULE；`ChangeRecordKind`: SCOPE, STRATEGY；`CriterionCoverage`: COVERED, PARTIAL, NOT_APPLICABLE；`TemplateStatus`: ACTIVE, DEPRECATED；`AttentionSurface`: REVIEW_DESK, INBOX；`ExecutionFailureKind`: INFRA, RUNTIME（所有者 03） | 本规格的表与状态机需要；放入 00 防止 03/07/08 各自定义 |
+| CCR-02 | 新增 00 §5 枚举（所有者 02） | `RequirementStatus`: DRAFT, BASELINED, ARCHIVED；`AssignmentStatus`: ACTIVE, RELEASED, EXPIRED, REVOKED, COMPLETED；`ClaimOutcome`: PENDING, ACCEPTED, REWORK, SUPERSEDED, CANCELLED；`BlockReason`: DEPENDENCY, DEPENDENCY_CANCELLED, ESTIMATE_MISSING, CHILDREN_OPEN, REQUIREMENT_DRAFT, CLARIFICATION, EXTERNAL, TOOL_UNAVAILABLE, PROVIDER_UNAVAILABLE（后两项为系统原因，由 11 BR-11-30 / BR-11-26 经 `WorkItemTransitioner` 写入与消除，见 BR-02-61）；`PauseReason`: MANUAL, BUDGET, AUTONOMY_REWORK_LIMIT, AUTONOMY_SPINNING, ESCALATION_RULE；`ChangeRecordKind`: SCOPE, STRATEGY；`CriterionCoverage`: COVERED, PARTIAL, NOT_APPLICABLE；`TemplateStatus`: ACTIVE, DEPRECATED；`AttentionSurface`: REVIEW_DESK, INBOX；`ExecutionFailureKind`: INFRA, RUNTIME（所有者 03） | 本规格的表与状态机需要；放入 00 防止 03/07/08 各自定义 |
 | CCR-03 | 新增 00 §6.1 权限码 | `work_item_cancel`（DataScoped，delivery；默认 team_owner、delivery_lead）；`decomposition_template_manage`（团队级，delivery；默认 team_owner、delivery_lead） | DecisionAction 有 CANCEL 但目录无对应权限码；团队级模板管理无合适码（`project_manage` 是项目级）  **状态：已合并（00 v1.1）** |
 | CCR-04 | 新增 00 §7.1 事件 | `work_item.escalated`（delivery → governance、collab、fleet） | 有界自治暂停 / 升级不是状态迁移，08 的「我的裁决」与通知需要独立信号  **状态：已合并（00 v1.1）** |
 | CCR-05 | 补充 00 §8 接口 | `WorkItemTransitioner` 方法集（§6.9）；`ExecutionLauncher` 增加分支参数（parent、branch_reason、workspace_mode、feedback_ref、autostart）与暂停 / 恢复 / 取消；`EvidenceReader` 增加 `ChangeSimilarity`、`LiveExecution`、必需验证汇总、证据归属校验；`AuthorityChecker` 增加 `ListEligible`；新增 `RequirementCreator`（delivery 提供，01 使用）与 `ClarificationRequester`（intake 提供，delivery 使用） | 00 只有语义，本规格的守卫依赖这些具体能力；全部在调用方事务内执行（委派模式）  **状态：已合并（00 v1.2/1.3 §8；`ClaimSubmitter`、`DispatchAssigner`、`DecisionReader`、`WorkItemReopener` 由本模块提供）** |
@@ -1483,3 +1812,5 @@ Then  ASSIGN Decision.authority_source=POLICY:dispatch_auto，detail.dispatch_pr
 | CCR-08 | 修改 00 §9 tag 规则 | OpenAPI tag = 最终发布路径首段（2026-09-26 已实施规则），删除「工作流域词汇」表述 | `api-routing-inspection-2026-09-26.md` 已取代 workflow-group 规则，构建期 hook 会按首段重设 tag  **状态：已合并（00 v1.1）** |
 | CCR-09 | 补充 00 §11 示例 | AC 示例中的 120403 保持为「授权拒绝」通用码，具体原因用 `data.reason_code`（MISSING_PERMISSION / SELF_REVIEW / AGENT_EXECUTOR / NON_DELEGABLE / DELEGATION_CONDITION / ESCALATED_HUMAN_ONLY / AGENT_SELF_CLAIM / HUMAN_ONLY） | 统一各模块拒绝码，前端一处翻译  **状态：已合并（00 v1.1）** |
 | CCR-10 | 补充 00 §8 | 新增本模块提供的 `WorkItemReopener`（01 使用）；`WorkItemReader` 增 `Owner` / `RequirementBaseline` / `LoadByPrincipal`；`WorkItemTransitioner` 增 `EnsembleFailed`（v1.1） | 审计 C7 / C65 / C58 |
+
+> **D112 / D113（2026-10-11）**：本规格按 00 v2.0 §15 增补（§3.20–3.25、§4.5、§5.11、§6.10、§7.4、§8.6、N11–N14、§10.11、§11）。需要他规格配合：03 `purpose=PLANNING` 只读执行与计划产出格式、冻结 / 隐藏验收集、`InternalQaCompleted` 回调、`CHEATING_SUSPECTED`；05 TESTER / ACCEPTOR 与计划评审 Agent 的派单（跨模型家族）；06 `MemoryWriter`；07 穿透率口径与 `HUMAN_ONLY`；08 新权限码默认授予、`plan_review` 策略、收件箱按 `visibility=INTERNAL` 过滤、N11–N14 路由；11 `EvalSetWriter.ProposeCase` 与模板默认值；12 缺陷流转矩阵与字典。

@@ -8,7 +8,7 @@
 ## 1. 范围与目标
 
 **解决**：
-1. 项目 = 底座 Entity（`type='project'`，可选父实体 `type='client'` 做分组）；`delivery` 模块持有项目档案（阶段、团队模式、预算、主导 Agent 引用、派单策略、甲方联系人引用、代码仓库、门户可见性、验收策略）。
+1. 项目 = 底座 Entity（`type='project'`，可选父实体 `type='client'` 做分组）；`delivery` 模块持有项目档案（阶段、团队模式、预算、主管 Agent 引用、派单策略、甲方联系人引用、代码仓库、门户可见性、验收策略）。
 2. 项目创建：实体 + 档案 + 默认频道（经 collab）+ 默认角色绑定，**单事务原子**；事务外的后续步骤幂等可补偿。
 3. `ProjectStage` 状态机：每次迁移是授权决策，含进入 / 退出条件；BLOCKED / CANCELLED 规则；未经甲方验收不得进入 DELIVERED。
 4. 团队模式 HYBRID ↔ AUTONOMOUS：前置条件、接管语义。
@@ -25,7 +25,7 @@
 | 需求基线、验收标准、工作项状态机、Decision 表与裁决流程、范围变更 | 02（本规格只调用其内部函数与字段） |
 | 执行、成本产生、证据内容与秘密扫描、验证 | 03 |
 | 机器上的工作目录路径（按机器 × 项目仓库） | 04 |
-| 团队编排卡片的 UI 与主导 Agent / 派单语义、频道 | 05 |
+| 团队编排卡片的 UI 与主管 Agent / 派单语义、频道 | 05 |
 | 知识库项目 scope 初始化 | 06 |
 | 委托、升级规则、接管、审计视图、通知收件箱、总览页布局 | 08 |
 | 任务队列、outbox、SSE、对象存储、通知渠道 | 09 |
@@ -57,6 +57,15 @@
 | US-07-19 | 作为团队所有者，我要按租户时区切日计算指标 | v1.1 |
 
 ---
+
+### 2.x D112 / D113 增补用户故事（v2.0，00 §15）
+
+| ID | 用户故事 | 版本 |
+|---|---|---|
+| US-07-20 | 作为团队所有者，我要把项目切到「纯人工 + AI 协助」（`HUMAN_ONLY`），以便纯人类团队也能用同一套交付闭环，Agent 只起草不执行 | MVP |
+| US-07-21 | 作为交付负责人，我要为项目维护一份评审过的「项目宪法」，每次派发都自动注入，以便所有执行者遵守同一套命令、约束与禁区 | MVP |
+| US-07-22 | 作为交付负责人，我要给项目与需求设定时间 / 成本 / 范围预算与容差，按预测越界时收到例外报告并做出决定，以便杜绝静默延期 | MVP |
+| US-07-23 | 作为团队所有者，我要看到穿透率、内部一次通过率与平均内部轮次，以便判断内部质量门是否可靠 | MVP |
 
 ## 3. 领域模型与数据表
 
@@ -429,6 +438,72 @@ JSON Schema：
 
 ---
 
+### 3.19 `delivery_project_constitutions`（项目宪法，D112 §15.4）
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id | ID | N | | |
+| tenant_id / project_id | ID | N | | |
+| version_no | INT | N | | 项目内自增，从 1 起 |
+| body | TEXT | N | | Markdown，≤ 64 KB（超出 422 `127050`）；固定小节：构建与测试命令、约束、禁区、风格、目录约定 |
+| body_sha256 | STR(64) | N | | 规范化后哈希；执行记录引用该值 |
+| state | STR(16) | N | `DRAFT` | `DRAFT` / `IN_REVIEW` / `ACTIVE` / `SUPERSEDED` / `REJECTED`（模块内枚举 `ConstitutionState`） |
+| change_summary | STR(2000) | N | | 提议说明（必填） |
+| proposed_by_kind / proposed_by | STR(16) / ID | N | | 人或 Agent 均可提议 |
+| reviewed_by / reviewed_at | ID / 时间 | Y | NULL | 仅人类（`project_manage`） |
+| review_comment | STR(2000) | Y | NULL | 驳回必填 |
+| active_key | ID | Y | NULL | `state=ACTIVE` 时 = project_id，否则 NULL；唯一索引保证每项目仅一个 ACTIVE（三方言均允许多个 NULL） |
+| created_at / updated_at / version | 时间 / INT | N | | ETag |
+
+唯一：`(project_id, version_no)`、`(active_key)`。
+
+### 3.20 `delivery_tolerances`（项目 / 需求级预算与容差，D112 §15.4；工作项级由 02 拥有）
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id / tenant_id / project_id | ID | N | | |
+| subject_kind | STR(16) | N | | `PROJECT` / `REQUIREMENT` |
+| subject_id | ID | N | | 项目 = entity id；需求 = 02 requirement id |
+| appetite_end_at | 时间 | N | | 时间预算（承诺完成时刻） |
+| appetite_cost_micros | BIGINT | Y | NULL | 成本预算（项目级缺省取预算上限） |
+| appetite_scope_criteria | INT | Y | NULL | 承诺的验收标准条数（范围基线） |
+| tolerance_time_pct / tolerance_cost_pct / tolerance_scope_pct | INT | N | 20 / 15 / 10 | 容差百分比，0–100 |
+| forecast_end_at / forecast_cost_micros / forecast_scope_criteria | 时间 / BIGINT / INT | Y | NULL | 最近一次预测（BR-07-58） |
+| forecast_at | 时间 | Y | NULL | |
+| state | STR(16) | N | `OK` | `OK` / `AT_RISK` / `EXCEPTION`（模块内枚举 `ToleranceState`） |
+| open_exception_id | ID | Y | NULL | 指向 §3.21 |
+| baseline_no | INT | N | 1 | 每次 CONTINUE / RESHAPE 决定后 +1 |
+| version | INT | N | 1 | ETag |
+
+唯一：`(subject_kind, subject_id)`。
+
+### 3.21 `delivery_exceptions`（例外报告与决定，只追加；项目 / 需求级）
+
+| 列 | 类型 | 可空 | 默认 | 说明 |
+|---|---|---|---|---|
+| id / tenant_id / project_id | ID | N | | |
+| tolerance_id | ID | N | | |
+| breached_dimensions | JSON | N | | `["TIME","COST","SCOPE"]` 子集 |
+| forecast_snapshot | JSON | N | | 越界时的预测值与基线 |
+| report | JSON | Y | NULL | `{situation, options[{decision, impact, cost_delta, time_delta}], recommendation}`；由系统起草（Agent 可补充），人确认后提交 |
+| state | STR(16) | N | `RAISED` | `RAISED` / `REPORTED` / `DECIDED`（模块内枚举 `ExceptionState`） |
+| decision | ENUM `ExceptionDecision` | Y | NULL | `CONTINUE` / `RESHAPE` / `HOLD` / `KILL` |
+| decision_payload | JSON | Y | NULL | CONTINUE：新基线；RESHAPE：02 范围变更记录 id；HOLD：恢复条件；KILL：取消理由 |
+| decided_by / decided_at / decision_reason | ID / 时间 / STR(2000) | Y | NULL | 仅人类，`exception_decide`（不可委托） |
+| created_at | 时间 | N | | |
+
+### 3.17b `delivery_metric_daily` 新增列（D113 质量指标）
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| l3_entered | INT | 当日首次进入 `NEEDS_HUMAN_REVIEW` 的工作项数（每项只计一次） |
+| escapes_human / escapes_client | INT | 当日记录的穿透数（`quality.escaped.stage` = HUMAN_REVIEW / CLIENT_ACCEPTANCE） |
+| internal_qa_completed | INT | 当日完成内部质量门（`internal_qa.passed` 首次）的工作项数 |
+| internal_first_pass | INT | 其中第一次内部质量门即通过的数量 |
+| internal_rounds_sum | INT | 这些工作项累计的内部轮次（AUTOMATED / AGENT_TEST / AGENT_ACCEPTANCE 任一失败 = 1 轮） |
+
+`delivery_projects` 增列：`constitution_version_no INT NULL`（当前 ACTIVE 版本）；`team_mode` 取值增加 `HUMAN_ONLY`。
+
 ## 4. 状态机
 
 ### 4.1 ProjectStage
@@ -493,6 +568,23 @@ JSON Schema：
 
 ---
 
+### 4.5 TeamMode 增补（`HUMAN_ONLY`）
+
+| 当前 | 目标 | 守卫 | 副作用 |
+|---|---|---|---|
+| HYBRID | HUMAN_ONLY | HUMAN；`project_mode_change`（仅所有者） | 停止向 Agent 派发执行 / 测试 / 验收 / 评审；Agent 持有的未开始分派释放回 READY；运行中的 Agent 执行允许跑完（结果仍走内部质量门，由人工核验替代 Agent 关口，BR-07-56） |
+| AUTONOMOUS | HUMAN_ONLY | 同上 + step-up `team_mode_change` | 先执行接管语义（撤销全部委托、派单策略置 MANUAL），再按上一行处理 |
+| HUMAN_ONLY | HYBRID | 同 HYBRID→AUTONOMOUS 以外的普通切换 | 恢复 Agent 派发 |
+| HUMAN_ONLY | AUTONOMOUS | — | **非法** → 409 `127051`（须先切回 HYBRID） |
+
+### 4.6 项目宪法 `ConstitutionState`
+
+`DRAFT → IN_REVIEW`（提议人提交）→ `ACTIVE`（人类评审通过；原 ACTIVE → `SUPERSEDED`，同事务）/ `REJECTED`（驳回意见必填）。非法：对非 IN_REVIEW 评审 → 409 `127052`；Agent 评审 → 403 `120403`（reason `HUMAN_ONLY`）。
+
+### 4.7 容差 `ToleranceState` 与例外 `ExceptionState`
+
+`OK → AT_RISK`（预测超出预算但在容差内）`→ EXCEPTION`（预测超出 预算 ×（1 + 容差））；`AT_RISK → OK`（预测回落）。进入 EXCEPTION 同事务创建 `delivery_exceptions(RAISED)` 并发布 `exception.raised`。`RAISED → REPORTED`（例外报告提交）`→ DECIDED`：CONTINUE（新基线，`baseline_no+1`，容差回 OK）、RESHAPE（调 02 范围变更，基线按新范围重算）、HOLD（项目 hold `TOLERANCE_EXCEPTION`，暂停新派发，恢复条件写入 payload）、KILL（项目阶段 → CANCELLED 的既有人工流程，需 step-up）。EXCEPTION 期间修改 `appetite_end_at` / 交付截止时间 → 409 `127053`（禁止静默延期）。
+
 ## 5. 业务规则与边界情况
 
 ### 5.1 项目创建与档案
@@ -505,7 +597,7 @@ JSON Schema：
 - **BR-07-04 保留类型**：`project` 实体只能经本模块创建、改名、改父；底座通用 `/entities` 对 type=project 的创建 / 改类型 / 改父 / 改名 / 删除返回 409 `entity_type_reserved`（底座新增，CCR-07-08）。项目永不物理删除。
 - **BR-07-05 只读**：stage ∈ {CLOSED, CANCELLED} 时，本模块对该项目的一切写操作返回 409 `127005`；例外：SENT 交付的回执登记、终态项目 `archived_at` 归档。
 - **BR-07-06 代号与名称**：code 租户唯一（409 `127001`）；名称同父同类型唯一（底座冲突 → 409 `127002`）；client 必须 type=client 且 active（422 `127003`）。
-- **BR-07-07 主导 Agent**：`lead_agent_id` 须 ACTIVE、具 LEAD 角色、在本项目有 `agent_lead` 绑定（422 `127042`）；收到 `agent.retired` 或 `agent.state_changed`→RETIRING 时置 NULL、`dispatch_policy`→MANUAL，加风险 `LEAD_AGENT_LOST`。
+- **BR-07-07 主管 Agent**：`lead_agent_id` 须 ACTIVE、具 LEAD 角色、在本项目有 `agent_lead` 绑定（422 `127042`）；收到 `agent.retired` 或 `agent.state_changed`→RETIRING 时置 NULL、`dispatch_policy`→MANUAL，加风险 `LEAD_AGENT_LOST`。
 
 ### 5.2 阶段
 
@@ -642,6 +734,19 @@ JSON Schema：
 
 ---
 
+### 5.10 D112 / D113 增补
+
+- **BR-07-56 纯人工模式**：`HUMAN_ONLY` 下 Agent 只能是 `ASSISTANT`：起草分诊卡、发布说明、计划与报告、风险与对账提示；不得成为执行者、评审者、测试 / 验收 Agent 或委托受托方（05、08 判定）。内部质量门的 `AGENT_TEST` / `AGENT_ACCEPTANCE` 由「人工核验清单」替代：非执行者的人类按模板清单逐项勾选并附交付物链接（非代码工作的完成证据 = 交付物链接（版本晚于开工）+ 清单 100% + 指定角色签收）。
+- **BR-07-57 项目宪法**：每项目最多一个 ACTIVE 版本；人或 Agent 可提议，**仅人类**（`project_manage`）评审；激活后对**之后**开始的执行生效（03 在派发时经 `ConstitutionReader.Active` 读取并在执行记录写入 `constitution_version_no` 与 `body_sha256`），已开始的执行保持原版本；新建项目时由模板（11）生成 v1 草稿，项目进入 ACTIVE 阶段前必须有 ACTIVE 宪法（S3 守卫追加条件）。
+- **BR-07-58 预测**：任务 `delivery.tolerance_forecast`（每小时 + 相关事件触发，去抖 60 s）计算：`forecast_end = now + 剩余未接受工作项数 × 近 30 天同项目工作项中位周期时间 / 有效并行度`（并行度 = 近 7 天日均活跃执行数，至少 1）；`forecast_cost = 已花费 + 剩余工作项数 × 近 30 天每接受工作项中位成本`；`forecast_scope = 当前基线在册验收标准数`；样本不足 5 条时以模板缺省值代替并标记「低置信」。
+- **BR-07-59 例外不可绕过**：EXCEPTION 期间不得修改预算或截止时间；决定只能由人类以 `exception_decide` 做出（不可委托；Agent 调用 → 403 `120403` reason `NON_DELEGABLE`）；例外报告草稿由系统按预测与选项生成，提交前须人确认。
+- **BR-07-60 交付只含 L3，内部记录不外泄**：交付包只能包含已 ACCEPTED（L3）工作项（既有规则）；证据包清单与甲方门户视图**排除**内部质量门记录：`VerificationStage ∈ {AGENT_TEST, AGENT_ACCEPTANCE}` 的结果、内部返工轮次、内部反馈、穿透学习记录；脱敏规则追加 R8（上述内容一律不写入 manifest）。甲方门户接口返回体经白名单字段序列化，回归测试断言不含上述字段。
+- **BR-07-61 质量指标**（窗口与存储同 §5.8，日快照存分子分母）：
+  - 穿透率 = Σ(escapes_human + escapes_client) ÷ Σ l3_entered；
+  - 内部一次通过率 = Σ internal_first_pass ÷ Σ internal_qa_completed；
+  - 平均内部轮次 = Σ internal_rounds_sum ÷ Σ internal_qa_completed；
+  - 来源事件：02 / 03 的 `internal_qa.passed` / `internal_qa.failed`、`work_item.state_changed{to:NEEDS_HUMAN_REVIEW}`、`quality.escaped`（HUMAN_REVIEW 阶段由 02 发布，CLIENT_ACCEPTANCE 阶段由本模块在甲方逐项拒收时发布，判定：被拒工作项曾通过内部质量门）。
+
 ## 6. 接口契约
 
 约定：响应信封 `respx`；ID 为十进制字符串；`P` = `authz.RegisterEntity`（`entity_id` = 项目实体）；`O` = `authz.RegisterOwned`（按资源反查所属项目实体后授权；短地址与 `/entities/{entity_id}/…` 作用域地址同一操作，归属不符 404）；`T` = `authz.Register`（租户级，DataScoped 权限以 `FilterData` 过滤行）。step-up：请求带 `Cookie` + `Origin`（CSRF 校验）+ body `reauth_proof`，底座 `ReauthenticationConsumer` 在业务事务内消费（purpose 见行内）。OpenAPI tag = 最终发布路径第一段（00 §9；`tenants` / `entities` / `deliveries` / `project-repositories`）。乐观锁：GET 返回 `ETag`，标「If-Match」的写操作必须带 `If-Match`（缺失 428 `120400`，不符 409 `120409`），请求体不含 `version`。权限拒绝统一 403 `120403` + `data.reason_code`。幂等：平台 `176425`（同 key 不同请求）/ `176409`（进行中）。通用码 `120400/120403/120404/120409` 不逐行重复。
@@ -675,7 +780,7 @@ JSON Schema：
 | 23 | GET `/entities/{entity_id}/project/metrics/daily` | entities | `project_read` · P | `from`,`to`（≤366 天） | 日快照数组 | 129001/02 | — |
 | 24 | GET `/tenants/{tenant_id}/delivery-metrics` | tenants | `project_read` · T+FilterData | 同 22 + `project_id`(in) | 团队 `kpis` + `by_project[]`（≤50，CPAD 降序） | 129001/02 | — |
 | 46 | PUT `/entities/{entity_id}/project/members/{principal_id}` | entities | `project_manage` · P | `role_key`*（BR-07-02 / BR-07-02b） | `member`{`principal_id`,`actor_kind`,`role_key`,`binding_id`} | 127043/127005 | 幂等（同角色不写新审计） |
-| 47 | DELETE `/entities/{entity_id}/project/members/{principal_id}` | entities | `project_manage` · P | — | 204；若清空主导 Agent 返回 `project` | 422 `127048`/`127049`；127005 | 幂等 |
+| 47 | DELETE `/entities/{entity_id}/project/members/{principal_id}` | entities | `project_manage` · P | — | 204；若清空主管 Agent 返回 `project` | 422 `127048`/`127049`；127005 | 幂等 |
 | 48 | GET `/entities/{entity_id}/project/members` | entities | `project_read` · P | 过滤 `actor_kind`(eq) `role_key`(eq,in) | `principal_id,actor_kind,display_name,role_key,binding_id,active_assignments` | — | — |
 | 25 | PUT `/entities/{entity_id}/project/provisioning-retries/{step}` | entities | `project_manage` · P | — | `provisioning_issues` | 422 `127047` | 幂等 |
 
@@ -762,9 +867,25 @@ JSON Schema：
 | 128036 | 422 | acceptance_not_confirmed | 128041 | 422 | no_drafting_agent |
 | 129001 | 422 | metric_window_invalid | 129002 | 422 | metric_window_too_large |
 
-通用 `120400 invalid_input`（含缺 If-Match 428）、`120403 forbidden`（`data.reason_code`：`MISSING_PERMISSION`/`HUMAN_ONLY`/`NON_DELEGABLE`/`AGENT_NOT_DRAFTER`）、`120404 not_found`、`120409 version_conflict` 由 02 定义、本规格复用；幂等码为平台 `176425`/`176409`。子段：02 `120000–126999`，07 `127000–129999`（00 §9）。
+通用 `120400 invalid_input`（含缺 If-Match 428）、`120403 forbidden`（`data.reason_code`：`MISSING_PERMISSION`/`HUMAN_ONLY`/`NON_DELEGABLE`/`AGENT_NOT_DRAFTER`）、`120404 not_found`、`120409 version_conflict` 由 02 定义、本规格复用；幂等码为平台 `176425`/`176409`。子段：02 `120000–125999`，12 Part A `126000–126999`，07 `127000–129999`（00 §9，CR-12-01）。
 
 ---
+
+### 6.5 D112 / D113 增补接口
+
+| # | 方法 | 路径 | tag | 权限 · 守卫 | 请求 | 响应 / 错误 |
+|---|---|---|---|---|---|---|
+| 50 | GET | `/entities/{entity_id}/project/constitution-versions` | entities | `project_read` · E | `?state=` | 版本列表（含 ACTIVE） |
+| 51 | POST | `/entities/{entity_id}/project/constitution-versions` | entities | `project_read` · E（人或 Agent 提议） | `{body*, change_summary*}` | 201 DRAFT；422 `127050` |
+| 52 | POST | `/constitution-versions/{version_id}/submissions` | constitution-versions | 提议人 · O | — | IN_REVIEW；409 `127052` |
+| 53 | POST | `/constitution-versions/{version_id}/decision` | constitution-versions | `project_manage` · O；HUMAN | `{result:"APPROVE"\|"REJECT", comment}` + If-Match | ACTIVE / REJECTED；403 `120403` |
+| 54 | GET / PUT | `/entities/{entity_id}/project/tolerances`、`/tolerances/{tolerance_id}` | entities / tolerances | `project_read` / `project_manage` · E/O；HUMAN | 预算与容差 + If-Match | 409 `127053`（EXCEPTION 期间修改） |
+| 55 | GET | `/entities/{entity_id}/project/exceptions`、`/exceptions/{exception_id}` | entities / exceptions | `project_read` | — | 例外列表 / 详情 |
+| 56 | PUT | `/exceptions/{exception_id}/report` | exceptions | `project_manage` · O；HUMAN | `{situation*, options[]*, recommendation*}` + If-Match | REPORTED |
+| 57 | POST | `/exceptions/{exception_id}/decision` | exceptions | `exception_decide` · O；HUMAN；KILL 另需 step-up `project_cancel` | `{decision*, payload, reason*}` | DECIDED；403 `120403`（NON_DELEGABLE / HUMAN_ONLY）；409 `127054`（未提交报告） |
+
+**本模块新增提供的接口**：`ConstitutionReader.Active(ctx, tenant, project) (version_no, body, sha256, error)`（03、05 使用）；`ToleranceReader.ForSubject(ctx, tenant, kind, id)`（02、08 使用）。
+**新错误码**：`127050` constitution_too_large（422）、`127051` human_only_to_autonomous（409）、`127052` constitution_not_in_review（409）、`127053` tolerance_locked_by_exception（409）、`127054` exception_report_missing（409）。
 
 ## 7. 后台任务与事件
 
@@ -819,6 +940,13 @@ JSON Schema：
 
 ---
 
+### 7.5 D112 / D113 增补任务与事件
+
+- 任务：`delivery.tolerance_forecast`（每小时，dlock `delivery:tolerance-forecast:<tenant>`；另由 `work_item.state_changed`、`execution.cost_updated` 去抖 60 s 触发）；`delivery.metrics_snapshot` 增加 §3.17b 各列。
+- 发布：`project.constitution_activated{project_id, version_no, sha256}`；`exception.raised{subject_kind, subject_id, breached_dimensions}`、`exception.decided{decision}`（00 §15.5，subject_kind ∈ PROJECT / REQUIREMENT）；`quality.escaped{stage:CLIENT_ACCEPTANCE, work_item_id, acceptance_id, escape_key}`（`escape_key=(work_item_id, acceptance_id)`；同一 `escape_key` 已发布时不再发布，学习只经 02 `delivery.escape_learning`，D114）；`project.mode_changed` 载荷 `to` 取值增加 `HUMAN_ONLY`。
+- 消费：`internal_qa.passed` / `internal_qa.failed`（02 / 03）、`quality.escaped{stage:HUMAN_REVIEW}`（02）——仅用于指标累计。
+- 审计：`delivery.constitution_activated` / `_rejected`、`delivery.tolerance_changed`、`delivery.exception_decided`。
+
 ## 8. 页面规格
 
 应用 `apps/frontend-web-admin/apps/delivery`；共享组件取自 00 §10（`StateBadge`、`ActorAvatar`、`AuthorityNote`、`CountdownRing`、`DecisionPanel`、`EvidenceCard`）。本规格新增 delivery 应用内组件：`StageStepper`、`BudgetRing`、`ModeBadge`、`HealthDot`、`KpiTile`、`AcceptanceTimeline`（不进 `packages/ui`，只此一处使用）。所有危险操作使用底座 ReauthenticationDialog。
@@ -829,7 +957,7 @@ JSON Schema：
 
 - **目的**：项目组合一屏扫视，找出不健康项目。
 - **布局**：标题栏（〔新建项目〕需 `project_manage`）→ 筛选条（阶段多选、模式、健康度、甲方分组、搜索名称 / 代号、"显示已归档"开关）→ 视图切换（卡片 / 表格，记住在 localStorage）→ 卡片网格（按甲方分组折叠，未分组在最后）。
-- **卡片字段**：名称 + 代号；`HealthDot`（GREEN/AMBER/RED，悬停列出 `health_reasons` 文案）；`StageStepper` 迷你版（9 段中显示主线 7 段，BLOCKED 以当前段虚线 + "阻塞" 标签表示，CANCELLED 整条灰显 + 删除线标签）；`ModeBadge`（混编 = 中性 · 人 + 芯片图标；全自治 = 紫色芯片图标 + "全自治"）；`BudgetRing`（spent/cap 百分比，<notify 青、≥notify 琥珀、≥100 红并显示"已暂停"；cap 为空显示"不限"与已花费金额）；计数：待你裁决 n、进行中工作项 n、待甲方验收 n；目标日（过期红色）；主导 Agent 头像。
+- **卡片字段**：名称 + 代号；`HealthDot`（GREEN/AMBER/RED，悬停列出 `health_reasons` 文案）；`StageStepper` 迷你版（9 段中显示主线 7 段，BLOCKED 以当前段虚线 + "阻塞" 标签表示，CANCELLED 整条灰显 + 删除线标签）；`ModeBadge`（混编 = 中性 · 人 + 芯片图标；全自治 = 紫色芯片图标 + "全自治"）；`BudgetRing`（spent/cap 百分比，<notify 青、≥notify 琥珀、≥100 红并显示"已暂停"；cap 为空显示"不限"与已花费金额）；计数：待你裁决 n、进行中工作项 n、待甲方验收 n；目标日（过期红色）；主管 Agent 头像。
 - **表格列**：名称、甲方、阶段、模式、健康、预算 %、待裁决、待验收、目标日、更新时间；可排序列同接口 #2。
 - **空态**："还没有项目。项目把需求、工作项、交付和预算放在一起。"〔新建项目〕（无权限时改为"请联系交付负责人创建项目"）。
 - **交互**：卡片点击 → 项目总览；卡片菜单（⋯）：设置、归档（仅终态项目，需 `project_manage`）。
@@ -842,7 +970,7 @@ JSON Schema：
 - **步骤**（顶部 4 步进度，可回退，最终一次提交 #1，带 Idempotency-Key = 向导会话 UUID）：
   1. **基本信息**：名称*（≤200，失焦校验同甲方下重名）、代号*（自动从名称生成大写字母建议，正则提示，失焦查重）、甲方分组（下拉选已有 client / "新建分组"内联输入 / 不分组）、简介、目标日（≥今天）。
   2. **甲方联系人**：从 01 联系人搜索选择（来源来件的联系人预填为 PRIMARY）；每人切换"接收交付""可签收"；至少 0 人（允许稍后补），但提示"没有可签收联系人将无法正式交付"。
-  3. **团队**：成员选择（人 / Agent 混排，`ActorAvatar` 区分），角色下拉按主体类型过滤（BR-07-02）；"你将成为本项目交付负责人"只读提示；主导 Agent 选择（可空）。
+  3. **团队**：成员选择（人 / Agent 混排，`ActorAvatar` 区分），角色下拉按主体类型过滤（BR-07-02）；"你将成为本项目交付负责人"只读提示；主管 Agent 选择（可空）。
   4. **仓库与预算**：仓库行（名称、远程地址、默认分支、主仓库单选），地址含凭证即时报错；预算上限（美元输入，两位小数，可空 = 不限）、通知阈值滑块 50–95（默认 80）；门户"展示 AI 协作标签"开关（默认开）。
 - **提交**：〔创建项目〕；成功 → 跳总览并 toast "项目已创建，已建立 # 频道"；503 `127004` → "暂时无法创建项目（〈缺失能力〉不可用），未产生任何数据"；字段错误回到对应步骤高亮。
 - **按钮条件**：下一步需本步必填项有效；创建按钮在提交中禁用并显示进度。
@@ -856,7 +984,7 @@ JSON Schema：
   - 顶部：名称、代号、`ModeBadge`、`HealthDot`、holds 徽标（如"预算暂停"红、"人工暂停"琥珀）、〔设置〕。
   - **阶段步进条（全宽）**：主线 INTAKE→DISCOVERY→PLANNING→ACTIVE→ACCEPTANCE_PENDING→DELIVERED→CLOSED；当前段高亮；每个合法目标显示为按钮（来自 `stage_readiness`）：条件满足 = 实心按钮〔推进到 规划中〕；不满足 = 描边按钮，点击展开清单（✓/✗ + 原因 + 链接，如"✗ 2 条需求缺验收标准 → 去补"）；`human_only` 且当前用户是 Agent 视角不显示。回退类（S3/S8/S10）与〔标记阻塞〕〔取消项目〕放在"更多"菜单。点击 → 确认对话框：理由（BLOCKED 还需类型）、`AuthorityNote`"你以 交付负责人 身份 · 来源 ROLE:delivery_lead"；取消项目为红色语义 + 后果列表（将取消 n 个工作项、停止 n 个执行、撤销 n 条委托）+ 输入项目代号确认 + step-up。
   - 左栏卡片：**需求基线**（当前版本 vN、需求数、验收标准数、按状态的工作项分布条，点击进工作项看板）；**交付**（草稿 / 待发送 / 待验收计数、最近一次结果，〔新建交付〕需 `delivery_compose` 且阶段允许）；**近期活动**（时间线，主体头像 + 动作 + 对象，裁决类不折叠）。
-  - 右栏卡片：**预算**（`BudgetRing` 大号、cap / spent / 分解、〔调整预算〕需 `project_manage` 且主体为人）；**模式与策略**（模式、派单策略、委托数与最早到期 `CountdownRing`、升级规则 4 类勾选状态；〔切换为全自治〕需 `project_mode_change`：先调 #10 展示 P1–P5 清单，全部通过才可提交，提交需理由 + step-up；全自治时显示〔切回混编〕与〔一键接管〕（后者跳 08））；**团队编排**（主导 Agent、派单策略、并行上限、人 / Agent 人数 → 链接到 05 团队编排页）；**风险**（`risks[]` 列表，RED 在前，每条带跳转）；**初始化问题**（仅 provisioning_issues 非空时，〔重试〕）。
+  - 右栏卡片：**预算**（`BudgetRing` 大号、cap / spent / 分解、〔调整预算〕需 `project_manage` 且主体为人）；**模式与策略**（模式、派单策略、委托数与最早到期 `CountdownRing`、升级规则 4 类勾选状态；〔切换为全自治〕需 `project_mode_change`：先调 #10 展示 P1–P5 清单，全部通过才可提交，提交需理由 + step-up；全自治时显示〔切回混编〕与〔一键接管〕（后者跳 08））；**团队编排**（主管 Agent、派单策略、并行上限、人 / Agent 人数 → 链接到 05 团队编排页）；**风险**（`risks[]` 列表，RED 在前，每条带跳转）；**初始化问题**（仅 provisioning_issues 非空时，〔重试〕）。
 - **按钮可用条件汇总**：推进 = `project_stage_change` ∧ allowed ∧ 非只读；暂停 = `decision_pause` ∧ 无 MANUAL hold；恢复 = 存在 MANUAL/ESCALATION hold（ESCALATION 仅人）；终态项目全部写按钮隐藏，顶部显示"项目已关闭（只读）"。
 - **空态**：新项目各卡片显示下一步引导（基线卡："还没有需求。〔从来件转入〕〔新建需求〕"）。
 - **实时**：SSE `tenant/{t}/project/{id}`：阶段、holds、预算、风险 ≤1s 更新；他人推进阶段时步进条动画过渡并 toast"Morgan 将项目推进到 进行中"。
@@ -917,6 +1045,15 @@ JSON Schema：
 
 ---
 
+### 8.9 D112 / D113 增补页面
+
+- **项目设置 →「宪法」标签**：当前 ACTIVE 版本（只读 Markdown 渲染）、版本历史与差异对比、提议新版本（编辑器 + 变更说明必填）、评审（仅人类：通过 / 驳回 + 意见）；项目未进入 ACTIVE 前若无 ACTIVE 宪法，阶段推进按钮禁用并提示原因。
+- **项目总览 →「预算与容差」卡片**：时间 / 成本 / 范围三条，各显示 预算、容差带、当前预测（低置信时虚线）、状态 OK / AT_RISK / EXCEPTION；EXCEPTION 时卡片置顶为红色横幅并链接例外页。
+- **例外页** `/t/:tenantID/p/:projectID/exceptions/:exceptionID`：越界维度与预测快照、例外报告（现状 / 选项 / 建议，系统起草可编辑）、四个决定按钮（继续 / 重新塑形 / 暂停 / 终止），仅持 `exception_decide` 的人类可见可用，终止需 step-up；Agent 视图只读。
+- **团队模式选择**增加「纯人工 + AI 协助」：说明 Agent 只做助理；从全自治切换时提示将撤销委托。
+- **指标页**新增三张磁贴：穿透率、内部一次通过率、平均内部轮次（附趋势与按模板拆分）。
+- **甲方门户**：不新增元素；回归要求门户视图与证据包中不出现任何内部质量门信息（BR-07-60）。
+
 ## 9. 通知（09 `Notifier`；收件箱由 08 聚合）
 
 | 事件 | 接收人 | 渠道 | 文案模板（zh-CN） | 去重 / 合并 |
@@ -942,6 +1079,16 @@ JSON Schema：
 通知正文不含交付内容、评论正文与代码（只给链接）。
 
 ---
+
+### 9.x D112 / D113 增补通知
+
+| 事件 | 接收人 | 渠道 | 模板 |
+|---|---|---|---|
+| `exception.raised` | 项目 `exception_decide` 持有人（人类）+ 所有者 | 站内（强制）+ 邮件 | 「{项目}{维度}预计越界：预测 {forecast}，预算 {appetite}。请提交例外报告并决定。」 |
+| 宪法提交评审 | 项目 `project_manage` 人类 | 站内 | 「{提议人}提议项目宪法 v{n}：{摘要}」 |
+| 容差 AT_RISK | 交付负责人 | 站内（每主体每日最多 1 次） | 「{主体}预测接近预算上限（{dim}）」 |
+
+内部质量门的失败、返工**不产生任何通知**（D113，统一由 08 路由保证）。
 
 ## 10. 验收标准
 
@@ -1209,6 +1356,18 @@ When  人类 DELIVER → 422 128016，meta.work_item_ids=[W1]；D 仍 DRAFT
 
 ---
 
+### 10.x D112 / D113 增补验收标准
+
+**AC-07-50**（integration）HUMAN_ONLY 阻止 Agent 执行 — Given 项目 HYBRID，Agent A 持有 W 的未开始 EXECUTOR 分派 When 所有者切换到 HUMAN_ONLY Then A 的分派释放、W → READY；随后对 A 派发返回 403 `120403`（reason `AGENT_PROHIBITED`）；对人派发成功。
+**AC-07-51**（integration）全自治 → 纯人工 — Given AUTONOMOUS，3 条有效委托 When 切换 HUMAN_ONLY（含 step-up）Then 3 条委托撤销、派单策略 MANUAL、`project.mode_changed{to:HUMAN_ONLY}`；HUMAN_ONLY → AUTONOMOUS 返回 409 `127051`。
+**AC-07-52**（integration）宪法激活与执行版本 — Given v1 ACTIVE When v2 由人类评审通过 Then v1 SUPERSEDED、v2 ACTIVE（唯一）；此后开始的执行记录 `constitution_version_no=2`，之前已开始的仍为 1。
+**AC-07-53**（unit）宪法 > 64 KB → 422 `127050`；Agent 评审 → 403 `120403`（HUMAN_ONLY）。
+**AC-07-54**（integration）预测越界 — Given 项目预算截止 D、时间容差 20%，预测完成 D + 30% When 预测任务运行 Then 状态 EXCEPTION、创建例外记录、`exception.raised`；此时修改截止时间 → 409 `127053`。
+**AC-07-55**（integration）例外决定 — Agent 调用决定 → 403（NON_DELEGABLE）；人类未提交报告即决定 → 409 `127054`；提交报告后 CONTINUE → baseline_no=2、状态 OK；KILL 无 step-up → 401/403 step-up 失败。
+**AC-07-56**（integration）内部记录不外泄 — Given 工作项 W 内部质量门失败 2 轮后通过并被接受 When 生成证据包并在门户查看交付 Then manifest 与门户响应中不含 AGENT_TEST / AGENT_ACCEPTANCE 结果、内部轮次与反馈（逐字段断言）。
+**AC-07-57**（unit）质量指标夹具 — 某周 l3_entered=20、escapes_human=1、escapes_client=1、internal_qa_completed=20、internal_first_pass=14、internal_rounds_sum=31 → 穿透率 10.0%、内部一次通过率 70.0%、平均内部轮次 1.55。
+**AC-07-58**（integration）甲方拒收穿透 — Given W 曾通过内部质量门并被接受 When 甲方逐项拒收 W Then 发布 `quality.escaped{stage:CLIENT_ACCEPTANCE}` 且 escapes_client +1；未经过内部质量门的历史工作项（迁移数据）不计入。
+
 ## 11. 度量与埋点（不含代码、评论与消息正文）
 
 | 事件 | 属性 |
@@ -1228,6 +1387,10 @@ When  人类 DELIVER → 422 128016，meta.work_item_ids=[W1]；D 仍 DRAFT
 | 指标（Prometheus） | `delivery_budget_drift_total`、`delivery_bundle_build_seconds`、`delivery_send_failures_total{channel}`、`delivery_metrics_snapshot_seconds` |
 
 ---
+
+### 11.x D112 / D113 增补埋点
+
+`team_mode_changed{to:HUMAN_ONLY}`、`constitution_activated{version_no}`、`tolerance_state_changed{from,to,dims}`、`exception_decided{decision, hours_open}`、`quality_metric_snapshot{escape_rate, internal_first_pass_rate, avg_internal_rounds}`。
 
 ## 12. 依赖、风险与待决
 
@@ -1287,3 +1450,5 @@ When  人类 DELIVER → 422 128016，meta.work_item_ids=[W1]；D 仍 DRAFT
 | CCR-07-08 | §3"项目"行补充：`project` 为底座保留实体类型，只能经 delivery 创建与改名 / 改父；底座 core 提供在调用方事务内执行的 `EntityProvisioner` | 防止 IAM 通用实体接口绕过项目档案与审计；实现原子创建 |
 | CCR-07-09 | §9 补充 OpenAPI tag 词汇：`projects`、`deliveries`（以及其他规格的业务 tag 统一登记） | 路由规范要求 tag 来自批准词汇表，当前词汇表无业务域 |
 | CCR-07-10 | §7.1 登记 `project.stage_ready`、`project.members_changed`、`delivery.confirmation_requested`（已列）、`delivery.withdrawn`、`project.hold_changed`、`delivery.ready`、`delivery.release_notes_requested`（发布者 delivery 07）；§8 登记 `ProjectCreator.CreateForIntakeOn`、`RepositoryReader.Get`、`IntakeProgressReader.Progress`、`AcceptanceRecorder{ListForIntakes, PortalView, Record}`、`AcceptanceReader.Get`、`ProjectReader.HealthList/Members`；01 `IntakeReader` 增 `OpenClarifications`；08 `SystemActions` 登记 `SYSTEM:delivery.autonomous_compose` | 审计 C3/C4/C8/C11/C16/C18/C19/C42/C48/C65 修复所需 |
+
+> **v2.0（D112 / D113，00 §15）已并入本规格**：`HUMAN_ONLY` 模式（§4.5、BR-07-56）、项目宪法（§3.19、§4.6、BR-07-57）、项目 / 需求级预算容差与例外（§3.20–3.21、§4.7、BR-07-58/59）、交付不外泄内部记录（BR-07-60）、质量指标（§3.17b、BR-07-61）、接口 #50–#57、错误码 127050–127054、AC-07-50…58。**CR-07-11**（对 00）：§8 登记 `ConstitutionReader`、`ToleranceReader`（delivery 07 提供）；`quality.escaped` 发布者为 02（HUMAN_REVIEW）、07（CLIENT_ACCEPTANCE）与 12 Part A（带 `escaped_from_stage` 的缺陷），统一 `escape_key`，学习只经 02 `delivery.escape_learning`（D114，已并入 00 §7.1）；`exception.*` 的 subject_kind 含 PROJECT / REQUIREMENT（07）与 WORK_ITEM（02）。

@@ -1,4 +1,4 @@
-# 05 · Agent 成员、主导 Agent 编排与频道
+# 05 · Agent 成员、主管 Agent 编排与频道
 
 > 后端模块：`fleet`（Agent 部分，与 04 同模块）+ `collab`（频道）。遵守 `00-conventions.md`；与 00 不一致或需扩展处集中在 §13。
 > 标注「**本规格提议**」的是 PRD 未给出、由本规格补齐的具体值或机制，均附理由。
@@ -14,7 +14,7 @@
 | Agent 档案 | 人设、头像（像素人种子）、系统提示词、机器绑定、runtime × 模型 × 推理强度、授权模式、MCP 白名单、AgentRole 集合、默认频道、记忆策略引用、状态 |
 | Agent 生命周期 | 创建（服务账号主体 + 角色绑定同事务）、启动 / 停止 / 重启、CRASHED 检测与自动重启上限、换绑机器、正常退役向导、强制退役 |
 | Agent 绩效 | 首次验收率、单位已接受成本、返工率、当前负载（公式、刷新节奏） |
-| 主导 Agent 编排 | 派单候选预过滤 + 确定性评分、主导 Agent LLM 提案、提案生命周期、MANUAL / AUTO 护栏、人工改派、无候选、失效重派、饥饿与抖动上限 |
+| 主管 Agent 编排 | 派单候选预过滤 + 确定性评分、主管 Agent LLM 提案、提案生命周期、MANUAL / AUTO 护栏、人工改派、无候选、失效重派、饥饿与抖动上限 |
 | Heavy 并行求解（v1.1） | 触发规则、N 枝选择（模型多样性）、预算上限、对比报告、择优 / 合成、落选枝归档 |
 | 频道（collab） | 项目默认频道、自建频道、成员、消息四类、@mention、Agent 回复与「@Agent 请做 X」、事件折叠、未读、编辑 / 撤回、Agent 私信、钩子（v1.1）、桥接（v2）、保留、上限、实时 |
 
@@ -43,12 +43,12 @@
 | US-05-05 | 作为团队所有者，我要通过向导正常退役 Agent：生成交接文档、选择接手人、转交在途工作、清理机器、吊销凭证 | MVP |
 | US-05-06 | 作为团队所有者，机器失联时我要强制退役 Agent，并清楚知道会丢失什么 | MVP |
 | US-05-07 | 作为交付负责人，我要看到每个 Agent 的首次验收率、单位已接受成本、返工率、当前负载 | MVP |
-| US-05-08 | 作为交付负责人，我要为项目指定主导 Agent 与派单策略（MANUAL / AUTO），让它把工作项分给最合适的 Agent（可使用不同模型） | MVP |
+| US-05-08 | 作为交付负责人，我要为项目指定主管 Agent 与派单策略（MANUAL / AUTO），让它把工作项分给最合适的 Agent（可使用不同模型） | MVP |
 | US-05-09 | 作为交付负责人，我要看到每条派单提案的候选评分与理由，一键确认或改派 | MVP |
 | US-05-10 | 作为交付负责人，我要在没有合适 Agent、Agent 崩溃或机器离线时得到明确提示与重派 | MVP |
 | US-05-11 | 作为交付负责人，我要对高风险 / 高不确定工作项启动 Heavy 并行求解，在预算内比较多枝结果后择优 | v1.1 |
 | US-05-12 | 作为团队成员，我要在项目频道里与人和 Agent 协作，@成员，看到折叠的执行事件与不折叠的裁决卡片 | MVP |
-| US-05-13 | 作为交付负责人，我要在频道里「@主导Agent 把 W 派给 Ada」，得到一张需要我确认的派单卡片 | MVP |
+| US-05-13 | 作为交付负责人，我要在频道里「@主管Agent 把 W 派给 Ada」，得到一张需要我确认的派单卡片 | MVP |
 | US-05-14 | 作为团队所有者，我要只读查看 Agent 之间的私信 | MVP |
 | US-05-15 | 作为团队所有者，我要为频道配置消息钩子（向外推送） | v1.1 |
 | US-05-16 | 作为团队所有者，我要把频道桥接到外部 IM / MQTT / WebSocket / HTTP | v2 |
@@ -58,6 +58,16 @@
 | US-05-20 | 作为团队所有者，我要在主管失效后收编或退役它创建的 Agent，避免无人负责的 Agent 继续消耗预算 | MVP |
 
 ---
+
+
+### 2.x 用户故事增补（D112 / D113，00 v2.0 §15）
+
+| ID | 故事 | 版本 |
+|---|---|---|
+| US-05-21 | 作为交付负责人，我要交付执行通过自动检查后，系统自动派测试 Agent、再派产品验收 Agent，以便内部问题在内部解决、不打扰人 | MVP |
+| US-05-22 | 作为团队所有者，我要内部验收 Agent 优先使用与执行者不同的模型家族，以便避免「自己审自己」 | MVP |
+| US-05-23 | 作为纯人工团队的成员，我要 Agent 只做助理（分诊、拆解草稿、纪要转任务草稿、状态与报告草稿、风险与对账提示），以便人仍是唯一的执行者与验收者 | MVP |
+| US-05-24 | 作为团队所有者，我要编制授权可以允许主管创建测试 Agent，但产品验收 Agent 只能由人创建，以便验收者的独立性有保证 | MVP |
 
 ## 3. 领域模型与数据表
 
@@ -202,7 +212,7 @@ AgentRole 只决定「这个 Agent 能被安排成什么」；**权限**来自 0
 | trigger_ref | STR(64) | Y | | 如 `message:<id>`、`agent:<id>:CRASHED` |
 | requested_by | ID | Y | | 发起的人（MANUAL / CHANNEL） |
 | policy | ENUM | N | | 生成时的 `DispatchPolicy`（快照） |
-| lead_agent_id | ID | Y | | 生成时的主导 Agent（空 = 纯系统评分） |
+| lead_agent_id | ID | Y | | 生成时的主管 Agent（空 = 纯系统评分） |
 | result | ENUM | N | | `DispatchResult`：CANDIDATE / NO_ELIGIBLE |
 | recommended_agent_id | ID | Y | | 最终推荐（LLM 选择或系统 top-1） |
 | system_top_agent_id | ID | Y | | 评分第一 |
@@ -212,7 +222,7 @@ AgentRole 只决定「这个 Agent 能被安排成什么」；**权限**来自 0
 | guard_reasons | JSON | N | `[]` | 触发的护栏码（G1–G9） |
 | scoring_version | STR(16) | N | `s1` | 公式版本，保证可复算 |
 | inputs_digest | STR(64) | N | | 评分输入快照的 SHA-256 |
-| planning_cost_micros | BIGINT | N | 0 | 主导 Agent 规划调用成本 |
+| planning_cost_micros | BIGINT | N | 0 | 主管 Agent 规划调用成本 |
 | state | ENUM | N | `PROPOSED` | `DispatchProposalState` |
 | resolution_kind | ENUM | Y | | `DispatchResolution`：AUTO_APPLIED / CONFIRMED / OVERRIDDEN / DISMISSED / EXPIRED_TTL / EXPIRED_STALE / EXPIRED_WORK_ITEM |
 | resolved_by | ID | Y | | 人或 SYSTEM 空 |
@@ -371,6 +381,14 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 
 `requested_spec` JSON Schema（要点）：`{"type":"object","required":["name","role","machine_id","runtime_kind","model_id","system_prompt"],"properties":{"name":{"type":"string","maxLength":64},"role":{"enum":["EXECUTOR","COORDINATOR"]},"machine_id":{"type":"string"},"runtime_kind":{"enum":["CLAUDE_CODE","CODEX"]},"model_id":{"type":"string","maxLength":160},"reasoning_effort":{"type":"string","maxLength":16},"system_prompt":{"type":"string","maxLength":32768},"persona":{"type":"string","maxLength":2000},"skill_ids":{"type":"array","maxItems":20},"mcp_allowlist":{"type":"array","maxItems":32},"capability_tags":{"type":"array","maxItems":20},"max_risk":{"enum":["LOW","MEDIUM"]}},"additionalProperties":false}`。不接受 `authorization_mode`（固定 ON_REQUEST），角色不得为 LEAD / REVIEWER。
 
+
+### 3.x 数据增补（D112 / D113，00 v2.0 §15）
+
+- `AgentRole` 增加 `TESTER`（测试 Agent）、`ACCEPTOR`（产品验收 Agent）、`ASSISTANT`（纯人工模式助理）；`fleet_agents.roles` 校验：`ACCEPTOR` 不可与 `EXECUTOR` 同时出现在同一 Agent 上；`ASSISTANT` 不可与 `EXECUTOR` / `TESTER` / `ACCEPTOR` 同时出现。
+- `fleet_agents` 增加 `model_family STR(32) NOT NULL`：由绑定的 runtime × 模型经 04 模型目录解析（如 `anthropic`、`openai`、`google`、`local:<name>`），重新绑定机器 / 模型时更新；派单与内部验收的跨家族判定以执行时快照为准（03 `execution_executions.model_family`）。
+- 编制授权（08）`allowed_roles` 可包含 `TESTER`；**`ACCEPTOR` 只能由人类创建**（主管创建请求中出现 ACCEPTOR → 422 **142040**）；`LEAD` / `REVIEWER` 仍不可由主管创建。
+- 派单提案 `trigger` 增加 `INTERNAL_QA`（`role ∈ {TESTER, ACCEPTOR}`，`requires_human=false`，SYSTEM 自动应用）；提案新增字段 `subject_execution_id`、`family_fallback BOOL`。
+
 ## 4. 状态机
 
 ### 4.1 AgentState（`DRAFT, ACTIVE, STOPPED, CRASHED, RETIRING, RETIRED`）
@@ -403,7 +421,7 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 
 | # | 步骤 | 进入动作 | 完成条件 | 超时 | 失败 / 超时处理 |
 |---|---|---|---|---|---|
-| R1 | PRECHECK | 读 02 在途分派、03 运行中执行、07 是否为主导、04 机器状态，写 `precheck` | 同步完成 | — | 机器非 ONLINE → 422 142024 |
+| R1 | PRECHECK | 读 02 在途分派、03 运行中执行、07 是否为主管、04 机器状态，写 `precheck` | 同步完成 | — | 机器非 ONLINE → 422 142024 |
 | R2 | HANDOVER | 若进程未 RUNNING 先以「交接模式」启动（不接新派单）；经 03 `ExecutionLauncher.Launch(kind=ADHOC, purpose=HANDOVER)` 让 Agent 按模板写交接文档 → 03 Artifact | Artifact 写入 | 10 min | 系统按数据生成摘要 Artifact（`handover_source=SYSTEM`），向导提示「Agent 未完成交接，已使用系统摘要」，可〔重试〕一次 |
 | R3 | SUCCESSOR | 人选择 HUMAN / AGENT / LATER | `PATCH /agent-retirements/{id}` 写入 | 无（可停留） | 接手人不合格 → 422 142018 |
 | R4 | REASSIGN | 对 precheck 中每个 ACTIVE 分派调 02 `DispatchAssigner.Reassign`（HUMAN/AGENT）或 `Release`（LATER），每项独立 | 全部有结果 | — | 单项失败记入 `reassign_result.failed`，不阻断；UI 列出失败项（工作项将由 02 BR-02-16 在 RETIRED 时回收） |
@@ -420,7 +438,7 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 | # | 当前 | 事件 | 守卫 | 目标 | 副作用 |
 |---|---|---|---|---|---|
 | P01 | — | 生成（READY 事件 / 手动 / 频道 / 重派 / 评审） | 工作项状态按触发：READY（READY / MANUAL_REQUEST / CHANNEL_REQUEST / ENSEMBLE）、NEEDS_HUMAN_REVIEW（REVIEW）——此二者要求无同角色 ACTIVE 分派；**REDISPATCH** 允许 ∈ {CLAIMED, IN_PROGRESS, EXECUTION_FAILED} 且**保留现有 ACTIVE EXECUTOR 分派**（应用时经 02 `DispatchAssigner.Reassign`，即 02 T07）；同工作项无 PROPOSED；**07 项目阶段 ∈ {ACTIVE, ACCEPTANCE_PENDING}**（`MANUAL_REQUEST` 除外，见 BR-05-55） | PROPOSED | 评分明细；`dispatch.proposed`（含 `policy`、`requires_human`）；DISPATCH_CARD（`requires_human=true`）或折叠 EVENT（AUTO 将自动应用） |
-| P02 | PROPOSED | AUTO 自动应用 | policy=AUTO；`requires_human=false`；07 `ProjectGate.CanAutoDispatch` = true；应用时复验 E1–E11 | APPLIED（AUTO_APPLIED） | 同事务调 02 `DispatchAssigner.Assign`（REDISPATCH 用 `Reassign`；actor=主导 Agent，`authority_source=POLICY:dispatch_auto`，`detail.dispatch_proposal_id`）；`dispatch.applied` |
+| P02 | PROPOSED | AUTO 自动应用 | policy=AUTO；`requires_human=false`；07 `ProjectGate.CanAutoDispatch` = true；应用时复验 E1–E11 | APPLIED（AUTO_APPLIED） | 同事务调 02 `DispatchAssigner.Assign`（REDISPATCH 用 `Reassign`；actor=主管 Agent，`authority_source=POLICY:dispatch_auto`，`detail.dispatch_proposal_id`）；`dispatch.applied` |
 | P03 | PROPOSED | 人确认 `PUT …/resolution {kind:CONFIRM}` | 人持 `work_item_assign`；复验 E1–E11 | APPLIED（CONFIRMED） | 02 `Assign`（actor=人，authority 由 AuthorityChecker 给出 ROLE / DELEGATION，`detail.dispatch_proposal_id`） |
 | P04 | PROPOSED | 人改派 `{kind:OVERRIDE, assignee_principal_id, reason}` | 同上；受派者满足 02 BR-02-10 | OVERRIDDEN | 02 `Assign`（人）；被弃候选对该工作项 24 h 排除（BR-05-50）；审计 `fleet.dispatch_overridden` |
 | P05 | PROPOSED | 人驳回 `{kind:DISMISS, reason}` | 同上 | OVERRIDDEN（DISMISSED） | `dispatch.rejected`；工作项 2 h 内不再自动生成提案（BR-05-50） |
@@ -436,7 +454,7 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 |---|---|---|---|---|---|
 | H01 | — | 创建计划 | BR-05-60/61 | PENDING_APPROVAL（需人）或 RUNNING（AUTO 且预算内） | `ensemble.plan_created{requires_approval}`；PENDING_APPROVAL → 08 我的裁决 `ENSEMBLE_APPROVAL` + N-05-11 |
 | H02 | PENDING_APPROVAL | 人批准 `PUT /ensemble-plans/{id}/approval` | HUMAN + `work_item_assign`（预算超默认还需 `project_manage`） | RUNNING | 同事务为每枝调 03 `ExecutionLauncher.Launch(branch_reason=ENSEMBLE, ensemble_group_id=plan.id, max_cost_micros=branch_cap)`；审计 `fleet.ensemble_started` |
-| H03 | RUNNING | 全部枝终态（SUBMITTED/FAILED/STOPPED_*） 或 deadline | — | COMPARING | 拉 03 A08 对比数据 + 验证摘要；请求主导 Agent 写比较理由（120 s） |
+| H03 | RUNNING | 全部枝终态（SUBMITTED/FAILED/STOPPED_*） 或 deadline | — | COMPARING | 拉 03 A08 对比数据 + 验证摘要；请求主管 Agent 写比较理由（120 s） |
 | H04 | RUNNING | `spent_micros ≥ budget_cap` | — | COMPARING | 对每个仍运行的枝调 03 `CancelExecution(execution_id, ENSEMBLE_BUDGET)` → STOPPED_BUDGET；通知 N-05-07 |
 | H05 | COMPARING | 报告生成 | ≥1 枝 SUBMITTED | SELECTION_PENDING | `ensemble.compared`；频道 DISPATCH_CARD（对比卡，不折叠） |
 | H06 | COMPARING | 0 枝 SUBMITTED | — | CANCELLED（ALL_FAILED） | 调 02 `WorkItemTransitioner.EnsembleFailed(tx, work_item_id, plan_id)`；`ensemble.cancelled{reason:ALL_FAILED}`；通知 |
@@ -481,6 +499,17 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 | L05 | 孤儿 | 7 天未处理（`fleet.spawn_lifecycle`） | — | RETIRING → RETIRED（正常退役；机器离线时按系统强制退役，不需 step-up） | 交接文档由系统摘要生成；`agent.retired{reason:ORPHAN_TIMEOUT}` |
 | L06 | AGENT_SPAWNED·未收编 | `expires_at` 到期，或 `now − idle_since ≥ idle_retire` | — | RETIRING（§4.2 正常退役） | 完成时 `SpawnGrantUsage.Release`；`agent.retired{reason:TTL / IDLE}` |
 
+
+### 4.x 内部验收派单（D112 / D113，00 v2.0 §15）
+
+| # | 触发 | 守卫 | 结果 |
+|---|---|---|---|
+| IQ1 | 03 `internal_qa.passed{stage:AUTOMATED}` | 项目非 HUMAN_ONLY | 生成 `trigger=INTERNAL_QA, role=TESTER` 提案并立即应用（SYSTEM `SYSTEM:fleet.internal_qa_dispatch`）→ 03 Launch(INTERNAL_TEST) |
+| IQ2 | 03 `internal_qa.passed{stage:AGENT_TEST}` | 同上 | `role=ACCEPTOR` 提案并应用 → 03 Launch(INTERNAL_ACCEPTANCE) |
+| IQ3 | 无合格候选（BR-05-109 全部回退仍为空） | | 不派单；02 `WorkItemEscalator.Escalate(kind=MANDATORY_HUMAN_GATE, detail{reason:NO_INTERNAL_QA_AGENT, role})` |
+| IQ4 | 候选 Agent 拒绝 / 30 min 未开始（`agent.qa_ack{accepted:false}` 或超时） | 重派次数 < 2 | 换下一候选重派；≥2 次 → 同 IQ3 |
+| IQ5 | HUMAN_ONLY 项目收到 IQ1 / IQ2 触发 | | 不派 Agent；内部验收由 02 直接进入人工（L2 只含 AUTOMATED，00 §15 对纯人工模式的例外） |
+
 ## 5. 业务规则与边界情况
 
 ### 5.1 创建与档案
@@ -507,7 +536,7 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 
 ### 5.3 退役
 
-- **BR-05-20 正常退役前置**：机器 ONLINE（否则 422 142024）；无 IN_PROGRESS 退役（409 142014）；若为某项目主导 Agent：不阻断，但 PRECHECK 列出并提示——07 BR-07-07 在收到 RETIRING 时置 `lead_agent_id=NULL`、`dispatch_policy=MANUAL`。
+- **BR-05-20 正常退役前置**：机器 ONLINE（否则 422 142024）；无 IN_PROGRESS 退役（409 142014）；若为某项目主管 Agent：不阻断，但 PRECHECK 列出并提示——07 BR-07-07 在收到 RETIRING 时置 `lead_agent_id=NULL`、`dispatch_policy=MANUAL`。
 - **BR-05-21 接手人**：HUMAN 须活跃租户成员且对每个在途工作项所在项目有 `work_item_execute`；AGENT 须 ACTIVE、含 EXECUTOR、非本 Agent、在对应项目有 `agent_executor` 绑定且 `max_risk ≥` 工作项风险；不满足的工作项不阻断整体，按项进入 `failed`（code 120444 来自 02）或在 SUCCESSOR 步骤以 422 142018 列出（`data.items[]`）由人改选 LATER。
 - **BR-05-22 转交即裁决**：每个转交经 02 `DispatchAssigner.Reassign(tx, …)`，02 记 ASSIGN Decision（actor=操作的人，authority 由 AuthorityChecker，reason「Agent 退役交接：<retirement_id>」，`rationale` 引用交接 Artifact id）。LATER → 02 `Release`（工作项回 READY / BLOCKED，标 `needs_owner`），派单循环可再分派。
 - **BR-05-23 运行中执行**：REASSIGN 前，对该 Agent 非终态 AUTONOMOUS 执行由 03 E27 在 `agent.state_changed{RETIRING}` 时取消（SUPERSEDED）；交接模式下的 HANDOVER 执行豁免（purpose=HANDOVER，03 CCR）。
@@ -518,12 +547,12 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 ### 5.4 绩效统计（公式）
 
 - **BR-05-30 首次验收率** `FPA(agent, type, W)`：对窗口 W（30 / 90 天）内**首次裁决时间**落在窗口的工作项集合 S —— 工作项 w ∈ S 当且仅当 agent 提交过 w 的声明，且 w 的第一个 ∈ {APPROVE, REJECT, REQUEST_CHANGES} 的 Decision 发生在 agent 的首个声明之后、并落在 W 内。`first_decisions = |S|`；`first_pass_accepts = |{w ∈ S : 该首个裁决 = APPROVE}|`；`FPA = first_pass_accepts / first_decisions`；`first_decisions < 5` 时 UI 显示「样本不足（n）」，评分用平滑值（BR-05-41）。与 07 项目级「首次验收率」（AC-07 accepted_first_count）同口径：返工后的再次 APPROVE 不计为首次。
-- **BR-05-31 单位已接受成本** `CPA(agent, type, W)` = `cost_on_accepted_micros / accepted_items`：分母 = W 内进入 ACCEPTED 且最终被接受声明的执行者 = agent 的工作项数；分子 = 这些工作项上 agent 名下全部执行的 `cost_micros` 之和（含其返工枝、RETRY_INFRA 枝、ENSEMBLE 落选枝）；不含主导 Agent 规划成本（计入项目，不计个人）。分母 0 → `null`（显示「—」）。
+- **BR-05-31 单位已接受成本** `CPA(agent, type, W)` = `cost_on_accepted_micros / accepted_items`：分母 = W 内进入 ACCEPTED 且最终被接受声明的执行者 = agent 的工作项数；分子 = 这些工作项上 agent 名下全部执行的 `cost_micros` 之和（含其返工枝、RETRY_INFRA 枝、ENSEMBLE 落选枝）；不含主管 Agent 规划成本（计入项目，不计个人）。分母 0 → `null`（显示「—」）。
 - **BR-05-32 返工率** `RR(agent, W)` = `rework_decisions / claims`：分子 = W 内针对 agent 声明作出的 REJECT + REQUEST_CHANGES 数；分母 = W 内 agent 提交的声明数；分母 0 → `null`。可 >1（一个声明理论上只有一次裁决，故通常 ≤1；保留原值不截断）。
 - **BR-05-33 当前负载**（实时，不缓存）：`active_items` = 02 中该 Agent ACTIVE EXECUTOR 分派数；`running_executions` = 03 非终态执行数；`load_ratio = active_items / max_parallel_items`。成员表显示 `active_items/max_parallel_items` 与进度条。
 - **BR-05-34 刷新节奏**：全量重算任务每 10 min（仅对 24 h 内有声明 / 裁决 / 成本事件的 Agent）；增量：消费 `decision.made`、`claim.submitted`、`execution.cost_updated` 后对受影响 Agent 去抖 60 s 重算；页面显示 `computed_at`（「1 分钟前更新」）。重算以源数据（02/03 读接口）为准，`fleet_agent_stats` 可整体删除重建。
 
-### 5.5 主导 Agent 与派单
+### 5.5 主管 Agent 与派单
 
 - **BR-05-40 预过滤（硬条件，全部满足才进入评分）**，失败码写入 `ineligible_codes`：
   - E1 `ROLE`：AgentRole 含 `EXECUTOR`；REVIEW 派单（BR-05-53）改为含 `REVIEWER`，且须为 08 `ListEligible` 返回的被委托主体。
@@ -535,7 +564,7 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
   - E7 `MEMBER`：Agent 在该项目实体上持 `agent_executor` 绑定。
   - E8 `CAPACITY`：`active_items < max_parallel_items`。
   - E9 `NOT_EXCLUDED`：不在该工作项排除表（BR-05-50）。
-  - E10 `NOT_LEAD_AUTO`：policy=AUTO 时排除项目主导 Agent 自身（职责分离，BR-05-70）。
+  - E10 `NOT_LEAD_AUTO`：policy=AUTO 时排除项目主管 Agent 自身（职责分离，BR-05-70）。
   - E11 `BUDGET`：Agent 在该类型的 CPA（无则团队中位数）≤ 07 `ProjectGate` 返回的项目剩余预算；剩余预算未设 → 通过。
   - E12 `SPAWN_BUDGET`（D110）：`origin=AGENT_SPAWNED` 且未收编时，所属自建授权须 ACTIVE、未 EXHAUSTED，且该 Agent 未达 `per_agent_cap_micros`，且不是孤儿（BR-05-101 / 102 / 103）。
 - **BR-05-41 评分**（`scoring_version=s1`，整数运算保证确定性）：各分量取 0–10000 基点，四舍五入（half-up）到整数：
@@ -547,16 +576,16 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
   - `score = 35·skill_bp + 30·fpa_bp + 15·cost_bp + 15·load_bp + 5·diversity_bp`（0–1,000,000，展示为 `score/10000` 保留两位）。权重理由：技能匹配决定能否做对 > 历史质量 > 经济性与负载 > 轮换（**本规格提议**）。
   - **并列打破**（依次）：fpa_bp 高 → active_items 少 → c_i 低 → 最近一次被派时间早（从未被派最先）→ agent_id 数值小。
   - 输入快照（标签、n、a、p₀、c、负载、r）写入 `fleet_dispatch_candidates.inputs`，`inputs_digest` = 规范化 JSON 的 SHA-256；同快照必得同排名（AC-05-20）。
-- **BR-05-42 主导 Agent 的 LLM 用法**：系统把前 K=5 名合格候选（含分量、理由素材）、工作项与验收标准、需求摘录、06 `Retriever.Search(purpose=LEAD)` 结果，经 04 通道 `agent.lead_plan` 请求发给主导 Agent 宿主（CCR-05-06），120 s 超时。主导 Agent 只能在**合格集合**内选择并给出 ≤2000 字理由（须引用至少一项分量，如「前端技能 3/3、首次验收率 82%、当前空闲」）。结果非法（选了不合格 / 不存在的 Agent、JSON 不符 Schema、超时）→ 采用系统 top-1，`rationale_source=SYSTEM`，理由由模板生成，并在卡片上标注「主导 Agent 未给出有效建议」。LLM 永不能绕过预过滤，也不能改分。项目无主导 Agent 时一律系统评分（`lead_agent_id=NULL`）。
+- **BR-05-42 主管 Agent 的 LLM 用法**：系统把前 K=5 名合格候选（含分量、理由素材）、工作项与验收标准、需求摘录、06 `Retriever.Search(purpose=LEAD)` 结果，经 04 通道 `agent.lead_plan` 请求发给主管 Agent 宿主（CCR-05-06），120 s 超时。主管 Agent 只能在**合格集合**内选择并给出 ≤2000 字理由（须引用至少一项分量，如「前端技能 3/3、首次验收率 82%、当前空闲」）。结果非法（选了不合格 / 不存在的 Agent、JSON 不符 Schema、超时）→ 采用系统 top-1，`rationale_source=SYSTEM`，理由由模板生成，并在卡片上标注「主管 Agent 未给出有效建议」。LLM 永不能绕过预过滤，也不能改分。项目无主管 Agent 时一律系统评分（`lead_agent_id=NULL`）。
 - **BR-05-43 策略来源**：`dispatch_policy`、`lead_agent_id`、`ensemble_max_branches` 只存于 07 项目档案，经 07 `ProjectReader` 读取、经 07 #4 `PATCH /entities/{entity_id}/project` 写入（「团队编排」卡片直接调用 07 #4，本模块不存副本）。AUTO 但 `lead_agent_id=NULL` → 视作 MANUAL（`guard_reasons` 含 G9）。
-- **BR-05-44 AUTO 护栏**（任一命中 → `requires_human=true`，提案停在 PROPOSED 并发 DISPATCH_CARD 与通知 N-05-03）：G1 工作项 risk=HIGH；G2 估算成本（c_i）> 07 剩余预算或预算 EXHAUSTED / `ProjectGate.CanAutoDispatch=false`（项目暂停、升级生效、只读；阶段非 ACTIVE 时不生成提案，见 BR-05-55）；G3 主导 Agent 选择非 top-1 且 `score_top − score_chosen > 150000`（15 分）；G4 本项目过去 60 min 已 AUTO_APPLIED ≥20 次；G5 该工作项 24 h 内已被派 ≥2 次（抖动）；G6 工作项 `require_human_decision=true`（02 模板字段）；G7 选中者为主导 Agent 自身（MANUAL 下也须人确认）；G8 工作项 24 h 内曾被人改派（人工意图优先）；G9 无主导 Agent。
-- **BR-05-45 生效路径**：APPLIED 必须经 02 接口 `DispatchAssigner.Assign(ctx, tx, {work_item_id, assignee_principal_id, role, expected_work_item_version, actor, authority_source, rationale, dispatch_proposal_id})`（CCR-05-04；02 在其内部执行 A1 逻辑：AuthorityChecker、ASSIGN Decision、分派与租约、`work_item.assigned`），与提案状态更新**同一事务**；02 返回错误 → 提案不变更，向调用者返回 02 错误码（如 120426 并发认领）。随后 outbox `dispatch.applied`（仅供 collab 投影、08 关闭待办与通知；**02 不消费此事件**，分派已由 `DispatchAssigner` 同步落库）。AUTO：actor=主导 Agent（AGENT），`authority_source=POLICY:dispatch_auto`，提案 id 记于 `detail.dispatch_proposal_id`（00 §6.3 v1.5）；人确认 / 改派：actor=人，authority 由 08 判定。`trigger=REDISPATCH` 的提案一律经 `DispatchAssigner.Reassign` 应用（02 T07 把工作项置为 CLAIMED、以 RETRY_INFRA 续跑并由 03 将中断的父执行置为 FAILED `SUPERSEDED_BY_RETRY`，见 BR-05-52）。
+- **BR-05-44 AUTO 护栏**（任一命中 → `requires_human=true`，提案停在 PROPOSED 并发 DISPATCH_CARD 与通知 N-05-03）：G1 工作项 risk=HIGH；G2 估算成本（c_i）> 07 剩余预算或预算 EXHAUSTED / `ProjectGate.CanAutoDispatch=false`（项目暂停、升级生效、只读；阶段非 ACTIVE 时不生成提案，见 BR-05-55）；G3 主管 Agent 选择非 top-1 且 `score_top − score_chosen > 150000`（15 分）；G4 本项目过去 60 min 已 AUTO_APPLIED ≥20 次；G5 该工作项 24 h 内已被派 ≥2 次（抖动）；G6 工作项 `require_human_decision=true`（02 模板字段）；G7 选中者为主管 Agent 自身（MANUAL 下也须人确认）；G8 工作项 24 h 内曾被人改派（人工意图优先）；G9 无主管 Agent。
+- **BR-05-45 生效路径**：APPLIED 必须经 02 接口 `DispatchAssigner.Assign(ctx, tx, {work_item_id, assignee_principal_id, role, expected_work_item_version, actor, authority_source, rationale, dispatch_proposal_id})`（CCR-05-04；02 在其内部执行 A1 逻辑：AuthorityChecker、ASSIGN Decision、分派与租约、`work_item.assigned`），与提案状态更新**同一事务**；02 返回错误 → 提案不变更，向调用者返回 02 错误码（如 120426 并发认领）。随后 outbox `dispatch.applied`（仅供 collab 投影、08 关闭待办与通知；**02 不消费此事件**，分派已由 `DispatchAssigner` 同步落库）。AUTO：actor=主管 Agent（AGENT），`authority_source=POLICY:dispatch_auto`，提案 id 记于 `detail.dispatch_proposal_id`（00 §6.3 v1.5）；人确认 / 改派：actor=人，authority 由 08 判定。`trigger=REDISPATCH` 的提案一律经 `DispatchAssigner.Reassign` 应用（02 T07 把工作项置为 CLAIMED、以 RETRY_INFRA 续跑并由 03 将中断的父执行置为 FAILED `SUPERSEDED_BY_RETRY`，见 BR-05-52）。
 - **BR-05-46 提案 TTL**：30 min（**本规格提议**：短于 Agent 租约 10 min × 3，长于人类一次查看间隔）；到期 P06 立即重生成，但同工作项 24 h 内累计生成 >6 次 → 停止自动生成并通知（抖动）。
 - **BR-05-47 并发**：派单循环按项目取 dlock `fleet:dispatch:<project_id>`（maxHold 60 s）；应用时在本事务内对受派 Agent 行 `SELECT … FOR UPDATE` 并复验 E2/E3/E8（跨项目防超额）；两人同时确认同一提案 → 一人成功，另一人 409 140409（版本）或 143004（已非 PROPOSED）。
 - **BR-05-48 队列顺序与饥饿**：同项目待派工作项按 `(aging_flag DESC, priority DESC, risk DESC, ready_at ASC, work_item_id ASC)` 处理，`aging_flag = ready_at < now − 2h`；每轮 ≤10 项；READY 无分派超 4 h → 通知负责人 N-05-04（每项每 4 h 一次）。
 - **BR-05-49 无合格候选**：生成 `result=NO_ELIGIBLE` 的 PROPOSED 提案（无推荐人），附原因直方图（如「机器离线 2、技能不符 1、满载 1」）与最接近的 3 名（不合格码最少者）；不自动应用；人可 OVERRIDE 指派任一满足 02 BR-02-10 的成员（含人类）或 DISMISS。合格集合可能因事件改变：`agent.state_changed`、`machine.state_changed`、分派释放后去抖 30 s 重新评估，若出现合格者 → 原提案 EXPIRED(STALE) 并生成新提案。
 - **BR-05-50 抖动与排除**：被改派弃用 / 被移走的 Agent 对该工作项排除 24 h（E9）；同一工作项 24 h 内派单 ≥3 次 → 停止自动生成，需人手动生成；DISMISS 后 2 h 内不自动生成。
-- **BR-05-51 频道请求**：「@主导Agent 把 W 派给 Ada」或「@Agent 请做 X」只能产生 `trigger=CHANNEL_REQUEST` 的提案或 02 工作项草稿（Agent 以自身凭证调用 02 草稿接口），**永不直接改变状态**；CHANNEL_REQUEST 提案一律 `requires_human=true`（G 外的硬规则，防止频道文本注入绕过策略），卡片「确认」按钮仅对持 `work_item_assign` 的人可用。
+- **BR-05-51 频道请求**：「@主管Agent 把 W 派给 Ada」或「@Agent 请做 X」只能产生 `trigger=CHANNEL_REQUEST` 的提案或 02 工作项草稿（Agent 以自身凭证调用 02 草稿接口），**永不直接改变状态**；CHANNEL_REQUEST 提案一律 `requires_human=true`（G 外的硬规则，防止频道文本注入绕过策略），卡片「确认」按钮仅对持 `work_item_assign` 的人可用。
 - **BR-05-52 重派触发**：(a) Agent CRASHED 且 `restart_exhausted`；(b) Agent STOPPED / RETIRING / RETIRED（02 BR-02-16 已回收分派 → 工作项 READY → 正常 P01）；(c) 机器 OFFLINE 持续 5 min（**本规格提议**宽限，覆盖短暂网络抖动与 03 执行续约 30 s × 多次）：对该机 Agent 的 CLAIMED（未开始执行）分派经 02 `Release` 后重派；(d) 02 `work_item.state_changed{to: EXECUTION_FAILED}` 且 02 自动重试已用尽（payload `infra_retries_exhausted=true`）。(e) 机器 OFFLINE 持续 ≥5 min，且该机 Agent 名下有工作项其当前执行为 INTERRUPTED（迁移，PRD §10.1）：生成 REDISPATCH 提案；应用时 02 `DispatchAssigner.Reassign` 按 02 T07 先终结旧执行，再以 `branch_reason=RETRY_INFRA`、parent = 该 INTERRUPTED 执行启动新执行（03 BR-03-07 在同事务把 parent 置 FAILED `SUPERSEDED_BY_RETRY`）；原工作目录不可达，故一律 CARRYOVER（04 `PlanMigration`）。重派提案 `trigger=REDISPATCH`，前任对该工作项排除 24 h。
 - **BR-05-53 评审派单（AUTONOMOUS，MVP）**：消费 02 `work_item.state_changed{to:NEEDS_HUMAN_REVIEW}`，项目 `team_mode=AUTONOMOUS` 时：调 08 `AuthorityChecker.ListEligible(work_item, APPROVE)`，取持有效委托、含 REVIEWER 角色、非该工作项执行者且非派出者的 Agent；按 BR-05-41 评分（`fpa_bp` 改为评审一致率：其 APPROVE 后 30 天内未被甲方拒收或返工的比例，无数据取 0.5），取 top-1 生成 `trigger=REVIEW` 提案并立即应用：actor=SYSTEM（`SYSTEM:fleet.review_dispatch` 为系统动作身份），裁决记录的 `authority_source` 取 08 `Check` 返回的 `POLICY:review_dispatch`（本模块启动时 `SystemActions.Register("fleet.review_dispatch","work_item_assign")`，08 S1 据此放行；同时向 08 `PolicyRegistry` 贡献 `review_dispatch` 规则供审计说明），调 02 `DispatchAssigner.Assign(role=REVIEWER, lease_ttl_seconds=1800)`（02 对 NEEDS_HUMAN_REVIEW 上的 REVIEWER 分派为**非迁移**操作，租约 1800 s 覆盖评审时限，不被 `lease_reclaim` 提前回收），再经 04 通道发 `agent.review{command_id, agent_id, work_item_id, claim_id, deadline_at=now+30min}`，宿主回 `agent.review_ack`。30 min 内未收到裁决 → 同事务：02 `Release(REVIEWER)` + 02 `WorkItemEscalator.Escalate(tx, {work_item_id, kind:REVIEW_SLA, detail:{reviewer_kind:AGENT, agent_id, attempt}})`（由 02 发布 `work_item.escalated`），并重新评估；无合格评审 Agent，或同一工作项连续 2 次超时 → 停止派评审，由 08 规则 `NO_ELIGIBLE_AUTHORITY` 升级给人（N-05-12）。HYBRID 项目不派评审（由「我的裁决」承担）。评审派单本身不授予任何裁决权：评审 Agent 的裁决仍由 02 + 08 `AuthorityChecker` 按委托条件判定。
 - **BR-05-54 唤醒协调员**：消费 01 `intake.received` / `intake.triage_requested`：若开口配置了 `triage_agent_id` 且该 Agent ACTIVE·RUNNING，经 04 通道发 `agent.triage{command_id, agent_id, intake_id, deadline_at=now+15min}`；Agent 以自身凭证调 01 分诊卡接口提交草案。Agent 未运行或超时不重试，由 01 的 30 min 看门狗与通知交给人。
@@ -565,17 +594,17 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 
 ### 5.6 Heavy 并行求解（v1.1）
 
-- **BR-05-60 触发**：(a) 工作项 risk=HIGH 且项目 `ensemble_max_branches ≥2` → 主导 Agent 在派单时改为生成 ensemble 计划；(b) 工作项 `uncertainty_flag=true`（02 字段，由人、协调员或主导 Agent 草拟设置）；(c) 人在工作项详情点〔并行求解〕。合格候选 <2 → 422 143009，回退单派。
-- **BR-05-61 选枝**：N = min(请求值或 07 `ensemble_max_branches`, 合格数)，默认 3；从评分排序中贪心：先取第 1 名，之后依次取 `(runtime_kind, model_id)` 与已选**都不同**的最高分者；不足 N 时再按分数补入不同 Agent（模型可重复）；同一 Agent 不得占两枝；主导 Agent 不得为枝执行者（E10 恒生效）。
+- **BR-05-60 触发**：(a) 工作项 risk=HIGH 且项目 `ensemble_max_branches ≥2` → 主管 Agent 在派单时改为生成 ensemble 计划；(b) 工作项 `uncertainty_flag=true`（02 字段，由人、协调员或主管 Agent 草拟设置）；(c) 人在工作项详情点〔并行求解〕。合格候选 <2 → 422 143009，回退单派。
+- **BR-05-61 选枝**：N = min(请求值或 07 `ensemble_max_branches`, 合格数)，默认 3；从评分排序中贪心：先取第 1 名，之后依次取 `(runtime_kind, model_id)` 与已选**都不同**的最高分者；不足 N 时再按分数补入不同 Agent（模型可重复）；同一 Agent 不得占两枝；主管 Agent 不得为枝执行者（E10 恒生效）。
 - **BR-05-62 预算**：`budget_cap_micros` 缺省 = N × 团队同类型 CPA 中位数 × 1.5，无数据时 N × 5,000,000（$5/枝，**本规格提议**）；不得超过 07 项目剩余预算（超出 422 143011）。需人批准的计划进入 PENDING_APPROVAL：08「我的裁决」生成 `ENSEMBLE_APPROVAL` 待办（由 `ensemble.plan_created{requires_approval:true}` 打开，`ensemble.started` / `ensemble.cancelled` 关闭），24 h 未批准自动取消（H11）。每枝上限 `branch_cap = floor(cap / N)`，作为 03 `max_cost_micros` 下发（03 COST_CAP 终止）。启动需人批准的情况：policy=MANUAL；或 cap > 默认值（还需 `project_manage`）；或风险 HIGH 且项目 HYBRID。累计 ≥80% → 通知 N-05-07；≥100% → H04。
-- **BR-05-63 对比报告**（§6.5 Schema）：每枝列 Agent、runtime / 模型、终态与原因、证据覆盖（已映射验收标准数 / 总数）、必需验证 PASSED/FAILED/INCONCLUSIVE/PENDING、自动化测试 pass/fail/skip、diff 规模（文件数、+/− 行）、成本、时长、AI 辅助验证意见（标注「仅参考」）、主导 Agent 理由。**系统排序**：先要求必需 AUTOMATED 验证全 PASSED 的枝（其余排后），再按覆盖率高 → 失败测试少 → 成本低 → diff 行数少 → 枝 id 小。报告不宣称「正确」，只陈述证据。
-- **BR-05-64 择优**：AUTO 且风险非 HIGH 且主导 Agent 选择 = 系统第一 → 自动 SELECTED（H07）；否则 SELECTION_PENDING 等人。合成（synthesize）只能由人发起，指定主枝 + 被合成枝（≤N−1），由主枝 Agent 执行新 ENSEMBLE 执行，预算从剩余 cap 扣，剩余 <10% → 422 143011。
+- **BR-05-63 对比报告**（§6.5 Schema）：每枝列 Agent、runtime / 模型、终态与原因、证据覆盖（已映射验收标准数 / 总数）、必需验证 PASSED/FAILED/INCONCLUSIVE/PENDING、自动化测试 pass/fail/skip、diff 规模（文件数、+/− 行）、成本、时长、AI 辅助验证意见（标注「仅参考」）、主管 Agent 理由。**系统排序**：先要求必需 AUTOMATED 验证全 PASSED 的枝（其余排后），再按覆盖率高 → 失败测试少 → 成本低 → diff 行数少 → 枝 id 小。报告不宣称「正确」，只陈述证据。
+- **BR-05-64 择优**：AUTO 且风险非 HIGH 且主管 Agent 选择 = 系统第一 → 自动 SELECTED（H07）；否则 SELECTION_PENDING 等人。合成（synthesize）只能由人发起，指定主枝 + 被合成枝（≤N−1），由主枝 Agent 执行新 ENSEMBLE 执行，预算从剩余 cap 扣，剩余 <10% → 422 143011。
 - **BR-05-65 落选枝**：`outcome=NOT_SELECTED`、`archived_at=now`；执行、产物、证据全部保留（I5），在执行分支树以并列紫色枝灰显，可随时查看；不删除、不复用为声明。
 - **BR-05-66 仍走正常裁决**：各枝执行结束时 03 不提交声明，只把声明草稿存为该执行的 `pending_claim`（03 E06 的 ENSEMBLE 分支）并对该枝排队验证（供对比报告）；选中后由本模块以选中枝 Agent 身份经 02 `ClaimSubmitter.SubmitOn(tx, {work_item_id, execution_id, claimed_by=枝 Agent, authority_source=POLICY:ensemble_branch, detail.ensemble_plan_id=<plan_id>, pending_claim（含 `head_commit`）})` 提交该枝的声明（枝内已采集的证据随 03 `EvidenceBinder` 绑定）→ AGENT_CLAIMED_DONE → 验证 → NEEDS_HUMAN_REVIEW → 有权主体裁决。择优本身不是 Decision，不改变 L2/L3。
 
 ### 5.7 职责分离与可观测
 
-- **BR-05-70 主导 Agent 不裁决自己派出的工作**：本模块提供 `DispatchProvenance.DispatchedBy(work_item_id) []principal_id`（含 AUTO 应用时的主导 Agent、ensemble 计划发起者）；其唯一使用者是 02：02 构造 08 `AuthorityChecker` 请求时用它填入 `WorkItemFacts.DispatchedByActor`。08 对 APPROVE / REJECT / REQUEST_CHANGES / merge 判定时：主体 ∈ DispatchedBy 且无满足 PRD §8.3 条件（必需验证全 PASSED、非自产、返工 <3、风险在委托范围）的有效委托 → 拒绝（`reason_code=SEPARATION_OF_DUTIES`，`detail=LEAD_DISPATCHED`；02 返回 403 120403）。主导 Agent 在任何情况下不得作为自己所派工作项的执行者（AUTO 由 E10；MANUAL 由 G7 强制人确认）。
+- **BR-05-70 主管 Agent 不裁决自己派出的工作**：本模块提供 `DispatchProvenance.DispatchedBy(work_item_id) []principal_id`（含 AUTO 应用时的主管 Agent、ensemble 计划发起者）；其唯一使用者是 02：02 构造 08 `AuthorityChecker` 请求时用它填入 `WorkItemFacts.DispatchedByActor`。08 对 APPROVE / REJECT / REQUEST_CHANGES / merge 判定时：主体 ∈ DispatchedBy 且无满足 PRD §8.3 条件（必需验证全 PASSED、非自产、返工 <3、风险在委托范围）的有效委托 → 拒绝（`reason_code=SEPARATION_OF_DUTIES`，`detail=LEAD_DISPATCHED`；02 返回 403 120403）。主管 Agent 在任何情况下不得作为自己所派工作项的执行者（AUTO 由 E10；MANUAL 由 G7 强制人确认）。
 - **BR-05-71 可观测**：每次规划（含 LLM 输入摘要 hash、K 名单、耗时、成本）、提案、应用 / 改派 / 驳回 / 过期、ensemble 启动 / 对比 / 选择，都在项目默认频道写 EVENT（`fold_key=dispatch:<work_item_id>` 或 `ensemble:<plan_id>`）或卡片，并审计（§7.3）。「为什么派给它」= 提案 id → 候选明细 → 输入快照，永远可复算。
 
 ### 5.8 频道（collab）
@@ -586,7 +615,7 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 - **BR-05-83 消息种类**：TEXT 由人或 Agent 发；EVENT / DECISION_CARD / DISPATCH_CARD 只由系统（collab 投影器）写，HTTP 发送 kind≠TEXT → 422 145017。DECISION_CARD 投影 02 的「待裁决」（NEEDS_HUMAN_REVIEW），按钮调用 02 D1（权限仍由 02 判定，频道只是入口）；拒绝必须填写结构化反馈（复用 `StructuredFeedbackForm`）。
 - **BR-05-84 @mention**：客户端拾取器插入令牌 `<@principal_id>`；服务端解析令牌（不做显示名模糊匹配）：每个被提及者须为该频道当前成员（DEFAULT 频道按 BR-05-81 判定），否则 422 145003（`data.not_members[]`，UI 提示「X 不在本频道」，频道 OWNER / `channel_manage` 可〔邀请并发送〕）；已退役 Agent → 422 145016；每条 ≤20 个提及（422 145004）；不支持 `@all`/`@channel`（**本规格提议**：防通知风暴）。runtime 进程、机器、甲方联系人不是 Principal 或不是成员，无法被提及（PRD §5.3）。
 - **BR-05-85 Agent 收到提及**：collab 写 `collab_message_mentions` → outbox `message.posted`；fleet 消费后经 04 通道 `agent.inbox{channel_id, message_id, seq, excerpt≤2000}` 投递给 ACTIVE·RUNNING 的 Agent（非运行 → 不投递，频道内系统 EVENT 提示「Ada 当前未运行，消息将在其启动后送达」，启动时补投最近 24 h 未投递项）。Agent 以自身凭证 `POST /channels/{id}/messages` 回复（`reply_to_message_id`）。
-- **BR-05-86 「@Agent 请做 X」**：Agent 可做的唯一状态相关动作：(a) 以自身凭证创建 02 工作项草稿（需其角色允许，如 COORDINATOR）；(b) 若为主导 Agent，创建 `trigger=CHANNEL_REQUEST` 派单提案（`POST /entities/{p}/dispatch-proposals`，`requested_by`=原消息作者）。两者都产生 DISPATCH_CARD / 草稿卡片待人确认（BR-05-51）。执行者 Agent 被 @ 要求「开始做 W」→ 只能回复说明，不能自认领（02 BR-02-11）。
+- **BR-05-86 「@Agent 请做 X」**：Agent 可做的唯一状态相关动作：(a) 以自身凭证创建 02 工作项草稿（需其角色允许，如 COORDINATOR）；(b) 若为主管 Agent，创建 `trigger=CHANNEL_REQUEST` 派单提案（`POST /entities/{p}/dispatch-proposals`，`requested_by`=原消息作者）。两者都产生 DISPATCH_CARD / 草稿卡片待人确认（BR-05-51）。执行者 Agent 被 @ 要求「开始做 W」→ 只能回复说明，不能自认领（02 BR-02-11）。
 - **BR-05-87 事件折叠**（服务端提供 `fold_key`，客户端渲染）：同一频道中**连续**（中间无其他 kind 或其他 fold_key 消息）的 EVENT 且 fold_key 相同 → 折叠为一行（显示最新事件 + 「另 n 条」，可展开）；单组 ≤50 条，超出起新组；`attention=true` 的 EVENT（执行失败、Agent 崩溃 / 重启用尽、预算阈值、无合格候选）不折叠；DECISION_CARD **永不折叠**；DISPATCH_CARD 在 PROPOSED / SELECTION_PENDING 时不折叠，处理后可与同 fold_key 事件折叠。
 - **BR-05-88 Agent 互 @ 防环**：由 Agent 消息中的提及触发投递时，新消息 `trigger_depth = 父 + 1`；`trigger_depth ≥3` 的消息中的 Agent 提及不再投递（消息照常保存，显示「已达 Agent 连锁上限」）；Agent 发消息速率 ≤10 条/min/频道，人 ≤30 条/min/频道，超出 429 145010（`Retry-After`）。
 - **BR-05-89 编辑 / 撤回**：作者可在发送后 15 min 内编辑 TEXT（≤10 次，旧版本入 `collab_message_revisions`）；作者 24 h 内可撤回自己的 TEXT，`channel_manage` 可随时撤回任何 TEXT；撤回后 API 返回 `body=null, retracted=true`，原文仅 `audit_read` 可经修订表查看；编辑新增的提及会投递 / 通知，删除的提及不撤销已发通知。系统消息不可编辑 / 撤回（409 145006）。所有编辑 / 撤回审计 `collab.message_edited` / `collab.message_retracted`（不含正文）。
@@ -612,6 +641,17 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 - **BR-05-104 到期与闲置**：`fleet.spawn_lifecycle` 每 10 min 扫描；`expires_at ≤ now` 或 `now − idle_since ≥ idle_retire` → 正常退役（交接文档由该 Agent 撰写，10 min 超时则系统摘要）。到期前 24 h 发 N-05-15 给授权人（可收编以保留）。`idle_since` 在 Agent 失去最后一个 ACTIVE 分派时写入，获得分派时清空。
 - **BR-05-105 接管**：08 一键接管时同时撤销该项目的自建授权（08 侧），本模块按 L02 处理（`orphan_reason=TAKEOVER`）。
 - **BR-05-106 可观测**：每个自建请求在项目频道发「自建请求」卡片（主管、规格摘要、理由、预计成本上限、授权用量）；批准 / 拒绝 / 创建 / 失败更新同一卡片。全部动作审计，可按 `spawn_grant_id` 过滤。
+
+
+### 5.x 业务规则增补（D112 / D113，00 v2.0 §15）
+
+- **BR-05-107 内部验收自动派单**：IQ1 / IQ2 由 `fleet.internal_qa_dispatch` 处理，同事务调 02 `DispatchAssigner.Assign(role=TESTER|ACCEPTOR, lease_ttl_seconds=3600)`（REVIEWER 类分派，不改工作项状态，02 已支持非迁移分派）并调 03 `ExecutionLauncher.Launch(purpose=INTERNAL_TEST|INTERNAL_ACCEPTANCE, subject_execution_id)`。内部验收的分派与执行**不进入任何人的收件箱**，频道只写折叠的系统事件。
+- **BR-05-108 候选资格**：TESTER 候选 = 角色含 TESTER、ACTIVE·RUNNING、绑定项目、机器在线且有空槽；ACCEPTOR 候选另需机器具备 04 能力 `browser_capture`（模板要求 VISUAL 时）；均排除：被验收交付执行的执行者、该交付的派单者（主管）、同一工作项本轮已担任另一内部验收角色的 Agent（测试与验收不得同一主体）。
+- **BR-05-109 跨模型家族优先**：在合格候选中按「`model_family` ≠ 被验收执行的家族」优先；若无，则回退到「模型不同（同家族）且主体不同」，提案标 `family_fallback=true`（03 记录并在评审台显示）；若仍无 → IQ3 升级。评分沿用 BR-05-41，`fpa_bp` 替换为该 Agent 作为内部验收者的「穿透率倒数」（其放行后被人或甲方发现问题的比例越低越好；无数据取 0.5）。
+- **BR-05-110 计划审批者家族约束**：08 策略规则 `plan_approve` 对评审 Agent 的判定需本模块提供 `ModelFamilyOf(agent_id)`；评审 Agent 的家族必须与计划提出者（执行 Agent）不同，否则不得批准（返回 reason `SAME_MODEL_FAMILY`，由 08 登记）。主管 Agent 不得批准自己派出的计划（`SEPARATION_OF_DUTIES`）。
+- **BR-05-111 纯人工模式（HUMAN_ONLY）**：项目 `team_mode=HUMAN_ONLY` 时：① 派单引擎对 Agent 关闭（P01 不为 Agent 生成 EXECUTOR / TESTER / ACCEPTOR / REVIEWER 提案；手工分派给 Agent → 422 **142041**）；② 只允许 `ASSISTANT` 角色的 Agent 绑定到该项目；③ 助理能力白名单：来件分诊草稿、工作项拆解草稿、会议纪要 → 行动项草稿（无负责人或截止日期的行动项不得转任务，回推给会议主持人）、状态 / 计划 / 报告草稿（10）、风险与对账提示；助理产出一律为草稿，需人确认后生效，且必须附来源链接；④ 助理不得提交完成声明、不得做任何裁决或验收（08 S2 硬拒，reason `HUMAN_ONLY_MODE`）。
+- **BR-05-112 编制授权的角色边界**：主管创建请求 `role=TESTER` 受授权 `allowed_roles` 约束；`role=ACCEPTOR` 一律拒绝（142040）；已存在的 ACCEPTOR 被收编或退役不影响其他内部验收者资格。
+- **BR-05-113 学习回流**：消费 `quality.escaped`（发布者 02 / 07 / 12 Part A，按 `escape_key` 去重；03 不发布，00 §7.1）：对参与该工作项内部验收的 TESTER / ACCEPTOR Agent 记一次「放行后穿透」，更新其内部验收绩效（BR-05-109 评分输入），并在 Agent 详情「记忆」标签显示经验条目（由 02 `delivery.escape_learning` 经 06 提出）。
 
 ## 6. 接口契约
 
@@ -667,7 +707,7 @@ F15 为人 + Agent 统一投影（**本规格提议**；资源语义卡：Meanin
 
 | # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|---|---|
-| H01 | POST `/work-items/{work_item_id}/ensemble-plans` | work-items | 人：`work_item_assign`+`execution_start` · O；主导 Agent：经 08 `AuthorityChecker`（`POLICY:ensemble_branch`，不经角色码） | `{trigger*, branch_count?, agent_ids?[]（须合格）, budget_cap_micros?, deadline_hours?(1–24), reason*≤2000}` | `EnsemblePlan`（201；PENDING_APPROVAL 或 RUNNING） | 422 143009/143010/143011；409 143016/130426 | ✔ |
+| H01 | POST `/work-items/{work_item_id}/ensemble-plans` | work-items | 人：`work_item_assign`+`execution_start` · O；主管 Agent：经 08 `AuthorityChecker`（`POLICY:ensemble_branch`，不经角色码） | `{trigger*, branch_count?, agent_ids?[]（须合格）, budget_cap_micros?, deadline_hours?(1–24), reason*≤2000}` | `EnsemblePlan`（201；PENDING_APPROVAL 或 RUNNING） | 422 143009/143010/143011；409 143016/130426 | ✔ |
 | H02 | GET `/ensemble-plans/{plan_id}` | ensemble-plans | `work_item_read` · O | — | `EnsemblePlan` + `branches[]`；ETag | 404 | — |
 | H03 | PUT `/ensemble-plans/{plan_id}/approval` | ensemble-plans | `work_item_assign` · O；HUMAN（cap 超默认另需 `project_manage`） | `{note?}` | `EnsemblePlan`（RUNNING） | 409 143013/140409；403 140403 | v |
 | H04 | GET `/ensemble-plans/{plan_id}/comparison-report` | ensemble-plans | `work_item_read`+`execution_read` · O | — | `ComparisonReport`（§6.5） | 409 143012 | — |
@@ -757,7 +797,7 @@ F15 为人 + Agent 统一投影（**本规格提议**；资源语义卡：Meanin
 | `DispatchProvenance`（00 §8） | `DispatchedBy(ctx, tx, work_item_id) ([]principal_id, error)` | 02（填入 08 `WorkItemFacts.DispatchedByActor`） |
 | `ChannelProvisioner`（collab，新增，CCR-05-05） | `CreateDefaultOn(ctx, tx, {tenant_id, project_id, name, member_principal_ids}) (channel_id, error)`；`RenameDefaultOn(ctx, tx, project_id, name)`；`ArchiveProjectChannelsOn(ctx, tx, project_id)` | 07 |
 | `ChannelPoster`（collab，新增） | `PostSystemOn(ctx, tx, {project_id, channel_id?, kind, payload, fold_key, attention, ref, source_event_id})`（缺省为默认频道） | fleet（DISPATCH_CARD、ensemble 对比卡、Agent 崩溃 / 不可用提示，在 fleet 事务内同步写入）；其他模块的频道呈现经领域事件由 `collab.event_projector` 投影，不直接调用 |
-| 向 08 `PolicyRegistry` 贡献的规则 | `dispatch_auto`（主导 Agent 在 AUTO 策略下 `work_item_assign`；条件：BR-05-44 护栏未命中且 P02 守卫通过）；`ensemble_branch`（主导 Agent 对 ENSEMBLE 枝 `execution_start`；条件：BR-05-60–62）；`review_dispatch`（系统在 AUTONOMOUS 下的 REVIEWER 分派；条件：BR-05-53） | 08 |
+| 向 08 `PolicyRegistry` 贡献的规则 | `dispatch_auto`（主管 Agent 在 AUTO 策略下 `work_item_assign`；条件：BR-05-44 护栏未命中且 P02 守卫通过）；`ensemble_branch`（主管 Agent 对 ENSEMBLE 枝 `execution_start`；条件：BR-05-60–62）；`review_dispatch`（系统在 AUTONOMOUS 下的 REVIEWER 分派；条件：BR-05-53） | 08 |
 | 向 08 `SystemActions` 登记 | `fleet.review_dispatch` → `work_item_assign`（BR-05-53 的 SYSTEM 动作；未登记则 08 S1 返回 `SYSTEM_NOT_REGISTERED`） | 08 |
 
 **本模块使用**：02 `WorkItemReader`、`DispatchAssigner{Assign, Reassign, Release}` 与 `ClaimSubmitter.SubmitOn`（CCR-05-04）；03 `ExecutionLauncher{Launch, CancelExecution}`、`EvidenceReader.VerificationSummary`、执行对比数据（A08 同源服务方法）、HANDOVER Artifact 写入；04 `MachineDirectory`、通道命令扩展；06 `SkillCatalog.ForAgent`、`SkillMounter.MountOn`、`Retriever.Search(purpose=LEAD)`、`MemoryPolicyValidator`（CCR-05-07）；07 `ProjectReader`、`ProjectGate.CanAutoDispatch`、项目档案 #4；08 `AuthorityChecker`（含 `ListEligible`）、`DelegationRevoker`、`PolicyRegistry`；02 `WorkItemTransitioner.EnsembleFailed`；底座 identity `ServiceAccountProvisioner`（CR-04-08）与 `PrincipalAvatarSetter`（新增），core `EntityRoleBindingStore{PutOn, RemoveOn, ListByEntity}`，authn `ReauthenticationConsumer`，`audit.Appender`，`dlock`；09 `JobQueue`、`OutboxPublisher`、`RealtimeBroadcaster`、`Notifier`、`SecretSealer`。
@@ -849,6 +889,13 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 
 本模块使用的 08 接口：`SpawnGrantReader.Active(ctx, tx, tenantID, supervisorAgentID) (*SpawnGrantView, error)`；`SpawnGrantUsage.Reserve(ctx, tx, grantID, {request_id}) (reservationID, error)`、`SpawnGrantUsage.Release(ctx, tx, grantID, {reservation_id?, agent_id?}) error`。成本累计由 08 自行消费 `execution.cost_updated`。
 
+
+### 6.x 接口增补（D112 / D113，00 v2.0 §15）
+
+- 机器通道（§6.6 唯一定义）新增：S→M `agent.test{command_id, agent_id, work_item_id, subject_execution_id, qa_execution_id, deadline_at}`、`agent.accept{…同上, screenshots[]: file_node_id}`；M→S `agent.qa_ack{command_id, agent_id, accepted:bool, reason?}`。实际执行与结果回传走 03 的执行消息（`purpose=INTERNAL_*`）。
+- 提供：`ModelFamilyOf(ctx, agent_id) (string, error)`（08 计划审批策略、03 记录使用）；`AgentDirectory` 视图增加 `model_family` 与 `roles` 中的新角色。
+- 错误码：**142040** 主管不得创建产品验收 Agent；**142041** 纯人工项目不可把执行 / 内部验收分派给 Agent；**142042** 角色组合非法（ACCEPTOR+EXECUTOR / ASSISTANT+其他）；**142043** 无合格内部验收候选（仅用于接口查询与审计，派单路径走 IQ3 升级）。
+
 ## 7. 后台任务与事件
 
 ### 7.1 任务（经 09 `JobQueue`；周期互斥用 `internal/infra/dlock`，锁名 `fleet:<job>` / `collab:<job>`，`maxHold` = 周期 ×2）
@@ -860,7 +907,7 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 | `fleet.agent_credential_delivery` | 创建 / 换绑 / F08 后 | 任务键 `agent:<id>:cred:<credential_id>` | BR-05-03 ⑦⑧ | 10 s/30 s/90 s/5 min/15 min，5 次后 FAILED + N-05-02 |
 | `fleet.agent_pending_cleanup` | 消费 `machine.state_changed{ONLINE}` | 每机一次 | 对 `pending_cleanup_machine_id = 该机` 的 Agent 下发 `agent.cleanup` | 30 天未完成 → 清空字段，审计 `fleet.agent_cleanup_abandoned` |
 | `fleet.retirement_runner` | R03 `advance` 后及每 30 s | 每退役 dlock `fleet:retirement:<id>` | 推进 R4→R7；R2 10 min、R5 5 min 超时处理 | R6 失败整体回滚，60 s 后重试，3 次失败 → state=FAILED，N-05-06 |
-| `fleet.dispatch_cycle` | 消费 `work_item.created{state:READY}`、`work_item.state_changed{to:READY}`、`work_item.assigned`（释放）、`project.stage_changed{to:ACTIVE}`、`agent.state_changed`、`machine.state_changed`（去抖 30 s）；兜底每 5 min；只处理阶段 ACTIVE 的项目（BR-05-55） | dlock `fleet:dispatch:<project_id>`（maxHold 60 s） | BR-05-48 排序取 ≤10 项 → 生成提案 → AUTO 护栏 → 应用 | 主导 Agent 未回应走 BR-05-42 回退；单项失败不影响其他 |
+| `fleet.dispatch_cycle` | 消费 `work_item.created{state:READY}`、`work_item.state_changed{to:READY}`、`work_item.assigned`（释放）、`project.stage_changed{to:ACTIVE}`、`agent.state_changed`、`machine.state_changed`（去抖 30 s）；兜底每 5 min；只处理阶段 ACTIVE 的项目（BR-05-55） | dlock `fleet:dispatch:<project_id>`（maxHold 60 s） | BR-05-48 排序取 ≤10 项 → 生成提案 → AUTO 护栏 → 应用 | 主管 Agent 未回应走 BR-05-42 回退；单项失败不影响其他 |
 | `fleet.lead_plan_timeout` | 每个 `agent.lead_plan` 发出后延迟 120 s | 任务键 `proposal:<id>` | 未收到结果 → 系统 top-1 | — |
 | `fleet.dispatch_proposal_expiry` | 每 60 s | dlock 全局 | `state='PROPOSED' AND expires_at < now` → P06；工作项已失去提案前提（按 P08 的触发类型规则）→ P08 | — |
 | `fleet.redispatch_machine_offline` | 消费 `machine.state_changed{to:OFFLINE}`，延迟 5 min | 任务键 `machine:<id>:offline:<state_changed_at>` | 仍 OFFLINE → 对其 Agent 的 CLAIMED 分派调 02 `Release`；当前执行 INTERRUPTED 的工作项按 BR-05-52(e) 生成 REDISPATCH 提案 | 机器已恢复 → 放弃 |
@@ -895,7 +942,7 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 | `ensemble.plan_created` | H01 | `{plan_id, work_item_id, branch_count, budget_cap_micros, requires_approval}` |
 | `ensemble.cancelled` | H06 / H10 / H11 | `{plan_id, work_item_id, reason:"ALL_FAILED"\|"MANUAL"\|"APPROVAL_EXPIRED"}` |
 | `ensemble.started`（00） | H02 / 自动 RUNNING | `{plan_id, work_item_id, branches:[{agent_id, model_id, execution_id}], budget_cap_micros}` |
-| `ensemble.compared`（00） | H05 | `{plan_id, work_item_id, system_pick_branch_id, lead_pick_branch_id, requires_human}`（`requires_human=true` 时 08 建 ENSEMBLE_SELECTION 待办；AUTO 且系统与主导一致时为 false） |
+| `ensemble.compared`（00） | H05 | `{plan_id, work_item_id, system_pick_branch_id, lead_pick_branch_id, requires_human}`（`requires_human=true` 时 08 建 ENSEMBLE_SELECTION 待办；AUTO 且系统与主管一致时为 false） |
 | `ensemble.selected`（CCR-05-08） | H07 / H08 / H09 | `{plan_id, work_item_id, selected_branch_id, selected_by, synthesized:bool}` |
 | `channel.created` / `channel.archived`（CCR-05-08） | C02 / 归档 | `{channel_id, project_id, kind}` |
 | `message.posted`（CCR-05-08） | C09 与系统消息 | `{channel_id, message_id, seq, kind, author{kind,id}, mention_principal_ids[], trigger_depth}`（**不含正文**） |
@@ -938,6 +985,14 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 
 ---
 
+
+### 7.x 任务与事件增补（D112 / D113，00 v2.0 §15）
+
+任务：`fleet.internal_qa_dispatch`（消费 `internal_qa.passed{stage ∈ AUTOMATED, AGENT_TEST}`；任务键 `iq:{subject_execution_id}:{role}`，幂等；30 min 未开始的延迟复查 → IQ4）。
+发布：`dispatch.proposed` / `dispatch.applied`（`trigger=INTERNAL_QA`，`requires_human=false`，08 不为其建收件箱项）。
+消费：03 `internal_qa.passed`、`quality.escaped`（02 / 07 / 12 Part A）；07 `project.mode_changed`（切到 HUMAN_ONLY 时：撤销该项目非 ASSISTANT Agent 的项目绑定与未开始分派，经 02 `DispatchAssigner.Release`；进行中的执行按 02 规则处理）。
+登记 08 `SystemActions`：`fleet.internal_qa_dispatch` → `work_item_assign`。
+
 ## 8. 页面规格
 
 所有页面在 `apps/delivery`；路由前缀 `/t/:tenantID`；通用五态（骨架、空、错误可重试、无权限说明缺失权限码、离线 / 重连横幅）；Agent 头像统一 `ActorAvatar`（圆角方形像素人 + 芯片角标）；状态用 `StateBadge`（图标 + 文字 + 语义色：ACTIVE 绿「运行中」、STOPPED 灰「已停止」、CRASHED 红「已崩溃」、RETIRING 琥珀「退役中」、RETIRED 虚线灰「已退役」、DRAFT 中性「草稿」、UNREACHABLE 虚线「机器离线」）。
@@ -969,7 +1024,7 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 ### 8.3 Agent 详情（`/t/:tenantID/agents/:agentID/:tab`）
 
 - **头部**：头像、名称、handle、状态徽章（含 process_status）、机器（链接到 04 机器详情）、runtime × 模型 × 强度、「需重启生效」徽标（修订落后时）；按钮：〔启动〕（DRAFT / STOPPED，且机器 ONLINE、凭证已送达）、〔停止〕（ACTIVE / CRASHED）、〔重启〕（ACTIVE / CRASHED）、〔换绑机器〕（DRAFT / STOPPED / CRASHED 且无运行中执行）、〔编辑〕、〔退役〕（红色次要按钮，`agent_retire`）。不可用按钮悬浮说明原因（如「机器离线」）。CRASHED 且 `restart_exhausted` 时显示红色横幅：「30 分钟内崩溃 4 次，已停止自动重启」+ 最近 3 条崩溃原因 +〔查看进程记录〕。
-- **Tab 概览**：绩效四卡（首次验收率、单位已接受成本、返工率、当前负载，含窗口切换 30 / 90 天与 `computed_at`）、按工作项类型的小表、最近进程事件、所在项目（主导的项目带 LEAD 标）。
+- **Tab 概览**：绩效四卡（首次验收率、单位已接受成本、返工率、当前负载，含窗口切换 30 / 90 天与 `computed_at`）、按工作项类型的小表、最近进程事件、所在项目（主管的项目带 LEAD 标）。
 - **谱系卡（D110，概览顶部）**：来源徽章；创建者（人或主管，可点击）、主管、所属自建授权（名称与名额 / 预算计量条）、创建理由（主管原文）、到期时间（`CountdownRing`）、收编人与时间、孤儿原因。主管 Agent 的详情另有「它创建的 Agent」列表与〔调整授权〕（跳 08 授权与策略）。孤儿态顶部琥珀横幅〔收编〕〔退役〕。
 - **Tab 工作项**：复用 02 列表（`assignee_principal_id=eq:<principal>`），进行中 / 历史切换；每行 `CompletionLadder`。
 - **Tab 授权**：AgentRole 与项目角色绑定（只读，链接到 07 项目团队）、08 委托（剩余有效期 `CountdownRing`、使用次数）；FULL_AUTO 红色标签。
@@ -983,20 +1038,20 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 ### 8.4 退役向导（`/t/:tenantID/agents/:agentID/retirement`）
 
 - **入口**：详情〔退役〕→ 模式选择对话框：「正常退役（推荐，机器在线）」/「强制退役（机器异常时）」；机器非 ONLINE 时正常退役禁用并说明 142024。
-- **正常退役步骤条**：① 检查（在途工作项 n、运行中执行 n、主导的项目列表「退役后这些项目的派单策略会切回人工确认」）→ ② 交接文档（进度、10 min 倒计时 `CountdownRing`；完成后内嵌预览 + 下载；超时显示系统摘要与〔让 Agent 重试一次〕）→ ③ 接手人（单选：人 / Agent / 稍后再选；成员选择器分组显示负载与首次验收率；不合格项逐条标红并说明）→ ④ 确认并执行（汇总将转交 / 释放的工作项、将清理的机器目录、将吊销的凭证；〔开始退役〕）→ 执行中逐步打勾（转交、清理、吊销、完成），失败项列表可〔重试〕。①–③ 可〔取消退役〕。
+- **正常退役步骤条**：① 检查（在途工作项 n、运行中执行 n、主管的项目列表「退役后这些项目的派单策略会切回人工确认」）→ ② 交接文档（进度、10 min 倒计时 `CountdownRing`；完成后内嵌预览 + 下载；超时显示系统摘要与〔让 Agent 重试一次〕）→ ③ 接手人（单选：人 / Agent / 稍后再选；成员选择器分组显示负载与首次验收率；不合格项逐条标红并说明）→ ④ 确认并执行（汇总将转交 / 释放的工作项、将清理的机器目录、将吊销的凭证；〔开始退役〕）→ 执行中逐步打勾（转交、清理、吊销、完成），失败项列表可〔重试〕。①–③ 可〔取消退役〕。
 - **强制退役**：红色对话框：后果清单（「正在进行的执行会被取消」「未保存的工作状态会丢失」「操作无法撤销」「交接文档只能由系统根据记录生成」）、原因（≥10）、输入 Agent 名称（逐字一致才可提交）、step-up 重新认证；提交后显示结果页（丢失清单、待清理机器）。
 - **移动端**：步骤条变为顶部「第 n / 4 步」；成员选择器全屏 Sheet。
 
 ### 8.5 项目「团队编排」卡片（项目总览右栏，`/t/:tenantID/p/:projectID`）
 
-- **内容**：主导 Agent（头像、状态、runtime × 模型；空则「未设置 — 所有派单由系统评分并需人确认」）、派单策略（MANUAL「提案需人确认」 / AUTO「策略内自动生效」+ 护栏说明链接）、并行上限（1–5，默认 3）、近 24 h：提案数、自动生效数、被改派数、无合格候选数。
-- **编辑**：〔编辑〕（`project_manage`）打开表单，提交调用 07 #4（If-Match = 项目版本）；主导 Agent 选择器只列 ACTIVE、含 LEAD、在本项目有 `agent_lead` 绑定的 Agent（07 校验 127042）；切 AUTO 且无主导 Agent 时提示「AUTO 需要主导 Agent，否则按人工确认处理」；项目只读（CLOSED / CANCELLED）时隐藏编辑。
+- **内容**：主管 Agent（头像、状态、runtime × 模型；空则「未设置 — 所有派单由系统评分并需人确认」）、派单策略（MANUAL「提案需人确认」 / AUTO「策略内自动生效」+ 护栏说明链接）、并行上限（1–5，默认 3）、近 24 h：提案数、自动生效数、被改派数、无合格候选数。
+- **编辑**：〔编辑〕（`project_manage`）打开表单，提交调用 07 #4（If-Match = 项目版本）；主管 Agent 选择器只列 ACTIVE、含 LEAD、在本项目有 `agent_lead` 绑定的 Agent（07 校验 127042）；切 AUTO 且无主管 Agent 时提示「AUTO 需要主管 Agent，否则按人工确认处理」；项目只读（CLOSED / CANCELLED）时隐藏编辑。
 - **链接**：〔查看派单提案〕→ 8.6。
 
 ### 8.6 派单提案面板（`/t/:tenantID/p/:projectID/dispatch`）
 
 - **布局**：左列提案列表（筛选：待处理 / 已生效 / 已改派 / 已过期 / 无合格候选；待处理按 `expires_at` 升序，`CountdownRing` 显示剩余时间）；右侧提案详情。
-- **详情**：工作项摘要（标题、类型、风险、必需技能）；推荐人卡（头像、总分、四舍五入两位）与理由（来源标签「主导 Agent」/「系统评分」）；护栏提示（如「风险 HIGH，需要人工确认」）；候选表：排名、Agent、总分、五个分量条（技能 / 首次验收 / 成本 / 负载 / 轮换，悬浮显示原始输入）、不合格候选折叠区（不合格原因中文化，如「机器离线」「技能不符：缺少 frontend」）；〔复算说明〕展示公式与 `inputs_digest`。
+- **详情**：工作项摘要（标题、类型、风险、必需技能）；推荐人卡（头像、总分、四舍五入两位）与理由（来源标签「主管 Agent」/「系统评分」）；护栏提示（如「风险 HIGH，需要人工确认」）；候选表：排名、Agent、总分、五个分量条（技能 / 首次验收 / 成本 / 负载 / 轮换，悬浮显示原始输入）、不合格候选折叠区（不合格原因中文化，如「机器离线」「技能不符：缺少 frontend」）；〔复算说明〕展示公式与 `inputs_digest`。
 - **按钮**：〔确认派给 X〕（PROPOSED、有 `work_item_assign`）、〔改派〕（打开成员选择器，人与 Agent 分组，必须填理由）、〔驳回〕（理由必填）、〔重新生成〕（非 PROPOSED 时，D02）。并发冲突 409 → 刷新并提示「已被 Morgan 处理」。
 - **无合格候选**：显示原因直方图与「最接近的 3 名」及各自差什么，按钮〔指派给…〕〔驳回〕。
 - **移动端**：列表全屏，点击进入详情；候选分量以紧凑横条显示。
@@ -1004,8 +1059,8 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 ### 8.7 Heavy 对比报告视图（`/t/:tenantID/p/:projectID/work-items/:workItemID/ensembles/:planID`，v1.1）
 
 - **头部**：计划状态、触发原因、预算环（已用 / 上限，80% 琥珀、100% 红）、截止倒计时；〔批准启动〕（PENDING_APPROVAL）、〔取消〕。
-- **对比表**：每枝一列（≤5）：Agent + 模型、终态、证据覆盖、必需验证、测试、diff 规模、成本、时长、AI 辅助意见（灰色「仅参考」标签）、系统排名；每行最优值加粗；不宣称「胜者」，只在列头标「系统排序第 1」与「主导 Agent 推荐」。
-- **主导 Agent 理由**：独立区块，来源标签。
+- **对比表**：每枝一列（≤5）：Agent + 模型、终态、证据覆盖、必需验证、测试、diff 规模、成本、时长、AI 辅助意见（灰色「仅参考」标签）、系统排名；每行最优值加粗；不宣称「胜者」，只在列头标「系统排序第 1」与「主管 Agent 推荐」。
+- **主管 Agent 理由**：独立区块，来源标签。
 - **选择**：〔选这一枝送审〕（每列底部）、〔合成…〕（选择主枝 + 被合成枝，显示剩余预算）；提交需理由；选择后提示「已提交声明，仍需正常验证与裁决」。
 - **落选枝**：灰显 + 「已归档（保留证据）」，可展开查看执行详情。
 - **移动端**：横向滑动的枝卡片，比较项纵向排列。
@@ -1030,6 +1085,14 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 - **状态**：PROPOSED（琥珀）、CREATED（绿，链接新 Agent）、REJECTED / EXPIRED（灰）、FAILED（红，显示 `failure_code` 文案）。
 - **移动端**：卡片全宽，按钮固定底部。
 
+
+### 8.x 页面增补（D112 / D113，00 v2.0 §15）
+
+- **成员与 Agent**：角色筛选增加「测试 Agent / 产品验收 Agent / 助理」；Agent 行显示模型家族徽章；产品验收 Agent 行显示「仅人类创建」。
+- **Agent 详情**：概览显示模型家族；新增「内部验收」统计（担任测试 / 验收次数、一次通过率、放行后穿透次数与明细链接）。
+- **项目「团队编排」卡片**：新增「内部质量门」区块：测试 Agent 池、产品验收 Agent 池（各自模型家族分布，单一家族时黄色提示「无法满足跨家族验收」）、`max_internal_rounds`（只读，来自模板参数 / 项目设置）；纯人工项目显示「内部验收由人完成，Agent 仅为助理」。
+- **新建 Agent**：角色选择 ACCEPTOR 时提示「产品验收 Agent 需与执行者使用不同模型家族以保证独立性」，并按团队现有执行者家族推荐模型。
+
 ## 9. 通知
 
 经 09 `Notifier`（站内 inbox + 用户配置的外部渠道）；文案三语 key 化，以下为 zh-CN。
@@ -1047,7 +1110,7 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 | N-05-11 | Ensemble 待批准 | 项目内持 `work_item_assign` 的人（超默认预算另含 `project_manage` 持有者） | 站内（我的裁决 `ENSEMBLE_APPROVAL`） | 「{work_item} 的并行求解（{n} 枝，预算 ${cap}）等待批准，24 小时后自动取消」 | 每计划一次 |
 | N-05-12 | 评审派单无合格 Agent / 连续超时（AUTONOMOUS） | 项目所有者 | 站内 | 「{work_item} 没有可用的评审 Agent，已转人工裁决」 | 每项一次（同时交 08 `NO_ELIGIBLE_AUTHORITY`） |
 | N-05-09 | 被 @（人类） | 被提及者（静音频道仍通知提及） | 站内；用户离线 >10 min 且未读时发邮件摘要 | 「{author} 在 #{channel} 提到了你：{excerpt≤140}」 | 同频道 5 min 内合并；邮件每人每小时 ≤1 封 |
-| N-05-10 | 主导 Agent 变为不可用（崩溃用尽 / 退役） | 其主导项目的交付负责人 | 站内 | 「{project} 的主导 Agent {name} 不可用，派单已切回人工确认」 | 每项目每事件一条 |
+| N-05-10 | 主管 Agent 变为不可用（崩溃用尽 / 退役） | 其主管项目的交付负责人 | 站内 | 「{project} 的主管 Agent {name} 不可用，派单已切回人工确认」 | 每项目每事件一条 |
 
 | N-05-13 | 自建请求待审批（REQUIRE_APPROVAL） | 对请求项目持 `agent_manage` 的人 | 站内（08 收件箱） | 「主管 {supervisor} 申请新增 {role}「{name}」：{reason≤80}」 | 每请求一条 |
 | N-05-14 | 自建 Agent 成为孤儿 | 授权人 + 项目交付负责人 | 站内 + 邮件 | 「{supervisor} 创建的 {n} 个 Agent 已停用（{orphan_reason}），7 天内未收编将自动退役」 | 同授权同原因 1 h 合并 |
@@ -1175,21 +1238,21 @@ Given X 与 Y score 相同；X fpa_bp 7500、Y 7600
 Then  Y 在前；若 fpa 也相同、active 0 vs 1 → active 0 在前；依次至 agent_id 数值小者在前
 
 AC-05-21  [integration]  关联 US-05-08, BR-05-43–45（MANUAL）
-Given P MANUAL，主导 Agent L；W 进入 READY
+Given P MANUAL，主管 Agent L；W 进入 READY
 When  派单循环运行，L 选择 Ada 并给出理由
 Then  一条 PROPOSED 提案（requires_human=true，rationale_source=LEAD），默认频道出现 DISPATCH_CARD（不折叠），N-05-03 发给 Morgan；W 无分派
 When  Morgan PUT resolution {kind:CONFIRM}（If-Match 正确）
 Then  同事务：02 Assign 生成分派与 ASSIGN Decision（actor=Morgan，authority=ROLE:delivery_lead，detail.dispatch_proposal_id）；提案 APPLIED/CONFIRMED；dispatch.applied；卡片变为「已派给 Ada · Morgan 确认」
 
 AC-05-22  [integration]  关联 BR-05-44, BR-05-45（AUTO）
-Given P 切为 AUTONOMOUS（07 置 AUTO），主导 Agent L，W 风险 MEDIUM，预算充足
+Given P 切为 AUTONOMOUS（07 置 AUTO），主管 Agent L，W 风险 MEDIUM，预算充足
 When  派单循环运行
 Then  提案 AUTO_APPLIED；02 ASSIGN Decision actor=L（AGENT）、authority_source=POLICY:dispatch_auto、detail.dispatch_proposal_id=该提案；频道仅一条折叠 EVENT，无卡片
 And   W' 风险 HIGH → requires_human=true（guard_reasons 含 G1）；L 选第 3 名且分差 >15 分 → G3；项目预算 EXHAUSTED → G2；均停在 PROPOSED
 
 AC-05-23  [integration]  关联 BR-05-42
 Given L 返回 pick=Dev（不合格）或 120 s 未回应
-Then  推荐 = 系统 top-1，rationale_source=SYSTEM；卡片注明「主导 Agent 未给出有效建议」
+Then  推荐 = 系统 top-1，rationale_source=SYSTEM；卡片注明「主管 Agent 未给出有效建议」
 
 AC-05-24  [integration]  关联 US-05-09, P04, BR-05-50
 Given PROPOSED 推荐 Ada
@@ -1256,7 +1319,7 @@ And   Morgan 在 Ada↔Bo 私信发消息 → 403 145403（DIRECT_READ_ONLY）�
 And   人类 POST channels {kind:AGENT_DIRECT} → 403 145403（DIRECT_READ_ONLY）；HTTP 发送 kind=DISPATCH_CARD → 422 145017
 
 AC-05-33  [integration]  关联 BR-05-51, BR-05-86
-Given P 为 AUTONOMOUS（AUTO），主导 Agent L
+Given P 为 AUTONOMOUS（AUTO），主管 Agent L
 When  阿澈（无 work_item_assign）在频道写 "<@L> 把 W 派给 Bo"，L 据此 D02 trigger=CHANNEL_REQUEST
 Then  提案 requires_human=true（即使 AUTO）；卡片「确认」对阿澈不可用、对 Morgan 可用；W 状态不变
 And   执行者 Agent Ada 被 @「开始做 W2」→ 只回复消息；Ada 尝试自建 EXECUTOR 分派 → 403 120403（AGENT_SELF_CLAIM，02）
@@ -1458,6 +1521,25 @@ Given 名册含 2 个人类、3 个人工创建 Agent、2 个自建 Agent（其�
 When  选择「AI 创建的 Agent」
 Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；切换〔按主管分组〕显示 Atlas → 2 个子节点与「名额 / 预算」用量
 
+
+### 10.x 验收标准增补（D112 / D113，00 v2.0 §15）
+
+| ID | 层 | 关联 | Given / When / Then |
+|---|---|---|---|
+| AC-05-66 | integration | IQ1, BR-05-107 | **G** 交付执行 AUTOMATED 通过 **W** `internal_qa.passed{AUTOMATED}` **T** ≤30 s 派 TESTER（SYSTEM 来源），03 启动 INTERNAL_TEST；无人收件箱新增 |
+| AC-05-67 | integration | IQ2 | **G** 测试阶段通过 **W** 事件到达 **T** 派 ACCEPTOR，截图随 `agent.accept` 下发 |
+| AC-05-68 | integration | BR-05-109 | **G** 执行者为 openai 家族；候选 A（anthropic）、B（openai，不同模型）**W** 派 ACCEPTOR **T** 选 A，`family_fallback=false` |
+| AC-05-69 | integration | BR-05-109 | **G** 仅有 openai 家族候选 B（模型不同）**W** 派 ACCEPTOR **T** 选 B，`family_fallback=true` |
+| AC-05-70 | integration | IQ3 | **G** 无任何合格 ACCEPTOR **W** 派单 **T** 02 升级（MANDATORY_HUMAN_GATE，reason NO_INTERNAL_QA_AGENT）|
+| AC-05-71 | integration | BR-05-108 | **G** Agent X 已担任本轮 TESTER **W** 派 ACCEPTOR **T** X 不在候选中 |
+| AC-05-72 | unit | BR-05-112 | **G** 主管创建请求 role=ACCEPTOR **W** 提交 **T** 422 142040 |
+| AC-05-73 | integration | BR-05-112 | **G** 编制授权 allowed_roles 含 TESTER **W** 主管申请创建 TESTER **T** 按 D110 流程进入审批 |
+| AC-05-74 | integration | BR-05-111 | **G** 项目 HUMAN_ONLY **W** 交付负责人手工把工作项分派给 Agent **T** 422 142041 |
+| AC-05-75 | integration | BR-05-111 | **G** HUMAN_ONLY 项目的助理 Agent 起草周报 **W** 草稿生成 **T** 草稿状态，需人确认；助理调用裁决接口 → 403（HUMAN_ONLY_MODE） |
+| AC-05-76 | integration | BR-05-110 | **G** 执行 Agent 与评审 Agent 同为 anthropic **W** 评审 Agent 批准计划 **T** 拒绝，reason SAME_MODEL_FAMILY |
+| AC-05-77 | integration | BR-05-113 | **G** ACCEPTOR Y 放行的工作项被甲方拒收 **W** 07 发布 `quality.escaped{stage:CLIENT_ACCEPTANCE}`（同一 `escape_key` 重复投递只计一次）**T** Y 的穿透计数 +1，下次派单评分下降；记忆标签出现经验条目 |
+| AC-05-78 | integration | 7.x | **G** 项目切换为 HUMAN_ONLY，有 2 个未开始的 Agent 执行分派 **W** `project.mode_changed` **T** 两个分派被释放；EXECUTOR Agent 的项目绑定被撤销 |
+
 ## 11. 度量与埋点（不含提示词、消息正文、代码）
 
 | 事件 | 属性 |
@@ -1483,6 +1565,11 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 
 ---
 
+
+### 11.x 度量增补（D112 / D113，00 v2.0 §15）
+
+`internal_qa_dispatch_total{role, family_fallback}`、`internal_qa_no_candidate_total{role}`、`acceptor_escape_rate`（按 Agent）、`human_only_assistant_drafts_total{kind, confirmed}`。
+
 ## 12. 依赖、风险与待决
 
 ### 12.1 依赖
@@ -1504,7 +1591,7 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 
 | 风险 | 缓解 |
 |---|---|
-| 主导 Agent 被频道文本注入诱导派单 | 频道请求一律需人确认（BR-05-51）；LLM 只能在预过滤集合中选；提案全量可复算 |
+| 主管 Agent 被频道文本注入诱导派单 | 频道请求一律需人确认（BR-05-51）；LLM 只能在预过滤集合中选；提案全量可复算 |
 | AUTO 派单在预算 / 风险边界失控 | G1–G9 护栏 + 07 `ProjectGate` + 每小时 20 次上限；一键接管（08）即切 MANUAL |
 | 崩溃循环刷屏与成本 | 30 min / 3 次上限 + 退避；attention 事件不折叠但通知去重 |
 | 评分依赖的 FPA 冷启动偏差 | 贝叶斯先验（权重 4）+ 多样性分量；样本 <5 在 UI 标注 |
@@ -1517,8 +1604,8 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 | # | 问题 | 建议 |
 |---|---|---|
 | Q-05-01 | 退役 Agent 的规则型记忆是否可转给接手 Agent | 默认冻结；向导提供「复制规则型记忆给接手 Agent」，复制项经 06 人审后生效（防投毒） |
-| Q-05-02 | 主导 Agent 规划调用成本计入哪里 | 计入项目预算（07 成本事件），不计个人 CPA；需 07 接受 `source=LEAD_PLANNING` 的成本行 |
-| Q-05-03 | REVIEWER 派单（评审认领）是否也由主导 Agent 提案 | **已决**：AUTONOMOUS 项目在 MVP 即派评审 Agent（BR-05-53，系统评分，复用同一公式，fpa 换为评审一致率）；HYBRID 不派评审，由「我的裁决」承担 |
+| Q-05-02 | 主管 Agent 规划调用成本计入哪里 | 计入项目预算（07 成本事件），不计个人 CPA；需 07 接受 `source=LEAD_PLANNING` 的成本行 |
+| Q-05-03 | REVIEWER 派单（评审认领）是否也由主管 Agent 提案 | **已决**：AUTONOMOUS 项目在 MVP 即派评审 Agent（BR-05-53，系统评分，复用同一公式，fpa 换为评审一致率）；HYBRID 不派评审，由「我的裁决」承担 |
 | Q-05-04 | 频道消息保留期 | v2：项目关闭 365 天后清理正文、保留元数据与审计；需法务确认 |
 | Q-05-05 | 评分权重是否允许团队调整 | MVP 固定（可复算、便于比较）；v1.1 允许项目级覆盖并在 `scoring_version` 中体现 |
 | Q-05-06 | 是否开放人 ↔ Agent 私信 | 不开放；对 Agent 的请求应在项目频道中可见、可审计 |
@@ -1545,3 +1632,5 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 **第二轮复审（00 v1.5）**：#2 REDISPATCH 允许非 READY 并经 `Reassign`；#3 BR-05-56 发布说明起草（`agent.release_notes`）；#4/#5/#27 评审派单 SYSTEM 身份、`lease_ttl_seconds=1800`、超时经 02 `WorkItemEscalator` 升级；#9 阶段 ∈ {ACTIVE, ACCEPTANCE_PENDING}；#14 `pending_claim.head_commit`；#18 §6.6 为 Agent 通道唯一定义；#22 `ensemble.compared.requires_human`；#24 立即消费 `project.members_changed`；#26 `POLICY:dispatch_auto` + `detail.dispatch_proposal_id`（CCR-05-10 按此定稿）；新增 AC-05-50..52。
 
 **D110（主管 Agent 自建 Agent）已并入 00 v1.8**：新增模块共享枚举 `AgentOrigin`（HUMAN_CREATED / AGENT_SPAWNED）、权限码 `agent_spawn`（不经角色授予，仅策略规则 `spawn_grant`）、事件 `agent.spawn_requested` / `agent.spawned` / `agent.spawn_rejected` / `agent.spawn_failed` / `agent.orphaned` / `agent.adopted`（发布者 fleet）与 `spawn_grant.*`（发布者 governance）、08 接口 `SpawnGrantReader` / `SpawnGrantUsage`。本规格新增 US-05-17–20、§3.11–3.12、§4.6–4.7、§5.9（BR-05-97–106）、E12、§6.10（G01–G06）、错误码 142031–142039、§7 三个任务与事件、§8.9、N-05-13–15、AC-05-53–65。
+
+> **D112 / D113 已并入（00 v2.0 §15）**：依赖 02 `DispatchAssigner.Assign(role ∈ TESTER / ACCEPTOR)` 非迁移分派与 `WorkItemEscalator`；03 `internal_qa.*`、`ExecutionLauncher.Launch(purpose=INTERNAL_*)`；02 / 07 / 12 Part A `quality.escaped`（D114）；04 能力标记 `browser_capture` 与模型目录的 `model_family`；08 登记 reason `SAME_MODEL_FAMILY`、`HUMAN_ONLY_MODE` 与策略 `plan_approve` 使用 `ModelFamilyOf`；10 助理草稿。对 00 无新增变更请求。
