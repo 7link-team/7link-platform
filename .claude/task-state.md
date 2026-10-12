@@ -86,7 +86,8 @@
   W3 round1 caught by tester (file:// 0 tiles) then fixed; hidden acceptance 11/11 re-run independently; screenshots OK; chain 68.
   Research §5.1 updated.
   D116 tool calibration (user approved) DONE in 11/03/00/PRD + prototype SOFTWARE verifier tab (probe 0 errors, screenshot).
-  Next: WAIT for user (prototype review; optional L4 on runs/real-2048-qa2). Do not start implementation.
+  User did L4 accept on real-2048-qa2 (HUMAN:fan) -> COMPLETED, chain 74 ok; recorded in research §5.1.
+  Next: WAIT for user's prototype review. Do not start implementation.
   Proposal for user (not applied): spec 03 visual verifier needs tool calibration with known-good/bad sample pages.
 - RESEARCH DONE: docs/myrmidon/research/2026-10-collaboration-research.md (4 tracks synthesized, gap analysis, P0/P1/P2 upgrade,
   decisions A-G awaiting user; §5 MVP results). Do NOT change specs for the upgrade until user confirms A-G.
