@@ -11,6 +11,8 @@
 !/apps/**
 !/docs
 !/docs/**
+!/.mvp
+!/.mvp/**
 
 
 !/Makefile

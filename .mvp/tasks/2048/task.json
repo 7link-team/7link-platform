@@ -1,0 +1,24 @@
+{
+  "name": "2048",
+  "requirement": "requirement.md",
+  "acceptance": {
+    "dir": "acceptance",
+    "command": [
+      "node",
+      "--test",
+      "acceptance/*.test.mjs"
+    ]
+  },
+  "verify": [
+    {
+      "name": "unit-tests",
+      "command": [
+        "node",
+        "--test",
+        "tests/*.test.mjs"
+      ]
+    }
+  ],
+  "maxAttempts": 3,
+  "maxWorkItems": 4
+}
