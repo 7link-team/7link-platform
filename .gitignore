@@ -9,9 +9,13 @@
 
 !/apps
 !/apps/**
+!/docs
+!/docs/**
 
+
+!/Makefile
 
 !/.gitignore
-!/Makefile
+
 !/*.md
 !/*.json

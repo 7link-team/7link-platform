@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="aurora">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Myrmidon 原型</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<style>
+/* ================= Tokens（与 @workspace/ui 语义 Token 同名同义；Aurora 为新增主题） ================= */
+:root{
+  --font-head:"Space Grotesk","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --font-body:"DM Sans","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,"Cascadia Code",monospace;
+  --ease:cubic-bezier(.32,.72,0,1); --ease-out:cubic-bezier(.4,0,1,1);
+  --bw:1px;
+}
+[data-theme="aurora"]{
+  --bg:#F7F6FB; --bg-glow:radial-gradient(1200px 600px at 85% -10%,rgba(124,58,237,.10),transparent 60%),radial-gradient(900px 500px at -10% 110%,rgba(8,145,178,.08),transparent 60%);
+  --card:#FFFFFF; --shell:#F0EEF7; --muted:#F1EFF8; --muted-fg:#5B5874; --fg:#1A1830;
+  --border:rgba(26,24,48,.09); --border-strong:rgba(26,24,48,.16);
+  --primary:#7C3AED; --primary-fg:#FFFFFF; --primary-soft:rgba(124,58,237,.10);
+  --info:#0891B2; --info-soft:rgba(8,145,178,.10); --ok:#059669; --ok-soft:rgba(5,150,105,.10);
+  --warn:#B45309; --warn-soft:rgba(217,119,6,.12); --danger:#DC2626; --danger-soft:rgba(220,38,38,.09); --stale:#7C7A93;
+  --sidebar:rgba(255,255,255,.66); --radius:14px;
+  --shadow:0 1px 2px rgba(20,16,40,.04),0 10px 30px -14px rgba(20,16,40,.16);
+}
+[data-theme="aurora"].dark{
+  --bg:#09090F; --bg-glow:radial-gradient(1200px 600px at 85% -10%,rgba(159,122,234,.16),transparent 60%),radial-gradient(900px 500px at -10% 110%,rgba(34,211,238,.08),transparent 60%);
+  --card:#12121A; --shell:#1A1A25; --muted:#1C1C28; --muted-fg:#9C99B3; --fg:#ECEAF5;
+  --border:rgba(255,255,255,.08); --border-strong:rgba(255,255,255,.14);
+  --primary:#A78BFA; --primary-fg:#0D0B18; --primary-soft:rgba(167,139,250,.14);
+  --info:#22D3EE; --info-soft:rgba(34,211,238,.12); --ok:#34D399; --ok-soft:rgba(52,211,153,.12);
+  --warn:#FBBF24; --warn-soft:rgba(251,191,36,.12); --danger:#F87171; --danger-soft:rgba(248,113,113,.12); --stale:#8A88A0;
+  --sidebar:rgba(18,18,26,.7); --shadow:inset 0 1px 0 rgba(255,255,255,.04),0 10px 30px -14px rgba(0,0,0,.6);
+}
+/* 底座已有主题（取自 packages/ui/src/themes，Myrmidon 可切换） */
+[data-theme="modern"]{--bg:#fafafa;--bg-glow:none;--card:#fff;--shell:#f5f5f5;--muted:#f5f5f5;--muted-fg:#737373;--fg:#171717;--border:#e5e5e5;--border-strong:#d4d4d4;--primary:#171717;--primary-fg:#fafafa;--primary-soft:rgba(23,23,23,.07);--info:#0e7490;--info-soft:rgba(14,116,144,.09);--ok:#15803d;--ok-soft:rgba(21,128,61,.09);--warn:#b45309;--warn-soft:rgba(180,83,9,.1);--danger:#ef4444;--danger-soft:rgba(239,68,68,.09);--stale:#8a8a8a;--sidebar:#f5f5f5;--radius:14px;--shadow:0 1px 2px rgba(0,0,0,.04);--font-head:system-ui,"PingFang SC",sans-serif;--font-body:system-ui,"PingFang SC",sans-serif}
+[data-theme="modern"].dark{--bg:#0a0a0a;--card:#171717;--shell:#141414;--muted:#1f1f1f;--muted-fg:#a3a3a3;--fg:#fafafa;--border:#262626;--border-strong:#333;--primary:#fafafa;--primary-fg:#171717;--primary-soft:rgba(250,250,250,.08);--sidebar:#111}
+[data-theme="business"]{--bg:#f8fafc;--bg-glow:none;--card:#fff;--shell:#f1f5f9;--muted:#f1f5f9;--muted-fg:#64748b;--fg:#0f172a;--border:#e2e8f0;--border-strong:#cbd5e1;--primary:#6366f1;--primary-fg:#fff;--primary-soft:rgba(99,102,241,.1);--info:#0284c7;--info-soft:rgba(2,132,199,.1);--ok:#059669;--ok-soft:rgba(5,150,105,.1);--warn:#d97706;--warn-soft:rgba(217,119,6,.1);--danger:#dc2626;--danger-soft:rgba(220,38,38,.08);--stale:#94a3b8;--sidebar:#f1f5f9;--radius:12px;--shadow:0 1px 3px rgba(15,23,42,.06)}
+[data-theme="business"].dark{--bg:#0b1020;--card:#111827;--shell:#0f172a;--muted:#1e293b;--muted-fg:#94a3b8;--fg:#e2e8f0;--border:#1e293b;--border-strong:#334155;--primary:#818cf8;--primary-fg:#0b1020;--sidebar:#0f172a}
+[data-theme="eyeCare"]{--bg:#f4f1e8;--bg-glow:none;--card:#fbf9f2;--shell:#ece7d8;--muted:#ece7d8;--muted-fg:#6b6754;--fg:#2f3a2f;--border:#ddd6c1;--border-strong:#cfc6ab;--primary:#5a7c5a;--primary-fg:#fff;--primary-soft:rgba(90,124,90,.12);--info:#4f7a8a;--info-soft:rgba(79,122,138,.12);--ok:#4d7c3a;--ok-soft:rgba(77,124,58,.12);--warn:#a16207;--warn-soft:rgba(161,98,7,.12);--danger:#b4442f;--danger-soft:rgba(180,68,47,.1);--stale:#8c876f;--sidebar:#ece7d8;--radius:8px;--shadow:none;--font-head:Georgia,"Songti SC",serif}
+[data-theme="pinkKawaii"]{--bg:#fff5fa;--bg-glow:radial-gradient(900px 500px at 90% -10%,rgba(232,56,138,.12),transparent 60%),radial-gradient(800px 500px at 0% 100%,rgba(168,85,247,.10),transparent 60%);--card:rgba(255,255,255,.86);--shell:#ffe8f3;--muted:#ffeef6;--muted-fg:#8a5a75;--fg:#4a1d3a;--border:rgba(232,56,138,.16);--border-strong:rgba(232,56,138,.28);--primary:#e8388a;--primary-fg:#fff;--primary-soft:rgba(232,56,138,.12);--info:#a855f7;--info-soft:rgba(168,85,247,.12);--ok:#10b981;--ok-soft:rgba(16,185,129,.12);--warn:#f59e0b;--warn-soft:rgba(245,158,11,.14);--danger:#e11d48;--danger-soft:rgba(225,29,72,.1);--stale:#b58aa3;--sidebar:rgba(255,255,255,.7);--radius:24px;--shadow:0 10px 30px -12px rgba(232,56,138,.25)}
+[data-theme="neoBrutalism"]{--bg:#fffdf5;--bg-glow:none;--card:#fff;--shell:#ffe066;--muted:#f4f0e1;--muted-fg:#333;--fg:#000;--border:#000;--border-strong:#000;--primary:#ff006e;--primary-fg:#fff;--primary-soft:#ffd6e8;--info:#3a86ff;--info-soft:#dbe8ff;--ok:#00a86b;--ok-soft:#d2f5e6;--warn:#ff8c00;--warn-soft:#ffe4c4;--danger:#e00000;--danger-soft:#ffd6d6;--stale:#555;--sidebar:#ffe066;--radius:0px;--shadow:4px 4px 0 #000;--bw:2px;--font-head:"Courier New",monospace;--font-body:"Courier New","PingFang SC",monospace}
+
+/* ================= Base ================= */
+*{box-sizing:border-box} html,body{margin:0;height:100%}
+body{font-family:var(--font-body);font-size:14px;line-height:1.55;color:var(--fg);background:var(--bg);background-image:var(--bg-glow);background-attachment:fixed;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--font-head);margin:0;letter-spacing:-.01em}
+a{color:inherit;text-decoration:none} button{font:inherit;color:inherit}
+.mono{font-family:var(--font-mono);font-size:12.5px}
+.muted{color:var(--muted-fg)} .small{font-size:12.5px} .xs{font-size:11.5px}
+[data-lucide]{width:16px;height:16px;flex:none} .ic-lg [data-lucide],[data-lucide].lg{width:20px;height:20px}
+:focus-visible{outline:2px solid var(--info);outline-offset:2px;border-radius:6px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ================= Shell ================= */
+.app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+.side{position:sticky;top:0;height:100vh;overflow:auto;background:var(--sidebar);backdrop-filter:blur(18px);border-right:var(--bw) solid var(--border);padding:16px 12px 20px;display:flex;flex-direction:column;gap:6px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 14px}
+.brand-mark{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--info));display:grid;place-items:center;color:#fff;font-family:var(--font-head);font-weight:700;font-size:18px;box-shadow:0 6px 18px -6px var(--primary)}
+[data-theme="neoBrutalism"] .brand-mark{border:2px solid #000;box-shadow:3px 3px 0 #000}
+.brand b{font-family:var(--font-head);font-size:16px;display:block;line-height:1.1} .brand small{color:var(--muted-fg);font-size:11.5px}
+.ws{display:flex;align-items:center;gap:10px;padding:9px 10px;border:var(--bw) solid var(--border);border-radius:12px;background:var(--card);cursor:pointer;margin-bottom:10px}
+.ws .ava{width:26px;height:26px;border-radius:8px;background:var(--fg);color:var(--bg);display:grid;place-items:center;font-weight:700;font-size:12px}
+.nav-group{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted-fg);padding:12px 10px 4px}
+.nav a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;color:var(--muted-fg);transition:background .16s var(--ease),color .16s var(--ease)}
+.nav a:hover{background:var(--muted);color:var(--fg)}
+.nav a.on{background:var(--primary-soft);color:var(--primary);font-weight:600}
+[data-theme="neoBrutalism"] .nav a.on{background:#fff;border:2px solid #000;box-shadow:3px 3px 0 #000;color:#000}
+.nav a .cnt{margin-left:auto;font-size:11px;font-weight:600;background:var(--warn-soft);color:var(--warn);border-radius:999px;padding:1px 8px}
+.nav a .tag{margin-left:auto;font-size:10px;border:1px solid var(--border-strong);border-radius:999px;padding:0 6px;color:var(--muted-fg)}
+.side-foot{margin-top:auto;padding:10px;border:var(--bw) dashed var(--border-strong);border-radius:12px;font-size:12px;color:var(--muted-fg)}
+.main{min-width:0;display:flex;flex-direction:column}
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;padding:12px 28px;background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(14px);border-bottom:var(--bw) solid var(--border)}
+.crumb{display:flex;align-items:center;gap:6px;color:var(--muted-fg);font-size:13px;white-space:nowrap;overflow:hidden}
+.crumb b{color:var(--fg);font-weight:600}
+.search{flex:1;max-width:460px;margin:0 auto;display:flex;align-items:center;gap:8px;padding:8px 12px;border:var(--bw) solid var(--border);border-radius:12px;background:var(--card);color:var(--muted-fg);cursor:pointer}
+.search kbd{margin-left:auto;font-family:var(--font-mono);font-size:11px;border:1px solid var(--border-strong);border-radius:6px;padding:0 6px}
+.tools{display:flex;align-items:center;gap:6px}
+.iconbtn{position:relative;width:36px;height:36px;display:grid;place-items:center;border-radius:10px;border:var(--bw) solid transparent;background:transparent;cursor:pointer;color:var(--muted-fg)}
+.iconbtn:hover{background:var(--muted);color:var(--fg)}
+.iconbtn .dot{position:absolute;top:4px;right:3px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:var(--warn);color:#fff;font-size:10.5px;font-weight:700;display:grid;place-items:center}
+.live{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted-fg);padding:0 8px}
+.live i{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 4px var(--ok-soft)}
+.me{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px;cursor:pointer}
+.view{padding:26px 28px 80px;max-width:1440px;width:100%;margin:0 auto;animation:rise .36s var(--ease)}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.tabbar{display:none}
+.menu-btn{display:none}
+
+/* ================= Primitives ================= */
+.page-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+.page-head h1{font-size:26px;font-weight:600}
+.page-head .sub{color:var(--muted-fg);margin-top:4px}
+.page-head .actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.eyebrow{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--primary);background:var(--primary-soft);border-radius:999px;padding:3px 10px;margin-bottom:8px}
+.btn{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;border:var(--bw) solid var(--border-strong);background:var(--card);cursor:pointer;font-weight:500;transition:transform .16s var(--ease),background .16s var(--ease),box-shadow .16s var(--ease);white-space:nowrap}
+.btn:hover{background:var(--muted)} .btn:active{transform:scale(.98)}
+.btn.primary{background:var(--primary);color:var(--primary-fg);border-color:transparent;box-shadow:0 8px 20px -10px var(--primary)}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.primary .orb{width:22px;height:22px;margin-right:-8px;border-radius:50%;background:rgba(255,255,255,.18);display:grid;place-items:center;transition:transform .2s var(--ease)}
+.btn.primary:hover .orb{transform:translate(2px,-1px) scale(1.06)}
+.btn.danger{background:var(--danger);color:#fff;border-color:transparent}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.sm{height:30px;padding:0 11px;font-size:12.5px}
+.btn[disabled]{opacity:.45;cursor:not-allowed;transform:none}
+[data-theme="neoBrutalism"] .btn{border:2px solid #000;box-shadow:3px 3px 0 #000;border-radius:0}
+.grid{display:grid;gap:16px} .grid>*{min-width:0} .g12{grid-template-columns:repeat(12,minmax(0,1fr))}
+.c3{grid-column:span 3}.c4{grid-column:span 4}.c5{grid-column:span 5}.c6{grid-column:span 6}.c7{grid-column:span 7}.c8{grid-column:span 8}.c9{grid-column:span 9}.c12{grid-column:span 12}
+.shell{background:var(--shell);border:var(--bw) solid var(--border);border-radius:calc(var(--radius) + 6px);padding:5px}
+.card{background:var(--card);border:var(--bw) solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.shell>.card{border-radius:var(--radius);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+[data-theme="neoBrutalism"] .card{border:2px solid #000;box-shadow:4px 4px 0 #000}
+[data-theme="neoBrutalism"] .shell{background:none;border:none;padding:0}
+.card-h{display:flex;align-items:center;gap:10px;padding:14px 16px 0}
+.card-h h3{font-size:15px;font-weight:600} .card-h .r{margin-left:auto;display:flex;gap:6px;align-items:center}
+.card-b{padding:14px 16px 16px}
+.row{display:flex;align-items:center;gap:10px} .row.wrap{flex-wrap:wrap} .grow{flex:1;min-width:0}
+.stack{display:flex;flex-direction:column;gap:10px}
+.sep{height:1px;background:var(--border);margin:12px 0}
+.badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;background:var(--muted);color:var(--muted-fg)}
+.badge [data-lucide]{width:13px;height:13px}
+.b-info{background:var(--info-soft);color:var(--info)} .b-ok{background:var(--ok-soft);color:var(--ok)} .b-warn{background:var(--warn-soft);color:var(--warn)}
+.b-danger{background:var(--danger-soft);color:var(--danger)} .b-primary{background:var(--primary-soft);color:var(--primary)} .b-stale{background:transparent;color:var(--stale);border:1px dashed var(--stale)}
+.chip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 10px;border-radius:999px;border:var(--bw) solid var(--border-strong);font-size:12px;cursor:pointer;background:var(--card)}
+.chip.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.spin{animation:spin 1.4s linear infinite} @keyframes spin{to{transform:rotate(360deg)}}
+.pulse{animation:pulse 1.6s var(--ease) infinite} @keyframes pulse{50%{opacity:.35}}
+table{width:100%;border-collapse:collapse}
+th{font-size:11.5px;font-weight:600;color:var(--muted-fg);text-align:left;padding:10px 12px;border-bottom:var(--bw) solid var(--border);white-space:nowrap}
+td{padding:11px 12px;border-bottom:var(--bw) solid var(--border);vertical-align:middle}
+tr.click{cursor:pointer} tr.click:hover td{background:var(--muted)}
+.table-wrap{overflow:auto}
+.input,.select,textarea{width:100%;height:38px;padding:0 12px;border-radius:10px;border:var(--bw) solid var(--border-strong);background:var(--card);color:var(--fg);font:inherit}
+textarea{height:auto;padding:10px 12px;resize:vertical;min-height:84px}
+label.f{display:block;font-size:12.5px;font-weight:600;margin:12px 0 6px} label.f .req{color:var(--danger)}
+.hint{font-size:12px;color:var(--muted-fg);margin-top:4px}
+.tabs{display:flex;gap:4px;border-bottom:var(--bw) solid var(--border);margin-bottom:16px;overflow:auto}
+.tabs button{border:none;background:none;padding:10px 12px;cursor:pointer;color:var(--muted-fg);border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button.on{color:var(--fg);border-color:var(--primary);font-weight:600}
+.empty{display:grid;place-items:center;text-align:center;padding:36px 16px;color:var(--muted-fg);gap:8px}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:6px 12px;font-size:13px} .kv dt{color:var(--muted-fg)} .kv dd{margin:0}
+.progress{height:6px;border-radius:999px;background:var(--muted);overflow:hidden} .progress i{display:block;height:100%;background:linear-gradient(90deg,var(--primary),var(--info));border-radius:inherit}
+.note{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:var(--muted);font-size:13px}
+.note.warn{background:var(--warn-soft);color:var(--warn)} .note.danger{background:var(--danger-soft);color:var(--danger)} .note.info{background:var(--info-soft);color:var(--info)} .note.ok{background:var(--ok-soft);color:var(--ok)}
+
+/* ================= Domain components ================= */
+.avatar{width:28px;height:28px;display:grid;place-items:center;font-size:11.5px;font-weight:700;color:#fff;flex:none;position:relative}
+.avatar.h{border-radius:50%} .avatar.a{border-radius:8px;image-rendering:pixelated} .avatar.c{border-radius:50%;background:var(--muted)!important;color:var(--muted-fg)}
+.avatar.a::after{content:"";position:absolute;right:-3px;bottom:-3px;width:11px;height:11px;border-radius:3px;background:var(--card);border:2px solid var(--card);box-shadow:inset 0 0 0 2px var(--primary)}
+.avatar.lg{width:44px;height:44px;font-size:15px}
+.ladder{display:inline-flex;align-items:center;gap:4px}
+.ladder span{width:22px;height:6px;border-radius:999px;background:var(--muted);border:1px solid var(--border)}
+.ladder span.l1{background:var(--muted-fg);opacity:.5}.ladder span.l2{background:var(--info)}.ladder span.l3{background:var(--ok)}.ladder span.l4{background:linear-gradient(90deg,var(--ok),var(--primary))}
+.ladder-big{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.ladder-big div{padding:10px 12px;border-radius:12px;border:var(--bw) solid var(--border);background:var(--muted);font-size:12.5px}
+.ladder-big div b{display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:2px}
+.ladder-big div.done{background:var(--ok-soft);border-color:transparent;color:var(--ok)} .ladder-big div.cur{background:var(--warn-soft);border-color:transparent;color:var(--warn)}
+.kpis{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:860px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{padding:16px} .kpi .v{font-family:var(--font-head);font-size:28px;font-weight:600;letter-spacing:-.02em;margin-top:6px}
+.kpi .d{font-size:12px;margin-top:2px} .kpi .d.up{color:var(--ok)} .kpi .d.down{color:var(--danger)}
+.kpi svg{display:block;margin-top:8px}
+.inbox-item{display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:var(--bw) solid var(--border)}
+.inbox-item:first-child{border-top:none}
+.inbox-item .ico{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none}
+.kanban{display:grid;grid-template-columns:repeat(6,minmax(240px,1fr));gap:12px;overflow:auto;padding-bottom:8px}
+.col{background:var(--shell);border:var(--bw) solid var(--border);border-radius:16px;padding:8px;min-height:420px}
+.col-h{display:flex;align-items:center;gap:8px;padding:6px 8px 10px;font-weight:600;font-size:13px}
+.wi{background:var(--card);border:var(--bw) solid var(--border);border-radius:12px;padding:11px 12px;margin-bottom:8px;cursor:pointer;transition:transform .16s var(--ease),box-shadow .16s var(--ease)}
+.wi:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+.wi .t{font-weight:600;font-size:13.5px;margin:4px 0 8px}
+.wi .row{flex-wrap:wrap;row-gap:6px} .wi .row>span:last-child{margin-left:auto}
+.dag{position:relative}
+.branch{position:relative;padding-left:22px}
+.branch::before{content:"";position:absolute;left:8px;top:0;bottom:0;border-left:2px solid var(--border-strong)}
+.bnode{position:relative;margin:8px 0;padding:10px 12px;border:var(--bw) solid var(--border);border-radius:12px;background:var(--card)}
+.bnode::before{content:"";position:absolute;left:-15px;top:18px;width:13px;border-top:2px solid var(--border-strong)}
+.bnode.cur{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.ev{border:var(--bw) solid var(--border);border-radius:12px;padding:12px;background:var(--card)}
+.ev .prov{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 12px;margin-top:8px;font-size:12px}
+.ev .prov span{color:var(--muted-fg);display:block;font-size:11px}
+.msg{display:flex;gap:10px;padding:10px 0}
+.msg .body{flex:1;min-width:0}
+.msg .meta{font-size:12px;color:var(--muted-fg);display:flex;gap:8px;align-items:center}
+.bubble{margin-top:4px;padding:10px 12px;border-radius:12px;background:var(--muted);max-width:760px}
+.toolrow{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;border:var(--bw) dashed var(--border-strong);font-size:12.5px;margin-top:6px;max-width:760px;color:var(--muted-fg)}
+.decision-card{border:1.5px solid var(--warn);border-radius:14px;padding:14px;background:linear-gradient(180deg,var(--warn-soft),transparent 70%);max-width:760px;margin-top:6px}
+.composer{border:var(--bw) solid var(--border-strong);border-radius:16px;background:var(--card);padding:10px 12px;box-shadow:var(--shadow)}
+.composer textarea{border:none;min-height:44px;padding:4px 0;background:transparent}
+.composer textarea:focus{outline:none}
+.code{font-family:var(--font-mono);font-size:13px;background:#0e0e16;color:#e7e5f5;border-radius:12px;padding:14px 16px;overflow:auto;white-space:pre}
+.ring{--p:0;width:120px;height:120px;border-radius:50%;background:conic-gradient(var(--primary) calc(var(--p)*1%),var(--muted) 0);display:grid;place-items:center}
+.ring>div{width:96px;height:96px;border-radius:50%;background:var(--card);display:grid;place-items:center;font-family:var(--font-head);font-size:24px;font-weight:600}
+.matrix td,.matrix th{text-align:center;padding:9px 8px} .matrix td:first-child,.matrix th:first-child{text-align:left}
+.mx{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:7px}
+.mx.y{background:var(--ok-soft);color:var(--ok)} .mx.n{color:var(--stale)} .mx.d{background:var(--primary-soft);color:var(--primary);width:auto;padding:0 6px;font-size:11px;font-weight:700}
+.hl{background:var(--warn-soft);color:var(--fg);border-radius:4px;padding:0 2px}
+.sparkline path{fill:none;stroke:var(--primary);stroke-width:2}
+.sparkline .area{fill:var(--primary-soft);stroke:none}
+
+/* overlays */
+.overlay{position:fixed;inset:0;z-index:60;background:rgba(10,8,20,.42);backdrop-filter:blur(6px);display:none;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto}
+.overlay.open{display:flex;animation:fade .2s var(--ease)} @keyframes fade{from{opacity:0}}
+.modal{width:100%;max-width:560px;background:var(--card);border:var(--bw) solid var(--border);border-radius:22px;box-shadow:0 30px 80px -20px rgba(0,0,0,.45);animation:rise .3s var(--ease)}
+.modal.wide{max-width:820px}
+.modal-h{display:flex;align-items:center;gap:10px;padding:18px 20px 0} .modal-h h3{font-size:18px}
+.modal-b{padding:6px 20px 18px} .modal-f{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:var(--bw) solid var(--border)}
+.drawer{position:fixed;z-index:55;top:0;right:0;bottom:0;width:min(560px,100vw);background:var(--card);border-left:var(--bw) solid var(--border);box-shadow:-30px 0 80px -30px rgba(0,0,0,.35);transform:translateX(100%);transition:transform .32s var(--ease);overflow:auto}
+.drawer.open{transform:none}
+.cmdk{max-width:620px;padding:0} .cmdk input{border:none;height:52px;font-size:15px;border-bottom:var(--bw) solid var(--border);border-radius:22px 22px 0 0;padding:0 18px}
+.cmdk .grp{padding:8px 10px} .cmdk .grp small{display:block;padding:6px 8px;color:var(--muted-fg);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+.cmdk a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px} .cmdk a:hover,.cmdk a.act{background:var(--muted)}
+.toast{position:fixed;z-index:80;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:999px;display:flex;gap:8px;align-items:center;transition:all .3s var(--ease);pointer-events:none;font-size:13.5px}
+.toast.show{opacity:1;transform:translateX(-50%)}
+.menu{position:absolute;z-index:70;min-width:220px;background:var(--card);border:var(--bw) solid var(--border);border-radius:14px;box-shadow:0 20px 50px -20px rgba(0,0,0,.4);padding:6px;display:none}
+.menu.open{display:block} .menu button{display:flex;width:100%;align-items:center;gap:10px;border:none;background:none;padding:8px 10px;border-radius:9px;cursor:pointer;text-align:left}
+.menu button:hover{background:var(--muted)} .menu small{display:block;padding:6px 10px 2px;color:var(--muted-fg);font-size:11px}
+.sw{width:14px;height:14px;border-radius:4px;border:1px solid var(--border-strong)}
+
+/* portal */
+body.portal .app{display:block} body.portal .side,body.portal .top,body.portal .tabbar{display:none!important}
+.portal-wrap{max-width:980px;margin:0 auto;padding:32px 20px 80px}
+.portal-head{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+.milestones{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:10px}
+.milestones div{font-size:11.5px;color:var(--muted-fg);text-align:center} .milestones div::before{content:"";display:block;height:6px;border-radius:999px;background:var(--muted);margin-bottom:6px}
+.milestones div.done::before{background:var(--ok)} .milestones div.cur::before{background:linear-gradient(90deg,var(--ok),var(--info))} .milestones div.cur{color:var(--fg);font-weight:600}
+
+/* ================= Responsive ================= */
+@media (max-width:1100px){.c3,.c4,.c5{grid-column:span 6}.c7,.c8,.c9{grid-column:span 12}}
+@media (max-width:860px){
+  .app{grid-template-columns:1fr}
+  .side{position:fixed;z-index:65;left:0;width:280px;transform:translateX(-102%);transition:transform .3s var(--ease);box-shadow:30px 0 80px -30px rgba(0,0,0,.4)}
+  body.nav-open .side{transform:none}
+  .menu-btn{display:grid}
+  .top{padding:10px 16px} .search span,.search kbd,.live span,.crumb{display:none} .search{flex:0;margin:0 0 0 auto}
+  .view{padding:18px 16px 96px}
+  .c3,.c4,.c5,.c6,.c7,.c8,.c9,.c12{grid-column:span 12}
+  .tabbar{display:grid;grid-template-columns:repeat(4,1fr);position:fixed;z-index:30;left:0;right:0;bottom:0;background:var(--card);border-top:var(--bw) solid var(--border);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+  .tabbar a{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--muted-fg);min-height:44px;justify-content:center;position:relative}
+  .tabbar a.on{color:var(--primary)} .tabbar .dot{position:absolute;top:2px;left:55%;background:var(--warn);color:#fff;border-radius:999px;font-size:10px;padding:0 5px}
+  .app{grid-template-columns:minmax(0,1fr)} .grid>*,.main,.view{min-width:0}
+  .page-head .actions{margin-left:0;width:100%} .inbox-item{flex-wrap:wrap} .inbox-item .grow{flex-basis:calc(100% - 50px)}
+  .tools .hide-m{display:none} .card-h{flex-wrap:wrap} .modal{border-radius:18px}
+  .page-head h1{font-size:22px} .ladder-big{grid-template-columns:repeat(2,1fr)} .ev .prov{grid-template-columns:1fr 1fr}
+  .kv{grid-template-columns:96px 1fr} .milestones div{font-size:10px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <div class="main">
+    <header class="top">
+      <button class="iconbtn menu-btn" aria-label="打开菜单" onclick="document.body.classList.toggle('nav-open')"><i data-lucide="menu"></i></button>
+      <div class="crumb" id="crumb"></div>
+      <div class="search" role="button" tabindex="0" onclick="openCmdk()" onkeydown="if(event.key==='Enter')openCmdk()"><i data-lucide="search"></i><span>搜索来件、工作项、执行、Agent…</span><kbd>⌘K</kbd></div>
+      <div class="tools">
+        <div class="live" title="实时连接（SSE）"><i></i><span>实时</span></div>
+        <button class="iconbtn" aria-label="我的裁决" onclick="go('inbox')"><i data-lucide="gavel"></i><span class="dot" id="inboxDot"></span><span role="status" aria-atomic="true" class="sr" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)" id="inboxSr"></span></button>
+        <button class="iconbtn hide-m" aria-label="语言" onclick="toast('语言：简体中文（底座 i18n：zh-CN / en-US / ms-MY）')"><i data-lucide="languages"></i></button>
+        <button class="iconbtn" aria-label="主题" onclick="toggleMenu(event,'themeMenu')"><i data-lucide="palette"></i></button>
+        <button class="iconbtn hide-m" aria-label="明暗" onclick="toggleDark()"><i data-lucide="sun-moon"></i></button>
+        <div class="me" title="Morgan · 交付负责人">MO</div>
+      </div>
+    </header>
+    <main class="view" id="view"></main>
+  </div>
+</div>
+<nav class="tabbar" id="tabbar"></nav>
+
+<div class="menu" id="themeMenu">
+  <small>主题（底座 [data-theme] 机制）</small>
+  <button onclick="setTheme('aurora')"><span class="sw" style="background:linear-gradient(135deg,#7C3AED,#0891B2)"></span>Aurora<span class="muted xs" style="margin-left:auto">Myrmidon 默认</span></button>
+  <button onclick="setTheme('modern')"><span class="sw" style="background:#171717"></span>Modern<span class="muted xs" style="margin-left:auto">底座默认</span></button>
+  <button onclick="setTheme('business')"><span class="sw" style="background:#6366f1"></span>Business</button>
+  <button onclick="setTheme('eyeCare')"><span class="sw" style="background:#5a7c5a"></span>Eye Care</button>
+  <button onclick="setTheme('pinkKawaii')"><span class="sw" style="background:#e8388a"></span>Pink Kawaii</button>
+  <button onclick="setTheme('neoBrutalism')"><span class="sw" style="background:#ff006e;border:2px solid #000"></span>Neo-Brutalism</button>
+</div>
+
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()"><div class="modal" id="modal"></div></div>
+<div class="drawer" id="drawer"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= Mock data ================= */
+const TEAM={name:"Northwind Studio",short:"NW"};
+const PEOPLE={
+  morgan:{n:"Morgan",k:"h",c:"#f59e0b",role:"交付负责人"},
+  chen:{n:"阿澈",k:"h",c:"#0ea5e9",role:"工程师"},
+  sam:{n:"Sam",k:"h",c:"#10b981",role:"团队所有者"},
+  ada:{n:"Ada",k:"a",c:"#7c3aed",role:"Agent 执行者",model:"Claude Code · Opus",machine:"studio-mini"},
+  bo:{n:"Bo",k:"a",c:"#0891b2",role:"Agent 执行者",model:"Codex · gpt-6-astra",machine:"build-box"},
+  cy:{n:"Cy",k:"a",c:"#db2777",role:"Agent 评审员",model:"Claude Code · Sonnet",machine:"studio-mini"},
+  lead:{n:"Atlas",k:"a",c:"#4f46e5",role:"主导 Agent",model:"Claude Code · Opus",machine:"DESKTOP-7F3A"},
+  iris:{n:"Iris",k:"a",c:"#ea580c",role:"Agent 协调员",model:"Codex · gpt-6-mini",machine:"DESKTOP-7F3A"},
+  lee:{n:"Lee",k:"c",c:"#999",role:"甲方联系人"}
+};
+const PROJECTS=[
+  {id:"p1",name:"账单中心 Billing",code:"BIL",stage:"ACTIVE",mode:"HYBRID",budget:[412,1200],acc:[18,26],lead:"lead",client:"Lee · Contoso",health:"ok"},
+  {id:"p2",name:"商户控制台 Console",code:"CON",stage:"ACTIVE",mode:"AUTONOMOUS",budget:[968,1000],acc:[31,40],lead:"lead",client:"API · Fabrikam 工单",health:"warn"},
+  {id:"p3",name:"文档站 Docs",code:"DOC",stage:"ACCEPTANCE_PENDING",mode:"HYBRID",budget:[86,300],acc:[9,9],lead:null,client:"邮件 · docs@adatum",health:"ok"},
+  {id:"p4",name:"移动端 SDK",code:"SDK",stage:"PLANNING",mode:"HYBRID",budget:[0,800],acc:[0,0],lead:"lead",client:"门户 · Lee",health:"ok"}
+];
+const STAGES=["INTAKE","DISCOVERY","PLANNING","ACTIVE","ACCEPTANCE_PENDING","DELIVERED","CLOSED"];
+const STAGE_ZH={INTAKE:"接件",DISCOVERY:"澄清",PLANNING:"规划",ACTIVE:"进行中",BLOCKED:"阻塞",ACCEPTANCE_PENDING:"待验收",DELIVERED:"已交付",CLOSED:"已关闭",CANCELLED:"已取消"};
+const WI=[
+  {id:"BIL-142",t:"账单导出支持 CSV 格式",p:"p1",type:"FEATURE",risk:"MEDIUM",s:"NEEDS_HUMAN_REVIEW",who:"ada",l:2,br:2,cost:3.42},
+  {id:"BIL-143",t:"导出字段按甲方模板排序",p:"p1",type:"FEATURE",risk:"LOW",s:"IN_PROGRESS",who:"bo",l:0,br:1,cost:1.10},
+  {id:"BIL-139",t:"修复税额四舍五入误差",p:"p1",type:"BUG",risk:"HIGH",s:"REWORK",who:"ada",l:1,br:3,cost:6.80},
+  {id:"BIL-137",t:"账单列表分页性能优化",p:"p1",type:"FEATURE",risk:"MEDIUM",s:"ACCEPTED",who:"bo",l:3,br:1,cost:2.05},
+  {id:"BIL-135",t:"导出任务失败重试提示",p:"p1",type:"FEATURE",risk:"LOW",s:"ACCEPTED",who:"chen",l:4,br:1,cost:0.40},
+  {id:"BIL-144",t:"CSV 导出接口文档",p:"p1",type:"DOC",risk:"LOW",s:"READY",who:null,l:0,br:0,cost:0},
+  {id:"BIL-145",t:"导出权限：仅财务角色",p:"p1",type:"FEATURE",risk:"HIGH",s:"BLOCKED",who:null,l:0,br:0,cost:0,block:"等待甲方澄清：财务角色是否含审计员"},
+  {id:"CON-88",t:"商户结算页改版",p:"p2",type:"FEATURE",risk:"MEDIUM",s:"VERIFYING",who:"bo",l:1,br:1,cost:2.90},
+  {id:"CON-91",t:"登录页无障碍修复",p:"p2",type:"BUG",risk:"LOW",s:"EXECUTION_FAILED",who:"ada",l:0,br:1,cost:0.70},
+  {id:"CON-80",t:"结算对账 API",p:"p2",type:"FEATURE",risk:"MEDIUM",s:"AGENT_CLAIMED_DONE",who:"ada",l:1,br:1,cost:4.10},
+  {id:"BIL-146",t:"导出文件名含账期",p:"p1",type:"CHORE",risk:"LOW",s:"CLAIMED",who:"ada",l:0,br:0,cost:0}
+];
+const MACHINES=[
+  {id:"m1",n:"studio-mini",os:"macOS 15 · arm64",st:"ONLINE",rt:["Claude Code 2.4.1","Codex 0.98.0"],slots:[2,3],agents:["ada","cy"],beat:"2 秒前"},
+  {id:"m2",n:"DESKTOP-7F3A",os:"Windows 11 · x64",st:"ONLINE",rt:["Claude Code 2.4.0","Codex 0.98.0"],slots:[1,2],agents:["lead","iris"],beat:"1 秒前"},
+  {id:"m3",n:"build-box",os:"Ubuntu 24.04 · x64",st:"ONLINE",rt:["Codex 0.98.0"],slots:[1,1],agents:["bo"],beat:"3 秒前"},
+  {id:"m4",n:"old-laptop",os:"macOS 14 · x64",st:"OFFLINE",rt:["Claude Code 2.3.9"],slots:[0,1],agents:[],beat:"3 天前"}
+];
+const INBOX=[
+  {k:"WORK_ITEM_REVIEW",t:"评审 BIL-142 · 账单导出支持 CSV 格式",src:"账单中心 · Ada 声明完成 · 验证 4/4 通过",wait:"12 分钟",go:"review"},
+  {k:"TOOL_PERMISSION",t:"工具授权：Edit src/billing/tax.ts",src:"交互会话「修复税额误差」· 阿澈 · studio-mini",wait:"3 分钟",go:"session"},
+  {k:"INTAKE_TRIAGE",t:"新来件：导出权限仅限财务？",src:"门户 · Lee · Iris 已出分诊卡",wait:"41 分钟",go:"intakes"},
+  {k:"DISPATCH_PROPOSAL",t:"派单提案：BIL-144 → Bo（82.6 分）",src:"主导 Agent Atlas · MANUAL 策略",wait:"6 分钟",go:"work"},
+  {k:"ESCALATION_ALERT",t:"预算 96.8%：商户控制台（全自治）",src:"升级规则 BUDGET · 已冻结委托",wait:"1 小时",go:"projects"},
+  {k:"DELIVERY_CONFIRMATION",t:"确认交付：文档站 交付包 #3",src:"全自治编排已备好 · 需要人工 step-up",wait:"2 小时",go:"deliveries"}
+];
+const INBOX_KIND={
+  WORK_ITEM_REVIEW:["gavel","warn","工作项评审"],TOOL_PERMISSION:["shield-alert","danger","工具授权"],INTAKE_TRIAGE:["inbox","info","来件分诊"],
+  DISPATCH_PROPOSAL:["split","primary","派单确认"],ESCALATION_ALERT:["siren","danger","升级告警"],DELIVERY_CONFIRMATION:["package-check","ok","交付确认"],
+  MEMORY_RULE_APPROVAL:["brain","primary","规则记忆审批"],EXECUTION_ATTENTION:["unplug","warn","执行需关注"]
+};
+const ST={
+  READY:["muted","circle","就绪"],CLAIMED:["info","hand","已认领"],IN_PROGRESS:["info","loader","进行中"],
+  AGENT_CLAIMED_DONE:["muted","circle-check","已声明完成（未验证）"],VERIFYING:["info","scan-search","验证中"],
+  NEEDS_HUMAN_REVIEW:["warn","hand","待裁决"],ACCEPTED:["ok","badge-check","已接受"],REWORK:["primary","git-branch","返工"],
+  BLOCKED:["stale","circle-slash","阻塞"],EXECUTION_FAILED:["danger","octagon-x","执行失败"],CANCELLED:["stale","x","已取消"],
+  RUNNING:["info","loader","运行中"],PAUSED:["muted","pause","已暂停"],SUCCEEDED:["muted","circle-check","执行完成"],INTERRUPTED:["stale","unplug","已中断"],FAILED:["danger","octagon-x","失败"],CREATED:["muted","circle-dashed","已创建"],
+  PASSED:["ok","shield-check","通过"],INCONCLUSIVE:["warn","help-circle","无定论"],PENDING:["muted","clock","待定"],
+  ONLINE:["ok","wifi","在线"],OFFLINE:["stale","wifi-off","离线"],DRAINING:["warn","hourglass","排空中"],
+  ACTIVE_A:["ok","activity","运行中"],STOPPED:["muted","square","已停止"],CRASHED:["danger","zap-off","崩溃"],
+  HYBRID:["info","users","混编"],AUTONOMOUS:["primary","bot","全自治"],
+  SENT:["info","send","已发送"],DRAFT:["muted","file-pen","草稿"],READY_D:["warn","package","待交付"],ACCEPTED_D:["ok","badge-check","甲方已验收"],PARTIAL:["warn","split","部分验收"]
+};
+function S(k,txt){const [c,ic,t]=ST[k]||["muted","circle",k];const spin=(ic==="loader")?" spin":"";return `<span class="badge b-${c==="muted"?"":c}"><i data-lucide="${ic}" class="${spin}"></i>${txt||t}</span>`}
+const AVG={h:"h",a:"a",c:"c"};
+function A(key,size){const p=PEOPLE[key];if(!p)return `<span class="avatar h" style="background:var(--muted);color:var(--muted-fg)">—</span>`;
+  const bg=p.k==="a"?`background:${p.c};background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.12) 0 3px,transparent 3px 6px),repeating-linear-gradient(90deg,rgba(0,0,0,.08) 0 3px,transparent 3px 6px)`:`background:${p.c}`;
+  return `<span class="avatar ${AVG[p.k]} ${size||""}" title="${p.n} · ${p.role}" style="${bg}">${p.n.slice(0,p.k==="a"?2:1)}</span>`}
+function who(key){const p=PEOPLE[key];if(!p)return `<span class="muted small">未分派</span>`;return `<span class="row" style="gap:8px">${A(key)}<span><b style="font-weight:600">${p.n}</b><span class="muted xs" style="display:block;line-height:1.2">${p.role}</span></span></span>`}
+function ladder(l){return `<span class="ladder" title="完成阶梯 L${l}/4">${[1,2,3,4].map(i=>`<span class="${i<=l?"l"+i:""}"></span>`).join("")}</span>`}
+function I(n,cls){return `<i data-lucide="${n}" class="${cls||""}"></i>`}
+function spark(points,w=150,h=36){const mx=Math.max(...points),mn=Math.min(...points);const xs=points.map((p,i)=>[i*(w/(points.length-1)),h-4-((p-mn)/(mx-mn||1))*(h-8)]);
+  const d=xs.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");return `<svg class="sparkline" width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path class="area" d="${d} L${w} ${h} L0 ${h} Z"/><path d="${d}"/></svg>`}
+function card(title,body,opts={}){return `<div class="shell ${opts.cls||""}"><div class="card">${title?`<div class="card-h">${opts.icon?I(opts.icon):""}<h3>${title}</h3><div class="r">${opts.right||""}</div></div>`:""}<div class="card-b" style="${opts.pad===0?"padding:0":""}">${body}</div></div></div>`}
+function head(eyebrow,title,sub,actions){return `<div class="page-head"><div><span class="eyebrow">${eyebrow}</span><h1>${title}</h1>${sub?`<div class="sub">${sub}</div>`:""}</div><div class="actions">${actions||""}</div></div>`}
+function money(v){return "$"+v.toFixed(2)}
+
+/* ================= Navigation (08 §8.6) ================= */
+const NAV=[
+  ["工作台",[["overview","layout-dashboard","总览"],["inbox","gavel","我的裁决",INBOX.length]]],
+  ["交付",[["intakes","inbox","来件",2],["projects","folder-kanban","项目"],["work","kanban-square","工作项"],["review","scale","评审台"],["executions","terminal-square","执行"],["deliveries","package-check","交付"]]],
+  ["协作",[["channels","hash","频道"]]],
+  ["团队",[["members","users-round","成员与 Agent"],["machines","server","机器"],["knowledge","library-big","知识库"],["policy","shield-half","授权与策略"]]],
+  ["治理",[["audit","scroll-text","审计"],["gateway","plug-zap","API 网关","实验"]]]
+];
+const TITLES={overview:"总览",inbox:"我的裁决",intakes:"来件",projects:"项目",project:"项目详情",work:"工作项",workitem:"工作项详情",review:"评审台",executions:"执行",session:"交互会话",deliveries:"交付",channels:"频道",members:"成员与 Agent",machines:"机器",knowledge:"知识库",policy:"授权与策略",audit:"审计",gateway:"API 网关",portal:"甲方门户"};
+function renderSide(cur){
+  document.getElementById("side").innerHTML=`
+  <div class="brand"><div class="brand-mark">M</div><div><b>Myrmidon</b><small>部署显示名 · 来自配置</small></div></div>
+  <div class="ws" onclick="toast('工作区切换：团队 → 项目（复用底座 WorkspaceSwitcher）')"><div class="ava">${TEAM.short}</div><div class="grow"><b style="font-size:13px">${TEAM.name}</b><div class="muted xs">乙方团队 · 4 人 · 6 Agent</div></div>${I("chevrons-up-down")}</div>
+  <nav class="nav">${NAV.map(([g,items])=>`<div class="nav-group">${g}</div>`+items.map(([k,ic,t,c])=>`<a href="#/${k}" class="${cur===k||(cur==="workitem"&&k==="work")||(cur==="session"&&k==="executions")||(cur==="project"&&k==="projects")?"on":""}">${I(ic)}<span>${t}</span>${c?(typeof c==="number"?`<span class="cnt">${c}</span>`:`<span class="tag">${c}</span>`):""}</a>`).join("")).join("")}</nav>
+  <a class="side-foot" href="#/portal"><div class="row">${I("external-link")}<b style="color:var(--fg)">预览甲方门户</b></div><div style="margin-top:4px">甲方 = 需求开口：提交、澄清、验收</div></a>`;
+  document.getElementById("tabbar").innerHTML=[["overview","layout-dashboard","总览"],["inbox","gavel","裁决"],["executions","terminal-square","执行"],["channels","hash","频道"]].map(([k,ic,t])=>`<a href="#/${k}" class="${cur===k?"on":""}">${I(ic)}<span>${t}</span>${k==="inbox"?`<span class="dot">${INBOX.length}</span>`:""}</a>`).join("");
+  document.getElementById("inboxDot").textContent=INBOX.length;
+  document.getElementById("inboxSr").textContent=INBOX.length+" 项待你裁决";
+  document.getElementById("crumb").innerHTML=`${TEAM.name} ${I("chevron-right")} <b>${TITLES[cur]||""}</b>`;
+}
+
+/* ================= Router ================= */
+const PAGES={};
+function go(r){location.hash="#/"+r}
+function route(){
+  const [r,arg]=(location.hash.replace(/^#\/?/,"")||"overview").split("/");
+  const key=PAGES[r]?r:"overview";
+  document.body.classList.toggle("portal",key==="portal");
+  document.body.classList.remove("nav-open");
+  if(key!=="portal")renderSide(key);
+  const v=document.getElementById("view");
+  v.innerHTML=PAGES[key](arg);v.style.animation="none";void v.offsetWidth;v.style.animation="";
+  window.scrollTo(0,0);icons();
+}
+function icons(){if(window.lucide)lucide.createIcons({attrs:{"stroke-width":1.6}})}
+window.addEventListener("hashchange",route);
+
+/* ================= Overlays ================= */
+function openModal(html,wide){const m=document.getElementById("modal");m.className="modal"+(wide?" wide":"");m.innerHTML=html;document.getElementById("overlay").classList.add("open");icons();setTimeout(()=>{const f=m.querySelector("input,textarea,select,button.primary");f&&f.focus()},60)}
+function closeModal(){document.getElementById("overlay").classList.remove("open");clearInterval(window._timer)}
+function openDrawer(html){const d=document.getElementById("drawer");d.innerHTML=html;d.classList.add("open");icons()}
+function closeDrawer(){document.getElementById("drawer").classList.remove("open")}
+function toast(t,ic="check"){const el=document.getElementById("toast");el.innerHTML=I(ic)+t;el.classList.add("show");icons();clearTimeout(window._tt);window._tt=setTimeout(()=>el.classList.remove("show"),2600)}
+function toggleMenu(e,id){e.stopPropagation();const m=document.getElementById(id);const r=e.currentTarget.getBoundingClientRect();m.style.top=(r.bottom+8)+"px";m.style.left=Math.min(r.left-180,innerWidth-240)+"px";m.classList.toggle("open")}
+document.addEventListener("click",()=>document.querySelectorAll(".menu.open").forEach(m=>m.classList.remove("open")));
+function setTheme(t){document.documentElement.dataset.theme=t;try{localStorage.setItem("myr-theme",t)}catch(e){}toast("主题："+t,"palette")}
+function toggleDark(){const d=document.documentElement.classList.toggle("dark");try{localStorage.setItem("myr-dark",d?"1":"0")}catch(e){}}
+(function(){try{const t=localStorage.getItem("myr-theme");if(t)document.documentElement.dataset.theme=t;const d=localStorage.getItem("myr-dark");if(d==="1"||(d===null&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.classList.add("dark")}catch(e){}})();
+function openCmdk(){
+  const groups=[["跳转",NAV.flatMap(g=>g[1]).map(([k,ic,t])=>[ic,t,()=>go(k)])],
+    ["动作",[["inbox","新建来件（手工录入）",()=>toast("打开新建来件对话框")],["folder-plus","新建项目",()=>toast("打开新建项目向导")],["terminal","新建交互会话",newSession],["bot","新建 Agent",newAgent],["server-cog","接入机器",enrollMachine],["key-round","授予委托",grantDelegation]]]];
+  window._cmd=groups.flatMap(g=>g[1]);
+  openModal(`<input class="input" placeholder="输入命令或搜索…" oninput="filterCmd(this.value)" onkeydown="if(event.key==='Escape')closeModal()"><div id="cmdl">${cmdList(groups)}</div><div class="modal-f" style="justify-content:space-between"><span class="muted xs">命令按你的权限码过滤（底座 Command 组件）</span><span class="muted xs">Esc 关闭</span></div>`);
+  document.getElementById("modal").classList.add("cmdk");
+}
+function cmdList(groups){let i=0;return groups.map(([g,items])=>`<div class="grp"><small>${g}</small>${items.map(([ic,t])=>`<a href="javascript:void 0" onclick="closeModal();window._cmd[${i++}][2]()">${I(ic)}${t}</a>`).join("")}</div>`).join("")}
+function filterCmd(q){document.querySelectorAll("#cmdl a").forEach(a=>a.style.display=a.textContent.includes(q)?"":"none")}
+document.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="k"){e.preventDefault();openCmdk()}if(e.key==="Escape"){closeModal();closeDrawer()}});
+
+/* ================= 总览（08 §8.5） ================= */
+PAGES.overview=()=>{
+  const kpis=[["每个已接受交付物成本","$27.50","-8.2% 较上周","up",[34,31,33,30,29,28,27.5]],["首次验收率","73.3%","+4.1 pt","up",[61,64,66,70,69,72,73]],["人工关注分钟 / 交付物","10.0","-1.6 分钟","up",[15,14,13,12,11,10.5,10]],["返工周期 P50","4.0 h","+0.5 h","down",[3,3.5,3.2,3.8,3.6,3.9,4]],["证据覆盖率","94.4%","目标 ≥90%","up",[88,90,91,92,93,94,94.4]]];
+  return head("早上好，Morgan","夜里团队推进了 11 个工作项",`Agent 自主完成 7 项、你有 <b>${INBOX.length}</b> 项待裁决；全自治项目「商户控制台」预算接近上限。`,
+    `<button class="btn" onclick="go('portal')">${I("external-link")}甲方门户</button><button class="btn primary" onclick="go('inbox')">处理裁决<span class="orb">${I("arrow-up-right")}</span></button>`)+
+  `<div class="grid kpis" style="margin-bottom:16px">${kpis.map(([t,v,d,dir,pts])=>`<div>${card("",`<div class="kpi" style="padding:0"><div class="muted small">${t}</div><div class="v">${v}</div><div class="d ${dir}">${d}</div>${spark(pts)}</div>`)}</div>`).join("")}</div>
+  <div class="grid g12">
+    <div class="c8">${card("待你裁决",INBOX.slice(0,5).map(inboxRow).join(""),{icon:"gavel",right:`<a class="btn sm ghost" href="#/inbox">全部 ${INBOX.length}${I("arrow-right")}</a>`,pad:0})}</div>
+    <div class="c4">${card("团队负载",`<div class="stack">${[["morgan",2,4],["chen",3,4],["ada",3,3],["bo",2,3],["cy",1,4],["lead",1,2]].map(([k,a,m])=>`<div class="row">${A(k)}<div class="grow"><div class="row small"><b>${PEOPLE[k].n}</b><span class="muted xs">${PEOPLE[k].k==="a"?PEOPLE[k].model:PEOPLE[k].role}</span><span class="muted xs" style="margin-left:auto">${a}/${m}</span></div><div class="progress" style="margin-top:5px"><i style="width:${a/m*100}%"></i></div></div></div>`).join("")}</div>`,{icon:"users-round",right:`<span class="muted xs">人 3 · Agent 6</span>`})}</div>
+    <div class="c8">${card("项目健康",`<div class="table-wrap"><table><thead><tr><th>项目</th><th>阶段</th><th>模式</th><th>已接受</th><th>预算</th><th>风险</th></tr></thead><tbody>${PROJECTS.map(p=>`<tr class="click" onclick="go('project/${p.id}')"><td><b>${p.name}</b><div class="muted xs">${p.client}</div></td><td>${STAGE_ZH[p.stage]}</td><td>${S(p.mode)}</td><td>${p.acc[0]}/${p.acc[1]}</td><td style="min-width:120px"><div class="progress"><i style="width:${Math.min(100,p.budget[0]/p.budget[1]*100)}%;${p.budget[0]/p.budget[1]>.9?"background:var(--danger)":""}"></i></div><div class="muted xs">${money(p.budget[0])} / ${money(p.budget[1])}</div></td><td>${p.health==="warn"?S("INCONCLUSIVE","预算 96.8%"):S("PASSED","正常")}</td></tr>`).join("")}</tbody></table></div>`,{icon:"folder-kanban",pad:0})}</div>
+    <div class="c4">${card("机器",`<div class="stack">${MACHINES.map(m=>`<div class="row"><span class="iconbtn" style="width:30px;height:30px;background:var(--muted)">${I(m.os.startsWith("Win")?"monitor":m.os.startsWith("Ubuntu")?"server":"laptop")}</span><div class="grow"><b class="small">${m.n}</b><div class="muted xs">槽位 ${m.slots[0]}/${m.slots[1]} · ${m.beat}</div></div>${S(m.st)}</div>`).join("")}</div>`,{icon:"server",right:`<span class="muted xs">3/4 在线</span>`})}</div>
+    <div class="c12">${card("近期活动",`<div class="stack small">${[
+      ["lead","主导 Agent Atlas 将 BIL-143 派给 Bo（AUTO 未触发：MANUAL 策略，Morgan 已确认）","4 分钟前","split"],
+      ["ada","Ada 提交 BIL-142 完成声明，自动验证 4/4 通过，进入待裁决","12 分钟前","circle-check"],
+      ["cy","Cy 经委托 #D-17 接受 CON-77（风险 LOW，成本 $1.20 ≤ 上限）","38 分钟前","badge-check"],
+      ["morgan","Morgan 拒绝 BIL-139：需求偏差 · 税额应按行项目舍入（已生成返工分支 #3）","1 小时前","git-branch"],
+      ["lee","甲方 Lee 在门户部分验收 交付包 BIL#2：1 项拒收，已生成返工来件","3 小时前","split"]].map(([k,t,ts,ic])=>`<div class="row">${A(k)}<span class="grow">${t}</span><span class="muted xs">${ts}</span></div>`).join("")}</div>`,{icon:"activity"})}</div>
+  </div>`;
+};
+function inboxRow(x){const [ic,c,lab]=INBOX_KIND[x.k];return `<div class="inbox-item"><span class="ico" style="background:var(--${c}-soft);color:var(--${c})">${I(ic)}</span><div class="grow"><div class="row"><b style="font-weight:600">${x.t}</b></div><div class="muted xs">${lab} · ${x.src}</div></div><span class="muted xs" style="white-space:nowrap">${I("clock")} ${x.wait}</span><button class="btn sm" onclick="go('${x.go}')">处理</button></div>`}
+
+/* ================= 我的裁决（08 §6.10） ================= */
+PAGES.inbox=()=>head("决策优先","我的裁决","所有需要人类决定的事项集中在这里；他端处理后 ≤1s 移除。不提供批量通过。",`<span class="muted small">键盘 <span class="mono">J/K</span> 上下 · <span class="mono">A</span> 通过 · <span class="mono">R</span> 拒绝</span>`)+
+  `<div class="row wrap" style="margin-bottom:12px">${["全部","工作项评审","工具授权","来件分诊","派单确认","升级告警","交付确认","规则记忆审批","执行需关注"].map((t,i)=>`<span class="chip ${i?"":"on"}">${t}</span>`).join("")}</div>`+
+  card("",INBOX.map(inboxRow).join(""),{pad:0});
+
+/* ================= 来件（01） ================= */
+PAGES.intakes=()=>head("需求开口","来件","甲方是谁不重要——门户、邮件、API 都是开口。协调员 Agent 先出分诊卡，人确认后转为需求。",`<button class="btn" onclick="toast('开口设置：门户 / 邮件 / API')">${I("settings-2")}开口设置</button><button class="btn primary" onclick="toast('手工录入来件')">${I("plus")}新建来件</button>`)+
+`<div class="grid g12"><div class="c4">${card("",[
+  ["IN-2041","导出权限仅限财务？","门户 · Lee","TRIAGED",true],["IN-2040","结算对账 API 增加分页","API · Fabrikam","CLARIFYING"],["IN-2039","返工：交付包 BIL#2 第 3 项","门户 · Lee · 返工来件","TRIAGED"],["IN-2036","文档站英文版","邮件 · docs@adatum","CONVERTED"],["IN-2031","帮我们做个抽奖小程序","邮件 · 未知发件人","DECLINED"]
+].map(([id,t,src,s,on])=>`<div class="inbox-item" style="${on?"background:var(--primary-soft)":""};cursor:pointer"><span class="ico" style="background:var(--muted)">${I(src.startsWith("API")?"webhook":src.startsWith("邮件")?"mail":"globe")}</span><div class="grow"><b class="small">${t}</b><div class="muted xs mono">${id} · ${src}</div></div>${({TRIAGED:S("NEEDS_HUMAN_REVIEW","待转换"),CLARIFYING:S("INCONCLUSIVE","澄清中"),CONVERTED:S("ACCEPTED","已转需求"),DECLINED:S("CANCELLED","已拒绝")})[s]}</div>`).join(""),{pad:0})}</div>
+<div class="c8 stack">
+  ${card("IN-2041 · 导出权限仅限财务？",`<div class="row muted small" style="margin-bottom:10px">${A("lee")} Lee（甲方联系人）· 门户提交 · 41 分钟前 · 原文不可修改</div><div class="bubble" style="max-width:none">CSV 导出这个功能希望只有财务能用，我们的审计同事偶尔也需要导出，但不要能看到客户手机号。能不能下周五前上线？</div>`,{icon:"globe",right:S("NEEDS_HUMAN_REVIEW","待转换")})}
+  ${card("分诊卡 · 由 Iris（协调员 Agent）起草",`<div class="note info" style="margin-bottom:12px">${I("sparkles")}<span>草案，需人确认。追加到既有需求属于<b>范围变更</b>，不可委托给 Agent，需要 step-up。</span></div>
+    <dl class="kv"><dt>建议处置</dt><dd><b>追加到需求</b> 账单中心 · R-12「账单导出」v3 → v4</dd><dt>需求草案</dt><dd>导出权限：财务角色可导出全字段；审计角色可导出，但手机号脱敏</dd>
+    <dt>验收标准</dt><dd><ol style="margin:0;padding-left:18px"><li>非财务/审计角色看不到导出按钮，接口 403</li><li>审计角色导出文件中手机号显示为 138****0000</li><li>导出行为写入审计日志</li></ol></dd>
+    <dt>风险</dt><dd>${S("INCONCLUSIVE","中")}「审计员」角色在甲方系统中的定义未知</dd><dt>澄清问题</dt><dd>1. 审计角色是否可导出金额字段？ 2. 截止日期是否硬性？</dd><dt>规模</dt><dd>约 2 个工作项 · 预估 $6–9</dd></dl>`,{icon:"clipboard-check",right:`<span class="muted xs">卡片 rev 2</span>`})}
+  <div class="row wrap" style="justify-content:flex-end"><button class="btn" onclick="toast('已合并到 IN-2032')">${I("merge")}合并</button><button class="btn" onclick="toast('拒绝需填写理由并回复甲方')">${I("x")}拒绝</button><button class="btn" onclick="clarify()">${I("message-circle-question")}请求澄清</button><button class="btn primary" onclick="convertIntake()">转为需求<span class="orb">${I("arrow-up-right")}</span></button></div>
+</div></div>`;
+function clarify(){openModal(`<div class="modal-h">${I("message-circle-question")}<h3>请求澄清</h3></div><div class="modal-b"><div class="muted small">经原开口（门户）发送给 Lee；168 小时未答复会回到「已分诊」并标记甲方未响应，不会自动关闭。</div><label class="f">问题 1<span class="req">*</span></label><input class="input" value="审计角色是否可导出金额字段？"><label class="f">问题 2</label><input class="input" value="下周五截止是否硬性？"></div><div class="modal-f"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="closeModal();toast('已发送澄清 · 甲方将在门户看到')">发送</button></div>`)}
+function convertIntake(){openModal(`<div class="modal-h">${I("file-plus-2")}<h3>转为需求</h3></div><div class="modal-b">
+<label class="f">处置方式</label><select class="select"><option>追加到需求 R-12 v3（范围变更 · 需 step-up）</option><option>新需求（既有项目）</option><option>新建项目（不可委托）</option></select>
+<label class="f">基于版本</label><input class="input mono" value="R-12 v3" disabled><div class="hint">如他人已升版本，提交时返回冲突，需重新比对。</div>
+<div class="note warn" style="margin-top:14px">${I("lock-keyhole")}<span>此操作需要重新认证（purpose <span class="mono">intake_convert_privileged</span>）。</span></div></div>
+<div class="modal-f"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="closeModal();toast('需求 R-12 升至 v4 · 2 个工作项基线过期')">${I("fingerprint")}验证身份并转换</button></div>`)}
+
+/* ================= 项目（07） ================= */
+PAGES.projects=()=>head("项目组合","项目","项目阶段由授权决策推进，不由工作项机械推导。",`<button class="btn primary" onclick="toast('新建项目向导')">${I("plus")}新建项目</button>`)+
+`<div class="grid g12">${PROJECTS.map(p=>`<div class="c6">${card(p.name,`<div class="row wrap" style="margin-bottom:12px">${S(p.mode)}<span class="badge">${STAGE_ZH[p.stage]}</span><span class="muted xs">开口：${p.client}</span></div>${stepper(p.stage,true)}<div class="grid g12" style="margin-top:14px;gap:10px"><div class="c4"><div class="muted xs">已接受</div><b style="font-size:18px">${p.acc[0]}<span class="muted small"> / ${p.acc[1]}</span></b></div><div class="c4"><div class="muted xs">预算</div><b style="font-size:18px">${Math.round(p.budget[0]/p.budget[1]*100)}%</b></div><div class="c4"><div class="muted xs">主导 Agent</div>${p.lead?who(p.lead):'<span class="muted small">未设置</span>'}</div></div>`,{right:`<a class="btn sm" href="#/project/${p.id}">打开${I("arrow-right")}</a>`})}</div>`).join("")}</div>`;
+function stepper(stage,mini){const idx=STAGES.indexOf(stage);return `<div class="milestones" style="grid-template-columns:repeat(7,1fr)">${STAGES.map((s,i)=>`<div class="${i<idx?"done":i===idx?"cur":""}">${mini&&i!==idx?"":STAGE_ZH[s]}</div>`).join("")}</div>`}
+PAGES.project=(id)=>{const p=PROJECTS.find(x=>x.id===id)||PROJECTS[1];
+ return head("项目 · "+p.code,p.name,`甲方开口：${p.client}`,`<button class="btn" onclick="toast('阶段推进需授权裁决')">${I("flag")}推进阶段</button><button class="btn ${p.mode==="AUTONOMOUS"?"danger":"primary"}" onclick="toggleMode('${p.mode}')">${p.mode==="AUTONOMOUS"?I("hand")+"一键接管":I("bot")+"切换全自治"}</button>`)+
+ `<div class="grid g12"><div class="c12">${card("阶段",stepper(p.stage))}</div>
+ <div class="c4">${card("团队模式",`<div class="row" style="margin-bottom:10px">${S(p.mode)}</div>${p.mode==="AUTONOMOUS"?`<div class="note danger">${I("siren")}<span>升级规则 BUDGET 已触发（96.8%）：委托已冻结，新执行暂停，等待所有者处理。</span></div>`:`<div class="muted small">切换全自治需满足 5 项前置：≥1 条 ≥24h 的有效委托、4 类升级规则启用、设置预算上限、至少 1 个 Agent 执行者、阶段允许。</div>`}`,{icon:"shield-half"})}</div>
+ <div class="c4">${card("团队编排",`<dl class="kv"><dt>主导 Agent</dt><dd>${who("lead")}</dd><dt>派单策略</dt><dd><span class="badge b-info">${p.mode==="AUTONOMOUS"?"AUTO":"MANUAL"}</span> <span class="muted xs">${p.mode==="AUTONOMOUS"?"护栏外自动生效":"出提案，人确认"}</span></dd><dt>并行求解</dt><dd>上限 3 枝 · HIGH 风险触发</dd><dt>多模型</dt><dd class="row" style="gap:4px">${["ada","bo","cy"].map(k=>A(k)).join("")}<span class="muted xs">Opus · gpt-6 · Sonnet</span></dd></dl>`,{icon:"split"})}</div>
+ <div class="c4">${card("预算",`<div class="row"><div class="ring" style="--p:${Math.round(p.budget[0]/p.budget[1]*100)};width:96px;height:96px"><div style="width:76px;height:76px;font-size:18px">${Math.round(p.budget[0]/p.budget[1]*100)}%</div></div><div class="stack small"><div><span class="muted">已用</span> <b>${money(p.budget[0])}</b></div><div><span class="muted">上限</span> <b>${money(p.budget[1])}</b></div><div class="muted xs">80% 通知 · 100% 暂停（不终止）</div></div></div>`,{icon:"coins"})}</div>
+ <div class="c8">${card("需求基线",`<table><thead><tr><th>需求</th><th>版本</th><th>验收标准</th><th>工作项</th></tr></thead><tbody>${[["R-12 账单导出","v4","7","5"],["R-13 税额计算","v2","4","3"],["R-14 分页与性能","v1","3","2"]].map(r=>`<tr><td><b>${r[0]}</b></td><td class="mono">${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`).join("")}</tbody></table>`,{icon:"list-checks",pad:0})}</div>
+ <div class="c4">${card("风险",`<div class="stack small"><div class="row">${S("INCONCLUSIVE","中")}<span>BIL-145 等待甲方澄清 2 天</span></div><div class="row">${S("EXECUTION_FAILED","高")}<span>BIL-139 第 3 次质量返工，已暂停待人</span></div><div class="row">${S("PENDING","低")}<span>交付包 #3 已接受未交付 26 小时</span></div></div>`,{icon:"triangle-alert"})}</div></div>`};
+function toggleMode(m){if(m==="AUTONOMOUS"){openModal(`<div class="modal-h" style="color:var(--danger)">${I("hand")}<h3>一键接管</h3></div><div class="modal-b"><div class="note danger">${I("triangle-alert")}<span>将立即撤销本项目全部 3 条委托、切回混编模式、派单策略重置为 MANUAL；所有「待裁决」工作项重新投递到人的收件箱。</span></div><label class="f">理由<span class="req">*</span></label><textarea>预算接近上限，周末改为人工把关</textarea></div><div class="modal-f"><button class="btn" onclick="closeModal()">取消</button><button class="btn danger" onclick="closeModal();toast('已接管 · 3 条委托已撤销')">${I("fingerprint")}验证身份并接管</button></div>`)}else toast("前置条件检查：缺少 ≥24h 的有效委托","triangle-alert")}
+
+/* ================= 工作项（02） ================= */
+const COLS=[["READY","就绪",["READY"]],["DOING","进行中",["CLAIMED","IN_PROGRESS"]],["VERIFY","声明与验证",["AGENT_CLAIMED_DONE","VERIFYING"]],["REVIEW","待裁决",["NEEDS_HUMAN_REVIEW"]],["BAD","返工 / 阻塞 / 失败",["REWORK","BLOCKED","EXECUTION_FAILED"]],["DONE","已接受",["ACCEPTED"]]];
+PAGES.work=()=>head("交付","工作项","看板列受状态机约束：Agent 只能把工作项推进到「已声明完成」，接受必须是裁决。",`<span class="chip on">全部项目</span><span class="chip">账单中心</span><span class="chip">商户控制台</span><button class="btn primary" onclick="toast('新建工作项')">${I("plus")}新建</button>`)+
+ `<div class="kanban">${COLS.map(([k,t,sts])=>{const items=WI.filter(w=>sts.includes(w.s));return `<div class="col"><div class="col-h">${t}<span class="badge">${items.length}</span></div>${items.map(w=>`<div class="wi" onclick="go('workitem/${w.id}')"><div class="row"><span class="mono muted xs">${w.id}</span><span style="margin-left:auto">${ladder(w.l)}</span></div><div class="t">${w.t}</div><div class="row">${w.who?A(w.who):""}<span class="badge">${w.type}</span>${w.risk==="HIGH"?S("EXECUTION_FAILED","HIGH"):""}${w.br>1?`<span class="badge b-primary">${I("git-branch")}${w.br}</span>`:""}<span style="margin-left:auto">${S(w.s)}</span></div>${w.block?`<div class="note" style="margin-top:8px;font-size:12px">${I("circle-slash")}${w.block}</div>`:""}</div>`).join("")||`<div class="empty xs">暂无</div>`}</div>`}).join("")}</div>`;
+
+PAGES.workitem=(id)=>{const w=WI.find(x=>x.id===id)||WI[0];
+ return head(w.id+" · "+w.type,w.t,`账单中心 · R-12 v4 · 风险 ${w.risk} · 累计成本 ${money(w.cost)}`,`${S(w.s)}<button class="btn" onclick="go('review')">${I("scale")}去评审台</button>`)+
+ `<div style="margin-bottom:16px">${ladderBig(w.l)}</div>
+ <div class="tabs" role="tablist">${["执行分支","验收标准 ↔ 证据","验证","裁决与审计"].map((t,i)=>`<button class="${i?"":"on"}" onclick="wiTab(this,${i})">${t}</button>`).join("")}</div>
+ <div id="wiTab">${branchTree()}</div>`};
+function ladderBig(l){const L=[["L1","Agent 声明完成","circle-check","执行者提交声明 + 证据"],["L2","验证通过","shield-check","自动 / AI 辅助（记版本）"],["L3","团队已接受","badge-check","有裁决权的主体"],["L4","甲方已验收","stamp","需求开口回执"]];return `<div class="ladder-big">${L.map(([k,t,ic,d],i)=>`<div class="${i<l?"done":i===l?"cur":""}"><b>${I(ic)}${k} ${t}</b><span class="xs">${i<l?"已完成":i===l?"当前":d}</span></div>`).join("")}</div>`}
+function branchTree(){return `<div class="grid g12"><div class="c8">${card("执行分支树",`<div class="branch">
+ <div class="bnode"><div class="row"><b>#1 · 初始</b>${S("SUCCEEDED")}<span class="muted xs" style="margin-left:auto">Ada · studio-mini · Claude Code Opus · $1.24</span></div><div class="muted xs">声明后被 Morgan 拒绝：需求偏差 · 「导出列顺序应按甲方模板」</div></div>
+ <div class="branch"><div class="bnode cur"><div class="row"><b>#2 · 质量返工 1</b>${S("SUCCEEDED")}<span class="muted xs" style="margin-left:auto">Ada · $2.18</span></div><div class="muted xs">注入：结构化反馈 [F1]、知识 [K3]「甲方模板列顺序」；产出声明 → 验证 4/4 通过 → 待裁决</div></div></div>
+ </div><div class="sep"></div><div class="row muted small">${I("info")}返工产生子执行，旧产物与证据保留，不被覆盖；同一工作项第 3 次质量返工会自动暂停并升级给人。</div>`,{icon:"git-branch"})}</div>
+ <div class="c4">${card("分派",`<div class="stack"><div class="row">${who("ada")}<span class="badge b-info" style="margin-left:auto">执行者</span></div><div class="muted xs">派单：主导 Agent Atlas 提案（82.6 分：技能 0.9 · 首次验收 0.78 · 负载 0.67），Morgan 确认</div><div class="sep"></div><div class="row">${who("morgan")}<span class="badge b-warn" style="margin-left:auto">裁决人</span></div></div>`,{icon:"user-check"})}</div></div>`}
+function wiTab(btn,i){btn.parentNode.querySelectorAll("button").forEach(b=>b.classList.remove("on"));btn.classList.add("on");
+ document.getElementById("wiTab").innerHTML=[branchTree(),coverage(),verifs(),auditTimeline()][i];icons()}
+function coverage(){return card("验收标准 ↔ 证据（覆盖 3/3）",`<table><thead><tr><th>验收标准</th><th>证据</th><th>状态</th></tr></thead><tbody>${[["导出文件为 UTF-8 CSV，含表头","测试报告 test_export_csv · 截图 #2","COVERED"],["列顺序与甲方模板一致","测试报告 test_column_order","COVERED"],["10 万行导出 < 30 秒","性能日志 perf-run-17（AI 辅助判定：参考）","COVERED"]].map(r=>`<tr><td>${r[0]}</td><td class="small">${r[1]}</td><td>${S("PASSED","已覆盖")}</td></tr>`).join("")}</tbody></table>`,{pad:0})}
+function verifs(){return card("验证",`<table><thead><tr><th>验证器</th><th>层级</th><th>版本</th><th>结果</th><th>耗时</th></tr></thead><tbody>${[["go test ./billing/...","自动化","v3","PASSED","41s"],["golangci-lint","自动化","v2","PASSED","12s"],["CSV 契约校验","自动化","v1","PASSED","3s"],["需求比对（Cy）","AI 辅助 · 仅参考","v1","PASSED","58s"]].map(r=>`<tr><td class="mono">${r[0]}</td><td>${r[1]}</td><td class="mono">${r[2]}</td><td>${S(r[3])}</td><td>${r[4]}</td></tr>`).join("")}</tbody></table>`,{pad:0})}
+function auditTimeline(){return card("裁决与审计（哈希链）",`<div class="stack small">${[["morgan","REJECT · QUALITY_REJECTION","来源 ROLE:delivery_lead · 理由：导出列顺序应按甲方模板 · 证据 EV-311, EV-312","昨天 18:20"],["lead","ASSIGN → Ada","来源 POLICY:proposal-8842 · Morgan 确认","昨天 09:02"],["ada","CLAIM（L1）","证据 5 条 · head 9f3c2a1","今天 07:41"]].map(([k,a,d,t])=>`<div class="row" style="align-items:flex-start">${A(k)}<div class="grow"><b>${a}</b><div class="muted xs">${d}</div></div><span class="muted xs">${t}</span></div>`).join("")}<div class="note ok">${I("link-2")}<span>链完整 · event_hash 0x7a91…e04c · 可导出</span></div></div>`)}
+
+/* ================= 评审台（02 §8 核心） ================= */
+PAGES.review=()=>{const w=WI[0];return head("核心","评审台","证据前置、权限可见、关注时长自动计时。拒绝必须分类并给出结构化反馈。",`<span class="badge b-info">${I("timer")}关注计时 02:14</span>`)+
+ `<div class="grid g12"><div class="c3">${card("队列 · 3",[["BIL-142","账单导出支持 CSV 格式","12m",1],["CON-80","结算对账 API","26m"],["BIL-131","导出进度条","1h"]].map(([id,t,wt,on])=>`<div class="inbox-item" style="${on?"background:var(--primary-soft)":""};cursor:pointer"><div class="grow"><div class="mono xs muted">${id}</div><b class="small">${t}</b></div><span class="muted xs">${wt}</span></div>`).join(""),{pad:0})}</div>
+ <div class="c6 stack">
+  ${card("完成声明 · Ada · 分支 #2 质量返工 1",`<div class="bubble" style="max-width:none">实现 CSV 导出：UTF-8 BOM、表头按甲方模板顺序；新增 /exports?format=csv；10 万行流式写出 18.4s。已按反馈 [F1] 调整列顺序。</div><div class="row wrap" style="margin-top:10px">${ladder(2)}<span class="muted xs">自评置信度 0.86 · 变更 7 文件 +312 −41 · head <span class="mono">9f3c2a1</span></span></div>`,{icon:"file-check-2"})}
+  ${card("证据（来源卡）",`<div class="stack">${[["git-commit-horizontal","Commit 9f3c2a1","Ada（执行 #2）","sha256 4be1…9c0a","仅证明代码变更存在，不证明业务正确"],["flask-conical","测试报告 · 38 通过 / 0 失败","go test v3（studio-mini）","sha256 a03d…771e","覆盖率 81%；未覆盖导出取消路径"],["image","截图 · 导出预览","Ada","sha256 51fe…0b2d","仅证明界面渲染"]].map(([ic,t,pr,h,lim])=>`<div class="ev"><div class="row">${I(ic)}<b>${t}</b>${S("PASSED","已验证")}</div><div class="prov"><div><span>产生者</span>${pr}</div><div><span>内容哈希</span><span class="mono" style="color:var(--fg)">${h}</span></div><div><span>局限</span>${lim}</div></div></div>`).join("")}</div>`,{icon:"file-search"})}
+  ${card("使用的知识",`<div class="stack small"><div class="row"><span class="badge b-primary">F1</span><span>拒绝反馈：导出列顺序应按甲方模板（Morgan · 昨天）</span></div><div class="row"><span class="badge">K3</span><span>项目文档《Contoso 导出模板 v2》§2 列定义 · 得分 0.82</span></div><div class="row"><span class="badge">K7</span><span>团队规则：CSV 一律带 UTF-8 BOM（已批准 RULE）</span></div></div>`,{icon:"library-big"})}
+ </div>
+ <div class="c3">${card("裁决",`<div class="note info small">${I("id-card")}<span>你以 <b>交付负责人</b> 身份裁决 · 来源 <span class="mono">ROLE:delivery_lead</span></span></div>
+  <label class="f">理由</label><textarea placeholder="通过可选填，拒绝必填"></textarea>
+  <div class="stack" style="margin-top:12px"><button class="btn primary" onclick="approve()">${I("badge-check")}通过</button><button class="btn" onclick="rejectModal('REQUEST_CHANGES')">${I("pencil-line")}要求修改</button><button class="btn" onclick="rejectModal('REJECT')">${I("x")}拒绝</button><div class="row"><button class="btn sm grow" onclick="toast('已暂停')">${I("pause")}暂停</button><button class="btn sm grow" onclick="toast('范围变更需 step-up','lock-keyhole')">${I("scaling")}范围变更</button></div></div>
+  <div class="sep"></div><div class="muted xs">职责分离：执行者 Ada 与派单的主导 Agent 均不能裁决此项。</div>`,{icon:"gavel"})}</div></div>`};
+function approve(){toast("已接受 BIL-142 · L3 · 审计已记录");INBOX.shift();setTimeout(()=>go("work"),900)}
+function rejectModal(kind){openModal(`<div class="modal-h">${I("x-octagon")}<h3>${kind==="REJECT"?"拒绝":"要求修改"} · BIL-142</h3></div><div class="modal-b">
+ <label class="f">失败分类<span class="req">*</span></label><div class="row wrap">${[["QUALITY_REJECTION","质量拒绝 → 返工分支",1],["SCOPE_CHANGE","范围变更 → 需求升版本"],["STRATEGY_CHANGE","策略变更 → 并行替代分支"],["BLOCKED","阻塞 → 发起澄清"]].map(([k,t,on])=>`<span class="chip ${on?"on":""}" onclick="this.parentNode.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));this.classList.add('on')">${t}</span>`).join("")}</div>
+ <label class="f">反馈类别<span class="req">*</span></label><select class="select"><option>功能缺陷</option><option selected>需求偏差</option><option>样式</option><option>性能</option><option>安全</option><option>其他</option></select>
+ <div class="grid g12" style="gap:10px"><div class="c6"><label class="f">位置</label><input class="input" placeholder="文件 / 页面 / 接口" value="export/csv.go:88"></div><div class="c6"><label class="f">期望</label><input class="input" value="金额列保留两位小数"></div></div>
+ <label class="f">详情<span class="req">*</span></label><textarea>金额列当前输出 12.5，甲方模板要求 12.50。</textarea>
+ <div class="hint">反馈会作为第 4 层上下文注入下一次执行，并进入知识库，避免重复犯错。</div></div>
+ <div class="modal-f"><button class="btn" onclick="closeModal()">取消</button><button class="btn danger" onclick="closeModal();toast('已创建返工分支 #3 · 反馈已注入','git-branch')">提交并创建返工分支</button></div>`)}
+
+/* ================= 执行（03） ================= */
+PAGES.executions=()=>head("执行面","执行","Agent 无人值守执行与人的交互会话都在这里。关闭页面、断网不影响执行。",`<button class="btn primary" onclick="newSession()">${I("terminal")}新建交互会话</button>`)+
+ card("",`<div class="table-wrap"><table><thead><tr><th>执行</th><th>工作项 · 分支</th><th>执行者</th><th>机器 · 运行时</th><th>状态</th><th>成本</th></tr></thead><tbody>${[
+  ["EX-9102","BIL-143 · #1 初始","bo","build-box · Codex","RUNNING","$1.10"],
+  ["EX-9099","交互会话「修复税额误差」","chen","studio-mini · Claude Code","RUNNING","$0.62","session"],
+  ["EX-9097","BIL-139 · #3 质量返工 2","ada","studio-mini · Claude Code","PAUSED","$2.30"],
+  ["EX-9090","CON-91 · #1 初始","ada","old-laptop · Claude Code","INTERRUPTED","$0.70"],
+  ["EX-9088","BIL-142 · #2 质量返工 1","ada","studio-mini · Claude Code","SUCCEEDED","$2.18"],
+  ["EX-9080","CON-88 · #1 · 验证","cy","studio-mini · Claude Code","SUCCEEDED","$0.31"]].map(r=>`<tr class="click" onclick="${r[6]?"go('session')":"toast('执行详情：日志尾部、事件、产物')"}"><td class="mono">${r[0]}</td><td>${r[1]}</td><td>${who(r[2])}</td><td class="small">${r[3]}</td><td>${S(r[4])}${r[4]==="INTERRUPTED"?`<div class="muted xs">机器离线 · 不自动重放</div>`:""}</td><td>${r[5]}</td></tr>`).join("")}</tbody></table></div>`,{pad:0});
+
+PAGES.session=()=>head("交互会话 · INTERACTIVE","修复税额四舍五入误差",`挂在 BIL-139 · 分支 #3 · ${PEOPLE.chen.n} 发起`,`<span class="badge">${I("laptop")}studio-mini</span><span class="badge">Claude Code · SDK · Opus · high</span><span class="badge b-info">Skills 8 · MCP 3</span><button class="btn" onclick="toast('会话设置：换机器 / 模型 / 授权模式')">${I("settings-2")}</button><button class="btn primary" onclick="claimModal()">${I("flag")}提交完成声明</button>`)+
+ `<div class="grid g12"><div class="c9"><div class="card" style="padding:6px 18px 16px">
+  <div class="msg">${A("chen")}<div class="body"><div class="meta"><b style="color:var(--fg)">阿澈</b>09:12</div><div class="bubble">税额按发票总额舍入导致和行项目合计差 0.01，按反馈 [F2] 改为逐行舍入，并补测试。</div></div></div>
+  <div class="msg"><span class="avatar a" style="background:#d97706">CC</span><div class="body"><div class="meta"><b style="color:var(--fg)">Claude Code</b>runtime · 09:12</div><div class="bubble">我先定位舍入逻辑，再给出修改方案。</div>
+   <div class="toolrow">${I("file-search")}Read · src/billing/tax.ts · 0.3s</div><div class="toolrow">${I("search-code")}Grep · "roundHalfUp" · 4 处 · 0.2s</div>
+   <div class="decision-card"><div class="row">${I("shield-alert")}<b>工具授权：Edit src/billing/tax.ts</b><span class="badge b-warn" style="margin-left:auto">需要你决定</span></div>
+    <div class="code" style="margin:10px 0;font-size:12px">- const tax = roundHalfUp(sum(lines) * rate, 2)
++ const tax = sum(lines.map(l =&gt; roundHalfUp(l.amount * rate, 2)))</div>
+    <div class="row"><span class="muted xs">工作目录 /work/billing · 30 分钟未回应将过期</span><span style="margin-left:auto" class="row"><button class="btn sm" onclick="toast('已拒绝，已送达运行时')">拒绝</button><button class="btn sm primary" onclick="this.closest('.decision-card').outerHTML='<div class=&quot;toolrow&quot;>'+'✓ 已允许一次 · 已送达运行时'+'</div>'">允许一次</button></span></div></div>
+  </div></div>
+  <div class="msg"><span class="avatar a" style="background:#d97706">CC</span><div class="body"><div class="meta"><b style="color:var(--fg)">Claude Code</b><span class="pulse">正在生成…</span></div></div></div>
+  <div class="composer" style="margin-top:8px"><textarea placeholder="发消息…  输入 / 插入 Skill（Claude 插入 /名称），Enter 发送，Shift+Enter 换行"></textarea><div class="row"><button class="iconbtn" aria-label="附件">${I("paperclip")}</button><button class="iconbtn" aria-label="Skills">${I("sparkles")}</button><button class="iconbtn" aria-label="MCP">${I("plug")}</button><span class="muted xs mono">/work/billing</span><button class="btn sm primary" style="margin-left:auto">${I("square")}停止</button></div></div>
+  <div class="muted xs" style="margin-top:8px">${I("cloud-check")} 已同步到服务器 · 关闭页面不影响执行</div>
+ </div></div>
+ <div class="c3 stack">${card("上下文",`<div class="stack small"><div class="row"><span class="badge">L1</span>角色宪法 + 团队规则 2 条</div><div class="row"><span class="badge">L2</span>任务契约 · 4 条验收标准</div><div class="row"><span class="badge b-primary">L4</span>结构化反馈 [F2]</div><div class="row"><span class="badge">L5</span>ADR-007 金额精度</div><div class="row"><span class="badge">L6</span>技能 billing-conventions v3</div><div class="muted xs">预算 18k / 32k tokens；超限按 3→5→6 降级为路径引用</div></div>`,{icon:"layers"})}
+ ${card("授权模式",`<div class="row">${S("PASSED","只读 + 逐项授权")}</div><div class="hint">全自动授权（YOLO）为红色危险操作，需 step-up 并写审计。</div>`,{icon:"shield"})}</div></div>`;
+function newSession(){openModal(`<div class="modal-h">${I("terminal")}<h3>新建交互会话</h3></div><div class="modal-b">
+ <div class="grid g12" style="gap:10px"><div class="c6"><label class="f">项目<span class="req">*</span></label><select class="select"><option>账单中心 Billing</option></select></div><div class="c6"><label class="f">关联工作项</label><select class="select"><option>BIL-139 · 税额误差</option><option>（临时执行，声明前需关联）</option></select></div>
+ <div class="c6"><label class="f">机器<span class="req">*</span></label><select class="select"><option>studio-mini · 槽位 2/3</option><option>build-box · 槽位 1/1（满）</option><option disabled>old-laptop · 离线 3 天前</option></select></div><div class="c6"><label class="f">运行时<span class="req">*</span></label><select class="select"><option>Claude Code 2.4.1</option><option>Codex 0.98.0</option></select></div>
+ <div class="c6"><label class="f">模型</label><input class="input" value="opus"><div class="hint">12 个模型 · 5 分钟前检测</div></div><div class="c6"><label class="f">推理强度</label><select class="select"><option>high</option><option>medium</option><option>low</option></select></div></div>
+ <label class="f">授权模式</label><div class="row wrap"><span class="chip on">只读 + 逐项授权</span><span class="chip" style="color:var(--danger);border-color:var(--danger)">${I("triangle-alert")}全自动（YOLO）</span></div></div>
+ <div class="modal-f"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="closeModal();go('session')">创建</button></div>`)}
+function claimModal(){openModal(`<div class="modal-h">${I("flag")}<h3>提交完成声明 · BIL-139</h3></div><div class="modal-b">
+ <div class="note">${I("info")}<span>声明是 L1，不等于完成；提交后自动排队验证，接受必须由有权主体裁决。</span></div>
+ <label class="f">摘要<span class="req">*</span></label><textarea>改为逐行舍入，补充 6 个边界用例。</textarea>
+ <label class="f">验收标准 ↔ 证据</label><table><tbody>${[["税额合计与行项目一致","测试报告 · 自动采集"],["负数行（退款）舍入正确","测试报告 · 自动采集"],["历史账单不受影响","人工观察（需填写范围）"]].map(r=>`<tr><td>${r[0]}</td><td class="small">${r[1]}</td><td><input type="checkbox" checked aria-label="选择证据"></td></tr>`).join("")}</tbody></table></div>
+ <div class="modal-f"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="closeModal();toast('已提交声明 · 验证排队中')">提交声明</button></div>`)}
+
+/* ================= 交付（07） ================= */
+PAGES.deliveries=()=>head("交付与验收","交付","只有已接受（L3）的工作项能进交付包；正式交付不可委托，需要人工 step-up。",`<button class="btn primary" onclick="toast('新建交付包')">${I("package-plus")}新建交付包</button>`)+
+ `<div class="grid g12"><div class="c5">${card("",[["文档站 · 交付包 #3","READY_D","9 项 · 全自治编排已备好"],["账单中心 · BIL#2","PARTIAL","8 项 · 甲方 1 项拒收 → 返工来件"],["账单中心 · BIL#1","ACCEPTED_D","6 项 · 甲方已验收"],["商户控制台 · CON#4","SENT","12 项 · 等待验收 3 天"]].map(([t,s,d],i)=>`<div class="inbox-item" style="${i?"":"background:var(--primary-soft)"};cursor:pointer"><span class="ico" style="background:var(--muted)">${I("package")}</span><div class="grow"><b class="small">${t}</b><div class="muted xs">${d}</div></div>${S(s)}</div>`).join(""),{pad:0})}</div>
+ <div class="c7 stack">${card("文档站 · 交付包 #3",`<div class="row wrap" style="margin-bottom:12px">${S("READY_D")}<span class="muted xs">开口：邮件 docs@adatum · 联系人 1 位</span></div>
+  <table><thead><tr><th>工作项</th><th>完成阶梯</th><th>证据</th></tr></thead><tbody>${[["DOC-21 快速开始","3"],["DOC-22 API 参考","3"],["DOC-23 迁移指南","3"]].map(r=>`<tr><td>${r[0]}</td><td>${ladder(+r[1])}</td><td class="small">3 条 · 哈希已锁定</td></tr>`).join("")}<tr><td colspan="3" class="muted xs">…另 6 项</td></tr></tbody></table>
+  <label class="f">发布说明（Agent 起草，需人最后编辑）</label><textarea>本次交付包含文档站 v1 全部 9 个页面……</textarea>
+  <div class="row" style="margin-top:12px"><span class="muted xs">证据包：确定性 zip · 指纹 <span class="mono">sha256 e1c0…4ad2</span> · 已脱敏</span></div>`,{icon:"package-check"})}
+  <div class="row" style="justify-content:flex-end"><button class="btn" onclick="toast('已请求确认交付：通知所有者与有交付权限者')">${I("bell-ring")}请求确认</button><button class="btn primary" onclick="deliverModal()">${I("send")}正式交付<span class="orb">${I("arrow-up-right")}</span></button></div></div></div>`;
+function deliverModal(){openModal(`<div class="modal-h">${I("send")}<h3>正式交付 · 文档站 #3</h3></div><div class="modal-b"><div class="note warn">${I("lock-keyhole")}<span>正式交付不可委托，只能由人类执行，并需重新认证（purpose <span class="mono">delivery_send</span>）。发送后经原开口（邮件）通知甲方。</span></div><dl class="kv" style="margin-top:12px"><dt>工作项</dt><dd>9 项 · 全部 L3</dd><dt>基线</dt><dd>无「基线过期」项</dd><dt>收件人</dt><dd>docs@adatum（主联系人）</dd></dl></div><div class="modal-f"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="closeModal();toast('已发送 · 甲方将在门户/邮件中验收','send')">${I("fingerprint")}验证身份并交付</button></div>`)}
+
+/* ================= 频道（05 collab） ================= */
+PAGES.channels=()=>head("协作","频道","人和 Agent 在项目频道协作；工作流事件折叠，裁决卡片永不折叠。","")+
+ `<div class="grid g12"><div class="c3">${card("",`<div class="nav">${[["billing","账单中心",3,1],["console","商户控制台",0],["docs","文档站",0],["sdk","移动端 SDK",1]].map(([k,t,u,on])=>`<a href="javascript:void 0" class="${on?"on":""}">${I("hash")}<span>${t}</span>${u?`<span class="cnt">${u}</span>`:""}</a>`).join("")}<div class="nav-group">私信（Agent 间，只读）</div><a href="javascript:void 0">${A("lead")}<span>Atlas ↔ Ada</span></a></div>`)}</div>
+ <div class="c9"><div class="card" style="padding:6px 18px 16px">
+  <div class="msg">${A("morgan")}<div class="body"><div class="meta"><b style="color:var(--fg)">Morgan</b>08:58</div><div class="bubble"><span class="hl">@Atlas</span> BIL-144 文档交给谁合适？今天想把 CSV 导出一起交付。</div></div></div>
+  <div class="msg">${A("lead")}<div class="body"><div class="meta"><b style="color:var(--fg)">Atlas</b><span class="badge b-primary">主导 Agent</span>08:58</div>
+   <div class="decision-card" style="border-color:var(--primary);background:linear-gradient(180deg,var(--primary-soft),transparent 70%)"><div class="row">${I("split")}<b>派单提案 · BIL-144 → Bo</b><span class="badge b-primary" style="margin-left:auto">MANUAL · 待确认</span></div>
+    <table style="margin:8px 0"><tbody>${[["bo","82.6","技能 1.0 · 首次验收 0.81 · 成本 0.74 · 负载 0.67"],["ada","72.7","技能 0.8 · 首次验收 0.78 · 负载 0.0（已满）"],["cy","—","不合格：角色非执行者"]].map(r=>`<tr><td>${who(r[0])}</td><td class="mono"><b>${r[1]}</b></td><td class="muted xs">${r[2]}</td></tr>`).join("")}</tbody></table>
+    <div class="muted xs">理由：Bo 在文档类工作项近 90 天首次验收率最高，build-box 有空闲槽位。评分确定性（s1），LLM 只在前 5 名中选择。</div>
+    <div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn sm" onclick="toast('已驳回提案（dispatch.rejected）')">驳回</button><button class="btn sm" onclick="toast('改派对话框')">改派</button><button class="btn sm primary" onclick="toast('已派给 Bo · ASSIGN 裁决已记录')">确认</button></div></div></div></div>
+  <div class="msg"><span class="avatar h" style="background:var(--muted);color:var(--muted-fg)">${I("activity")}</span><div class="body"><div class="toolrow" style="cursor:pointer">${I("chevrons-up-down")}BIL-142 · 6 个事件 · 最新：自动验证 4/4 通过，进入待裁决</div></div></div>
+  <div class="msg">${A("ada")}<div class="body"><div class="meta"><b style="color:var(--fg)">Ada</b><span class="badge">Agent</span>09:20</div><div class="decision-card"><div class="row">${I("gavel")}<b>审批 · BIL-142 账单导出支持 CSV 格式</b><span class="badge b-warn" style="margin-left:auto">待裁决</span></div><div class="muted small" style="margin:6px 0">证据 5 条 · 验证 4/4 · 覆盖 3/3 验收标准</div><div class="row" style="justify-content:flex-end"><button class="btn sm" onclick="rejectModal('REJECT')">拒绝</button><button class="btn sm primary" onclick="go('review')">去评审</button></div></div></div></div>
+  <div class="composer" style="margin-top:10px"><textarea placeholder="发消息，@ 提及成员（人与 Agent；运行时进程不可提及）"></textarea><div class="row"><span class="muted xs">@Agent 只会生成派单提案或工作项草稿，不会直接改变状态</span><button class="btn sm primary" style="margin-left:auto">${I("send")}发送</button></div></div>
+ </div></div></div>`;
+
+/* ================= 成员与 Agent（05） ================= */
+PAGES.members=()=>head("团队","成员与 Agent","一张表管理人和 Agent：Agent 是服务账号身份，人圆形头像，Agent 方形像素头像。",`<button class="btn" onclick="toast('邀请成员（复用底座）')">${I("user-plus")}邀请成员</button><button class="btn primary" onclick="newAgent()">${I("bot")}新建 Agent</button>`)+
+ card("",`<div class="table-wrap"><table><thead><tr><th>成员</th><th>类型</th><th>角色</th><th>运行时 · 模型</th><th>机器</th><th>负载</th><th>首次验收率</th><th>状态</th></tr></thead><tbody>${[
+  ["sam","人","团队所有者","—","—","0/4","—","ACTIVE_A"],["morgan","人","交付负责人","—","—","2/4","—","ACTIVE_A"],["chen","人","工程师","—","—","3/4","88%","ACTIVE_A"],
+  ["lead","Agent","主导","Claude Code · Opus","DESKTOP-7F3A","1/2","—","ACTIVE_A"],["iris","Agent","协调员","Codex · gpt-6-mini","DESKTOP-7F3A","0/2","—","ACTIVE_A"],
+  ["ada","Agent","执行者","Claude Code · Opus","studio-mini","3/3","78%","ACTIVE_A"],["bo","Agent","执行者","Codex · gpt-6-astra","build-box","2/3","81%","ACTIVE_A"],["cy","Agent","评审员 · 委托 1","Claude Code · Sonnet","studio-mini","1/4","—","CRASHED"]
+ ].map(r=>`<tr class="click" onclick="${PEOPLE[r[0]].k==="a"?`agentDrawer('${r[0]}')`:""}"><td>${who(r[0])}</td><td><span class="badge ${r[1]==="Agent"?"b-primary":""}">${r[1]}</span></td><td>${r[2]}</td><td class="small">${r[3]}</td><td class="small">${r[4]}</td><td>${r[5]}</td><td>${r[6]}</td><td>${S(r[7])}${r[7]==="CRASHED"?`<div class="muted xs">自动重启 1/3 · 执行已中断</div>`:""}</td></tr>`).join("")}</tbody></table></div>`,{pad:0});
+function agentDrawer(k){const p=PEOPLE[k];openDrawer(`<div style="padding:22px">
+ <div class="row">${A(k,"lg")}<div class="grow"><h3>${p.n}</h3><div class="muted small">${p.role} · 服务账号 svc-agent-${k}</div></div><button class="iconbtn" onclick="closeDrawer()" aria-label="关闭">${I("x")}</button></div>
+ <div class="row wrap" style="margin:14px 0">${S("ACTIVE_A")}<span class="badge">${p.model}</span><span class="badge">${I("laptop")}${p.machine}</span></div>
+ <div class="tabs">${["概览","授权","记忆","技能","私信"].map((t,i)=>`<button class="${i?"":"on"}">${t}</button>`).join("")}</div>
+ <dl class="kv"><dt>系统提示词</dt><dd class="small">你是 Northwind 的后端工程师，遵循团队规范……</dd><dt>MCP 白名单</dt><dd class="small">github, postgres-readonly</dd><dt>记忆策略</dt><dd class="small">recent · 每日写入上限 20 · RULE 需人审</dd><dt>当前工作</dt><dd class="small">BIL-139（暂停待人）、BIL-146、CON-91</dd><dt>近 90 天</dt><dd class="small">首次验收 78% · 每接受交付物 $3.10 · 返工率 19%</dd></dl>
+ <div class="sep"></div><div class="row"><button class="btn sm">${I("rotate-ccw")}重启</button><button class="btn sm">${I("square")}停止</button><button class="btn sm" style="margin-left:auto;color:var(--danger)" onclick="retire('${k}')">${I("log-out")}退役…</button></div></div>`)}
+function retire(k){openModal(`<div class="modal-h">${I("log-out")}<h3>退役 ${PEOPLE[k].n}</h3></div><div class="modal-b">
+ <div class="row wrap">${["① 生成交接文档","② 选择接手人","③ 清理与吊销"].map((t,i)=>`<span class="chip ${i?"":"on"}">${t}</span>`).join("")}</div>
+ <div class="note" style="margin-top:14px">${I("file-text")}<span>交接文档由 ${PEOPLE[k].n} 撰写并作为产物入库（10 分钟未完成则生成系统摘要）。进行中的 3 个工作项将逐项改派。</span></div>
+ <div class="sep"></div><div class="note danger">${I("triangle-alert")}<span><b>强制退役</b>（机器异常时）：丢失工作状态、不可撤销。需输入 Agent 名称并重新认证。</span></div><input class="input" style="margin-top:8px" placeholder="输入「${PEOPLE[k].n}」以确认强制退役"></div>
+ <div class="modal-f"><button class="btn" onclick="closeModal()">取消</button><button class="btn danger" onclick="closeModal();toast('已强制退役 · 凭证已吊销')">强制退役</button><button class="btn primary" onclick="closeModal();toast('正常退役：交接文档生成中')">开始正常退役</button></div>`)}
+function newAgent(){openModal(`<div class="modal-h">${I("bot")}<h3>新建 Agent</h3></div><div class="modal-b"><div class="grid g12" style="gap:10px">
+ <div class="c6"><label class="f">名称<span class="req">*</span></label><input class="input" value="Dev"></div><div class="c6"><label class="f">角色<span class="req">*</span></label><select class="select"><option>执行者</option><option>评审员</option><option>协调员</option><option>主导</option></select></div>
+ <div class="c4"><label class="f">机器<span class="req">*</span></label><select class="select"><option>studio-mini</option><option>build-box</option></select></div><div class="c4"><label class="f">运行时<span class="req">*</span></label><select class="select"><option>Claude Code</option><option>Codex</option></select></div><div class="c4"><label class="f">模型<span class="req">*</span></label><input class="input" value="sonnet"></div></div>
+ <label class="f">系统提示词<span class="req">*</span></label><textarea>你是前端工程师……</textarea>
+ <label class="f">技能</label><div class="row wrap"><span class="chip on">frontend-conventions v2</span><span class="chip">billing-conventions v3</span><span class="chip">${I("plus")}添加</span></div>
+ <div class="hint">创建将在一个事务内生成服务账号、角色绑定与技能挂载；凭证送达机器失败时保持草稿并重试。</div></div>
+ <div class="modal-f"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="closeModal();toast('Agent Dev 已创建 · 凭证投递中')">创建</button></div>`,true)}
+
+/* ================= 机器（04） ================= */
+PAGES.machines=()=>head("执行面","机器","机器经 OAuth 设备码接入；每台机器一个专属服务账号，凭证可轮换、可吊销。",`<button class="btn primary" onclick="enrollMachine()">${I("server-cog")}接入机器</button>`)+
+ `<div class="grid g12">${MACHINES.map(m=>`<div class="c6">${card(m.n,`<div class="row wrap" style="margin-bottom:10px">${S(m.st)}<span class="muted xs">${m.os} · 心跳 ${m.beat}</span></div><div class="row wrap" style="gap:6px;margin-bottom:12px">${m.rt.map(r=>`<span class="badge">${I("cpu")}${r}</span>`).join("")}</div>
+ <div class="row"><div class="grow"><div class="muted xs">执行槽 ${m.slots[0]}/${m.slots[1]}</div><div class="progress" style="margin-top:5px"><i style="width:${m.slots[1]?m.slots[0]/m.slots[1]*100:0}%"></i></div></div><div class="row" style="gap:4px">${m.agents.map(a=>A(a)).join("")||'<span class="muted xs">无 Agent</span>'}</div></div>`,{icon:m.os.startsWith("Win")?"monitor":m.os.startsWith("Ubuntu")?"server":"laptop",right:`<button class="btn sm ghost" onclick="toast('机器详情：概览 / 运行时 / 模型目录 / 能力 / Agent / 执行记录 / 凭证')">详情${I("arrow-right")}</button>`})}</div>`).join("")}</div>`;
+function enrollMachine(){let t=300,state="wait";openModal(`<div class="modal-h">${I("server-cog")}<h3>接入机器</h3><span class="muted xs" style="margin-left:auto">设备码 · 300 秒有效</span></div><div class="modal-b">
+ <div class="row wrap" id="steps">${["① 运行命令","② 输入接入码","③ 命名并确认"].map((s,i)=>`<span class="chip ${i<2?"on":""}">${s}</span>`).join("")}</div>
+ <label class="f">在目标机器上运行</label><div class="code">npx machine-runner login --server https://console.northwind.example</div>
+ <div class="row" style="margin-top:16px;gap:20px;align-items:center"><div class="ring" id="ring" style="--p:100"><div id="cd">5:00</div></div>
+ <div class="grow stack"><label class="f" style="margin:0">机器上显示的接入码</label><input class="input mono" id="code" value="WDJB-MJHT" style="font-size:18px;letter-spacing:.12em"><div id="enrollState" class="note info">${I("loader","spin")}<span>正在等待机器附加信息…</span></div></div></div>
+ <div id="namebox" style="display:none"><label class="f">名称<span class="req">*</span></label><input class="input" value="mac-studio-02"><div class="hint">已检测：macOS 15 · arm64 · Claude Code 2.4.1 · Codex 0.98.0</div></div>
+ <div class="hint" style="margin-top:10px">关闭此窗口不会取消接入；在 300 秒内任何有 machine_manage 权限的人都可用同一接入码继续。</div></div>
+ <div class="modal-f"><button class="btn" onclick="closeModal();toast('已拒绝 · 设备码作废')">拒绝</button><button class="btn primary" id="confirmBtn" disabled onclick="closeModal();toast('已确认 · 机器建立会话后变为在线')">确认接入</button></div>`);
+ clearInterval(window._timer);window._timer=setInterval(()=>{t--;const r=document.getElementById("ring");if(!r){clearInterval(window._timer);return}
+  r.style.setProperty("--p",t/3);document.getElementById("cd").textContent=Math.floor(t/60)+":"+String(t%60).padStart(2,"0");
+  if(t===296&&state==="wait"){state="ok";document.getElementById("enrollState").outerHTML=`<div class="note ok">${I("check-circle-2")}<span>已附加：<b>mac-studio-02</b> · macOS 15 · 检测到 2 个运行时</span></div>`;document.getElementById("namebox").style.display="";document.getElementById("confirmBtn").disabled=false;icons()}
+  if(t<=0){clearInterval(window._timer);document.getElementById("confirmBtn").disabled=true;document.getElementById("cd").textContent="过期";}},1000)}
+
+/* ================= 知识库（06） ================= */
+PAGES.knowledge=()=>head("记忆与知识","知识库","基于数据库检索：三方言全文检索（K1），PostgreSQL 可启用向量混合检索（K2）。记忆不是真相，只影响倾向。",`<span class="badge b-info">${I("database")}检索引擎：全文 K1 · PostgreSQL</span><button class="btn primary" onclick="toast('上传文档：md / txt / 代码')">${I("upload")}上传文档</button>`)+
+ `<div class="grid g12"><div class="c3">${card("范围",`<div class="nav"><a class="on" href="javascript:void 0">${I("building-2")}团队<span class="tag">214</span></a><a href="javascript:void 0">${I("folder")}账单中心<span class="tag">1.2k</span></a><a href="javascript:void 0">${I("folder")}商户控制台<span class="tag">860</span></a><div class="nav-group">Agent 记忆</div><a href="javascript:void 0">${A("ada")}<span>Ada</span><span class="tag">37</span></a><a href="javascript:void 0">${A("bo")}<span>Bo</span><span class="tag">22</span></a></div>`)}</div>
+ <div class="c6 stack">${card("",`<div class="row"><div class="search" style="max-width:none;margin:0;flex:1;cursor:text">${I("search")}<input style="border:none;background:none;outline:none;flex:1;font:inherit;color:var(--fg)" value="导出 金额 小数"></div></div><div class="row wrap" style="margin-top:10px">${["全部","需求","裁决","反馈","交付","文档","技能","记忆"].map((t,i)=>`<span class="chip ${i===3?"on":""}">${t}</span>`).join("")}</div>`)}
+  ${[["反馈","拒绝 BIL-139：<span class='hl'>金额</span>列应保留两位<span class='hl'>小数</span>，按行项目舍入","Morgan · 裁决 D-551 · 2 天前","0.91"],["文档","《Contoso <span class='hl'>导出</span>模板 v2》§2：<span class='hl'>金额</span>字段格式 0.00","账单中心 · 上传 · 5 天前","0.82"],["记忆 · RULE","CSV <span class='hl'>导出</span>一律带 UTF-8 BOM，否则 Excel 乱码","Ada → Morgan 已批准","0.64"]].map(([k,t,s,sc])=>card("",`<div class="row"><span class="badge b-primary">${k}</span><span class="muted xs" style="margin-left:auto">得分 ${sc}</span></div><div style="margin:8px 0">${t}</div><div class="muted xs">${s}</div>`)).join("")}</div>
+ <div class="c3">${card("规则记忆待审 · 1",`<div class="stack small"><div class="row">${A("bo")}<b>Bo</b><span class="badge b-warn" style="margin-left:auto">RULE</span></div><div class="bubble" style="max-width:none">以后所有导出接口都返回 202 + 任务 ID，不同步返回文件。</div><div class="muted xs">来源执行 EX-9080 · 与现有规则无冲突</div><div class="row"><button class="btn sm grow" onclick="toast('已驳回')">驳回</button><button class="btn sm primary grow" onclick="toast('已批准 · 下次执行生效')">批准</button></div><div class="muted xs">写入者不能自批；Agent 即使有委托也不能批准规则。</div></div>`,{icon:"brain"})}</div></div>`;
+
+/* ================= 授权与策略（08） ================= */
+PAGES.policy=()=>{const acts=["读取","执行","分派","提交证据","验证","通过/拒绝","要求修改","范围变更","合并","正式交付","管理"];
+ const rows=[["团队所有者","yyyyyyyyyyy"],["交付负责人","yyyyyyyyyyn"],["工程师","yyn yynynnnn".replace(" ","")],["Agent 执行者","yyn yynnnnnn".replace(" ","")],["Agent 评审员","ynnyydd ndnn".replace(/ /g,"")],["Agent 主导","ypnnnnnnnnn"],["Agent 协调员","ynnnnnnnnnn"]];
+ return head("治理","授权与策略","拒绝默认优先；裁决是权限动作。全自治模式下裁决经「委托」临时授予 Agent，范围、期限、条件都受限。",`<button class="btn" onclick="toast('升级规则编辑器')">${I("siren")}升级规则</button><button class="btn primary" onclick="grantDelegation()">${I("key-round")}授予委托</button>`)+
+ `<div class="grid g12"><div class="c12">${card("权限矩阵（角色 × 动作）",`<div class="table-wrap"><table class="matrix"><thead><tr><th>角色</th>${acts.map(a=>`<th>${a}</th>`).join("")}</tr></thead><tbody>${rows.map(([r,m])=>`<tr><td><b>${r}</b></td>${[...m].map(c=>`<td>${c==="y"?`<span class="mx y">${I("check")}</span>`:c==="d"?`<span class="mx d">委托</span>`:c==="p"?`<span class="mx d">策略</span>`:`<span class="mx n">${I("minus")}</span>`}</td>`).join("")}</tr>`).join("")}</tbody></table></div><div class="muted xs" style="padding:10px 14px">不可委托：范围变更、正式交付、模式切换、授予委托、接管、吊销机器、拒绝来件、新建项目、批准规则记忆、生产访问。</div>`,{pad:0,icon:"grid-3x3"})}</div>
+ <div class="c7">${card("委托",`<table><thead><tr><th>受托 Agent</th><th>动作</th><th>范围与条件</th><th>剩余</th><th>状态</th></tr></thead><tbody>${[["cy","通过 / 要求修改","商户控制台 · 风险 ≤ LOW · 成本 ≤ $5 · 非自产 · 验证全过","2 天 4 小时","冻结"],["cy","合并","商户控制台 · 风险 ≤ LOW · 验证全过","2 天 4 小时","冻结"],["iris","来件转换（新需求）","商户控制台 · 仅 NEW_REQUIREMENT","6 天","有效"]].map(r=>`<tr><td>${who(r[0])}</td><td>${r[1]}</td><td class="small">${r[2]}</td><td class="small">${r[3]}</td><td>${r[4]==="冻结"?S("INCONCLUSIVE","已冻结 · 预算"):S("PASSED","有效")}</td></tr>`).join("")}</tbody></table>`,{pad:0,icon:"key-round"})}</div>
+ <div class="c5">${card("升级规则（全自治）",`<div class="stack small">${[["预算 ≥80% 通知 · 100% 暂停",1],["验证无定论 → 转人",1],["甲方拒收 → 冻结受影响项委托",1],["同项返工 ≥3 → 暂停",1],["敏感路径（迁移 / 依赖 / 鉴权 / CI）→ 转人",1],["Agent 自评置信度 < 0.6 → 转人",1],["执行停滞 > 30 分钟 → 通知",0]].map(([t,on])=>`<label class="row"><input type="checkbox" ${on?"checked":""}><span>${t}</span></label>`).join("")}</div>`,{icon:"siren"})}</div></div>`};
+function grantDelegation(){openModal(`<div class="modal-h">${I("key-round")}<h3>授予委托</h3></div><div class="modal-b">
+ <div class="grid g12" style="gap:10px"><div class="c6"><label class="f">受托 Agent<span class="req">*</span></label><select class="select"><option>Cy · 评审员</option></select><div class="hint">裁决类动作要求受托方持评审员角色</div></div><div class="c6"><label class="f">项目<span class="req">*</span></label><select class="select"><option>商户控制台</option></select></div></div>
+ <label class="f">动作</label><div class="row wrap"><span class="chip on">通过</span><span class="chip on">要求修改</span><span class="chip">拒绝</span><span class="chip">合并</span><span class="chip" style="opacity:.4" title="不可委托">正式交付</span></div>
+ <div class="grid g12" style="gap:10px"><div class="c4"><label class="f">风险上限</label><select class="select"><option>LOW</option><option>MEDIUM</option></select></div><div class="c4"><label class="f">单项成本上限</label><input class="input" value="$5.00"></div><div class="c4"><label class="f">有效期</label><input class="input" value="7 天"></div></div>
+ <label class="f">理由<span class="req">*</span></label><textarea>周末全自治，低风险项由 Cy 把关</textarea>
+ <div class="note warn" style="margin-top:10px">${I("lock-keyhole")}<span>授予委托仅限所有者，需重新认证；所有经委托做出的裁决写入审计链。</span></div></div>
+ <div class="modal-f"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="closeModal();toast('委托 D-18 已生效')">${I("fingerprint")}验证身份并授予</button></div>`)}
+
+/* ================= 审计（08 + 底座审计链） ================= */
+PAGES.audit=()=>head("治理","审计","复用底座哈希链审计：主体、动作、对象、理由、权限来源、证据引用。",`<span class="badge b-ok">${I("link-2")}链完整 · 已校验 12,408 条</span><button class="btn" onclick="toast('导出（底座导出与签名）')">${I("download")}导出</button>`)+
+ card("",`<div class="table-wrap"><table><thead><tr><th>时间</th><th>主体</th><th>动作</th><th>对象</th><th>权限来源</th><th>理由 / 证据</th></tr></thead><tbody>${[
+  ["09:31","morgan","delivery.decision_approved","BIL-137","ROLE:delivery_lead","证据 EV-301..305"],["09:02","lead","delivery.decision_assign","BIL-143","POLICY:proposal-8842","Morgan 确认"],["08:40","cy","delivery.decision_approved","CON-77","DELEGATION:D-17","风险 LOW · $1.20"],
+  ["08:12","sam","governance.delegation_frozen","D-17","SYSTEM:escalation","预算 96.8%"],["昨天 18:20","morgan","delivery.decision_rejected","BIL-139","ROLE:delivery_lead","需求偏差 · EV-311"],["昨天 16:05","sam","fleet.machine_enrollment_confirmed","build-box","ROLE:team_owner","接入码 KQPX-…"]
+ ].map(r=>`<tr><td class="small muted">${r[0]}</td><td>${who(r[1])}</td><td class="mono">${r[2]}</td><td class="mono">${r[3]}</td><td><span class="badge ${r[4].startsWith("DELEGATION")?"b-primary":r[4].startsWith("POLICY")?"b-info":""}">${r[4]}</span></td><td class="small">${r[5]}</td></tr>`).join("")}</tbody></table></div>`,{pad:0});
+
+/* ================= API 网关（04，实验） ================= */
+PAGES.gateway=()=>head("实验性","API 网关","把某台机器上已登录的 Codex 暴露为 OpenAI 兼容 Responses API。仅文本、单密钥、≤8 并发、180 秒超时。",`<span class="badge b-warn">${I("flask-conical")}实验</span>`)+
+ `<div class="grid g12"><div class="c6">${card("状态",`<div class="row" style="margin-bottom:12px">${S("PASSED","已开启")}<label class="row" style="margin-left:auto"><input type="checkbox" checked> 启用</label></div><label class="f">路由机器</label><select class="select" disabled><option>studio-mini · Codex 0.98.0</option></select><div class="hint">开启后锁定；只列有 Codex 的在线机器</div><label class="f">默认模型</label><input class="input" value="gpt-6-astra">`,{icon:"plug-zap"})}</div>
+ <div class="c6">${card("接入信息",`<label class="f">Base URL</label><div class="row"><input class="input mono" value="https://console.northwind.example/v1" readonly><button class="btn sm" onclick="toast('已复制')">${I("copy")}</button></div><label class="f">API Key</label><div class="row"><input class="input mono" value="sk-gw-••••••••••••3f9a" readonly><button class="btn sm" onclick="toast('查看密钥需重新认证','lock-keyhole')">${I("eye")}</button><button class="btn sm" style="color:var(--danger)" onclick="toast('轮换将取消进行中的请求','triangle-alert')">${I("refresh-cw")}轮换</button></div>`,{icon:"key-round"})}</div>
+ <div class="c12">${card("最近请求（内存保留 100 条，重启后清空）",`<table><thead><tr><th>时间</th><th>ID</th><th>模型</th><th>状态</th><th>耗时</th></tr></thead><tbody>${[["09:40","resp_8f2a","gpt-6-astra","SUCCEEDED","3.1s"],["09:38","resp_8f29","gpt-6-astra","RUNNING","—"],["09:12","resp_8f1c","gpt-6-astra","FAILED","180s 超时"]].map(r=>`<tr><td class="small">${r[0]}</td><td class="mono">${r[1]}</td><td>${r[2]}</td><td>${S(r[3])}</td><td class="small">${r[4]}</td></tr>`).join("")}</tbody></table>`,{pad:0})}</div></div>`;
+
+/* ================= 甲方门户（01，外部极简） ================= */
+PAGES.portal=()=>`<div class="portal-wrap">
+ <div class="portal-head"><div class="brand-mark" style="background:#0f766e">N</div><div><b style="font-family:var(--font-head);font-size:18px">Northwind Studio · 需求门户</b><div class="muted small">你好，Lee（Contoso）· 品牌来自团队配置</div></div><a class="btn sm" style="margin-left:auto" href="#/overview">${I("arrow-left")}返回团队控制台（原型导航）</a></div>
+ <div class="tabs">${["我的需求","提交新需求","待回答 · 1","待验收 · 1"].map((t,i)=>`<button class="${i?"":"on"}">${t}</button>`).join("")}</div>
+ <div class="stack">${[["账单导出支持 CSV","cur",3,"由 AI 与工程师协作完成"],["导出权限仅限财务？","cur",1,""],["账单列表分页性能","done",5,""]].map(([t,s,step,tag])=>card(t,`<div class="milestones">${["已接收","澄清中","进行中","待验收","已交付"].map((m,i)=>`<div class="${i<step-1?"done":i===step-1?"cur":""}">${m}</div>`).join("")}</div>${tag?`<div class="muted xs" style="margin-top:10px">${I("sparkles")} ${tag}</div>`:""}`,{right:step===1?`<button class="btn sm primary" onclick="toast('澄清：审计角色是否可导出金额字段？')">回答 1 个问题</button>`:""})).join("")}
+ ${card("待验收 · 交付包 BIL#3",`<div class="muted small" style="margin-bottom:10px">3 项交付物 · 演示链接 · 证据摘要（不含代码与内部细节）</div><table><tbody>${["CSV 导出","导出字段按模板排序","导出任务失败重试提示"].map(t=>`<tr><td>${t}</td><td style="text-align:right"><span class="chip on">接受</span> <span class="chip">拒绝</span></td></tr>`).join("")}</tbody></table>
+  <label class="f">签署人<span class="req">*</span></label><input class="input" value="Lee"><label class="row small" style="margin-top:10px"><input type="checkbox"> 我已查看交付清单（指纹 sha256 e1c0…4ad2）</label>
+  <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn primary" onclick="toast('验收已提交 · 团队将收到回执')">提交验收</button></div>`,{icon:"stamp"})}</div></div>`;
+
+route();
+</script>
+</body>
+</html>
