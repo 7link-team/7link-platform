@@ -1357,8 +1357,8 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | 项目 | 团队 | 跨项目 | defects | 缺陷 | `/t/:tenantID/defects`（D118 新页；数据 = 02 W14 `type=in:BUG,INCIDENT` + 12 A9 缺陷详情） | `work_item_read` | 12 Part A |
 | 项目 | 团队 | 跨项目 | pipelines | 流水线 | `/t/:tenantID/pipelines`（D118 新页：每个工作项的阶段运行 平台重跑 → 隐藏验收 → 测试 Agent → 产品验收 Agent → 人工评审 → 交付，外加外部 Flow 运行） | `execution_read` | 03 |
 | 项目 | 项目 | — | p-overview | 概览 | `/t/:tenantID/p/:projectID`（07 §8.3 项目总览） | `project_read` | 07 |
+| 项目 | 项目 | — | p-goals | 目标 | `/t/:tenantID/p/:projectID/goals`（10 §8.1 目标树，固定为本项目的 PROJECT 目标及其子树；团队全树见团队 › 目标树） | `goal_read` | 10 |
 | 项目 | 项目 | — | p-channel | 项目频道 | `/t/:tenantID/p/:projectID/channel`（替换式重定向到该项目默认频道 `/t/:tenantID/chat/:channelID`，进入会话域；05 §8.8） | `channel_read` | 05 |
-| 项目 | 项目 | 规划 | p-goals | 目标 | `/t/:tenantID/p/:projectID/goals`（10 §8.1 目标树，固定为本项目的 PROJECT 目标及其子树；团队全树见团队 › 目标树） | `goal_read` | 10 |
 | 项目 | 项目 | 需求 | p-requirements | 需求 | `/t/:tenantID/p/:projectID/requirements`（02 §8.5；团队级列表见上） | `requirement_read` | 02 |
 | 项目 | 项目 | 开发 | p-work-items | 任务 | `/t/:tenantID/p/:projectID/work-items`（02 §8.1 / §8.2；团队级列表见上） | `work_item_read` | 02 |
 | 项目 | 项目 | 开发 | p-review | 评审台 | `/t/:tenantID/p/:projectID/review`（02 §8.4；团队级 `/t/:tenantID/review`（D5）保留为「我的裁决」评审类项的直达入口，不进菜单） | `work_item_read` | 02 |
@@ -1373,12 +1373,12 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 | 项目 | 项目 | 领域工作台 | p-novel | 小说 | `/t/:tenantID/p/:projectID/novel`（11 §8.5；仅当项目模板领域为 NOVEL） | `work_item_read` | 11 |
 | 项目 | 项目 | 领域工作台 | p-team-tasks | 团队任务 | `/t/:tenantID/p/:projectID/team-tasks`（11 §8.6；仅当项目模板领域为 TEAM_TASKS） | `work_item_read` | 11 |
 | 项目 | 项目 | 设置 | p-settings | 项目设置 | `/t/:tenantID/p/:projectID/settings`（07 §8.4，含 11 §8.3 模板与 12 项目流转 `/t/:tenantID/p/:projectID/settings/workflows`） | `project_read` | 07 |
-| 团队 | 团队 | — | members | 成员与 Agent | `/t/:tenantID/members` | `agent_read` | 05 |
-| 团队 | 团队 | — | machines | 机器 | `/t/:tenantID/machines` | `machine_read` | 04 |
-| 团队 | 团队 | — | knowledge | 知识库 | `/t/:tenantID/knowledge` | `knowledge_read` | 06 |
-| 团队 | 团队 | — | templates | 模板库 | `/t/:tenantID/templates` | `project_read` | 11 |
-| 团队 | 团队 | — | goals | 目标树 | `/t/:tenantID/goals`（10 §8.1，团队 → 项目 → 成员全树） | `goal_read` | 10 |
-| 团队 | 团队 | — | reports | 报告中心 | `/t/:tenantID/reports`（10 §8.5 / §8.6） | `report_read` | 10 |
+| 团队 | 团队 | 目标与报告 | goals | 目标树 | `/t/:tenantID/goals`（10 §8.1，团队 → 项目 → 成员全树） | `goal_read` | 10 |
+| 团队 | 团队 | 目标与报告 | reports | 报告中心 | `/t/:tenantID/reports`（10 §8.5 / §8.6） | `report_read` | 10 |
+| 团队 | 团队 | 团队资产 | members | 成员与 Agent | `/t/:tenantID/members` | `agent_read` | 05 |
+| 团队 | 团队 | 团队资产 | machines | 机器 | `/t/:tenantID/machines` | `machine_read` | 04 |
+| 团队 | 团队 | 团队资产 | knowledge | 知识库 | `/t/:tenantID/knowledge` | `knowledge_read` | 06 |
+| 团队 | 团队 | 团队资产 | templates | 模板库 | `/t/:tenantID/templates` | `project_read` | 11 |
 | 治理 | 团队 | 策略 | policy | 授权与策略 | `/t/:tenantID/governance/policy` | `policy_read` | 08 |
 | 治理 | 团队 | 策略 | workflow-config | 流转配置 | `/t/:tenantID/settings/workflows`（无 `workflow_manage` 时只读） | `work_item_read` | 12 Part A |
 | 治理 | 团队 | 连接 | integration | 集成 | `/t/:tenantID/settings/integrations/yunxiao`（v1.1） | `integration_manage` | 12 Part B |

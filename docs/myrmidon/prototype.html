@@ -93,6 +93,11 @@ a{color:inherit;text-decoration:none} button{font:inherit;color:inherit}
 .topnav a{display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:10px;color:var(--muted-fg);font-weight:500;white-space:nowrap;transition:background .16s var(--ease),color .16s var(--ease)}
 .topnav a:hover{background:var(--muted);color:var(--fg)}
 .topnav a.on{background:var(--primary-soft);color:var(--primary);font-weight:600}
+.topnav .proj-chip{font-size:12px;font-weight:600;background:var(--card);border:var(--bw) solid var(--border);border-radius:999px;padding:0 8px;color:var(--fg)}
+.topnav .proj-switch{display:grid;place-items:center;width:22px;height:22px;border-radius:6px;margin-left:-4px}.topnav .proj-switch:hover{background:var(--muted)}
+.topnav a .cnt.chat{background:var(--info-soft,var(--primary-soft));color:var(--info,var(--primary))} .topnav a .cnt.at{background:var(--danger-soft,var(--warn-soft));color:var(--danger,var(--warn))}
+.notice-menu{width:340px} .notice-menu .dot-unread{width:8px;height:8px;border-radius:50%;background:var(--primary);flex:none}
+.iconbtn .dot:empty{display:none}
 .topnav a .cnt{font-size:11px;font-weight:600;background:var(--warn-soft);color:var(--warn);border-radius:999px;padding:0 7px}
 [data-theme="neoBrutalism"] .topnav a.on{background:#fff;border:2px solid #000;box-shadow:3px 3px 0 #000;color:#000}
 .side-title{font-family:var(--font-head);font-size:15px;font-weight:600;padding:4px 10px 6px}
@@ -278,6 +283,7 @@ body.portal .app{display:block} body.portal .side,body.portal .top,body.portal .
       <div class="tools">
         <div class="live" title="实时连接（SSE）"><i></i><span>实时</span></div>
         <button class="iconbtn" aria-label="我的裁决" onclick="go('inbox')"><i data-lucide="gavel"></i><span class="dot" id="inboxDot"></span><span role="status" aria-atomic="true" class="sr" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)" id="inboxSr"></span></button>
+        <button class="iconbtn" aria-label="通知" onclick="openNotices(event)"><i data-lucide="bell"></i><span class="dot" id="bellDot"></span></button>
         <button class="iconbtn hide-m" aria-label="语言" onclick="toast('语言：简体中文（底座 i18n：zh-CN / en-US / ms-MY）')"><i data-lucide="languages"></i></button>
         <button class="iconbtn" aria-label="主题" onclick="toggleMenu(event,'themeMenu')"><i data-lucide="palette"></i></button>
         <button class="iconbtn hide-m" aria-label="明暗" onclick="toggleDark()"><i data-lucide="sun-moon"></i></button>
@@ -292,6 +298,7 @@ body.portal .app{display:block} body.portal .side,body.portal .top,body.portal .
 </div>
 <nav class="tabbar" id="tabbar"></nav>
 
+<div class="menu notice-menu" id="noticeMenu"></div>
 <div class="menu" id="themeMenu">
   <small>主题（底座 [data-theme] 机制）</small>
   <button onclick="setTheme('aurora')"><span class="sw" style="background:linear-gradient(135deg,#7C3AED,#0891B2)"></span>Aurora<span class="muted xs" style="margin-left:auto">Myrmidon 默认</span></button>
@@ -397,15 +404,14 @@ const DOMAINS=[
   ["home","工作台","layout-dashboard",[["",[["overview","layout-dashboard","总览"],["inbox","gavel","我的裁决",INBOX.length],["my-work","list-todo","我的任务"],["plans","calendar-check","我的计划"]]]]],
   ["chat","会话","messages-square",[]],
   ["projects","项目","folder-kanban",[["",[["projects","folder-kanban","项目组合"],["intakes","inbox","来件",2],["deliveries","package-check","交付总览"]]],["跨项目",[["requirements","file-text","需求"],["work","kanban-square","任务"],["defects","bug","缺陷"],["pipelines","workflow","流水线"]]]]],
-  ["team","团队","users-round",[["",[["members","users-round","成员与 Agent"],["machines","server","机器"],["knowledge","library-big","知识库"],["templates","layout-template","模板库"]]],["目标与报告",[["goals","target","目标树"],["reports","file-chart-column","报告中心"]]]]],
+  ["team","团队","users-round",[["目标与报告",[["goals","target","目标树"],["reports","file-chart-column","报告中心"]]],["团队资产",[["members","users-round","成员与 Agent"],["machines","server","机器"],["knowledge","library-big","知识库"],["templates","layout-template","模板库"]]]]],
   ["gov","治理","shield-half",[["策略",[["policy","shield-half","授权与策略"],["workflow-config","git-branch","流转配置"]]],["连接",[["integration","plug","集成"],["intake-channels","radio-tower","需求开口"],["gateway","plug-zap","API 网关","实验"]]],["记录",[["audit","scroll-text","审计"]]]]]
 ];
 /* Project space: the side nav inside one project; every route carries the project id. */
 const PROJECT_EXTRA={p5:{name:"品牌短片",studio:["video-studio","clapperboard","视频工作台"]},p6:{name:"潮汐之城",studio:["novel-studio","book-open","小说工作台"]},p7:{name:"市场活动筹备",studio:["team-tasks","list-checks","团队任务工作台"]}};
 const projectName=id=>(PROJECTS.find(x=>x.id===id)||{}).name||(PROJECT_EXTRA[id]||{}).name||id;
 function projectNav(pid){const ex=PROJECT_EXTRA[pid];return [
-  ["",[["project/"+pid,"layout-dashboard","概览"],["chat/billing","hash","项目频道"]]],
-  ["规划",[["goals/"+pid,"target","目标"]]],
+  ["",[["project/"+pid,"layout-dashboard","概览"],["goals/"+pid,"target","目标"],["chat/billing","hash","项目频道"]]],
   ["需求",[["requirements/"+pid,"file-text","需求"]]],
   ["开发",[["work/"+pid,"kanban-square","任务"],["review/"+pid,"scale","评审台"]]],
   ["测试",[["test-cases/"+pid,"clipboard-check","用例与测试计划"],["defects/"+pid,"bug","缺陷"],["escapes/"+pid,"shield-alert","穿透记录"]]],
@@ -429,18 +435,32 @@ function contextOf(key,arg){
   if(PROJECT_ROUTES.has(key)||(DUAL_ROUTES.has(key)&&isProjectId(arg)))return {dom:"projects",proj:isProjectId(arg)?arg:(CURPROJ||"p1")};
   return {dom:listedDomain(navItemOf(key)||"")||"home"};
 }
+/* Sub-pages of a detail page: the breadcrumb links back to that detail, not only to its list. */
+const DETAIL_PARENT={"internal-qa":a=>["workitem/"+a,a],"readiness":a=>["workitem/"+a,a],"plan-review":a=>["workitem/"+a,a],
+  "workspace":a=>["execution/"+a,a],"review-sheet":()=>["requirement/R-12","R-12"],"heavy":()=>["workitem/BIL-142","BIL-142"]};
+function chatUnread(){const rooms=typeof chRooms!=="undefined"?chRooms.filter(r=>r.id!=="mentions"):[];return {n:rooms.reduce((a,r)=>a+(r.unread||0),0),at:rooms.some(r=>r.mention&&r.unread)}}
+/* 通知（09 通知中心）：会话提及与私信、评审与验收、变更确认、停线等；点击跳到对象并标为已读。 */
+const NOTICES=[
+  {ic:"at-sign",t:"Atlas 在 #账单中心 提到了你：BIL-144 文档交给谁合适？",at:"2 分钟前",go:"chat/billing"},
+  {ic:"message-circle",t:"Ada 私信你：CSV 导出已声明完成，等内部验收",at:"8 分钟前",go:"chat"},
+  {ic:"shield-check",t:"BIL-142 内部验收第 2 轮通过，待你评审",at:"15 分钟前",go:"internal-qa/BIL-142"},
+  {ic:"file-diff",t:"变更 IN-2042 超出时间容差，已提交甲方确认",at:"1 小时前",go:"change-intake/IN-2042"},
+  {ic:"octagon-alert",t:"BIL-145 被停线：上游接口字段未确定",at:"今天 09:12",go:"workitem/BIL-145",read:true}];
+function openNotices(e){const m=document.getElementById("noticeMenu");m.innerHTML=`<small>通知 · ${NOTICES.filter(x=>!x.read).length} 条未读</small>${NOTICES.map((x,i)=>`<button onclick="NOTICES[${i}].read=true;document.getElementById('noticeMenu').classList.remove('open');go('${x.go}')" style="${x.read?"opacity:.6":""}">${I(x.ic)}<span style="flex:1;min-width:0;white-space:normal;text-align:left">${x.t}<span class="muted xs" style="display:block">${x.at}</span></span>${x.read?"":`<span class="dot-unread"></span>`}</button>`).join("")}<div class="row" style="justify-content:space-between;padding:6px 8px 2px"><a class="small" href="javascript:void 0" onclick="NOTICES.forEach(x=>x.read=true);route()">全部标为已读</a><a class="small" href="#/settings">通知设置</a></div>`;icons();toggleMenu(e,"noticeMenu")}
 function domainHome(d){return LASTSUB[d[0]]||(d[0]==="chat"?"chat":d[3][0][1][0][0])}
-function switchProject(){const cur=location.hash.replace(/^#\/?/,"").split("/")[0];openModal(`<div class="modal-h">${I("folder-kanban")}<h3>切换项目</h3></div><div class="modal-b stack">${[...PROJECTS.map(x=>x.id),...Object.keys(PROJECT_EXTRA)].map(id=>`<button class="btn" style="justify-content:flex-start" onclick="closeModal();go((DUAL_ROUTES.has('${cur}')||['project','project-settings','review','test-cases','escapes','executions','worklog'].includes('${cur}')?'${cur}':'project')+'/${id}')">${projectName(id)}</button>`).join("")}</div><div class="modal-f"><button class="btn" onclick="closeModal();go('projects')">${I("arrow-left")}返回项目组合</button></div>`)}
+function goProject(cur,id){const keep=DUAL_ROUTES.has(cur)||["project","project-settings","review","test-cases","escapes","executions","worklog"].includes(cur);const ex=PROJECT_EXTRA[id];go(keep&&!(ex&&(cur==="project"||cur==="project-settings"))?cur+"/"+id:ex?ex.studio[0]+"/"+id:"project/"+id)}
+function switchProject(){const cur=location.hash.replace(/^#\/?/,"").split("/")[0];openModal(`<div class="modal-h">${I("folder-kanban")}<h3>切换项目</h3></div><div class="modal-b stack">${[...PROJECTS.map(x=>x.id),...Object.keys(PROJECT_EXTRA)].map(id=>`<button class="btn" style="justify-content:flex-start" onclick="closeModal();goProject('${cur}','${id}')">${projectName(id)}</button>`).join("")}</div><div class="modal-f"><button class="btn" onclick="closeModal();go('projects')">${I("arrow-left")}返回项目组合</button></div>`)}
 const NAVPARENT={workitem:"work",session:"executions",project:"projects"};
 const TITLES={overview:"总览",inbox:"我的裁决",intakes:"来件",projects:"项目组合",project:"项目概览",work:"任务",workitem:"任务详情",review:"评审台",executions:"执行",session:"交互会话",deliveries:"交付",channels:"频道",members:"成员与 Agent",machines:"机器",knowledge:"知识库",policy:"授权与策略",audit:"审计",gateway:"API 网关",portal:"甲方门户"};
 function renderSide(cur,arg){
   const ctx=contextOf(cur,arg),dom=ctx.dom,D=DOMAINS.find(d=>d[0]===dom);
-  if(ctx.proj)CURPROJ=ctx.proj;else if(cur==="projects")CURPROJ=null;
+  if(ctx.proj)CURPROJ=ctx.proj;else if(dom==="projects")CURPROJ=null;
   LASTSUB[dom]=location.hash.replace(/^#\/?/,"")||"overview";
-  const groups=ctx.proj?projectNav(ctx.proj):D[3];
+  const groups=ctx.proj?projectNav(ctx.proj):dom==="projects"?[...D[3],["我的项目",[...PROJECTS.map(x=>["project/"+x.id,"folder",x.name.split(" ")[0]]),...Object.keys(PROJECT_EXTRA).map(id=>[PROJECT_EXTRA[id].studio[0]+"/"+id,"folder",PROJECT_EXTRA[id].name])]]]:D[3];
   const keys=groups.flatMap(g=>g[1]).map(it=>navKey(it[0]));
   const act=ctx.proj?navItemOf(cur,keys):navItemOf(cur);
-  const tab=d=>`<a href="#/${domainHome(d)}" class="${d[0]===dom?"on":""}">${I(d[2])}<span>${d[1]}</span>${d[0]==="home"?`<span class="cnt">${INBOX.length}</span>`:""}</a>`;
+  const chat=chatUnread();
+  const tab=d=>`<a href="#/${domainHome(d)}" class="${d[0]===dom?"on":""}">${I(d[2])}<span>${d[1]}</span>${d[0]==="home"?`<span class="cnt">${INBOX.length}</span>`:""}${d[0]==="chat"&&chat.n?`<span class="cnt chat${chat.at?" at":""}">${chat.at?"@ ":""}${chat.n}</span>`:""}${d[0]==="projects"&&CURPROJ?`<span class="proj-chip">${projectName(CURPROJ).split(" ")[0]}</span><span class="proj-switch" role="button" aria-label="切换项目" onclick="event.preventDefault();event.stopPropagation();switchProject()">${I("chevron-down")}</span>`:""}</a>`;
   document.getElementById("topnav").innerHTML=DOMAINS.map(tab).join("");
   document.getElementById("wsName").textContent=TEAM.name;
   const items=groups.map(([g,its])=>(g?`<div class="nav-group">${g}</div>`:"")+its.map(([k,ic,t,c])=>`<a href="#/${k}" class="${navKey(k)===act?"on":""}">${I(ic)}<span>${t}</span>${c?(typeof c==="number"?`<span class="cnt">${c}</span>`:`<span class="tag">${c}</span>`):""}</a>`).join("")).join("");
@@ -449,12 +469,13 @@ function renderSide(cur,arg){
     :`<div class="side-title">${D[1]}</div>`;
   document.getElementById("side").innerHTML=`<div class="side-domains">${DOMAINS.map(tab).join("")}</div>${head}<nav class="nav">${items}</nav>
   <a class="side-foot" href="#/portal"><div class="row">${I("external-link")}<b style="color:var(--fg)">预览甲方门户</b></div><div style="margin-top:4px">甲方 = 需求开口：提交、澄清、验收</div></a>`;
-  document.getElementById("tabbar").innerHTML=[["overview","layout-dashboard","工作台","home"],["chat","messages-square","会话","chat"],[domainHome(DOMAINS[2]),"folder-kanban","项目","projects"],["inbox","gavel","裁决",""]].map(([k,ic,t,d])=>`<a href="#/${k}" class="${(d?d===dom&&cur!=="inbox":cur==="inbox")?"on":""}">${I(ic)}<span>${t}</span>${k==="inbox"?`<span class="dot">${INBOX.length}</span>`:""}</a>`).join("");
+  document.getElementById("tabbar").innerHTML=[["overview","layout-dashboard","工作台","home"],["chat","messages-square","会话","chat"],[domainHome(DOMAINS[2]),"folder-kanban","项目","projects"],["inbox","gavel","裁决",""]].map(([k,ic,t,d])=>`<a href="#/${k}" class="${(d?d===dom&&cur!=="inbox":cur==="inbox")?"on":""}">${I(ic)}<span>${t}</span>${k==="inbox"?`<span class="dot">${INBOX.length}</span>`:k==="chat"&&chat.n?`<span class="dot">${chat.n}</span>`:""}</a>`).join("");
+  document.getElementById("bellDot").textContent=NOTICES.filter(x=>!x.read).length||"";
   document.getElementById("inboxDot").textContent=INBOX.length;
   document.getElementById("inboxSr").textContent=INBOX.length+" 项待你裁决";
-  const par=act&&act!==cur?act:null;
+  const par=act&&act!==cur?act:null,up=DETAIL_PARENT[cur]&&arg?DETAIL_PARENT[cur](arg):null;
   const parHref=par?(ctx.proj&&(DUAL_ROUTES.has(par)||PROJECT_ROUTES.has(par))?par+"/"+ctx.proj:par):"";
-  document.getElementById("crumb").innerHTML=`${D[1]} ${I("chevron-right")} ${ctx.proj?`<a href="#/project/${ctx.proj}">${projectName(ctx.proj)}</a> ${I("chevron-right")} `:""}${par?`<a href="#/${parHref}">${TITLES[par]||""}</a> ${I("chevron-right")} `:""}<b>${TITLES[cur]||""}</b>`;
+  document.getElementById("crumb").innerHTML=`${D[1]} ${I("chevron-right")} ${ctx.proj?`<a href="#/project/${ctx.proj}">${projectName(ctx.proj)}</a> ${I("chevron-right")} `:""}${par?`<a href="#/${parHref}">${TITLES[par]||""}</a> ${I("chevron-right")} `:""}${up?`<a href="#/${up[0]}">${up[1]}</a> ${I("chevron-right")} `:""}<b>${TITLES[cur]||""}</b>`;
 }
 
 /* ================= Router ================= */
@@ -698,7 +719,7 @@ function spawnApproval(){openModal(`<div class="modal-h">${I("sparkles")}<h3>创
  <dl class="kv" style="margin-top:12px"><dt>名称</dt><dd>Echo-2</dd><dt>角色</dt><dd>执行者 ${S("PASSED","在授权内")}</dd><dt>机器 · 模型</dt><dd>build-box · Codex gpt-6-mini · effort low ${S("PASSED","在授权内")}</dd><dt>技能 / MCP</dt><dd class="small">docs-style v1 / github（⊆ 主管）</dd><dt>单个预算</dt><dd>$15.00</dd></dl>
  <div class="sep"></div><div class="grid g12" style="gap:10px"><div class="c4"><div class="muted xs">在岗名额</div><b>2 → 3 / 3</b><div class="progress" style="margin-top:4px"><i style="width:100%"></i></div></div><div class="c4"><div class="muted xs">今日创建</div><b>1 → 2 / 5</b><div class="progress" style="margin-top:4px"><i style="width:40%"></i></div></div><div class="c4"><div class="muted xs">编制预算</div><b>$18.40 / $50</b><div class="progress" style="margin-top:4px"><i style="width:37%"></i></div></div></div>
  <div class="hint">编制授权 SG-3 · 授予人 Sam · 6 天后到期 · 审批方式：逐个人工批准</div></div>
- <div class="modal-f"><button class="btn" onclick="closeModal();toast('已驳回创建请求')">驳回</button><button class="btn primary" onclick="closeModal();toast('已批准 · Echo-2 创建中（来源：主管创建）')">批准创建</button></div>`)}
+ <div class="modal-f"><button class="btn ghost" style="margin-right:auto" onclick="closeModal();go('spawn-request/SR-12')">完整详情</button><button class="btn" onclick="closeModal();toast('已驳回创建请求')">驳回</button><button class="btn primary" onclick="closeModal();toast('已批准 · Echo-2 创建中（来源：主管创建）')">批准创建</button></div>`)}
 function grantSpawn(){openModal(`<div class="modal-h">${I("id-card")}<h3>授予编制授权</h3></div><div class="modal-b">
  <div class="grid g12" style="gap:10px"><div class="c6"><label class="f">主管 Agent<span class="req">*</span></label><select class="select"><option>Atlas · 主管</option></select></div><div class="c6"><label class="f">项目范围<span class="req">*</span></label><select class="select"><option>账单中心、商户控制台</option></select></div>
  <div class="c4"><label class="f">同时在岗名额</label><input class="input" value="3"></div><div class="c4"><label class="f">每日创建上限</label><input class="input" value="5"></div><div class="c4"><label class="f">有效期</label><input class="input" value="14 天"></div>
