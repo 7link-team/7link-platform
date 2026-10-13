@@ -84,7 +84,7 @@ the target as the actual operator.
   browser session authentication. Browser-session verification touches its
   last-seen/expiry fields. A target browser session cannot be reused for views.
 - `internal/iam/audit/audit.go:NewDomainEvent` is reused by IAM and file writes.
-- `apps/iam/src/lib/navigation.ts` supplies platform, tenant, entity and personal
+- `apps/web/src/lib/navigation.ts` supplies platform, tenant, entity and personal
   catalogs; there is no separate system workspace.
 
 ## Clarified Operating Model

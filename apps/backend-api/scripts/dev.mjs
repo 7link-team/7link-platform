@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const frontend = resolve(root, "../frontend-web-admin/apps/iam");
+const frontend = resolve(root, "../frontend-web/apps/web");
 const directory = join(root, ".temp/dev");
 const statePath = join(directory, "runtime.json");
 const stopPath = join(directory, "stop-request");

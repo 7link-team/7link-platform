@@ -9,7 +9,7 @@ MySQL 8.4 image. It does not use API mocks or an existing business database.
 - macOS or Linux, Node.js 22+, the repository's Go toolchain, Make and Bun.
 - A running local Docker daemon selected by a Unix-socket Docker context.
   Remote contexts and `DOCKER_HOST` / `DOCKER_CONTEXT` overrides are refused.
-- Frontend dependencies installed from `apps/frontend-web-admin` with
+- Frontend dependencies installed from `apps/frontend-web` with
   `bun install --frozen-lockfile`; network access for uncached Go modules/images.
 - Run commands below from `apps/backend-api`. Do not use `sudo`.
 
@@ -138,7 +138,7 @@ installed Chrome; it does not require the agent's embedded browser tool. From
 `apps/backend-api`, with UAT running and `verify` already completed:
 
 ```sh
-node ../frontend-web-admin/apps/iam/tests/local-uat-browser-audit.mjs
+node ../frontend-web/apps/web/tests/local-uat-browser-audit.mjs
 ```
 
 This drives actual UI login, tenant selection, navigation, read-only lifecycle
@@ -160,7 +160,7 @@ IAM_NOTIFICATION_FILE="$PWD/.temp/iam-uat/notification-last.json" \
 IAM_CAPTCHA_TEST_ANSWER_FILE="$PWD/.temp/iam-uat/captcha-test-answer" \
 IAM_DATABASE_CONTAINER="$(node -p "require('./.temp/iam-uat/state.json').container")" \
 IAM_DATABASE_TABLE_PREFIX=uat_ \
-node ../frontend-web-admin/apps/iam/tests/run-browser-audits.mjs
+node ../frontend-web/apps/web/tests/run-browser-audits.mjs
 ```
 
 The registration audit reads its randomly generated test answer from a file and
@@ -197,7 +197,7 @@ IAM_CONSOLE_URL=http://127.0.0.1:<console-port> \
 IAM_BROWSER_TENANT=<disposable-tenant-id> \
 IAM_BROWSER_PASSWORD_FILE=<disposable-admin-password-file> \
 IAM_ERASURE_REPORT_DIR=<private-report-directory> \
-bun --cwd ../frontend-web-admin/apps/iam run audit:permanent-erasure
+bun --cwd ../frontend-web/apps/web run audit:permanent-erasure
 ```
 
 The safety acknowledgement and loopback URL check are mandatory. The audit creates

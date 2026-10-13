@@ -1,6 +1,6 @@
 # SQLite IAM lifecycle acceptance
 
-Run from `apps/frontend-web-admin/apps/iam`:
+Run from `apps/frontend-web/apps/web`:
 
 ```sh
 bun run audit:sqlite-lifecycle

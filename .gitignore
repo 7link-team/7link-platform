@@ -23,3 +23,7 @@
 !/*.json
 
 !/.gitattributes
+
+# Local interpreter caches and editor settings.
+__pycache__/
+*.py[cod]

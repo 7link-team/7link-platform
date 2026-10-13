@@ -63,7 +63,7 @@ fresh-auth、审计和拒绝语义。保留调用者绑定的再认证，不引�
 服务还过滤 platform 权限并检查成员资格。目标 /permissions 返回哪些数据、
 /permission-definitions 是否允许普通成员访问，以及如何计算可委托集合，均未明确。
 
-证据：apps/frontend-web-admin/apps/iam/src/app/account/tokens.tsx:109；
+证据：apps/frontend-web/apps/web/src/app/account/tokens.tsx:109；
 internal/iam/authn/personal_token.go:54、119。
 
 要求：先定义普通成员可用的共享权限发现契约，保留 metadata、租户成员约束、
@@ -161,7 +161,7 @@ createFile 拒绝其创建，TestFileHTTPAuthorizedBasicRoutes 显式断言 422�
 这是当前声明/客户端与实现不一致，不能继续写成待决定是否删除的产品选项。
 
 证据：internal/files/scope.go:22；internal/files/http.go:64、387；
-internal/files/http_test.go:302；apps/frontend-web-admin/apps/iam/src/lib/iam-api.ts:1463。
+internal/files/http_test.go:302；apps/frontend-web/apps/web/src/lib/iam-api.ts:1463。
 
 要求：更新方案事实。运行时已经拒绝的输入应从声明和无效客户端入口中清理；
 是否还存在历史数据必须单独通过数据库审计确认，不能由拒绝新建推断存量为空。

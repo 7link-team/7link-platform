@@ -969,7 +969,7 @@ JSON Schema：
 
 ## 8. 页面规格
 
-应用 `apps/frontend-web-admin/apps/delivery`；共享组件取自 00 §10（`StateBadge`、`ActorAvatar`、`AuthorityNote`、`CountdownRing`、`DecisionPanel`、`EvidenceCard`）。本规格新增 delivery 应用内组件：`StageStepper`、`BudgetRing`、`ModeBadge`、`HealthDot`、`KpiTile`、`AcceptanceTimeline`（不进 `packages/ui`，只此一处使用）。所有危险操作使用底座 ReauthenticationDialog。
+应用 `apps/frontend-web/apps/delivery`；共享组件取自 00 §10（`StateBadge`、`ActorAvatar`、`AuthorityNote`、`CountdownRing`、`DecisionPanel`、`EvidenceCard`）。本规格新增 delivery 应用内组件：`StageStepper`、`BudgetRing`、`ModeBadge`、`HealthDot`、`KpiTile`、`AcceptanceTimeline`（不进 `packages/ui`，只此一处使用）。所有危险操作使用底座 ReauthenticationDialog。
 
 **通用状态**（每页适用，下文不再重复）：加载 = 与布局同形骨架；错误 = 卡片内错误说明 + 〔重试〕；无权限 = "你没有 `<权限码>` 权限，请联系团队所有者"；离线 = 顶部琥珀色"已断开，正在重连…"，所有写按钮禁用并带提示"离线时不可操作"，重连后自动刷新；版本冲突 409 = "内容已被他人更新"〔查看最新〕。
 

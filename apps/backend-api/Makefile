@@ -174,8 +174,8 @@ schema-lock-check:
 # OpenAPI document. A route change that regenerates the document must also
 # regenerate and still type-check the client, or ci is green on a broken client.
 frontend-contract-check:
-	cd ../frontend-web-admin && bun run check:api-types --force
-	cd ../frontend-web-admin && bun run typecheck --force
+	cd ../frontend-web && bun run check:api-types --force
+	cd ../frontend-web && bun run typecheck --force
 
 # Single entry point for a pipeline: every gate, in cheapest-first order, so a
 # formatting or lint failure reports before the slow database tests run. Fails
@@ -223,11 +223,11 @@ frontend-check:
 # The generated request types spell out every published route, so they go
 # stale the moment a route moves. The generator can prove they match the
 # committed document; left out of this target it never got the chance.
-	cd ../frontend-web-admin && bun run check:api-types --force
-	cd ../frontend-web-admin && bun run lint --force
-	cd ../frontend-web-admin && bun run typecheck --force
-	cd ../frontend-web-admin && bun run test --force
-	cd ../frontend-web-admin && bun run build --force
+	cd ../frontend-web && bun run check:api-types --force
+	cd ../frontend-web && bun run lint --force
+	cd ../frontend-web && bun run typecheck --force
+	cd ../frontend-web && bun run test --force
+	cd ../frontend-web && bun run build --force
 
 # gofmt has no check mode; -l prints files that need formatting and exits 0, so
 # the emptiness of that list is the assertion.

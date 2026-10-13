@@ -12,7 +12,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const script = fileURLToPath(import.meta.url);
 const root = resolve(dirname(script), "..");
-const frontend = resolve(root, "../frontend-web-admin/apps/iam");
+const frontend = resolve(root, "../frontend-web/apps/web");
 const directory = join(root, ".temp/iam-uat");
 const identity = createHash("sha256").update(root).digest("hex").slice(0, 12);
 const container = `iam-uat-${identity}`;

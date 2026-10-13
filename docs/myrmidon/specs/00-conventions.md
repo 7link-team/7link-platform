@@ -363,7 +363,7 @@ D127 增补：02 发布 `verification.overridden{work_item_id,claim_id,override_
 
 ## 10. 前端约定
 
-- 应用：`apps/frontend-web-admin/apps/delivery`（Vite + React，依赖 `@workspace/ui`），复用 IAM 应用的认证、外壳、工作区切换；甲方门户为同应用内独立布局，入口 `/portal#t=<token>`（令牌放在 fragment，不进日志与 Referer；兼容旧 `/portal/:token` 跳转）。
+- 应用：`apps/frontend-web/apps/delivery`（Vite + React，依赖 `@workspace/ui`），复用 IAM 应用的认证、外壳、工作区切换；甲方门户为同应用内独立布局，入口 `/portal#t=<token>`（令牌放在 fragment，不进日志与 Referer；兼容旧 `/portal/:token` 跳转）。
 - 路由前缀：`/t/:tenantID/...`；项目内 `/t/:tenantID/p/:projectID/...`。
 - 预览域（D119）：远程预览只在部署配置给出的**独立可注册域名**上提供（每会话一个随机子域；无通配 DNS 时为路径模式），从不在控制台源上渲染执行工作区内容；控制台只以 iframe 嵌入（04 BR-04-94、03 BR-03-112）。
 - 共享组件（在 `packages/ui` 新增或在 delivery 应用 `components/` 内，规格中标明）：`CompletionLadder`（L1–L4）、`ActorAvatar`（人圆形 / Agent 圆角方形 + 芯片角标 / 机器图标 / 甲方）、`StateBadge`（图标 + 文字 + 语义色）、`EvidenceCard`（来源卡）、`DecisionPanel`、`StructuredFeedbackForm`、`ExecutionBranchTree`、`CountdownRing`、`AuthorityNote`（"你以 X 身份 · 来源 Y"）。
@@ -388,7 +388,7 @@ Then  返回 403，业务码 120403，W 状态不变，审计链追加 delivery.
 
 ## 12. 引用资料（只读）
 
-- 本仓：`docs/myrmidon/PRD.md`；`docs/0[1-4]_Myrmidon_*.docx`；`apps/backend-api/{README.md,docs/*,internal/todo,internal/files,internal/iam/*,pkg/*}`；`.agents/skills/backend-module/SKILL.md`；`apps/frontend-web-admin/{apps/iam,packages/ui}`。
+- 本仓：`docs/myrmidon/PRD.md`；`docs/0[1-4]_Myrmidon_*.docx`；`apps/backend-api/{README.md,docs/*,internal/todo,internal/files,internal/iam/*,pkg/*}`；`.agents/skills/backend-module/SKILL.md`；`apps/frontend-web/{apps/web,packages/ui}`。
 - 旧项目（**只读，禁止修改**）：`D:\Projects\MyrmidonAI\{PRD.md,chaosplus.md,README.md,docs/*,internal/platform/*,src/*,apps/web/app/*}`。
 
 ---

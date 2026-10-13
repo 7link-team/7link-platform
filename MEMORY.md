@@ -1,3 +1,31 @@
+## Prototype deep audit — 2026-10-13 (ACTIVE)
+- Goal: evidence-based PRD completeness, business closure, navigation/controls, design guidelines and E2E; two consecutive complete rounds without new findings. Previous delivery is historical evidence only.
+- Phase: ANALYSIS / first audit; clean rounds 0. Scope docs/prototype and its requirement/evidence docs; no production backend implementation, no commit/push.
+- Latest explicit requirement: task preview supports multiple tabs, including repeated kinds, retained state and task isolation. Existing implementation under verification.
+- Execution: main owns browser reproduction/fixes/acceptance; deep-review mandated read-only product and UI review agents.
+- Remaining: per-requirement evidence beyond route mapping; reproduce and repair defects; mutation verification; full scoped browser/build/tests; two clean review rounds.
+- Next: verify preview state across switching tasks, reload and disconnect; independently assess product/UI findings. No blanket PASS yet.
+
+## Final PRD and complete prototype — 2026-10-13
+- Goal: full PRD/REQ integration with two reviews, plus independent high-quality Web/App interactive prototype under docs/prototype. Reuse original six themes/top nav, preserve production apps and unrelated changes. No commit/push or delegation.
+- PRD COMPLETE: docs/PRD_FINAL.md v4.1 contains all original 291 requirements + 41 additions = 332; 70 scenarios (18 JNY,27 AC,25 EXT). T2 decisions, T3/T4 reviews, S8 unresolved production policies, S9 latest user confirmations. Original source snapshots/hashes unchanged; 578+719 reconciled source lines retained; anchors/local refs check PASS.
+- Prototype DELIVERED (interactive mock, ready for user acceptance): React/Vite, shared mock commands, work/chat/artifact/governance modules, review studio. Latest user confirmations: tenant contains project instances with tenant-only rollup; Logo-right tenant create/join/switch; one project selector, no duplicate list; all-projects menu only tenant workbench, instance workbench is instance overview; sidebars/channels change local panels with unchanged URL/history/top area.
+- UI: original six theme token sets + three original dark sets copied, other three dark sets explicitly extended; shared custom Select, Field/Form, Modal/confirmation, themed scrollbars/inputs. Calendar month/week/person/agent/milestone/unscheduled with validated edits. Workflows use pages-flow.jsx (node library, parameter/IO/debug inspector, duplicate/delete/connect/check/publish). Task previews use task-previews.jsx (per-task multiple Web/API/files/terminal/doc tabs, preserve state, disconnect/reconnect/close).
+- Verified: 16 domain tests /59 assertions PASS; browser delivery workflow PASS; new-feature suite PASS; prior navigation/theme suite PASS. 63 routes/states x375/768/1024/1440: no runtime errors/broken pages/document overflow. Axe final checks of dashboard/chat/flow/settings/theme-modal/calendar/preview/Aurora-dark: 0 violations (some manual-review items remain). Source 9 theme blocks semantically match original. Screenshots reviewed and kept under docs/prototype/screenshots.
+- Deliverables: README.md, DESIGN.md, COVERAGE.md (332 requirement entry mappings, NOT claims of production implementation), REVIEW.md (two prototype reviews), executable browser scripts under tests/browser-*.js.
+- Final verification complete: final build +16 tests PASS; built review studio navigation/375-width smoke PASS; browser suites PASS; PRD coverage +git diff --check PASS. Demo state reset. Dev server remains http://127.0.0.1:4173 (review.html for device presets). No remaining work in this prototype-delivery scope; next user acceptance, then separately scoped production implementation.
+- Boundaries: mock design only; no real APIs/model processes/FRP/PTY/native packaging/security/concurrency/performance proven. Historical media viewers use fixtures, not independent binary snapshots. Future implementation requires more than wiring HTTP APIs. No production implementation started for prototype.
+
+## Workspace initialization — 2026-10-13
+- User: rename Web to frontend-web; initialize frontend-app with Tauri and a runner project only. No feature implementation.
+- Phase: DELIVERED (initialization only). Direct execution, no delegated subtasks.
+- Web moved to apps/frontend-web; operational and documentation path references updated. Historical ADR entries retained.
+- User refinement: frontend-app is packaging only; reuse Web UI. Removed duplicate React/Vite template and Rust greet command. Shared Web dev/build hooks configured. Retained monorepo and renamed apps/iam to apps/web; sys/ops/ai remain in-app module directions, not separate deployables.
+- Verified: Web typecheck/lint/tests/build/API types PASS; runner build/start PASS (no test files); 375 moved Web files preserve content except requested path/name changes.
+- Final verification: shared Web typecheck/lint/API contract/build PASS; 290 tests PASS (204 web + 86 shared UI); final Tauri beforeBuildCommand built shared Web and macOS debug binary PASS; final dev hook HTTP 200; cargo fmt and script syntax checks PASS; all 375 tracked Web files preserve contents except directory/package references; git diff --check PASS.
+- Limits: no native UI/login E2E, no mobile platform initialization, no responsive redesign, no runner features; no full backend CI for path-only changes. Builds are ignored. No commit or push.
+- Self-review / acceptance: initialization scope satisfied; shared UI reused; no separate frontend UI. Next: nothing outstanding in initialization scope.
+
 ## Myrmidon product PRD + HTML prototype - 2026-10-11 (docs only, no code)
 - Goal: design a brand-new product integrating old MyrmidonAI (D:\Projects\MyrmidonAI: PRD.md v2, chaosplus.md, docs/*, Preview 01 code)
   with docs/0[1-4]_Myrmidon_*.docx (2026-10-10 review drafts), built on THIS repo as base framework. Deep PRD + beautiful HTML prototype via .agents/skills.
@@ -327,3 +355,89 @@ D125–D130已落实到规划与原型：React Flow本地bundle、共享Workflow
 用户授权全部提交推送，随后要求两份状态文件移到根目录ADR.md/MEMORY.md，已移动并同步CLAUDE与文档引用。deep-review独立文档/工作流复审无运行阻塞；第三方notices遗漏use-sync-external-store已核实、补生成器并重建。A1本地草稿保存/发布与导入往返已验；A2 2MiB+1与200节点上限已验；A3评审/覆盖/交付守卫已验；A4甲方/项目隔离已验；A5只含分钟工时演示，无真实账务；A6覆盖重复与状态确认已验，无服务端副作用；A7锁定历史/缺失版本已验，无生产存量迁移；A8只读轮询为显示投影，无后台调度实现。SQL/事务/生产OpenAPI/数据库门禁未触发；根make ci为后端门禁，不跑无关产品测试。计划提交全部相关源文档、本地原型运行bundle与锁文件；不提交node_modules或.temp。
 
 补充：.claude/.gitattributes仅Markdown LF规则，按用户根目录整理一并移动为根.gitattributes，不批量renormalize。提交前build与23JS/2内联语法再次通过。
+
+## 2026-10-13 PRD 通用工作平台重整
+
+- Task: 用户要求优化 `docs/PRD.md`，以通用 AI 工作平台为方向，补全 OPC / 多人、多模型 Agent、协作会话频道、文件知识记忆与整体架构。
+- Phase: ACCEPTANCE / COMPLETE；执行模式 Direct，单文档语义紧耦合，不委派。
+- Scope: 重写主 PRD，保留已有治理约束与章节引用兼容，记录 ADR；不实现产品、不改旧规格与原型、不提交推送。
+- Findings: `docs/PRD.md` 当前未跟踪，旧 `docs/myrmidon/PRD.md` 与四份 docx 的既有删除保持不变。规格仍在 `docs/myrmidon/specs/`，主文档链接已修正。
+- Design: 通用工作内核 + 专业工作包；协作频道 / 线程 / 执行会话分离；上下文四种来源分离；保留 L1–L4 但仅在实际外部交付时要求 L4；新增契约和分期明确待规格技术评审。
+- Completed: PRD 2.0，24 个编号主章节、120 个编号章节/小节、6 张 Mermaid 图、18 个产品验收场景；§21 协作、§22 上下文、§23 专业工作包，§18.3 明列旧规格衔接；D132 记录规划与实施批准边界。
+- Verification: Python 检查 30 个链接（含 8 个锚点）、全部章节引用、表格列数、围栏、LF / 无 BOM、验收编号均 PASS；Mermaid 实际解析 6/6 PASS；git diff --check PASS，未跟踪 PRD 另作 whitespace 检查无问题。自审与原请求覆盖检查 PASS。未运行产品代码/生产测试，本文场景为未来验收标准。
+- Next Action: 本轮文档任务无剩余。后续若进入实施，先由产品负责人冻结 §18.2 的范围与政策建议，再按 §18.3 同步规格与原型；不视作已授权开工。未提交推送。
+
+## 2026-10-13 PRD 产品主线重写（用户否定上一版）
+
+- Feedback: 用户指出“你这是在堆 UI，不是在做产品”。上一版文档结构检查通过不代表产品设计获认可；其产品评审未通过。
+- Phase: 文档修订完成 / 待用户产品评审；Direct，单一产品主线由主线程完成，不委派。
+- Goal: 从真实工作、用户承担的协调成本、平台责任、成果交付与持续复用定义产品；协作会话、知识和 Agent 作为必需机制，界面与技术目录退回实现约束。
+- Scope: 重写 docs/PRD.md 与连续性记录；保持通用方向、OPC / 多人 / 外部协作、不同专业与模型，保留已确认治理约束，不改规格、原型或产品代码。
+- Steering: 用户明确要求不同人视角、通用流程与业务兼容、Agent + Human 内部协作、会话/执行/实时反馈预览、减少页面与路由冗余且不减功能；均纳入新版主线。
+- Completed: PRD 3.0 按上述问题重写；用户责任与实际路径、完整发布资料案例、通用推进/专业步骤分离、分派交接与例外、运行反馈和三类成果版本、规范路由与冗余合并表、完整能力归属、价值验证及 18 个验收场景。D133 记录用户纠正与提案边界。
+- Skill: ui-ux-pro-max；仅查询导航返回/深链接与反馈规则，保留适用条目，未生成新视觉系统；检索产生的 __pycache__ 已清理。
+- Verification: 31 个链接/锚点、章节引用、表格、围栏、18 个验收编号、LF/无BOM与空白检查 PASS；Mermaid 实际解析最终 4 图全部 PASS；git diff --check PASS。已逐项自审用户七类要求与能力保留映射。未修改原型/规格/产品代码，未运行生产测试。
+- Next: 本轮文档修订无剩余执行事项。用户评审产品方案；若进入实现，按 PRD 附录 B 冻结个人归属/可见政策/路由合并并同步工程规格与原型。未提交推送；不能以静态检查通过称为用户已接受。
+
+## 2026-10-13 完整需求清单（24 组补充）
+
+- Task: 合并原材料与用户编号 1–24 的要求，生成完整需求清单；第 23 项服务器 / 服务健康群告警、第 24 项环节小团队交付主流程均已纳入。
+- Phase: 文档完成 / 待用户产品评审；Direct，主线程统一语义与覆盖核对，不委派。
+- Completed: docs/REQUIREMENTS.md，26 个领域共 286 个稳定需求编号、24 个端到端验收场景、原编号 1–24 完整映射、两张 Mermaid 图；PRD 顶部加入最新入口与冲突提示；D134 记录本轮范围。
+- Confirmed: 会话协商 → 计划任务确认 → SOP 确认 → AI 执行 / Human 负责的环节小团队 → 内部验收 → 下游交接或上游返工 → 最终 Human 负责交付。包含组织树、跨项目大盘、永久消息、分布式执行与预览、全平台、监控、预算和自动报告等完整范围。
+- Design boundaries: 技术建议与明确需求分开；Matrix / Centrifugo / NATS 职责不同；领域事实 + 原件 + 审计事件 + 可重建搜索 + 有来源记忆。runtime、跨平台兼容与资源指标待真实验证，不宣称功能已实现。
+- Verification: 286 需求编号唯一且分域连续、编号引用、0–28 章节、16 个本地链接 / 锚点、表格列数、围栏、LF / 无 BOM / 无行尾空格、1–24 来源映射、AC-01–24 均 PASS；Mermaid 实际解析 2/2 PASS；文档 diff check PASS。自审与原请求覆盖检查完成，非用户产品批准；未运行产品集成或性能测试。
+- Scope: 本轮仅需求文档与连续性记录，不提交推送。并发发生的前端目录迁移、客户端 / runner 初始化和 AGENTS 更新属于其他工作，保持不动。
+- Skill: full-output-enforcement 用于完整输出与来源映射。
+- Next: 本轮文档任务无剩余执行事项；交付清单供用户审阅。实施选型与规格同步属于后续任务，不因文档完成而自动开工。
+
+
+## Dynamic API field-rules design review — 2026-10-13
+- Task / Objective: assess runtime OPTIONS field rules derived from backend declarations, frontend binding and structured errors; deliver reviewed implementation plan only.
+- Phase: ACCEPTANCE / COMPLETE. Production code untouched; all existing workspace migration/scaffold changes preserved. No commit/push.
+- Deliverable: apps/backend-api/docs/dynamic-field-rules-design-2026-10-13.md; recommendation appended to ADR.md.
+- Execution: Hybrid, two read-only investigators (backend metadata/auth/CORS; frontend forms/rules) plus same agents independently reviewing final draft; main integrated and accepted.
+- Findings: actual OpenAPI 3.1 = 275 paths / 398 operations, no OPTIONS; 33 Web TSX files / 48 form occurrences (includes search); AutoForm already supports rules but business pages do not use it; respx flattens field errors. Registration tag ≥8 characters vs service ≥12 bytes is a pre-existing divergence, not changed.
+- Recommended decisions: final Huma schemas -> OPTIONS -> shared frontend adapter; preserve schema structure; controlled message templates; typed server issues; unknown tri-state composition; explicit server-validation fallback; follow OpenAPI exposure switch; per-open-form application cache; exact final-payload validation. No new general rules DSL or bulk UI rewrite.
+- Verification: make openapi-check PASS (generated document matches); go test ./pkg/extension/huma/... PASS; subagent authz tests PASS; two frontend suites 69 PASS / 432 assertions; doc whitespace/link checks recorded in report at final delivery. New feature not implemented/tested.
+- Remaining work in this review: none after final document checks. Implementation is future scope, not approved by this request.
+- Next action: after user requests implementation, follow report §8 phase 1 contract/consistency baseline; do not silently change password policy.
+- Last checkpoint: final review integrated, 2026-10-13.
+
+
+## Dynamic field-rules review refinement — 2026-10-13
+- Phase: ACCEPTANCE. User adds four hard requirements: unified UI automatic input limits/validation; one backend tag declaration source; three-language messages; resolve every affected path with no dangling items.
+- Completed: design revision 2 and ADR addendum; shared form context/field adapters, service validation reuse, message retranslation, complete impact ledger and zero-unresolved gate specified.
+- Scope: documentation only; Direct refinement based on earlier independent audits. No production edits or tests claimed.
+- Supersedes prior state: password tag/service divergence and price/date conversion now MUST be fixed within future implementation, preserving actual accepted behavior. Unknown-rule compatibility is not permission to leave current supported scope unimplemented.
+- Next: implement only on user request, starting full affected-path ledger and declaration baseline; pilot does not count as completion.
+
+
+## Dynamic field-rules exhaustive impact closure — 2026-10-13
+- Phase: ANALYSIS. User says continue after assistant clarified prior audit was sampled; current goal is complete structural impact matrix and bounded semantic review, not production implementation.
+- Constraints: UI automatic binding and input limits; tag-owned single declaration; zh-CN/en-US/ms-MY; all identified affected issues assigned implementation and acceptance (no deferred known issues).
+- Execution: Hybrid. Agents own backend module/service matrix, all Web forms/non-form mutations, shared UI/client/i18n matrix; each writes its own impact document under backend-api/docs. Main owns all-operation inventory, specification consistency, integration, cross-checks and final acceptance.
+- State: existing 398 operations/275 paths and 48 form occurrences are previous verified baseline; recount against current filesystem before claims. Preserve unrelated changes.
+- Next: generate operation/source/parameter inventory, inspect runtime-only exceptions and tests; integrate 3 matrices, resolve review gaps, update main plan/ADR and verification.
+
+
+## Dynamic field-rules exhaustive closure — final checkpoint 2026-10-13
+- Phase: ACCEPTANCE / COMPLETE (design + impact audit only). User withdrew accidental project-menu request; no UI/layout or production code changed.
+- Deliverables: main dynamic-field-rules-design-2026-10-13.md v3 + backend-impact, frontend-impact, ui-impact, operation-inventory dated same; ADR v3 appended.
+- Coverage: actual composition baseline398 ops matches committed spec exactly; all optional infra411 documented ops; adapter372 Huma +26 raw;13 optional raw docs;1 wildcard path rewrite.122 input schema refs.20 HTTP modules /357 enumerated production files.96 Web sources /54 UI entries /48 forms in33 files;262 API members resolved,264 unique routes within them;all iam-api routes292 +account-view2=294 valid spec pairs.31 FieldTypes exact-set checked.
+- Integrated findings: typed/raw provenance with OperationDocumenter+Adapter.Handle; late OAuth form schema not executable proof; compile declaration before Huma precompute; preserve service profile/normalization; issue_messages multilingual catalog; direct account-view transport, synchronous popup/best-effort exit; preserve existing401 retry; no invented legacy shared-library endpoints. D-UI01–06 frozen in main§12.2.
+- Verification: Go overlay actual composition/route/provenance tests PASS (temp files only); policyx/query PASS; files/todo/authn targeted4 test names across3packages PASS. UI6suites105PASS plus account-view/org-scope2suites9PASS.5doc links/examples/LF/whitespace,369 links,411op and31FieldType sets PASS;OpenAPI fingerprint unchanged. All are baseline/audit checks, not new feature runtime acceptance.
+- Remaining audit work: none; peer corrections incorporated, primary scope/acceptance review complete. Every identified impact has an action/test ID; semantic implementation cases remain NOT IMPLEMENTED/NOT RUN.
+- Next: on implementation instruction follow main§8 and4matrices to full completion; pilot is not delivery; no new permission needed for further read-only audit, but this requested audit is finished.
+- Repro evidence: /tmp/dynamic-rules-audit holds overlay/runtime snapshots/generator; /tmp/recount-frontend-routes.cjs and /tmp/frontend-route-sets.json; durable docs preserve results if temp files expire.
+
+
+## Commit and push all deliverables — 2026-10-13
+- User authorization: commit and push all current workspace deliverables; supersedes earlier no-commit notes. Do not implement dynamic field rules.
+- Scope: Web directory/package migration, Tauri and runner initialization, product requirements/prototype/reference documents, engineering instructions, dynamic field-rules design and exhaustive impact reports.
+- Phase: ACCEPTANCE / ready to commit and push; branch chaosplus, origin/chaosplus fetched and initially synchronized.
+- Review: independent read-only naming/reuse/architecture/cross-platform review plus main inspection. All 375 relocated files mapped; 367 byte-identical, eight path/name/doc changes. Corrected external historical source reference and current directory tree. Ignore Python caches and local editor settings; all build/dependency output excluded.
+- Risk review: production A1 staging, A2 uploads, A3 workflow, A4 isolation, A5 money, A6 replay, A7 persisted schemas, A8 jobs unchanged by relocation; runner has no executor. Prototype is local demonstration, not production implementation. No HTTP/schema/SQL behavior or production dependency version changes; no database/release gates required for this scope.
+- Verification: prototype 16 tests PASS and Vite build PASS; runner go test reports no test files, build and startup PASS; backend script syntax PASS and affected integration package compiles (browser cases require external fixtures and skip by default). make frontend-check PASS (API types, lint, typecheck, 290 tests, production build); cargo fmt --check and cargo check --locked PASS on macOS. Windows/Linux runtime and fixture-dependent browser integration not rerun. Prior dynamic-field audit validation retained above.
+- Self-review / acceptance: requested deliverables staged explicitly, rename-aware diff reviewed, whitespace and staged LF checks PASS; no generated caches, binaries or local editor config staged. Only current-task hygiene and two migration documentation corrections added.
+- Next action: commit the reviewed staged deliverables, push origin chaosplus, then verify remote HEAD and clean working tree; no product implementation authorized by this commit request.

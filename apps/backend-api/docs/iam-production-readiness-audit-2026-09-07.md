@@ -127,7 +127,7 @@ redirect 负向测试。
 
 控制台明确提示“远端资源不会被删除”，后端直接硬删除 target，数据库级联删除 mapping：
 
-- `apps/frontend-web-admin/apps/iam/src/app/scim-directories/targets.tsx:632`
+- `apps/frontend-web/apps/web/src/app/scim-directories/targets.tsx:632`
 - `internal/iam/provisioning/target.go:191`
 - `internal/iam/provisioning/repository.go:222`
 - `internal/iam/provisioning/sql/postgres/00002_scim_targets.sql:25`
@@ -154,7 +154,7 @@ Principal 擦除只检查仍然存在的 live mapping：
 但 identity HTTP 在 suspension 后直接进入 service-account 路由，前端 client 也只有停用/恢复：
 
 - `internal/iam/identity/http.go:261`
-- `apps/frontend-web-admin/apps/iam/src/lib/iam-api.ts:1282`
+- `apps/frontend-web/apps/web/src/lib/iam-api.ts:1282`
 
 当前 OpenAPI 没有 principal retention/legal-hold/anonymize/lifecycle operation。运维人员无法查看
 deadline/hold/blocker、执行不可逆确认、触发匿名化或识别 tombstone 状态。
@@ -244,10 +244,10 @@ sticky session 及其 failover 行为固化为部署约束并验收。
 
 Principals 页面用一个 `Promise.all` 同时请求 principals、members、departments、field catalog：
 
-- `apps/frontend-web-admin/apps/iam/src/app/principals/page.tsx:63`
+- `apps/frontend-web/apps/web/src/app/principals/page.tsx:63`
 
 仅有 `user/view` 而没有 `dept/view` 的用户能看到菜单，却会因一个预期 403 丢失整页数据。
-Roles 页面在 `apps/frontend-web-admin/apps/iam/src/app/roles/page.tsx:117` 有相同全成全败模式。
+Roles 页面在 `apps/frontend-web/apps/web/src/app/roles/page.tsx:117` 有相同全成全败模式。
 
 应拆分必需/可选数据，仅降级受影响控件，并增加真实最小权限 persona 浏览器测试。
 
@@ -255,22 +255,22 @@ Roles 页面在 `apps/frontend-web-admin/apps/iam/src/app/roles/page.tsx:117` �
 
 导航按权限过滤，但 view-only 用户仍会看到 create/update/delete 操作：
 
-- `apps/frontend-web-admin/apps/iam/src/app/oauth-clients/page.tsx:247`
-- `apps/frontend-web-admin/apps/iam/src/app/principals/page.tsx:260`
+- `apps/frontend-web/apps/web/src/app/oauth-clients/page.tsx:247`
+- `apps/frontend-web/apps/web/src/app/principals/page.tsx:260`
 
 服务端仍能拒绝越权，因此不是安全绕过；但这会制造大量可预期 403，并让权限配置难以理解。
 
 ### P1-6：移动端与无障碍验收未达到生产级
 
 - 移动端选择路由后不会关闭导航 Sheet：
-  `apps/frontend-web-admin/apps/iam/src/app/layout.tsx:108`、
-  `apps/frontend-web-admin/apps/iam/src/components/app-sidebar.tsx:171`；
+  `apps/frontend-web/apps/web/src/app/layout.tsx:108`、
+  `apps/frontend-web/apps/web/src/components/app-sidebar.tsx:171`；
 - 全局按钮高度仅 24-36 px，低于 44 px 移动触控目标：
-  `apps/frontend-web-admin/packages/ui/src/components/button.tsx:24`；
+  `apps/frontend-web/packages/ui/src/components/button.tsx:24`；
 - 租户输入移除 outline 且无等价 focus-visible：
-  `apps/frontend-web-admin/apps/iam/src/app/layout.tsx:137`；
+  `apps/frontend-web/apps/web/src/app/layout.tsx:137`；
 - 移动 Sheet 缺少 accessible title：
-  `apps/frontend-web-admin/packages/ui/src/components/sheet.tsx:58`。
+  `apps/frontend-web/packages/ui/src/components/sheet.tsx:58`。
 
 应加入键盘/焦点返回、accessible name、触控尺寸和真实移动导航门禁。
 
@@ -286,11 +286,11 @@ schema publication、前端/browser、live readiness、恢复演练。仓库也�
 ## 七、P2：优化项
 
 - Principal 搜索缺 loading、成功后未清旧 error、无 debounce/abort/request ordering，旧响应可覆盖
-  新查询：`apps/frontend-web-admin/apps/iam/src/app/principals/page.tsx:63`、`:167`。
+  新查询：`apps/frontend-web/apps/web/src/app/principals/page.tsx:63`、`:167`。
 - 平台审计侧栏和页面内 Platform tab 的权限表现不一致：
-  `apps/frontend-web-admin/apps/iam/src/app/audit-governance/page.tsx:55`。
+  `apps/frontend-web/apps/web/src/app/audit-governance/page.tsx:55`。
 - 前端 production build 通过，但 Vite 警告
-  `apps/frontend-web-admin/apps/iam/vite.config.ts:14` 的 `__dirname` 与计划中的 native config 不兼容。
+  `apps/frontend-web/apps/web/vite.config.ts:14` 的 `__dirname` 与计划中的 native config 不兼容。
 - 迁移计划 `iam-domain-migration-plan.md:951` 仍称字段权限和 audit archive 缺失，详细条目
   `:959`、`:964` 又标记完成，摘要需要对齐。
 

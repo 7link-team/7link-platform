@@ -851,7 +851,7 @@ data: {"v":1,"event_id":"…","stream_seq":81234,"topics":["tenant/7/work_item/9
 
 ## 8. 页面规格
 
-平台运维页位于 IAM 控制台系统区（`apps/frontend-web-admin/apps/iam`，`/system/...`），菜单经 C6 以 `Scope=SYSTEM` 贡献到「基础管理」分组；组件用 `@workspace/ui` auto-table / crud 与语义 Token。
+平台运维页位于 IAM 控制台系统区（`apps/frontend-web/apps/web`，`/system/...`），菜单经 C6 以 `Scope=SYSTEM` 贡献到「基础管理」分组；组件用 `@workspace/ui` auto-table / crud 与语义 Token。
 
 ### P1 后台任务 `/system/jobs`
 - **目的**：发现并处置失败任务。**入口**：系统菜单「后台任务」；N-09-01 通知链接带筛选。

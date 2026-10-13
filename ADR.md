@@ -4727,3 +4727,103 @@ Status: Accepted.
 ## D131 — 根目录持久状态文件（2026-10-12）
 Decision: 按用户要求，将 .claude/decisions.md 移到根目录 ADR.md，将 .claude/task-state.md 移到根目录 MEMORY.md。CLAUDE.md 与现行文档引用同步更新。已发布历史 SQL 迁移中的注释保留原路径，不改迁移指纹；对应记录已完整迁入本文件。
 Status: Accepted.
+
+## D132 — 通用 AI 工作与交付平台 PRD 重整（2026-10-13）
+
+Decision: 按用户要求优化 `docs/PRD.md`，从仅乙方软件交付定位扩展为面向 OPC、多人团队与多模型 Agent 的通用工作平台；补全协作会话、频道、线程、文件资产、知识、记忆、上下文与专业工作包。
+Reason: 用户明确指出原架构不够全面，尤其缺少协作会话频道；新方向需要区分通用工作语义和专业流程，以及讨论记录和业务事实。
+Alternatives Considered: 只增加知识库小节；为每种行业建设独立系统；把所有沟通和执行合成单一 Session。均不足以表达本轮需求。
+Tradeoffs: 保留 PRD 原 §0–20 主题编号与现有治理约束，新增 §21–23 专题；引入通用成果版本、Review、个人作用域与 API 执行器的产品语义，会产生需后续同步的规格差异。
+Scope: `docs/PRD.md`、本文件和 `MEMORY.md`；不修改 apps、规格或原型，不恢复用户已删除的旧 PRD / docx，不提交推送。
+Status: 用户已请求通用方向与 PRD 优化；2.0 为规划稿。新增 P0 范围、具体权限政策、对象归属和排期建议尚不视作工程实施批准。PRD §18.2–18.3 列出需冻结选择与规格同步范围；旧工程契约未变更部分继续有效，冲突部分不得混用开发。
+
+## D133 — 以用户、工作流程和协作责任重写 PRD（2026-10-13）
+
+Decision: 用户否定上一版“在堆 UI，不是在做产品”，继而要求清楚说明用户与不同视角、通用流程与业务适配、人和 Agent 内部协作、会话 / 执行 / 实时反馈预览，以及减少页面和路由冗余但保持功能完整。按这组问题将 docs/PRD.md 重写为 3.0 产品设计提案。
+Reason: 能力清单、页面数量和文档结构校验不能证明产品设计成立；必须说明一件工作的责任、推进、例外、交接、价值与实际使用路径。
+Alternatives Considered: 在 2.0 后继续追加功能；只压缩菜单；将全部能力塞进单页。均无法回答用户的新要求。
+Tradeoffs: 放弃沿用旧 PRD 的 §0–20 编排，主文按用户与工作展开，工程约束和规格索引移到附录；既有文档引用须按本版标题定位。提出工作台视图合并、规范对象地址、复用查看器与旧 UI 路由退休映射；这是产品方案，尚未改动路由实现。
+Scope: docs/PRD.md、ADR.md、MEMORY.md；复用现有规格保留高级专业、目标报告、主管编排与治理能力，不修改原型、apps 或既有删除，不提交推送。
+Status: 用户的纠正与需求已明确；3.0 已据此编写供评审，不能标为用户已接受。D132 的通用定位继续保留，其 2.0 章节结构与引用由本版取代；新增个人归属、共享政策与路由合并等提案需在实施前冻结，见 PRD 附录 B.3。
+
+## D134 — 完整需求清单与环节小团队交付主流程（2026-10-13）
+
+Decision: 用户要求结合原材料生成完整需求清单，明确 1–22 项后追加 23 服务器/服务健康群告警与 24 完整工作流程。新增 docs/REQUIREMENTS.md，PRD 顶部链接并声明本轮冲突优先级。
+- 主流程：Human 与 Agent 会话协商 → 生成并确认计划任务 → 共同生成并确认 SOP Flow → 各环节 AI 执行、Human 负责的小团队 → 内部验收通过 → 下游接收或有依据退回上游重做 → 全部必需环节完成 → Human 负责正式交付。
+- 明确纳入组织树、OKR 审核、计划跟进、跨项目全局工作台、永久消息与全局可追溯搜索、自动记忆知识、分布式 daemon、frp 式随机域名预览/文件/PTY终端、Token 自动调节、定时任务、自动周期报告、监督 Agent、服务器与服务告警、React Flow 无限画布、Tauri Web/桌面/移动、多 runtime/API 与远程模型配置、轻量无 JVM 新核心栈。
+- 覆盖旧“不提供跨项目汇总”和“移动端仅响应式/桌面可选”限制；消息默认永久保存。交付必须内部必需门禁通过，旧有理由覆盖不能直接绕过失败验收交付，误检应保留原记录并复核。
+Reason: 需要完整、可追踪的需求基线，逐项对应用户原始编号；上下游交接与退回必须具备版本、责任和失效传播，不能只有画布和群聊。
+Alternatives Considered: 所有材料进万能记录表或知识库；消息仅依赖总线历史；直接堆叠 Matrix/Centrifugo/NATS。建议采用领域事实+对象原件+审计事件+统一引用+可重建搜索+有来源知识记忆，并按职责选消息组件。
+Tradeoffs: 范围明显大于旧 MVP，不继承原八周估算；永久存储、实时基础设施、跨平台和多 runtime 需要实际资源/版本验证。Matrix 互联和加密策略、具体中间件、发行包名、性能预算、保留例外仍为待验证或实施前冻结项。
+Scope: docs/REQUIREMENTS.md、docs/PRD.md 的最新入口、本文件、MEMORY.md；无产品实现、无原型或规格批量改动、无提交推送，保留既有删除状态。
+Status: 用户明确的需求范围与主流程已记录；清单中的技术建议和具体实现方案不视作用户已批准或已验证兼容。清单为当前 24 组需求的权威入口。
+
+
+## Workspace project initialization — 2026-10-13
+- Decision: rename apps/frontend-web-admin to apps/frontend-web; initialize apps/frontend-app using the official Tauri 2 React/TypeScript/Bun template; initialize apps/runner as an independent Go module.
+- Reason: Web, native client and execution node have distinct build/runtime boundaries. Runner includes future CLI/daemon and agent/model/executor responsibilities, so its directory is runner rather than runner-cli.
+- Alternatives: runner-cli would describe only the command-line surface; a nested Git repository would disrupt the existing monorepo.
+- Tradeoffs: independent package manifests and build commands; no shared client package extraction at this stage.
+- Scope / Status: user explicitly requested initialization only; no model adapters, task execution, daemon, node registration or client integration implemented. Formal application identifier remains a release-time setting.
+
+- Refinement: keep the frontend monorepo with one apps/web application (renamed from apps/iam); sys/ops/ai remain future in-app domain boundaries. frontend-app is packaging only and embeds that application's build; duplicate React template and greet demo removed. Go remains runner's host; Node.js adapters are added only when an SDK requires them. No upgrade/keepalive implementation in this initialization task.
+
+
+## Slack-like collaboration transport — 2026-10-13
+- Decision: use Centrifugo as the client realtime transport, with existing Go collab business logic, relational message storage and file storage. Do not add Matrix or NATS/JetStream for this scope.
+- Reason: user asked to select only the necessary stack. Collaboration must share platform identities, project/object authorization, task references, approvals and search; no federation or Matrix-client interoperability is required.
+- Alternatives: Matrix provides a broader chat protocol but introduces room/identity/permission integration; NATS is infrastructure messaging rather than the required end-user collaboration layer. Implementing an additional custom chat WebSocket transport would duplicate Centrifugo responsibilities.
+- Design: transactionally persist messages and outbox before publishing; retry delivery and deduplicate/reconcile on clients. Centrifugo history is bounded recovery cache, never the permanent archive. Backend authorization governs subscriptions and permission revocation. Multi-instance Centrifugo uses Redis; a single instance can start with the memory engine and database catch-up. Mobile OS push remains separate.
+- Tradeoffs: threads, read positions, mentions, membership, search and audit remain platform responsibilities; an additional realtime service needs monitoring. Deployment capacity and failure recovery require later validation.
+- Scope / Status: selected architecture, documentation only; no dependency installation, service deployment or chat implementation. Separate node dispatch does not inherit a NATS requirement.
+- Sources: https://centrifugal.dev/docs/getting-started/introduction ; https://centrifugal.dev/docs/server/history_and_recovery ; https://docs.nats.io/nats-concepts/jetstream
+
+
+## External chat connectors and Centrifugo NATS clarification — 2026-10-13
+- Requirement: support future WhatsApp, Telegram, WeChat/WeCom, Slack and other chat integrations through authorized connectors. Keep per-platform capability declarations, identity/channel mappings, message provenance, idempotency, loop prevention and delivery status. Sending notifications alone does not imply bidirectional chat or complete historical sync.
+- Clarification: Centrifugo supports Core NATS as a broker (no publication history/recovery) and JetStream as an async consumer (a distinct integration). The earlier decision excludes NATS from the current deployment, not from future compatibility.
+- Decision: retain Go collab + database + Centrifugo; external connectors use official platform APIs independently. Revisit JetStream only when a concrete backend messaging requirement exists; external chat integration alone is insufficient reason to deploy it.
+- Scope / Status: documentation only, no external accounts connected and no messages sent. Platform-specific account eligibility, scopes and feature parity remain implementation-time verification requirements.
+- Sources: https://centrifugal.dev/docs/server/engines ; https://centrifugal.dev/docs/server/consumers ; platform sources in docs/REQUIREMENTS.md §8.3.
+
+
+## 2026-10-13 — Consolidated final PRD authority
+- Decision: docs/PRD_FINAL.md is the integrated product entry; retain original PRD.md and REQUIREMENTS.md as unchanged source baselines. Preserve all 291 existing requirement IDs, namespace PRD acceptance as JNY, add explicit gap and operational criteria.
+- Reason: user requested a complete, more detailed PRD with no silent loss and two reviews. Conflicts are reconciled inline and tracked in T2, rather than leaving contradictory normative copies.
+- Alternatives considered: shorten the PRD into a checklist or only append references; rejected because professional behavior and journey details would be lost.
+- Tradeoffs: narrative and acceptance layers overlap intentionally; one implementation per domain fact. Unconfirmed policy/technical parameters remain explicit in S8.
+- Scope/status: documentation complete and reviewed twice; no schema/API/product implementation implied. Current next goal is a new complete mock prototype for review.
+
+
+## Dynamic API field rules — reviewed recommendation (2026-10-13)
+- Decision: runtime per-path OPTIONS derived from final Huma input schemas, compiled by frontend into shared field rules; preserve server validation and add structured validation issues. Full contract and impact: apps/backend-api/docs/dynamic-field-rules-design-2026-10-13.md.
+- Reason: user requires runtime reuse of backend constraints and messages rather than duplicated per-page rules; existing AutoForm supports rules but actual Web forms use a separate handwritten path.
+- Alternatives considered: build-time validation generation (does not satisfy runtime goal); separately maintained OPTIONS rules (duplicates source); arbitrary downloaded scripts/full custom validation DSL (unnecessary and unsafe semantics); wholesale form rewrite (out of scope).
+- Tradeoffs: unknown rules/metadata failures explicitly delegate to existing server validation with visible notice; tri-state composite semantics; same OpenAPI exposure switch; application-lifetime cache per open form, not HTTP OPTIONS cache. Standard constraints stay in Huma; only needed custom rules share Describe/Validate.
+- Scope: design only; no API/frontend implementation, password-policy change, DB migration, dependency addition, commit or push.
+- Status: two independent review rounds integrated and primary-agent acceptance complete; recommended implementation plan, NOT user implementation approval. Password tag/runtime divergence is recorded as an identity-form migration prerequisite, not silently fixed.
+
+
+## Dynamic field rules — user constraints revision 2 (2026-10-13)
+- Decision: enforce four user requirements: shared UI auto-binding handles input limits/validation/errors; backend tagged module-owned declarations are the single field-rule source; messages cover zh-CN/en-US/ms-MY; all affected paths and discovered rule/conversion inconsistencies must be resolved before implementation acceptance.
+- Reason: initial staged plan could leave handwritten forms, duplicate service checks and known drift unfinished.
+- Alternatives / Tradeoffs: no per-page rule assembly; no schema-only publication over divergent business validation. Shared form boundary and field adapters preserve layout and original behavior outside the boundary. Custom tag handlers derive metadata and validation together; business-state checks remain server-side with localized structured errors.
+- Scope: updates reviewed design and acceptance only, not production implementation. Password character/byte constraints require compatibility-preserving consolidation, not silent policy strengthening; amount rounding/date conversions are necessary affected-path fixes.
+- Status: user requirements confirmed; supersedes earlier notes deferring affected password/price issues or treating unsupported existing rules as acceptable completion. Implementation cannot be declared complete at pilot stage.
+
+
+## Dynamic field rules — exhaustive impact closure, revision 3 (2026-10-13)
+- Decision: refine the approved design direction using actual registration provenance: Huma OperationDocumenter identifies typed operations, Adapter.Handle records runtime paths, final schema joins by operationId; do not derive execution behavior from final OpenAPI alone. Extensions compile before Huma precompute; service validation uses write-to-server semantics and preserves normalization/profile ordering.
+- Evidence: base398 operation tuples exactly equal live composition; optional diagnostics yield411 documented operations. Actual registrations372 typed +26 direct adapter;13 optional raw docs; one file wildcard path rewrite; OAuth5 form bodies documented after registration require protocol execution classification.
+- UI decisions frozen: target/buildRequest/bindings descriptor; per-operation issue_messages from backend error/i18n definitions; preserve existing401 retry, best-effort account-view exit and synchronous popup; preserve current amount/time wire semantics; typed multi-issue/focus/version policy.
+- Scope: 4 attached matrices under apps/backend-api/docs covering411 operations,20 HTTP modules/357 scanned production files,54 UI entries/48forms/262 referenced API members,31 FieldTypes. Metadata/UI automatic validation implementation still not performed. No unresolved identified design decision remains; all listed fixes are required implementation scope.
+- Alternatives: final-Paths-only registration, treating docs-only body as executed schema, limiting migration to forms/AutoForm, blocking logout on OPTIONS, or adding legacy shared-library business endpoints were rejected on concrete evidence.
+- Status: user-requested impact audit complete within explicitly enumerated source/runtime sets. Does not claim every semantic branch proven or future implementation accepted; production tests/browser tests listed in matrices remain required. Preserve all unrelated workspace changes; no commit/push.
+
+
+## Final prototype navigation and interaction decisions — 2026-10-13
+- Decision: tenant switch/create/join beside Logo; tenant owns multiple project instances with tenant-scoped rollup. Only tenant workbench lists all projects; instance workbench is the selected instance overview. Collaboration contains operational features, not duplicate overviews. Sidebar/channel selection changes local panels without URL/history/top-area transitions.
+- Reason: explicitly confirmed user corrections during prototype acceptance. Keep object deep links for deliberate detail navigation.
+- Decision: exactly reuse six original theme palettes and existing three dark palettes; extend the remaining dark palettes explicitly. Shared styled controls/validation/scrollbars. Workflow UI uses that name, n8n-style node library + inspector; calendar and multi-tab task preview share existing domain state.
+- Alternatives rejected: duplicate project list below selector, project-as-tenant identity, cross-area sidebar shortcuts, approximate theme colors, native browser confirmation/validation popups, separate calendar task records, one hardcoded task preview.
+- Scope/status: implemented and reviewed in docs/prototype mock only; captured in PRD_FINAL S9. Real tenant authorization, execution engine, previews and resource lifecycle still require backend/native implementation and separate acceptance.

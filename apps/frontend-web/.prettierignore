@@ -1,0 +1,8 @@
+dist/
+node_modules/
+.turbo/
+coverage/
+bun.lock
+
+# generated from the service OpenAPI document
+apps/web/src/lib/api-schema.ts

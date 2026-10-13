@@ -32,7 +32,7 @@ func TestComposedArchiveBrowserAcceptance(t *testing.T) {
 	require.NotEmpty(t, secret)
 	backend, err := filepath.Abs("../../..")
 	require.NoError(t, err)
-	console := filepath.Join(backend, "..", "frontend-web-admin", "apps", "iam")
+	console := filepath.Join(backend, "..", "frontend-web", "apps", "web")
 	database := filepath.Join(t.TempDir(), "archive-browser.sqlite")
 	seed := exec.CommandContext(t.Context(), "go", "test", "./internal/iam/audit", "-run", "^TestArchiveBrowserSeed$", "-count=1")
 	seed.Dir = backend
@@ -95,7 +95,7 @@ func TestComposedGovernanceDisabledBrowserAcceptance(t *testing.T) {
 	}
 	backend, err := filepath.Abs("../../..")
 	require.NoError(t, err)
-	console := filepath.Join(backend, "..", "frontend-web-admin", "apps", "iam")
+	console := filepath.Join(backend, "..", "frontend-web", "apps", "web")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	address := listener.Addr().String()

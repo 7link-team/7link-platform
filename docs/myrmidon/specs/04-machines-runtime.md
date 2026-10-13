@@ -2,7 +2,7 @@
 
 > **现行范围（2026-10-12，D125–D129）**：用户已批准需求审计 E1–E4；以 [00 共同契约](00-conventions.md) §16 与本文 §14 为准。原型全量展示，开发 MVP 仅单项目软件闭环；其余按现行分期延后。下文历史门户 / 跨项目菜单 / 独立拆解模板 / 旧 MVP 标记如冲突均已退休，不构成实现承诺。
 
-> 依据：`PRD.md` §6.8、§10.1、§10.5、§12、§13；`00-conventions.md`（约束性契约）；底座 `internal/iam/oauth`（设备码授权 RFC 8628：`device.go`、`http_device.go`、前端 `apps/iam/src/app/device/page.tsx`）、`internal/iam/identity`（服务账号与凭证：`service_account.go`）、`pkg/extension/authn`、`pkg/extension/authz`、`internal/infra/dlock`；旧项目 Preview 01（`internal/platform/{server,daemon,computer,models,inspection,gateway,gateway_daemon}.go`、`src/bridge.ts`、`docs/{preview,runtime-modes,api-gateway,api-gateway-p0,gateway-desktop}.md`、旧 PRD §5.3.1 / 附录 D.2–D.3 / F.1 / F.7）。
+> 依据：`PRD.md` §6.8、§10.1、§10.5、§12、§13；`00-conventions.md`（约束性契约）；底座 `internal/iam/oauth`（设备码授权 RFC 8628：`device.go`、`http_device.go`、前端 `apps/web/src/app/device/page.tsx`）、`internal/iam/identity`（服务账号与凭证：`service_account.go`）、`pkg/extension/authn`、`pkg/extension/authz`、`internal/infra/dlock`；旧项目 Preview 01（`internal/platform/{server,daemon,computer,models,inspection,gateway,gateway_daemon}.go`、`src/bridge.ts`、`docs/{preview,runtime-modes,api-gateway,api-gateway-p0,gateway-desktop}.md`、旧 PRD §5.3.1 / 附录 D.2–D.3 / F.1 / F.7）。
 > 同级对齐：`03-execution-evidence.md`（执行级消息语义、`dispatch_epoch` 栅栏、执行租约 30 s、续约 ≤10 s、机器 20 s 自停、派发内 `seq` 缺口 409 `expected_seq`、outbox ≤10,000、`execution_commands`、`execution_workdir_locks`）；`02`/`03`/`07` 采用的 `ETag`/`If-Match` 乐观锁与时间列类型 `TIMESTAMPTZ(3)`/`DATETIME(3)`/`DATETIME`；`07` 的 `delivery_project_repositories`。
 > 标注：「**本规格提议**」= 来源中没有、由本规格补齐的设计，附理由；「沿用 Preview」= 旧实现已验证的数值或语义。
 
@@ -935,7 +935,7 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 
 ## 8. 页面规格
 
-> 应用 `apps/frontend-web-admin/apps/delivery`，路由前缀 `/t/:tenantID`；只引用语义 Token；状态一律 `StateBadge`（图标 + 文字）：ONLINE `--success`「在线」、OFFLINE 虚线灰「离线」、DRAINING `--warning`「排空中」、REVOKED `--destructive`「已吊销」。所有页面具备加载骨架、空态（含下一步按钮）、错误态（可重试）、无权限态（写明缺少的权限码）、离线/重连态（顶部条「正在重连… 显示的可能不是最新状态」，保留已加载内容）。文案称「你」；用户可见文本不出现 Runner / Daemon / Computer，统一称「机器」「机器程序」（安装命令与技术详情面板除外）。
+> 应用 `apps/frontend-web/apps/delivery`，路由前缀 `/t/:tenantID`；只引用语义 Token；状态一律 `StateBadge`（图标 + 文字）：ONLINE `--success`「在线」、OFFLINE 虚线灰「离线」、DRAINING `--warning`「排空中」、REVOKED `--destructive`「已吊销」。所有页面具备加载骨架、空态（含下一步按钮）、错误态（可重试）、无权限态（写明缺少的权限码）、离线/重连态（顶部条「正在重连… 显示的可能不是最新状态」，保留已加载内容）。文案称「你」；用户可见文本不出现 Runner / Daemon / Computer，统一称「机器」「机器程序」（安装命令与技术详情面板除外）。
 
 ### 8.1 机器列表 `/t/:tenantID/machines`
 

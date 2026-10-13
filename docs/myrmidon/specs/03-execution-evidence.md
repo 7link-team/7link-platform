@@ -1352,7 +1352,7 @@ SSE：执行主题 `tenant/{t}/execution/{id}` 帧 `kind` 增加 `comment_thread
 
 ## 8. 页面规格
 
-> 应用 `apps/frontend-web-admin/apps/delivery`；组件只引用语义 Token；所有页面具备加载骨架、空态、错误态（可重试）、无权限态（写明缺少的权限码）、离线/重连态（顶部条"正在重连… 显示的可能不是最新状态"，保留已加载内容）。文案称"你"；不出现 Runner / Daemon / Computer（技术详情面板除外）。
+> 应用 `apps/frontend-web/apps/delivery`；组件只引用语义 Token；所有页面具备加载骨架、空态、错误态（可重试）、无权限态（写明缺少的权限码）、离线/重连态（顶部条"正在重连… 显示的可能不是最新状态"，保留已加载内容）。文案称"你"；不出现 Runner / Daemon / Computer（技术详情面板除外）。
 
 ### 8.1 执行列表
 

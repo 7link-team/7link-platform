@@ -29,7 +29,7 @@ make build   # version-stamped binary at bin/7link-api
 ```
 
 `make dev` also works from the repository root. It requires Go, Node, Bun, make,
-and installed frontend dependencies (`bun install` in `apps/frontend-web-admin`).
+and installed frontend dependencies (`bun install` in `apps/frontend-web`).
 It prefers API port 8080 and Web port 8091, selects a free port when occupied,
 and prints the actual Web, API and Swagger (`/docs`) URLs after startup.
 Data, keys, credentials and logs persist under `apps/backend-api/.temp/dev`.
