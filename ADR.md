@@ -4827,3 +4827,63 @@ Status: 用户明确的需求范围与主流程已记录；清单中的技术建
 - Decision: exactly reuse six original theme palettes and existing three dark palettes; extend the remaining dark palettes explicitly. Shared styled controls/validation/scrollbars. Workflow UI uses that name, n8n-style node library + inspector; calendar and multi-tab task preview share existing domain state.
 - Alternatives rejected: duplicate project list below selector, project-as-tenant identity, cross-area sidebar shortcuts, approximate theme colors, native browser confirmation/validation popups, separate calendar task records, one hardcoded task preview.
 - Scope/status: implemented and reviewed in docs/prototype mock only; captured in PRD_FINAL S9. Real tenant authorization, execution engine, previews and resource lifecycle still require backend/native implementation and separate acceptance.
+
+
+## 2026-10-13 — Internal handoff acceptance authority
+- Decision: the designated downstream Human receives the fixed internal handoff package and that action fulfills L3 authorized acceptance. Do not add a mandatory separate upstream Human approval for every internal handoff. External publication retains separate authorization.
+- Reason: user explicitly selected this option when the PRD ambiguity was surfaced; avoids redundant approvals while keeping accountable Human receipt and immutable evidence.
+- Scope/status: confirmed for prototype and PRD design; implementation underway. Package version, applicable L2 checks and recipient identity must still be validated. Does not waive existing external publication permissions.
+
+## 2026-10-13 — Conversation-first work and management flow refinement
+- Decision: keep New Work as a shortcut into a conversation draft; explicit Human confirmation creates work and links its confirmed plan. Tenant membership inbox stays beside the Logo; organization page manages outgoing scoped invitations and members.
+- Decision: manual and scheduled report generation share one logical identity per tenant/subject/cadence/calendar period/timezone. Regeneration preserves Human edits and submitted snapshots; corrections are revisions of the same report.
+- Decision: Human estimate, suggested duration, calibrated duration and confirmed actual effort are distinct; Agent wall-clock, tool/model duration, tokens and costs are separate read-only telemetry dimensions. No inference of actual Human hours from chat presence. Existing submitted historical logs retain their original interpretation without inventing confirmation metadata.
+- Decision: Agent configuration includes role, responsibilities, system prompt, task/user template, runtime/model version and selected Skills/MCP. Tool selection does not grant permission. The navigation label is Workflow Templates; broader professional work packages retain their existing product responsibilities.
+- Reason: latest user identified seven incomplete/awkward flows and asked for coherent design and a members-page redesign. These refinements reuse current work, report, organization and workflow facts rather than parallel records.
+- Alternatives/tradeoffs: generic CRUD work initiation and manually entered Agent telemetry rejected; separate duplicate reports per trigger rejected; task-specific and Human confirmation flows require explicit states. Real email, scheduler, runtime, usage ingestion and authorization remain production work, not local prototype claims.
+- Scope/status: PRD_FINAL v4.2 S10 and local prototype changes; integration tests and review tracked separately in docs/prototype/REVIEW.md.
+
+
+## 2026-10-13 — Human organization versus Agent roster and task execution team
+- Decision: organization/members includes Human only. Agent identities live in their own roster, with separate Human-created and Agent-created lists and immutable exact creator attribution. Task execution teams (usually Agent pools, optionally Human) live under tasks/execution and reference those identity sources.
+- Decision: editing a task team propagates to current assignment views; it does not edit formal organization or historical artifact authors. Dynamic/temporary creation and parent retirement do not auto-delete Agent identities. Lifecycle actions preserve records and follow existing authorization.
+- Reason: explicit latest user correction: placement, hierarchy and views must be unambiguous and linked. Supersedes the earlier mixed organization roster and members-page task-team tab.
+- Migration: legacy mixed organization links are archived and removed from current Human membership; Agent records and work references survive. Missing historical creator identity remains explicitly unknown rather than guessed.
+- Scope/status: PRD_FINAL S10 and prototype; task-team relocation and integrated scoped review passed (130 unit tests; 21 browser suites at desktop and mobile). Runtime processes remain mock-only.
+
+## QA 批次固定与独立门禁（2026-10-13）
+- **Decision:** 测试计划固定用例修订、条款映射、目标构建和环境；批次固定工作版本与返工声明链。每批每项只允许记录一次结果，需要重验必须先结束旧批次，再启动新批次；测试报告保存不可变计划与结果快照。
+- **Reason:** 防止覆盖失败来伪造绿色门禁或绕过失败轮次，避免陈旧弹窗改写已记录结果。通过、失败、跳过、阻塞、未执行分别统计；缺失条款映射不推断为全覆盖。
+- **Alternatives Considered:** 同一批次反复覆盖当前结果并只保留最近结论；拒绝，因其不能明确界定失败轮次和复核证据。
+- **Tradeoffs:** 复验多一步结束／新建批次，换取明确历史和计数边界。原型使用明确标记的模拟证据，仍执行真实状态约束。
+- **Scope:** 原型 QA 计划、批次、报告和工作必需质量门。主体按 Human／Agent 稳定 ID 判断独立性；当前有效固定批次有失败才计内部失败轮，多项失败同批次仅一次，旧版本或旧声明链报告不污染当前计数。本决策不改变既定失败阈值。
+- **Status:** 依据既有 PRD 与工程规格，由主代理在已授权原型评审修复范围内确定实施细节；实现及整体验证进行中，不代表新增用户产品审批。
+
+
+## 2026-10-13 — Task preview width and focused content
+- Decision: desktop execution preview has an accessible draggable/keyboard separator with bounded width and local width preference; compact layouts retain the full-width dialog. Remove the two footer links to artifact comments and acceptance from TaskPreviews.
+- Reason: explicit latest user instruction; preview panel is for preview, task/artifact actions already have their own entry points.
+- Scope/status: local prototype implemented; actual mouse344→584px, keyboard bounds/persistence and375px preview tests passed. The broader full-PRD audit remains active.
+
+
+## 2026-10-13 — Delivery-driven preview resources and browser chrome
+- Decision: task resource manifests determine tabs; no manual add/close and no fixed tab set based solely on discipline. One material/service per tab; repository uses tree+code view. Web/API/Swagger use service-specific views; document/media/config formats use suitable viewers. FRP is transport, not a mandatory rendering mechanism.
+- Reason: explicit user corrections. Content must fill available height, desktop width adjustable and expandable, mobile fullscreen. Do not put acceptance/work actions in preview.
+- Decision: Web toolbars provide per-tab back/forward/refresh/address and planned authorized new-window access. Cross-origin internal navigation needs a verified preview bridge; normal iframe DOM/history cannot be read. File viewers use format-specific reading controls instead of irrelevant navigation.
+- Tradeoffs/status: mock toolbar and resource-driven tab selection implemented; actual iframe gateway/new-window resource URLs, media/Office rendering and service lifecycle remain production integration. Spec and prototype never claim those connections exist.
+
+
+## 2026-10-13 — Prototype audit timestamps and project identity repair
+
+New audit events and chat messages retain ISO UTC occurrence timestamps; Intl formatting belongs only in display. Existing HH:mm records remain date-unknown rather than being assigned today's date. This repairs traceability without fabricating historical facts.
+
+New project creation references a Human ID from the active tenant, stores the display name alongside it, and rejects stale-tenant or unknown/Agent identities at the domain command. Owner choices come from the tenant roster rather than a fixed name list. Existing project records are not silently reattributed. These are requirement repairs, not new product policy.
+
+
+## 2026-10-14 — Report period identity and immutable historical scope
+- Decision: report uniqueness uses tenant + subject + cadence + periodStart; timezone is retained metadata, not a second-report key. Reopening a generated calendar period uses its original timezone and boundaries; direct identity/timezone rewriting remains rejected.
+- Reason: spec10 §3.8 report_key and BR-10-43 explicitly require one report per subject/calendar period and preserve generated boundaries after timezone changes.
+- Decision: acceptance-based report completion uses immutable event dates/subjectKeys and exact versioned event IDs; distinct work counts dedupe workId, not acceptance versions. Historical Plan reading is explicit and preserves default live Plan behavior. New Human effort captures fixed scope at creation; records for dates other than today do not infer historical project/team membership from today's organization.
+- Alternatives considered: counting today's completed status, rereading today's work/organization assignments, inferring saved legacy authors by display name, adding timezone to uniqueness, and reconstructing old content from current work were rejected because each fabricates or rewrites historical facts.
+- Tradeoffs: missing legacy scope/time/history is surfaced as unknown and excluded from certified scoped aggregates. Stable personal owner IDs remain valid evidence of individual ownership. Known pristine demo fixtures remain distinguishable from saved legacy data.
+- Scope/status: parent-authorized local prototype report fact correction implemented and scoped tests/browser/mutations passed. Does not certify production runtime, full report content sections or the entire PRD.

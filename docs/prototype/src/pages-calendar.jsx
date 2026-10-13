@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useStore, scheduleWork } from "./store";
+import { useStore, scheduleWork, workExecutors } from "./store";
 import {
   Button,
   Icon,
@@ -10,6 +10,8 @@ import {
   Link,
   Badge,
   Empty,
+  Notice,
+  useRecoverableDraft,
 } from "./ui";
 const TODAY = "2026-10-13";
 const date = (s) => new Date(`${s}T12:00:00Z`);
@@ -24,15 +26,12 @@ export function WorkCalendar({ work, toast, projectId }) {
     [mode, setMode] = useState("month"),
     [anchor, setAnchor] = useState(TODAY),
     [person, setPerson] = useState("all"),
-    [selected, setSelected] = useState(null),
-    [start, setStart] = useState(""),
-    [end, setEnd] = useState(""),
-    [reason, setReason] = useState("");
+    [selected, setSelected] = useState(null);
   const people = [
-    ...new Set(work.flatMap((w) => [w.owner, w.agent]).filter(Boolean)),
+    ...new Set(work.flatMap((w) => [w.owner, ...workExecutors(s, w).map((person) => person.name)]).filter(Boolean)),
   ];
   const items = work.filter(
-    (w) => person === "all" || w.owner === person || w.agent === person,
+    (w) => person === "all" || w.owner === person || workExecutors(s, w).some((executor) => executor.name === person),
   );
   const center = date(anchor),
     first =
@@ -65,9 +64,6 @@ export function WorkCalendar({ work, toast, projectId }) {
     active.filter((w) => w.plannedStart <= key(d) && w.plannedEnd >= key(d));
   const open = (w) => {
     setSelected({ ...w });
-    setStart(w.plannedStart || "");
-    setEnd(w.plannedEnd || "");
-    setReason("");
   };
   const move = (delta) =>
     setAnchor(
@@ -92,7 +88,7 @@ export function WorkCalendar({ work, toast, projectId }) {
     >
       <span>{w.title}</span>
       <small>
-        {w.owner} · {w.agent || "Human 执行"}
+        {w.owner} · {workExecutors(s, w).map((person) => person.name).join("、") || "未编组"}
       </small>
     </button>
   );
@@ -106,7 +102,7 @@ export function WorkCalendar({ work, toast, projectId }) {
             icon="ChevronLeft"
           />
           <h2>
-            {center.getUTCFullYear()} 年 {center.getUTCMonth() + 1} 月
+            {new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long", timeZone: "UTC" }).format(center)}
             {mode === "week"
               ? ` · ${key(begin).slice(5)}—${key(days.at(-1)).slice(5)}`
               : ""}
@@ -222,41 +218,49 @@ export function WorkCalendar({ work, toast, projectId }) {
           <p className="muted">当前筛选范围内的工作都已安排时间。</p>
         )}
       </section>
-      {selected && (
-        <Modal title="调整任务排期" onClose={() => setSelected(null)}>
+      {selected && <ScheduleEditor key={`${s.activeTenant}:${selected.id}`} selected={selected} state={s} onClose={() => setSelected(null)} toast={toast} />}
+    </>
+  );
+}
+function ScheduleEditor({ selected, state, onClose, toast }) {
+  const [form, setForm, draft] = useRecoverableDraft(JSON.stringify([state.activeTenant, "schedule", selected.id]), () => ({
+    start: selected.plannedStart || "", end: selected.plannedEnd || "", reason: "", scheduleRevision: selected.scheduleRevision || 0,
+  }), ({ start, end, reason }) => ({ start, end, reason }));
+  return <Modal title="调整任务排期" {...draft.modalProps} onClose={onClose}>
+          {draft.recovered && <Notice>已恢复未保存的排期，保留原排期修订。若排期已变化，请放弃后重新打开。</Notice>}
           <p>
             <b>{selected.title}</b>
           </p>
           <p className="muted">
-            {selected.owner} 负责 · {selected.agent || "Human"} 执行
+            {selected.owner} 负责 · {workExecutors(state, state.work.find((work) => work.id === selected.id) || selected).map((person) => person.name).join("、") || "未编组"} 执行
           </p>
           <ActionForm
             label="保存排期"
-            onCancel={() => setSelected(null)}
-            onSubmit={() => {
+            onCancel={onClose}
+            onSubmit={({ dismiss }) => {
               scheduleWork(
                 selected.id,
-                start,
-                end,
-                reason,
-                selected.scheduleRevision || 0,
+                form.start,
+                form.end,
+                form.reason,
+                form.scheduleRevision,
               );
-              setSelected(null);
+              dismiss();
               toast("排期已更新，项目与个人日历同步显示。");
             }}
           >
             <div className="form-grid">
               <Field
                 label="开始日期"
-                value={start}
-                onChange={setStart}
+                value={form.start}
+                onChange={start => setForm(current => ({ ...current, start }))}
                 placeholder="YYYY-MM-DD"
                 pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"
               />
               <Field
                 label="结束日期"
-                value={end}
-                onChange={setEnd}
+                value={form.end}
+                onChange={end => setForm(current => ({ ...current, end }))}
                 placeholder="YYYY-MM-DD"
                 pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"
               />
@@ -264,8 +268,8 @@ export function WorkCalendar({ work, toast, projectId }) {
             <Field
               label="调整说明"
               type="textarea"
-              value={reason}
-              onChange={setReason}
+              value={form.reason}
+              onChange={reason => setForm(current => ({ ...current, reason }))}
               required
             />
             <p className="muted">
@@ -278,8 +282,5 @@ export function WorkCalendar({ work, toast, projectId }) {
           >
             查看工作详情 <Icon name="ArrowUpRight" size={14} />
           </Link>
-        </Modal>
-      )}
-    </>
-  );
+        </Modal>;
 }

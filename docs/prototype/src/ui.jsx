@@ -9,6 +9,7 @@ import React, {
 import { createPortal } from "react-dom";
 import {
   Palette,
+  Maximize2,
   Info,
   AlertTriangle,
   Copy,
@@ -116,6 +117,7 @@ import {
 } from "lucide-react";
 const Icons = {
   Palette,
+  Maximize2,
   Info,
   AlertTriangle,
   Copy,
@@ -347,18 +349,29 @@ export function Progress({ value }) {
     </div>
   );
 }
-export function Tabs({ items, value, onChange }) {
+export function Tabs({ items, value, onChange, label = "内容视图", className = "" }) {
+  const active = items.some(([key]) => key === value) ? value : items[0]?.[0];
   return (
-    <div className="tabs" role="tablist">
-      {items.map(([key, label]) => (
+    <div className={`tabs ${className}`} role="tablist" aria-label={label}>
+      {items.map(([key, text], index) => (
         <button
+          type="button"
           key={key}
           role="tab"
-          aria-selected={value === key}
-          className={value === key ? "selected" : ""}
+          aria-selected={active === key}
+          tabIndex={active === key ? 0 : -1}
+          className={active === key ? "selected" : ""}
           onClick={() => onChange(key)}
+          onKeyDown={(event) => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+              : (index + (event.key === "ArrowRight" ? 1 : -1) + items.length) % items.length;
+            event.currentTarget.parentElement.querySelectorAll('[role="tab"]')[next]?.focus();
+            onChange(items[next][0]);
+          }}
         >
-          {label}
+          {text}
         </button>
       ))}
     </div>
@@ -389,29 +402,87 @@ export function PanelButton({
     </button>
   );
 }
-export function Modal({ title, children, onClose, wide = false }) {
+const ModalContext = createContext(null);
+function draftSnapshot(value) {
+  if (Array.isArray(value)) return value.map(draftSnapshot);
+  if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map(key => [key, draftSnapshot(value[key])]));
+  return value;
+}
+const formDrafts = new Map();
+// Callers key the editor component with the same tenant/entity key. Only dirty
+// drafts live in this tab's memory; cached values retain their original revision.
+export function useRecoverableDraft(key, initialize, normalize = value => value) {
+  const [original] = useState(() => {
+    const cached = key && formDrafts.get(key);
+    return cached ? { ...structuredClone(cached), recovered: true } : { baseline: initialize(), recovered: false };
+  });
+  const [value, setValue] = useState(() => structuredClone(original.recovered ? original.value : original.baseline));
+  const draftValue = normalize(value);
+  const draftBaseline = normalize(original.baseline);
+  const dirty = JSON.stringify(draftSnapshot(draftValue)) !== JSON.stringify(draftSnapshot(draftBaseline));
+  useEffect(() => {
+    if (!key) return;
+    if (dirty) formDrafts.set(key, { baseline: structuredClone(original.baseline), value: structuredClone(value) });
+    else formDrafts.delete(key);
+  }, [key, value, dirty, original]);
+  return [value, setValue, {
+    recovered: original.recovered,
+    modalProps: { draftValue, draftBaseline, onDraftClear: () => { if (key) formDrafts.delete(key); } },
+  }];
+}
+export function useDraftGuard({ draftValue, draftBaseline, onDraftClear }, onClose) {
+  const confirm = useContext(ConfirmContext);
+  const snapshot = JSON.stringify(draftSnapshot(draftValue));
+  const initial = useRef(draftBaseline === undefined ? snapshot : JSON.stringify(draftSnapshot(draftBaseline)));
+  const closing = useRef(false);
+  const mounted = useRef(true);
+  const dismiss = (done = onClose) => { onDraftClear?.(); done?.(); };
+  const requestClose = async (done = onClose) => {
+    if (closing.current) return;
+    if (draftValue !== undefined && snapshot !== initial.current) {
+      closing.current = true;
+      const discard = await confirm("未保存的修改将被放弃。", { title: "放弃未保存的修改？", cancelLabel: "继续编辑", confirmLabel: "放弃修改" });
+      closing.current = false;
+      if (!discard) return;
+      if (!mounted.current) { onDraftClear?.(); return; }
+    }
+    dismiss(done);
+  };
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  return { requestClose, dismiss };
+}
+export function Modal({ title, children, onClose, wide = false, returnFocusRef, className = "", draftValue, draftBaseline, onDraftClear }) {
   const ref = useRef();
+  const { requestClose, dismiss } = useDraftGuard({ draftValue, draftBaseline, onDraftClear }, onClose);
   useEffect(() => {
     const last = document.activeElement;
-    ref.current.showModal();
-    return () => last?.focus();
+    const dialog = ref.current;
+    dialog.showModal();
+    return () => {
+      const target = returnFocusRef?.current || last;
+      const top = [...document.querySelectorAll("dialog[open]")].filter(item => item !== dialog).at(-1);
+      if (target?.isConnected && (!top || top.contains(target))) target.focus();
+    };
   }, []);
   return (
-    <dialog
-      ref={ref}
-      aria-label={title}
-      className={wide ? "wide" : ""}
-      onCancel={onClose}
-      onClick={(e) => {
-        if (e.target === ref.current) onClose();
-      }}
-    >
-      <div className="modal-heading">
-        <h2>{title}</h2>
-        <IconButton name="X" label="关闭弹窗" onClick={onClose} />
-      </div>
-      <div className="modal-body">{children}</div>
-    </dialog>
+    <ModalContext.Provider value={{ requestClose, dismiss }}>
+      <dialog
+        ref={ref}
+        aria-label={title}
+        className={`${wide ? "wide" : ""} ${className}`}
+        onCancel={(event) => { event.preventDefault(); event.stopPropagation(); requestClose(); }}
+        onClick={(event) => { if (event.target === ref.current) requestClose(); }}
+      >
+        <div className="modal-heading">
+          <h2>{title}</h2>
+          <IconButton name="X" label="关闭弹窗" onClick={() => requestClose()} />
+        </div>
+        <div className="modal-body">{typeof children === "function" ? children({ requestClose, dismiss }) : children}</div>
+      </dialog>
+    </ModalContext.Provider>
   );
 }
 export function Field({
@@ -428,6 +499,8 @@ export function Field({
   const [error, setError] = useState("");
   const uid = useId();
   const shared = {
+    autoComplete: type === "email" ? "email" : "off",
+    ...(type === "email" ? { spellCheck: false } : {}),
     ...props,
     id: uid,
     name: name || label,
@@ -460,14 +533,12 @@ export function Field({
       </label>
       {options ? (
         <Select {...shared} aria-label={label} options={options} />
+      ) : type === "date" ? (
+        <DatePicker {...shared} label={label} />
       ) : type === "textarea" ? (
         <textarea {...shared} rows={4} />
       ) : (
-        <input
-          {...shared}
-          type={type}
-          autoComplete={type === "email" ? "email" : "off"}
-        />
+        <input {...shared} type={type} />
       )}
       {help && <small id={`${uid}-help`}>{help}</small>}
       {error && (
@@ -481,13 +552,14 @@ export function Field({
 }
 export function ActionForm({ onSubmit, children, label = "保存", onCancel }) {
   const [error, setError] = useState("");
+  const modal = useContext(ModalContext);
   return (
     <Form
       onSubmit={async (e) => {
         e.preventDefault();
         try {
           setError("");
-          await onSubmit();
+          await onSubmit({ dismiss: modal?.dismiss || ((done = onCancel) => done?.()) });
         } catch (err) {
           setError(err.message);
         }
@@ -500,7 +572,7 @@ export function ActionForm({ onSubmit, children, label = "保存", onCancel }) {
         </p>
       )}
       <div className="modal-footer">
-        <Button type="button" onClick={onCancel}>
+        <Button type="button" onClick={() => modal ? modal.requestClose(onCancel) : onCancel?.()}>
           取消
         </Button>
         <Button variant="primary" type="submit">
@@ -534,25 +606,29 @@ export function Notice({ children, tone = "info" }) {
 const ConfirmContext = createContext(null);
 export function ConfirmProvider({ children }) {
   const [pending, setPending] = useState(null);
+  const current = useRef(null);
   const settle = (value) => {
-    pending?.resolve(value);
+    const request = current.current;
+    current.current = null;
     setPending(null);
+    // Restore the parent dialog before a confirmed action can unmount it.
+    if (request) setTimeout(() => request.resolve(value), 0);
   };
   return (
-    <ConfirmContext.Provider
-      value={(message) =>
-        new Promise((resolve) => setPending({ message, resolve }))
-      }
-    >
+    <ConfirmContext.Provider value={(message, options = {}) => {
+      if (current.current) return Promise.resolve(false);
+      return new Promise((resolve) => {
+        current.current = { message, resolve, ...options };
+        setPending(current.current);
+      });
+    }}>
       {children}
       {pending && (
-        <Modal title="确认操作" onClose={() => settle(false)}>
+        <Modal title={pending.title || "确认操作"} onClose={() => settle(false)}>
           <p>{pending.message}</p>
           <div className="modal-footer">
-            <Button onClick={() => settle(false)}>取消</Button>
-            <Button variant="primary" onClick={() => settle(true)}>
-              确认继续
-            </Button>
+            <Button onClick={() => settle(false)}>{pending.cancelLabel || "取消"}</Button>
+            <Button variant="primary" onClick={() => settle(true)}>{pending.confirmLabel || "确认继续"}</Button>
           </div>
         </Modal>
       )}
@@ -560,6 +636,326 @@ export function ConfirmProvider({ children }) {
   );
 }
 export const useConfirm = () => useContext(ConfirmContext);
+const dateDay = 86400000;
+function parseCalendarDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "") || value.startsWith("0000"))
+    return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) &&
+    date.toISOString().slice(0, 10) === value
+    ? date
+    : null;
+}
+function calendarDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+function DatePicker({
+  label,
+  value,
+  onChange,
+  disabled,
+  readOnly,
+  min,
+  max,
+  step,
+  ...props
+}) {
+  const input = useRef(null),
+    trigger = useRef(null),
+    panel = useRef(null),
+    initialValue = useRef(value);
+  const uid = useId();
+  const today = new Date(),
+    todayValue = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const [open, setOpen] = useState(false),
+    [position, setPosition] = useState({}),
+    [active, setActive] = useState(value || todayValue);
+  const focusDay = useRef(false);
+  const lower = parseCalendarDate(min),
+    upper = parseCalendarDate(max);
+  const valid = (candidate) => {
+    if (!candidate) return "";
+    const date = parseCalendarDate(candidate);
+    if (!date) return "请输入有效日期，格式为 YYYY-MM-DD。";
+    if (lower && date < lower) return `日期不能早于 ${min}。`;
+    if (upper && date > upper) return `日期不能晚于 ${max}。`;
+    const interval = Number(step || 1),
+      base =
+        lower ||
+        parseCalendarDate(initialValue.current) ||
+        new Date("1970-01-01T00:00:00Z");
+    if (
+      step !== "any" &&
+      interval > 0 &&
+      Math.abs(
+        (date - base) / dateDay / interval -
+          Math.round((date - base) / dateDay / interval),
+      ) > 1e-8
+    )
+      return `请按 ${interval} 天的间隔选择日期。`;
+    return "";
+  };
+  useEffect(() => {
+    input.current?.setCustomValidity(valid(value));
+  }, [value, min, max, step]);
+  const close = (restore = true) => {
+    setOpen(false);
+    if (restore) trigger.current?.focus({ preventScroll: true });
+  };
+  const reposition = () => {
+    const rect = trigger.current.getBoundingClientRect(),
+      width = Math.min(338, innerWidth - 24),
+      height = Math.min(432, innerHeight - 24);
+    setPosition({
+      left: Math.min(Math.max(12, rect.right - width), innerWidth - width - 12),
+      top: Math.max(12, Math.min(rect.bottom + 6, innerHeight - height - 12)),
+      width,
+      maxHeight: height,
+    });
+  };
+  const show = () => {
+    if (disabled || readOnly) return;
+    reposition();
+    let date = parseCalendarDate(value) || parseCalendarDate(todayValue);
+    if (lower && date < lower) date = lower;
+    if (upper && date > upper) date = upper;
+    setActive(calendarDate(date));
+    focusDay.current = true;
+    setOpen(true);
+  };
+  useEffect(() => {
+    if (!open) return;
+    if (focusDay.current) {
+      panel.current
+        ?.querySelector(`[data-date="${active}"]`)
+        ?.focus({ preventScroll: true });
+      focusDay.current = false;
+    }
+  }, [open, active]);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event) => {
+      if (
+        !panel.current?.contains(event.target) &&
+        !trigger.current?.contains(event.target)
+      )
+        close(false);
+    };
+    const scroll = (event) => {
+      if (!panel.current?.contains(event.target)) reposition();
+    };
+    const resize = () => close();
+    document.addEventListener("pointerdown", outside);
+    window.addEventListener("resize", resize);
+    window.addEventListener("scroll", scroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      window.removeEventListener("resize", resize);
+      window.removeEventListener("scroll", scroll, true);
+    };
+  }, [open]);
+  useEffect(() => {
+    if (disabled || readOnly) setOpen(false);
+  }, [disabled, readOnly]);
+  const move = (days, months = 0, focus = true) => {
+    const date = parseCalendarDate(active) || parseCalendarDate(todayValue);
+    if (months) {
+      const day = date.getUTCDate();
+      date.setUTCDate(1);
+      date.setUTCMonth(date.getUTCMonth() + months);
+      const last = new Date(date);
+      last.setUTCMonth(last.getUTCMonth() + 1, 0);
+      date.setUTCDate(Math.min(day, last.getUTCDate()));
+    } else date.setUTCDate(date.getUTCDate() + days);
+    if (date.getUTCFullYear() < 1 || date.getUTCFullYear() > 9999) return;
+    focusDay.current = focus;
+    setActive(calendarDate(date));
+  };
+  const choose = (candidate) => {
+    if (valid(candidate)) return;
+    input.current.setCustomValidity("");
+    onChange({ target: { value: candidate } });
+    close();
+  };
+  const cursor = parseCalendarDate(active) || parseCalendarDate(todayValue),
+    first = new Date(cursor);
+  first.setUTCDate(1);
+  first.setUTCDate(1 - ((first.getUTCDay() + 6) % 7));
+  const days = Array.from(
+    { length: 42 },
+    (_, index) => new Date(first.getTime() + index * dateDay),
+  );
+  return (
+    <span className="custom-date">
+      <input
+        {...props}
+        ref={input}
+        type="text"
+        value={value || ""}
+        disabled={disabled}
+        readOnly={readOnly}
+        placeholder="YYYY-MM-DD"
+        autoComplete="off"
+        inputMode="text"
+        min={min}
+        max={max}
+        step={step}
+        onChange={(event) => {
+          event.target.setCustomValidity(valid(event.target.value));
+          onChange(event);
+        }}
+        onKeyDown={(event) => {
+          props.onKeyDown?.(event);
+          if (!event.defaultPrevented && event.key === "ArrowDown") {
+            event.preventDefault();
+            show();
+          }
+        }}
+      />
+      <button
+        ref={trigger}
+        className="date-trigger"
+        type="button"
+        aria-label={`选择${label}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? uid : undefined}
+        disabled={disabled || readOnly}
+        onClick={() => (open ? close() : show())}
+      >
+        <Icon name="CalendarDays" />
+      </button>
+      {open &&
+        createPortal(
+          <div
+            ref={panel}
+            id={uid}
+            className="date-popover"
+            role="dialog"
+            aria-label={`${label}日历`}
+            aria-describedby={`${uid}-keys`}
+            style={position}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                close();
+                return;
+              }
+              if (event.key === "Tab") {
+                const controls = [
+                  ...panel.current.querySelectorAll("button:not(:disabled)"),
+                ].filter((node) => node.tabIndex >= 0);
+                if (
+                  (event.shiftKey && event.target === controls[0]) ||
+                  (!event.shiftKey && event.target === controls.at(-1))
+                )
+                  close();
+                return;
+              }
+              if (!event.target.dataset.date) return;
+              const offsets = {
+                ArrowLeft: -1,
+                ArrowRight: 1,
+                ArrowUp: -7,
+                ArrowDown: 7,
+              };
+              if (event.key in offsets) {
+                event.preventDefault();
+                move(offsets[event.key]);
+              } else if (["PageUp", "PageDown"].includes(event.key)) {
+                event.preventDefault();
+                move(
+                  0,
+                  (event.key === "PageUp" ? -1 : 1) * (event.shiftKey ? 12 : 1),
+                );
+              } else if (["Home", "End"].includes(event.key)) {
+                event.preventDefault();
+                const weekday = (cursor.getUTCDay() + 6) % 7;
+                move(event.key === "Home" ? -weekday : 6 - weekday);
+              }
+            }}
+          >
+            <div className="date-heading">
+              <button
+                type="button"
+                aria-label="上个月"
+                onClick={() => move(0, -1, false)}
+              >
+                <Icon name="ChevronLeft" />
+              </button>
+              <strong aria-live="polite">
+                {cursor.getUTCFullYear()} 年 {cursor.getUTCMonth() + 1} 月
+              </strong>
+              <button
+                type="button"
+                aria-label="下个月"
+                onClick={() => move(0, 1, false)}
+              >
+                <Icon name="ChevronRight" />
+              </button>
+            </div>
+            <div role="grid" aria-label="选择日期">
+              <div className="date-week" role="row">
+                {["一", "二", "三", "四", "五", "六", "日"].map((day) => (
+                  <span key={day} role="columnheader">
+                    {day}
+                  </span>
+                ))}
+              </div>
+              {Array.from({ length: 6 }, (_, week) => (
+                <div className="date-week" role="row" key={week}>
+                  {days.slice(week * 7, week * 7 + 7).map((date) => {
+                    const key = calendarDate(date),
+                      unavailable = !!valid(key);
+                    return (
+                      <div
+                        role="gridcell"
+                        key={key}
+                        aria-selected={key === value}
+                      >
+                        <button
+                          type="button"
+                          data-date={key}
+                          aria-label={key}
+                          aria-current={key === todayValue ? "date" : undefined}
+                          aria-disabled={unavailable || undefined}
+                          tabIndex={key === active ? 0 : -1}
+                          className={`${date.getUTCMonth() !== cursor.getUTCMonth() ? "outside-month" : ""} ${key === value ? "selected" : ""}`}
+                          onClick={() => choose(key)}
+                        >
+                          {date.getUTCDate()}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+            <div className="date-footer">
+              <button
+                type="button"
+                onClick={() => choose(todayValue)}
+                disabled={!!valid(todayValue)}
+              >
+                今天
+              </button>
+              <button type="button" onClick={() => choose("")}>
+                清空
+              </button>
+              <button type="button" onClick={() => close()}>
+                关闭日历
+              </button>
+            </div>
+            <small id={`${uid}-keys`}>
+              方向键选择日期 · PageUp / PageDown 切月 · Escape 关闭
+            </small>
+          </div>,
+          trigger.current?.closest("dialog") || document.body,
+        )}
+    </span>
+  );
+}
 export function Select({
   value,
   onChange,
@@ -693,7 +1089,6 @@ export function Select({
                 e.stopPropagation();
                 close();
               } else if (e.key === "Tab") {
-                e.preventDefault();
                 close();
               } else if (e.key.length === 1) {
                 all
@@ -729,6 +1124,7 @@ export function Select({
   );
 }
 function validityText(input) {
+  if (input.validity.customError) return input.validationMessage;
   if (input.validity.valueMissing) return "请填写此项。";
   if (input.validity.typeMismatch)
     return input.type === "email"

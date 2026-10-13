@@ -1,0 +1,69 @@
+// Run in a fresh isolated prototype session at desktop and mobile widths.
+(async () => {
+  const wait = () => new Promise((r) => setTimeout(r, 180));
+  const check = (value, text) => { if (!value) throw Error(text); };
+  const state = () => JSON.parse(localStorage.getItem("collaboration-prototype-v1"));
+  const go = async (path) => { location.hash = path; await wait(); };
+  const click = async (text, scope = document) => {
+    const button = [...scope.querySelectorAll("button,a")].find((el) => el.textContent.trim() === text);
+    check(button, `Missing control ${text}`); button.click(); await wait();
+  };
+  const fill = async (label, value) => {
+    const field = [...(document.querySelector("dialog") || document).querySelectorAll(".field")].find((el) => el.querySelector("label")?.textContent.replace(" *", "").trim() === label);
+    const input = field?.querySelector("input:not([type=hidden]),textarea");
+    check(input, `Missing field ${label}`);
+    const proto = input.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value").set.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true })); await wait();
+  };
+  const choose = async (label, value) => {
+    document.querySelector(`[role=combobox][aria-label="${label}"]`).click(); await wait();
+    await click(value, document.querySelector("[role=listbox]"));
+  };
+  const toggle = async (id) => { const input = document.querySelector(`dialog input[aria-label="引用 ${id}"]`); check(input, `Missing source ${id}`); input.click(); await wait(); };
+  const total = (type) => document.querySelector(`main [data-report-total="${type}"]`)?.textContent;
+  const submit = async () => { await click("本人确认并上报"); await fill("依据与说明", "本人核对事实，保留待确认标记"); await click("确认操作", document.querySelector("dialog")); };
+  const generate = async (cadence, date) => {
+    await go("/reports"); await click("生成 / 打开周期报告"); await choose("报告周期", cadence); await fill("周期内日期", date); await click("生成 / 打开", document.querySelector("dialog"));
+  };
+  await go("/reports/RP-01");
+  check(total("human") === "0 小时" && total("agent") === "0 小时", "Legacy owner names falsely certified personal scope");
+  check(document.querySelector("main").textContent.includes("历史投入归属未知"), "Legacy scope uncertainty not shown");
+  await click("编辑"); await toggle("WL-03"); await fill("声明完成工作数（选填）", "99"); await click("保存", document.querySelector("dialog"));
+  check(total("agent") === "0 小时", "Unknown nested Agent scope counted as personal hours"); await submit();
+  check(document.querySelector("dialog").textContent.includes("不一致"), "Declared count conflict missing"); check(document.querySelector("dialog").textContent.includes("不属于所选报告归属"), "Foreign Agent effort scope was not blocked"); await click("取消", document.querySelector("dialog"));
+  check(document.querySelectorAll("dialog[open]").length === 2, "Rejected report submission lost discard guard"); await click("放弃修改", [...document.querySelectorAll("dialog[open]")].at(-1));
+  await click("编辑"); await toggle("WL-03"); await toggle("RP-02"); await fill("声明完成工作数（选填）", ""); await fill("人工校准正文", "本人修订的周期判断，不由生成建议覆盖"); await click("保存", document.querySelector("dialog"));
+  const manual = state().resources.reports.find((r) => r.id === "RP-01");
+  await generate("周报", "2026-10-15"); check(location.hash === "#/reports/RP-01", "Same calendar period produced another report");
+  check(state().resources.reports.find((r) => r.id === "RP-01").summary === manual.summary, "Generation overwrote Human prose");
+  check(JSON.stringify(state().resources.reports.find((r) => r.id === "RP-01").references) === JSON.stringify(manual.references), "Generation silently adopted new facts");
+  check(document.querySelector("main").textContent.includes("生成建议") && document.querySelector("main").textContent.includes("人工校准"), "Generated and Human narrative not separated");
+  const beforeLogs = JSON.stringify(state().resources.worklogs); await submit();
+  check(state().resources.reports.find((r) => r.id === "RP-01").factSnapshot.warnings.some((w) => w.includes("不计入 Human")), "Pending Human warning lost at submit");
+  const submitted = JSON.stringify(state().resources.reports.find((r) => r.id === "RP-01")); await generate("周报", "2026-10-12");
+  check(JSON.stringify(state().resources.reports.find((r) => r.id === "RP-01")) === submitted, "Generation changed submitted report");
+  check(JSON.stringify(state().resources.worklogs) === beforeLogs, "Report changed effort confirmation");
+  await click("编辑"); await fill("人工校准正文", "同一编号上的修订正文"); await click("保存", document.querySelector("dialog"));
+  const revised = state().resources.reports.find((r) => r.id === "RP-01");
+  check(revised.status === "草稿" && revised.history.some((r) => r.status === "已提交" && r.summary === manual.summary), "Submitted historical revision lost");
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Singapore", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  await generate("日报", today); const dailyId = location.hash.split("/").at(-1);
+  await go("/reports"); await click("定时生成设置"); await choose("报告周期", "日报"); await fill("Cron 表达式", "0 18 * * *"); await click("保存本地配置", document.querySelector("dialog"));
+  const schedule = state().resources.schedules.find((r) => r.subjectKey === "human:H-lin" && r.cadence === "日报");
+  const count = state().resources.reports.length;
+  await click(`模拟运行一次 ${schedule.id}`); await click(`模拟运行一次 ${schedule.id}`);
+  check(state().resources.reports.length === count && state().resources.schedules.find((r) => r.id === schedule.id).lastReportId === dailyId, "Repeated schedule created duplicate periodic report");
+  check(document.querySelector("main").textContent.includes("本地模拟"), "Schedule misrepresented as a real timer");
+  check(document.documentElement.scrollWidth <= innerWidth + 1, "Report list horizontal overflow");
+  await go("/reports/RP-01"); check(document.documentElement.scrollWidth <= innerWidth + 1, "Report detail overflow");
+  await go("/worklogs"); await choose("本人任务", "W-104 · 新品落地页 · 响应式交付");
+  await fill("投入日期", "2026-10-14"); await fill("投入时区", "Asia/Singapore"); await fill("工作量类别", "验收"); await fill("本人预估（小时）", "2"); await fill("评估依据", "本人报告回归实际投入"); await click("建立待校准条目");
+  const effort = state().resources.worklogs.find(item => item.work === "W-104" && item.date === "2026-10-14" && item.ownerId === "H-lin"); check(effort, "New actual effort draft missing");
+  await fill("校准投入（小时）", "1.25"); await fill("校准依据", "逐项核对后的本人投入"); await click("保存校准"); await click("本人确认实际投入");
+  await go("/reports/RP-01"); await click("编辑"); await toggle(effort.id); await click("保存", document.querySelector("dialog"));
+  check(total("human") === "1.25 小时" && total("agent") === "0 小时", "Confirmed personal effort not separated from unknown Agent ownership");
+  await go("/reports"); await click("生成 / 打开周期报告"); await choose("报告归属", `${state().tenants.find(t => t.id === state().activeTenant).name} · 租户`); await choose("报告周期", "月报"); await fill("周期内日期", "2026-10-13"); await click("生成 / 打开", document.querySelector("dialog"));
+  check(total("human") === "2.75 小时" && total("agent") === "1 小时", "Tenant Human and Agent facts were summed together or lost");
+  return { pass: true, checks: ["actual Human vs Agent separation", "nested fact deduplication", "declared completion guard", "calendar-period uniqueness", "manual correction preserved", "submitted report frozen", "same-ID historical revision", "schedule and manual generation converge", "no implicit effort confirmation"] };
+})();

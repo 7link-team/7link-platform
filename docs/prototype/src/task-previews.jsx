@@ -1,17 +1,14 @@
-import React, { useState } from "react";
-import { useStore, update, id, log, assertWrite } from "./store";
+import React, { useState, useId, useLayoutEffect, useRef, useEffect } from "react";
+import { useStore, update, assertWrite } from "./store";
 import {
   Icon,
   IconButton,
   Button,
   Modal,
   Field,
-  ActionForm,
   Select,
   Form,
   Empty,
-  Notice,
-  Link,
 } from "./ui";
 const kinds = [
   ["Web", "Globe2"],
@@ -19,56 +16,67 @@ const kinds = [
   ["文件", "Folders"],
   ["终端", "Terminal"],
   ["文稿", "FileText"],
+  ["仓库", "Code2"],
 ];
 function defaultTabs(w) {
-  return [
-    {
-      id: "primary",
-      name: w.type === "软件" ? "Web · 主预览" : "成果 · 当前版本",
-      kind: w.type === "软件" ? "Web" : "文稿",
-      status: "就绪",
-    },
-    { id: "files", name: "交付文件", kind: "文件", status: "就绪" },
-  ];
+  // The execution resource manifest owns tabs; local view state never creates resources.
+  if (Array.isArray(w.previewResources)) return w.previewResources;
+  return [{ id: "primary", name: w.type === "软件" ? "Web · 主预览" : `${w.title} · 当前版本`,
+    kind: w.type === "软件" ? "Web" : "文稿", status: "就绪" }];
 }
-function PreviewContent({ tab, work }) {
-  const [path, setPath] = useState("/"),
-    [method, setMethod] = useState("GET"),
-    [response, setResponse] = useState(null),
-    [file, setFile] = useState("README.md"),
-    [command, setCommand] = useState(""),
-    [lines, setLines] = useState([
+function resourceTabs(work, saved) {
+  return defaultTabs(work).map(resource => ({ ...resource,
+    view: saved?.tabs?.find(tab => tab.id === resource.id)?.view,
+    status: saved?.tabs?.find(tab => tab.id === resource.id)?.status || resource.status,
+  }));
+}
+function PreviewContent({ tab, work, saveView }) {
+  const view = tab.view || {};
+  const path = view.path ?? tab.url ?? "/",
+    method = view.method ?? "GET",
+    response = view.response ?? null,
+    file = view.file ?? "README.md",
+    command = view.command ?? "",
+    lines = view.lines ?? [
       "模拟终端 · 不执行本机命令。输入 help 查看演示命令。",
-    ]);
-  if (tab.status === "失联")
-    return (
-      <Empty
-        title="预览连接已断开"
-        text="标签与输入状态保留，恢复连接后继续。"
-      />
-    );
-  if (tab.kind === "Web")
-    return (
-      <div className="mini-browser">
-        <div className="preview-address">
-          <Icon name="LockKeyhole" size={12} />
-          <input
-            aria-label="预览路径"
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-          />
-          <Icon name="RotateCcw" size={13} />
-        </div>
-        <div className="mini-site">
-          <small>固定 v{work.version} · 本地示例</small>
-          <h2>创造，更从容。</h2>
-          <div className="product-art">
-            <span />
-          </div>
-          <p>为专注而设计，陪你走得更远。</p>
-        </div>
+    ];
+  const setPath = (path) => saveView({ path });
+  const setMethod = (method) => saveView({ method });
+  const setFile = (file) => saveView({ file });
+  const setCommand = (command) => saveView({ command });
+  const setResponse = (response) => saveView({ response });
+  if (tab.kind === "Web" || tab.kind === "Swagger") {
+    const history = view.history || [tab.url || "/"], index = view.historyIndex ?? 0;
+    const current = history[index];
+    const navigate = () => {
+      const value = path.trim();
+      // Prototype URLs stay local: no real proxy/service has been connected.
+      if (!value || !value.startsWith("/") || value.startsWith("//")) {
+        saveView({ addressError: "本地示例仅支持以 / 开头的路径；远程地址需由已授权预览资源提供。" });
+        return;
+      }
+      if (value === current) return;
+      saveView({ path: value, history: [...history.slice(0,index+1), value], historyIndex:index+1, addressError:"" });
+    };
+    const move = next => saveView({ historyIndex:next, path:history[next], addressError:"" });
+    return <div className="mini-browser">
+      <Form className="preview-address" onSubmit={navigate}>
+        <IconButton type="button" name="ChevronLeft" label="预览后退" disabled={index === 0} onClick={() => move(index-1)} />
+        <IconButton type="button" name="ChevronRight" label="预览前进" disabled={index === history.length-1} onClick={() => move(index+1)} />
+        <IconButton type="button" name="RotateCcw" label="刷新预览" onClick={() => saveView({ refreshed:(view.refreshed || 0)+1 })} />
+        <input aria-label="预览路径" name="preview-path" autoComplete="off" spellCheck={false} value={path} onChange={e => setPath(e.target.value)} aria-invalid={!!view.addressError} />
+        <IconButton name="ArrowRight" label="打开预览路径" type="submit" />
+      </Form>
+      {view.addressError && <p className="preview-address-error" role="alert">{view.addressError}</p>}
+      <div className="mini-site" key={view.refreshed || 0}>
+        <small>固定 v{work.version} · 本地示例 · {current}</small>
+        <h2>创造，更从容。</h2>
+        <div className="product-art"><span /></div>
+        <p>为专注而设计，陪你走得更远。</p>
+        {!!view.refreshed && <small role="status">示例已刷新 · {view.refreshed}</small>}
       </div>
-    );
+    </div>;
+  }
   if (tab.kind === "API")
     return (
       <div className="preview-api">
@@ -94,10 +102,29 @@ function PreviewContent({ tab, work }) {
         >
           模拟请求
         </Button>
-        {response && <pre>{JSON.stringify(response, null, 2)}</pre>}
+        {response && <pre data-preview-scroll="output">{JSON.stringify(response, null, 2)}</pre>}
         <small>不会访问真实服务。</small>
       </div>
     );
+  if (tab.kind === "仓库") {
+    const files = {
+      "README.md": `# ${work.title}\n\n本地仓库示例 · v${work.version}\n\n${work.notes || "任务关联仓库的只读文件浏览。"}`,
+      "src/index.ts": '// 本地代码示例，不连接真实仓库\nexport function main() {\n  return "Preview ready";\n}\n',
+      "package.json": JSON.stringify({ private: true, description: "本地仓库示例", version: "0.0.0" }, null, 2),
+      "acceptance.md": work.requirements.map(value => `- ${value}`).join("\n"),
+    };
+    const selected = Object.hasOwn(files, file) ? file : "README.md";
+    const item = name => <button key={name} className={selected === name ? "active" : ""} aria-current={selected === name ? "true" : undefined} onClick={() => setFile(name)}><Icon name="FileCode2" size={14} />{name.split("/").at(-1)}</button>;
+    return <div className="preview-repository">
+      <nav aria-label="仓库文件" className="repository-tree">
+        <small>文件 · 只读示例</small>
+        {item("README.md")}
+        <details open><summary><Icon name="Folders" size={14} />src</summary>{item("src/index.ts")}</details>
+        {item("package.json")}{item("acceptance.md")}
+      </nav>
+      <div className="repository-editor"><div className="repository-path">{selected}</div><pre data-preview-scroll="output"><code>{files[selected]}</code></pre></div>
+    </div>;
+  }
   if (tab.kind === "文件")
     return (
       <div className="preview-files">
@@ -113,7 +140,7 @@ function PreviewContent({ tab, work }) {
             </button>
           ))}
         </div>
-        <pre>
+        <pre data-preview-scroll="output">
           {file === "result.json"
             ? JSON.stringify(
                 { work: work.id, version: work.version, status: work.status },
@@ -129,27 +156,32 @@ function PreviewContent({ tab, work }) {
   if (tab.kind === "终端")
     return (
       <div className="task-terminal">
-        <pre aria-live="polite">{lines.join("\n")}</pre>
+        <pre data-preview-scroll="output" aria-live="polite">{lines.join("\n")}</pre>
         <Form
           onSubmit={() => {
             const c = command.trim();
             if (!c) return;
-            setLines((v) => [
-              ...v,
-              `$ ${c}`,
-              c === "help"
-                ? "演示命令：help / pwd / status"
-                : c === "pwd"
-                  ? `/workspace/${work.id}`
-                  : c === "status"
-                    ? `${work.title} · ${work.status}`
-                    : "此命令不在模拟范围内，不会执行。",
-            ]);
-            setCommand("");
+            saveView({
+              lines: [
+                ...lines,
+                `$ ${c}`,
+                c === "help"
+                  ? "演示命令：help / pwd / status"
+                  : c === "pwd"
+                    ? `/workspace/${work.id}`
+                    : c === "status"
+                      ? `${work.title} · ${work.status}`
+                      : "此命令不在模拟范围内，不会执行。",
+              ],
+              command: "",
+            });
           }}
         >
           <input
             aria-label="任务终端命令"
+            name="terminal-command"
+            autoComplete="off"
+            spellCheck={false}
             value={command}
             onChange={(e) => setCommand(e.target.value)}
             placeholder="help"
@@ -173,60 +205,123 @@ function PreviewContent({ tab, work }) {
     </article>
   );
 }
-export function TaskPreviews({ work, toast }) {
+function PreviewPanel({ tab, active, work, prefix, modify }) {
+  const content = useRef(null);
+  const saveView = (patch) =>
+    modify((v) => {
+      const target = v.tabs.find((t) => t.id === tab.id);
+      target.view = { ...target.view, ...patch };
+    });
+  useLayoutEffect(() => {
+    if (!active || tab.status === "失联" || !content.current) return;
+    for (const el of [content.current, ...content.current.querySelectorAll("[data-preview-scroll]")]) {
+      const key = el.dataset.previewScroll || "content";
+      const saved = tab.view?.scrollPositions?.[key];
+      el.scrollTop = saved?.top ?? (key === "content" ? tab.view?.scrollTop || 0 : 0);
+      el.scrollLeft = saved?.left || 0;
+    }
+  }, [active, tab.status]);
+  return (
+    <section
+      role="tabpanel"
+      aria-labelledby={`${prefix}-tab-${tab.id}`}
+      id={`${prefix}-panel-${tab.id}`}
+      hidden={!active}
+    >
+      <div className="preview-status">
+        <span>
+          <i className={tab.status === "就绪" ? "online-dot" : "offline-dot"} />
+          {tab.status} · {work.id}
+        </span>
+        <button
+          onClick={() =>
+            modify((v) => {
+              v.tabs.find((t) => t.id === tab.id).status =
+                tab.status === "就绪" ? "失联" : "就绪";
+            }, true)
+          }
+        >
+          {tab.status === "就绪" ? "模拟断线" : "重新连接"}
+        </button>
+      </div>
+      {tab.status === "失联" && (
+        <Empty
+          title="预览连接已断开"
+          text="标签与输入状态保留，恢复连接后继续。"
+        />
+      )}
+      <div
+        ref={content}
+        hidden={tab.status === "失联"}
+        className="preview-content-scroll"
+        onScrollCapture={(e) => {
+          const el = e.target, key = el.dataset.previewScroll || "content";
+          if (!active || tab.status === "失联" || !el.getClientRects().length) return;
+          const position = { top: el.scrollTop, left: el.scrollLeft };
+          modify((v) => {
+            const target = v.tabs.find((t) => t.id === tab.id);
+            target.view = { ...target.view, scrollPositions: { ...target.view?.scrollPositions, [key]: position } };
+          });
+        }}
+      >
+        <PreviewContent tab={tab} work={work} saveView={saveView} />
+      </div>
+    </section>
+  );
+}
+export function TaskPreviews({ work, toast, expanded = false }) {
+  const prefix = useId();
+  const [fullscreen, setFullscreen] = useState(false);
   const s = useStore(),
     entry = s.taskPreviews?.[work.id],
-    tabs = entry?.tabs || defaultTabs(work),
-    active = entry?.active || tabs[0]?.id;
-  const [adding, setAdding] = useState(false),
-    [name, setName] = useState(""),
-    [kind, setKind] = useState("Web");
-  const modify = (fn) => {
+    tabs = resourceTabs(work, entry),
+    active = tabs.some(tab => tab.id === entry?.active) ? entry.active : tabs[0]?.id;
+  useLayoutEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const tab = document.getElementById(`${prefix}-tab-${active}`)?.parentElement;
+      const bar = tab?.parentElement;
+      if (!bar) return;
+      const bounds = bar.getBoundingClientRect(), selected = tab.getBoundingClientRect();
+      if (selected.right > bounds.right) bar.scrollLeft += selected.right - bounds.right;
+      else if (selected.left < bounds.left) bar.scrollLeft -= bounds.left - selected.left;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [active, tabs.length, prefix]);
+  const modify = (fn, requiresConnection = false) => {
     try {
-      assertWrite();
+      if (requiresConnection) assertWrite();
       update((x) => {
         x.taskPreviews ??= {};
         x.taskPreviews[work.id] ??= {
           tabs: defaultTabs(work),
           active: "primary",
         };
+        x.taskPreviews[work.id].tabs = resourceTabs(work, x.taskPreviews[work.id]);
         fn(x.taskPreviews[work.id], x);
       });
+      return true;
     } catch (e) {
       toast(e.message, true);
+      return false;
     }
   };
-  const select = (tabId) => modify((v) => (v.active = tabId));
-  const close = (tabId) =>
-    modify((v, x) => {
-      v.tabs = v.tabs.filter((t) => t.id !== tabId);
-      if (v.active === tabId) v.active = v.tabs[0]?.id;
-      log(
-        x,
-        `关闭 ${work.id} 预览标签，释放当前观察引用`,
-        `/chat?execution_id=${work.id}`,
-      );
+  const focusTab = (tabId) =>
+    requestAnimationFrame(() => {
+      const target = tabId
+        ? document.getElementById(`${prefix}-tab-${tabId}`)
+        : null;
+      target?.focus();
+      target?.scrollIntoView({ block: "nearest", inline: "nearest" });
     });
+  const select = (tabId) => {
+    if (modify((v) => (v.active = tabId))) focusTab(tabId);
+  };
   return (
     <div className="task-previews">
-      <div className="section-title">
-        <h2>任务预览</h2>
-        {active && (
-          <IconButton
-            name="X"
-            label={`关闭 ${tabs.find((t) => t.id === active)?.name}`}
-            onClick={() => close(active)}
-          />
-        )}
-        <IconButton
-          name="Plus"
-          label="添加预览标签"
-          onClick={() => {
-            setName("");
-            setAdding(true);
-          }}
-        />
-      </div>
+      {!expanded && <div className="preview-heading">
+        <h2>任务预览 <small>本地示例</small></h2>
+        <IconButton name="Maximize2" label="展开任务预览" onClick={() => setFullscreen(true)} />
+      </div>}
       <div className="preview-tablist" role="tablist" aria-label="任务预览标签">
         {tabs.map((tab, i) => (
           <div
@@ -236,8 +331,8 @@ export function TaskPreviews({ work, toast }) {
             <button
               role="tab"
               aria-selected={tab.id === active}
-              aria-controls={`preview-panel-${tab.id}`}
-              id={`preview-tab-${tab.id}`}
+              aria-controls={`${prefix}-panel-${tab.id}`}
+              id={`${prefix}-tab-${tab.id}`}
               tabIndex={tab.id === active ? 0 : -1}
               onClick={() => select(tab.id)}
               onKeyDown={(e) => {
@@ -255,9 +350,6 @@ export function TaskPreviews({ work, toast }) {
                             tabs.length) %
                           tabs.length;
                   select(tabs[next].id);
-                  document
-                    .getElementById(`preview-tab-${tabs[next].id}`)
-                    ?.focus();
                 }
               }}
             >
@@ -265,101 +357,28 @@ export function TaskPreviews({ work, toast }) {
                 name={kinds.find((k) => k[0] === tab.kind)?.[1] || "FileText"}
                 size={13}
               />
-              {tab.name}
+              <span className="preview-tab-name">{tab.name}</span>
             </button>
           </div>
         ))}
       </div>
       {tabs.length ? (
         tabs.map((tab) => (
-          <section
-            role="tabpanel"
-            aria-labelledby={`preview-tab-${tab.id}`}
-            id={`preview-panel-${tab.id}`}
+          <PreviewPanel
             key={tab.id}
-            hidden={tab.id !== active}
-          >
-            <div className="preview-status">
-              <span>
-                <i
-                  className={
-                    tab.status === "就绪" ? "online-dot" : "offline-dot"
-                  }
-                />
-                {tab.status} · {work.id}
-              </span>
-              <button
-                onClick={() =>
-                  modify((v) => {
-                    v.tabs.find((t) => t.id === tab.id).status =
-                      tab.status === "就绪" ? "失联" : "就绪";
-                  })
-                }
-              >
-                {tab.status === "就绪" ? "模拟断线" : "重新连接"}
-              </button>
-            </div>
-            <PreviewContent tab={tab} work={work} />
-          </section>
+            tab={tab}
+            active={tab.id === active}
+            work={work}
+            prefix={prefix}
+            modify={modify}
+          />
         ))
       ) : (
-        <Empty title="没有打开的预览" text="添加 Web、API、文件或终端标签。" />
+        <Empty title="没有打开的预览" text="任务产生可预览资源后，会自动显示在这里。" />
       )}
-      <p className="preview-footnote">
-        关闭标签释放当前观察引用；共享服务由租约与健康检查回收。此处为本地模拟。
-      </p>
-      <Link
-        to={`/p/${work.project}/artifacts/${work.id}`}
-        className="btn primary full"
-      >
-        成果与版本批注
-      </Link>
-      <Link
-        to={`/p/${work.project}/work-items/${work.id}?tab=review`}
-        className="btn full"
-      >
-        检查与接受
-      </Link>
-      {adding && (
-        <Modal title="添加预览标签" onClose={() => setAdding(false)}>
-          <ActionForm
-            label="打开预览"
-            onCancel={() => setAdding(false)}
-            onSubmit={() => {
-              assertWrite();
-              if (!name.trim()) throw Error("请填写标签名称。");
-              modify((v) => {
-                const nid = id("preview");
-                v.tabs.push({
-                  id: nid,
-                  name: name.trim(),
-                  kind,
-                  status: "就绪",
-                });
-                v.active = nid;
-              });
-              setAdding(false);
-            }}
-          >
-            <Field
-              label="预览类型"
-              value={kind}
-              onChange={setKind}
-              options={kinds.map((k) => k[0])}
-            />
-            <Field
-              label="标签名称"
-              value={name}
-              onChange={setName}
-              required
-              placeholder="例如：Web · 管理端"
-            />
-            <Notice>
-              仅绑定当前任务。正式预览须校验服务、节点与访问权限。
-            </Notice>
-          </ActionForm>
-        </Modal>
-      )}
+      {fullscreen && <Modal title="任务预览 · 本地示例" className="preview-dialog" onClose={() => setFullscreen(false)}>
+        <TaskPreviews work={work} toast={toast} expanded />
+      </Modal>}
     </div>
   );
 }

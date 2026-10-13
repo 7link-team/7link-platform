@@ -20,6 +20,9 @@ import {
   projectFlow,
   mutableProjectFlow,
   validateWorkflow,
+  flowDefinition,
+  publishProjectFlow,
+  templateFlow, mutableTemplateFlow, templateDefinition, publishWorkflowTemplate, draftWorkflowTemplate,
 } from "./store";
 import {
   Icon,
@@ -34,6 +37,7 @@ import {
   Empty,
   Link,
   useConfirm,
+  Tabs,
 } from "./ui";
 const library = [
   ["AI 任务", "Bot", "模型与 Agent", "使用模型完成分析、生成与制作"],
@@ -114,24 +118,38 @@ function TaskNode({ id: nodeId, data, selected }) {
   );
 }
 const nodeTypes = { task: TaskNode };
-export function Flow({ projectId, params, toast }) {
+export function Flow({ projectId, templateId, params = new URLSearchParams(), toast }) {
+  const [templateVersion, setTemplateVersion] = useState(null);
+  const [templateMode, setTemplateMode] = useState("canvas");
+  const [brief, setBrief] = useState("");
+  const path = templateId ? `/templates/${templateId}` : `/p/${projectId}/flow`;
+  const getMutable = (state) => templateId ? mutableTemplateFlow(state, templateId) : mutableProjectFlow(state, projectId);
   const s = useStore(),
     confirm = useConfirm(),
     [selected, setSelected] = useState("build"),
-    [editing, setEditing] = useState(false),
+    [editingDraft, setEditing] = useState(false),
     [tab, setTab] = useState("参数"),
     [picker, setPicker] = useState(false),
     [search, setSearch] = useState(""),
     [issues, setIssues] = useState([]),
     [debug, setDebug] = useState({});
-  const def = projectFlow(s, projectId),
-    raw =
-      editing && def.flowDraft
+  const def = templateId ? templateFlow(s, templateId) : projectFlow(s, projectId),
+    requestedVersion = templateId ? templateVersion : params.has("version")
+      ? Number(params.get("version"))
+      : null,
+    historical = requestedVersion !== null,
+    editing = editingDraft && !historical,
+    definition = historical
+      ? (templateId ? templateDefinition(s, templateId, requestedVersion) : flowDefinition(s, projectId, requestedVersion))
+      : null,
+    raw = historical
+      ? definition || { nodes: [], edges: [] }
+      : editing && def.flowDraft
         ? def.flowDraft
         : { nodes: def.flowNodes, edges: def.flowEdges };
   const graph = { nodes: raw.nodes.map(normalize), edges: raw.edges },
     node = graph.nodes.find((n) => n.id === selected),
-    mode = params.get("view") || "canvas";
+    mode = templateId ? templateMode : params.get("view") || "canvas";
   const act = (fn) => {
     try {
       assertWrite();
@@ -141,11 +159,11 @@ export function Flow({ projectId, params, toast }) {
     }
   };
   const mutate = (fn) =>
-    act(() => update((x) => fn(mutableProjectFlow(x, projectId).flowDraft, x)));
+    act(() => update((x) => fn(getMutable(x).flowDraft, x)));
   const begin = () =>
     act(() => {
       update((x) => {
-        const flow = mutableProjectFlow(x, projectId);
+        const flow = getMutable(x);
         flow.flowDraft ??= structuredClone(graph);
       });
       setEditing(true);
@@ -199,19 +217,15 @@ export function Flow({ projectId, params, toast }) {
         throw Error(found[0].message);
       }
       update((x) => {
-        const f = mutableProjectFlow(x, projectId);
-        f.flowNodes = structuredClone(graph.nodes);
-        f.flowEdges = structuredClone(graph.edges);
-        f.flowVersion++;
-        f.flowDraft = null;
+        const version = templateId ? publishWorkflowTemplate(x, templateId, graph) : publishProjectFlow(x, projectId, graph);
         log(
           x,
-          `发布工作流 v${f.flowVersion}；既有运行锁定原版本`,
-          `/p/${projectId}/flow`,
+          `发布工作流定义 v${version}；已确认工作保留原版本引用`,
+          path,
         );
       });
       setEditing(false);
-      toast("工作流已发布，既有运行不会被改写。");
+      toast("工作流定义已发布，已确认工作的版本引用保持不变。");
     });
   const remove = async () => {
     if (!node || ["brief", "delivery"].includes(node.id)) return;
@@ -250,22 +264,33 @@ export function Flow({ projectId, params, toast }) {
       onChange={(value) => change(key, value)}
     />
   );
+  if (historical && !definition)
+    return (
+      <Empty
+        title="工作流版本不存在"
+        text="此版本没有保存的定义，不能用最新版本代替。"
+      />
+    );
   return (
     <>
       <PageHead
         eyebrow="协作 / WORKFLOW"
-        title="工作流"
-        subtitle={`${s.projects.find((p) => p.id === projectId)?.name || "项目实例"} · ${def.flowVersion ? `已发布 v${def.flowVersion}` : "初始模板 · 尚未发布"}`}
+        title={templateId ? "工作流模板" : "工作流"}
+        subtitle={`${templateId ? s.resources.templates.find(t => t.id === templateId)?.name : s.projects.find((p) => p.id === projectId)?.name || "项目实例"} · ${historical ? `固定版本 v${requestedVersion}` : def.flowVersion ? `已发布 v${def.flowVersion}` : "初始模板 · 尚未发布"}`}
       >
-        <Badge>{editing ? "编辑草案" : "查看定义"}</Badge>
-        {editing ? (
+        <Badge>
+          {historical ? "固定版本只读" : editing ? "编辑草案" : "查看定义"}
+        </Badge>
+        {historical ? (
+          <Button onClick={() => templateId ? setTemplateVersion(null) : (location.hash = path)}>查看最新定义</Button>
+        ) : editing ? (
           <>
             <Button
               icon="Save"
               onClick={() =>
                 act(() => {
                   update((x) =>
-                    log(x, "保存工作流草案", `/p/${projectId}/flow`),
+                    log(x, "保存工作流草案", path),
                   );
                   toast("草案已保存");
                 })
@@ -283,27 +308,43 @@ export function Flow({ projectId, params, toast }) {
           </Button>
         )}
       </PageHead>
+      {templateId && !historical && <div className="panel">
+        <Field label="AI 起草目标（本地模拟）" value={brief} onChange={setBrief} type="textarea" />
+        <Button disabled={Boolean(def.flowDraft)} onClick={() => act(() => { draftWorkflowTemplate(templateId, brief); setEditing(true); toast("已生成 AI 模拟草案，请手动审阅后发布"); })}>生成 AI 模拟草案</Button>
+        <Notice>{def.flowDraft?.source || "手动编辑与 AI 模拟起草共用同一画布。"} · 不调用模型，不自动发布；已有草案保留，避免覆盖手动修改。</Notice>
+      </div>}
       <div className="toolbar">
         <div className="segmented">
-          <Link
-            to={`/p/${projectId}/flow?view=canvas`}
-            className={mode === "canvas" ? "selected" : ""}
-          >
-            <Icon name="Workflow" />
-            画布
-          </Link>
-          <Link
-            to={`/p/${projectId}/flow?view=list`}
-            className={mode === "list" ? "selected" : ""}
-          >
-            <Icon name="List" />
-            节点列表
-          </Link>
+          {[ ["canvas", "Workflow", "画布"], ["list", "List", "节点列表"] ].map(([value, icon, label]) => templateId ?
+            <button key={value} className={mode === value ? "selected" : ""} onClick={() => setTemplateMode(value)}><Icon name={icon}/>{label}</button> :
+            <Link key={value} to={`${path}?view=${value}${historical ? `&version=${requestedVersion}` : ""}`} className={mode === value ? "selected" : ""}><Icon name={icon}/>{label}</Link>)}
         </div>
         <span className="muted">
           {graph.nodes.length} 个节点 · {graph.edges.length} 条连接
         </span>
         <div className="grow" />
+        <Select
+          aria-label="已发布工作流版本"
+          value={historical ? String(requestedVersion) : "latest"}
+          onChange={(event) => {
+            const version = event.target.value;
+            setEditing(false);
+            if (templateId) setTemplateVersion(version === "latest" ? null : Number(version));
+            else location.hash = `${path}${version === "latest" ? "" : `?version=${version}`}`;
+          }}
+          options={[
+            { value: "latest", label: "最新定义" },
+            ...[
+              ...new Set([
+                ...Object.keys(def.flowVersions || {}).map(Number),
+                def.flowVersion,
+              ]),
+            ]
+              .filter((v) => v > 0)
+              .sort((a, b) => b - a)
+              .map((v) => ({ value: String(v), label: `固定版本 v${v}` })),
+          ]}
+        />
         <Button
           icon="ClipboardCheck"
           onClick={() => {
@@ -316,6 +357,9 @@ export function Flow({ projectId, params, toast }) {
           添加节点
         </Button>
       </div>
+      <Notice>
+        这里只保存流程定义和工作版本引用；节点测试为模拟，不代表真实执行引擎已运行。
+      </Notice>
       {issues.length > 0 && (
         <div className="workflow-issues" role="alert">
           <b>发布前需处理 {issues.length} 项</b>
@@ -462,17 +506,7 @@ export function Flow({ projectId, params, toast }) {
                   模拟测试
                 </Button>
               </div>
-              <div className="tabs node-panel-tabs">
-                {["参数", "输入输出", "调试"].map((t) => (
-                  <button
-                    key={t}
-                    className={tab === t ? "selected" : ""}
-                    onClick={() => setTab(t)}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
+              <Tabs className="node-panel-tabs" label="节点详情" items={["参数", "输入输出", "调试"].map(value => [value, value])} value={tab} onChange={setTab} />
               {tab === "参数" ? (
                 <>
                   <Notice>

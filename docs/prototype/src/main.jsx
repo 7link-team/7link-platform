@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import { PlansPage } from "./pages-plans";
+import React, { useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { catalog } from "./data";
 import {
@@ -10,6 +11,7 @@ import {
   switchTenant,
   createTenant,
   joinTenant,
+  declineTenantInvitation,
 } from "./store";
 import {
   Icon,
@@ -33,12 +35,13 @@ import {
   ProjectList,
   WorkList,
   Project,
-  WorkDetail,
+  WorkDetail, DefectList, LegacyDefectRoute,
   NewWork,
   workPath,
 } from "./pages-work";
 import { Flow } from "./pages-flow";
 import { Chat, Artifact } from "./pages-collab";
+import { EffortPage } from "./pages-effort";
 import {
   ResourcePage,
   Team,
@@ -54,10 +57,11 @@ const navGroups = {
     ["/overview", "LayoutDashboard", "总览"],
     ["/projects", "Folders", "全部项目"],
     ["/work", "ListTodo", "我的工作"],
+    ["/plans/me", "CalendarDays", "我的周期计划"],
     ["/approvals", "Stamp", "待审批"],
     ["/goals", "Target", "目标与 OKR"],
     ["/reports", "NotebookPen", "周期报告"],
-    ["/worklogs", "Clock3", "工时记录"],
+    ["/worklogs", "Clock3", "工作量与运行指标"],
   ],
   chat: [
     ["/chat?channel_id=team", "MessagesSquare", "协作总频道"],
@@ -72,17 +76,18 @@ const navGroups = {
     ["/deliveries", "PackageCheck", "交付与回执"],
     ["/repositories", "GitBranch", "仓库与流水线"],
     ["/testplans", "ClipboardCheck", "测试计划"],
+    ["/testreports", "ClipboardCheck", "测试报告"],
     ["/tests", "FlaskConical", "测试用例与结果"],
     ["/defects", "Bug", "缺陷"],
   ],
   team: [
     ["/members", "UsersRound", "组织与成员"],
     ["/invitations", "Mail", "邀请与外部成员"],
-    ["/agents", "Bot", "Agent 团队"],
+    ["/agents", "Bot", "Agent 名册"],
     ["/machines", "Server", "执行节点"],
     ["/knowledge", "Library", "资料与记忆"],
     ["/tools", "Wrench", "工具与 Skills"],
-    ["/templates", "Workflow", "SOP 工作包"],
+    ["/templates", "Workflow", "工作流模板"],
   ],
   governance: [
     ["/cost", "Wallet", "用量与预算"],
@@ -118,6 +123,7 @@ function groupFor(path) {
       "/repositories",
       "/tests",
       "/testplans",
+      "/testreports",
       "/defects",
     ].some((v) => path === v || path.startsWith(v + "/"))
   )
@@ -160,10 +166,57 @@ function App() {
   const [themePicker, setThemePicker] = useState(false);
   const [tenantMenu, setTenantMenu] = useState(false);
   const [tenantAction, setTenantAction] = useState(null);
+  const tenantTrigger = useRef(null);
   const [tenantInput, setTenantInput] = useState("");
+  const [tenantFilter, setTenantFilter] = useState("");
+  useEffect(() => {
+    if (!drawer) return;
+    const sidebar = document.querySelector(".sidebar");
+    const trigger = document.querySelector(".mobile-menu");
+    const focusable = () => [...sidebar.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), [tabindex="0"]')]
+      .filter((el) => el.getClientRects().length);
+    focusable()[0]?.focus();
+    const key = (event) => {
+      if (event.defaultPrevented || document.querySelector('dialog[open]')) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDrawer(false);
+      } else if (event.key === "Tab") {
+        const items = focusable(), first = items[0], last = items.at(-1);
+        if (event.shiftKey && (document.activeElement === first || !sidebar.contains(document.activeElement))) {
+          event.preventDefault(); last?.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || !sidebar.contains(document.activeElement))) {
+          event.preventDefault(); first?.focus();
+        }
+      }
+    };
+    const compact = matchMedia("(max-width: 1023px)");
+    const resize = () => { if (!compact.matches) setDrawer(false); };
+    compact.addEventListener("change", resize);
+    document.addEventListener("keydown", key);
+    return () => {
+      compact.removeEventListener("change", resize);
+      document.removeEventListener("keydown", key);
+      if (trigger?.getClientRects().length) trigger.focus();
+    };
+  }, [drawer]);
+  useEffect(() => {
+    if (!tenantMenu) return;
+    const key = (event) => {
+      if (event.key === "Escape" && !event.defaultPrevented) {
+        event.preventDefault();
+        setTenantMenu(false);
+        document.querySelector(".tenant-trigger")?.focus();
+      }
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [tenantMenu]);
   const onView = (full) => {
     const [path, query = ""] = full.split("?");
     setRoute({ path, params: new URLSearchParams(query), full });
+    setGroup(groupFor(path));
+    setDrawer(false);
   };
   const areaPath = (key, fallback) =>
     key === "collab"
@@ -172,6 +225,10 @@ function App() {
         : `/p/${s.project}/work-items`
       : fallback;
   const areaItems = navGroups[group]
+    .flatMap(item => item[0] === "/chat?channel_id=launch"
+      ? s.projects.filter(project => project.id !== "private" && (s.project === "all" || s.project === project.id))
+        .map(project => [`/chat?channel_id=${encodeURIComponent(project.id)}`, "Hash", project.name])
+      : [item])
     .filter(([path]) => {
       if (group === "home" && path === "/projects") return s.project === "all";
       if (group === "collab")
@@ -189,15 +246,29 @@ function App() {
           : "实例概览"
         : label,
     ]);
+  const workDetail = /^\/p\/[^/]+\/(work-items|artifacts)(\/|$)/.test(route.path);
+  const activeAreaPath = workDetail
+    ? s.project === "all" ? "/collaboration" : `/p/${s.project}/work-items`
+    : route.path;
+  const areaIsActive = (to) => {
+    const [path, query] = to.split("?");
+    if (query) return route.path === path && [...new URLSearchParams(query)].every(([key, value]) => route.params.get(key) === value);
+    return activeAreaPath === path || route.path === path || route.path.startsWith(`${path}/`);
+  };
   const tenant = s.tenants.find((t) => t.id === s.activeTenant);
+  const pendingTenantInvitations = s.tenantInvitations.filter((item) => item.recipient === "林予" && item.status === "待接受");
   const openArea = (key, to) => {
     setGroup(key);
     onView(to);
     setDrawer(false);
   };
+  const closeTenantAction = () => {
+    setTenantAction(null);
+    setTenantInput("");
+  };
   const finishTenant = () => {
     setTenantMenu(false);
-    setTenantAction(null);
+    closeTenantAction();
     setTenantInput("");
     setSearch(false);
     setNewWork(false);
@@ -235,9 +306,8 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = s.theme;
     document.documentElement.classList.toggle("dark", s.dark);
-    document.querySelector("meta[name=theme-color]").content = s.dark
-      ? "#12121a"
-      : "#f7f6fb";
+    document.querySelector("meta[name=theme-color]").content =
+      getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
   }, [s.theme, s.dark]);
   const shared = {
     toast,
@@ -280,7 +350,7 @@ function App() {
     else if (parts[2] === "artifacts")
       content = <Artifact key={parts[3]} {...shared} workId={parts[3]} />;
     else content = <Project {...shared} projectId={projectId} />;
-  } else if (route.path === "/members") content = <Team {...shared} />;
+  } else if (route.path === "/members" || parts[0] === "invitations") content = <Team key={route.path} {...shared} initialTab={parts[0] === "invitations" ? "invitations" : "members"} invitationId={parts[0] === "invitations" ? parts[1] : undefined} />;
   else if (parts[0] === "agents")
     content = <Agents {...shared} agentId={parts[1]} />;
   else if (parts[0] === "machines")
@@ -288,6 +358,12 @@ function App() {
   else if (route.path === "/cost") content = <Cost {...shared} />;
   else if (route.path === "/settings") content = <Settings {...shared} />;
   else if (route.path === "/governance/audit") content = <Audit />;
+  else if (parts[0] === "plans") content = <PlansPage key={s.activeTenant + (parts[1] || "me")} {...shared} planId={parts[1] === "me" ? null : parts[1]} />;
+  else if (parts[0] === "worklogs") content = <EffortPage key={parts[1] || "list"} {...shared} recordId={parts[1]} />;
+  else if (parts[0] === "defects") {
+    const defect = s.work.find(work => work.id === parts[1] && work.workKind === "BUG");
+    content = parts[1] ? (defect ? <LegacyDefectRoute key={defect.id} {...shared} work={defect} /> : <Empty title="缺陷待修复迁移或不存在"><Link to="/defects">查看缺陷工作与迁移记录</Link></Empty>) : <DefectList {...shared} />;
+  }
   else if (catalog[parts[0]])
     content = (
       <ResourcePage
@@ -349,7 +425,7 @@ function App() {
       !sharedArtifact &&
       route.path !== "/settings" &&
       !(
-        route.path === "/chat" && route.params.get("channel_id") === "external"
+        route.path === "/chat" && route.params.get("channel_id") === "external" && !route.params.get("execution_id")
       ) &&
       parts[0] !== "deliveries"
     )
@@ -393,7 +469,7 @@ function App() {
   const state = route.params.get("state");
   if (state === "loading")
     content = (
-      <div className="skeleton" role="status" aria-label="加载中">
+      <div className="skeleton" role="status" aria-label="加载中…">
         <i />
         <i />
         <i />
@@ -445,6 +521,8 @@ function App() {
           name="Menu"
           label="展开导航"
           className="mobile-menu icon-button"
+          aria-expanded={drawer}
+          aria-controls="app-sidebar"
           onClick={() => setDrawer(!drawer)}
         />
         <Link className="brand" to="/overview" aria-label="返回工作台">
@@ -457,6 +535,7 @@ function App() {
         </Link>
         <div className="tenant-control">
           <button
+            ref={tenantTrigger}
             className="tenant-trigger"
             aria-label={`租户：${tenant?.name}`}
             aria-expanded={tenantMenu}
@@ -478,12 +557,10 @@ function App() {
                 id="tenant-switcher"
                 className="tenant-popover"
                 aria-label="租户切换器"
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setTenantMenu(false);
-                }}
               >
-                <small>你的租户</small>
-                {s.tenants.map((t) => (
+                <small>已加入的租户 · {s.tenants.length}</small>
+                {s.tenants.length > 4 && <Field label="查找租户" value={tenantFilter} onChange={setTenantFilter} />}
+                {s.tenants.filter((t) => t.name.toLowerCase().includes(tenantFilter.toLowerCase())).map((t) => (
                   <button
                     key={t.id}
                     className={t.id === s.activeTenant ? "selected" : ""}
@@ -506,6 +583,9 @@ function App() {
                     {t.id === s.activeTenant && <Icon name="Check" size={16} />}
                   </button>
                 ))}
+                {pendingTenantInvitations.length > 0 && <Button icon="Mail" onClick={() => {
+                  setTenantMenu(false); setTenantAction("invitations");
+                }}>待处理邀请 · {pendingTenantInvitations.length}</Button>}
                 <div className="tenant-actions">
                   <Button
                     icon="Plus"
@@ -589,7 +669,7 @@ function App() {
             onClick={() => setDrawer(false)}
           />
         )}
-        <aside className={`sidebar ${drawer ? "open" : ""}`}>
+        <aside id="app-sidebar" className={`sidebar ${drawer ? "open" : ""}`} role={drawer ? "dialog" : undefined} aria-modal={drawer ? true : undefined} aria-label="工作空间导航">
           <div className="workspace">
             <Icon name="Boxes" />
             <div>
@@ -649,11 +729,7 @@ function App() {
                 onView={onView}
                 key={to}
                 to={to}
-                className={
-                  route.full === to || (!to.includes("?") && route.path === to)
-                    ? "active"
-                    : ""
-                }
+                className={areaIsActive(to) ? "active" : ""}
               >
                 <Icon name={icon} />
                 <span>{label}</span>
@@ -815,17 +891,32 @@ function App() {
       )}
       {tenantAction && (
         <Modal
-          title={tenantAction === "create" ? "创建租户" : "加入租户"}
-          onClose={() => setTenantAction(null)}
+          title={tenantAction === "create" ? "创建租户" : tenantAction === "invitations" ? "待处理租户邀请" : "加入租户"}
+          key={tenantAction}
+          draftValue={tenantAction === "invitations" ? undefined : tenantInput}
+          returnFocusRef={tenantTrigger}
+          onClose={closeTenantAction}
         >
-          <ActionForm
+          {tenantAction === "invitations" ? <div className="stack">
+            <Notice>这里是当前账号收到的租户邀请。接受后才会加入租户；项目成员邀请在组织与成员中管理。均为本地演示。</Notice>
+            {pendingTenantInvitations.map((item) => <section className="tenant-invitation" key={item.id}>
+              <h3>{item.tenantName}</h3><p>{item.inviter} 邀请你作为{item.role === "owner" ? "负责人" : "成员"}加入</p>
+              <p className="muted">有效至 {Number.isFinite(Date.parse(item.expires)) ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium" }).format(new Date(item.expires)) : "日期无效，请联系邀请人"}</p>
+              <div className="button-row"><Button variant="primary" disabled={!Number.isFinite(Date.parse(item.expires)) || Date.parse(item.expires) <= Date.now()} onClick={() => {
+                try { joinTenant(item.code); finishTenant(); toast("已接受邀请并进入租户。"); } catch (error) { toast(error.message, true); }
+              }}>接受并进入</Button><Button onClick={() => {
+                try { declineTenantInvitation(item.id); toast("已拒绝邀请。"); } catch (error) { toast(error.message, true); }
+              }}>拒绝邀请</Button></div>
+            </section>)}
+            {pendingTenantInvitations.length === 0 && <Empty title="没有待处理邀请" text="收到新邀请后会显示在这里。" />}
+          </div> : <ActionForm
             label={tenantAction === "create" ? "创建并进入" : "验证邀请并加入"}
-            onCancel={() => setTenantAction(null)}
-            onSubmit={() => {
+            onCancel={closeTenantAction}
+            onSubmit={({ dismiss }) => {
               try {
                 if (tenantAction === "create") createTenant(tenantInput);
                 else joinTenant(tenantInput);
-                finishTenant();
+                dismiss(finishTenant);
                 toast("已切换租户，项目实例与数据已分开。");
               } catch (e) {
                 toast(e.message, true);
@@ -840,10 +931,10 @@ function App() {
             />
             {tenantAction === "join" && (
               <Notice>
-                原型邀请示例：DEMO-JOIN。正式系统将验证邀请身份、有效期与权限。
+                本地邀请示例：DEMO-JOIN。这里只接受发给当前演示账号且未过期、未撤销的邀请；真实邮件和账号验证尚未接入。
               </Notice>
             )}
-          </ActionForm>
+          </ActionForm>}
         </Modal>
       )}
       {newWork && <NewWork toast={toast} onClose={() => setNewWork(false)} />}
@@ -880,7 +971,7 @@ function Search({ onClose }) {
       <label className="search-field">
         <Icon name="Search" />
         <input
-          aria-label="全局搜索关键词"
+          aria-label="全局搜索关键词" name="global-search" autoComplete="off"
           placeholder="搜索工作、知识、报告、审批…"
           value={q}
           onChange={(e) => setQ(e.target.value)}

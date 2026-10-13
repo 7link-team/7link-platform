@@ -1,0 +1,43 @@
+// Run after browser-qa.js, which leaves BUG-01 closed with fixed verification evidence.
+(async () => {
+  const wait = () => new Promise(resolve => setTimeout(resolve, 180));
+  const check = (condition, message) => { if (!condition) throw Error(message); };
+  const state = () => JSON.parse(localStorage.getItem("collaboration-prototype-v1"));
+  const click = async (text, root = document) => { const button = [...root.querySelectorAll("button")].find(button => button.textContent.trim() === text); check(button, `Missing button ${text}`); button.click(); await wait(); };
+  const fill = async (label, value) => { const input = document.querySelector(`[name="${label}"]`); check(input, `Missing field ${label}`); Object.getOwnPropertyDescriptor(input.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value").set.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); await wait(); };
+  const select = async (label, text) => { const combo = document.querySelector(`[role=combobox][aria-label="${label}"]`); check(combo, `Missing choice ${label}`); combo.click(); await wait(); const option = [...document.querySelectorAll('[role=option]')].find(item => item.textContent.includes(text)); check(option, `Missing option ${text}`); option.click(); await wait(); };
+  check(!state().resources.defects, "Duplicate defect collection persisted");
+  location.hash = "/defects/BUG-01"; await wait(); await wait();
+  check(location.hash.includes("/work-items/BUG-01"), "Legacy deep link did not resolve canonical work");
+  const original = structuredClone(state().work.find(work => work.id === "BUG-01"));
+  check(original.defect.stage === "CLOSED", "Run browser-qa.js first");
+  await click("报告回归并新建缺陷");
+  const draftId = new URLSearchParams(location.hash.split("?")[1]).get("work_draft");
+  check(state().drafts[draftId]?.reopenedFrom === original.id, "Regression draft lost origin");
+  await fill("实际结果", "回归：在窄屏仍遮挡主按钮");
+  await click("确认生成工作与计划");
+  const regression = state().work.find(work => work.draftId === draftId);
+  check(regression?.workKind === "BUG" && regression.id !== original.id, "Regression did not create a distinct work item");
+  check(regression.defect.reopenedFromWorkItemId === original.id, "Regression link absent");
+  check(JSON.stringify(state().work.find(work => work.id === original.id)) === JSON.stringify(original), "Closed original changed");
+  location.hash = "/defects"; await wait();
+  check(document.querySelector(`a[href="#/p/${regression.project}/work-items/${regression.id}"]`), "Defect filter omitted canonical work");
+  await click("发起缺陷工作");
+  const newDraft = new URLSearchParams(location.hash.split("?")[1]).get("work_draft");
+  await fill("想要完成什么", "浏览器新增缺陷工作");
+  await select("归属项目", "新品");
+  await select("受影响工作", "W-104");
+  await fill("怎样才算完成", "按复现步骤确认按钮可操作");
+  await fill("严重度", "高"); await fill("优先级", "高");
+  await fill("复现步骤", "375px 打开首页并点击按钮"); await fill("期望结果", "按钮可操作"); await fill("实际结果", "按钮被遮挡");
+  await fill("环境", "浏览器 / 375px"); await fill("关联提交", "mock-commit/browser");
+  await click("确认生成工作与计划");
+  const created = state().work.find(work => work.draftId === newDraft);
+  check(created?.workKind === "BUG" && created.defect.affectedVersion === "v3", "New defect confirmation failed");
+  check(created.defect.steps && created.defect.commit, "Professional fields lost");
+  await click("编辑缺陷信息"); await fill("环境", "浏览器 / 更新环境"); await click("保存", document.querySelector("dialog"));
+  check(state().work.find(work => work.id === created.id).defect.environment === "浏览器 / 更新环境", "Professional edit failed");
+  check(!state().resources.defects, "Creation recreated duplicate storage");
+  check(document.documentElement.scrollWidth <= innerWidth + 2, "Defect page overflows viewport");
+  return { pass: true, checks: ["single fact", "legacy canonical deep link", "terminal regression creates distinct work", "old terminal evidence preserved", "filtered common work view", "conversation defect creation", "professional fields edit", "viewport fit"] };
+})()

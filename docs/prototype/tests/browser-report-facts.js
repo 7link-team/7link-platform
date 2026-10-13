@@ -1,0 +1,12 @@
+(async()=>{
+ const wait=()=>new Promise(r=>setTimeout(r,180)),check=(value,message)=>{if(!value)throw Error(message)};
+ const state=()=>JSON.parse(localStorage.getItem('collaboration-prototype-v1'));
+ const click=async(text,scope=document)=>{const b=[...scope.querySelectorAll('button,a')].find(el=>el.textContent.trim()===text);check(b,'Missing '+text);b.click();await wait()};
+ const fill=async(label,value)=>{const input=document.querySelector(`dialog [name="${label}"]`);check(input,'Missing '+label);Object.getOwnPropertyDescriptor(input.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));await wait()};
+ const generate=async()=>{location.hash='/reports';await wait();await click('生成 / 打开周期报告');await fill('周期内日期','2000-01-03');await click('生成 / 打开',document.querySelector('dialog'))};
+ await generate();const id=location.hash.split('/').at(-1),read=()=>state().resources.reports.find(r=>r.id===id);
+ check(read().generatedFacts.completed===0,'Today completion leaked into historic period');check(read().suggestedReferences.length===0,'Current unrelated work was suggested as historical evidence');check(document.querySelector('main').textContent.includes('当前上下文，不代表周期完成'),'Current context not distinguished');
+ await click('编辑');await fill('人工校准正文','历史周期核对，缺资料不猜测');await click('保存',document.querySelector('dialog'));await generate();check(read().summary==='历史周期核对，缺资料不猜测','Generation overwrote manual summary');
+ await click('本人确认并上报');await fill('依据与说明','本人确认本周期无可引用记录，保留资料限制');await click('确认操作',document.querySelector('dialog'));check(read().status==='已提交','Explicit empty calendar report could not submit');const fixed=JSON.stringify(read());await generate();check(JSON.stringify(read())===fixed,'Regeneration overwrote submitted historical period');
+ check(document.documentElement.scrollWidth<=innerWidth+1,'Report fact layout overflow');return {pass:true,checks:['historical period not today status','suggestions limited to period facts','current context labelled','manual text preserved','explicit empty period submission','submitted snapshot preserved']};
+})()
