@@ -1,5 +1,7 @@
 # 07 · 项目、交付包与甲方验收（`delivery` 模块 · 第二部分）
 
+> **现行范围（2026-10-12，D125–D129）**：用户已批准需求审计 E1–E4；以 [00 共同契约](00-conventions.md) §16 与本文 §14 为准。原型全量展示，开发 MVP 仅单项目软件闭环；其余按现行分期延后。下文历史门户 / 跨项目菜单 / 独立拆解模板 / 旧 MVP 标记如冲突均已退休，不构成实现承诺。
+
 > 上位文档：`PRD.md` §2.2、§2.3、§4、§6.2、§6.7、§8.4、§9.3、§12（项目 / 交付）、§15；共同契约 `00-conventions.md`（本文不重定义其中任何枚举、权限码、事件、错误码段，所需变更见 §13）。
 > 标记约定：「本规格提议」= PRD 与 00 未规定、由本规格补齐的设计，后附理由；评审可推翻。
 
@@ -781,7 +783,7 @@ JSON Schema：
 | 11 | GET `/entities/{entity_id}/project/mode-changes` | entities | `project_read` · P | — | 列表 | — | — |
 | 12 | GET `/entities/{entity_id}/project/budget` | entities | `project_read` · P | — | `cap_micros,cap_version,spent_micros,notify_pct,state,pct_used,holds,breakdown{model,compute,platform},top_work_items[10]` | — | 返回 `ETag` |
 | 13 | PUT `/entities/{entity_id}/project/budget` | entities | `project_manage` · P；HUMAN | `cap_micros`(可 null)、`notify_pct`、`reason`*、`confirm_below_spent` | 预算视图 + `budget_event` | 127005/30/33/35 | 同值不写事件；If-Match |
-| 14 | GET `/entities/{entity_id}/project/budget/events` | entities | `project_read` · P | 过滤 `kind`；排序 `occurred_at` | 列表 | — | — |
+| 14 | GET `/entities/{entity_id}/project/budget/events` | entities | `project_read` · P | 过滤 `kind`；排序 `occurred_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | 列表 | — | — |
 | 15 | POST `/entities/{entity_id}/project/decisions` | entities | `decision_pause` · P；RESUME(ESCALATION) HUMAN | `action`*∈{PAUSE,RESUME}、`hold_kind`（RESUME 必填）、`reason`* | `decision`（02 形状）、`holds` | 127034；422 `127036` | Idempotency-Key；If-Match |
 | 16 | PUT `/entities/{entity_id}/project/contacts/{intake_contact_id}` | entities | `project_manage` · P | `role`,`receives_deliveries`,`can_accept` | 联系人 | 127040 | 幂等 |
 | 17 | DELETE `/entities/{entity_id}/project/contacts/{intake_contact_id}` | entities | `project_manage` · P | — | 204 | 422 `127046`（有 SENT 交付时不得删最后一个可签收联系人） | 幂等 |
@@ -1490,3 +1492,24 @@ When  人类 DELIVER → 422 128016，meta.work_item_ids=[W1]；D 仍 DRAFT
 > **D117（2026-10-12，甲方变更申请）已并入本规格**：`ToleranceReader.WouldBreach`、`ToleranceAdjuster.ApplyApprovedChange`（§6.3）、BR-07-62、错误码 `127055`、AC-07-59…61。**CR-07-12**（对 00，已合入 00 v2.0 D117 补充）：§8 登记 `ToleranceReader`（ForSubject / WouldBreach）与 `ToleranceAdjuster`（delivery 07 提供）。
 
 > **D120（2026-10-12，锚定批注）已并入本规格**：US-07-24、BR-07-63 / 64（面向甲方的产物、甲方批注只经 `AcceptanceRecorder.CreateClientComment`、拒收项引用批注并保留锚点）、`delivery_acceptance_items.comment_thread_ids`、§6.3 `DeliveryEvidenceReader` 与 `AcceptanceRecorder` 增补、错误码 `127056` / `127057`、§8.10、AC-07-62…64。**CR-07-13**（对 00）：§8 登记 `DeliveryEvidenceReader.ClientFacing`（07 → 03）与 `AcceptanceRecorder.CreateClientComment`（07 → 01）；使用 03 `ArtifactComments`；不新增共享枚举、权限码或事件。门户端点已在 01 定义（01 BR-01-88…91、§6.7、§8.4，01 CR-13 已并入）。
+
+
+## 14. 当前项目交付与甲方投影（D123 / D124）
+
+项目组合 / 全部项目 / 交付总览 UI 退休；logo 右侧项目切换器选当前项目，所有详情固定所属项目。外部成员同账号、同项目路由、服务端白名单：概览仅里程碑；`requirement-sheets` / `changes` 为 01 的版本签认与变更；`deliveries` / `deliveries/:id` 显示交付和回执；`previews` 仅 client-facing 项；`client-issues` 为 01 的反馈。既不建门户布局，也不返回内部任务 / QA / 执行 / 成本 / Agent 信息。项目协作侧栏无频道入口，沟通去顶部会话。
+
+交付包编辑器 `/t/:tenantID/p/:projectID/deliveries/new` 与 `/:deliveryID/edit`：挑选 L3 工作项与固定产物版本、验收条目 / 证据映射、发布说明草稿 / 人定稿、hash 清单、覆盖标注、收件甲方、确认发送；缺证据 / PARTIAL / stale / 未 L3 阻止正式交付并定位问题。02 force_valid 的覆盖原结果、主体、理由、风险和证据必须在内部清单、导出包与甲方交付投影逐项展示，L4 仍由甲方独立裁决；不得把覆盖条目说成自动验证通过。
+
+指标页 `/t/:tenantID/p/:projectID/metrics` 按 00 §16.6 显示 L2/L3/L4、内部轮次、穿透、成本 / 人工下界、监督分钟、周期、样本数、窗口、版本和缺失率；空分母显示「暂无样本」，不得 100%。预算计入全部执行 / 内部返工，指标只读取可重建投影；外部不显示内部经济 / 质量轮次数据。
+
+软件模板含瀑布参数变体（签认→设计→实现→测试→交付关口），不是另建引擎。非软件领域、远程预览分享与完整模板编辑开发 v1.1，原型全展示。预览是进度不是交付；面向甲方项必须显式批准并校验文件 / 版本权限。问题反馈转内部缺陷不向甲方透出内部 ID / 线程。
+
+验收：按身份同路由输出正确字段与附件白名单，直达对象与导出 / 搜索 / SSE 一致；交付清单 stale / PARTIAL 阻止，覆盖条目可交付但明确风险；拒收保留历史 / 分支，质量穿透与范围变更分别统计；甲方验收不自动替代团队裁决。
+
+### 14.P 本域易用性与大数据验收
+
+本域适用 00 §16.8：服务端权限过滤 / 稳定游标分页，不全量拉取前端后筛；长列表虚拟化、聚合服务端取，精确总数不阻塞首屏；涉及看板按列分页、频道历史锚点与增量、流程图可见渲染 / 子流程惰性加载、文件范围读。切项目 / 筛选取消过期请求，保留阅读 / 草稿上下文，明示 loading / 空 / 超时 / 限流 / 断流 / 重试。协作二级菜单不跳会话域。规模与 API / UI 性能预算是开发后待实测门槛，原型不宣称已通过。
+
+### 14.Q 集合读取 API 分页参数同步
+
+本规格 §6 全部集合 GET operation（包括现有列表和本次补的读模型）采用 00 §16.10 的唯一产品分页合同：`cursor?` / `limit?`（默认50、最多100）/ 白名单 `sort?`，保留各 operation 的业务 filter / q / project_id；返回 `items,next_cursor?,has_more`，旧 offset / page / page_size 参数退休，不并存两套 API。消息历史 anchor_seq / 增量 after_seq 单独按语义使用；聚合 / 有限枚举不分页。服务端稳定排序与权限 / 筛选绑定 cursor，不依赖精确 COUNT。公共底座既有查询不改，本产品开发前 W1 检查 pkg/query 能力及最小复用 / 扩展 ADR，不能假称已具备游标。旧接口表分页字段由本条原地替代，最终 OpenAPI 只生成这一合同。

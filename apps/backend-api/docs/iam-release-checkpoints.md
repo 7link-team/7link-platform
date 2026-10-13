@@ -212,7 +212,7 @@ SCIM指标与promtool通过也不证明有人收到告警。永久擦除需启�
 platform-only Principal retention/legal-hold/anonymization API/UI；历史格式/coverage/迁移fixture问题；
 本地MySQL8.4 UAT、不可变擦除义务账本及备份恢复对账。详情见
 [历史审计](iam-production-readiness-audit-2026-09-07.md)、[恢复runbook](runbook-migration-recovery.md)、
-[本地UAT](iam-local-uat.md)及根目录 `.claude/decisions.md` D22–D31。
+[本地UAT](iam-local-uat.md)及根目录 `ADR.md` D22–D31。
 
 旧SCIM删除责任绕过与本轮远端并发问题不同；历史单库恢复完成也不等于生产RTO/RPO和HA签字。
 原工期估计未包含本轮新增工作，不作为承诺日期。

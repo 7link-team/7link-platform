@@ -1,5 +1,7 @@
 # 08 · 治理：权限目录、授权判定、委托、升级规则、审计、通知、我的裁决与总览
 
+> **现行范围（2026-10-12，D125–D129）**：用户已批准需求审计 E1–E4；以 [00 共同契约](00-conventions.md) §16 与本文 §14 为准。原型全量展示，开发 MVP 仅单项目软件闭环；其余按现行分期延后。下文历史门户 / 跨项目菜单 / 独立拆解模板 / 旧 MVP 标记如冲突均已退休，不构成实现承诺。
+
 > 模块：`governance`（`internal/governance`，业务）+ 底座 IAM（`core` / `governance` / `audit` / `authn`）映射。遵守 `00-conventions.md`；对 00 的修改只在 §13 提出。标「本规格提议」处为 PRD / 00 未定、由本规格补齐的决定，均附理由。
 > 已对齐：01（`intake_convert` 仅 AUTONOMOUS 可委托、`intake_decline` 与新建项目不可委托）、02（BR-02-19 Check 输入输出、`120403 + data.reason_code`、`work_item.escalated`、`ListEligible`）、03（交互 / 人工验证进收件箱、`DiffSummary`）、04（`machine_revoke` step-up）、06（`memory_approve` 不可委托）、07（预算与 `budget.threshold_reached` 归 07；`ProjectModeSwitcher.TakeOverOn`、`ProjectHoldSetter`、`ProjectGate`、`DeliveryMetricsReader`；`DelegationReader` / `EscalationRuleReader` 由本模块提供）。
 
@@ -996,7 +998,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 - huma v2 + `respx` 信封；错误 `respx.Err(ctx, code, "governance.errors.<key>")`。守卫写法：`T` = `authz.Register`（实际路径 `/tenants/{tenant_id}` + 路径）；`P` = `authz.RegisterEntity`（`/tenants/{tenant_id}/entities/{entity_id}` + 路径，entity = 项目）；`O` = `authz.RegisterOwned`（全局短地址，owner 解析器由本模块提供，解析到租户）；`M` = `authz.RegisterPrincipalTenantMember`（`/tenants/{tenant_id}/principals/{principal_id}` + 路径，仅本人）；`TM` = `authz.RegisterTenantMember`。
 - OpenAPI tag = 最终发布路径（含 `/tenants/{tenant_id}`、`/entities/{entity_id}`、`/principals/{principal_id}` 等挂载前缀）的第一段，由底座 `OnAddOperation` 自动设置（00 §9）。因此 T / P / M / TM 守卫的操作 tag 均为 `tenants`，O 守卫的全局短地址取其首段。
-- 列表：`pkg/query`（`field=op:value`、offset 分页、`capabilities`）；默认 limit 50，最大 100。
+- 列表：`pkg/query`（`field=op:value`、cursor 分页（00 §16.10；W1 确认底座复用 / 最小扩展）、`capabilities`）；默认 limit 50，最大 100。
 - 乐观锁：响应带 `ETag: "<version>"`；更新须 `If-Match`。幂等：创建 / 命令型 POST 必带 `Idempotency-Key`（≤64）。
 - step-up：请求体字段 `reauth_proof`（≤256）；服务在事务**第一步**调用 `ReauthenticationConsumer(ctx, tx, principal, cookieHeader, proof, purpose, target)`；Bearer 调用方无 Cookie → `160403(REAUTH_REQUIRED)`（结构上排除 PAT / 服务账号）。
 
@@ -1004,7 +1006,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 | # | 方法 路径 | tag | 守卫 · 权限 | 请求 | 响应 `data` | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|---|---|
-| G1 | GET `/permission-matrix` | tenants | T · `policy_read` | query `project_id?` | `{roles[{role_id, role_key?, name, managed, seeded, member_count}], actions[{code, prd_action, module, non_delegable, delegable, human_only, data_scoped}], cells[{role_id, code, state: GRANTED\|CONDITIONAL\|NONE, condition_summary?}], delegations[{delegation_id, grantee{principal_id, agent_id, name}, project_id, codes[], ends_at, used_count}], production_grants[{principal_id, ends_at}], revision}` | 160404（项目） | — |
+| G1 | GET `/permission-matrix` | tenants | T · `policy_read` | query `project_id?`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `{roles[{role_id, role_key?, name, managed, seeded, member_count}], actions[{code, prd_action, module, non_delegable, delegable, human_only, data_scoped}], cells[{role_id, code, state: GRANTED\|CONDITIONAL\|NONE, condition_summary?}], delegations[{delegation_id, grantee{principal_id, agent_id, name}, project_id, codes[], ends_at, used_count}], production_grants[{principal_id, ends_at}], revision}` | 160404（项目） | — |
 | G2 | POST `/authority-explanations` | tenants | P · `project_read`；`principal_id≠本人` 时服务内要求 `policy_read` | `{principal_id?, code*, resource{kind*, id*}, environment?}`（facts 由服务经 01/02 读取接口自行组装，客户端不能伪造） | §3.5.3 | 160400, 160403, 160429, 160461 | 只读 |
 | G3 | GET `/role-seeds` | tenants | T · `policy_read` | — | `{manifest_version, roles[{role_key, role_id, managed, seed_conflict, applied_codes[], skipped_codes[], drift{missing[], extra[]}}]}` | — | — |
 | G4 | POST `/role-seed-applications` | tenants | T · `policy_manage`；HUMAN | `{}` | `{applied, roles[{role_key, added_codes[]}]}` | 160460 | Idempotency-Key；天然幂等 |
@@ -1017,7 +1019,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 | # | 方法 路径 | tag | 守卫 · 权限 | 请求 | 响应 `data` | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|---|---|
-| D1 | GET `/delegations` | tenants | T · `policy_read` | query：`state` `project_id` `grantee_principal_id` `grantor_principal_id` `actions`(contains) `ends_at`(lt/gt)；排序 `ends_at` `created_at` | `Delegation[]` | — | — |
+| D1 | GET `/delegations` | tenants | T · `policy_read` | query：`state` `project_id` `grantee_principal_id` `grantor_principal_id` `actions`(contains) `ends_at`(lt/gt)；排序 `ends_at` `created_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Delegation[]` | — | — |
 | D2 | POST `/delegations` | tenants | P · `delegation_grant`；HUMAN；step-up `delegation_grant` | `{grantee_principal_id*, actions*[], work_item_types[], max_risk*, cost_cap_micros*, max_rework?, duration_hours*, reason*, replaces_delegation_id?, reauth_proof*}` | `{delegation, revoked_delegation?, warnings[]}`（201） | 160400, 160410, 160411, 160412, 160413, 160416, 160403(AGENT_PROHIBITED), 160403(REAUTH_REQUIRED), 160403(GRANTOR_LACKS_AUTHORITY), 160461 | Idempotency-Key |
 | D3 | GET `/delegations/{delegation_id}` | delegations | O · `policy_read` | — | `Delegation` + `ETag` | 160404 | — |
 | D4 | POST `/delegations/{delegation_id}/revocations` | delegations | O · `delegation_grant`；HUMAN | `{reason*}` | `Delegation`（REVOKED） | 160404, 160409, 160414, 160403(AGENT_PROHIBITED) | Idempotency-Key；If-Match |
@@ -1031,12 +1033,12 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 | # | 方法 路径 | tag | 守卫 · 权限 | 请求 | 响应 `data` | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|---|---|
-| SG1 | GET `/spawn-grants` | tenants | T · `policy_read` | query：`state` `grantee_agent_id` `project_id`(contains) `approval_mode` `ends_at`(lt/gt)；排序 `ends_at` `created_at` | `SpawnGrant[]` | — | — |
+| SG1 | GET `/spawn-grants` | tenants | T · `policy_read` | query：`state` `grantee_agent_id` `project_id`(contains) `approval_mode` `ends_at`(lt/gt)；排序 `ends_at` `created_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `SpawnGrant[]` | — | — |
 | SG2 | POST `/spawn-grants` | tenants | T · `spawn_grant_manage`；HUMAN；step-up `spawn_grant_manage` | `{grantee_agent_id*, project_ids*[], max_active_agents*, max_spawns_per_day*, allowed_roles*[], allowed_machine_ids*[], allowed_models*[], max_effort*, budget_cap_micros*, per_agent_cap_micros*, agent_ttl_hours*, idle_retire_hours*, approval_mode*, duration_hours*, reason*, replaces_grant_id?, reauth_proof*}` | `SpawnGrant`（201）+ `ETag` | 160400, 160403(AGENT_PROHIBITED / REAUTH_REQUIRED / MISSING_PERMISSION), 160470, 160473, 160475 | Idempotency-Key（176425 / 176409） |
 | SG3 | GET `/spawn-grants/{spawn_grant_id}` | spawn-grants | O · `policy_read` | — | `SpawnGrant` + `ETag` | 160404 | — |
 | SG4 | PATCH `/spawn-grants/{spawn_grant_id}` | spawn-grants | O · `spawn_grant_manage`；HUMAN；放宽时 step-up | 可选：上述上限 / 范围字段、`approval_mode`、`ends_at`、`reauth_proof?` | `SpawnGrant` | 160403, 160409, 160428, 160470, 160474, 160475, 160476 | If-Match |
 | SG5 | POST `/spawn-grants/{spawn_grant_id}/revocations` | spawn-grants | O · `spawn_grant_manage`；HUMAN | `{reason*}` | `SpawnGrant`（REVOKED） | 160403, 160404, 160409, 160474 | Idempotency-Key；If-Match |
-| SG6 | GET `/spawn-grants/{spawn_grant_id}/members` | spawn-grants | O · `policy_read` | query `state` | `[{agent{id, name, avatar, roles[], state}, state, release_reason?, spent_micros, per_agent_cap_micros, reserved_at, released_at?}]` | 160404 | — |
+| SG6 | GET `/spawn-grants/{spawn_grant_id}/members` | spawn-grants | O · `policy_read` | query `state`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `[{agent{id, name, avatar, roles[], state}, state, release_reason?, spent_micros, per_agent_cap_micros, reserved_at, released_at?}]` | 160404 | — |
 
 `SpawnGrant` 表示：§3.8.13 全部列（`active_key` 除外）+ `grantee{agent_id, name, avatar}`、`granted_by{name}`、`projects[{id, name, team_mode}]`、`effective_state`、`effective_approval_mode`、`remaining_seconds`、`budget_pct`、`quota{active:"x/y", today:"x/y"}`。
 
@@ -1044,9 +1046,9 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 | # | 方法 路径 | tag | 守卫 · 权限 | 请求 | 响应 | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|---|---|
-| E1 | GET `/escalation-rules` | tenants | T · `policy_read` | query `project_id`（缺省 = 团队默认）、`kind` | `Rule[]`（含 `locked`、`locked_reason`、`dependent_autonomous_project_ids[]`） | — | — |
+| E1 | GET `/escalation-rules` | tenants | T · `policy_read` | query `project_id`（缺省 = 团队默认）、`kind`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Rule[]`（含 `locked`、`locked_reason`、`dependent_autonomous_project_ids[]`） | — | — |
 | E2 | PUT `/escalation-rules/{rule_id}` | escalation-rules | O · `policy_manage`；HUMAN；放宽类 step-up `escalation_rule_relax` | `{enabled*, params*, actions_autonomous*, actions_hybrid*, reauth_proof?}` | `Rule` | 160400, 160430, 160431, 160409, 160403(REAUTH_REQUIRED) | If-Match |
-| E3 | GET `/escalation-incidents` | tenants | T · `policy_read` | query `project_id` `state` `rule_kind` `severity` `subject_id` `created_at`；排序 `severity desc, last_triggered_at desc` | `Incident[]` | — | — |
+| E3 | GET `/escalation-incidents` | tenants | T · `policy_read` | query `project_id` `state` `rule_kind` `severity` `subject_id` `created_at`；排序 `severity desc, last_triggered_at desc`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Incident[]` | — | — |
 | E4 | GET `/escalation-incidents/{incident_id}` | escalation-incidents | O · `policy_read` | — | `Incident` + `ETag` | 160404 | — |
 | E5 | POST `/escalation-incidents/{incident_id}/acknowledgements` | escalation-incidents | O · `policy_read`；HUMAN | `{}` | `Incident` | 160404, 160432 | Idempotency-Key（天然幂等） |
 | E6 | POST `/escalation-incidents/{incident_id}/dismissals` | escalation-incidents | O · `policy_manage`；HUMAN | `{reason*}` | `Incident` | 160432, 160433, 160409 | Idempotency-Key；If-Match |
@@ -1072,7 +1074,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 | # | 方法 路径 | tag | 守卫 | 请求 | 响应 | 错误 |
 |---|---|---|---|---|---|---|
-| I1 | GET `/inbox-items` | tenants | M | query `state`（缺省 OPEN）`kind`(in) `project_id` `priority`；排序固定 `priority desc, due_at asc nulls last, created_at asc` | `InboxItem[]`：§3.8.8 + `actions[{key: A\|R\|OPEN\|ACK, label_key, method, href, requires[STRUCTURED_FEEDBACK\|REASON\|STEP_UP], disabled_reason?}]`、`project{name}`、`preview{…}`（按 kind：验证 n/n、覆盖、风险、成本、工具名、过期倒计时） | — |
+| I1 | GET `/inbox-items` | tenants | M | query `state`（缺省 OPEN）`kind`(in) `project_id` `priority`；排序固定 `priority desc, due_at asc nulls last, created_at asc`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `InboxItem[]`：§3.8.8 + `actions[{key: A\|R\|OPEN\|ACK, label_key, method, href, requires[STRUCTURED_FEEDBACK\|REASON\|STEP_UP], disabled_reason?}]`、`project{name}`、`preview{…}`（按 kind：验证 n/n、覆盖、风险、成本、工具名、过期倒计时） | — |
 | I2 | GET `/inbox-counts` | tenants | M | — | `{total, by_kind{}, by_priority{}, revision}` | — |
 | I3 | GET `/inbox-items/{inbox_item_id}` | tenants | M（服务内校验 recipient=本人，否则 404） | — | `InboxItem` | 160404 |
 | I4 | POST `/inbox-items/{inbox_item_id}/acknowledgements` | tenants | M | `{}` | `InboxItem`（仅 CLARIFICATION_REPLY / ESCALATION_ALERT；后者同时执行 E5） | 160404, 160441, 160400（类型不支持） |
@@ -1169,7 +1171,7 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 
 | kind | 创建事件 | 接收人 | 优先级 | 关闭事件 | A / R |
 |---|---|---|---|---|---|
-| `PREVIEW_SHARE_APPROVAL`（03，分期待定） | 03 `share_link.requested` | `HOLDERS(preview_share_approve)` 项目内人类，**排除申请人** | NORMAL | 03 `share_link.decided`、`share_link.ended` | A 批准（调用 03 A72 APPROVE，成功后在收件箱内一次性显示链接）/ R 驳回（理由必填） |
+| `PREVIEW_SHARE_APPROVAL`（03，v1.1（D126）） | 03 `share_link.requested` | `HOLDERS(preview_share_approve)` 项目内人类，**排除申请人** | NORMAL | 03 `share_link.decided`、`share_link.ended` | A 批准（调用 03 A72 APPROVE，成功后在收件箱内一次性显示链接）/ R 驳回（理由必填） |
 
 明确**不投影**：`internal_qa.failed`、内部阶段的 `verification.completed`、`work_item.state_changed{to:REWORK, cause:INTERNAL_QA}`（BR-08-60）。
 
@@ -1393,84 +1395,31 @@ glob 语法：仓库相对 POSIX 路径、区分大小写；`**` 跨目录、`*`
 - 「3 项待你裁决」经 `role="status"` 播报。
 - **刷新目标**（对 PRD §12.2「≤1s」的细化）：待你裁决、机器、项目阶段 / 暂停变化 ≤1s（SSE）；KPI 与闭环完整率为聚合指标，≤60s / 5 min。
 
-### 8.6 控制台外壳（delivery 应用全局，本模块拥有）
+### 8.6 控制台外壳（D123 / D124，替代 D118 修订）
 
-- **目的**：统一导航、全局入口与裁决徽标；各模块页面只贡献菜单项，不各自实现外壳。路由前缀 `/t/:tenantID`（00 §10）；复用 IAM 应用的认证、`WorkspaceSwitcher`、`LanguageSwitcher`、主题切换与 `UserMenu`。导航为「顶栏域标签 + 当前域的侧栏子导航」两级（D118）；项目是主容器，项目内的工作在项目空间中进行（D118 修订）。
-- **顶栏**（左 → 右）：移动端菜单按钮；品牌区（含 `WorkspaceSwitcher`）；**域标签** 工作台 · 会话 · 项目 · 团队 · 治理（顺序固定；`aria-current` 标当前域；会话标签带未读数，数据为 05 C14 合计）；全局搜索框（点击或 `⌘K` / `Ctrl+K` 打开命令面板）；裁决徽标（订阅 `tenant/{t}/inbox/{me}`，数字 = I2 `total`，`role="status"` 播报「n 项待你决定」，点击 → `/inbox`）；通知铃铛（09 未读数）；连接状态点（SSE 已连接 / 重连中 / 断开）；语言 / 主题；用户菜单。
-- **侧栏**：只显示当前域的子导航，按 `Group` 分节（无 Group 的项置顶不加标题）；**会话域没有侧栏**，内容区全宽（05 §8.8 三栏）。项目域有两种侧栏（D118 修订，项目是主容器）：**项目外**显示范围为团队的项目域项（项目组合 · 来件 · 交付总览 / 跨项目 需求 · 任务 · 缺陷 · 流水线）；**项目内**（路由带 `:projectID`）显示**项目空间**——范围为项目的全部项，侧栏顶部为项目切换器与〔返回项目组合〕。侧栏与域标签都由 09 C6 模块菜单贡献机制生成（`MenuPage{Key, Domain, Space, Group, Route, PermissionCode, Icon, SortOrder}`）：先按 `Domain` 归入域标签，再按 `Space`（TEAM / PROJECT，即下表「范围」）决定出现在项目外还是项目空间，再在域内按 `Group`、`SortOrder` 排列；按权限码过滤，无权限的项不显示（范围为项目的项按当前项目判定）；**一个域的项全部被过滤时，该域标签也不显示**（菜单可见性不是授权机制，页面自身仍做守卫；直接打开 URL 仍按页面守卫给出无权限态）。
+内部顶栏为工作台 · 会话 · 协作 · 团队 · 治理；项目切换器在 logo 右侧，默认最近可见项目、没有则首个可见项目，无全部项目。新团队空态提供新建项目，外部空态等待邀请。域标签按当前路由判定；详情对象所属项目优先于记住的选择。项目组合、跨项目列表、交付总览与独立来件 / 对接 UI 退休，旧列表 / 门户 / 独立 session UI 路由不注册，无 alias / 重定向；所有对象链接直接使用所属项目 / 规范会话路由并查权限。
 
-  表中「范围」列：**团队** = 团队级页面，路由不含项目；**项目** = 只在项目空间内渲染，路由形如 `/t/:tenantID/p/:projectID/...`（00 §10 项目内路由），`:projectID` 取当前项目。同一页面既有团队级列表又有项目内版本时，两行分别登记（Key 不同，项目内 Key 加 `p-` 前缀）。
+| 域 / 视图 | 菜单 | 路由（前缀 `/t/:tenantID`） | 规格 |
+|---|---|---|---|
+| 工作台 | 总览、我的裁决、我的任务、我的计划、通知中心 | `/overview`、`/inbox`、`/my-tasks`、`/plans/me`、`/settings/notifications` | 08 / 02 / 10 |
+| 会话 | 全宽频道 / 私信 / 提及 / 线程，内部另有执行会话 | `/chat` | 05 |
+| 协作 · 概览 / 规划 | 概览、目标 | `/p/:projectID`、`/p/:projectID/goals` | 07 / 10 |
+| 协作 · 需求 | 需求、需求确认单、变更 | `/p/:projectID/requirements`、`/p/:projectID/requirement-sheets`、`/p/:projectID/changes` | 02 / 01 |
+| 协作 · 开发 | 任务、评审台 | `/p/:projectID/work-items`、`/p/:projectID/review` | 02 |
+| 协作 · 测试 | 用例与测试计划、缺陷、穿透 | `/p/:projectID/test-cases`、`/p/:projectID/defects`、`/p/:projectID/escapes` | 12 / 08 |
+| 协作 · 流水线 | 流水线、执行 | `/p/:projectID/pipelines`、`/p/:projectID/executions` | 03 |
+| 协作 · 交付 | 交付、预览与产物、工时、指标 | `/p/:projectID/deliveries`、`/p/:projectID/previews`、`/p/:projectID/worklogs`、`/p/:projectID/metrics` | 07 / 03 / 12 |
+| 协作 · 领域 / 设置 | 对应领域工作台、项目设置 | `/p/:projectID/video|novel|team-tasks`、`/p/:projectID/settings` | 11 / 07 |
+| 团队 | 目标树、报告中心、成员与 Agent、机器、知识库、工具与技能、模板库 | `/goals`、`/reports`、`/members`、`/machines`、`/knowledge`、`/tools`、`/templates` | 10 / 05 / 04 / 06 / 11 |
+| 治理 | 授权与策略、流转配置、操作清单、集成、开口、API 网关、审计 | `/governance/policy`、`/settings/workflows`、`/governance/agent-operations`、`/settings/integrations/yunxiao`、`/settings/intake-channels`、`/gateway`、`/governance/audit` | 08 / 12 / 05 / 01 / 04 |
+| 外部顶栏 | 待办、会话、协作 | `/inbox`、`/chat`、`/p/:projectID` | 08 / 05 / 07 |
+| 外部协作 | 概览、需求确认单、变更、交付与验收、预览与产物、问题反馈 | `/p/:projectID`、`/requirement-sheets`、`/changes`、`/deliveries`、`/previews`、`/client-issues`（后五项同项目前缀） | 07 / 01 / 03 |
 
-| 域 | 范围 | 分组 | Key | 标签 | 路由 | 权限码 | 贡献模块 |
-|---|---|---|---|---|---|---|---|
-| 工作台 | 团队 | — | overview | 总览 | `/t/:tenantID/overview` | （租户成员） | 08 |
-| 工作台 | 团队 | — | inbox | 我的裁决 | `/t/:tenantID/inbox` | （租户成员） | 08 |
-| 工作台 | 团队 | — | my-work | 我的任务 | `/t/:tenantID/my-work`（D118 新页；数据 = 02 W14 `executor_principal_id=eq:<me>`） | `work_item_read` | 02 |
-| 工作台 | 团队 | — | my-plans | 我的计划 | `/t/:tenantID/plans/me` | `plan_submit` | 10 |
-| 会话 | 团队 | — | chat | 会话 | `/t/:tenantID/chat`（05 §8.8；原 channels 项迁入，旧路由 `/t/:tenantID/channels` 重定向至此） | `channel_read` | 05 |
-| 项目 | 团队 | — | projects | 项目组合 | `/t/:tenantID/projects` | `project_read` | 07 |
-| 项目 | 团队 | — | intakes | 来件 | `/t/:tenantID/intakes` | `intake_read` | 01 |
-| 项目 | 团队 | — | deliveries | 交付总览 | `/t/:tenantID/deliveries`（07 §8.5 团队版） | `delivery_read` | 07 |
-| 项目 | 团队 | 跨项目 | requirements | 需求 | `/t/:tenantID/requirements`（D118 新页，团队级列表，页内项目筛选） | `requirement_read` | 02 |
-| 项目 | 团队 | 跨项目 | work-items | 任务 | `/t/:tenantID/work-items`（02 W14 团队级，页内项目筛选） | `work_item_read` | 02 |
-| 项目 | 团队 | 跨项目 | defects | 缺陷 | `/t/:tenantID/defects`（D118 新页；数据 = 02 W14 `type=in:BUG,INCIDENT` + 12 A9 缺陷详情） | `work_item_read` | 12 Part A |
-| 项目 | 团队 | 跨项目 | pipelines | 流水线 | `/t/:tenantID/pipelines`（D118 新页：每个工作项的阶段运行 平台重跑 → 隐藏验收 → 测试 Agent → 产品验收 Agent → 人工评审 → 交付，外加外部 Flow 运行） | `execution_read` | 03 |
-| 项目 | 项目 | — | p-overview | 概览 | `/t/:tenantID/p/:projectID`（07 §8.3 项目总览） | `project_read` | 07 |
-| 项目 | 项目 | — | p-goals | 目标 | `/t/:tenantID/p/:projectID/goals`（10 §8.1 目标树，固定为本项目的 PROJECT 目标及其子树；团队全树见团队 › 目标树） | `goal_read` | 10 |
-| 项目 | 项目 | — | p-channel | 项目频道 | `/t/:tenantID/p/:projectID/channel`（替换式重定向到该项目默认频道 `/t/:tenantID/chat/:channelID`，进入会话域；05 §8.8） | `channel_read` | 05 |
-| 项目 | 项目 | 需求 | p-requirements | 需求 | `/t/:tenantID/p/:projectID/requirements`（02 §8.5；团队级列表见上） | `requirement_read` | 02 |
-| 项目 | 项目 | 开发 | p-work-items | 任务 | `/t/:tenantID/p/:projectID/work-items`（02 §8.1 / §8.2；团队级列表见上） | `work_item_read` | 02 |
-| 项目 | 项目 | 开发 | p-review | 评审台 | `/t/:tenantID/p/:projectID/review`（02 §8.4；团队级 `/t/:tenantID/review`（D5）保留为「我的裁决」评审类项的直达入口，不进菜单） | `work_item_read` | 02 |
-| 项目 | 项目 | 测试 | p-test-cases | 用例与测试计划 | `/t/:tenantID/p/:projectID/test-cases`（12 §8.3） | `work_item_read` | 12 Part A |
-| 项目 | 项目 | 测试 | p-defects | 缺陷 | `/t/:tenantID/p/:projectID/defects`（同缺陷页，固定本项目；团队级列表见上） | `work_item_read` | 12 Part A |
-| 项目 | 项目 | 测试 | p-escapes | 穿透记录 | `/t/:tenantID/p/:projectID/escapes`（§8.7，固定本项目；团队级 `/t/:tenantID/governance/escapes` 保留，供审计员跨项目查看，不进菜单） | `audit_read` | 08 |
-| 项目 | 项目 | 流水线 | p-pipelines | 流水线 | `/t/:tenantID/p/:projectID/pipelines`（固定本项目；团队级列表见上） | `execution_read` | 03 |
-| 项目 | 项目 | 流水线 | p-executions | 执行 | `/t/:tenantID/p/:projectID/executions`（03 §8.1；「我的执行」`/t/:tenantID/executions?mine=1` 为团队级，不进菜单） | `execution_read` | 03 |
-| 项目 | 项目 | 交付 | p-deliveries | 交付 | `/t/:tenantID/p/:projectID/deliveries`（07 §8.5 项目版；团队级「交付总览」见上） | `delivery_read` | 07 |
-| 项目 | 项目 | 交付 | p-worklogs | 工时 | `/t/:tenantID/p/:projectID/worklogs`（12 §8.4 汇总，固定本项目；团队级 `/t/:tenantID/worklogs` 保留为个人填报与审批入口，经通知与我的任务到达，不进菜单） | `worklog_submit` | 12 Part A |
-| 项目 | 项目 | 领域工作台 | p-video | 视频 | `/t/:tenantID/p/:projectID/video`（11 §8.4；仅当项目模板领域为 VIDEO） | `work_item_read` | 11 |
-| 项目 | 项目 | 领域工作台 | p-novel | 小说 | `/t/:tenantID/p/:projectID/novel`（11 §8.5；仅当项目模板领域为 NOVEL） | `work_item_read` | 11 |
-| 项目 | 项目 | 领域工作台 | p-team-tasks | 团队任务 | `/t/:tenantID/p/:projectID/team-tasks`（11 §8.6；仅当项目模板领域为 TEAM_TASKS） | `work_item_read` | 11 |
-| 项目 | 项目 | 设置 | p-settings | 项目设置 | `/t/:tenantID/p/:projectID/settings`（07 §8.4，含 11 §8.3 模板与 12 项目流转 `/t/:tenantID/p/:projectID/settings/workflows`） | `project_read` | 07 |
-| 团队 | 团队 | 目标与报告 | goals | 目标树 | `/t/:tenantID/goals`（10 §8.1，团队 → 项目 → 成员全树） | `goal_read` | 10 |
-| 团队 | 团队 | 目标与报告 | reports | 报告中心 | `/t/:tenantID/reports`（10 §8.5 / §8.6） | `report_read` | 10 |
-| 团队 | 团队 | 团队资产 | members | 成员与 Agent | `/t/:tenantID/members` | `agent_read` | 05 |
-| 团队 | 团队 | 团队资产 | machines | 机器 | `/t/:tenantID/machines` | `machine_read` | 04 |
-| 团队 | 团队 | 团队资产 | knowledge | 知识库 | `/t/:tenantID/knowledge` | `knowledge_read` | 06 |
-| 团队 | 团队 | 团队资产 | tool-catalog | 工具与技能 | `/t/:tenantID/tools`（05 §8.z：MCP 服务器 / 技能 两个标签与条目抽屉；无 `tool_catalog_manage` 时只读，D120） | `agent_read` | 05 |
-| 团队 | 团队 | 团队资产 | templates | 模板库 | `/t/:tenantID/templates` | `project_read` | 11 |
-| 治理 | 团队 | 策略 | policy | 授权与策略 | `/t/:tenantID/governance/policy` | `policy_read` | 08 |
-| 治理 | 团队 | 策略 | workflow-config | 流转配置 | `/t/:tenantID/settings/workflows`（无 `workflow_manage` 时只读） | `work_item_read` | 12 Part A |
-| 治理 | 团队 | 策略 | agent-operations | Agent 操作清单 | `/t/:tenantID/governance/agent-operations`（05 §8.z：操作清单与「Agent 能力」两个标签，D120） | `agent_read` | 05 |
-| 治理 | 团队 | 连接 | integration | 集成 | `/t/:tenantID/settings/integrations/yunxiao`（v1.1） | `integration_manage` | 12 Part B |
-| 治理 | 团队 | 连接 | intake-channels | 需求开口 | `/t/:tenantID/settings/intake-channels`（无 `intake_channel_manage` 时只读） | `intake_read` | 01 |
-| 治理 | 团队 | 连接 | gateway | API 网关 | `/t/:tenantID/gateway`（实验） | `gateway_manage` | 04 |
-| 治理 | 团队 | 记录 | audit | 审计 | `/t/:tenantID/governance/audit` | `audit_read` | 08 |
+以上菜单逐项采用所属模块读权限与 project_id 不可清除过滤；外部额外强制 00 §16.2 白名单，不返回内部字段 / 文件 / 数量。菜单贡献复用 09，`PROJECTS` 仅 i18n 显示协作；**协作二级菜单不含项目频道、共享频道、甲方共享频道或任何跳到会话区的项**。会话只能从顶部进入。团队甲方视角开关复用真实外部 DTO，而非简单 CSS 隐藏。
 
-  表注：① 权限码均取自所属规格的读接口（01 §8.3、02 W14 / R2、03 A01、10 §8、11 L1 / W1–W3、12 A9 / A10 / A21 / A26、B1、08 Q1）；范围为项目的项按当前项目判定（项目范围权限与项目可见性，00 §6）。② 以下数据接口在所属规格中**尚不存在**，本表只登记菜单与路由，不代为定义接口：团队级需求列表（02 只有项目级 R2，跨项目需 02 新增或由前端按可见项目逐个调用 R2）；流水线的按工作项阶段聚合（03 现有 A01 / A04 / A53 与 12 Flow 镜像需组合，聚合读接口待 03 定义）；我的任务、缺陷直接复用 02 W14 过滤，无缺口。③ 标「固定本项目」的项目内路由复用同一页面组件，以路由中的 `:projectID` 作为不可清除的项目过滤（列表接口带 `project_id=eq:`），不新增接口。④ 领域工作台在一个项目空间内至多出现一项，按项目的模板领域（11 模板绑定）决定。
-- **当前域与当前项目判定**：二者**只由路由决定**，不另存状态。外壳以「最长路由前缀匹配」把当前路由归到菜单项与域：`/t/:tenantID/p/:projectID/**` → 项目域的项目空间，当前项目 = 路由中的 `:projectID`（如 `/p/:projectID/work-items/:id` → 项目 › 开发 › 任务；`/p/:projectID/executions/:executionID/session` → 项目 › 流水线 › 执行）。**详情页**（工作项、缺陷、执行与交互会话、评审单、内部验收、例外、交付等，路由均带 `/p/:projectID/`）一律在所属项目的项目空间内渲染，从跨项目列表、我的裁决、会话卡片或通知打开时也是如此。`/t/:tenantID/agents/:agentID` → 团队 › 成员与 Agent；`/chat/**` 与旧频道路由归会话域；`/settings/notifications` 归工作台；未进菜单的团队级路由（如 `/t/:tenantID/review`、`/t/:tenantID/governance/escapes`、`/t/:tenantID/worklogs`）归项目域的项目外侧栏，不高亮任何项。无法匹配的路由不改变当前域。路由中的项目本人不可见（无 `project_read` 或已被移出）→ 页面 404 态「项目不存在或你无权访问」并提供〔返回项目组合〕，不泄露项目名。
-- **项目空间**：侧栏顶部为**项目切换器**（只列本人 `project_read` 可见的项目，非终态在前，含最近访问 5 个与搜索）与〔返回项目组合〕（→ `/t/:tenantID/projects`）。**切换项目保持子页面**：切换器把路由中的 `:projectID` 换成目标项目并保留当前菜单项（列表页保留与项目无关的查询参数，如视图与排序；详情页 → 目标项目中同一菜单项的列表页，因为详情对象属于原项目）；目标项目没有该项（权限不足，或领域工作台与其模板领域不符）→ 目标项目概览，并以 toast 说明「该项目没有『视频』，已打开概览」。`WorkspaceSwitcher` 的项目选择等同于项目切换器：在项目外选择项目 → 进入该项目概览；在项目空间内选择 → 同上保持子页面；团队切换仍在品牌区，切团队回到工作台总览。
-- **跨项目列表**：项目外「跨项目」各页在页内提供项目筛选（只列本人可见项目，默认全部，筛选值写入 URL `project_id=`，属于页面状态而非外壳状态）；〔新建〕类操作要求先选项目，或在项目空间内进行。
-- **记住子页面**：每个域记住本人最近访问的子页面（含路由与查询参数；项目域记住的可以是项目外页面，也可以是某个项目空间内的页面），点击域标签回到该页；从未访问、该页已不可见或其项目已不可见 → 该域第一个可见项（项目域 = 项目组合）。记忆保存在浏览器本地存储，读写失败时退回第一个可见项（不影响导航）。
-- **移动端**（<768px）：域标签与当前域子导航收入左侧抽屉（底座 Sheet；抽屉顶部为域列表，下方为当前域子导航，项目空间内子导航顶部为项目切换器与〔返回项目组合〕）。**底栏**常驻 4 项（触控 ≥44px）：工作台（回到工作台记住的子页，默认总览）/ 会话（带未读数）/ 项目（回到项目域记住的子页，默认项目组合）/ 裁决（带徽标，→ `/inbox`）。会话在移动端为单栏堆叠（列表 → 消息 → 线程，05 §8.8）。
-- **命令面板（`⌘K`）**：底座 `Command` 组件；分组「跳转」（上表全部菜单，按权限过滤，显示为「域 · 标签」，如「项目 · 缺陷」；范围为项目的项对最近 5 个项目展开，显示为「项目名 · 标签」；另列最近 5 个会话，数据 05 C17）、「搜索」（来件、需求、项目、工作项、执行、Agent、机器：各模块列表接口 `q` 参数，每组前 5 条，150ms 防抖）、「动作」：
+切项目保留可见列表子页；详情切换去目标项目相应列表，领域或权限不适用回概览并解释；无权项目 / 详情 404 不泄露名字。手机内部底栏工作台 / 会话 / 协作 / 裁决，外部待办 / 会话 / 协作；各域记住可见子页，失效回可见默认项，协作默认当前项目概览。命令面板按权限过滤菜单与对象、标所属项目；不再提供来件 / 项目组合跳转；个人工时通过我的任务 / 用户菜单进入。
 
-| 命令 | 权限码 | 去向 |
-|---|---|---|
-| 新建来件（手工录入） | `intake_triage` | 01 来件新建对话框 |
-| 新建项目 | `project_manage` | 07 新建项目向导 |
-| 新建工作项 | `work_item_write`（当前项目） | 02 工作项新建 |
-| 新建交互会话 | `execution_start` | 03 新建会话对话框 |
-| 新建 Agent | `agent_manage` | 05 新建 Agent |
-| 新建私信 | （成员） | 05 §8.8 新建私信对话框（C18） |
-| 接入机器 | `machine_manage` | 04 接入向导 |
-| 授予委托 | `delegation_grant` | §8.1 授予对话框 |
-| 打开我的裁决 | （成员） | `/inbox` |
-| 切换主题 / 语言 | （成员） | 外壳 |
-
-- **状态**：外壳加载骨架（顶栏域标签与侧栏占位）；租户无权限 → 跳工作区选择；SSE 断开 >5s 显示琥珀连接点并降级轮询（I2 每 10s）。
-
----
+loading 骨架、无权限工作区选择、项目空态与 SSE 离线 / 重试明确显示。流程编辑在团队模板库详情，不作为项目流水线可修改图；项目流水线只读阶段 / 图，数据对象见 03 §14.2。
 
 ### 8.7 D112 / D113 增补页面
 
@@ -2096,12 +2045,12 @@ And   若批准前 O 撤销 G → 该项 WITHDRAWN，05 的批准接口返回授
 **AC-08-89**（unit）纯人工模式 — `team_mode=HUMAN_ONLY` 项目的 ASSISTANT Agent 请求 `decision_approve` → 403 `HUMAN_ONLY_MODE`；请求 `report_read` → 允许；即使存在放行 `decision_approve` 的策略仍拒。
 **AC-08-90**（integration）N11–N14 路由 — 依次触发四类升级 → 各产生一条对应类型收件箱项、接收人如 §9.4 对应表；重复事件按去重键只产生一条。
 
-### 10.12 D118 控制台外壳增补验收标准（含 D118 修订：项目是主容器）
+### 10.12 D123 / D124 / D129 控制台外壳验收标准
 
-**AC-08-91**（e2e）域内记住子页面 — Given Morgan 在项目 P 的项目空间打开「测试 › 缺陷」（`/t/:tenantID/p/P/defects?sort=-severity`），再切到团队域打开「机器」 When 点击「项目」域标签 Then 回到 `/t/:tenantID/p/P/defects?sort=-severity`，侧栏为 P 的项目空间且项目切换器显示 P；点击「团队」回到机器页；Morgan 被移出 P 后点击「项目」→ 项目组合（记住的页面已不可见），不出现 P 的名称；清空浏览器本地存储后点击「项目」→ 项目组合，导航不报错；项目外侧栏只含 项目组合 · 来件 · 交付总览 与「跨项目」分组 需求 · 任务 · 缺陷 · 流水线。
-**AC-08-92**（e2e）按权限隐藏菜单项与整个域 — Given 成员 X 的角色只含 `work_item_read`、`execution_read` When 打开外壳 Then 顶栏域标签只有 工作台 · 项目 · 治理（会话与团队的项全部被过滤，标签不显示；任何情况下都没有「协作」）；项目域项目外侧栏只含「跨项目 › 任务 · 缺陷 · 流水线」（无项目组合、来件、交付总览、需求）；治理域只含「流转配置」；再撤销 `work_item_read` 后刷新 → 治理域标签也不显示，项目域只剩「跨项目 › 流水线」，工作台不含「我的任务」；直接访问 `/t/:tenantID/governance/audit` → 页面无权限态「缺少权限 `audit_read`」（菜单隐藏不替代页面守卫）。
-**AC-08-93**（e2e）会话全宽 — Given 视口 1440 When 点击「会话」域标签 Then 不渲染侧栏，内容区占满顶栏以下全宽并呈现 05 §8.8 三栏（左：提及与线程 / 频道 / 私信 / 执行会话；中：消息；右：线程 / 详情）；访问旧路由 `/t/:tenantID/p/:projectID/channels/:channelID` → 重定向到 `/t/:tenantID/chat/:channelID` 且当前域为会话；在项目 P 的项目空间点击「项目频道」→ 替换式重定向到 P 默认频道 `/t/:tenantID/chat/:channelID`，当前域为会话；视口 375 时为单栏堆叠，底栏为 工作台 · 会话 · 项目 · 裁决，「会话」显示未读数。
-**AC-08-94**（e2e）项目空间 — Given Morgan 可见项目 P（软件模板）与 Q（VIDEO 模板），不可见项目 R When 从「跨项目 › 缺陷」点击 P 的缺陷 D Then 打开 `/t/:tenantID/p/P/work-items/D`，当前域为项目、侧栏为 P 的项目空间且高亮「开发 › 任务」，侧栏顶部为项目切换器（P）与〔返回项目组合〕；When 在 `/t/:tenantID/p/P/executions?status=RUNNING` 用切换器选 Q Then 到 `/t/:tenantID/p/Q/executions?status=RUNNING`（保持子页面与无关查询参数）；When 在 P 的工作项详情切到 Q Then 到 `/t/:tenantID/p/Q/work-items`（详情 → 同项列表）；When 在 Q 的「领域工作台 › 视频」切到 P Then 到 P 概览并 toast「该项目没有『视频』，已打开概览」，P 的项目空间不显示任何领域工作台项；When 点击〔返回项目组合〕 Then 到 `/t/:tenantID/projects` 且侧栏为项目外；When 直接访问 `/t/:tenantID/p/R/defects` Then 404 态「项目不存在或你无权访问」+〔返回项目组合〕，页面与切换器中均不出现 R 的名称；`⌘K` 输入「缺陷」列出「项目 · 缺陷」与「P · 缺陷」「Q · 缺陷」。
+**AC-08-91**（e2e，D123）域内记住子页 — Given 可见 P / Q，P 缺陷列表已访问 When 切团队再点协作 Then 回 P 缺陷列表；P 权限被撤回后回首个可见项目概览，无项目则空态且不泄露 P。顶栏项目切换器在 logo 右侧，无项目组合 / 全部项目。
+**AC-08-92**（e2e，D124）权限过滤 — Given 内部成员 / 外部成员分别进入同项目 Then 内部按已授予动作显示菜单，外部只显示待办 / 会话 / 协作和白名单页面；直达内部 API / 文件 / 搜索 / SSE / 导出拒绝且不泄露字段或计数，菜单隐藏不能代替服务端守卫。
+**AC-08-93**（e2e，D129）会话全宽与不跨域侧栏 — Given 1440 / 375 视口 When 进入协作 Then 二级菜单没有项目频道 / 共享频道 / 跳会话项；点击顶部会话 Then 桌面全宽三栏、手机单栏逐级返回；内部底栏工作台 / 会话 / 协作 / 裁决，外部待办 / 会话 / 协作。
+**AC-08-94**（e2e，D123）所属项目详情 — Given 当前 Q，通知指向 P 任务 When 打开 Then 路由 / 侧栏 / 顶栏项目选择均为 P；切 Q 保留同类可见列表，详情切换回 Q 列表；无权 R 返回不泄露名字的 404；只有一个当前项目，无返回项目组合。
 
 ### 10.13 D119 远程工作区增补验收标准
 
@@ -2224,7 +2173,29 @@ Prometheus：`governance_authority_checks_total{allowed,source_kind}`、`governa
 
 > **D118（控制台信息架构，2026-10-12）已并入本规格**：§8.6 改为顶栏域标签（工作台 · 会话 · 协作 · 项目 · 团队 · 治理）+ 当前域侧栏子导航，菜单表增「域」列并按 D118 重新归位，补登 01 / 11 / 12 / 08 已有页面与新页面（我的任务、需求、缺陷、流水线、会话）；协作域项目筛选、记住子页面、移动端抽屉与底栏 工作台 · 会话 · 协作 · 裁决；AC-08-61 更新，新增 AC-08-91…93。依赖 09 C6 `MenuPage.Domain`（09 BR-09-80）与 05 §8.8 会话页；对 00 无新增变更请求。 **D118 修订（项目是主容器，2026-10-12）已并入**：删除协作域，域标签为 工作台 · 会话 · 项目 · 团队 · 治理；菜单表增「范围」列（团队 / 项目），全部行重新归位：项目域分项目外（项目组合 · 来件 · 交付总览 / 跨项目 需求 · 任务 · 缺陷 · 流水线）与项目空间（路由带 `:projectID`），团队域增目标树 · 报告中心；当前域与当前项目只由路由决定、详情页在所属项目空间内渲染、切换项目保持子页面、〔返回项目组合〕、项目切换器；移动端底栏 工作台 · 会话 · 项目 · 裁决；AC-08-61、AC-08-91…93 原地更新，新增 AC-08-94。依赖 09 C6 `MenuPage.Space`（09 BR-09-80）与 05 §8.8 项目频道重定向；对 00 无新增变更请求。
 
-> **D119（远程预览、终端与文件；服务器与集群执行机器，2026-10-12）已并入本规格**：权限码登记与默认授予（§3.3c：`terminal_interact`、`workspace_file_edit`、`preview_share_approve`、`machine_access_manage`）、原因码 `MACHINE_ACCESS_DISABLED` / `PORT_NOT_OWNED` / `PATH_OUTSIDE_WORKSPACE`（§3.5）、BR-08-66、step-up 用途 `terminal_interactive` / `machine_terminal_enable` / `machine_credential_issue`（§6.9）、收件箱 `PREVIEW_SHARE_APPROVAL`（§6.10b，分期待定）、审计事件（§7.5）、通知（§9.4）、AC-08-95…98。来源 03 CR-03-09、04 CR-04-12；已并入 00 v2.0 D119 补充。
+> **D119（远程预览、终端与文件；服务器与集群执行机器，2026-10-12）已并入本规格**：权限码登记与默认授予（§3.3c：`terminal_interact`、`workspace_file_edit`、`preview_share_approve`、`machine_access_manage`）、原因码 `MACHINE_ACCESS_DISABLED` / `PORT_NOT_OWNED` / `PATH_OUTSIDE_WORKSPACE`（§3.5）、BR-08-66、step-up 用途 `terminal_interactive` / `machine_terminal_enable` / `machine_credential_issue`（§6.9）、收件箱 `PREVIEW_SHARE_APPROVAL`（§6.10b，v1.1（D126））、审计事件（§7.5）、通知（§9.4）、AC-08-95…98。来源 03 CR-03-09、04 CR-04-12；已并入 00 v2.0 D119 补充。
 
 
 > **D120（Agent 运行时协议、操作清单、锚定批注、生命周期、循环契约与团队工具目录，2026-10-12）已并入本规格**：US-08-26…28；权限码登记与默认授予（§3.3d：`agent_workspace_read`、`artifact_comment_write`、`interaction_request`、`tool_catalog_manage`）；原因码 `TOOL_NOT_GRANTED`（§3.5）；操作清单能力判定映射与 `via` 取值（§3.5c）；BR-08-67…69（§5.y）；step-up 用途 `agent_full_reset`、`tool_credential_manage`（§6.9）；审计事件（§7.5）；菜单项 `tool-catalog`（`/t/:tenantID/tools`）与 `agent-operations`（§8.6）；通知类型（§9.2）；AC-08-99…105；D120 埋点（§11.x）；依赖（§12.1）；CR-08-14（对 00）。
+
+
+## 14. 治理整合门禁与全量原型（C3）
+
+新增权限 `decision_force_valid`（归 02，危险 / HUMAN-only / non-delegable）、step-up `verification_override`；不能由 Agent/PAT/机器代理或委托执行。权限与已批准的当前 claim / artifact / requirement 版本绑定；重新认证失效、版本变更、缺理由或有禁止覆盖项均拒绝，不写裁决 / 审计成功事件。与普通 approve 分离，原 verification 不改，交付包标风险，覆盖率单列。
+
+授权与策略 `?tab=incidents|settings` 原型全做：升级事件有对象、原因、阈值、处理人、状态与证据；设置包括限额 / 默认策略 / 提醒规则与保存失败反馈。通知中心是完整列表（未读 / 已读、类型、时间、对象链接、清除 / 设置、空 / 失败态），不是只有顶栏 popover。我的裁决覆盖当前 全部已登记类型（当前 26 类） `InboxItemKind`；聚合不得把内部 QA 普通失败推为人类事项，需达升级阈值。端到端卡片打开所属项目，无跨域频道菜单。
+
+外部成员投影必须过滤权限矩阵、裁决聚合、通知正文 / 数量、搜索与审计导出；外部只收到签认 / 变更 / 验收等自己的待办。测试每个外部页面、详情、SSE、搜索、文件 / 缩略图、分享、缓存、导出和聚合计数，无权资源响应不泄露名字 / 数量 / 内容。团队「甲方视角」预览复用同一投影，不等同授权实现。
+
+可靠性指标口径见 00 §16.6；监督时长计入内部返工与覆盖处理，无人工工时单列缺失。完整委托 / 编制 / 高级策略开发 v1.1，MVP 保留项目固定授权、职责分离、预算 / 内部轮次停止、必要人工裁决与审计。Web 为主入口，历史 CLI-first 不再有效。
+
+### 14.P 本域易用性与大数据验收
+
+本域适用 00 §16.8：服务端权限过滤 / 稳定游标分页，不全量拉取前端后筛；长列表虚拟化、聚合服务端取，精确总数不阻塞首屏；涉及看板按列分页、频道历史锚点与增量、流程图可见渲染 / 子流程惰性加载、文件范围读。切项目 / 筛选取消过期请求，保留阅读 / 草稿上下文，明示 loading / 空 / 超时 / 限流 / 断流 / 重试。协作二级菜单不跳会话域。规模与 API / UI 性能预算是开发后待实测门槛，原型不宣称已通过。
+
+
+交互会话 UI 复审统一：重复独立 session 页面退休；执行资源 / API 不变，执行列表与工具授权待办的对象链接进入会话域 `/t/:tenantID/chat?execution_id=:executionID`（原型 `chat/exec-tax`），新建交互会话复用同一列表创建。旧 `/executions/:executionID/session` UI 路径不注册 / 无 alias 或重定向，所有引用直接使用规范会话路径；消息、工具授权、上下文共用同一真实状态，禁止假操作按钮。此为对象上下文链接，协作侧栏仍不跨域，见 00 §16.9。
+
+### 14.Q 集合读取 API 分页参数同步
+
+本规格 §6 全部集合 GET operation（包括现有列表和本次补的读模型）采用 00 §16.10 的唯一产品分页合同：`cursor?` / `limit?`（默认50、最多100）/ 白名单 `sort?`，保留各 operation 的业务 filter / q / project_id；返回 `items,next_cursor?,has_more`，旧 offset / page / page_size 参数退休，不并存两套 API。消息历史 anchor_seq / 增量 after_seq 单独按语义使用；聚合 / 有限枚举不分页。服务端稳定排序与权限 / 筛选绑定 cursor，不依赖精确 COUNT。公共底座既有查询不改，本产品开发前 W1 检查 pkg/query 能力及最小复用 / 扩展 ADR，不能假称已具备游标。旧接口表分页字段由本条原地替代，最终 OpenAPI 只生成这一合同。

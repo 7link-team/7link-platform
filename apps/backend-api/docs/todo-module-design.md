@@ -35,7 +35,7 @@ TODO 是平台第一个业务模块,目的是**打样**:验证底座、确立后
 | D7 | 单包 + 文件级职责划分 | 与现有模块形状一致,不引入第二套结构约定 | 分层子包(需为单实现定义接口,CLAUDE.md §5 禁止) |
 | D8 | 查询机制放 `pkg/query` | 复用本身就是目的,不适用"等第二个使用者再抽" | 放模块内 |
 
-**D1 已被取代（2026-09-06，`c7a02b1`）**：见 `.claude/decisions.md` **D17 §10.4** —— 用户 2026-09-05
+**D1 已被取代（2026-09-06，`c7a02b1`）**：见 `ADR.md` **D17 §10.4** —— 用户 2026-09-05
 确认以 `internal/todo` 作为数据权限的参照实现，模块接 `DataConstraint` + `RegisterEntity`，覆盖
 tenant A/B、owner/部门/上级/显式 deny。todo 因此有了 `tenant_id`/`entity_id`/`department_id` 三列与行级
 作用域，`internal/todo/http.go` 的 9 个操作全部经 `authz.RegisterEntity` 注册。原理由（「加归属会让

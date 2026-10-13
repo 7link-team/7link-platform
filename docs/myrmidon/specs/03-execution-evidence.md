@@ -1,5 +1,7 @@
 # 03 · 执行、交互会话、证据与验证（模块 `execution`）
 
+> **现行范围（2026-10-12，D125–D129）**：用户已批准需求审计 E1–E4；以 [00 共同契约](00-conventions.md) §16 与本文 §14 为准。原型全量展示，开发 MVP 仅单项目软件闭环；其余按现行分期延后。下文历史门户 / 跨项目菜单 / 独立拆解模板 / 旧 MVP 标记如冲突均已退休，不构成实现承诺。
+
 > 上位文档：`PRD.md`（§5、§6.4、§6.5、§7、§10.3、§11）与 `00-conventions.md`（**约束性契约**，本文不重定义其中的枚举、权限码、事件名、错误码段；需要变更者列在 §13）。
 > 语义移植来源（只读）：`MyrmidonAI` Preview 01（`docs/preview.md`、`docs/runtime-modes.md` §6–§9、`internal/platform/{server,types,daemon}.go`、`src/{bridge,chat}.ts`、`apps/web/app/*`）与旧 PRD §13、§18、附录 F.3/F.8/F.10。
 > 标注「**本规格提议**」的条目是本文的新设计（旧实现与 PRD 未给出），附理由；其余条目均可追溯到上述来源。
@@ -78,7 +80,7 @@
 | US-03-33 | 作为工程师，我要只读观看 Agent 正在运行的命令输出 | MVP |
 | US-03-34 | 作为工程师，我要在暂停或接管执行后编辑文件并保存为一次署名为我的提交 | v1.1 |
 | US-03-35 | 作为团队所有者，我要允许经过重新认证的人类打开交互式终端，全程录制进审计 | v1.1 |
-| US-03-36 | 作为交付负责人，我要在人工批准后把某个预览以只读、有期限、可撤销的链接分享给甲方 | 分期待定（D119 未列入分期，见 §12 Q9） |
+| US-03-36 | 作为交付负责人，我要在人工批准后把某个预览以只读、有期限、可撤销的链接分享给甲方 | v1.1（D126）（D119 未列入分期，见 §12 Q9） |
 
 ### 2.z 用户故事增补（D120 锚定批注与过期上下文写入）
 
@@ -976,7 +978,7 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 **预览**
 
-- **BR-03-104 类别与分期**：服务预览（WEB / API）与评审预览为 MVP；产物预览中文档、图片、PDF、测试报告与设备框网页、OpenAPI 控制台为 MVP，视频（低清代理）与小说章节阅读器为 v1.1；分享链接分期待定（D119 未列）。所有预览都是**进度，不是交付**：页面常驻说明「预览只反映当前工作区，不代表已验收」，预览内容不作为证据（需要证据时由人另行截图登记为 OBSERVATION / SCREENSHOT）。
+- **BR-03-104 类别与分期**：服务预览（WEB / API）与评审预览为 MVP；产物预览中文档、图片、PDF、测试报告与设备框网页、OpenAPI 控制台为 MVP，视频（低清代理）与小说章节阅读器为 v1.1；分享链接v1.1（D126）（D119 未列）。所有预览都是**进度，不是交付**：页面常驻说明「预览只反映当前工作区，不代表已验收」，预览内容不作为证据（需要证据时由人另行截图登记为 OBSERVATION / SCREENSHOT）。
 - **BR-03-105 预览配置来源**：按序取第一个有值者：① 项目 ACTIVE 宪法（07 `ConstitutionReader.Active`）正文中信息串为 `preview` 的围栏代码块（JSON 数组，元素为 S8 `PreviewConfig`）；② 项目模板解析参数 `params.preview`（11 `TemplateResolver.ForProject`）。解析失败 → 该来源视为无配置并在远程工作区页显示「预览配置无效：{字段}」；两者都没有 → 只能使用 Agent 提供的端口（BR-03-113）或产物预览（A56 `config_key` 请求 → 422 **130460**）。配置在会话创建时快照，之后宪法变更不影响已有会话。
 - **BR-03-106 平台启动服务预览**：PLATFORM 会话由机器程序在执行工作区（`cwd` 相对工作区根）以 `start` argv 启动（不经 shell；环境 = BR-03-70 白名单 + 配置 `env`；不注入机器凭证与访问令牌），进程挂在该执行的进程树下（04 BR-04-91 据此判定归属），日志写入执行日志的独立段落 `preview/<key>`。同一执行同一 `config_key` 至多一个非终态会话（重复请求返回现有会话，200）。执行 PAUSED 时预览进程**继续运行**（便于人工查看），INTERRUPTED / 终态时停止。
 - **BR-03-107 评审预览**：评审台对某声明〔预览此版本〕→ A57：在声明执行所在机器（离线或无工作区时，按 04 `ListEligibleMachines(require_workdir)` 选同项目仓库已登记的机器；K8S_POOL 为新 Pod）以 `git worktree add --detach <隔离目录> <claim.head_commit>` 建隔离副本（只读挂载可见验收集以外的内容不变），在副本内按配置启动；会话 `holder=PREVIEW` 占一个执行槽（04 `SlotHolderKind=PREVIEW`）。副本与执行工作区互不影响；会话结束删除副本并释放槽。声明被裁决（`decision.made` 对该 claim）后 REVIEW 会话停止（CLAIM_DECIDED）。
@@ -1010,7 +1012,7 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 - **BR-03-126 人工接管**：A65 PUT：人类，持 `execution_stop` 与 `workspace_file_edit`；执行 RUNNING → 同请求内暂停（BR-03-40 规则）；PAUSED / INTERRUPTED → 直接记录；其他状态 409 130410。接管后：Agent 不再收到该执行的新轮次与恢复；K8S_POOL 的 Pod 在接管与 PAUSED 期间保留（04 §4.6，≤24 h）。释放（A65 DELETE）后才能恢复交还 Agent；交还时上下文包增加一条 SYSTEM 说明「人工在 {时间} 编辑了 n 个文件，提交 {sha}」。
 - **BR-03-127 编辑与上传**：A66 只在 `taken_over_by = 调用者` 且执行 PAUSED / INTERRUPTED、机器 `allow_file_edit=true` 时可用；否则：执行 RUNNING → 409 **130466**「执行正在运行，请先暂停或接管」；未接管或接管者非本人 → 409 130466；开关关闭 → 403 130403 `MACHINE_ACCESS_DISABLED`。每次保存为一批变更（≤50 个文件，单文件 ≤10 MiB，文本或上传文件 `file_id`），每项带 `base_sha256`（与机器上当前内容不一致 → 409 **130472**，返回当前 sha）；遮罩文件不可写（422 130469）；越界路径 403 `PATH_OUTSIDE_WORKSPACE`。机器端写入后在执行分支上提交，作者 = 接管人显示名与中性邮箱 `<principal_id>@users.noreply.invalid`（不含部署品牌），提交信息首行为用户填写的说明，追加 trailer `Edited-By-Human: <principal_id>`；结果登记为产物 COMMIT（`producer_kind=HUMAN`）；审计 `execution.workspace_files_edited{commit, paths_sha256[], count}`。人工提交与 Agent 提交在评审台中分别标注。
 
-**分享链接（分期待定）**
+**分享链接（v1.1（D126））**
 
 - **BR-03-128 申请**：A70：对 READY 的 SERVICE / ARTIFACT 会话（REVIEW 不可分享），申请人为人类且对项目持 `execution_start`；`ttl_hours` 1–168；同一会话非终态链接 ≤1。发布 `share_link.requested` → 08 收件箱 `PREVIEW_SHARE_APPROVAL`。
 - **BR-03-129 审批**：A72：人类、`preview_share_approve`（不可委托、仅人类）、**不得是申请人**（403 130403 `SELF_REVIEW`）；批准时生成令牌，响应一次性返回 `share_url = https://share.<preview-domain>/#t=<token>`（令牌在 fragment，不进日志与 Referer）；令牌只存哈希，申请人与批准人此后都无法再次取得，遗失须撤销后重新申请。
@@ -1045,16 +1047,16 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 - **守卫**：`E` = `authz.RegisterEntity`（发布路径前缀 `/tenants/{tenant_id}/entities/{entity_id}`，entity = 项目）；`O(x)` = `authz.RegisterOwned`，资源参数 `x`，归属解析器由拥有者提供（execution 自有资源用本模块解析器，`work_item_id`/`claim_id` 用 02 `WorkItemReader.Owner`）；`T` = `authz.Register`（租户级）；`P` = `authz.RegisterPrincipalTenantMember`。
 - **Tag**：tag = 最终发布路径（含挂载前缀）的第一段，由底座 `OnAddOperation` 设置（00 v1.3 §9）；下表 tag 列即该值（`E`/`T`/`P` 守卫挂载于 `/tenants/...`，故为 `tenants`）。
 - **幂等**：标 ✔ 的接受 `Idempotency-Key`；**锁**：标 v 的请求必带请求头 `If-Match: "<version>"`（GET 以 `ETag` 返回），缺失 428，不符 409 130409（00 v1.3 §3）。幂等由 09 C7 平台辅助处理（同键不同请求 422 `176425`，进行中 409 `176409`）。
-- 列表一律 `pkg/query`（`field=op:value`，操作符 eq/in/like/gte/lte/gt/lt；offset 分页 `limit≤100`）并返回 `capabilities`。
+- 列表一律 `pkg/query`（`field=op:value`，操作符 eq/in/like/gte/lte/gt/lt；cursor 分页（00 §16.10；W1 确认底座复用 / 最小扩展） `limit≤100`）并返回 `capabilities`。
 
 ### 6.2 操作清单
 
 | # | 方法 路径（发布形态） | tag | 权限码 | 守卫 | 请求体要点 | 响应 `data` | 主要错误 | 幂/锁 |
 |---|---|---|---|---|---|---|---|---|
-| A01 | GET `/tenants/{t}/entities/{e}/executions` | tenants | execution_read | E | query §6.6 | `ExecutionSummary[]` | 403 | — |
+| A01 | GET `/tenants/{t}/entities/{e}/executions` | tenants | execution_read | E | query §6.6；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `ExecutionSummary[]` | 403 | — |
 | A02 | POST `/tenants/{t}/entities/{e}/executions` | tenants | execution_start | E | `{kind:"ADHOC", machine_id, runtime, model?, effort?, authorization_mode?, tools_enabled?, workdir_mode?, title?}` | `Execution`（201，CREATED） | 409 130413；422 130414；403 130403（`FULL_AUTO_FORBIDDEN`） | ✔ |
-| A03 | GET `/tenants/{t}/entities/{e}/evidence` | tenants | execution_read | E | query：`claim_id, execution_id, work_item_id, evidence_type, state` | `Evidence[]` | 403 | — |
-| A04 | GET `/tenants/{t}/entities/{e}/verifications` | tenants | execution_read | E | query：`claim_id, work_item_id, result, layer, required` | `Verification[]` | 403 | — |
+| A03 | GET `/tenants/{t}/entities/{e}/evidence` | tenants | execution_read | E | query：`claim_id, execution_id, work_item_id, evidence_type, state`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Evidence[]` | 403 | — |
+| A04 | GET `/tenants/{t}/entities/{e}/verifications` | tenants | execution_read | E | query：`claim_id, work_item_id, result, layer, required`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Verification[]` | 403 | — |
 | A05 | GET `/work-items/{work_item_id}/executions` | work-items | execution_read | O(work_item_id) | `?include=tree` | `{nodes: ExecutionTreeNode[], groups: EnsembleGroup[]}` | 404 | — |
 | A06 | POST `/work-items/{work_item_id}/executions` | work-items | execution_start + work_item_execute | O(work_item_id) | `{kind:"INTERACTIVE", machine_id, runtime, model?, effort?, authorization_mode?, tools_enabled?, workdir_mode?:"WORKTREE"}` | `Execution`（201） | 409 130426/130413；422 130414/130441 | ✔ |
 | A07 | POST `/work-items/{work_item_id}/ensembles` | work-items | execution_start + work_item_assign（人）；主管 Agent 经 `POLICY:ensemble_branch`（BR-03-05） | O(work_item_id) | `{branches:[{agent_id, runtime?, model?, effort?}] 2..3, reason≤2000}` | `{ensemble_group_id, executions: Execution[]}` | 409 130439；403 | ✔ |
@@ -1066,17 +1068,17 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 | A13 | POST `/executions/{execution_id}/resumptions` | executions | execution_start | O(execution_id) | `{acknowledge_side_effects?:bool, machine_id?}` | `{execution: Execution, dispatch_epoch}`（202） | 409 130410/130413/130415/130438；422 130450 | ✔ |
 | A14 | PUT `/executions/{execution_id}/termination` | executions | execution_stop（BR-03-40） | O(execution_id) | `{outcome:"CANCELLED"\|"FAILED"\|"SUCCEEDED", reason≤2000}` | `Execution` | 409 130410/130411；403 | ✔ |
 | A15 | POST `/executions/{execution_id}/branches` | executions | execution_start | O(execution_id) | `{branch_reason:"RETRY_INFRA"\|"STRATEGY", machine_id?, agent_id?, reason≤2000}`（QUALITY/SCOPE 仅由 02 在裁决事务内经 `ExecutionLauncher.Launch` 同步建） | `Execution`（201，子执行） | 422 130440；409 130426 | ✔ |
-| A16 | GET `/executions/{execution_id}/turns` | executions | execution_read | O(execution_id) | query：`state, turn_no(gte/lte)` | `Turn[]` | 404 | — |
+| A16 | GET `/executions/{execution_id}/turns` | executions | execution_read | O(execution_id) | query：`state, turn_no(gte/lte)`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Turn[]` | 404 | — |
 | A17 | POST `/executions/{execution_id}/turns` | executions | execution_start（且为发起者） | O(execution_id) | `{client_request_id≤64, prompt≤64KiB, attachments?:[{name, text}]≤8, retry_of_turn_id?, acknowledge_side_effects?}` | `{turn: Turn, execution: Execution}`（202） | 409 130412/130413/130415/130416/130419/130411；413 130417；422 130418/130450 | client_request_id |
 | A18 | PUT `/executions/{execution_id}/turns/{turn_id}/cancellation` | executions | execution_stop（BR-03-40） | O(execution_id) | `{}` | `Turn` | 409 130410 | ✔ |
 | A19 | GET `/executions/{execution_id}/messages` | executions | execution_read | O(execution_id) | `?after_msg_no=&limit≤500` | `Message[]` + `meta.change_seq` | 404 | — |
-| A20 | GET `/executions/{execution_id}/interactions` | executions | execution_read | O(execution_id) | query：`state, kind` | `Interaction[]` | 404 | — |
+| A20 | GET `/executions/{execution_id}/interactions` | executions | execution_read | O(execution_id) | query：`state, kind`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Interaction[]` | 404 | — |
 | A21 | PUT `/interactions/{interaction_id}/decision` | interactions | interaction_respond（HUMAN） | O(interaction_id) | `{action:"ACCEPT"\|"DECLINE", content?:object}` | `Interaction` | 409 130420/130421；422 130423；403 | ✔（重复相同决定 200） |
 | A22 | GET `/executions/{execution_id}/events` | executions | execution_read | O(execution_id) | `?dispatch_epoch=&after_seq=&limit≤500` | `ExecutionEvent[]` | 404；410（已过保留期） | — |
 | A23 | GET `/executions/{execution_id}/log/content` | executions | execution_read | O(execution_id) | `?tail_bytes=1..1048576`（默认 65536） | `text/plain` 流 | 404 | — |
-| A24 | GET `/executions/{execution_id}/artifacts` | executions | execution_read | O(execution_id) | query：`kind` | `Artifact[]` | 404 | — |
-| A25 | GET `/executions/{execution_id}/context-items` | executions | execution_read | O(execution_id) | query：`layer, inclusion` | `ContextItem[]` + `meta{budget, used, bundle_hash}` | 404 | — |
-| A26 | GET `/executions/{execution_id}/evidence` | executions | execution_read | O(execution_id) | query：`state, evidence_type` | `Evidence[]` | 404 | — |
+| A24 | GET `/executions/{execution_id}/artifacts` | executions | execution_read | O(execution_id) | query：`kind`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Artifact[]` | 404 | — |
+| A25 | GET `/executions/{execution_id}/context-items` | executions | execution_read | O(execution_id) | query：`layer, inclusion`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `ContextItem[]` + `meta{budget, used, bundle_hash}` | 404 | — |
+| A26 | GET `/executions/{execution_id}/evidence` | executions | execution_read | O(execution_id) | query：`state, evidence_type`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Evidence[]` | 404 | — |
 | A27 | POST `/executions/{execution_id}/evidence` | executions | evidence_submit | O(execution_id) | `{evidence_type:"OBSERVATION"\|"SCREENSHOT"\|"ARTIFACT"\|"PULL_REQUEST", title, scope_text?, text?, observed_at?, file_id?, artifact_id?, url?, limitations_extra?≤1000}` | `Evidence`（201，DRAFT） | 422 130422/130432；409 130411/130431 | ✔ |
 | A28 | PATCH `/evidence/{evidence_id}` | evidence | evidence_submit | O(evidence_id) | `{state?:"WITHDRAWN"\|"DRAFT", title?, limitations_extra?}` | `Evidence` | 409 130430 | — |
 | A29 | GET `/evidence/{evidence_id}` | evidence | execution_read | O(evidence_id) | — | `Evidence` | 404 | — |
@@ -1088,12 +1090,12 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 | A35 | PUT `/verifications/{verification_id}/result` | verifications | verification_run | O(verification_id) | `{result:"PASSED"\|"FAILED"\|"INCONCLUSIVE", note?≤65536, evidence_ids?[]}` | `Verification` | 409 130434/130410/130409；403 130403（`SELF_REVIEW`） | v |
 | A36 | POST `/executions/{execution_id}/merges` | executions | code_merge（经 08 判定） | O(execution_id) | `{target_branch?, push?:bool, reason≤2000}` | `Merge`（202） | 409 130436；403 | ✔ |
 | A37 | GET `/merges/{merge_id}` | merges | execution_read | O(merge_id) | — | `Merge` | 404 | — |
-| A38 | GET `/tenants/{t}/verifiers` | tenants | policy_read | T | query：`layer, state, required` | `Verifier[]` | 403 | — |
+| A38 | GET `/tenants/{t}/verifiers` | tenants | policy_read | T | query：`layer, state, required`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Verifier[]` | 403 | — |
 | A39 | POST `/tenants/{t}/verifiers` | tenants | verifier_manage | T | `{key, name, layer, applies_to, required, spec, timeout_ms, change_note?}` | `Verifier`（201，v1） | 422 130433；409（key 重复）130409 | ✔ |
 | A40 | GET `/verifiers/{verifier_id}` | verifiers | policy_read | O(verifier_id) | — | `Verifier` + 当前版本 spec | 404 | — |
 | A41 | PATCH `/verifiers/{verifier_id}` | verifiers | verifier_manage | O(verifier_id) | `{name?, applies_to?, required?, spec?, timeout_ms?, state?:"ARCHIVED"\|"ACTIVE", change_note?}` | `Verifier` | 422 130433；409 130409 | v |
 | A42 | GET `/verifiers/{verifier_id}/versions` | verifiers | policy_read | O(verifier_id) | — | `VerifierVersion[]` | 404 | — |
-| A43 | GET `/tenants/{t}/principals/{principal_id}/executions` | tenants | （本人；行级按项目 `execution_read` 过滤） | P | query §6.6 | `ExecutionSummary[]`（跨项目"我的执行"） | 403 | — |
+| A43 | GET `/tenants/{t}/principals/{principal_id}/executions` | tenants | （本人；行级按项目 `execution_read` 过滤） | P | query §6.6；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `ExecutionSummary[]`（跨项目"我的执行"） | 403 | — |
 
 **表示（摘要）**：
 - `Execution`：A02/A06 的全部设置字段 + `id, project_id, work_item_id, kind, purpose, parent_execution_id, branch_reason, seq_no, reason_ordinal, branch_label, ensemble_group_id, state, state_reason, state_detail, initiator{kind,id,authority_source}, assignee{kind,id,display}, agent_id, machine{id,name,online}, workdir_mode, workdir_path, branch_name, base_commit, head_commit, native_session_bound:bool, carryover_pending, dispatch_epoch, current_turn?: Turn, pending_interaction_count, cost{micros, source, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens}, limits{turns_used, messages_used, output_bytes, max_output_bytes}, timestamps, claim_id, similarity{ratio, flag}, change_seq, version`。**不返回** `native_session_id` 原值（仅布尔，减少跨机误用）。
@@ -1229,7 +1231,7 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 | A67 | POST | `/executions/{execution_id}/terminal-sessions` | executions | WATCH：`execution_read`；SHELL：`terminal_interact` + HUMAN + step-up `terminal_interactive`（v1.1） · O | `{mode:"WATCH"\|"SHELL", cols?, rows?, reauth_proof?}` | `TerminalSession`（201）+ `channel_url` | 403 130403（`MACHINE_ACCESS_DISABLED` / `REAUTH_REQUIRED` / `NON_DELEGABLE` / `AGENT_PROHIBITED`）；409 140484 / 130467；429 140486 |
 | A68 | GET · PUT | `/terminal-sessions/{session_id}` · `/terminal-sessions/{session_id}/termination` | terminal-sessions | 打开者或 `execution_stop` · O | — | `TerminalSession` | 404 |
 | A69 | GET（WebSocket 升级） | `/terminal-sessions/{session_id}/channel` | terminal-sessions | 打开者本人（同一 Cookie 会话） · O | 文本帧 `{type:"input", data}`（仅 SHELL）、`{type:"resize", cols, rows}`；服务端帧 `{type:"output", data}`、`{type:"closed", reason}` | — | 403；WATCH 收到 input → 关闭（1008） |
-| A70 | POST | `/preview-sessions/{session_id}/share-links` | preview-sessions | `execution_start` · O；HUMAN（分期待定） | `{ttl_hours 1–168, note? ≤500}` | `ShareLink`（201，PENDING_APPROVAL） | 409 130462 / 130465 |
+| A70 | POST | `/preview-sessions/{session_id}/share-links` | preview-sessions | `execution_start` · O；HUMAN（v1.1（D126）） | `{ttl_hours 1–168, note? ≤500}` | `ShareLink`（201，PENDING_APPROVAL） | 409 130462 / 130465 |
 | A71 | GET | `/executions/{execution_id}/share-links` · `/share-links/{link_id}` | executions · share-links | `execution_read` · O | — | `ShareLink[]` / `ShareLink`（从不含令牌） | 404 |
 | A72 | PUT | `/share-links/{link_id}/decision` | share-links | `preview_share_approve`（不可委托）· O；HUMAN；非申请人 | `{action:"APPROVE"\|"REJECT", reason? ≤2000}` + If-Match | APPROVE：`{share_link, share_url}`（`no-store`，只此一次）；REJECT：`ShareLink` | 403 130403（`SELF_REVIEW` / `NON_DELEGABLE`）；409 130465 / 130462 |
 | A73 | PUT | `/share-links/{link_id}/revocation` | share-links | 申请人、批准人或 `preview_share_approve` · O；HUMAN | `{reason ≤2000}` | `ShareLink`（REVOKED） | 409 130465 |
@@ -1367,7 +1369,7 @@ SSE：执行主题 `tenant/{t}/execution/{id}` 帧 `kind` 增加 `comment_thread
 ### 8.2 交互会话工作台（Preview 01 全量对齐）
 
 - **目的**：人与 runtime 多轮对话、处理授权、在同一处提交完成声明。
-- **路由**：`/t/:tenantID/p/:projectID/executions/:executionID/session`。
+- **路由**：`/t/:tenantID/chat?execution_id=:executionID`。
 - **头部（常驻）**：标题（可重命名，1–200 字符，`version` 冲突提示"名称已在其他客户端修改"）；`StateBadge`；工作项链接（ADHOC 显示"未关联工作项"+〔关联工作项〕）；分支标签；机器（在线点；离线时链接"执行节点离线，切换机器"）；runtime · 模型 · 强度（下一轮将生效的修改显示"下一轮生效"小字）；工具状态摘要（"Skills 12 · MCP 2" / "检测中" / "检测失败" / "工具未启用"）；成本（`$1.23 · 48.2k tokens`）；〔提交完成声明〕；〔⋯〕菜单（重命名、会话设置、结束会话、停止执行、归档；支持方向键/Enter/Esc，Shift+F10 打开）。
 - **消息区**：USER / ASSISTANT 气泡（Markdown 安全渲染：禁用原始 HTML、不加载远程图片），复制按钮；TOOL 行为可折叠 `<details>`（首行摘要 + 状态图标，展开为等宽详情）；SYSTEM 消息居中灰条；最后一条失败系统消息满足 BR-03-35 时带〔重试〕（tools/FULL_AUTO 时二次确认）；跟随滚动：距底部 <100 px 时自动跟随；>500 条消息虚拟滚动（PRD §16）。活动条："排队中" / "生成中" / "等待你决定" / "正在停止执行"。
 - **交互卡片**（`InteractionCard`，消息流内 + 移动端吸附在输入框上方）：标题、详情（等宽、可滚动）、说明、URL（仅 http/https 渲染为外链）、`CountdownRing`（30 min）、状态徽标（需要确认 / 已提交 / 已送达 / 已过期 / 已取消 / 未送达）。TOOL_PERMISSION：〔拒绝〕〔允许一次〕；RUNTIME_INPUT：可折叠"输入结构"、JSON 文本框（必须为对象，否则"请输入 JSON 对象"）、〔拒绝〕〔提交〕。执行 `cancel_requested` 时按钮禁用；他端已处理时卡片 ≤1 s 更新为"已提交 · 由 X"；409 130421 提示"其他客户端已作出不同决定"。
@@ -1417,7 +1419,7 @@ SSE：执行主题 `tenant/{t}/execution/{id}` 帧 `kind` 增加 `comment_thread
 ### 8.6 远程工作区 `/t/:tenantID/p/:projectID/executions/:executionID/workspace`（D119）
 
 - **入口**：执行详情与交互会话工作台头部〔远程工作区〕；评审台声明卡〔预览此版本〕（直达预览 Tab 并创建 REVIEW 会话）；会话卡片中的 `preview_offered` 事件「Agent 提供了预览：端口 5173〔打开〕」。渲染在所属项目的项目空间内（08 §8.6，高亮「流水线 › 执行」）。
-- **布局**：头部同 §8.2（标题、状态、机器 + 类型徽章、分支）；Tab（URL `?tab=`）：**预览** · **产物** · **文件** · **终端**；Tab 内各功能按机器开关与分期显示：v1.1 功能带「v1.1」标签（MVP 构建中禁用并说明「将在 v1.1 提供」）；分享相关按钮带「分期待定」标签。
+- **布局**：头部同 §8.2（标题、状态、机器 + 类型徽章、分支）；Tab（URL `?tab=`）：**预览** · **产物** · **文件** · **终端**；Tab 内各功能按机器开关与分期显示：v1.1 功能带「v1.1」标签（MVP 构建中禁用并说明「将在 v1.1 提供」）；分享相关按钮带「v1.1（D126）」标签。
 - **预览 Tab**：会话列表（配置名 / Agent 提供端口、状态徽章 启动中 / 就绪 / 已停止 / 失败、剩余存活时间、空闲倒计时、分享链接数）；〔启动预览〕菜单列出可用配置（BR-03-105）与 Agent 提供的端口（A61；只列执行进程树内端口）；就绪会话展开为查看器：WEB_DEVICE（设备档切换 桌面 / 平板 / 手机、旋转、刷新、〔在新标签打开〕）、OPENAPI（接口列表 + 试调用面板，请求经预览域发送）；路径模式时查看器顶部常驻琥珀标签「路径模式：部分应用可能无法正常工作」；顶部常驻说明「预览是进度，不是交付」。失败会话显示 `failure_detail`（等宽）与〔重新启动〕。〔停止〕需发起者或 `execution_stop`。〔申请分享〕（`execution_start`）→ 对话框（有效期 1–168 h、说明）→ 提交后显示「等待批准」。
 - **产物 Tab**：左侧工作区产物树（按查看器类型分组：文档、图片、PDF、报告、视频「v1.1」、章节「v1.1」），右侧查看器（A75 返回的预览域地址，iframe）；文件变化时 DOCUMENT / IMAGE / PDF 自动刷新，其余显示「文件已更新〔刷新〕」；CHAPTER 提供〔与上一版对比〕；VIDEO 低清代理标「低清预览」。
 - **文件 Tab**：目录树 + 文件查看（只读代码视图，等宽、行号、语法高亮在客户端以纯文本安全渲染）；变更徽标 A / M / D；〔差异〕（A64）；〔下载〕（遮罩文件禁用并提示「含密钥，已遮罩」）；遮罩文件显示锁图标与 `KEY=••••`。**编辑**（v1.1）：〔接管并编辑〕→ 确认框（RUNNING 时「将暂停 Agent」）→ A65；接管后编辑器可写、〔上传文件〕、〔保存为提交〕（说明必填）→ A66；冲突 130472 时显示三方对比与〔用我的版本覆盖〕（重新提交带最新 `base_sha256`）；〔结束接管〕→ A65 DELETE。执行 RUNNING 且未接管时编辑按钮禁用并 tooltip「执行正在运行，请先暂停或接管」；开关关闭时「这台机器不允许远程编辑文件」。
@@ -1425,7 +1427,7 @@ SSE：执行主题 `tenant/{t}/execution/{id}` 帧 `kind` 增加 `comment_thread
 - **状态**：加载骨架；无 `execution_read` → 无权限态；预览网关未配置 → 预览与产物 Tab 显示「部署未配置预览域名」；机器只用长轮询 → 「这台机器的网络不支持实时通道」；机器离线 / Pod 已删除 → 「工作区不可用，可在执行详情的证据中查看已采集文件」；连接中断 → 顶部琥珀条，终端自动重连 WATCH（SHELL 不自动重开，需再次认证）。
 - **移动端**（<768px）：Tab 改为底部分段；预览默认「手机」设备档并占满宽度；文件树为抽屉；终端字号 12 px、横向滚动，交互终端在手机上显示软键盘工具条（Esc / Tab / Ctrl / 方向键）。
 
-### 8.7 分享查看页（预览域 `https://share.<preview-domain>/#t=…`，分期待定）
+### 8.7 分享查看页（预览域 `https://share.<preview-domain>/#t=…`，v1.1（D126））
 
 - 静态页读取 fragment → A74 → 跳转到该预览；页头只显示部署显示名（`GET /deployment`，缺失时「预览」）、`note`、到期时间与「只读预览」标签；无登录、无内部链接、无下载。失效（410）→「此预览链接已失效，请联系发送者」。语言按浏览器（en-US / zh-CN / ms-MY）。
 
@@ -1454,7 +1456,7 @@ SSE：执行主题 `tenant/{t}/execution/{id}` 帧 `kind` 增加 `comment_thread
 | N6 | `verification.completed`（必需项 FAILED / INCONCLUSIVE） | 执行者、工作项 REVIEWER | 站内 | "{工作项} 验证{未通过/不确定}：{验证器}（{原因}）" | 同 claim 汇总为一条，全部完成后发送 |
 | N7 | HUMAN 验证进入 QUEUED | `eligible_role_keys` 中且非执行者的成员 | 站内（我的裁决） | "请为 {工作项} 记录人工验证：{验证器}" | 每验证一条 |
 | N9 | 合并 CONFLICT / FAILED / MERGED | 发起合并者 | 站内 | "合并{成功/冲突/失败}：{分支} → {目标}" | 每合并一次 |
-| N10 | 分享链接已批准 / 已驳回（分期待定） | 申请人 | 站内 | "{批准人}{批准/驳回}了 {执行} 的预览分享{：理由}" | 每链接一次 |
+| N10 | 分享链接已批准 / 已驳回（v1.1（D126）） | 申请人 | 站内 | "{批准人}{批准/驳回}了 {执行} 的预览分享{：理由}" | 每链接一次 |
 | N11 | 预览启动失败（PLATFORM / REVIEW） | 发起者 | 站内 | "{执行} 的预览 {配置名} 启动失败：{摘要}" | 同会话一次 |
 | N12 | 交互终端被打开（v1.1） | 执行的人类执行者 / 发起者（非打开者本人）+ 工作项负责人 | 站内 | "{actor} 在 {执行} 上打开了交互终端（已录制）" | 每会话一次 |
 | N13 | `comment.thread_created` / `comment.posted` 中提及人类（D120） | 被提及的人类 | 站内 + Web Push；离线 >10 min 邮件摘要 | "{author} 在 {执行} 的 {文件名} 上提到了你" | 同线程 5 min 内合并 |
@@ -1906,10 +1908,10 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 | AC-03-101 | integration | BR-03-125（v1.1，安全） | **G** WORKSTATION 机器 `allow_remote_terminal=false`，所有者 O 持 `terminal_interact` **W** A67{SHELL} 带有效 step-up **T** 403 130403 `MACHINE_ACCESS_DISABLED`，不开流 **W** 开关开启后不带 `reauth_proof` **T** 403 `REAUTH_REQUIRED` **W** 持委托的 Agent / 服务账号调用 **T** 403 `AGENT_PROHIBITED`（不可委托） **W** O 带 step-up **T** 201，审计 `execution.terminal_opened`；初始 cwd 为工作区根；15 min 无输入后 CLOSED（IDLE），审计 `execution.terminal_closed{recording_sha256}` 与录制文件 SHA-256 一致；N12 通知执行者 |
 | AC-03-102 | integration | BR-03-126/127（v1.1） | **G** E RUNNING，工程师 X 持 `workspace_file_edit`，机器 `allow_file_edit=true` **W** X 直接 A66 **T** 409 130466（执行正在运行）**W** X A65 PUT **T** E PAUSED（USER_PAUSE），`taken_over_by=X` **W** X A66 改 `src/a.ts`（`base_sha256` 正确）**T** 201，机器提交作者为 X、trailer `Edited-By-Human`，产物 COMMIT `producer_kind=HUMAN`，审计 `execution.workspace_files_edited` **W** `base_sha256` 过期 **T** 409 130472 带当前 sha **W** 另一工程师 Y A66 **T** 409 130466 **W** A13 恢复 **T** 409 130466，A65 DELETE 后恢复成功，上下文含人工编辑说明 |
 | AC-03-103 | integration | BR-03-127 | **G** WORKSTATION `allow_file_edit=false`（默认）**W** 接管者 A66 **T** 403 130403 `MACHINE_ACCESS_DISABLED`；编辑 `.env` → 422 130469 |
-| AC-03-104 | integration | BR-03-128/129（分期待定） | **G** 会话 READY **W** 申请人 R A70{ttl_hours:24} **T** PENDING_APPROVAL，`share_link.requested` → 08 收件箱 `PREVIEW_SHARE_APPROVAL`（不含 R）**W** R 自己 A72 APPROVE **T** 403 130403 `SELF_REVIEW` **W** 审批人 Q APPROVE **T** 返回 `share_url`（fragment 令牌），库中只有哈希；再次 GET 不含令牌 |
+| AC-03-104 | integration | BR-03-128/129（v1.1（D126）） | **G** 会话 READY **W** 申请人 R A70{ttl_hours:24} **T** PENDING_APPROVAL，`share_link.requested` → 08 收件箱 `PREVIEW_SHARE_APPROVAL`（不含 R）**W** R 自己 A72 APPROVE **T** 403 130403 `SELF_REVIEW` **W** 审批人 Q APPROVE **T** 返回 `share_url`（fragment 令牌），库中只有哈希；再次 GET 不含令牌 |
 | AC-03-105 | e2e | BR-03-130（安全） | **G** ACTIVE 链接 **W** 未登录浏览器打开 `share_url` **T** 显示预览与部署显示名、`note`、「只读预览」；页面与网络请求中不含执行 ID、Agent 名、日志、文件或终端入口；POST 表单 → 405「这是只读预览」 |
 | AC-03-106 | integration | BR-03-131（安全） | **G** ACTIVE 链接 L **W** 假时钟越过 `expires_at` 后用同一 Cookie 访问、重新打开 `share_url` **T** 均 410「此预览链接已失效」，L EXPIRED，`share_link.ended` 关闭收件箱项 **W** 另一链接被 A73 撤销 **T** ≤1 s 后访问 410；不存在的令牌与失效令牌返回相同响应 |
-| AC-03-107 | e2e | §8.6 | 桌面 1440 与手机 390：四个 Tab 的加载、空、错误、无权限、网关未配置、仅长轮询、工作区不可用状态；v1.1 项带「v1.1」并禁用；分享按钮带「分期待定」；路径模式琥珀标签；无横向滚动，触控 ≥44 px |
+| AC-03-107 | e2e | §8.6 | 桌面 1440 与手机 390：四个 Tab 的加载、空、错误、无权限、网关未配置、仅长轮询、工作区不可用状态；v1.1 项带「v1.1」并禁用；分享按钮带「v1.1（D126）」；路径模式琥珀标签；无横向滚动，触控 ≥44 px |
 
 ### 10.z 验收标准增补（D120 锚定批注与过期上下文写入）
 
@@ -1996,8 +1998,38 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 
 > **D112 / D113 已并入（00 v2.0 §15）**：新增依赖 06 `MemoryWriter.Propose`（穿透学习）、11 `EvalSetWriter.ProposeCase`（已在 11 §6.8 定义，由 02 调用）、04 `browser_capture` 能力标记、02 `plan.approved` 事件与 `max_internal_rounds` 判断；对 00 无新增变更请求（§15 已定义所用枚举、事件与权限码）。
 
-> **D119（远程工作区，2026-10-12）已并入**：§1 范围、US-03-28..36、表 §3.24–3.28（预览会话、分享链接、终端会话、接管字段、模块内枚举与 S8 `PreviewConfig`）、§4.y 状态机、BR-03-104..132、接口 A55–A75 与机器消息、`PreviewAccessResolver`、错误码 130460–130469 / 130472 / 130473、§7.y 任务与事件、页面 §8.6–8.8、通知 N10–N12、AC-03-89..107。**CR-03-09**（对 00 / 08，已并入 00 v2.0 D119 补充）：权限码 `terminal_interact`、`workspace_file_edit`、`preview_share_approve`（execution 注册，DataScoped；前两者与第三者均仅人类，`terminal_interact`、`preview_share_approve` 不可委托）；事件 `share_link.requested` / `share_link.decided` / `share_link.ended`；接口 `PreviewAccessResolver`（execution → fleet）；08 登记 step-up `terminal_interactive`、收件箱 `PREVIEW_SHARE_APPROVAL`、原因码 `MACHINE_ACCESS_DISABLED` / `PORT_NOT_OWNED` / `PATH_OUTSIDE_WORKSPACE` 与审计事件。分期：服务 / 评审预览、文档图片 PDF 报告查看器、只读文件、只读终端为 MVP；交互终端、文件编辑与接管、视频与章节查看器为 v1.1；分享链接分期待定（Q9）。
+> **D119（远程工作区，2026-10-12）已并入**：§1 范围、US-03-28..36、表 §3.24–3.28（预览会话、分享链接、终端会话、接管字段、模块内枚举与 S8 `PreviewConfig`）、§4.y 状态机、BR-03-104..132、接口 A55–A75 与机器消息、`PreviewAccessResolver`、错误码 130460–130469 / 130472 / 130473、§7.y 任务与事件、页面 §8.6–8.8、通知 N10–N12、AC-03-89..107。**CR-03-09**（对 00 / 08，已并入 00 v2.0 D119 补充）：权限码 `terminal_interact`、`workspace_file_edit`、`preview_share_approve`（execution 注册，DataScoped；前两者与第三者均仅人类，`terminal_interact`、`preview_share_approve` 不可委托）；事件 `share_link.requested` / `share_link.decided` / `share_link.ended`；接口 `PreviewAccessResolver`（execution → fleet）；08 登记 step-up `terminal_interactive`、收件箱 `PREVIEW_SHARE_APPROVAL`、原因码 `MACHINE_ACCESS_DISABLED` / `PORT_NOT_OWNED` / `PATH_OUTSIDE_WORKSPACE` 与审计事件。分期：服务 / 评审预览、文档图片 PDF 报告查看器、只读文件、只读终端为 MVP；交互终端、文件编辑与接管、视频与章节查看器为 v1.1；分享链接v1.1（D126）（Q9）。
 
 > **D120（锚定批注与过期上下文写入，2026-10-12）已并入**：§1 范围、US-03-37…41、表 §3.29–3.31（批注线程、批注、转换记录、S9 锚点与模块内枚举）、§4.z、BR-03-133…146、接口 A76–A82、`ArtifactComments`、错误码 130474–130481、事件 `comment.*`、§8.9、N13 / N14、AC-03-108…119。**CR-03-10**（对 00，已登记入 00 v2.0 D120 补充）：§5 共享枚举 `AnchorKind`（CODE_LINES, TABLE_ROW, HTML_REGION, MEDIA_TIME, TEXT_PARAGRAPH）与 `CommentVisibility`（INTERNAL, CLIENT），所有者 03，02 / 07 / 12 读取；§6.1 权限码 `artifact_comment_write`；§7.1 事件 `comment.thread_created`、`comment.posted`、`comment.thread_resolved`、`comment.converted`；§8 接口 `ArtifactComments`；§9 过期上下文写入约定（与 05 CCR-05-11 同）。依赖：02 `WorkItemActivityRecorder` / `WorkItemActivityReader`（BR-02-64）、07 `DeliveryEvidenceReader.ClientFacing`（BR-07-63）、04 批注辅助脚本注入（BR-04-104）。分期按 D119 查看器：视频时间点与章节段落批注为 v1.1，其余 MVP。
 
 > **D120 第 6 项（团队工具目录）已并入**：§3.32 执行表 `toolset` / `toolset_revision`（S11 快照）、BR-03-147（工具集快照即证据）、BR-03-148（`interaction_request` 判定）、§6.z 增补（`execution.start.toolset`、`leases.renew.tool_tokens`、`TOOLSET_UNAVAILABLE`、交互 `closed_reason` 增加 `CAPABILITY_NOT_AUTHORIZED`）、AC-03-120 / 121。**CR-03-11**（对 00，已登记入 00 v2.0 D120 补充）：§6.1 权限码 `interaction_request`（execution 注册，DataScoped，可委托，默认授予全部会运行执行的角色，08 §3.3d）；依赖 05 `ToolsetResolver`（fleet → execution）；不新增共享枚举与事件。
+
+
+## 14. 执行器契约、证据完整性与流水线读模型
+
+分期按 00 §16.5：MVP 固定软件执行 / 证据 / 基本产物查看；远程终端、文件编辑、服务隧道、预览分享 v1.1，全部在原型演示。PR 证据 MVP 可人工登记 URL + pinned commit + CI 报告与来源局限，自动连接器 v1.1；链接存在不等于 CI 已通过。
+
+### 14.1 两 runtime 适配器契约门禁（B5）
+
+Claude Code 与 Codex 使用同一合同夹具分别验证：①启动 / ack / 流式事件 / 终态与正确 attempt ID；②需要工具授权时停 WAITING，拒绝不继续副作用，过期决定不适用于新调用；③重复 command_id 不二次执行 / 建声明，乱序事件按序号拒绝或补齐；④机器离线 / runtime 崩溃转 INTERRUPTED，页面关闭不停止，重连恢复事实而非自动重复副作用；⑤取消 / 超时与结果同时到达有唯一终态；⑥事件正文 / 证据脱敏、错误恢复可追溯；⑦部分输出、非零退出、缺失 commit / 报告不能自动完成；⑧ seen_seq 过期拒写，读新事件后用相同幂等键重试。每例固定输入、事件序列、状态、产物、审计与权限断言，W1 ADR 冻结合同、W3 / W4 产品开发时运行；本阶段未运行产品适配器测试。
+
+部分产物 `PARTIAL` 保留内容 hash / 来源 execution / attempt 与局限，失败结果不可装成 PRIMARY 已接受证据。恢复保留旧分支与证据，选择继续 / 新分支 / 放弃都记录原因；新完成声明重跑验证。已接受上游消费关系含版本与 hash，周期对账后逐依赖标记「上游过期」，不自动重跑；正式交付阻止未处理的 stale。覆盖验证只追加引用 02 force_valid 记录，Verification.result 原 FAILED / INCONCLUSIVE 永不被改成 PASSED。
+
+### 14.2 流水线对象与页面（C2）
+
+`PipelineStageRun{ id, project_id, work_item_id, workflow_instance_id?, node_run_id?, stage(PLATFORM_RERUN|HIDDEN_SUITE|TESTER|ACCEPTOR|HUMAN_REVIEW|DELIVERY), internal_round, attempt, state(PENDING|RUNNING|PASSED|FAILED|INCONCLUSIVE|SKIPPED|BLOCKED), started_at?, ended_at?, execution_id?, verification_id?, decision_id?, delivery_id?, evidence_refs[] }` 是已存事实的可重建读模型，不是新执行真相。流水线聚合按项目 / 工作项读取各阶段，内部失败与重跑显示轮次、不伪造人工待办。计划接口 `GET /entities/{project_id}/pipeline-runs`（权限与对象投影先过滤）由 W1 登记，替代 08 原「尚无聚合定义」缺口。
+
+页面 `/t/:tenantID/p/:projectID/pipelines` 提供阶段行与只读流程图（v1.1）切换；图读取 WorkflowInstance / WorkflowNodeRun，节点状态与列表 / 事件一致，失败 / 跳过 / 过期 / 覆盖有文本说明；点击节点去对象所属项目执行 / 验证 / 裁决，不可拖动改运行图。`/previews` 按工作项聚合服务与产物；同路由外部成员只看批准的 client-facing 项，永不返回机器路径、终端、内部 hash / 日志或凭据。预览是进度不是交付；分享查看器 v1.1 保留审批 / 过期 / 吊销 / 无权态。
+
+日志关联 tenant / project / work_item / execution / command / claim / trace / span / parent_span / verifier_version，OTel 与 AG-UI v1.1。验收包括日志串联一项失败至返工 / L3、非敏感字段导出、对账失效不自动跑、部分产物不能交付、人工覆盖原结果仍可审查、图与阶段投影重建一致。
+
+### 14.P 本域易用性与大数据验收
+
+本域适用 00 §16.8：服务端权限过滤 / 稳定游标分页，不全量拉取前端后筛；长列表虚拟化、聚合服务端取，精确总数不阻塞首屏；涉及看板按列分页、频道历史锚点与增量、流程图可见渲染 / 子流程惰性加载、文件范围读。切项目 / 筛选取消过期请求，保留阅读 / 草稿上下文，明示 loading / 空 / 超时 / 限流 / 断流 / 重试。协作二级菜单不跳会话域。规模与 API / UI 性能预算是开发后待实测门槛，原型不宣称已通过。
+
+
+交互会话 UI 复审统一：重复独立 session 页面退休；执行资源 / API 不变，执行列表与工具授权待办的对象链接进入会话域 `/t/:tenantID/chat?execution_id=:executionID`（原型 `chat/exec-tax`），新建交互会话复用同一列表创建。旧 `/executions/:executionID/session` UI 路径不注册 / 无 alias 或重定向，所有引用直接使用规范会话路径；消息、工具授权、上下文共用同一真实状态，禁止假操作按钮。此为对象上下文链接，协作侧栏仍不跨域，见 00 §16.9。
+
+### 14.Q 集合读取 API 分页参数同步
+
+本规格 §6 全部集合 GET operation（包括现有列表和本次补的读模型）采用 00 §16.10 的唯一产品分页合同：`cursor?` / `limit?`（默认50、最多100）/ 白名单 `sort?`，保留各 operation 的业务 filter / q / project_id；返回 `items,next_cursor?,has_more`，旧 offset / page / page_size 参数退休，不并存两套 API。消息历史 anchor_seq / 增量 after_seq 单独按语义使用；聚合 / 有限枚举不分页。服务端稳定排序与权限 / 筛选绑定 cursor，不依赖精确 COUNT。公共底座既有查询不改，本产品开发前 W1 检查 pkg/query 能力及最小复用 / 扩展 ADR，不能假称已具备游标。旧接口表分页字段由本条原地替代，最终 OpenAPI 只生成这一合同。

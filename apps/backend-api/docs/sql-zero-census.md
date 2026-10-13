@@ -97,7 +97,7 @@ B2 = gen 无同构 API，清零必须"换实现"，而换实现会动语义/性�
    - **authn ↔ identity 是确认死角**（D37/P5 用户判过"不做"）；identity 的 B2 里并无直接写 authn 表的语句（sessions/credentials 在 authn 代码内经能力在 identity 事务执行），收编方案一律不纳入。
    - 修订后 identity：B1 24 / B2 17。
 
-4. **账本重标记（D41 视角，2026-09-13）**：budget 19 不是"19 个 SQL 问题"，按 D41（Logical ≠ Physical，见 decisions.md）分裂成性质不同的两类工作：
+4. **账本重标记（D41 视角，2026-09-13）**：budget 19 不是"19 个 SQL 问题"，按 D41（Logical ≠ Physical，见 ADR.md）分裂成性质不同的两类工作：
 
 | 类别 | 数量 | 定性 |
 |---|---|---|
@@ -165,7 +165,7 @@ B2 = gen 无同构 API，清零必须"换实现"，而换实现会动语义/性�
 
 ## 8. Resolver Isolation（D41）——门禁规则草案（供审，2026-09-13，未实施）
 
-对应决策：`decisions.md` **D41**；执行规则：SKILL「十」。**本草案未改动 `tests/architecture`**；
+对应决策：`ADR.md` **D41**；执行规则：SKILL「十」。**本草案未改动 `tests/architecture`**；
 按「先清理、后机械化」的顺序，它在清理完成前只登记为设计，不做成测试。
 
 **规则形态**：新增架构检查 `resolver-isolation` —— 出现「未经授权的 physical-table-name 决策」即违规。三类匹配面：

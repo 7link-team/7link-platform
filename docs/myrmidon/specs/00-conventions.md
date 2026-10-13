@@ -89,8 +89,8 @@
 | `TeamMode` | `HYBRID`, `AUTONOMOUS`, `HUMAN_ONLY`（纯人工 + AI 协助：Agent 只能做助理，不能做执行者或内部验收者） | 07 |
 | `ProjectStage` | `INTAKE`, `DISCOVERY`, `PLANNING`, `ACTIVE`, `BLOCKED`, `ACCEPTANCE_PENDING`, `DELIVERED`, `CLOSED`, `CANCELLED` | 07 |
 | `IntakeStatus` | `RECEIVED`, `TRIAGED`, `CLARIFYING`, `CLIENT_APPROVAL`（变更申请待甲方确认，仅模块内 kind=CHANGE，D117）, `CONVERTED`, `MERGED`, `DECLINED` | 01 |
-| `IntakeChannelKind` | `PORTAL`, `EMAIL`, `API`, `WEBHOOK`, `IM` | 01 |
-| `WorkItemState` | `DRAFT`（就绪闸门未通过，不可派发给 Agent）, `READY`, `CLAIMED`, `IN_PROGRESS`, `PLAN_REVIEW`（计划待批准）, `AGENT_CLAIMED_DONE`, `VERIFYING`, `INTERNAL_QA`（测试 Agent 与产品验收 Agent 内部验收中）, `NEEDS_HUMAN_REVIEW`, `ACCEPTED`, `REWORK`, `BLOCKED`, `EXECUTION_FAILED`, `STOPPED`（Andon 停线）, `EXCEPTION`（容差越界待决定）, `CANCELLED` | 02 |
+| `IntakeChannelKind` | `SHARED_CHANNEL`, `EMAIL`, `API`, `WEBHOOK`, `IM`（旧 `PORTAL` 仅来源迁移别名，不建立门户） | 01 |
+| `WorkItemState` | `DRAFT`（就绪闸门未通过，不可派发给 Agent）, `READY`, `CLAIMED`, `IN_PROGRESS`, `PLAN_REVIEW`（计划待批准）, `AGENT_CLAIMED_DONE`, `VERIFYING`, `INTERNAL_QA`（测试 Agent 与产品验收 Agent 内部验收中）, `NEEDS_HUMAN_REVIEW`, `ACCEPTED`, `REWORK`, `BLOCKED`, `EXECUTION_FAILED`, `STOPPED`（Andon 停线）, `EXCEPTION`（容差越界待决定）, `SKIPPED`（条件未命中，须保留原因，不算接受）, `CANCELLED` | 02 |
 | `WorkItemType` | `FEATURE`, `BUG`（= 云效「缺陷」）, `CHORE`, `DOC`, `RESEARCH`, `DESIGN`, `TEST`, `TASK`, `RISK`, `INCIDENT`（线上故障）, `CONTENT`（视频 / 小说等内容产物） | 02 |
 | `StateGroup` | `TODO`, `IN_PROGRESS`, `VERIFYING`, `DONE`, `CANCELLED`（自定义状态必须归属其一；报表按组汇总） | 12 |
 | `VerificationStage` | `AUTOMATED`（平台重跑确定性检查）, `AGENT_TEST`（测试 Agent）, `AGENT_ACCEPTANCE`（产品验收 Agent）, `HUMAN_REVIEW`（团队裁决 L3）, `CLIENT_ACCEPTANCE`（甲方 L4） | 03 |
@@ -146,7 +146,8 @@
 | `requirement_read` / `requirement_write` | 需求与验收标准 | 是 | delivery |
 | `work_item_read` / `work_item_write` / `work_item_assign` | 工作项读写 / 分派 | 是 | delivery |
 | `work_item_execute` | 执行已分派工作项、提交完成声明 | 是 | delivery |
-| `work_item_cancel` / `decomposition_template_manage` | 取消工作项 / 管理拆解模板 | 是 / 否 | delivery |
+| `decision_force_valid` | 有理由人工覆盖 FAILED / INCONCLUSIVE（仅人类、不可委托，见 §16.3） | 是 | delivery |
+| `work_item_cancel` / `decomposition_template_manage` | 取消工作项 / 旧拆解模板迁移（新编辑归 11） | 是 / 否 | delivery |
 | `decision_approve` / `decision_reject` / `decision_request_changes` | 裁决 | 是 | delivery |
 | `decision_pause` | 暂停 / 恢复工作项或项目 | 是 | delivery |
 | `scope_change` | 范围变更（**不可委托**） | 是 | delivery |
@@ -205,9 +206,13 @@
 
 ### 6.4 不可委托动作（硬编码，不可配置）
 
+D127 增补：`decision_force_valid` 不可委托，任何委托 / Agent 代理不能取得人工覆盖资格。
+
 `scope_change`、`delivery_send`、`project_mode_change`、`policy_manage`、`delegation_grant`、`takeover`、`machine_revoke`、`intake_decline`、`production_access`、`spawn_grant_manage`、来件转换中的**新建项目**（伪码 `project_create`，`NEW_PROJECT`）与**追加到既有需求**（`APPEND`，等同范围变更）、`memory_approve`、生产环境访问、`terminal_interact`、`preview_share_approve`、`machine_access_manage`（D119）、`tool_catalog_manage`（D120）。
 
 ### 6.5 仅限人类的动作（即使有委托，Agent / 服务账号 / PAT 也不得执行）
+
+D127 增补：`decision_force_valid` 仅人类且需重新认证 `verification_override`，保留原结果、理由、审计和交付标注。
 
 回应工具授权与输入请求（`interaction_respond`）；项目阶段迁移到 `DELIVERED` / `CLOSED` / `CANCELLED`；修改预算上限；登记线下验收；正式交付（需 step-up，结构上排除 PAT 与服务账号）；确认机器接入；批准 RULE 记忆；批准主管 Agent 的创建请求；收编（adopt）AI 创建的 Agent；确认或退回下级的周期计划与报告（`plan_confirm`、`report_confirm`）；需求评审单的 `PASS` / `REJECT` 意见（Agent 意见只作 AI 建议，不计数）；工时审批（`worklog_approve`，且不得审批本人）；集成凭据管理（`integration_manage`，需 step-up）（CR-12-04）；执行映射到 `ACCEPTED` 的流转（含关闭缺陷；Agent 即使持 `TESTER` 角色也不可，`reason_code=AGENT_CANNOT_ACCEPT`，由 08 登记；「验证角色」= 持 `TESTER` 角色的**人类**成员或该工作项负责人，CR-12-09）；请甲方确认变更、登记甲方线下确认（01 T15 / T19，经 `scope_change` 判定，D117）；打开交互终端、人工接管后编辑工作区文件、批准甲方预览分享链接、修改机器远程访问开关、预签发服务器 / 集群机器凭证（D119）；Agent 完全重置（`agent_manage` + step-up `agent_full_reset`）、查看 Agent 的工作目录 / 收件箱 / 记忆（`agent_workspace_read`）、管理团队工具目录与设置 / 轮换其凭据（`tool_catalog_manage`）、创建与修改 Agent 的循环契约（10 BR-10-58）（D120）。甲方本人对变更的〔接受〕/〔不接受〕是**甲方行为**（`CLIENT:<intake_contact_id>`，只经门户会话），任何团队主体与 Agent 都不能代为做出。
 
@@ -220,6 +225,8 @@
 ## 7. 事件
 
 ### 7.1 领域事件（经 09 的 outbox 发布；命名 `<资源>.<过去式>`）
+
+D127 增补：02 发布 `verification.overridden{work_item_id,claim_id,override_id,verification_ids,artifact_version,requirement_version}`，同事务审计 `delivery.verification_overridden`；03 原验证不改，07 根据覆盖记录生成对外清单。
 
 | 事件 | 发布者 | 主要消费者 |
 |---|---|---|
@@ -343,7 +350,7 @@
 - 领域事件消费去重：统一使用 09 `domain_event_receipts`（订阅模式 Transactional / AtLeastOnce）；模块**不得**自建 consumed / receipt 表（外部入站去重例外见 §3「基础设施表」，CR-12-08）。业务唯一键（如 `origin_acceptance_id`、成本游标）不属于事件去重，保留在模块内。
 - 权限拒绝原因码 `AuthorityReasonCode` 由 08 拥有（08 §3.5 表为唯一清单；模块专用码也须在该表登记）。职责分离两码：`SELF_REVIEW`（裁决 / 验证 / 审批**自己产出**的工作或记忆）与 `SEPARATION_OF_DUTIES`（其他职责分离，如主管 Agent 裁决其派出的工作；子原因放 `detail`）。
 - 守卫：每个操作必须以 `authz.Register*` 声明（项目内资源用 `RegisterEntity`，团队级用 `Register`，甲方门户用 `RegisterPublic` + 访问码校验，机器通道用服务账号认证）。
-- 列表：`pkg/query`（`field=op:value`，offset 分页，`capabilities`）。
+- 列表：`pkg/query`（`field=op:value`，cursor 分页（00 §16.10；W1 确认底座复用 / 最小扩展），`capabilities`）。
 - 幂等：所有创建/命令型 POST 支持请求头 `Idempotency-Key`（≤64 字符），由**平台统一幂等辅助**（09 C7，单表 `platform_idempotency_keys`：tenant_id、subject_kind、subject_id、key、operation、request_hash、status_code、response_body、created_at，保留 24h）处理，模块不再各建幂等表；同 key 同请求返回首次结果；同 key 不同请求返回 `176425`；并发进行中返回 `176409`。机器通道（04）不用此头，改用 `dispatch_epoch` + `seq` 去重。
 - 乐观锁：见 §3；冲突返回 `<段>0409`。
 - 业务错误码段：intake `110000–119999`；delivery `120000–125999`（02）、`126000–126999`（12 Part A）与 `127000–129999`（07）（CR-12-01）；execution `130000–139999`；fleet `140000–141999`（04 机器）与 `142000–143999`（05 Agent/派单），`144000–144999` 预留；collab `145000–149999`；knowledge `150000–159999`；governance `160000–169999`；platform `170000–179999`；planning `180000–184999`；templates `185000–189999`（11，v2.0）；integration `190000–194999`（12 Part B，v2.0）。权限拒绝统一用本段 `xx0403`，具体原因放 `data.reason_code`。每个规格列出本模块使用的码与 i18n key。
@@ -429,12 +436,14 @@ Then  返回 403，业务码 120403，W 状态不变，审计链追加 delivery.
 
 ### 15.1 完成阶梯（替换 PRD §4.2 的 L2 定义）
 
+D127 人工例外见 §16.3：L2 不伪装自动通过，原失败结果保留；有理由 / 重认证 / 审计后 L3 可接受并标覆盖，交付与外部视图明确显示风险。
+
 | 层级 | 名称 | 由谁产生 |
 |---|---|---|
 | L1 | 已声明完成（未验证） | 执行者 |
 | L2 | **内部验收通过** = 平台重跑的确定性检查（`AUTOMATED`）+ 测试 Agent（`AGENT_TEST`）+ 产品验收 Agent（`AGENT_ACCEPTANCE`）全部通过 | 平台 + 内部 Agent |
 | L3 | 团队已接受 | 有裁决权的人（或经委托的评审 Agent，仍须有人类负责人） |
-| L4 | 甲方已验收 | 需求开口回执 |
+| L4 | 甲方已验收 | 外部成员真实回执（或人登记线下凭证） |
 
 ### 15.2 内部质量门与不穿透路由（D113）
 
@@ -474,3 +483,117 @@ Then  返回 403，业务码 120403，W 状态不变，审计链追加 delivery.
 ### 15.6 规格归属
 
 02：DoR、计划审批状态、负责人、Andon、容差例外、内部质量门路由与升级；03：平台重跑、冻结与隐藏验收、测试 diff、`unverified[]`、内部验收执行（TESTER / ACCEPTOR 执行种类、视觉验证器）；05：TESTER / ACCEPTOR / ASSISTANT 角色与内部质量门派单（跨模型家族约束）；07：`HUMAN_ONLY` 模式、交付只含 L3；08：新权限码、升级事件路由、穿透指标与学习的人工确认（学习执行归 02 `delivery.escape_learning`）；10：声明状态与防西瓜；11：领域模板；12：云效对齐与集成。
+
+
+## 16. 已批准需求整合契约（2026-10-12：D125–D129；A1–A9 / B1–B8 / C1–C4）
+
+本节是用户接受需求审计 E1–E4（D125–D128）并确认侧栏不跨域（D129）后的现行契约，优先于本文件及 01–12 中未同步的历史细节。旧 D109 的 Q3、D118 项目外列表、D119 远程终端 MVP、D121 独立对接空间及独立甲方门户由本节与 D123 / D124 取代；历史表格不构成开发范围。当前仅完成规划与可交互原型，**产品后端尚未开工**；原型必须展示全部已规划页面，延后项明确标注 v1.1 / v2。
+
+### 16.1 单一流程定义与归属（A1 / A2 / A3）
+
+**WorkflowDef JSON 是唯一流程真相**，模板编辑、AI / 聊天起草和项目实例化全部读写同一结构。11 `templates` 拥有流程模板与不可变版本；02 `delivery` 拥有发布版本在项目中的实例、工作项映射和运行状态。02 旧拆解模板不再有独立可编辑定义，保留 ID / 版本迁移映射至 11 的流程版本；11 的阶段 `work_items` / `human_gates` 也不再作为第二套流程源。产物 schema、verifier、rubric、providers 等领域元数据仍由 11 维护，与 WorkflowDef 按版本绑定。12 的工作项**状态流转矩阵**不是流程编排，保持原责任。
+
+| 对象 | 最小字段与不变量 | 归属 |
+|---|---|---|
+| `WorkflowDef` | `schema_version, workflow_id, version, name, parameters, nodes[], edges[], entry_node_id, output_bindings`；发布版本不可变，定义哈希对规范化 JSON 求 SHA-256 | 11 |
+| `WorkflowNode` | `id, kind, label, config, input_bindings, output_bindings, display?`；id 在同定义内唯一，领域名仅在模板配置 | 11 |
+| `WorkflowEdge` | `id, source, target, source_port, target_port`；引用存在，依赖无环 | 11 |
+| `WorkflowPatch` | `base_version, base_hash, operations[], author, reason`；操作为 add / remove / update node / edge，以及 `update_workflow`（name / parameters / entry_node_id / output_bindings）；节点和连线操作携带完整值，定义更新不修改版本或发布状态；冲突先重读与人工合并，不静默覆盖 | 11；项目重拆由 02 审批应用 |
+| `WorkflowInstance` | `id, project_id, workflow_version_ref, definition_hash, requirement_version, parameter_snapshot, node_bindings[], status`；项目锁定已发布版本或经人批准的项目专用版本，不跟随模板自动升级 | 02 |
+| `WorkflowNodeRun` | `id, instance_id, node_id, expansion_key, internal_round, execution_id?, work_item_id?, state, started_at, ended_at, result_ref?, skip_reason?`；每次执行 / 内部轮次保留记录 | 02；执行证据由 03 提供 |
+
+节点 `kind`：`WORK_ITEM`（产物与证据关联）、`HUMAN_GATE`（TEAM / CLIENT，真实裁决权守卫）、`CONDITION`（JSON Logic，无任意代码 / I/O）、`FAN_OUT`（静态或按已签认需求确认单条目展开）、`TRANSFORM`（声明式数据映射）、`LOOP`（有界内部质量轮次）、`SUBFLOW`（锁定子流程版本）。`TRIGGER`（定时 / webhook / 失效事件）与内容审核模板开发 v2。图的静态依赖必须是 DAG；循环只可在 `LOOP` 容器内表达，并给出次数、预算、停止条件与升级主体；子流程递归引用拒绝。扇出冻结输入条目 ID 与 expansion_key，幂等重试不得重复建任务；未命中条件的节点 / 工作项为 `SKIPPED` 且存理由，不能算 L2 / L3 / L4 成功。
+
+React Flow（`@xyflow/react`）仅是画布投影：坐标 `node.display.position`、缩放、选中状态属于展示元数据，不是执行语义。拖拽、连线、配置改变产生 WorkflowPatch，经 schema / 引用 / DAG / 有界自治 / 权限 / 关口校验后才能发布。撤销与重做重放补丁；导入 / 导出 / 重载不能丢失节点语义。流程编辑器开发 v1.1，**原型现在全部展示**。
+
+协调员或主管 Agent 可在共享频道、签认确认单后或模板编辑器中起草流程补丁，展示差异、来源条目、节点理由与受影响任务；人审核后发布模板版本或项目专用版本。作者期可发散，运行期静态：运行中的重新拆解必须另建基于当前实例版本的补丁、做影响预览并经有权者裁决；不会从聊天内容直接修改运行图，也不会抹去已发生执行。
+
+规划读写契约：11 `WorkflowDefinitionReader.GetVersion` / `WorkflowDefinitionWriter.DraftPatch, Validate, Publish`；02 `WorkflowInstanceReader.Get, NodeRuns` / `WorkflowInstanceWriter.Instantiate, ApplyApprovedPatch`；03 提供 Execution / Verification / Evidence 只读关联。接口开发时须先经 W1 技术评审登记进 §8 与对应模块 §6；本文不是已实现接口声明。现有 `WorkflowResolver`（12 状态流转）不得与此混名或替换。
+
+### 16.2 外部成员、共享频道、项目唯一路由（D121–D124 / C1）
+
+甲方是同应用的**外部成员**，通过底座账号邮箱邀请、邮箱 / Google 登录进入；不建甲方组织内部结构，不再有独立门户、门户访问 token、甲方对接工作区或来件列表 / 详情 UI。旧 `portal_*` 表、`/portal*` API、访问链接与专属 Cookie / OTP 契约全部退休，不进新产品 schema；邮件 / API / 原始 Intake 与分诊仍作为来源账本存在。外部成员项目授权复用 IAM 身份 / 成员 / 实体范围；按外部身份收窄，禁止仅因其属于租户就继承内部读权限。
+
+外部成员顶栏为「待办 · 会话 · 协作」，协作只含授权项目的「概览（里程碑级）· 需求确认单 · 变更 · 交付与验收 · 预览与产物 · 问题反馈」。看不到任务、评审台、缺陷、流水线、执行、内部 QA、内部频道、Agent 内部、目标与计划。相同项目路由由服务端按身份输出白名单 DTO，团队「甲方视角」只能预览同一投影，不能替代服务端授权；SSE、通知、搜索、文件下载、导出、统计计数、缓存均执行同一边界。任何项目 / 对象 / 附件跨范围或内部路径访问均不得泄露名字、数量或正文。
+
+共享频道仅由有权人创建，频道默认 INTERNAL，显式 `visibility=CLIENT_SHARED` 与成员列表；头部常驻「甲方在此频道」。内部旁注为分开的内部线程，不能混入外部 payload。甲方私信只允许其指定对接人。Agent 默认对外只起草，经人批准才发送；团队可授权事实 / 进度答复，但范围、日期、价格与承诺只能由人确认。结构化确认单、变更、签认与验收卡片绑定真实对象，聊天不是基线。
+
+内部顶栏「工作台 · 会话 · 协作 · 团队 · 治理」；项目切换器在 logo 右侧，只显示一个项目，无全部项目 / 项目组合。协作只承载当前项目；详情从待办 / 会话 / 通知打开始终落在对象所属项目。旧团队级项目列表 / 来件 / 门户 / session UI 路由全部不注册，不提供 alias 或重定向；产品尚未开发，无存量兼容需求。所有入口直接引用规范路由，对象详情依所属项目校验权限。**协作侧栏不提供项目频道、共享频道、甲方共享频道或任何跳会话区的入口**，沟通统一从顶部「会话」进入。新团队没有项目时显示新建项目空态；外部成员无项目时显示等待邀请，不得默认选择不可见项目。
+
+### 16.3 完成阶梯与有理由人工覆盖（A5）
+
+新增 `decision_force_valid`（02，危险操作、不可委托、仅人类），step-up purpose=`verification_override`（08）。仅有项目裁决权且拥有此权限的人可对当前声明的 FAILED / INCONCLUSIVE 必需验证执行 `force_valid`；必须提交理由、证据引用、逐项被覆盖验证 ID / 原结果、风险说明与重新认证证明。不能绕过租户隔离、职责分离、已过期需求 / 证据、冻结测试被篡改、未获范围 / 交付权限或其他不可委托关口。
+
+不改写 Verification 原结果，不伪装 PASSED；追加不可变覆盖记录（主体、权限来源、时间、原因、被覆盖结果哈希、重新认证关联），同事务写 `verification.overridden` 与 `delivery.verification_overridden` 审计。仅本声明、本产物版本、本基线生效；版本 / 哈希变更后失效。团队可以基于覆盖做 L3 裁决，但 L2 显示「人工覆盖 · 原验证未通过」，保留原失败，不计自动内部验收通过率。Agent 无论委托 / 所有者代理身份均不得覆盖。交付包、证据清单与甲方视图逐项显示覆盖、理由、风险与原结果；甲方仍独立做 L4。
+
+### 16.4 证据失效、有界自治与恢复（A4 / A6 / B5）
+
+每条消费关系保存上游 accepted_artifact_id、version、content_sha256 与下游工作项。上游已接受产物被修改、哈希变化或不可取回时，下游标「上游过期」，逐依赖传播；只标记和提示，不自动重跑、不撤销历史裁决。定期对账已接受证据哈希，核验失败记录 INCONCLUSIVE 与人工事项；正式交付前必须处理过期。相同内容 hash 不重复告警。
+
+执行预先声明可观察进展、必需依赖产物与预期副作用。连续无进展、依赖连续缺失达到模板批准阈值或内部轮次 / 预算上限时停线并升级；不得以重复同一工具调用视作进展。高风险副作用节点标 `side_effect_confirmation_required=true`，复用计划审批；实际访问或外发仍经过自身权限守卫，审批不等于无限授权。
+
+失败 / 中断留下的部分产物标 `PARTIAL` 并保留来源与 hash，只供恢复 / 对比，不可作为已接受产物或直接进入交付包。恢复明确选择继续 / 新分支 / 放弃；保留部分结果与旧证据，新声明需重验证。MVP 包含 Git commit、人工登记的 PR 链接 / pinned commit / CI 报告；PR / CI 自动连接器 v1.1，手填链接不得假称已核验。
+
+日志 / 指标 / 事件关联 `tenant_id, project_id, work_item_id, execution_id, command_id, claim_id, trace_id, span_id, parent_span_id, verifier_version`（不适用可为空，不含密钥和正文）。MVP 保留审计链与可重建投影；不是全量事件溯源。OTel 完整导出与 AG-UI 适配为 v1.1，预留 span 字段不宣称已接入。
+
+### 16.5 开发分期与原型边界（B1 / C3）
+
+MVP 是 6–8 周**单项目软件交付闭环**：需求签认 → 手工 / 简单派单 → 运行 → pinned 证据 / 确定性重跑 → D113 测试 Agent 与跨模型产品验收 Agent内部质量门 → 人工 L3 裁决 → 交付包 → 外部成员 L4 回执；同时具备结构化拒绝 / 返工、预算停止、职责分离、审计、断线恢复、基本外部成员共享频道与泄露检查。
+
+v1.1：可视化流程 / AI 起草、富媒体转换 / 语音 / 联网搜索（D122）、主管自建 Agent 编制（D110）、目标 / 周期计划 / 循环契约、Heavy、非软件模板、远程终端 / 文件 / 服务隧道、分享预览、集群池、完整知识治理与工具目录、自动 PR / CI 与云效集成、OTel / AG-UI。MVP 附件仅基本文件上传下载和软件交付可用的图片 / 文本 / 报告查看；不承诺 Office 转换、音视频理解或转录。MVP 已接受文件的权限投影与下载不依赖远程隧道。v2：TRIGGER、内容审核模板、IM 桥接、跨团队能力。Marketplace 持续冻结。
+
+规格各处原「MVP」标签仅在符合本节硬核时有效；其他能力依本节延后，不能以旧故事或验收清单扩大 W1–W8。原型完整展示每个分期，并用显眼徽标告知；演示状态 / 模拟重新认证 / 审计不是产品安全实现。
+
+### 16.6 指标口径与评估（B3 / B4）
+
+L2 首次通过率 = 首个执行分支的首轮内部质量门全部通过的工作项数 / 首次进入内部 QA 的工作项数；隐藏内部返工后才通过不计首次。L3 首次接受率 = 第一次团队裁决即 ACCEPTED 的工作项数 / 已有第一次团队裁决的工作项数；同时展示 L2 以免隐藏内部返工。L4 甲方首次验收率按首次交付回执的包或条目分别统计，不混分母。人工覆盖单列数量与率，不计 L2 自动通过。
+
+每个 L3 已接受交付物成本 = 同一评估 cohort 全部 AI + 机器 + 平台分摊 + 按已确认单价折算的人工成本 / cohort 内 L3 工作项数；包括内部轮次、失败、未接受、返工执行及人工监督，不只计最终成功分支。未填写人工工时单独报缺失率与不含人工的下界，不能当成零成本。追加内部轮次数（总 / 中位 / P95）、穿透率（内部 QA 通过后被 L3 拒绝或 L4 拒收且确认为质量问题的工作项数 / 到达对应关口的 QA 通过工作项数；按 L3 / L4 分开）、覆盖率、周期和监督分钟。
+
+按团队、项目、模型 / verifier / WorkflowDef 版本、观察窗口与 cohort 输出分母和缺失数据；受范围变更影响的项单列。正式门槛与继续 / 调整 / 停止判据见 [试点评估计划](../pilot-evaluation-plan.md)；竞品优势为待验证假设，商业实验见 [商业验证计划](../commercial-validation-plan.md)。
+
+### 16.7 原型完整性与可交付规划验收（C2–C4）
+
+- 任意工作项详情固定所属项目；我的任务列表、需求列表、缺陷列表、流水线 / 阶段运行对象、预览与产物、需求确认单、问题反馈、甲方投影均有页面责任方和空 / 失败 / 权限态。
+- 补齐任务列表、交付包编辑、指标页、授权与策略「升级事件 / 设置」、通知中心、全部已登记类型（当前 26 类）我的裁决（按 08 `InboxItemKind` 全集而非 PRD 旧 5 类）、知识设置 / 记忆待审、测试计划详情、分享预览查看器（v1.1）、Agent 新建 / 退役向导、个人工时入口。
+- 我的计划统一 `/t/:tenantID/plans/me`，详情 `/t/:tenantID/plans/:planID`；不再把 `/plans` 作为独立竞争入口。列表 02 / 12、流水线 03、外部投影 01 / 07、授权 / 通知 / 指标 08 / 07、知识 06、测试与工时 12、Agent 05、分享预览 03 各自负责。
+- 规划门禁：JSON 往返一致；静态无环 / 有界循环 / 条件跳过 / 数据扇出 / 子流程版本 / 冲突补丁；覆盖不抹原验证与重新认证失败不写；外部全路径泄露负例；部分证据不可交付；内部返工成本计入；源事件重建投影后摘要及 audit hash 不变。具体产品实现与契约测试待技术评审后执行。
+
+
+### 16.8 易用性、大数据与性能契约（全域适用）
+
+这是新增 UI 复审的**待验证验收门槛**，非已实现 / 已测试结果。先删无实际操作用途的重复入口、假按钮、同事实重复卡片；主入口清晰，日常动作尽量一页内完成；危险决定仍保留必要确认，不为减少点击绕过权限。协作二级菜单不得跳出到会话域（D129）。原型可用小样本演示交互，不能以原型性能证明产品数据规模。
+
+| 场景 / 预算 | 查询与界面策略 | 责任规格 |
+|---|---|---|
+| 单项目 100,000 任务 / 需求 / 缺陷，10,000 项筛选结果 | 服务端过滤、排序、游标分页；稳定排序键 `(sort_field, id)` 与快照 / 变更策略。默认 50、单页最多 100；禁止拉全量后前端筛选 / 排序。精确总数独立异步或按需，首屏只依赖 `has_more`，不能为 COUNT 阻塞 | 02 / 12 |
+| 我的任务 / 裁决 / 通知 / 计划及成员 / 机器 / 知识 / 交付列表 | 相同服务端权限、过滤和分页；长列表虚拟化，保留键盘焦点与滚动位置，筛选写 URL。汇总从聚合查询 / 可重建投影取，不下载明细算总数 | 01 / 04–10 / 11 |
+| 看板每列 10,000 任务 | 按列分页 / 独立游标与懒加载，拖动仅更新源 / 目标列；移到尚未加载列也经服务端状态守卫。列计数可估算 / 异步，不渲染全列任务 | 02 |
+| 单频道 100,000 消息，线程 10,000 消息 | 以消息 ID / seq 锚点向前分页和向后增量；跳转历史消息加载邻域，虚拟化保留阅读位置；新消息不强制把读历史的人拉到底，附件缩略图懒加载 | 05 |
+| WorkflowDef 1,000 节点 / 2,000 边，单项目 10,000 node runs | 只渲染可见画布元素，折叠分组、子流程按需加载、按窗口取运行态，状态局部增量更新，不因缩放 / 点击重解析全量 JSON；大图先摘要后展开 | 11 / 03 / 02 |
+| 报告 / 指标 / 成本汇总跨 100,000 事实行 | 服务端窗口聚合或版本化可重建投影，按项目 / cohort 筛选；权限先过滤再聚合，不向前端传明细或不可见计数 | 07 / 08 / 10 |
+| 长文件、PDF / 音视频（v1.1）、证据 / 审计 | 范围读取、分页 / 流式加载，下载 / 导出后台任务，扫描 / 转换进度与失败可重试，不阻塞主界面 | 01 / 03 / 06 / 09 |
+
+统一负载测试配置由 W1 ADR 冻结：4 核 / 16 GB 控制面、PostgreSQL（另做 MySQL / SQLite 功能回归）、100 并发活跃用户、客户端普通 4 核笔记本 / 8 GB / Chromium、50 Mbps / 50 ms RTT；用固定数据种子和实际租户 / 项目权限测冷 / 热两组。列表首批 API P95 ≤500 ms（不含扫描 / 转换 / 导出）、首屏可交互 P95 ≤2 s、单次筛选 / 跳转反馈 ≤100 ms（可先骨架）、滚动掉帧率 <5%、客户端主线程任务 P95 ≤50 ms、大图初次摘要可交互 ≤2 s、服务端提交后在线状态 P95 ≤1 s。若 SQLite 高并发不适用，报告部署能力与实际限制，不偷偷降数据规模宣称全方言同性能。
+
+取消 / 丢弃过期请求（AbortController + 请求序号），快速切项目 / 筛选时旧响应不得覆盖新视图；SSE 去重与游标续传，断流显示离线及重试，不静默假实时。请求并发有上限，输入检索防抖，避免每键击穿 / 每节点一请求；筛选 / 页游标失效时提示并安全重载，不丢待提交草稿。统一加载、无结果、权限撤回、限流、超时、部分失败、离线与重试态，不用 spinner 永久遮住旧结果。
+
+每个查询从服务端按租户 / 项目 / 外部身份过滤，分页 cursor / 聚合 / 导出也绑定权限；不能先查全量再前端隐藏，不能让总数 / 未读数泄露内部数据。验收报告包含数据规模、SQL / 索引 / 聚合计划、API P50/P95/P99、UI 帧率 / 内存与并发 / 网络 / 版本条件；首次结果不达标则修正方案，不能把静态 HTML 检查写成性能门禁已通过。
+
+
+### 16.9 执行交互会话 UI 合并（全站复审）
+
+移除重复独立 `session` 页面，统一顶部会话域的执行会话（原型示例 `chat/exec-tax`）。产品 UI 以 `/t/:tenantID/chat?execution_id=:executionID` 定位真实执行会话，执行列表、工具授权待办与对象上下文链接打开同一消息 / 工具授权 / 上下文界面；旧项目 `/executions/:executionID/session` UI 路径不注册、不保留 alias / 重定向；所有 UI 引用直接使用规范会话路由。**执行资源、InteractiveSession 领域模型、消息 / 工具决定 API 不变**，合并的是 UI，不把会话域聊天变成执行真相。新建交互会话复用同一执行会话列表与 creation 流程，不维护另一份演示消息或假按钮。侧栏仍禁止跨域入口，真实对象上下文链接允许按权限跳转。
+
+
+### 16.10 产品集合读取分页契约（覆盖旧 offset 表述，W1 落地确认）
+
+为落实 §16.8，本产品新集合 API 统一采用 **cursor pagination**，不在同一 operation 同时保留 offset / page 与 cursor 两套方式。这是已确认的产品规格变更，公共 IAM / pkg/query 既有 API 和代码保持原状；W1 必须检查 pkg/query 的已实现能力并 ADR 记录复用 / 必要扩展。若底座未支持游标，需要最小扩展或模块读查询实现；不能在未查能力前宣称现框架已提供，不能以端上拉全量模拟游标。产品未开发，无旧客户端兼容需求。
+
+**覆盖全部集合读取 operation 的分页参数**：01 项目确认单 / 来源 / 变更 / 反馈 / 联系人；02 R2 / W14 及工作项 / 需求 / 裁决历史 / 分派；03 A01 / A43 / evidence / verification / pipeline-runs / node-runs；04 机器 / runtime / 运行事件；05 C17 会话列表 / C08 消息 / Agent / 请求 / 派单；06 知识 / 记忆 / 待审；07 项目 / 交付 / 产物；08 I1 inbox-items / 审计 / 通知 / 升级；09 菜单有效列表如有分页及平台列表；10 目标 / plans / reports；11 templates / versions / eval cases；12 defects / test-cases / test-plans / worklogs / review-sheets。非集合读取、固定有限枚举、聚合指标不伪造游标；频道历史另外支持锚点 `anchor_seq`，消息增量使用 `after_seq`，两者不是 cursor 分页（00 §16.10；W1 确认底座复用 / 最小扩展）。
+
+所有上述模块 §6 接口表中原 query 分页栏的 `offset, page, page_size` 退休，统一 **`cursor?: opaque string, limit?: integer(default=50,max=100), sort?: allowed-field-list`**；原 q / filter / project_id / kind 等业务参数保留。response 统一集合 `items[], next_cursor?, has_more`，精确 total 不为首屏必需，按需 `count` operation 或聚合单独返回。不接受 cursor 与旧 offset/page 组合，旧分页字段返回参数错误而非默默忽略。集合序列稳定键为获准 sort + 唯一 id；cursor 绑定 tenant / actor 权限范围 / project / filter / sort 与读取快照，过期或条件改变明确错误并从新第一页加载；撤权重新检查，cursor 不充当授权。
+
+§6 API 表中的 operation 按以上参数替换直接适用，所属规格 §14.Q 同步声明；无需另造平行 /cursor 接口。下一阶段 W1 明确 query 能力与 schema 后生成唯一 OpenAPI 合同并做参数 / 稳定顺序 / 大数据 / 撤权回归；本阶段仅修规格，未修改公共底座代码或运行分页产品测试。
+
+**底座能力只读核对（2026-10-12）**：`apps/backend-api/pkg/query/fields_test.go` 的预留参数及解析样例是 `sort, fields, offset, limit`；在该包 Go 源中未检出 `Cursor` / `cursor` 分页合同。这里只证明当前包展示 offset 查询参数、不能证明全仓没有其他 keyset 能力。新产品游标合同不能冒称已经由 pkg/query 实现；W1 ADR 必须检查调用层并选择最小复用 / 扩展，保留底座现有公共接口不变，再生成产品唯一 OpenAPI。此核对是读代码证据，不是产品分页测试。

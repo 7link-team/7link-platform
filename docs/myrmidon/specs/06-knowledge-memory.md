@@ -1,5 +1,7 @@
 # 06 · 知识库与记忆（knowledge）
 
+> **现行范围（2026-10-12，D125–D129）**：用户已批准需求审计 E1–E4；以 [00 共同契约](00-conventions.md) §16 与本文 §14 为准。原型全量展示，开发 MVP 仅单项目软件闭环；其余按现行分期延后。下文历史门户 / 跨项目菜单 / 独立拆解模板 / 旧 MVP 标记如冲突均已退休，不构成实现承诺。
+
 > 上位文档：`PRD.md` §10.7、§5、§18 Q11；共享契约：`00-conventions.md`（本规格不重定义其中枚举、权限码、事件名、错误码段；新增项见 §13）。
 > 底座约束：`.agents/skills/backend-module/SKILL.md`（三方言迁移、`BindNames` 唯一拼表名、查询门禁 `tests/architecture/query_gate_test.go`）。
 > 标注「**本规格提议**」的为本文发明，附理由；其余均可追溯到 PRD / 00 / 底座代码。
@@ -514,7 +516,7 @@ final = round(0.55·T + 0.15·R + 0.15·W + 0.15·S, 6)
 **方言原始分**：PG `ts_rank_cd(search_vector, q, 32)`（即 rank/(rank+1)）；MySQL `MATCH … AGAINST(… IN BOOLEAN MODE)` 相关度；SQLite `-rank`（`bm25` 越小越相关）。三者量纲不同，只经 `T` 归一进入公式；**跨方言保证命中集合与相对顺序合理，不保证同分**。
 **阈值**：`T < 0.05` 丢弃；注入另要求 `final ≥ 0.30`。
 **平局**：`final DESC → T DESC → source_updated_at DESC → chunk_id ASC`。`now` 取注入的 UTC 时钟（遵循 `clock_source` 架构门禁）并截断到分钟，测试可固定。
-权重为 MVP 固定常量（**本规格提议**），v1.1 依 §11 指标调参，变更记入 `decisions.md`。
+权重为 MVP 固定常量（**本规格提议**），v1.1 依 §11 指标调参，变更记入 `ADR.md`。
 
 ### 5.7 自动入库来源映射
 
@@ -620,7 +622,7 @@ ASSIGN / PAUSE / RESUME / DELIVER 裁决不入库（噪声，**本规格提议**
 
 | # | 方法 路径 | tag | 权限码 / 守卫 | 请求 | 响应 `data` | 错误 | 幂等/锁 |
 |---|---|---|---|---|---|---|---|
-| A01 | GET `/knowledge-sources`（T） | tenants | knowledge_read / T | query 见下（仅 TEAM scope） | `Source[]` + `meta.page`、`capabilities` | 403 150403 | — |
+| A01 | GET `/knowledge-sources`（T） | tenants | knowledge_read / T | query 见下（仅 TEAM scope）；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Source[]` + `meta.page`、`capabilities` | 403 150403 | — |
 | A02 | GET `/knowledge-sources`（E） | tenants | knowledge_read / E | 同上（该项目 PROJECT scope） | 同上 | 403/404 | — |
 | A03 | POST `/knowledge-sources`（T） | tenants | knowledge_write / T | multipart：`file`（≤10 MB），`title?≤200`，`tags[]?≤10` | `Source`（201，state=PENDING） | 413 150413；415 150415；422 150422；429 150429 | ✔ |
 | A04 | POST `/knowledge-sources`（E） | tenants | knowledge_write / E | 同上（PROJECT scope） | 同上 | 同上 | ✔ |
@@ -643,7 +645,7 @@ A01/A02 `pkg/query` 字段：过滤 `source_kind`(eq,in)、`state`(eq,in)、`for
 | A20 | POST `/knowledge-searches`（T） | tenants | knowledge_read / T | `{query 1–500 rune, match_mode?: ALL\|ANY=ALL, scopes?: [TEAM,PROJECT,AGENT], project_ids?≤20, agent_ids?≤10, source_kinds?, tags?≤10, updated_after?, updated_before?, offset? ≤180, limit? ≤20=20, explain?:bool}` | `{retrieval_log_id, mode, fallback_reason?, total_candidates, results[{chunk_id, source_id, source_kind, scope, project_id?, agent_id?, title, heading_path, locator, snippet ≤240 rune, highlights[{start,end}], final_score, updated_at, scores?}]}` | 403 150403；422 150422 |
 | A21 | POST `/knowledge-searches`（E） | tenants | knowledge_read / E | 同上，`project_ids` 固定为该项目，默认 scopes=[TEAM,PROJECT] | 同上 | 同上 |
 | A22 | GET `/knowledge-retrieval-logs/{log_id}` | knowledge-retrieval-logs | knowledge_read / O(log) | — | `{log, items[]}`；items 的 `text_raw`、`vector_rank` 等分项仅持 `knowledge_manage` 时返回 | 404 |
-| A23 | GET `/knowledge-retrieval-logs`（E） | tenants | knowledge_read / E | query：`purpose`(eq,in)、`execution_id`(eq)、`work_item_id`(eq)、`created_at`(gte,lte)；排序 `-created_at` | `Log[]` | — |
+| A23 | GET `/knowledge-retrieval-logs`（E） | tenants | knowledge_read / E | query：`purpose`(eq,in)、`execution_id`(eq)、`work_item_id`(eq)、`created_at`(gte,lte)；排序 `-created_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Log[]` | — |
 | A24 | GET `/knowledge-metrics`（T） | tenants | knowledge_read / T | `from, to`（≤90 天），`project_id?`（需该项目 knowledge_read） | `{injections, hit_rate, used_rate, citation_acceptance_rate, searches, search_zero_result_rate, p95_latency_ms{search,injection}, memory{written, escalated, approved, rejected, revoked}}` | 403；422 |
 
 - `explain=true` 需 `knowledge_manage`（否则 403），返回 `scores{text_raw, T, R, W, S, text_rank?, vector_rank?}`，并写 purpose=DEBUG 日志。
@@ -654,7 +656,7 @@ A01/A02 `pkg/query` 字段：过滤 `source_kind`(eq,in)、`state`(eq,in)、`for
 
 | # | 方法 路径 | tag | 权限码 / 守卫 | 请求 | 响应 `data` | 错误 | 幂等/锁 |
 |---|---|---|---|---|---|---|---|
-| A30 | GET `/agents/{agent_id}/memories` | agents | knowledge_read / O(agent)；HUMAN 另需 agent_read；AGENT 只能看自己（D120：人类读者另须为该 Agent 的负责人类或持 `agent_workspace_read`，BR-06-66） | query：`kind`、`state`(eq,in)、`project_id`(eq,isNull)、`origin`、`created_at`；排序 `-created_at`、`-last_used_at`、`use_count` | `Memory[]` | 403；404 | — |
+| A30 | GET `/agents/{agent_id}/memories` | agents | knowledge_read / O(agent)；HUMAN 另需 agent_read；AGENT 只能看自己（D120：人类读者另须为该 Agent 的负责人类或持 `agent_workspace_read`，BR-06-66） | query：`kind`、`state`(eq,in)、`project_id`(eq,isNull)、`origin`、`created_at`；排序 `-created_at`、`-last_used_at`、`use_count`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Memory[]` | 403；404 | — |
 | A31 | POST `/agents/{agent_id}/memories` | agents | knowledge_read / O(agent) + BR-06-30 主体规则 | `{kind, title, body, project_id?, source_execution_id?, evidence_refs[]?, ttl_days?, tags[]?}` | `{memory, escalated, deduplicated}`（201；去重 200） | 403；422 150422/150424/150425；429 150429 | ✔ |
 | A32 | GET `/memories/{memory_id}` | memories | knowledge_read / O(memory) | — | `Memory` + `reviews[]` + `conflicts[]`（冲突条目摘要） | 404 | — |
 | A33 | PATCH `/memories/{memory_id}` | memories | knowledge_write / O(memory)（Agent 仅自身 EXPERIENCE） | `{title?, body?, ttl_days?}` | `{superseded_id, memory}`（新条目） | 409；422 150423/150425 | V |
@@ -662,7 +664,7 @@ A01/A02 `pkg/query` 字段：过滤 `source_kind`(eq,in)、`state`(eq,in)、`for
 | A35 | GET `/memories/{memory_id}/reviews` | memories | knowledge_read / O(memory) | — | `Review[]` | 404 | — |
 | A36 | POST `/memories/{memory_id}/revocations` | memories | knowledge_write / O(memory)（Agent：自身 EXPERIENCE） | `{reason 5–2000}` | `{memory, affected{retrieval_log_count, executions[{execution_id, work_item_id, created_at}]}}`（201） | 403；409；422 150423 | ✔ V |
 | A37 | POST `/memories/{memory_id}/promotions` | memories | memory_approve / O(memory)；HUMAN | `{target: TEAM\|AGENT_GLOBAL, reason}` | `{superseded_id, memory}`（201） | 403；409；422 150423 | ✔ V |
-| A38 | GET `/memory-reviews`（T） | tenants | memory_approve / T（行过滤：只列调用者持 `memory_approve` 的项目 + 团队级条目） | query：`project_id`、`agent_id`、`risk_flag`(eq)、`created_at`；排序 `created_at`（最旧在前） | `Memory[]`（state=PENDING_REVIEW）+ `meta.counts{total, conflict, escalated}` | 403 | — |
+| A38 | GET `/memory-reviews`（T） | tenants | memory_approve / T（行过滤：只列调用者持 `memory_approve` 的项目 + 团队级条目） | query：`project_id`、`agent_id`、`risk_flag`(eq)、`created_at`；排序 `created_at`（最旧在前）；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Memory[]`（state=PENDING_REVIEW）+ `meta.counts{total, conflict, escalated}` | 403 | — |
 
 `Memory` 表示：`{id, agent_id?, scope, project_id?, kind, state, origin, title, body, risk_flags[], conflict_memory_ids[], source_execution_id?, source_work_item_id?, evidence_refs[], actor{kind,id,authority_source}, ttl_days?, expires_at?, last_used_at?, use_count, supersedes_id?, version, created_at, decided_at?, decided_by?, revoked_at?, revoke_reason?}`。
 
@@ -672,7 +674,7 @@ A01/A02 `pkg/query` 字段：过滤 `source_kind`(eq,in)、`state`(eq,in)、`for
 
 | # | 方法 路径 | tag | 权限码 / 守卫 | 请求 | 响应 `data` | 错误 | 幂等/锁 |
 |---|---|---|---|---|---|---|---|
-| A50 | GET `/skills`（T） | tenants | knowledge_read / T | query：`state`、`skill_key`(eq,like)、`tag`；排序 `skill_key`、`-updated_at` | `Skill[]` | — | — |
+| A50 | GET `/skills`（T） | tenants | knowledge_read / T | query：`state`、`skill_key`(eq,like)、`tag`；排序 `skill_key`、`-updated_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Skill[]` | — | — |
 | A51 | POST `/skills`（T） | tenants | knowledge_write / T | `{content}`（完整 SKILL.md） | `{skill, version(DRAFT), warnings[]}`（201） | 409 150409（key 已存在）；422 150427 | ✔ |
 | A52 | GET `/skills/{skill_id}` | skills | knowledge_read / O(skill) | — | `Skill` + `current_version` | 404 | — |
 | A53 | PATCH `/skills/{skill_id}` | skills | knowledge_write / O(skill) | `{state?: ACTIVE\|ARCHIVED}` | `Skill` | 409 | V |
@@ -1033,3 +1035,18 @@ K2 上线判据（Q11 数据驱动，**本规格提议**）：K1 命中率 <60% 
 | CR-06-13（D120） | 00 §6.1（经 05 / 08 登记） | A30 人类读者使用 `agent_workspace_read`（BR-06-66）；技能库作为 05 团队工具目录 SKILL 条目的内容来源（BR-06-67），不新增 06 的共享枚举、事件或接口 | D120 工作目录与记忆查看范围；团队工具目录 |
 
 > **D120（2026-10-12）已并入本规格**：A30 人类读者收窄（BR-06-66，回应 05 CCR-05-14）、技能库作为团队工具目录 SKILL 条目的内容与版本来源（BR-06-67）、AC-06-50 / 51、CR-06-13。
+
+
+## 14. 知识设置与待审记忆原型补齐
+
+完整知识检索 / 记忆治理开发 v1.1，MVP 只冻结执行必需的项目宪法 / 需求 / 来源上下文，按 00 §16.5，历史 K1 MVP 标签不扩展八周范围。原型现在展示知识设置（索引策略 / 来源权限 / 记忆审批规则、保存 / 校验 / 失败态）与规则型记忆待审队列（来源、摘要、理由、引用、批准 / 拒绝 / 撤销）。Agent 工作目录、收件箱和记忆仅负责人 / 所有者可读，甲方身份不能通过知识检索、来源链接、缓存或导出读取内部记忆。
+
+WorkflowDef / 模板版本作为明确来源引用而不是复制到可变记忆；运行上下文固定需求 / 产物版本与 hash。上游已接受来源变化或不可读取标 stale，不自动覆盖记忆或重跑。质量穿透学习仍由 02 唯一消费执行，规则型修改须人确认；保持审计来源与投影可重建。设置 / 待审空态、失败重试、无权限和引用过期均需可交互原型。
+
+### 14.P 本域易用性与大数据验收
+
+本域适用 00 §16.8：服务端权限过滤 / 稳定游标分页，不全量拉取前端后筛；长列表虚拟化、聚合服务端取，精确总数不阻塞首屏；涉及看板按列分页、频道历史锚点与增量、流程图可见渲染 / 子流程惰性加载、文件范围读。切项目 / 筛选取消过期请求，保留阅读 / 草稿上下文，明示 loading / 空 / 超时 / 限流 / 断流 / 重试。协作二级菜单不跳会话域。规模与 API / UI 性能预算是开发后待实测门槛，原型不宣称已通过。
+
+### 14.Q 集合读取 API 分页参数同步
+
+本规格 §6 全部集合 GET operation（包括现有列表和本次补的读模型）采用 00 §16.10 的唯一产品分页合同：`cursor?` / `limit?`（默认50、最多100）/ 白名单 `sort?`，保留各 operation 的业务 filter / q / project_id；返回 `items,next_cursor?,has_more`，旧 offset / page / page_size 参数退休，不并存两套 API。消息历史 anchor_seq / 增量 after_seq 单独按语义使用；聚合 / 有限枚举不分页。服务端稳定排序与权限 / 筛选绑定 cursor，不依赖精确 COUNT。公共底座既有查询不改，本产品开发前 W1 检查 pkg/query 能力及最小复用 / 扩展 ADR，不能假称已具备游标。旧接口表分页字段由本条原地替代，最终 OpenAPI 只生成这一合同。

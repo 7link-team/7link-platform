@@ -1,6 +1,8 @@
 # 11 · 领域模板包（模块 `templates`）
 
-> 决议 D112（研究方案 A–G 采纳，第 E 项：首批领域模板为软件、视频、小说、团队任务）与 D113（内部质量门、不穿透）。内核保持领域无关（PRD P7「内核不出现领域词汇」）；领域内容全部以**模板**形式提供：工作流（阶段 → 工作项树 + 必经人工关口）、产物 schema、验证器插件、甲方验收评分标准（rubric）、内部质量门配置、评测集、生成器适配器。
+> **现行范围（2026-10-12，D125–D129）**：用户已批准需求审计 E1–E4；以 [00 共同契约](00-conventions.md) §16 与本文 §14 为准。原型全量展示，开发 MVP 仅单项目软件闭环；其余按现行分期延后。下文历史门户 / 跨项目菜单 / 独立拆解模板 / 旧 MVP 标记如冲突均已退休，不构成实现承诺。
+
+> 决议 D112（研究方案 A–G 采纳，第 E 项：首批领域模板为软件、视频、小说、团队任务）与 D113（内部质量门、不穿透）。内核保持领域无关（PRD §2.4「领域词汇不进内核」）；领域内容全部以**模板**形式提供：工作流（阶段 → 工作项树 + 必经人工关口）、产物 schema、验证器插件、甲方验收评分标准（rubric）、内部质量门配置、评测集、生成器适配器。
 >
 > 本规格遵守 `00-conventions.md`（v2.0，尤其 §15）；需要 00 登记的内容见 §13。
 >
@@ -31,7 +33,7 @@
 | 权限码判定、原因码、穿透指标路由 | 08 |
 | 云效对齐的工作项字段、状态组、流转矩阵、用例 | 12（软件模板引用之） |
 | 机器上的工具可用性（ffmpeg、WhisperX 等的安装与检测） | 04（运行时能力检测扩展为「工具能力」） |
-| 模板市场（第三方模板分发与签名） | v2+（PRD §30 冻结） |
+| 模板市场（第三方模板分发与签名） | v2+（PRD §2.4 / §17 冻结） |
 
 ---
 
@@ -216,36 +218,26 @@
 | passed | BOOL | N | — | 按 §5.5 通过规则 |
 | created_at | TIME | N | — | 只追加 |
 
-### 3.10 模板定义 `definition` JSON Schema（摘要）
+### 3.10 模板定义与 WorkflowDef（唯一流程源）
 
 ```json
 {
-  "key": "video-production", "domain": "VIDEO", "semver": "1.0.0",
-  "parameters": { "<param_key>": { "type": "number|string|bool|enum", "default": "...", "brief_overridable": true, "unit": "LUFS" } },
-  "stages": [ { "key": "A1_SCRIPT", "name_i18n": "...", "order": 1,
-      "work_items": [ { "key": "script", "type": "CONTENT", "title_i18n": "...", "role": "EXECUTOR",
-          "depends_on": ["brief"], "produces": ["script"], "consumes": ["brief"],
-          "acceptance_criteria_templates": [ { "id": "AC-SCRIPT-1", "ears": "当……时，脚本应……" } ],
-          "verification_plan": { "AC-SCRIPT-1": "AGENT_JUDGE" },
-          "autonomy_level": "MEDIUM", "plan_review": true } ],
-      "human_gates": [ { "key": "client_script_signoff", "kind": "CLIENT", "after": "script", "mandatory": true } ] } ],
-  "artifacts": { "<artifact_type>": { "schema": { "$ref": "..." }, "file_kinds": ["md","json","mp4"], "evidence_role": "PRIMARY|SUPPORT" } },
-  "verifiers": [ { "key": "loudness", "kind": "DETERMINISTIC", "runner": "MACHINE_COMMAND",
-      "applies_to": ["master"], "command": ["ffmpeg", "-i", "{input}", "-af", "ebur128=peak=true", "-f", "null", "-"],
-      "parse": "ebur128", "params": { "target_lufs": "{param.target_lufs}", "tolerance_lu": 0.5, "true_peak_max_dbtp": -1 },
-      "verdict": { "FAIL": "abs(I - target_lufs) > tolerance_lu || TP > true_peak_max_dbtp" },
-      "calibration": null, "needs_verification_against_official": true } ],
-  "rubric": { "dimensions": [ { "key": "brief_fit", "kind": "WEIGHTED", "weight": 0.25, "guide_i18n": "..." },
-                              { "key": "tech_spec", "kind": "HARD_GATE", "verifiers": ["ffprobe_spec","loudness","subtitle_rules"] } ],
-              "pass_rule": { "hard_gates": "all_pass", "weighted_min": 3.5 } },
-  "internal_qa": { "max_internal_rounds": 5,
-      "tester": { "checks": ["..."], "required_verifiers": ["..."] },
-      "acceptor": { "uses_rubric": true, "inputs": ["master","qc_report","shot_list"], "must_differ_family_from": "EXECUTOR" } },
-  "providers": { "VIDEO_GEN": { "required": true, "candidates": ["veo","kling","runway","comfyui-wan"] } },
-  "eval_set": { "min_cases": 20, "max_cases": 50, "calibration_interval_days": 30 },
-  "constitution_seed": "项目宪法初始内容（构建 / 测试命令、约束、禁区、风格）"
+  "key": "software-dev",
+  "domain": "SOFTWARE",
+  "semver": "1.0.0",
+  "workflow_ref": {"workflow_id": "software-dev", "version": 1},
+  "parameters": {"method": {"type": "enum", "values": ["agile", "waterfall"], "default": "agile"}},
+  "artifacts": {},
+  "verifiers": [],
+  "rubric": {"dimensions": [], "pass_rule": {"hard_gates": "all_pass"}},
+  "internal_qa": {"max_internal_rounds": 5},
+  "providers": {},
+  "eval_set": {"min_cases": 20, "max_cases": 50},
+  "constitution_seed": ""
 }
 ```
+
+这是结构示例，不是可发布的软件执行模板；完整软件节点、产物与验证规则见 §5.7、00 §16.1。`workflow_ref` 固定本模块不可变 WorkflowDef 版本，阶段仅为画布 / 列表显示分组；不再保留第二套 `stages[].work_items` / `human_gates` 执行定义。WorkflowDef 与上述 metadata 在同一发布版本及 hash 下校验，项目绑定锁定版本。
 
 ### 3.11 外部引用（只存 ID）
 
@@ -295,7 +287,7 @@
 ### 5.1 模板定义与静态检查
 
 - **BR-11-01 定义校验**：发布前校验 JSON Schema；工作项依赖成环 → 422 **185420**；`produces` 产物类型未在 `artifacts` 定义 → 422 **185421**；验证器 `applies_to` 引用未知产物 → 422 **185422**；rubric 权重和 ≠ 1（±0.001）→ 422 **185423**；`HARD_GATE` 维度必须至少关联一个 `DETERMINISTIC` 或 `HUMAN` 验证器（不能只靠模型打分）→ 422 **185424**。
-- **BR-11-02 内核中立**：模板只能引用 00 定义的共享枚举与 02 的通用字段；领域词汇只出现在模板定义与 i18n 文案中，不进内核表结构（PRD P7）。
+- **BR-11-02 内核中立**：模板只能引用 00 定义的共享枚举与 02 的通用字段；领域词汇只出现在模板定义与 i18n 文案中，不进内核表结构（PRD §2.4）。
 - **BR-11-03 人工关口不可删除**：一方模板标记 `mandatory: true` 的人工关口，团队自定义模板不得删除，只能增加（v1.1 团队模板校验）。
 - **BR-11-04 每条验收标准都有验证方式**：模板生成的工作项必须为每条验收标准提供 `verification_plan`（00 §15.3），否则无法通过就绪闸门。
 
@@ -447,7 +439,7 @@
 
 | # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 data | 错误 / 幂等 |
 |---|---|---|---|---|---|---|
-| L1 | GET `/tenants/{tenant_id}/templates` | tenants | `project_read` · T | 过滤 `domain`(eq,in) `origin`(eq) `state`(eq,in) `team_mode`(eq)；排序 `name`,`updated_at` | Template[]（含一方模板，`tenant_id=0`） | — |
+| L1 | GET `/tenants/{tenant_id}/templates` | tenants | `project_read` · T | 过滤 `domain`(eq,in) `origin`(eq) `state`(eq,in) `team_mode`(eq)；排序 `name`,`updated_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | Template[]（含一方模板，`tenant_id=0`） | — |
 | L2 | GET `/templates/{template_id}` | templates | `project_read` · O | `?include=versions,eval_summary,calibrations` | Template + 最新已发布版本摘要 | 404 185404 |
 | L3 | GET `/template-versions/{version_id}` | template-versions | `project_read` · O | — | Version（含完整 definition、definition_sha256） | 404 185404 |
 | L4 | GET `/template-versions/{version_id}/diff` | template-versions | `project_read` · O | `?against=<version_id>` | `{added[], removed[], changed[]}`（阶段、验证器、参数、rubric） | 422 185431（不同模板） |
@@ -473,7 +465,7 @@
 | V2 | POST `/work-items/{work_item_id}/rubric-scores` | work-items | 内部：产品验收 Agent（经 05 派单的执行凭证）；人工：`decision_approve` · O | `{stage*, scores*[]}` | RubricScore（含 total、passed） | 422 185440（维度缺失）；403 `HUMAN_ONLY`（stage=HUMAN_REVIEW 由 Agent 提交）；Idempotency-Key |
 | V3 | GET `/work-items/{work_item_id}/rubric-scores` | work-items | `work_item_read` · O | — | 各阶段评分并列 + 分歧维度 | — |
 | V4 | POST `/deliveries/{delivery_id}/rubric-scores` | deliveries | 甲方经 01 门户（`CLIENT`）；团队 `delivery_compose` · O | 同 V2（stage=CLIENT_ACCEPTANCE / HUMAN_REVIEW） | RubricScore | 同 V2 |
-| C1 | GET `/tenants/{tenant_id}/verifier-calibrations` | tenants | `template_manage` 或 `project_read` · T | 过滤 `template_key` `verifier_key` `state` | Calibration[] | — |
+| C1 | GET `/tenants/{tenant_id}/verifier-calibrations` | tenants | `template_manage` 或 `project_read` · T | 过滤 `template_key` `verifier_key` `state`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | Calibration[] | — |
 | C2 | POST `/tenants/{tenant_id}/verifier-calibrations` | tenants | `template_manage` · T；HUMAN | `{template_key*, verifier_key*, provider_ref*}` | Calibration（CALIBRATING，排队 J2） | 422 185441（相关人工标注用例 < 20） |
 | C3 | PUT `/verifier-calibrations/{calibration_id}/confirmation` | verifier-calibrations | `template_manage` · O；HUMAN | `{accept: bool, note?}` | Calibration（CALIBRATED / UNCALIBRATED） | 409 185442（未完成评测）；422 185443（一致率低于目标仍要求接受） |
 
@@ -481,7 +473,7 @@
 
 | # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 data | 错误 |
 |---|---|---|---|---|---|---|
-| E1 | GET `/tenants/{tenant_id}/eval-cases` | tenants | `template_manage` 或 `project_read` · T | 过滤 `template_key` `origin` `active` | EvalCase[] | — |
+| E1 | GET `/tenants/{tenant_id}/eval-cases` | tenants | `template_manage` 或 `project_read` · T | 过滤 `template_key` `origin` `active`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | EvalCase[] | — |
 | E2 | POST `/tenants/{tenant_id}/eval-cases` | tenants | `template_manage` · T；HUMAN | `{template_key*, title*, input_ref*, expected*}` | EvalCase（MANUAL） | 422 185444（输入文件不可访问） |
 | E3 | PATCH `/eval-cases/{case_id}` | eval-cases | `template_manage` · O；HUMAN；If-Match | `{title?, expected?, active?}` | EvalCase | — |
 | E4 | POST `/tenants/{tenant_id}/eval-runs` | tenants | `template_manage` · T | `{template_key*, template_version_id*, target*}` | EvalRun（RUNNING） | 409 185445（同目标已有运行中）；Idempotency-Key |
@@ -491,7 +483,7 @@
 
 | # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 data | 错误 |
 |---|---|---|---|---|---|---|
-| G1 | GET `/tenants/{tenant_id}/template-providers` | tenants | `project_read` · T | 过滤 `kind` `state` | Provider[]（不返回密钥） | — |
+| G1 | GET `/tenants/{tenant_id}/template-providers` | tenants | `project_read` · T | 过滤 `kind` `state`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | Provider[]（不返回密钥） | — |
 | G2 | POST `/tenants/{tenant_id}/template-providers` | tenants | `integration_manage` · T；HUMAN | `{kind*, adapter_key*, display_name*, config*, secret?, machine_id?, accept_license_notice*}` | Provider（密钥经 SecretSealer） | 422 185450（未知适配器）；422 185451（未确认许可提示） |
 | G3 | PATCH `/template-providers/{provider_id}` | template-providers | `integration_manage` · O；HUMAN；If-Match | 可选字段 | Provider | — |
 | G4 | POST `/template-providers/{provider_id}/health-checks` | template-providers | `integration_manage` · O | — | `{state, latency_ms, error?}` | — |
@@ -748,3 +740,24 @@
 | CR-11-10 | §8 | `VerifierCatalog` 增加 `ToolCalibration`（D116 工具校准，03 调用）；已并入 00 §8 |
 
 > **合并状态（2026-10-12）**：CR-11-01、04、05、06、07、08、09 已并入 00 v2.0（§9 错误码段、§7.1 事件、§8 接口、§3 基础设施表例外、02 `template_stage_key` 与 `BlockReason`、04 工具检测）；另新增 `EvalSetWriter`（本规格 §6.8，替代 02 原写法 `TemplateEvalSink`）。CR-11-02、03 无需变更。
+
+
+## 14. WorkflowDef 唯一真相与流程编辑器（A1–A3 / A7）
+
+§3.10 `definition.stages[].work_items` / `human_gates` 不再作为可编辑执行来源；阶段只保留展示分组，模板定义引用 00 §16.1 的 WorkflowDef 版本。旧 02 拆解模板统一迁入本模块版本库，产物 schema、verifiers、rubric、internal_qa、providers 等元数据绑定同一版本，运行实例由 02 锁定。§5.1 所有静态检查对 WorkflowDef 执行，发布不可变、项目升级显示差异且人工批准。
+
+模板详情新增「流程」标签 `/t/:tenantID/templates/:templateID/workflow`：React Flow `@xyflow/react` 画布、节点目录（工作项 / 人工关口 / JSON Logic 条件 / 静态或确认单数据扇出 / transform / 有界循环 / 子流程）、属性面板、版本 / JSON 导入导出、验证、AI 草稿与补丁 diff、撤销重做、发布。TRIGGER 节点带 v2 禁用说明，不作为已可运行能力。编辑器开发 v1.1，原型现在全部做。
+
+拖拽 / 连线 / 编辑语义生成 WorkflowPatch，React Flow nodes/edges 是 WorkflowDef 的投影而非单独数据库真相；位置 / viewport 为非语义展示元数据。导出后重载同图与语义；base_hash 不符需重读 / 合并，禁止静默覆盖。空图、校验错误、循环依赖、无界 LOOP、子流程递归、缺必需关口、未授权副作用、冲突、无权、发布成功反馈都在原型可见。项目流水线只读图引用同一已发布实例与节点状态，不复制编辑器的第二套图。
+
+软件首发模板保留敏捷 / 瀑布参数变体，瀑布在确认单签认、设计、测试与交付设必要人工关口。软件闭环为 MVP；视频 / 小说 / 团队任务模板开发 v1.1、原型展示；内容审核随定时 / webhook / 失效 TRIGGER 开发 v2。旧 US-11-08 等非软件 MVP 标签按现行分期退休。穿透评测仍由 02 唯一执行方回流，指标不把人工覆盖计为自动内部通过。
+
+验收：模板 / 草稿 / 图 / 导出 JSON / 项目实例同版本 hash；条件未命中为 SKIPPED；数据扇出重复命令不重复工作项；有界质量循环上限升级；子流程固定版本；AI 只出补丁不发布；运行重拆需裁决；上线前先 W1 技术评审与 ADR。本阶段只完成文档 / 原型，不宣称引擎已实现。
+
+### 14.P 本域易用性与大数据验收
+
+本域适用 00 §16.8：服务端权限过滤 / 稳定游标分页，不全量拉取前端后筛；长列表虚拟化、聚合服务端取，精确总数不阻塞首屏；涉及看板按列分页、频道历史锚点与增量、流程图可见渲染 / 子流程惰性加载、文件范围读。切项目 / 筛选取消过期请求，保留阅读 / 草稿上下文，明示 loading / 空 / 超时 / 限流 / 断流 / 重试。协作二级菜单不跳会话域。规模与 API / UI 性能预算是开发后待实测门槛，原型不宣称已通过。
+
+### 14.Q 集合读取 API 分页参数同步
+
+本规格 §6 全部集合 GET operation（包括现有列表和本次补的读模型）采用 00 §16.10 的唯一产品分页合同：`cursor?` / `limit?`（默认50、最多100）/ 白名单 `sort?`，保留各 operation 的业务 filter / q / project_id；返回 `items,next_cursor?,has_more`，旧 offset / page / page_size 参数退休，不并存两套 API。消息历史 anchor_seq / 增量 after_seq 单独按语义使用；聚合 / 有限枚举不分页。服务端稳定排序与权限 / 筛选绑定 cursor，不依赖精确 COUNT。公共底座既有查询不改，本产品开发前 W1 检查 pkg/query 能力及最小复用 / 扩展 ADR，不能假称已具备游标。旧接口表分页字段由本条原地替代，最终 OpenAPI 只生成这一合同。

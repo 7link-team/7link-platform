@@ -1848,7 +1848,7 @@ P1 的分布式登录限流、captcha 高可用、OIDC `prompt=none`/`azp` 协�
 用户名喷洒与恶意锁定风险。这两条须在交付说明中显式列为遗留项，不得默认已解决。
 
 **Scope**
-全 IAM 分支。审计报告为权威清单，`task-state.md` 记录批次进度。
+全 IAM 分支。审计报告为权威清单，`MEMORY.md` 记录批次进度。
 
 **Status**
 已决定（2026-09-07，用户确认）。批 0 进行中。
@@ -4695,4 +4695,35 @@ on the proposal, taking its three recommendations):
 Supersedes the client-portal parts of D117 / D120 / D121 / D122 / D123 (their rules carry over into the shared channel
 and the client view). Specs (01 major, 02 / 05 / 07 / 08 / 10, PRD) to be rewritten after the prototype review.
 
+Status: Accepted.
+
+## D125–D128 — 全量需求补齐获准与 React Flow（2026-10-12）
+
+Decision: 用户阅读恢复记录后说「继续，接受建议；可视化工作流用 https://reactflow.dev/？」；采纳缺口清单 E1–E4。
+- D125：02 拆解模板与 11 领域模板统一 WorkflowDef JSON；React Flow（@xyflow/react）负责编辑画布，不能充当执行引擎或业务数据唯一真相。模板库提供编辑、Agent 草稿人工审核发布；项目流水线提供只读实例图。原型全部补齐，正式开发 v1.1；trigger v2。
+- D126：MVP 收敛为软件交付核心闭环与内部质量门，重排八周计划；富媒体、语音、搜索、编制授权、非软件模板、远程终端 v1.1。原型仍完整展示分期能力。
+- D127：有裁决权的人可以覆盖 FAILED / INCONCLUSIVE 自动结论；必须写理由、重新认证、审计留痕、交付包标注，不篡改原自动检查结果或外部红线。原型认证仅明确的模拟步骤。
+- D128：A3/A4/A6–A9、B2–B8、C1–C4 按已提出建议直接补齐，不逐项再询问；仍处于规划和原型阶段，不开工产品后端/前端。
+Reason: 恢复此前遗漏并使 PRD、规格、原型一致，同时让 MVP 规模可执行。
+Alternatives Considered: 自绘画布；使用画布内部数据为执行模型；继续扩大 MVP。均不采用。
+Tradeoffs: React Flow 增加局部 React 依赖；采用独立本地构建编辑器以复用现有静态原型，避免全站迁移。
+Scope: docs/myrmidon/ 与本文件、MEMORY.md；不修改 apps/ 或旧 MyrmidonAI 项目。
+Status: Accepted.
+
+## D129 — 左侧菜单不跨顶级区域（2026-10-12）
+
+Decision: 用户指出协作二级菜单中的频道跳往会话区不合理。删除团队/甲方协作侧栏的项目频道、甲方共享频道、共享频道项；所有频道从顶部「会话」进入。检查其余侧栏项同类跨区问题。
+Reason: 左侧菜单应导航当前顶级区域，不重复其他顶级入口。
+Alternatives Considered: 保留快捷跳转；不采用。
+Tradeoffs: 进入频道经统一会话入口，保持导航位置可预期。
+Scope: 原型导航和规格菜单同步。
+Status: Accepted.
+
+## D130 — 全 UI 以易用性和规模为验收依据（2026-10-12）
+Decision: 用户要求重新评审全部 UI，删除冗余和不实用操作，优先易用、操作闭环、性能和大数据量。直接修复本轮原型相关问题；生产实现继续等待原型评审。
+Scope: docs/myrmidon 规划、原型与验收记录，不触及 apps/。
+Status: Accepted.
+
+## D131 — 根目录持久状态文件（2026-10-12）
+Decision: 按用户要求，将 .claude/decisions.md 移到根目录 ADR.md，将 .claude/task-state.md 移到根目录 MEMORY.md。CLAUDE.md 与现行文档引用同步更新。已发布历史 SQL 迁移中的注释保留原路径，不改迁移指纹；对应记录已完整迁入本文件。
 Status: Accepted.

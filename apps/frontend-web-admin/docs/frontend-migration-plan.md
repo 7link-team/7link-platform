@@ -1,6 +1,6 @@
 # 前端迁移方案（IAM）
 
-> **本文是前端迁移线的 durable task state。** `.claude/task-state.md` 由后端线（@Claude）持有，
+> **本文是前端迁移线的 durable task state。** `MEMORY.md` 由后端线（@Claude）持有，
 > 两条线并行，共用一个状态文件会互相覆盖；因此前端线的状态记录在本文第零节，
 > 语义与 CLAUDE.md §7 的 task-state 格式对齐。
 >
@@ -96,7 +96,7 @@ IAM 用户资料与 SCIM 的字段策略已在最新增量接入，完整浏览�
 - 新增字段策略真实浏览器审计 PASS，覆盖实际 todo 脱敏/拒写、409、恢复默认、
   非平台管理员、查看/更新权限分离、撤权、租户切换以及桌面/手机布局。
 - 原有 13 个浏览器审计的记录属于之前版本，本次没有全部重跑。
-- 接下来的产品工作由 `.claude/task-state.md` 当前目标约束；未经授权不合并或推送。
+- 接下来的产品工作由 `MEMORY.md` 当前目标约束；未经授权不合并或推送。
 
 字段策略审计复用 §七自举环境与口令文件。使用专用验收租户，脚本会创建测试主体、
 角色、实体、todo 和切换用租户，并测试/恢复 `todo.description` 的默认策略；
@@ -118,7 +118,7 @@ Bun 的浏览器管道兼容问题。截图写入仓库忽略的 `.local/screens
 | 项              | 值                                                      |
 | --------------- | ------------------------------------------------------- |
 | Current Phase   | Phase D（IAM 收口）                                     |
-| Current Step    | 收口：`.claude/decisions.md` 更新与 `IAM` 分支合并      |
+| Current Step    | 收口：`ADR.md` 更新与 `IAM` 分支合并      |
 | Last Checkpoint | 2026-09-05 · 全新空库端到端 13/13；四道门禁全绿         |
 
 **进度**
@@ -131,7 +131,7 @@ Bun 的浏览器管道兼容问题。截图写入仓库忽略的 `.local/screens
 - [x] 品牌与命名全部配置驱动（§六），全仓 `grep` 0 命中
 - [x] 审计环境自举（§七）：脚本自己建管理员和租户，空库实测通过
 - [x] Phase D 空库端到端：全新空库 → 自举 → 13 个 audit **13/13**
-- [ ] Phase D 收口：`.claude/decisions.md` 更新、`IAM` 分支合并
+- [ ] Phase D 收口：`ADR.md` 更新、`IAM` 分支合并
 - [ ] Phase E 商城迁移（`mall` 分支）
 - [ ] 前端规约写入 `CLAUDE.md` —— 本仓无前端章节、无前端 skill，待确认
 
@@ -158,7 +158,7 @@ Bun 的浏览器管道兼容问题。截图写入仓库忽略的 `.local/screens
 
 **Next Action**
 
-更新 `.claude/decisions.md`，然后 `IAM` 分支收口。Phase D 的实测项已全部跑完。
+更新 `ADR.md`，然后 `IAM` 分支收口。Phase D 的实测项已全部跑完。
 
 ---
 
@@ -272,7 +272,7 @@ turbo 2.9 五条 task：`build` / `lint` / `format` / `typecheck` / `test`），
 - [x] D.2a 空库自举：§七 的脚本对全新空库实测建出管理员与租户。
 - [x] D.2b 空库端到端：全新空库（迁移后零业务数据）→ 自举 → 13 个 browser audit **13/13**。
       控制台经 vite 代理指向该实例，租户 id 由自举脚本的 stdout 直接喂给审计脚本。
-- [ ] D.3 更新 `.claude/decisions.md`。
+- [ ] D.3 更新 `ADR.md`。
 - [ ] D.4 `IAM` 分支合并收口。
 
 ### Phase E —— 商城迁移（`mall` 分支，D 完成后开启）
@@ -311,7 +311,7 @@ turbo 2.9 五条 task：`build` / `lint` / `format` / `typecheck` / `test`），
 
 ## 四、决策记录
 
-> 编号用 `Q` 前缀，避免与 `.claude/decisions.md` 的 `D1–D16` 混淆。
+> 编号用 `Q` 前缀，避免与 `ADR.md` 的 `D1–D16` 混淆。
 
 | #   | 决策                                         | 结果                                              | 状态                     |
 | --- | -------------------------------------------- | ------------------------------------------------- | ------------------------ |
@@ -319,7 +319,7 @@ turbo 2.9 五条 task：`build` / `lint` / `format` / `typecheck` / `test`），
 | Q2  | `frontend-web-admin` 是 workspace 还是单应用 | workspace（bun + turborepo）                      | 已实施 → D15             |
 | Q3  | API 客户端手写还是 OpenAPI codegen           | 生成类型当闸口，客户端保持手写                    | 已实施 → D16，见 §五     |
 | Q4  | UI 库基线取哪一份                            | 取 chaosplus 版                                   | 已实施 → D15             |
-| Q5  | Docker 基准主机                              | `10.0.0.100`（与 `.claude/decisions.md` D6 一致） | 已定                     |
+| Q5  | Docker 基准主机                              | `10.0.0.100`（与 `ADR.md` D6 一致） | 已定                     |
 | Q6  | 商城 9 个重叠模块的归属（E.0）               | **未定**                                          | Phase E 启动前必须先定   |
 | Q7  | `aspeed-framework/7link-platform` 过期克隆   | **未定**                                          | 删除属破坏性操作，需授权 |
 

@@ -421,7 +421,7 @@ func TestMigrationUsesSingleWriteHandle(t *testing.T) { /* 统计 Write() 调用
 #### Task 0.5: 冻结端口图 + 第三方依赖评审
 
 - [x] **Step 1:** 按 §2.2 冻结 13 个能力接口：复用 `guid.Source`；authz 专用 checker 放消费侧 authz 包；其余直接由 `internal/iam/<provider>` 模块根声明。Phase 0 只创建必要的模块根与编译期 fixture，**后续不得新增接口而不回头修订本计划**
-- [x] **Step 2:** 先从源 `go.mod` 与 import 图列出完整模块路径，再评审候选依赖类别（WebAuthn/TOTP/SAML/SCIM filter/验证码/对象存储/Redis），去掉功能重复项并产出 `.claude/decisions.md`；禁止用“十个”“四件套”之类不可复核的简称代替清单
+- [x] **Step 2:** 先从源 `go.mod` 与 import 图列出完整模块路径，再评审候选依赖类别（WebAuthn/TOTP/SAML/SCIM filter/验证码/对象存储/Redis），去掉功能重复项并产出 `ADR.md`；禁止用“十个”“四件套”之类不可复核的简称代替清单
 
 > **范围澄清**(撤销 v2 的措辞):依赖评审只决定**引入时机与选型**(如两个功能重叠的验证码库至少砍一个),**不决定是否实现**。用户要求"全量全功能到位",SAML/SCIM 必须有生产实现与可用路由,不接受长期 `Enabled: false`。
 
@@ -933,7 +933,7 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - [x] **9.4 HTTP 契约集合:** 从运行中 OpenAPI 提取三元组，断言与各模块批准后的目标集合完全相等、OperationID 全局唯一；断言 source→target 映射覆盖源 **208/208** 且一一对应；另断言所有非公开 operation 都带正确 tenant/platform/entity guard，不能只检查 `/docs` 页面可见。
 - [x] **9.5 隔离与并发:** 执行 Task 2–8 的 tenant A/B 负例总矩阵；对授权判定、token 单次消费、最后管理员、SCIM ETag、governance 终态和 audit append 做并发门禁，使用 `-race` 跑不依赖真数据库的部分。
 - [x] **9.6 性能基线:** 授权判定、会话查找、SCIM bulk、审计 append 四条热路径保存 PostgreSQL/MySQL `EXPLAIN` 与 benchmark；不得出现无 tenant 前导条件的全表扫描，阈值按同机重复样本冻结。
-- [x] **9.7 最终门禁:** `make generate` 零 diff、`make ci` 全绿、`make test-mysql8` 真 MySQL 通过；`make dev` 后 `/healthz` 绿。更新 README Testing、`.claude/task-state.md` 与 `decisions.md`，逐项勾完本计划才可宣布迁移完成。
+- [x] **9.7 最终门禁:** `make generate` 零 diff、`make ci` 全绿、`make test-mysql8` 真 MySQL 通过；`make dev` 后 `/healthz` 绿。更新 README Testing、`MEMORY.md` 与 `ADR.md`，逐项勾完本计划才可宣布迁移完成。
 
 ### Phase 10 — 产品完整性复审后的未完成工作
 
@@ -967,7 +967,7 @@ CREATE TABLE {{.Prefix}}iam_roles (
 `platform_administer` 守卫），schema.lock 已冻结至 219 文件。本条**仍不勾选**：其余判据（所有模块填充数据的
 完整验收、双向并发时序、远端/历史通知阻断覆盖、平台管理界面的真实浏览器验收）仍需逐项确认，
 且本文件自己要求"不能据底层验证勾选完成"。当前证据见
-[iam-release-checkpoints.md](iam-release-checkpoints.md) 与 `.claude/decisions.md` D30/D35。
+[iam-release-checkpoints.md](iam-release-checkpoints.md) 与 `ADR.md` D30/D35。
 - [x] **10.9 Secret/key rotation（五步完成，2026-09-05 工作区验证）：**① `keyringx` 密钥环；② authn / federation / provisioning 接入 active + previous keys；③ `iam rewrap-secrets` 重封存量密文并报告旧密钥依赖，无法重封的派生摘要按实际有效期报告；④ 签名密钥环按 `kid` 验签，JWKS 发布 active + previous，旧 key 至少保留完整 token 有效期；⑤ federation v4 数据库防重放，覆盖 OIDC/SAML state、SAML assertion 和 logout，唯一主键保证跨副本单次消费，数据库时钟控制过期与清理，存储失败返回 503 且不创建或撤销会话。已通过完整 CI、race、PostgreSQL/SQLite 及真实 MySQL 8 的跨连接池并发消费、三方言迁移和性能门禁；OpenAPI 与前端类型已同步。SLO 同时限制未来 IssueInstant 并执行 NotOnOrAfter。README 明确 v4-aware 回滚、备份恢复及旧版无界未来 SLO 消息的独立切换要求；不得声称等待固定十分钟就能排空旧 SLO 历史。
 - [x] **10.10 IAM gRPC 产品决策：不做（见 D17）。**主流 IAM 产品面是 REST + OIDC/OAuth2/SCIM，本项目已具备。无明确消费方、surface 未冻结就新增 proto/service 等于维护两份 API。本项关闭；若将来确有 HTTP/gRPC 双协议需求，须先冻结 API surface、auth metadata、错误码、版本兼容与 208 HTTP 能力的映射范围，再重开。
 - [ ] **10.11 最终产品门禁：**完成 10.1–10.9（10.10 已关闭）后重跑 SQLite/MySQL/PostgreSQL 初始化与权限矩阵、OpenAPI、race、`make generate`、`make ci`、真实 MySQL 及 live readiness。

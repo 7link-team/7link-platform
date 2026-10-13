@@ -1,5 +1,7 @@
 # 09 · 平台通用能力（后台任务 · 领域事件 outbox · 实时推送 · 对象存储 · 通知 · 菜单贡献 · 幂等 · 密钥封装 · 租户业务文件）
 
+> **现行范围（2026-10-12，D125–D129）**：用户已批准需求审计 E1–E4；以 [00 共同契约](00-conventions.md) §16 与本文 §14 为准。原型全量展示，开发 MVP 仅单项目软件闭环；其余按现行分期延后。下文历史门户 / 跨项目菜单 / 独立拆解模板 / 旧 MVP 标记如冲突均已退休，不构成实现承诺。
+
 > 上位：`PRD.md` §13.3、§16；契约：`00-conventions.md`（不在此重定义，变更见 §13）。
 > 性质：**底座通用能力**，按「做什么」命名，不含任何产品/品牌字样；Myrmidon 是第一个使用者，其他产品同样复用。
 > 已对齐的同级规格诉求：01（集合主题、邮件自定义头与投递回写、租户业务文件写入、幂等表列）、02（消费去重替代 `delivery_consumed_events`）、03（outbox、JobQueue、证据文件写入）、04（集合主题、跨副本长轮询唤醒、`SecretSealer`）、06/07（JobQueue、文件写入）。
@@ -449,7 +451,7 @@
 
 ### 5.9 菜单贡献（C6）
 
-- **BR-09-80 声明**：`MenuPage{Key, Scope(TENANT|PLATFORM|SYSTEM), App, Domain, Space, Group, Route, Icon, SortOrder, PermissionCode, TranslationKey, Version}`；Domain 为顶层域键（D118 修订），取值集合 `MenuDomain` = `HOME`（工作台）、`CHAT`（会话）、`PROJECTS`（项目）、`TEAM`（团队）、`GOVERNANCE`（治理），顺序即域标签顺序，标签 i18n key `menu.domain.<key 小写>`（本模块内枚举，按 00 §3 不进 00 §5；D118 初版的 `COLLAB` 已删除，从未发布）；Space 为菜单空间（D118 修订；字段不叫 Scope，因为 `Scope` 已表示 TENANT / PLATFORM / SYSTEM 组织层级），取值集合 `MenuSpace` = `TEAM`（团队级页面，Route 不含 `:projectID`）、`PROJECT`（只在项目空间内渲染，Route 必须以 `/t/:tenantID/p/:projectID` 开头，外壳以当前项目填入，08 §8.6），本模块内枚举；`App=delivery` 的贡献 Domain 与 Space 必填且须在集合内，`Space=PROJECT` 只允许 `Domain=PROJECTS`，Space 与 Route 是否含 `:projectID` 必须一致，其他应用 Domain 与 Space 必须为空；Group 为同模块声明的分组（无 Route）或核心既有分组标签，在同一 `(Domain, Space)` 内归类（不同 Domain 或 Space 可有同名 Group，如 `PROJECTS` 的项目空间与 `GOVERNANCE` 都可有「设置」类分组）；PermissionCode 必须已在 authz 目录注册且 scope 匹配；Route 在同 `(scope, app)` 内唯一；违者启动失败（**175400**，日志列出字段）。
+- **BR-09-80 声明**：`MenuPage{Key, Scope(TENANT|PLATFORM|SYSTEM), App, Domain, Space, Group, Route, Icon, SortOrder, PermissionCode, TranslationKey, Version}`；Domain 为顶层域键（D118 修订），取值集合 `MenuDomain` = `HOME`（工作台）、`CHAT`（会话）、`PROJECTS`（协作：当前项目）、`TEAM`（团队）、`GOVERNANCE`（治理），顺序即域标签顺序，标签 i18n key `menu.domain.<key 小写>`（本模块内枚举，按 00 §3 不进 00 §5；D118 初版的 `COLLAB` 已删除，从未发布）；Space 为菜单空间（D118 修订；字段不叫 Scope，因为 `Scope` 已表示 TENANT / PLATFORM / SYSTEM 组织层级），取值集合 `MenuSpace` = `TEAM`（团队级页面，Route 不含 `:projectID`）、`PROJECT`（只在项目空间内渲染，Route 必须以 `/t/:tenantID/p/:projectID` 开头，外壳以当前项目填入，08 §8.6），本模块内枚举；`App=delivery` 的贡献 Domain 与 Space 必填且须在集合内，`Space=PROJECT` 只允许 `Domain=PROJECTS`，Space 与 Route 是否含 `:projectID` 必须一致，其他应用 Domain 与 Space 必须为空；Group 为同模块声明的分组（无 Route）或核心既有分组标签，在同一 `(Domain, Space)` 内归类（不同 Domain 或 Space 可有同名 Group，如 `PROJECTS` 的项目空间与 `GOVERNANCE` 都可有「设置」类分组）；PermissionCode 必须已在 authz 目录注册且 scope 匹配；Route 在同 `(scope, app)` 内唯一；违者启动失败（**175400**，日志列出字段）。
 - **BR-09-81 播种**：新租户：核心页 + 全部激活模块贡献，同事务写 `iam_menu_contributions`；`iam_menus.domain`、`iam_menus.space` 写入声明的 Domain 与 Space。
 - **BR-09-82 升级**：任务 `iam_core.menu_contributions_sync`（启动后由 leader 入队 + 每日一次，按租户分页 100）：无台账 → 若同 route 不存在则插入并写台账，存在则只写台账（menu_id 指向已有行）；台账 version < 声明 version → 当前行哈希 == `seeded_hash`（管理员未改）才更新字段与哈希，否则跳过并记 `customized`；台账 `menu_id` 指向的行已被删除 → 置 NULL，**永不复活**（解决 `core/service.go` 注释所述「删除与从未创建无法区分」）；代码中已移除的贡献 → 对应菜单置 `disabled`（不删除）。Domain 与 Space 属于 `seeded_hash` 覆盖的字段：贡献改变 Domain / Space / Group / Route（如 D118 修订重新归位）时必须 Version+1，未被管理员改过的行随同步更新；被改过的行（`customized`）保留管理员值，若其 `domain` / `space` 为空或不在集合内（含 D118 初版写入的 `COLLAB`），`EffectiveMenus` 回退到贡献声明的 Domain / Space（外壳据此归入域标签与空间，保证升级前租户也能正确落位）。
 - **BR-09-83 门控不可削弱**：`EffectiveMenus` 的路由→权限表由「核心默认 + 激活贡献」构成；管理员改动权限码不能弱化贡献页的守卫（与现有内置页规则一致）。模块被禁用时其权限未注册 → 菜单不可见。
@@ -1157,3 +1159,22 @@ Prometheus（模块 Collector；标签不得含 tenant_id、principal_id、载�
 **处理状态（00 v1.3 审校后）**：CR-09-01、CR-09-02、CR-09-04、CR-09-06、CR-09-07 已并入 00；CR-09-03 已并入，表名按 00 定为 `platform_idempotency_keys`、列 `operation`/`key`，错误码以 00 为准（176425 = 同键不同请求，176409 = 进行中），本规格已对齐；CR-09-05 记入 00 §13 F10，权限行见 §6.3；CR-09-09 中仅本模块使用的枚举按 00 §3 留在本规格，不进 §5；CR-09-08、CR-09-10、CR-09-11 待主规格下一轮合并。CR-09-12（D118，2026-10-12）同 CR-09-11，为底座表列变更，随 C6 实施，不涉及 00。
 
 > **D120（2026-10-12）已并入本规格**：§5.10（BR-09-84 幂等对 `interrupted` 的例外、BR-09-85 C8 新 purpose `fleet.tool_credential` / `fleet.wake_webhook_secret`）、AC-09-82 / 83、CR-09-13。
+
+
+## 14. D123 / D124 菜单、身份投影与富媒体分期
+
+`MenuDomain` 内部值 `PROJECTS` 保持兼容，**显示标签改为「协作」**，只允许 `Space=PROJECT` 的当前项目页进入该域菜单；旧团队项目组合 / 跨项目需求、任务、缺陷、流水线、交付、来件、对接贡献全部退休。不得恢复旧 `COLLAB` 枚举。协作侧栏不得贡献项目频道 / 共享频道 / 甲方共享频道或任意跳会话区项。logo 右侧项目切换器只列账号可見项目；详情路由中的所属项目优先，不依赖当前选择。
+
+菜单声明需支持按内部 / 外部 viewer 的读权限与投影过滤（复用 IAM，不另建认证）；外部只有待办 / 会话 / 协作与白名单项目页面。菜单隐藏不替代对象 / 文件 / SSE / 搜索权限；服务端请求先查 actor 的项目资格，再生成白名单 DTO 和资源绑定。未授权文件的上传扫描状态、缩略图、提取文本与下载 URL 也不得泄露。
+
+D122 Office 转换、PDF / 视频复杂查看、可编辑语音转录、附件 OCR / 抽取与联网搜索开发 v1.1；原型完整展示加载 / 扫描 / 转换失败 / 不支持 / 下载原件。MVP 使用基本附件与软件报告查看。遥测预留 trace_id / span_id / parent_span_id 与领域对象关联，OTel 全导出 / AG-UI v1.1。MVP 关键事实 + outbox + audit 同事务并保证投影重建回归，不采用全量事件溯源。
+
+验收修订：AC-09-81 不再播种团队级 defects 跨项目菜单，而是 CHAT/TEAM 与 PROJECTS/PROJECT 的当前项目菜单；贡献跨域频道侧栏或外部内部页即拒绝；旧贡献同步升级移除，管理员删除项不复活。共享频道通知 / SSE / 菜单外部计数只能来自授权对象。
+
+### 14.P 本域易用性与大数据验收
+
+本域适用 00 §16.8：服务端权限过滤 / 稳定游标分页，不全量拉取前端后筛；长列表虚拟化、聚合服务端取，精确总数不阻塞首屏；涉及看板按列分页、频道历史锚点与增量、流程图可见渲染 / 子流程惰性加载、文件范围读。切项目 / 筛选取消过期请求，保留阅读 / 草稿上下文，明示 loading / 空 / 超时 / 限流 / 断流 / 重试。协作二级菜单不跳会话域。规模与 API / UI 性能预算是开发后待实测门槛，原型不宣称已通过。
+
+### 14.Q 集合读取 API 分页参数同步
+
+本规格 §6 全部集合 GET operation（包括现有列表和本次补的读模型）采用 00 §16.10 的唯一产品分页合同：`cursor?` / `limit?`（默认50、最多100）/ 白名单 `sort?`，保留各 operation 的业务 filter / q / project_id；返回 `items,next_cursor?,has_more`，旧 offset / page / page_size 参数退休，不并存两套 API。消息历史 anchor_seq / 增量 after_seq 单独按语义使用；聚合 / 有限枚举不分页。服务端稳定排序与权限 / 筛选绑定 cursor，不依赖精确 COUNT。公共底座既有查询不改，本产品开发前 W1 检查 pkg/query 能力及最小复用 / 扩展 ADR，不能假称已具备游标。旧接口表分页字段由本条原地替代，最终 OpenAPI 只生成这一合同。

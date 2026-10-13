@@ -1,5 +1,7 @@
 # 05 · Agent 成员、主管 Agent 编排与频道
 
+> **现行范围（2026-10-12，D125–D129）**：用户已批准需求审计 E1–E4；以 [00 共同契约](00-conventions.md) §16 与本文 §14 为准。原型全量展示，开发 MVP 仅单项目软件闭环；其余按现行分期延后。下文历史门户 / 跨项目菜单 / 独立拆解模板 / 旧 MVP 标记如冲突均已退休，不构成实现承诺。
+
 > 后端模块：`fleet`（Agent 部分，与 04 同模块）+ `collab`（频道）。遵守 `00-conventions.md`；与 00 不一致或需扩展处集中在 §13。
 > 标注「**本规格提议**」的是 PRD 未给出、由本规格补齐的具体值或机制，均附理由。
 
@@ -910,7 +912,7 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 - **BR-05-116 私信里的工作请求**：私信不是真相源，规则与 BR-05-86 相同：Agent 在私信中收到「请做 X」时，唯一可做的状态相关动作是 (a) 以自身凭证创建 02 工作项草稿（角色允许时），或 (b) 若为主管 Agent，在**已指明的项目**中创建 `trigger=CHANNEL_REQUEST` 派单提案（`requested_by` = 私信中的人类）；项目不明确时只回复询问。提案卡片（DISPATCH_CARD）照常写入该项目默认频道并待人确认（`requires_human=true`），私信中由系统写一条链接到提案的 EVENT（`ref_kind=dispatch_proposal`）。执行者 Agent 被要求「开始做 W」→ 只能回复说明，不能自认领、不能直接执行（02 BR-02-11）。Agent 在私信中可读取的数据不超出其自身授权。
 - **BR-05-117 私信的提及与投递**：DIRECT 中每条 TEXT 自动对另一参与者写一行 `collab_message_mentions`（隐式提及）：对方为 Agent → 按 BR-05-85 投递（未运行时同样提示并在启动后补投）；对方为人 → N-05-09（私信变体）并计入 `mention_unread`。显式 `<@…>` 只能指向两名参与者，其他 → 422 145003（无〔邀请并发送〕）。速率与大小沿用 BR-05-88 / BR-05-92。
 - **BR-05-118 参与者离开**：Agent 退役或人类成员被停用 / 移出租户后，DIRECT 保留历史、另一方仍可读，发送 → 422 145016；退役 Agent 的人↔Agent 私信仍按 BR-05-115 对其负责人与审计员只读。保留沿用 BR-05-93（不物理删除）。
-- **BR-05-119 会话聚合与执行会话**：C17 只返回调用者自己的会话：可读的项目频道（BR-05-82）、本人参与的 DIRECT、按 BR-05-91 可只读的 AGENT_DIRECT（`include_agent_directs=true` 时）；不返回仅因审计而可读的人↔Agent 私信。「执行会话」区不由本模块存储：数据取自 03 A43（本人的执行，`kind=eq:INTERACTIVE` 且 `state=in:RUNNING,PAUSED`，或 `pending_interaction_count=gt:0`）与 08 我的裁决 I1 的「工具授权与输入」分类（本人可回应的交互），客户端合并去重并链到 03 交互会话工作台；回应仍走 03 / 08 接口与 `interaction_respond` 判定。03 目前没有「全租户内本人可回应的交互会话」读接口，超出这两个来源的会话不在此列（§12.1）。甲方联系人不是 Principal，C15 / C17 / C18 都不会返回甲方。
+- **BR-05-119 会话聚合与执行会话**：C17 只返回调用者自己的会话：可读的项目频道（BR-05-82）、本人参与的 DIRECT、按 BR-05-91 可只读的 AGENT_DIRECT（`include_agent_directs=true` 时）；不返回仅因审计而可读的人↔Agent 私信。「执行会话」区不由本模块存储：数据取自 03 A43（本人的执行，`kind=eq:INTERACTIVE` 且 `state=in:RUNNING,PAUSED`，或 `pending_interaction_count=gt:0`）与 08 我的裁决 I1 的「工具授权与输入」分类（本人可回应的交互），客户端合并去重并链到 03 交互会话工作台；回应仍走 03 / 08 接口与 `interaction_respond` 判定。03 目前没有「全租户内本人可回应的交互会话」读接口，超出这两个来源的会话不在此列（§12.1）。甲方已关联外部 Principal；C15 / C17 / C18 按共享频道、指定对接人和项目授权返回受限外部可见项，不返回内部 Agent / 执行会话。
 
 ### 5.z 业务规则增补（D120：Agent 运行时协议、操作清单、生命周期与提醒）
 
@@ -972,13 +974,13 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 
 ## 6. 接口契约
 
-约定（与 02/03/04/07 一致）：huma v2 + `respx` 信封；ID 十进制字符串；OpenAPI tag = 最终路径首段（CR-03-07 / CR-04-02）；守卫记号 **T** = `authz.Register`（租户级，路径前缀 `/tenants/{tenant_id}`）、**E** = `authz.RegisterEntity`（`entity_id` = 项目实体）、**O** = `authz.RegisterOwned`（全局短地址，按资源反查所属项目 / 租户后授权；作用域地址为同一操作，归属不符 404）；乐观锁 = 响应头 `ETag: "<version>"`、写请求 `If-Match`（缺 428、不符 409，表中记「v」）；「✔」= 支持 `Idempotency-Key`（09 C7 平台辅助，24 h；同 key 不同请求 176425，进行中 176409）。权限拒绝统一 `<段>403` + `data.reason_code`（MISSING_PERMISSION / NOT_MEMBER / DIRECT_READ_ONLY / REAUTH_REQUIRED / SELF_MANAGE / HUMAN_ONLY 等）。列表一律 `pkg/query`（`field=op:value`，offset 分页，`capabilities` 声明）。fleet 通用码沿用 04：140400 / 140403 / 140404 / 140409 / 140428；collab：145400 / 145403 / 145404 / 145409 / 145428。
+约定（与 02/03/04/07 一致）：huma v2 + `respx` 信封；ID 十进制字符串；OpenAPI tag = 最终路径首段（CR-03-07 / CR-04-02）；守卫记号 **T** = `authz.Register`（租户级，路径前缀 `/tenants/{tenant_id}`）、**E** = `authz.RegisterEntity`（`entity_id` = 项目实体）、**O** = `authz.RegisterOwned`（全局短地址，按资源反查所属项目 / 租户后授权；作用域地址为同一操作，归属不符 404）；乐观锁 = 响应头 `ETag: "<version>"`、写请求 `If-Match`（缺 428、不符 409，表中记「v」）；「✔」= 支持 `Idempotency-Key`（09 C7 平台辅助，24 h；同 key 不同请求 176425，进行中 176409）。权限拒绝统一 `<段>403` + `data.reason_code`（MISSING_PERMISSION / NOT_MEMBER / DIRECT_READ_ONLY / REAUTH_REQUIRED / SELF_MANAGE / HUMAN_ONLY 等）。列表一律 `pkg/query`（`field=op:value`，cursor 分页（00 §16.10；W1 确认底座复用 / 最小扩展），`capabilities` 声明）。fleet 通用码沿用 04：140400 / 140403 / 140404 / 140409 / 140428；collab：145400 / 145403 / 145404 / 145409 / 145428。
 
 ### 6.1 Agent（fleet）
 
 | # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 `data` | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|---|---|
-| F01 | GET `/tenants/{tenant_id}/agents` | tenants | `agent_read` · T | 过滤 `state`(eq,in) `role`(eq) `machine_id`(eq) `runtime_kind`(eq) `model_id`(eq) `project_id`(eq，经角色绑定) `name`(contains) `process_status`(eq)；排序 `name` `created_at` `state` `fpa_30d` `load_ratio` | `Agent[]`（摘要 + `stats_30d` + `load`） | — | — |
+| F01 | GET `/tenants/{tenant_id}/agents` | tenants | `agent_read` · T | 过滤 `state`(eq,in) `role`(eq) `machine_id`(eq) `runtime_kind`(eq) `model_id`(eq) `project_id`(eq，经角色绑定) `name`(contains) `process_status`(eq)；排序 `name` `created_at` `state` `fpa_30d` `load_ratio`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Agent[]`（摘要 + `stats_30d` + `load`） | — | — |
 | F02 | POST `/tenants/{tenant_id}/agents` | tenants | `agent_manage` · T；HUMAN；FULL_AUTO 另需 step-up | `name*` `handle?` `persona?` `avatar_style?` `avatar_seed?` `system_prompt*` `machine_id*` `runtime_kind*` `model_id*` `reasoning_effort?` `authorization_mode?` `max_context_tokens?` `roles*[]` `skill_ids?[]≤20` `mcp_allowlist?[]` `capability_tags?[]` `default_channel_names?[]` `memory_policy?` `max_parallel_items?` `max_risk?` `auto_restart?` `start?`(默认 true) `reauth_proof?` | `Agent`（201，DRAFT，`credential_delivery=PENDING`） | 422 142001/03/04/05/07/09/22/26；409 142002；503 142030；403 140403（含 REAUTH_REQUIRED） | ✔ |
 | F03 | GET `/agents/{agent_id}` | agents | `agent_read` · O | `?include=stats,load,roles,skills` | `Agent` 全量；ETag | 404 140404 | — |
 | F04 | PATCH `/agents/{agent_id}` | agents | `agent_manage` · O；HUMAN | 可选 `name` `persona` `avatar_style` `avatar_seed` `system_prompt` `reasoning_effort` `authorization_mode` `max_context_tokens` `roles[]` `mcp_allowlist[]` `capability_tags[]` `default_channel_names[]` `memory_policy` `max_parallel_items` `max_risk` `auto_restart` `reauth_proof?` | `Agent` | 409 142010/140409；422 同 F02；428 140428 | v |
@@ -986,13 +988,13 @@ CHECK：`origin='HUMAN_CREATED' OR (parent_agent_id IS NOT NULL AND spawn_grant_
 | F06 | POST `/agents/{agent_id}/restarts` | agents | `agent_manage` · O | `{reason?≤2000}` | `{agent, process_event_id}`（202） | 409 142002/142010/142011 | ✔ |
 | F07 | PUT `/agents/{agent_id}/machine-binding` | agents | `agent_manage` · O；HUMAN | `{machine_id*, runtime_kind*, model_id*, reasoning_effort?}` | `Agent`（`credential_delivery=PENDING`） | 409 142010/142012；422 142003/04/07/13/26 | v |
 | F08 | POST `/agents/{agent_id}/credential-deliveries` | agents | `agent_manage` · O | — | `{credential_delivery}`（202） | 409 142002/142010 | ✔；30 s 内合并 |
-| F09 | GET `/agents/{agent_id}/process-events` | agents | `agent_read` · O | 过滤 `kind`(in) `occurred_at`(gte,lte)；排序 `occurred_at` | `ProcessEvent[]` | 404 | — |
+| F09 | GET `/agents/{agent_id}/process-events` | agents | `agent_read` · O | 过滤 `kind`(in) `occurred_at`(gte,lte)；排序 `occurred_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `ProcessEvent[]` | 404 | — |
 | F10 | GET `/agents/{agent_id}/stats` | agents | `agent_read` · O | `?window_days=30\|90&work_item_type=` | `{fpa, fpa_n, cpa_micros, rework_rate, claims, accepted_items, load{active_items, max_parallel_items, running_executions}, computed_at, by_type[]}` | 404 | — |
 | F11 | GET `/agents/{agent_id}/avatar-candidates` | agents | `agent_read` · O | `?style=` | `[{style, seed, url}] ×6` | 404 | — |
 | F12 | GET `/agents/{agent_id}/workspace-entries` | agents | `agent_read`+`machine_read` · O（D120：另须为负责人类或持 `agent_workspace_read`，BR-05-137） | `?path=`（相对根） | `{root, path, entries:[{name, kind, size, modified_at}] ≤1000, truncated}` | 409 142002；422 142027 | — |
 | F13 | GET `/agents/{agent_id}/workspace-entries/content` | agents | 同上 | `?path=` | 文本 / 二进制流（≤1 MiB，`Cache-Control: no-store`） | 413 142028；422 142027 | — |
-| F14 | GET `/agents/{agent_id}/direct-channels` | agents | `agent_read` · O + 每频道按项目 `channel_read` 行过滤 | 过滤 `project_id`(eq) | `Channel[]`（AGENT_DIRECT） | — | — |
-| F15 | GET `/tenants/{tenant_id}/roster-entries` | tenants | 租户成员 · T；Agent 行另需 `agent_read` | 过滤 `kind`(eq HUMAN\|AGENT) `role`(eq) `state`(in) `project_id`(eq) `q`(contains)；排序 `name` `load_ratio` `kind` | `RosterEntry[]`：`{kind, principal_id, agent_id?, name, avatar, roles[], state, load{active_items, max?}, current_work_items[≤3], last_active_at}` | — | — |
+| F14 | GET `/agents/{agent_id}/direct-channels` | agents | `agent_read` · O + 每频道按项目 `channel_read` 行过滤 | 过滤 `project_id`(eq)；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Channel[]`（AGENT_DIRECT） | — | — |
+| F15 | GET `/tenants/{tenant_id}/roster-entries` | tenants | 租户成员 · T；Agent 行另需 `agent_read` | 过滤 `kind`(eq HUMAN\；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） |AGENT) `role`(eq) `state`(in) `project_id`(eq) `q`(contains)；排序 `name` `load_ratio` `kind` | `RosterEntry[]`：`{kind, principal_id, agent_id?, name, avatar, roles[], state, load{active_items, max?}, current_work_items[≤3], last_active_at}` | — | — |
 | F16 | GET `/agents/{agent_id}/runtime-config` | agents | 调用者 = 该 Agent 服务账号（宿主进程）· RegisterPrincipalAuthenticated + 自身校验 | — | `{config_revision, system_prompt, skills[{skill_key, version_no, content}], mcp_allowlist, …}` | 403 140403 | — |
 
 F15 为人 + Agent 统一投影（**本规格提议**；资源语义卡：Meaning = 团队名册条目；Owner = 租户；Identity = principal_id；只读投影；人类数据经底座成员读能力、负载经 02 读接口）；无 `agent_read` 时只返回 HUMAN 行。
@@ -1009,7 +1011,7 @@ F15 为人 + Agent 统一投影（**本规格提议**；资源语义卡：Meanin
 
 | # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|---|---|
-| D01 | GET `/entities/{entity_id}/dispatch-proposals` | entities | `work_item_read` · E | 过滤 `state`(eq,in) `result`(eq) `work_item_id`(eq) `trigger`(in) `requires_human`(eq) `created_at`(gte)；排序 `created_at` `expires_at` | `DispatchProposal[]`（含推荐人、top-3） | — | — |
+| D01 | GET `/entities/{entity_id}/dispatch-proposals` | entities | `work_item_read` · E | 过滤 `state`(eq,in) `result`(eq) `work_item_id`(eq) `trigger`(in) `requires_human`(eq) `created_at`(gte)；排序 `created_at` `expires_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `DispatchProposal[]`（含推荐人、top-3） | — | — |
 | D02 | POST `/entities/{entity_id}/dispatch-proposals` | entities | 人：`work_item_assign` · E；Agent：须为本项目 `lead_agent_id` 且 `trigger=CHANNEL_REQUEST` | `{work_item_id*, trigger?:"MANUAL_REQUEST"\|"CHANNEL_REQUEST", source_message_id?, requested_by?}` | `DispatchProposal`（201；已有 PROPOSED → 200 返回既有） | 422 143007；409 143015；403 140403 | ✔ |
 | D03 | GET `/dispatch-proposals/{proposal_id}` | dispatch-proposals | `work_item_read` · O | — | `DispatchProposal` + 全部 `candidates[]`（不合格码与分量）+ `inputs_digest`；ETag | 404 | — |
 | D04 | PUT `/dispatch-proposals/{proposal_id}/resolution` | dispatch-proposals | `work_item_assign` · O；HUMAN | `{kind*:"CONFIRM"\|"OVERRIDE"\|"DISMISS", assignee_principal_id?(OVERRIDE 必填), reason?(OVERRIDE/DISMISS 必填 ≥5)}` | `{proposal, assignment?, decision?}` | 409 143004/143005/140409；409 120426/120420（02 `DispatchAssigner` 原样返回）；422 143006/120444；403 120403 | v；✔ |
@@ -1078,14 +1080,14 @@ F15 为人 + Agent 统一投影（**本规格提议**；资源语义卡：Meanin
 
 | # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|---|---|
-| C01 | GET `/entities/{entity_id}/channels` | entities | `channel_read` · E | 过滤 `kind`(in) `archived`(eq，默认 false) `name`(contains) `member`(eq me)；排序 `last_message_at` `name` | `Channel[]`（含 `unread`、`mention_unread`；AGENT_DIRECT 需 `kind` 显式过滤） | — | — |
+| C01 | GET `/entities/{entity_id}/channels` | entities | `channel_read` · E | 过滤 `kind`(in) `archived`(eq，默认 false) `name`(contains) `member`(eq me)；排序 `last_message_at` `name` | `Channel[]`（含 `unread`、`mention_unread`；AGENT_DIRECT 需 `kind` 显式过滤）；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | — | — |
 | C02 | POST `/entities/{entity_id}/channels` | entities | CUSTOM：`channel_post`（**本规格提议**：成员可自建）· E；AGENT_DIRECT：调用者须为 AGENT | CUSTOM `{kind, name*, topic?, member_principal_ids?[]≤200}`；DIRECT `{kind:"AGENT_DIRECT", peer_agent_id*}` | `Channel`（201；DIRECT 已存在 → 200） | 422 145001/145002/145012/145014；403 145403（DIRECT_READ_ONLY） | ✔ |
 | C03 | GET `/channels/{channel_id}` | channels | `channel_read` · O + BR-05-82 | — | `Channel`；ETag | 404 145404；403 145403（NOT_MEMBER） | — |
 | C04 | PATCH `/channels/{channel_id}` | channels | `channel_manage` 或 OWNER · O | `{name?, topic?, archived?:bool}` | `Channel` | 409 145011/145008/145409；422 145001 | v |
-| C05 | GET `/channels/{channel_id}/members` | channels | 同 C03 | 过滤 `member_kind`(eq) `q`(contains) | `ChannelMember[]` | — | — |
+| C05 | GET `/channels/{channel_id}/members` | channels | 同 C03 | 过滤 `member_kind`(eq) `q`(contains)；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `ChannelMember[]` | — | — |
 | C06 | PUT `/channels/{channel_id}/members/{principal_id}` | channels | `channel_manage` 或 OWNER · O | `{role?:"MEMBER"\|"OWNER"}` | `ChannelMember` | 409 145011/145008；422 145012/145016；404 | 天然幂等 |
 | C07 | DELETE `/channels/{channel_id}/members/{principal_id}` | channels | 同 C06；本人可退出 CUSTOM | — | 204 | 409 145011/145018 | 幂等 |
-| C08 | GET `/channels/{channel_id}/messages` | channels | 同 C03 | 过滤 `seq`(lt,gt,lte,gte) `kind`(in) `fold_key`(eq) `ref_id`(eq) `author_id`(eq) `reply_to_message_id`(eq，D118 线程)；排序 `seq`（默认 desc）；`limit ≤100` | `Message[]` + `meta.max_seq` | — | — |
+| C08 | GET `/channels/{channel_id}/messages` | channels | 同 C03 | 过滤 `seq`(lt,gt,lte,gte) `kind`(in) `fold_key`(eq) `ref_id`(eq) `author_id`(eq) `reply_to_message_id`(eq，D118 线程)；排序 `seq`（默认 desc）；`limit ≤100`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Message[]` + `meta.max_seq` | — | — |
 | C09 | POST `/channels/{channel_id}/messages` | channels | `channel_post` · O + 成员 | `{body*≤8000, reply_to_message_id?, attachment_file_ids?[]≤5}`（kind 恒为 TEXT） | `Message`（201） | 422 145003/145004/145016/145017；413 145005；409 145008；403 145403（NOT_MEMBER / DIRECT_READ_ONLY）；429 145010 | ✔ |
 | C10 | PATCH `/messages/{message_id}` | messages | 作者本人 · O | `{body*}` | `Message` | 409 145006/145409 | v |
 | C11 | DELETE `/messages/{message_id}` | messages | 作者（24 h 内）或 `channel_manage` · O | — | 204（撤回，不物理删除） | 409 145006 | 幂等 |
@@ -1094,7 +1096,7 @@ F15 为人 + Agent 统一投影（**本规格提议**；资源语义卡：Meanin
 | C14 | GET `/principals/{principal_id}/channel-unreads` | principals | 本人 · RegisterPrincipalTenantMember | `?project_id=` | `[{channel_id, project_id, unread, mention_unread}]` + 合计（含 DIRECT，其 `project_id=null`；传 `project_id` 时不含 DIRECT） | 403 | — |
 | C15 | GET `/channels/{channel_id}/mention-candidates` | channels | `channel_post` · O | `?q=&limit≤20` | `[{principal_id, kind, name, handle, avatar, state}]`（仅成员，不含退役） | — | — |
 | C16 | GET/POST `/channels/{channel_id}/hooks`；PATCH `/channel-hooks/{hook_id}` | channels / channel-hooks | `channel_manage` · O（v1.1） | `{kind, target_url*, filter, enabled}` | `ChannelHook`（秘密仅创建时返回一次） | 422 145019 | ✔ / v |
-| C17 | GET `/tenants/{tenant_id}/conversations` | tenants | RegisterTenantMember；服务内按 BR-05-119 行过滤（D118） | 过滤 `q`(name contains)；`include_agent_directs`(bool，默认 false) | `{channels:[{project{id,name}, items: Channel[]}], directs: Channel[]（含 `peer{kind,id,name,avatar,state}`）, agent_directs?: Channel[], totals{unread, mention_unread}}`（每项含 `unread`、`mention_unread`） | — | — |
+| C17 | GET `/tenants/{tenant_id}/conversations` | tenants | RegisterTenantMember；服务内按 BR-05-119 行过滤（D118） | 过滤 `q`(name contains)；`include_agent_directs`(bool，默认 false)；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `{channels:[{project{id,name}, items: Channel[]}], directs: Channel[]（含 `peer{kind,id,name,avatar,state}`）, agent_directs?: Channel[], totals{unread, mention_unread}}`（每项含 `unread`、`mention_unread`） | — | — |
 | C18 | POST `/tenants/{tenant_id}/direct-channels` | tenants | RegisterTenantMember · 调用者须为 HUMAN；对方为 Agent 时另需 `agent_read`（D118，BR-05-114） | `{peer_principal_id*}` | `Channel`（201；已存在 → 200） | 422 145020/145016；403 145403（HUMAN_ONLY / MISSING_PERMISSION） | ✔ |
 | C19 | GET `/principals/{principal_id}/mentions` | principals | 本人 · RegisterPrincipalTenantMember（D118） | 过滤 `read`(eq) `reason`(in：MENTION / REPLY) `created_at`(lt)；`limit ≤50` | `[{message: Message, channel{id, kind, name, project_id?}, reason}]`（REPLY = 对本人消息的回复） | 403 | — |
 
@@ -1200,7 +1202,7 @@ fleet 子段（**本规格提议**，CCR-05-03）：04 用 140000–141999，本
 | # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 `data` | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|---|---|
 | G01 | POST `/tenants/{tenant_id}/agent-spawn-requests` | tenants | 调用者 = 主管 Agent 服务账号 · T；08 `Check(agent_spawn)` → `POLICY:spawn_grant` | `project_id?` `requested_spec*` `reason*` `source_command_id?` | `SpawnRequest`（201；AUTO 时 `state=CREATED` 并含 `created_agent_id`；HYBRID 降级时 `downgraded=true`） | 403 140403（`SPAWN_NOT_LEAD` / `NO_AUTHORITY`）；422 142031–142038；503 142030 | `Idempotency-Key` 必填（176425 / 176409）；`source_command_id` 唯一 |
-| G02 | GET `/tenants/{tenant_id}/agent-spawn-requests` | tenants | `agent_read` · T | 过滤 `state`(in) `supervisor_agent_id`(eq) `grant_id`(eq) `project_id`(eq) `created_at`(gte,lte)；排序 `created_at` | `SpawnRequest[]` | — | — |
+| G02 | GET `/tenants/{tenant_id}/agent-spawn-requests` | tenants | `agent_read` · T | 过滤 `state`(in) `supervisor_agent_id`(eq) `grant_id`(eq) `project_id`(eq) `created_at`(gte,lte)；排序 `created_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `SpawnRequest[]` | — | — |
 | G03 | GET `/agent-spawn-requests/{request_id}` | agent-spawn-requests | `agent_read` · O | — | `SpawnRequest`（含校验快照、授权用量）；ETag | 404 | — |
 | G04 | PUT `/agent-spawn-requests/{request_id}/decision` | agent-spawn-requests | `agent_manage`（请求项目范围）· O；HUMAN | `{decision:"APPROVE" / "REJECT", note?}`（REJECT 时 note 必填 ≥10） | `SpawnRequest` | 409 142035；403 140403（`HUMAN_ONLY`）；422 142031–142037（批准时复验） | `If-Match` 必填（缺 428，冲突 409 142009） |
 | G05 | POST `/agents/{agent_id}/adoption` | agents | `agent_manage` · O；HUMAN | `{machine_id?, note?}` | `Agent`（`lineage_status=ADOPTED`） | 409 142039；403 140403（`HUMAN_ONLY`） | `Idempotency-Key`；`If-Match` |
@@ -1230,8 +1232,8 @@ F01 / F15 增加过滤 `origin`(eq) `parent_agent_id`(eq) `lineage_status`(eq：
 | F19 | SSE 主题 `tenant/{t}/agent_inbox/{agent_id}`（09 SSE） | — | 该 Agent 服务账号；负责人类 / `agent_workspace_read` | 订阅 | 帧 `{type:"wake", inbox_seq}`；每 15 s `{type:"heartbeat", inbox_seq}`（BR-05-123） | 订阅拒绝 | — |
 | F20 | PUT `/agents/{agent_id}/wake-config` | agents | `agent_manage` · O；HUMAN | `{wake_mode*:"CHANNEL"\|"POLL"\|"WEBHOOK", webhook_url?, rotate_secret?:bool}`（WEBHOOK 为 v1.1） | `{wake_mode, webhook_url?, secret?（仅新设或轮换时返回一次）}` | 422 142049；409 140409 | v |
 | F21 | POST `/agents/{agent_id}/resets` | agents | `agent_manage` · O；HUMAN；FULL 另需 step-up `agent_full_reset` | `{kind*:"SESSION"\|"FULL", reason*≥10, confirm_name?(FULL 必填), reauth_proof?(FULL 必填)}` | `Reset`（202，REQUESTED；未运行的 SESSION 直接 DONE） | 409 142002/142010/142012/142045；422 142050；403 140403（`REAUTH_REQUIRED` / `AGENT_PROHIBITED`） | ✔ |
-| F22 | GET `/agents/{agent_id}/resets` | agents | 负责人类 / `agent_workspace_read` / `agent_manage` · O | 过滤 `kind`(in) `state`(in)；排序 `created_at` | `Reset[]` | — | — |
-| F23 | GET · POST `/agents/{agent_id}/reminders` | agents | GET：该 Agent、负责人类、`agent_read`；POST：该 Agent 本人或 `agent_manage`（HUMAN）· O | POST `{anchor_kind*:"THREAD"\|"WORK_ITEM", channel_id?, thread_root_message_id?, work_item_id?, title*, note?, schedule_kind*:"ONCE"\|"INTERVAL"\|"PERIOD", fire_at?, interval_minutes?, period_kind?, max_fires?}`；GET 过滤 `state`(in) `anchor_kind`(eq) `loop_contract_id`(eq) | `Reminder`（201）/ `Reminder[]` | 422 142046/142047；403 140403（`NOT_OWNER`） | ✔ |
+| F22 | GET `/agents/{agent_id}/resets` | agents | 负责人类 / `agent_workspace_read` / `agent_manage` · O | 过滤 `kind`(in) `state`(in)；排序 `created_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Reset[]` | — | — |
+| F23 | GET · POST `/agents/{agent_id}/reminders` | agents | GET：该 Agent、负责人类、`agent_read`；POST：该 Agent 本人或 `agent_manage`（HUMAN）· O | POST `{anchor_kind*:"THREAD"\|"WORK_ITEM", channel_id?, thread_root_message_id?, work_item_id?, title*, note?, schedule_kind*:"ONCE"\|"INTERVAL"\|"PERIOD", fire_at?, interval_minutes?, period_kind?, max_fires?}`；GET 过滤 `state`(in) `anchor_kind`(eq) `loop_contract_id`(eq)；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Reminder`（201）/ `Reminder[]` | 422 142046/142047；403 140403（`NOT_OWNER`） | ✔ |
 | F24 | PATCH `/agent-reminders/{reminder_id}` | agent-reminders | 创建者本人、负责人类或 `agent_manage` · O | `{title?, note?, state?:"ACTIVE"\|"PAUSED"\|"CANCELLED", fire_at?, interval_minutes?, max_fires?}` | `Reminder` | 409 142048/140409；422 142047 | v |
 
 F03 / F01 响应增加 `activity{status, changed_at, detail?}`、`inbox{head_seq, ack_seq, unacked}`、`session_epoch`；F01 增加过滤 `activity_status`(in)。`Reset{id, agent_id, kind, state, reason, requested_by, removed_bytes?, failure_code?, created_at, completed_at?}`；`Reminder` = §3.z 列（不含 `version` 之外的内部列）。
@@ -1294,7 +1296,7 @@ poll 请求 `agents[]` 快照（04 `AgentProcState`）同样增加 `activity`、
 
 | # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 `data` | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|---|---|
-| T01 | GET `/tenants/{tenant_id}/tool-entries` | tenants | `agent_read` · T | 过滤 `kind`(eq) `state`(in) `q`(contains)；排序 `entry_key` `updated_at` | `ToolEntry[]` | — | — |
+| T01 | GET `/tenants/{tenant_id}/tool-entries` | tenants | `agent_read` · T | 过滤 `kind`(eq) `state`(in) `q`(contains)；排序 `entry_key` `updated_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `ToolEntry[]` | — | — |
 | T02 | POST `/tenants/{tenant_id}/tool-entries` | tenants | `tool_catalog_manage` · T；HUMAN | `{kind*:"MCP_SERVER", entry_key*, title*, description?, transport*, credential_mode?, preset_key?, from_local?{machine_id, runtime_kind, name}}` | `ToolEntry`（201，DRAFT） | 409 142051；422 142052；403 140403（`AGENT_PROHIBITED` / `MISSING_PERMISSION`） | ✔ |
 | T03 | GET `/tool-entries/{entry_id}` | tool-entries | `agent_read` · O | — | `ToolEntry` + `versions[≤20]` + `grants[]` + `credential{set, last4?, rotated_at?, upstream_auth_failing}`；ETag | 404 140404 | — |
 | T04 | PATCH `/tool-entries/{entry_id}` | tool-entries | `tool_catalog_manage` · O；HUMAN | `{title?, description?, credential_mode?}` | `ToolEntry` | 422 142052；409 140409 | v |
@@ -1302,9 +1304,9 @@ poll 请求 `agents[]` 快照（04 `AgentProcState`）同样增加 `activity`、
 | T06 | GET `/tool-entries/{entry_id}/versions` | tool-entries | `agent_read` · O | 排序 `version_no` | MCP：`ToolEntryVersion[]`；SKILL：06 已批准版本 `[{version_no, content_hash, approved_at}]`（经 06 `SkillCatalog` 读取） | — | — |
 | T07 | PUT `/tool-entries/{entry_id}/state` | tool-entries | `tool_catalog_manage` · O；HUMAN | `{state*:"ACTIVE"\|"DISABLED"\|"ARCHIVED", reason?≥10（DISABLED / ARCHIVED 必填）}`；或版本撤回 `{version_no*, version_state*:"REVOKED", reason*}` | `ToolEntry` | 409 142053/140409；422 142055 | v |
 | T08 | PUT `/tool-entries/{entry_id}/credential` | tool-entries | `tool_catalog_manage` · O；HUMAN；step-up `tool_credential_manage`（target `tool_entry:<id>`） | `{secret*≤8KB, header_name?, reauth_proof*}` | `{set:true, last4, rotated_at}`（明文永不回显） | 422 142055；403 140403（`REAUTH_REQUIRED`） | — |
-| T09 | GET · POST `/tool-entries/{entry_id}/grants` | tool-entries | GET：`agent_read`；POST：`tool_catalog_manage`（HUMAN）· O | POST `{subject_kind*:"PROJECT"\|"ROLE"\|"AGENT", project_id?, role?, agent_id?}`；GET 过滤 `subject_kind`(eq) `state`(in) | `ToolGrant`（201；同主体已有 ACTIVE → 200）/ `ToolGrant[]` | 422 142054 | 天然幂等 |
+| T09 | GET · POST `/tool-entries/{entry_id}/grants` | tool-entries | GET：`agent_read`；POST：`tool_catalog_manage`（HUMAN）· O | POST `{subject_kind*:"PROJECT"\|"ROLE"\|"AGENT", project_id?, role?, agent_id?}`；GET 过滤 `subject_kind`(eq) `state`(in)；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `ToolGrant`（201；同主体已有 ACTIVE → 200）/ `ToolGrant[]` | 422 142054 | 天然幂等 |
 | T10 | DELETE `/tool-grants/{grant_id}` | tool-grants | `tool_catalog_manage` · O；HUMAN | `?reason=`（≥10 字） | 204（REVOKED） | 404 | 天然幂等 |
-| T11 | GET `/tenants/{tenant_id}/tool-presets` | tenants | `agent_read` · T | 过滤 `transport`(eq) | `ToolPreset[]` | — | — |
+| T11 | GET `/tenants/{tenant_id}/tool-presets` | tenants | `agent_read` · T | 过滤 `transport`(eq)；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `ToolPreset[]` | — | — |
 | T12 | GET `/agents/{agent_id}/tools` | agents | 该 Agent 本人，或 `agent_read`（人）· O | `?project_id=`（缺省 = 团队级） | `{toolset_preview{revision}, entries:[{source, kind, entry_key, title, version_no?, content_sha256?, status:"AVAILABLE"\|"NOT_GRANTED"\|"NOT_SELECTED"\|"NOT_MOUNTED"\|"DISABLED"\|"CREDENTIAL_MISSING"\|"LOCAL_MISMATCH"\|"LOCAL_ONLY", covered_by[{grant_id, subject_kind}], local?{machine_id, scope?, path?}}]}`（与 BR-05-144 同一解析，只读） | 404 | — |
 | T13 | POST · GET · DELETE `/mcp-relay/{entry_key}` | mcp-relay | 工具令牌（`Authorization: Bearer`，BR-05-146）；不经 `authz.Register*` 的成员守卫 | MCP Streamable HTTP（JSON-RPC 透传，`Mcp-Session-Id` 原样转发） | 上游响应（流式） | 401（142056）；403 JSON-RPC `-32001`；429；502（142057） | — |
 
@@ -1533,15 +1535,15 @@ poll 请求 `agents[]` 快照（04 `AgentProcState`）同样增加 `activity`、
 
 ### 8.8 会话（D118；`/t/:tenantID/chat`）
 
-- **路由（唯一方案）**：所有会话都在团队级 `/t/:tenantID/chat` 之下，不再按项目分路由：`/t/:tenantID/chat`（默认打开「提及与线程」）、`/t/:tenantID/chat/:channelID`（任意 `ChannelKind`：项目默认频道、自建频道、DIRECT、AGENT_DIRECT）、`?thread=<message_id>` 打开右栏线程、`?details=1` 打开右栏详情 / 成员。旧路由 `/t/:tenantID/channels` → `/t/:tenantID/chat`，`/t/:tenantID/p/:projectID/channels/:channelID` → `/t/:tenantID/chat/:channelID`（客户端替换式重定向，保证其他规格与通知里的旧链接可用）；项目空间菜单项「项目频道」`/t/:tenantID/p/:projectID/channel` → 该项目默认频道 `/t/:tenantID/chat/:channelID`（同为替换式重定向，进入会话域；D118 修订）；项目归属由频道自身的 `project_id` 决定，不由路由携带。外壳归属：08 §8.6 会话域（无侧栏、全宽）。
-- **左栏**（数据 C17，未读 C14；≥1024 时宽 280px，可折叠）：① **提及与线程**（C19：@我的消息与对我消息的回复，未读加粗，点击定位到原消息并打开线程）；② **频道**：按项目分组（组头 = 项目名，可折叠；组内默认频道置顶，其后自建频道；未读数与 @ 标记；组头〔新建频道〕按 C02 权限显示）；③ **私信**：DIRECT（人↔人、人↔Agent，对方头像 + 状态点，Agent 带芯片角标）按最近消息排序，〔新建私信〕打开对话框（人员 / Agent 选择器，C18）；有权只读的 AGENT_DIRECT（BR-05-91）收在折叠子组「Agent 之间（只读）」；④ **执行会话**（BR-05-119）：本人运行中的交互会话与待我处理的工具授权 / 输入请求，显示执行标题、项目、待处理数与倒计时，点击打开 03 §8.2 交互会话工作台（本模块不内嵌、不代答）。顶部搜索框按名称过滤（C17 `q`）。
+- **路由（唯一方案）**：频道 `/t/:tenantID/chat/:channelID`（DIRECT / AGENT_DIRECT 同路由），默认 `/t/:tenantID/chat`；执行会话 `/t/:tenantID/chat?execution_id=:executionID`；线程 `?thread=:messageID`、详情 `?details=1`。旧 `/channels`、项目频道路径、独立 session UI 路径不注册，不留 alias / 重定向。所有通知和对象入口直接引用规范路由。项目归属由频道 / 执行对象提供，进入前校验权限。会话域全宽、无协作侧栏跨域项。
+- **左栏**（数据 C17，未读 C14；≥1024 时宽 280px，可折叠）：① **提及与线程**（C19：@我的消息与对我消息的回复，未读加粗，点击定位到原消息并打开线程）；② **频道**：按项目分组（组头 = 项目名，可折叠；组内默认频道置顶，其后自建频道；未读数与 @ 标记；组头〔新建频道〕按 C02 权限显示）；③ **私信**：DIRECT（人↔人、人↔Agent，对方头像 + 状态点，Agent 带芯片角标）按最近消息排序，〔新建私信〕打开对话框（人员 / Agent 选择器，C18）；有权只读的 AGENT_DIRECT（BR-05-91）收在折叠子组「Agent 之间（只读）」；④ **执行会话**（BR-05-119）：本人运行中的交互会话与待我处理的工具授权 / 输入请求，显示执行标题、项目、待处理数与倒计时，点击打开同会话域执行会话（统一 UI，执行消息 / 授权 API 仍由 03 负责）。顶部搜索框按名称过滤（C17 `q`）。
 - **中栏**（消息流，虚拟滚动，>500 条流畅）：头部 = 频道名 / 私信对方、所属项目 chip（DIRECT 无）、主题、〔详情〕。**消息渲染**：TEXT（头像、名称、Agent 芯片、时间、已编辑标记、回复引用与「n 条回复」→ 打开线程、附件）；EVENT 折叠行（最新事件 + 「另 n 条」，展开显示全部；attention 事件红 / 琥珀单独显示）；**结构化卡片永不折叠**，按钮直接作用于真实对象（权限仍由对象所属模块判定，会话只是入口）：DECISION_CARD（完成阶梯、验证 n/n、证据覆盖、〔通过〕〔要求修改〕〔拒绝〕——按 02 权限可用，拒绝弹 `StructuredFeedbackForm`；已裁决显示结果与 `AuthorityNote`）、完成声明与停线（来自 02 / 03 事件，以 `attention=true` 的 EVENT 呈现为卡片样式，含〔打开工作项〕〔清除停线〕等跳转，动作在对象页执行）、DISPATCH_CARD（推荐人、分数、理由摘录、护栏、〔确认〕〔改派〕→ 跳 8.6 或内嵌对话框；处理后变为结果行）。撤回消息显示「消息已撤回」。
 - **右栏**（≥1280 常驻，较窄时为覆盖式抽屉）：**线程**（根消息 + C08 `reply_to_message_id=eq:<root>` 的回复，底部回复输入框）/ **详情**（频道主题、所属项目、成员列表 C05；私信时显示对方资料，人↔Agent 私信另显示「此私信对 Agent 的负责人与审计员可见」，BR-05-115）。
 - **输入框**：多行；`@` 弹出候选（C15，人与 Agent 分组，显示状态；退役 Agent 不出现；DIRECT 中只有对方）；选中插入令牌并渲染为 chip；超 8000 字符禁用发送；附件 ≤5；发送失败保留草稿可重试；Enter 发送、Shift+Enter 换行。提及非成员（服务端 145003）时内联提示并提供〔邀请并发送〕（有权限时；DIRECT 不提供）。无发送权的可读会话（AGENT_DIRECT、审计只读的人↔Agent 私信）不显示输入框，顶部提示只读原因。
 - **未读**：进入会话定位到第一条未读，滚动到底部时 PUT read-marker（节流 2 s）；「n 条新消息」浮条；会话域标签与移动端底栏「会话」显示 C14 合计。
 - **状态**：加载骨架（三栏占位）；空态（没有任何频道与私信：「还没有会话」〔新建私信〕）；归档频道只读横幅；非成员（CUSTOM）显示〔加入频道〕（有权限时）；对方已退役 / 停用的私信只读横幅；错误态可重试；离线横幅「正在重新连接…」，恢复后按 `after_seq` 补齐。
 - **实时**：SSE 新消息 ≤1 s 呈现（主题 `tenant/{t}/channel/{id}`；左栏计数经 `tenant/{t}/inbox/{principal_id}`）。
-- **甲方**：甲方联系人不是 Principal，不出现在会话的任何位置（候选、成员、私信对象、消息作者）；与甲方的沟通只在 01 来件澄清线程与门户中进行。
+- **甲方**：甲方为真实外部 Principal，仅出现于有权人创建的共享频道和与指定对接人的私信；共享频道常驻「甲方在此频道」，内部旁注 / 执行事件不返回。需求确认、变更和验收卡引用项目对象，具体规则见 §14。
 - **移动端**：单栏堆叠：左栏列表 → 消息流 → 线程（返回键逐级退回）；长按消息出编辑 / 撤回 / 回复菜单；底部快捷栏「会话」显示总未读。
 
 ---
@@ -2169,7 +2171,7 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 | Q-05-03 | REVIEWER 派单（评审认领）是否也由主管 Agent 提案 | **已决**：AUTONOMOUS 项目在 MVP 即派评审 Agent（BR-05-53，系统评分，复用同一公式，fpa 换为评审一致率）；HYBRID 不派评审，由「我的裁决」承担 |
 | Q-05-04 | 频道消息保留期 | v2：项目关闭 365 天后清理正文、保留元数据与审计；需法务确认 |
 | Q-05-05 | 评分权重是否允许团队调整 | MVP 固定（可复算、便于比较）；v1.1 允许项目级覆盖并在 `scoring_version` 中体现 |
-| Q-05-06 | 是否开放人 ↔ Agent 私信 | 不开放；对 Agent 的请求应在项目频道中可见、可审计 |
+| Q-05-06 | 是否开放人 ↔ Agent 私信 | 已决 D118：内部成员允许，按双方 / Agent 负责人权限限制；D124 外部仅与对接人私信 |
 | Q-05-07 | 不经机器程序托管的「外部 Agent 宿主」如何取得 Agent 凭证（D120 webhook 唤醒的前提） | v1.1 与 webhook 同期：负责人在 F20 旁〔签发外部宿主凭证〕（step-up，凭证只显示一次，复用 BR-05-03 的服务账号凭证），外部宿主只能调用清单内操作；MVP 所有 Agent 仍由机器程序托管 |
 | Q-05-08 | 收件箱事件保留 30 天是否足够 | MVP 30 天；未确认事件到期前 24 h 在 N-05-17 中提示；若有审计需要，原始事实仍在各模块中可查 |
 | Q-05-09 | `tool_catalog_manage` 是否默认授予交付负责人 | MVP 仅团队所有者（目录托管团队凭据，与 `machine_access_manage` 同级）；如交付负责人需要为本项目开放工具，v1.1 增加「项目级授予」委派 |
@@ -2211,3 +2213,31 @@ Then  显示 2 行，徽章分别为「主管创建 · Atlas」「孤儿」；�
 > **D120（Agent 运行时协议、操作清单、生命周期与提醒，2026-10-12）已并入本规格**：§1 范围、US-05-28…35、§3.z（收件箱、运行态、重置、提醒、清单版本与模块内枚举）、§4.z 状态机、BR-05-120…140、§6.z（F17–F24、M01–M03、S-M1 清单文档、`agent.wake` / `agent.reset` / `agent.status` 增补、`OperationRegistry` / `AgentReminderScheduler`、错误码 142044–142050 与 145021 / 145022）、§7.z、§8.z（Agent 详情「生命周期」「收件箱」「提醒与循环」标签与「治理 › Agent 操作清单」）、N-05-16 / 17、AC-05-86…103、§11.z。BR-05-16（工作目录权限）与 BR-05-85、§6.6 `agent.inbox`（投递方式）按 D120 收窄 / 取代。对 00 的请求为 CCR-05-11…13、CCR-05-15（已登记入 00 v2.0 D120 补充）；CCR-05-14 已由 06 BR-06-66 落实。
 
 > **D120 第 6 项（团队工具目录：MCP 服务器与技能，2026-10-12）已并入本规格**：§1 范围、US-05-36…39、§3.z（`fleet_tool_entries`、`fleet_tool_entry_versions`、`fleet_tool_credentials`、`fleet_tool_grants`、`fleet_tool_presets` 与枚举 `ToolEntryKind` / `ToolEntryState` / `McpTransport` / `ToolCredentialMode` / `ToolVersionState` / `ToolGrantSubjectKind` / `ToolSource`）、§4.z TE-状态、BR-05-141…152、§6.z（T01–T13、S-T1、`ToolsetResolver`、`AgentInboxHeads`）、错误码 142051–142058、§7.z（`fleet.tool_catalog_sync` / `_migration`、`fleet.tool_upstream_watch`、事件 `tool_catalog.changed` 与审计）、§8.z（「团队 › 工具与技能」与 Agent 详情「技能」标签来源徽章）、N-05-18、AC-05-104…115、§11.z、Q-05-09…11、CCR-05-15。操作清单的权限码按 08 §3.5c 落实：`via` 增加 RELATION / SELF，`interaction.request` 使用 `interaction_request`（08 §3.3d）。
+
+
+## 14. 共享频道、流程起草与原型完整性
+
+### 14.1 D124 共享频道替代旧甲方排除规则
+
+§8.8 中「甲方不出现在会话」类限制已废止。频道 `visibility=INTERNAL|CLIENT_SHARED` 默认 INTERNAL；共享频道只由有权人创建 / 邀请外部成员，并显示常驻「甲方在此频道」与成员名单。服务端针对外部成员过滤消息、结构化卡片、附件、搜索、未读数量、线程与 SSE；内部旁注使用独立内部线程，不能通过展开卡片或引用跨入外部响应。甲方私信只允许自己的对接人，不能任意找内部成员 / Agent。协作侧栏不放任何频道链接，顶部会话是唯一沟通入口。
+
+确认单草稿 / 签认 / 变更 / 交付 / 验收卡片引用 01 / 02 / 07 真实对象，不能从聊天直接完成签认 / 改范围。Agent 对外消息默认进入人审草稿；可经策略允许事实 / 进度答复，但日期、价格、范围、承诺由人。外部身份不继承 `channel_read` 或租户普通成员的内部可见性。D122 富媒体 / 可编辑语音转录 / 联网搜索引文卡开发 v1.1、原型全做；搜索默认未授予，查询包含客户机密需人批准且审计。
+
+协调员 / 主管 Agent 可从已签认确认单或共享频道请求提出 WorkflowPatch，图与 JSON 展示差异、依据与影响，11 / 02 人审批后发布 / 应用；草稿不触发工作项执行。运行期重拆要新基线补丁裁决。循环、无进展、连续依赖缺失和副作用确认按 00 §16.1 / §16.4，AI 不自行延长预算或上限。
+
+### 14.2 分期与页面验收
+
+D110 编制授权 / 自建、Heavy、完整目录与生命周期增强开发 v1.1；MVP 固定人员 / Agent 队伍、简单派单与 D113 内部质量门。D109 接受旧规格的决定不恢复已由 E2 收窄的 MVP。Agent 新建与退役原型为完整分步向导（配置校验 / 预览 / 确认 / 失败回退；退役交接 / 转交 / 清理 / 吊销），审批 / 孤儿治理等延后场景加 v1.1 徽标。
+
+验收：甲方在共享频道正常交流，但直达内部频道 / 线程 / 附件 / SSE 被拒且不泄露；对外 Agent 承诺即便授予事实答复也必须人审；流程草稿不自动发布；外部搜索卡只包含已批准对外来源；共享频道内不展示内部 QA 失败卡。截图演示不能替代产品权限测试。
+
+### 14.P 本域易用性与大数据验收
+
+本域适用 00 §16.8：服务端权限过滤 / 稳定游标分页，不全量拉取前端后筛；长列表虚拟化、聚合服务端取，精确总数不阻塞首屏；涉及看板按列分页、频道历史锚点与增量、流程图可见渲染 / 子流程惰性加载、文件范围读。切项目 / 筛选取消过期请求，保留阅读 / 草稿上下文，明示 loading / 空 / 超时 / 限流 / 断流 / 重试。协作二级菜单不跳会话域。规模与 API / UI 性能预算是开发后待实测门槛，原型不宣称已通过。
+
+
+交互会话 UI 复审统一：重复独立 session 页面退休；执行资源 / API 不变，执行列表与工具授权待办的对象链接进入会话域 `/t/:tenantID/chat?execution_id=:executionID`（原型 `chat/exec-tax`），新建交互会话复用同一列表创建。旧 `/executions/:executionID/session` UI 路径不注册 / 无 alias 或重定向，所有引用直接使用规范会话路径；消息、工具授权、上下文共用同一真实状态，禁止假操作按钮。此为对象上下文链接，协作侧栏仍不跨域，见 00 §16.9。
+
+### 14.Q 集合读取 API 分页参数同步
+
+本规格 §6 全部集合 GET operation（包括现有列表和本次补的读模型）采用 00 §16.10 的唯一产品分页合同：`cursor?` / `limit?`（默认50、最多100）/ 白名单 `sort?`，保留各 operation 的业务 filter / q / project_id；返回 `items,next_cursor?,has_more`，旧 offset / page / page_size 参数退休，不并存两套 API。消息历史 anchor_seq / 增量 after_seq 单独按语义使用；聚合 / 有限枚举不分页。服务端稳定排序与权限 / 筛选绑定 cursor，不依赖精确 COUNT。公共底座既有查询不改，本产品开发前 W1 检查 pkg/query 能力及最小复用 / 扩展 ADR，不能假称已具备游标。旧接口表分页字段由本条原地替代，最终 OpenAPI 只生成这一合同。

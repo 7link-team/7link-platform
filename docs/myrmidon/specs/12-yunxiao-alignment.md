@@ -1,5 +1,7 @@
 # 12 · 云效对齐与集成（D112）
 
+> **现行范围（2026-10-12，D125–D129）**：用户已批准需求审计 E1–E4；以 [00 共同契约](00-conventions.md) §16 与本文 §14 为准。原型全量展示，开发 MVP 仅单项目软件闭环；其余按现行分期延后。下文历史门户 / 跨项目菜单 / 独立拆解模板 / 旧 MVP 标记如冲突均已退休，不构成实现承诺。
+
 > 规格层级：`PRD.md` → `00-conventions.md`（v2.0，§15 可靠性闭环与内部质量门为权威）→ 本规格。
 > 两部分：**A. 云效对齐**（模块 `delivery` 内的工作流配置与协作对象，MVP / P1）；**B. 云效集成**（新模块 `integration`，v1.1 / v2）。
 > 依据：`research/2026-10-collaboration-research.md` §1.4、§3 第 11–15、26 项；云效调研结果（官方帮助中心抓取 5 页，其余检索）。**标注「待核实」的事实只来自搜索摘要，落地前必须在客户真实的云效组织中核对（导出一份工作流配置与 OpenAPI 调用实测）。**
@@ -570,7 +572,7 @@ UNIQUE(tenant_id, work_item_id, kind, repository, ref)。
 
 - Part A 沿用 02 §6.1（huma v2 + `respx`、i18n namespace `delivery`、`RegisterOwned` 项目守卫、ETag / If-Match、平台幂等 `176425` / `176409`、权限拒绝 403 `120403` + `reason_code`、OpenAPI tag = 最终发布路径第一段）。通用码复用 02：`120400`（输入 / 缺 If-Match 428）、`120403`、`120404`、`120409`（版本冲突）、`120420`（02 状态机非法迁移）。
 - Part B 模块 `integration`：i18n namespace `integration`；团队级资源用 `authz.Register` + 权限码；入站 Webhook 用 `RegisterPublic` + 签名校验；错误码段 `190000–194999`；通用码 `190400` / `190403` / `190404` / `190409`。
-- 列表接口支持 `pkg/query`（`field=op:value`，offset 分页，`capabilities`）。
+- 列表接口支持 `pkg/query`（`field=op:value`，cursor 分页（00 §16.10；W1 确认底座复用 / 最小扩展），`capabilities`）。
 
 ### 6.2 错误码
 
@@ -883,3 +885,22 @@ UNIQUE(tenant_id, work_item_id, kind, repository, ref)。
 | CR-12-10 | §8 / §9（D120） | 使用 02 `WorkItemActivityRecorder` / `WorkItemActivityReader`、03 `ArtifactComments`、05 `OperationRegistry`；A13 适用 §9 过期上下文写入约定（`seen_seq`、`interrupted`）；不新增共享枚举、权限码与事件（批注转缺陷沿用 `work_item_write`） | BR-12-37 / 38 |
 
 > **D120（2026-10-12，批注转缺陷与过期上下文写入）已并入本规格**：US-12-15、§3.7 增列 `comment_thread_id` / `anchor_snapshot`、§5.9（BR-12-37 / 38）、接口 A31 与 A13 的 `seen_seq`、错误码 126061–126063、审计 `delivery.defect_created_from_comment`、§8.6 来源批注区块、AC-12-47…50、CR-12-10。
+
+
+## 14. 流转、证据与反馈边界同步
+
+本模块 `WorkflowResolver` / 流转配置定义工作项状态与动作守卫；11 WorkflowDef 定义静态编排，两者是不同责任，不能另建第三套模板 / 执行 DAG。云效自动集成、完整用例 / 测试计划、工时审批开发 v1.1，原型现在全做；MVP 软件基本验收测试 / frozen suites / commit / 手填 PR 与 CI 证据仍保留。
+
+测试计划详情 `/t/:tenantID/p/:projectID/test-plans/:planID`：计划范围 / 用例版本 / 关联需求与工作项 / 执行轮次 / 结果 / 证据、失败定位、冻结差异、空 / 失败 / 无权态；冻结测试不因普通编辑 / force_valid 放开篡改。个人工时入口 `/t/:tenantID/worklogs?mine=1` 从工作台我的任务与用户操作进入，提供日期 / 项目 / 工作项 / 时长 / 描述 / 草稿 / 提交 / 审批状态，计入内部轮次与监督成本，不以空白当零成本。
+
+内部缺陷列表只在当前项目 `/p/:projectID/defects`，不再有协作跨项目列表。甲方使用 01 `/client-issues`，团队分诊可关联内部 BUG / INCIDENT，外部投影不包含 defect ID、内部严重度讨论 / 执行与 QA。生产问题、L3 / L4 质量拒绝分别记录穿透关联，范围变化不计质量穿透；共用 escape_key 学习仍由 02 唯一消费。
+
+适配器 / PR 连接器合同保留真实 commit、流水线版本和可信来源，不能把手填 URL / 已合入等同验证或部署成功。FAILED / INCONCLUSIVE 可由有权人走 02 force_valid、理由 + 重认证 + 审计 + 交付标注；不能掩盖冻结测试被改或未处理 stale，也不改 Verification 原结果。每个已接受成本按 00 §16.6 含失败与内部轮次。
+
+### 14.P 本域易用性与大数据验收
+
+本域适用 00 §16.8：服务端权限过滤 / 稳定游标分页，不全量拉取前端后筛；长列表虚拟化、聚合服务端取，精确总数不阻塞首屏；涉及看板按列分页、频道历史锚点与增量、流程图可见渲染 / 子流程惰性加载、文件范围读。切项目 / 筛选取消过期请求，保留阅读 / 草稿上下文，明示 loading / 空 / 超时 / 限流 / 断流 / 重试。协作二级菜单不跳会话域。规模与 API / UI 性能预算是开发后待实测门槛，原型不宣称已通过。
+
+### 14.Q 集合读取 API 分页参数同步
+
+本规格 §6 全部集合 GET operation（包括现有列表和本次补的读模型）采用 00 §16.10 的唯一产品分页合同：`cursor?` / `limit?`（默认50、最多100）/ 白名单 `sort?`，保留各 operation 的业务 filter / q / project_id；返回 `items,next_cursor?,has_more`，旧 offset / page / page_size 参数退休，不并存两套 API。消息历史 anchor_seq / 增量 after_seq 单独按语义使用；聚合 / 有限枚举不分页。服务端稳定排序与权限 / 筛选绑定 cursor，不依赖精确 COUNT。公共底座既有查询不改，本产品开发前 W1 检查 pkg/query 能力及最小复用 / 扩展 ADR，不能假称已具备游标。旧接口表分页字段由本条原地替代，最终 OpenAPI 只生成这一合同。

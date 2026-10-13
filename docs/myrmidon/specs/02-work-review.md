@@ -1,5 +1,7 @@
 # 02 · 工作项与评审（需求基线 · 工作项 · 分派 · 完成声明 · 裁决 · 范围变更 · 拆解模板）
 
+> **现行范围（2026-10-12，D125–D129）**：用户已批准需求审计 E1–E4；以 [00 共同契约](00-conventions.md) §16 与本文 §14 为准。原型全量展示，开发 MVP 仅单项目软件闭环；其余按现行分期延后。下文历史门户 / 跨项目菜单 / 独立拆解模板 / 旧 MVP 标记如冲突均已退休，不构成实现承诺。
+
 > 模块：`delivery`（第一部分；项目 / 交付包 / 验收见 `07`，同属 `delivery` 模块）｜上位文档：`PRD.md` §4、§5、§6.3、§6.6、§7、§8、§10.4、§11.3、§12；契约：`00-conventions.md`（本规格不重定义其中任何内容，变更见 §13）。
 > 标注约定：「本规格提议」= 超出 PRD 的具体化，后附一句理由；未标注者均可追溯到 PRD / 00 / 立项基线（doc3）/ 评审报告（doc2）/ 旧 PRD v2 §13、§23.A、D.5、F.10。
 
@@ -746,7 +748,7 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 - **BR-02-21 职责分离**（硬编码）：以下主体对该工作项的 APPROVE / REJECT / REQUEST_CHANGES 被拒（`reason_code=SELF_REVIEW`）：(a) 任一时刻持有该工作项 EXECUTOR 分派者；(b) 任一声明的声明者；(c) 03 报告的任一分支执行的**执行受派人**（不含仅确认派单、仅作为 SYSTEM autostart 发起的人，C17）；(d) 以 ASSIGN 分派该工作项的 AGENT（主管 Agent，PRD §10.6），除非其 authority 为 DELEGATION 且 (a)–(c) 不成立。另外，**05 中无 `REVIEWER` 角色的 AGENT，任何裁决（PAUSE 除外）均拒绝**（`reason_code=AGENT_EXECUTOR`），即使存在委托。人类同样受 (a)–(c) 约束（§12 Q1）。
 - **BR-02-22 理由**：REJECT、REQUEST_CHANGES、SCOPE_CHANGE、PAUSE、RESUME、CANCEL、改派（替换已有分派的 ASSIGN）理由必填 5–2000 字符（PRD 只强制 REJECT / SCOPE_CHANGE；本规格提议扩展，依据 doc3「每个决定必须记录理由」）；APPROVE 理由可选，但存在未覆盖必需标准、`needs_judgement=true` 时必填；缺失 → 422 `120434`。
 - **BR-02-23 结构化反馈**：REJECT / REQUEST_CHANGES 必须 ≥1 条反馈（`category`、`detail` 必填，PRD §7）且 `failure_category` ∈ {QUALITY_REJECTION, STRATEGY_CHANGE, SCOPE_CHANGE}；否则 422 `120435` / `120436`。其他动作携带反馈或 failure_category → 422 `120436`。EXECUTION_FAILURE、BLOCKED 只由系统 / 阻塞命令产生。
-- **BR-02-24 验证门（L3 不能跳过 L2）**：APPROVE 要求 03 报告的必需验证全部 PASSED；有 INCONCLUSIVE（无 FAILED）→ 仅 HUMAN 可 APPROVE 且理由必填；AGENT（经委托）APPROVE 还要求 ≥1 条 AUTOMATED 层 PASSED 且无 INCONCLUSIVE；AI_ASSISTED 结果不能单独支撑 APPROVE（PRD §11.2）。违反 → 409 `120438`（`data.missing_verifications[]`）。
+- **BR-02-24 验证门（正常路径 L3 必须通过 L2，人工例外见 §14）**：APPROVE 要求 03 报告的必需验证全部 PASSED；有 FAILED / INCONCLUSIVE → 普通 APPROVE 不通过；仅有权 HUMAN 可依 §14 独立 force_valid + 理由 + 重新认证后裁决；AGENT（经委托）APPROVE 还要求 ≥1 条 AUTOMATED 层 PASSED 且无 INCONCLUSIVE；AI_ASSISTED 结果不能单独支撑 APPROVE（PRD §11.2）。违反 → 409 `120438`（`data.missing_verifications[]`）。
 - **BR-02-25 基线过期与升级**：`baseline_stale=true` 时 APPROVE → 409 `120437`；`require_human_decision=true` 或升级类暂停时 AGENT 裁决 → 403 `120403`（`ESCALATED_HUMAN_ONLY`）。
 - **BR-02-26 有界自治 · 返工计数**：T12 / T15 后 `quality_rework_count+1`；**计数 ≥3** 时同事务置暂停 `AUTONOMY_REWORK_LIMIT`、`require_human_decision=true`、发布 `work_item.escalated{trigger:REWORK_LIMIT, count}`（CCR-04），03 分支以 `autostart=false` 创建；此后每次返工都需人类放行（PRD §7、旧 PRD §13）。STRATEGY / SCOPE / RETRY_INFRA 不计数。
 - **BR-02-27 有界自治 · 原地打转**：声明提交时，若当前执行分支原因为 QUALITY 且 03 `EvidenceReader.ChangeSimilarity(execution)` 返回 `changed_files / union_files < 0.08`（以父分支产物文件集为基线，逐文件 SHA-256，旧 PRD F.10），声明照常记录（L1 不丢）、验证照常排队，同事务置暂停 `AUTONOMY_SPINNING` 并发布 `work_item.escalated{trigger:SPINNING, ratio}`。首个分支不检测；03 无法计算（产物为空）→ ratio=NULL，不触发；**并集文件数 `union_count < 5` 时 03 返回 ratio=NULL，不触发**（小改动返工不误判打转；MVP 固定，03 Q7 已决）。
@@ -878,7 +880,7 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 | # | 方法 路径 | tag | 守卫 / 权限码 | 请求 | 响应 data | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|---|---|
 | R1 | `POST /entities/{entity_id}/requirements` | entities | RegisterOwned · `requirement_write` | `title*, description, priority(0–3), criteria[{text*, required}] ≤50, source_intake_id` | Requirement（201） | 400, 403, 404, 120420(project_stage), 120449 | ✔ |
-| R2 | `GET /entities/{entity_id}/requirements` | entities | RegisterOwned · `requirement_read` | query：过滤 `status(eq,in)`、`priority(eq,in,lte)`、`source_intake_id(eq)`、`created_at(gte,lte)`；`search`(title)；排序 `number, priority, created_at, updated_at`（默认 `priority,number`）；`offset/limit(≤200)/meta=capabilities` | `{items: Requirement(无 description)[], total}` | 403, 404 | — |
+| R2 | `GET /entities/{entity_id}/requirements` | entities | RegisterOwned · `requirement_read` | query：过滤 `status(eq,in)`、`priority(eq,in,lte)`、`source_intake_id(eq)`、`created_at(gte,lte)`；`search`(title)；排序 `number, priority, created_at, updated_at`（默认 `priority,number`）；`cursor?/limit?（默认50、最大100）/sort?/meta=capabilities` | `{items: Requirement(无 description)[], next_cursor?, has_more}` | 403, 404 | — |
 | R3 | `GET /requirements/{requirement_id}` | requirements | RegisterOwned · `requirement_read` | — | Requirement + ETag | 404 | — |
 | R4 | `PATCH /requirements/{requirement_id}` | requirements | RegisterOwned · `requirement_write` | `title, description, priority, status(ARCHIVED)` | Requirement | 120409, 120439, 120420 | If-Match |
 | R5 | `POST /requirements/{requirement_id}/acceptance-criteria` | requirements | RegisterOwned · `requirement_write` | `text*, required, position` | Criterion（201） | 120439（非 DRAFT）, 120449 | ✔；If-Match（需求） |
@@ -895,8 +897,8 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 | # | 方法 路径 | tag | 守卫 / 权限码 | 请求 | 响应 data | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|---|---|
 | W1 | `POST /entities/{entity_id}/work-items` | entities | RegisterOwned · `work_item_write` | `requirement_id*, title*, description, type*, risk, estimate_minutes, parent_id, criterion_ids[], depends_on_ids[] ≤50` | WorkItem（201） | 120449, 120450, 120422, 120430, 120420 | ✔ |
-| W2 | `GET /entities/{entity_id}/work-items` | entities | RegisterOwned · `work_item_read` | 过滤：`state(eq,in,notIn)`、`type(eq,in)`、`risk(eq,in)`、`requirement_id(eq,in)`、`parent_id(eq,isNull)`、`executor_principal_id(eq,in)`、`executor_kind(eq)`、`baseline_stale(eq)`、`paused(isNull)`、`is_container(eq)`、`needs_judgement(eq)`、`created_at/updated_at/state_changed_at/accepted_at(gte,lte)`；`search`(title, key)；排序 `number, state_changed_at, created_at, updated_at, risk, estimate_minutes`（默认 `-state_changed_at`）；`limit ≤200` | `{items: WorkItem(摘要)[], total}` | 403 | — |
-| W3 | `GET /entities/{entity_id}/work-item-board` | entities | RegisterOwned · `work_item_read` | `limit_per_column(1–200, 默认 100)`、W2 同名过滤（`state` 除外）、`include_cancelled(bool)` | `{columns:[{key, states[], total, items: WorkItem(卡片)[]}]}`（本规格提议：看板 1000 项单请求加载） | 403 | — |
+| W2 | `GET /entities/{entity_id}/work-items` | entities | RegisterOwned · `work_item_read` | 过滤：`state(eq,in,notIn)`、`type(eq,in)`、`risk(eq,in)`、`requirement_id(eq,in)`、`parent_id(eq,isNull)`、`executor_principal_id(eq,in)`、`executor_kind(eq)`、`baseline_stale(eq)`、`paused(isNull)`、`is_container(eq)`、`needs_judgement(eq)`、`created_at/updated_at/state_changed_at/accepted_at(gte,lte)`；`search`(title, key)；排序 `number, state_changed_at, created_at, updated_at, risk, estimate_minutes`（默认 `-state_changed_at`）；`limit ≤200`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `{items: WorkItem(摘要)[], total}` | 403 | — |
+| W3 | `GET /entities/{entity_id}/work-item-board` | entities | RegisterOwned · `work_item_read` | `column_cursor? / limit_per_column(1–100, 默认50)`、W2 同名过滤（`state` 除外）、`include_cancelled(bool)`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `{columns:[{key, states[], total, items: WorkItem(卡片)[]}]}`（本规格提议：看板 1000 项单请求加载） | 403 | — |
 | W4 | `GET /work-items/{work_item_id}` | work-items | RegisterOwned · `work_item_read` | — | WorkItem + `allowed_actions[]` + ETag | 404 | — |
 | W5 | `PATCH /work-items/{work_item_id}` | work-items | RegisterOwned · `work_item_write` | `title, description, type, risk, estimate_minutes, parent_id(null=脱离), archived(bool，仅 CANCELLED)` | WorkItem | 120409, 120420, 120450 | If-Match |
 | W6 | `PUT /work-items/{work_item_id}/baseline` | work-items | RegisterOwned · `work_item_write` | `requirement_version_no*（须=当前）, criterion_ids[]` | WorkItem | 120420, 120430, 120440 | If-Match |
@@ -907,14 +909,14 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 | W11 | `DELETE /work-items/{work_item_id}/dependencies/{depends_on_id}` | work-items | RegisterOwned · `work_item_write` | — | 204 | 404 | 幂等 |
 | W12 | `PUT /work-items/{work_item_id}/blockage` | work-items | RegisterOwned · `work_item_read`（服务内：`work_item_write`，或执行分派人 + `CLARIFICATION`） | `reasons*: [CLARIFICATION|EXTERNAL], note*（≤2000）, clarification_question?` | WorkItem | 120420, 120403 | If-Match |
 | W13 | `DELETE /work-items/{work_item_id}/blockage` | work-items | RegisterOwned · `work_item_write` | `note` | WorkItem | 120420(blocked_by_system_reason) | If-Match |
-| W14 | `GET /tenants/{tenant_id}/work-items` | tenants | RegisterTenantMember；服务内按调用者可读项目过滤（`work_item_read` 的项目集合） | W2 同名过滤 + `project_id(eq,in)`；排序同 W2；`limit ≤200` | `{items: WorkItem(摘要，含 project{id, name})[], total}` | — | — |
+| W14 | `GET /tenants/{tenant_id}/work-items` | tenants | RegisterTenantMember；服务内按调用者可读项目过滤（`work_item_read` 的项目集合） | W2 同名过滤 + `project_id(eq,in)`；排序同 W2；`limit ≤200`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `{items: WorkItem(摘要，含 project{id, name})[], total}` | — | — |
 
 ### 6.5 分派与租约
 
 | # | 方法 路径 | tag | 守卫 / 权限码 | 请求 | 响应 data | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|---|---|
 | A1 | `POST /work-items/{work_item_id}/assignments` | work-items | RegisterOwned · `work_item_read`；服务内：自认领 EXECUTOR → `work_item_execute`；评审认领 REVIEWER → BR-02-15 预检；指派他人 → AuthorityChecker(`work_item_assign`) 并记 ASSIGN 裁决 | `role*, assignee_principal_id*, lease_ttl_seconds?, reason(改派必填), rationale?(派单理由，≤2000), attention_session_ids?` | `{assignment, decision?, work_item}`（201） | 120403, 120426, 120446, 120444, 120420, 120421, 120434 | ✔；If-Match（工作项） |
-| A2 | `GET /work-items/{work_item_id}/assignments` | work-items | RegisterOwned · `work_item_read` | 过滤 `status, role` | `{items: Assignment[]}` | — | — |
+| A2 | `GET /work-items/{work_item_id}/assignments` | work-items | RegisterOwned · `work_item_read` | 过滤 `status, role`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `{items: Assignment[]}` | — | — |
 | A3 | `GET /assignments/{assignment_id}` | assignments | RegisterOwned · `work_item_read` | — | Assignment + ETag | 404 | — |
 | A4 | `PATCH /assignments/{assignment_id}` | assignments | RegisterOwned · `work_item_read`；服务内：本人或 `work_item_assign` | `status*: RELEASED, reason` | `{assignment, work_item}` | 120403(NOT_LEASE_HOLDER), 120420, 120409 | If-Match（分派） |
 | A5 | `PUT /assignments/{assignment_id}/lease` | assignments | RegisterOwned · `work_item_read`；服务内：本人 | `ttl_seconds?` | `{lease_expires_at, ttl_ms}` | 120403(NOT_LEASE_HOLDER), 120420, 120421 | 天然幂等 |
@@ -934,7 +936,7 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 | D1 | `POST /work-items/{work_item_id}/decisions` | work-items | RegisterOwned · `work_item_read`（路由）+ 服务内 AuthorityChecker（BR-02-19 动作 → 权限码）；ASSIGN 与 SCOPE_CHANGE 不经此入口（422 `120436`，分别走 A1 / R10） | `action*: APPROVE|REJECT|REQUEST_CHANGES|PAUSE|RESUME|CANCEL, claim_id(评审类必填=current_claim_id), reason, failure_category, workspace_mode?(仅 REJECT 默认 RESTART / REQUEST_CHANGES 默认 CONTINUE，可覆盖), strategy_note?, feedback[{category*, detail*, location, expected, criterion_id, evidence_id}] ≤20, evidence_refs[] ≤100, verification_refs[] ≤100, attention_session_ids[]` | `{decision, work_item, branch_request?:{execution_id, branch_reason, autostart}, escalation?:{trigger}}`（201） | 120403(+reason_code), 120409, 120420, 120421, 120434, 120435, 120436, 120437, 120438, 120446 | ✔；If-Match（工作项） |
 | D2 | `GET /work-items/{work_item_id}/decisions` | work-items | RegisterOwned · `work_item_read` | 排序 `created_at` | `{items: Decision[]}` | — | — |
 | D3 | `GET /decisions/{decision_id}` | decisions | RegisterOwned · `work_item_read`（REQUIREMENT 目标 → `requirement_read`） | — | Decision | 404 | — |
-| D4 | `GET /entities/{entity_id}/review-queue` | entities | RegisterOwned · `work_item_read` | 过滤 `risk, type, requirement_id, claimed(me|others|none), needs_judgement, baseline_stale`；排序 `waited(默认，按进入 NEEDS_HUMAN_REVIEW 时间升序), risk` | `{items:[{work_item(卡片), claim_id, coverage, verification{passed,total,inconclusive}, reviewer_claim, can_decide:bool, sod_blocked:bool}]}`（本规格提议：评审台专用投影，排除调用者因职责分离无法裁决的项，`include_blocked=true` 时返回并标记） | 403 | — |
+| D4 | `GET /entities/{entity_id}/review-queue` | entities | RegisterOwned · `work_item_read` | 过滤 `risk, type, requirement_id, claimed(me；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） |others|none), needs_judgement, baseline_stale`；排序 `waited(默认，按进入 NEEDS_HUMAN_REVIEW 时间升序), risk` | `{items:[{work_item(卡片), claim_id, coverage, verification{passed,total,inconclusive}, reviewer_claim, can_decide:bool, sod_blocked:bool}]}`（本规格提议：评审台专用投影，排除调用者因职责分离无法裁决的项，`include_blocked=true` 时返回并标记） | 403 | — |
 | D5 | `GET /tenants/{tenant_id}/review-queue` | tenants | RegisterTenantMember；服务内按调用者可读项目过滤 | D4 同名过滤 + `project_id(eq,in)` | D4 同形，每项加 `project{id, name}`（团队级评审台，「我的裁决」评审类项的直达入口，不进菜单；侧栏「评审台」为项目空间 `/t/:tenantID/p/:projectID/review`，08 §8.6；C63） | — | — |
 
 **D1 事务顺序**（实现必须按此顺序，便于测试）：① 形状校验（理由、反馈、类别）→ ② 幂等查找 → ③ 开事务，读工作项 → ④ If-Match → ⑤ 项目阶段、终态、暂停规则 → ⑥ 状态守卫 → ⑦ 评审认领冲突 → ⑧ 职责分离与 Agent 规则 → ⑨ AuthorityChecker + 不可委托硬校验 → ⑩ 验证门 / 基线过期 → ⑪ 写 Decision + 反馈 + 迁移记录 + CAS 更新工作项 + 分派 / 声明结果 → ⑫ 失败处理：03 `ExecutionLauncher.Launch(tx, ...)`（拥有者在调用方事务内写自己的行，backend-module 委派模式）+ 有界自治 → ⑬ 关注会话结算 → ⑭ `audit.Appender(tx, delivery.decision_<action>)`，detail 含 `reason, evidence_refs, authority_source, delegation_id, failure_category, feedback_count, from_state, to_state` → ⑮ outbox `decision.made`、`work_item.state_changed`（09，同事务）→ ⑯ 幂等记录 → 提交。⑧⑨ 失败：回滚后以独立事务追加 `delivery.decision_denied`（outcome=denied）。
@@ -945,7 +947,7 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 |---|---|---|---|---|---|---|---|
 | S1 | `POST /work-items/{work_item_id}/attention-sessions` | work-items | RegisterOwned · `work_item_read`；HUMAN | `claim_id*, surface(REVIEW_DESK)` | `{id, heartbeat_interval_ms:15000, idle_cutoff_ms:60000}`（201） | 120403(HUMAN_ONLY), 120420(非 NEEDS_HUMAN_REVIEW) | ✔ |
 | S2 | `PUT /attention-sessions/{attention_session_id}` | attention-sessions | RegisterOwned · `work_item_read`；本人 | `sequence*, active_ms_delta*, ended(bool)` | `{active_ms, reviewer_lease_expires_at}` | 120454, 404 | 序号幂等 |
-| T1 | `GET /tenants/{tenant_id}/decomposition-templates` | tenants | RegisterTenantMember | 过滤 `status, builtin`；排序 `key, updated_at` | `{items:[{id, key, name, status, latest_version_no, builtin}]}` | — | — |
+| T1 | `GET /tenants/{tenant_id}/decomposition-templates` | tenants | RegisterTenantMember | 过滤 `status, builtin`；排序 `key, updated_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `{items:[{id, key, name, status, latest_version_no, builtin}]}` | — | — |
 | T2 | `POST /tenants/{tenant_id}/decomposition-templates` | tenants | Register · `decomposition_template_manage`（CCR-03） | `definition*`（§3.17）, `changelog`；`copy_from_template_id?` | `{template, version}`（201） | 120441, 120449(每团队 ≤100 模板) | ✔ |
 | T3 | `GET /decomposition-templates/{template_id}` | decomposition-templates | RegisterOwned（tenant 归属）· 成员 | `version_no?` | `{template, version:{version_no, definition, content_hash, changelog}}` | 404 | — |
 | T4 | `POST /decomposition-templates/{template_id}/versions` | decomposition-templates | RegisterOwned · `decomposition_template_manage` | `definition*, changelog*` | version（201） | 120441, 120409 | ✔；If-Match（模板） |
@@ -982,13 +984,13 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 | AN1 | `POST /work-items/{work_item_id}/andon-pulls` | work-items | RegisterOwned · `andon_pull` | `{reason≥10, evidence_refs?[]}`；Idempotency-Key | AndonEvent | 409 已 ACTIVE 时返回现有记录 200 |
 | AN2 | `POST /entities/{entity_id}/andon-pulls` | entities | RegisterOwned · `andon_pull` | 同上（项目级） | AndonEvent | — |
 | AN3 | `POST /andon-pulls/{andon_id}/clearance` | andon-pulls | RegisterOwned · `andon_clear`（仅人类） | `{clearance_note}` | AndonEvent + WorkItem[] | 403 HUMAN_ONLY |
-| AN4 | `GET /entities/{entity_id}/andon-pulls?state=` | entities | RegisterOwned · `work_item_read` | pkg/query：`state`, `scope`, `created_at` | `AndonEvent[]` | — |
+| AN4 | `GET /entities/{entity_id}/andon-pulls?state=` | entities | RegisterOwned · `work_item_read` | pkg/query：`state`, `scope`, `created_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `AndonEvent[]` | — |
 | E1 | `GET /work-items/{work_item_id}/exceptions` | work-items | RegisterOwned · `work_item_read` | — | `Exception[]` | — |
 | E2 | `GET /exceptions/{exception_id}` | exceptions | RegisterOwned · `work_item_read` | — | Exception | 404 |
 | E3 | `POST /exceptions/{exception_id}/decision` | exceptions | RegisterOwned · `exception_decide`（仅人类，不可委托） | `{decision, reason, new_appetite_minutes?, new_tolerance?}`；If-Match | Exception + WorkItem | 403 HUMAN_ONLY / NON_DELEGABLE、422 120468 |
 | E4 | `POST /work-items/{work_item_id}/exceptions` | work-items | RegisterOwned · `work_item_write` 或负责人 | `{dimension, report}` | Exception | 409 120465（已有 OPEN） |
 | Q1 | `GET /work-items/{work_item_id}/internal-qa-rounds` | work-items | RegisterOwned · `work_item_read`（团队成员；甲门户无此路由） | — | `InternalQaRound[]` | — |
-| X1 | `GET /entities/{entity_id}/escapes` | entities | RegisterOwned · `work_item_read` | pkg/query：`stage`, `category`, `created_at` | `Escape[]` | — |
+| X1 | `GET /entities/{entity_id}/escapes` | entities | RegisterOwned · `work_item_read` | pkg/query：`stage`, `category`, `created_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Escape[]` | — |
 
 本模块新增提供接口（00 §8）：`WorkItemTransitioner.PlanProposed(tx, work_item_id, plan)`、`InternalQaCompleted(tx, work_item_id, claim_id, stage, result, verdict)`（03 调用，source_ref 幂等）；`SetSystemBlock(tx, work_item_id, reason ∈ {TOOL_UNAVAILABLE, PROVIDER_UNAVAILABLE}, on, source_ref)`（11 调用，BR-02-61）。新错误码：120461 `readiness_unmet`、120462 `plan_not_approved`、120464 `andon_active`、120465 `exception_pending`、120467 `accountable_human_required`、120468 `exception_continue_requires_new_budget`（i18n `delivery.error.*` 三语）。
 
@@ -1120,7 +1122,7 @@ root：`{zh-CN: "交付：{requirement.title}", type: FEATURE}`。
 | 按钮 | 可用 | 不可用文案 |
 |---|---|---|
 | 认领评审 | NEEDS_HUMAN_REVIEW、无他人有效认领、预检通过 | 「Morgan 正在评审（剩 9 分钟）」/「你执行过此工作项，不能评审」 |
-| 通过 | 预检 APPROVE 允许；必需验证全 PASSED（或 INCONCLUSIVE 且人类 + 理由）；未过期基线；无他人认领 | 「还有 1 项必需验证未通过」「需求基线已过期，需先要求修改」「你的委托不覆盖高风险工作项」 |
+| 通过 | 预检 APPROVE 允许；必需验证全 PASSED；有人工覆盖时依 §14 的独立 force_valid 守卫；未过期基线；无他人认领 | 「还有 1 项必需验证未通过」「需求基线已过期，需先要求修改」「你的委托不覆盖高风险工作项」 |
 | 要求修改 / 拒绝 | 预检允许 | 同上授权文案 |
 | 暂停 | `decision_pause` | — |
 
@@ -1453,8 +1455,8 @@ Then  422 120434；APPROVE 无理由且覆盖完整、验证全通过 → 201
 ```
 AC-02-35  [integration]  关联 BR-02-24
 Given W 必需验证 {AUTOMATED PASSED, AI_ASSISTED INCONCLUSIVE}
-When  Agent 评审员（委托满足其余条件）APPROVE；人类 Morgan 无理由 APPROVE；Morgan 带理由 APPROVE
-Then  依次 409 120438、422 120434、201
+When  Agent 评审员或人类普通 APPROVE（无论是否带理由）
+Then  必需验证未通过，均 409 120438；有权人使用独立 force_valid，带理由 / 风险 / 证据且重新认证成功后可进入 L3；缺任一守卫不写成功记录；原 Verification 保持 INCONCLUSIVE
 ```
 
 ```
@@ -1921,3 +1923,22 @@ And   以另一工作项执行上的线程 → 422 120471（NOT_THIS_WORK_ITEM�
 > **D112 / D113（2026-10-11）**：本规格按 00 v2.0 §15 增补（§3.20–3.25、§4.5、§5.11、§6.10、§7.4、§8.6、N11–N14、§10.11、§11）。需要他规格配合：03 `purpose=PLANNING` 只读执行与计划产出格式、冻结 / 隐藏验收集、`InternalQaCompleted` 回调、`CHEATING_SUSPECTED`；05 TESTER / ACCEPTOR 与计划评审 Agent 的派单（跨模型家族）；06 `MemoryWriter`；07 穿透率口径与 `HUMAN_ONLY`；08 新权限码默认授予、`plan_review` 策略、收件箱按 `visibility=INTERNAL` 过滤、N11–N14 路由；11 `EvalSetWriter.ProposeCase` 与模板默认值；12 缺陷流转矩阵与字典。
 
 > **D120（过期上下文写入与批注转反馈，2026-10-12）**：US-02-23 / 24、§3.26（工作项活动流、`activity_seq`、反馈的 `comment_thread_id` / `anchor_snapshot`）、BR-02-64…66、W17 与 A1 / A4 / C1 / D1 的 `seen_seq`、错误码 120469–120471、AC-02-89…92。**CCR-11**（对 00，已登记入 00 v2.0 D120 补充）：§8 新增本模块提供的 `WorkItemActivityRecorder`（03、12 使用）与 `WorkItemActivityReader`（03、05、12 使用）；§9 过期上下文写入约定中的 `work_item:<id>` 流以 `activity_seq` 为准。需要 03 `ArtifactComments`（03 BR-03-139）。
+
+
+## 14. 统一流程、人工覆盖与任务页面整合
+
+00 §16 为权威。§3.16 的两个旧拆解模板定义表不再作为独立流程库开发：模板与版本归 11 WorkflowDef，02 保留项目实例化 / 节点工作项映射与旧 ID 迁移规划。§5 拆解规则改为实例化已批准 WorkflowDef，确认单条目数据扇出固定输入与 expansion_key；静态 DAG 禁环，有界 LOOP 保留内部轮次，条件未命中工作项 `SKIPPED` 存理由且不算接受。运行重拆只通过 WorkflowPatch + 影响预览 + 有权裁决，不直接让 Agent 改图。
+
+§5.1 的 BR-02-24 普通 APPROVE 验证守卫保留；FAILED / INCONCLUSIVE 人工例外统一走独立 `force_valid` 记录，旧「INCONCLUSIVE 且人类理由即普通通过」分支退休。仅有 `decision_force_valid` 与裁决权的人提交被覆盖 verification_ids、当前 claim / artifact / requirement 版本、理由 / 风险 / 证据，重新认证 `verification_override` 后同事务审计；不得覆盖冻结测试篡改、权限 / 隔离、自产职责分离或过期基线。03 不改原验证，02 L3 引用覆盖记录；版本变化覆盖失效，07 交付清单显式标注，Agent 永远禁止。
+
+页面：`/t/:tenantID/my-tasks` 为我的任务聚合（复用 W14 assignee=me），列表支持状态 / 项目 / 截止 / 风险 / 完成阶梯，入口点击始终进入对象所属项目；项目 `/p/:projectID/work-items?view=board|list`、`/requirements` 只本项目。任务 / 需求列表均定义加载、空、筛选无结果、失败重试、无权态。项目确认单签认后关联本规格 Requirement 基线，不再单独来件详情。工作项详情显式「上游过期」「已跳过」「人工覆盖」及原结果。
+
+验收：条件跳过不进 L3 分母 / 交付；扇出重试不重复工作项；不兼容重拆保留旧执行并要求人决策；覆盖理由 / step-up 任一缺失不写；普通 APPROVE 遇 FAILED 不通过，独立 force_valid 合法时保留原失败并可进入 L3；受覆盖版本变更后不可继续用旧授权。D113 内部轮次、无进展 / 连续依赖缺失 / 高风险副作用审批遵守 00 §16.4。
+
+### 14.P 本域易用性与大数据验收
+
+本域适用 00 §16.8：服务端权限过滤 / 稳定游标分页，不全量拉取前端后筛；长列表虚拟化、聚合服务端取，精确总数不阻塞首屏；涉及看板按列分页、频道历史锚点与增量、流程图可见渲染 / 子流程惰性加载、文件范围读。切项目 / 筛选取消过期请求，保留阅读 / 草稿上下文，明示 loading / 空 / 超时 / 限流 / 断流 / 重试。协作二级菜单不跳会话域。规模与 API / UI 性能预算是开发后待实测门槛，原型不宣称已通过。
+
+### 14.Q 集合读取 API 分页参数同步
+
+本规格 §6 全部集合 GET operation（包括现有列表和本次补的读模型）采用 00 §16.10 的唯一产品分页合同：`cursor?` / `limit?`（默认50、最多100）/ 白名单 `sort?`，保留各 operation 的业务 filter / q / project_id；返回 `items,next_cursor?,has_more`，旧 offset / page / page_size 参数退休，不并存两套 API。消息历史 anchor_seq / 增量 after_seq 单独按语义使用；聚合 / 有限枚举不分页。服务端稳定排序与权限 / 筛选绑定 cursor，不依赖精确 COUNT。公共底座既有查询不改，本产品开发前 W1 检查 pkg/query 能力及最小复用 / 扩展 ADR，不能假称已具备游标。旧接口表分页字段由本条原地替代，最终 OpenAPI 只生成这一合同。

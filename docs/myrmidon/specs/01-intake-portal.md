@@ -1,4 +1,6 @@
-# 01 · 需求开口、来件、分诊、澄清与甲方门户（模块 `intake`）
+# 01 · 需求来源、分诊澄清、外部成员与需求确认单（模块 `intake`）
+
+> **现行范围（2026-10-12，D125–D129）**：用户已批准需求审计 E1–E4；以 [00 共同契约](00-conventions.md) §16 与本文 §14 为准。原型全量展示，开发 MVP 仅单项目软件闭环；其余按现行分期延后。下文历史门户 / 跨项目菜单 / 独立拆解模板 / 旧 MVP 标记如冲突均已退休，不构成实现承诺。
 
 > 上位文档：`PRD.md` §2.2、§6.1、§9、§13；共同契约：`00-conventions.md`（本文不重定义其中任何枚举、权限码、事件名、错误码段；需要的变更见 §13）。
 > 标记约定：「本规格提议」= PRD 未写明、由本规格补充的设计，后附一句理由。所有数值为默认值，标注「可配」者可在开口设置中调整，范围写在括号内。
@@ -7,19 +9,19 @@
 
 ## 1. 范围与目标
 
-**解决**：甲方需求从任意开口进入乙方团队，到「转为需求 / 合并 / 拒绝」为止的全部过程，以及甲方在系统外唯一可见的界面（甲方门户）。
+**解决**：甲方需求从任意开口进入乙方团队，到「转为需求 / 合并 / 拒绝」为止的全部过程，以及同应用外部成员的需求确认单、变更和问题反馈投影（D124）。
 
 | 本规格负责 | 交给其他规格 |
 |---|---|
-| 开口（PORTAL、EMAIL、API；WEBHOOK v1.1、IM v2 仅保留枚举）的配置与启停 | 需求表、验收标准、需求版本、范围变更 → **02** |
+| 开口（SHARED_CHANNEL、EMAIL、API；旧 PORTAL 值仅为来源迁移别名，WEBHOOK / IM 后续分期）的配置与启停 | 需求表、验收标准、需求版本、范围变更 → **02** |
 | 来件记录：不可改原文、附件、来源元数据、状态机 | 项目创建、团队模式、交付包、验收数据模型、返工来件的触发 → **07** |
-| 甲方联系人（`intake_contacts`，**不是** Principal）与门户访问链接 | 授权判定（角色/委托/策略）、我的裁决聚合、业务通知编排 → **08** |
+| 甲方联系人来源账本（`intake_contacts`）与外部 Principal / 项目成员资格关联，不再发门户访问链接 | 授权判定（角色/委托/策略）、我的裁决聚合、业务通知编排 → **08** |
 | 分诊卡（Agent 协调员产出草案，人确认或经委托转化） | 协调员 Agent 何时被唤醒、在哪台机器执行 → **05** |
 | 澄清轮次：问题、回答、经原开口发送、提醒、超时 | 后台任务队列、outbox、SSE、通知投递、租户级业务文件写入能力 → **09** |
 | 转为需求（调用 02 的接口）、合并重复、拒绝（理由必填） | 文件存储与 ResourceBinding 本身 → 底座 `files` |
 | 邮件收件（解析、线程、附件上限、垃圾与未知发件人隔离） | Webhook 订阅与签名投递 → 底座 `iam/webhook` |
 | API 来件（PAT / OAuth 客户端）与回执回调（经底座 webhook） | PAT、服务账号、OAuth 客户端凭证 → 底座 `iam/authn`、`iam/identity`、`iam/oauth` |
-| 甲方门户页面与 API 面：提交需求、我的需求（里程碑）、澄清作答、验收入口（调用 07）、申请变更与变更确认（kind=CHANGE，D117；版本与容差落在 02 / 07） | 门户之外的任何甲方组织建模（PRD §2.4 非目标） |
+| 同项目外部成员页面与 API 投影：需求确认单签认、共享频道澄清、验收入口（调用 07）、申请变更与变更确认、问题反馈 | 甲方组织内部结构建模（PRD §2.4 非目标） |
 | 品牌（部署 / 租户配置）与「AI 参与展示」设置 | — |
 
 **不解决**：自动报价、合同、甲方侧多角色与组织管理、IM 与 Webhook 开口的具体协议（仅定义扩展位）。
@@ -30,11 +32,11 @@
 
 | ID | 故事 | 期 |
 |---|---|---|
-| US-01-01 | 作为甲方联系人 Lee，我要用团队发给我的链接在门户提交需求（标题、描述、附件、期望日期），以便不注册账号就能下单 | MVP |
+| US-01-01 | 作为受邀请的外部成员 Lee，我要登录同应用，在授权项目共享频道提出需求、在确认单签认，以便需求形成可验收基线 | MVP |
 | US-01-02 | 作为甲方联系人，我要给团队专属邮箱发邮件，以便用最熟悉的方式提需求，并在同一邮件线程里收到回执与澄清问题 | MVP |
 | US-01-03 | 作为甲方的工单系统，我要用 API 提交来件，并通过 webhook 收到受理、澄清、转化、拒绝等回执 | MVP |
 | US-01-04 | 作为 Agent 协调员，我要读取新来件并提交分诊卡（摘要、需求草案、建议项目、风险、待澄清问题、规模），以便负责人快速确认 | MVP |
-| US-01-05 | 作为交付负责人 Morgan，我要在来件详情里对照原文审阅分诊卡、修改后一键转为需求（现有项目或新建项目） | MVP |
+| US-01-05 | 作为交付负责人 Morgan，我要在确认单草稿来源抽屉里对照原文审阅分诊卡、修改后一键转为需求（现有项目或新建项目） | MVP |
 | US-01-06 | 作为交付负责人，我要把澄清问题经原开口发给甲方，并看到回答回流到同一线程 | MVP |
 | US-01-07 | 作为甲方联系人，我要在门户逐条回答澄清问题，以便团队继续推进 | MVP |
 | US-01-08 | 作为交付负责人，我要在甲方长期不回复时收到超时提醒，并决定按假设转化、再问一次或拒绝 | MVP |
@@ -167,24 +169,9 @@ Tenant ─┬─ intake_channels (1 PORTAL / n EMAIL / n API)
 
 状态为派生值（不落枚举列）：`revoked_at` 非空 → REVOKED；`expires_at ≤ now` → EXPIRED；否则 ACTIVE。索引：`(tenant_id, contact_id, expires_at)`。
 
-### 3.7 `intake_portal_sessions` 门户会话（含一次性访问码）
+### 3.7 独立门户会话退休（D124）
 
-| 列 | 类型 | 空 | 默认 | 说明 |
-|---|---|---|---|---|
-| id | id | N | — | PK |
-| link_id / contact_id | id | N | — | |
-| session_hash | hash | N | — | SHA-256(会话密钥)；`UNIQUE(session_hash)` |
-| code_hash | hash | Y | NULL | SHA-256(6 位访问码 + session id)；不需验证码时为 NULL |
-| code_expires_at | ts | Y | NULL | 发码后 10 分钟 |
-| code_attempts | int | N | 0 | ≥5 即锁定该会话 |
-| verified_at | ts | Y | NULL | 非空 = ACTIVE |
-| expires_at | ts | N | — | 绝对过期：创建 + 12h |
-| idle_expires_at | ts | N | — | 每次请求顺延至 now + 2h，不超过 expires_at |
-| revoked_at | ts | Y | NULL | |
-| client_ip_hash | hash | N | — | SHA-256(IP + 部署盐)，不存明文 IP |
-| user_agent | str(256) | N | `''` | |
-
-索引：`(tenant_id, link_id, revoked_at)`、`(expires_at)`（清理任务用）。「本规格提议」12h/2h：门户是低频外部入口，短会话降低共享设备风险，链接本身长期有效弥补体验。
+不创建 `intake_portal_sessions`、一次性访问码 / portal token / 专用 Cookie。甲方账号复用 IAM，通过项目外部成员资格与服务端白名单投影访问；现行对象见 §14。旧 portal 身份、续期、登录和表字段不再构成 schema 需求。
 
 ### 3.8 `intake_records` 来件（表名按 00 §3 模块前缀规则；资源名与路由仍为 `intakes`）
 
@@ -581,30 +568,22 @@ CHECK（三方言同写法）：`kind <> 'CHANGE' OR (change_of_intake_id IS NOT
 
 | 方法 路径 | 权限 / 守卫 | 请求 | 响应 data | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|
-| `GET /tenants/{tenant_id}/intake-channels` | `intake_read` / R | query：`kind`,`status`（eq,in）；排序 `created_at`,`name` | `IntakeChannel[]`（config 中密钥只回 `secret_set:bool`） | 110403 | — |
+| `GET /tenants/{tenant_id}/intake-channels` | `intake_read` / R | query：`kind`,`status`（eq,in）；排序 `created_at`,`name`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `IntakeChannel[]`（config 中密钥只回 `secret_set:bool`） | 110403 | — |
 | `POST /tenants/{tenant_id}/intake-channels` | `intake_channel_manage` / R | `kind*`,`name*`,`config`,`inbound_local_part`(EMAIL*),`triage_agent_id`,`default_project_id`,`notify_principal_ids` | `IntakeChannel`；EMAIL 另含 `inbound_address` | 110400,110431,110438,110445 | Idempotency-Key；201 |
 | `GET /intake-channels/{channel_id}` | `intake_read` / O | — | `IntakeChannel` | 110404 | — |
 | `PATCH /intake-channels/{channel_id}` | `intake_channel_manage` / O | 任意可变字段 + `status` | `IntakeChannel` | 110400,110409,110438 | If-Match |
 | `GET /tenants/{tenant_id}/intake-client-settings` | `intake_read` / R | — | `ClientSettings` + `resolved_display_name` | — | 无行时返回默认值（不建行） |
 | `PUT /tenants/{tenant_id}/intake-client-settings` | `intake_channel_manage` / R | `display_name`,`logo_file_id`,`support_email`,`ai_disclosure`,`show_platform_attribution`,`default_locale` | `ClientSettings` | 110400,110409 | If-Match（首次写入 `If-Match: 0`） |
 
-### 6.2 联系人与访问链接
+### 6.2 联系人与外部成员邀请
 
-| 方法 路径 | 权限 / 守卫 | 请求 | 响应 data | 错误 | 幂等 / 锁 |
-|---|---|---|---|---|---|
-| `GET /tenants/{tenant_id}/intake-contacts` | `intake_read` / R | query：`state`,`kind`,`email`(eq,like),`display_name`(like)；排序 `display_name`,`created_at` | `IntakeContact[]` + `open_intake_count`、`active_link_count` | — | — |
-| `POST /tenants/{tenant_id}/intake-contacts` | `intake_triage` / R | `display_name*`,`email`,`organization_label`,`locale`,`note` | `IntakeContact` | 110400；邮箱已存在 → 409 110409，data 带已有 id | Idempotency-Key；201 |
-| `GET /intake-contacts/{contact_id}` | `intake_read` / O | — | `IntakeContact` | 110404 | — |
-| `PATCH /intake-contacts/{contact_id}` | `intake_triage` / O | 可变字段、`state`（ACTIVE/BLOCKED）、`archived:true` | `IntakeContact` | 110400,110409,110420 | If-Match |
-| `GET /intake-contacts/{contact_id}/access-links` | `intake_read` / O | — | `AccessLink[]`（派生 `state`、`token_hint`，无 token） | 110404 | — |
-| `POST /intake-contacts/{contact_id}/access-links` | `intake_channel_manage` / O | `ttl_days`(1..180),`send_email:bool` | `AccessLink` + **`access_url`（含 token，仅此一次）** | 110400,110432,110441 | Idempotency-Key（重放返回 `access_url:null, replayed:true`，明文不二次输出）；201 |
-| `PUT /intake-access-links/{link_id}/revocation` | `intake_channel_manage` / O | `reason*`(≤2000) | `AccessLink` | 110404,110427 | 幂等（已吊销返回原记录） |
+联系人来源账本保留；将联系人关联底座真实账号与受限项目成员，由有权人发邮箱邀请，登录复用邮箱 / Google。旧 access-link / access-token API 不注册；最终成员资格 DTO 与权限映射在 W1 技术评审冻结，现行行为见 §14。
 
 ### 6.3 来件
 
 | 方法 路径 | 权限 / 守卫 | 请求 | 响应 data | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|
-| `GET /tenants/{tenant_id}/intakes` | `intake_read` / R | `pkg/query` 过滤：`status`,`channel_kind`,`channel_id`,`contact_id`,`kind`,`client_unresponsive`,`project_id`,`received_at`(gte,lte),`ref_no`(eq),`title`(like)；排序：`received_at`(默认 desc),`last_client_activity_at`,`ref_no`；offset 分页，limit ≤100 | `IntakeSummary[]`：id, ref_no, title, status, kind, channel_kind, contact{id,display_name}, received_at, latest_card{revision,size_estimate,suggested_project_id}, open_round{round_no,due_at,answered,total}, client_unresponsive, possible_duplicate_of | — | — |
+| `GET /tenants/{tenant_id}/intakes` | `intake_read` / R | `pkg/query` 过滤：`status`,`channel_kind`,`channel_id`,`contact_id`,`kind`,`client_unresponsive`,`project_id`,`received_at`(gte,lte),`ref_no`(eq),`title`(like)；排序：`received_at`(默认 desc),`last_client_activity_at`,`ref_no`；cursor?/limit?（默认50、最大100）/sort?；返回 items/next_cursor/has_more（00 §16.10） | `IntakeSummary[]`：id, ref_no, title, status, kind, channel_kind, contact{id,display_name}, received_at, latest_card{revision,size_estimate,suggested_project_id}, open_round{round_no,due_at,answered,total}, client_unresponsive, possible_duplicate_of | — | — |
 | `POST /tenants/{tenant_id}/intakes` | `intake_submit` / R | `channel_id*`（API 开口，或团队代录时的任一开口）,`title*`,`description*`,`format`(PLAIN/MARKDOWN),`desired_by`,`external_ref`,`contact{display_name,email}`,`upload_ids[]`(≤10),`kind`(NEW 默认 / CHANGE),`change_of_intake_id`(CHANGE*；CHANGE 时忽略 `contact`，取原来件联系人) | `Intake` | 110400,110403,110404（原来件不可见，BR-01-77）,110413,110430,110433,110439,110449；`external_ref` 重复 → 200 返回已有来件 + `replayed:true` | Idempotency-Key；201 |
 | `GET /intakes/{intake_id}` | `intake_read` / O | — | `Intake`：全部列 + attachments[{file_id,name,size,mime}] + latest_card + open_round + milestone | 110404 | ETag = version |
 | `GET /intakes/{intake_id}/content` | `intake_read` / O | — | 原文 `text/plain; charset=utf-8`；overflow 时 302 到文件下载 | 110404 | — |
@@ -624,7 +603,7 @@ CHECK（三方言同写法）：`kind <> 'CHANGE' OR (change_of_intake_id IS NOT
 
 | 方法 路径 | 权限 / 守卫 | 请求 | 响应 data | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|
-| `GET /intakes/{intake_id}/clarification-questions` | `intake_read` / O | query `state`,`round_id` | `Question[]` | 110404 | — |
+| `GET /intakes/{intake_id}/clarification-questions` | `intake_read` / O | query `state`,`round_id`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Question[]` | 110404 | — |
 | `POST /intakes/{intake_id}/clarification-questions` | `intake_triage` / O | `questions*[]`({text*})，1..10，DRAFT 总数 ≤10 | `Question[]` | 110400,110421,110433 | Idempotency-Key；201 |
 | `PATCH /intake-clarification-questions/{question_id}` | `intake_triage` / O | `text` 或 `state:WITHDRAWN` | `Question` | 110409,110420 | If-Match |
 | `POST /intakes/{intake_id}/clarification-rounds` | `intake_triage` / O | `question_ids*[]`（全部 DRAFT）,`intro`(≤2000) | `Round` + 出站消息 id + 来件 version | 110400,110409,110421,110423,110424,110433；Agent 且 `agent_may_send_clarifications=false` → 110403 | If-Match（来件）+ Idempotency-Key；201 |
@@ -636,7 +615,7 @@ CHECK（三方言同写法）：`kind <> 'CHANGE' OR (change_of_intake_id IS NOT
 | 方法 路径 | 权限 / 守卫 | 请求 | 响应 data | 错误 | 幂等 / 锁 |
 |---|---|---|---|---|---|
 | `POST /inbound-emails` | 无主体 / PI：`X-Inbound-Timestamp` + `X-Inbound-Signature` = hex HMAC-SHA256(部署密钥 `intake.email.inbound_secret`, `ts + "." + body`)，偏差 ≤300s | `Content-Type: message/rfc822`，原始 MIME ≤35MB | 202 `{accepted:true}`（不回报路由结果） | 401 110442,413 110413 | Message-ID 去重；先落 raw 文件与 PENDING 登记行再 202，解析异步（J1） |
-| `GET /tenants/{tenant_id}/intake-email-messages` | `intake_triage` / R | 过滤 `disposition`,`disposition_reason`,`channel_id`,`from_address`(like),`created_at`；排序 `created_at` desc | `EmailMessage[]`（subject、from、原因，无正文） | — | — |
+| `GET /tenants/{tenant_id}/intake-email-messages` | `intake_triage` / R | 过滤 `disposition`,`disposition_reason`,`channel_id`,`from_address`(like),`created_at`；排序 `created_at` desc；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `EmailMessage[]`（subject、from、原因，无正文） | — | — |
 | `GET /intake-email-messages/{email_message_id}/content` | `intake_triage` / O | — | 去脚本纯文本预览 + 附件清单 | 110404 | — |
 | `PUT /intake-email-messages/{email_message_id}/disposition` | `intake_triage` / O | `disposition*`(RELEASED/DISCARDED),`create_contact:bool`,`target_intake_id`（放行为追加时） | `EmailMessage` + 结果 intake_id | 110409,110420 | If-Match |
 
@@ -644,40 +623,13 @@ CHECK（三方言同写法）：`kind <> 'CHANGE' OR (change_of_intake_id IS NOT
 
 | 方法 路径 | 权限 / 守卫 | 请求 | 响应 data | 错误 |
 |---|---|---|---|---|
-| `GET /tenants/{tenant_id}/intake-submissions` | `intake_submit` / R（行过滤 submitted_by = 调用者） | 过滤 `status`,`external_ref`,`received_at` | `Submission[]`：id, ref_no, external_ref, status, milestone, open_questions_count, updated_at | — |
+| `GET /tenants/{tenant_id}/intake-submissions` | `intake_submit` / R（行过滤 submitted_by = 调用者） | 过滤 `status`,`external_ref`,`received_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Submission[]`：id, ref_no, external_ref, status, milestone, open_questions_count, updated_at | — |
 | `GET /intake-submissions/{intake_id}` | `intake_submit` / O（+ 行过滤） | — | `Submission` + `questions[]`（SENT/ANSWERED/EXPIRED） + `client_message` + `deliveries[]{id, state, manifest, download_url（72h 签名）}` + kind=CHANGE 时 `change_view`（同门户 `PortalChangeView`，BR-01-84；API 调用方不能作确认决定，确认经门户或团队登记） | 110404 |
 | `PUT /intake-submissions/{intake_id}/answers/{question_id}` | `intake_submit` / O（+ 行过滤） | `answer_text*`,`upload_ids[]`(≤5) | `Question`（外部投影） | 110404,110425,110413 |
 
-### 6.7 甲方门户（全部 **P**）
+### 6.7 独立门户 API 退休（D124）
 
-PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL（BR-01-67），且 routing 规则 1–2 禁止非资源前缀。
-
-| 方法 路径 | 请求 | 响应 data | 错误 | 幂等 |
-|---|---|---|---|---|
-| `POST /portal-sessions` | `access_token*` | `{session_state: PENDING_CODE\|ACTIVE, code_sent_to?: "l***@example.com", branding{display_name,logo_url,support_email,locale}}`；ACTIVE 时 Set-Cookie | 110401,110410,110429 | — |
-| `PUT /portal-sessions/current/verification` | `code*`（6 位） | `{session_state: ACTIVE}` + Set-Cookie（轮换会话密钥） | 110410,110411,110412 | — |
-| `POST /portal-sessions/current/code-deliveries` | — | `{resend_available_at}` | 110429 | 冷却 60s |
-| `DELETE /portal-sessions/current` | — | 204，清 cookie | — | 幂等 |
-| `GET /portal-profile` | — | `{contact{display_name,email_masked}, branding, channel_enabled}` | 110401 | — |
-| `POST /portal-uploads` | multipart 单文件 | `{upload_id, name, size, expires_at}` | 110413,110415,110429 | Idempotency-Key |
-| `GET /portal-intakes` | 过滤 `milestone`；排序 `received_at` desc；limit ≤50 | `PortalIntake[]`：id, ref_no, title, received_at, milestone, milestone_steps[5], open_questions_count, awaiting_acceptance, ai_label? | 110401 | — |
-| `POST /portal-intakes` | `title*`,`description*`,`desired_by`,`upload_ids[]` | `PortalIntake` | 110400,110413,110430,110433,110439 | Idempotency-Key 必填（前端生成） |
-| `GET /portal-intakes/{intake_id}` | — | `PortalIntake` + 原文 + 附件 + `questions[]` + `client_message` + `merged_into_ref?` + `deliveries[]{id,title,sent_at,state}` + `change_request_available`（CONVERTED 且有需求）+ `changes[]{id, ref_no, title, status_label, received_at, result_version_no?}` + `version_history[]{version_no, change_intake_ref?, title, accepted_at}`（BR-01-84）；kind=CHANGE 时另含 `change_of_ref` | 110404 | — |
-| `POST /portal-intakes/{intake_id}/notes` | `body*`(≤10,000),`upload_ids[]`(≤5) | `{message_id}`（CLIENT_NOTE） | 110404；CONVERTED → 110454；CLIENT_APPROVAL → 110451；MERGED / DECLINED → 110421（BR-01-85）；每来件每日 >50 条 → 110433 | Idempotency-Key |
-| `POST /portal-intakes/{intake_id}/change-requests` | `title*`(1..200),`description*`(1..20,000),`desired_by`,`upload_ids[]`(≤10) | `PortalIntake`（kind=CHANGE，`change_of_ref`） | 110400,110404,110413,110430,110433,110439,110449 | Idempotency-Key 必填（前端生成）；201 |
-| `GET /portal-intakes/{intake_id}/change-impact` | — | `PortalChangeView`（BR-01-84 白名单）：`status_label`,`criteria_changes[]{op, text}`,`schedule_delta_days?`,`new_expected_date?`,`price_delta?{amount,currency,note}`,`team_message?`,`approval?{round, state, requested_at, decided_at?, decided_via?, comment?, recorded_by_team}`,`result_version_no?`,`client_message?`；评估未完成时只有 `status_label=ASSESSING` | 110404（非 CHANGE 或非本联系人） | — |
-| `PUT /portal-intakes/{intake_id}/client-approval/decision` | `approval_round*`,`decision*`(APPROVED/REJECTED),`comment`(REJECTED 必填 10..2000) | `PortalChangeView` | 110400,110404,110427,110455 | Idempotency-Key；同 round 同决定重放 200；T16 / T17 |
-| `PUT /portal-questions/{question_id}/answer` | `answer_text*`,`upload_ids[]`(≤5) | `PortalQuestion` | 110404,110425 | 同文重放 200 |
-| `GET /portal-deliveries/{delivery_id}` | — | 07 定义的 `PortalDeliveryView`：说明、演示链接、交付物清单、证据摘要 | 110404 | — |
-| `PUT /portal-deliveries/{delivery_id}/acceptance` | `manifest_sha256_ack*`（须等于门户展示的交付清单指纹）,`signer_name*`(1..100),`confirmed*`(必须 true),`items*[]`{`delivery_item_id*`,`result*`(ACCEPTED/REJECTED),`feedback_category`(REJECTED 必填，FeedbackCategory),`comment`(REJECTED 必填 10..2000),`comment_thread_ids[]`(仅 REJECTED，≤20，D120 BR-01-91)}（必须覆盖交付包全部条目）,`overall_comment`(≤2000) | 07 返回的回执投影（整体 `result` 由 07 按条目推导：全接受 ACCEPTED、全拒绝 REJECTED、否则 PARTIALLY_ACCEPTED） | 110400,110404,110427,110440,110459 | Idempotency-Key；已有回执 → 110440；指纹不符 → 110440（`data.reason=manifest_changed`） |
-| `GET /portal-deliveries/{delivery_id}/files`（D120） | — | `PortalFile[]`（BR-01-88 白名单）+ `can_comment` | 110404 | — |
-| `GET /portal-deliveries/{delivery_id}/comment-threads`（D120） | 过滤 `evidence_id`；`view_version`；排序 `created_at` asc；limit ≤100 | `PortalCommentThread[]`：id, evidence_id, delivery_item_id, anchor_kind, anchor, anchor_excerpt, version_ref, anchor_status, relocated_anchor?, state, author_display, converted_to_rejection, comments[]{id, seq, author_display, body, created_at}（BR-01-90） | 110404 | — |
-| `POST /portal-deliveries/{delivery_id}/comment-threads`（D120） | `evidence_id*`,`version_ref*`,`anchor_kind*`(CODE_LINES/TABLE_ROW/HTML_REGION/TEXT_PARAGRAPH),`anchor*`(03 S9),`body*`(1..2000) | `PortalCommentThread`（201） | 110400,110404,110433,110440,110456,110457,110458,110460 | Idempotency-Key 必填（前端生成） |
-| `POST /portal-comment-threads/{thread_id}/comments`（D120） | `body*`(1..2000) | `{id, seq, author_display, body, created_at}`（201） | 110400,110404,110433,110440,110460 | Idempotency-Key 必填（前端生成） |
-
-门户 → 07：列表用 `AcceptanceRecorder.ListForIntakes(ctx, tenantID, intakeIDs[])`；详情用 `AcceptanceRecorder.PortalView(ctx, tenantID, deliveryID)`（按 07 portal_settings 裁剪，含 `manifest_sha256`、条目与 `source_intake_ids`）；门户先校验 `source_intake_ids ∩ 本联系人来件 ≠ ∅`（否则 110404），再调用 `AcceptanceRecorder.Record(ctx, {DeliveryID, IntakeContactID: contact_id, Confirmed: true（门户请求 `confirmed` 必须为 true，否则 422 110400）, ManifestSHA256Ack, SignerName, Items[], OverallComment, Source: PORTAL, Actor{kind:CLIENT, id:contact_id, authority_source:"CLIENT:<contact_id>"}})`（幂等由平台 Idempotency-Key 保证）。验收数据、状态与事件全部归 07；07 的「状态不可验收 / 指纹不符」错误映射为 110440，条目校验错误映射为 110400 / 110427。
-
-门户批注（D120）→ 07 / 03 的错误映射（`data.cause_code` 保留原码）：07 `128030` → 110440；07 `127056` → 110456；07 `127057` → 110459（`data.reason` 原样）；03 `130476` / `130469` / `130480` → 110457（`data.reason` 分别为 `ANCHOR_INVALID`（附 `data.field`）/ `MASKED_FILE` / `ANCHOR_KIND_UNAVAILABLE`）；03 `130477` → 110458；03 `130481` → 110433；联系人非 `can_accept` → 110460。批注读写的数据、版本绑定、审计（`delivery.client_comment_created` 等）与事件全部归 07 / 03，批注本身不落本模块表（返工来件的 `rejected_items[].anchors[]` 只是快照副本，BR-01-91）。
+所有 `/portal*`、portal-session、P 类令牌认证接口不注册，旧邮箱验证码 / token 链接路径不作为产品登录。同应用外部成员按真实 actor / project_id 使用 §14 确认单、变更、问题反馈规划接口，验收归 07。
 
 ### 6.8 跨模块接口
 
@@ -822,38 +774,13 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 
 团队页面位于 `apps/delivery`，外壳复用 IAM 应用（侧栏「项目 › 来件」（项目外，团队级）；「治理 › 连接 › 需求开口」，08 §8.6）。组件：`@workspace/ui` 的 `crud/common-table`、`auto-form`、`tabs`、`sheet`、`dialog`、`badge`、`skeleton`、`pickers/file-input`、`pickers/date-picker`，以及 00 §10 共享组件 `StateBadge`、`ActorAvatar`、`CountdownRing`、`AuthorityNote`。**通用状态**：加载 = 骨架屏；空 = 说明 + 下一步按钮；错误 = 文案 + 错误码 + 〔重试〕；无权限 = 「需要权限 `<code>`，请联系团队所有者」；离线 = 顶部琥珀条「连接已断开，正在重连…」，命令按钮全部禁用，已加载数据保留。
 
-### 8.1 来件列表 `/t/:tenantID/intakes`
+### 8.1 需求来源入口（D124）
 
-- **目的**：一眼看到要接手的来件。**权限**：`intake_read`。
-- **布局**：筛选条（状态分段：全部 / 待分诊 / 已分诊 / 澄清中 / 待甲方确认 / 已结束；变更申请显示蓝色「变更申请 · IN-x」标签；开口类型多选；联系人；时间范围；「甲方无响应」开关）+ 搜索（标题、IN 号）。表格列：开口图标、IN 号、标题（「可能重复」琥珀标签、REWORK 紫色「返工来件」标签）、联系人（`ActorAvatar` 甲方样式）、状态 `StateBadge`、分诊（规模 + 建议项目，或「待分诊 12 分钟」）、澄清进度（`2/3 · 剩 3 天` + `CountdownRing`）、收到时间。右上〔代录来件〕（需 `intake_submit`）、〔隔离邮件 n〕（需 `intake_triage`，n>0 才显示）。
-- **空态**：无开口 →「还没有开口」〔去设置开口〕；有开口无来件 → 显示收件地址与〔签发门户链接〕。
-- **实时**：订阅 SSE 集合主题 `tenant/{t}/intakes`（00 §9 / 09 C3；本模块注册 `TopicAuthorizer`：集合需 `intake_read`，单项需 `intake_read` 且同租户），新来件插入顶部高亮 3s，≤1s 呈现；不匹配当前筛选的更新只更新分段计数。
-- **移动端**：表格变两行卡片（标题 + 状态 / 联系人 + 时间），筛选收进底部 Sheet。
+不再有独立来件列表 UI。来源 Intake 是共享频道条目与确认单草稿的原文 / 分诊账本；团队从顶部会话或项目确认单进入，保留原文不可变与权限限制。旧 `/t/:tenantID/intakes` 列表 UI 路径不注册，不保留 alias 或重定向；直接使用项目确认单规范路由。
 
-### 8.2 来件详情 `/t/:tenantID/intakes/:intakeID`
+### 8.2 来源详情嵌入确认单
 
-- **布局（≥1024px 三栏）**：左「原文」：来源卡（开口、联系人、收到时间、Message-ID / external_ref、`raw_content_hash` 前 8 位可复制全值）、只读原文（Markdown 安全渲染；HTML_TEXT 等宽）、附件（超限未导入的灰显并说明）。中「分诊卡」：revision 切换（作者 `ActorAvatar` 区分人 / Agent、confidence、时间、与上一版 diff 开关）；摘要、需求草案（标题、描述、验收标准）、建议项目 / 新建项目名、风险（等级图标 + 文本）、待澄清问题（每条〔加入澄清草稿〕）、规模与理由；无卡片时显示「协调员分诊中」或〔手写分诊卡〕。右「澄清线程」：时间线（入站 / 出站消息、问题卡片含状态与回答、提醒记录、needs_mapping 消息带〔对应到问题〕）+ 底部问题草稿区（1..2000 字，最多 10 条）。
-- **头部**：IN 号、标题、`StateBadge`、kind 标签、`AuthorityNote`（「你以 交付负责人 身份 · 来源 ROLE:delivery_lead」）、操作按钮：
-
-| 按钮 | 可用条件 | 交互 |
-|---|---|---|
-| 〔转为需求〕 | `intake_convert`；状态 TRIAGED，或 CLARIFYING（对话框内须勾选「放弃未答问题」）；latest_card_revision ≥1 | 对话框：模式（已有项目 / 新建项目 / 追加到已有需求；返工来件另有「重开被拒工作项」并按 BR-01-27 预选默认）；项目选择器只列可写且阶段允许的项目；字段预填自最新卡片，可编辑（编辑即提示「将生成人工修订版」）；APPEND 显示需求当前版本与将新增 / 退役的验收标准 diff；REOPEN 显示拒收条目表（工作项、类别、甲方原话）可勾选；给甲方的话（可空）；NEW_PROJECT 与 APPEND 显示红色语义「不可委托」说明，提交前弹出底座 `ReauthenticationDialog`（purpose `intake_convert_privileged`）；110447 时重新弹出 |
-| 〔请求澄清〕 | `intake_triage`；状态 RECEIVED/TRIAGED；DRAFT 问题 1..10；无 OPEN 轮 | 预览经「邮件 / 门户 / API」发出的内容，显示提醒与超时时间点（默认 48h、96h、168h） |
-| 〔取消本轮〕 | 存在 OPEN 轮 | 确认对话框 |
-| 〔重新分诊〕 | `intake_triage`；非终态；开口已配协调员 | 点击后 10 分钟内禁用 |
-| 〔编辑分诊卡〕 | `intake_triage`；非终态 | 以当前 revision 为底稿的 `auto-form`，提交带 `based_on_revision`；110443 时提示「协调员刚提交了新版本」并显示对比 |
-| 〔合并〕 | `intake_convert`；非终态 | 目标搜索（排除自身、MERGED、DECLINED），理由必填 |
-| 〔拒绝〕 | `intake_decline`；非终态 | 原因码 + 内部理由（1..2000）+ 给甲方的话 + 「通知甲方」开关（SPAM 时强制关闭） |
-| 〔请甲方确认〕 | kind=CHANGE；状态 TRIAGED；最新卡片 `requires_client_approval=true`；HUMAN 且对目标项目有 `scope_change` | 对话框：甲方将看到的内容预览（标准差异通俗文字、进度变化、新日期、价格变化；**不含**内部成本与工作项）+ 给甲方的说明（≤2000）；显示「超出容差：时间 / 成本 / 范围」；110453 时提示「需求已更新到 vN，请重新评估」 |
-| 〔撤回确认请求〕 | 状态 CLIENT_APPROVAL；HUMAN | 理由必填（1..2000）；提示「甲方将收到撤回通知，之前的确认链接失效」 |
-| 〔登记线下确认〕 | 状态 CLIENT_APPROVAL；HUMAN 且有 `scope_change` | 确认日期、说明（1..2000）、证据文件 1..5（邮件原件 / 会议纪要）；红色语义说明「将以团队名义记录甲方已同意，门户显示『由团队记录』」 |
-
-- **变更申请（kind=CHANGE）**：左栏来源卡增加「变更自 IN-x」链接、目标需求（REQ-n · 当前 vN）；中栏分诊卡增加「变更影响」区块：标准差异表（新增 / 移除 / 改为）、受影响工作项（STALE / NEW / CANCELLED，STALE 可改为 CANCELLED）、进度变化天数与新预计日期、内部成本变化（仅团队）、给甲方的价格变化（仅人可填，Agent 草稿显示「待人填写」）、容差检查徽章（OK / 越界维度）与「需要甲方确认」标记；头部在 CLIENT_APPROVAL 时显示琥珀横幅「等待甲方确认（第 n 轮，已 d 天）」，`client_approval` 结果（接受 / 不接受 + 甲方理由 / 撤回 / 由团队记录 + 证据）以时间线卡片显示在右栏。〔转为需求〕对 CHANGE 默认「追加到已有需求」并锁定目标需求，可切换为「作为新需求」；需要确认而未获确认时按钮禁用并说明原因（110450）。
-
-- **校验**：标题 1..200；验收标准 1..30 条、每条 1..1000；问题 1..2000；理由 1..2000；超长实时计数并禁用提交。
-- **终态**：按钮区替换为结果条（CONVERTED → 需求与项目链接；MERGED → 目标来件链接；DECLINED → 原因码、内部理由、给甲方的话）。
-- **实时**：SSE 单项主题 `tenant/{t}/intake/{id}`（主题种类 = `subject.kind` 单数）；version 变化时打开中的对话框顶部提示「此来件已更新」〔刷新〕；提交遇 110409 保留表单内容。
-- **移动端**：三栏改为 Tabs（原文 / 分诊 / 澄清），操作固定在底部栏（2 个主按钮 + 「更多」）。
+旧来件详情 UI 退休。原文、来源、分诊与澄清在授权内部确认单的来源抽屉呈现，甲方只看明确批准的内容。旧来件详情 UI 链接不注册、不保留重定向；新来源对象链接直接定位所属项目确认单来源抽屉，并查 actor 权限。变更影响评估与甲方确认使用项目变更对象。
 
 ### 8.3 开口设置 `/t/:tenantID/settings/intake-channels`
 
@@ -862,21 +789,9 @@ PRD §13.2 的 `/portal/{token}/*` 改为下列资源路径：token 不进 URL�
 - **危险操作**：停用开口、屏蔽联系人、吊销链接 → 红色确认 + 后果说明（如「Lee 的 2 个会话将立即失效」）。
 - **移动端**：卡片单列，编辑 Sheet 全屏。
 
-### 8.4 甲方门户（独立布局，`/portal`、`/portal/:accessToken`，见 CR-07）
+### 8.4 同路由外部成员投影（D124）
 
-通用：无控制台外壳；页眉团队 Logo + 显示名（BR-01-40），页脚支持邮箱与可选署名；语言跟随联系人 locale，可切换；移动优先（375px 单列，触控目标 ≥44px）；不出现 Agent、工作项、Runner 等词。错误：110401 →「链接无效，请向团队索取新链接」；110410 →「链接已过期 / 已停用」+ 支持邮箱；加载用骨架；离线 → 顶部提示，表单草稿保存在 sessionStorage，恢复后由用户手动重试。门户没有「无权限」态（只有已认证 / 未认证），未认证统一引导到「请使用团队发给你的链接」。
-
-| 页面 | 内容与交互 |
-|---|---|
-| **验证** `/portal/:accessToken` | 自动 `POST /portal-sessions` 后 replaceState 到 `/portal`；需访问码时显示 6 格输入（支持粘贴、填满自动提交）、「已发送到 l***@example.com」、60s 倒计时后〔重新发送〕、剩余尝试次数；锁定后提示联系团队 |
-| **我的需求** `/portal` | 卡片：标题、IN 号、提交时间、5 节里程碑进度条（当前节点高亮；MERGED/DECLINED 显示灰色终止节点及团队的话）、「有 n 个问题待你回答」琥珀徽标、「待你验收」徽标、「变更待你确认 n」琥珀徽标（变更申请不单独成卡，BR-01-77）、AI 标签（BR-01-68）；顶部〔提交新需求〕；空态「还没有需求」〔提交第一条需求〕；页面可见时 30s 轮询（「本规格提议」：门户主体非 Principal，不接入 SSE） |
-| **提交需求** `/portal/new` | 标题（1..200）、描述（1..20,000，简易 Markdown 工具栏）、期望日期（≥今天）、附件（≤10 个、单个 ≤25MB、合计 ≤50MB，进度条与禁止类型即时提示）；〔提交〕在必填齐全且无上传中文件时可用；Idempotency-Key 由前端生成并在重试时复用；成功页显示 IN 号；开口停用时显示「暂不接收新需求」并隐藏表单 |
-| **需求详情** `/portal/intakes/:intakeID` | 里程碑、原文与附件（只读）、澄清问题（问题文本、状态、回答框 1..10,000 字 + 附件 ≤5、〔提交回答〕；已答显示回答与时间及「由团队记录」标识）、〔补充说明〕（仅 RECEIVED / TRIAGED / CLARIFYING，BR-01-85）、团队给你的话、交付列表（待验收项带〔去验收〕）、DECLINED 时〔重新提交〕（预填原文）。**已立项（CONVERTED）时**：〔补充说明〕替换为〔申请变更〕；新增「版本历史」（v1 原始需求，其后每条已接受变更：vN、标题、日期）与「变更申请」列表（标题、IN 号、提交日期、状态：评估中 / 待你确认（琥珀，带〔去确认〕）/ 已接受（需求 vN）/ 未接受（理由））；文案不出现「容差」「工作项」「成本」等内部词 |
-| **申请变更** `/portal/intakes/:intakeID/changes/new` | 顶部只读摘要「变更：《{原标题}》（当前 v{n}）」；表单同〔提交需求〕：变更标题（1..200）、想改什么（1..20,000，简易 Markdown）、期望日期（≥今天，可空）、附件（≤10）；说明「提交后团队会评估对进度和价格的影响，必要时请你确认」；成功页显示 IN 号并返回需求详情；原来件不可申请时（110449）显示「这条需求目前不能申请变更」 |
-| **变更详情 / 确认** `/portal/intakes/:intakeID/changes/:changeID` | 状态标签（评估中 / 待你确认 / 已接受（需求 vN）/ 未接受（理由））；原文与附件；待答澄清问题（同需求详情）；评估完成后显示「变化」卡：验收标准变化（新增 / 移除 / 改为，逐条通俗文字）、进度（「预计延后 3 天」/「提前 2 天」/「无变化」）、新的预计日期、价格变化（仅在团队填写时，含说明）、团队说明。**待你确认**时底部：〔接受变更〕/〔不接受〕；不接受须填理由（10..2000，计数器）；提交前确认对话框重述进度与价格变化；`approval_round` 随页面数据提交，110455 `superseded` 时提示「团队已更新本次变更，请重新查看」并刷新。已决定时只读显示结果、时间；团队登记的显示「由团队记录（{日期}）」。移动端按钮固定底部，触控 ≥44px |
-| **验收** `/portal/deliveries/:deliveryID` | 07 投影：交付说明、演示链接、交付物清单（逐条）、证据摘要、清单指纹（前 8 位）。每条交付物一行：〔接受〕/〔不接受〕切换；不接受时必选类别（功能缺陷 / 需求不符 / 样式 / 性能 / 安全 / 其他）并填写原因（10..2000 字）。顶部快捷〔全部接受〕。底部：签署人姓名（1..100，必填）、复选框「我已核对以上交付内容，提交后不可修改」（必勾）、整体备注（可空）；〔提交验收〕在每条都有选择、不接受条目信息完整、签名与勾选齐全时才可用；提交前汇总显示「将接受 n 项、不接受 m 项」。110440 `manifest_changed` 时提示「交付内容已更新，请重新核对」并刷新；已回执时只读显示逐条结果、签署人与时间。**D120 批注**：每条交付物下列出该项的可批注文件（`GET …/files`，带「n 条批注」计数），〔查看并批注〕在本页内展开面板（不跳转、不新开窗口；移动端为全屏抽屉，关闭后回到原条目且已填写的选择不丢失）：左侧按 `viewer_kind` 渲染文件（代码 / 表格 / 网页与报告 / 文档；网页、报告与 PDF 在预览域 iframe 中），右侧为本交付的批注线程（按锚点位置排序；「基于旧版本」分组同 03 BR-03-137）。〔批注〕模式下选中代码行、表格行、网页区域或文档段落后填写正文（1..2000，计数器）提交；线程内可〔回复〕。不可批注的文件只显示〔下载〕与说明「此文件不支持批注」；视频与章节显示「v1.1 支持」；`can_comment=false` 时面板只读、不出现〔批注〕〔回复〕。110458 时提示「文件内容已更新，请刷新后再批注」并重新拉取；110460 提示「请由本项目的签收人批注」。**不接受**的条目下出现〔引用批注〕：从该项已有的未转换批注中多选（≤20，显示锚点位置与原文摘要），提交后回执逐条显示「引用批注 n 条」并可点开定位；接受的条目不出现引用入口。页面与面板均不出现执行、工作项、Agent、日志或团队内部批注 |
-
----
+独立 `/portal` 页面 / 布局退休。外部顶栏待办 / 会话 / 协作与项目白名单页面见 §14.3；共享频道创建与外发规则见 05 §14。全部加载、过期版本、无权、上传失败、空态与拒收反馈同应用处理。
 
 ## 9. 通知
 
@@ -1096,3 +1011,34 @@ PRD §15 的 `intake_received{channel}`、`intake_converted` 即上表同名事�
 | CR-13（D120，**已并入** 07 / 03 / 00，2026-10-12） | 07 §6.3 / 03 §6.z / 00 §8 | 07 `DeliveryEvidenceReader` 增 `ListClientFacing(ctx, tenant, delivery_id) ([]ClientFacingFile{evidence_id, delivery_item_id, name, size, media_type, viewer_kind, version_ref, anchor_kinds[], content_url, content_url_expires_at, client_thread_count}, error)`（只读；与 `ClientFacing` 同一判定，`content_url` 为预览域短时签名地址 ≤15 分钟）；07 `AcceptanceRecorder` 增 `ReplyClientComment(ctx, {delivery_id, thread_id, intake_contact_id, body≤2000}) (comment_id, error)`（守卫同 `CreateClientComment` ①②，线程须为本交付的 CLIENT 线程），转调 03 新增 `ArtifactComments.ReplyClientOn(ctx, tx, …)`（只对 CLIENT 线程、作者 `CLIENT:<intake_contact_id>`；团队仍不能回复，03 BR-03-141 不变）；00 §8 登记两项方法。不新增共享枚举、权限码或事件 | 门户文件列表与甲方回复自己交付上的批注（BR-01-88 / 89）；07 现有 `ClientFacing` 只判定单个证据、03 只提供 `CreateClientOn` |
 
 > **D120（2026-10-12，锚定批注）已并入本规格**：US-01-23、BR-01-88…91（面向甲方的文件与查看器数据、甲方批注新建 / 回复 / 读取、拒收项引用批注并在返工来件中保留锚点）、§6.7 四个门户端点与验收 `items[].comment_thread_ids[]`、§6.8 `DeliveryEvidenceReader` / `AcceptanceRecorder` 增补、错误码 110456…110460、§8.4 验收页〔查看并批注〕面板与〔引用批注〕、D-07-3、AC-01-89…92、CR-13。批注数据、可见性（只 `CLIENT`）、版本绑定、转换与审计归 07 / 03；门户永不返回内部记录与 INTERNAL 线程。
+
+
+## 14. 外部成员需求确认单与问题反馈（D121–D124，替代门户）
+
+### 14.1 现行边界与退休契约
+
+依 00 §16.2，甲方账号复用底座 IAM，外部成员不是 portal session。§3.7 `intake_portal_sessions`、§6.2 访问链接、§6.7 `/portal*` 接口、§8.1 来件列表、§8.2 来件详情、§8.4 独立门户及其验证码 / Cookie / token / OTP / P 类认证测试全部退休，不实现。来源 Intake、原文不可变、开口、分诊、澄清与 D117 影响评估仍有效，但 UI 融入共享频道和确认单；§1/§2 中任何门户 / 列表故事按此替换。邮件 / API 接入可后续连接，基本共享频道与确认单闭环为 MVP。
+
+### 14.2 数据对象与流程
+
+`RequirementConfirmationSheet{ id, project_id, version, source_refs[], items[{id,title,acceptance_criteria,priority}], milestones[], out_of_scope[], state(DRAFT|AWAITING_SIGNOFF|SIGNED|SUPERSEDED), content_hash, client_signer_ref?, signed_at?, baseline_requirement_id? }`。`ClientChangeRequest{ id, project_id, sheet_id, base_version, description, impact_ref, client_confirmation_ref?, state }` 继续复用 D117 影响评估 / 容差审批；`ClientIssue{ id, project_id, title, description, visible_attachment_refs[], artifact_version?, anchor_ref?, state(OPEN|TRIAGED|RESPONDED|CLOSED), internal_defect_ref? }`：缺陷 ID / 内部处理不进入外部 DTO，反馈人在授权项目中仅看自己有权条目。
+
+瀑布文档 / 清单 / 对话 → 接件 Agent 起草 → 人审 → 甲方签认 → 02 版本基线；瀑布 / 清单签认前不可开工，小对话需求只按既定容差快通道并通知确认，不能绕过日期 / 价格承诺或超容差审批。签认引用确切版本与 content_hash；变更不原地改已签单，产生新版本。需求签认、变更确认和验收只由甲方账号或人登记线下凭证，不由 Agent 冒充。
+
+### 14.3 页面与规划接口
+
+同一路由 `/t/:tenantID/p/:projectID/requirement-sheets` 与 `/:sheetID`：条目 / 标准 / 优先级 / 里程碑 / 范围外、来源、版本 diff、签认历史；内部有草稿 / 发布、外部仅可签认确切版本或提问。`/changes` 与 `/:changeID`：原版本 / 影响 / 容差 / 确认；`/client-issues` 与 `/:issueID`：新建反馈、面向甲方附件与锚点、进度回复；内部可分诊为 12 缺陷。空态、失败重试、过期签认冲突、无权 404、附件处理失败均有明确反馈。
+
+规划接口使用项目范围 `/entities/{project_id}/requirement-sheets`、版本 `/{sheet_id}/versions`、签认 `/{sheet_id}/signoffs`、`/client-issues`；邀请 / 登录复用底座而非重新造认证。此为规划契约，W1 决定最终 schema / huma / 权限码，不能宣称已实现；外部提交 / 签认守卫绑定账号、项目、单据版本。共享频道卡片引用同一对象，无第二份聊天基线。
+
+D122 开发 v1.1：图片视频 / PDF / Office / Markdown 预览、语音编辑转录、附件 OCR / 抽取、联网搜索引用卡；原型全演示。MVP 基本文件 / 图片 / 文本附件仍按上传扫描、大小限制、来源与可见性校验。联网搜索默认未授予，查询不得含客户机密，例外须人批准且审计，甲方没有独立搜索工具。
+
+验收：外部成员不可列出其他项目 / 内部来件 / 旁注；旧 portal API 不暴露；签认过期版本返回冲突且不建基线；重复签认幂等；问题反馈转内部缺陷后外部只看到批准回复；共享频道同一确认单版本与项目页一致。
+
+### 14.P 本域易用性与大数据验收
+
+本域适用 00 §16.8：服务端权限过滤 / 稳定游标分页，不全量拉取前端后筛；长列表虚拟化、聚合服务端取，精确总数不阻塞首屏；涉及看板按列分页、频道历史锚点与增量、流程图可见渲染 / 子流程惰性加载、文件范围读。切项目 / 筛选取消过期请求，保留阅读 / 草稿上下文，明示 loading / 空 / 超时 / 限流 / 断流 / 重试。协作二级菜单不跳会话域。规模与 API / UI 性能预算是开发后待实测门槛，原型不宣称已通过。
+
+### 14.Q 集合读取 API 分页参数同步
+
+本规格 §6 全部集合 GET operation（包括现有列表和本次补的读模型）采用 00 §16.10 的唯一产品分页合同：`cursor?` / `limit?`（默认50、最多100）/ 白名单 `sort?`，保留各 operation 的业务 filter / q / project_id；返回 `items,next_cursor?,has_more`，旧 offset / page / page_size 参数退休，不并存两套 API。消息历史 anchor_seq / 增量 after_seq 单独按语义使用；聚合 / 有限枚举不分页。服务端稳定排序与权限 / 筛选绑定 cursor，不依赖精确 COUNT。公共底座既有查询不改，本产品开发前 W1 检查 pkg/query 能力及最小复用 / 扩展 ADR，不能假称已具备游标。旧接口表分页字段由本条原地替代，最终 OpenAPI 只生成这一合同。

@@ -112,7 +112,7 @@
   project overview + real settings. Verified: crawl 325 pages 0 broken 0 errors, 0 pseudo-menus, 0 redirects, client view
   no leaks (14 routes), screenshots. Gap list: docs/myrmidon/research/2026-10-requirements-audit.md (A old design incl.
   visual workflow A1/A2, B docx incl. MVP re-scope, C specs/PRD vs prototype incl. D121-D124 spec rewrite, D user asks).
-  Next: WAIT for user decisions E1-E4 (flow definition + visual editor; MVP re-scope; human override; auto-fix the rest).
+  E1-E4 ACCEPTED 2026-10-12; D125-D129 recorded. Active: docs/PRD/specs consistency + workflow React Flow prototype + missing pages. Main owns integration and browser acceptance.
   Do not start implementation.
   Proposal for user (not applied): spec 03 visual verifier needs tool calibration with known-good/bad sample pages.
 - RESEARCH DONE: docs/myrmidon/research/2026-10-collaboration-research.md (4 tracks synthesized, gap analysis, P0/P1/P2 upgrade,
@@ -313,3 +313,17 @@ authorization 的阈值写成 42ms(仓库里是 7ms),等于把门禁放宽 6 倍
 
 ## Last Checkpoint
 2026-10-04 `d47ee12` 已推送;手机号登录 + 短信第二因子 + 两处 MySQL 缺陷全部落盘
+
+## 2026-10-12 原型全 UI 复审 checkpoint（进行中）
+用户接受需求审计建议与 React Flow，并要求删除协作跨域频道菜单、全 UI 易用性/性能复审。D125–D130已记录；仅规划与静态原型，未提交推送，未开工产品。文档完成PRD/spec00–12及商业/试点评估；React Flow本地编辑器完成。420px探针遍历340路由，无运行错误/断链/鼠标独占操作；policy局部横溢出由pages修复。成员1000/消息500验证DOM上限20或50/100，非生产压测。交付守卫、WI/pjWork同步已修复回归。workflow代理修工时唯一集合和0.25输入、复验override，并修工作流概览投影与LOOP契约。docs代理继续独立复审。主线程待最终回归、UI复审报告、审计状态更新。服务8765/浏览器myrmidon-root；.temp/audit-setup.js有效。
+
+### 复审补充 checkpoint
+主线程完成1440×900与420×800各302路由第二轮巡检（errors/broken/unlabeled/clickOnly/overflow均0）；甲方13正常与越界路由无外项目名称/内部链接。个人工时15分钟→Morgan项目审批→周报75分钟已真实通过；任务看板、评审、流水线1000条分页边界通过，单页翻页控件隐藏，小屏默认任务列表。甲方通知偏好本地状态已接线，未实现语言选择撤下。23个JS/2内联脚本语法检查PASS，Markdown21文档26本地链接PASS，diff check PASS。报告research/2026-10-ui-usability-review.md已建。最后仍等待workflow共享定义/LOOP/gate/锁定实例修复完成、docs独立复验，随后最终build/全站回归并记录完成。未进行生产压测，未提交推送。
+
+## 2026-10-12 当前任务完成 checkpoint
+D125–D130已落实到规划与原型：React Flow本地bundle、共享WorkflowDef唯一真相/模板发布投影/项目锁定只读实例；循环完整约束、DAG/入口可达与关口必经；结构化补丁、撤销重做、JSON导入导出。协作频道侧栏已删除。全UI导航/操作/可访问性/小屏复审及相关缺陷修复完成：交付共用守卫、真实自动结果覆盖、WI/pjWork同步、工时共享集合、搜索过滤、消息锚点、看板/评审/流水线/成员分页。三条workflow原问题独立二次复验全PASS；额外undo/redo三态、导入保存重载/无历史变化、坏循环导入/2MiB拒绝、完整JSON导出及update_workflow metadata补丁实测PASS。最终build/23JS+2内联语法/diff check/21Markdown26链接/LF无BOM PASS，浏览器无错误。报告docs/myrmidon/research/2026-10-ui-usability-review.md；PRD/spec00–12与试点评估/商业验证完成，需求审计批准状态已更新。无产品代码变更，无提交推送；未做生产压测，生产负载门槛在00§16，下一步用户验收原型后才开工。8765静态预览保留（session62859），代理服务8766已停。
+
+## 2026-10-12 提交推送 checkpoint
+用户授权全部提交推送，随后要求两份状态文件移到根目录ADR.md/MEMORY.md，已移动并同步CLAUDE与文档引用。deep-review独立文档/工作流复审无运行阻塞；第三方notices遗漏use-sync-external-store已核实、补生成器并重建。A1本地草稿保存/发布与导入往返已验；A2 2MiB+1与200节点上限已验；A3评审/覆盖/交付守卫已验；A4甲方/项目隔离已验；A5只含分钟工时演示，无真实账务；A6覆盖重复与状态确认已验，无服务端副作用；A7锁定历史/缺失版本已验，无生产存量迁移；A8只读轮询为显示投影，无后台调度实现。SQL/事务/生产OpenAPI/数据库门禁未触发；根make ci为后端门禁，不跑无关产品测试。计划提交全部相关源文档、本地原型运行bundle与锁文件；不提交node_modules或.temp。
+
+补充：.claude/.gitattributes仅Markdown LF规则，按用户根目录整理一并移动为根.gitattributes，不批量renormalize。提交前build与23JS/2内联语法再次通过。

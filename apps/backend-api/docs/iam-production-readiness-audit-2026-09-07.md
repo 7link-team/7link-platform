@@ -3,7 +3,7 @@
 > **历史记录（2026-09-07 的状态快照，不要据此判断当前状态）。** 本文的每一处数字都描述
 > 审计当日那个提交，**不得改写**——改了就是伪造记录。当前状态与后续验收见
 > [`iam-release-checkpoints.md`](iam-release-checkpoints.md)；已关闭项的存证见其第 7 节
-> 与根目录 `.claude/decisions.md` D22–D37。本文给出的 `NOT READY` 结论已被后续工作取代。
+> 与根目录 `ADR.md` D22–D37。本文给出的 `NOT READY` 结论已被后续工作取代。
 
 审计日期：2026-09-07
 
@@ -55,7 +55,7 @@ OAuth、服务账号、SCIM、Federation、审计归档、密钥轮换和管理�
 
 ## 三、当前 IAM 任务状态
 
-`.claude/task-state.md` 顶部 handoff 的主方向仍然可信：它明确标记当前是开发 checkpoint，
+`MEMORY.md` 顶部 handoff 的主方向仍然可信：它明确标记当前是开发 checkpoint，
 10.8 和 10.11 未完成，并列出了全 owner 数据验收、并发写入、迁移对齐、生命周期 API/UI、
 浏览器验收、最终发布门禁和可复现 UAT 环境。
 

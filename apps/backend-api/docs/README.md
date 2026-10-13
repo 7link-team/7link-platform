@@ -10,7 +10,7 @@
 | 端点、字段、状态码 | [openapi.json](openapi.json)，或运行时的 `/openapi`、`/docs` |
 | 表结构 | 各模块 `sql/{postgres,mysql,sqlite}/*.sql` |
 | 行为细节 | 测试 |
-| 当前任务进行到哪、下一步做什么 | `../../../.claude/task-state.md` |
+| 当前任务进行到哪、下一步做什么 | `../../../MEMORY.md` |
 | 模块怎么写（规约） | `../../../.claude/skills/backend-module/SKILL.md` |
 
 ## 文档

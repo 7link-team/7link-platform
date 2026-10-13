@@ -1,5 +1,7 @@
 # 04 · 机器与运行时（`fleet` 模块 · 机器部分）
 
+> **现行范围（2026-10-12，D125–D129）**：用户已批准需求审计 E1–E4；以 [00 共同契约](00-conventions.md) §16 与本文 §14 为准。原型全量展示，开发 MVP 仅单项目软件闭环；其余按现行分期延后。下文历史门户 / 跨项目菜单 / 独立拆解模板 / 旧 MVP 标记如冲突均已退休，不构成实现承诺。
+
 > 依据：`PRD.md` §6.8、§10.1、§10.5、§12、§13；`00-conventions.md`（约束性契约）；底座 `internal/iam/oauth`（设备码授权 RFC 8628：`device.go`、`http_device.go`、前端 `apps/iam/src/app/device/page.tsx`）、`internal/iam/identity`（服务账号与凭证：`service_account.go`）、`pkg/extension/authn`、`pkg/extension/authz`、`internal/infra/dlock`；旧项目 Preview 01（`internal/platform/{server,daemon,computer,models,inspection,gateway,gateway_daemon}.go`、`src/bridge.ts`、`docs/{preview,runtime-modes,api-gateway,api-gateway-p0,gateway-desktop}.md`、旧 PRD §5.3.1 / 附录 D.2–D.3 / F.1 / F.7）。
 > 同级对齐：`03-execution-evidence.md`（执行级消息语义、`dispatch_epoch` 栅栏、执行租约 30 s、续约 ≤10 s、机器 20 s 自停、派发内 `seq` 缺口 409 `expected_seq`、outbox ≤10,000、`execution_commands`、`execution_workdir_locks`）；`02`/`03`/`07` 采用的 `ETag`/`If-Match` 乐观锁与时间列类型 `TIMESTAMPTZ(3)`/`DATETIME(3)`/`DATETIME`；`07` 的 `delivery_project_repositories`。
 > 标注：「**本规格提议**」= 来源中没有、由本规格补齐的设计，附理由；「沿用 Preview」= 旧实现已验证的数值或语义。
@@ -670,7 +672,7 @@ QUEUED →（随轮询下发）RUNNING →（机器结果）COMPLETED / FAILED�
 - step-up：请求带 `Cookie` + `Origin`（CSRF）+ body `reauth_proof`，底座 `ReauthenticationConsumer` 在业务事务内消费；因此 PAT/服务账号在结构上无法吊销机器或显示网关密钥。
 - OpenAPI tag = **最终发布路径（含挂载前缀）首段**，由底座设置（00 §9）。表中 tag 列即该值：T 守卫挂载在 `/tenants/{tenant_id}` 下故为 `tenants`；O 守卫为短地址首段。
 - **v** = 需 `If-Match`（GET 以 `ETag` 返回）；**✔** = 接受 `Idempotency-Key`。
-- 列表：`pkg/query`（`field=op:value`、offset 分页、`capabilities`），字段见 §6.6。
+- 列表：`pkg/query`（`field=op:value`、cursor 分页（00 §16.10；W1 确认底座复用 / 最小扩展）、`capabilities`），字段见 §6.6。
 
 ### 6.2 控制台接口
 
@@ -1462,3 +1464,18 @@ When  E 使用目录 MCP 完成若干次调用，期间团队轮换了凭据   T
 **D119（2026-10-12）**：远程访问隧道（§5.10、§6.4b、§4.7、BR-04-90..97）、机器类型 SERVER / K8S_POOL（§3.15–3.17、§4.6、§5.11、BR-04-98..101）、每机远程访问开关与配额、预览网关部署配置；接口 A32–A39；错误码 140482/140484/140485/140486/140488/140491/140492；任务 J9/J10；事件 `machine.access_changed`；通知 N-04-10/11；AC-04-44..53；CR-04-12（已并入 00 v2.0 D119 补充）。分期：SERVER、隧道与 WebSocket 通道、预览开关、配额、预览网关为 MVP；K8S_POOL、终端与编辑开关的生效能力为 v1.1。
 
 **D120（2026-10-12）**：Agent 唤醒提示与收件箱头的传输（`ServerBatch.agent_wakes[]` / `agent_inbox_heads[]`、WebSocket `agent.wake` 帧，BR-04-102）、`AgentProcState.activity` / `session_epoch` 与 `agent.reset` 的转交（BR-04-103）、预览网关的批注辅助脚本注入（BR-04-104，供 03 BR-03-136）；`agent_commands[]` 中的 `inbox` 废止；AC-04-54…56。载荷语义仍以 05 §6.6 / §6.z 与 03 为唯一定义；不新增错误码。D120 第 6 项（团队工具目录）：工具集落地、本地代理与工具令牌、能力检测技能哈希、凭据不落机器（BR-04-105…107）；AC-04-57…59。**CR-04-14**（对 00）：无新增共享枚举、权限码、事件或错误码段；`execution.rejected.reason` 增加取值 `TOOLSET_UNAVAILABLE`（03 定义）；依赖 05 `ToolsetResolver`（经 03 下发）与中继 T13。**CR-04-13**（对 00）：无新增共享枚举、权限码、事件或错误码段，只登记 05 新增的 `AgentInboxHeads(machine_id)` 读取（00 §8，与 `PendingAgentCommands` 同列）。
+
+
+## 14. 收窄 MVP 与运行可观测契约
+
+按 00 §16.5 重排：MVP 仅基本机器设备码接入、runtime 能力检测、两种适配器执行 / 心跳 / 中断恢复与受控授权。D119 远程服务 / API 隧道、只读 / 交互终端、文件浏览 / 编辑、SERVER 专用凭证向导与 K8S_POOL 开发 v1.1，原型全展示；历史 MVP 标记不扩大当前八周范围。MVP 证据文件下载 / 软件报告查看使用 files 权限边界，不依赖 WebSocket 隧道。
+
+复用 03 §14.1 执行器契约测试，机器层必须证明重复下发不重复执行、ACK 丢失可幂等重发、离线不冒充成功、租约失效不双执行、工具等待期间不越过授权、恢复不盲目重放副作用。runtime/model/verifier/tool 版本与 trace_id/span_id 透传回控制面，密钥 / 完整提示词不得进入遥测。D122 转录 / OCR / 视频工具与联网搜索属 v1.1 工具能力，检测存在不等于已获项目授权。
+
+### 14.P 本域易用性与大数据验收
+
+本域适用 00 §16.8：服务端权限过滤 / 稳定游标分页，不全量拉取前端后筛；长列表虚拟化、聚合服务端取，精确总数不阻塞首屏；涉及看板按列分页、频道历史锚点与增量、流程图可见渲染 / 子流程惰性加载、文件范围读。切项目 / 筛选取消过期请求，保留阅读 / 草稿上下文，明示 loading / 空 / 超时 / 限流 / 断流 / 重试。协作二级菜单不跳会话域。规模与 API / UI 性能预算是开发后待实测门槛，原型不宣称已通过。
+
+### 14.Q 集合读取 API 分页参数同步
+
+本规格 §6 全部集合 GET operation（包括现有列表和本次补的读模型）采用 00 §16.10 的唯一产品分页合同：`cursor?` / `limit?`（默认50、最多100）/ 白名单 `sort?`，保留各 operation 的业务 filter / q / project_id；返回 `items,next_cursor?,has_more`，旧 offset / page / page_size 参数退休，不并存两套 API。消息历史 anchor_seq / 增量 after_seq 单独按语义使用；聚合 / 有限枚举不分页。服务端稳定排序与权限 / 筛选绑定 cursor，不依赖精确 COUNT。公共底座既有查询不改，本产品开发前 W1 检查 pkg/query 能力及最小复用 / 扩展 ADR，不能假称已具备游标。旧接口表分页字段由本条原地替代，最终 OpenAPI 只生成这一合同。

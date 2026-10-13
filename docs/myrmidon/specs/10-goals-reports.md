@@ -1,5 +1,7 @@
 # 10 · 目标、计划与报告（模块 `planning`）
 
+> **现行范围（2026-10-12，D125–D129）**：用户已批准需求审计 E1–E4；以 [00 共同契约](00-conventions.md) §16 与本文 §14 为准。原型全量展示，开发 MVP 仅单项目软件闭环；其余按现行分期延后。下文历史门户 / 跨项目菜单 / 独立拆解模板 / 旧 MVP 标记如冲突均已退休，不构成实现承诺。
+
 > 决议 D111：人与 Agent 协作按**目标从上往下拆解**推进；每个成员（人类或 Agent，含主管创建的 Agent）都有目标、计划与任务；**报告从下往上汇总**（日 → 周 → 月 → 季 → 年；成员 → 项目 → 团队），提交前**上下即时核对**，有阻断问题不允许提交，非阻断问题允许提交但标记「未核对 / 未确认 / 待佐证」。
 >
 > 本规格遵守 `00-conventions.md`（v1.8 起）；需要 00 登记的内容见 §13。
@@ -646,7 +648,7 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 
 | # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 data | 错误 / 幂等 |
 |---|---|---|---|---|---|---|
-| G1 | GET `/tenants/{tenant_id}/goals` | tenants | `goal_read` · T | 过滤 `level`(eq,in) `status`(in) `period_kind`(eq) `period_start`(gte,lte) `project_id`(eq) `owner_principal_id`(eq) `parent_goal_id`(eq)；排序 `period_start` `progress` | Goal[]（含 KR 摘要、覆盖率） | — |
+| G1 | GET `/tenants/{tenant_id}/goals` | tenants | `goal_read` · T | 过滤 `level`(eq,in) `status`(in) `period_kind`(eq) `period_start`(gte,lte) `project_id`(eq) `owner_principal_id`(eq) `parent_goal_id`(eq)；排序 `period_start` `progress`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | Goal[]（含 KR 摘要、覆盖率） | — |
 | G2 | GET `/tenants/{tenant_id}/goal-trees` | tenants | `goal_read` · T | `?period_kind&period_start&depth=1..3` | 树 TEAM → PROJECT → MEMBER，含进度、覆盖率、风险 | — |
 | G3 | POST `/tenants/{tenant_id}/goals` | tenants | TEAM/PROJECT：`goal_manage`；MEMBER：`goal_member_manage` 或本人 · T | `{level*, project_id?, owner_principal_id?, parent_goal_id?, parent_kr_id?, period_kind*, period_start*, title*, description?, weight?, key_results*[{title*, source*, metric?, metric_scope?, direction?, baseline?, target*, weight?}]}` | Goal（DRAFT） | 422 180401/180402；幂等 |
 | G4 | GET `/goals/{goal_id}` | goals | `goal_read` · O | `?include=children,contributors,plan_items` | Goal | 404 180404 |
@@ -661,7 +663,7 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 
 | # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 data | 错误 |
 |---|---|---|---|---|---|---|
-| P1 | GET `/tenants/{tenant_id}/plans` | tenants | 本人 / 上级 / `report_read` · T | 过滤 `principal_id` `period_kind` `period_start`(gte,lte) `state`(in) | Plan[] | — |
+| P1 | GET `/tenants/{tenant_id}/plans` | tenants | 本人 / 上级 / `report_read` · T | 过滤 `principal_id` `period_kind` `period_start`(gte,lte) `state`(in)；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | Plan[] | — |
 | P2 | GET `/plans/{plan_id}` | plans | 同上 · O | — | Plan + items + 最近核对 | 404 |
 | P3 | POST `/tenants/{tenant_id}/plans` | tenants | `plan_submit`（为自己） · T | `{period_kind*, period_start*}`（已存在返回原计划） | Plan（DRAFT，含自动带入项） | 幂等 |
 | P4 | PUT `/plans/{plan_id}/items` | plans | 作者 · O；If-Match | `{items*[{id?, kind*, goal_id*, kr_id?, work_item_id?, free_category?, title*, estimate_hours?, estimate_cost_micros?}]}`（整体替换） | Plan | 422 180412/180413 |
@@ -672,7 +674,7 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 
 | # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 data | 错误 |
 |---|---|---|---|---|---|---|
-| R1 | GET `/tenants/{tenant_id}/reports` | tenants | BR-10-47 · T | 过滤 `level` `period_kind` `period_start`(gte,lte) `principal_id` `project_id` `state`(in) `flag`(in) `subject_kind`(eq) `agent_origin`(eq，经 05 解析)；排序 `period_start` `due_at` | Report[]（不含正文，含 flags 与覆盖） | — |
+| R1 | GET `/tenants/{tenant_id}/reports` | tenants | BR-10-47 · T | 过滤 `level` `period_kind` `period_start`(gte,lte) `principal_id` `project_id` `state`(in) `flag`(in) `subject_kind`(eq) `agent_origin`(eq，经 05 解析)；排序 `period_start` `due_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | Report[]（不含正文，含 flags 与覆盖） | — |
 | R2 | GET `/tenants/{tenant_id}/report-calendars` | tenants | `report_read` · T | `?period_kind&from&to&subject_kind?&agent_origin?` | 矩阵：成员 × 周期 → state、flags、due_at | — |
 | R3 | GET `/reports/{report_id}` | reports | BR-10-47 · O | `?include=links,last_check` | Report（含 content、links、最近核对 issues） | 404 |
 | R4 | PATCH `/reports/{report_id}/content` | reports | 作者 · O；If-Match | `{content*}`（按 §3.12 Schema 校验） | Report（state → DRAFT） | 422 180441；409 180433 |
@@ -738,12 +740,12 @@ DRAFT ──提交/核对──▶ CHECKING ──有阻断──▶ BLOCKED ─
 
 | # | 方法 路径 | tag | 权限 · 守卫 | 请求 | 响应 data | 错误 |
 |---|---|---|---|---|---|---|
-| L1 | GET `/tenants/{tenant_id}/loop-contracts` | tenants | BR-10-58 读取 · T（行过滤） | 过滤 `agent_id`(eq) `project_id`(eq) `state`(in) `kind`(eq)；排序 `name` `-updated_at` | LoopContract[]（含最近 5 次运行状态、本月成本） | — |
+| L1 | GET `/tenants/{tenant_id}/loop-contracts` | tenants | BR-10-58 读取 · T（行过滤） | 过滤 `agent_id`(eq) `project_id`(eq) `state`(in) `kind`(eq)；排序 `name` `-updated_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | LoopContract[]（含最近 5 次运行状态、本月成本） | — |
 | L2 | POST `/tenants/{tenant_id}/loop-contracts` | tenants | 负责人类或 `agent_manage` · T；HUMAN | §3.15 字段 + `activate?:bool` | LoopContract（201，DRAFT；`activate=true` 时 ACTIVE） | 422 180510/180513/180514；403 180403；幂等 |
 | L3 | GET `/loop-contracts/{loop_contract_id}` | loop-contracts | BR-10-58 读取 · O | — | LoopContract + `next_fire_at`（来自 05 提醒） | 404 180404 |
 | L4 | PATCH `/loop-contracts/{loop_contract_id}` | loop-contracts | 同 L2 · O；If-Match | 可选：name、anchor、节奏、report_binding（仅 DRAFT 可改）、self_checks、budget、escalation、allow_overlap | LoopContract | 409 180409/180511；422 180510/180514 |
 | L5 | PUT `/loop-contracts/{loop_contract_id}/state` | loop-contracts | 同 L2 · O；If-Match | `{state*: ACTIVE\|PAUSED\|ARCHIVED, reason?}` | LoopContract | 409 180511；422 180513/180514 |
-| L6 | GET `/loop-contracts/{loop_contract_id}/runs` | loop-contracts | BR-10-58 读取 · O | 过滤 `state`(in) `opened_at`(gte,lte)；排序 `-opened_at` | LoopRun[] | 404 |
+| L6 | GET `/loop-contracts/{loop_contract_id}/runs` | loop-contracts | BR-10-58 读取 · O | 过滤 `state`(in) `opened_at`(gte,lte)；排序 `-opened_at`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | LoopRun[] | 404 |
 | L7 | POST `/loop-runs/{loop_run_id}/results` | loop-runs | 契约的 Agent 本人 · O | `{self_check_results*[], report_id?, check_result?, note?}` | LoopRun（终态） | 409 180512；422 180510；403 180403（`NOT_OWNER`）；幂等 |
 
 L7 登记到 05 `OperationRegistry`（`loop_run_result.record`，`human_confirmation=NONE`），响应带 `meta.next`（REPORT 类且绑定报告未核对时建议 R5）。
@@ -834,7 +836,7 @@ L7 登记到 05 `OperationRegistry`（`loop_run_result.record`，`human_confirma
 - 头部：标题、层级、周期、负责人、状态、进度环与时间进度；操作：编辑（DRAFT）、激活（无 KR 或父未激活时禁用并说明原因）、关闭（结果单选 + 理由）、取消（红色，理由必填）。
 - 区块：① 关键结果表（来源、指标、基线 → 当前 → 目标、进度、更新时间、证据；MANUAL〔更新〕弹窗，Agent 必附证据）；② 子目标（按 KR 分组 + 覆盖率）；③ 贡献者（OWNER / CHILD_GOAL / ASSIGNED）；④ 本期关联计划项；⑤ 最近 6 期提到该目标的报告条目；⑥ 状态历史与审计。
 
-### 8.3 我的计划 `/plans`、`/plans/:planID`
+### 8.3 我的计划 `/t/:tenantID/plans/me`、`/t/:tenantID/plans/:planID`
 
 - 周期标签：日 / 周 / 月 / 季 / 年，左右切换期次；状态徽章（草稿 / 已提交 / 已确认 / 已退回）与确认人。
 - 计划项表：类型（工作项 / 非交付任务）、标题、关联目标 · KR（必填；下拉只列可贡献目标）、工作项实时状态、估算、结转来源；底部「建议项」（未达成 KR，可一键加入）。
@@ -1258,3 +1260,20 @@ Then  06 MemoryWriter.Propose(kind=EXPERIENCE, scope=AGENT, source=report_id) �
 > **v2.0（D112 / D113，00 §15）已并入本规格**：声明状态信心与计算进度（§3.14、BR-10-48）、核对项 B6 / B7 / N5 / N6（BR-10-49）、信心必填（BR-10-50）、质量指标填充（BR-10-51）、错误码 180460–180462、页面增补（§8.7）、AC-10-36…42。依赖：07 `DeliveryMetricsReader` 需提供穿透率等三项指标（07 BR-07-61 已定义）。
 
 > **D120（循环契约，2026-10-12）已并入**：§1 范围第 7 项、US-10-20…22、§3.1 模块内枚举 `LoopContractKind` / `LoopContractState` / `LoopRunState`、表 §3.15 `planning_loop_contracts` 与 §3.16 `planning_loop_runs`、§4.4（LC1–LC5、LR1–LR7）、BR-10-52…58、接口 L1–L7 与 `LoopRunRecorder.OpenOn`、错误码 180510–180514、任务 J8、§7.6 事件 / 审计 / SSE、§8.8 循环契约编辑器与报告编辑器徽标、N-10-11 / N-10-12、AC-10-43…54、Q-10-5、CR-10-11（对 00）。依赖 05 `AgentReminderScheduler`（05 BR-05-140）；循环运行产出的报告草稿仍经 §5.5 核对与 §5.6 人类确认。
+
+
+## 14. 计划路由与需求对接统一
+
+我的计划唯一列表 `/t/:tenantID/plans/me`，详情 `/t/:tenantID/plans/:planID`；团队目标 / 报告分别 `/goals` / `/reports`，项目目标固定 `/p/:projectID/goals`。不再将 `/plans` 当独立列表，也不在协作提供跨项目目标清单。目标 / 计划 / 循环契约开发 v1.1、原型完整展示（00 §16.5），MVP 需求 / 工作项基线不依赖这些模块。
+
+D121 签认确认单后可由 Agent 起草需求 → 目标 / KR → 计划，人确认后生效；里程碑进度回复引用已确认报告和版本，Agent 默认起草、人审后在共享频道发布。甲方只看经批准的里程碑摘要，不看内部目标 / 计划 / 日报 / 内部 QA 轮次。循环契约固定次数 / 预算 / 升级条件，不因报告草稿仍未通过而无限重试；无进展 / 依赖缺失按 00 §16.4。
+
+报告成本包含内部质量轮次与失败，L2/L3/L4 口径分开，未验证优势与商业假设不写成事实。计划空态、版本冲突、核对失败、上下确认、只读和无权态原型均需可交互。
+
+### 14.P 本域易用性与大数据验收
+
+本域适用 00 §16.8：服务端权限过滤 / 稳定游标分页，不全量拉取前端后筛；长列表虚拟化、聚合服务端取，精确总数不阻塞首屏；涉及看板按列分页、频道历史锚点与增量、流程图可见渲染 / 子流程惰性加载、文件范围读。切项目 / 筛选取消过期请求，保留阅读 / 草稿上下文，明示 loading / 空 / 超时 / 限流 / 断流 / 重试。协作二级菜单不跳会话域。规模与 API / UI 性能预算是开发后待实测门槛，原型不宣称已通过。
+
+### 14.Q 集合读取 API 分页参数同步
+
+本规格 §6 全部集合 GET operation（包括现有列表和本次补的读模型）采用 00 §16.10 的唯一产品分页合同：`cursor?` / `limit?`（默认50、最多100）/ 白名单 `sort?`，保留各 operation 的业务 filter / q / project_id；返回 `items,next_cursor?,has_more`，旧 offset / page / page_size 参数退休，不并存两套 API。消息历史 anchor_seq / 增量 after_seq 单独按语义使用；聚合 / 有限枚举不分页。服务端稳定排序与权限 / 筛选绑定 cursor，不依赖精确 COUNT。公共底座既有查询不改，本产品开发前 W1 检查 pkg/query 能力及最小复用 / 扩展 ADR，不能假称已具备游标。旧接口表分页字段由本条原地替代，最终 OpenAPI 只生成这一合同。
