@@ -1,0 +1,37 @@
+(async()=>{
+ const wait=()=>new Promise(r=>setTimeout(r,180)),check=(v,m)=>{if(!v)throw Error(m)};
+ const click=async(text,scope=document)=>{const e=[...scope.querySelectorAll('button,a')].find(e=>e.textContent.trim()===text);check(e,'Missing '+text);e.click();await wait()};
+ const fill=async(label,value)=>{const el=[...document.querySelectorAll('.field')].find(e=>e.querySelector('label')?.textContent.replace(' *','').trim()===label)?.querySelector('input:not([type=hidden]),textarea');check(el,'Missing '+label);Object.getOwnPropertyDescriptor(el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));await wait()};
+ location.hash='/p/launch/flow?workflow_id=default';await wait();check(document.querySelector('[aria-label="项目"]')?.textContent.includes('新品发布'),'Direct project URL lost project context');check([...document.querySelectorAll('.sidebar .panel-button')].some(e=>e.textContent.trim()==='工作流'&&e.classList.contains('active')),'Direct flow URL lost menu highlight');const inspector=()=>document.querySelector('.node-panel');
+ check(['配置','输入','输出','运行记录','错误策略'].every(t=>[...inspector().querySelectorAll('[role=tab]')].some(e=>e.textContent.trim()===t)),'Typed inspector tabs missing');
+ await click('编辑新草案');await click('添加节点');const option=[...document.querySelectorAll('.node-library>button')].find(e=>e.querySelector('b')?.textContent==='构建');check(option,'Build node missing');option.click();await wait();
+ check(inspector().textContent.includes('构建命令')&&!inspector().textContent.includes('节点指令 / 提示词'),'CI node uses AI form');
+ await fill('运行环境 / 镜像引用','node:22');await fill('工作目录','/workspace/app');await fill('构建命令','npm ci && npm run build');await fill('构建产物路径','dist/');
+ const state=JSON.parse(localStorage.getItem('collaboration-prototype-v1')),build=state.flowDraft.nodes.find(n=>n.data.kind==='构建');check(build?.data.command==='npm ci && npm run build','Typed config did not persist');
+ await click('输入',inspector());check(inspector().textContent.includes('固定输入版本 / 版本映射'),'Fixed inputs missing');await fill('输入引用 / 字段映射','checkout.commit');await fill('固定输入版本 / 版本映射','{{checkout.commit}}');
+ await click('输出',inspector());check(inspector().textContent.includes('固定输出契约')&&inspector().textContent.includes('下游 Human 接收人'),'Output handoff contract absent');
+ await click('错误策略',inspector());await fill('最大重试次数','1');await fill('重试间隔（秒）','10');check(location.hash.includes('state.flow-tab'),'Panel tab deep link missing');
+ await click('模拟预览',inspector());check(inspector().textContent.includes('不产生真实运行记录')&&!inspector().textContent.includes('模拟通过'),'Preview fabricates execution');
+ await click('确认发布新版本');check(document.querySelector('.workflow-issues')?.textContent.includes('缺少上游输入'),'Disconnected CI node published');
+ check(JSON.parse(localStorage.getItem('collaboration-prototype-v1')).flowVersion===3,'Invalid graph changed active version');
+ await click('流程设置');check(inspector().textContent.includes('流程整体设置'),'Workflow definition settings absent');
+ await fill('流程名称','CI + 协作 · 发布流程');
+ await click('运行控制',inspector());await fill('最大并行运行数','2');
+ await click('变量与通知',inspector());await fill('流程变量（JSON）','{"release":"v4"}');await fill('凭据引用（JSON）','{"deploy":"vault/ci/deploy"}');
+ check(JSON.parse(localStorage.getItem('collaboration-prototype-v1')).flowDraft.nodes.find(n=>n.id==='brief').data.workflowSettings.concurrency==='2','Workflow settings not saved in versioned graph');
+ check(location.hash.includes('state.flow-settings-tab')&&location.hash.includes('state.flow-inspector'),'Workflow settings URL lost panel/tab');
+ await click('节点',inspector());await click('配置',inspector());check(inspector().textContent.includes('执行环境')&&inspector().textContent.includes('缓存'),'CI configuration groups absent');
+ await click('添加节点');for(const kind of ['容器镜像','安全扫描','通知','子工作流'])check([...document.querySelectorAll('.node-library b')].some(e=>e.textContent===kind),'Missing '+kind);document.querySelector('[aria-label="关闭弹窗"]').click();await wait();
+ // Follow a real connected source and insert a versioned reference without reading or executing data.
+ await click('节点列表');const list=document.querySelector('.flow-list');await click('04  实现',list);await click('输入',inspector());
+ const selector=inspector().querySelector('[aria-label="选择上游输出来源"]');check(selector,'Source selector absent');selector.click();await wait();
+ const sourceOption=[...document.querySelectorAll('[role=option]')].find(e=>e.textContent.includes('02  文案制作'));check(sourceOption,'Connected source not offered');sourceOption.click();await wait();
+ await click('插入上游引用',inspector());const mapped=JSON.parse(localStorage.getItem('collaboration-prototype-v1')).flowDraft.nodes.find(n=>n.id==='build');
+ check(mapped.data.inputs.includes('{{copy.output}}')&&mapped.data.inputVersion==='copy@{{definition.version}}','Source ID/fixed version mapping incorrect');
+ check(inspector().textContent.includes('声明契约 · 无实际运行数据'),'Upstream contract masquerades as actual data');
+ await fill('固定输入样例（JSON）','{"title":"example"}');await fill('样例来源固定版本','sample@v1');
+ await click('说明',inspector());await fill('节点所属阶段','执行');await fill('节点说明 / 操作手册','只使用确认的输入');
+ check(location.hash.includes('state.flow-tab'),'Node notes not deep linked');
+ check(document.documentElement.scrollWidth<=innerWidth,'Workflow viewport overflow');
+ return {pass:true,width:innerWidth,assertions:['five-panel-tabs','typed-CI-config','fixed-inputs-outputs','retry-config','honest-preview','publish-gate','URL-tab-state']};
+})();

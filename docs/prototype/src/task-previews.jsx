@@ -1,5 +1,6 @@
+import { useViewState } from "./view-state";
 import React, { useState, useId, useLayoutEffect, useRef, useEffect } from "react";
-import { useStore, update, assertWrite } from "./store";
+import { useStore, update, assertWrite, requestProjectLease, assertProjectRecordWritable } from "./store";
 import {
   Icon,
   IconButton,
@@ -205,13 +206,18 @@ function PreviewContent({ tab, work, saveView }) {
     </article>
   );
 }
-function PreviewPanel({ tab, active, work, prefix, modify }) {
+function PreviewPanel({ executionId, tab, active, work, prefix, modify, toast }) {
+  const state = useStore();
   const content = useRef(null);
-  const saveView = (patch) =>
-    modify((v) => {
+  const saveView = (patch) => {
+    if (["lines","response","refreshed","history"].some(key=>Object.hasOwn(patch,key))) {
+      try { requestProjectLease({tenantId:state.activeTenant,projectId:work.project,workId:work.id,resourceId:tab.id,executionId,kind:tab.kind === "终端" ? "terminal" : "preview"}); } catch(error) { toast(error.message,true); return; }
+    }
+    return modify((v) => {
       const target = v.tabs.find((t) => t.id === tab.id);
       target.view = { ...target.view, ...patch };
     });
+  };
   useLayoutEffect(() => {
     if (!active || tab.status === "失联" || !content.current) return;
     for (const el of [content.current, ...content.current.querySelectorAll("[data-preview-scroll]")]) {
@@ -269,13 +275,15 @@ function PreviewPanel({ tab, active, work, prefix, modify }) {
     </section>
   );
 }
-export function TaskPreviews({ work, toast, expanded = false }) {
+export function TaskPreviews({ work, toast, expanded = false, scopeId }) {
+  const previewKey = scopeId || work.id;
   const prefix = useId();
   const [fullscreen, setFullscreen] = useState(false);
+  const [requestedTab,setRequestedTab] = useViewState(`preview.${previewKey}`, "");
   const s = useStore(),
-    entry = s.taskPreviews?.[work.id],
+    entry = s.taskPreviews?.[previewKey],
     tabs = resourceTabs(work, entry),
-    active = tabs.some(tab => tab.id === entry?.active) ? entry.active : tabs[0]?.id;
+    active = tabs.some(tab => tab.id === requestedTab) ? requestedTab : tabs.some(tab => tab.id === entry?.active) ? entry.active : tabs[0]?.id;
   useLayoutEffect(() => {
     const frame = requestAnimationFrame(() => {
       const tab = document.getElementById(`${prefix}-tab-${active}`)?.parentElement;
@@ -289,15 +297,15 @@ export function TaskPreviews({ work, toast, expanded = false }) {
   }, [active, tabs.length, prefix]);
   const modify = (fn, requiresConnection = false) => {
     try {
-      if (requiresConnection) assertWrite();
+      if (requiresConnection) { assertWrite(); assertProjectRecordWritable(work); const tab=tabs.find(tab=>tab.id===active); requestProjectLease({tenantId:s.activeTenant,projectId:work.project,workId:work.id,resourceId:tab?.id,executionId:scopeId,kind:tab?.kind === "终端" ? "terminal" : "preview"}); }
       update((x) => {
         x.taskPreviews ??= {};
-        x.taskPreviews[work.id] ??= {
+        x.taskPreviews[previewKey] ??= {
           tabs: defaultTabs(work),
           active: "primary",
         };
-        x.taskPreviews[work.id].tabs = resourceTabs(work, x.taskPreviews[work.id]);
-        fn(x.taskPreviews[work.id], x);
+        x.taskPreviews[previewKey].tabs = resourceTabs(work, x.taskPreviews[previewKey]);
+        fn(x.taskPreviews[previewKey], x);
       });
       return true;
     } catch (e) {
@@ -314,7 +322,7 @@ export function TaskPreviews({ work, toast, expanded = false }) {
       target?.scrollIntoView({ block: "nearest", inline: "nearest" });
     });
   const select = (tabId) => {
-    if (modify((v) => (v.active = tabId))) focusTab(tabId);
+    if (modify((v) => (v.active = tabId))) {setRequestedTab(tabId);focusTab(tabId);}
   };
   return (
     <div className="task-previews">
@@ -369,15 +377,17 @@ export function TaskPreviews({ work, toast, expanded = false }) {
             tab={tab}
             active={tab.id === active}
             work={work}
+            executionId={scopeId}
             prefix={prefix}
             modify={modify}
+            toast={toast}
           />
         ))
       ) : (
-        <Empty title="没有打开的预览" text="任务产生可预览资源后，会自动显示在这里。" />
+        <Empty title={scopeId ? "此执行尚无预览资源" : "没有打开的预览"} text={scopeId ? "仅展示此执行登记的成果清单，不复制其他执行的资源。" : "任务产生可预览资源后，会自动显示在这里。"} />
       )}
       {fullscreen && <Modal title="任务预览 · 本地示例" className="preview-dialog" onClose={() => setFullscreen(false)}>
-        <TaskPreviews work={work} toast={toast} expanded />
+        <TaskPreviews work={work} toast={toast} scopeId={scopeId} expanded />
       </Modal>}
     </div>
   );

@@ -29,11 +29,14 @@
   await go("/reports/RP-01");
   check(total("human") === "0 小时" && total("agent") === "0 小时", "Legacy owner names falsely certified personal scope");
   check(document.querySelector("main").textContent.includes("历史投入归属未知"), "Legacy scope uncertainty not shown");
-  await click("编辑"); await toggle("WL-03"); await fill("声明完成工作数（选填）", "99"); await click("保存", document.querySelector("dialog"));
+  await click("编辑");
+  check(!document.querySelector('dialog input[aria-label="引用 RP-02"]'), "Foreign legacy child report is still selectable");
+  await click("移除无效引用 RP-02",document.querySelector("dialog"));
+  await toggle("WL-03"); await fill("声明完成工作数（选填）", "99"); await click("保存", document.querySelector("dialog"));
   check(total("agent") === "0 小时", "Unknown nested Agent scope counted as personal hours"); await submit();
   check(document.querySelector("dialog").textContent.includes("不一致"), "Declared count conflict missing"); check(document.querySelector("dialog").textContent.includes("不属于所选报告归属"), "Foreign Agent effort scope was not blocked"); await click("取消", document.querySelector("dialog"));
   check(document.querySelectorAll("dialog[open]").length === 2, "Rejected report submission lost discard guard"); await click("放弃修改", [...document.querySelectorAll("dialog[open]")].at(-1));
-  await click("编辑"); await toggle("WL-03"); await toggle("RP-02"); await fill("声明完成工作数（选填）", ""); await fill("人工校准正文", "本人修订的周期判断，不由生成建议覆盖"); await click("保存", document.querySelector("dialog"));
+  await click("编辑"); await toggle("WL-03"); await fill("声明完成工作数（选填）", ""); await fill("人工校准正文", "本人修订的周期判断，不由生成建议覆盖"); await click("保存", document.querySelector("dialog"));
   const manual = state().resources.reports.find((r) => r.id === "RP-01");
   await generate("周报", "2026-10-15"); check(location.hash === "#/reports/RP-01", "Same calendar period produced another report");
   check(state().resources.reports.find((r) => r.id === "RP-01").summary === manual.summary, "Generation overwrote Human prose");
@@ -57,8 +60,8 @@
   check(document.querySelector("main").textContent.includes("本地模拟"), "Schedule misrepresented as a real timer");
   check(document.documentElement.scrollWidth <= innerWidth + 1, "Report list horizontal overflow");
   await go("/reports/RP-01"); check(document.documentElement.scrollWidth <= innerWidth + 1, "Report detail overflow");
-  await go("/worklogs"); await choose("本人任务", "W-104 · 新品落地页 · 响应式交付");
-  await fill("投入日期", "2026-10-14"); await fill("投入时区", "Asia/Singapore"); await fill("工作量类别", "验收"); await fill("本人预估（小时）", "2"); await fill("评估依据", "本人报告回归实际投入"); await click("建立待校准条目");
+  await go("/p/launch/work-items/W-104?tab=analysis"); await click("校准本人实际投入");
+  await fill("投入日期", "2026-10-14"); await fill("投入时区", "Asia/Singapore"); await fill("投入类别", "验收"); await fill("实际参与投入（小时）", "2"); await fill("实际参与依据", "本人报告回归实际投入"); await click("保存校准并核对");
   const effort = state().resources.worklogs.find(item => item.work === "W-104" && item.date === "2026-10-14" && item.ownerId === "H-lin"); check(effort, "New actual effort draft missing");
   await fill("校准投入（小时）", "1.25"); await fill("校准依据", "逐项核对后的本人投入"); await click("保存校准"); await click("本人确认实际投入");
   await go("/reports/RP-01"); await click("编辑"); await toggle(effort.id); await click("保存", document.querySelector("dialog"));

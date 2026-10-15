@@ -26,7 +26,7 @@
   check(project && project.ownerId === 'H-lin', 'Project lost stable Human identity');
   check(state.organization.members.some(person => person.id === project.ownerId && person.kind === 'Human'), 'Saved owner is not a tenant Human');
   check(!document.querySelector('dialog[open]'), 'Successful save was treated as dirty dismissal');
-  check(location.hash === `#/p/${project.id}`, 'Created project detail did not open');
+  check(location.hash.split("?")[0] === `#/p/${project.id}`, 'Created project detail did not open');
   check(document.documentElement.scrollWidth <= innerWidth + 1, 'Project page overflow');
   return { pass: true, checks: ['real tenant creation', 'tenant-scoped Human choices', 'stable owner identity', 'successful dismissal', 'project detail', 'viewport fit'] };
 })()

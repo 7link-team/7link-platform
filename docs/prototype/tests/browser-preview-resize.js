@@ -2,7 +2,7 @@
  const wait = () => new Promise(resolve => setTimeout(resolve, 180));
  const check = (value, message) => { if (!value) throw Error(message); };
  const go = async path => { location.hash = path; await wait(); };
- await go('/chat?execution_id=W-104');
+ await go('/chat?execution_id=EX-demo-W-104');
  if (innerWidth <= 1250) {
   check(!document.querySelector('.preview-resizer'), 'Compact layout exposes desktop splitter');
   document.querySelector('[aria-label="切换会话上下文"]').click(); await wait();
@@ -21,7 +21,7 @@
   check(document.querySelector('.conversation').getBoundingClientRect().width >= 359, 'Preview squashes conversation');
   check(document.documentElement.scrollWidth <= innerWidth + 1,'Max preview creates horizontal overflow');
   await key('Home');await key('ArrowLeft');
-  await go('/work');await go('/chat?execution_id=W-201');
+  await go('/work');await go('/chat?execution_id=EX-demo-W-201');
   check(Number(splitter().getAttribute('aria-valuenow'))===344,'Width not preserved after remount/task switch');
   check(localStorage.getItem('collaboration-preview-width')==='344','Preference not stored');
  }

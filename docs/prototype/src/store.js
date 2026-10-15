@@ -1,11 +1,27 @@
-import { planPeriod, planKey, planActor, planCanRead, planCanDecide, planChecks, normalizePlanItems, planCommitment, planDiff, planSnapshot } from "./plans";
+import { approvalFlowOn, approvalOrchestrationProblem, humanChangeOn, governanceHumans } from './governance.js';
+import { assertWorkflowBaseline, workflowPatch } from "./workflow-definition";
+import { requestExecutionInteractionOn, decideExecutionInteractionOn, deliverExecutionInteractionOn, expireExecutionInteractionOn, executionPath } from './executions.js';
+import { createExecutionBranchOn, hydrateExecutions, completeExecutionTurnOn, executionReadProblem, executionRecord, createExecutionOn, executionCommandOn, submitExecutionInputOn, resolveExecutionInputOn, linkAdhocExecutionOn } from "./executions.js";
+import { workflowRecordForProject } from "./workflow-registry";
+import { performanceCommandOn } from "./performance";
+import { libraryCommandOn } from "./knowledge.js";
+import { goalReadProblem, goalActionProblem, goalReviewers, goalGuidance, goalValueReviewProblem, valueReviewChecks, validateGoalQuadrantConfig, validateGoalQuadrantPoint, stageGoalPeriod } from "./goals";
+import { hydrateChannels, channelReadProblem, channelWriteProblem, channelMessageReadProblem, channelActor, assertChannelWrite, createChannelOn, openDirectChannelOn, changeChannelOn, changeMemberOn, publishAnnouncementOn, changeHookOn, changeAgentChannelGrantOn, channelMembers } from "./channels.js";
+export { channelReadProblem, channelWriteProblem, visibleChannels, visibleChannelMessages, channelMembers, channelManageProblem, channelPeople, previewChannelHook } from "./channels.js";
+import { recordProjectId, projectIsArchived, activeProjects, projectRecordWriteProblem, projectArchiveImpact } from "./project-lifecycle.js";
+import { normalizeChatAttachments, chatEmoji } from "./chat-content.js";
+export { recordProjectId, projectIsArchived, activeProjects, projectRecordWriteProblem, projectArchiveImpact } from "./project-lifecycle.js";
+import { knowledgeOwner, knowledgeReadProblem, knowledgeWriteProblem, memoryRevocationProblem, visibleActivityEvents } from "./knowledge.js";
+export { knowledgeReadProblem, visibleKnowledge, visibleActivityEvents } from "./knowledge.js";
+import { planPeriod, planKey, planActor, planCanRead, planCanDecide, planChecks, planCurrentItemsProblem, normalizePlanItems, planCommitment, planDiff, planSnapshot, planConfirmedSnapshotProblem, planFreeTaskFactValid, reportNextPlanDescriptor, reportNextPlanBinding, reportNextPlanCheck, reportCurrentPlan, reportCurrentPlanBinding, reportCurrentPlanCheck, ensureReportNextPlanDraft } from "./plans";
 import { reportAuthor, reportReviewAuthority, reportEditProblem, reportTransitionIssue, reportSubmissionContent } from "./report-authorization";
+import { reportRegenerationSources, prepareReportRegeneration, emptyReportContent, normalizeReportContent, reportContentCheck, fixedReportSources, reportOperationFactValid } from "./report-content";
 export { reportAuthor, reportReviewAuthority, reportEditProblem } from "./report-authorization";
 import { structuredGoal, closedGoalStates, normalizeGoal, goalDefinition, krDefinition, goalNumber, goalEvidence, krObservation, goalResult, readGoalMetric, goalRisks, goalPeriod, validateGoalAlignments } from "./goals";
 import { useSyncExternalStore } from "react";
 import { initial } from "./data";
 import { prepareMessageShare } from "./message-sharing";
-import { upsertPeriodicReport, periodicReportKey, validatePeriodicReport, reportSubjects, reportCadences, dateInZone, reportOwner, periodicReportFacts, immutableSubjectKeys, worklogSubjectMatch } from "./reporting";
+import { upsertPeriodicReport, periodicReportKey, validatePeriodicReport, reportSubjects, reportCadences, dateInZone, reportOwner, periodicReportFacts, immutableSubjectKeys, worklogSubjectMatch, reportChildProblem, submittedReportBody, reportEffortDateRelation, reportAcceptanceMatch } from "./reporting";
 import { workRework, pendingFailedBatches, initializeWorkRework, reworkConfigured, recordFormalRework, recordInternalRepair, recordInternalRound, configureRework, continueRework, recordReworkDecision } from "./rework";
 export { workRework, pendingFailedBatches, recordFormalRework } from "./rework";
 import { freezeCases, qaCounts, activeBatch, hydrateQA, startBatch, productionSnapshot, assertVerificationMutable, qualityFromPlans, qaStatuses, qaIdentity, unfinishedWorkBatches, independentRun as independentQAIdentity } from "./qa";
@@ -95,6 +111,7 @@ function hydrate(value, seedProduction = false) {
       },
     ];
   });
+  for (const [tenantId, tenant] of [[value.activeTenant, value], ...Object.entries(value.tenantData)]) { hydrateChannels(tenant); hydrateExecutions(tenant); }
   return value;
 }
 state = hydrate(state, freshInitial);
@@ -109,7 +126,10 @@ export const id = (prefix) => `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
 export function update(fn) {
   const next = structuredClone(state);
   fn(next);
-  localStorage.setItem(KEY, JSON.stringify(next));
+  try { localStorage.setItem(KEY, JSON.stringify(next)); } catch(error) {
+    if(error?.name === "QuotaExceededError") throw Error("本地原型存储空间不足，本次操作未保存；当前输入与已保存原件保留。请减少附件或先导出资料。");
+    throw error;
+  }
   state = next;
   listeners.forEach((fn) => fn());
 }
@@ -128,6 +148,7 @@ export function log(s, text, target = "/governance/audit") {
   });
 }
 export function assertWrite() {
+  if (state.role !== "external" && state.organization.members.some(p => p.id === "H-lin" && (p.disabledAt || ["离职", "已离职", "已停用"].includes(p.status)))) throw Error("当前 Human 访问已停用。");
   if (state.role === "external")
     throw Error("当前为外部客户视角，只能对已共享成果提交反馈与回执。");
   if (state.offline)
@@ -136,12 +157,29 @@ export function assertWrite() {
 function recordAcceptanceFact(s, work) {
   const key = `${work.id}:v${work.version}:accept`;
   work.acceptanceFacts ??= [];
+  if (!Array.isArray(work.acceptanceFacts) || work.acceptanceFacts.some(fact => !fact || typeof fact !== "object" || Array.isArray(fact))) throw Error("工作接受历史损坏，请先核对原始事件；不会清空历史或补造首次接受。");
   if (work.acceptanceFacts.some(fact => fact.id === key)) return;
   const owners = s.organization.members.filter(person => person.kind === "Human" && person.name === work.owner);
   const ownerId = owners.length === 1 ? owners[0].id : null, executorIds = [...(work.production?.executorIds || [])];
   const subjectKeys = immutableSubjectKeys(s, work.project, [ownerId, ...executorIds]);
   const firstKnown = work.acceptanceFacts.length ? work.acceptanceFacts[0].firstKnown : !work.accepted && !work.history?.some(item => item.accepted);
   work.acceptanceFacts.push({ id: key, workId: work.id, version: work.version, project: work.project, time: new Date().toISOString(), ownerId, executorIds, subjectKeys: [...new Set(subjectKeys)], workSnapshot: { id: work.id, title: work.title, version: work.version, project: work.project, plan: Boolean(work.plan), quality: qualityResult(s, work) }, firstKnown, actorId: "H-lin" });
+}
+// New local operations retain their real actor and original version. Historical
+// records are never backfilled from ownership or the clock at report generation.
+function recordWorkDecision(s, work, original, command, reason, feedback) {
+  const actions = { accept: "APPROVE", return: "REQUEST_CHANGES", cancel: "CANCEL", takeover: "PAUSE", resume: "RESUME", deliver: "DELIVER" };
+  if (!Object.hasOwn(actions, command)) return;
+  work.decisionFacts ??= [];
+  if (!Array.isArray(work.decisionFacts) || work.decisionFacts.some(fact => fact?.kind !== "DECISION" || !reportOperationFactValid(fact) || fact.workId !== work.id))
+    throw Error("工作裁决历史损坏，请核对原始记录；不会清空历史或补造裁决。");
+  work.decisionFacts.push({ id: id("DEC"), kind: "DECISION", tenantId: s.activeTenant, project: original.project,
+    workId: original.id, version: original.version, action: actions[command], originalCommand: command,
+    actor: { kind: "Human", id: "H-lin" }, time: new Date().toISOString(), reason,
+    fromState: original.status, toState: work.status,
+    subjectKeys: immutableSubjectKeys(s, original.project, ["H-lin"]),
+    workSnapshot: { id: original.id, title: original.title, version: original.version, project: original.project },
+    feedback: feedback == null ? null : structuredClone(feedback), source: "LOCAL_SIMULATION" });
 }
 // A current-version failed/missing-evidence check always overrides a cached gate flag.
 export function qualityResult(s, work) {
@@ -150,6 +188,7 @@ export function qualityResult(s, work) {
 }
 
 function syncQuality(s, workId, version) {
+  assertProjectRecordWritable(s.work.find(work=>work.id===workId),s);
   const work = s.work.find((w) => w.id === workId);
   if (
     !work ||
@@ -176,13 +215,16 @@ function returnFeedback(work, reason, feedback, version = work.version) {
     position: feedback?.position || null, structured: !!feedback,
   };
 }
-export function dependencyProblems(s, work) {
+export function dependencyProblems(s, work, visited = new Set()) {
+  if (visited.has(work.id)) return [];
+  const path = new Set(visited); path.add(work.id);
   const problems = [...(work.dependencyBlocks || [])];
   for (const input of work.inputs || []) {
     const source = s.work.find((item) => item.id === input.workId);
-    if (!source || source.invalidatedVersions?.includes(input.version)) {
+    const externalRisk = source && input.version === source.version && dependencyProblems(s, source, path).length > 0;
+    if (!source || source.invalidatedVersions?.includes(input.version) || externalRisk) {
       if (!problems.some((block) => block.inputWorkId === input.workId && block.inputVersion === input.version))
-        problems.push({ inputWorkId: input.workId, inputVersion: input.version, reason: source ? "输入版本已失效" : "输入工作不存在" });
+        problems.push({ inputWorkId: input.workId, inputVersion: input.version, reason: externalRisk ? "外部输入来源已变化，须重新核对依赖；原固定验收记录保留" : source ? "输入版本已失效" : "输入工作不存在" });
     }
   }
   return problems;
@@ -197,6 +239,10 @@ function invalidateDependentOutputs(s, source, reason) {
     visited.add(key);
     for (const work of s.work) {
       if (!(work.inputs || []).some((ref) => ref.workId === input.workId && ref.version === input.version)) continue;
+      if (projectIsArchived(s, work.project)) {
+        queue.push({ workId: work.id, version: work.version });
+        continue;
+      }
       work.dependencyBlocks ??= [];
       if (!work.dependencyBlocks.some((block) => block.inputWorkId === input.workId && block.inputVersion === input.version)) {
         work.dependencyHistory ??= [];
@@ -230,6 +276,7 @@ function fixedWorkPackage(s, work, version = work.version) {
   };
 }
 export function prepareInputHandoff(sourceId, targetId, version, recipientId) {
+  for (const workId of [sourceId,targetId]) assertProjectRecordWritable(state.work.find(work => work.id === workId));
   assertWrite();
   const source = state.work.find((work) => work.id === sourceId);
   const target = state.work.find((work) => work.id === targetId);
@@ -244,7 +291,7 @@ export function prepareInputHandoff(sourceId, targetId, version, recipientId) {
   const contract = source.completionContract;
   if (!contract || !["internal", "external"].includes(contract.mode) ||
     (contract.mode === "internal" ? !contract.reason?.trim() : !contract.recipient?.trim())) throw Error("请先确认上游接收契约。");
-  const existing = source.handoffs?.find((pack) => pack.version === version && pack.targetWorkId === targetId && pack.recipientId === recipient.id);
+  const existing = source.handoffs?.find((pack) => pack.version === version && pack.targetWorkId === targetId && pack.recipientId === recipient.id && !["已取消","已拒绝"].includes(pack.status));
   if (existing) return existing.id;
   const packageId = id("H");
   update((s) => {
@@ -256,7 +303,23 @@ export function prepareInputHandoff(sourceId, targetId, version, recipientId) {
   });
   return packageId;
 }
+export function cancelInputHandoff(input) {
+  assertWrite();
+  if (input.tenantId !== state.activeTenant) throw Error("租户已切换，请重新核对交接包。");
+  const source = state.work.find(work => work.id === input.sourceId), pack = source?.handoffs?.find(pack => pack.id === input.handoffId);
+  if (!pack || pack.status !== "待接收" || input.version !== pack.version || input.fingerprint !== JSON.stringify(pack.items)) throw Error("固定交接包已变化或已处置，请重新核对。");
+  assertProjectRecordWritable(source);
+  const human = state.organization.members.some(person => person.id === "H-lin" && person.kind === "Human");
+  const project = state.projects.find(project => project.id === source.project);
+  if (!human || !["owner","executor"].includes(state.role) || (pack.recipientId !== "H-lin" && projectLifecycleProblem(state,project))) throw Error("只有指定 Human 接收人或上游项目负责人可以终止待交接包。");
+  if (!input.reason?.trim()) throw Error("请填写终止交接理由。");
+  update(s => { const current=s.work.find(work=>work.id===source.id).handoffs.find(item=>item.id===pack.id); current.history ??= [];
+    current.history.push({action:"CANCEL",previousStatus:current.status,actorId:"H-lin",actorKind:"Human",reason:input.reason.trim(),time:new Date().toISOString(),source:"LOCAL_SIMULATION"});current.status="已取消";
+    log(s,`明确终止待交接包 ${current.id} · ${input.reason.trim()}`,`/p/${source.project}/work-items/${source.id}`);
+  });
+}
 export function saveWorkInputs(workId, inputs, reason, expectedVersion, expectedRevision = 0) {
+  assertProjectRecordWritable(state.work.find(work => work.id === workId));
   assertWrite();
   if (state.role !== "owner") throw Error("输入契约变更需要负责人确认。");
   const work = state.work.find((item) => item.id === workId);
@@ -295,6 +358,8 @@ export function saveWorkInputs(workId, inputs, reason, expectedVersion, expected
     const source = state.work.find((item) => item.id === workId);
     const pack = source.handoffs?.find((entry) => entry.version === version && entry.targetWorkId === work.id && (handoffId ? entry.id === handoffId : entry.recipient === work.owner));
     if (!pack?.items?.length) throw Error("请先准备面向当前下游的固定交接包，内部检查通过不等于已交接。");
+    if (["已取消","已拒绝"].includes(pack.status)) throw Error("此交接包已终止，不能作为新输入采用；请重新准备固定包。");
+    if (pack.status !== "已接受") assertProjectRecordWritable(source);
     if (pack.status !== "已接受" && source.version === version && workRework(source).hold) throw Error("上游返工已停线，不能通过接收绕过 Human 决定。");
     if (pack.recipientId !== "H-lin" || !organizationPeople(state).some((person) => person.id === pack.recipientId && person.kind === "Human")) throw Error("仅指定的下游 Human 接收人可以接收固定包。");
     return { workId, version, handoffId: pack.id };
@@ -333,45 +398,103 @@ export function saveWorkInputs(workId, inputs, reason, expectedVersion, expected
     log(s, `确认固定输入 · ${target.title} · ${reason}`, `/p/${target.project}/work-items/${target.id}`);
   });
 }
-export function beginWorkDraft({ sourceId, projectId, channel, executionId, threadId, workKind, reopenedFrom } = {}) {
+export function beginWorkDraft({ sourceId, projectId, channel, executionId, threadId, workflowId = "default", workKind, reopenedFrom, scopeChangeFrom, scopeChangeReason } = {}) {
   assertWrite();
+  const scopeOriginal=scopeChangeFrom && state.work.find(work=>work.id===scopeChangeFrom);
+  if(scopeChangeFrom) {
+    if(!scopeOriginal || !scopeChangeReason?.trim())throw Error("请选择原工作并填写范围变化理由。");
+    const problem=channelReadProblem(state,scopeOriginal.project);if(problem)throw Error(problem);
+    assertProjectRecordWritable(scopeOriginal);
+    if(reopenedFrom||sourceId||executionId||threadId)throw Error("范围变化使用独立工作草稿，不混用缺陷回归或消息来源。");
+    projectId=scopeOriginal.project;
+  }
   const previousDefect = reopenedFrom && state.work.find(work => work.id === reopenedFrom && work.workKind === "BUG");
   if (reopenedFrom && !previousDefect) throw Error("原缺陷不在当前租户。");
   if (previousDefect) { workKind = "BUG"; projectId = previousDefect.project; }
-  const source = sourceId ? state.messages.find((message) => message.id === sourceId) : null;
+  const source = sourceId ? state.messages.find((message) => message.id === sourceId)
+    : threadId ? state.messages.find(message => message.id === threadId && (!channel || message.channel === channel) && (!executionId || message.channel === `exec-${executionId}`)) : null;
   if (sourceId && !source) throw Error("来源消息不在当前租户中。");
+  if (threadId && !source) throw Error("来源线程不存在或不在所指定会话中。");
   executionId ||= source?.channel?.startsWith("exec-") ? source.channel.slice(5) : undefined;
-  const execution = executionId ? state.work.find((work) => work.id === executionId) : null;
-  if (executionId && !execution) throw Error("来源工作不在当前租户中。");
-  const sourceProject = state.projects.find((project) => project.id === source?.channel)?.id;
-  const selectedProject = execution?.project || projectId || sourceProject || (source?.channel === "private" ? "private" : state.project === "all" ? "private" : state.project);
+  if (source && (executionId && source.channel !== `exec-${executionId}` || source.executionId && source.executionId !== executionId))
+    throw Error("来源消息与执行会话标识不一致，请从原会话重新发起。");
+  const execution = executionId ? executionRecord(state,executionId) : null;
+  if (executionId && !execution) throw Error("来源执行不在当前租户中；任务编号不能作为执行编号。");
+  if(executionId && executionReadProblem(state,executionId)) throw Error(executionReadProblem(state,executionId));
+  if (source && channelMessageReadProblem(state, source)) throw Error(channelMessageReadProblem(state, source));
+  if (source?.recalled) throw Error("来源消息已撤回，不能从旧正文生成工作。");
+  if (source) {
+    const actualThread = source.thread || source.id;
+    if (threadId && threadId !== actualThread) throw Error("来源线程与消息不一致，请从原消息重新发起。");
+    const root = state.messages.find(message => message.id === actualThread && message.channel === source.channel);
+    if (!root || root.thread && root.thread !== root.id || root.recalled || channelMessageReadProblem(state, root)) throw Error("来源线程不存在或当前不可读。");
+  }
+  if (source && !execution) assertChannelWrite(state, source.channel);
+  if (!source && channel) assertChannelWrite(state, channel);
+  const sourceProject = state.channels.find(c => c.id === (source?.channel || channel))?.projectId || state.projects.find((project) => project.id === source?.channel)?.id;
+  const sourceDirect = state.channels.find(c => c.id === (source?.channel || channel))?.kind === "DIRECT";
+  const selectedProject = execution?.projectId || projectId || sourceProject || (sourceDirect ? "private" : state.project === "all" ? "private" : state.project);
+  assertProjectRecordWritable({projectId:selectedProject});
   if (selectedProject !== "private" && !state.projects.some((project) => project.id === selectedProject)) throw Error("归属项目不在当前租户中。");
+  if (workflowId !== "default") {
+    const workflow = workflowRecordForProject(state, selectedProject, workflowId);
+    if (!workflow || workflow.archivedAt) throw Error("所选工作流已归档或不在此项目。");
+  }
   const existing = source && Object.values(state.drafts || {}).find((draft) => draft.kind === "work" && draft.workKind === workKind && draft.source?.messageId === source.id);
   if (existing) return existing.id;
   const draftId = id("draft");
   update((s) => {
     s.drafts ??= {};
     s.drafts[draftId] = { id: draftId, kind: "work", tenantId: s.activeTenant, status: "讨论中", revision: 0,
-      project: selectedProject, channel: source?.channel || channel || (selectedProject === "private" ? "private" : "team"),
-      executionId: execution?.id || null, threadId: threadId || source?.thread || source?.id || null,
+      creationSource: source || channel || execution ? "CONVERSATION" : "MANUAL", createdBy: "H-lin", actorKind: "Human", createdAt: new Date().toISOString(),
+      sourceProjectId: execution?.projectId || sourceProject || null,
+      project: selectedProject, workflowId, channel: execution ? execution.projectId : source?.channel || channel || (selectedProject === "private" ? "private" : "team"),
+      executionId: null, sourceExecutionId: execution?.id || null, threadId: execution ? null : threadId || source?.thread || source?.id || null,
       title: previousDefect ? `回归：${previousDefect.title}` : source?.text || "", type: "软件", criteria: previousDefect?.defect.expected || "", discussion: [], history: [],
       ...(workKind === "BUG" ? { workKind, reopenedFrom: previousDefect?.id || null, defect: previousDefect ? Object.fromEntries(defectFields.map(key => [key, previousDefect.defect[key] || ""])) : {} } : {}),
-      source: source ? { messageId: source.id, channel: source.channel, text: source.text, threadId: source.thread || null, tenantId: s.activeTenant, project: selectedProject } : null };
+      ...(scopeOriginal ? { scopeChange: {workId:scopeOriginal.id,projectId:scopeOriginal.project,version:scopeOriginal.version,title:scopeOriginal.title,reason:scopeChangeReason.trim(),createdBy:"H-lin",createdAt:new Date().toISOString()} } : {}),
+      source: source ? { messageId: source.id, channel: source.channel, text: source.text, ...(execution ? {executionId:execution.id,turnId:source.turnId || null} : {}), threadId: source.thread || null, tenantId: s.activeTenant, project: execution?.projectId || sourceProject || null } : null };
     log(s, "进入会话工作草稿");
   });
   return draftId;
+}
+export function workDraftReadProblem(s, draft) {
+  if (!draft || draft.kind !== "work" || draft.tenantId !== s.activeTenant || s.role === "external") return "当前草稿不存在或无权访问。";
+  if(draft.scopeChange) {
+    const original=s.work.find(work=>work.id===draft.scopeChange.workId && work.project===draft.scopeChange.projectId);
+    if(!original)return "范围变化的原工作已不可读取。";
+    const problem=channelReadProblem(s,original.project)||projectRecordWriteProblem(s,original);if(problem)return problem;
+  }
+  if (draft.sourceExecutionId) {const problem=executionReadProblem(s,draft.sourceExecutionId);if(problem)return problem;}
+  if (draft.source?.messageId) {
+    const message=s.messages.find(item=>item.id===draft.source.messageId&&item.channel===draft.source.channel);
+    if (!message || message.recalled || channelMessageReadProblem(s,message)) return "来源消息已撤回或不在当前可读范围，不能继续查看或确认此草稿。";
+    const rootId=message.thread || message.id, root=s.messages.find(item=>item.id===rootId&&item.channel===message.channel);
+    if (!root || root.recalled || root.thread && root.thread!==root.id || channelMessageReadProblem(s,root) || draft.threadId && draft.threadId!==rootId)
+      return "来源线程已变化、撤回或不在当前可读范围，请从有效会话重新起草。";
+  } else if (draft.creationSource === "CONVERSATION" && draft.channel) {
+    const problem=channelReadProblem(s,draft.channel);if(problem)return problem;
+  }
+  return "";
 }
 export function saveWorkDraft(draftId, fields, expectedRevision) {
   assertWrite();
   const draft = state.drafts?.[draftId];
   if (!draft || draft.kind !== "work" || draft.tenantId !== state.activeTenant) throw Error("当前租户没有此工作草稿。");
+  const readProblem=workDraftReadProblem(state,draft);if(readProblem)throw Error(readProblem);
   if (draft.workId) throw Error("草稿已生成工作，请在工作中继续处理。");
   if (draft.revision !== expectedRevision) throw Error("草稿已变化，请重新核对。");
+  assertProjectRecordWritable(state.drafts?.[draftId]); assertProjectRecordWritable({projectId:fields.project});
   if (fields.project !== "private" && !state.projects.some((project) => project.id === fields.project)) throw Error("请选择当前租户的项目。");
+  const workflowId = fields.workflowId || "default";
+  if (workflowId !== "default") {
+    const workflow = workflowRecordForProject(state, fields.project, workflowId);
+    if (!workflow || workflow.archivedAt) throw Error("所选工作流已归档或不在此项目。");
+  }
   update((s) => {
     const target = s.drafts[draftId];
-    target.history.push({ title: target.title, criteria: target.criteria, project: target.project, type: target.type, revision: target.revision });
-    Object.assign(target, { title: fields.title, criteria: fields.criteria, project: fields.project, type: target.workKind === "BUG" ? "软件" : fields.type, revision: target.revision + 1 });
+    target.history.push({ title: target.title, criteria: target.criteria, project: target.project, type: target.type, workflowId:target.workflowId || "default", revision: target.revision });
+    Object.assign(target, { workflowId, title: fields.title, criteria: fields.criteria, project: fields.project, type: target.workKind === "BUG" ? "软件" : fields.type, revision: target.revision + 1 });
     if (target.workKind === "BUG") target.defect = Object.fromEntries(defectFields.map(key => [key, fields.defect?.[key] ?? target.defect?.[key] ?? ""]));
   });
 }
@@ -380,21 +503,49 @@ export function confirmWorkDraft(draftId, expectedRevision) {
   if (state.role !== "owner") throw Error("请由 Human 负责人确认工作与计划。");
   const draft = state.drafts?.[draftId];
   if (!draft || draft.kind !== "work" || draft.tenantId !== state.activeTenant) throw Error("当前租户没有此工作草稿。");
+  const readProblem=workDraftReadProblem(state,draft);if(readProblem)throw Error(readProblem);
+  assertProjectRecordWritable(draft);
   if (draft.workId) return state.work.find((work) => work.id === draft.workId);
   if (draft.revision !== expectedRevision) throw Error("草稿已变化，请重新核对。");
   if (!draft.title?.trim() || !draft.criteria?.trim()) throw Error("请在会话中补充目标与完成条件，再确认生成。");
+  if (draft.workflowId && draft.workflowId !== "default") {
+    const workflow=workflowRecordForProject(state, draft.project, draft.workflowId);
+    if (!workflow || workflow.archivedAt) throw Error("草稿工作流已归档或不在当前项目，请重新选择。");
+  }
   if (draft.workKind === "BUG") validateDefectDetails(state, draft.defect, draft.project);
   let created;
   update((s) => {
     const target = s.drafts[draftId];
+    const confirmedAt = new Date().toISOString();
+    const conversationOrigins = target.source || target.creationSource === "CONVERSATION" ? [{
+      tenantId: s.activeTenant, projectId: target.sourceProjectId ?? target.source?.project ?? null,
+      channelId: target.source?.channel || (target.sourceExecutionId ? `exec-${target.sourceExecutionId}` : target.channel),
+      executionId: target.sourceExecutionId || target.source?.executionId || null,
+      messageId: target.source?.messageId || null, threadId: target.sourceExecutionId ? target.source?.threadId || target.source?.messageId || null : target.threadId || null,
+      draftId: target.sourceExecutionId ? null : draftId, draftRevision: target.revision, objectVersion: 1,
+      contextOnly: Boolean(target.sourceExecutionId && !target.source?.messageId),
+      createdBy: target.createdBy || null, actorKind: target.actorKind || null, createdAt: target.createdAt || null,
+      confirmedBy: "H-lin", confirmedAt,
+      confirmation: {actorId: "H-lin", status: "CONFIRMED", time: confirmedAt, revision: target.revision},
+    }] : [];
+    if (target.sourceExecutionId) conversationOrigins.push({
+      tenantId: s.activeTenant, projectId: s.channels.find(channel=>channel.id===target.channel)?.projectId || null,
+      channelId: target.channel, executionId: null, messageId: null, threadId: null, draftId,
+      draftRevision: target.revision, objectVersion: 1,
+      createdBy: target.createdBy || null, actorKind: target.actorKind || null, createdAt: target.createdAt || null,
+      confirmedBy: "H-lin", confirmedAt,
+      confirmation: {actorId: "H-lin", status: "CONFIRMED", time: confirmedAt, revision: target.revision},
+    });
     if (target.project === "private" && !s.projects.some((project) => project.id === "private"))
       s.projects.push({ id: "private", name: "我的私人工作", type: "个人", owner: "林予", progress: 0, budget: 0, spent: 0, deadline: "待确认", color: "violet", description: "会话确认的私人工作。" });
     if (!s.projects.some((project) => project.id === target.project)) throw Error("草稿归属项目已不可用。");
     created = { id: id(target.workKind === "BUG" ? "BUG" : "W"), title: target.title.trim(), project: target.project, type: target.type, status: "待开始",
       owner: "林予", agent: "未分派", agentId: null, due: "待确认", version: 1, plan: true, flow: false, qa: false, accepted: false, delivered: false,
       cost: 0, notes: "由会话草稿经 Human 确认生成；执行前仍需确认 SOP。", requirements: [target.criteria.trim()],
-      source: target.source?.messageId, sourceContext: structuredClone(target.source), draftId,
-      planSnapshot: { goal: target.title.trim(), criteria: target.criteria.trim(), discussion: structuredClone(target.discussion), confirmedBy: "林予", draftRevision: target.revision } };
+      workflowId: target.workflowId || "default", source: target.source?.messageId, sourceContext: structuredClone(target.source), draftId,
+      creationSource: target.creationSource || "UNRECORDED", conversationOrigins,
+      planSnapshot: { goal: target.title.trim(), criteria: target.criteria.trim(), discussion: structuredClone(target.discussion), confirmedBy: "H-lin", confirmedAt, draftRevision: target.revision } };
+    if(target.scopeChange)created.scopeChange=structuredClone(target.scopeChange);
     if (target.workKind === "BUG") {
       created.workKind = "BUG"; created.defect = { ...structuredClone(target.defect), stage: null, revision: 1, repairRevision: 0, history: [], reopenedFromWorkItemId: target.reopenedFrom || null };
       created.ownerSource = "会话草案 Human 确认人";
@@ -406,6 +557,7 @@ export function confirmWorkDraft(draftId, expectedRevision) {
   return created;
 }
 export function workCommand(workId, command, reason = "", expectedVersion, feedback) {
+  assertProjectRecordWritable(state.work.find(work => work.id === workId));
   assertWrite();
   const w = state.work.find((x) => x.id === workId);
   if (!w) throw Error("工作不存在");
@@ -450,7 +602,7 @@ export function workCommand(workId, command, reason = "", expectedVersion, feedb
     takeover: "Human 接管",
     resume: "继续执行",
   };
-  if (!labels[command]) throw Error("未知工作动作。");
+  if (!Object.hasOwn(labels, command)) throw Error("未知工作动作。");
   if (["start", "resume", "submit", "repair", "check", "accept", "deliver"].includes(command) && dependencyProblems(state, w).length)
     throw Error("输入依赖已失效，请明确采用通过检查的新版本并重新验收。");
   if (w.status === "已取消") throw Error("工作已取消，不能继续推进。");
@@ -472,7 +624,7 @@ export function workCommand(workId, command, reason = "", expectedVersion, feedb
   if (
     command === "start" &&
     (!Number.isInteger(w.flowVersion) ||
-      !flowDefinition(state, w.project, w.flowVersion))
+      !flowDefinition(state, w.project, w.flowVersion, w.workflowId || "default"))
   )
     throw Error("请重新确认已发布工作流，锁定当前执行版本。");
   if (command === "resume" && w.status !== "等待")
@@ -517,7 +669,12 @@ export function workCommand(workId, command, reason = "", expectedVersion, feedb
       lockWorkFlow(s, x);
       x.flow = true;
     }
-    if (command === "start" || command === "resume") x.status = "进行中";
+    if (command === "start" && (x.team?.executorIds || []).some(id=>id.startsWith('agent:'))) {
+      if(feedback?.tenantId!==s.activeTenant)throw Error('租户已切换，请重新打开分派表单。');
+      const e=createExecutionOn(s,{tenantId:s.activeTenant,kind:'AUTONOMOUS',projectId:x.project,workId:x.id,nodeId:feedback.nodeId,runtime:feedback.runtime,agentId:feedback.agentId,authorizationMode:feedback.authorizationMode||'READ_ONLY'},{systemDispatch:true});
+      e.dispatchedFromWorkCommand=true;x.dispatchedExecutionId=e.id;
+      log(s,`本地工作分派 ${x.id} → ${e.id}；等待节点接受，未运行真实Runtime`,executionPath(e));
+    } else if (command === "start" || command === "resume") { x.status = "进行中"; delete x.archivePause; }
     if (command === "submit" || command === "repair") {
       x.history ??= [];
       x.history.push({
@@ -566,6 +723,13 @@ export function workCommand(workId, command, reason = "", expectedVersion, feedb
         evidence: "内部检查与 Human 接受记录",
         content: "原型固定成果与检查证据引用；不包含真实源文件或发布结果。",
         ...fixedWorkPackage(s, x),
+        // This is a local simulated send receipt, not a production publish.
+        sendFact: { id: id("SEND"), kind: "DELIVERY", tenantId: s.activeTenant, project: x.project,
+          deliveryId: x.currentDeliveryId, workId: x.id, version: x.version, status: "SENT",
+          actor: { kind: "Human", id: "H-lin" }, time: new Date().toISOString(),
+          subjectKeys: immutableSubjectKeys(s, x.project, ["H-lin"]), source: "LOCAL_SIMULATION",
+          deliverySnapshot: { id: x.currentDeliveryId, name: `${x.title} · v${x.version}`, recipient: x.completionContract.recipient,
+            workId: x.id, version: x.version, project: x.project, content: "原型固定成果与检查证据引用；不包含真实源文件或发布结果。", ...fixedWorkPackage(s, x) } },
       });
     }
     if (command === "return") {
@@ -593,6 +757,7 @@ export function workCommand(workId, command, reason = "", expectedVersion, feedb
       x.status = "等待";
       x.notes = `Human 已接管，Agent 暂停竞争写入。${reason}`;
     }
+    recordWorkDecision(s, x, w, command, reason, feedback);
     log(
       s,
       `${labels[command]} · ${x.title} v${x.version}${reason ? " · " + reason : ""}`,
@@ -613,6 +778,7 @@ export function saveTestPlan(record) {
   if (previous && activeBatch(previous)?.status === "进行中") throw Error("请先形成固定测试报告结束当前批次，再修订计划；未执行项会单独保留。");
   const caseIds = record.caseIds || record.caseRefs?.map(ref => ref.caseId);
   const caseRefs = freezeCases(state, caseIds);
+  for (const ref of [...caseRefs,...(previous?.caseRefs || [])]) assertProjectRecordWritable(ref.snapshot);
   for (const ref of [...caseRefs, ...(previous?.caseRefs || [])])
     assertVerificationMutable(state, ref.snapshot.work, ref.snapshot.version);
   if (caseRefs.some(ref => unfinishedWorkBatches(state, ref.snapshot.work, previous?.id).length)) throw Error("该工作还有未结束的验证批次，请先形成报告再采用新计划。");
@@ -672,6 +838,7 @@ function startWorkValidation(s, work) {
   startAndSyncBatch(s, plan);
 }
 function startAndSyncBatch(s, plan) {
+  for (const ref of plan.caseRefs || []) assertProjectRecordWritable(ref.snapshot,s);
   // startBatch validates every member before any adoption or state change; update commits atomically.
   const batch = startBatch(s, plan, id);
   for (const workId of new Set(batch.caseRefs.map(ref => ref.snapshot.work))) {
@@ -693,6 +860,7 @@ export function startTestBatch(planId) {
   return batchId;
 }
 export function recordBatchResult(planId, batchId, caseId, result) {
+  assertProjectRecordWritable(state.resources.testplans.find(plan=>plan.id===planId)?.caseRefs?.find(ref=>ref.caseId===caseId)?.snapshot);
   assertWrite();
   if (!qaStatuses.includes(result.status) || result.status === "未执行") throw Error("请选择通过、失败、跳过或阻塞。");
   if (!result.actual?.trim() || !result.evidence?.trim() || !result.ownerId || !result.ownerKind || !result.toolVersion?.trim())
@@ -732,6 +900,7 @@ export function recordBatchResult(planId, batchId, caseId, result) {
   });
 }
 export function publishTestReport(planId) {
+  for (const ref of state.resources.testplans.find(plan=>plan.id===planId)?.caseRefs || []) assertProjectRecordWritable(ref.snapshot);
   assertWrite();
   let reportId;
   update(s => {
@@ -825,7 +994,9 @@ export function openPeriodPlan(input) {
   const period = planPeriod(input.periodKind, input.date, input.timezone);
   const descriptor = { subjectKey: input.subjectKey, periodKind: input.periodKind, timezone: input.timezone, ...period };
   const actor = planActor(state, descriptor, input.simulateAgent);
-  const previous = (state.resources.plans || []).find(plan => planKey(state, plan) === planKey(state, descriptor));
+  const matches = (state.resources.plans || []).filter(plan => plan.tenantId === state.activeTenant && planKey(state, plan) === planKey(state, descriptor));
+  if (matches.length > 1) throw Error("同一主体周期存在重复计划，请先处理冲突，不能任意打开其中一份。");
+  const previous = matches[0];
   if (previous) return previous.id;
   const planId = id("PLAN");
   update(s => {
@@ -836,13 +1007,44 @@ export function openPeriodPlan(input) {
   });
   return planId;
 }
+export function openReportNextPlan(reportId, revision, simulateAgent = false) {
+  assertProjectRecordWritable(state.resources.reports.find(item=>item.id===reportId));
+  assertWrite();
+  const report = state.resources.reports.find(report => report.id === reportId);
+  if (!report || (report.revision || 1) !== revision) throw Error("报告修订已变化，请重新打开。");
+  const permission = reportEditProblem(state, report, { simulateAgent });
+  if (permission) throw Error(permission);
+  const descriptor = reportNextPlanDescriptor(state, report);
+  planActor(state, descriptor, simulateAgent);
+  let planId;
+  update(s => {
+    const plan = ensureReportNextPlanDraft(s, s.resources.reports.find(item => item.id === reportId), id);
+    planId = plan.id;
+    log(s, "生成或打开真实下期计划草稿，仍需作者核对与 Human 确认", `/plans/${planId}`);
+  });
+  return planId;
+}
 function currentPlan(s, planId, revision) {
   const plan = s.resources.plans?.find(plan => plan.id === planId);
+  assertProjectRecordWritable(plan,s);
   if (!plan || plan.tenantId !== s.activeTenant || !planCanRead(s, plan)) throw Error("计划不存在或当前主体无权访问。");
+  const problem = planConfirmedSnapshotProblem(s, plan);
+  if (problem) throw Error(problem);
+  const currentProblem = planCurrentItemsProblem(plan);
+  if (currentProblem) throw Error(currentProblem);
   if (revision !== plan.revision) throw Error("计划修订已变化，请重新打开当前版本。");
   return plan;
 }
+function assertPlanArchiveCommitments(s, plan) {
+  for (const item of plan.items) {
+    if (!projectRecordWriteProblem(s, item)) continue;
+    const fixed = plan.confirmedSnapshot?.items.find(previous => previous.id === item.id);
+    if (!fixed || JSON.stringify(planCommitment([fixed])) !== JSON.stringify(planCommitment([item])))
+      throw Error("已归档项目不能新增或改变计划承诺；原已确认条目保留只读。");
+  }
+}
 function freezePlanSubmission(s, plan, actor) {
+  assertPlanArchiveCommitments(s, plan);
   const checks = planChecks(s, plan);
   if (checks.blocking.length) throw Error(checks.blocking.map(issue => `${issue.code}：${issue.message}`).join("；"));
   if (!checks.confirmer.id) throw Error(checks.confirmer.issue);
@@ -855,6 +1057,10 @@ export function savePeriodPlan(planId, input, expectedRevision) {
   assertWrite();
   const plan = currentPlan(state, planId, expectedRevision), actor = planActor(state, plan, input.simulateAgent);
   const items = normalizePlanItems(input.items, id);
+  for (const before of plan.items) if (projectRecordWriteProblem(state,before) && JSON.stringify(before) !== JSON.stringify(items.find(item=>item.id===before.id))) throw Error("已归档项目的原计划项只读，其他项目条目可继续维护。");
+  for (const item of items) if (!plan.items.some(before=>before.id===item.id && JSON.stringify(before) === JSON.stringify(item))) assertProjectRecordWritable(item);
+  const incomingProblem = planCurrentItemsProblem({ items });
+  if (incomingProblem) throw Error(incomingProblem);
   const changed = JSON.stringify(planCommitment(items)) !== JSON.stringify(planCommitment(plan.items));
   if (plan.confirmedSnapshot && changed && !input.reason?.trim()) throw Error("已确认承诺变化须说明范围、时间或责任变更原因。");
   const previousIds = new Set(plan.items.map(item => item.id));
@@ -882,6 +1088,7 @@ export function submitPeriodPlan(planId, expectedRevision, simulateAgent = false
 export function decidePeriodPlan(planId, input) {
   assertWrite();
   const plan = currentPlan(state, planId, input.revision);
+  assertPlanArchiveCommitments(state, plan);
   if (plan.status !== "已提交" || !plan.submission) throw Error("只有固定提交的计划可确认或退回。");
   const problem = planCanDecide(state, plan); if (problem) throw Error(problem);
   if (!["confirm", "return"].includes(input.action)) throw Error("请选择确认或退回。");
@@ -906,10 +1113,12 @@ export function recordPlanFreeTask(planId, itemId, input) {
   const plan = currentPlan(state, planId, input.revision), actor = planActor(state, plan, input.simulateAgent);
   const item = plan.confirmedSnapshot?.items.find(item => item.id === itemId && item.kind === "FREE_TASK");
   if (!item) throw Error("只有已确认基线中的非交付任务可以记录完成证据。");
+  assertProjectRecordWritable(item);
   if (!input.evidence?.trim()) throw Error("请填写至少一项 URL、文件引用或完成说明。");
   const today = dateInZone(plan.timezone);
   if (today < plan.periodStart || today > plan.periodEnd) throw Error("完成事实须记录在实际发生的周期内，不能回填本期以外的完成时间。");
   const definition = JSON.stringify(planCommitment([item])[0]);
+  if (!Array.isArray(plan.freeTaskFacts) || plan.freeTaskFacts.some(fact => !planFreeTaskFactValid(fact))) throw Error("非交付任务完成历史损坏，请先核对原始事实；不会清空或覆盖历史。");
   if (plan.freeTaskFacts.some(fact => fact.itemId === itemId && fact.itemDefinition === definition)) return;
   update(s => {
     const target = currentPlan(s, planId, input.revision);
@@ -919,12 +1128,25 @@ export function recordPlanFreeTask(planId, itemId, input) {
 }
 
 export function generatePeriodicReport(options) {
+  assertProjectRecordWritable(options);
   assertWrite();
   let reportId;
   update((s) => { reportId = upsertPeriodicReport(s, options, "手动生成", id); log(s, "生成或打开周期报告", `/reports/${reportId}`); });
   return reportId;
 }
+export function regenerateReportContent(reportId, options = {}) {
+  assertWrite();
+  const report = state.resources.reports.find(item => item.id === reportId);
+  if (!report) throw Error("报告不存在于当前租户。");
+  const permission = reportEditProblem(state, report, { simulateAgent: options.simulateAgent === true });
+  if (permission) throw Error(permission);
+  if (!Number.isSafeInteger(options.revision) || options.revision !== report.revision) throw Error("报告已变化，请重新打开当前修订。");
+  const replacement = prepareReportRegeneration(state, report, options.sections);
+  saveResource("reports", replacement, { preserveUnselectedNextPlan: !(options.sections || ["completed", "uncompleted", "next_plan"]).includes("next_plan") });
+  return reportId;
+}
 export function saveReportSchedule(options) {
+  assertProjectRecordWritable(options); assertProjectRecordWritable(state.resources.schedules.find(item => item.id === options.id));
   assertWrite();
   if (state.role !== "owner") throw Error("定时生成配置需要负责人权限。");
   if (!reportSubjects(state).some((subject) => subject.key === options.subjectKey)) throw Error("请选择当前租户的报告归属。");
@@ -957,11 +1179,12 @@ export function saveHumanEffort(input) {
   assertWrite();
   if (!["estimate", "calibrate", "confirm"].includes(input.action)) throw Error("请选择评估、校准或本人确认。");
   const previous = input.id ? state.resources.worklogs.find((record) => record.id === input.id) : null;
+  assertProjectRecordWritable({workId:previous?.work || input.workId});
   if (input.id && !previous) throw Error("工作量记录不存在于当前租户。");
   if (previous && previous.durationKind && previous.durationKind !== "Human 工时") throw Error("Agent 运行指标只读，不能作为 Human 工作量修改。");
   if (previous && (previous.ownerId ? previous.ownerId !== "H-lin" : previous.owner !== "林予")) throw Error("只能校准与确认本人的工作量，不能替他人确认。");
   if (previous && (previous.revision || 1) !== input.revision) throw Error("工作量修订已变化，请重新打开当前记录。");
-  if (!previous && input.action !== "estimate") throw Error("请先从本人任务建立待校准评估。");
+  if (!previous && input.action === "confirm") throw Error("请先从本人任务保存校准，再确认实际投入。");
   const workId = previous?.work || input.workId, date = previous?.date || input.date;
   if (!(previous ? state.work : myEffortTasks(state)).some((work) => work.id === workId)) throw Error("请选择当前租户内本人参与的任务。");
   if (previous && ((input.workId && input.workId !== previous.work) || (input.date && input.date !== previous.date))) throw Error("已有记录的任务与日期不可改写，请打开对应任务日期的评估。");
@@ -1026,6 +1249,7 @@ export function saveHumanEffort(input) {
 }
 
 export function reviewHumanEffort(recordId, action, reason, revision) {
+  assertProjectRecordWritable(state.resources.worklogs.find(item=>item.id===recordId));
   assertWrite();
   if (state.role !== "owner") throw Error("工作量审核需要负责人权限。");
   const record = state.resources.worklogs.find((item) => item.id === recordId);
@@ -1059,6 +1283,8 @@ function goalOwner(s, goal) {
   return matches.length === 1 ? matches[0] : null;
 }
 export function goalWriteProblem(s, goal, editing = false) {
+  const archived = projectRecordWriteProblem(s,goal); if (archived) return archived;
+  if (goal?.collaborationVersion) return goalActionProblem(s, goal, editing ? "draft" : "checkin") || null;
   if (!["owner", "executor"].includes(s.role) || !s.organization?.members.some(person => person.id === "H-lin" && person.kind === "Human")) return "当前身份无权修改目标。";
   if (s.offline) return "离线中，请恢复连接后操作。";
   if (s.role === "owner") return null;
@@ -1073,6 +1299,7 @@ export function goalTransitionProblem(s, goal, status) {
   if (s.offline) return "离线中，请恢复连接后重新确认。";
   if (!["owner", "executor"].includes(s.role)) return "当前身份无权操作目标。";
   if (!["待审核", "进行中", "草稿"].includes(status)) return "不支持的目标动作。";
+  if (goal.collaborationVersion && goalReadProblem(s, goal)) return goalReadProblem(s, goal);
   if (status === "待审核") {
     if (goal.status !== "草稿") return "仅草稿目标可以提交审核。";
     const permission = goalWriteProblem(s, goal, true);
@@ -1080,15 +1307,17 @@ export function goalTransitionProblem(s, goal, status) {
     if (!goalOwner(s, goal)) return "请选择当前租户中可识别的目标负责人。";
     if (structuredGoal(goal)) {
       try { normalizeGoal(s, goal); validateGoalAlignments(s, goal, true); } catch (error) { return error.message; }
+      if (goal.collaborationVersion && goalValueReviewProblem(s, goal)) return goalValueReviewProblem(s, goal);
       return null;
     }
     if (["name", "owner", "cycle", "metric", "baseline", "target"].some(key => !String(goal[key] ?? "").trim())) return "请补齐名称、负责人、周期、指标、基线和目标值后提交。";
     if (String(goal.baseline).trim() === String(goal.target).trim()) return "目标值必须与基线不同。";
     return null;
   }
-  if (s.role !== "owner" || !s.organization?.members.some(person => person.id === "H-lin" && person.kind === "Human")) return "目标审核需要有管理权限的 Human。";
+  if (goal.collaborationVersion ? goalActionProblem(s, goal, "approve") : s.role !== "owner" || !s.organization?.members.some(person => person.id === "H-lin" && person.kind === "Human")) return "目标审核需要明确责任范围内的 Human。";
   if (goal.status !== "待审核") return "请先提交当前目标修订，再执行审核。";
   if (status === "进行中" && (goal.submission?.revision !== (goal.revision || 1) || !goal.submission?.snapshot)) return "缺少当前修订的固定提交记录，请退回修改后重新提交。";
+  if (status === "进行中" && goal.collaborationVersion && goalValueReviewProblem(s, goal)) return goalValueReviewProblem(s, goal);
   if (status === "进行中" && structuredGoal(goal)) {
     try { normalizeGoal(s, goal); validateGoalAlignments(s, goal, true); } catch (error) { return error.message; }
   }
@@ -1104,6 +1333,7 @@ export function goalProgress(goal) {
   return Number.isFinite(progress) && progress >= 0 && progress <= 100 ? progress : null;
 }
 export function calibrateGoalProgress(goalId, input) {
+  assertProjectRecordWritable(state.resources.goals.find(item=>item.id===goalId));
   assertWrite();
   if (structuredGoal(state.resources.goals.find(item => item.id === goalId))) {
     const goal = mutableStructuredGoal(goalId, input);
@@ -1146,18 +1376,31 @@ export function calibrateGoalProgress(goalId, input) {
 }
 
 export function saveStructuredGoal(input) {
+  assertProjectRecordWritable(input);
+  assertProjectRecordWritable(state.resources.goals.find(item=>item.id===input.id));
   assertWrite();
   const previous = state.resources.goals.find(goal => goal.id === input.id);
   if (previous && (input.revision || 1) !== (previous.revision || 1)) throw Error("目标已变更，请重新打开当前版本后编辑。");
+  if(previous?.collaborationVersion&&!input.collaborationVersion)throw Error("不能通过普通编辑移除共同维护与权限契约。");
   const permission = goalWriteProblem(state, previous || input, true);
   if (permission) throw Error(permission);
   if (previous && closedGoalStates.includes(previous.status)) throw Error("已关闭目标只读，请使用结转创建新周期草稿。");
+  if (previous && (typeof input.changeReason !== "string" || !input.changeReason.trim())) throw Error("修改或转换已有目标须填写本次调整理由。");
   const owner = goalOwner(state, input);
   if (!owner) throw Error("请选择当前租户可识别的负责人。");
-  if (state.role !== "owner" && (owner.kind !== "Human" || owner.id !== "H-lin" || input.subjectKey !== "human:H-lin")) throw Error("成员只能创建或编辑本人归属的目标，不能转移负责人。");
+  if (!input.collaborationVersion && state.role !== "owner" && (owner.kind !== "Human" || owner.id !== "H-lin" || input.subjectKey !== "human:H-lin")) throw Error("成员只能创建或编辑本人归属的目标，不能转移负责人。");
+  if (previous?.collaborationVersion && (JSON.stringify(previous.collaborators) !== JSON.stringify(input.collaborators) || previous.reviewerId !== input.reviewerId || previous.visibility !== input.visibility || previous.ownerId !== input.ownerId || previous.subjectKey !== input.subjectKey)) {
+    const authority = goalActionProblem(state, previous, "manage"); if (authority) throw Error(authority);
+  }
   const normalized = normalizeGoal(state, { ...input, id: previous?.id || id("G"), ownerId: owner.id, ownerKind: owner.kind, owner: owner.name });
   if (["human", "agent"].includes(normalized.subjectKey.split(":")[0]) && normalized.subjectKey !== `${owner.kind === "Human" ? "human" : "agent"}:${owner.id}`) throw Error("成员目标的归属必须与负责人一致。");
   if (structuredGoal(previous) && state.resources.goals.some(child => child.id !== previous.id && !closedGoalStates.includes(child.status) && child.alignments?.some(edge => edge.targetGoalId === previous.id && !normalized.krs.some(kr => kr.id === edge.targetKrId)))) throw Error("仍有开放目标引用被移除的 KR，请先调整对齐关系。");
+  if (normalized.collaborationVersion) {
+    const permission = goalActionProblem(state, normalized, "draft"); if (permission) throw Error(permission);
+    if (input.draftOrigin?.simulated && JSON.stringify(input.draftOrigin)!==JSON.stringify(previous?.draftOrigin) && (!state.agents.some(a=>a.id===input.draftOrigin.agentId)||goalActionProblem(state,normalized,"draft",input.draftOrigin.agentId))) throw Error("AI 草案来源须是获此目标授权的 Agent。");
+    if (previous?.activeBaseline && !input.changeImpact?.trim()) throw Error("生效目标调整须说明范围、期限、资源或下游影响。");
+    if (input.simulateAgentId && (!state.agents.some(a=>a.id===input.simulateAgentId) || goalActionProblem(state, normalized, "draft", input.simulateAgentId))) throw Error("该 Agent 未获当前目标草稿权限。");
+  }
   const scopeChanged = !structuredGoal(previous) || ["subjectKey", "periodStart", "periodEnd", "timezone"].some(key => normalized[key] !== previous[key]);
   const definitionRevision = (previous?.definitionRevision || 0) + 1;
   const krs = normalized.krs.map(kr => {
@@ -1168,10 +1411,18 @@ export function saveStructuredGoal(input) {
   const record = { ...goalDefinition({ ...normalized, krs }), id: normalized.id, owner: owner.name,
     definitionRevision, revision: (previous?.revision || 0) + 1, status: "草稿", krs, submission: null, approval: null,
     cycle: `${normalized.periodStart} — ${normalized.periodEnd}`, review: null,
-    history: [...(previous?.history || []), ...(previous ? [{ ...structuredClone(previous), history: undefined }] : [])],
+    history: [...(previous?.history || [])],
     legacy: previous?.legacy || (previous && !structuredGoal(previous) ? { scalar: { ...structuredClone(previous), history: undefined }, note: "旧数值仅供核对，尚未形成带观察时间的 KR 事实。" } : null),
-    draftOrigin: previous?.draftOrigin || (input.draftOrigin?.simulated === true ? { kind: "Agent", simulated: true, agentId: state.agents.some(agent => agent.id === input.draftOrigin.agentId) ? input.draftOrigin.agentId : null, recordedBy: "H-lin" } : null),
+    draftOrigin: input.simulateAgentId ? {kind:"Agent",simulated:true,agentId:input.simulateAgentId,recordedBy:"H-lin",source:"LOCAL_SIMULATION"} : previous?.draftOrigin || (input.draftOrigin?.simulated === true ? { kind: "Agent", simulated: true, agentId: state.agents.some(agent => agent.id === input.draftOrigin.agentId) ? input.draftOrigin.agentId : null, recordedBy: "H-lin" } : null),
+    ...(normalized.collaborationVersion ? { quadrant: structuredClone(normalized.quadrant || null), valueReview: null, valueReviewHistory: [...(previous?.valueReviewHistory || []), ...(previous?.valueReview ? [structuredClone(previous.valueReview)] : [])],
+      activeBaseline: structuredClone(previous?.activeBaseline || null), discussions: structuredClone(previous?.discussions || []), checkins: structuredClone(previous?.checkins || []),
+      changeProposal: previous ? { before: structuredClone(previous.activeBaseline?.definition || (structuredGoal(previous) ? goalDefinition(previous) : Object.fromEntries(Object.entries(previous).filter(([key])=>key!=="history")))), after: structuredClone(goalDefinition({...normalized,krs})), reason: input.changeReason.trim(), impact: input.changeImpact?.trim() || "尚未生效的草稿调整", actorId: input.simulateAgentId || "H-lin", actorKind: input.simulateAgentId ? "Agent" : "Human", recordedBy: "H-lin", source: "LOCAL_SIMULATION", time: new Date().toISOString(), status: "草稿", definitionRevision } : null } : {}),
     manualAssessment: null, carriedFrom: previous?.carriedFrom || null, reminders: structuredClone(previous?.reminders || []) };
+  if (previous) {
+    const before = { ...structuredClone(previous), history: undefined };
+    record.history.push({ ...before, before, after: structuredClone({ ...record, history: undefined }),
+      reason: input.changeReason.trim(), actor: { id: "H-lin", kind: "Human" }, time: new Date().toISOString() });
+  }
   update(s => {
     const index = s.resources.goals.findIndex(goal => goal.id === record.id);
     if (index < 0) s.resources.goals.unshift(record); else s.resources.goals[index] = record;
@@ -1184,7 +1435,7 @@ function mutableStructuredGoal(goalId, input, manage = false) {
   if (!structuredGoal(goal)) throw Error("请先将旧目标转换为结构化 KR。");
   const problem = goalWriteProblem(state, goal);
   if (problem) throw Error(problem);
-  if (manage && state.role !== "owner") throw Error("此决定需要有管理权限的 Human。");
+  if (manage && (goal.collaborationVersion ? goalActionProblem(state, goal, "approve") : state.role !== "owner")) throw Error("此决定需要有管理权限的 Human。");
   if (input.revision !== goal.revision) throw Error("目标已变更，请重新打开当前修订。");
   if (closedGoalStates.includes(goal.status)) throw Error("已关闭目标只读。");
   return goal;
@@ -1195,11 +1446,13 @@ function goalAudit(goal, reason) {
   goal.revision++;
 }
 export function recordGoalObservation(goalId, krId, input) {
+  assertProjectRecordWritable(state.resources.goals.find(item=>item.id===goalId));
   assertWrite();
   const goal = mutableStructuredGoal(goalId, input), kr = goal.krs.find(item => item.id === krId);
   if (!kr) throw Error("KR 不存在。");
   if (kr.source !== "MANUAL") throw Error("自动指标请刷新事实，不能手填覆盖。");
-  const value = goalNumber(input.value, "观察值");
+  const value = kr.kind === "QUALITATIVE" ? null : goalNumber(input.value, "观察值");
+  if (kr.kind === "QUALITATIVE" && (!["MET", "NOT_MET", "UNKNOWN"].includes(input.judgment) || !input.delivery?.trim() || !input.use?.trim())) throw Error("请记录定性交付、实际作用与依据约定标准的判断。");
   if (!input.reason?.trim()) throw Error("请填写观察依据。");
   if (!input.observedAt || !Number.isFinite(Date.parse(input.observedAt))) throw Error("请填写有效观察时间。");
   const observedAt = new Date(input.observedAt).toISOString(), day = dateInZone(goal.timezone, new Date(observedAt));
@@ -1211,7 +1464,7 @@ export function recordGoalObservation(goalId, krId, input) {
     const current = s.resources.goals.find(item => item.id === goalId), target = current.krs.find(item => item.id === krId);
     goalAudit(current, input.reason.trim());
     const observation = { id: id("OBS"), value, observedAt, recordedAt: new Date().toISOString(), definitionRevision: target.definitionRevision,
-      availability: "available", reason: input.reason.trim(), evidence, actorId: input.agentDraft ? goal.ownerId : "H-lin", actorKind: input.agentDraft ? "Agent" : "Human", recordedBy: "H-lin", source: input.agentDraft ? "本地 Agent 草案模拟" : "人工观察" };
+      availability: "available", ...(kr.kind === "QUALITATIVE" ? { judgment: input.judgment, delivery: input.delivery.trim(), use: input.use.trim(), criteria: kr.criteria, evidencePlan: kr.evidencePlan } : {}), reason: input.reason.trim(), evidence, actorId: input.agentDraft ? goal.ownerId : "H-lin", actorKind: input.agentDraft ? "Agent" : "Human", recordedBy: "H-lin", source: input.agentDraft ? "本地 Agent 草案模拟" : "人工观察" };
     target.observations.push(observation); target.currentObservationId = observation.id;
     current.review = null;
     if (current.status === "待审核") { current.status = "草稿"; current.submission = null; current.approval = null; }
@@ -1219,6 +1472,7 @@ export function recordGoalObservation(goalId, krId, input) {
   });
 }
 export function refreshGoalMetrics(goalId, input) {
+  assertProjectRecordWritable(state.resources.goals.find(item=>item.id===goalId));
   assertWrite(); const goal = mutableStructuredGoal(goalId, input);
   const automatic = goal.krs.filter(kr => kr.source === "AUTO");
   if (!automatic.length) throw Error("此目标没有自动指标。");
@@ -1236,6 +1490,7 @@ export function refreshGoalMetrics(goalId, input) {
   });
 }
 export function checkGoalRisks(goalId, input) {
+  assertProjectRecordWritable(state.resources.goals.find(item=>item.id===goalId));
   assertWrite(); const goal = mutableStructuredGoal(goalId, input), risks = goalRisks(state, goal);
   update(s => {
     const current = s.resources.goals.find(item => item.id === goalId);
@@ -1252,11 +1507,12 @@ export function checkGoalRisks(goalId, input) {
   });
 }
 export function goalPeriodCommand(goalId, action, input) {
+  assertProjectRecordWritable(state.resources.goals.find(item=>item.id===goalId));
   assertWrite();
   const existing = state.resources.goals.find(item => item.id === goalId);
   if (action === "carry" && existing?.carryover?.goalId) {
     const permission = goalWriteProblem(state, existing);
-    if (permission || state.role !== "owner") throw Error(permission || "结转需要有权 Human 确认。");
+    if (permission || (existing.collaborationVersion ? goalActionProblem(state,existing,"approve") : state.role !== "owner")) throw Error(permission || "结转需要有权 Human 确认。");
     return existing.carryover.goalId;
   }
   const goal = action === "carry" ? existing : mutableStructuredGoal(goalId, input, ["confirm", "return", "cancel"].includes(action));
@@ -1264,14 +1520,14 @@ export function goalPeriodCommand(goalId, action, input) {
   if (action === "carry") {
     const permission = goalWriteProblem(state, goal);
     if (permission) throw Error(permission);
-    if (state.role !== "owner" || input.revision !== goal.revision || !["已达成", "未达成"].includes(goal.status) || !goal.review?.confirmedAt) throw Error("结转需要有权 Human 确认的期末结果与当前修订。");
-    const period = goalPeriod(goal.periodKind, input.periodStart, goal.timezone);
+    if ((goal.collaborationVersion ? goalActionProblem(state,goal,"approve") : state.role !== "owner") || input.revision !== goal.revision || !["已达成", "未达成"].includes(goal.status) || !goal.review?.confirmedAt) throw Error("结转需要有权 Human 确认的期末结果与当前修订。");
+    const period = goal.timeMode === "STAGE" ? stageGoalPeriod({...goal,periodStart:input.periodStart,periodEnd:input.periodEnd}) : goalPeriod(goal.periodKind, input.periodStart, goal.timezone);
     if (period.periodStart <= goal.periodEnd) throw Error("结转必须选择后续周期。");
     let nextId;
     update(s => {
       const current = s.resources.goals.find(item => item.id === goalId); nextId = id("G");
       const next = { ...goalDefinition(current), id: nextId, owner: current.owner, name: input.name?.trim() || current.name, ...period,
-        revision: 1, definitionRevision: 1, status: "草稿", submission: null, approval: null, review: null, history: [], alignments: [], reminders: [],
+        revision: 1, definitionRevision: 1, ...(current.collaborationVersion ? {activeBaseline:null,valueReview:null,valueReviewHistory:[],discussions:[],checkins:[],changeProposal:null} : {}), status: "草稿", submission: null, approval: null, review: null, history: [], alignments: [], reminders: [],
         carriedFrom: { goalId, definitionRevision: current.definitionRevision, reviewId: current.review.id },
         krs: current.krs.map(kr => ({ ...krDefinition(kr), id: id("KR"), carriedFromKrId: kr.id, baseline: null, target: null, definitionRevision: 1, observations: [], currentObservationId: null })) };
       current.carryover = { goalId: nextId, time: new Date().toISOString(), actorId: "H-lin" }; current.revision++;
@@ -1310,9 +1566,11 @@ function validateDefectDetails(s, details, project) {
   for (const field of ["severity", "priority", "steps", "expected", "actual"]) if (!details[field]?.trim()) throw Error("请补全严重度、优先级、复现步骤、期望与实际结果。");
 }
 export function saveDefect(record) {
+  assertProjectRecordWritable(record);
   assertWrite();
   const work = state.work.find(work => work.id === record.id && work.workKind === "BUG");
   if (!work) throw Error("请通过会话草案确认创建缺陷工作。");
+  assertProjectRecordWritable(work);
   if (!work.defect) throw Error("缺陷专业数据缺失，请先修复迁移记录。");
   if (["已关闭", "已取消"].includes(defectStatus(work))) throw Error("终态缺陷不可改写；请创建关联的新缺陷。");
   if ((record.revision || 1) !== (work.defect.revision || 1)) throw Error("缺陷已变化，请重新打开当前修订。");
@@ -1331,6 +1589,7 @@ export function saveDefect(record) {
   });
 }
 export function defectCommand(workId, status, reason, actionLabel = "", receipt) {
+  assertProjectRecordWritable(state.work.find(item=>item.id===workId));
   assertWrite();
   const work = state.work.find(item => item.id === workId && item.workKind === "BUG");
   if (!work) throw Error("缺陷工作不存在。");
@@ -1378,8 +1637,109 @@ export function defectCommand(workId, status, reason, actionLabel = "", receipt)
   });
 }
 
-export function saveResource(kind, record) {
+export function repositoryWriteProblem(s, record, requireProject = true) {
+  const archived = projectRecordWriteProblem(s,record); if (archived) return archived;
+  if (s.offline) return "离线中，请恢复连接后重新核对仓库。";
+  if (s.role !== "owner" || !s.organization.members.some(person => person.id === "H-lin" && person.kind === "Human"))
+    return "仓库配置需要当前租户的 Human 负责人权限。";
+  if (!record) return "仓库不存在于当前租户。";
+  if (record.tenantId != null && record.tenantId !== s.activeTenant) return "仓库不属于当前租户。";
+  if (record.archivedAt) return "仓库已归档，只能查看历史，不能编辑或同步。";
+  if (requireProject && !record.projectId) return "旧仓库未记录所属项目，请先编辑并明确绑定当前项目。";
+  if (record.projectId && !s.projects.some(project => project.id === record.projectId)) return "仓库所属项目在当前租户不可用。";
+  return "";
+}
+export function repositoryRecords(s, { archive = "active", query = "" } = {}) {
+  if (!["owner", "executor"].includes(s.role)) return [];
+  return s.resources.repositories.filter(record => (record.tenantId == null || record.tenantId === s.activeTenant)
+    && (archive === "all" || (archive === "archived" ? Boolean(record.archivedAt) : !record.archivedAt))
+    && `${record.name} ${record.owner} ${record.status} ${record.archivedAt ? "已归档" : "未归档"}`.toLowerCase().includes(query.toLowerCase()));
+}
+function saveRepository(record) {
   assertWrite();
+  if (record.tenantId !== state.activeTenant) throw Error("租户已切换，请重新打开仓库配置。");
+  const previous = record.id ? state.resources.repositories.find(item => item.id === record.id) : null;
+  if (record.id && !previous) throw Error("仓库不存在于当前租户，不能通过旧表单重新创建。");
+  const problem = repositoryWriteProblem(state, previous || record, false);
+  if (problem) throw Error(problem);
+  if (previous && record.revision !== (previous.revision || 1)) throw Error("仓库修订已变化，请重新打开当前记录。");
+  if (!state.projects.some(project => project.id === record.projectId)) throw Error("请选择当前租户中明确的所属项目。");
+  if (previous?.projectId && record.projectId !== previous.projectId) throw Error("普通配置编辑不能迁移仓库所属项目。");
+  if (typeof record.name !== "string" || !record.name.trim()) throw Error("请填写仓库名称。");
+  const fields = ["name", "owner", "provider", "branch", "scope", "projectId"];
+  if (fields.some(key => typeof record[key] !== "string")) throw Error("仓库配置字段格式无效。");
+  const repositoryId = previous?.id || id("REPO");
+  update(s => {
+    const time = new Date().toISOString();
+    const saved = { ...(previous || {}), ...Object.fromEntries(fields.map(key => [key, record[key].trim()])),
+      id: repositoryId, tenantId: s.activeTenant, status: previous?.status || "草稿", revision: previous ? (previous.revision || 1) + 1 : 1,
+      history: [...(previous?.history || []), { action: "配置保存", actorId: "H-lin", actorKind: "Human", source: "LOCAL_SIMULATION", time,
+        snapshot: previous ? { ...structuredClone(previous), history: undefined } : null }] };
+    if (!previous?.projectId) saved.projectBinding = { projectId: saved.projectId, actorId: "H-lin", actorKind: "Human", source: "LOCAL_SIMULATION", time };
+    if (previous) s.resources.repositories[s.resources.repositories.findIndex(item => item.id === repositoryId)] = saved;
+    else s.resources.repositories.unshift(saved);
+    log(s, `保存仓库配置 ${saved.name}`, `/repositories/${repositoryId}`);
+  });
+  return repositoryId;
+}
+function repositoryCommand(recordId, status, reason, actionLabel, receipt) {
+  assertWrite();
+  const record = state.resources.repositories.find(item => item.id === recordId);
+  const problem = repositoryWriteProblem(state, record);
+  if (problem) throw Error(problem);
+  if (receipt?.tenantId !== state.activeTenant || receipt.revision !== (record.revision || 1))
+    throw Error("租户或仓库修订已变化，请重新打开当前记录。");
+  if (typeof reason !== "string" || !reason.trim()) throw Error("请填写仓库操作理由。");
+  const archive = status === "已归档" && actionLabel === "归档仓库";
+  if (!archive && !((status === "已连接" && actionLabel === "模拟增量同步") || (status === "已暂停" && actionLabel === "暂停同步")))
+    throw Error("未知仓库操作；不支持通过普通状态修改恢复或归档。");
+  update(s => {
+    const target = s.resources.repositories.find(item => item.id === recordId), time = new Date().toISOString();
+    target.history ??= [];
+    target.history.push({ action: actionLabel, actorId: "H-lin", actorKind: "Human", source: "LOCAL_SIMULATION", time, reason: reason.trim(),
+      snapshot: { ...structuredClone(target), history: undefined } });
+    target.revision = (target.revision || 1) + 1;
+    if (archive) {
+      target.archivedAt = time;
+      target.archivedBy = "H-lin";
+      target.archiveReason = reason.trim();
+      target.archiveSource = "LOCAL_SIMULATION";
+    } else {
+      target.status = status;
+      if (actionLabel === "模拟增量同步") target.sync = time;
+    }
+    log(s, `${actionLabel} · ${target.name} · ${reason.trim()}`, `/repositories/${recordId}`);
+  });
+}
+
+export function knowledgeLibraryCommand(input) {
+  let result;
+  update(s => { result = libraryCommandOn(s, input, id); log(s, "资料库操作 · " + input.action, `/knowledge/${result}`); });
+  return result;
+}
+
+export function saveResource(kind, record, options = {}) {
+  assertProjectRecordWritable(state.resources[kind]?.find(item => item.id === record.id)); assertProjectRecordWritable(record);
+  if (kind === "repositories") return saveRepository(record);
+  assertWrite();
+  if (kind === "approvals") throw Error("审批由源对象提交生成，不能普通创建或编辑；请返回源配置重新提交。");
+  if (kind === "knowledge") {
+    const previous = state.resources.knowledge.find(item => item.id === record.id);
+    if (record.library != null || previous?.library) throw Error("范围、版本与授权记录请通过专用资料库流程维护，不能普通编辑。");
+    if (["projectId", "versions", "publications", "readers", "agentReaders", "archivedAt", "archivedBy", "indexState", "references", "useChecks"].some(key => JSON.stringify(record[key]) !== JSON.stringify(previous?.[key]))) throw Error("资料范围、版本、授权和归档元数据不能由普通编辑注入或替换。");
+    if (record.id && !previous) throw Error("资料已不存在或不属于当前租户，不能从旧表单重新创建。");
+    if (record.history != null && (!Array.isArray(record.history) || JSON.stringify(record.history) !== JSON.stringify(previous?.history || [])))
+      throw Error("资料历史由保存流程维护，普通编辑不能注入或替换历史。");
+    const problem = knowledgeWriteProblem(state, record, previous);
+    if (problem) throw Error(problem);
+    if (previous && (record.revision || 1) !== (previous.revision || 1)) throw Error("资料已变化，请重新打开当前修订后编辑。");
+    if (record.revocation != null || record.status === "已撤销") throw Error("记忆撤销记录只能通过专用撤销流程生成。");
+    record = { ...record, tenantId: state.activeTenant };
+    if (typeof record.scope === "string" && record.scope.trim() === "私人") {
+      const owner = knowledgeOwner(state, record);
+      record = { ...record, ownerId: owner.id, ownerKind: "Human", owner: owner.name };
+    }
+  }
   if (kind === "plans") throw Error("周期计划请通过专用草稿、提交与确认流程更新。");
   if (kind === "goals" && (structuredGoal(record) || structuredGoal(state.resources.goals.find(item => item.id === record.id)))) return saveStructuredGoal(record);
   if (kind === "goals") {
@@ -1398,20 +1758,71 @@ export function saveResource(kind, record) {
   if (kind === "worklogs") throw Error("Human 工作量请从本人任务评估与校准；Agent 运行指标只读。");
   if (kind === "reports") {
     const previous = state.resources.reports.find((item) => item.id === record.id);
-    const permission = reportEditProblem(state, previous || record, { simulateAgent: true });
+    if (record.references != null && (!Array.isArray(record.references) || record.references.some(ref => !ref || typeof ref !== "object" || Array.isArray(ref)))) throw Error("报告事实引用须为有效的类型化列表，不能包含空来源。");
+    if (record.reviewedDetailKeys != null && (!Array.isArray(record.reviewedDetailKeys) || record.reviewedDetailKeys.length > 500 || record.reviewedDetailKeys.some(key => typeof key !== "string"))) throw Error("作者核对选择须为有效的条目编号列表。");
+    if (record.reviewedRetrospective != null && typeof record.reviewedRetrospective !== "boolean") throw Error("作者复盘核对须为明确的勾选状态。");
+    const permission = reportEditProblem(state, previous || { ...record, status: "草稿" }, { simulateAgent: true });
     if (permission) throw Error(permission);
+    if (record.regenerationDraft != null) {
+      const draft = record.regenerationDraft;
+      if (!draft || !Array.isArray(draft.sections) || !draft.sections.length || new Set(draft.sections).size !== draft.sections.length ||
+        draft.sections.some(section => !["completed", "uncompleted", "next_plan"].includes(section))) throw Error("重填章节记录无效，请重新选择章节。");
+      const currentSources = reportRegenerationSources(state, record, draft.sections);
+      if (draft.sections.some(section => JSON.stringify(draft.sources?.[section]) !== JSON.stringify(currentSources[section])))
+        throw Error("重填来源已变化，请重新核对并重填所选章节；表单修改保留。");
+      options = { ...options, preserveUnselectedNextPlan: !draft.sections.includes("next_plan") };
+    }
     const key = validatePeriodicReport(state, record);
     if (!previous && !key) throw Error("请通过生成 / 打开周期报告选择明确归属与周期。");
     if (previous && (previous.revision || 1) !== (record.revision || 1)) throw Error("报告已变化，请重新打开当前修订。");
     const previousKey = previous && periodicReportKey(state, previous);
     if (previousKey && (previousKey !== key || previous.timezone !== record.timezone || previous.periodEnd !== record.periodEnd)) throw Error("已有报告的归属、周期与时区不可改写，请生成或打开对应周期。");
+    // A missing legacy period key does not authorize a different subject.
+    // Naming a previously unscoped record may only preserve its known author;
+    // an existing explicit subject remains fixed even with incomplete dates.
+    if (previous && !previousKey) {
+      const originalAuthor = reportAuthor(state, previous), incomingAuthor = reportAuthor(state, record);
+      if ((previous.subjectKey && previous.subjectKey !== record.subjectKey) || !incomingAuthor || incomingAuthor.id !== originalAuthor.id || incomingAuthor.kind !== originalAuthor.kind)
+        throw Error("旧报告的归属不可改写，请生成或打开对应周期；原记录与历史继续保留。");
+    }
     if (key && state.resources.reports.some((item) => item.id !== record.id && periodicReportKey(state, item) === key)) throw Error("此归属与周期已有报告，请打开原报告修订。");
+    for (const ref of record.references || []) if (ref?.kind === "report") {
+      const child = state.resources.reports.find(item => item.id === ref.id);
+      if (!child) throw Error("下级报告不存在于当前租户。");
+      if (ref.version !== (child.revision || 1)) throw Error("下级报告引用版本已变化，请重新选择当前固定提交。");
+      const problem = reportChildProblem(state, record, child);
+      if (problem) throw Error(problem);
+    }
     if (key) record = { ...record, owner: reportOwner(state, record.subjectKey), subjectName: reportSubjects(state).find((subject) => subject.key === record.subjectKey).name };
     const author = reportAuthor(state, previous || record);
-    const editable = ["id", "name", "summary", "risk", "claimedCompleted", "references", "subjectKey", "cadence", "periodStart", "periodEnd", "timezone", "cycle"];
+    const migratingContent = previous && previous.content == null && record.content != null;
+    if (migratingContent && record.migrateLegacyContent !== true) throw Error("旧报告请显式建立四章节草稿，原正文与固定历史将保留。");
+    if (!previous && record.content == null) record = { ...record, content: emptyReportContent(record.nextPlanBinding) };
+    if (previous?.contentRequired === true && record.content == null) throw Error("此报告必须保留结构化四章节，不可隐式移除。");
+    if (record.content != null) record = { ...record, content: normalizeReportContent(record.content, record.nextPlanBinding, previous?.content,
+      { detailKeys: record.reviewedDetailKeys || [], retrospective: record.reviewedRetrospective === true }, author) };
+    else if (previous?.content) throw Error("结构化报告章节不可隐式移除，请在四章节编辑器中修订。");
+    if (record.currentPlanBinding) {
+      const check = reportCurrentPlanCheck(state, { ...record, submission: null });
+      if (check.errors.length) throw Error(check.errors.join("；"));
+      const live = reportCurrentPlan(state, record);
+      const genuine = reportCurrentPlanBinding(state, record, live.id, live.revision);
+      const retained = previous?.currentPlanBinding && JSON.stringify(previous.currentPlanBinding) === JSON.stringify(record.currentPlanBinding);
+      if (!retained && JSON.stringify(genuine) !== JSON.stringify(record.currentPlanBinding)) throw Error("本期计划引用不是实际采用的基线，请重新采用当前版本。");
+    } else if (previous?.currentPlanBinding) throw Error("已采用的本期计划不可隐式移除，请明确采用新的真实基线。");
+    const retainUnselectedNextPlan = options.preserveUnselectedNextPlan === true && previous?.nextPlanBinding &&
+      JSON.stringify(previous.nextPlanBinding) === JSON.stringify(record.nextPlanBinding);
+    if (record.nextPlanBinding && !retainUnselectedNextPlan) {
+      const binding = reportNextPlanBinding(state, record, record.nextPlanBinding.planId, record.nextPlanBinding.revision);
+      if (JSON.stringify(binding) !== JSON.stringify(record.nextPlanBinding)) throw Error("下周期计划固定内容或依据已变化，请重新采用真实计划当前版本。");
+      record = { ...record, nextPlanBinding: binding };
+    } else if (!record.nextPlanBinding && previous?.nextPlanBinding) throw Error("已采用的下周期计划不可隐式移除，请重新采用真实计划版本。");
+    const editable = ["id", "name", "summary", "risk", "claimedCompleted", "references", "subjectKey", "cadence", "periodStart", "periodEnd", "timezone", "cycle", "nextPlanBinding", "currentPlanBinding", "content"];
     record = { ...(previous || {}), ...Object.fromEntries(editable.filter(key => key in record).map(key => [key, record[key]])),
       owner: author.name, authorId: author.id, authorKind: author.kind,
       status: "草稿", submission: null, approval: null };
+    if (!previous || migratingContent) record.contentRequired = true;
+    if (migratingContent) record.contentMigration = { sourceRevision: previous.revision || 1, actorId: "H-lin", actorKind: "Human", time: new Date().toISOString() };
     if (!previous) { record.revision = 1; record.history = []; }
   }
   if (kind === "schedules" && (record.action?.includes("报告") || record.action?.includes("日报"))) {
@@ -1480,13 +1891,20 @@ export function saveResource(kind, record) {
       saved.evidence = "";
       syncQuality(s, saved.work, saved.version);
     }
-    log(s, `${index < 0 ? "创建" : "更新"}${record.name}`, `/${kind}`);
+    const target = kind === "knowledge" ? `/knowledge/${(index < 0 ? s.resources[kind][0] : s.resources[kind][index]).id}` : `/${kind}`;
+    log(s, `${index < 0 ? "创建" : "更新"}${record.name}`, target);
   });
 }
 // Reports resolve local facts by typed identity. Shared leaves are counted once,
 // while every selected revision is checked (including duplicate references).
 export function reportEvidence(s, report) {
   const errors = [], warnings = [], sources = [], seen = new Set();
+  const currentPlanCheck = reportCurrentPlanCheck(s, report);
+  errors.push(...currentPlanCheck.errors); warnings.push(...currentPlanCheck.warnings);
+  const nextPlanCheck = reportNextPlanCheck(s, report);
+  errors.push(...nextPlanCheck.errors); warnings.push(...nextPlanCheck.warnings);
+  const contentCheck = reportContentCheck(s, report);
+  errors.push(...contentCheck.issues.map(issue => `${issue.code} · ${issue.section}：${issue.message}`)); warnings.push(...contentCheck.warnings);
   const totals = { human: 0, agent: 0, tool: 0, completed: 0, works: 0, unknownEffortIds: [] };
   const validDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)
     && !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v;
@@ -1497,11 +1915,51 @@ export function reportEvidence(s, report) {
     return valid;
   };
   const rootPeriod = period(report);
-  const rootFacts = periodicReportFacts(s, report);
+  let fixedRootSources = null;
+  try { if (report.submission && JSON.stringify(report.submission.content) === JSON.stringify(reportSubmissionContent(report))) fixedRootSources = fixedReportSources(report); }
+  catch (error) { issue(errors, error.message); return { errors, warnings, sources, totals, contentIssues: contentCheck.issues, structuredFacts: contentCheck.facts }; }
+  const rootFrozenFacts = fixedRootSources?.filter(source => source.kind === "work").flatMap(source => (source.acceptanceFacts || []).filter(fact => fact.workId === source.id && reportAcceptanceMatch(report, fact) === true));
+  const fixedPlanIssues = report.submission?.factSnapshot?.planIssues;
+  if (fixedRootSources && fixedPlanIssues != null && (!Array.isArray(fixedPlanIssues) || fixedPlanIssues.some(problem => typeof problem !== "string"))) {
+    issue(errors, "固定本期计划核对提示损坏，不能使用当前计划补造历史。");
+  }
+  const rootFacts = fixedRootSources ? { facts: rootFrozenFacts, unknownWorkIds: report.submission.factSnapshot.totals?.completionUnknown || [],
+    planIssues: Array.isArray(fixedPlanIssues) && fixedPlanIssues.every(problem => typeof problem === "string") ? fixedPlanIssues :
+      (Array.isArray(report.submission.factSnapshot.warnings) ? report.submission.factSnapshot.warnings : []).filter(problem => typeof problem === "string" && problem.startsWith("N2：")).map(problem => problem.slice(3)) } : periodicReportFacts(s, report);
+  for (const problem of rootFacts.planIssues || []) issue(warnings, `N2：${problem}`);
+  const planIssues = [...(rootFacts.planIssues || [])];
+  for (const plan of rootFacts.plans || []) for (const problem of plan.issues) {
+    const message = `本期计划 ${plan.id} 基线无法核对：${problem}`;
+    if (!planIssues.includes(message)) planIssues.push(message);
+    issue(warnings, `N2：${message}`);
+  }
+  const rootFactMap = new Map(rootFacts.facts.map(fact=>[fact.id,fact]));
   const selectedFactIds = new Set();
-  const visit = (current, ancestors) => {
+  // Diagnose cycles even when a separate identity/cadence rule also rejects an
+  // edge. This traversal never contributes facts or certifies legacy bodies.
+  const pending = [{ current: report }], activeReports = new Set(), scannedReports = new Set();
+  while (pending.length) {
+    const { current, exit } = pending.pop(), key = current.id || current;
+    if (exit) { activeReports.delete(key); scannedReports.add(key); continue; }
+    if (activeReports.has(key)) { issue(errors, "报告引用形成循环。"); continue; }
+    if (scannedReports.has(key)) continue;
+    activeReports.add(key); pending.push({ current, exit: true });
+    for (const ref of Array.isArray(current.references) ? current.references : []) if (ref?.kind === "report") {
+      const child = s.resources.reports.find(item => item.id === ref.id);
+      if (child) pending.push({ current: submittedReportBody(child) || child });
+    }
+  }
+  const visit = (current, ancestors, pathReports = []) => {
     const localWorks = new Set(), localFactIds = new Set();
-    const currentFacts = periodicReportFacts(s, current);
+    const fixedMode = current !== report || Boolean(fixedRootSources);
+    let fixedSources;
+    try { fixedSources = current !== report ? fixedReportSources(current) || [] : fixedRootSources || []; }
+    catch (error) { issue(errors, error.message); return { works: localWorks, factIds: localFactIds }; }
+    const fixedFacts = new Map(fixedSources.filter(source=>source.kind==="work").flatMap(source=>(source.acceptanceFacts||[]).filter(fact=>fact.workId===source.id&&reportAcceptanceMatch(current,fact)===true)).map(fact=>[fact.id,fact]));
+    const currentFacts = current===report ? rootFacts : {facts:[...fixedFacts.values()],factKeys:[...fixedFacts.keys()],unknownWorkIds:current.submission?.factSnapshot?.totals?.completionUnknown||[]};
+    const path = [...pathReports, current];
+    const projected = fact=>path.every(item=>reportAcceptanceMatch(item,fact)===true);
+    const processedChildren = new Set();
     const currentPeriod = current === report ? rootPeriod : period(current);
     const references = current.references;
     let explicitPeriod = false;
@@ -1515,12 +1973,22 @@ export function reportEvidence(s, report) {
       const kind = ref?.kind;
       const collection = kind === "work" ? s.work : kind === "worklog" ? s.resources.worklogs
         : kind === "report" ? s.resources.reports : [];
-      const value = collection.find((item) => item.id === ref?.id);
+      const liveValue = collection.find((item) => item.id === ref?.id);
+      const fixedSource = fixedMode && ["work","worklog"].includes(kind) ? fixedSources.find(source => source.kind === kind && source.id === ref.id) : null;
+      if (fixedMode && ["work","worklog"].includes(kind) && !fixedSource) { issue(errors,`${ref.id}：报告缺少固定事实快照，不能读取当前来源代替历史。`);continue; }
+      const value = fixedSource ? { id:fixedSource.id,name:fixedSource.name,title:fixedSource.name,revision:fixedSource.version,version:ref.version,status:fixedSource.status,
+        project:fixedSource.acceptanceFacts?.[0]?.project,plan:fixedSource.plan,accepted:fixedSource.accepted,
+        hours:fixedSource.hours,durationKind:fixedSource.durationKind,date:fixedSource.date,timezone:fixedSource.timezone,work:fixedSource.work,
+        scopeSnapshot:fixedSource.scopeSnapshot,ownerId:fixedSource.ownerId,ownerAgentId:fixedSource.ownerAgentId,
+        effortState:fixedSource.durationKind === "Human 工时" ? fixedSource.pendingConfirmation ? "estimated" : "confirmed" : undefined,
+        confirmedHours:fixedSource.hours } : liveValue;
       const key = `${kind}:${ref?.id}`;
       if (!value) {
         issue(errors, `来源 ${ref?.id || "未知"} 不存在于当前租户，或类型无效。`);
         continue;
       }
+      if (fixedSource && (!liveValue || (kind==="work"?liveValue.version:liveValue.revision||1)!==ref.version)) issue(warnings, `${value.name}：当前来源已变化或不可用，保留报告固定快照，需重新核对。`);
+      if (fixedSource?.acceptanceFacts?.some(fact => !Array.isArray(liveValue?.acceptanceFacts) || !liveValue.acceptanceFacts.some(current => current?.id === fact.id && JSON.stringify(current) === JSON.stringify(fact)))) issue(warnings, `${value.name}：当前接受事件已变化或不可用，保留原固定接受事实，需重新核对。`);
       const version = kind === "work" ? value.version : value.revision || 1;
       const acceptanceFacts = kind === "work" ? currentFacts.facts.filter(fact => fact.workId === value.id && fact.version === ref.version) : [];
       const fixedAcceptance = acceptanceFacts.length > 0 && (ref.acceptanceFactIds?.length > 0 ? ref.acceptanceFactIds.every(id => acceptanceFacts.some(fact => fact.id === id)) : ref.version === version);
@@ -1530,38 +1998,44 @@ export function reportEvidence(s, report) {
         issue(errors, `${value.name}：报告引用形成循环。`);
         continue;
       }
-      if (kind === "work") { localWorks.add(value.id); for (const fact of acceptanceFacts) { localFactIds.add(fact.id); selectedFactIds.add(fact.id); } }
+      if (kind === "work") { localWorks.add(value.id); for (const fact of acceptanceFacts) { localFactIds.add(fact.id); if (projected(fact)) { selectedFactIds.add(fact.id);rootFactMap.set(fact.id,fact); } } }
       if (kind === "worklog" && currentPeriod && validDate(value.date)
         && (value.date < current.periodStart || value.date > current.periodEnd))
         issue(errors, `${value.name}：记录日期不在${current.name || "报告"}周期内。`);
       if (kind === "report") {
-        if (period(value) && currentPeriod && (value.periodStart < current.periodStart || value.periodEnd > current.periodEnd))
-          issue(errors, `${value.name}：下级报告周期超出当前报告。`);
-        const child = visit(value, new Set([...ancestors, value.id]));
-        for (const workId of child.works) localWorks.add(workId);
-        for (const factId of child.factIds) localFactIds.add(factId);
+        const problem = reportChildProblem(s, current, value);
+        if (problem) { issue(errors, `${value.name}：${problem}`); continue; }
+        if(!processedChildren.has(value.id)) {
+          processedChildren.add(value.id);
+          const child = visit(submittedReportBody(value), new Set([...ancestors, value.id]), path);
+          for (const workId of child.works) localWorks.add(workId);
+          for (const factId of child.factIds) localFactIds.add(factId);
+        }
       }
+      const effortRelations = kind === "worklog" && report.subjectKey ? path.map(item=>reportEffortDateRelation(item,value)) : [];
+      if (current !== report && kind === "worklog" && effortRelations.includes("outside")) continue;
+      if (current !== report && kind === "work" && !acceptanceFacts.some(projected)) continue;
       if (seen.has(key)) {
-        if (kind === "work") { const prior = sources.find(source => source.kind === kind && source.id === value.id); prior.acceptanceFacts = [...new Map([...(prior.acceptanceFacts || []), ...structuredClone(acceptanceFacts)].map(fact => [fact.id, fact])).values()]; }
+        if (kind === "work") { const prior = sources.find(source => source.kind === kind && source.id === value.id); prior.acceptanceFacts = [...new Map([...(prior.acceptanceFacts || []), ...structuredClone(acceptanceFacts.filter(projected))].map(fact => [fact.id, fact])).values()]; }
         continue;
       }
       seen.add(key);
-      const source = { kind, id: value.id, name: value.title || value.name, version,
+      const source = { kind, id: value.id, name: kind === "report" ? submittedReportBody(value).name : value.title || value.name, version,
         selectedVersion: ref.version, status: value.status,
         href: kind === "work" ? `/p/${value.project}/work-items/${value.id}`
           : `/${kind === "worklog" ? "worklogs" : "reports"}/${value.id}` };
       sources.push(source);
       if (kind === "work") {
         totals.works++;
-        source.acceptanceFacts = structuredClone(acceptanceFacts);
+        source.acceptanceFacts = structuredClone(acceptanceFacts.filter(projected));
         source.completionUnknown = currentFacts.unknownWorkIds.includes(value.id);
         if (source.completionUnknown) issue(warnings, `${value.id}：历史接受时间或归属未知，完整周期完成数不可确定。`);
-        source.quality = qualityResult(s, value);
+        source.quality = fixedSource ? fixedSource.quality : qualityResult(s, value);
         source.plan = Boolean(value.plan);
         source.accepted = Boolean(value.accepted);
         if (!acceptanceFacts.length) issue(warnings, `${source.name}：所选版本没有本周期接受事实，不计为周期完成。`);
         if (fixedAcceptance) {
-          const snapshot = acceptanceFacts.find(fact => fact.workSnapshot)?.workSnapshot;
+          const snapshot = source.acceptanceFacts.find(fact => fact.workSnapshot)?.workSnapshot;
           source.name = snapshot?.title || `${value.id} · 历史成果内容不可用`;
           source.plan = snapshot?.plan ?? null; source.quality = snapshot?.quality || "历史检查内容不可用";
           source.accepted = true; source.status = "本周期有固定接受裁决"; source.currentVersion = version; source.version = ref.version;
@@ -1572,11 +2046,17 @@ export function reportEvidence(s, report) {
       } else if (kind === "worklog") {
         const scopeMatch = current.subjectKey ? worklogSubjectMatch(s, value, current.subjectKey) : true;
         const rootScopeMatch = report.subjectKey ? worklogSubjectMatch(s, value, report.subjectKey) : true;
+        const pathScopeMatches = path.map(item=>item.subjectKey?worklogSubjectMatch(s,value,item.subjectKey):true);
+        if(current!==report && pathScopeMatches.includes(false)) { sources.pop(); seen.delete(key); continue; }
         source.scopeSnapshot = structuredClone(value.scopeSnapshot || null);
+        source.date=value.date ?? null;source.timezone=value.timezone ?? null;source.work=value.work ?? null;
+        source.ownerId=value.ownerId ?? null;source.ownerAgentId=value.ownerAgentId ?? null;
         source.scopeStatus = scopeMatch === null || rootScopeMatch === null ? "历史归属未知" : scopeMatch && rootScopeMatch ? "归属可核对" : "不属于所选报告归属";
-        if (scopeMatch === false || rootScopeMatch === false) issue(errors, `${source.name}：投入不属于所选报告归属。`);
+        if (scopeMatch === false || (current === report && rootScopeMatch === false)) issue(errors, `${source.name}：投入不属于所选报告归属。`);
         if (scopeMatch === null || rootScopeMatch === null) { totals.unknownEffortIds.push(value.id); issue(warnings, `${source.name}：历史投入归属未知，不计入该主体的确定投入合计。`); }
-        const scopeConfirmed = scopeMatch === true && rootScopeMatch === true;
+        const timeUnknown = effortRelations.some(relation=>["overlap","unknown"].includes(relation));
+        if(timeUnknown) { if(!totals.unknownEffortIds.includes(value.id))totals.unknownEffortIds.push(value.id);issue(warnings,`${source.name}：投入日期跨越报告时区边界或缺少时间依据，不能分摊为确定投入。`); }
+        const scopeConfirmed = pathScopeMatches.every(match=>match===true) && !timeUnknown;
         const hours = Number(value.hours);
         const durationKind = value.durationKind || "Human 工时";
         const bucket = { "Human 工时": "human", "Agent 墙钟": "agent", "模型 / 工具耗时": "tool" }[durationKind];
@@ -1591,15 +2071,15 @@ export function reportEvidence(s, report) {
           issue(errors, `${source.name}：耗时类型或小时数无效。`);
         else if (scopeConfirmed) totals[bucket] += source.hours;
         if (!validDate(value.date)) issue(errors, `${source.name}：记录日期无效。`);
-        if (!s.work.some((w) => w.id === value.work)) issue(errors, `${source.name}：关联工作不存在。`);
+        if (!s.work.some((w) => w.id === value.work)) { if(fixedSource)issue(warnings,`${source.name}：当前关联工作不可用，保留固定投入事实。`);else issue(errors,`${source.name}：关联工作不存在。`); }
         if (value.status !== "已接受") issue(warnings, `${source.name}：${value.status}，尚未审核；上报不会改变工时审核状态。`);
       } else {
         if (value.status !== "已接受") issue(warnings, `${source.name}：${value.status}，尚未审核。`);
       }
     }
-    if (current.claimedCompleted !== undefined && current.claimedCompleted !== "") {
+    if (current.claimedCompleted !== undefined && current.claimedCompleted !== null && current.claimedCompleted !== "") {
       const claimed = Number(current.claimedCompleted);
-      const completed = new Set(currentFacts.facts.filter(fact => localFactIds.has(fact.id)).map(fact => fact.workId)).size;
+      const completed = new Set((current===report?[...rootFactMap.values()]:currentFacts.facts).filter(fact => (current===report?selectedFactIds:localFactIds).has(fact.id)).map(fact => fact.workId)).size;
       if (currentFacts.unknownWorkIds.some(id => localWorks.has(id) || !references.length)) issue(errors, `${current.name || "报告"}：接受历史未知，不能确认声明完成数，请留空。`);
       if (!Number.isInteger(claimed) || claimed < 0) issue(errors, `${current.name || "报告"}：声明完成工作数须为非负整数，或留空。`);
       else if (claimed !== completed) issue(errors, `${current.name || "报告"}：声明完成 ${claimed} 项，与引用事实完成 ${completed} 项不一致。`);
@@ -1607,16 +2087,104 @@ export function reportEvidence(s, report) {
     return { works: localWorks, factIds: localFactIds };
   };
   visit(report, new Set(report.id ? [report.id] : []));
-  totals.completed = new Set(rootFacts.facts.filter(fact => selectedFactIds.has(fact.id)).map(fact => fact.workId)).size;
+  totals.completed = new Set([...rootFactMap.values()].filter(fact => selectedFactIds.has(fact.id)).map(fact => fact.workId)).size;
   totals.completionUnknown = rootFacts.unknownWorkIds.filter(id => seen.has(`work:${id}`));
-  totals.acceptanceFactKeys = rootFacts.factKeys.filter(id => selectedFactIds.has(id));
+  totals.acceptanceFactKeys = [...rootFactMap.keys()].filter(id => selectedFactIds.has(id));
   for (const bucket of ["human", "agent", "tool"]) totals[bucket] = Math.round(totals[bucket] * 10000) / 10000;
-  return { errors, warnings, sources, totals };
+  return { errors, warnings, sources, totals, planIssues, contentIssues: contentCheck.issues, structuredFacts: contentCheck.facts };
 }
 
 export function reportTransitionProblem(s, report, status, options) {
   return reportTransitionIssue(s, report, status, options);
 }
+
+export function revokeKnowledgeMemory(input) {
+  assertProjectRecordWritable(state.resources.knowledge.find(item => item.id === input.id));
+  assertWrite();
+  if (input.tenantId !== state.activeTenant) throw Error("租户已切换，请重新打开原记忆。");
+  const record = state.resources.knowledge.find(item => item.id === input.id);
+  const problem = memoryRevocationProblem(state, record);
+  if (problem) throw Error(problem);
+  if (input.revision !== (record.revision || 1) || input.status !== record.status) throw Error("记忆已变化，请重新核对当前版本。");
+  if (typeof input.reason !== "string" || [...input.reason.trim()].length < 5 || [...input.reason.trim()].length > 2000) throw Error("撤销理由须为 5–2000 字。");
+  update(s => {
+    const original = s.resources.knowledge.find(item => item.id === input.id);
+    original.history = [...(original.history || []), { ...original, history: undefined }];
+    original.revocation = { actorId: "H-lin", actorKind: "Human", time: new Date().toISOString(), reason: input.reason.trim(), source: "LOCAL_SIMULATION", revision: original.revision || 1 };
+    original.status = "已撤销";
+    original.revision = (original.revision || 1) + 1;
+    log(s, `撤销派生记忆 ${original.name} · ${input.reason.trim()}`, `/knowledge/${original.id}`);
+  });
+}
+// Approval rows are projections of a fixed source request, not editable resources.
+export function approvalSource(state, approval) {
+  const kind = approval?.targetKind;
+  const target = kind === "model" ? state.resources.models.find(item => item.id === approval.target)
+    : kind === "agent" ? state.agents.find(item => item.id === approval.target) : null;
+  return target ? { kind, target, href: `/${kind === "model" ? "models" : "agents"}/${target.id}` } : null;
+}
+export function approvalSourceSnapshot(kind, target) {
+  const keys = kind === "model" ? ["id", "name", "owner", "protocol", "baseURL", "model", "scope", "secret", "version"]
+    : ["id", "name", "role", "responsibilities", "systemPrompt", "taskTemplate", "runtime", "modelId", "modelRevision", "owner", "skillIds", "mcpIds", "creatorKind", "creatorId"];
+  return Object.fromEntries(keys.map(key => [key, structuredClone(target[key] ?? null)]));
+}
+export function approvalSourceProblem(state, approval) {
+  const archived = projectRecordWriteProblem(state, approval) || projectRecordWriteProblem(state, approvalSource(state,approval)?.target); if (archived) return archived;
+  const source = approvalSource(state, approval);
+  if (!source || approval.tenantId !== state.activeTenant || !approval.sourceSnapshot || !Number.isSafeInteger(approval.targetRevision) || approval.targetRevision < 1 ||
+    approval.requestedBy?.kind !== "Human" || approval.requestedBy?.id !== "H-lin" || approval.requestedBy?.source !== "LOCAL_SIMULATION")
+    return "审批缺少可核对的固定来源，请返回源配置重新提交；不会补造旧审批依据。";
+  if ((source.target.revision || 1) !== approval.targetRevision || JSON.stringify(approvalSourceSnapshot(source.kind, source.target)) !== JSON.stringify(approval.sourceSnapshot))
+    return "审批目标已变更，请重新提交当前配置版本。";
+  if (source.kind === "agent") {
+    const model = state.resources.models.find(item => item.id === source.target.modelId);
+    if (!model || (model.revision || 1) !== source.target.modelRevision) return "模型配置已变更，请重新提交 Agent 配置。";
+    if (source.target.status === "退役") return "已退役 Agent 不能批准配置。";
+  }
+  return "";
+}
+export function approvalDecisionProblem(state, approval, status) {
+  if (state.offline) return "离线中，请恢复连接后操作。";
+  if (state.role !== "owner" || !state.organization.members.some(person => person.id === "H-lin" && person.kind === "Human")) return "此决定需要负责人权限。";
+  if (!["已批准", "已拒绝", "待补充"].includes(status)) return "未知审批决定，请返回源对象处理。";
+  if (!approval) return "审批不存在。";
+  if (approval.status !== "待审核") return "此审批已有固定决定，请从源配置重新提交；不能改写原决定。";
+  return approvalSourceProblem(state, approval) || approvalOrchestrationProblem(approval, status);
+}
+export function governanceApprovalCommand(input) {
+  assertWrite();
+  const record = state.resources.approvals.find(r => r.id === input.id);
+  const problem = approvalSourceProblem(state, record);
+  if (problem) throw Error(problem);
+  update(s => { approvalFlowOn(s, input); log(s, `多人审批 ${input.action} · ${input.id}`, `/approvals/${input.id}`); });
+}
+export function governanceHumanCommand(input) {
+  assertWrite();
+  let result;
+  update(s => { result = humanChangeOn(s,input); log(s, `人员变更 ${input.action} · ${input.memberId}`, '/members'); });
+  return result;
+}
+export function requestModelApproval(modelId, expectedRevision) {
+  assertProjectRecordWritable(state.resources.models.find(item=>item.id===modelId));
+  assertWrite();
+  if (state.role !== "owner" || !state.organization.members.some(person => person.id === "H-lin" && person.kind === "Human")) throw Error("提交模型配置审批需要负责人权限。");
+  const model = state.resources.models.find(item => item.id === modelId);
+  if (!model || (model.revision || 1) !== expectedRevision) throw Error("模型配置已变更，请重新打开当前版本。");
+  const snapshot = approvalSourceSnapshot("model", model);
+  const existing = state.resources.approvals.find(item => item.targetKind === "model" && item.target === modelId && item.tenantId === state.activeTenant &&
+    item.status === "待审核" && item.targetRevision === expectedRevision && JSON.stringify(item.sourceSnapshot) === JSON.stringify(snapshot));
+  if (existing) return existing.id;
+  const requestId = id("AP");
+  update(s => {
+    s.resources.approvals.unshift({ id: requestId, name: `模型配置 ${model.name} · 修订 ${expectedRevision}`, status: "待审核", owner: "林予",
+      tenantId: s.activeTenant, targetKind: "model", target: model.id, targetRevision: expectedRevision, sourceSnapshot: snapshot,
+      requestedBy: { kind: "Human", id: "H-lin", source: "LOCAL_SIMULATION" }, requestedAt: new Date().toISOString(), version: model.version, scope: model.scope,
+      reason: "Human 提交当前模型配置供本地审核", revision: 1 });
+    log(s, `提交模型配置审批 ${model.name}`, `/approvals/${requestId}`);
+  });
+  return requestId;
+}
+
 export function resourceCommand(
   kind,
   recordId,
@@ -1625,6 +2193,8 @@ export function resourceCommand(
   actionLabel = "",
   receipt,
 ) {
+  assertProjectRecordWritable(state.resources[kind]?.find(item => item.id === recordId));
+  if (kind === "repositories") return repositoryCommand(recordId, status, reason, actionLabel, receipt);
   if (kind === "plans") throw Error("周期计划须核对固定提交版本，再由 Human 上级确认。");
   if (kind === "defects") return defectCommand(recordId, status, reason, actionLabel, receipt);
   if (state.role !== "external" || kind !== "deliveries") assertWrite();
@@ -1643,14 +2213,22 @@ export function resourceCommand(
     throw Error("当前客户仅可提交交付回执。");
   if (
     state.role === "executor" &&
-    (["已批准", "已接受", "已发布", "生效", "已授权"].includes(status) ||
-      (kind === "goals" && status === "进行中"))
+    ((kind === "deliveries" && ["已接受", "部分接受", "已拒收"].includes(status)) ||
+      ["已批准", "已接受", "已发布", "生效", "已授权"].includes(status) ||
+      (kind === "goals" && status === "进行中" && !state.resources.goals.find(g=>g.id===recordId)?.collaborationVersion))
   )
     throw Error("此决定需要负责人权限。");
   if (kind === "invitations") throw Error("邀请请通过组织与成员中的范围化邀请流程创建或撤销。");
   if (kind === "templates") throw Error("工作流模板请在画布中检查并发布新版本。");
   const record = state.resources[kind].find((x) => x.id === recordId);
   if (!record) throw Error("记录不存在。");
+  if (kind === "knowledge") {
+    if (record.library) throw Error("资料库来源请使用专用索引、发布与归档操作。");
+    const problem = knowledgeReadProblem(state, record);
+    if (problem) throw Error(problem);
+    if (record.revocation || status === "已撤销") throw Error("记忆撤销须走专用流程；已撤销原件不能修改或重新启用。");
+    if (receipt && (receipt.revision !== (record.revision || 1) || receipt.status !== record.status)) throw Error("资料已变化，请重新打开当前修订后操作。");
+  }
   if (kind === "goals") {
     if (receipt?.revision !== (record.revision || 1) || receipt?.status !== record.status) throw Error("目标修订或状态已变化，请重新打开当前版本后操作。");
     const problem = goalTransitionProblem(state, record, status);
@@ -1683,6 +2261,8 @@ export function resourceCommand(
     const derived = accepted === receiptItems.length ? "已接受" : accepted ? "部分接受" : "已拒收";
     if (status !== derived) throw Error("回执类型与逐项结果不一致。");
     if (record.status === status && JSON.stringify(record.items) === JSON.stringify(receiptItems)) return;
+    if (["已接受", "部分接受", "已拒收"].includes(record.status))
+      throw Error("此交付包已有固定回执，不能改写结果或拒收依据；请修订成果并形成新的固定版本交付包。");
   }
   if (kind === "reports" && receipt && ((record.revision || 1) !== receipt.revision || record.status !== receipt.status))
     throw Error("报告修订或状态已变化，请重新打开核对。");
@@ -1696,15 +2276,13 @@ export function resourceCommand(
     reportCheck = reportEvidence(state, record);
     if (reportCheck.errors.length) throw Error(`报告核对未通过：${reportCheck.errors.join("；")}`);
   }
-  if (kind === "approvals" && status === "已批准") {
-    const target = record.targetKind === "agent" ? state.agents.find(a => a.id === record.target) : state.resources.models.find((m) => m.id === record.target);
-    if (record.targetKind === "agent" && !target) throw Error("审批 Agent 不存在。");
-    if (record.targetKind === "agent" && target) {
-      const model = state.resources.models.find(model => model.id === target.modelId);
-      if (!model || (model.revision || 1) !== target.modelRevision) throw Error("模型配置已变更，请重新提交 Agent 配置。");
-    }
-    if (target && (target.revision || 1) !== (record.targetRevision || 1))
-      throw Error("审批目标已变更，请重新提交当前配置版本。");
+  if (kind === "approvals") {
+    if (state.role !== "owner" || !state.organization.members.some(person => person.id === "H-lin" && person.kind === "Human")) throw Error("此决定需要负责人权限。");
+    if (record.decision && record.status === status && record.decision.reason === reason.trim()) return;
+    const problem = approvalDecisionProblem(state, record, status);
+    if (problem) throw Error(problem);
+    if (!reason.trim()) throw Error("审批决定需填写依据。");
+    if (receipt && (receipt.revision !== (record.revision || 1) || receipt.status !== record.status)) throw Error("审批已变化，请重新打开当前记录。");
   }
   update((s) => {
     const r = s.resources[kind].find((x) => x.id === recordId);
@@ -1712,7 +2290,7 @@ export function resourceCommand(
     r.history ??= [];
     r.history.push({
       status: r.status,
-      ...(kind === "reports" ? { snapshot: { ...structuredClone(r), history: undefined }, revision: r.revision || 1 } : {}),
+      ...(kind === "reports" ? { snapshot: { ...structuredClone(r), history: undefined }, revision: r.revision || 1, actorId: "H-lin", actorKind: "Human", action: receipt?.action || status } : {}),
       ...(kind === "goals" ? { snapshot: { ...structuredClone(r), history: undefined }, revision: r.revision || 1, actorId: "H-lin" } : {}),
       ...(kind === "deliveries" ? { items: structuredClone(r.items) } : {}),
       ...(kind === "tests" ? { snapshot: structuredClone(r.runs?.find((run) => run.id === r.currentRun) || testRunSnapshot(s, r, "legacy")) } : {}),
@@ -1721,6 +2299,12 @@ export function resourceCommand(
       time: new Date().toISOString(),
     });
     r.status = status;
+    if (kind === "knowledge") r.revision = (r.revision || 1) + 1;
+    if (kind === "approvals") {
+      r.decision = { status, reason: reason.trim(), actorId: "H-lin", actorKind: "Human", source: "LOCAL_SIMULATION", time: new Date().toISOString(),
+        target: r.target, targetKind: r.targetKind, targetRevision: r.targetRevision, snapshot: structuredClone(r.sourceSnapshot) };
+      r.revision = (r.revision || 1) + 1;
+    }
     if (kind === "goals") {
       const previousRevision = r.revision || 1;
       r.revision = previousRevision + 1;
@@ -1729,10 +2313,15 @@ export function resourceCommand(
         r.submission = { ...actor, revision: r.revision, snapshot: { ...structuredClone(r), history: undefined, submission: undefined, approval: undefined } };
         r.approval = null;
       } else if (status === "进行中") {
-        r.approval = { ...actor, revision: previousRevision, permission: "tenant-owner", snapshot: structuredClone(r.submission.snapshot) };
+        r.approval = { ...actor, revision: previousRevision, permission: r.collaborationVersion ? "explicit-goal-human-reviewer" : "tenant-owner", snapshot: structuredClone(r.submission.snapshot) };
+        if (r.collaborationVersion) {
+          r.activeBaseline = { definition: structuredClone(goalDefinition(r)), krs: structuredClone(r.krs), definitionRevision: r.definitionRevision, approvedRevision: previousRevision, approvedAt: actor.time, actorId: "H-lin", source: "LOCAL_SIMULATION", valueReview: structuredClone(r.valueReview) };
+          if (r.changeProposal) r.changeProposal = { ...r.changeProposal, status: "已批准", decision: structuredClone(actor), approvedRevision: previousRevision };
+        }
       } else {
         r.submission = null;
         r.approval = null;
+        if (r.collaborationVersion && r.changeProposal) r.changeProposal = {...r.changeProposal,status:"已退回",decision:structuredClone(actor)};
       }
     }
     if (reportCheck) r.factSnapshot = { ...reportCheck, recordedAt: new Date().toISOString() };
@@ -1740,7 +2329,9 @@ export function resourceCommand(
       const author = reportAuthor(s, r), authority = reportReviewAuthority(s, r), time = new Date().toISOString();
       const previousRevision = r.revision || 1;
       r.revision = previousRevision + 1;
-      r.authorId = author.id; r.authorKind = author.kind; r.owner = author.name;
+      // REOPEN must remain possible after an author leaves. Its authority comes
+      // from the fixed confirmer or tenant owner; retain unresolved authorship.
+      if (author && receipt?.action !== "REOPEN") { r.authorId = author.id; r.authorKind = author.kind; r.owner = author.name; }
       if (status === "已提交") {
         r.submission = { revision: r.revision, authorId: author.id, authorKind: author.kind,
           confirmerId: authority.system ? "SYSTEM:team_top" : authority.id || null,
@@ -1768,7 +2359,7 @@ export function resourceCommand(
 
     if (kind === "approvals" && status === "已批准") {
       const agent = s.agents.find(
-        (a) => (r.targetKind === "agent" ? a.id === r.target : a.name === r.target) && a.status === "待批准",
+        (a) => r.targetKind === "agent" && a.id === r.target && a.status === "待批准",
       );
       if (agent) { agent.status = "空闲"; agent.approvedRevision = agent.revision || 1; }
     }
@@ -1798,11 +2389,11 @@ export function resourceCommand(
     if (kind === "models" && status === "生效") {
       const approved = s.resources.approvals.some(
         (a) =>
-          a.target === r.id &&
-          a.status === "已批准" &&
-          (a.targetRevision || 1) === (r.revision || 1),
+          a.targetKind === "model" && a.target === r.id && a.status === "已批准" && a.decision?.status === "已批准" && a.decision.actorKind === "Human" && a.decision.actorId === "H-lin" &&
+          a.decision.target === a.target && a.decision.targetKind === a.targetKind && a.decision.targetRevision === a.targetRevision &&
+          JSON.stringify(a.decision.snapshot) === JSON.stringify(a.sourceSnapshot) && !approvalSourceProblem(s, a),
       );
-      if (!approved && record.status !== "生效")
+      if (!approved)
         throw Error("当前配置需要先批准下发范围。");
       r.nodeResults = s.nodes.map((n) => ({
         node: n.id,
@@ -1830,13 +2421,8 @@ export function resourceCommand(
         });
       r.lastRun = new Date().toISOString();
     }
-    if (kind === "repositories" && actionLabel === "模拟增量同步")
-      r.sync = new Intl.DateTimeFormat("zh-CN", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(new Date());
     if (kind === "approvals" && status === "已批准") {
-      const model = s.resources.models.find((x) => x.id === r.target);
+      const model = r.targetKind === "model" && s.resources.models.find((x) => x.id === r.target);
       if (model) model.status = "待应用";
     }
     log(
@@ -1861,6 +2447,32 @@ export function shareMessage(input) {
 }
 
 export function exportData(name, value) {
+  if (name === "audit") {
+    const readable = visibleActivityEvents(state);
+    const originals = (Array.isArray(value) ? value : [value]).map(event => {
+      const canonical = readable.find(saved => saved.id === event?.id);
+      if (!canonical || JSON.stringify(event) !== JSON.stringify(canonical))
+        throw Error("活动来源不存在、无权访问或内容已变化，不能导出。");
+      return canonical;
+    });
+    value = Array.isArray(value) ? originals : originals[0];
+  }
+  if (name === "goals") {
+    const originals=(Array.isArray(value)?value:[value]).map(record=>{const canonical=state.resources.goals.find(g=>g.id===record?.id);const problem=goalReadProblem(state,canonical);if(problem)throw Error(problem);if(JSON.stringify(record)!==JSON.stringify(canonical))throw Error("目标已变化或不是当前保存记录，不能导出。");return canonical;});value=Array.isArray(value)?originals:originals[0];
+  }
+  if (name === "knowledge") {
+    const records = Array.isArray(value) ? value : [value];
+    const originals = records.map(record => {
+      const canonical = state.resources.knowledge.find(item => item.id === record?.id);
+      const problem = knowledgeReadProblem(state, canonical) || knowledgeReadProblem(state, record);
+      if (problem) throw Error(problem);
+      if (JSON.stringify(record) !== JSON.stringify(canonical))
+        throw Error("资料已变化或导出内容不是已保存原件，请重新打开后导出。");
+      return canonical;
+    });
+    // Export only saved originals, never caller-provided document/history content.
+    value = Array.isArray(value) ? originals : originals[0];
+  }
   const blob = new Blob([JSON.stringify(value, null, 2)], {
     type: "application/json",
   });
@@ -1871,9 +2483,10 @@ export function exportData(name, value) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-export function visibleWork(s) {
+export function visibleWork(s, { includeArchived = false } = {}) {
   return s.work.filter(
     (w) =>
+      (includeArchived || !projectIsArchived(s,w.project)) &&
       (s.project === "all" || w.project === s.project) &&
       (s.role !== "external" || w.delivered),
   );
@@ -2008,6 +2621,8 @@ export function saveAgent(config, agentId, expectedRevision) {
       owner: agent.owner,
       target: targetId,
       targetKind: "agent",
+      tenantId: s.activeTenant, sourceSnapshot: approvalSourceSnapshot("agent", agent),
+      requestedBy: { kind: "Human", id: "H-lin", source: "LOCAL_SIMULATION" }, requestedAt: new Date().toISOString(), revision: 1,
       targetRevision: revision,
       scope: "Agent 职责 / 提示词 / 模型 / 工具引用",
       reason: agent.responsibilities,
@@ -2071,6 +2686,7 @@ export function draftWorkflowTemplate(templateId, brief) {
     if (flow.flowDraft)
       throw Error("已有草案，请先完成当前草案再生成，避免覆盖手动修改。");
     flow.flowDraft = {
+      baseVersion: flow.flowVersion || 0,
       nodes: structuredClone(flow.flowNodes),
       edges: structuredClone(flow.flowEdges),
     };
@@ -2091,7 +2707,12 @@ export function publishWorkflowTemplate(s, templateId, graph) {
   template.version = `v${version}`;
   return version;
 }
-export function projectFlow(s, project) {
+export function projectFlow(s, project, workflowId = "default") {
+  if (workflowId !== "default") {
+    const record = workflowRecordForProject(s, project, workflowId);
+    if (!record) throw Error("工作流不存在于当前项目。");
+    return record.flow;
+  }
   if (project === "launch") return s;
   return (
     s.projectFlows?.[project] || {
@@ -2102,14 +2723,20 @@ export function projectFlow(s, project) {
     }
   );
 }
-export function mutableProjectFlow(s, project) {
+export function mutableProjectFlow(s, project, workflowId = "default") {
+  assertProjectRecordWritable({projectId:project},s);
+  if (workflowId !== "default") {
+    const record = workflowRecordForProject(s, project, workflowId);
+    if (!record || record.archivedAt) throw Error("工作流已归档或不在当前项目。");
+    return record.flow;
+  }
   if (project === "launch") return s;
   s.projectFlows ??= {};
   s.projectFlows[project] ??= structuredClone(projectFlow(s, project));
   return s.projectFlows[project];
 }
-export function flowDefinition(s, project, version) {
-  const flow = projectFlow(s, project);
+export function flowDefinition(s, project, version, workflowId = "default") {
+  const flow = projectFlow(s, project, workflowId);
   const wanted = version ?? flow.flowVersion;
   if (!Number.isInteger(wanted) || wanted <= 0) return null;
   if (wanted === flow.flowVersion)
@@ -2117,12 +2744,16 @@ export function flowDefinition(s, project, version) {
   return flow.flowVersions?.[wanted] || null;
 }
 export function lockWorkFlow(s, work) {
-  const definition = flowDefinition(s, work.project);
+  const workflowId = work.workflowId || "default";
+  if (workflowId !== "default" && workflowRecordForProject(s, work.project, workflowId)?.archivedAt) throw Error("此工作流已归档，不能绑定新的执行。");
+  const definition = flowDefinition(s, work.project, undefined, workflowId);
   if (!definition) throw Error("请先发布项目工作流，再确认 SOP。");
   work.flowVersion = definition.version;
+  work.workflowId = workflowId;
   return definition.version;
 }
 function publishFlowGraph(flow, graph) {
+  assertWorkflowBaseline(flow, graph);
   const issues = validateWorkflow(graph);
   if (issues.length) throw Error(issues[0].message);
   flow.flowVersions ??= {};
@@ -2133,15 +2764,45 @@ function publishFlowGraph(flow, graph) {
   flow.flowDraft = null;
   return flow.flowVersion;
 }
-export function publishProjectFlow(s, project, graph) {
+export function publishProjectFlow(s, project, graph, workflowId = "default") {
+  assertProjectRecordWritable({projectId:project},s);
   const issues = validateWorkflow(graph);
   if (issues.length) throw Error(issues[0].message);
-  return publishFlowGraph(mutableProjectFlow(s, project), graph);
+  assertWorkflowBaseline(projectFlow(s, project, workflowId), graph);
+  return publishFlowGraph(mutableProjectFlow(s, project, workflowId), graph);
+}
+
+// REQ-FLOW-009: approval is a migration plan, never a fabricated runtime application.
+export function requestWorkFlowChangeOn(s, input) {
+  assertProjectRecordWritable({projectId:input.projectId},s);
+  if (!["owner","executor"].includes(s.role) || !s.organization.members.some(p=>p.id==="H-lin"&&p.kind==="Human") || s.offline || input.tenantId !== s.activeTenant) throw Error("工作流变更授权范围已变化或当前离线。");
+  const work=s.work.find(w=>w.id===input.workId && w.project===input.projectId);
+  if(!work || ["已完成","已取消"].includes(work.status))throw Error("请选择当前项目中未结束的工作。");
+  if(work.flowVersion!==input.baseVersion)throw Error("工作的固定版本已变化，请重新申请。");
+  if(!String(input.reason || "").trim() || !String(input.boundary || "").trim())throw Error("请说明变更理由与生效边界，已执行节点不得重写。");
+  const workflowId=work.workflowId || "default";
+  const before=flowDefinition(s,work.project,work.flowVersion,workflowId), after=flowDefinition(s,work.project,input.targetVersion,workflowId);
+  if(!before || !after || before.version===after.version)throw Error("请选择不同的已发布固定目标版本。");
+  if(work.flowChangeRequests?.some(r=>r.status==="待审批" || r.status==="已批准待应用"))throw Error("已有未处理的工作流变更申请。");
+  const request={id:id("flow-change"),fromVersion:before.version,toVersion:after.version,workflowId,reason:input.reason.trim(),boundary:input.boundary.trim(),patch:workflowPatch(before,after),status:"待审批",requestedBy:"H-lin",time:new Date().toISOString()};
+  if(!request.patch.length)throw Error("两个版本没有定义差异。");
+  work.flowChangeRequests??=[];work.flowChangeRequests.push(request);return request.id;
+}
+export function decideWorkFlowChangeOn(s,input) {
+  assertProjectRecordWritable({projectId:input.projectId},s);
+  if(s.role!=="owner" || s.offline || input.tenantId!==s.activeTenant || !s.organization.members.some(p=>p.id==="H-lin"&&p.kind==="Human"))throw Error("工作流变更须由当前 Human 负责人在线审批。");
+  const work=s.work.find(w=>w.id===input.workId&&w.project===input.projectId), request=work?.flowChangeRequests?.find(r=>r.id===input.requestId);
+  if(!request || request.status!=="待审批" || work.flowVersion!==request.fromVersion || ["已完成","已取消"].includes(work.status))throw Error("申请或工作状态已变化，请重新核对。");
+  if(!["approve","reject"].includes(input.decision) || !String(input.reason || "").trim())throw Error("请提供明确审批结论和理由。");
+  request.status=input.decision==="approve"?"已批准待应用":"已拒绝";
+  request.decision={actor:"H-lin",reason:input.reason.trim(),time:new Date().toISOString()};
+  // The fixed work version changes only when a runtime can enforce the approved boundary.
+  return request.status;
 }
 
 export function organizationPeople(s) {
   return [
-    ...(s.organization?.members || []),
+    ...governanceHumans(s),
     ...s.agents.map((agent) => ({ id: `agent:${agent.id}`, name: agent.name, kind: "Agent" })),
   ];
 }
@@ -2157,9 +2818,134 @@ export function createProject(input) {
     s.projects.push({ id: projectId, name: input.name.trim(), description: input.description.trim(),
       owner: owner.name, ownerId: owner.id, type: "通用协作", progress: 0, budget: 0, spent: 0,
       deadline: "待确认", color: "violet" });
+    hydrateChannels(s);
     log(s, `创建项目 ${input.name.trim()}`, `/p/${projectId}`);
   });
   return projectId;
+}
+export function assertProjectRecordWritable(record, s = state) {
+  const problem = projectRecordWriteProblem(s, record); if (problem) throw Error(problem);
+}
+export function projectLifecycleProblem(s, project) {
+  return projectMetadataWriteProblem(s, project ? { ...project, archivedAt: null } : project);
+}
+export function changeProjectArchive(input) {
+  if (input.tenantId !== state.activeTenant) throw Error("租户已切换，请重新核对项目归档。");
+  const project = state.projects.find(project => project.id === input.projectId);
+  const problem = projectLifecycleProblem(state, project); if (problem) throw Error(problem);
+  if (!Number.isSafeInteger(input.revision) || input.revision !== (project.revision ?? 1)) throw Error("项目修订已变化，请重新核对。");
+  if (!["archive", "restore"].includes(input.action) || typeof input.reason !== "string" || !input.reason.trim()) throw Error("请选择归档或恢复，并填写理由。");
+  if (Boolean(project.archivedAt) !== (input.action === "restore")) throw Error("项目归档状态已变化，请重新打开。");
+  const impact = projectArchiveImpact(state, project.id);
+  if (input.action === "archive" && (impact.blockers.length || input.impactFingerprint !== JSON.stringify(impact.items))) throw Error("影响清单仍有未处置项或已发生变化，请核对实际本地记录。");
+  if (project.history != null && !Array.isArray(project.history)) throw Error("项目历史格式异常，不能覆盖历史。");
+  update(s => {
+    const current = s.projects.find(item => item.id === project.id), time = new Date().toISOString();
+    const fact = { kind: input.action === "archive" ? "ARCHIVE" : "RESTORE", actorId: "H-lin", actorKind: "Human", time, reason: input.reason.trim(), source: "LOCAL_SIMULATION", revision: current.revision ?? 1,
+      previousArchivedAt: current.archivedAt || null, impact: structuredClone(impact.items), disclosure: impact.disclosure };
+    current.history = [...(current.history || []), fact]; current.revision = (current.revision ?? 1) + 1;
+    if (input.action === "archive") { current.archivedAt = time; current.archive = fact; if (s.project === current.id) s.project = "all"; }
+    else { current.archivedAt = null; current.restoration = fact; }
+    log(s, `${input.action === "archive" ? "归档" : "恢复"}项目 ${current.name} · ${input.reason.trim()}`, `/p/${current.id}`);
+  });
+}
+export function pauseProjectWork(input) {
+  if (input.tenantId !== state.activeTenant) throw Error("租户已切换。");
+  const work = state.work.find(work => work.id === input.workId), project = state.projects.find(project => project.id === work?.project);
+  const problem = projectMetadataWriteProblem(state, project); if (problem) throw Error(problem);
+  if (work.version !== input.version || !["待开始","进行中","等待"].includes(work.status) || !input.reason?.trim()) throw Error("工作版本或状态已变化，或缺少暂停理由。");
+  update(s => { const current = s.work.find(item => item.id === work.id), time = new Date().toISOString();
+    current.archivePause = { actorId: "H-lin", source: "LOCAL_SIMULATION", workVersion: current.version, previousStatus: current.status, time, reason: input.reason.trim() };
+    current.lifecycleHistory ??= []; current.lifecycleHistory.push({ ...structuredClone(current.archivePause), action: "明确暂停项目推进" }); current.status = "等待";
+    log(s, `暂停项目工作推进（本地模拟） · ${current.title}`, `/p/${current.project}/work-items/${current.id}`);
+  });
+}
+export function requestProjectLease(input) {
+  assertWrite();
+  if (input.tenantId !== state.activeTenant || !state.projects.some(project => project.id === input.projectId)) throw Error("请选择当前租户中明确的项目。");
+  assertProjectRecordWritable(input);
+  if (!["owner","executor"].includes(state.role)) throw Error("当前身份不能申请本地模拟资源。");
+  if (!["preview","terminal"].includes(input.kind)) throw Error("未知资源类型。");
+  if (input.workId && state.work.find(work => work.id === input.workId)?.project !== input.projectId) throw Error("任务与项目不匹配。");
+  if(input.executionId){
+    const execution=executionRecord(state,input.executionId),problem=executionReadProblem(state,input.executionId);
+    if(problem)throw Error(problem);
+    if(execution.projectId!==input.projectId || execution.workId!==input.workId || !execution.workSnapshot?.previewResources?.some(resource=>resource.id===input.resourceId))throw Error("预览资源不属于此执行的固定成果清单。");
+    if(input.nodeId && input.nodeId!==execution.nodeId)throw Error("预览节点与执行节点不匹配。");
+    input={...input,nodeId:execution.nodeId};
+  }
+  if (input.nodeId && state.nodes.find(node => node.id === input.nodeId)?.status !== "在线") throw Error("节点不在线，不能确认新的本地模拟租约。");
+  const existing = (state.projectLeases || []).find(lease => lease.projectId === input.projectId && lease.kind === input.kind && lease.workId === input.workId && lease.nodeId === input.nodeId && lease.resourceId === input.resourceId && lease.executionId === input.executionId && lease.state === "ACTIVE");
+  if (existing) return existing.id;
+  const leaseId = id("LEASE");
+  update(s => { s.projectLeases ??= []; s.projectLeases.push({ id: leaseId, tenantId: s.activeTenant, projectId: input.projectId, kind: input.kind, workId: input.workId, nodeId: input.nodeId, resourceId: input.resourceId, executionId: input.executionId,
+    state: "ACTIVE", revision: 1, actorId: "H-lin", source: "LOCAL_SIMULATION", createdAt: new Date().toISOString(), history: [] }); });
+  return leaseId;
+}
+export function releaseProjectLease(input) {
+  assertWrite();
+  const lease = (state.projectLeases || []).find(lease => lease.id === input.leaseId);
+  if (!lease || input.tenantId !== state.activeTenant || lease.tenantId !== state.activeTenant || lease.revision !== input.revision) throw Error("租约或租户已变化，请重新核对。");
+  const project = state.projects.find(project => project.id === lease.projectId), problem = projectLifecycleProblem(state,project);
+  const ownLease = lease.actorId === "H-lin" && lease.source === "LOCAL_SIMULATION" && ["owner", "executor"].includes(state.role) && state.organization.members.some(person => person.id === "H-lin" && person.kind === "Human");
+  if (problem && !ownLease) throw Error(problem);
+  if (!input.reason?.trim() || lease.source !== "LOCAL_SIMULATION") throw Error("请说明处置理由；未知来源不能补造释放回执。");
+  if (lease.state === "RELEASED") throw Error("租约已有固定释放记录。");
+  const result = lease.nodeId && state.nodes.find(node => node.id === lease.nodeId)?.status !== "在线" ? "FAILED" : "RELEASED";
+  update(s => { const current = s.projectLeases.find(item => item.id === lease.id), time = new Date().toISOString();
+    const fact = { leaseId: current.id, projectId: current.projectId, actorId: "H-lin", reason: input.reason.trim(), source: "LOCAL_SIMULATION", result, time };
+    current.history.push(fact); current.state = result; current.revision++; if (result === "RELEASED") current.disposition = fact;
+    log(s, `${result === "RELEASED" ? "记录模拟释放" : "模拟释放未确认"} · ${current.id}`, `/p/${current.projectId}`);
+  });
+  return result;
+}
+
+// Project settings update this project's metadata only; work ownership and execution facts stay independent.
+export function projectHumanOwner(s, project) {
+  if (!project) return null;
+  const humans = s.organization.members.filter(person => person.kind === "Human");
+  if (project.ownerId) return humans.find(person => person.id === project.ownerId) || null;
+  const matches = humans.filter(person => person.name === project.owner);
+  return matches.length === 1 ? matches[0] : null;
+}
+export function projectMetadataWriteProblem(s, project) {
+  if (!project) return "项目不存在于当前租户。";
+  if (project.id === "private") return "私人工作容器不通过团队项目设置转移归属。";
+  if (project.archivedAt) return "已归档项目的资料为只读。";
+  if (s.role === "external") return "外部成员不能修改项目资料。";
+  if (!["owner", "executor"].includes(s.role)) return "当前角色不能修改项目资料。";
+  if (s.offline) return "离线中，修改已保留；恢复连接后请重新确认。";
+  if (!s.organization.members.some(person => person.id === "H-lin" && person.kind === "Human")) return "当前 Human 身份不在租户中。";
+  return s.role === "owner" || projectHumanOwner(s, project)?.id === "H-lin" || s.organization.projectRoles.some(role => role.projectId === project.id && role.memberId === "H-lin" && role.role === "项目负责人")
+    ? "" : "仅项目负责人或租户负责人可以修改项目资料。";
+}
+export function saveProjectMetadata(input) {
+  if (input.tenantId !== state.activeTenant) throw Error("租户已切换，请重新打开项目设置。");
+  const project = state.projects.find(project => project.id === input.projectId);
+  const problem = projectMetadataWriteProblem(state, project); if (problem) throw Error(problem);
+  const revision = project.revision ?? 1;
+  if (!Number.isSafeInteger(revision) || revision < 1 || input.revision !== revision) throw Error("项目资料已变更，请重新打开当前版本后保存。");
+  if (typeof input.name !== "string" || !input.name.trim() || input.name.trim().length > 200) throw Error("项目名称须为 1–200 字。");
+  if (typeof input.description !== "string" || input.description.length > 2000) throw Error("项目简介最多 2000 字，可以留空。");
+  const owner = state.organization.members.find(person => person.kind === "Human" && person.id === input.ownerId);
+  if (!owner) throw Error("请选择当前租户中的有效 Human 负责人。");
+  if (typeof input.deadline !== "string" || input.deadline && (!/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(input.deadline) || !Number.isFinite(Date.parse(`${input.deadline}T00:00:00Z`)) || new Date(`${input.deadline}T00:00:00Z`).toISOString().slice(0,10) !== input.deadline)) throw Error("请选择真实有效的截止日期，或清空为待确认。");
+  const next = { name: input.name.trim(), description: input.description.trim(), ownerId: owner.id, owner: owner.name, deadline: input.deadline || "待确认" };
+  if (project.history != null && (!Array.isArray(project.history) || project.history.some(entry => !entry || typeof entry !== "object" || Array.isArray(entry) || entry.kind === "METADATA" && (!entry.previous || typeof entry.previous !== "object" || Array.isArray(entry.previous) || !entry.next || typeof entry.next !== "object" || Array.isArray(entry.next))))) throw Error("项目历史格式异常，请先核对原始记录；不会覆盖历史。");
+  if (Object.entries(next).every(([key,value]) => project[key] === value)) return project.id;
+  const previous = Object.fromEntries(["name","description","ownerId","owner","deadline"].filter(key => Object.hasOwn(project,key)).map(key => [key,structuredClone(project[key])]));
+  update(s => {
+    const current = s.projects.find(item => item.id === project.id);
+    current.history = [...(current.history || []), { kind: "METADATA", revision, actorId: "H-lin", time: new Date().toISOString(), previous, next: structuredClone(next) }];
+    Object.assign(current,next,{revision: revision + 1});
+    for (const channel of s.channels.filter(channel => channel.kind === "PROJECT_DEFAULT" && channel.projectId === current.id && channel.name !== current.name)) {
+      channel.history.push({ action: "项目改名同步默认频道", time: new Date().toISOString(), actorId: "H-lin", revision: channel.revision, name: channel.name, topic: channel.topic, archivedAt: channel.archivedAt, members: structuredClone(channel.members), announcement: structuredClone(channel.announcement), hooks: structuredClone(channel.hooks) });
+      channel.name = current.name;
+      channel.revision += 1;
+    }
+    log(s, `更新项目资料 ${current.name}`, `/p/${current.id}`);
+  });
+  return project.id;
 }
 export function workExecutors(s, work) {
   if (!work.team) {
@@ -2177,13 +2963,14 @@ export function workTeamMemberAvailable(s, memberId) {
     const agent = s.agents.find((item) => `agent:${item.id}` === memberId);
     return Boolean(agent && !["退役", "待批准"].includes(agent.status));
   }
-  return s.organization.members.some((person) => person.id === memberId && person.kind === "Human");
+  return governanceHumans(s).some((person) => person.id === memberId);
 }
 function assertOrganizationWrite() {
   assertWrite();
   if (state.role !== "owner") throw Error("请由负责人视角配置组织与团队责任。");
 }
 export function saveOrganization(kind, input, reason) {
+  if (kind === "projectRoles") { assertProjectRecordWritable(input); assertProjectRecordWritable(state.organization.projectRoles.find(item => item.id === input.id)); }
   assertOrganizationWrite();
   if (!["nodes", "members", "projectRoles"].includes(kind)) throw Error("未知组织记录类型。");
   if (!reason?.trim()) throw Error("请填写变更说明。");
@@ -2237,6 +3024,7 @@ export function saveOrganization(kind, input, reason) {
   return recordId;
 }
 export function saveMemberInvitation(input, reason) {
+  assertProjectRecordWritable(input);
   assertOrganizationWrite();
   if (!reason?.trim()) throw Error("请填写邀请说明。");
   if (!input.name?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email || "")) throw Error("请填写姓名与有效电子邮件。");
@@ -2276,6 +3064,7 @@ export function revokeMemberInvitation(invitationId, reason, revision) {
 }
 
 export function saveWorkTeam(workId, input, reason) {
+  assertProjectRecordWritable(state.work.find(work => work.id === workId));
   assertOrganizationWrite();
   const work = state.work.find((item) => item.id === workId);
   if (!work) throw Error("工作不存在于当前租户。");
@@ -2312,6 +3101,9 @@ export function saveWorkTeam(workId, input, reason) {
 }
 
 const tenantFields = [
+  "projectLeases",
+  "goalGuidance",
+  "goalQuadrant",
   "planningSettings",
   "organization",
   "role",
@@ -2321,6 +3113,8 @@ const tenantFields = [
   "agents",
   "nodes",
   "messages",
+  "channels",
+  "channelProjectGrants",
   "comments",
   "resources",
   "events",
@@ -2330,8 +3124,10 @@ const tenantFields = [
   "flowVersion",
   "flowVersions",
   "projectFlows",
+  "projectWorkflows",
   "drafts",
   "taskPreviews",
+  "executions",
   "defectMigrationIssues",
   "budget",
 ];
@@ -2344,10 +3140,14 @@ function emptyTenant(role = "owner") {
   const fresh = hydrate(structuredClone(initial));
   for (const k of [
     "projects",
+    "projectLeases",
+    "executions",
     "work",
     "agents",
     "nodes",
     "messages",
+    "channels",
+    "channelProjectGrants",
     "comments",
     "events",
   ])
@@ -2364,6 +3164,7 @@ function emptyTenant(role = "owner") {
   fresh.flowVersion = 0;
   fresh.projectFlows = {};
   fresh.drafts = {};
+  hydrateChannels(fresh);
   return tenantSnapshot(fresh);
 }
 export function switchTenant(tenantId) {
@@ -2420,6 +3221,7 @@ export function declineTenantInvitation(invitationId) {
 }
 
 export function scheduleWork(workId, start, end, reason, revision) {
+  assertProjectRecordWritable(state.work.find(work => work.id === workId));
   assertWrite();
   const w = state.work.find((w) => w.id === workId);
   if (!w) throw Error("工作不存在。");
@@ -2538,3 +3340,115 @@ export function validateWorkflow(graph) {
   checkGates("brief", false, false);
   return issues;
 }
+
+// Channel mutations validate against the current state inside one atomic local update.
+export function createChannel(input) { let result; update(s => { result = createChannelOn(s, input); log(s, "创建频道", `/chat?channel_id=${encodeURIComponent(result)}`); }); return result; }
+export function openDirectChannel(input) { let result; update(s => { result = openDirectChannelOn(s, input); }); return result; }
+function channelMutation(operation, input) { update(s => { operation(s, input); log(s, "更新频道管理记录", `/chat?channel_id=${encodeURIComponent(input.channelId)}`); }); }
+export const changeChannel = input => channelMutation(changeChannelOn, input);
+export const changeChannelMember = input => channelMutation(changeMemberOn, input);
+export const publishChannelAnnouncement = input => channelMutation(publishAnnouncementOn, input);
+export const changeChannelHook = input => channelMutation(changeHookOn, input);
+export function postChannelMessage(input) {
+  let result;
+  update(s => {
+    if (input.tenantId !== s.activeTenant) throw Error("租户已切换，请重新发送。");
+    if(input.channelId?.startsWith("exec-")) throw Error("执行输入请按独立执行轮次提交，不是协作频道消息。");
+    assertChannelWrite(s, input.channelId);
+    const attachments=normalizeChatAttachments(input.attachments);
+    if ((!input.text?.trim() && !input.file && !attachments.length) || (input.text || "").length > 8000) throw Error("请填写有效消息，正文最多 8000 字。");
+    const mentions = [...new Set([...(input.text || "").matchAll(/<@([^>]+)>/g)].map(match => match[1]))];
+    const channel = s.channels.find(c => c.id === input.channelId);
+    if (mentions.length > 20 || mentions.some(id => !channel || !channelMembers(s,channel).some(m => m.principalId === id && m.person.available))) throw Error("提及必须是当前有效频道成员；退役或未授权 Agent 不能被提及。");
+    if (input.threadId) { const root = s.messages.find(m => m.id === input.threadId); if (!root || root.channel !== input.channelId || root.recalled || channelMessageReadProblem(s, root)) throw Error("线程不在当前可读频道。"); }
+    if (input.workDraftId && (!s.drafts[input.workDraftId] || s.drafts[input.workDraftId].channel !== input.channelId || s.drafts[input.workDraftId].workId)) throw Error("会话草稿已变更，请重新打开。");
+    result = { id: id("m"), channel: input.channelId, authorId: channelActor(s), author: s.role === "external" ? "陈曦 · 客户" : "林予", text: (input.text || "").trim(), thread: input.threadId || null, file: input.file || attachments.map(file=>file.name).join("、"), attachments, time: new Date().toISOString(), kind: "human", mentions, ...(input.workDraftId ? { workDraft: input.workDraftId } : {}) };
+    s.messages.push(result);
+    if (input.workDraftId) s.drafts[input.workDraftId].discussion.push({ messageId: result.id, text: result.text, file: result.file });
+  }); return result;
+}
+export function changeChannelMessage(input) {
+  update(s => {
+    if (input.tenantId !== s.activeTenant) throw Error("租户已切换，请重新打开消息。");
+    const message = s.messages.find(m => m.id === input.messageId);
+    const problem = channelMessageReadProblem(s, message); if (problem) throw Error(problem);
+    if(message.channel?.startsWith("exec-")) throw Error("执行输入保留固定原文与处理回执，不能使用协作消息操作。");
+    assertChannelWrite(s, message.channel);
+    if (input.expectedText !== message.text || message.recalled) throw Error("消息已变更，请重新打开。");
+    if (["edit", "recall"].includes(input.action) && (message.authorId ? message.authorId !== channelActor(s) : message.author !== "林予" || s.role === "external")) throw Error("只能编辑或撤回自己的消息。");
+    if (message.announcement && input.action !== "react") throw Error("公告请通过频道管理修订或取消，保留发布版本。");
+    if (input.action === "edit") { if (!input.text?.trim() || input.text.length > 8000) throw Error("消息正文须为 1–8000 字。"); message.history ??= []; message.history.push({ text: message.text, time: new Date().toISOString() }); message.text = input.text.trim(); }
+    else if (input.action === "recall") message.recalled = true;
+    else if (input.action === "pin") message.pinned = !message.pinned;
+    else if (input.action === "react") message.reacted = !message.reacted;
+    else if (input.action === "emoji") { if(!chatEmoji.includes(input.emoji))throw Error("请选择可用表情。");message.emojiReactions ??= [];let reaction=message.emojiReactions.find(item=>item.emoji===input.emoji);if(!reaction){reaction={emoji:input.emoji,principalIds:[]};message.emojiReactions.push(reaction);}const actor=channelActor(s);reaction.principalIds=reaction.principalIds.includes(actor)?reaction.principalIds.filter(id=>id!==actor):[...reaction.principalIds,actor];message.emojiReactions=message.emojiReactions.filter(item=>item.principalIds.length); }
+    else throw Error("未知消息操作。");
+    log(s, `消息 ${input.action} ${message.id}`);
+  });
+}
+
+export function changeAgentChannelGrant(input) { update(s => {changeAgentChannelGrantOn(s,input);log(s,"更新 Agent 项目会话授权",`/agents/${input.agentId}`);}); }
+
+export function saveGoalGuidance(input) {
+  assertWrite(); if (state.role !== "owner" || !state.organization.members.some(p=>p.id==="H-lin"&&p.kind==="Human")) throw Error("指导版本由本地 Human 管理者维护。");
+  const current=goalGuidance(state); if(input.revision!==current.revision)throw Error("指导版本已变化。");
+  const definition=Object.fromEntries(["objective","keyResult","goodExample","badExample"].map(key=>[key,String(input[key]||"").trim()]));
+  if(Object.values(definition).some(v=>!v)||!input.reason?.trim())throw Error("请完整填写指导、正反例及修订理由。");
+  update(s=>{s.goalGuidance={current:{...definition,revision:current.revision+1,actorId:"H-lin",time:new Date().toISOString(),reason:input.reason.trim()},history:[...(s.goalGuidance?.history||[]),structuredClone(current)]};});
+}
+export function recordGoalValueReview(goalId,input) {
+  assertWrite();const goal=mutableStructuredGoal(goalId,input);if(!goal.collaborationVersion)throw Error("请先明确共同维护与审核责任。");
+  if(goal.status!=="草稿")throw Error("仅对当前草稿记录发布前价值审查。");
+  const agent=state.agents.find(a=>a.id===input.agentId);if(!agent||goalActionProblem(state,goal,"draft",agent.id))throw Error("请选择获此目标草稿授权的有效 Agent。");
+  if(input.simulated!==true)throw Error("当前仅支持明确标识的本地 Agent 审查模拟。");
+  const guide=goalGuidance(state);if(input.guidanceRevision!==guide.revision)throw Error("指导版本已变化，请重新阅读后审查。");
+  const checks={};for(const key of Object.keys(valueReviewChecks)){const c=input.checks?.[key];if(!["PASS","REVISE","UNKNOWN"].includes(c?.result)||!c?.basis?.trim())throw Error("六项价值审查均须给出结论与逐项依据；结构校验不等于价值审查。");checks[key]={result:c.result,basis:c.basis.trim()};}
+  update(s=>{const g=s.resources.goals.find(g=>g.id===goalId);goalAudit(g,"记录本地 Agent 价值审查模拟");g.valueReviewHistory??=[];if(g.valueReview)g.valueReviewHistory.push(structuredClone(g.valueReview));g.valueReview={definitionRevision:g.definitionRevision,definition:structuredClone(goalDefinition(g)),guidanceRevision:guide.revision,guidance:structuredClone(guide),checks,agentId:agent.id,recordedBy:"H-lin",source:"LOCAL_SIMULATION",time:new Date().toISOString()};});
+}
+export function recordGoalDiscussion(goalId,input) {
+  assertWrite();const g=state.resources.goals.find(g=>g.id===goalId);if(!g?.collaborationVersion)throw Error("此目标尚未明确共同维护责任。");
+  if(closedGoalStates.includes(g.status))throw Error("已关闭目标只读。");
+  const p=goalActionProblem(state,g,input.action==="resolve"?"draft":"suggest");if(p)throw Error(p);if(input.revision!==g.revision)throw Error("目标修订已变化。");
+  if(!input.text?.trim())throw Error("请填写建议、分歧或处理依据。");
+  if(input.simulateAgentId&&(!state.agents.some(a=>a.id===input.simulateAgentId)||goalActionProblem(state,g,"suggest",input.simulateAgentId)))throw Error("此 Agent 无权参与本目标讨论。");
+  const item=input.action==="resolve"&&g.discussions?.find(x=>x.id===input.discussionId);if(input.action==="resolve"&&(!item||item.resolution))throw Error("讨论不存在或已有处理记录。");
+  update(s=>{const goal=s.resources.goals.find(x=>x.id===goalId);goalAudit(goal,"目标共同讨论");goal.discussions??=[];const actor={actorId:input.simulateAgentId||"H-lin",actorKind:input.simulateAgentId?"Agent":"Human",recordedBy:"H-lin",source:"LOCAL_SIMULATION",time:new Date().toISOString(),definitionRevision:goal.definitionRevision};if(item)goal.discussions.find(x=>x.id===item.id).resolution={...actor,text:input.text.trim()};else goal.discussions.push({...actor,id:id("GD"),text:input.text.trim(),resolution:null});});
+}
+export function recordGoalCheckin(goalId,input) {
+  assertWrite();const g=mutableStructuredGoal(goalId,input);if(!g.collaborationVersion)throw Error("请先明确共同维护责任。");
+  if(!["进行中","存在风险"].includes(g.status)&&!g.activeBaseline)throw Error("目标须有明确生效基线才可周期 check-in。");
+  if(!input.progress?.trim()||!["HIGH","MEDIUM","LOW","UNKNOWN"].includes(input.confidence)||!input.risk?.trim()||!input.help?.trim())throw Error("请分别记录事实进展、信心、风险和求助；没有观察仍保持未知。");
+  if(input.simulateAgentId&&(!state.agents.some(a=>a.id===input.simulateAgentId)||goalActionProblem(state,g,"checkin",input.simulateAgentId)))throw Error("此 Agent 未获 check-in 授权。");
+  update(s=>{const goal=s.resources.goals.find(x=>x.id===goalId);goalAudit(goal,"周期 check-in");goal.checkins??=[];goal.checkins.push({id:id("GC"),definitionRevision:goal.activeBaseline?.definitionRevision||goal.definitionRevision,progress:input.progress.trim(),confidence:input.confidence,risk:input.risk.trim(),help:input.help.trim(),actorId:input.simulateAgentId||"H-lin",actorKind:input.simulateAgentId?"Agent":"Human",recordedBy:"H-lin",source:"LOCAL_SIMULATION",time:new Date().toISOString()});});
+}
+export function saveGoalQuadrant(input) {
+  assertWrite();if(state.role!=="owner")throw Error("四象限口径由本地 Human 管理者明确配置。");const old=state.goalQuadrant?.current;
+  if(input.revision!==(old?.revision||0))throw Error("四象限口径已变化。");const axes=validateGoalQuadrantConfig(input);if(!input.reason?.trim())throw Error("请记录口径说明。");
+  update(s=>{s.goalQuadrant={current:{...axes,revision:(old?.revision||0)+1,reason:input.reason.trim(),actorId:"H-lin",time:new Date().toISOString()},history:[...(s.goalQuadrant?.history||[]),...(old?[structuredClone(old)]:[])]};});
+}
+export function positionGoalQuadrant(goalId,input) {
+  assertWrite();const goal=mutableStructuredGoal(goalId,input);const point={x:goalNumber(input.x),y:goalNumber(input.y),configRevision:input.configRevision,reason:input.reason?.trim()};validateGoalQuadrantPoint(state,goal,point);
+  update(s=>{const g=s.resources.goals.find(g=>g.id===goalId);goalAudit(g,"四象限判断："+point.reason);g.quadrant={...point,actorId:"H-lin",time:new Date().toISOString()};});
+}
+
+export function performanceCommand(input) {
+  let result;
+  update(s => { result=performanceCommandOn(s,input,id); });
+  return result;
+}
+
+// Execution actions reuse the atomic local store; each receipt is explicitly simulated.
+export function createExecution(input) { let result; update(s=>{if(input.workId){const w=s.work.find(w=>w.id===input.workId);if(!w||!flowDefinition(s,w.project,w.flowVersion,w.workflowId||'default'))throw Error('工作流固定版本不存在，请重新确认。');}result=createExecutionOn(s,input);log(s,`创建本地执行场景 ${result.id}`,`/chat?execution_id=${result.id}`);});return result; }
+export function executionCommand(input) { let result;update(s=>{result=executionCommandOn(s,input);});return result; }
+export function submitExecutionInput(input) { let result;update(s=>{result=submitExecutionInputOn(s,input);});return result; }
+export function resolveExecutionInput(input) { let result;update(s=>{result=resolveExecutionInputOn(s,input);});return result; }
+export function linkAdhocExecution(input) { let result;update(s=>{const e=executionRecord(s,input.executionId),w=s.work.find(w=>w.id===input.workId&&w.project===e?.projectId);if(!w||!flowDefinition(s,w.project,w.flowVersion,w.workflowId||'default'))throw Error('关联工作流固定版本不存在。');result=linkAdhocExecutionOn(s,input);});return result; }
+
+export function completeExecutionTurn(input){let result;update(s=>{result=completeExecutionTurnOn(s,input);});return result;}
+
+export function createExecutionBranch(input) { let result; update(s=>{const parent=executionRecord(s,input.executionId),w=s.work.find(w=>w.id===parent?.workId);if(!w||!flowDefinition(s,w.project,w.flowVersion,w.workflowId||"default"))throw Error("工作流固定版本不存在，请重新确认后再派发分支。");result=createExecutionBranchOn(s,input);log(s,`创建本地执行分支 ${result.id}`,`/chat?execution_id=${encodeURIComponent(result.id)}`);});return result; }
+
+export function requestExecutionInteraction(input){let result;update(s=>{result=requestExecutionInteractionOn(s,input);});return result;}
+export function decideExecutionInteraction(input){let result;update(s=>{result=decideExecutionInteractionOn(s,input);});return result;}
+export function deliverExecutionInteraction(input){let result;update(s=>{result=deliverExecutionInteractionOn(s,input);});return result;}
+export function expireExecutionInteraction(input){let result;update(s=>{result=expireExecutionInteractionOn(s,input);});return result;}

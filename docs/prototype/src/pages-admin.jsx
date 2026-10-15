@@ -1,12 +1,31 @@
+import { ApprovalOrchestration, HumanLifecycle } from "./governance-ui";
+import { BudgetPage } from "./pages-budget";
+import { recordProjectId } from "./project-lifecycle";
+import { DataList } from "./data-list";
+import { visibleExternalBridgeBindings } from "./external-bridge";
+import { useViewState } from "./view-state";
+import { KnowledgeLibrary } from "./knowledge-library";
+import { AgentChannelGrants, DirectMessageButton } from "./channel-management";
+import { projectRecordWriteProblem, projectIsArchived, activeProjects, requestProjectLease, releaseProjectLease } from "./store";
+import { approvalSource, approvalDecisionProblem, requestModelApproval } from "./store.js";
+import { repositoryRecords, repositoryWriteProblem } from "./store.js";
 import { GoalsPage } from "./pages-goals";
+import { memoryRevocationProblem } from "./knowledge";
 import { formatCurrency, formatTimestamp } from "./formatting";
-import React, { useState, useEffect, useRef } from "react";
-import { catalog, fieldNames, resourceFields } from "./data";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { catalog, fieldNames, resourceFields, themeNames } from "./data";
 import { QAResourcePage } from "./pages-qa";
 import { Flow } from "./pages-flow";
-import { reportCadences, reportSubjects, reportPeriod, dateInZone } from "./reporting";
+import { reportCadences, reportSubjects, reportPeriod, dateInZone, reportChildProblem } from "./reporting";
+import { reportNextPlan, reportNextPlanBinding, reportNextPlanDescriptor, reportCurrentPlan, reportCurrentPlanBinding, reportCurrentPlanBindingProblem, planCanRead } from "./plans";
+import { ReportContentEditor, ReportContentReader } from "./report-content-ui";
+import { reportNextPlanItems } from "./report-content";
 import {
   useStore,
+  read,
+  visibleKnowledge,
+  visibleActivityEvents,
+  revokeKnowledgeMemory,
   update,
   log,
   id,
@@ -18,6 +37,7 @@ import {
   reportEvidence,
   reportTransitionProblem, reportAuthor, reportReviewAuthority, reportEditProblem,
   generatePeriodicReport,
+  openReportNextPlan,
   saveReportSchedule,
   defectVerificationRuns, defectRecords,
   saveOrganization,
@@ -77,10 +97,6 @@ const transitions = {
     ["待修复", "验证失败并重开"],
     ["待修复", "重新打开"],
   ],
-  repositories: [
-    ["已连接", "模拟增量同步"],
-    ["已暂停", "暂停同步"],
-  ],
   schedules: [
     ["启用", "启用"],
     ["暂停", "暂停"],
@@ -131,9 +147,51 @@ const transitions = {
     ["已拒收", "拒收并退回"],
   ],
 };
-function GenericResourcePage({ kind, recordId, toast }) {
+function ApprovalBasis({ state, record }) {
+  const source = approvalSource(state, record);
+  const legacyModels = !record.targetKind ? state.resources.models.filter(model => model.id === record.target) : [];
+  const currentHref = source?.href || (legacyModels.length === 1 ? `/models/${legacyModels[0].id}` : null);
+  const text = value => typeof value === "string" && value.trim() ? value : typeof value === "number" ? String(value) : "未记录";
+  const person = (id, kind) => `${text(id)} · ${text(kind)}`;
+  const sourceType = kind => kind === "model" ? "模型配置" : kind === "agent" ? "Agent 配置" : "来源类型未记录或不受支持";
+  const fields = record.targetKind === "model"
+    ? [["id", "模型配置 ID"], ["name", "配置名称"], ["owner", "负责人"], ["protocol", "协议"], ["baseURL", "服务地址"], ["model", "模型"], ["scope", "应用范围"], ["secret", "凭据引用"], ["version", "配置版本"]]
+    : record.targetKind === "agent"
+      ? [["id", "Agent ID"], ["name", "名称"], ["role", "角色"], ["responsibilities", "职责"], ["systemPrompt", "System prompt"], ["taskTemplate", "任务模板"], ["runtime", "运行时"], ["modelId", "模型配置 ID"], ["modelRevision", "模型配置修订"], ["owner", "负责人"], ["skillIds", "技能引用"], ["mcpIds", "MCP 引用"], ["creatorKind", "创建者类型"], ["creatorId", "创建者 ID"]]
+      : [];
+  const snapshot = (value) => value && fields.length ? <dl className="record-fields">{fields.map(([key, label]) => <React.Fragment key={key}>
+    <dt>{label}</dt><dd style={{ overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{Array.isArray(value[key]) ? value[key].length ? <ul>{value[key].map((item, index) => <li key={index}>{text(item)}</li>)}</ul> : "无引用" : text(value[key])}</dd>
+  </React.Fragment>)}</dl> : <p className="muted">未保存固定配置，不能用当前配置补造历史依据。</p>;
+  return <Section title="固定审批依据">
+    <Notice>本地 Human 审批模拟；决定仅适用于提交时的固定配置，不代表真实下发。</Notice>
+    <dl className="record-fields">
+      <dt>来源类型</dt><dd>{sourceType(record.targetKind)}</dd>
+      <dt>来源 ID</dt><dd>{text(record.target)}</dd>
+      <dt>提交修订</dt><dd>{Number.isSafeInteger(record.targetRevision) && record.targetRevision > 0 ? record.targetRevision : "未记录"}</dd>
+      <dt>提出者</dt><dd>{person(record.requestedBy?.id, record.requestedBy?.kind)}</dd>
+      <dt>请求来源</dt><dd>{record.requestedBy?.source === "LOCAL_SIMULATION" ? "本地模拟" : "未记录"}</dd>
+      <dt>提交时间</dt><dd>{record.requestedAt ? formatTimestamp(record.requestedAt) : "未记录"}</dd>
+    </dl>
+    <details open><summary>提交时固定配置</summary>{snapshot(record.sourceSnapshot)}</details>
+    {currentHref && <p><Link className="btn" to={currentHref}>{record.targetKind ? "查看当前源配置 / 重新提交" : "查看当前配置"}</Link></p>}
+    {!record.targetKind && <p className="muted">旧记录缺少固定来源；当前配置导航不代表原审批依据。</p>}
+    {record.decision ? <>
+      <h3>固定决定</h3>
+      <dl className="record-fields">
+        <dt>决定</dt><dd>{text(record.decision.status)}</dd>
+        <dt>决定者</dt><dd>{person(record.decision.actorId, record.decision.actorKind)}</dd>
+        <dt>决定来源</dt><dd>{record.decision.source === "LOCAL_SIMULATION" ? "本地模拟" : "未记录"}</dd>
+        <dt>决定时间</dt><dd>{record.decision.time ? formatTimestamp(record.decision.time) : "未记录"}</dd>
+        <dt>决定依据</dt><dd style={{ overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{text(record.decision.reason)}</dd>
+        <dt>决定所指来源</dt><dd>{sourceType(record.decision.targetKind)} · {text(record.decision.target)} · 修订 {text(record.decision.targetRevision)}</dd>
+      </dl>
+      <details><summary>决定时固定配置</summary>{snapshot(record.decision.snapshot)}</details>
+    </> : <p className="muted">没有固定决定记录。</p>}
+  </Section>;
+}
+function GenericResourcePage({ kind, recordId, toast, params }) {
   const s = useStore();
-  const [query, setQuery] = useState("");
+  const [includeRevoked, setIncludeRevoked] = useState(false);
   const [editing, setEditing] = useState(null);
   const [generation, setGeneration] = useState(null);
   const [goalCalibration, setGoalCalibration] = useState(null);
@@ -141,10 +199,16 @@ function GenericResourcePage({ kind, recordId, toast }) {
   const [reason, setReason] = useState("");
   const [receiptItems, setReceiptItems] = useState([]);
   const [verificationRunId, setVerificationRunId] = useState("");
+  const [, redrawList]=useState(0), tenantId=s.activeTenant, projectId=s.project, role=s.role;
+  const rereadList=useCallback(()=>{const current=read();if(current.activeTenant!==tenantId||current.project!==projectId||current.role!==role)throw Error("列表范围已变化，请重新打开当前列表。");return current;},[tenantId,projectId,role]);
+  const refreshList=useCallback(()=>{rereadList();redrawList(value=>value+1);},[rereadList]);
+  const exportList=useCallback(payload=>{const current=rereadList();const authorized=(kind==="knowledge"?visibleKnowledge(current,{includeRevoked:true}):current.resources[kind]||[]).filter(record=>!["tests","deliveries"].includes(kind)||current.project==="all"||recordProjectId(current,record)===current.project);return payload.records.every(row=>authorized.some(record=>record.id===row.id && record.name===row.name && record.status===row.status && (record.owner||"")===row.owner));},[rereadList,kind]);
   const meta = catalog[kind];
   if (!meta) return <Empty title="页面不存在" />;
-  const rows = s.resources[kind] || [];
+  const sourceRows = kind === "knowledge" ? visibleKnowledge(s, { includeRevoked: Boolean(recordId) || includeRevoked, includeArchived: Boolean(recordId) }) : s.resources[kind] || [];
+  const rows = !recordId && ["tests","deliveries"].includes(kind) && s.project!=="all" ? sourceRows.filter(record=>recordProjectId(s,record)===s.project) : sourceRows;
   const record = rows.find((r) => r.id === recordId);
+  const recordedText = value => typeof value === "string" && value.trim() ? value : "未记录";
   if (s.role === "external" && !["deliveries"].includes(kind))
     return (
       <Empty
@@ -152,15 +216,10 @@ function GenericResourcePage({ kind, recordId, toast }) {
         text="外部成员仅访问已共享成果、会话与回执。"
       />
     );
-  if (recordId && !record) return <Empty title="记录不存在" />;
+  if (recordId && !record) return <Empty title={kind === "knowledge" ? "资料不存在或无权访问" : "记录不存在"} />;
   if (["testplans", "testreports"].includes(kind)) return <QAResourcePage kind={kind} recordId={recordId} toast={toast} />;
-  if (kind === "templates") return <WorkflowTemplates record={record} toast={toast} />;
-  const filtered = rows.filter((r) =>
-    `${r.name} ${r.owner} ${r.status}`
-      .toLowerCase()
-      .includes(query.toLowerCase()),
-  );
-  const defaults = rows[0] || {
+  if (kind === "templates") return <WorkflowTemplates record={record} toast={toast} params={params} />;
+  const defaults = (kind === "knowledge" ? null : rows[0]) || {
     name: "",
     owner: "林予",
     status: "草稿",
@@ -179,7 +238,7 @@ function GenericResourcePage({ kind, recordId, toast }) {
   return (
     <>
       <PageHead
-        eyebrow={`${record ? meta[0] + " / " + record.id : "WORKSPACE / " + kind.toUpperCase()}`}
+        eyebrow={record ? `${meta[0]} / ${record.id}` : undefined}
         title={record ? record.name : meta[0]}
         subtitle={meta[1]}
       >
@@ -188,26 +247,27 @@ function GenericResourcePage({ kind, recordId, toast }) {
             <Link className="btn" to={`/${kind}`}>
               返回列表
             </Link>
-            {kind !== "deliveries" && <Button icon="Pencil" disabled={kind === "goals" ? Boolean(goalWriteProblem(s, record, true)) : kind === "reports" ? Boolean(reportEditProblem(s, record, { simulateAgent: true })) : false} title={kind === "goals" ? goalWriteProblem(s, record, true) || "" : kind === "reports" ? reportEditProblem(s, record, { simulateAgent: true }) || "" : undefined} onClick={() => setEditing({ ...record })}>
+            {!["deliveries", "approvals"].includes(kind) && !record.revocation && <Button icon="Pencil" disabled={Boolean(projectRecordWriteProblem(s,record)) || (kind === "goals" ? Boolean(goalWriteProblem(s, record, true)) : kind === "reports" ? Boolean(reportEditProblem(s, record, { simulateAgent: true })) : false)} title={kind === "goals" ? goalWriteProblem(s, record, true) || "" : kind === "reports" ? reportEditProblem(s, record, { simulateAgent: true }) || "" : undefined} onClick={() => setEditing({ ...record })}>
               编辑
             </Button>}
           </>
-        ) : (
-          kind !== "deliveries" && <Button variant="primary" icon="Plus" onClick={create}>
-            {kind === "reports" ? "生成 / 打开周期报告" : `新建${meta[2]}`}
-          </Button>
-        )}
+        ) : null}
+
+        {kind === "models" && record && <Button onClick={() => { try { const requestId = requestModelApproval(record.id, record.revision || 1); location.hash = `/approvals/${requestId}`; } catch (error) { toast(error.message, true); } }}>提交当前配置审批</Button>}
+
         {kind === "reports" && <Button icon="CalendarClock" onClick={() => setGeneration({ mode: "schedule" })}>定时生成设置</Button>}
-        <Button
+        {record && <Button
           icon="Download"
-          onClick={() => exportData(kind, record || filtered)}
+          onClick={() => exportData(kind, record)}
         >
           导出
-        </Button>
+        </Button>}
       </PageHead>
+      {kind === "models" && <Notice>本地模型与配置复用 cc-switch / cc-switch-cli 的供应商、切换、MCP、Skills 与提示词能力。本页是云配置目录和远程下发原型；配置审批、目标节点、版本与应用回执由平台扩展。尚未接入真实 cc-switch，不会修改本机配置。 <a href="https://github.com/SaladDay/cc-switch-cli" target="_blank" rel="noopener noreferrer">查看 cc-switch-cli</a></Notice>}
       {record ? (
         <div className="detail-grid">
           <div>
+            {projectRecordWriteProblem(s,record) && <Notice>所属项目已归档，此记录保持原权限并只读。</Notice>}
             <Section title="基本信息" extra={<Badge>{record.status}</Badge>}>
               <dl className="record-fields">
                 {Object.entries(record)
@@ -215,18 +275,37 @@ function GenericResourcePage({ kind, recordId, toast }) {
                     ([k]) =>
                       !["id", "status", "name", "history", "revision", "items", "requirements", "runs", "currentRun"].includes(
                         k,
-                       ) && !(kind === "goals" && ["metricRevision", "progressCalibration", "progress", "submission", "approval", "ownerId", "ownerKind"].includes(k)) && !(kind === "reports" && ["references", "factSnapshot", "subjectKey", "cadence", "timezone", "periodStart", "periodEnd", "cycle", "generatedSummary", "generatedFacts", "suggestedReferences", "generatedAt", "generatedBy", "generationHistory", "summary", "risk", "source", "submission", "approval", "authorId", "authorKind"].includes(k)),
+                       ) && !(kind === "approvals" && ["sourceSnapshot", "requestedBy", "requestedAt", "decision", "targetKind", "target", "targetRevision", "tenantId"].includes(k)) && !(kind === "knowledge" && ["ownerId", "ownerKind", "tenantId", "revocation"].includes(k)) && !(kind === "deliveries" && k === "sendFact") && !(kind === "models" && k === "nodeResults") && !(kind === "goals" && ["metricRevision", "progressCalibration", "progress", "submission", "approval", "ownerId", "ownerKind"].includes(k)) && !(kind === "reports" && ["references", "factSnapshot", "subjectKey", "cadence", "timezone", "periodStart", "periodEnd", "cycle", "generatedSummary", "generatedFacts", "suggestedContent", "suggestedContentFacts", "suggestedCurrentPlanBinding", "generatedContentIssues", "suggestedReferences", "generatedAt", "generatedBy", "generationHistory", "summary", "risk", "source", "submission", "approval", "authorId", "authorKind", "content", "nextPlanBinding", "currentPlanBinding", "contentRequired", "contentMigration"].includes(k)),
                   )
                   .map(([k, v]) => (
                     <React.Fragment key={k}>
-                      <dt>{kind === "reports" && k === "source" ? "旧来源说明（非事实引用）" : fieldNames[k] || k}</dt>
+                      <dt>{kind === "tests" && k === "requirementRefs" ? "关联要求" : kind === "reports" && k === "source" ? "旧来源说明（非事实引用）" : fieldNames[k] || k}</dt>
                       <dd>
-                        {typeof v === "object" ? JSON.stringify(v) : String(v)}
+                        {kind === "tests" && k === "requirementRefs"
+                          ? Array.isArray(v) ? v.length ? <ul>{v.map((requirement, index) => <li key={index}>{typeof requirement === "string" ? requirement : "条款记录格式无效，请核对原始记录"}</li>)}</ul> : "未关联要求" : "条款记录格式无效，请核对原始记录"
+                          : typeof v === "object" ? JSON.stringify(v) : String(v)}
                       </dd>
                     </React.Fragment>
                   ))}
               </dl>
             </Section>
+            {kind === "knowledge" && record.revocation && <Section title="记忆撤销记录">
+              <Notice>此派生记忆已终态撤销，不再列入日常资料或默认搜索。原消息与有权查看的历史保留；此页是历史原件，不承诺物理擦除。</Notice>
+              <dl className="record-fields"><dt>撤销人</dt><dd>{record.revocation.actorId} · Human</dd><dt>撤销时间</dt><dd>{formatTimestamp(record.revocation.time)}</dd><dt>理由</dt><dd>{record.revocation.reason}</dd><dt>来源</dt><dd>本地模拟；没有真实模型上下文或索引服务</dd></dl>
+            </Section>}
+            {kind === "approvals" && <><ApprovalBasis state={s} record={record} /><ApprovalOrchestration key={`${s.activeTenant}:${record.id}`} record={record}/></>}
+            {kind === "deliveries" && <Section title="固定发送记录">
+              <Notice>{record.sendFact?.source === "LOCAL_SIMULATION"
+                ? "本地模拟发送记录，不代表真实远程发布或客户接收。客户回执另行记录。"
+                : "此记录未提供可核验的发送来源；不据此确认真实远程发布或客户接收。"}</Notice>
+              {record.sendFact ? <dl className="record-fields">
+                <dt>记录主体</dt><dd><span translate="no">{recordedText(record.sendFact.actor?.id)}</span> · {record.sendFact.actor?.kind === "Human" ? "Human" : record.sendFact.actor?.kind === "Agent" ? "Agent" : "主体类型未记录"}</dd>
+                <dt>记录时间</dt><dd>{formatTimestamp(record.sendFact.time)}</dd>
+                <dt>固定交付包</dt><dd><span translate="no">{recordedText(record.sendFact.deliverySnapshot?.id)}</span> · {recordedText(record.sendFact.deliverySnapshot?.name)}</dd>
+                <dt>关联工作 / 固定版本</dt><dd><span translate="no">{recordedText(record.sendFact.deliverySnapshot?.workId)}</span> · {Number.isSafeInteger(record.sendFact.deliverySnapshot?.version) && record.sendFact.deliverySnapshot.version > 0 ? `v${record.sendFact.deliverySnapshot.version}` : "版本未记录"}</dd>
+                <dt>原收件范围</dt><dd>{recordedText(record.sendFact.deliverySnapshot?.recipient)}</dd>
+              </dl> : <p className="muted">旧包未保存固定发送记录；不会从当前负责人或工作状态补造历史。</p>}
+            </Section>}
             {kind === "deliveries" && <Section title="固定交付清单与逐项回执">
               <Notice>此包保存原型成果和检查证据引用，不代表真实源文件已上传或对外发布。版本与清单不随返工改写。</Notice>
               {(record.items || []).map((item) => <div className="resource-card" key={item.id}>
@@ -287,26 +366,29 @@ function GenericResourcePage({ kind, recordId, toast }) {
               <ReportNarrative report={record} state={s} />
               <ReportFacts report={record} state={s} />
             </>}
-            {kind === "connectors" && (
-              <Section title="权限与同步边界">
+            {kind === "connectors" && <Section title="外部会话的使用位置">
+                <p>连接后，在具体的外部共享频道「频道设置 → 外部会话」中绑定 Slack 频道、WhatsApp 会话等。绑定范围内的消息显示平台来源；回复先保存草稿，再由 Human 明确授权。</p>
+                {visibleExternalBridgeBindings(s,record.id).length ? visibleExternalBridgeBindings(s,record.id).map(binding=><p key={binding.channelId}><Link target="_blank" rel="noopener noreferrer" to={`/chat?channel_id=${encodeURIComponent(binding.channelId)}&state.chat-management=${encodeURIComponent(JSON.stringify(binding.channelId))}&state.channel-management-tab=${encodeURIComponent(JSON.stringify("external"))}`}>{binding.channelName} · {binding.name}</Link> · {binding.status === "ACTIVE" ? "绑定启用（本地模拟）" : binding.status === "PAUSED" ? "已暂停" : "已撤销"}</p>) : <p className="muted">尚未绑定频道。可从共享频道设置中选择此连接器；连接成功不代表自动导入历史或开放内部会话。</p>}
+                <Link className="btn" target="_blank" rel="noopener noreferrer" to='/chat?channel_id=external&state.chat-management=%22external%22&state.channel-management-tab=%22external%22'>选择外部共享频道并配置</Link>
+              </Section>}
+              {kind === "connectors" && <Section title="权限与同步边界">
                 <Notice tone="warn">
                   绑定仅覆盖「{record.scope}
                   」。不导出内部私信或全部历史；外部身份不自动取得审批权限。
                 </Notice>
                 <dl>
                   <dt>消息持久化</dt>
-                  <dd>Go collab + 数据库，保留来源消息 ID 与方向</dd>
-                  <dt>实时通道</dt>
-                  <dd>Centrifugo；无需为外部连接器引入 Matrix / NATS</dd>
+                  <dd>保留原始平台、频道、消息 ID 和同步方向，可追溯来源。</dd>
+                  <dt>使用范围</dt>
+                  <dd>只同步明确绑定的外部共享频道，内部会话与私聊保持隔离。</dd>
                   <dt>收发回执</dt>
                   <dd>区分已存、平台接收、送达与已读；按实际能力声明</dd>
                 </dl>
-              </Section>
-            )}
+              </Section>}
             {kind === "models" && (
               <Section title="下发与能力">
                 <Notice>
-                  只应用于后续执行，不覆盖个人全局配置。密钥使用引用，不录入原型。
+                  节点下发结果仅为本地模拟，不代表已连接真实节点。只应用于后续执行，不覆盖个人全局配置。密钥使用引用，不录入原型。
                 </Notice>
                 <div className="node-status-list">
                   {s.nodes.map((n) => (
@@ -324,7 +406,7 @@ function GenericResourcePage({ kind, recordId, toast }) {
             )}
             <Section title="相关活动">
               <div className="timeline">
-                {s.events
+                {visibleActivityEvents(s)
                   .filter(
                     (e) =>
                       e.target.includes(record.id) ||
@@ -340,7 +422,7 @@ function GenericResourcePage({ kind, recordId, toast }) {
                       <p>{e.text}</p>
                     </div>
                   ))}
-                {!s.events.some((e) => e.text.includes(record.name)) && (
+                {!visibleActivityEvents(s).some((e) => e.text.includes(record.name)) && (
                   <p className="muted">
                     还没有后续变更，下一次操作会保留在这里。
                   </p>
@@ -354,14 +436,15 @@ function GenericResourcePage({ kind, recordId, toast }) {
                 目标 {record.id} · {record.version || "当前版本"}
               </p>
               <div className="stack">
-                {(transitions[kind] || []).map(([status, baseLabel]) => { const simulateAgent = kind === "reports" && status === "已提交" && reportAuthor(s, record)?.kind === "Agent"; const label = simulateAgent ? "模拟 Agent 上报" : kind === "knowledge" && status === "已禁用" && record.kind !== "记忆" ? "禁用资料" : baseLabel; return (
+                {kind === "knowledge" && record.kind === "记忆" && !record.revocation && <Button disabled={Boolean(memoryRevocationProblem(s, record))} title={memoryRevocationProblem(s, record) || "撤销后不可重新启用；原消息及授权历史保留"} icon="ShieldOff" onClick={() => {setAction({record, status:"已撤销", label:"删除 / 撤销记忆", tenantId:s.activeTenant});setReason("");}}>删除 / 撤销记忆</Button>}
+                {(record.revocation ? [] : transitions[kind] || []).map(([status, baseLabel]) => { const simulateAgent = kind === "reports" && status === "已提交" && reportAuthor(s, record)?.kind === "Agent"; const reportAction = kind === "reports" && status === "草稿" && record.status === "已接受" ? "REOPEN" : undefined; const label = reportAction ? "撤销确认" : simulateAgent ? "模拟 Agent 上报" : kind === "knowledge" && status === "已禁用" && record.kind !== "记忆" ? "禁用资料" : baseLabel; return (
                   <Button
                     key={label}
-                    disabled={kind === "reports" ? Boolean(reportTransitionProblem(s, record, status, { simulateAgent })) : kind === "goals" ? Boolean(goalTransitionProblem(s, record, status)) : false}
-                    title={kind === "reports" ? reportTransitionProblem(s, record, status, { simulateAgent }) || "" : kind === "goals" ? goalTransitionProblem(s, record, status) || "" : undefined}
+                    disabled={Boolean(projectRecordWriteProblem(s,record)) || (kind === "approvals" ? Boolean(approvalDecisionProblem(s, record, status)) : kind === "reports" ? Boolean(reportTransitionProblem(s, record, status, { simulateAgent, action: reportAction })) : kind === "goals" ? Boolean(goalTransitionProblem(s, record, status)) : kind === "deliveries" && (s.role === "executor" || ["已接受", "部分接受", "已拒收"].includes(record.status)))}
+                    title={kind === "approvals" ? approvalDecisionProblem(s, record, status) || "" : kind === "reports" ? reportTransitionProblem(s, record, status, { simulateAgent, action: reportAction }) || "" : kind === "goals" ? goalTransitionProblem(s, record, status) || "" : kind === "deliveries" && s.role === "executor" ? "当前模拟身份没有回执登记权限" : kind === "deliveries" && ["已接受", "部分接受", "已拒收"].includes(record.status) ? "此包已有固定回执；修订成果后须形成新版本交付包" : undefined}
                     onClick={() => {
                       setVerificationRunId("");
-                      setAction({ record, status, label, simulateAgent });
+                      setAction({ record, status, label, simulateAgent, reportAction });
                       setReason("");
                       if (kind === "deliveries") setReceiptItems((record.items || []).map((item) => ({
                         id: item.id, status: item.status === "已接受" || status !== "已拒收" ? "已接受" : "已拒收",
@@ -374,6 +457,8 @@ function GenericResourcePage({ kind, recordId, toast }) {
                   </Button>
                 ); })}
               </div>
+              {kind === "deliveries" && s.role === "executor" && <Notice>当前模拟身份没有回执登记权限；接受、部分接受和拒收均需有权身份登记。</Notice>}
+              {kind === "deliveries" && ["已接受", "部分接受", "已拒收"].includes(record.status) && <Notice>此包已有固定回执，结果与拒收依据保留。需要调整时，请修订成果并形成新的固定版本交付包；不会改写原回执。</Notice>}
               <Notice>
                 操作会保留主体、理由与历史。原型中的外部同步和运行结果均为模拟。
               </Notice>
@@ -382,83 +467,17 @@ function GenericResourcePage({ kind, recordId, toast }) {
         </div>
       ) : (
         <>
-          <div className="toolbar">
-            <label className="search-field">
-              <Icon name="Search" />
-              <input
-                aria-label={`搜索${meta[0]}`} name={`search-${kind}`} autoComplete="off"
-                placeholder={`搜索${meta[2]}、负责人或状态…`}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </label>
-            <div className="grow" />
-            <span className="muted">{filtered.length} 条记录</span>
-          </div>
-          {!filtered.length ? (
-            <Empty
-              title={query ? "没有匹配的记录" : `还没有${meta[2]}`}
-              text={
-                query
-                  ? "试试其他关键词，或清空当前筛选。"
-                  : "创建第一条记录，开始形成可追溯的工作。"
-              }
-            >
-              {kind !== "deliveries" && <Button onClick={query ? () => setQuery("") : create}>
-                {query ? "清空筛选" : kind === "reports" ? "生成 / 打开周期报告" : `创建${meta[2]}`}
-              </Button>}
-            </Empty>
-          ) : (
-            <div
-              className={`resource-grid ${["knowledge", "templates", "tools", "connectors", "models"].includes(kind) ? "cards" : "rows"}`}
-            >
-              {filtered.map((r) => (
-                <Link
-                  to={`/${kind}/${r.id}`}
-                  className="resource-card"
-                  key={r.id}
-                >
-                  <span className="resource-icon">
-                    <Icon name={meta[3]} size={24} />
-                  </span>
-                  <div className="grow">
-                    <div className="split">
-                      <h2>{r.name}</h2>
-                      <Badge>{r.status}</Badge>
-                    </div>
-                    <p>
-                      {r.summary ||
-                        r.content ||
-                        r.rule ||
-                        r.impact ||
-                        r.scope ||
-                        r.source ||
-                        r.expected ||
-                        r.metric ||
-                        r.reason ||
-                        r.note ||
-                        r.event ||
-                        meta[1]}
-                    </p>
-                    <footer>
-                      <Avatar
-                        name={r.owner}
-                        agent={["Atlas", "Muse", "Quill", "Verifier"].includes(
-                          r.owner,
-                        )}
-                      />
-                      <span>{r.owner}</span>
-                      <small>
-                        {r.version || r.cycle || r.platform || r.next || r.id}
-                      </small>
-                    </footer>
-                    {kind === "goals" && (goalProgress(r) === null ? <Badge tone="amber">进度待校准</Badge> : <><Progress value={goalProgress(r)} /><small>手工进度 {goalProgress(r)}%</small></>)}
-                  </div>
-                  <Icon name="ArrowUpRight" size={16} />
-                </Link>
-              ))}
-            </div>
-          )}
+          <DataList rows={rows} columns={[
+            {key:"name",label:meta[0],value:r=>r.name,exportValue:r=>r.name,render:r=><Link className="resource-card" to={`/${kind}/${r.id}`}><h2>{r.name}</h2></Link>},
+            {key:"owner",label:"负责人",value:r=>r.owner||"",exportValue:r=>r.owner||""},
+            {key:"status",label:"状态",value:r=>r.status,exportValue:r=>r.status,render:r=><Badge>{r.status}</Badge>},
+            {key:"version",label:"版本 / 周期",value:r=>r.version||r.cycle||"",exportValue:r=>r.version||r.cycle||""},
+          ]} viewId={`resources:${kind}`} scopeKey={`${tenantId}:${projectId}:${role}`} title={meta[0]}
+            searchText={r=>`${r.name} ${r.owner} ${r.status} ${r.id}`} onRefresh={refreshList} offline={s.offline} editing={Boolean(editing||generation||action)} onExport={exportList}
+            onCreate={!["deliveries","approvals"].includes(kind)?create:undefined} createLabel={kind==="reports"?"生成 / 打开周期报告":`新建${meta[2]}`}
+            renderActions={r=><Link className="btn" to={`/${kind}/${r.id}`}>查看详情</Link>} />
+          {["deliveries","approvals"].includes(kind)&&<p className="muted">由交付或源对象审批流程生成记录，不提供手动新增或导入历史。</p>}
+
         </>
       )}
       {kind === "reports" && !record && <ReportSchedules state={s} toast={toast} onEdit={(schedule) => setGeneration({ mode: "schedule", schedule })} />}
@@ -494,7 +513,8 @@ function GenericResourcePage({ kind, recordId, toast }) {
                 action.status !== "启用"
               )
                 throw Error("必需内部验收属于不可绕过的硬门禁。");
-              resourceCommand(
+              if (kind === "knowledge" && action.status === "已撤销") revokeKnowledgeMemory({tenantId:action.tenantId, id:action.record.id, revision:action.record.revision || 1, status:action.record.status, reason});
+              else resourceCommand(
                 kind,
                 action.record.id,
                 action.status,
@@ -502,7 +522,7 @@ function GenericResourcePage({ kind, recordId, toast }) {
                 action.label,
                 kind === "deliveries" ? { version: action.record.version, items: receiptItems }
                   : kind === "defects" ? { runId: verificationRunId }
-                    : ["reports", "goals"].includes(kind) ? { revision: action.record.revision || 1, status: action.record.status, simulateAgent: Boolean(action.simulateAgent) } : undefined,
+                    : ["reports", "goals", "knowledge", "approvals"].includes(kind) ? { revision: action.record.revision || 1, status: action.record.status, simulateAgent: Boolean(action.simulateAgent), action: action.reportAction } : undefined,
               );
               dismiss();
               toast("操作已记录");
@@ -523,6 +543,7 @@ function GenericResourcePage({ kind, recordId, toast }) {
               <Link to="/tests" className="text-link" onClick={event => { event.preventDefault(); requestClose(() => { setAction(null); location.hash = "/tests"; }); }}>查看测试用例与运行</Link>
             </>}
             {kind === "reports" && <ReportFacts report={s.resources.reports.find((r) => r.id === action.record.id) || action.record} state={s} />}
+            {kind === "knowledge" && action.status === "已撤销" && <Notice tone="warn">撤销仅作用于此派生记忆，属于不可重新启用的终态；原讨论与授权历史继续保留。本地撤销演示；真实检索与执行影响服务尚未连接。</Notice>}
             {kind === "deliveries" && receiptItems.map((choice, index) => {
               const item = action.record.items.find((entry) => entry.id === choice.id);
               const change = (patch) => setReceiptItems((items) => items.map((entry, i) => i === index ? { ...entry, ...patch } : entry));
@@ -589,6 +610,64 @@ function ReportSchedules({ state, toast, onEdit }) {
     </div>)}
   </Section>;
 }
+function ReportPlanSnapshot({ binding, editing = false, current = false, state, report }) {
+  if (!binding) return <Notice tone="warn">{current ? "尚未采用本期计划固定基线；缺失或未确认按 N2 提示，不补造原承诺。" : "尚未采用真实下周期计划；当前报告不能证明下期承诺已关联。请在编辑中打开计划并采用固定版本。"}</Notice>;
+  if (current) {
+    const problem = reportCurrentPlanBindingProblem(state, report, binding);
+    if (problem) return <Notice tone="warn">{problem}</Notice>;
+  }
+  try { reportNextPlanItems(binding); }
+  catch (error) { return <Notice tone="warn">{error.message}</Notice>; }
+  const snapshot = binding.snapshot;
+  const available = (state?.resources.plans || []).some(plan => plan.id === binding.planId && planCanRead(state, plan));
+  return <div {...(current ? { "data-report-current-plan": binding.planId } : { "data-report-next-plan": binding.planId })}>
+    <p>{editing || !available ? <span translate="no">{binding.planId}</span> : <Link translate="no" to={`/plans/${binding.planId}`}>{binding.planId}</Link>} · 固定修订 {binding.revision} · {binding.status}</p>
+    <p className="muted">{snapshot.periodStart} — {snapshot.periodEnd} · {snapshot.timezone}</p>
+    {snapshot.items.length ? <ul>{snapshot.items.map(item => <li key={item.id} style={{ contentVisibility: "auto", containIntrinsicSize: "auto 32px" }}>{item.title} · 目标 <span translate="no">{item.goalId || "未关联"}</span>{item.krId ? <span translate="no"> · KR {item.krId}</span> : null}{item.dueDate ? ` · ${item.dueDate}` : ""}</li>)}</ul>
+      : <Notice tone="warn">{current ? "此固定版本没有计划项；不据此推断工作完成或目标达成。" : "此版本尚无计划项，不能作为有效下期承诺通过核对。"}</Notice>}
+    {current && <Notice tone={binding.confirmed ? undefined : "warn"}>{binding.confirmed ? "采用原 Human 已确认基线；后续待确认草稿不替换原承诺。" : "采用未确认草稿；计划承诺与完成比例仍未确认。"}</Notice>}
+    <p className="muted">本区展示报告采用的固定计划内容；{available ? `${editing ? "上方编辑按钮" : "链接"}打开当前计划。` : "当前计划来源不可用，固定引用保留。"}报告上报和确认均不批准计划。</p>
+  </div>;
+}
+function ReportCurrentPlanEditor({ state, form, setForm, onNavigate }) {
+  const [error, setError] = useState("");
+  let plan, problem;
+  try { plan = reportCurrentPlan(state, form); } catch (issue) { problem = issue.message; }
+  return <Section title="本期计划固定引用">
+    <p className="muted">复用本期真实成员计划，采用已确认基线；没有确认基线时明确保留未确认状态。</p>
+    {problem ? <Notice tone="warn">{problem}</Notice> : plan ? <div className="actions">
+      <Link className="btn" to={`/plans/${plan.id}`} onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onNavigate(() => { location.hash = `/plans/${plan.id}`; }); }}>查看 / 编辑真实本期计划</Link>
+      <Button onClick={() => { try { const binding = reportCurrentPlanBinding(state, form, plan.id, plan.revision); setForm(previous => ({ ...previous, currentPlanBinding: binding })); setError(""); } catch (issue) { setError(issue.message); } }}>采用本期计划基线</Button>
+    </div> : <Notice tone="warn">本期没有真实计划，不能从报告补造历史承诺。请在我的计划中核对对应周期。</Notice>}
+    {error && <div role="alert"><Notice tone="danger">{error}</Notice></div>}
+    <ReportPlanSnapshot binding={form.currentPlanBinding} current editing state={state} report={form} />
+  </Section>;
+}
+function ReportNextPlanEditor({ state, form, setForm, onNavigate }) {
+  const [error, setError] = useState("");
+  let plan, descriptor, problem;
+  try { descriptor = reportNextPlanDescriptor(state, form); plan = reportNextPlan(state, form); } catch (issue) { problem = issue.message; }
+  const openPlan = () => onNavigate(() => { try {
+    const planId = openReportNextPlan(form.id, form.revision || 1, form.authorKind === "Agent" || form.subjectKey.startsWith("agent:"));
+    location.hash = `/plans/${planId}`;
+  } catch (issue) { setError(issue.message); } });
+  return <Section title="下周期计划">
+    {problem ? <Notice tone="warn">{problem}。成员计划绑定已提供，汇总视图尚未实现。</Notice> : <>
+      <p className="muted">{descriptor.periodStart} — {descriptor.periodEnd} · 复用真实成员计划，不另建报告内清单。</p>
+      {form.subjectKey.startsWith("agent:") && <Notice>负责人类操作本地 Agent 模拟计划，不代表真实 Agent 已生成或提交。</Notice>}
+      <div className="actions">
+        {plan ? <Link className="btn" to={`/plans/${plan.id}`} onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openPlan(); }}>编辑真实下期计划</Link>
+          : <Button onClick={openPlan}>创建并编辑下期计划</Button>}
+        {plan && <Button onClick={() => { try {
+          const binding = reportNextPlanBinding(state, form, plan.id, plan.revision);
+          setForm(current => ({ ...current, nextPlanBinding: binding, ...(current.content ? { content: { ...current.content, next_plan: reportNextPlanItems(binding) } } : {}) })); setError("");
+        } catch (issue) { setError(issue.message); } }}>采用下期计划当前版本</Button>}
+      </div>
+      {error && <div role="alert"><Notice tone="danger">{error}</Notice></div>}
+      <ReportPlanSnapshot binding={form.nextPlanBinding} editing state={state} />
+    </>}
+  </Section>;
+}
 function ReportNarrative({ report, state }) {
   const subject = reportSubjects(state).find((item) => item.key === report.subjectKey);
   const author = reportAuthor(state, report), authority = reportReviewAuthority(state, report);
@@ -603,6 +682,7 @@ function ReportNarrative({ report, state }) {
         <p>{report.submission.source} · {formatTimestamp(report.submission.time)}</p>
         <p>{report.submission.content.summary || "未填写正文"}</p><p>风险：{report.submission.content.risk || "未填写"}</p>
         <ul>{(report.submission.content.references || []).map((ref, index) => <li key={index}><span translate="no">{ref.kind}:{ref.id}</span> · 固定版本 {ref.version}</li>)}</ul>
+        {report.submission.content.nextPlanBinding && <ReportPlanSnapshot binding={report.submission.content.nextPlanBinding} state={state} />}
       </details>}
       {report.approval && <p>已确认：{report.approval.actorId === "SYSTEM:team_top" ? "系统 · 团队顶层" : state.organization.members.find(person => person.id === report.approval.actorId)?.name || report.approval.actorId} · {formatTimestamp(report.approval.time)} · {report.approval.reason}</p>}
     </Section>
@@ -614,6 +694,9 @@ function ReportNarrative({ report, state }) {
       {report.source && <details><summary>原有来源说明（不作为事实引用）</summary><p>{report.source}</p></details>}
       {report.history?.length > 0 && <details><summary>报告修订与审核历史 · {report.history.length} 次</summary>{[...report.history].reverse().map((item, index) => <article key={index}><p>{item.status} · {item.time ? formatTimestamp(item.time) : `修订 ${item.revision || 1}`}</p>{item.summary && <p>{item.summary}</p>}{item.reason && <p>{item.reason}</p>}</article>)}</details>}
     </Section>
+    <Section title="本期计划固定引用"><ReportPlanSnapshot binding={report.submission ? report.submission.content.currentPlanBinding : report.currentPlanBinding} current state={state} report={report.submission ? { ...report, ...report.submission.content } : report} /></Section>
+    <Section title="下周期计划固定引用"><ReportPlanSnapshot binding={report.submission?.content.nextPlanBinding || report.nextPlanBinding} state={state} /></Section>
+    <Section title="报告四章节"><ReportContentReader content={report.submission?.content.content || report.content} report={report} state={state} /></Section>
   </>;
 }
 
@@ -674,17 +757,19 @@ function ResourceEditor({ kind, record, onClose, onSaved }) {
   const [form, setForm, draft] = useRecoverableDraft(["goals", "reports"].includes(kind) ? JSON.stringify([state.activeTenant, "resource", kind, record.id || "new"]) : null, () => ({ ...record,
     ...(kind === "worklogs" ? { durationKind: record.durationKind || "Human 工时" } : {}),
   }), value => ({
+    ...(kind === "repositories" ? { projectId: value.projectId } : {}),
     fields: Object.fromEntries(resourceFields[kind].filter(field => !(kind === "reports" && field === "owner")).map(key => [key, String(value[key] ?? "")])),
     ...(kind === "goals" ? { ownerId: value.ownerId, reviewerId: value.reviewerId } : {}),
-    references: [...(Array.isArray(value.references) ? value.references : [])].sort((a, b) => `${a.kind}:${a.id}`.localeCompare(`${b.kind}:${b.id}`)),
+    references: [...(Array.isArray(value.references) ? value.references : [])].sort((a, b) => `${a?.kind}:${a?.id}`.localeCompare(`${b?.kind}:${b?.id}`)),
     requirementRefs: [...(value.requirementRefs || [])].sort(),
+    ...(kind === "reports" ? { nextPlanBinding: value.nextPlanBinding || null, currentPlanBinding: value.currentPlanBinding || null, regenerationDraft: value.regenerationDraft || null, content: value.content || null, migrateLegacyContent: value.migrateLegacyContent === true, reviewedDetailKeys: value.reviewedDetailKeys || [], reviewedRetrospective: value.reviewedRetrospective || false } : {}),
   }));
-  const fields = resourceFields[kind].filter((field) => !(kind === "reports" && field === "owner"));
+  const fields = [...resourceFields[kind].filter((field) => !(kind === "reports" && field === "owner")), ...(kind === "repositories" ? ["projectId"] : [])];
   const references = Array.isArray(form.references) ? form.references : [];
   const options = kind === "reports" ? [
     ...state.work.map((w) => ({ kind: "work", id: w.id, name: w.title, version: w.version })),
     ...state.resources.worklogs.map((w) => ({ kind: "worklog", id: w.id, name: w.name, version: w.revision || 1 })),
-    ...state.resources.reports.filter((r) => r.id !== form.id).map((r) => ({ kind: "report", id: r.id, name: r.name, version: r.revision || 1 })),
+    ...state.resources.reports.filter((r) => r.id !== form.id && !reportChildProblem(state, form, r)).map((r) => ({ kind: "report", id: r.id, name: r.name, version: r.revision || 1 })),
   ] : [];
   const chooseSource = (option, checked) => setForm((current) => ({ ...current,
     references: [...(Array.isArray(current.references) ? current.references : []).filter((r) => !(r?.kind === option.kind && r?.id === option.id)),
@@ -697,7 +782,7 @@ function ResourceEditor({ kind, record, onClose, onSaved }) {
       {...draft.modalProps}
       wide
     >
-      <ActionForm
+      {({ requestClose }) => <ActionForm
         onCancel={onClose}
         onSubmit={({ dismiss }) => {
           if (!form.name?.trim()) throw Error("名称不能为空。");
@@ -714,6 +799,7 @@ function ResourceEditor({ kind, record, onClose, onSaved }) {
       >
         {draft.recovered && <Notice>已恢复未保存的修改，并保留原始修订。若记录已变化，请放弃修改后重新打开。</Notice>}
         {kind === "reports" && <>
+          <ReportCurrentPlanEditor state={state} form={form} setForm={setForm} onNavigate={navigate => requestClose(navigate)} />
           <p className="muted">{form.owner} · {form.cadence || "旧版周期未声明"} · {form.periodStart} — {form.periodEnd} · {form.timezone || "时区未声明"}</p>
           {form.generatedSummary && <Section title="生成建议（不会覆盖人工正文）"><p>{form.generatedSummary}</p>
             <Button onClick={() => setForm((current) => ({ ...current, references: structuredClone(current.suggestedReferences || []) }))}>采用本次建议事实引用</Button></Section>}
@@ -726,7 +812,7 @@ function ResourceEditor({ kind, record, onClose, onSaved }) {
           {fields.map((k) => (
             <Field
               key={k}
-              label={kind === "goals" && k === "target" ? "目标值" : kind === "reports" && k === "summary" ? "人工校准正文" : k === "subjectKey" ? "报告归属" : k === "cadence" ? "报告周期" : fieldNames[k] || k}
+              label={kind === "repositories" && k === "projectId" ? "所属项目" : kind === "goals" && k === "target" ? "目标值" : kind === "reports" && k === "summary" ? "人工校准正文" : k === "subjectKey" ? "报告归属" : k === "cadence" ? "报告周期" : fieldNames[k] || k}
               value={String(form[k] ?? "")}
               onChange={(v) => setForm(current => {
                 const next = { ...current, [k]: v };
@@ -736,7 +822,8 @@ function ResourceEditor({ kind, record, onClose, onSaved }) {
                 }
                 return next;
               })}
-              options={kind === "schedules" && k === "subjectKey" ? [{ value: "", label: "非报告任务 / 未配置" }, ...reportSubjects(state).map((subject) => ({ value: subject.key, label: `${subject.name} · ${subject.kind}` }))]
+              disabled={kind === "repositories" && k === "projectId" && Boolean(record.projectId)}
+              options={kind === "repositories" && k === "projectId" ? [{value:"",label:"请选择当前租户项目"}, ...activeProjects(state).map(project => ({value:project.id,label:project.name}))] : kind === "schedules" && k === "subjectKey" ? [{ value: "", label: "非报告任务 / 未配置" }, ...reportSubjects(state).map((subject) => ({ value: subject.key, label: `${subject.name} · ${subject.kind}` }))]
                 : kind === "schedules" && k === "cadence" ? [{ value: "", label: "非报告任务" }, ...reportCadences]
                 : k === "durationKind" ? ["Human 工时", "Agent 墙钟", "模型 / 工具耗时"]
                 : kind === "tests" && k === "sourceKind" ? ["Human 手测", "Agent 自测", "平台独立验证"]
@@ -761,13 +848,15 @@ function ResourceEditor({ kind, record, onClose, onSaved }) {
                         ? "date"
                         : "text"
               }
-              required={["name", "owner"].includes(k)}
+              required={["name", "owner"].includes(k) || (kind === "repositories" && k === "projectId")}
             />
           ))}
         </div>
         {kind === "reports" && <>
+          <ReportNextPlanEditor state={state} form={form} setForm={setForm} onNavigate={navigate => requestClose(navigate)} />
+          <ReportContentEditor state={state} form={form} setForm={setForm} />
           <Section title="选择事实引用">
-            <p className="muted">选择当前租户中的工作、耗时与下级报告。来源变化后需重新选择版本；重复来源在汇总中只计一次。</p>
+            <p className="muted">下级报告仅显示归属与周期匹配、已有固定提交的来源。跨月按事实日期汇总，重复来源只计一次；来源变化需重新核对版本。</p>
             {[['work', '工作'], ['worklog', '耗时记录'], ['report', '下级报告']].map(([type, title]) => <fieldset key={type}>
               <legend>{title}</legend>
               <div className="stack">{options.filter((o) => o.kind === type).map((option) => {
@@ -786,7 +875,7 @@ function ResourceEditor({ kind, record, onClose, onSaved }) {
           <ReportFacts report={form} state={state} />
         </>}
         <Notice>状态通过专门动作流转，编辑内容不会自动完成审批或验收。</Notice>
-      </ActionForm>
+      </ActionForm>}
     </Modal>
   );
 }
@@ -794,11 +883,11 @@ export function Team({ toast, initialTab = "members", invitationId }) {
   const s = useStore();
   const org = s.organization, people = org.members.filter((person) => person.kind === "Human"), humans = people;
   const canEdit = s.role === "owner" && !s.offline;
-  const [tab, setTab] = useState(initialTab);
-  const [nodeId, setNodeId] = useState("");
-  const [selection, setSelection] = useState(invitationId ? { kind: "invitations", id: invitationId } : null);
+  const [tab, setTab] = useViewState("team-tab", initialTab);
+  const [nodeId, setNodeId] = useViewState("team-node", "");
+  const [selection, setSelection] = useViewState("team-selection", invitationId ? { kind: "invitations", id: invitationId } : null);
   const [query, setQuery] = useState("");
-  const [mobilePane, setMobilePane] = useState(invitationId ? "detail" : "list");
+  const [mobilePane, setMobilePane] = useViewState("team-pane", invitationId ? "detail" : "list");
   const [editor, setEditor] = useState(null);
   const personName = (id) => people.find((person) => person.id === id)?.name || "成员不可用";
   const parentName = (id) => org.nodes.find((node) => node.id === id)?.name || "顶层组织";
@@ -820,7 +909,7 @@ export function Team({ toast, initialTab = "members", invitationId }) {
   const switchTab = (next) => { setTab(next); setSelection(null); setEditor(null); setQuery(""); setMobilePane("list"); };
   const edit = (kind, form) => { setEditor({ kind, form: structuredClone(form) }); setMobilePane("detail"); };
   const editNode = (node) => edit("nodes", node || { name: "", parentId: nodeId, ownerId: humans[0]?.id || "", memberIds: [], start: new Date().toISOString().slice(0, 10), end: "" });
-  const newInvitation = () => edit("invitation", { name: "", email: "", ownerId: humans[0]?.id || "", projectId: s.projects[0]?.id || "",
+  const newInvitation = () => edit("invitation", { name: "", email: "", ownerId: humans[0]?.id || "", projectId: activeProjects(s)[0]?.id || "",
     role: "项目成员", scopeKind: "project", expires: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10) });
   const snapshot = (record) => !record ? "新建记录" : [record.name, record.owner && `结果负责人 ${record.owner}`,
     record.ownerId && `负责人 ${personName(record.ownerId)}`, "parentId" in record && `归属 ${parentName(record.parentId)}`,
@@ -838,18 +927,18 @@ export function Team({ toast, initialTab = "members", invitationId }) {
   if (invitationId && !s.resources.invitations.some(item => item.id === invitationId)) return <Empty title="邀请不存在于当前租户" text="请返回邀请列表。" />;
   if (s.role === "external") return <Empty title="当前视角无权访问" text="外部成员不通过组织树查看内部成员与工作分工。" />;
   return <div className="org-page">
-    <PageHead title="组织与成员" subtitle="管理 Human 的组织归属与项目角色。Agent 在独立名册管理，执行编组在任务中配置。">
-      <Button disabled={!canEdit} onClick={() => edit("members", { name: "" })} icon="Plus">添加成员</Button>
+    <PageHead title={tab === "members" ? "组织与成员" : "邀请记录"} subtitle={tab === "members" ? "已加入 Human 的组织归属与项目职责；Agent 和任务执行编组分别管理。" : "跟踪邀请的范围、角色、有效期与状态；待接受邀请不属于已加入成员。"}>
+      {tab === "members" && <Button disabled={!canEdit} onClick={() => edit("members", { name: "" })} icon="Plus">添加成员</Button>}
       <Button variant="primary" disabled={!canEdit} onClick={newInvitation} icon="UserPlus">邀请成员</Button>
     </PageHead>
-    <div className="org-overview"><span><strong>{people.length}</strong> 位成员 <small>Human 组织名册</small></span>
-      <span><strong>{org.nodes.length}</strong> 个组织节点</span><span><strong>{s.resources.invitations.filter((item) => item.status === "待接受").length}</strong> 个待接受邀请</span></div>
+    <div className="org-overview">{tab === "members" ? <><span><strong>{people.length}</strong> 位成员 <small>Human 组织名册</small></span>
+      <span><strong>{org.nodes.length}</strong> 个组织节点</span><span><strong>{s.resources.invitations.filter((item) => item.status === "待接受").length}</strong> 个待接受邀请</span></> : <>{["待接受","已接受","已撤销"].map(status=><span key={status}><strong>{s.resources.invitations.filter(i=>i.status===status).length}</strong> {status}<small>邀请生命周期</small></span>)}</>}</div>
     <nav className="org-tabs" aria-label="成员管理内容">{[["members", "成员目录"], ["invitations", "邀请记录"]].map(([value, label]) =>
       <button key={value} className={tab === value ? "active" : ""} aria-current={tab === value ? "page" : undefined} onClick={() => switchTab(value)}>{label}</button>)}</nav>
-    <nav className="org-mobile-panes" aria-label="组织页面分栏">{[["tree", "组织"], ["list", "列表"], ["detail", "详情"]].map(([value, label]) =>
+    <nav className="org-mobile-panes" aria-label="组织页面分栏">{[...(tab === "members" ? [["tree", "组织"]] : []), ["list", "列表"], ["detail", "详情"]].map(([value, label]) =>
       <button key={value} aria-pressed={mobilePane === value} onClick={() => setMobilePane(value)}>{label}</button>)}</nav>
-    <div className={`org-workspace org-show-${mobilePane}`}>
-      <aside className="org-tree" aria-label="组织架构"><div className="org-pane-heading"><h2>组织架构</h2><IconButton name="Plus" label="新增部门 / 团队" disabled={!canEdit || !humans.length} onClick={() => editNode()} /></div>
+    <div className={`org-workspace ${tab === "invitations" ? "org-invitations-workspace" : ""} org-show-${mobilePane}`}>
+      {tab === "members" && <aside className="org-tree" aria-label="组织架构"><div className="org-pane-heading"><h2>组织架构</h2><IconButton name="Plus" label="新增部门 / 团队" disabled={!canEdit || !humans.length} onClick={() => editNode()} /></div>
         <button className={`org-tree-row ${!nodeId ? "active" : ""}`} onClick={() => { setNodeId(""); setSelection(null); setEditor(null); setMobilePane("list"); }}><Icon name="UsersRound" size={16} /><span>全部成员</span><small>{people.length}</small></button>
         <div className="org-tree-branches">{rows.map(({ node, depth }) => <button key={node.id} className={`org-tree-row ${nodeId === node.id ? "active" : ""}`}
           style={{ "--org-depth": Math.min(depth, 4) }} onClick={() => { setNodeId(node.id); choose("node", node); setMobilePane("list"); }}>
@@ -857,13 +946,15 @@ export function Team({ toast, initialTab = "members", invitationId }) {
         </button>)}</div>
         {!rows.length && <p className="org-empty-note">先添加 Human 成员，再建立组织。</p>}
         <p className="org-tree-foot"><Icon name="LockKeyhole" size={14} />组织层级不开放私人会话。</p>
-      </aside>
+      </aside>}
       <section className="org-directory" aria-label={tab === "members" ? "成员目录" : "邀请记录"}>
         <div className="org-pane-heading"><div><h2>{tab === "members" ? selectedNode?.name || "全部成员" : "邀请记录"}</h2><small>{listRows.length} 条记录</small></div>
           {tab === "members" && selectedNode && <IconButton name="Settings2" label={`编辑 / 移动 ${selectedNode.name}`} disabled={!canEdit} onClick={() => editNode(selectedNode)} />}</div>
         <div className="org-search"><Icon name="Search" size={16} /><input aria-label="搜索成员或记录" placeholder={tab === "members" ? "搜索成员姓名…" : "搜索名称…"} value={query} onChange={(e) => setQuery(e.target.value)} /></div>
 
-        <div className="org-directory-list">{listRows.map((item) => <button key={item.id} className={`org-person-row ${selected?.id === item.id && selectedKind !== "node" ? "active" : ""}`} onClick={() => choose(tab, item)}>
+        <div className="org-directory-list">{listRows.map((item) => tab === "invitations" ? <button key={item.id} className={`org-person-row org-invite-row ${selected?.id===item.id ? "active" : ""}`} onClick={()=>choose("invitations",item)}>
+          <Icon name="Mail"/><span className="org-row-text"><strong>{item.name || item.title}</strong><span>{item.email || "未记录邮箱"}</span><small>{s.projects.find(p=>p.id===item.projectId)?.name || item.scope} · {item.role} · 邀请人 {item.owner}<br/>有效至 {item.expires || "未记录"}</small></span><Badge>{item.status === "待接受" && item.expires < new Date().toISOString().slice(0,10) ? "已过期" : item.status}</Badge><Icon name="ChevronRight" size={14}/>
+        </button> : <button key={item.id} className={`org-person-row ${selected?.id === item.id && selectedKind !== "node" ? "active" : ""}`} onClick={() => choose(tab, item)}>
           <Avatar name={item.name || item.title} agent={item.kind === "Agent"} /><span className="org-row-text"><strong>{item.name || item.title}</strong>
             <small>{tab === "members" ? memberships(item).map((node) => node.name).join("、") || "未登记正式归属" : item.email}</small></span>
           <span className="org-row-tag">{tab === "members" ? item.kind : item.status}</span><Icon name="ChevronRight" size={14} />
@@ -881,9 +972,11 @@ export function Team({ toast, initialTab = "members", invitationId }) {
             <dl className="org-facts"><dt>上级组织</dt><dd>{parentName(selected.parentId)}</dd><dt>Human 负责人</dt><dd>{personName(selected.ownerId)}</dd><dt>有效期</dt><dd>{selected.start} — {selected.end || "长期"}</dd><dt>正式成员</dt><dd>{selected.memberIds.map(personName).join("、") || "暂无"}</dd></dl>
             <Button disabled={!canEdit} onClick={() => editNode(selected)}>编辑 / 移动 {selected.name}</Button>{history(selected.history)}</>}
           {selectedKind === "members" && <>{detailHead(selected.name, selected.kind === "Human" ? "Human · 组织成员" : "Agent · 协作成员", selected.kind === "Agent")}
+            <DirectMessageButton key={selected.id} peerId={selected.id} />
+            <HumanLifecycle key={`${s.activeTenant}:${selected.id}`} memberId={selected.id}/>
             <div className="org-detail-section"><h3>正式组织归属</h3><p>{memberships(selected).map((node) => node.name).join("、") || "尚未登记"}</p></div>
-            <div className="org-detail-section"><div className="org-section-title"><h3>项目角色</h3><IconButton name="Plus" label="添加项目角色" disabled={!canEdit || !s.projects.length} onClick={() => edit("projectRoles", { memberId: selected.id, projectId: s.projects[0]?.id || "", role: "项目成员" })} /></div>
-              {org.projectRoles.filter((role) => role.memberId === selected.id).map((role) => <div className="org-project-role" key={role.id}><strong>{s.projects.find((project) => project.id === role.projectId)?.name || "项目不可用"}</strong><span>{role.role}</span><IconButton name="Pencil" label={`编辑项目角色 ${role.id}`} disabled={!canEdit} onClick={() => edit("projectRoles", role)} />{history(role.history)}</div>)}
+            <div className="org-detail-section"><div className="org-section-title"><h3>项目角色</h3><IconButton name="Plus" label="添加项目角色" disabled={!canEdit || !activeProjects(s).length} onClick={() => edit("projectRoles", { memberId: selected.id, projectId: activeProjects(s)[0]?.id || "", role: "项目成员" })} /></div>
+              {org.projectRoles.filter((role) => role.memberId === selected.id).map((role) => <div className="org-project-role" key={role.id}><strong>{s.projects.find((project) => project.id === role.projectId)?.name || "项目不可用"}</strong><span>{role.role}</span><IconButton name="Pencil" label={`编辑项目角色 ${role.id}`} disabled={!canEdit || !!projectRecordWriteProblem(s,role)} onClick={() => edit("projectRoles", role)} />{history(role.history)}</div>)}
               {!org.projectRoles.some((role) => role.memberId === selected.id) && <p className="muted">尚未分配项目角色</p>}</div>
             <p className="org-helper">项目协作不会改变正式归属；组织上下级不会获得私人会话访问权。</p></>}
           {selectedKind === "invitations" && <>{detailHead(selected.name, selected.email)}<Badge>{selected.status}</Badge><dl className="org-facts"><dt>项目角色</dt><dd>{selected.role}</dd><dt>可见范围</dt><dd>{selected.scope}</dd><dt>邀请人</dt><dd>{selected.owner}</dd><dt>登记人</dt><dd>{selected.createdBy || "历史未记录"}</dd><dt>有效截止</dt><dd>{selected.expires}{selected.expires < new Date().toISOString().slice(0, 10) ? " · 已过期" : ""}</dd></dl>
@@ -930,7 +1023,7 @@ function OrganizationEditor({ state: s, initial, onClose, onSaved }) {
         </>}
         {editor.kind === "projectRoles" && <>
           <Field label="项目成员" value={editor.form.memberId} options={options} onChange={(memberId) => change({ memberId })} required />
-          <Field label="所属项目" value={editor.form.projectId} options={s.projects.map((project) => ({ value: project.id, label: project.name }))} onChange={(projectId) => change({ projectId })} required />
+          <Field label="所属项目" value={editor.form.projectId} options={activeProjects(s).map((project) => ({ value: project.id, label: project.name }))} onChange={(projectId) => change({ projectId })} required />
           <Field label="项目职责" value={editor.form.role} options={["项目成员", "项目负责人", "评审者"]} onChange={(role) => change({ role })} required />
           <Notice>只修改项目协作角色，不移动成员的正式组织归属。</Notice>
         </>}
@@ -938,7 +1031,7 @@ function OrganizationEditor({ state: s, initial, onClose, onSaved }) {
             <Field label="姓名" value={editor.form.name} onChange={(name) => change({ name })} required />
             <Field label="电子邮件" type="email" value={editor.form.email} onChange={(email) => change({ email })} required />
             <Field label="邀请人" value={editor.form.ownerId} options={[{ value: "", label: "请选择" }, ...humanOptions]} onChange={(ownerId) => change({ ownerId })} required />
-            <Field label="邀请项目" value={editor.form.projectId} options={[{ value: "", label: "请选择当前租户项目" }, ...s.projects.map((project) => ({ value: project.id, label: project.name }))]} onChange={(projectId) => change({ projectId })} required />
+            <Field label="邀请项目" value={editor.form.projectId} options={[{ value: "", label: "请选择当前租户项目" }, ...activeProjects(s).map((project) => ({ value: project.id, label: project.name }))]} onChange={(projectId) => change({ projectId })} required />
             <Field label="项目角色" value={editor.form.role} options={["项目成员", "评审者", "外部客户"]} onChange={(role) => change({ role, scopeKind: role === "外部客户" ? "shared" : editor.form.scopeKind })} />
             <Field label="可见范围" value={editor.form.scopeKind} options={[...(editor.form.role !== "外部客户" ? [{ value: "project", label: "所选项目协作内容" }] : []), { value: "shared", label: "所选项目已共享成果" }]} onChange={(scopeKind) => change({ scopeKind })} />
             <Field label="有效截止日期" type="date" value={editor.form.expires} onChange={(expires) => change({ expires })} required />
@@ -950,7 +1043,7 @@ function OrganizationEditor({ state: s, initial, onClose, onSaved }) {
     </div>
   </>;
 }
-function WorkflowTemplates({ record, toast }) {
+function WorkflowTemplates({ record, toast, params }) {
   const s = useStore();
   const [creating, setCreating] = useState(false),
     [name, setName] = useState("");
@@ -961,7 +1054,7 @@ function WorkflowTemplates({ record, toast }) {
         <Link className="btn" to="/templates">
           返回工作流模板
         </Link>
-        <Flow key={record.id} templateId={record.id} toast={toast} />
+        <Flow key={record.id} templateId={record.id} toast={toast} params={params} />
       </>
     );
   return (
@@ -1075,6 +1168,7 @@ export function Agents({ agentId, toast }) {
         title={a ? a.name : "Agent 名册"}
         subtitle="Human 创建与 Agent 创建分开管理。任务编组引用这里的身份，任务结束不会删除 Agent。"
       >
+        {a && <DirectMessageButton key={a.id} peerId={a.id} />}
         {a && <Button icon="GitBranch" disabled={["退役", "待批准"].includes(a.status)} onClick={() => open(null, a)}>模拟子 Agent 创建提案</Button>}
         <Button icon="Plus" variant="primary" onClick={() => open(null)}>
           创建 Agent 提案
@@ -1162,6 +1256,7 @@ export function Agents({ agentId, toast }) {
               </details>
             )}
           </Section>
+          <AgentChannelGrants key={`${s.activeTenant}:${a.id}`} agentId={a.id} toast={toast} />
           <Section title="生命周期">
             <div className="stack">
               {["暂停", "空闲", "退役"].map((status) => (
@@ -1233,44 +1328,6 @@ export function Agents({ agentId, toast }) {
           ))}
         </div>
         {!roster.length && <Empty title="此列表暂无 Agent" text="创建来源会固定保留，其他来源可在对应列表查看。" />}
-        </>
-      )}
-      {!a && (
-        <>
-          <Section title="Runtime 能力目标">
-            <div className="runtime-grid">
-              {[
-                "Codex CLI",
-                "Claude Code",
-                "OpenCode",
-                "dsh",
-                "OpenClaw",
-                "Hermes",
-                "OpenAI compatible",
-                "Anthropic Messages",
-              ].map((name) => (
-                <div key={name}>
-                  <Icon name="Terminal" />
-                  <strong>{name}</strong>
-                  <Badge>
-                    {["dsh", "Hermes"].includes(name)
-                      ? "待确认来源"
-                      : "模拟适配目标"}
-                  </Badge>
-                  <small>事件 / 授权 / 停止 / 恢复 / 用量分别验证</small>
-                </div>
-              ))}
-            </div>
-          </Section>
-          <Section title="多模型候选与独立检查">
-            <Notice>
-              Heavy
-              仅在需要不同能力或独立判断时启用。候选合成后仍需正式验收，模型投票不替代事实。
-            </Notice>
-            <Link className="btn" to="/p/launch/artifacts/W-103">
-              进入候选比较与选择
-            </Link>
-          </Section>
         </>
       )}
       {editing && (
@@ -1398,8 +1455,19 @@ export function Machines({ nodeId, params, toast }) {
     "workspace: /workspaces/northstar",
     "交互终端默认只读，控制权需单独申请。",
   ]);
-  const [control, setControl] = useState(false);
-  const [preview, setPreview] = useState(true);
+  const [resourceProject,setResourceProject] = useViewState("resourceProject",activeProjects(s).some(project=>project.id===s.project) ? s.project : "");
+  const leaseScope={tenantId:s.activeTenant,projectId:resourceProject};
+  const [scopeRequest,setScopeRequest]=useState(null);
+  const [scopeChoice,setScopeChoice]=useState("");
+  const findLease = kind => [...(s.projectLeases || [])].reverse().find(lease=>lease.tenantId===s.activeTenant && lease.nodeId===nodeId && lease.projectId===leaseScope.projectId && lease.kind===kind);
+  const terminalLease=findLease("terminal"), previewLease=findLease("preview");
+  const control=terminalLease?.state === "ACTIVE", preview=previewLease?.state === "ACTIVE";
+  const resourceAction = (kind,lease) => {
+    try {
+      if (lease && lease.state !== "RELEASED") { const result=releaseProjectLease({tenantId:leaseScope.tenantId,leaseId:lease.id,revision:lease.revision,reason:"用户明确释放节点本地模拟资源"});toast(result === "RELEASED" ? "本地模拟释放已记录" : "节点未确认，释放仍待处理",result !== "RELEASED"); }
+      else {if(!leaseScope.projectId){setScopeChoice("");setScopeRequest(kind);return;}requestProjectLease({tenantId:leaseScope.tenantId,projectId:leaseScope.projectId,nodeId,kind});toast("已记录明确项目的本地模拟租约；不代表真实服务已启动");}
+    } catch(error) {toast(error.message,true);}
+  };
   const [file, setFile] = useState("README.md");
   const tab = params.get("tab") || "status";
   return (
@@ -1407,12 +1475,15 @@ export function Machines({ nodeId, params, toast }) {
       <PageHead
         eyebrow="团队 / 执行资源"
         title={node ? node.name : "工作在任何地方，都能继续"}
-        subtitle="纯 Go Runner · 出站连接 · 系统保活 · 有界执行"
+        subtitle={node ? "查看当前设备的状态、工作区、终端和授权预览。" : "接入和管理可执行任务的设备。"}
       >
-        <Button variant="primary" icon="Plus" onClick={() => setInstall(true)}>
-          接入节点
-        </Button>
+        {node ? <Link className="btn" to="/machines">返回节点列表</Link> : <Button variant="primary" icon="Plus" onClick={() => setInstall(true)}>接入节点</Button>}
       </PageHead>
+      {scopeRequest && <Modal title={scopeRequest === "switch" ? "更换访问上下文" : "确认工作区访问范围"} onClose={()=>setScopeRequest(null)}>
+        <Notice>节点可以承载多个项目。当前从租户节点管理进入，没有唯一任务上下文；请选择本次访问的项目，用于权限、审计及归档时释放资源。这不会为节点创建子节点或绑定永久所属项目。当前终端与文件均为原型示例。</Notice>
+        <Field label="本次访问项目" value={scopeChoice} options={[{value:"",label:"选择访问范围"},...activeProjects(s).map(project=>({value:project.id,label:project.name}))]} onChange={setScopeChoice} required />
+        <Button variant="primary" disabled={!scopeChoice} onClick={()=>{try {if(scopeRequest!=="switch")requestProjectLease({tenantId:s.activeTenant,projectId:scopeChoice,nodeId,kind:scopeRequest});setResourceProject(scopeChoice);setScopeRequest(null);setOutput(["[模拟] 访问上下文已选择；未连接真实工作区或 Shell。"]);setCommand("");toast(scopeRequest==="switch" ? "访问上下文已切换；旧租约仍保留，可切回释放" : "已记录本地模拟访问，不代表真实服务启动");}catch(error){toast(error.message,true);}}}>{scopeRequest === "switch" ? "切换访问上下文" : "确认并申请模拟访问"}</Button>
+      </Modal>}
       {node ? (
         <>
           <div className="tabs">
@@ -1532,12 +1603,12 @@ export function Machines({ nodeId, params, toast }) {
                 </div>
                 <pre>
                   {file === "README.md"
-                    ? "# Northstar\n\n固定成果版本 v3\n负责人：林予\n状态：等待移动端内部复核\n\n本视图仅演示授权工作区文件，不读取真实主机。"
+                    ? "# 工作区文件示例\n\n仅用于演示文件浏览布局。\n未连接当前节点文件服务，不代表任何任务的实际成果。"
                     : file.endsWith("json")
                       ? JSON.stringify(
                           {
-                            work: "W-104",
-                            version: 3,
+                            node: nodeId,
+                            workspace: "本地示例",
                             status: "requires-review",
                             source: "prototype-fixture",
                           },
@@ -1551,7 +1622,7 @@ export function Machines({ nodeId, params, toast }) {
                   onClick={() =>
                     exportData("file-preview", {
                       file,
-                      work: "W-104",
+                      nodeId,
                       simulated: true,
                     })
                   }
@@ -1561,6 +1632,7 @@ export function Machines({ nodeId, params, toast }) {
               </div>
             </div>
           )}
+          {["terminal","preview"].includes(tab) && leaseScope.projectId && <p className="muted">访问上下文：{s.projects.find(project=>project.id===leaseScope.projectId)?.name || "原项目已不可用"} · 申请与释放按此项目留存记录。<Button onClick={()=>{setScopeChoice(leaseScope.projectId);setScopeRequest("switch");}}>更换访问上下文</Button></p>}
           {tab === "terminal" && (
             <Section
               title="工作区终端"
@@ -1584,6 +1656,7 @@ export function Machines({ nodeId, params, toast }) {
                       return;
                     }
                     if (!command.trim()) return;
+                    if (!terminalLease || leaseScope.tenantId !== s.activeTenant || node?.status !== "在线" || projectIsArchived(s,terminalLease.projectId) || s.offline) {toast("资源已停止或项目只读，不能执行新模拟命令。",true);return;}
                     setOutput([
                       ...output,
                       `$ ${command}`,
@@ -1616,14 +1689,13 @@ export function Machines({ nodeId, params, toast }) {
                 onClick={() => {
                   try {
                     assertWrite();
-                    setControl(!control);
-                    toast(control ? "控制权已释放" : "已取得本地模拟控制权");
+                    resourceAction("terminal",terminalLease);
                   } catch (e) {
                     toast(e.message, true);
                   }
                 }}
               >
-                {control ? "释放控制" : "申请 Human 控制"}
+                {terminalLease && terminalLease.state !== "RELEASED" ? "释放控制" : "申请 Human 控制"}
               </Button>
             </Section>
           )}
@@ -1632,44 +1704,31 @@ export function Machines({ nodeId, params, toast }) {
               <div className="preview-record">
                 <Icon name="Globe2" size={32} />
                 <div className="grow">
-                  <h2>northstar-v3 · Web / API</h2>
+                  <h2>预览隧道示例 · Web / API</h2>
                   <p>随机域名、身份验证、租约与实际资源清理</p>
                   <code>preview-8f3a.example.invalid</code>
                 </div>
-                <Badge>{preview ? "在线" : "已释放"}</Badge>
+                <Badge>{preview ? "本地模拟租约有效" : previewLease?.state === "RELEASED" ? "已记录模拟释放" : "旧示例 · 归属与租约未核实"}</Badge>
               </div>
               <dl>
                 <dt>归属</dt>
-                <dd>W-104 / v3 / 当前节点</dd>
+                <dd>当前未登记任务关联，不能打开其他任务的成果</dd>
                 <dt>权限</dt>
                 <dd>项目成员 · 只读预览</dd>
                 <dt>租约</dt>
                 <dd>
-                  {preview ? "剩余 28 分钟 · 模拟续租" : "已撤权并记录模拟释放"}
+                  {preview ? "明确项目的本地模拟记录，未启动真实隧道" : previewLease?.state === "RELEASED" ? "本地释放已记录，不代表远程清理完成" : "没有可核对的项目租约，不补造旧释放记录"}
                 </dd>
                 <dt>清理范围</dt>
                 <dd>代理、凭据、域名映射、节点监听与子进程</dd>
               </dl>
               <div className="actions">
-                <Link to="/p/launch/artifacts/W-104" className="btn">
-                  打开授权预览
-                </Link>
                 <Button
                   onClick={() => {
-                    setPreview(!preview);
-                    update((x) =>
-                      log(
-                        x,
-                        preview ? "释放模拟预览资源" : "重新申请模拟预览",
-                        `/machines/${node.id}?tab=preview`,
-                      ),
-                    );
-                    toast(
-                      preview ? "访问已关闭，清理记录已保存" : "模拟预览已申请",
-                    );
+                    resourceAction("preview",previewLease);
                   }}
                 >
-                  {preview ? "撤权并释放" : "重新申请"}
+                  {previewLease && previewLease.state !== "RELEASED" ? "撤权并释放" : "申请本地模拟预览"}
                 </Button>
               </div>
             </Section>
@@ -1794,191 +1853,61 @@ export function Machines({ nodeId, params, toast }) {
     </>
   );
 }
-export function Cost({ toast }) {
-  const s = useStore();
-  const [limit, setLimit] = useState(String(s.budget));
-  const [policy, setPolicy] = useState(
-    s.resources.policies.find((p) => p.id === "POL-02")?.status === "启用",
-  );
-  const total = s.work.reduce((n, w) => n + w.cost, 0);
-  return (
-    <>
-      <PageHead
-        title="清楚每一份投入，支持每一个结果"
-        subtitle="实际、估算与未知分开记录；失败和候选也计入成本。"
-      >
-        <Button
-          icon="Download"
-          onClick={() =>
-            exportData(
-              "usage",
-              s.work.map(({ id, cost, agent, project }) => ({
-                id,
-                cost,
-                agent,
-                project,
-              })),
-            )
-          }
-        >
-          导出明细
-        </Button>
-      </PageHead>
-      <div className="metrics">
-        <Metric
-          label="已记录费用"
-          value={formatCurrency(total)}
-          detail="USD · 当前演示工作"
-        />
-        <Metric
-          label="预算使用"
-          value={`${Math.round((total / Number(limit)) * 100)}%`}
-          detail={`项目预算 $${limit}`}
-        />
-        <Metric label="待对账调用" value="3" detail="未报告用量不记为零" />
-        <Metric
-          label="自动调节"
-          value={policy ? "已开启" : "已暂停"}
-          detail="不改变质量要求与数据边界"
-        />
-      </div>
-      <div className="two-col">
-        <Section
-          title="近 7 日执行成本"
-          extra={<Badge tone="violet">含失败与候选</Badge>}
-        >
-          <div className="bar-chart">
-            {[24, 42, 35, 68, 51, 84, 63].map((v, i) => (
-              <div key={i}>
-                <span>${v}</span>
-                <i style={{ height: `${v * 2}px` }} />
-                <small>10/{7 + i}</small>
-              </div>
-            ))}
-          </div>
-        </Section>
-        <Section title="预算与自动调节">
-          <Field
-            label="项目预算（USD）"
-            value={limit}
-            onChange={setLimit}
-            type="number"
-            min="1"
-          />
-          <label className="switch-label">
-            <input
-              type="checkbox"
-              checked={policy}
-              onChange={(e) => setPolicy(e.target.checked)}
-            />
-            <span>允许在授权模型集合内调节</span>
-          </label>
-          <Notice>
-            80% 提醒；100%
-            停止新派发。缓存、上下文裁剪与候选数量调整不得删除硬要求。
-          </Notice>
-          <Button
-            variant="primary"
-            onClick={() => {
-              try {
-                assertWrite();
-                if (Number(limit) <= 0) throw Error("预算必须大于零。");
-                update((x) => {
-                  x.budget = Number(limit);
-                  let policyRecord = x.resources.policies.find(
-                    (p) => p.id === "POL-02",
-                  );
-                  if (!policyRecord) {
-                    policyRecord = {
-                      id: "POL-02",
-                      name: "预算自动调节",
-                      owner: "林予",
-                    };
-                    x.resources.policies.push(policyRecord);
-                  }
-                  policyRecord.status = policy ? "启用" : "暂停";
-                  log(
-                    x,
-                    `调整预算 $${limit}，自动调节${policy ? "启用" : "暂停"}`,
-                    "/cost",
-                  );
-                });
-                toast("预算策略已保存");
-              } catch (e) {
-                toast(e.message, true);
-              }
-            }}
-          >
-            保存策略
-          </Button>
-        </Section>
-      </div>
-      <Section title="按工作追溯">
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>工作</th>
-                <th>执行者</th>
-                <th>费用</th>
-                <th>计量状态</th>
-                <th>来源</th>
-              </tr>
-            </thead>
-            <tbody>
-              {s.work.map((w) => (
-                <tr key={w.id}>
-                  <td>
-                    <Link to={`/p/${w.project}/work-items/${w.id}`}>
-                      {w.title}
-                    </Link>
-                  </td>
-                  <td>{w.agent}</td>
-                  <td>{formatCurrency(w.cost)}</td>
-                  <td>
-                    <Badge tone="violet">模拟账本</Badge>
-                  </td>
-                  <td>{w.id}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Section>
-    </>
-  );
-}
+export function Cost(props) { return <BudgetPage {...props} />; }
 export function Audit() {
   const s = useStore();
-  const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
-  const needle = query.trim().toLocaleLowerCase();
-  const filtered = s.events.filter(event => `${event.text} ${event.actor} ${event.id} ${event.target}`.toLocaleLowerCase().includes(needle));
-  const pages = Math.max(1, Math.ceil(filtered.length / 50));
-  const currentPage = Math.min(page, pages);
-  const visible = filtered.slice((currentPage - 1) * 50, currentPage * 50);
+  const [selectedId, setSelectedId] = useViewState("audit.record", "");
+  const [actor, setActor] = useViewState("audit.actor", "");
+  const [, redraw] = useState(0);
+  const tenantId=s.activeTenant, projectId=s.project, role=s.role;
+  const recheck = useCallback(() => {
+    const current=read();
+    if(current.activeTenant!==tenantId || current.project!==projectId || current.role!==role) throw Error("审计范围已变化，请返回当前列表后重试。");
+    return current;
+  }, [tenantId,projectId,role]);
+  const refresh = useCallback(() => { recheck(); redraw(value=>value+1); }, [recheck]);
+  const authorizeExport = useCallback(payload => payload.records.every(row => visibleActivityEvents(recheck()).some(event => event.id===row.id && event.text===row.text && event.actor===row.actor && event.time===row.time && event.target===row.target)), [recheck]);
+  const events = visibleActivityEvents(s);
+  const selected = events.find(event => event.id === selectedId);
+  const columns = [
+    { key: "id", label: "记录编号", value: event => event.id },
+    { key: "text", label: "已记录的动作", exportValue: event => event.text, value: event => event.text },
+    { key: "actor", label: "主体", exportValue: event => event.actor, value: event => event.actor },
+    { key: "time", label: "记录时间", exportValue: event => event.time, value: event => event.time, render: event => formatTimestamp(event.time) },
+    { key: "target", label: "关联位置", exportValue: event => event.target, value: event => event.target },
+  ];
+  const targetLink = event => {
+    if (!event || typeof event.target !== "string" || !event.target.startsWith("/") || event.target.startsWith("//")) return null;
+    const [path, query = ""] = event.target.split("?");
+    const params = new URLSearchParams(query);
+    params.set("tenant", s.activeTenant);
+    if (!params.has("scope")) params.set("scope", /^\/p\/([^/]+)/.exec(path)?.[1] || s.project);
+    return `${path}?${params}`;
+  };
   return <>
-    <PageHead title="决定有依据，协作有来路" subtitle="从一个交付，追溯到它的要求、讨论、执行与批准。">
-      <Button icon="Download" onClick={() => exportData("audit", filtered)}>导出当前筛选记录</Button>
-    </PageHead>
-    <label className="search-field"><Icon name="Search" />
-      <input aria-label="查找审计事件" name="audit-search" autoComplete="off" value={query}
-        onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder="查找主体、动作、对象或记录编号…" />
-    </label>
+    <PageHead title="决定有依据，协作有来路" subtitle="原地查看每条已记录活动；从明确的关联位置追溯讨论、执行与批准。" />
     <Section title="不可覆盖的活动历史">
-      <p className="muted" role="status">共 {new Intl.NumberFormat("zh-CN").format(filtered.length)} 条记录 · 第 {currentPage} / {pages} 页</p>
-      {!filtered.length ? <Empty title={query ? "没有匹配的活动" : "还没有活动记录"} text={query ? "尝试其他主体、动作或对象编号。" : "提交、修改和审核等操作会保留在这里。"} /> : <div className="audit-list">
-        {visible.map(event => <Link key={event.id} to={event.target}>
-          <span className="audit-icon"><Icon name="Fingerprint" /></span>
-          <div className="grow"><strong>{event.text}</strong><small>{event.actor} · {formatTimestamp(event.time)} · <span translate="no">{event.id}</span></small></div>
-          <Icon name="ArrowUpRight" />
-        </Link>)}
-      </div>}
-      {pages > 1 && <nav className="actions" aria-label="审计记录分页">
-        <Button disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>上一页</Button>
-        <Button disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}>下一页</Button>
-      </nav>}
+      <DataList rows={events} columns={columns} viewId="audit" scopeKey={`${s.activeTenant}:${s.project}:${s.role}`} title="活动与审计记录" defaultPageSize={50}
+        searchText={event => `${event.text} ${event.actor} ${event.id} ${event.target}`}
+        filterRow={event => !actor || event.actor === actor}
+        filters={<Field label="主体" value={actor} onChange={setActor} options={[{value:"",label:"全部主体"}, ...Array.from(new Set(events.map(event => event.actor))).map(value => ({value,label:value}))]} />}
+        onClearFilters={() => setActor("")} onRefresh={refresh} offline={s.offline}
+        onExport={authorizeExport}
+        renderActions={event => <Button onClick={() => setSelectedId(event.id)}>查看记录</Button>} />
+      <p className="muted">活动由业务操作自动记录；不允许手动新增、导入、编辑或删除历史。刷新仅重新读取原型本地状态。</p>
     </Section>
+    {selectedId && <Modal title="审计记录详情" onClose={() => setSelectedId("")} headerActions={selected && targetLink(selected) ? <Link className="btn" to={targetLink(selected)} target="_blank" rel="noopener noreferrer">新标签页打开关联位置</Link> : null}>
+      {selected ? <>
+        <dl className="record-fields">
+          <dt>记录编号</dt><dd>{selected.id}</dd><dt>主体</dt><dd>{selected.actor || "未记录"}</dd>
+          <dt>记录时间</dt><dd>{selected.time ? formatTimestamp(selected.time) : "未记录"}{selected.time && /^\d{2}:\d{2}$/.test(selected.time) && " · 历史样例未记录日期与时区"}</dd>
+          <dt>已记录的动作</dt><dd>{selected.text || "未记录"}</dd>
+          <dt>关联位置</dt><dd style={{overflowWrap:"anywhere"}}>{selected.target || "未记录"}</dd>
+          <dt>理由</dt><dd>{selected.reason || "此记录未保存独立理由"}</dd>
+        </dl>
+        <Notice>此原型记录仅包含上面已保存的字段，未提供完整的历史快照或证据包。关联位置展示对象当前状态，不能据此证明当时的版本、验收依据或授权。真实防篡改审计服务待实现。</Notice>
+      </> : <Empty title="记录不存在或无权查看" text="未展示原始存储中的受限内容；关闭后返回当前授权列表。" />}
+    </Modal>}
   </>;
 }
 export function Settings({ toast }) {
@@ -1990,17 +1919,10 @@ export function Settings({ toast }) {
         subtitle="外观、通知、隐私与设备，围绕你的工作方式配置。"
       />
       <div className="two-col">
-        <Section title="外观与客户端">
+        <Section title="外观">
           <Field
             label="主题"
-            options={[
-              "aurora",
-              "modern",
-              "business",
-              "eyeCare",
-              "pinkKawaii",
-              "neoBrutalism",
-            ]}
+            options={Object.entries(themeNames).map(([value,label])=>({value,label}))}
             value={s.theme}
             onChange={(v) => update((x) => (x.theme = v))}
           />
@@ -2012,22 +1934,7 @@ export function Settings({ toast }) {
             />
             深色模式
           </label>
-          <div className="client-platforms">
-            {["Web", "macOS", "Windows", "Linux", "iOS", "Android"].map((p) => (
-              <span key={p}>
-                <Icon
-                  name={
-                    p === "iOS" || p === "Android" ? "Smartphone" : "Monitor"
-                  }
-                />
-                {p}
-              </span>
-            ))}
-          </div>
-          <p className="muted">
-            同一 Web UI，响应式布局与 Tauri
-            壳能力分离。本原型可缩窄浏览器体验手机布局。
-          </p>
+          <p className="muted">主题和深色模式立即应用。</p>
         </Section>
         <Section title="通知与隐私">
           <label className="switch-label">
@@ -2109,7 +2016,89 @@ export function Settings({ toast }) {
   );
 }
 
+function RepositoryPage({ recordId, toast, params = new URLSearchParams() }) {
+  const s = useStore();
+  const [editing, setEditing] = useState(null), [action, setAction] = useState(null), [reason, setReason] = useState("");
+  const archive = ["active", "archived", "all"].includes(params.get("archive")) ? params.get("archive") : "active";
+  const tenantId=s.activeTenant, projectId=s.project, role=s.role;
+  const scopeKey=`${tenantId}:${projectId}:${role}:${archive}`;
+  const [list,setList]=useViewState(`repositories.list.${tenantId}:${projectId}:${role}`,{query:params.get("q") || ""});
+  const [,redraw]=useState(0);
+  const scopedRecords=useCallback(current=>repositoryRecords(current,{archive}).filter(item=>current.project==="all"||item.projectId===current.project),[archive]);
+  const rows = scopedRecords(s);
+  const columns=React.useMemo(()=>[
+    ...[["name","仓库"],["projectId","项目编号"],["owner","负责人"],["provider","托管平台"],["branch","分支"]].map(([key,label])=>({key,label,value:item=>item[key]||"",exportValue:item=>item[key]||""})),
+    {key:"status",label:"状态",value:item=>item.archivedAt?"已归档":item.status,exportValue:item=>item.archivedAt?"已归档":item.status,render:item=><Badge>{item.archivedAt?"已归档":item.status}</Badge>},
+    {key:"revision",label:"配置修订",value:item=>item.revision||1,exportValue:item=>item.revision||1},
+    {key:"version",label:"原版本",value:item=>item.version||null,exportValue:item=>item.version||null},
+  ],[]);
+  const recheck=useCallback(()=>{const current=read();if(current.activeTenant!==tenantId||current.project!==projectId||current.role!==role||!["owner","executor"].includes(current.role))throw Error("仓库授权范围已变化，请重新打开列表。");return scopedRecords(current);},[tenantId,projectId,role,scopedRecords]);
+  const refresh=useCallback(()=>{recheck();redraw(value=>value+1);},[recheck]);
+  const authorizeExport=useCallback(payload=>{const current=recheck();if(!payload.records.every(item=>{const record=current.find(record=>record.id===item.id);return record&&columns.every(column=>JSON.stringify(item[column.key])===JSON.stringify(column.exportValue(record)??null));}))throw Error("仓库记录已变化，请刷新后重新导出。");return true;},[recheck,columns]);
+  const record = repositoryRecords(s, { archive: "all" }).find(item => item.id === recordId);
+  if (!["owner", "executor"].includes(s.role)) return <Empty title="当前视角无权访问仓库" />;
+  if (recordId && !record) return <Empty title="仓库不存在或无权访问" />;
+  const setFilter = (key, value) => { const next = new URLSearchParams(params); value ? next.set(key, value) : next.delete(key); location.hash = `/repositories?${next}`; };
+  const canCreate = !repositoryWriteProblem(s, {}, false);
+  const editProblem = record ? repositoryWriteProblem(s, record, false) : "";
+  const actionProblem = record ? repositoryWriteProblem(s, record) : "";
+  const create = () => setEditing({ name: "", owner: "林予", provider: "", branch: "main", scope: "", projectId: activeProjects(s).some(project => project.id === s.project) ? s.project : "", tenantId: s.activeTenant });
+  const begin = (status, label) => { setAction({ id: record.id, name: record.name, status, label, tenantId: s.activeTenant, revision: record.revision || 1 }); setReason(""); };
+  const text = value => typeof value === "string" && value ? value : "未记录";
+  return <>
+    <PageHead title={record ? record.name : "源码连接"} subtitle="接入已有代码来源，监控变更并为工作流提供输入；这里只维护连接配置。">
+      {record ? <Link className="btn" to="/repositories">返回仓库列表</Link> : <Button variant="primary" disabled={!canCreate} onClick={create}>接入已有仓库</Button>}
+      {record&&<Button icon="Download" onClick={() => exportData("repositories", record)}>导出</Button>}
+      {record && !record.archivedAt && <Button icon="Pencil" disabled={Boolean(editProblem)} title={editProblem} onClick={() => setEditing({ ...record, tenantId: s.activeTenant, revision: record.revision || 1 })}>编辑连接配置</Button>}
+    </PageHead>
+    {record ? <>
+      <Section title={record.archivedAt ? "已归档 · 历史只读" : "仓库配置"} extra={<Badge>{record.archivedAt ? "已归档" : record.status}</Badge>}>
+        <dl className="record-fields">
+          <dt>仓库 ID</dt><dd>{record.id}</dd>
+          <dt>所属项目</dt><dd>{record.projectId ? <Link to={`/p/${record.projectId}`}>{s.projects.find(project => project.id === record.projectId)?.name || "项目不可用"} · {record.projectId}</Link> : "未记录；旧范围说明不能证明项目归属"}</dd>
+          {[['owner','负责人'],['provider','托管平台'],['branch','分支'],['scope','范围说明'],['commit','最近提交'],['event','最近事件'],['sync','最近同步记录'],['version','原版本标识']].map(([key,label]) => <React.Fragment key={key}><dt>{label}</dt><dd style={{overflowWrap:"anywhere"}}>{text(record[key])}</dd></React.Fragment>)}
+          <dt>配置修订</dt><dd>{record.revision || 1}</dd>
+        </dl>
+        {record.projectBinding && <p className="muted">项目绑定由 {text(record.projectBinding.actorId)} 于 {formatTimestamp(record.projectBinding.time)} 在本地明确记录；不代表旧历史已具有此归属。</p>}
+        {record.archivedAt ? <>
+          <Notice>归档后不可修改配置或同步，原项目、提交和执行历史保留。此操作不会删除远程仓库、提交或工作目录，也不会取消执行。</Notice>
+          <dl className="record-fields"><dt>归档人</dt><dd>{text(record.archivedBy)} · Human</dd><dt>归档时间</dt><dd>{formatTimestamp(record.archivedAt)}</dd><dt>归档理由</dt><dd style={{overflowWrap:"anywhere"}}>{text(record.archiveReason)}</dd><dt>记录来源</dt><dd>{record.archiveSource === "LOCAL_SIMULATION" ? "本地模拟" : "未记录"}</dd></dl>
+        </> : <>
+          {actionProblem && <Notice tone="warn">{actionProblem}</Notice>}
+          <div className="toolbar">{[["已连接","模拟增量同步"],["已暂停","暂停同步"],["已归档","归档仓库"]].map(([status,label]) => <Button key={label} disabled={Boolean(actionProblem)} title={actionProblem} onClick={() => begin(status,label)}>{label}</Button>)}</div>
+          <Notice>同步与暂停仅更新本地模拟记录；不代表远程仓库或工作流状态已改变。</Notice>
+        </>}
+      </Section>
+      <Section title="变更历史">
+        {(record.history || []).length ? record.history.map((event,index) => <details key={index}><summary>{event.action || "历史配置"} · {event.time ? formatTimestamp(event.time) : "时间未记录"}</summary>
+          <p>{event.actorId || event.actor || "主体未记录"}{event.reason ? ` · ${event.reason}` : ""}</p>
+          <dl className="record-fields">{[['id','原记录'],['name','原名称'],['projectId','原项目 ID'],['owner','原负责人'],['provider','原托管平台'],['scope','原范围说明'],['branch','原分支'],['commit','原提交'],['event','原事件'],['sync','原同步记录'],['version','原版本'],['status','原同步状态']].map(([key,label]) => <React.Fragment key={key}><dt>{label}</dt><dd>{text((event.snapshot || event)[key])}</dd></React.Fragment>)}</dl>
+        </details>) : <p className="muted">尚无变更历史。</p>}
+      </Section>
+    </> : <>
+      <DataList rows={rows} columns={columns} viewId="repositories" scopeKey={scopeKey} title="源码连接" defaultSort="name"
+        queryState={list} onQueryStateChange={patch=>setList(previous=>({...previous,...patch}))}
+        searchText={item=>`${item.id} ${item.name} ${item.owner||""} ${item.provider||""} ${item.branch||""} ${item.projectId||""}`}
+        filters={<Field label="归档状态" value={archive} options={[{value:"active",label:"未归档"},{value:"archived",label:"已归档"},{value:"all",label:"全部"}]} onChange={value=>setFilter("archive",value)}/>}
+        onClearFilters={()=>setFilter("archive","active")} onRefresh={refresh} offline={s.offline} editing={Boolean(editing||action)}
+        onExport={authorizeExport} exportSource={`repositories:${scopeKey}`}
+        renderActions={item=><Link className="btn" target="_blank" rel="noopener noreferrer" to={`/repositories/${encodeURIComponent(item.id)}?tenant=${encodeURIComponent(tenantId)}&scope=${encodeURIComponent(projectId)}`}>新标签页查看连接</Link>}
+        emptyText="当前条件下没有仓库，可清空筛选或接入已有仓库。"/>
+    </>}
+    {editing && <ResourceEditor kind="repositories" record={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); toast("仓库配置已保存"); }} />}
+    {action && <Modal title={action.label} draftValue={reason} onClose={() => setAction(null)}><ActionForm label={action.status === "已归档" ? "确认归档仓库" : "确认模拟操作"} onCancel={() => setAction(null)} onSubmit={({dismiss}) => {
+      resourceCommand("repositories",action.id,action.status,reason,action.label,{tenantId:action.tenantId,revision:action.revision}); dismiss(); toast(action.status === "已归档" ? "仓库已归档，历史保留" : "本地模拟记录已更新");
+    }}>
+      <p>{action.name} · 修订 {action.revision}</p>
+      <Notice>{action.status === "已归档" ? "归档后此仓库只读，并从默认列表移出。远程仓库、提交、工作目录和现有执行保持原状；不提供恢复操作。" : "此动作只记录本地模拟结果，不连接远程服务。"}</Notice>
+      <Field label={action.status === "已归档" ? "归档理由" : "操作理由"} type="textarea" required value={reason} onChange={setReason} />
+    </ActionForm></Modal>}
+  </>;
+}
+
 export function ResourcePage(props) {
+  if (props.kind === "knowledge") return <KnowledgeLibrary {...props} ResourceEditor={ResourceEditor} legacyPage={<GenericResourcePage {...props} />} />;
+  if (props.kind === "repositories") return <RepositoryPage {...props} />;
   if (props.kind === "goals") return <GoalsPage {...props} legacyPage={<GenericResourcePage {...props} />} />;
   return <GenericResourcePage {...props} />;
 }

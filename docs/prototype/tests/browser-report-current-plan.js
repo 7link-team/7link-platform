@@ -1,0 +1,64 @@
+(async()=>{
+ const wait=()=>new Promise(resolve=>setTimeout(resolve,180)),check=(ok,message)=>{if(!ok)throw Error(message)};
+ const state=()=>JSON.parse(localStorage.getItem("collaboration-prototype-v1")), ids=state().testCurrentPlans;
+ check(ids,"Current Plan fixtures missing");
+ const go=async path=>{location.hash=path;await wait()};
+ const click=async(text,scope=document)=>{const b=[...scope.querySelectorAll("button")].find(b=>b.textContent.trim()===text);check(b&&!b.disabled,`Missing ${text}`);b.click();await wait()};
+ const fill=async(name,value)=>{const input=document.querySelector(`[name="${name}"]`);check(input,`Missing ${name}`);Object.getOwnPropertyDescriptor(input.tagName==="TEXTAREA"?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,"value").set.call(input,value);input.dispatchEvent(new Event("input",{bubbles:true}));await wait()};
+ const before=localStorage.getItem("collaboration-prototype-v1");
+ await go(`/reports/${ids.CORRUPT.reportId}`);
+ check(document.querySelector("main").textContent.includes("计划项不存在于采用的固定本期计划"),"Nonexistent Plan reference passed current report check");
+ check(localStorage.getItem("collaboration-prototype-v1")===before,"Reference diagnosis mutated imported evidence");
+ await click("编辑");
+ const invalidSelector=document.querySelector('[role="combobox"][aria-label="未完成计划关联 1"]');check(invalidSelector,"Invalid reference selector missing");
+ invalidSelector.scrollIntoView({block:"center"});await wait();invalidSelector.focus();await wait();invalidSelector.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}));await wait();
+ check(document.activeElement?.matches('[role="option"]:not(:disabled)'),`Disabled selected reference trapped keyboard focus: ${document.activeElement?.outerHTML?.slice(0,500)} options=${[...document.querySelectorAll("[role=option]")].map(o=>`${o.disabled}:${o.textContent}`).join("|")}`);
+ document.activeElement.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await wait();
+ check(document.activeElement===invalidSelector&&!document.querySelector('[role="listbox"]'),"Escape failed to restore invalid-reference selector focus");
+ await click("取消",document.querySelector('dialog[open]'));
+
+ await go(`/reports/${ids.FIXED.reportId}`);
+ check(document.querySelector("[data-report-current-plan]")?.textContent.includes("测试场景：调研仍待完成"),"Missing original fixed commitment after Plan deletion");
+ check(document.querySelector("main").textContent.includes("原固定引用保留"),"Deleted current source not disclosed");
+ check(!document.querySelector(`[data-report-current-plan] a[href="#/plans/${ids.FIXED.planId}"]`),"Deleted Plan still offered as working navigation");
+ check(document.querySelector("[data-report-current-plan]").textContent.includes("当前计划来源不可用，固定引用保留"),"Deleted Plan lacks honest source availability");
+ for(const snapshot of document.querySelectorAll("[data-report-next-plan]")) {
+  check(!snapshot.querySelector("a"),"Deleted next Plan still offered as working navigation");
+  check(snapshot.textContent.includes("当前计划来源不可用，固定引用保留"),"Deleted next Plan lacks honest source availability");
+ }
+ check(localStorage.getItem("collaboration-prototype-v1")===before,"Reading fixed report changed evidence");
+ await go(`/reports/${ids.DRAFT.reportId}`);await click("编辑");
+ const dialog=document.querySelector("dialog[open]");
+ check(dialog.querySelector("[data-report-current-plan]")?.textContent.includes("测试场景：调研仍待完成"),"Pending replan replaced original commitment");
+ const link=[...dialog.querySelectorAll("a")].find(a=>a.textContent.trim()==="查看 / 编辑真实本期计划");check(link,"Missing actual Plan navigation");link.click();await wait();
+ check(location.hash===`#/plans/${ids.DRAFT.planId}`&&!document.querySelector("dialog[open]"),"Plan link did not close clean editor and navigate to actual Plan");
+ await click("确认固定计划");await fill("确认或退回说明","核对下游变化，确认新的调研范围");await click("确认操作",document.querySelector("dialog[open]"));
+ const p=state().resources.plans.find(p=>p.id===ids.DRAFT.planId);check(p.status==="已确认","Human Plan confirmation failed");
+ await go(`/reports/${ids.DRAFT.reportId}`);
+ check(document.querySelector("main").textContent.includes("本期计划基线已变化"),"New baseline silently replaced report adoption");
+ await click("编辑");await click("采用本期计划基线",document.querySelector("dialog[open]"));
+ check(document.querySelector("dialog[open] [data-report-current-plan]")?.textContent.includes("待确认的新调研范围"),"Explicit adoption did not show new baseline");
+ const confirmed=JSON.stringify(p.confirmedSnapshot);await click("保存",document.querySelector("dialog[open]"));
+ check(!document.querySelector("dialog[open]"),"Adopted report failed to save");
+ check(document.querySelector("[data-report-current-plan]")?.textContent.includes("待确认的新调研范围"),"Saved report does not show adopted revision");
+ const final=state(),r=final.resources.reports.find(r=>r.id===ids.DRAFT.reportId);
+ check(r.currentPlanBinding.snapshot.revision===p.confirmedSnapshot.revision,"Report binds current Plan revision instead of actual confirmation baseline");
+ check(JSON.stringify(final.resources.plans.find(plan=>plan.id===p.id).confirmedSnapshot)===confirmed,"Report save changed Plan approval");
+ await click("编辑");
+ const linkedDialog=document.querySelector("dialog[open]"), selector=linkedDialog.querySelector('[role="combobox"][aria-label="未完成计划关联 1"]');
+ check(selector,"Current Plan item selector missing");
+ const originalItem=r.content.uncompleted[0].plan_item_id;
+ selector.click();await wait();
+ const offPlan=document.querySelector('[role="listbox"] [role="option"]');check(offPlan?.textContent.includes("计划外事项"),"Off-plan choice missing");offPlan.click();await wait();
+ check(!linkedDialog.querySelector('[aria-label="确认原因与处置 1"]').checked,"Clearing Plan link retained author confirmation");
+ check(linkedDialog.querySelector('[data-report-plan-source]')?.textContent.includes("计划外事项"),"Cleared link still appears verified");
+ selector.click();await wait();
+ const option=[...document.querySelectorAll('[role="listbox"] [role="option"]')].find(o=>o.textContent.includes(originalItem));check(option,"Original fixed Plan item unavailable");option.click();await wait();
+ check(!linkedDialog.querySelector('[aria-label="确认原因与处置 1"]').checked,"Relinking reused old author confirmation");
+ linkedDialog.querySelector('[aria-label="确认原因与处置 1"]').click();await wait();await click("保存",linkedDialog);
+ const relinked=state().resources.reports.find(report=>report.id===r.id).content.uncompleted[0];
+ check(relinked.plan_item_id===originalItem&&relinked.detail_confirmation,"Plan link/author reconfirmation did not round-trip");
+ check(document.querySelector('[data-report-plan-source]')?.textContent.includes(originalItem),"Reader omits fixed Plan source");
+ check(document.documentElement.scrollWidth<=innerWidth+2,"Current Plan snapshot viewport overflow");
+ return {pass:true,width:innerWidth,checks:["fixed commitment survives deleted source","pending replan retains original baseline","real Plan navigation","new Human baseline exposes stale report","explicit adoption and save","report does not approve Plan","viewport fit"]};
+})()

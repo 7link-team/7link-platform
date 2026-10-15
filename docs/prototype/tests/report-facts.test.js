@@ -2,11 +2,32 @@ import { expect, test } from "bun:test";
 import { initial } from "../src/data.js";
 import { periodicReportFacts, upsertPeriodicReport, periodicWorklogFacts, worklogSubjectMatch, dateInZone } from "../src/reporting.js";
 import { planReportFacts } from "../src/plans.js";
+import { reportSubmissionContent } from "../src/report-authorization.js";
 const descriptor = {subjectKey:"human:H-lin",cadence:"周报",periodStart:"2026-10-12",periodEnd:"2026-10-18",timezone:"Asia/Singapore"};
 const now = new Date("2026-10-19T00:00:00Z");
 const state=()=>{const s=structuredClone(initial);s.work=s.work.filter(w=>w.id==="W-104");s.activeTenant="studio";s.tenants=[{id:"studio",name:"Test Tenant"}];s.resources.reports=[];s.resources.plans=[];s.work[0].acceptanceFacts=[];return s};
 const fact=(patch={})=>({id:"W-104:v3:accept",workId:"W-104",version:3,project:"launch",time:"2026-10-12T02:00:00Z",subjectKeys:["human:H-lin","project:launch","tenant:studio"],executorIds:["H-lin"],...patch});
 const generate=(s,patch={})=>{const id=upsertPeriodicReport(s,{...descriptor,date:"2026-10-13",...patch},"test",()=>"RP-new");return s.resources.reports.find(r=>r.id===id)};
+test("personal completion requires fixed executor identity across every role association",()=>{
+ const s=state();
+ for (const subjectKey of ["human:H-lin","agent:atlas"]) {
+  const identity=subjectKey.startsWith("human:")?subjectKey.slice(6):subjectKey;
+  const other=identity==="H-lin"?"agent:atlas":"H-lin";
+  for (const association of [{ownerId:identity},{actorId:identity},{ownerId:identity,actorId:identity}]) {
+   s.work[0].acceptanceFacts=[fact({subjectKeys:[subjectKey,"project:launch","tenant:studio"],executorIds:[other],...association})];
+   const report={...descriptor,subjectKey};
+   expect(periodicReportFacts(s,report,now).completed).toBe(0);
+   expect(periodicReportFacts(s,{...report,subjectKey:"project:launch"},now).completed).toBe(1);
+   expect(periodicReportFacts(s,{...report,subjectKey:"tenant:studio"},now).completed).toBe(1);
+   expect(generate(s,{subjectKey}).generatedFacts.completed).toBe(0);
+   expect(reportEvidence(s,{...report,references:[{kind:"work",id:"W-104",version:3}],claimedCompleted:1}).errors.some(e=>e.includes("不一致"))).toBe(true);
+   s.work[0].acceptanceFacts[0].executorIds=[identity,other];
+   expect(periodicReportFacts(s,report,now).completed).toBe(1);
+   delete s.work[0].acceptanceFacts[0].executorIds;
+   expect(periodicReportFacts(s,report,now)).toMatchObject({completed:0,unknownWorkIds:["W-104"]});
+  }
+ }
+});
 test("period completion follows immutable acceptance event dates and subjects, never today's work status",()=>{
  const s=state(),w=s.work[0];w.status="已完成";w.accepted=true;
  const old=generate(s,{date:"2000-01-03"});expect(old.generatedFacts.completed).toBe(0);expect(old.generatedFacts.unknownWorkIds).toEqual([w.id]);expect(old.generatedSummary).toContain("完整完成数不可确定");expect(old.suggestedReferences).toEqual([]);
@@ -29,7 +50,7 @@ test("period timezone boundaries, future facts and invalid historical data never
 });
 test("historical report Plan facts survive rework while live Plan facts retain current-state contract",()=>{
  const s=state(),w=s.work[0];w.acceptanceFacts=[fact()];w.version=4;w.accepted=false;
- const plan={id:"P-history",...descriptor,confirmedSnapshot:{revision:1,items:[{id:"PI-1",kind:"WORK_ITEM",workId:w.id,title:"交付",weight:1}]}};
+ const plan={id:"P-history",tenantId:s.activeTenant,periodKind:"WEEK",...descriptor,confirmedSnapshot:{...descriptor,periodKind:"WEEK",revision:1,items:[{id:"PI-1",kind:"WORK_ITEM",workId:w.id,title:"交付",weight:1}]}};
  expect(planReportFacts(s,plan,now).progress).toBe(0);expect(planReportFacts(s,plan,now,{historical:true}).progress).toBe(1);
  s.resources.plans=[plan];expect(periodicReportFacts(s,descriptor,now).plans[0].factKeys).toEqual(["W-104:v3:accept"]);
  w.acceptanceFacts[0].executorIds=["H-other"];expect(planReportFacts(s,plan,now,{historical:true}).progress).toBe(0);
@@ -43,6 +64,43 @@ test("regeneration updates only generated suggestions and preserves submitted re
 
 if (!globalThis.localStorage) globalThis.localStorage={getItem:()=>null,setItem:()=>{},removeItem:()=>{}};
 const { reportEvidence } = await import("../src/store.js");
+test("current Plan selection uses one exact calendar cadence and reports missing, draft and duplicate baselines",()=>{
+ const s=state(), r={...descriptor,references:[]};
+ const p={id:"WEEK-plan",tenantId:s.activeTenant,subjectKey:r.subjectKey,periodKind:"WEEK",periodStart:r.periodStart,periodEnd:r.periodEnd,timezone:r.timezone,status:"已确认"};
+ p.confirmedSnapshot={...p,revision:1,items:[]};
+ const day={...structuredClone(p),id:"DAY-plan",periodKind:"DAY",periodStart:"2026-10-14",periodEnd:"2026-10-14"};day.confirmedSnapshot={...day,revision:1,items:[]};
+ s.resources.plans=[day,p];
+ expect(periodicReportFacts(s,r,now).plans.map(plan=>plan.id)).toEqual([p.id]);
+ expect(periodicReportFacts(s,r,now).planIssues).toEqual([]);
+ for(const plans of [[],[day],[{...p,tenantId:"foreign"}],[{...p,subjectKey:"agent:atlas"}]]) {
+  s.resources.plans=plans;const result=reportEvidence(s,r);expect(result.warnings.join()).toContain("N2：本期尚无");expect(result.errors).toEqual([]);
+ }
+ s.resources.plans=[{...p,status:"草稿",confirmedSnapshot:null}];
+ expect(periodicReportFacts(s,r,now).plans[0]).toMatchObject({basisRevision:null,progress:null});
+ expect(reportEvidence(s,r).warnings.join()).toContain("不能使用草稿承诺");
+ expect(generate(s).generatedSummary).toContain("0 份可读取的已确认计划基线");
+ s.resources.plans=[p,{...structuredClone(p),id:"duplicate"}];
+ expect(periodicReportFacts(s,r,now).plans).toEqual([]);expect(reportEvidence(s,r).warnings.join()).toContain("重复计划");
+ s.resources.plans=[{...p,periodEnd:"2026-10-17"}];expect(reportEvidence(s,r).warnings.join()).toContain("结束日期");
+ s.resources.plans=[{...p,status:"已提交"}];expect(reportEvidence(s,r).warnings.join()).toContain("原已确认基线");
+});
+test("fixed report preserves current Plan diagnostics after sources change without reading live replacements",()=>{
+ const s=state(),r={...descriptor,id:"R-fixed-plans",references:[]};
+ const evidence=reportEvidence(s,r);expect(evidence.planIssues.join()).toContain("本期尚无");
+ r.submission={content:reportSubmissionContent(r),factSnapshot:structuredClone(evidence)};
+ const fixed=structuredClone(r);
+ s.resources.plans=[{id:"later",tenantId:s.activeTenant,subjectKey:r.subjectKey,periodKind:"WEEK",periodStart:r.periodStart,periodEnd:r.periodEnd,timezone:r.timezone,status:"草稿"}];
+ expect(reportEvidence(s,r).planIssues).toEqual(evidence.planIssues);expect(r).toEqual(fixed);
+ r.submission.factSnapshot.warnings=[];
+ expect(reportEvidence(s,r).planIssues).toEqual(evidence.planIssues);
+ r.submission.factSnapshot.warnings=structuredClone(evidence.warnings);
+ // Previously stored warning-only snapshots retain their original diagnostic.
+ delete r.submission.factSnapshot.planIssues;
+ expect(reportEvidence(s,r).warnings).toContain("N2：本期尚无同主体、同日历周期的计划；承诺与进度基线未确认。");
+ for(const corrupt of [{},"bad",[{}]]) {
+  r.submission.factSnapshot.planIssues=corrupt;expect(reportEvidence(s,r).errors.join()).toContain("固定本期计划核对提示损坏");
+ }
+});
 test("report evidence counts selected historical events and preserves every exact snapshot across version dedupe",()=>{
  const s=state(),w=s.work[0];w.acceptanceFacts=[fact(),fact({id:"W-104:v4:accept",version:4})];w.version=5;w.accepted=false;w.title="TODAY TITLE";
  const r={...descriptor,id:"R",references:[{kind:"work",id:w.id,version:3,acceptanceFactIds:["W-104:v3:accept"]},{kind:"work",id:w.id,version:4,acceptanceFactIds:["W-104:v4:accept"]}],claimedCompleted:1};
@@ -88,7 +146,20 @@ test("selected worklog totals disclose unknown historical scope instead of attri
 
 test("saved legacy Agent worklogs never infer stable authorship from today's matching display name",async()=>{
  const api=await import("../src/store.js");api.reset();const saved=structuredClone(api.read());delete saved.resources.worklogs.find(log=>log.id==="WL-03").ownerAgentId;
- const previous=globalThis.localStorage;globalThis.localStorage={getItem:()=>JSON.stringify(saved),setItem:()=>{},removeItem:()=>{}};
+ const previous=Object.getOwnPropertyDescriptor(globalThis,"localStorage");Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{getItem:()=>JSON.stringify(saved),setItem:()=>{},removeItem:()=>{}}});
  try { const restored=await import("../src/store.js?report-legacy-effort-identity");const log=restored.read().resources.worklogs.find(log=>log.id==="WL-03");expect(log.ownerAgentId).toBeNull();expect(worklogSubjectMatch(restored.read(),log,"agent:atlas")).toBeNull(); }
- finally {globalThis.localStorage=previous;api.reset()}
+ finally {if(previous)Object.defineProperty(globalThis,"localStorage",previous);else delete globalThis.localStorage;api.reset()}
+});
+
+test("report Plan projection excludes foreign tenants and diagnoses damaged baselines without certifying them", () => {
+ const s=state(),w=s.work[0];w.acceptanceFacts=[fact()];
+ const snapshot={...descriptor,periodKind:"WEEK",revision:1,items:[{id:"PI-1",kind:"WORK_ITEM",workId:w.id,title:"本期交付",weight:1}]};
+ const plan={...snapshot,id:"P-projection",tenantId:s.activeTenant,status:"已确认",confirmedSnapshot:snapshot};
+ s.resources.plans=[{...plan,tenantId:"foreign"}];expect(periodicReportFacts(s,descriptor,now).plans).toEqual([]);expect(generate(s).generatedSummary).toContain("0 份可读取");
+ s.resources.plans=[plan];expect(periodicReportFacts(s,descriptor,now).plans[0]).toMatchObject({progress:1,issues:[]});
+ for(const confirmedSnapshot of [null,{}, {...snapshot,items:{}},{...snapshot,items:[null]},{...snapshot,subjectKey:"human:H-zhou"}]) {
+  s.resources.plans=[{...plan,confirmedSnapshot}];const before=structuredClone(s.resources.plans);
+  const projection=periodicReportFacts(s,descriptor,now).plans;expect(projection).toHaveLength(1);expect(projection[0]).toMatchObject({progress:null,unknown:null,facts:[],outcomes:[]});expect(projection[0].issues).toHaveLength(1);
+  const r=generate(s);expect(r.generatedSummary).toContain("0 份可读取的已确认计划基线");expect(r.generatedSummary).toContain("1 份计划基线无法核对");expect(s.resources.plans.filter(item=>item.id===plan.id)).toEqual(before);expect(s.resources.plans).toHaveLength(2);expect(s.resources.plans.find(item=>item.id!==plan.id).status).toBe("草稿");expect(reportEvidence(s,r).warnings.some(w=>w.includes("N2：本期计划"))).toBe(true);
+ }
 });

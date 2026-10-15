@@ -8,11 +8,11 @@
   const select = async (label, text) => { const combo = document.querySelector(`[role=combobox][aria-label="${label}"]`); check(combo, `Missing choice ${label}`); combo.click(); await wait(); const option = [...document.querySelectorAll('[role=option]')].find(item => item.textContent.includes(text)); check(option, `Missing option ${text}`); option.click(); await wait(); };
   check(!state().resources.defects, "Duplicate defect collection persisted");
   location.hash = "/defects/BUG-01"; await wait(); await wait();
-  check(location.hash.includes("/work-items/BUG-01"), "Legacy deep link did not resolve canonical work");
+  check(location.hash.split("?")[0] === "#/defects/BUG-01", "Defect detail escaped its menu");
   const original = structuredClone(state().work.find(work => work.id === "BUG-01"));
   check(original.defect.stage === "CLOSED", "Run browser-qa.js first");
   await click("报告回归并新建缺陷");
-  const draftId = new URLSearchParams(location.hash.split("?")[1]).get("work_draft");
+  const draftId = new URLSearchParams(location.hash.split("?")[1]).get("quick_work");
   check(state().drafts[draftId]?.reopenedFrom === original.id, "Regression draft lost origin");
   await fill("实际结果", "回归：在窄屏仍遮挡主按钮");
   await click("确认生成工作与计划");
@@ -21,9 +21,9 @@
   check(regression.defect.reopenedFromWorkItemId === original.id, "Regression link absent");
   check(JSON.stringify(state().work.find(work => work.id === original.id)) === JSON.stringify(original), "Closed original changed");
   location.hash = "/defects"; await wait();
-  check(document.querySelector(`a[href="#/p/${regression.project}/work-items/${regression.id}"]`), "Defect filter omitted canonical work");
-  await click("发起缺陷工作");
-  const newDraft = new URLSearchParams(location.hash.split("?")[1]).get("work_draft");
+  check(document.querySelector("main").textContent.includes(regression.title), "Defect filter omitted canonical work");
+  await click("发起缺陷");
+  const newDraft = new URLSearchParams(location.hash.split("?")[1]).get("quick_work");
   await fill("想要完成什么", "浏览器新增缺陷工作");
   await select("归属项目", "新品");
   await select("受影响工作", "W-104");
@@ -35,6 +35,8 @@
   const created = state().work.find(work => work.draftId === newDraft);
   check(created?.workKind === "BUG" && created.defect.affectedVersion === "v3", "New defect confirmation failed");
   check(created.defect.steps && created.defect.commit, "Professional fields lost");
+  check(location.hash.split("?")[0]==="#/defects", "Defect confirmation left original list");
+  location.hash = `/defects/${created.id}`; await wait();
   await click("编辑缺陷信息"); await fill("环境", "浏览器 / 更新环境"); await click("保存", document.querySelector("dialog"));
   check(state().work.find(work => work.id === created.id).defect.environment === "浏览器 / 更新环境", "Professional edit failed");
   check(!state().resources.defects, "Creation recreated duplicate storage");

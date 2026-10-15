@@ -10,7 +10,9 @@ test('each execution shares to its own explicitly selected project without copyi
  for (const work of read().work) {
   if (work.project === 'private') continue;
   const messageId = `sharing-${work.id}`;
-  update(s => s.messages.push({ id: messageId, channel: `exec-${work.id}`, author: 'Atlas', kind: 'agent', text: 'Selected text', file: 'secret', work: work.id, thread: 'hidden', history: ['private'] }));
+  const executionId=`EX-sharing-${work.id}`;
+  update(s=>s.executions.push({id:executionId,tenantId:s.activeTenant,projectId:work.project,workId:work.id,state:"SUCCEEDED"}));
+  update(s => s.messages.push({ id: messageId, channel: `exec-${executionId}`, author: 'Atlas', kind: 'agent', text: 'Selected text', file: 'secret', work: work.id, thread: 'hidden', history: ['private'] }));
   const source = read().messages.at(-1);
   expect(messageProject(read(), source)?.id).toBe(work.project);
   const result = shareMessage({ tenantId: read().activeTenant, messageId, expectedText: source.text, target: 'project', projectId: work.project });

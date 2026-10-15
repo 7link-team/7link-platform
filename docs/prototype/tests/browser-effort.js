@@ -6,11 +6,13 @@
  const fill=async(label,value)=>{const node=[...document.querySelectorAll('.field')].find(el=>el.querySelector('label')?.textContent.replace(' *','').trim()===label)?.querySelector('input:not([type=hidden]),textarea');check(node,'Missing '+label);Object.getOwnPropertyDescriptor(node.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(node,value);node.dispatchEvent(new Event('input',{bubbles:true}));await wait()};
  const state=()=>JSON.parse(localStorage.getItem('collaboration-prototype-v1'));
  const main=()=>document.querySelector('main');
- await go('/worklogs');check(main().textContent.includes('工作量与运行指标'),'Generic worklog page still shown');check(!main().textContent.includes('新建工时'),'Generic creation remains');
- document.querySelector('[role=combobox][aria-label="本人任务"]').click();await wait();await click('W-104 · 新品落地页 · 响应式交付',document.querySelector('[role=listbox]'));
- await fill('投入日期','2026-10-14');await fill('投入时区','Asia/Singapore');await fill('工作量类别','验收');await fill('本人预估（小时）','2');await fill('评估依据','本人计划核对布局与质量证据');await click('建立待校准条目');
- const record=state().resources.worklogs.find(item=>item.date==='2026-10-14'&&item.work==='W-104'&&item.ownerId==='H-lin');check(record?.effortState==='estimate'&&record.hours===undefined,'Estimate was treated as actual');
- check(main().querySelector('[data-effort-actual]').textContent==='尚未本人确认','Estimate visually became actual');check(record.timezone==='Asia/Singapore'&&record.category==='验收','Effort metadata missing');check([...main().querySelectorAll('button')].find(el=>el.textContent.trim()==='审核通过').disabled,'Draft review enabled');
+ await go('/worklogs');check(main().textContent.includes('历史投入证据'),'Legacy evidence directory absent');check(!main().querySelector('input,textarea,[role=combobox]'),'Independent creation remains');
+ check(![...document.querySelectorAll('.area-nav button,.area-nav a')].some(el=>/工作量|工时/.test(el.textContent)),'Independent effort menu remains');
+ await go('/p/launch/work-items/W-104?tab=analysis');check(main().textContent.includes('投入与运行分析'),'Task analysis missing');
+ await click('校准本人实际投入');await fill('投入日期','2026-10-14');await fill('投入时区','Asia/Singapore');await fill('投入类别','验收');await fill('实际参与投入（小时）','2');await fill('实际参与依据','本人实际核对布局与质量证据');await click('保存校准并核对');
+ const record=state().resources.worklogs.find(item=>item.date==='2026-10-14'&&item.work==='W-104'&&item.ownerId==='H-lin');check(record?.effortState==='calibrated'&&record.hours===undefined,'Calibration was treated as actual');
+ check(document.querySelector('dialog[open] [data-effort-actual]').textContent==='尚未本人确认','Calibration visually became actual');check(record.timezone==='Asia/Singapore'&&record.category==='验收','Effort metadata missing');check([...main().querySelectorAll('button')].find(el=>el.textContent.trim()==='审核通过').disabled,'Draft review enabled');
+ check(!document.querySelector('dialog[open]').textContent.includes('返回任务分析'),'Modal exposes redundant return navigation');
  await fill('校准投入（小时）','1.25');await fill('校准依据','实际完成逐项质量核对');await click('保存校准');
  check(state().resources.worklogs.find(item=>item.id===record.id).confirmedHours===undefined,'Calibration auto-confirmed');
  await click('本人确认实际投入');check(state().resources.worklogs.find(item=>item.id===record.id).confirmedHours===1.25,'Actual confirmation missing');
@@ -24,7 +26,7 @@
  await go('/worklogs/WL-03');check(main().textContent.includes('1 小时')&&main().textContent.includes('未采集'),'Telemetry facts/unknowns incorrect');
  check(!main().querySelector('input,textarea,[role=combobox]'),'Telemetry editable');check(!main().textContent.includes('本人确认实际投入'),'Telemetry exposes Human confirmation');
  check(document.documentElement.scrollWidth<=innerWidth,'Telemetry detail overflows viewport');
- await go('/worklogs?tab=agent');check(main().textContent.includes('墙钟时间')&&main().textContent.includes('模型 / 工具耗时')&&main().textContent.includes('Token')&&main().textContent.includes('费用'),'Telemetry buckets mixed or absent');
+ await go('/p/launch/work-items/W-104?tab=analysis');check(main().textContent.includes('Agent 运行')&&main().textContent.includes('Token')&&main().textContent.includes('费用'),'Task telemetry missing');
  check(document.documentElement.scrollWidth<=innerWidth,'Telemetry list overflows viewport');
  return {pass:true,width:innerWidth,recordId:record.id,checks:['personal task estimate','calibration separate from actual','self confirmation','correction invalidates confirmation','immutable history','other Human readonly','legacy actual preserved','readonly independent telemetry','unknown metrics explicit','no horizontal overflow','timezone and category','review cannot precede confirmation','return recalibrate reconfirm review']};
 })()

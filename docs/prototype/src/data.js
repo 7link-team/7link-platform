@@ -1,3 +1,5 @@
+export const themeNames = { aurora:"极光", modern:"简约", business:"商务", eyeCare:"护眼纸感", pinkKawaii:"樱粉", neoBrutalism:"鲜明几何" };
+import { prototypeExecutionExamples } from "./executions.js";
 const seedFlow = {
   nodes: [
     {
@@ -868,7 +870,7 @@ export const initial = {
 };
 export const catalog = {
   goals: [
-    "目标与 OKR",
+    "目标管理",
     "从结果出发，把每一步工作与目标连接。",
     "目标",
     "Target",
@@ -886,7 +888,7 @@ export const catalog = {
     "Clock3",
   ],
   tests: [
-    "测试用例与结果",
+    "测试用例",
     "独立证据，让通过有据可查。",
     "用例",
     "FlaskConical",
@@ -900,7 +902,7 @@ export const catalog = {
   testreports: ["测试报告", "固定计划、环境与逐项结果。", "测试报告", "ClipboardCheck"],
   defects: ["缺陷", "把每个问题交给明确的负责人。", "缺陷", "Bug"],
   repositories: [
-    "仓库与流水线",
+    "源码连接",
     "连接代码变化、工作与固定版本证据。",
     "仓库",
     "GitBranch",
@@ -1059,3 +1061,6 @@ export const fieldNames = {
   role: "角色",
   expires: "有效期",
 };
+
+// Explicit local execution scenarios use independent stable IDs; old saved task-message histories are not converted.
+initial.executions = prototypeExecutionExamples(initial);

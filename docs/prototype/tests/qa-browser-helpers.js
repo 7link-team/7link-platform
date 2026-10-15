@@ -12,7 +12,7 @@ window.qaCompleteValidation = async function(workId) {
   const plan = state().resources.testplans.find(plan => plan.id === state().work.find(work => work.id === workId).qaPlanId);
   let batch = plan.batches.find(batch => batch.id === plan.currentBatchId);
   if (batch.items.some(item => item.runId)) {
-    await click('形成固定测试报告'); location.hash = `/testplans/${plan.id}`; await wait(); await click('开始新执行批次');
+    await click('形成固定测试报告');document.querySelector('dialog[open] [aria-label="关闭弹窗"]')?.click();await wait(); location.hash = `/testplans/${plan.id}`; await wait(); await click('开始新执行批次');
     const latest = state().resources.testplans.find(item => item.id === plan.id); batch = latest.batches.find(batch => batch.id === latest.currentBatchId);
   }
   for (const ref of batch.caseRefs) {
@@ -20,7 +20,7 @@ window.qaCompleteValidation = async function(workId) {
     await fill('实际结果 / 跳过或阻塞原因', `逐项核对：${ref.snapshot.expected}`); await fill('证据引用', `mock-browser/${batch.id}/${ref.caseId}`); await fill('工具版本（手测填写不适用）', 'browser-mock/1');
     await click('保存逐项结果'); if (document.querySelector('dialog[open]')) throw Error('QA result did not save');
   }
-  await click('形成固定测试报告');
+  await click('形成固定测试报告');document.querySelector('dialog[open] [aria-label="关闭弹窗"]')?.click();await wait();
   location.hash = href; await wait();
 };
 window.qaConfigureRework = async function(workId) {

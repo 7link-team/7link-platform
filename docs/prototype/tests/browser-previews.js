@@ -32,7 +32,7 @@
     el.dispatchEvent(new Event("input", { bubbles: true }));
     await wait();
   };
-  location.hash = "/chat?execution_id=W-104";
+  location.hash = "/chat?execution_id=EX-demo-W-104";
   await wait();
   await openPreview();
   check(!document.querySelector('[aria-label="添加预览标签"]'), "Preview tabs must not be manually added");
@@ -97,14 +97,14 @@
       `Reconnect state: ${name}`,
     );
   }
-  location.hash = "/chat?execution_id=W-103";
+  location.hash = "/chat?execution_id=EX-demo-W-103";
   await wait();
   await openPreview();
   check(
     !document.querySelector(".preview-tablist").textContent.includes("Web · 管理端"),
     "Task isolation",
   );
-  location.hash = "/chat?execution_id=W-104";
+  location.hash = "/chat?execution_id=EX-demo-W-104";
   await wait();
   await openPreview();
   const barBounds = document.querySelector('.preview-tablist').getBoundingClientRect();
@@ -160,7 +160,7 @@
     offline.click();
     await wait();
   } else throw Error("Offline setting not found");
-  location.hash = "/chat?execution_id=W-104";
+  location.hash = "/chat?execution_id=EX-demo-W-104";
   await wait();
   await openPreview();
   await click("Web · 主预览");
@@ -175,7 +175,7 @@
     .find((e) => e.closest("label")?.textContent.includes("离线"))
     .click();
   await wait();
-  location.hash = "/chat?execution_id=W-104";
+  location.hash = "/chat?execution_id=EX-demo-W-104";
   await wait();
   await openPreview();
   check(document.querySelectorAll(".preview-tablist [role=tab]").length === 6, "System tabs survive reconnect");

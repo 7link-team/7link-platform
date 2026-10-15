@@ -1,9 +1,16 @@
+import { ProjectPlanningPage } from "./project-planning.jsx";
+import { PerformancePage } from "./pages-performance";
+import { ViewContext, CurrentViewLink, Breadcrumbs, captureScroll, restoreScroll, viewKey, savedView, saveViewSnapshot, syncViewURL } from "./view-state";
+import { visibleGoals } from "./goals";
+import { channelReadProblem } from "./channels";
+import { activeProjects, projectIsArchived, recordProjectId } from "./project-lifecycle";
 import { PlansPage } from "./pages-plans";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { catalog } from "./data";
+import { catalog, themeNames } from "./data";
 import {
   useStore,
+  visibleKnowledge,
   update,
   visibleWork,
   sharedVersions,
@@ -40,6 +47,7 @@ import {
   workPath,
 } from "./pages-work";
 import { Flow } from "./pages-flow";
+import { WorkflowList, TenantWorkflows } from "./pages-workflows";
 import { Chat, Artifact } from "./pages-collab";
 import { EffortPage } from "./pages-effort";
 import {
@@ -59,9 +67,7 @@ const navGroups = {
     ["/work", "ListTodo", "我的工作"],
     ["/plans/me", "CalendarDays", "我的周期计划"],
     ["/approvals", "Stamp", "待审批"],
-    ["/goals", "Target", "目标与 OKR"],
     ["/reports", "NotebookPen", "周期报告"],
-    ["/worklogs", "Clock3", "工作量与运行指标"],
   ],
   chat: [
     ["/chat?channel_id=team", "MessagesSquare", "协作总频道"],
@@ -70,26 +76,29 @@ const navGroups = {
     ["/chat?channel_id=private", "LockKeyhole", "私人会话"],
   ],
   collab: [
-    ["/collaboration", "ListTodo", "跨实例工作"],
-    ["/p/launch/work-items", "ListTodo", "项目工作"],
+    ["/requirements", "FileText", "需求"],
+    ["/goals", "Target", "目标"],
+    ["/iterations", "CalendarDays", "迭代"],
+    ["/collaboration", "ListTodo", "任务"],
+    ["/p/launch/work-items", "ListTodo", "任务"],
+    ["/workflows", "Workflow", "工作流"],
     ["/p/launch/flow", "Workflow", "工作流"],
-    ["/deliveries", "PackageCheck", "交付与回执"],
-    ["/repositories", "GitBranch", "仓库与流水线"],
+    ["/repositories", "GitBranch", "源码连接"],
     ["/testplans", "ClipboardCheck", "测试计划"],
-    ["/testreports", "ClipboardCheck", "测试报告"],
-    ["/tests", "FlaskConical", "测试用例与结果"],
+    ["/tests", "FlaskConical", "测试用例"],
     ["/defects", "Bug", "缺陷"],
+    ["/materials", "Folders", "文件"],
   ],
   team: [
     ["/members", "UsersRound", "组织与成员"],
-    ["/invitations", "Mail", "邀请与外部成员"],
     ["/agents", "Bot", "Agent 名册"],
     ["/machines", "Server", "执行节点"],
-    ["/knowledge", "Library", "资料与记忆"],
     ["/tools", "Wrench", "工具与 Skills"],
     ["/templates", "Workflow", "工作流模板"],
   ],
   governance: [
+    ["/knowledge", "Library", "知识库"],
+    ["/performance", "ChartNoAxesCombined", "绩效考核"],
     ["/cost", "Wallet", "用量与预算"],
     ["/policies", "ShieldCheck", "权限与策略"],
     ["/models", "SlidersHorizontal", "模型配置"],
@@ -119,6 +128,11 @@ function groupFor(path) {
     path.startsWith("/p/") ||
     [
       "/collaboration",
+      "/workflows",
+      "/requirements",
+      "/iterations",
+      "/goals",
+      "/materials",
       "/deliveries",
       "/repositories",
       "/tests",
@@ -134,7 +148,6 @@ function groupFor(path) {
       "/invitations",
       "/agents",
       "/machines",
-      "/knowledge",
       "/tools",
       "/templates",
     ].some((v) => path === v || path.startsWith(v + "/"))
@@ -142,6 +155,8 @@ function groupFor(path) {
     return "team";
   if (
     [
+      "/performance",
+      "/knowledge",
       "/cost",
       "/policies",
       "/models",
@@ -157,7 +172,75 @@ function groupFor(path) {
 }
 function App() {
   const s = useStore();
-  const [route, setRoute] = useState(getLocation);
+  const [route, setRoute] = useState(() => {
+    const saved=history.state?.prototypeReturn;
+    if(saved?.url===location.href && saved.tenantId===s.activeTenant && saved.role===s.role) {
+      const [path,query=""]=saved.full.split("?");return {path,params:new URLSearchParams(query),full:saved.full};
+    }
+    return getLocation();
+  });
+  const [locationLink,setLocationLink]=useState(null);
+  const currentKey=viewKey(route.full,s.activeTenant,s.role,s.project);
+  const rememberCurrent=()=>saveViewSnapshot(currentKey,{scrolls:captureScroll()});
+  const coordinates=useRef(null);
+  coordinates.current={key:currentKey,full:route.full,params:route.params,tenantId:s.activeTenant,role:s.role,project:s.project};
+  const [coordinateError,setCoordinateError]=useState("");
+  const restoring=useRef(false);
+  useEffect(()=>{
+    let timer;
+    const save=event=>{
+      if(restoring.current || event.target?.closest?.("dialog") || (event.type==="scroll" && event.target!==document && !document.querySelector("main")?.contains(event.target)))return;
+      clearTimeout(timer);timer=setTimeout(()=>{
+        const context=coordinates.current;saveViewSnapshot(context.key,{scrolls:captureScroll()});syncViewURL(context);
+      },160);
+    };
+    const leave=()=>{const context=coordinates.current;saveViewSnapshot(context.key,{scrolls:captureScroll()});syncViewURL(context);};
+    document.addEventListener("scroll",save,true);window.addEventListener("pagehide",leave);
+    return ()=>{clearTimeout(timer);document.removeEventListener("scroll",save,true);window.removeEventListener("pagehide",leave);};
+  },[]);
+  useLayoutEffect(()=>{
+    const tenantId=route.params.get("tenant");
+    const projectPage=/^\/p\/([^/]+)(?:\/(?:flow|work-items)\/?|\/?)$/.exec(route.path)?.[1];
+    const scope=route.path === "/projects" ? "all" : projectPage || route.params.get("scope");
+    try {
+      if(tenantId && tenantId!==s.activeTenant) {switchTenant(tenantId);return;}
+      if(scope && scope!==s.project) {
+        if(scope!=="all" && !s.projects.some(p=>p.id===scope))throw Error("位置链接的项目不存在于当前租户。");
+        update(x=>{x.project=scope;});
+      }
+      if (scope && route.params.get("scope") !== scope) {
+        const next=new URLSearchParams(route.params);next.set("scope",scope);
+        const full=`${route.path}?${next}`;
+        history.replaceState(history.state,"",`#${full}`);
+        setRoute({path:route.path,params:next,full});
+      }
+      setCoordinateError("");
+    } catch(error) {setCoordinateError(error.message);}
+  },[route.full,s.activeTenant]);
+  useLayoutEffect(()=>{
+    restoring.current=true;let second;
+    const frame=requestAnimationFrame(()=>{second=requestAnimationFrame(()=>{
+      const segment=route.params.get("segment");
+      let positions;
+      try {positions=route.params.has("scroll")?JSON.parse(route.params.get("scroll")):null;}catch {setCoordinateError("位置链接的滚动坐标无效，未应用。");}
+      if(positions && typeof positions==="object")restoreScroll(positions);
+      if(segment) {
+        const target=[...document.querySelectorAll("main [data-segment]")].find(el=>el.dataset.segment===segment);
+        if(target) {target.scrollIntoView({block:"start"});target.tabIndex=-1;target.focus({preventScroll:true});}
+        else setCoordinateError("此段落不存在于当前视图，未跳转到其他内容。");
+      }
+      restoring.current=false;
+    });});
+    return ()=>{cancelAnimationFrame(frame);cancelAnimationFrame(second);restoring.current=false;};
+  },[route.full,s.activeTenant,s.project]);
+  const pendingReturn = useRef(null);
+  useLayoutEffect(() => {
+    const entry = pendingReturn.current;
+    if (!entry) return;
+    pendingReturn.current = null;
+    restoreScroll(entry.scrolls);
+    window.scrollTo(entry.windowX || 0,entry.windowY || 0);
+  }, [route.full]);
   const [newWork, setNewWork] = useState(false);
   const [search, setSearch] = useState(false);
   const [drawer, setDrawer] = useState(false);
@@ -213,7 +296,11 @@ function App() {
     return () => document.removeEventListener("keydown", key);
   }, [tenantMenu]);
   const onView = (full) => {
+    rememberCurrent();
+    syncViewURL(coordinates.current);
+    if(location.hash.split("?")[0] !== `#${full.split("?")[0]}` || location.hash !== `#${full}`)history.pushState(null,"",`#${full}`);
     const [path, query = ""] = full.split("?");
+    pendingReturn.current=savedView(viewKey(full,s.activeTenant,s.role,s.project));
     setRoute({ path, params: new URLSearchParams(query), full });
     setGroup(groupFor(path));
     setDrawer(false);
@@ -226,15 +313,16 @@ function App() {
       : fallback;
   const areaItems = navGroups[group]
     .flatMap(item => item[0] === "/chat?channel_id=launch"
-      ? s.projects.filter(project => project.id !== "private" && (s.project === "all" || s.project === project.id))
+      ? activeProjects(s).filter(project => project.id !== "private" && (s.project === "all" || s.project === project.id))
         .map(project => [`/chat?channel_id=${encodeURIComponent(project.id)}`, "Hash", project.name])
       : [item])
     .filter(([path]) => {
+      if (path === "/performance") return s.role === "owner";
       if (group === "home" && path === "/projects") return s.project === "all";
       if (group === "collab")
         return s.project === "all"
           ? !path.startsWith("/p/")
-          : path !== "/collaboration";
+          : path !== "/collaboration" && path!=="/workflows";
       return true;
     })
     .map(([path, icon, label]) => [
@@ -243,15 +331,17 @@ function App() {
       path === "/overview"
         ? s.project === "all"
           ? "租户总览"
-          : "实例概览"
+          : "项目概览"
         : label,
     ]);
   const workDetail = /^\/p\/[^/]+\/(work-items|artifacts)(\/|$)/.test(route.path);
-  const activeAreaPath = workDetail
+  const detailIsDefect=workDetail && s.work.find(work=>work.id===route.path.split("/")[4])?.workKind==="BUG";
+  const activeAreaPath = detailIsDefect ? "/defects" : workDetail
     ? s.project === "all" ? "/collaboration" : `/p/${s.project}/work-items`
-    : route.path;
+    : route.path.startsWith("/testreports") ? "/testplans" : route.path.startsWith("/deliveries") ? s.project==="all"?"/workflows":`/p/${s.project}/flow` : route.path === "/collaboration" && s.project!=="all" ? `/p/${s.project}/work-items` : route.path.startsWith("/invitations") ? "/members" : route.path.startsWith("/worklogs") ? "/work" : /^\/p\/[^/]+\/?$/.test(route.path) ? "/overview" : route.path;
   const areaIsActive = (to) => {
     const [path, query] = to.split("?");
+    if (detailIsDefect) return path === "/defects";
     if (query) return route.path === path && [...new URLSearchParams(query)].every(([key, value]) => route.params.get(key) === value);
     return activeAreaPath === path || route.path === path || route.path.startsWith(`${path}/`);
   };
@@ -284,13 +374,27 @@ function App() {
     return () => clearTimeout(timer);
   }, [notice]);
   useEffect(() => {
-    const change = () => {
-      setRoute(getLocation());
-      setGroup(groupFor(getLocation().path));
-      setDrawer(false);
-      document.querySelector("main")?.scrollTo(0, 0);
+    const remember = event => {
+      const anchor=event.target.closest?.('a[href^="#/"]');
+      if (!anchor || anchor.target === "_blank" || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const scrolls=captureScroll();
+      rememberCurrent();
+      history.replaceState({...history.state,prototypeReturn:{url:location.href,full:getLocation().full,tenantId:s.activeTenant,role:s.role,scrolls,windowX:scrollX,windowY:scrollY}}, "");
     };
+    const change = () => {
+      const saved=history.state?.prototypeReturn;
+      const returning=saved?.url===location.href && saved.tenantId===s.activeTenant && saved.role===s.role;
+      const [path,query=""]=returning ? saved.full.split("?") : [null];
+      const next=returning ? {path,params:new URLSearchParams(query),full:saved.full} : getLocation();
+      pendingReturn.current=returning ? saved : null;
+      setRoute(next);
+      setGroup(groupFor(next.path));
+      setDrawer(false);
+      if (!returning) document.querySelector("main")?.scrollTo(0, 0);
+    };
+    document.addEventListener("click",remember,true);
     window.addEventListener("hashchange", change);
+    window.addEventListener("popstate", change);
     const key = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
@@ -300,9 +404,11 @@ function App() {
     window.addEventListener("keydown", key);
     return () => {
       window.removeEventListener("hashchange", change);
+      window.removeEventListener("popstate", change);
+      document.removeEventListener("click",remember,true);
       window.removeEventListener("keydown", key);
     };
-  }, []);
+  }, [route.full,s.activeTenant,s.role]);
   useEffect(() => {
     document.documentElement.dataset.theme = s.theme;
     document.documentElement.classList.toggle("dark", s.dark);
@@ -318,6 +424,18 @@ function App() {
   };
   let content;
   const parts = route.path.split("/").filter(Boolean);
+  const breadcrumbProject=s.projects.find(project=>project.id===(parts[0]==="p" ? parts[1] : s.project));
+  const breadcrumbMenu=areaItems.find(([path])=>areaIsActive(path));
+  const breadcrumbObject=parts[0]==="defects" ? visibleWork({...s,project:"all"},{includeArchived:true}).find(work=>work.id===parts[1]&&work.workKind==="BUG") : parts[0]==="p" ? visibleWork({...s,project:"all"},{includeArchived:true}).find(work=>work.id===parts[3]) : parts[0]==="agents" ? s.agents.find(agent=>agent.id===parts[1]) : parts[0]==="machines" ? s.nodes.find(node=>node.id===parts[1]) : ["knowledge","materials"].includes(parts[0]) ? visibleKnowledge(s).find(record=>record.id===parts[1]) : parts[0]==="goals" ? visibleGoals(s).find(record=>record.id===parts[1]) : catalog[parts[0]] && s.role!=="external" ? s.resources[parts[0]]?.find(record=>record.id===parts[1]) : null;
+  const breadcrumbBase=detailIsDefect ? "/defects" : parts[0]==="p" ? parts[3] ? `/p/${parts[1]}/work-items` : route.path : parts[0]==="invitations" ? "/members" : `/${parts[0]}`;
+  const breadcrumbItems=[
+    {label:tenant?.name || "当前租户",to:"/overview?scope=all"},
+    breadcrumbProject && {label:breadcrumbProject.name,to:`/p/${breadcrumbProject.id}?scope=${encodeURIComponent(breadcrumbProject.id)}`},
+    {label:breadcrumbMenu?.[2] || (parts[0]==="performance"?"绩效考核":route.path==="/chat"?"会话":"工作台"),to:breadcrumbBase},
+    breadcrumbObject && {label:breadcrumbObject.title || breadcrumbObject.name || breadcrumbObject.id,to:route.path},
+    route.params.get("tab") && {label:({brief:"工作简报",plan:"计划与契约",results:"成果与版本",review:"检查与接受",activity:"活动记录",analysis:"投入与运行分析",status:"状态与维护",files:"工作区文件",terminal:"实时终端",preview:"预览与隧道",periods:"绩效周期",policies:"考核方案",human:"Human 工作量",agent:"Agent 运行指标"})[route.params.get("tab")] || route.params.get("tab"),to:route.full},
+    route.params.get("segment") && {label:route.params.get("segment"),to:route.full},
+  ];
   if (route.path === "/overview")
     content =
       route.params.get("view") === "attention" ? (
@@ -337,6 +455,7 @@ function App() {
       ) : (
         <Project {...shared} projectId={s.project} />
       );
+  else if (route.path === "/workflows") content = s.project==="all"?<TenantWorkflows {...shared}/>:<WorkflowList {...shared} projectId={s.project}/>;
   else if (parts[0] === "p") {
     const projectId = parts[1];
     if (parts[2] === "work-items")
@@ -346,15 +465,19 @@ function App() {
         <WorkList {...shared} projectId={projectId} />
       );
     else if (parts[2] === "flow")
-      content = <Flow key={projectId} {...shared} projectId={projectId} />;
+      content = route.params.get("view") === "runs" || (!route.params.has("workflow_id") && !route.params.has("version"))
+        ? <WorkflowList key={projectId} {...shared} projectId={projectId} />
+        : <Flow key={`${projectId}:${route.params.get("workflow_id") || "default"}`} {...shared} projectId={projectId} />;
     else if (parts[2] === "artifacts")
       content = <Artifact key={parts[3]} {...shared} workId={parts[3]} />;
     else content = <Project {...shared} projectId={projectId} />;
   } else if (route.path === "/members" || parts[0] === "invitations") content = <Team key={route.path} {...shared} initialTab={parts[0] === "invitations" ? "invitations" : "members"} invitationId={parts[0] === "invitations" ? parts[1] : undefined} />;
+  else if (["requirements","iterations"].includes(parts[0])) content = <ProjectPlanningPage {...shared} kind={parts[0]} recordId={parts[1]}/>;
   else if (parts[0] === "agents")
     content = <Agents {...shared} agentId={parts[1]} />;
   else if (parts[0] === "machines")
     content = <Machines {...shared} nodeId={parts[1]} />;
+  else if (parts[0] === "performance") content = s.role === "owner" ? <PerformancePage {...shared} /> : <Empty title="仅租户 owner 可管理绩效" text="考核报告保留主体与范围权限。" />;
   else if (route.path === "/cost") content = <Cost {...shared} />;
   else if (route.path === "/settings") content = <Settings {...shared} />;
   else if (route.path === "/governance/audit") content = <Audit />;
@@ -364,12 +487,13 @@ function App() {
     const defect = s.work.find(work => work.id === parts[1] && work.workKind === "BUG");
     content = parts[1] ? (defect ? <LegacyDefectRoute key={defect.id} {...shared} work={defect} /> : <Empty title="缺陷待修复迁移或不存在"><Link to="/defects">查看缺陷工作与迁移记录</Link></Empty>) : <DefectList {...shared} />;
   }
-  else if (catalog[parts[0]])
+  else if (catalog[parts[0]] || parts[0] === "materials")
     content = (
       <ResourcePage
         key={parts[0] + parts[1]}
         {...shared}
-        kind={parts[0]}
+        kind={parts[0] === "materials" ? "knowledge" : parts[0]}
+        collection={parts[0] === "materials" ? "MATERIAL" : undefined}
         recordId={parts[1]}
       />
     );
@@ -425,7 +549,7 @@ function App() {
       !sharedArtifact &&
       route.path !== "/settings" &&
       !(
-        route.path === "/chat" && route.params.get("channel_id") === "external" && !route.params.get("execution_id")
+        route.path === "/chat" && !channelReadProblem(s, route.params.get("channel_id")) && !route.params.get("execution_id")
       ) &&
       parts[0] !== "deliveries"
     )
@@ -452,8 +576,8 @@ function App() {
   if (route.path === "/overview" && !s.projects.length && s.role !== "external")
     content = (
       <Empty
-        title="从第一个项目实例开始"
-        text="这个租户还没有项目。创建一个实例，再在其中组织工作、成员与交付。"
+        title="从第一个项目开始"
+        text="这个租户还没有项目。创建一个项目，再在其中组织工作、成员与交付。"
       >
         <Button
           variant="primary"
@@ -462,7 +586,7 @@ function App() {
             onView("/projects");
           }}
         >
-          管理项目实例
+          管理项目
         </Button>
       </Empty>
     );
@@ -608,7 +732,7 @@ function App() {
                     加入租户
                   </Button>
                 </div>
-                <p>项目实例属于当前租户，切换不会混合资料。</p>
+                <p>项目属于当前租户，切换不会混合资料。</p>
               </section>
             </>
           )}
@@ -619,8 +743,9 @@ function App() {
             <Link
               key={key}
               to={areaPath(key, to)}
-              onClick={() => openArea(key, areaPath(key, to))}
+              onClick={event => {if(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)return;event.preventDefault();openArea(key, areaPath(key, to));}}
               className={group === key ? "active" : ""}
+              aria-current={group === key ? "page" : undefined}
             >
               <Icon name={icon} />
               {label}
@@ -673,29 +798,32 @@ function App() {
           <div className="workspace">
             <Icon name="Boxes" />
             <div>
-              <strong>项目实例</strong>
+              <strong>项目范围</strong>
               <small>当前租户内的协作与交付</small>
             </div>
           </div>
           <label className="scope-select">
             <Icon name="Folders" />
             <Select
-              aria-label="项目实例"
+              aria-label="项目"
               value={s.project}
               onChange={(e) => {
                 const project = e.target.value;
+                rememberCurrent();
                 update((x) => (x.project = project));
-                if (group === "home") onView("/overview");
-                else if (group === "collab")
-                  onView(
-                    project === "all"
-                      ? "/collaboration"
-                      : `/p/${project}/work-items`,
-                  );
+                const params=new URLSearchParams(route.params);params.set("scope",project);
+                for(const key of [...params.keys()])if(key.startsWith("state.")||["scroll","segment","quick_work","work_draft","workflow_id","version"].includes(key))params.delete(key);
+                setNewWork(false);
+                let destination=route.path;
+                if(/^\/p\/[^/]+\/(?:work-items|artifacts)(?:\/|$)/.test(destination)||destination==="/collaboration")destination=project==="all"?"/collaboration":`/p/${project}/work-items`;
+                else if(/^\/p\/[^/]+\/flow/.test(destination))destination=project==="all"?"/workflows":`/p/${project}/flow`;
+                else if(destination==="/overview"||destination==="/projects"||/^\/p\/[^/]+$/.test(destination))destination="/overview";
+                else if(/^\/(materials|requirements|iterations|tests|testplans|testreports|defects|repositories)\//.test(destination))destination=`/${destination.split("/")[1]==="testreports"?"testplans":destination.split("/")[1]}`;
+                onView(`${destination}?${params}`);
               }}
             >
-              <option value="all">全部项目实例</option>
-              {s.projects
+              <option value="all">全部项目</option>
+              {activeProjects(s)
                 .filter(
                   (p) =>
                     s.role !== "external" ||
@@ -730,6 +858,7 @@ function App() {
                 key={to}
                 to={to}
                 className={areaIsActive(to) ? "active" : ""}
+                aria-current={areaIsActive(to) ? "page" : undefined}
               >
                 <Icon name={icon} />
                 <span>{label}</span>
@@ -768,7 +897,12 @@ function App() {
               当前为外部客户视角。仅显示共享会话、交付成果与回执。
             </Notice>
           )}
-          <React.Fragment key={s.activeTenant}>{content}</React.Fragment>
+          <ViewContext.Provider value={{key:currentKey,full:route.full,params:route.params,tenantId:s.activeTenant,project:s.project,role:s.role,showLink:setLocationLink,sync:()=>syncViewURL(coordinates.current)}}>
+            <div className="view-location-bar"><Breadcrumbs items={breadcrumbItems}/><CurrentViewLink toast={toast}/></div>
+            {coordinateError && <Notice tone="warn">{coordinateError}</Notice>}
+            <React.Fragment key={s.activeTenant}>{content?.type === Empty ? React.cloneElement(content, { heading: "h1" }) : content}</React.Fragment>
+          </ViewContext.Provider>
+          {locationLink && <Modal title="当前位置链接" onClose={()=>setLocationLink(null)}><Notice>浏览器未允许自动复制，可选择下方链接复制，或在新标签页打开。</Notice><Field label="直接位置链接" value={locationLink} readOnly/><a className="btn" href={locationLink} target="_blank" rel="noopener noreferrer">新标签页打开</a></Modal>}
         </main>
       </div>
       <nav className="bottom-nav" aria-label="手机主导航">
@@ -776,8 +910,9 @@ function App() {
           <Link
             key={key}
             to={areaPath(key, to)}
-            onClick={() => openArea(key, areaPath(key, to))}
+            onClick={event => {if(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)return;event.preventDefault();openArea(key, areaPath(key, to));}}
             className={group === key ? "active" : ""}
+              aria-current={group === key ? "page" : undefined}
           >
             <Icon name={icon} />
             <span>{label}</span>
@@ -802,13 +937,13 @@ function App() {
       {themePicker && (
         <Modal title="选择你的主题" onClose={() => setThemePicker(false)}>
           <p className="muted">
-            沿用原有六套主题，每套具有完整表面、文字与状态配色。
+            选择主题后立即应用，也可搭配深色模式。
           </p>
           <div className="theme-grid">
             {[
               [
                 "aurora",
-                "Aurora 极光",
+                themeNames.aurora,
                 "#F7F6FB",
                 "#7C3AED",
                 "#0891B2",
@@ -816,7 +951,7 @@ function App() {
               ],
               [
                 "modern",
-                "Modern 简约",
+                themeNames.modern,
                 "#fafafa",
                 "#171717",
                 "#0e7490",
@@ -824,7 +959,7 @@ function App() {
               ],
               [
                 "business",
-                "Business 商务",
+                themeNames.business,
                 "#f8fafc",
                 "#6366f1",
                 "#0284c7",
@@ -832,7 +967,7 @@ function App() {
               ],
               [
                 "eyeCare",
-                "护眼纸感",
+                themeNames.eyeCare,
                 "#f4f1e8",
                 "#5a7c5a",
                 "#4f7a8a",
@@ -840,7 +975,7 @@ function App() {
               ],
               [
                 "pinkKawaii",
-                "Pink Kawaii",
+                themeNames.pinkKawaii,
                 "#fff5fa",
                 "#e8388a",
                 "#a855f7",
@@ -848,7 +983,7 @@ function App() {
               ],
               [
                 "neoBrutalism",
-                "Neo Brutalism",
+                themeNames.neoBrutalism,
                 "#fffdf5",
                 "#ff006e",
                 "#3a86ff",
@@ -917,7 +1052,7 @@ function App() {
                 if (tenantAction === "create") createTenant(tenantInput);
                 else joinTenant(tenantInput);
                 dismiss(finishTenant);
-                toast("已切换租户，项目实例与数据已分开。");
+                toast("已切换租户，项目与数据已分开。");
               } catch (e) {
                 toast(e.message, true);
               }
@@ -937,7 +1072,7 @@ function App() {
           </ActionForm>}
         </Modal>
       )}
-      {newWork && <NewWork toast={toast} onClose={() => setNewWork(false)} />}
+      {(newWork||route.params.has("quick_work")) && <NewWork key={`${s.activeTenant}:${route.params.get("quick_work")||"new"}`} draftId={route.params.get("quick_work")} toast={toast} onClose={() => setNewWork(false)} />}
       {search && <Search onClose={() => setSearch(false)} />}
     </>
   );
@@ -945,19 +1080,20 @@ function App() {
 function Search({ onClose }) {
   const s = useStore();
   const [q, setQ] = useState("");
-  const works = visibleWork(s);
+  const [includeArchived,setIncludeArchived] = useState(false);
+  const works = visibleWork(s,{includeArchived});
   const records =
     s.role === "external"
       ? []
       : Object.entries(s.resources).flatMap(([kind, rows]) =>
-          rows.map((r) => ({
-            title: r.name,
+          (kind === "knowledge" ? visibleKnowledge(s,{includeArchived}) : kind === "goals" ? visibleGoals(s) : rows).filter(r => includeArchived || !projectIsArchived(s,recordProjectId(s,r))).map((r) => ({
+            title: `${r.name}${projectIsArchived(s,recordProjectId(s,r)) ? " · 已归档项目" : ""}`,
             kind: catalog[kind]?.[0],
-            path: `/${kind}/${r.id}`,
+            path: `/${kind === "knowledge" && (r.library?.category === "MATERIAL" || ["资料","素材","文件"].includes(r.kind)) ? "materials" : kind}/${r.id}`,
           })),
         );
   const all = [
-    ...works.map((w) => ({ title: w.title, kind: "工作", path: workPath(w) })),
+    ...works.map((w) => ({ title: `${w.title}${projectIsArchived(s,w.project) ? " · 已归档项目" : ""}`, kind: "工作", path: workPath(w) })),
     ...records,
   ];
   const filtered = all
@@ -977,6 +1113,7 @@ function Search({ onClose }) {
           onChange={(e) => setQ(e.target.value)}
         />
       </label>
+      <label className="switch-label"><input type="checkbox" checked={includeArchived} onChange={event=>setIncludeArchived(event.target.checked)} />包含归档项目</label>
       <div className="search-results">
         {filtered.map((r, i) => (
           <Link key={r.path + i} to={r.path} onClick={onClose}>

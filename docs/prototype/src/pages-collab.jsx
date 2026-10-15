@@ -1,9 +1,25 @@
+import { ExecutionProcess } from "./execution-ui";
+import { executionRecord, executionReadProblem, executionPath, executionKinds, executionStates } from "./executions";
+import { useViewState } from "./view-state";
+import { Flow } from "./pages-flow";
+import { WorkflowList } from "./pages-workflows";
+import { ChannelManagement, DirectMessageStart } from "./channel-management";
+import { ChatMessageContent, ChatComposerTools, EmojiPicker } from "./chat-rich";
+import { channelReadProblem, channelWriteProblem, visibleChannels, visibleChannelMessages, assertChannelWrite, channelMessageReadProblem, directMessagePeer, directMessagePolicy } from "./channels";
 import { formatTimestamp } from "./formatting";
 import { TaskPreviews } from "./task-previews";
 import { messageProject } from "./message-sharing";
-import React, { useEffect, useState, useRef, useId } from "react";
+import React, { useEffect, useLayoutEffect, useState, useRef, useId } from "react";
 import {
   useStore,
+  read,
+  postChannelMessage,
+  submitExecutionInput,
+  changeChannelMessage,
+  activeProjects,
+  assertProjectRecordWritable,
+  projectIsArchived,
+  saveResource,
   update,
   log,
   id,
@@ -12,6 +28,7 @@ import {
   sharedVersions,
   sharedArtifactPath,
   saveWorkDraft,
+  beginWorkDraft,
   confirmWorkDraft,
   workExecutors,
   shareMessage,
@@ -36,42 +53,7 @@ import {
   PanelButton,
   Tabs,
 } from "./ui";
-import { workPath, artifactPath, NewWork } from "./pages-work";
-const channels = [
-  ["team", "协作总频道", "跨项目 · 组织范围"],
-  ["launch", "新品发布", "6 位成员 · 4 位 Agent"],
-  ["external", "客户共创", "外部共享 · 范围受限"],
-  ["private", "Quill", "私人会话 · 仅参与者"],
-];
-function ConversationWorkDraft({ draft, toast }) {
-  const s = useStore();
-  const [fields, setFields] = useState(() => ({ title: draft.title, project: draft.project, type: draft.type, criteria: draft.criteria, defect: structuredClone(draft.defect || {}) }));
-  const change = (key, value) => setFields((old) => ({ ...old, [key]: value }));
-  const save = () => { saveWorkDraft(draft.id, fields, draft.revision); };
-  if (draft.workId) return <Section title="会话工作草稿已确认"><Link to={workPath(s.work.find((work) => work.id === draft.workId))}>打开生成的工作与计划</Link></Section>;
-  return <Section title="会话工作草稿" extra={<Badge>讨论中 · 尚未生成工作</Badge>}>
-    <Notice>在下方会话补充资料、讨论要求；核对草稿后，由 Human 确认生成工作与计划。</Notice>
-    {draft.source && <p>来源消息：{draft.source.text}</p>}
-    <Field label="想要完成什么" value={fields.title} onChange={(value) => change("title", value)} type="textarea" required />
-    <div className="form-grid">
-      <Field label="归属项目" value={fields.project} onChange={(value) => change("project", value)} options={[{ value: "private", label: "私人工作 · 仅自己" }, ...s.projects.filter((project) => project.id !== "private").map((project) => ({ value: project.id, label: project.name }))]} />
-      <Field label="专业类型" value={fields.type} onChange={(value) => change("type", value)} options={draft.workKind === "BUG" ? ["软件"] : ["软件", "文档", "图片", "视频", "小说", "运营"]} />
-    </div>
-    {draft.workKind === "BUG" && <fieldset><legend>缺陷专业信息</legend>
-      <Field label="受影响工作" value={fields.defect.affectedWorkId || ""} onChange={value => setFields(old => ({ ...old, defect: { ...old.defect, affectedWorkId: value, affectedVersion: `v${s.work.find(work => work.id === value)?.version || 1}` } }))} options={[{ value: "", label: "请选择受影响工作" }, ...s.work.filter(work => work.project === fields.project && work.workKind !== "BUG").map(work => ({ value: work.id, label: `${work.id} · ${work.title}` }))]} />
-      {[["affectedVersion", "影响版本"], ["severity", "严重度"], ["priority", "优先级"], ["steps", "复现步骤"], ["expected", "期望结果"], ["actual", "实际结果"], ["environment", "环境"], ["commit", "关联提交"]].map(([key, label]) => <Field key={key} label={label} value={fields.defect[key] || ""} onChange={value => setFields(old => ({ ...old, defect: { ...old.defect, [key]: value } }))} type={["steps", "expected", "actual"].includes(key) ? "textarea" : "text"} />)}
-    </fieldset>}
-    <Field label="怎样才算完成" value={fields.criteria} onChange={(value) => change("criteria", value)} type="textarea" required />
-    <div className="actions">
-      <Button onClick={() => { try { save(); toast("会话草稿已保存，可继续讨论"); } catch (error) { toast(error.message, true); } }}>保存会话草稿</Button>
-      <Button variant="primary" onClick={() => {
-        try { save(); const work = confirmWorkDraft(draft.id, draft.revision + 1); location.hash = workPath(work); toast("已确认生成工作与计划，执行前请确认 SOP"); }
-        catch (error) { toast(error.message, true); }
-      }}>确认生成工作与计划</Button>
-    </div>
-    <small>{draft.discussion.length} 条讨论已关联到草稿；确认不会自动授予工具或发布权限。</small>
-  </Section>;
-}
+import { workPath, artifactPath, WorkDetail, ConversationWorkDraft } from "./pages-work";
 export function Chat({ params, toast, onView }) {
   const s = useStore();
   const layoutRef = useRef(null);
@@ -93,18 +75,53 @@ export function Chat({ params, toast, onView }) {
     try { localStorage.setItem("collaboration-preview-width", String(width)); } catch { /* Reading and resizing remain available when storage is full. */ }
   };
   const channel = params.get("channel_id") || "launch";
+  const channelRecord = s.channels.find(c => c.id === channel);
+  const isDirect = channelRecord?.kind === "DIRECT";
+  const [directStart,setDirectStart] = useViewState("chat-new-direct",null);
+  const directChannels = visibleChannels(s,{archived:"all"}).filter(c => c.kind === "DIRECT");
+  const [management, setManagement] = useViewState("chat-management", "");
+  const [managementTab,setManagementTab]=useViewState("channel-management-tab","details");
+  const [workPreview, setWorkPreview] = useState(null);
+  const [flowPreview, setFlowPreview] = useViewState("chat-flow-preview",null);
+  const previewVersion = flowPreview?.flowState && Object.hasOwn(flowPreview.flowState,"version") ? flowPreview.flowState.version : flowPreview?.version;
+  const [reactionPicker,setReactionPicker] = useState(null);
+  const [attachmentsReading,setAttachmentsReading] = useState(false);
+  const composerInput = useRef(null);
+  const messagesRef = useRef(null);
+  const [channelQuery, setChannelQuery] = useState("");
+  const [archiveFilter, setArchiveFilter] = useState("active");
+  const [channelDirectoryOpen, setChannelDirectoryOpen] = useState(false);
+  const channelDirectoryButton = useRef(null);
+  const [channelSearchOpen, setChannelSearchOpen] = useState(false);
+  const [channelFilterOpen, setChannelFilterOpen] = useState(false);
+  const channelSearchRef = useRef(null);
+  const channelSearchButton = useRef(null);
+  const channelSearchId = useId();
+  const channelFilterId = useId();
+  const filteredChannels = visibleChannels(s, { query: channelQuery, archived: archiveFilter }).filter(c => c.kind !== "DIRECT");
+  useEffect(() => {
+    if (channelSearchOpen) channelSearchRef.current?.focus({ preventScroll: true });
+  }, [channelSearchOpen, channelDirectoryOpen]);
   const execution = params.get("execution_id");
-  const w = s.work.find((x) => x.id === execution);
+  const executionEntry = executionRecord(s, execution);
+  const w = executionEntry?.workSnapshot;
   const thread = params.get("thread_id");
+  const scrollKey = JSON.stringify([s.activeTenant,s.role,execution || channel,thread || ""]);
+  useLayoutEffect(() => {
+    const container=messagesRef.current;
+    if (!container) return;
+    try { const top=Number(sessionStorage.getItem(`chat-scroll:${scrollKey}`)); if(Number.isFinite(top)) container.scrollTop=top; } catch { /* Reading still works without session storage. */ }
+    return () => { try { sessionStorage.setItem(`chat-scroll:${scrollKey}`,String(container.scrollTop)); } catch { /* Best effort view state only. */ } };
+  }, [scrollKey]);
   const workDraft = s.drafts?.[params.get("work_draft")];
   const conversationPath = execution
     ? `/chat?execution_id=${encodeURIComponent(execution)}`
     : `/chat?channel_id=${encodeURIComponent(channel)}`;
   const contextProject = s.projects.find((p) =>
-    channel === "team" ? p.id === s.project : p.id !== "private" && p.id === channel,
+    channel === "team" ? p.id === s.project : p.id !== "private" && p.id === (channelRecord?.projectId || channel),
   );
   const contextWork =
-    channel === "private"
+    isDirect
       ? []
       : s.work.filter((item) =>
           contextProject
@@ -112,10 +129,10 @@ export function Chat({ params, toast, onView }) {
             : channel === "team" && s.project === "all",
         );
   const title = execution
-    ? w?.title || "执行不存在"
-    : channels.find((c) => c[0] === channel)?.[1] || contextProject?.name || "会话不存在";
+    ? executionEntry?.title || "执行不存在"
+    : isDirect ? directMessagePeer(s,channelRecord).name : channelRecord?.name || contextProject?.name || "会话不存在";
   const [message, setMessage] = useState("");
-  const [newWork, setNewWork] = useState(null);
+
   const [sharing, setSharing] = useState(null);
   const [messageEdit, setMessageEdit] = useState(null);
   const [editText, setEditText] = useState("");
@@ -145,56 +162,53 @@ export function Chat({ params, toast, onView }) {
     }
     setResizing(false);
   }, [execution, compactContext]);
-  const [attachment, setAttachment] = useState("");
+  const [attachment, setAttachment] = useState([]);
+  const attachmentDraftKey=`chat-files:${JSON.stringify([s.activeTenant,s.role,execution || channel])}`;
+  const writeAttachments=files=>{setAttachment(files);try{if(files.length)sessionStorage.setItem(attachmentDraftKey,JSON.stringify(files));else sessionStorage.removeItem(attachmentDraftKey);}catch{toast("附件草稿暂未保存到本地，当前页面的原件仍保留。",true);}};
   useEffect(() => {
     setMessage(
       localStorage.getItem(
         `draft-${s.activeTenant}-${s.role}-${execution || channel}`,
       ) || "",
     );
-    setAttachment("");
+    try { setAttachment(JSON.parse(sessionStorage.getItem(attachmentDraftKey) || "[]")); } catch {setAttachment([]);}
+    setWorkPreview(null);
+    setReactionPicker(null);
   }, [channel, execution, s.role, s.activeTenant]);
   const write = (v) => {
     setMessage(v);
-    localStorage.setItem(
+    try {localStorage.setItem(
       `draft-${s.activeTenant}-${s.role}-${execution || channel}`,
       v,
-    );
+    );} catch {toast("草稿暂未保存到本地，当前输入仍保留。",true);}
   };
-  const messages = s.messages.filter(
-    (m) =>
-      m.channel === (execution ? `exec-${execution}` : channel) &&
-      (!thread || m.id === thread || m.thread === thread),
-  );
+  const readableMessages = visibleChannelMessages(s, execution ? `exec-${execution}` : channel);
+  const threadRoot = thread ? readableMessages.find(m => m.id === thread && !m.recalled) : null;
+  const messages = execution ? [] : readableMessages.filter(m => !thread || threadRoot && (m.id === thread || m.thread === thread));
+  const messageId = params.get("message_id");
+  const targetMessage = messageId && readableMessages.find(m => m.id === messageId && !m.recalled && (!thread || threadRoot && (m.id === thread || m.thread === thread)));
+  useLayoutEffect(() => {
+    if (!targetMessage || !messagesRef.current) return;
+    const segment = execution && targetMessage.turnId ? `turn:${targetMessage.turnId}` : `message:${targetMessage.id}`;
+    const element = [...messagesRef.current.querySelectorAll('[data-segment]')].find(node=>node.dataset.segment===segment);
+    if (!element) return;
+    const top = element.getBoundingClientRect().top - messagesRef.current.getBoundingClientRect().top;
+    element.focus({preventScroll:true});
+    messagesRef.current.scrollTop += top - 16;
+  }, [scrollKey, messageId, Boolean(targetMessage)]);
+  const writeProblem = channelWriteProblem(s, execution ? `exec-${execution}` : channel);
+  const announcement = channelRecord?.announcement && !channelRecord.announcement.cancelledAt && visibleChannelMessages(s, channel).find(m => m.id === channelRecord.announcement.messageId && !m.recalled);
   const send = (e) => {
     e.preventDefault();
-    if (s.role === "external" && (execution || channel !== "external")) {
-      toast("此会话不在共享范围。", true);
-      return;
-    }
-    if (s.offline) {
-      toast("离线中，草稿已保留。恢复连接后请重新发送。", true);
-      return;
-    }
-    if (!message.trim() && !attachment) return;
-    update((x) => {
-      const messageId = id("m");
-      x.messages.push({
-        id: messageId,
-        channel: execution ? `exec-${execution}` : channel,
-        author: s.role === "external" ? "陈曦 · 客户" : "林予",
-        text: message.trim(),
-        thread: thread || null,
-        file: attachment,
-        time: new Date().toISOString(),
-        kind: "human",
-        ...(workDraft && !workDraft.workId ? { workDraft: workDraft.id } : {}),
-      });
-      if (workDraft && !workDraft.workId) x.drafts[workDraft.id].discussion.push({ messageId, text: message.trim(), file: attachment });
-    });
+    if(attachmentsReading) {toast("请等原件读取或录音完成后发送。",true);return;}
+    try {
+      if(execution) submitExecutionInput({tenantId:s.activeTenant,executionId:execution,revision:executionEntry?.revision,text:message,attachments:attachment,threadId:thread});
+      else postChannelMessage({ tenantId: s.activeTenant, channelId: execution ? `exec-${execution}` : channel,
+        text: message, attachments: attachment, threadId: thread, workDraftId: workDraft && !workDraft.workId ? workDraft.id : undefined });
+    } catch (error) { toast(error.message, true); return; }
     write("");
-    setAttachment("");
-    toast("消息已保存");
+    writeAttachments([]);
+    toast(execution ? "执行输入已保存 · 待本地模拟处理" : "消息已保存");
   };
   const contextContent = (
     <>
@@ -208,33 +222,34 @@ export function Chat({ params, toast, onView }) {
               <Link
                 key={w.id}
                 className="context-work"
-                to={sharedArtifactPath(s, w)}
+                to={sharedArtifactPath(s, w)} target="_blank" rel="noopener noreferrer"
               >
                 <b>{w.title}</b>
                 <small>共享版本 v{sharedVersions(s, w.id).at(-1)}</small>
               </Link>
             ))}
-          <Link to="/deliveries" className="btn full">
+          <Link to="/deliveries" className="btn full" target="_blank" rel="noopener noreferrer">
             交付与回执
           </Link>
         </>
       ) : execution && w ? (
         <TaskPreviews
-          key={`${s.activeTenant}-${w.id}`}
+          key={`${s.activeTenant}-${execution}`}
+          scopeId={execution}
           work={w}
           expanded={compactContext}
           toast={toast}
         />
-      ) : (
+      ) : execution ? <Empty title="未关联工作项" text="临时探索尚无成果资源清单；关联工作后也不会复制其他执行的预览。" /> : (
         <>
           <h2>
-            {channel === "private"
+            {isDirect
               ? "私人会话"
               : contextProject?.name ||
                 (channel === "team" ? "跨项目协作" : "会话上下文")}
           </h2>
-          {channel === "private" ? (
-            <Notice>仅参与者可见。共享前请确认具体消息与接收范围。</Notice>
+          {isDirect ? (
+            <Notice>{directMessagePolicy(s,channelRecord)}</Notice>
           ) : contextWork.length ? (
             <>
               <div className="context-stat">
@@ -256,7 +271,7 @@ export function Chat({ params, toast, onView }) {
                 .filter((item) => item.status === "待验收")
                 .map((item) => (
                   <Link
-                    to={workPath(item)}
+                    to={workPath(item)} target="_blank" rel="noopener noreferrer"
                     className="context-work"
                     key={item.id}
                   >
@@ -270,38 +285,45 @@ export function Chat({ params, toast, onView }) {
             <Empty title="暂无关联工作" text="当前会话范围内还没有工作记录。" />
           )}
           {contextProject && (
-            <Link to={`/p/${contextProject.id}/flow`} className="btn full">
-              查看工作流与交接
-            </Link>
+            <Button icon="Workflow" className="full" onClick={() => {if(compactContext)setContext(false);setFlowPreview({tenantId:s.activeTenant,projectId:contextProject.id,channelId:channel});}}>查看工作流</Button>
           )}
         </>
       )}
     </>
   );
-  if (s.role === "external" && (channel !== "external" || execution))
-    return (
-      <Empty title="此会话不在共享范围" text="客户只可访问已开放的会话与成果。">
-        <Link className="btn" to="/chat?channel_id=external">
-          进入共享频道
-        </Link>
-      </Empty>
-    );
-  return (
-    <div ref={layoutRef} className={`chat-layout${execution && !compactContext ? " resizable-preview" : ""}${resizing ? " is-resizing" : ""}`}
-      style={execution && !compactContext ? { "--task-preview-width": `${actualPreviewWidth}px` } : undefined}>
-      <aside className="channel-list">
+  const channelDirectory = (
+      <aside className="channel-list" aria-label="会话目录">
         <header>
           <h2>会话</h2>
-          <Icon name="MessagesSquare" />
+          <div className="channel-directory-actions">
+            <IconButton ref={channelSearchButton} name="Search" label="搜索频道" aria-expanded={channelSearchOpen} aria-controls={channelSearchId} className={`icon-button${channelQuery ? " is-filtered" : ""}`} onClick={() => setChannelSearchOpen(open => !open)} />
+            <IconButton name="ListFilter" label="筛选频道" aria-expanded={channelFilterOpen} aria-controls={channelFilterId} className={`icon-button${archiveFilter !== "active" ? " is-filtered" : ""}`} onClick={() => setChannelFilterOpen(open => !open)} />
+            {s.role !== "external" && <IconButton name="Plus" label="创建频道" onClick={() => { setChannelDirectoryOpen(false); setManagement("new"); }} />}
+          </div>
         </header>
-        <span className="label">协作频道</span>
-        {[channels[0], ...s.projects.filter(project => project.id !== "private").map(project => [project.id, project.name, "项目成员频道"]), channels[2]]
-          .filter((c) => s.role !== "external" || c[0] === "external")
+        {channelSearchOpen && <div id={channelSearchId} className="channel-directory-search">
+          <Icon name="Search" />
+          <input ref={channelSearchRef} type="search" name="channel-search" autoComplete="off" aria-label="查找频道" placeholder="查找频道…" value={channelQuery} onChange={event => setChannelQuery(event.target.value)} onKeyDown={event => {
+            if (event.key === "Escape") { event.preventDefault(); setChannelSearchOpen(false); channelSearchButton.current?.focus({ preventScroll: true }); }
+          }} />
+          <IconButton name="X" label={channelQuery ? "清除频道搜索" : "收起频道搜索"} onClick={() => {
+            if (channelQuery) { setChannelQuery(""); channelSearchRef.current?.focus(); }
+            else { setChannelSearchOpen(false); channelSearchButton.current?.focus({ preventScroll: true }); }
+          }} />
+        </div>}
+        {channelFilterOpen && <div id={channelFilterId} className="channel-directory-filter">
+          <Select aria-label="频道状态" value={archiveFilter} onChange={event => setArchiveFilter(event.target.value)} options={[{value:"active",label:"活动频道"},{value:"archived",label:"已归档"},{value:"all",label:"全部频道"}]} />
+        </div>}
+        <div className="channel-directory-label"><span className="label">协作频道</span>
+          {(channelQuery || archiveFilter !== "active") && <button type="button" className="channel-filter-reset" onClick={() => { setChannelQuery(""); setArchiveFilter("active"); }}>清除筛选</button>}
+        </div>
+        {!filteredChannels.length && <p className="channel-directory-empty" role="status">没有匹配的频道</p>}
+        {filteredChannels.map(c => [c.id,c.name,c.archivedAt ? "已归档 · 只读" : c.shared ? "外部共享 · 明确范围" : c.kind === "PROJECT_DEFAULT" ? "项目默认频道" : c.kind === "CUSTOM" ? "自建频道" : "组织范围"])
           .map(([key, name, sub]) => (
             <PanelButton
-              onView={onView}
+              onView={to => { setChannelDirectoryOpen(false); onView(to); }}
               key={key}
-              to={`/chat?channel_id=${key}`}
+              to={`/chat?channel_id=${encodeURIComponent(key)}`}
               className={channel === key && !execution ? "active" : ""}
             >
               <Icon name={key === "external" ? "Globe2" : "Hash"} />
@@ -311,39 +333,16 @@ export function Chat({ params, toast, onView }) {
               </div>
             </PanelButton>
           ))}
-        {s.role !== "external" && <span className="label">私信</span>}
-        <PanelButton
-          onView={onView}
-          to="/chat?channel_id=private"
-          className={channel === "private" ? "active" : ""}
-          style={s.role === "external" ? { display: "none" } : undefined}
-        >
-          <Avatar name="Quill" agent />
-          <div>
-            <b>Quill</b>
-            <small>第三章 · 等待你的意见</small>
-          </div>
-        </PanelButton>
+        {s.role !== "external" && <div className="channel-directory-label"><span className="label">私信</span><IconButton name="MessageSquarePlus" label="发起私信" disabled={s.offline} onClick={() => {setChannelDirectoryOpen(false);setDirectStart({tenantId:s.activeTenant,peerId:""});}} /></div>}
+        {directChannels.map(c => {const peer=directMessagePeer(s,c);return <PanelButton key={c.id} onView={to => {setChannelDirectoryOpen(false);onView(to);}} to={`/chat?channel_id=${encodeURIComponent(c.id)}&tenant=${encodeURIComponent(s.activeTenant)}&scope=all`} className={channel === c.id && !execution ? "active" : ""}>
+          <Avatar name={peer.name} agent={peer.kind === "Agent"} /><div><b>{peer.name}</b><small>{peer.kind} · {channelWriteProblem(s,c.id) ? "历史只读" : "私信"}</small></div>
+        </PanelButton>;})}
         <span className="label">执行会话</span>
-        {s.work
-          .filter((w) => s.role !== "external" && w.status !== "已完成")
-          .slice(0, 3)
-          .map((w) => (
-            <PanelButton
-              onView={onView}
-              key={w.id}
-              to={`/chat?execution_id=${w.id}`}
-              className={execution === w.id ? "active" : ""}
-            >
-              <Icon name="Terminal" />
-              <div>
-                <b>{w.title}</b>
-                <small>
-                  {w.status} · 当前执行 {workExecutors(s, w).map((person) => person.name).join("、") || "未分派"}
-                </small>
-              </div>
-            </PanelButton>
-          ))}
+        {(s.executions || []).filter(e=>!executionReadProblem(s,e.id)).map(e=>(
+          <PanelButton onView={to=>{setChannelDirectoryOpen(false);onView(to);}} key={e.id} to={executionPath(e)} className={execution===e.id ? "active" : ""}>
+            <Icon name="Terminal" /><div><b>{e.title}</b><small>{e.id} · {executionStates[e.state]} · {executionKinds[e.kind]}</small></div>
+          </PanelButton>
+        ))}
         <footer>
           <Icon name="LockKeyhole" />
           <span>
@@ -353,86 +352,58 @@ export function Chat({ params, toast, onView }) {
           </span>
         </footer>
       </aside>
+  );
+  if (channelReadProblem(s, execution ? `exec-${execution}` : channel))
+    return (
+      <><PageHead title="会话不可访问" /><Empty title="此会话不在可访问范围" text={channelReadProblem(s, execution ? `exec-${execution}` : channel)}>
+        <Link className="btn" to="/chat?channel_id=external">
+          进入共享频道
+        </Link>
+      </Empty></>
+    );
+  if (thread && !threadRoot) return <><PageHead title="线程不可访问" /><Empty title="线程不可访问" text="线程不存在、已撤回，或不属于当前授权频道。"><Link className="btn" to={conversationPath}>返回当前会话</Link></Empty></>;
+  return (
+    <div ref={layoutRef} className={`chat-layout${execution && !compactContext ? " resizable-preview" : ""}${resizing ? " is-resizing" : ""}`}
+      style={execution && !compactContext ? { "--task-preview-width": `${actualPreviewWidth}px` } : undefined}>
+      {channelDirectoryOpen ? <Modal title="会话列表" className="channel-directory-dialog" returnFocusRef={channelDirectoryButton} onClose={() => setChannelDirectoryOpen(false)}>{channelDirectory}</Modal> : channelDirectory}
       <section className="conversation">
         <header className="chat-heading">
+          <IconButton ref={channelDirectoryButton} className="icon-button mobile-channel-directory-trigger" name="MessagesSquare" label="打开会话列表" onClick={() => setChannelDirectoryOpen(true)} />
           <div>
             <h1>{title}</h1>
             <small>
               {execution
-                ? `${w?.agent} · 执行记录 · 当前成果 v${w?.version}`
-                : channel === "private"
+                ? `${executionEntry?.id} · ${executionKinds[executionEntry?.kind]} · ${executionStates[executionEntry?.state]}`
+                : isDirect
                   ? "私人会话 · 共享前预览资料"
-                  : channel === "external"
+                  : channelRecord?.shared
                     ? "外部共享频道 · 仅开放的历史与附件"
                     : "Human 与 Agent，一起把工作推进"}
             </small>
           </div>
+          {!execution && channelRecord?.externalBridge && <Badge>{channelRecord.externalBridge.platform} · {channelRecord.externalBridge.status === "ACTIVE" ? "已绑定 · 模拟" : channelRecord.externalBridge.status === "PAUSED" ? "已暂停" : "已撤销"}</Badge>}
+          {!execution && <IconButton name="Settings2" label={isDirect ? "私信详情" : "频道设置"} onClick={() => {setManagementTab("details");setManagement(channel);}} />}
           <IconButton
             name="PanelRight"
             label="切换会话上下文"
             onClick={() => setContext(!context)}
           />
         </header>
-        {execution && w ? (
-          <div className="execution-strip">
-            <Badge>{w.status}</Badge>
-            <span>
-              最近有效事件：当前版本 {w.qa ? "内部检查通过" : "等待复核"}
-            </span>
-            <Link to={workPath(w)} className="text-link">
-              查看工作
-            </Link>
-          </div>
-        ) : (
-          <div className="pinned">
-            <Icon name="Pin" size={14} />
-            <span>
-              {s.role === "external"
-                ? "仅显示明确共享的信息与确认事项。"
-                : "本周目标：确认视觉方向，完成发布资料交付。"}
-            </span>
-          </div>
-        )}
-        <div className="messages">
-          <div className="day-divider">今天 · 10 月 13 日</div>
-          {execution && (
-            <>
-              <div className="run-step">
-                <Icon name="CheckCircle2" />
-                <div>
-                  <b>输入与权限已校验</b>
-                  <p>简报 v2、品牌指南 v2、当前工作目录；执行级模型配置。</p>
-                </div>
-                <small>09:01</small>
-              </div>
-              <div className="run-step">
-                <Icon name="FileCode2" />
-                <div>
-                  <b>阶段成果已登记</b>
-                  <p>产物固定到 v{w?.version}，原执行记录保留。</p>
-                </div>
-                <small>09:08</small>
-              </div>
-              <details className="log-fold">
-                <summary>工具与事件记录 · 展开完整过程</summary>
-                <pre>
-                  09:01 context.snapshot · saved
-                  <br />
-                  09:02 runtime.started · workspace isolated
-                  <br />
-                  09:06 artifact.saved · version {w?.version}
-                  <br />
-                  09:10 verification · {w?.qa ? "passed" : "requires review"}
-                </pre>
-              </details>
-              <Notice tone="warn">
-                模拟执行记录。真实模型调用、工具进程和云端连接将在接口接入后提供。
-              </Notice>
-            </>
-          )}
-          {workDraft && workDraft.tenantId === s.activeTenant && s.role !== "external" && <ConversationWorkDraft key={workDraft.id} draft={workDraft} toast={toast} />}
+        {writeProblem && <Notice tone="warn">{writeProblem}</Notice>}
+        {isDirect && !execution && <Notice>{directMessagePolicy(s,channelRecord)}</Notice>}
+        {messageId && (!targetMessage || execution && !targetMessage.turnId) && <Notice tone="warn">定位消息不存在、已撤回或当前无法展示；没有跳到其他消息。请核对来源链接或返回会话历史。</Notice>}
+        {channelRecord?.shared && <Notice tone="warn">外部成员在此频道 · 仅显示当前授权消息和明确共享的资料。</Notice>}
+        {!execution && !isDirect && <div className="pinned"><Icon name="Pin" size={14} /><span className="channel-announcement-text">{announcement ? `公告 v${channelRecord.announcement.revision}：${announcement.text}` : channelRecord?.topic || "当前没有公告；可从频道设置发布。"}</span></div>}
+        <div className="messages" ref={messagesRef} onScroll={event=>{try {sessionStorage.setItem(`chat-scroll:${scrollKey}`,String(event.currentTarget.scrollTop));} catch { /* View-state storage may be unavailable. */ }}}>
+          {!execution && <div className="day-divider">今天 · 10 月 13 日</div>}
+          {execution && <ExecutionProcess key={`${s.activeTenant}-${execution}`} executionId={execution} focusedTurnId={targetMessage?.turnId} toast={toast} onWork={()=>setWorkPreview({tenantId:s.activeTenant,workId:executionEntry.workId,channelId:`exec-${execution}`})} />}
+          {params.get("workflow_id") && !workDraft && s.role !== "external" && <Section title="从工作流发起任务">
+            <Notice>当前选择：{params.get("workflow_id") === "default" ? "项目交付流程" : s.projectWorkflows?.[channelRecord?.projectId || channel]?.find(item=>item.id===params.get("workflow_id"))?.name || "工作流不可用"}。先在会话讨论目标和输入，由 Human 确认后生成任务；不会直接开始执行。</Notice>
+            <Button onClick={() => {try {const draftId=beginWorkDraft({channel,projectId:channelRecord?.projectId || channel,workflowId:params.get("workflow_id")});onView(`/chat?channel_id=${encodeURIComponent(channel)}&work_draft=${encodeURIComponent(draftId)}`);}catch(error){toast(error.message,true);}}}>在会话中起草任务</Button>
+          </Section>}
+          {workDraft && workDraft.tenantId === s.activeTenant && s.role !== "external" && <ConversationWorkDraft key={`${workDraft.id}:${workDraft.revision}`} draft={workDraft} toast={toast} />}
           {messages.map((m) => (
-            <article className="message" key={m.id}>
+            <article className={`message${targetMessage?.id===m.id ? " message-location-highlight" : ""}`} tabIndex={targetMessage?.id===m.id ? -1 : undefined} key={m.id} data-segment={`message:${m.id}`}>
               <Avatar name={m.author} agent={m.kind === "agent"} />
               <div className="message-main">
                 <header>
@@ -440,45 +411,35 @@ export function Chat({ params, toast, onView }) {
                   {m.kind === "agent" && (
                     <span className="agent-tag">AGENT</span>
                   )}
+                  {m.source?.platform && <Badge>{m.source.platform} · 外部来源{m.source.mode === "LOCAL_SIMULATION" ? " · 模拟" : ""}</Badge>}
                   <time>{formatTimestamp(m.time)}</time>
                 </header>
-                <p>
-                  {m.recalled ? "此消息已撤回，原记录依审计政策保留。" : m.text}
-                </p>
+                <ChatMessageContent message={m} />
                 {m.pinned && <Badge tone="violet">已置顶</Badge>}
                 {m.history?.length > 0 && (
                   <small>已编辑 · {m.history.length} 次修订</small>
                 )}
-                {m.file && (
-                  <div className="attachment">
-                    <Icon name="Paperclip" />
-                    {m.file}
-                    <small>本地文件引用</small>
-                  </div>
-                )}
                 {m.work && (
-                  <Link
+                  <button type="button"
                     className="message-work"
-                    to={workPath(s.work.find((w) => w.id === m.work))}
+                    onClick={()=>setWorkPreview({tenantId:s.activeTenant,workId:m.work,messageId:m.id})}
                   >
                     <Icon name="Layers" />
                     <div>
                       <b>{s.work.find((w) => w.id === m.work)?.title}</b>
-                      <small>固定版本 · 工作详情</small>
+                      <small>关联工作 · 当前页查看详情</small>
                     </div>
                     <Icon name="ArrowUpRight" />
-                  </Link>
+                  </button>
                 )}
                 <div className="message-actions">
+                  {(m.emojiReactions || []).map(reaction=><button type="button" key={reaction.emoji} className={`chat-reaction${reaction.principalIds.includes(s.role === "external" ? "external-demo" : "H-lin") ? " selected" : ""}`} disabled={Boolean(writeProblem) || m.recalled} aria-label={`回应 ${reaction.emoji}`} aria-pressed={reaction.principalIds.includes(s.role === "external" ? "external-demo" : "H-lin")} onClick={()=>{try{changeChannelMessage({tenantId:s.activeTenant,messageId:m.id,expectedText:m.text,action:"emoji",emoji:reaction.emoji});}catch(error){toast(error.message,true);}}}>{reaction.emoji} {reaction.principalIds.length}</button>)}
+                  <IconButton name="Smile" label="添加消息回应" disabled={Boolean(writeProblem) || m.recalled} onClick={()=>setReactionPicker({tenantId:s.activeTenant,messageId:m.id,expectedText:m.text})} />
                   <Button
                     icon="ThumbsUp"
                     onClick={() => {
-                      if (s.offline)
-                        return toast("离线中，请重连后操作。", true);
-                      update((x) => {
-                        const msg = x.messages.find((a) => a.id === m.id);
-                        msg.reacted = !msg.reacted;
-                      });
+                      try { changeChannelMessage({tenantId:s.activeTenant,messageId:m.id,expectedText:m.text,action:"react"}); }
+                      catch(error) { toast(error.message,true); }
                     }}
                   >
                     {m.reacted ? "已赞同" : "赞同"}
@@ -495,7 +456,7 @@ export function Chat({ params, toast, onView }) {
                   </Button>
                   <Button
                     hidden={s.role === "external"}
-                    onClick={() => setNewWork({ ...m, projectId: w?.project || contextProject?.id || (channel === "private" ? "private" : undefined) })}
+                    onClick={() => {try {const draftId=beginWorkDraft({sourceId:m.id,projectId:w?.project || contextProject?.id || (isDirect ? "private" : undefined),channel,threadId:params.get("thread_id")||undefined});const next=new URLSearchParams(params);next.set("quick_work",draftId);onView(`/chat?${next}`);}catch(error){toast(error.message,true);}}}
                     icon="ListPlus"
                   >
                     转为工作
@@ -529,23 +490,25 @@ export function Chat({ params, toast, onView }) {
             <div className="thread-panel">
               <div className="split">
                 <h3>
-                  线程 · {s.messages.find((m) => m.id === thread)?.author}
+                  线程 · {threadRoot?.author}
                 </h3>
                 <Link to={conversationPath} className="btn">
                   返回频道
                 </Link>
               </div>
-              <p>{s.messages.find((m) => m.id === thread)?.text}</p>
+              <p>{threadRoot?.text}</p>
               <Notice>回复将保留当前线程引用。</Notice>
             </div>
           )}
         </div>
         <Form className="composer" onSubmit={send}>
+          <fieldset disabled={!!writeProblem} className="channel-composer-fields">
           <textarea
-            aria-label="消息内容"
+            ref={composerInput}
+            aria-label={execution ? "执行指令" : "消息内容"}
             name="message-content" autoComplete="off"
             placeholder={
-              execution ? "补充要求、询问进展或提交反馈…" : `发送到 ${title}…`
+              execution ? "向此执行发送指令 · 提交后等待处理回执…" : `发送到 ${title}…`
             }
             value={message}
             onChange={(e) => write(e.target.value)}
@@ -553,22 +516,23 @@ export function Chat({ params, toast, onView }) {
               if ((e.ctrlKey || e.metaKey) && e.key === "Enter") send(e);
             }}
           />
+          {!execution && <ChatComposerTools value={message} onChange={write} inputRef={composerInput} files={attachment} onFiles={writeAttachments} contextKey={JSON.stringify([s.activeTenant,s.role,execution || channel])} toast={toast} disabled={Boolean(writeProblem)} onBusy={setAttachmentsReading} />}
           <div className="composer-bottom">
-            <label className="attach-control" title="添加附件">
-              <Icon name="Paperclip" />
-              <input
-                type="file"
-                aria-label="添加消息附件"
-                onChange={(e) => setAttachment(e.target.files?.[0]?.name || "")}
-              />
-            </label>
-            <span>{attachment || "明确 @ 才会唤醒 Agent"}</span>
-            <Button type="submit" variant="primary" icon="ArrowUp">
-              发送
+            <span>{attachment.length ? `${attachment.length} 个本地附件 · 尚未发送` : "提及须为当前成员；发送不代表 Agent 已执行"}</span>
+            <Button type="submit" variant="primary" icon="ArrowUp" disabled={attachmentsReading}>
+              {execution ? "提交执行指令" : "发送"}
             </Button>
           </div>
+          </fieldset>
         </Form>
       </section>
+      {reactionPicker && <EmojiPicker title="回应这条消息" onClose={()=>setReactionPicker(null)} onSelect={emoji=>{try{changeChannelMessage({...reactionPicker,action:"emoji",emoji});}catch(error){toast(error.message,true);}}} />}
+      {workPreview && <Modal title="关联工作详情" wide className="conversation-work-dialog" onClose={()=>setWorkPreview(null)}
+        headerActions={!(workPreview.tenantId !== s.activeTenant || (workPreview.messageId ? channelMessageReadProblem(s,s.messages.find(message=>message.id===workPreview.messageId)) : channelReadProblem(s,workPreview.channelId))) && <Link className="btn modal-open-external" aria-label="新标签页打开工作" title="新标签页打开工作" to={workPath(s.work.find(work=>work.id===workPreview.workId))} target="_blank" rel="noopener noreferrer"><Icon name="ArrowUpRight" /><span>新标签页打开工作</span></Link>}>
+        {workPreview.tenantId !== s.activeTenant || (workPreview.messageId ? channelMessageReadProblem(s,s.messages.find(message=>message.id===workPreview.messageId)) : channelReadProblem(s,workPreview.channelId)) ? <Empty title="此工作引用已不可访问" /> : <>
+          <div onClickCapture={event=>{const anchor=event.target.closest('a[href^="#/"]');if(anchor){anchor.target="_blank";anchor.rel="noopener noreferrer";}}}><WorkDetail workId={workPreview.workId} params={new URLSearchParams()} toast={toast} embedded /></div>
+        </>}
+      </Modal>}
       {execution && !compactContext && <div className="preview-resizer" role="separator" tabIndex={0}
         aria-label="调整任务预览宽度" aria-orientation="vertical" aria-controls={contextId}
         aria-valuemin={320} aria-valuemax={Math.round(maxPreviewWidth)} aria-valuenow={actualPreviewWidth}
@@ -617,19 +581,27 @@ export function Chat({ params, toast, onView }) {
           </Modal>
         )
       ) : (
-        <aside className={`chat-context${execution ? " execution-preview" : ""}`} id={contextId}>
+        <aside aria-label={execution ? "执行成果预览" : "协作上下文"} className={`chat-context${execution ? " execution-preview" : ""}`} id={contextId}>
           {!execution && <span className="eyebrow">协作上下文</span>}
           {contextContent}
         </aside>
       )}
 
-      {newWork && (
-        <NewWork
-          source={newWork}
-          toast={toast}
-          onClose={() => setNewWork(null)}
-        />
-      )}
+      {flowPreview && <Modal title="工作流" wide className="conversation-flow-dialog" onClose={() => setFlowPreview(null)}>
+        {flowPreview.tenantId !== s.activeTenant || channelReadProblem(s,flowPreview.channelId) || !s.projects.some(project=>project.id===flowPreview.projectId) ? <Empty title="工作流不在当前会话访问范围"/> : <>
+          <div className="actions"><Link className="btn" target="_blank" rel="noopener noreferrer" to={`/p/${flowPreview.projectId}/flow?scope=${encodeURIComponent(flowPreview.projectId)}${flowPreview.workflowId ? `&workflow_id=${encodeURIComponent(flowPreview.workflowId)}` : ""}${previewVersion ? `&version=${encodeURIComponent(previewVersion)}` : ""}${flowPreview.view === "runs" ? "&view=runs" : ""}`}>在新标签页打开工作流</Link>{flowPreview.workflowId && <Button onClick={() => setFlowPreview({...flowPreview,workflowId:null,view:null,version:null,flowState:{}})}>返回工作流列表</Button>}</div>
+          <div onClick={event => {
+            const anchor=event.target.closest('a[href^="#/"]');if(!anchor || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || anchor.target === "_blank")return;
+            const [path,query=""]=anchor.getAttribute("href").slice(1).split("?");const p=new URLSearchParams(query);
+            if(path===`/p/${flowPreview.projectId}/flow` ) {event.preventDefault();event.stopPropagation();setFlowPreview({...flowPreview,workflowId:p.get("workflow_id"),view:p.get("view"),version:p.get("version"),flowState:{}});}
+            else {anchor.target="_blank";anchor.rel="noopener noreferrer";}
+          }}>
+            {flowPreview.workflowId && flowPreview.view !== "runs" ? <Flow key={flowPreview.workflowId} projectId={flowPreview.projectId} params={new URLSearchParams({workflow_id:flowPreview.workflowId,...(flowPreview.version ? {version:flowPreview.version} : {})})} toast={toast} embedded embeddedState={flowPreview.flowState || {}} onEmbeddedStateChange={patch=>setFlowPreview(previous=>({...previous,flowState:{...(previous.flowState || {}),...patch}}))}/> : <WorkflowList projectId={flowPreview.projectId} listState={flowPreview.listState} onListStateChange={patch=>setFlowPreview(previous=>({...previous,listState:{...(previous.listState || {}),...patch}}))} params={new URLSearchParams({...(flowPreview.workflowId ? {workflow_id:flowPreview.workflowId} : {}),...(flowPreview.view ? {view:flowPreview.view} : {}),...(flowPreview.version ? {version:flowPreview.version} : {})})} toast={toast} onView={to => {const p=new URLSearchParams(to.split("?")[1]);setFlowPreview({...flowPreview,workflowId:p.get("workflow_id"),view:p.get("view"),version:p.get("version"),flowState:{}});}}/>}
+          </div>
+        </>}
+      </Modal>}
+      {directStart && <DirectMessageStart key={`${directStart.tenantId}:${directStart.peerId}`} initial={directStart} onClose={() => setDirectStart(null)} onCreated={id => {setDirectStart(null);onView(`/chat?channel_id=${encodeURIComponent(id)}&tenant=${encodeURIComponent(s.activeTenant)}&scope=all`);}} />}
+      {management && <ChannelManagement key={`${s.activeTenant}:${management}`} channelId={management === "new" ? undefined : management} onClose={() => setManagement("")} initialTab={managementTab} onTabChange={setManagementTab} toast={toast} onCreated={id => {setManagement("");setArchiveFilter("active");setChannelQuery("");onView?.(`/chat?channel_id=${encodeURIComponent(id)}`);}} />}
       {messageEdit && (
         <Modal title="消息与来源记录" key={messageEdit.id} draftValue={editText} onClose={() => setMessageEdit(null)}>
           {({ requestClose, dismiss }) => <>
@@ -646,20 +618,7 @@ export function Chat({ params, toast, onView }) {
             <Button
               onClick={() => {
                 try {
-                  assertWrite();
-                  if (messageEdit.author !== "林予")
-                    throw Error("只能编辑自己发送的消息。");
-                  if (!editText.trim()) throw Error("消息不能为空。");
-                  update((x) => {
-                    const m = x.messages.find((v) => v.id === messageEdit.id);
-                    m.history ??= [];
-                    m.history.push({
-                      text: m.text,
-                      time: new Date().toISOString(),
-                    });
-                    m.text = editText;
-                    log(x, `编辑消息 ${m.id}`, `/chat?channel_id=${m.channel}`);
-                  });
+                  changeChannelMessage({tenantId:s.activeTenant,messageId:messageEdit.id,expectedText:messageEdit.text,action:"edit",text:editText});
                   dismiss();
                   toast("修订已保存");
                 } catch (e) {
@@ -672,11 +631,7 @@ export function Chat({ params, toast, onView }) {
             <Button
               onClick={() => requestClose(() => {
                 try {
-                  assertWrite();
-                  update((x) => {
-                    const m = x.messages.find((v) => v.id === messageEdit.id);
-                    m.pinned = !m.pinned;
-                  });
+                  changeChannelMessage({tenantId:s.activeTenant,messageId:messageEdit.id,expectedText:messageEdit.text,action:"pin"});
                   setMessageEdit(null);
                   toast("置顶状态已更新");
                 } catch (e) {
@@ -689,14 +644,7 @@ export function Chat({ params, toast, onView }) {
             <Button
               onClick={() => requestClose(() => {
                 try {
-                  assertWrite();
-                  if (messageEdit.author !== "林予")
-                    throw Error("只能撤回自己发送的消息。");
-                  update((x) => {
-                    x.messages.find((v) => v.id === messageEdit.id).recalled =
-                      true;
-                    log(x, `撤回消息 ${messageEdit.id}`);
-                  });
+                  changeChannelMessage({tenantId:s.activeTenant,messageId:messageEdit.id,expectedText:messageEdit.text,action:"recall"});
                   setMessageEdit(null);
                   toast("已撤回，历史保留");
                 } catch (e) {
@@ -710,23 +658,19 @@ export function Chat({ params, toast, onView }) {
               onClick={() => requestClose(() => {
                 try {
                   assertWrite();
-                  update((x) => {
-                    x.resources.knowledge.unshift({
-                      id: id("K"),
-                      name: messageEdit.text.slice(0, 24),
-                      status: "待确认",
-                      owner: "林予",
-                      kind: "记忆",
-                      scope: channel === "private" ? "私人" : "当前项目",
-                      version: "v1",
-                      source: messageEdit.id,
-                      content: messageEdit.text,
-                    });
-                    log(
-                      x,
-                      `由消息 ${messageEdit.id} 提取记忆候选`,
-                      "/knowledge",
-                    );
+                  const currentMessage = read().messages.find(m => m.id === messageEdit.id);
+                  const problem = channelMessageReadProblem(read(),currentMessage); if (problem) throw Error(problem);
+                  assertChannelWrite(read(),currentMessage.channel);
+                  if (currentMessage.recalled || currentMessage.text !== messageEdit.text) throw Error("消息已变更，请重新打开。");
+                  saveResource("knowledge", {
+                    name: messageEdit.text.slice(0, 24),
+                    status: "待确认",
+                    owner: "林予",
+                    kind: "记忆",
+                    scope: isDirect ? "私人" : "当前项目",
+                    version: "v1",
+                    source: messageEdit.id,
+                    content: messageEdit.text,
                   });
                   setMessageEdit(null);
                   toast("记忆候选待确认，不自动成为正式结论");
@@ -742,13 +686,13 @@ export function Chat({ params, toast, onView }) {
         </Modal>
       )}
       {sharing && (
-        <Modal title="共享前，确认具体范围" key={sharing.id} draftValue={{ target: shareTarget, project: shareTarget === "项目成员" ? shareProject : undefined }} onClose={() => setSharing(null)}>
+        <Modal title="共享前，确认具体范围" key={sharing.id} draftValue={{ target: shareTarget, project: ["项目成员", "指定频道"].includes(shareTarget) ? shareProject : undefined }} onClose={() => setSharing(null)}>
           <ActionForm
             label="确认共享选定消息"
             onCancel={() => setSharing(null)}
             onSubmit={({ dismiss }) => {
               shareMessage({ tenantId: sharing.tenantId, messageId: sharing.id, expectedText: sharing.text,
-                target: shareTarget === "外部客户" ? "external" : "project", projectId: shareProject });
+                target: shareTarget === "外部客户" ? "external" : shareTarget === "指定频道" ? "channel" : "project", projectId: shareProject, channelId: shareProject });
               dismiss();
               toast("选定消息已共享，未包含其余会话历史");
             }}
@@ -756,14 +700,15 @@ export function Chat({ params, toast, onView }) {
             <blockquote>{sharing.text}</blockquote>
             <Field
               label="接收范围"
-              options={["项目成员", "外部客户"]}
+              options={["项目成员", "指定频道", "外部客户"]}
               value={shareTarget}
-              onChange={setShareTarget}
+              onChange={value => {setShareTarget(value);setShareProject("");}}
             />
+            {shareTarget === "指定频道" && <Field label="接收频道" value={shareProject} onChange={setShareProject} required options={[{value:"",label:"请选择明确接收频道"},...visibleChannels(s).filter(c => c.kind !== "DIRECT").map(c => ({value:c.id,label:`${c.name}${c.shared ? " · 外部共享" : ""}`}))]} />}
             {shareTarget === "项目成员" ? <Field label="接收项目" value={shareProject}
               onChange={setShareProject} required options={[{ value: "", label: "请选择接收项目" },
                 ...s.projects.filter(project => project.id !== "private").map(project => ({ value: project.id, label: project.name }))]} />
-              : <Notice tone="warn">接收频道：客户共创 · 外部共享频道。确认后，该频道参与者可阅读此段文本。</Notice>}
+              : shareTarget === "外部客户" && <Notice tone="warn">接收频道：客户共创 · 外部共享频道。确认后，该频道参与者可阅读此段文本。</Notice>}
             {shareProject && shareTarget === "项目成员" && <p>接收频道：{s.projects.find(project => project.id === shareProject)?.name} · 项目成员</p>}
             <Notice>
               只分享此条消息。未选择的私人历史、引用附件和内部记录不会自动开放。
@@ -1045,8 +990,10 @@ export function Artifact({ workId, params, toast }) {
                 <p>{c.text}</p>
                 <Button
                   icon={c.resolved ? "CheckCheck" : "Check"}
+                  disabled={projectIsArchived(s,w.project)}
                   onClick={() => {
                     if (s.offline) return toast("离线中，请重连后操作。", true);
+                    try { assertProjectRecordWritable(read().work.find(work=>work.id===read().comments.find(item=>item.id===c.id)?.work)); } catch(error) {toast(error.message,true);return;}
                     update(
                       (x) =>
                         (x.comments.find((a) => a.id === c.id).resolved =
@@ -1065,6 +1012,7 @@ export function Artifact({ workId, params, toast }) {
               if (!comment.trim()) return;
               if (s.offline)
                 return toast("离线中，批注保留，请重连后提交。", true);
+              try { assertProjectRecordWritable(read().work.find(work=>work.id===w.id)); } catch(error) {toast(error.message,true);return;}
               update((x) => {
                 x.comments.push({
                   id: id("c"),

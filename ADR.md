@@ -4887,3 +4887,165 @@ New project creation references a Human ID from the active tenant, stores the di
 - Alternatives considered: counting today's completed status, rereading today's work/organization assignments, inferring saved legacy authors by display name, adding timezone to uniqueness, and reconstructing old content from current work were rejected because each fabricates or rewrites historical facts.
 - Tradeoffs: missing legacy scope/time/history is surfaced as unknown and excluded from certified scoped aggregates. Stable personal owner IDs remain valid evidence of individual ownership. Known pristine demo fixtures remain distinguishable from saved legacy data.
 - Scope/status: parent-authorized local prototype report fact correction implemented and scoped tests/browser/mutations passed. Does not certify production runtime, full report content sections or the entire PRD.
+
+
+## 2026-10-14 — Report top-level authority and immutable submission identity
+- Decision: SYSTEM:team_top applies to tenant report only, not arbitrary organization node; keep independent Human authority for node/project reports, prohibit self-review absent explicitly supported policy. Missing submitted confirmer cannot be retroactively approved from current settings.
+- Reason: spec10 BR-10-20/24 and reproduced node/null-confirmer bypasses; original author/subject cannot change merely because a legacy calendar key is missing.
+- Alternatives: treating every team node as tenant TEAM or granting generic owner-role bypass rejected; these widen the documented exception.
+- Scope/tradeoff: local prototype report domain only; old unresolved submissions may be returned and resubmitted, full organization-supervisor policy and production IAM not implemented.
+- Status: bounded domain and1440/375 browser verification PASS, full report and global acceptance not achieved.
+
+
+## 2026-10-14 — Goal / Plan / report authority boundaries
+- Decision: one目标管理 entry/object expresses O/KR; period Plan owns confirmed commitments; period report owns fixed observed facts/reflection. Reuse references rather than duplicating quarterly goals per week or creating report-only next plans.
+- Reason: user's redundancy concern, existing core object boundaries and independently reproduced missing nextPlan/report structure.
+- Alternatives/tradeoff: collapsing all three objects loses separate commitment/observation/version responsibilities; keeping distinct objects requires bidirectional drilldown and factual generation to avoid repeated input.
+- Scope/status: wording and menu deduplication implemented and1440/375 navigation/collab/goalsPASS; complete linkage/report content still required. Routine service-only Plan not supported by current mandatorygoal_id contract and needs explicit model rather than fake catchall goals.
+
+
+## 2026-10-14 — Fixed report confirmation and personal execution
+Decision: apply existing BR-10-40 through explicit Human REOPEN, preserving confirmed snapshots and stable authorship even when current author is absent. Personal completed-work reports require immutable executor identity; owner/acceptance actor alone does not prove execution.
+Reason: both direct edit of confirmed reports and actor/executor conflation were reproduced. Alternatives rejected: automatic draft conversion, inferring executors from current assignment, deleting historical confirmation.
+Tradeoffs/scope: local prototype only, no backend or runtime claims. Separate decision contribution reader and structured report content remain incomplete. Status: scoped implemented; integrated full acceptance pending.
+
+
+## 2026-10-14 — Child report evidence preserves every scope and fixed period
+Decision: aggregate fixed submitted child bodies and fixed fact leaves, filtering each intermediate scope/time period; source links use one shared eligibility rule across editor/save/check. Cross-zone day-only effort overlap is unknown rather than split. Duplicate child paths within a parent are visited once.
+Reason: independent probes demonstrated scope leakage, rewriting/dropping historical facts, false zero, and exponential traversal. Alternatives rejected: same-tenant personal pooling, current organization backfill, current-source substitution, proportional day splitting.
+Scope/tradeoffs/status: local reporting prototype implemented and bounded gates pending completion; missing historical membership, full denominators and four report sections remain explicitly incomplete. No backend/API expansion.
+
+
+## 2026-10-14 — Reports adopt real next-period member Plan revisions
+- Decision: report.nextPlanBinding captures real tenant/member/next-calendar-period Plan ID, revision, Plan snapshot, confirmed baseline and actual adoption-time checks. It is part of the fixed report submission fingerprint; absent/null binding preserves the previous ten-key legacy fingerprint. No independent report-only editable next-plan list.
+- Drafts must explicitly re-adopt after Plan revision/body/dependency changes; fixed submissions preserve original content/checks and warn on current changes, deleted dependencies or duplicate live Plans. Human report acceptance does not approve or rewrite the Plan. Original existing Plan timezone is retained and disclosed rather than creating another Plan.
+- Real member Plan creation/opening is an explicit action through the existing Plan workflow. Tenant filtering and duplicate conflict checks apply to shared openPeriodPlan. Project/team next-plan projection is still unavailable; do not create a fictional member Plan for aggregates.
+- Browser reproduction found ordinary shared Button/IconButton defaulted to native submit inside forms. Defaults now type=button, with explicit submit overrides retained; report navigation and adoption are no longer accidental saves. This is an actual business-flow correction, not style refactoring.
+- Scoped status: 273 tests / 2546 assertions and six related browser suites at1440/375 PASS; broad shared-component browser regression still running. Report four sections/carry/outcomes and global acceptance remain incomplete. No backend/real runtime claims, no commit/push.
+
+NextPlan decision final bounded validation: unit273/2546 and buildPASS, all36browser suites each1440/375PASS/sourcehashes matched, seven semantic mutants + controlled defaultButton browser negative detected. Remaining structured-report gaps independently re-proven; globalgoalstillACTIVE/NOTREADY.
+
+
+## 2026-10-14 — Structured report facts, author confirmations and safe historical rendering
+- Decision: persist four sections as typed content and include it in fixed submission/approval fingerprints; absent legacy content retains its original fingerprint. A completed WORK_ITEM is tied to actual fixed acceptance event/version/scope/executor; unsupported readers cannot authenticate completion. Downstream Plan chapter is derived from the real adopted Plan snapshot.
+- Decision: author detail/reflection acknowledgment is generated by trusted store actions, bound to content fingerprint and stable author; Human-triggered Agent acknowledgment is explicitly local simulation with recordedBy. Historical display uses stored author identity, not today's roster.
+- Decision: fixed structured submissions require an intact factSnapshot. Missing/corrupt evidence blocks with B1, never switches to live sources; valid fixed history remains readable/confirmable after current sources disappear. Malformed content renders an error without deleting raw data or inventing replacement chapters. Ordinary save refuses malformed references/review metadata atomically.
+- Scope/tradeoff: local prototype, no production provenance claims. Explicit-only content initialization is interim, not the final requirement; mandatory new-report content/migration/currentPlan/carry/outcomes and aggregate projections remain unfinished. Empty-section none policy needs explicit resolution; do not synthesize tasks or accept silent empty chapters. Scoped gates underway, not full acceptance.
+
+## 2026-10-14 — Corrupt fixed Plan display and projection
+- Decision: the existing reportNextPlanItems projection rejects malformed adopted snapshot structure and non-scalar directly rendered metadata/IDs. Report detail and editor reuse this check and display an explicit diagnostic, preserving the raw adopted object.
+- Reason: personally reproduced missing/null/non-array items TypeErrors and object-valued goalId/revision React child crashes; independent SSR reproduced the latter.
+- Alternatives/tradeoff: no fallback to current live Plan, no serialization of corrupt objects into plausible IDs, no automatic empty replacement. Absent binding and valid empty historical lists retain their original meaning. Shape validation is not authority or Plan acceptance.
+- Scope/status: local report prototype repair; sixteen malformed-shape unit/SSR regressions, browser verification pending in checkpoint. No product rule or production API change.
+
+Final bounded verification: `/tmp/report-plan-corruption-final-browser-{1440,375}.json` each8suitesPASS/sourceUnchanged=true, including all16corrupt adoptedPlan shapes through actual detail→edit→rejected save→cancel with storage unchanged. All106frozen src/test/dist files match worktree; browser runner syntax and git diff --checkPASS. Independent scoped reviewPASS; owned servers/browser sessions closed, user4173untouched. This closes the corruption class only; global goalACTIVE/NOTREADY, consecutive full clean rounds0.
+
+## 2026-10-14 — New report structure and explicit legacy migration
+- Decision: new generator and direct-save creation require empty typed four-section drafts; unavailable stats remain null, no completion/uncompleted/next commitment invented. A trusted contentRequired marker is immutable through public save and included in fixed submission fingerprints.
+- Legacy: old fixed bodies retain their ten-key fingerprints. Generate/open keeps old body unchanged; explicit migrateLegacyContent saves a new draft under the same ID, preserves original revision and any original submission in existing history, and records trusted Human actor/time/sourceRevision. No automatic reinterpretation of old prose or approvals.
+- Tradeoff/scope: missing/incomplete new chapters block rather than inheriting legacy compatibility. Aggregate nextPlan projection remains unsupported, not hidden by legacy fixture passes; unresolved empty-section policy is not invented. Local prototype only.
+- Verification: full295tests/3063assertions+buildPASS; four semantic mutants killed; final frozen browser regressions pending in latest MEMORY checkpoint. Initial list-projection browser crash reproduced and repaired, failures retained.
+
+
+Final bounded required-report verification (2026-10-14): 295 tests/3063 assertions and build PASS; frozen `/tmp/report-required-verified-20261014` all107 src/test/dist hashes independently rechecked against worktree. Both `/tmp/report-required-verified-browser-{1440,375}.json` contain38 suites, pass=true, sourceUnchanged=true, and sourceHashes matching freeze. Four semantic mutants detected; independent scoped reviews passed. Initial React list crash and subsequent modal-test misdiagnosis evidence retained; corrected modal test verifies actual dirty-discard resolution, not background DOM clicks. Owned servers/debug/reviewer browsers closed per terminal checkpoint; user4173 untouched. This is bounded verification only: global ACTIVE/NOT READY, consecutive full clean rounds0; missing currentPlan/carry/aggregate projection and wider requirements remain.
+
+
+## 2026-10-14 — Confirmed Plan baselines fail explicitly without live substitution
+- Decision: validate tenant, fixed subject/calendar/timezone, baseline revision, item identities/type/title/completion criteria/positive finite weights before projecting confirmed Plan facts. Invalid baselines return diagnostics and null progress/counts, retaining originals; never substitute current draft or quietly normalize stored evidence.
+- Reuse: one planConfirmedSnapshotProblem guard serves Plan reading, all dedicated Plan commands, report next-Plan adoption and fixed binding checks. Free-task completion history uses the same shape predicate in reader and writer; a matching entry cannot hide corrupted surrounding history. Report generation discloses unavailable baselines and N2 retains this as a nonblocking issue under existing spec.
+- History: legitimate fixed report bindings stay readable if current Plan changes or becomes corrupt; corruption of the adopted fixed baseline itself is rejected. Read-only original baseline/history remains accessible on the diagnostic view; no silent reset or invented approval.
+- Alternatives rejected: throwing React/TypeError, reporting zero/negative progress, pooling foreign-tenant Plan records, taking a conflicting live subject/timezone, and certifying an adopted corrupt baseline through the report bypass. Unprovable old metadata is preserved and shown unavailable.
+- Scope/status: authorized prototype repair only, not production IAM or full report/currentPlan/carry/aggregate implementation.300 tests/3585assertions+buildPASS; final39browser×2 pending. Full productACTIVE/NOT READY, consecutive clean rounds0.
+
+
+Final bounded verification 2026-10-14: full300 tests/3585 assertions+buildPASS; `/tmp/plan-baseline-adoption-20261014`108src/test/dist hashes match worktree,39suites each1440/375PASS with sourceUnchanged=true and both source/scriptHashes matched (`/tmp/plan-baseline-adoption-browser-{1440,375}.json`). Seven corrected semantic mutants detected only after unmutated controlPASS; initial missing-React mutant results explicitly INVALID and retained. Independent domain/UI reviews and parent keyboard/raw-history checks passed within stated scope; gradient contrast still incomplete. All this turn owned servers/browser sessions closed, user4173 untouched. GlobalACTIVE/NOT READY, consecutive complete clean rounds0; no requirement-wide acceptance upgrade, no commit/push/backend changes.
+
+
+## 2026-10-14 — Exact current-period Plan diagnostics and fixed-history retention
+- Decision: member report current Plan selection is same tenant/subject/cadence/calendar start and end. DAY Plans are not a WEEK baseline; duplicate same-period Plans are an explicit unresolved conflict, never merged or chosen arbitrarily. Confirmed replans continue using original confirmedSnapshot with pending-reconfirmation N2; unconfirmed drafts have no confirmed progress.
+- Reason: root + independent read-only probes reproduced mixed cadence/duplicates, missing draft/reconfirmation N2, and loss of original N2 after fixed submission. Existing BR-10-17/30/48 governs; no new blanket submission block or extra approval added.
+- Compatibility: reportEvidence stores planIssues alongside existing factSnapshot. Fixed reports restore those original strings; older warning-only snapshots preserve original N2 without live Plan substitution. Corrupt planIssues yields explicit error, not historical repair.
+- Scope: selection/diagnostics only. This does not implement report currentPlanBinding, baseline items/outcome snapshot, current-item reference checks, carryover or full report generation. Prototype/local simulation; no backend/runtime changes.
+
+
+Final current-Plan diagnostic checkpoint 2026-10-14: full302tests/3610assertions+buildPASS; controlled5semantic mutants all detected, unmodified controlPASS. `/tmp/report-current-plan-freeze-20261014`107src/test/dist hashes match final worktree. `/tmp/report-current-plan-all-browser-{1440,375}.json` each39suitesPASS/sourceUnchanged=true; all source/scriptHashes match freeze, actual served4223 dist bytes match worktree (`/tmp/report-current-plan-final-hash-audit.json`). Independent product/UI checks and root visual checks passed within diagnostic scope; scoped375light/dark ReportFacts axe0violations/0incomplete. Browser jobs76376/30095 and scoped jobs13484/92172 exited0; runner closes named browsers; independentUI browser closed. Owned4223 preview15663 stopped; user4173untouched. No commit/push/backend changes.
+Global goalACTIVE/NOTREADY, consecutive full clean rounds0. This repairs exact-period selection/N2/fixed diagnosis only; fixed current-Plan baseline identity/items/outcome evidence and report auto-generated unfinished items/typed references/carryover/provenance/outcome history are still next, followed by aggregate/other fact readers/OKR lifecycle/archive/scoped libraries/professional/org/platform/large-data/fullguideline/taste requirements. No reduction of350REQ/70scenario denominator.
+
+
+## 2026-10-14 — Member report current-period fixed Plan reference
+- Decision: optional report.currentPlanBinding captures genuine same-tenant/member/cadence/calendar Plan identity, adoption sourceRevision, baseline revision/status, confirmed flag and exact snapshot. ConfirmedSnapshot is the commitment source even when a later draft is pending; no baseline means explicitly unconfirmed draft, not inferred approval. Report fingerprint conditionally includes binding; null/absent retains exact old compatibility.
+- Reuse: reportCurrentPlan is extracted from existing exact-period selection and reused by diagnostics/adoption/check; structural guard reuses planConfirmedSnapshotProblem. Existing ReportPlanSnapshot/Section/Notice/Link/Button + modal dirty-navigation reused; no independent report Plan list or editor.
+- Changes: confirmed notes/real estimate updates do not force re-adoption because commitment snapshot stays identical; a new confirmed baseline or changed unconfirmed draft requires explicit adoption for draft save/submission. Incoming forged metadata/snapshots denied; original retained binding may keep historical sourceRevision/status; no implicit removal.
+- History: fixed report binding remains readable after live source deletion/conflict/corruption or roster loss; current drift is disclosed as warning, never substituted. Malformed embedded fixed identity/calendar/items rejects; report acceptance fingerprints binding and never approves Plan. Missing unbound current Plan still N2, no new mandatory adoption policy.
+- Scope/status: local prototype binding/reference only. Not current-item validation, auto-uncompleted/outcome snapshots, carryover/provenance, aggregates or real Agent runtime. Build passes but main minified chunk504.03kB/gzip159.30kB triggers Vite500kB warning; performance gate remains open, threshold not raised.
+
+
+## 2026-10-14 — Explicit Plan correspondence in report entries
+- Decision: an explicitly referenced Plan item is verified against the report's adopted fixed snapshot, never today's live Plan. An empty reference remains an off-plan entry subject to its own fact/author checks. Optional adoption remains optional when no explicit Plan item is claimed; explicit claims without a verifiable binding receive a diagnostic, not guessed history.
+- UI: show original stable IDs/titles, offer only compatible fixed work for accepted completion, permit author-declared off-plan incomplete entries, invalidate reason/disposition confirmation on link changes. Invalid old IDs remain visible until explicit correction; report linking never approves/edits Plan.
+- Shared control: open Select focuses enabled selected option or first enabled option, retains existing Escape/focus restoration behavior. No alternate native selector introduced.
+- Scope/status: prototype only; local simulations and incomplete fact readers explicit. Raw old histories remain preserved. No global acceptance;41suite regression currently running.
+
+## 2026-10-14 — Typed FREE_TASK report evidence without invented work acceptance
+- Decision: a confirmed adopted current Plan supplies FREE_TASK_EVIDENCE with the original item/event/commitment, subject and actor identity, nonempty evidence, Plan and report timezone periods, and as-of cutoff. Work and FREE events have typed dedup identities; completed_count includes both, accepted_work_items and legacy work totals count only Work IDs.
+- History/reuse: retain existing reportEvidence.structuredFacts in submission.factSnapshot; fixed reports read only selected frozen FREE facts with original submission cutoff, never current Plan fallback. Missing/corrupt historical facts remain explicit B1; no migration or inferred historical owner. Shared planFreeTaskFactValid now rejects wrong kind/actor or missing Agent recorder.
+- UI: genuine evidence picker inserts the exact fixed Plan item, displays evidence/time/actor and explicitly local Agent simulation/recording Human; no work ref or fake version for FREE tasks. Existing component/theme/layout reused.
+- Scope: reader and manual adoption only. Automatic report chapter generation, fixed Plan outcomes, carryover, DECISION/DELIVERY readers, aggregates/metrics and global350REQ/70scenario acceptance remain open.321unit tests/4010assertions+buildPASS; six corrected semantic mutants detected; dedicated browser flow1440/375PASS. Full42browser suites each width currently running; terminal evidence pending in MEMORY. First cutoff mutant survived because the test only checked an out-of-period future date; added same-period as-of assertions detects it. Initial UI suite used aria-label for a name-based textarea; corrected test selector, no product fix.
+
+FREE_TASK decision terminal validation2026-10-14: exact-source321tests/4010assertions+buildPASS;42browser suites each1440/375PASS,114freeze+8served bytes+allsource/script hashes matched. Independent bounded domain and UI reviews complete; root genuine acceptance and history probesPASS. No global acceptance upgrade; new-report automatic chapter fill remains a directly reproduced requirement gap.
+
+
+## 2026-10-14 — Immutable delivery receipt and shared PageHead containment
+- Decision/reason: spec07 BR-07-34 requires one fixed receipt per delivery. Preserve existing same-content retry before rejecting changes to accepted/partial/rejected receipts. New outcomes require explicit Human-authorized rework and a new versioned fixed package; do not overwrite rejected evidence or relabel the original package.
+- Reuse/scope: existing receipt item validation/transaction/rework/role/offline controls, UI Button/Notice; no new receipt schema, authenticated client identity, signatures, backend or transport. Domain + actual4stateUI checks and semantic mutation verify only this local prototype boundary.
+- Layout decision: shared PageHead firsttextchild min-width0/overflow-wrapanywhere resolves directly rendered unbroken-title overflow while preserving full title/ID and genuine destination; no clipping/truncation/hidden-overflow. Extend actual generatedPlan→WorkDetail browsergate with fulltext/Range bounds boththemes.
+- Status: integrated; own386unit4407assertions/buildPASS, scopedactualflowsPASS; newcurrentfull48×2 regression in flight. Broader acceptance still NOTREADY/completecleanrounds0.
+
+### Required next external acceptance report contract — design assessed, not implemented
+Persist one immutable ACCEPTANCE fact on actual first local receipt, fixed tenant/project/delivery/work/version/time/completeitems/result/originalpackagesnapshot. Client signatory and any internal Human recorder distinct; unknown real contact identity remains unknown. Explicit package acknowledgment binds exact fixed contents, not only versionlabel. LOCAL_SIMULATION remains in UI/report/fixedfacts; a local contentfingerprint is not a signature or verifiedclientidentity. No default sender/owner/executor/recorderpersonalcredit; scopeproject/tenant and onlyprovableteam. Dedicated typedreader/reference/title/checker/frozenstructuredFacts/N4 reuse currentfactspipeline; externalreceipt never adds acceptedWork count or completes Plan a secondtime. Partial/rejected outcomes remain explicit, not promoted to fullacceptance; legacy history not backfilled. Actual form input and reader implementation/testing remain outstanding.
+
+
+## 2026-10-14 — Uniform local receipt recorder authority
+Decision: all three delivery receipt outcomes use the existing local simulator executor authorization gate; UI explains and disables unauthorized actions consistently. Reason: actual partial/rejected commands bypassed the full-accept guard and persisted history/rework/state. Alternatives rejected: banning production occupational executors (explicit capability may authorize a Human), permitting rejection without recorder permission, or hiding authorization failures only in UI. Scope/status: isolated prototype repair, domain and two-width affected browser PASS; independent actual UI and main integration pending. Existing immutable terminal receipts and owner/external retries remain unchanged. This does not implement production authentication or typed ACCEPTANCE reporting.
+
+
+## 2026-10-14 — Knowledge export authenticity and rejected-action focus
+Decision: knowledge export accepts only a current authorized saved object with unchanged JSON; serializes canonical originals, never caller payload/history. Complete saved history retains same nonempty record ID; strict status-event history compatible, historical private scope still separately authorized. Reason: forged public history identity/scope and relabeled secret body bypassed scope-only checks. Existing sole UI caller passes saved record/list; no arbitrary historical export requirement or caller exists. Scope: isolated local prototype repair, not production IAM/shared ACL/project scope/archive.
+Decision: shared ActionForm focuses and scrolls the inline business error summary on every rejected attempt, including identical errors, preserving modal focus restoration and form data. Reason: root native375 reproduction showed Save remained focused outside dialog after error insertion. Reuse existing themed role=alert; no new modal/footer layout. Status: domain tests/mutations passed; full stage/unit/build and actual browser verification pending, not integrated.
+
+
+## 2026-10-14 — Prototype acceptance boundary correction
+- Decision: deliver a complete interactive prototype covering existing requirements and interactions; do not implement real backend, distributed execution, persistence services or external integrations in this task.
+- Reason: this was the user's original scope; the redundant prototype-vs-production question incorrectly reopened an established decision.
+- Alternatives considered: production implementation is outside the authorized scope.
+- Tradeoffs: local simulations demonstrate product flows, with real-service boundaries visibly disclosed; they cannot certify production behavior.
+- Scope / status: confirmed; two complete clean review rounds assess the frozen prototype and its required designs, not production readiness.
+
+
+## 2026-10-14 — 工作流画布与绩效入口
+
+- Decision：协作与 Git CI/CD 工作流继续复用现有 `@xyflow/react`；按类型定义节点参数，面板划分配置、输入、输出、运行记录、错误策略。绩效按周期进入，租户/项目只汇总，人/Agent独立评分；个人工作按项目分组，不新增人×项目绩效菜单。
+- Reason：需求核心是流程编辑、端口与质量门，已有 React Flow 画布和版本生命周期可复用。relation-graph 官方定位主要为关系数据展示，也支持自定义交互画布；本轮没有为替换成熟入口引入第二套组件的必要。
+- Alternatives：relation-graph；为每个场景独立造画布/菜单；保留独立工时录入。
+- Tradeoffs：继续复用降低两套图组件维护成本，但节点配置不等于执行引擎。真实CI、Runner、遥测和定时器未实现；旧历史无证据保持未知。Human校准可选，不把墙钟或消息推算成实际投入。
+- Scope / Status：可交互原型；用户确认方向已实现并进行限定验收。参考 https://github.com/xyflow/xyflow 与 https://github.com/relation-graph/relation-graph 官方README，未进行两者性能基准比较。
+
+
+## 2026-10-14：探索统一到工作流；知识与文件分开
+- Decision：用户明确探索由统一工作项/工作流消化，可为单节点、阶段或独立工作流；取消用户新建独立ADHOC入口，保留旧记录兼容。
+- Reason：避免第二套目标、执行和验收逻辑。私信用于沟通，确认工作后再执行。
+- Alternatives Considered：独立临时探索执行入口（旧03规范）；用户明确弃用新建入口。
+- Tradeoffs：保留ADHOC历史读取和关联，不能删历史或猜归属。
+- Scope / Status：原型入口与文案；已确认用户决定。
+- Decision：知识库归治理，租户/项目两层；文件与素材归协作独立页面，知识可引用文件和事实。
+- Reason：原件与可复用知识不同生命周期，权限和来源需保持。
+- Alternatives Considered：混合“资料与知识”页或都放协作；用户最终提出治理知识库。
+- Tradeoffs：共享存储和查看能力允许复用，导航和维护意图不可混淆；私人知识权限保留。
+- Scope / Status：文档已登记，页面拆分尚待完成，不计已验收。
+
+## 2026-10-14 — 复用 cc-switch 配置底座
+- Decision：本地配置复用 cc-switch/cc-switch-cli，只扩展云端授权版本下发和回执。
+- Reason：用户要求保持成熟工具效果，避免重复引擎。
+- Alternatives Considered：自建类似功能；不采用。
+- Tradeoffs：需核实上游版本能力；WebDAV不代替平台授权下发。Go调用独立可执行程序，无新增Node必需依赖。
+- Scope / Status：文档与原型边界已登记；未安装或真实集成。

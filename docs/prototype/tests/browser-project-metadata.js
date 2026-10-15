@@ -1,0 +1,50 @@
+(async () => {
+  const wait = () => new Promise(resolve => setTimeout(resolve, 180));
+  const check = (value, message) => { if (!value) throw Error(message); };
+  const state = () => JSON.parse(localStorage.getItem("collaboration-prototype-v1"));
+  const go = async path => { location.hash = path; await wait(); };
+  const dialog = () => document.querySelector("dialog[open]");
+  const click = async (text, scope = document) => {
+    const button = [...scope.querySelectorAll("button")].find(button => !button.disabled && (button.textContent.trim() === text || button.getAttribute("aria-label") === text));
+    check(button, `Missing enabled button ${text}`); button.click(); await wait();
+  };
+  const fill = async (label, value) => {
+    const field = dialog().querySelector(`[name="${label}"]`) || dialog().querySelector(`[aria-label="${label}"]`);
+    check(field, `Missing field ${label}`);
+    Object.getOwnPropertyDescriptor(field.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value").set.call(field, value);
+    field.dispatchEvent(new Event("input", { bubbles: true })); await wait();
+  };
+  const choose = async (label, text) => {
+    const field = document.querySelector(`[role="combobox"][aria-label="${label}"]`);
+    check(field, `Missing select ${label}`); field.click(); await wait();
+    const option = [...document.querySelectorAll('[role="option"]')].find(option => option.textContent.trim() === text);
+    check(option, `Missing option ${text}`); option.click(); await wait();
+  };
+  await go("/p/launch"); await click("项目设置");
+  const original = state(), beforeWork = JSON.stringify(original.work), beforeMessages = JSON.stringify(original.messages);
+  const beforeChannel = original.channels.find(channel => channel.id === "launch");
+  await fill("项目名称", "改名后的项目 · 原型验收");
+  await fill("项目简介", "资料设置与频道同步；不改变工作负责人。");
+  await fill("截止日期", "2028-02-29");
+  await choose("Human 负责人", "周宁 · H-zhou");
+  await click("保存项目资料", dialog());
+  check(!dialog(), "Successful save kept editor open");
+  const saved = state().projects.find(project => project.id === "launch"), channel = state().channels.find(channel => channel.id === "launch");
+  check(saved.name === "改名后的项目 · 原型验收" && saved.ownerId === "H-zhou" && saved.deadline === "2028-02-29", "Metadata fields not saved");
+  check(JSON.stringify(state().work) === beforeWork && JSON.stringify(state().messages) === beforeMessages, "Metadata changed related ownership or message facts");
+  check(channel.name === saved.name && channel.id === beforeChannel.id && channel.revision === beforeChannel.revision + 1, "Default channel did not follow project name with stable identity");
+  await click("项目设置");
+  check(dialog().textContent.includes("项目资料变更历史（1）"), "Metadata history missing");
+  await fill("截止日期", ""); await click("保存项目资料", dialog());
+  check(state().projects.find(project => project.id === "launch").deadline === "待确认", "Cleared deadline not saved");
+  await go("/chat?channel_id=launch");
+  check(document.querySelector(".chat-heading h1").textContent.includes(saved.name), "Conversation retains old project name");
+  await go("/settings"); await choose("角色视角", "executor");
+  await go("/p/film"); await click("项目设置");
+  check(dialog().textContent.includes("仅项目负责人或租户负责人"), "Unrelated executor lacks readonly explanation");
+  check(![...dialog().querySelectorAll("button")].some(button => button.textContent.trim() === "保存项目资料"), "Readonly metadata exposes save action");
+  await click("关闭弹窗", dialog());
+  await go("/settings"); await choose("角色视角", "owner");
+  check(document.documentElement.scrollWidth <= innerWidth, "Metadata flow overflowed viewport");
+  return { pass: true, width: innerWidth, checks: ["metadata save and history", "stable default-channel rename", "related ownership preserved", "clear date", "readonly unrelated executor"] };
+})();

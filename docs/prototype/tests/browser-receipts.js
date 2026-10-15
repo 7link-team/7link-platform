@@ -29,6 +29,8 @@ if (typeof window.qaCompleteValidation !== "function") throw Error("Preload test
   const receipt = state().resources.deliveries[0];
   check(receipt.status === '部分接受' && receipt.items[0].status === '已接受' && receipt.items[1].status === '已拒收', 'Item decisions were not retained');
   check(document.querySelector('main').textContent.includes('检查报告第一条'), 'Structured receipt not visible');
+  for (const label of ['记录接收', '逐项部分接受', '拒收并退回']) { const button=[...document.querySelectorAll('main button')].find(button=>button.textContent.trim()===label); check(button?.disabled, 'Fixed receipt still offers rewriting: '+label); }
+  check(document.querySelector('main').textContent.includes('此包已有固定回执，结果与拒收依据保留'), 'Fixed receipt explanation missing');
   location.hash = '/p/launch/work-items/W-104?tab=review'; await wait(); await click('退回修订');
   await fill('成果位置', '移动端导航'); await fill('期望结果', '不遮挡内容'); await fill('实际结果', '导航遮挡首屏'); await fill('理由与交接说明', '修复布局');
   await click('确认', document.querySelector('dialog,[role=dialog]'));

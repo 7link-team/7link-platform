@@ -58,8 +58,18 @@
     }
   };
 
+  const execution = state().executions.find(item => item.workId && item.id !== item.workId);
+  check(execution, "Need a saved execution with an independent identity");
+  await go(`/chat?execution_id=${encodeURIComponent(execution.id)}`);
+  check(document.querySelector("main").textContent.includes(execution.id), "Exact execution was not displayed");
+  check(!document.querySelector(".message-actions") &&
+    ![...document.querySelectorAll(".composer button")].some(button => button.textContent.trim() === "发送"),
+    "Execution exposes ordinary mutable chat or free message sending");
   await go("/chat?execution_id=W-104");
-  const marker = `execution regression ${Date.now()}`;
+  check(document.querySelector("main").textContent.includes("任务编号不能作为执行编号") && !document.querySelector(".composer"),
+    "A work ID was accepted as an execution ID");
+  await go("/chat?channel_id=launch");
+  const marker = `channel regression ${Date.now()}`;
   await fill(".composer textarea", marker);
   const sentAfter = Date.now();
   await click("发送", document.querySelector(".composer"));
@@ -73,8 +83,9 @@
   );
   await click("回复线程", message);
   check(
-    location.hash.includes("execution_id=W-104"),
-    "Execution context lost on thread entry",
+    new URLSearchParams(location.hash.split("?")[1]).get("channel_id") === "launch" &&
+      new URLSearchParams(location.hash.split("?")[1]).get("thread_id") === savedMessage.id,
+    "Channel/root identity lost on thread entry",
   );
   check(
     document.querySelector(".messages").textContent.includes(marker),
@@ -86,13 +97,14 @@
     (item) => item.text === `${marker} reply`,
   );
   check(
-    reply?.channel === "exec-W-104" && reply.thread,
-    "Reply stored outside execution thread",
+    reply?.channel === "launch" && reply.thread === savedMessage.id,
+    "Reply stored outside the selected channel thread",
   );
   await click("返回频道");
   check(
-    location.hash === "#/chat?execution_id=W-104",
-    "Thread exit lost execution context",
+    new URLSearchParams(location.hash.split("?")[1]).get("channel_id") === "launch" &&
+      !new URLSearchParams(location.hash.split("?")[1]).has("thread_id"),
+    "Thread exit lost channel context",
   );
 
   await go("/chat?channel_id=launch");
@@ -122,20 +134,19 @@
   await closeContext();
 
   if (matchMedia("(max-width: 1023px)").matches) {
-    await go("/overview");
-    const url = location.href,
-      historyLength = history.length;
+    await go("/collaboration");
+    const shell = document.querySelector(".app-shell");
     document.querySelector('[aria-label="展开导航"]').click();
     await wait();
-    await click("目标与 OKR", document.querySelector(".sidebar"));
+    await click("目标", document.querySelector(".sidebar"));
     check(
       !document.querySelector(".sidebar.open") &&
         !document.querySelector(".nav-scrim"),
       "Drawer remains after selection",
     );
     check(
-      location.href === url && history.length === historyLength,
-      "Panel changed URL/history",
+      document.querySelector(".app-shell") === shell && location.hash.split("?")[0] === "#/goals",
+      "Menu must retain the shell and record the selected page in its URL",
     );
   }
 
@@ -145,6 +156,11 @@
   await fill('input[name="租户名称"]', `会话回归 ${Date.now()}`);
   await click("创建并进入");
   await go("/chat?channel_id=launch");
+  check(
+    document.querySelector("main").textContent.includes("此会话不在可访问范围") && !document.querySelector(".composer"),
+    "Empty tenant exposed a nonexistent project channel",
+  );
+  await go("/chat?channel_id=team");
   context = await openContext();
   check(
     context.textContent.includes("暂无关联工作"),
@@ -168,7 +184,8 @@
     pass: true,
     compact,
     checks: [
-      "execution thread enter/reply/exit",
+      "exact execution identity and no ordinary chat controls",
+      "channel absolute timestamp and thread enter/reply/exit",
       "text-only sharing",
       "private scope",
       "empty tenant scope",

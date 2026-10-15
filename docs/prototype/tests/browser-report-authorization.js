@@ -1,3 +1,4 @@
+// Preseeded complete new-format member drafts; aggregate branches explicitly exercise imported legacy drafts.
 (async () => {
   const pause = () => new Promise(resolve => setTimeout(resolve, 180));
   const check = (value, message) => { if (!value) throw Error(message); };
@@ -35,14 +36,24 @@
   let agentReport = state().resources.reports.find(item => item.id === agentId);
   check(agentReport.status === '已接受' && agentReport.approval.actorKind === 'Human', 'Agent report did not receive Human confirmation');
   check(JSON.stringify(agentReport.approval.snapshot) === JSON.stringify(submitted), 'Approval lost fixed Agent submission');
+  check(button('编辑')?.disabled && button('编辑').title.includes('撤销确认'), 'Accepted report remains editable');
+  await act('撤销确认');
+  agentReport = state().resources.reports.find(item => item.id === agentId);
+  check(agentReport.status === '草稿' && agentReport.history.at(-1).action === 'REOPEN' && agentReport.history.at(-1).actorId === 'H-lin', 'Explicit REOPEN audit missing');
+  check(JSON.stringify(agentReport.history.at(-1).snapshot.approval.snapshot) === JSON.stringify(submitted), 'REOPEN lost fixed approval');
   await click('编辑'); await fill('人工校准正文', '修订后的 Agent 建议'); await click('保存', document.querySelector('dialog'));
   agentReport = state().resources.reports.find(item => item.id === agentId);
-  check(agentReport.status === '草稿' && !agentReport.approval && agentReport.history.some(item => item.approval?.snapshot?.content?.summary === 'Agent 周期运行说明 · 本地建议'), 'Revision lost historical approval or retained current approval');
+  check(agentReport.status === '草稿' && !agentReport.approval && agentReport.history.some(item => item.action === 'REOPEN' && item.snapshot?.approval?.snapshot?.content?.summary === 'Agent 周期运行说明 · 本地建议'), 'Revision lost REOPEN approval snapshot or retained current approval');
   const tenantName = state().tenants.find(item => item.id === state().activeTenant).name;
   const teamId = await generate(`${tenantName} · 租户`); await act('本人确认并上报');
   const team = state().resources.reports.find(item => item.id === teamId);
   check(team.status === '已接受' && team.approval.actorId === 'SYSTEM:team_top', 'TEAM documented system confirmation missing');
+  const node = state().organization.nodes.find(item => item.id === 'ORG-engineering');
+  const nodeId = await generate(`${node.name} · 团队`); await act('本人确认并上报');
+  const nodeReport = state().resources.reports.find(item => item.id === nodeId);
+  check(nodeReport.status === '已提交' && !nodeReport.approval, 'Organization node incorrectly used tenant system confirmation');
+  check(button('审核通过')?.disabled && button('审核通过').title.includes('本人'), 'Organization node allowed self-review');
   check(!document.querySelector('main').textContent.includes('[object Object]'), 'Raw metadata leaked into report UI');
   check(document.documentElement.scrollWidth <= innerWidth + 1, 'Report authority layout overflows');
-  return { pass: true, checks: ['Human submission separate from review', 'self-review disabled with reason', 'fixed content visible', 'explicit Agent simulation', 'Human confirmation', 'historical approval retained on revision', 'TEAM system exception', 'responsive layout'] };
+  return { pass: true, checks: ['Human submission separate from review', 'self-review disabled with reason', 'fixed content visible', 'explicit Agent simulation', 'Human confirmation', 'historical approval retained on revision', 'TEAM system exception', 'organization node exception denied', 'responsive layout'] };
 })()

@@ -1,8 +1,8 @@
 import { beforeEach, expect, test } from "bun:test";
-import { planPeriod, planChecks, planReportFacts, planCanDecide, planConfirmer, planSnapshot } from "../src/plans.js";
+import { planPeriod, planChecks, planCurrentItemsProblem, planReportFacts, planCanDecide, planConfirmer, planSnapshot } from "../src/plans.js";
 const entries = new Map();
 Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: key => entries.get(key) || null, setItem: (key, value) => entries.set(key, value), removeItem: key => entries.delete(key) } });
-const { read, reset, update, openPeriodPlan, savePeriodPlan, submitPeriodPlan, decidePeriodPlan, recordPlanFreeTask, saveResource, resourceCommand, switchTenant } = await import("../src/store.js");
+const { read, reset, update, openPeriodPlan, savePeriodPlan, submitPeriodPlan, decidePeriodPlan, recordPlanFreeTask, createProject, changeProjectArchive, projectArchiveImpact, saveResource, resourceCommand, switchTenant } = await import("../src/store.js");
 const get = id => read().resources.plans.find(plan => plan.id === id);
 const item = (patch = {}) => ({ id: "PI-1", kind: "FREE_TASK", title: "完成调研", goalId: "G-plan", krId: "KR-plan", freeCategory: "LEARNING", criteria: "保留研究记录", weight: 1, ...patch });
 const create = (subjectKey = "agent:atlas") => openPeriodPlan({ subjectKey, periodKind: "WEEK", date: "2026-10-13", timezone: "Asia/Singapore", simulateAgent: true });
@@ -11,6 +11,15 @@ const submit = id => submitPeriodPlan(id, get(id).revision, true);
 const decide = (id, action = "confirm", reason = "核对计划范围") => { const plan = get(id); return decidePeriodPlan(id, { revision: plan.revision, submissionRevision: plan.submission?.revision, contentHash: plan.submission?.contentHash, action, reason }); };
 beforeEach(() => {
   reset(); update(s => s.resources.goals.push({ id: "G-plan", name: "成员调研目标", subjectKey: "agent:atlas", ownerId: "atlas", ownerKind: "Agent", status: "进行中", revision: 1, definitionRevision: 1, krs: [{ id: "KR-plan", title: "调研完成", weight: 1 }], alignments: [] }));
+});
+test("corrupt non-delivery completion history refuses writes without clearing raw evidence", () => {
+  const id = create(); save(id); submit(id); decide(id);
+  for (const malformed of [[null], {}, "invalid"]) {
+    update(s => { s.resources.plans.find(plan => plan.id === id).freeTaskFacts = malformed; });
+    const before = structuredClone(read()), persisted = [...entries.entries()];
+    expect(() => recordPlanFreeTask(id, "PI-1", { revision: get(id).revision, evidence: "新的研究说明", simulateAgent: true })).toThrow("历史损坏");
+    expect(read()).toEqual(before); expect([...entries.entries()]).toEqual(persisted);
+  }
 });
 test("member period key ignores rename and timezone changes; every period uses calendar boundaries", () => {
   const id = create();
@@ -184,4 +193,101 @@ test("unauthorized owner confirm and return reject valid submissions without any
       expect([...entries.entries()]).toEqual(persisted);
     }
   }
+});
+
+test("every corrupt confirmed baseline stays unreadable and all Plan commands preserve raw storage", () => {
+  const id = create(); save(id); submit(id); decide(id);
+  const valid = structuredClone(read()), baseline = get(id).confirmedSnapshot;
+  const variants = [null, {}, { ...baseline, items: {} }, { ...baseline, items: [null] },
+    ...["revision", "subjectKey", "periodKind", "periodStart", "periodEnd", "timezone"].map(key => ({ ...baseline, [key]: null })),
+    { ...baseline, subjectKey: "human:H-zhou" }, { ...baseline, timezone: "Invalid/Zone" },
+    ...[0, -1, "2", NaN, Infinity].map(weight => ({ ...baseline, items: [{ ...baseline.items[0], weight }] })),
+    ...[{ id: {} }, { title: {} }, { kind: "UNKNOWN" }, { criteria: "" }, { freeCategory: "UNKNOWN" }, { dueDate: "2026-02-30" }, { kind: "WORK_ITEM", workId: {} }].map(patch => ({ ...baseline, items: [{ ...baseline.items[0], ...patch }] })),
+    { ...baseline, items: [baseline.items[0], baseline.items[0]] },
+    { ...baseline, items: [{ ...baseline.items[0], weight: Number.MAX_VALUE }, { ...baseline.items[0], id: "overflow", weight: Number.MAX_VALUE }] }];
+  for (const confirmedSnapshot of variants) {
+    update(s => { Object.assign(s, structuredClone(valid)); s.resources.plans.find(p => p.id === id).confirmedSnapshot = confirmedSnapshot; });
+    const before = structuredClone(read()), persisted = [...entries.entries()];
+    for (const historical of [false, true]) {
+      const result = planReportFacts(read(), get(id), new Date("2026-10-14T00:00:00Z"), { historical });
+      expect(result.issues).toHaveLength(1); expect(result).toMatchObject({ progress: null, expected: null, unknown: null, blocked: null, facts: [], outcomes: [] });
+    }
+    for (const command of [() => save(id), () => submit(id), () => decide(id), () => recordPlanFreeTask(id, "PI-1", { revision: get(id).revision, evidence: "不允许覆盖基线", simulateAgent: true })]) {
+      expect(command).toThrow(); expect(read()).toEqual(before); expect([...entries.entries()]).toEqual(persisted);
+    }
+  }
+});
+test("valid historical baselines survive current draft and roster changes while unconfirmed drafts stay explicit", () => {
+  const id = create(); save(id); submit(id); decide(id);
+  update(s => { s.resources.plans.find(p => p.id === id).items = [item({ title: "当前新承诺", weight: 9 })]; s.agents = []; });
+  const result = planReportFacts(read(), get(id));
+  expect(result.issues).toEqual([]); expect(result.outcomes[0]).toMatchObject({ title: "完成调研", weight: 1, status: "未完成" });
+  const draft = { ...get(id), status: "草稿", confirmedSnapshot: null };
+  expect(planReportFacts(read(), draft)).toMatchObject({ issues: [], progress: null, outcomes: [], unknown: 0 });
+});
+test("a matching malformed free-task event cannot override unknown history or suppress a new write", () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const id = openPeriodPlan({ subjectKey: "agent:atlas", periodKind: "MONTH", date: today, timezone: "UTC", simulateAgent: true });
+  save(id); submit(id); decide(id);
+  recordPlanFreeTask(id, "PI-1", { revision: get(id).revision, evidence: "实际研究依据", simulateAgent: true });
+  const valid = structuredClone(get(id).freeTaskFacts[0]);
+  for (const key of ["id", "itemId", "subjectKey", "evidence", "itemDefinition", "time"]) {
+    update(s => { s.resources.plans.find(p => p.id === id).freeTaskFacts = [{ ...valid, [key]: "" }, valid]; });
+    const before = structuredClone(read()), persisted = [...entries.entries()];
+    const result = planReportFacts(read(), get(id));
+    expect(result).toMatchObject({ progress: null, unknown: 1, facts: [] }); expect(result.outcomes[0].status).toBe("未知");
+    expect(() => recordPlanFreeTask(id, "PI-1", { revision: get(id).revision, evidence: "新的核对依据", simulateAgent: true })).toThrow("历史损坏");
+    expect(read()).toEqual(before); expect([...entries.entries()]).toEqual(persisted);
+  }
+});
+
+test("damaged current fields preserve original data and independent confirmed facts", () => {
+  const planId = create(); save(planId); submit(planId); decide(planId);
+  const original = structuredClone(get(planId));
+  for (const field of ["id", "kind", "title", "goalId", "krId", "workId", "freeCategory", "criteria", "dueDate", "note", "weight", "estimateHours", "estimateCostMicros", "carriedFromItemId"]) {
+    const plan = structuredClone(original); plan.items[0][field] = { malformed: true };
+    const before = structuredClone(plan);
+    expect(planCurrentItemsProblem(plan)).toContain("字段损坏");
+    expect(planChecks(read(), plan).blocking[0].code).toBe("SHAPE");
+    expect(planReportFacts(read(), plan)).toEqual(planReportFacts(read(), original));
+    expect(plan).toEqual(before);
+  }
+  for (const items of [null, {}, [null], [original.items[0], original.items[0]]]) expect(planCurrentItemsProblem({ ...original, items })).toBeTruthy();
+  expect(planCurrentItemsProblem(original)).toBeNull();
+  expect(planCurrentItemsProblem({ items: [] })).toBeNull();
+});
+
+test("damaged persisted current items reject every Plan command atomically", () => {
+  const planId = create(); save(planId); submit(planId);
+  const original = structuredClone(get(planId));
+  for (const items of [null, {}, [null], ...["krId", "note", "estimateHours", "estimateCostMicros"].map(field => [{ ...original.items[0], [field]: { malformed: true } }])]) {
+    update(s => { const plan = s.resources.plans.find(p => p.id === planId); Object.assign(plan, structuredClone(original), { items }); });
+    const before = structuredClone(read()), persisted = [...entries.entries()], plan = get(planId);
+    const actions = [
+      () => save(planId), () => submit(planId),
+      ...["confirm", "return"].map(action => () => decidePeriodPlan(planId, { action, reason: "核对原始记录", revision: plan.revision, submissionRevision: plan.submission.revision, contentHash: plan.submission.contentHash })),
+      () => recordPlanFreeTask(planId, "PI-1", { revision: plan.revision, evidence: "测试证据", simulateAgent: true }),
+      () => planSnapshot(read(), plan),
+    ];
+    for (const action of actions) { expect(action).toThrow("当前修订计划项"); expect(read()).toEqual(before); expect([...entries.entries()]).toEqual(persisted); }
+  }
+});
+test("malformed incoming references cannot be saved as a plausible normalized draft", () => {
+  const planId = create();
+  for (const field of ["id", "goalId", "krId", "carriedFromItemId"]) {
+    const before = structuredClone(read()), persisted = [...entries.entries()];
+    expect(() => save(planId, [item({ [field]: { malformed: true } })])).toThrow("当前修订计划项");
+    expect(read()).toEqual(before); expect([...entries.entries()]).toEqual(persisted);
+  }
+});
+
+test("mixed-project member plan retains archived fixed items while unrelated commitments can be revised and confirmed",()=>{
+ const projectId=createProject({tenantId:read().activeTenant,name:"Plan archive fixture",description:"Mixed project lifecycle acceptance",ownerId:"H-lin"});
+ update(s=>{s.work.push({...structuredClone(s.work.find(w=>w.id==="W-104")),id:"archived-plan-work",project:projectId,status:"已完成",handoffs:[]});});
+ const id=create(),fixedItem=item({kind:"WORK_ITEM",workId:"archived-plan-work"}),activeItem=item({id:"PI-active"});
+ save(id,[fixedItem,activeItem]);submit(id);decide(id);
+ const project=read().projects.find(p=>p.id===projectId);changeProjectArchive({tenantId:read().activeTenant,projectId,revision:project.revision??1,action:"archive",reason:"保留跨项目计划的已确认条目",impactFingerprint:JSON.stringify(projectArchiveImpact(read(),projectId).items)});
+ const original=structuredClone(get(id).items[0]);save(id,[original,{...get(id).items[1],title:"活动项目的新承诺"}]);expect(get(id).status).toBe("已提交");decide(id);expect(get(id).items[0]).toEqual(original);
+ const before=structuredClone(read());expect(()=>save(id,[{...original,title:"不得改写"},get(id).items[1]])).toThrow("只读");expect(read()).toEqual(before);
+ expect(()=>save(id,[get(id).items[1]])).toThrow("只读");
 });

@@ -1,6 +1,12 @@
+import { DataList } from "./data-list";
+import { ConversationOriginButton } from "./conversation-origin.jsx";
+import { ExecutionRegistry, WorkExecutionStart } from "./execution-ui";
+import { TaskEffort } from "./pages-effort";
+import { useViewState } from "./view-state";
+import { activeProjects, projectIsArchived, projectLifecycleProblem, projectArchiveImpact, changeProjectArchive, pauseProjectWork, releaseProjectLease, resourceCommand } from "./store";
 import { formatCurrency, formatTimestamp } from "./formatting";
 import { WorkCalendar } from "./pages-calendar";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   useStore, defectRecords, defectStatus, defectCommand, defectVerificationRuns, saveDefect,
   read,
@@ -11,13 +17,21 @@ import {
   dependencyProblems,
   saveWorkInputs,
   prepareInputHandoff,
+  cancelInputHandoff,
   beginWorkDraft,
+  saveWorkDraft,
+  confirmWorkDraft,
+  workDraftReadProblem,
   organizationPeople,
   createProject,
+  projectHumanOwner,
+  projectMetadataWriteProblem,
+  saveProjectMetadata,
   saveWorkTeam,
   workExecutors,
   workTeamMemberAvailable,
   visibleWork,
+  visibleActivityEvents,
   exportData,
 } from "./store";
 import {
@@ -41,9 +55,10 @@ import {
   Metric,
   Notice,
 } from "./ui";
-export const workPath = (w) => `/p/${w.project}/work-items/${w.id}`;
+export const workPath = (w) => w.workKind === "BUG" ? `/defects/${w.id}` : `/p/${w.project}/work-items/${w.id}`;
 export const artifactPath = (w) => `/p/${w.project}/artifacts/${w.id}`;
-export function WorkRows({ items }) {
+export function WorkRows({ items, showProject = false }) {
+  const s = useStore();
   return (
     <div className="work-list">
       {items.map((w) => (
@@ -65,7 +80,7 @@ export function WorkRows({ items }) {
           <div className="grow">
             <strong>{w.title}</strong>
             <small>
-              {w.id} · {w.type} · v{w.version}
+              {showProject && `${s.projects.find(p => p.id === w.project)?.name || "项目归属待核实"} · `}{w.id} · {w.type} · v{w.version}
               {!!w.dependencyBlocks?.length && " · 输入失效，暂停待重验"}
             </small>
           </div>
@@ -99,7 +114,7 @@ export function Dashboard({ openNew }) {
       <div className="metrics">
         <Metric
           label="推进中的项目"
-          value={s.projects
+          value={activeProjects(s)
             .filter((p) => s.project === "all" || p.id === s.project)
             .length.toString()
             .padStart(2, "0")}
@@ -170,7 +185,7 @@ export function Dashboard({ openNew }) {
             }
           >
             <div className="project-grid">
-              {s.projects
+              {activeProjects(s)
                 .filter((p) => s.project === "all" || p.id === s.project)
                 .map((p) => (
                   <Link
@@ -268,7 +283,7 @@ export function Dashboard({ openNew }) {
             }
           >
             <div className="timeline">
-              {s.events.slice(0, 5).map((e) => (
+              {visibleActivityEvents(s).slice(0, 5).map((e) => (
                 <Link to={e.target} key={e.id}>
                   <span className="timeline-dot" />
                   <small>
@@ -296,78 +311,90 @@ export function Dashboard({ openNew }) {
 }
 export function WorkList({ params, openNew, projectId, toast, viewPath, workKind }) {
   const s = useStore();
-  const view = params.get("view") || "list";
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("全部");
-  const work = visibleWork(s).filter(
-    (w) =>
-      (!workKind || w.workKind === workKind) &&
-      (!projectId || w.project === projectId) &&
-      (!query || w.title.includes(query)) &&
-      (filter === "全部" || w.status === filter),
-  );
+  const view = ["board", "calendar"].includes(params.get("view")) ? params.get("view") : "list";
+  const [query, setQuery] = useViewState("work-search", "");
+  const [filter, setFilter] = useViewState("work-status", "全部");
+  const scopeKey = `${s.activeTenant}:${projectId || s.project}:${s.role}:${viewPath || ""}:${workKind || "TASK"}`;
+  const [list, setList] = useViewState(`task-list.${scopeKey}`, {});
+  const [detailId, setDetailId] = useViewState(`task-detail.${scopeKey}`, "");
+  const [detailTab, setDetailTab] = useViewState(`task-detail-tab.${scopeKey}.${detailId}`, "brief");
+  const [, refreshView] = useState(0);
+  const tenantId = s.activeTenant, role = s.role, scope = s.project;
+  const authorizedRows = useCallback(current => visibleWork({...current, project:projectId || current.project}, {includeArchived:Boolean(projectId)}).filter(w =>
+    (viewPath !== "/work" || w.owner === current.organization.members.find(p=>p.id==="H-lin")?.name || [w.team?.ownerId,w.team?.coordinatorId,w.team?.receiverId,...(w.team?.executorIds||[]),...(w.team?.checkerIds||[])].includes("H-lin")) &&
+    (!workKind || w.workKind === workKind) && (!projectId || w.project === projectId)), [projectId, viewPath, workKind]);
+  const rows = authorizedRows(s);
+  const searchText = w => `${w.id} ${w.title} ${w.owner || ""} ${w.type || ""}`;
+  const work = rows.filter(w => searchText(w).toLocaleLowerCase().includes(query.toLocaleLowerCase()) && (filter === "全部" || w.status === filter));
+  const selected = rows.find(w => w.id === detailId);
+  const changeList = patch => {
+    if (Object.hasOwn(patch, "query")) setQuery(patch.query);
+    setList(previous => ({...previous, ...patch}));
+  };
+  const columns = [
+    {key:"title", label:"任务", value:w=>w.title, exportValue:w=>w.title,
+      render:w=><><Button onClick={()=>setDetailId(w.id)}>{w.title}</Button><small>{w.id}</small></>},
+    {key:"project", label:"项目", value:w=>s.projects.find(p=>p.id===w.project)?.name || w.project, exportValue:w=>w.project},
+    {key:"type", label:"类型", value:w=>w.type, exportValue:w=>w.type},
+    {key:"status", label:"状态", value:w=>w.status, exportValue:w=>w.status, render:w=><Badge>{w.status}</Badge>},
+    {key:"owner", label:"负责人", value:w=>w.owner, exportValue:w=>w.owner},
+    {key:"due", label:"截止日期", value:w=>w.due, exportValue:w=>w.due},
+    {key:"version", label:"版本", value:w=>w.version, exportValue:w=>w.version}
+  ];
+  const recheckRows = useCallback(() => {
+    const current = read();
+    if (current.activeTenant !== tenantId || current.role !== role || current.project !== scope)
+      throw Error("任务列表授权范围已变化，请重新核对。");
+    return authorizedRows(current);
+  }, [tenantId, role, scope, authorizedRows]);
+  const refresh = useCallback(() => { recheckRows(); refreshView(value=>value+1); }, [recheckRows]);
+  const authorizeExport = useCallback(payload => {
+    const current = recheckRows();
+    if (!payload.records.every(record => {
+      const row = current.find(item=>item.id===record.id);
+      return row && columns.every(column=>JSON.stringify(record[column.key])===JSON.stringify(column.exportValue(row) ?? null));
+    })) throw Error("任务或授权已变化，请刷新后重新导出。");
+    return true;
+  }, [recheckRows, columns]);
+  const taskStatuses = ["待开始","进行中","等待","待验收","待交接","已完成","已取消"];
+  const statusFilter = <Field label="任务状态" value={filter} onChange={value=>{setFilter(value);changeList({page:1});}}
+    options={["全部", ...taskStatuses].map(value=>({value,label:value}))} />;
   const prefix = workKind === "BUG" ? "/defects" : projectId
     ? `/p/${projectId}/work-items`
     : viewPath === "/collaboration"
       ? "/collaboration"
       : "/work";
+  const viewLink = next => { const queryParams = new URLSearchParams(params); queryParams.set("view", next); return `${prefix}?${queryParams}`; };
   return (
     <>
       <PageHead
-        title={workKind === "BUG" ? "缺陷工作" : projectId ? "项目工作" : "与我有关的工作"}
-        subtitle="计划、执行、验收与交接，始终是同一件工作。"
+        title={workKind === "BUG" ? "缺陷" : "任务"}
+        subtitle={viewPath === "/collaboration" ? "按当前项目范围查看任务；每项任务保留原项目归属。" : "计划、执行、验收与交接，始终是同一件工作。"}
       >
         <Button variant="primary" icon="Plus" onClick={openNew}>
-          {workKind === "BUG" ? "发起缺陷工作" : "发起工作"}
+          {workKind === "BUG" ? "发起缺陷" : "发起任务"}
         </Button>
       </PageHead>
       <div className="toolbar">
-        <label className="search-field">
-          <Icon name="Search" />
-          <input
-            aria-label="查找工作"
-            name="work-search" autoComplete="off"
-            placeholder="查找工作…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </label>
-        <Select
-          aria-label="工作状态"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        >
-          {[
-            "全部",
-            "待开始",
-            "进行中",
-            "等待",
-            "待验收",
-            "待交接",
-            "已完成",
-            "已取消",
-          ].map((v) => (
-            <option key={v}>{v}</option>
-          ))}
-        </Select>
+        {view !== "list" && <><Field label="搜索任务" value={query} onChange={setQuery} />{statusFilter}</>}
         <div className="grow" />
         <div className="segmented">
           <Link
-            to={`${prefix}?view=list`}
+            to={viewLink("list")}
             className={view === "list" ? "selected" : ""}
           >
             <Icon name="List" />
             列表
           </Link>
           <Link
-            to={`${prefix}?view=board`}
+            to={viewLink("board")}
             className={view === "board" ? "selected" : ""}
           >
             <Icon name="Columns3" />
             看板
           </Link>
           <Link
-            to={`${prefix}?view=calendar`}
+            to={viewLink("calendar")}
             className={view === "calendar" ? "selected" : ""}
           >
             <Icon name="CalendarDays" />
@@ -377,11 +404,9 @@ export function WorkList({ params, openNew, projectId, toast, viewPath, workKind
       </div>
       {view === "calendar" ? (
         <WorkCalendar work={work} toast={toast} projectId={projectId} />
-      ) : !work.length ? (
-        <Empty />
       ) : view === "board" ? (
         <div className="kanban">
-          {["待开始", "进行中", "等待", "待验收", "待交接", "已完成"].map(
+          {taskStatuses.map(
             (status) => (
               <section key={status}>
                 <div className="split">
@@ -393,9 +418,9 @@ export function WorkList({ params, openNew, projectId, toast, viewPath, workKind
                 {work
                   .filter((w) => w.status === status)
                   .map((w) => (
-                    <Link className="kanban-card" to={workPath(w)} key={w.id}>
+                    <button type="button" className="kanban-card" onClick={()=>setDetailId(w.id)} key={w.id} style={{width:"100%",textAlign:"left",font:"inherit",color:"inherit"}}>
                       <small>
-                        {w.id} · {w.type}
+                        {viewPath === "/collaboration" && `${s.projects.find(p => p.id === w.project)?.name || "项目归属待核实"} · `}{w.id} · {w.type}
                       </small>
                       <h3>{w.title}</h3>
                       <p>{w.notes}</p>
@@ -404,21 +429,43 @@ export function WorkList({ params, openNew, projectId, toast, viewPath, workKind
                         <span>{w.owner}</span>
                         <small>v{w.version}</small>
                       </footer>
-                    </Link>
+                    </button>
                   ))}
               </section>
             ),
           )}
         </div>
       ) : (
-        <WorkRows items={work} />
+        <DataList rows={rows} columns={columns} title="任务列表" viewId="tasks" scopeKey={scopeKey}
+          queryState={{...list, query}} onQueryStateChange={changeList} defaultSort="title"
+          searchText={searchText} filterRow={w=>filter === "全部" || w.status === filter} filters={statusFilter}
+          onClearFilters={()=>setFilter("全部")} onRefresh={refresh} offline={s.offline} editing={Boolean(selected)}
+          onExport={authorizeExport} exportSource={`tasks:${scopeKey}`}
+          renderActions={w=><Button onClick={()=>setDetailId(w.id)}>查看任务</Button>}
+          emptyText="当前条件下没有任务，可清空条件恢复。" />
       )}
+      {detailId && <Modal title="任务详情" wide onClose={()=>setDetailId("")}
+        headerActions={selected && <Link className="btn" to={`${workPath(selected)}?tenant=${encodeURIComponent(s.activeTenant)}&scope=${encodeURIComponent(projectId || s.project)}&tab=${encodeURIComponent(detailTab)}`} target="_blank" rel="noopener noreferrer">在新标签页打开任务</Link>}>
+        {selected ? <div onClickCapture={event=>{
+          const anchor=event.target.closest('a[href^="#/"]');
+          if (!anchor) return;
+          const [path, queryString=""] = anchor.getAttribute("href").slice(1).split("?");
+          const nextParams = new URLSearchParams(queryString);
+          if (path === workPath(selected) && nextParams.has("tab") && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0) {
+            event.preventDefault(); event.stopPropagation(); setDetailTab(nextParams.get("tab"));
+          } else { anchor.target="_blank"; anchor.rel="noopener noreferrer"; }
+        }}>
+          <WorkDetail key={`${scopeKey}:${selected.id}`} workId={selected.id} params={new URLSearchParams({tab:detailTab})} toast={toast} embedded />
+        </div> : <Empty title="任务不存在或已不在当前授权范围" />}
+      </Modal>}
     </>
   );
 }
-export function Project({ projectId, openNew }) {
+export function Project({ projectId, openNew, toast = () => {} }) {
   const s = useStore();
   const p = s.projects.find((x) => x.id === projectId);
+  const [settings, setSettings] = useState(null);
+  const [lifecycle,setLifecycle] = useState(null);
   if (!p) return <Empty title="项目不存在" />;
   return (
     <>
@@ -427,7 +474,9 @@ export function Project({ projectId, openNew }) {
         title={p.name}
         subtitle={p.description}
       >
-        <Button icon="Plus" variant="primary" onClick={openNew}>
+        {p.id !== "private" && s.role !== "external" && <Button icon="Settings2" onClick={() => setSettings({tenantId:s.activeTenant,project:structuredClone(p)})}>项目设置</Button>}
+        {p.id !== "private" && s.role !== "external" && <Button disabled={Boolean(projectLifecycleProblem(s,p))} title={projectLifecycleProblem(s,p)} onClick={() => setLifecycle({projectId:p.id,tenantId:s.activeTenant,revision:p.revision ?? 1,action:p.archivedAt ? "restore" : "archive"})}>{p.archivedAt ? "恢复项目" : "归档项目"}</Button>}
+        <Button disabled={Boolean(p.archivedAt)} icon="Plus" variant="primary" onClick={openNew}>
           添加工作
         </Button>
       </PageHead>
@@ -436,13 +485,13 @@ export function Project({ projectId, openNew }) {
           <Icon name="Orbit" size={64} />
         </span>
         <div className="grow">
-          <Badge tone="green">项目进行中</Badge>
+          <Badge tone={p.archivedAt ? "amber" : "green"}>{p.archivedAt ? "已归档 · 历史只读" : "项目进行中"}</Badge>
           <h2>从共同目标，到共同成果。</h2>
           <p>
             {p.owner} 负责 · 截止 {p.deadline} · 共享范围清楚，协作自然发生
           </p>
         </div>
-        <Link className="btn" to="/chat?channel_id=launch">
+        <Link className="btn" to={`/chat?channel_id=${encodeURIComponent(p.id)}`}>
           <Icon name="MessagesSquare" />
           进入项目频道
         </Link>
@@ -456,7 +505,7 @@ export function Project({ projectId, openNew }) {
       </div>
       <div className="two-col">
         <Section title="当前工作">
-          <WorkRows items={visibleWork(s).filter((w) => w.project === p.id)} />
+          <WorkRows items={visibleWork({...s,project:"all"},{includeArchived:true}).filter((w) => w.project === p.id)} />
         </Section>
         <Section title="项目契约">
           <dl>
@@ -476,23 +525,110 @@ export function Project({ projectId, openNew }) {
           </Link>
         </Section>
       </div>
+      {p.archivedAt && <Notice>项目于 {formatTimestamp(p.archivedAt)} 归档。原工作、成果、审批和资料保持原权限与身份；恢复不会自动重启。</Notice>}
+      {(p.history || []).filter(event=>["ARCHIVE","RESTORE"].includes(event.kind)).map((event,index)=><p className="muted" key={index}>{event.kind === "ARCHIVE" ? "归档" : "恢复"} · {event.actorId} · {formatTimestamp(event.time)} · {event.reason} · 本地模拟</p>)}
+      {lifecycle && <ProjectArchiveDialog snapshot={lifecycle} action={lifecycle.action} onClose={()=>setLifecycle(null)} toast={toast} />}
+      {settings && <ProjectMetadataEditor key={`${settings.tenantId}:${settings.project.id}:${settings.project.revision ?? 1}`} snapshot={settings} onClose={() => setSettings(null)} onReload={() => setSettings({tenantId:s.activeTenant,project:structuredClone(p)})} toast={toast} />}
     </>
   );
 }
-function CompletionContract({ work, toast }) {
+export function ProjectArchiveDialog({ snapshot, action, onClose, toast }) {
+  const s = useStore(), [reason,setReason] = useState("");
+  const project = s.projects.find(item => item.id === snapshot.projectId);
+  const impact = projectArchiveImpact(s,snapshot.projectId);
+  const problem = snapshot.tenantId !== s.activeTenant ? "租户已切换，请重新打开。" : projectLifecycleProblem(s,project);
+  const stale = project && (project.revision ?? 1) !== snapshot.revision;
+  const perform = fn => { try { fn(); } catch(error) { toast(error.message,true); } };
+  return <Modal title={action === "archive" ? "归档项目 · 核对影响" : "恢复项目"} draftValue={reason} onClose={onClose} wide>
+    <ActionForm label={action === "archive" ? "确认归档项目" : "确认恢复项目"} onCancel={onClose} onSubmit={({dismiss}) => {
+      changeProjectArchive({...snapshot,action,reason,impactFingerprint:JSON.stringify(impact.items)});dismiss();toast(action === "archive" ? "项目已归档，历史保留" : "项目已恢复，执行与资源保持停止");
+    }}>
+      <Notice>{action === "archive" ? "归档独立于完成或取消，不会替你取消工作或处理审批。持续资源须有明确的本地处置记录，未处理项会阻止归档。" : "恢复保留原项目身份、权限与历史；不会重启工作、调度、租约或恢复已撤销授权。后续启用仍需分别确认。"}</Notice>
+      {(problem || stale) && <Notice tone="warn">{problem || "项目修订已变化，请关闭并重新打开核对。"}</Notice>}
+      <Field label={action === "archive" ? "归档与处置理由" : "恢复理由"} type="textarea" required value={reason} onChange={setReason} />
+      {action === "archive" && <Section title={`影响清单 · ${impact.blockers.length} 项待处理`}>
+        {impact.items.length ? impact.items.map(item => <div className="resource-card" key={`${item.kind}:${item.id}`}><div className="grow"><h3>{item.title}</h3><p>{item.status} · {item.blocked ? "尚未满足归档条件" : "已核对 / 保留历史"}</p><Link to={item.href}>查看原记录</Link>
+          {item.blocked && item.action && <Button disabled={Boolean(problem || stale)} onClick={() => perform(() => {
+            if (!reason.trim()) throw Error("请先填写处置理由。");
+            if (item.action === "pause-work") { const work=s.work.find(work=>work.id===item.id);pauseProjectWork({tenantId:snapshot.tenantId,workId:item.id,version:work.version,reason}); }
+            if (item.action === "pause-schedule") resourceCommand("schedules",item.id,"暂停",reason);
+            if (item.action === "release-lease") { const lease=s.projectLeases.find(lease=>lease.id===item.id); const result=releaseProjectLease({tenantId:snapshot.tenantId,leaseId:item.id,revision:lease.revision,reason}); if(result!=="RELEASED") throw Error("节点未确认，本地模拟释放失败；仍不能归档。"); }
+          })}>{item.action === "pause-work" ? "明确暂停推进（本地模拟）" : item.action === "pause-schedule" ? "暂停周期调度" : "释放本地模拟租约"}</Button>}
+        </div></div>) : <p>当前没有已绑定该项目的持续工作或资源。</p>}
+        <Notice>{impact.disclosure} 未明确项目 ID 的资料 {impact.unknownKnowledge} 项，不据此声明项目资料已全部覆盖。</Notice>
+      </Section>}
+    </ActionForm>
+  </Modal>;
+}
+
+export function ProjectMetadataEditor({ snapshot, onClose, onReload, toast }) {
+  const s = useStore(), original = snapshot.project;
+  const [form,setForm] = useState(() => ({ name: original.name || "", description: original.description || "", ownerId: projectHumanOwner(s,original)?.id || "", deadline: original.deadline === "待确认" ? "" : original.deadline || "" }));
+  const current = s.projects.find(project => project.id === original.id);
+  const switched = snapshot.tenantId !== s.activeTenant;
+  const problem = switched ? "租户已切换，请关闭后在当前租户重新打开项目设置。" : projectMetadataWriteProblem(s,current);
+  const recordedHistory = Array.isArray(current?.history) ? current.history : [];
+  const histories = recordedHistory.filter(item=>item?.kind === "METADATA" && item.previous && item.next && typeof item.previous === "object" && typeof item.next === "object" && !Array.isArray(item.previous) && !Array.isArray(item.next));
+  const historyCorrupt = current?.history != null && (!Array.isArray(current.history) || recordedHistory.some(item=>!item || typeof item !== "object" || Array.isArray(item) || item.kind === "METADATA" && !histories.includes(item)));
+  const stale = current && (current.revision ?? 1) !== (original.revision ?? 1);
+  const humans = organizationPeople(s).filter(person => person.kind === "Human");
+  const change = (key,value) => setForm(previous => ({...previous,[key]:value}));
+  const fields = <>
+    <Field label="项目名称" value={form.name} onChange={value=>change("name",value)} maxLength={200} required disabled={!!problem} />
+    <Field label="项目简介" value={form.description} onChange={value=>change("description",value)} type="textarea" maxLength={2000} disabled={!!problem} help="最多 2000 字，可以留空。" />
+    <Field label="Human 负责人" value={form.ownerId} onChange={value=>change("ownerId",value)} options={[{value:"",label:"请选择当前租户 Human"},...humans.map(person=>({value:person.id,label:`${person.name} · ${person.id}`}))]} required disabled={!!problem} />
+    <Field label="截止日期" type="date" value={form.deadline} onChange={value=>change("deadline",value)} disabled={!!problem} help="可保留已过期的真实日期；清空表示待确认。" />
+    <Notice>修改项目负责人只更新项目资料；已有工作的负责人、编组、计划和执行记录保持原归属。</Notice>
+  </>;
+  return <Modal title="项目设置 · 常规资料" onClose={onClose} draftValue={form}>
+    {switched || !current ? <Notice tone="warn">{problem}</Notice> : <>
+      <p>项目 <span translate="no">{original.id}</span> · 资料 v{original.revision ?? 1}</p>
+      {stale && <Notice tone="warn">项目资料已更新；旧表单不会覆盖当前版本。<Button onClick={onReload}>重新打开最新资料</Button></Notice>}
+      {problem ? <><Notice tone="warn">{problem}</Notice>{fields}</> : <ActionForm label="保存项目资料" onCancel={onClose} onSubmit={({dismiss})=>{
+        saveProjectMetadata({...form,projectId:original.id,tenantId:snapshot.tenantId,revision:original.revision ?? 1});
+        dismiss();toast("项目资料已保存，关联工作保持原归属");
+      }}>{fields}</ActionForm>}
+      {historyCorrupt && <Notice tone="warn">项目历史格式异常；保存将被阻止，不会覆盖原始历史。</Notice>}
+      <details><summary>项目资料变更历史（{histories.length}）</summary>
+        {histories.slice().reverse().map((entry,index)=><div key={index}>
+          <b>v{entry.revision} → v{entry.revision + 1} · {formatTimestamp(entry.time)} · {entry.actorId}</b>
+          <dl>{[["name","名称"],["description","简介"],["owner","负责人"],["deadline","截止日期"]].map(([key,label])=><React.Fragment key={key}><dt>{label}</dt><dd style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{entry.previous[key] || "未记录"}{key === "owner" ? `（${entry.previous.ownerId || "原身份未记录"}）` : ""} → {entry.next[key] || "未填写"}{key === "owner" ? `（${entry.next.ownerId || "身份未记录"}）` : ""}</dd></React.Fragment>)}</dl>
+        </div>)}
+      </details>
+    </>}
+  </Modal>;
+}
+function CompletionContract({ work, toast, compact = false }) {
+  const [open,setOpen]=useState(false);
   const [mode, setMode] = useState(work.completionContract?.mode || "");
   const [recipient, setRecipient] = useState(work.completionContract?.recipient || "");
   const [reason, setReason] = useState(work.completionContract?.reason || "");
-  return <Section title="接收契约" extra={<Badge>{work.completionContract ? "已确认" : "未确认"}</Badge>}>
-    <Field label="完成与接收方式" value={mode} disabled={work.accepted}
-      options={[{ value: "", label: "请选择，不推测接收方式" }, { value: "internal", label: "内部使用，无外部接收方" }, { value: "external", label: "指定接收人交付" }]} onChange={setMode} />
-    {mode === "internal" && <Field label="L4 不适用理由" value={reason} onChange={setReason} required disabled={work.accepted} />}
-    {mode === "external" && <Field label="指定接收人" value={recipient} onChange={setRecipient} required disabled={work.accepted} />}
-    <Button disabled={work.accepted} onClick={() => {
-      try { workCommand(work.id, "contract", "", work.version, { mode, recipient, reason }); toast("接收契约已确认"); }
-      catch (error) { toast(error.message, true); }
-    }}>确认接收契约</Button>
-    <Notice>无外部接收方只免除 L4；内部检查与 Human 接受仍然必需。内部完成不授予公开发布权限。</Notice>
+  const s=useStore(), [snapshot,setSnapshot]=useState({tenantId:s.activeTenant,version:work.version}), writable=!work.accepted&&!projectIsArchived(s,work.project)&&s.role==="owner"&&!s.offline;
+  const summary=work.completionContract?.mode==="internal"?"内部使用，不需要外部回执":work.completionContract?.mode==="external"?`交付给 ${work.completionContract.recipient}`:"尚未明确交给谁、是否需要外部回执";
+  const content=<><p>{summary}</p><Button disabled={!writable} onClick={()=>{setSnapshot({tenantId:s.activeTenant,version:work.version});setMode(work.completionContract?.mode||"");setRecipient(work.completionContract?.recipient||"");setReason(work.completionContract?.reason||"");setOpen(true);}}>{work.completionContract?"修改交付方式":"设置交付方式"}</Button>{work.accepted&&<small>当前成果已接受，交付方式已固定。</small>}</>;
+  return <>
+    {compact?<div className="delivery-summary">{content}</div>:<Section title="交付方式" extra={<Badge>{work.completionContract?"已确认":"待负责人确认"}</Badge>}>{content}<p className="muted">由有权负责人在接受成果前确认。内部质量检查和 Human 接受仍然必需。</p></Section>}
+    {open&&<Modal title="确认交付方式" onClose={()=>setOpen(false)} draftValue={{mode,recipient,reason}}>
+      <ActionForm label="保存交付方式" onCancel={()=>setOpen(false)} onSubmit={({dismiss})=>{if(read().activeTenant!==snapshot.tenantId)throw Error("租户已切换，请重新打开当前工作的交付方式。");workCommand(work.id,"contract","",snapshot.version,{mode,recipient,reason});dismiss();toast("交付方式已保存；没有接受成果或向外发送。");}}>
+        <p>工作由 {work.owner} 负责；有权负责人确认固定 v{snapshot.version} 的交付去向。</p>
+        <Field label="完成与接收方式" value={mode} disabled={!writable} required options={[{value:"",label:"请选择交付去向"},{value:"internal",label:"内部使用，无外部接收方"},{value:"external",label:"指定接收人交付"}]} onChange={setMode}/>
+        {mode==="internal"&&<Field label="内部使用说明" value={reason} onChange={setReason} required disabled={!writable} help="说明谁使用成果、为什么不需要外部交付回执。"/>}
+        {mode==="external"&&<Field label="指定接收人" value={recipient} onChange={setRecipient} required disabled={!writable} help="正式交付后由此接收方核对交付包并记录回执。"/>}
+        <Notice>保存只确定交付方式。通过内部检查后仍须有权 Human 接受成果；对外交付另行批准，内部使用不等于允许公开发布。</Notice>
+      </ActionForm>
+    </Modal>}
+  </>;
+}
+function WorkHandoffs({ work, toast }) {
+  const s=useStore(), [selected,setSelected]=useState(null), [reason,setReason]=useState("");
+  const packs=s.work.flatMap(source=>(source.handoffs || []).filter(pack=>source.id===work.id || pack.targetWorkId===work.id).map(pack=>({source,pack})));
+  if (!packs.length) return null;
+  return <Section title="内部交接包">
+    {packs.map(({source,pack})=><div key={pack.id}><p>{source.title} → {s.work.find(item=>item.id===pack.targetWorkId)?.title || "接收工作不可核对"} · v{pack.version} · {pack.status}</p>
+      <details><summary>查看固定材料与处置历史</summary>{pack.items.map(item=><p key={item.id}>{item.name || item.id} · {item.reference}</p>)}{(pack.history || []).map((event,index)=><p key={index}>{event.action || event.status} · {event.actorId || event.actor} · {event.reason}</p>)}</details>
+      {pack.status === "待接收" && <Button disabled={projectIsArchived(s,source.project) || s.role === "external"} onClick={()=>{setSelected({tenantId:s.activeTenant,sourceId:source.id,handoffId:pack.id,version:pack.version,fingerprint:JSON.stringify(pack.items)});setReason("");}}>终止此待交接包</Button>}
+    </div>)}
+    {selected && <Modal title="终止待交接包" draftValue={reason} onClose={()=>setSelected(null)}><ActionForm label="确认终止交接" onCancel={()=>setSelected(null)} onSubmit={({dismiss})=>{cancelInputHandoff({...selected,reason});dismiss();toast("待交接已终止，固定材料与历史保留");}}><Notice>只终止此待接收包，不取消上下游工作，不改写已接受材料；需要重新交接时另建固定包。</Notice><Field label="终止交接理由" type="textarea" value={reason} onChange={setReason} required /></ActionForm></Modal>}
   </Section>;
 }
 function InputContract({ work, toast }) {
@@ -508,7 +644,7 @@ function InputContract({ work, toast }) {
         options={[{ value: "", label: "选择输入工作" }, ...s.work.filter((item) => item.id !== work.id).map((item) => ({ value: item.id, label: `${item.id} · ${item.title}` }))]}
         onChange={(workId) => change(index, { workId, handoffId: undefined, version: s.work.find((item) => item.id === workId)?.version || 1 })} />
       <Field label={`输入 ${index + 1} 固定版本`} type="number" value={String(input.version)} onChange={(value) => change(index, { version: Number(value), handoffId: undefined })} />
-      {s.work.some((item) => item.id === input.workId) && <Link className="btn" to={`/p/${s.work.find((item) => item.id === input.workId).project}/artifacts/${input.workId}?version=${input.version}`}>查看输入 {index + 1} 固定成果</Link>}
+      {s.work.some((item) => item.id === input.workId) && <Link className="btn" target="_blank" rel="noopener noreferrer" to={`/p/${s.work.find((item) => item.id === input.workId).project}/artifacts/${input.workId}?version=${input.version}`}>查看输入 {index + 1} 固定成果</Link>}
       <Field label={`输入 ${index + 1} 指定 Human 接收人`} value={input.recipientId || s.work.find((item) => item.id === input.workId)?.handoffs?.find((pack) => pack.id === input.handoffId)?.recipientId || s.work.find((item) => item.id === input.workId)?.team?.receiverId || organizationPeople(s).find((person) => person.name === work.owner && person.kind === "Human")?.id || ""}
         options={[{ value: "", label: "请选择 Human" }, ...organizationPeople(s).filter((person) => person.kind === "Human").map((person) => ({ value: person.id, label: person.name }))]}
         onChange={(recipientId) => change(index, { recipientId, handoffId: undefined })} />
@@ -611,6 +747,7 @@ function ReworkControl({ work, role, toast }) {
       <Field label="返工处理依据" value={reason} onChange={setReason} type="textarea" required />
       {control.hold?.kind === "internal" && <Field label="本次额外内部修复轮数" type="number" min="1" step="1" value={extra} onChange={setExtra} required />}
       {control.hold && <Button variant="primary" onClick={() => decide("rework-continue")}>明确继续当前返工</Button>}
+      <Button onClick={()=>{try{const draftId=beginWorkDraft({scopeChangeFrom:work.id,scopeChangeReason:reason});const params=new URLSearchParams(location.hash.split("?")[1]||"");params.set("quick_work",draftId);location.hash=`${location.hash.slice(1).split("?")[0]}?${params}`;setError("");}catch(e){setError(e.message);}}}>按范围变化起草关联任务</Button>
       {error && <p role="alert">{error}</p>}
     </>}
     <details><summary>返工事件与 Human 决定</summary>
@@ -618,15 +755,14 @@ function ReworkControl({ work, role, toast }) {
       {control.decisions.map((decision, i) => <p key={`decision-${i}`}>{decision.action} · {decision.reason}{decision.additionalRounds && ` · 本次额外 ${decision.additionalRounds} 轮`} · {formatTimestamp(decision.time)}</p>)}
       {!control.events.length && !control.decisions.length && <p className="muted">尚无返工事件。</p>}
     </details>
-    <p className="muted">环境重试和范围变更不计质量返工；其专属处理入口尚未实现，请勿以质量退回代替。</p>
+    <p className="muted">环境故障在执行记录中核对安全重试；范围变化创建关联原工作的独立草稿，两者均不增加原工作的质量返工计数。</p>
   </Section>;
 }
 function openDefectDraft(toast, options = {}) {
-  try { const draftId = beginWorkDraft({ workKind: "BUG", ...options }); location.hash = `/chat?channel_id=team&work_draft=${encodeURIComponent(draftId)}`; }
+  try { const draftId = beginWorkDraft({ workKind: "BUG", ...options }); const params=new URLSearchParams(location.hash.split("?")[1]||"");params.set("quick_work",draftId);location.hash=`${location.hash.slice(1).split("?")[0]}?${params}`; }
   catch (error) { toast(error.message, true); }
 }
 export function LegacyDefectRoute({ work, ...props }) {
-  useEffect(() => { location.replace(`#${workPath(work)}${location.hash.includes("?") ? `?${location.hash.split("?")[1]}` : ""}`); }, [work.id]);
   return <WorkDetail {...props} workId={work.id} />;
 }
 export function DefectList({ params, toast }) {
@@ -672,7 +808,7 @@ function DefectPanel({ work, toast }) {
   </Section>;
 }
 
-export function WorkDetail({ workId, params, toast }) {
+export function WorkDetail({ workId, params, toast, embedded = false }) {
   const s = useStore();
   const w = s.work.find(
     (x) => x.id === workId && (s.role !== "external" || x.delivered),
@@ -685,6 +821,7 @@ export function WorkDetail({ workId, params, toast }) {
     return (
       <Empty title="工作不可访问" text="对象不存在，或当前视角没有访问权限。" />
     );
+  const archived = projectIsArchived(s,w.project);
   const rework = workRework(w);
   const unfinishedBatches = pendingFailedBatches(s, w);
   const executors = workExecutors(s, w);
@@ -694,7 +831,7 @@ export function WorkDetail({ workId, params, toast }) {
   const run = (cmd) => {
     try {
       const href = workCommand(w.id, cmd, "", w.version);
-      if (href) location.hash = href;
+      if (href) { if (embedded) window.open(`#${href}`, "_blank", "noopener,noreferrer"); else location.hash = href; }
       toast("工作状态已更新");
     } catch (e) {
       toast(e.message, true);
@@ -708,13 +845,13 @@ export function WorkDetail({ workId, params, toast }) {
         subtitle={`Human ${w.owner} 负责 · ${executors.map((person) => person.name).join("、") || "未分派"} 执行 · 当前成果 v${w.version}`}
       >
         <Badge>{w.status}</Badge>
-        <Button
-          icon="MessagesSquare"
-          onClick={() => (location.hash = `/chat?execution_id=${w.id}`)}
-        >
-          进入执行会话
-        </Button>
+        {w.workKind === "BUG" && !embedded && <Link className="btn" to="/defects">返回缺陷列表</Link>}
+        {s.role !== "external" && <Link className="btn" to={`${workPath(w)}?tab=executions`} {...(embedded ? {target:"_blank",rel:"noopener noreferrer"}: {})}>查看执行记录</Link>}
       </PageHead>
+      {archived && <Notice>所属项目已归档，此工作仅供查看历史。<Link to={`/p/${w.project}`}>查看项目及恢复入口</Link></Notice>}
+      {w.scopeChange&&<Notice>范围变化来源：<Link to={`/p/${w.scopeChange.projectId}/work-items/${w.scopeChange.workId}?version=${w.scopeChange.version}`}>{w.scopeChange.workId} · v{w.scopeChange.version}</Link> · {w.scopeChange.reason}。原工作与返工累计保留。</Notice>}
+      <WorkHandoffs work={w} toast={toast} />
+      {w.production?.version === w.version && !w.production.executorIds?.length && <Notice tone="warn">此成果版本未记录执行者，无法核对独立检查是否与执行者分离。请在责任区配置执行小团队，再提交新成果并重新验证；修改编组不会补造旧版本的执行身份。</Notice>}
       {dependencyProblems(s, w).length > 0 && <Notice tone="warn">
         输入失效，当前工作暂停并等待采用新输入、重新验收。
         {dependencyProblems(s, w).map((block, index) => <p key={index}>{block.inputWorkId} · v{block.inputVersion}：{block.reason}</p>)}
@@ -722,7 +859,7 @@ export function WorkDetail({ workId, params, toast }) {
       </Notice>}
       {unfinishedBatches.length > 0 && <Notice tone="warn">提交新成果前，请先结束失败验证批次并形成固定报告。{unfinishedBatches.map(batch => <p key={batch.batchId}><Link to={`/testplans/${batch.planId}`}>{batch.needsNewBatch ? "历史批次未记录轮次，请启动并完成新的验证批次" : "打开测试计划，结束失败批次"} · {batch.batchId}</Link></p>)}</Notice>}
       {rework.hold && <Notice tone="warn">返工已停线：{rework.hold.reason}。请在“修复与正式返工”中记录 Human 决定。</Notice>}
-      {w.workKind === "BUG" && <DefectPanel work={w} toast={toast} />}
+      {w.workKind === "BUG" && <fieldset disabled={archived} style={{border:0,padding:0,margin:0}}><DefectPanel work={w} toast={toast} /></fieldset>}
       <div className="stepper">
         {[
           ["目标", "已明确"],
@@ -761,9 +898,11 @@ export function WorkDetail({ workId, params, toast }) {
           ["brief", "工作简报"],
           ["plan", "计划与契约"],
           ["results", "成果与版本"],
+          ["executions", "执行记录"],
           ["review", "检查与接受"],
+          ["analysis", "投入与运行分析"],
           ["activity", "活动记录"],
-        ].map(([v, l]) => (
+        ].filter(([v])=>v!=="executions" || s.role!=="external").map(([v, l]) => (
           <Link
             key={v}
             to={`${workPath(w)}?tab=${v}`}
@@ -775,8 +914,10 @@ export function WorkDetail({ workId, params, toast }) {
       </div>
       <div className="detail-grid">
         <div>
+          {tab === "executions" && s.role !== "external" && <ExecutionRegistry key={`${s.activeTenant}-${w.id}`} work={w} toast={toast} />}
           {tab === "brief" && (
             <>
+              <CompletionContract key={w.id} work={w} toast={toast} />
               <Section title="要完成什么">
                 <p className="body-copy">{w.notes}</p>
                 <h3>必须满足的条件</h3>
@@ -806,22 +947,20 @@ export function WorkDetail({ workId, params, toast }) {
                 </Notice>
                 <div className="actions spaced">
                   {!w.plan && (
-                    <Button variant="primary" onClick={() => run("plan")}>
+                    <Button disabled={archived} variant="primary" onClick={() => run("plan")}>
                       确认计划 v1
                     </Button>
                   )}
                   {w.plan && (!w.flow || !w.flowVersion) && (
-                    <Button variant="primary" onClick={() => run("flow")}>
+                    <Button disabled={archived} variant="primary" onClick={() => run("flow")}>
                       确认工作流版本
                     </Button>
                   )}
                   {w.plan && w.flow && w.status === "待开始" && (
-                    <Button variant="primary" onClick={() => run("start")}>
-                      开始执行
-                    </Button>
+                    <WorkExecutionStart work={w} archived={archived} toast={toast} onHumanStart={()=>run("start")} />
                   )}
                   {["进行中", "等待"].includes(w.status) && (
-                    <Button variant="primary" disabled={Boolean(rework.hold) || unfinishedBatches.length > 0} onClick={() => run("submit")}>
+                    <Button variant="primary" disabled={archived || Boolean(rework.hold) || unfinishedBatches.length > 0} onClick={() => run("submit")}>
                       提交新成果版本
                     </Button>
                   )}
@@ -834,12 +973,11 @@ export function WorkDetail({ workId, params, toast }) {
           )}
           {tab === "plan" && (
             <>
-              <CompletionContract key={w.id} work={w} toast={toast} />
-              <InputContract key={`${w.id}:${w.inputsRevision || 0}`} work={w} toast={toast} />
+              <fieldset disabled={archived} style={{border:0,padding:0,margin:0}}><CompletionContract key={w.id} work={w} toast={toast} /></fieldset>
+              <fieldset disabled={archived} style={{border:0,padding:0,margin:0}}><InputContract key={`${w.id}:${w.inputsRevision || 0}`} work={w} toast={toast} /></fieldset>
               {w.draftId && <Section title="会话确认的计划">
                 <p>{w.planSnapshot?.goal}</p><p>完成条件：{w.planSnapshot?.criteria}</p>
-                {w.sourceContext && <p>来源消息：{w.sourceContext.text}</p>}
-                <Link className="btn" to={`/chat?${s.drafts?.[w.draftId]?.executionId ? `execution_id=${encodeURIComponent(s.drafts[w.draftId].executionId)}` : `channel_id=${encodeURIComponent(s.drafts?.[w.draftId]?.channel || "team")}`}&work_draft=${encodeURIComponent(w.draftId)}`}>查看来源会话与草稿</Link>
+                <ConversationOriginButton record={w} label="查看来源会话与草稿" />
               </Section>}
               <Section title="环节交付契约">
                 <dl>
@@ -874,7 +1012,7 @@ export function WorkDetail({ workId, params, toast }) {
               </Section>
               <Section title="确认基线">
                 <div className="actions">
-                  <Button disabled={w.plan} onClick={() => run("plan")}>
+                  <Button disabled={archived || w.plan} onClick={() => run("plan")}>
                     {w.plan ? "计划已确认" : "确认计划"}
                   </Button>
                   <Button
@@ -906,7 +1044,7 @@ export function WorkDetail({ workId, params, toast }) {
           )}
           {tab === "review" && (
             <>
-              <CompletionContract key={w.id} work={w} toast={toast} />
+              <fieldset disabled={archived} style={{border:0,padding:0,margin:0}}><CompletionContract key={w.id} work={w} toast={toast} /></fieldset>
               <Section
                 title={`v${w.version} · 内部质量门`}
                 extra={<Badge>{qualityResult(s, w)}</Badge>}
@@ -943,13 +1081,13 @@ export function WorkDetail({ workId, params, toast }) {
                   <Button
                     icon="RotateCcw"
                     onClick={() => run("check")}
-                    disabled={Boolean(rework.hold)}
+                    disabled={archived || Boolean(rework.hold)}
                   >
                     开始独立验证
                   </Button>
-                  <Button disabled={Boolean(rework.hold) || unfinishedBatches.length > 0 || !["待验收", "等待", "进行中"].includes(w.status) || !s.resources.tests.some(test => test.work === w.id && test.version === `v${w.version}` && test.status === "失败")} onClick={() => { setConfirm("repair"); setReason(""); }}>提交内部修复</Button>
+                  <Button disabled={archived || Boolean(rework.hold) || unfinishedBatches.length > 0 || !["待验收", "等待", "进行中"].includes(w.status) || !s.resources.tests.some(test => test.work === w.id && test.version === `v${w.version}` && test.status === "失败")} onClick={() => { setConfirm("repair"); setReason(""); }}>提交内部修复</Button>
                   <Button
-                    disabled={Boolean(rework.hold) || unfinishedBatches.length > 0}
+                    disabled={archived || Boolean(rework.hold) || unfinishedBatches.length > 0}
                     icon="CornerUpLeft"
                     onClick={() => {
                       setConfirm("return");
@@ -966,13 +1104,13 @@ export function WorkDetail({ workId, params, toast }) {
                   ，确认完成条件与交付材料。内部未通过时，批准动作会被阻止。
                 </p>
                 <div className="actions">
-                  <Button onClick={() => run("accept")} disabled={w.accepted || Boolean(rework.hold)}>
+                  <Button onClick={() => run("accept")} disabled={archived || w.accepted || Boolean(rework.hold)}>
                     接受当前版本
                   </Button>
                   {w.completionContract?.mode !== "internal" && <Button
                     variant="primary"
                     onClick={() => setConfirm("deliver")}
-                    disabled={w.delivered || Boolean(rework.hold)}
+                    disabled={archived || w.delivered || Boolean(rework.hold)}
                   >
                     {w.delivered ? "已交付，查看接收结果" : "批准正式交付"}
                   </Button>}
@@ -980,8 +1118,10 @@ export function WorkDetail({ workId, params, toast }) {
               </Section>
             </>
           )}
+          {tab === "analysis" && s.role !== "external" && <TaskEffort key={w.id} work={w} toast={toast} />}
           {tab === "activity" && (
             <Section title="完整活动记录">
+              {(w.lifecycleHistory || []).map((event,index)=><p key={`lifecycle-${index}`}>{event.action} · {event.actorId} · {formatTimestamp(event.time)} · {event.reason} · 本地模拟</p>)}
               {(w.returnFeedback || []).map((feedback, index) => <div key={index} className="resource-card">
                 <div><h3>退回 · {String(feedback.version).startsWith("v") ? feedback.version : `v${feedback.version}`}</h3>
                   <p>条款：{feedback.requirement || "未补充"} · 位置：{feedback.position || "未补充"}</p>
@@ -989,7 +1129,7 @@ export function WorkDetail({ workId, params, toast }) {
                 </div>
               </div>)}
               <div className="timeline">
-                {s.events
+                {visibleActivityEvents(s)
                   .filter((e) => e.target.includes(w.id))
                   .map((e) => (
                     <div key={e.id}>
@@ -1005,7 +1145,13 @@ export function WorkDetail({ workId, params, toast }) {
           )}
         </div>
         <aside>
-          <ReworkControl key={`${w.id}:${rework.revision}`} work={w} role={s.role} toast={toast} />
+          {(s.projectLeases || []).some(lease => lease.workId === w.id) && <Section title="持续资源 · 本地模拟">
+            <p className="muted">此处管理租约；不代表实际进程或隧道已启动、释放。</p>
+            {s.projectLeases.filter(lease => lease.workId === w.id).map(lease => <div key={lease.id}><p>{lease.kind === "terminal" ? "终端" : "预览"} · {lease.state} · {lease.resourceId}</p>
+              {lease.state !== "RELEASED" && <Button onClick={() => { try { const result=releaseProjectLease({tenantId:s.activeTenant,leaseId:lease.id,revision:lease.revision,reason:"Human 明确释放此工作本地模拟资源"});toast(result === "RELEASED" ? "本地模拟释放已记录" : "释放未确认，可在节点恢复在线后重试",result !== "RELEASED"); } catch(error) {toast(error.message,true);} }}>释放本地模拟资源</Button>}
+            </div>)}
+          </Section>}
+          <fieldset disabled={archived} style={{border:0,padding:0,margin:0}}><ReworkControl key={`${w.id}:${rework.revision}`} work={w} role={s.role} toast={toast} /></fieldset>
           <Section title="当前执行编组与上下文">
             <div className="person">
               <Avatar name={w.owner} />
@@ -1023,7 +1169,7 @@ export function WorkDetail({ workId, params, toast }) {
               <dt>检查者</dt><dd>{w.team.checkerIds.map(memberName).join("、")}</dd>
               <dt>下游 Human 接收人</dt><dd>{memberName(w.team.receiverId)}</dd>
             </dl>}
-            <WorkTeamEditor work={w} toast={toast} />
+            <fieldset disabled={archived} style={{border:0,padding:0,margin:0}}><WorkTeamEditor work={w} toast={toast} /></fieldset>
             <Link className="btn full" to="/members">查看 Human 组织名册</Link>
             <dl>
               <dt>成果版本</dt>
@@ -1052,6 +1198,7 @@ export function WorkDetail({ workId, params, toast }) {
             </dl>
             <div className="stack">
               <Button
+                disabled={archived}
                 onClick={() => {
                   setConfirm("takeover");
                   setReason("");
@@ -1061,6 +1208,7 @@ export function WorkDetail({ workId, params, toast }) {
                 Human 接管
               </Button>
               <Button
+                disabled={archived}
                 onClick={() => {
                   setConfirm("cancel");
                   setReason("");
@@ -1074,7 +1222,7 @@ export function WorkDetail({ workId, params, toast }) {
                 onClick={() =>
                   exportData(w.id, {
                     work: w,
-                    events: s.events.filter((e) => e.target.includes(w.id)),
+                    events: visibleActivityEvents(s).filter((e) => e.target.includes(w.id)),
                   })
                 }
               >
@@ -1136,24 +1284,73 @@ export function WorkDetail({ workId, params, toast }) {
     </>
   );
 }
-export function NewWork({ onClose, source, toast }) {
-  useEffect(() => {
+export function ConversationWorkDraft({ draft, toast, inline = false, onConfirmed, editorFields, onEditorChange }) {
+  const s = useStore();
+  const [localFields, setLocalFields] = useState(() => workDraftFields(draft));
+  const fields = editorFields || localFields, setFields = onEditorChange || setLocalFields;
+  const [editingRevision] = useState(draft.revision);
+  const change = (key, value) => setFields((old) => ({ ...old, [key]: value, ...(key === "project" ? {workflowId:"default"} : {}) }));
+  const save = () => { saveWorkDraft(draft.id, fields, editingRevision); };
+  const readProblem=workDraftReadProblem(s,draft);
+  if(readProblem)return <Notice tone="warn">{readProblem}</Notice>;
+  if (draft.workId) return <Section title="会话工作草稿已确认"><Link target="_blank" rel="noopener noreferrer" to={workPath(s.work.find((work) => work.id === draft.workId))}>打开生成的工作与计划</Link></Section>;
+  return <Section title={inline?"任务要求":"会话工作草稿"} extra={<Badge>讨论中 · 尚未生成工作</Badge>}>
+    <Notice>{inline?"确认后会在当前任务列表新增任务，并保存计划草稿；执行前仍需确认工作流版本。":"在下方会话补充资料、讨论要求；核对草稿后，由 Human 确认生成工作与计划。"}</Notice>
+    {draft.scopeChange&&<Notice>新范围独立草稿 · 原工作 {draft.scopeChange.workId} / v{draft.scopeChange.version} · {draft.scopeChange.reason}。确认不会修改或终止原任务。</Notice>}
+    {draft.source && <p>来源消息：{draft.source.text}</p>}
+    <Field label="想要完成什么" value={fields.title} onChange={(value) => change("title", value)} type="textarea" required />
+    <div className="form-grid">
+      <Field disabled={inline&&s.project!=="all"} label="归属项目" value={fields.project} onChange={(value) => change("project", value)} options={[{ value: "private", label: "私人工作 · 仅自己" }, ...activeProjects(s).filter((project) => project.id !== "private").map((project) => ({ value: project.id, label: project.name }))]} />
+      <Field label="专业类型" value={fields.type} onChange={(value) => change("type", value)} options={draft.workKind === "BUG" ? ["软件"] : ["软件", "文档", "图片", "视频", "小说", "运营"]} />
+    </div>
+    <Field label="任务使用的工作流" value={fields.workflowId} onChange={value => change("workflowId",value)} options={[{value:"default",label:"项目交付流程"},...(s.projectWorkflows?.[fields.project] || []).filter(item=>!item.archivedAt).map(item=>({value:item.id,label:`${item.name} · ${item.flow.flowVersion ? `v${item.flow.flowVersion}` : "待发布"}`}))]} help="Human 确认任务后，执行前须锁定所选工作流的已发布版本；讨论和保存不会启动执行。"/>
+    {draft.workKind === "BUG" && <fieldset><legend>缺陷专业信息</legend>
+      <Field label="受影响工作" value={fields.defect.affectedWorkId || ""} onChange={value => setFields(old => ({ ...old, defect: { ...old.defect, affectedWorkId: value, affectedVersion: `v${s.work.find(work => work.id === value)?.version || 1}` } }))} options={[{ value: "", label: "请选择受影响工作" }, ...s.work.filter(work => work.project === fields.project && work.workKind !== "BUG").map(work => ({ value: work.id, label: `${work.id} · ${work.title}` }))]} />
+      {[["affectedVersion", "影响版本"], ["severity", "严重度"], ["priority", "优先级"], ["steps", "复现步骤"], ["expected", "期望结果"], ["actual", "实际结果"], ["environment", "环境"], ["commit", "关联提交"]].map(([key, label]) => <Field key={key} label={label} value={fields.defect[key] || ""} onChange={value => setFields(old => ({ ...old, defect: { ...old.defect, [key]: value } }))} type={["steps", "expected", "actual"].includes(key) ? "textarea" : "text"} />)}
+    </fieldset>}
+    <Field label="怎样才算完成" value={fields.criteria} onChange={(value) => change("criteria", value)} type="textarea" required />
+    <div className="actions">
+      <Button onClick={() => { try { save(); toast(inline?"任务草稿已保存，可继续编辑":"会话草稿已保存，可继续讨论"); } catch (error) { toast(error.message, true); } }}>{inline?"保存任务草稿":"保存会话草稿"}</Button>
+      <Button variant="primary" onClick={() => {
+        try { save(); const work = confirmWorkDraft(draft.id, editingRevision + 1); toast(inline?"任务与计划草稿已创建，已保留当前列表。":"已确认生成工作与计划，保留当前会话；执行前请确认工作流版本"); onConfirmed?.(work); }
+        catch (error) { toast(error.message, true); }
+      }}>确认生成工作与计划</Button>
+    </div>
+    <small>{draft.discussion.length} 条讨论已关联到草稿；确认不会自动授予工具或发布权限。</small>
+  </Section>;
+}
+function workDraftFields(draft) {
+  return { title:draft.title, project:draft.project, type:draft.type, criteria:draft.criteria, workflowId:draft.workflowId || "default", defect:structuredClone(draft.defect || {}) };
+}
+function WorkDraftModal({draft,toast,onClose}) {
+  const [fields,setFields,guard]=useRecoverableDraft(JSON.stringify([draft.tenantId,"task-draft",draft.id,draft.revision]),()=>workDraftFields(draft));
+  return <Modal title="发起任务" wide onClose={onClose} {...guard.modalProps}><ConversationWorkDraft inline draft={draft} toast={toast} editorFields={fields} onEditorChange={setFields} onConfirmed={onClose}/></Modal>;
+}
+export function NewWork({ onClose, source, toast, draftId:requestedDraftId }) {
+  const s=useStore();
+  const [draftId,setDraftId]=useState(requestedDraftId||new URLSearchParams(location.hash.split("?")[1]||"").get("quick_work"));
+  const [problem,setProblem]=useState("");
+  const [tenantId]=useState(s.activeTenant);
+  const initialized=useRef(false);
+  useEffect(()=>{
+    if(draftId||initialized.current)return;
+    initialized.current=true;
     try {
-      const params = new URLSearchParams(location.hash.split("?")[1] || "");
-      const projectId = location.hash.match(/^#\/p\/([^/]+)/)?.[1];
-      const draftId = beginWorkDraft({ sourceId: source?.id, projectId: source?.projectId || projectId, channel: params.get("channel_id") || undefined,
-        executionId: params.get("execution_id") || undefined, threadId: params.get("thread_id") || undefined });
-      const draft = read().drafts[draftId];
-      const conversation = draft.executionId ? `execution_id=${encodeURIComponent(draft.executionId)}` : `channel_id=${encodeURIComponent(draft.channel)}`;
-      location.hash = `/chat?${conversation}&work_draft=${encodeURIComponent(draftId)}${draft.threadId ? `&thread_id=${encodeURIComponent(draft.threadId)}` : ""}`;
-      toast("已进入会话工作草稿，补充并确认后生成正式工作");
-    } catch (error) { toast(error.message, true); }
-    onClose();
-  }, []);
-  return null;
+      const params=new URLSearchParams(location.hash.split("?")[1]||"");
+      const projectId=source?.projectId||(s.project!=="all"?s.project:undefined);
+      const created=beginWorkDraft({sourceId:source?.id,projectId,channel:params.get("channel_id")||undefined,executionId:params.get("execution_id")||undefined,threadId:params.get("thread_id")||undefined,workflowId:params.get("workflow_id")||"default"});
+      setDraftId(created);params.set("quick_work",created);location.hash=`${location.hash.slice(1).split("?")[0]}?${params}`;
+    } catch(error){setProblem(error.message);}
+  },[draftId]);
+  const close=()=>{const params=new URLSearchParams(location.hash.split("?")[1]||"");params.delete("quick_work");const path=location.hash.slice(1).split("?")[0];onClose();location.hash=`${path}${params.size?`?${params}`:""}`;};
+  const draft=s.activeTenant===tenantId?s.drafts?.[draftId]:null;
+  const readProblem=workDraftReadProblem(s,draft);
+  if (!problem && !readProblem) return <WorkDraftModal key={`${draft.id}:${draft.revision}`} draft={draft} toast={toast} onClose={close}/>;
+  return <Modal title="发起任务" wide onClose={close}>{problem||readProblem?<Notice tone="warn">{problem||readProblem}</Notice>:<Empty title="任务草稿不可访问" text="草稿不存在或租户已切换，请关闭后重新发起。"/>}</Modal>;
 }
 
-export function ProjectList({ toast }) {
+export function ProjectList({ toast, params = new URLSearchParams() }) {
+  const archive = ["active","archived","all"].includes(params.get("archive")) ? params.get("archive") : "active";
   const s = useStore();
   const humans = organizationPeople(s).filter(person => person.kind === "Human");
   const defaultOwnerId = humans.some(person => person.id === "H-lin") ? "H-lin" : "";
@@ -1173,9 +1370,10 @@ export function ProjectList({ toast }) {
           创建项目
         </Button>
       </PageHead>
+      <Field label="项目范围" value={archive} options={[{value:"active",label:"进行中"},{value:"archived",label:"已归档"},{value:"all",label:"全部"}]} onChange={value=>{location.hash=`/projects?archive=${value}`;}} />
       <div className="project-grid">
         {s.projects
-          .filter((p) => s.project === "all" || s.project === p.id)
+          .filter((p) => (s.project === "all" || s.project === p.id) && (archive === "all" || (archive === "archived" ? Boolean(p.archivedAt) : !p.archivedAt)))
           .map((p) => (
             <Link
               key={p.id}
@@ -1186,7 +1384,7 @@ export function ProjectList({ toast }) {
                 <Icon name="Orbit" size={30} />
                 <span>{p.type}</span>
               </div>
-              <h2>{p.name}</h2>
+              <h2>{p.name}</h2>{p.archivedAt && <Badge>已归档 · 历史只读</Badge>}
               <p>{p.description}</p>
               <footer>
                 <Avatar name={p.owner} />

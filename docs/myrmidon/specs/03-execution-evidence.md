@@ -12,17 +12,17 @@
 
 **解决**：把"一次具体运行"做成可追溯、可中断恢复、可分支返工的领域对象，并把它产出的东西变成**带来源与局限的证据**、经**版本化验证器**检查的**验证结果**。
 
-| 本规格负责 | 交给其他规格 |
-|---|---|
-| Execution（尝试树：`parent_execution_id`、`BranchReason`、序号与"#3 · 质量返工 2"标签）；种类 AUTONOMOUS / INTERACTIVE / ADHOC | 工作项状态机、Claim 表与 `POST /work-items/{id}/claims`、Decision、结构化反馈表单 → **02** |
-| 执行生命周期、执行租约与 `dispatch_epoch` 栅栏（移植 Preview 01：30 s 租约、服务重启/机器离线即中断、不自动重放） | 机器接入、心跳、通道传输（HTTP 轮询 / WebSocket）、执行槽调度、运行时与能力（Skills/MCP）检测、模型目录 → **04** |
-| 执行级派发消息（start / cancel / 交互回应 / 证据采集 / 验证 / 合并）、事件流 `seq`、outbox 确认语义 | Agent 资料（系统提示、runtime×model、`max_context_tokens`、技能、授权模式）、主管 Agent 选择 ENSEMBLE 胜者（`ensemble.compared`）→ **05** |
-| 注入运行时的**七层上下文包**、`maxContextTokens` 预算与裁剪顺序、"使用的知识"记录 | 检索与注入包生成（`Retriever`）→ **06** |
-| 执行环境加固（不注入控制面令牌、环境变量白名单、每执行工作目录/worktree、同目录单写） | 预算阈值与升级规则（`budget.threshold_reached`、`escalation.triggered`）、委托条件判定、"我的裁决"聚合 → **08** |
-| 交互会话（Preview 01 全量对齐）：轮次、消息、工具行、TOOL_PERMISSION / RUNTIME_INPUT、重试、换机器、授权模式、Skills、MCP、附件、限额 | 项目阶段、预算设定、交付包 → **07** |
-| 产物、证据（类型、自动采集、人工观察、来源字段、局限、内容哈希、文件存储）、验证器定义与版本、验证结果、相似度信号、成本计量、`code_merge` 动作 | 后台任务队列、outbox、SSE、对象存储驱动、通知渠道 → **09**；文件与资源绑定、审计哈希链 → 底座 |
-| **远程工作区**（D119）：每个执行的预览会话（服务预览、评审预览、产物预览）与产物查看器、文件浏览（只读）与人工接管后的编辑、终端会话（只读观看 / 交互 shell）、甲方分享链接；预览访问判定 | 隧道传输、端口归属与路径限定的机器端校验、配额、机器类型与远程访问开关、预览网关部署 → **04**；权限码、step-up、审批收件箱、审计目录 → **08** |
-| **锚定批注**（D120）：产物查看器内对代码行区间、表格行、HTML 区域、视频时间点 / 区间、文本段落的批注线程，绑定产物版本，版本更新后的重新定位与「锚点版本已过期」；甲方在交付产物上的批注；批注与证据写入的过期上下文判定（`interrupted`） | 批注 → 结构化反馈（裁决）→ **02**；批注 → 缺陷 → **12**；批注 → 甲方拒收项与门户呈现 → **07**（门户接口 01）；Agent 收件箱投影 → **05**；HTML 区域辅助脚本的注入 → **04** 预览网关 |
+| 本规格负责                                                                                                                                                                                                                                        | 交给其他规格                                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Execution（尝试树：`parent_execution_id`、`BranchReason`、序号与"#3 · 质量返工 2"标签）；种类 AUTONOMOUS / INTERACTIVE / ADHOC                                                                                                               | 工作项状态机、Claim 表与`POST /work-items/{id}/claims`、Decision、结构化反馈表单 → **02**                                                                                                                      |
+| 执行生命周期、执行租约与`dispatch_epoch` 栅栏（移植 Preview 01：30 s 租约、服务重启/机器离线即中断、不自动重放）                                                                                                                                | 机器接入、心跳、通道传输（HTTP 轮询 / WebSocket）、执行槽调度、运行时与能力（Skills/MCP）检测、模型目录 →**04**                                                                                                  |
+| 执行级派发消息（start / cancel / 交互回应 / 证据采集 / 验证 / 合并）、事件流`seq`、outbox 确认语义                                                                                                                                              | Agent 资料（系统提示、runtime×model、`max_context_tokens`、技能、授权模式）、主管 Agent 选择 ENSEMBLE 胜者（`ensemble.compared`）→ **05**                                                                   |
+| 注入运行时的**七层上下文包**、`maxContextTokens` 预算与裁剪顺序、"使用的知识"记录                                                                                                                                                         | 检索与注入包生成（`Retriever`）→ **06**                                                                                                                                                                        |
+| 执行环境加固（不注入控制面令牌、环境变量白名单、每执行工作目录/worktree、同目录单写）                                                                                                                                                             | 预算阈值与升级规则（`budget.threshold_reached`、`escalation.triggered`）、委托条件判定、"我的裁决"聚合 → **08**                                                                                              |
+| 交互会话（Preview 01 全量对齐）：轮次、消息、工具行、TOOL_PERMISSION / RUNTIME_INPUT、重试、换机器、授权模式、Skills、MCP、附件、限额                                                                                                             | 项目阶段、预算设定、交付包 →**07**                                                                                                                                                                               |
+| 产物、证据（类型、自动采集、人工观察、来源字段、局限、内容哈希、文件存储）、验证器定义与版本、验证结果、相似度信号、成本计量、`code_merge` 动作                                                                                                 | 后台任务队列、outbox、SSE、对象存储驱动、通知渠道 →**09**；文件与资源绑定、审计哈希链 → 底座                                                                                                                    |
+| **远程工作区**（D119）：每个执行的预览会话（服务预览、评审预览、产物预览）与产物查看器、文件浏览（只读）与人工接管后的编辑、终端会话（只读观看 / 交互 shell）、甲方分享链接；预览访问判定                                                   | 隧道传输、端口归属与路径限定的机器端校验、配额、机器类型与远程访问开关、预览网关部署 →**04**；权限码、step-up、审批收件箱、审计目录 → **08**                                                              |
+| **锚定批注**（D120）：产物查看器内对代码行区间、表格行、HTML 区域、视频时间点 / 区间、文本段落的批注线程，绑定产物版本，版本更新后的重新定位与「锚点版本已过期」；甲方在交付产物上的批注；批注与证据写入的过期上下文判定（`interrupted`） | 批注 → 结构化反馈（裁决）→**02**；批注 → 缺陷 → **12**；批注 → 甲方拒收项与门户呈现 → **07**（门户接口 01）；Agent 收件箱投影 → **05**；HTML 区域辅助脚本的注入 → **04** 预览网关 |
 
 **不解决**：token 级 checkpoint；数据库分支；PR 平台连接器（v1.1，PULL_REQUEST 证据 MVP 仅支持人工登记链接）；跨机器自动迁移正在运行的进程。
 
@@ -30,67 +30,66 @@
 
 ## 2. 用户故事
 
-| ID | 故事 | 期 |
-|---|---|---|
-| US-03-01 | 作为工作项分派到的 **Agent 执行者**，系统要在我绑定的机器上为我启动无人值守执行并注入完整上下文，以便我无需人工即可开工 | MVP |
-| US-03-02 | 作为**工程师**，我要在任一在线机器上为分派给我的工作项开启交互会话，与 Claude Code / Codex 多轮对话，以便用熟悉的方式工作 | MVP |
-| US-03-03 | 作为工程师，我要先开一个**临时执行（ADHOC）**做探索，确认方向后再关联到工作项并提交完成声明 | MVP |
-| US-03-04 | 作为工程师，我要在手机上处理"允许一次 / 拒绝"的工具授权与输入请求，关掉页面执行也不中断 | MVP |
-| US-03-05 | 作为工程师，机器离线时我要把会话切到另一台支持同一 runtime 的机器：同目录续接原生会话，不同目录带入最近对话 | MVP |
-| US-03-06 | 作为执行者，我要提交完成声明时系统**自动收集** commit / 测试报告 / 日志，并让我逐条把验收标准映射到证据 | MVP |
-| US-03-07 | 作为评审者，我要看到每条证据的**来源卡**：producer、时间、哈希前 8 位、验证器与版本、结果、局限 | MVP |
-| US-03-08 | 作为团队所有者，我要定义**版本化验证器**（命令型、AI 辅助、人工），并按工作项类型 + 风险决定哪些是必需的 | MVP |
-| US-03-09 | 作为交付负责人，我要在验证 FAILED / INCONCLUSIVE 时看到退出码、输出尾部与报告文件，以便判断是代码问题还是环境问题 | MVP |
-| US-03-10 | 作为交付负责人，我要在工作项详情看到**执行分支树**（`#3 · 质量返工 2`），旧执行与证据永不被覆盖 | MVP |
-| US-03-11 | 作为交付负责人，拒绝后系统要自动创建**质量返工子执行**并把结构化反馈注入其上下文 | MVP |
-| US-03-12 | 作为交付负责人，当返工产物与上一次相比变化文件 < 8% 时我要收到"原地打转"信号 | MVP |
-| US-03-13 | 作为团队所有者，我要看到每个执行的 token 与成本，并在单执行成本上限、项目预算触顶时自动暂停 | MVP |
-| US-03-14 | 作为执行者，机器断网或服务重启后我要看到"已中断"而不是假装仍在运行，由我检查副作用后决定恢复或标记失败 | MVP |
-| US-03-15 | 作为安全负责人，我要保证运行时进程环境里**没有**控制面令牌与机器凭证 | MVP |
-| US-03-16 | 作为有 `code_merge` 权限的主体，我要在工作项被接受且验证全过后把执行分支合并到主分支 | MVP |
-| US-03-17 | 作为工程师，我要在会话里用 `/`、`$` 插入 Skill、查看 MCP 列表、附加最多 8 个文本文件 | MVP |
-| US-03-18 | 作为执行者，我要在会话里看到"使用的知识"：本次注入了哪些知识条目、得分与引用 | MVP |
-| US-03-19 | 作为主管 Agent，我要对高风险工作项启动 ≤3 个 ENSEMBLE 并行分支并获得对比数据 | v1.1 |
-| US-03-20 | 作为团队所有者，我要开启"全自动授权"时被要求重新认证，且该动作写入审计链 | MVP |
-| US-03-21 | 作为评审者，我要以**人工验证器**身份记录 PASSED / FAILED / INCONCLUSIVE 与观察 | MVP |
-| US-03-22 | 作为交付负责人，执行在 PAUSED（上下文不足 / Agent 放弃 / 成本上限）时我要能恢复或改为新分支 | MVP |
+| ID       | 故事                                                                                                                            | 期   |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| US-03-01 | 作为工作项分派到的**Agent 执行者**，系统要在我绑定的机器上为我启动无人值守执行并注入完整上下文，以便我无需人工即可开工    | MVP  |
+| US-03-02 | 作为**工程师**，我要在任一在线机器上为分派给我的工作项开启交互会话，与 Claude Code / Codex 多轮对话，以便用熟悉的方式工作 | MVP  |
+| US-03-03 | 作为工程师，我要先开一个**临时执行（ADHOC）**做探索，确认方向后再关联到工作项并提交完成声明                                     | MVP  |
+| US-03-04 | 作为工程师，我要在手机上处理"允许一次 / 拒绝"的工具授权与输入请求，关掉页面执行也不中断                                         | MVP  |
+| US-03-05 | 作为工程师，机器离线时我要把会话切到另一台支持同一 runtime 的机器：同目录续接原生会话，不同目录带入最近对话                     | MVP  |
+| US-03-06 | 作为执行者，我要提交完成声明时系统**自动收集** commit / 测试报告 / 日志，并让我逐条把验收标准映射到证据                   | MVP  |
+| US-03-07 | 作为评审者，我要看到每条证据的**来源卡**：producer、时间、哈希前 8 位、验证器与版本、结果、局限                           | MVP  |
+| US-03-08 | 作为团队所有者，我要定义**版本化验证器**（命令型、AI 辅助、人工），并按工作项类型 + 风险决定哪些是必需的                  | MVP  |
+| US-03-09 | 作为交付负责人，我要在验证 FAILED / INCONCLUSIVE 时看到退出码、输出尾部与报告文件，以便判断是代码问题还是环境问题               | MVP  |
+| US-03-10 | 作为交付负责人，我要在工作项详情看到**执行分支树**（`#3 · 质量返工 2`），旧执行与证据永不被覆盖                        | MVP  |
+| US-03-11 | 作为交付负责人，拒绝后系统要自动创建**质量返工子执行**并把结构化反馈注入其上下文                                          | MVP  |
+| US-03-12 | 作为交付负责人，当返工产物与上一次相比变化文件 < 8% 时我要收到"原地打转"信号                                                    | MVP  |
+| US-03-13 | 作为团队所有者，我要看到每个执行的 token 与成本，并在单执行成本上限、项目预算触顶时自动暂停                                     | MVP  |
+| US-03-14 | 作为执行者，机器断网或服务重启后我要看到"已中断"而不是假装仍在运行，由我检查副作用后决定恢复或标记失败                          | MVP  |
+| US-03-15 | 作为安全负责人，我要保证运行时进程环境里**没有**控制面令牌与机器凭证                                                      | MVP  |
+| US-03-16 | 作为有`code_merge` 权限的主体，我要在工作项被接受且验证全过后把执行分支合并到主分支                                           | MVP  |
+| US-03-17 | 作为工程师，我要在会话里用`/`、`$` 插入 Skill、查看 MCP 列表、附加最多 8 个文本文件                                         | MVP  |
+| US-03-18 | 作为执行者，我要在会话里看到"使用的知识"：本次注入了哪些知识条目、得分与引用                                                    | MVP  |
+| US-03-19 | 作为主管 Agent，我要对高风险工作项启动 ≤3 个 ENSEMBLE 并行分支并获得对比数据                                                   | v1.1 |
+| US-03-20 | 作为团队所有者，我要开启"全自动授权"时被要求重新认证，且该动作写入审计链                                                        | MVP  |
+| US-03-21 | 作为评审者，我要以**人工验证器**身份记录 PASSED / FAILED / INCONCLUSIVE 与观察                                            | MVP  |
+| US-03-22 | 作为交付负责人，执行在 PAUSED（上下文不足 / Agent 放弃 / 成本上限）时我要能恢复或改为新分支                                     | MVP  |
 
 ---
 
-
 ### 2.x 用户故事增补（D112 / D113，00 v2.0 §15）
 
-| ID | 故事 | 版本 |
-|---|---|---|
-| US-03-23 | 作为交付负责人，我要在计划批准时冻结验收测试（可见部分 + 隐藏部分），以便执行者无法通过改测试「通过」 | MVP |
-| US-03-24 | 作为团队，我要平台在隔离环境重跑所有确定性检查，以便不依赖执行者贴出的日志 | MVP |
-| US-03-25 | 作为团队，我要测试 Agent 与产品验收 Agent 在内部先验收，以便只有内部验收通过的成果才到人面前 | MVP |
-| US-03-26 | 作为产品验收 Agent，我要拿到真实交付形态（运行应用、截图、成品文件），以便按需求与评分标准判断而不只看代码 | MVP |
-| US-03-27 | 作为团队，我要人或甲方发现内部放行的问题时自动沉淀为经验与评测用例，以便内部质量门越来越准 | MVP |
+| ID       | 故事                                                                                                       | 版本 |
+| -------- | ---------------------------------------------------------------------------------------------------------- | ---- |
+| US-03-23 | 作为交付负责人，我要在计划批准时冻结验收测试（可见部分 + 隐藏部分），以便执行者无法通过改测试「通过」      | MVP  |
+| US-03-24 | 作为团队，我要平台在隔离环境重跑所有确定性检查，以便不依赖执行者贴出的日志                                 | MVP  |
+| US-03-25 | 作为团队，我要测试 Agent 与产品验收 Agent 在内部先验收，以便只有内部验收通过的成果才到人面前               | MVP  |
+| US-03-26 | 作为产品验收 Agent，我要拿到真实交付形态（运行应用、截图、成品文件），以便按需求与评分标准判断而不只看代码 | MVP  |
+| US-03-27 | 作为团队，我要人或甲方发现内部放行的问题时自动沉淀为经验与评测用例，以便内部质量门越来越准                 | MVP  |
 
 ### 2.y 用户故事增补（D119 远程工作区）
 
-| ID | 故事 | 版本 |
-|---|---|---|
-| US-03-28 | 作为交付负责人，我要在手机上打开 Agent 正在做的网页 / API 的实时预览，而不需要等它提交完成声明 | MVP |
-| US-03-29 | 作为评审人，我要一键预览完成声明对应的那个提交（在隔离副本里重新启动），以便看到的就是要裁决的版本 | MVP |
-| US-03-30 | 作为评审人，我要直接查看执行产出的文档、图片、PDF 与测试报告，不必下载 | MVP |
-| US-03-31 | 作为评审人，我要观看视频产物的低清代理版本与小说章节（含与上一版的差异） | v1.1 |
-| US-03-32 | 作为工程师，我要只读浏览执行工作区的文件与差异，密钥文件自动遮罩 | MVP |
-| US-03-33 | 作为工程师，我要只读观看 Agent 正在运行的命令输出 | MVP |
-| US-03-34 | 作为工程师，我要在暂停或接管执行后编辑文件并保存为一次署名为我的提交 | v1.1 |
-| US-03-35 | 作为团队所有者，我要允许经过重新认证的人类打开交互式终端，全程录制进审计 | v1.1 |
-| US-03-36 | 作为交付负责人，我要在人工批准后把某个预览以只读、有期限、可撤销的链接分享给甲方 | v1.1（D126）（D119 未列入分期，见 §12 Q9） |
+| ID       | 故事                                                                                               | 版本                                        |
+| -------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| US-03-28 | 作为交付负责人，我要在手机上打开 Agent 正在做的网页 / API 的实时预览，而不需要等它提交完成声明     | MVP                                         |
+| US-03-29 | 作为评审人，我要一键预览完成声明对应的那个提交（在隔离副本里重新启动），以便看到的就是要裁决的版本 | MVP                                         |
+| US-03-30 | 作为评审人，我要直接查看执行产出的文档、图片、PDF 与测试报告，不必下载                             | MVP                                         |
+| US-03-31 | 作为评审人，我要观看视频产物的低清代理版本与小说章节（含与上一版的差异）                           | v1.1                                        |
+| US-03-32 | 作为工程师，我要只读浏览执行工作区的文件与差异，密钥文件自动遮罩                                   | MVP                                         |
+| US-03-33 | 作为工程师，我要只读观看 Agent 正在运行的命令输出                                                  | MVP                                         |
+| US-03-34 | 作为工程师，我要在暂停或接管执行后编辑文件并保存为一次署名为我的提交                               | v1.1                                        |
+| US-03-35 | 作为团队所有者，我要允许经过重新认证的人类打开交互式终端，全程录制进审计                           | v1.1                                        |
+| US-03-36 | 作为交付负责人，我要在人工批准后把某个预览以只读、有期限、可撤销的链接分享给甲方                   | v1.1（D126）（D119 未列入分期，见 §12 Q9） |
 
 ### 2.z 用户故事增补（D120 锚定批注与过期上下文写入）
 
-| ID | 故事 | 版本 |
-|---|---|---|
-| US-03-37 | 作为评审人，我要在产物查看器里直接对代码行区间、表格行、网页上的某个区域、文档段落发起批注线程，以便精确指出问题而不是在别处描述位置 | MVP |
-| US-03-38 | 作为评审人，我要对视频的某个时间点 / 区间与小说章节的段落批注 | v1.1（随视频与章节查看器） |
-| US-03-39 | 作为评审人，我要把一条批注一键转为结构化反馈或缺陷，且保留锚点与它所针对的产物版本，以便返工的人能回到原处 | MVP |
-| US-03-40 | 作为工程师，我要在产物更新后看到哪些批注仍对得上、哪些已重新定位、哪些「基于旧版本」，以便不被过期批注误导 | MVP |
-| US-03-41 | 作为交付负责人，我要 Agent 在工作项已有更新事件时提交证据或发起批注被拒为 `interrupted`，以便它先看到新反馈再动手 | MVP |
+| ID       | 故事                                                                                                                                 | 版本                       |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- |
+| US-03-37 | 作为评审人，我要在产物查看器里直接对代码行区间、表格行、网页上的某个区域、文档段落发起批注线程，以便精确指出问题而不是在别处描述位置 | MVP                        |
+| US-03-38 | 作为评审人，我要对视频的某个时间点 / 区间与小说章节的段落批注                                                                        | v1.1（随视频与章节查看器） |
+| US-03-39 | 作为评审人，我要把一条批注一键转为结构化反馈或缺陷，且保留锚点与它所针对的产物版本，以便返工的人能回到原处                           | MVP                        |
+| US-03-40 | 作为工程师，我要在产物更新后看到哪些批注仍对得上、哪些已重新定位、哪些「基于旧版本」，以便不被过期批注误导                           | MVP                        |
+| US-03-41 | 作为交付负责人，我要 Agent 在工作项已有更新事件时提交证据或发起批注被拒为`interrupted`，以便它先看到新反馈再动手                   | MVP                        |
 
 ## 3. 领域模型与数据表
 
@@ -115,257 +114,257 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 每张表都含 `id BIGINT PK`（雪花）、`tenant_id`、`created_at`、`updated_at`、`created_by`、`updated_by`（00 §3）；项目内资源另含 `project_id`；可变聚合根另含 `version INT NOT NULL DEFAULT 1`。下表字段表省略这些通用列，仅在有特殊约束时列出。**不建跨模块外键**；模块内外键（如 `parent_execution_id`）在三方言中均建立。
 
-| 逻辑类型 | PostgreSQL | MySQL 8.0.16+ | SQLite |
-|---|---|---|---|
-| ID | `BIGINT` | `BIGINT` | `INTEGER` |
-| TS（UTC） | `TIMESTAMPTZ(3)` | `DATETIME(3)` | `DATETIME` |
-| ENUM | `VARCHAR(32)` + `CHECK (col IN (...))` | 同左（CHECK 生效） | `TEXT` + `CHECK` |
-| STR(n) | `VARCHAR(n)` | `VARCHAR(n)` utf8mb4 | `TEXT` + `CHECK(length(col)<=n)` |
-| TEXT64K | `TEXT` + CHECK `octet_length<=65536` | `TEXT` | `TEXT` + CHECK |
-| TEXT1M | `TEXT` + CHECK `octet_length<=1048576` | `MEDIUMTEXT` | `TEXT` + CHECK |
-| JSON | `JSONB` | `JSON` | `TEXT` + `CHECK(json_valid(col))` |
-| BOOL | `BOOLEAN` | `TINYINT(1)` | `INTEGER CHECK(col IN (0,1))` |
-| HASH | `CHAR(64)`（小写十六进制 SHA-256） | `CHAR(64)` | `TEXT` + `CHECK(length(col)=64)` |
-| INT / BIGINT | `INTEGER` / `BIGINT` | `INT` / `BIGINT` | `INTEGER` |
+| 逻辑类型     | PostgreSQL                                 | MySQL 8.0.16+          | SQLite                                |
+| ------------ | ------------------------------------------ | ---------------------- | ------------------------------------- |
+| ID           | `BIGINT`                                 | `BIGINT`             | `INTEGER`                           |
+| TS（UTC）    | `TIMESTAMPTZ(3)`                         | `DATETIME(3)`        | `DATETIME`                          |
+| ENUM         | `VARCHAR(32)` + `CHECK (col IN (...))` | 同左（CHECK 生效）     | `TEXT` + `CHECK`                  |
+| STR(n)       | `VARCHAR(n)`                             | `VARCHAR(n)` utf8mb4 | `TEXT` + `CHECK(length(col)<=n)`  |
+| TEXT64K      | `TEXT` + CHECK `octet_length<=65536`   | `TEXT`               | `TEXT` + CHECK                      |
+| TEXT1M       | `TEXT` + CHECK `octet_length<=1048576` | `MEDIUMTEXT`         | `TEXT` + CHECK                      |
+| JSON         | `JSONB`                                  | `JSON`               | `TEXT` + `CHECK(json_valid(col))` |
+| BOOL         | `BOOLEAN`                                | `TINYINT(1)`         | `INTEGER CHECK(col IN (0,1))`       |
+| HASH         | `CHAR(64)`（小写十六进制 SHA-256）       | `CHAR(64)`           | `TEXT` + `CHECK(length(col)=64)`  |
+| INT / BIGINT | `INTEGER` / `BIGINT`                   | `INT` / `BIGINT`   | `INTEGER`                           |
 
 > 时间列类型按底座 `backend-module` 规约（MySQL 禁用 `TIMESTAMP`），与 00 v1.3 §3 一致。部分唯一索引（PG/SQLite 支持、MySQL 不支持）一律**不使用**，改用独立锁表或可空列唯一索引（三方言均允许多个 NULL）。
 
 ### 3.3 `execution_executions`（聚合根，`version` 乐观锁）
 
-| 列 | 类型 | 空 | 默认 | 约束 / 说明 |
-|---|---|---|---|---|
-| project_id | ID | N | | 项目 entity id |
-| work_item_id | ID | Y | | `kind=ADHOC` 时必为 NULL；其余必非空（CHECK）。ADHOC（含 HANDOVER）由调用方显式给出 `project_id` |
-| kind | ENUM `ExecutionKind` | N | | AUTONOMOUS / INTERACTIVE / ADHOC |
-| purpose | ENUM `ExecutionPurpose` | N | `DELIVERY` | DELIVERY / VERIFICATION（AI 辅助验证的执行；不进分支树）/ HANDOVER（05 退役交接文档的 ADHOC 执行，不进分支树，E27 豁免） |
-| parent_execution_id | ID | Y | | FK → 本表；同 `work_item_id` |
-| branch_reason | ENUM `BranchReason` | Y | | ADHOC / VERIFICATION 为 NULL；其余必非空 |
-| seq_no | INT | Y | | 工作项内序号（1 起，按创建顺序，跨整棵树）；UNIQUE(`tenant_id`,`work_item_id`,`seq_no`) |
-| reason_ordinal | INT | Y | | 同工作项同 `branch_reason` 内第几次（标签"质量返工 2"） |
-| ensemble_group_id | ID | Y | | ENSEMBLE 兄弟共享（雪花，由发起方分配） |
-| source_decision_id | ID | Y | | 触发本分支的 02 Decision；UNIQUE(`tenant_id`,`source_decision_id`) 保证事件重放不重复建枝 |
-| source_change_record_id | ID | Y | | SCOPE 分支对应的 02 ChangeRecord |
-| start_point | ENUM | N | | `BASELINE`（项目基线）/ `RESTART`（父的起点 `base_commit`）/ `CONTINUE`（父 `head_commit`）；对应 02 `workspace_mode` |
-| autostart | BOOL | N | true | false 时停在 CREATED 不派发，等人显式启动（02 有界自治：返工 ≥3 次） |
-| title | STR(200) | N | | 默认 = 工作项标题；ADHOC 默认"新会话"，首条消息前 60 字符自动命名（手动命名后不覆盖，`title_manual`） |
-| title_manual | BOOL | N | false | |
-| state | ENUM `ExecutionState` | N | `CREATED` | |
-| state_reason | ENUM `ExecutionEndReason` | Y | | 见 §3.17 |
-| state_detail | STR(2000) | Y | | 人读说明（已脱敏） |
-| initiator_kind / initiator_id / authority_source | ENUM / ID / STR(96) | N/Y/N | | 发起者三元组（00 §4） |
-| assignee_principal_id | ID | N | | 执行者：人类 principal 或 Agent 服务账号 principal |
-| agent_id | ID | Y | | AUTONOMOUS 必非空 |
-| assignment_id | ID | Y | | 02 Assignment |
-| machine_id | ID | Y | | ADHOC/INTERACTIVE 创建时必选；AUTONOMOUS 取 Agent 绑定机器 |
-| runtime | ENUM `RuntimeKind` | N | | 不自动回退（Preview：明确选择不存在的 runtime 即报错） |
-| model | STR(160) | Y | | 原样传给 runtime；空 = runtime 默认；禁止 `\r\n\0` |
-| effort | STR(32) | Y | | 取值受模型目录约束（04）；目录缺失时用 runtime 通用集 |
-| authorization_mode | ENUM `AuthorizationMode` | N | `READ_ONLY` | READ_ONLY / ON_REQUEST / FULL_AUTO |
-| tools_enabled | BOOL | N | false | Claude Code 原生工具、MCP、Skills 开关 |
-| workdir_mode | ENUM | N | | `WORKTREE` / `SHARED_DIR` |
-| workdir_path | STR(1024) | Y | | 机器上的绝对路径（不建索引） |
-| workdir_key | HASH | Y | | `sha256(machine_id + ":" + 规范化路径)`；Windows 主机路径小写化 |
-| base_ref / base_commit | STR(255) / STR(64) | Y | | 分支起点 |
-| branch_name | STR(255) | Y | | WORKTREE 模式 `exec/<work_item_id>/<execution_id>` |
-| head_commit | STR(64) | Y | | 最近一次回报的 HEAD |
-| native_session_id | STR(255) | Y | | Codex thread id / Claude session id；**仅**与 machine+workdir 一起有效 |
-| carryover_pending | BOOL | N | false | 下一轮附带最近对话（换机器不同目录、重试） |
-| dispatch_epoch | INT | N | 0 | 每次派发（AUTONOMOUS 启动/恢复、INTERACTIVE 每轮）+1；栅栏令牌 |
-| last_seq | INT | N | 0 | 当前 `dispatch_epoch` 已持久化的最大事件序号 |
-| change_seq | BIGINT | N | 0 | 面向客户端的单调变更水位（跨派发），SSE 帧携带（与 09 全局 `stream_seq` 无关，故不同名） |
-| lease_expires_at | TS | Y | | 仅 RUNNING 有值 |
-| dispatched_at / accepted_at / cancel_requested_at | TS | Y | | |
-| started_at / ended_at | TS | Y | | `ended_at` 仅终态 |
-| exit_code | INT | Y | | 适配器退出码（§5.4） |
-| timeout_ms | BIGINT | N | 14400000 | AUTONOMOUS 单次派发时长上限（4 h；可配 600000–86400000）；INTERACTIVE 为单轮上限 7200000 |
-| max_cost_micros | BIGINT | Y | | 单执行成本上限（来自 02/07 工作项预算） |
-| cost_micros / input_tokens / output_tokens / cache_read_tokens / cache_write_tokens | BIGINT | N | 0 | 累计 |
-| cost_source | ENUM | N | `UNKNOWN` | RUNTIME_REPORTED / ESTIMATED / UNKNOWN |
-| cost_published_micros | BIGINT | N | 0 | 上次 `execution.cost_updated` 发布值（合并发布用） |
-| turn_count / message_count | INT | N | 0 | 限额 500 / 4000 |
-| output_bytes | BIGINT | N | 0 | 消息正文 UTF-8 字节累计，限额 8 MiB |
-| pending_interaction_count | INT | N | 0 | 列表"待你决定"徽标 |
-| context_bundle_file_id / context_bundle_hash / context_tokens | ID / HASH / INT | Y | | 上下文包文件（§5.5） |
-| retrieval_log_id | ID | Y | | 06 `BuildInjection` 输出的 `retrieval_log_id`（06 BR-06-25）；组包时写入，`RecordInclusion` / `RecordCitations` 以它为键（复审 #15） |
-| similarity_ratio_ppm / similarity_flag | INT / BOOL | Y / N | NULL / false | 相似度（§5.10），ppm=比例×10⁶ |
-| claim_id | ID | Y | | 本执行提交的 02 Claim |
-| pending_claim | JSON | Y | | 仅 `branch_reason=ENSEMBLE`：退出码 0 时暂存的声明 `{summary, criteria_map, evidence_ids[], head_commit, confidence?}`，不调用 `ClaimSubmitter`；被 05 选中后经 `ClaimSubmitter`（`authority_source=POLICY:<plan_id>`）提交（BR-03-08） |
-| log_file_id | ID | Y | | 完整日志文件 |
-| infra_retry_depth | INT | N | 0 | 连续 RETRY_INFRA 祖先数 |
-| archived_at | TS | Y | | 仅隐藏，不删除 |
+| 列                                                                                  | 类型                       | 空    | 默认          | 约束 / 说明                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------------------------------- | -------------------------- | ----- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| project_id                                                                          | ID                         | N     |               | 项目 entity id                                                                                                                                                                                                                                   |
+| work_item_id                                                                        | ID                         | Y     |               | `kind=ADHOC` 时必为 NULL；其余必非空（CHECK）。ADHOC（含 HANDOVER）由调用方显式给出 `project_id`                                                                                                                                             |
+| kind                                                                                | ENUM`ExecutionKind`      | N     |               | AUTONOMOUS / INTERACTIVE / ADHOC                                                                                                                                                                                                                 |
+| purpose                                                                             | ENUM`ExecutionPurpose`   | N     | `DELIVERY`  | DELIVERY / VERIFICATION（AI 辅助验证的执行；不进分支树）/ HANDOVER（05 退役交接文档的 ADHOC 执行，不进分支树，E27 豁免）                                                                                                                         |
+| parent_execution_id                                                                 | ID                         | Y     |               | FK → 本表；同`work_item_id`                                                                                                                                                                                                                   |
+| branch_reason                                                                       | ENUM`BranchReason`       | Y     |               | ADHOC / VERIFICATION 为 NULL；其余必非空                                                                                                                                                                                                         |
+| seq_no                                                                              | INT                        | Y     |               | 工作项内序号（1 起，按创建顺序，跨整棵树）；UNIQUE(`tenant_id`,`work_item_id`,`seq_no`)                                                                                                                                                    |
+| reason_ordinal                                                                      | INT                        | Y     |               | 同工作项同`branch_reason` 内第几次（标签"质量返工 2"）                                                                                                                                                                                         |
+| ensemble_group_id                                                                   | ID                         | Y     |               | ENSEMBLE 兄弟共享（雪花，由发起方分配）                                                                                                                                                                                                          |
+| source_decision_id                                                                  | ID                         | Y     |               | 触发本分支的 02 Decision；UNIQUE(`tenant_id`,`source_decision_id`) 保证事件重放不重复建枝                                                                                                                                                    |
+| source_change_record_id                                                             | ID                         | Y     |               | SCOPE 分支对应的 02 ChangeRecord                                                                                                                                                                                                                 |
+| start_point                                                                         | ENUM                       | N     |               | `BASELINE`（项目基线）/ `RESTART`（父的起点 `base_commit`）/ `CONTINUE`（父 `head_commit`）；对应 02 `workspace_mode`                                                                                                                |
+| autostart                                                                           | BOOL                       | N     | true          | false 时停在 CREATED 不派发，等人显式启动（02 有界自治：返工 ≥3 次）                                                                                                                                                                            |
+| title                                                                               | STR(200)                   | N     |               | 默认 = 工作项标题；ADHOC 默认"新会话"，首条消息前 60 字符自动命名（手动命名后不覆盖，`title_manual`）                                                                                                                                          |
+| title_manual                                                                        | BOOL                       | N     | false         |                                                                                                                                                                                                                                                  |
+| state                                                                               | ENUM`ExecutionState`     | N     | `CREATED`   |                                                                                                                                                                                                                                                  |
+| state_reason                                                                        | ENUM`ExecutionEndReason` | Y     |               | 见 §3.17                                                                                                                                                                                                                                        |
+| state_detail                                                                        | STR(2000)                  | Y     |               | 人读说明（已脱敏）                                                                                                                                                                                                                               |
+| initiator_kind / initiator_id / authority_source                                    | ENUM / ID / STR(96)        | N/Y/N |               | 发起者三元组（00 §4）                                                                                                                                                                                                                           |
+| assignee_principal_id                                                               | ID                         | N     |               | 执行者：人类 principal 或 Agent 服务账号 principal                                                                                                                                                                                               |
+| agent_id                                                                            | ID                         | Y     |               | AUTONOMOUS 必非空                                                                                                                                                                                                                                |
+| assignment_id                                                                       | ID                         | Y     |               | 02 Assignment                                                                                                                                                                                                                                    |
+| machine_id                                                                          | ID                         | Y     |               | ADHOC/INTERACTIVE 创建时必选；AUTONOMOUS 取 Agent 绑定机器                                                                                                                                                                                       |
+| runtime                                                                             | ENUM`RuntimeKind`        | N     |               | 不自动回退（Preview：明确选择不存在的 runtime 即报错）                                                                                                                                                                                           |
+| model                                                                               | STR(160)                   | Y     |               | 原样传给 runtime；空 = runtime 默认；禁止`\r\n\0`                                                                                                                                                                                              |
+| effort                                                                              | STR(32)                    | Y     |               | 取值受模型目录约束（04）；目录缺失时用 runtime 通用集                                                                                                                                                                                            |
+| authorization_mode                                                                  | ENUM`AuthorizationMode`  | N     | `READ_ONLY` | READ_ONLY / ON_REQUEST / FULL_AUTO                                                                                                                                                                                                               |
+| tools_enabled                                                                       | BOOL                       | N     | false         | Claude Code 原生工具、MCP、Skills 开关                                                                                                                                                                                                           |
+| workdir_mode                                                                        | ENUM                       | N     |               | `WORKTREE` / `SHARED_DIR`                                                                                                                                                                                                                    |
+| workdir_path                                                                        | STR(1024)                  | Y     |               | 机器上的绝对路径（不建索引）                                                                                                                                                                                                                     |
+| workdir_key                                                                         | HASH                       | Y     |               | `sha256(machine_id + ":" + 规范化路径)`；Windows 主机路径小写化                                                                                                                                                                                |
+| base_ref / base_commit                                                              | STR(255) / STR(64)         | Y     |               | 分支起点                                                                                                                                                                                                                                         |
+| branch_name                                                                         | STR(255)                   | Y     |               | WORKTREE 模式`exec/<work_item_id>/<execution_id>`                                                                                                                                                                                              |
+| head_commit                                                                         | STR(64)                    | Y     |               | 最近一次回报的 HEAD                                                                                                                                                                                                                              |
+| native_session_id                                                                   | STR(255)                   | Y     |               | Codex thread id / Claude session id；**仅**与 machine+workdir 一起有效                                                                                                                                                                     |
+| carryover_pending                                                                   | BOOL                       | N     | false         | 下一轮附带最近对话（换机器不同目录、重试）                                                                                                                                                                                                       |
+| dispatch_epoch                                                                      | INT                        | N     | 0             | 每次派发（AUTONOMOUS 启动/恢复、INTERACTIVE 每轮）+1；栅栏令牌                                                                                                                                                                                   |
+| last_seq                                                                            | INT                        | N     | 0             | 当前`dispatch_epoch` 已持久化的最大事件序号                                                                                                                                                                                                    |
+| change_seq                                                                          | BIGINT                     | N     | 0             | 面向客户端的单调变更水位（跨派发），SSE 帧携带（与 09 全局`stream_seq` 无关，故不同名）                                                                                                                                                        |
+| lease_expires_at                                                                    | TS                         | Y     |               | 仅 RUNNING 有值                                                                                                                                                                                                                                  |
+| dispatched_at / accepted_at / cancel_requested_at                                   | TS                         | Y     |               |                                                                                                                                                                                                                                                  |
+| started_at / ended_at                                                               | TS                         | Y     |               | `ended_at` 仅终态                                                                                                                                                                                                                              |
+| exit_code                                                                           | INT                        | Y     |               | 适配器退出码（§5.4）                                                                                                                                                                                                                            |
+| timeout_ms                                                                          | BIGINT                     | N     | 14400000      | AUTONOMOUS 单次派发时长上限（4 h；可配 600000–86400000）；INTERACTIVE 为单轮上限 7200000                                                                                                                                                        |
+| max_cost_micros                                                                     | BIGINT                     | Y     |               | 单执行成本上限（来自 02/07 工作项预算）                                                                                                                                                                                                          |
+| cost_micros / input_tokens / output_tokens / cache_read_tokens / cache_write_tokens | BIGINT                     | N     | 0             | 累计                                                                                                                                                                                                                                             |
+| cost_source                                                                         | ENUM                       | N     | `UNKNOWN`   | RUNTIME_REPORTED / ESTIMATED / UNKNOWN                                                                                                                                                                                                           |
+| cost_published_micros                                                               | BIGINT                     | N     | 0             | 上次`execution.cost_updated` 发布值（合并发布用）                                                                                                                                                                                              |
+| turn_count / message_count                                                          | INT                        | N     | 0             | 限额 500 / 4000                                                                                                                                                                                                                                  |
+| output_bytes                                                                        | BIGINT                     | N     | 0             | 消息正文 UTF-8 字节累计，限额 8 MiB                                                                                                                                                                                                              |
+| pending_interaction_count                                                           | INT                        | N     | 0             | 列表"待你决定"徽标                                                                                                                                                                                                                               |
+| context_bundle_file_id / context_bundle_hash / context_tokens                       | ID / HASH / INT            | Y     |               | 上下文包文件（§5.5）                                                                                                                                                                                                                            |
+| retrieval_log_id                                                                    | ID                         | Y     |               | 06`BuildInjection` 输出的 `retrieval_log_id`（06 BR-06-25）；组包时写入，`RecordInclusion` / `RecordCitations` 以它为键（复审 #15）                                                                                                      |
+| similarity_ratio_ppm / similarity_flag                                              | INT / BOOL                 | Y / N | NULL / false  | 相似度（§5.10），ppm=比例×10⁶                                                                                                                                                                                                                 |
+| claim_id                                                                            | ID                         | Y     |               | 本执行提交的 02 Claim                                                                                                                                                                                                                            |
+| pending_claim                                                                       | JSON                       | Y     |               | 仅`branch_reason=ENSEMBLE`：退出码 0 时暂存的声明 `{summary, criteria_map, evidence_ids[], head_commit, confidence?}`，不调用 `ClaimSubmitter`；被 05 选中后经 `ClaimSubmitter`（`authority_source=POLICY:<plan_id>`）提交（BR-03-08） |
+| log_file_id                                                                         | ID                         | Y     |               | 完整日志文件                                                                                                                                                                                                                                     |
+| infra_retry_depth                                                                   | INT                        | N     | 0             | 连续 RETRY_INFRA 祖先数                                                                                                                                                                                                                          |
+| archived_at                                                                         | TS                         | Y     |               | 仅隐藏，不删除                                                                                                                                                                                                                                   |
 
 索引：`(tenant_id, project_id, state, created_at DESC)`；`(tenant_id, work_item_id, seq_no)` UNIQUE；`(tenant_id, machine_id, state)`；`(state, lease_expires_at)`（看门狗）；`(tenant_id, parent_execution_id)`；`(tenant_id, ensemble_group_id)`；`(tenant_id, assignee_principal_id, state)`；`(tenant_id, source_decision_id)` UNIQUE。
 方言差异：SQLite 外键需 `PRAGMA foreign_keys=ON`（底座已开）；MySQL `DESC` 索引 8.0 起生效；CHECK `kind='ADHOC' = (work_item_id IS NULL)` 在 MySQL 写作 `(kind='ADHOC' AND work_item_id IS NULL) OR (kind<>'ADHOC' AND work_item_id IS NOT NULL)`（VERIFICATION 用途除外的同构约束同理）。
 
 ### 3.4 `execution_turns`（INTERACTIVE / ADHOC 的轮次）
 
-| 列 | 类型 | 空 | 默认 | 说明 |
-|---|---|---|---|---|
-| project_id, execution_id | ID | N | | |
-| turn_no | INT | N | | 1..500；UNIQUE(`execution_id`,`turn_no`) |
-| client_request_id | STR(64) | N | | 客户端生成；UNIQUE(`execution_id`,`client_request_id`)（Preview 请求 ID 去重） |
-| retry_of_turn_id | ID | Y | | 重试来源 |
-| state | ENUM `TurnState` | N | `QUEUED` | |
-| prompt_message_id | ID | N | | 指向 USER 消息 |
-| settings_snapshot | JSON | N | | 本轮生效设置（§3.16 S1）；轮中修改设置**不影响**本轮 |
-| dispatch_epoch | INT | Y | | 被接受时的派发代次 |
-| has_output | BOOL | N | false | 是否产生过 ASSISTANT/TOOL 消息（重试判定） |
-| input_tokens / output_tokens / cost_micros | BIGINT | N | 0 | |
-| end_reason | ENUM `ExecutionEndReason` | Y | | |
-| started_at / ended_at / cancel_requested_at | TS | Y | | |
+| 列                                          | 类型                       | 空 | 默认       | 说明                                                                               |
+| ------------------------------------------- | -------------------------- | -- | ---------- | ---------------------------------------------------------------------------------- |
+| project_id, execution_id                    | ID                         | N  |            |                                                                                    |
+| turn_no                                     | INT                        | N  |            | 1..500；UNIQUE(`execution_id`,`turn_no`)                                       |
+| client_request_id                           | STR(64)                    | N  |            | 客户端生成；UNIQUE(`execution_id`,`client_request_id`)（Preview 请求 ID 去重） |
+| retry_of_turn_id                            | ID                         | Y  |            | 重试来源                                                                           |
+| state                                       | ENUM`TurnState`          | N  | `QUEUED` |                                                                                    |
+| prompt_message_id                           | ID                         | N  |            | 指向 USER 消息                                                                     |
+| settings_snapshot                           | JSON                       | N  |            | 本轮生效设置（§3.16 S1）；轮中修改设置**不影响**本轮                        |
+| dispatch_epoch                              | INT                        | Y  |            | 被接受时的派发代次                                                                 |
+| has_output                                  | BOOL                       | N  | false      | 是否产生过 ASSISTANT/TOOL 消息（重试判定）                                         |
+| input_tokens / output_tokens / cost_micros  | BIGINT                     | N  | 0          |                                                                                    |
+| end_reason                                  | ENUM`ExecutionEndReason` | Y  |            |                                                                                    |
+| started_at / ended_at / cancel_requested_at | TS                         | Y  |            |                                                                                    |
 
 ### 3.5 `execution_messages`
 
-| 列 | 类型 | 空 | 默认 | 说明 |
-|---|---|---|---|---|
-| project_id, execution_id | ID | N | | |
-| turn_id | ID | Y | | 系统消息可无 |
-| msg_no | INT | N | | 执行内递增；UNIQUE(`execution_id`,`msg_no`)；分页游标 |
-| role | ENUM | N | | USER / ASSISTANT / TOOL / SYSTEM |
-| text | TEXT1M | N | '' | ASSISTANT 文本增量追加到同轮最后一条 ASSISTANT 消息（Preview） |
-| tool_call_id | STR(128) | Y | | TOOL 行按 (`execution_id`,`tool_call_id`) upsert：running → completed/failed |
-| tool_title / tool_state | STR(200) / STR(32) | Y | | |
-| tool_details | TEXT64K | Y | | 超出部分截断并标注"完整内容见日志" |
-| attachments | JSON | Y | | USER 消息附件元数据（§3.16 S2），正文已并入 `text` |
+| 列                       | 类型               | 空 | 默认 | 说明                                                                              |
+| ------------------------ | ------------------ | -- | ---- | --------------------------------------------------------------------------------- |
+| project_id, execution_id | ID                 | N  |      |                                                                                   |
+| turn_id                  | ID                 | Y  |      | 系统消息可无                                                                      |
+| msg_no                   | INT                | N  |      | 执行内递增；UNIQUE(`execution_id`,`msg_no`)；分页游标                         |
+| role                     | ENUM               | N  |      | USER / ASSISTANT / TOOL / SYSTEM                                                  |
+| text                     | TEXT1M             | N  | ''   | ASSISTANT 文本增量追加到同轮最后一条 ASSISTANT 消息（Preview）                    |
+| tool_call_id             | STR(128)           | Y  |      | TOOL 行按 (`execution_id`,`tool_call_id`) upsert：running → completed/failed |
+| tool_title / tool_state  | STR(200) / STR(32) | Y  |      |                                                                                   |
+| tool_details             | TEXT64K            | Y  |      | 超出部分截断并标注"完整内容见日志"                                                |
+| attachments              | JSON               | Y  |      | USER 消息附件元数据（§3.16 S2），正文已并入`text`                              |
 
 索引：`(execution_id, msg_no)` UNIQUE；`(execution_id, tool_call_id)`。
 
 ### 3.6 `execution_interactions`
 
-| 列 | 类型 | 空 | 默认 | 说明 |
-|---|---|---|---|---|
-| project_id, execution_id | ID | N | | |
-| turn_id | ID | Y | | AUTONOMOUS 为 NULL |
-| dispatch_epoch | INT | N | | 只能回送给同一派发 |
-| native_request_id | STR(128) | N | | 执行桥生成的关联 ID；UNIQUE(`execution_id`,`dispatch_epoch`,`native_request_id`) |
-| kind | ENUM `InteractionKind` | N | | |
-| state | ENUM `InteractionState` | N | `PENDING` | |
-| title | STR(200) | N | | 例："Bash: npm test" |
-| details | TEXT64K | Y | | 工具入参（已脱敏） |
-| message | STR(2000) | Y | | RUNTIME_INPUT 提问 |
-| url | STR(2048) | Y | | 仅 http/https 渲染为链接 |
-| cwd | STR(1024) | Y | | |
-| schema_json | JSON | Y | | ≤32 KiB；RUNTIME_INPUT 的 JSON Schema |
-| response_action | ENUM | Y | | ACCEPT / DECLINE / CANCEL |
-| response_content | JSON | Y | | ≤32 KiB，按 `schema_json` 校验 |
-| responder_kind / responder_id / responder_authority | ENUM / ID / STR(96) | Y | | |
-| expires_at | TS | N | | `created_at + 30 min`（runtime 给出更早期限时取更早） |
-| decided_at / delivered_at / closed_at | TS | Y | | |
-| closed_reason | STR(32) | Y | | TIMEOUT / TURN_ENDED / EXECUTION_ENDED / FENCED / DELIVERY_FAILED |
+| 列                                                  | 类型                     | 空 | 默认        | 说明                                                                                   |
+| --------------------------------------------------- | ------------------------ | -- | ----------- | -------------------------------------------------------------------------------------- |
+| project_id, execution_id                            | ID                       | N  |             |                                                                                        |
+| turn_id                                             | ID                       | Y  |             | AUTONOMOUS 为 NULL                                                                     |
+| dispatch_epoch                                      | INT                      | N  |             | 只能回送给同一派发                                                                     |
+| native_request_id                                   | STR(128)                 | N  |             | 执行桥生成的关联 ID；UNIQUE(`execution_id`,`dispatch_epoch`,`native_request_id`) |
+| kind                                                | ENUM`InteractionKind`  | N  |             |                                                                                        |
+| state                                               | ENUM`InteractionState` | N  | `PENDING` |                                                                                        |
+| title                                               | STR(200)                 | N  |             | 例："Bash: npm test"                                                                   |
+| details                                             | TEXT64K                  | Y  |             | 工具入参（已脱敏）                                                                     |
+| message                                             | STR(2000)                | Y  |             | RUNTIME_INPUT 提问                                                                     |
+| url                                                 | STR(2048)                | Y  |             | 仅 http/https 渲染为链接                                                               |
+| cwd                                                 | STR(1024)                | Y  |             |                                                                                        |
+| schema_json                                         | JSON                     | Y  |             | ≤32 KiB；RUNTIME_INPUT 的 JSON Schema                                                 |
+| response_action                                     | ENUM                     | Y  |             | ACCEPT / DECLINE / CANCEL                                                              |
+| response_content                                    | JSON                     | Y  |             | ≤32 KiB，按`schema_json` 校验                                                       |
+| responder_kind / responder_id / responder_authority | ENUM / ID / STR(96)      | Y  |             |                                                                                        |
+| expires_at                                          | TS                       | N  |             | `created_at + 30 min`（runtime 给出更早期限时取更早）                                |
+| decided_at / delivered_at / closed_at               | TS                       | Y  |             |                                                                                        |
+| closed_reason                                       | STR(32)                  | Y  |             | TIMEOUT / TURN_ENDED / EXECUTION_ENDED / FENCED / DELIVERY_FAILED                      |
 
 索引：`(tenant_id, state, expires_at)`；`(tenant_id, project_id, state)`；`(execution_id, state)`。
 
 ### 3.7 `execution_events`（机器回传原始事件，保留 30 天）
 
-| 列 | 类型 | 空 | 说明 |
-|---|---|---|---|
-| execution_id | ID | N | |
-| dispatch_epoch | INT | N | |
-| seq | INT | N | 派发内从 1 连续；UNIQUE(`execution_id`,`dispatch_epoch`,`seq`) |
-| event_type | STR(32) | N | §6.3 事件类型 |
-| payload | JSON | N | ≤256 KiB（文本增量分批） |
-| occurred_at | TS | N | 机器时间（仅展示） |
-| received_at | TS | N | 服务端时间（权威） |
+| 列             | 类型    | 空 | 说明                                                                 |
+| -------------- | ------- | -- | -------------------------------------------------------------------- |
+| execution_id   | ID      | N  |                                                                      |
+| dispatch_epoch | INT     | N  |                                                                      |
+| seq            | INT     | N  | 派发内从 1 连续；UNIQUE(`execution_id`,`dispatch_epoch`,`seq`) |
+| event_type     | STR(32) | N  | §6.3 事件类型                                                       |
+| payload        | JSON    | N  | ≤256 KiB（文本增量分批）                                            |
+| occurred_at    | TS      | N  | 机器时间（仅展示）                                                   |
+| received_at    | TS      | N  | 服务端时间（权威）                                                   |
 
 ### 3.8 `execution_commands`（服务端 → 机器 outbox）
 
-| 列 | 类型 | 空 | 默认 | 说明 |
-|---|---|---|---|---|
-| machine_id | ID | N | | |
-| execution_id / verification_id / collection_id / merge_id | ID | Y | | 恰一非空 |
-| command_type | ENUM | N | | EXECUTION_START / EXECUTION_CANCEL / INTERACTION_RESPONSE / EVIDENCE_COLLECT / VERIFICATION_START / VERIFICATION_CANCEL / MERGE_START |
-| dispatch_epoch | INT | Y | | |
-| payload | JSON | N | | ≤1 MiB（§6.3） |
-| state | ENUM | N | `PENDING` | PENDING / FETCHED / ACKED / EXPIRED / SUPERSEDED |
-| fetch_count | INT | N | 0 | 未 ACK 时每 10 s 可重新下发，最多 6 次 |
-| fetched_at / acked_at / expires_at | TS | Y | | |
+| 列                                                        | 类型 | 空 | 默认        | 说明                                                                                                                                  |
+| --------------------------------------------------------- | ---- | -- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| machine_id                                                | ID   | N  |             |                                                                                                                                       |
+| execution_id / verification_id / collection_id / merge_id | ID   | Y  |             | 恰一非空                                                                                                                              |
+| command_type                                              | ENUM | N  |             | EXECUTION_START / EXECUTION_CANCEL / INTERACTION_RESPONSE / EVIDENCE_COLLECT / VERIFICATION_START / VERIFICATION_CANCEL / MERGE_START |
+| dispatch_epoch                                            | INT  | Y  |             |                                                                                                                                       |
+| payload                                                   | JSON | N  |             | ≤1 MiB（§6.3）                                                                                                                      |
+| state                                                     | ENUM | N  | `PENDING` | PENDING / FETCHED / ACKED / EXPIRED / SUPERSEDED                                                                                      |
+| fetch_count                                               | INT  | N  | 0           | 未 ACK 时每 10 s 可重新下发，最多 6 次                                                                                                |
+| fetched_at / acked_at / expires_at                        | TS   | Y  |             |                                                                                                                                       |
 
 索引：`(machine_id, state, created_at)`；`(execution_id, command_type)`。
 
 ### 3.9 `execution_workdir_locks`（同目录单写）
 
-| 列 | 类型 | 空 | 说明 |
-|---|---|---|---|
-| machine_id | ID | N | |
-| workdir_key | HASH | N | UNIQUE(`machine_id`,`workdir_key`) |
-| execution_id | ID | N | 持有者 |
-| dispatch_epoch | INT | N | |
-| acquired_at | TS | N | |
+| 列             | 类型 | 空 | 说明                                   |
+| -------------- | ---- | -- | -------------------------------------- |
+| machine_id     | ID   | N  |                                        |
+| workdir_key    | HASH | N  | UNIQUE(`machine_id`,`workdir_key`) |
+| execution_id   | ID   | N  | 持有者                                 |
+| dispatch_epoch | INT  | N  |                                        |
+| acquired_at    | TS   | N  |                                        |
 
 规则：写入型派发（`authorization_mode ≠ READ_ONLY` 或 AUTONOMOUS 或验证/合并）在**同一事务**内插入；唯一冲突 → 130415。RUNNING → 任一非 RUNNING 状态时删除；看门狗清理持有者已非 RUNNING 的残留行。
 
 ### 3.10 `execution_artifacts`
 
-| 列 | 类型 | 空 | 说明 |
-|---|---|---|---|
-| project_id, execution_id | ID | N | |
-| kind | ENUM `ArtifactKind` | N | COMMIT / BRANCH / PATCH / FILE / DOCUMENT / BUILD / CONTINUATION / MERGE |
-| name | STR(255) | N | |
-| ref | STR(512) | N | commit sha、分支名、相对路径或 URL；UNIQUE(`execution_id`,`kind`,`ref`) |
-| file_node_id / file_binding_id | ID | Y | 存于 files 时 |
-| content_hash | HASH | Y | 服务端计算 |
-| size_bytes | BIGINT | Y | |
-| metadata | JSON | N | §3.16 S5（diffstat、`changed_files[]` ≤20000 条） |
+| 列                             | 类型                 | 空 | 说明                                                                          |
+| ------------------------------ | -------------------- | -- | ----------------------------------------------------------------------------- |
+| project_id, execution_id       | ID                   | N  |                                                                               |
+| kind                           | ENUM`ArtifactKind` | N  | COMMIT / BRANCH / PATCH / FILE / DOCUMENT / BUILD / CONTINUATION / MERGE      |
+| name                           | STR(255)             | N  |                                                                               |
+| ref                            | STR(512)             | N  | commit sha、分支名、相对路径或 URL；UNIQUE(`execution_id`,`kind`,`ref`) |
+| file_node_id / file_binding_id | ID                   | Y  | 存于 files 时                                                                 |
+| content_hash                   | HASH                 | Y  | 服务端计算                                                                    |
+| size_bytes                     | BIGINT               | Y  |                                                                               |
+| metadata                       | JSON                 | N  | §3.16 S5（diffstat、`changed_files[]` ≤20000 条）                         |
 
 ### 3.11 `execution_evidence_items`（证据，永不删除）
 
-| 列 | 类型 | 空 | 默认 | 说明 |
-|---|---|---|---|---|
-| project_id, execution_id | ID | N | | |
-| work_item_id | ID | Y | | 关联后填 |
-| claim_id | ID | Y | | 附到 Claim 后不可再改 |
-| evidence_type | ENUM `EvidenceType` | N | | |
-| state | ENUM | N | `DRAFT` | DRAFT / ATTACHED / WITHDRAWN |
-| title | STR(200) | N | | |
-| producer_kind / producer_id / producer_authority | ENUM / ID / STR(96) | N/Y/N | | 证据生产者三元组（AGENT / HUMAN / MACHINE / SYSTEM） |
-| producer_machine_id | ID | Y | | |
-| producer_tool | STR(128) | Y | | 例 `git 2.47.1`、`go test (go1.25.1)` |
-| auto_collected | BOOL | N | false | |
-| collection_id | ID | Y | | |
-| produced_at | TS | N | | 源头时间（commit 时间、报告生成时间、观察时间） |
-| content_hash | HASH | N | | 服务端计算（§5.8）；UNIQUE(`execution_id`,`evidence_type`,`content_hash`) 去重 |
-| uri | STR(2048) | Y | | PR 链接等 |
-| file_node_id / file_binding_id | ID | Y | | 经 files ResourceBinding（purpose=`execution_evidence`，pinned） |
-| size_bytes / mime_type | BIGINT / STR(128) | Y | | |
-| summary | JSON | N | | 类型专属（§3.16 S3） |
-| scope_text | STR(2000) | Y | | 适用范围（如"仅 /api/orders 路径"） |
-| verification_id / verifier_version_id | ID | Y | | 由验证器产出的证据 |
-| result | ENUM `VerificationResult` | Y | | 验证器产出时填 |
-| limitations | STR(2000) | N | | 默认按类型模板（§5.8），可编辑追加 |
-| redaction_count | INT | N | 0 | 脱敏次数 |
-| attached_at / withdrawn_at | TS | Y | | |
+| 列                                               | 类型                       | 空    | 默认      | 说明                                                                                  |
+| ------------------------------------------------ | -------------------------- | ----- | --------- | ------------------------------------------------------------------------------------- |
+| project_id, execution_id                         | ID                         | N     |           |                                                                                       |
+| work_item_id                                     | ID                         | Y     |           | 关联后填                                                                              |
+| claim_id                                         | ID                         | Y     |           | 附到 Claim 后不可再改                                                                 |
+| evidence_type                                    | ENUM`EvidenceType`       | N     |           |                                                                                       |
+| state                                            | ENUM                       | N     | `DRAFT` | DRAFT / ATTACHED / WITHDRAWN                                                          |
+| title                                            | STR(200)                   | N     |           |                                                                                       |
+| producer_kind / producer_id / producer_authority | ENUM / ID / STR(96)        | N/Y/N |           | 证据生产者三元组（AGENT / HUMAN / MACHINE / SYSTEM）                                  |
+| producer_machine_id                              | ID                         | Y     |           |                                                                                       |
+| producer_tool                                    | STR(128)                   | Y     |           | 例`git 2.47.1`、`go test (go1.25.1)`                                              |
+| auto_collected                                   | BOOL                       | N     | false     |                                                                                       |
+| collection_id                                    | ID                         | Y     |           |                                                                                       |
+| produced_at                                      | TS                         | N     |           | 源头时间（commit 时间、报告生成时间、观察时间）                                       |
+| content_hash                                     | HASH                       | N     |           | 服务端计算（§5.8）；UNIQUE(`execution_id`,`evidence_type`,`content_hash`) 去重 |
+| uri                                              | STR(2048)                  | Y     |           | PR 链接等                                                                             |
+| file_node_id / file_binding_id                   | ID                         | Y     |           | 经 files ResourceBinding（purpose=`execution_evidence`，pinned）                    |
+| size_bytes / mime_type                           | BIGINT / STR(128)          | Y     |           |                                                                                       |
+| summary                                          | JSON                       | N     |           | 类型专属（§3.16 S3）                                                                 |
+| scope_text                                       | STR(2000)                  | Y     |           | 适用范围（如"仅 /api/orders 路径"）                                                   |
+| verification_id / verifier_version_id            | ID                         | Y     |           | 由验证器产出的证据                                                                    |
+| result                                           | ENUM`VerificationResult` | Y     |           | 验证器产出时填                                                                        |
+| limitations                                      | STR(2000)                  | N     |           | 默认按类型模板（§5.8），可编辑追加                                                   |
+| redaction_count                                  | INT                        | N     | 0         | 脱敏次数                                                                              |
+| attached_at / withdrawn_at                       | TS                         | Y     |           |                                                                                       |
 
 索引：`(tenant_id, claim_id)`；`(tenant_id, execution_id, state)`；`(execution_id, evidence_type, content_hash)` UNIQUE。
 
 ### 3.12 `execution_evidence_collections`
 
-| 列 | 类型 | 空 | 默认 | 说明 |
-|---|---|---|---|---|
-| project_id, execution_id | ID | N | | |
-| client_request_id | STR(64) | N | | UNIQUE(`execution_id`,`client_request_id`) |
-| state | ENUM | N | `PENDING` | PENDING / RUNNING / SUCCEEDED / PARTIAL / FAILED / TIMED_OUT |
-| include | JSON | N | | `["COMMITS","TEST_REPORTS","LOG"]` 子集 + `report_globs[]` |
-| base_commit / head_commit | STR(64) | Y | | |
-| item_count | INT | N | 0 | |
-| error | STR(2000) | Y | | |
-| requested_kind / requested_by | ENUM / ID | N/Y | | |
-| started_at / finished_at / deadline_at | TS | Y | | `deadline_at = created_at + 120 s` |
+| 列                                     | 类型      | 空  | 默认        | 说明                                                           |
+| -------------------------------------- | --------- | --- | ----------- | -------------------------------------------------------------- |
+| project_id, execution_id               | ID        | N   |             |                                                                |
+| client_request_id                      | STR(64)   | N   |             | UNIQUE(`execution_id`,`client_request_id`)                 |
+| state                                  | ENUM      | N   | `PENDING` | PENDING / RUNNING / SUCCEEDED / PARTIAL / FAILED / TIMED_OUT   |
+| include                                | JSON      | N   |             | `["COMMITS","TEST_REPORTS","LOG"]` 子集 + `report_globs[]` |
+| base_commit / head_commit              | STR(64)   | Y   |             |                                                                |
+| item_count                             | INT       | N   | 0           |                                                                |
+| error                                  | STR(2000) | Y   |             |                                                                |
+| requested_kind / requested_by          | ENUM / ID | N/Y |             |                                                                |
+| started_at / finished_at / deadline_at | TS        | Y   |             | `deadline_at = created_at + 120 s`                           |
 
 ### 3.13 `execution_context_items`
 
-| 列 | 类型 | 空 | 说明 |
-|---|---|---|---|
-| project_id, execution_id | ID | N | |
-| layer | INT | N | 1–7（§5.5） |
-| item_kind | STR(32) | N | AGENT_PROMPT / TEAM_RULE / WORK_ITEM / CRITERIA / PARENT_SUMMARY / CONTINUATION / FEEDBACK / KNOWLEDGE / SKILL / RUNTIME_GUIDE |
-| source_kind | ENUM `KnowledgeSourceKind` | Y | |
-| source_id / chunk_id | ID | Y | 出处 |
-| title | STR(200) | N | |
-| citation | STR(512) | N | 例 `[K3] 决策 #812 · 拒绝反馈：分页参数` |
-| score_ppm | INT | Y | 检索得分×10⁶ |
-| tokens | INT | N | 估算 token |
-| inclusion | ENUM | N | FULL / REFERENCE / DROPPED |
-| content_hash | HASH | N | |
+| 列                       | 类型                        | 空 | 说明                                                                                                                           |
+| ------------------------ | --------------------------- | -- | ------------------------------------------------------------------------------------------------------------------------------ |
+| project_id, execution_id | ID                          | N  |                                                                                                                                |
+| layer                    | INT                         | N  | 1–7（§5.5）                                                                                                                  |
+| item_kind                | STR(32)                     | N  | AGENT_PROMPT / TEAM_RULE / WORK_ITEM / CRITERIA / PARENT_SUMMARY / CONTINUATION / FEEDBACK / KNOWLEDGE / SKILL / RUNTIME_GUIDE |
+| source_kind              | ENUM`KnowledgeSourceKind` | Y  |                                                                                                                                |
+| source_id / chunk_id     | ID                          | Y  | 出处                                                                                                                           |
+| title                    | STR(200)                    | N  |                                                                                                                                |
+| citation                 | STR(512)                    | N  | 例`[K3] 决策 #812 · 拒绝反馈：分页参数`                                                                                     |
+| score_ppm                | INT                         | Y  | 检索得分×10⁶                                                                                                                 |
+| tokens                   | INT                         | N  | 估算 token                                                                                                                     |
+| inclusion                | ENUM                        | N  | FULL / REFERENCE / DROPPED                                                                                                     |
+| content_hash             | HASH                        | N  |                                                                                                                                |
 
 索引：`(execution_id, layer)`。
 
@@ -373,69 +372,69 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 `execution_verifiers`：
 
-| 列 | 类型 | 空 | 默认 | 说明 |
-|---|---|---|---|---|
-| key | STR(64) | N | | `^[a-z][a-z0-9-]{1,63}$`；UNIQUE(`tenant_id`,`key`) |
-| name | STR(200) | N | | |
-| layer | ENUM `VerificationLayer` | N | | 创建后不可改 |
-| state | ENUM | N | `ACTIVE` | ACTIVE / ARCHIVED |
-| current_version_no | INT | N | 1 | |
-| applies_to | JSON | N | | §3.16 S6 |
-| required | BOOL | N | false | 匹配时是否必需 |
+| 列                 | 类型                      | 空 | 默认       | 说明                                                      |
+| ------------------ | ------------------------- | -- | ---------- | --------------------------------------------------------- |
+| key                | STR(64)                   | N  |            | `^[a-z][a-z0-9-]{1,63}$`；UNIQUE(`tenant_id`,`key`) |
+| name               | STR(200)                  | N  |            |                                                           |
+| layer              | ENUM`VerificationLayer` | N  |            | 创建后不可改                                              |
+| state              | ENUM                      | N  | `ACTIVE` | ACTIVE / ARCHIVED                                         |
+| current_version_no | INT                       | N  | 1          |                                                           |
+| applies_to         | JSON                      | N  |            | §3.16 S6                                                 |
+| required           | BOOL                      | N  | false      | 匹配时是否必需                                            |
 
 `execution_verifier_versions`：`verifier_id ID N`、`version_no INT N`（UNIQUE(`verifier_id`,`version_no`)）、`spec JSON N`（§3.16 S7）、`timeout_ms BIGINT N`（1000–3600000，默认 600000）、`change_note STR(2000) Y`。只插入不更新。
 
 ### 3.15 `execution_verifications`（`version` 乐观锁，仅 HUMAN 层人工写结果时使用）
 
-| 列 | 类型 | 空 | 默认 | 说明 |
-|---|---|---|---|---|
-| project_id, work_item_id, claim_id, execution_id | ID | N | | 被验证的声明与执行 |
-| verifier_id / verifier_version_id / verifier_version_no | ID / ID / INT | N | | |
-| layer | ENUM `VerificationLayer` | N | | 冗余快照 |
-| required / advisory | BOOL | N | | `advisory = (layer = AI_ASSISTED)` |
-| attempt | INT | N | 1 | UNIQUE(`claim_id`,`verifier_id`,`attempt`) |
-| result | ENUM `VerificationResult` | N | `PENDING` | |
-| run_state | ENUM | N | `QUEUED` | QUEUED / DISPATCHED / RUNNING / DONE |
-| inputs | JSON | N | | `{commit, evidence_ids[]}` |
-| output | JSON | Y | | `evidence_json`（§3.16 S8） |
-| result_reason | STR(32) | Y | | TIMEOUT / COMMAND_NOT_RUNNABLE / REPORT_UNPARSEABLE / MACHINE_UNAVAILABLE / HUMAN_TIMEOUT / SELF_REVIEW / NO_REQUIRED_VERIFIER / CLAIM_SUPERSEDED |
-| tool_version | STR(128) | Y | | 机器回报的工具版本 |
-| machine_id | ID | Y | | |
-| verifier_execution_id | ID | Y | | AI_ASSISTED 派发出的执行 |
-| verifier_kind / verifier_actor_id / verifier_authority | ENUM / ID / STR(96) | Y | | HUMAN 层记录人 |
-| note | TEXT64K | Y | | 人工观察 / AI 发现摘要 |
-| queued_at / started_at / finished_at / deadline_at | TS | Y | | |
+| 列                                                      | 类型                       | 空 | 默认        | 说明                                                                                                                                              |
+| ------------------------------------------------------- | -------------------------- | -- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| project_id, work_item_id, claim_id, execution_id        | ID                         | N  |             | 被验证的声明与执行                                                                                                                                |
+| verifier_id / verifier_version_id / verifier_version_no | ID / ID / INT              | N  |             |                                                                                                                                                   |
+| layer                                                   | ENUM`VerificationLayer`  | N  |             | 冗余快照                                                                                                                                          |
+| required / advisory                                     | BOOL                       | N  |             | `advisory = (layer = AI_ASSISTED)`                                                                                                              |
+| attempt                                                 | INT                        | N  | 1           | UNIQUE(`claim_id`,`verifier_id`,`attempt`)                                                                                                  |
+| result                                                  | ENUM`VerificationResult` | N  | `PENDING` |                                                                                                                                                   |
+| run_state                                               | ENUM                       | N  | `QUEUED`  | QUEUED / DISPATCHED / RUNNING / DONE                                                                                                              |
+| inputs                                                  | JSON                       | N  |             | `{commit, evidence_ids[]}`                                                                                                                      |
+| output                                                  | JSON                       | Y  |             | `evidence_json`（§3.16 S8）                                                                                                                    |
+| result_reason                                           | STR(32)                    | Y  |             | TIMEOUT / COMMAND_NOT_RUNNABLE / REPORT_UNPARSEABLE / MACHINE_UNAVAILABLE / HUMAN_TIMEOUT / SELF_REVIEW / NO_REQUIRED_VERIFIER / CLAIM_SUPERSEDED |
+| tool_version                                            | STR(128)                   | Y  |             | 机器回报的工具版本                                                                                                                                |
+| machine_id                                              | ID                         | Y  |             |                                                                                                                                                   |
+| verifier_execution_id                                   | ID                         | Y  |             | AI_ASSISTED 派发出的执行                                                                                                                          |
+| verifier_kind / verifier_actor_id / verifier_authority  | ENUM / ID / STR(96)        | Y  |             | HUMAN 层记录人                                                                                                                                    |
+| note                                                    | TEXT64K                    | Y  |             | 人工观察 / AI 发现摘要                                                                                                                            |
+| queued_at / started_at / finished_at / deadline_at      | TS                         | Y  |             |                                                                                                                                                   |
 
 索引：`(tenant_id, claim_id)`；`(result, run_state, queued_at)`（调度）；`(tenant_id, project_id, result)`。
 
 ### 3.16 JSON Schema（摘要，实现时以 JSON Schema draft 2020-12 写入 `schema/` 并做单测）
 
-| # | 列 | Schema |
-|---|---|---|
-| S1 | `turns.settings_snapshot` | `{machine_id:string, runtime, model?:string≤160, effort?:string≤32, authorization_mode, tools_enabled:bool, workdir_path:string, native_session_id?:string, carryover:bool}`，`additionalProperties:false` |
-| S2 | `messages.attachments` | `[{name:string≤255, bytes:int≥0, sha256:hash}]`，≤8 项，`sum(bytes)≤49152` |
-| S3 | `evidence.summary` | 按 `evidence_type` oneOf：COMMIT `{sha, parents[], author_name, authored_at, committed_at, title≤200, files_changed, insertions, deletions, signature:"NONE"\|"GOOD"\|"BAD"\|"UNKNOWN"}`；PULL_REQUEST `{provider, url, number?, head_sha?, ci_state?}`；TEST_REPORT `{format:"JUNIT_XML"\|"GO_TEST_JSON"\|"TAP", passed, failed, skipped, errored, duration_ms, coverage_pct?:0–100}`；LOG `{bytes, lines, truncated:bool, tail_bytes}`；SCREENSHOT `{width, height, criterion_ids?[]}`；OBSERVATION `{text≤65536, observed_at, environment?≤200}`；ARTIFACT `{artifact_id, path}` |
-| S4 | `evidence_collections.include` | `{kinds:["COMMITS"\|"TEST_REPORTS"\|"LOG"], report_globs?: string[]≤10}` |
-| S5 | `artifacts.metadata` | `{diffstat?:{files,insertions,deletions}, changed_files?:[{path≤1024, blob_sha:string(40\|64)\|null}]≤20000, truncated?:bool}`；`blob_sha=null` 表示删除 |
-| S6 | `verifiers.applies_to` | `{work_item_types: WorkItemType[] (空=全部), risk_levels: RiskLevel[] (空=全部), project_ids: string[]\|null}` |
-| S7 | `verifier_versions.spec` | AUTOMATED `{argv:string[1..32]（每项≤1024）, workdir?:相对路径≤255, env?:{[^A-Z_][A-Z0-9_]{0,63}: string≤1024}≤20, report_globs?:string[]≤10, report_format:"JUNIT_XML"\|"GO_TEST_JSON"\|"TAP"\|"NONE", stdout_tail_bytes:1024–65536（默认 8192）, tool_version_argv?:string[]}`；AI_ASSISTED `{agent_id, prompt_template≤16384, max_cost_micros≤50000000}`；HUMAN `{instructions≤4000, eligible_role_keys:string[]≥1}` |
-| S8 | `verifications.output`（evidence_json） | `{exitCode:int\|null, signal?:string, durationMs:int, stdoutTail:string≤65536, stderrTail:string≤65536, files:[{path, evidence_id, sha256, bytes}]≤10, report?:S3.TEST_REPORT, findings?:[{severity:"INFO"\|"WARN"\|"BLOCKER", text≤2000, criterion_id?}]≤50}` |
-| S9 | `commands.payload` / 事件 `payload` | 见 §6.3 每条消息 |
+| #  | 列                                        | Schema                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1 | `turns.settings_snapshot`               | `{machine_id:string, runtime, model?:string≤160, effort?:string≤32, authorization_mode, tools_enabled:bool, workdir_path:string, native_session_id?:string, carryover:bool}`，`additionalProperties:false`                                                                                                                                                                                                                                                                                                                                                                                  |
+| S2 | `messages.attachments`                  | `[{name:string≤255, bytes:int≥0, sha256:hash}]`，≤8 项，`sum(bytes)≤49152`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| S3 | `evidence.summary`                      | 按`evidence_type` oneOf：COMMIT `{sha, parents[], author_name, authored_at, committed_at, title≤200, files_changed, insertions, deletions, signature:"NONE"\|"GOOD"\|"BAD"\|"UNKNOWN"}`；PULL_REQUEST `{provider, url, number?, head_sha?, ci_state?}`；TEST_REPORT `{format:"JUNIT_XML"\|"GO_TEST_JSON"\|"TAP", passed, failed, skipped, errored, duration_ms, coverage_pct?:0–100}`；LOG `{bytes, lines, truncated:bool, tail_bytes}`；SCREENSHOT `{width, height, criterion_ids?[]}`；OBSERVATION `{text≤65536, observed_at, environment?≤200}`；ARTIFACT `{artifact_id, path}` |
+| S4 | `evidence_collections.include`          | `{kinds:["COMMITS"\|"TEST_REPORTS"\|"LOG"], report_globs?: string[]≤10}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| S5 | `artifacts.metadata`                    | `{diffstat?:{files,insertions,deletions}, changed_files?:[{path≤1024, blob_sha:string(40\|64)\|null}]≤20000, truncated?:bool}`；`blob_sha=null` 表示删除                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| S6 | `verifiers.applies_to`                  | `{work_item_types: WorkItemType[] (空=全部), risk_levels: RiskLevel[] (空=全部), project_ids: string[]\|null}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| S7 | `verifier_versions.spec`                | AUTOMATED`{argv:string[1..32]（每项≤1024）, workdir?:相对路径≤255, env?:{[^A-Z_][A-Z0-9_]{0,63}: string≤1024}≤20, report_globs?:string[]≤10, report_format:"JUNIT_XML"\|"GO_TEST_JSON"\|"TAP"\|"NONE", stdout_tail_bytes:1024–65536（默认 8192）, tool_version_argv?:string[]}`；AI_ASSISTED `{agent_id, prompt_template≤16384, max_cost_micros≤50000000}`；HUMAN `{instructions≤4000, eligible_role_keys:string[]≥1}`                                                                                                                                                               |
+| S8 | `verifications.output`（evidence_json） | `{exitCode:int\|null, signal?:string, durationMs:int, stdoutTail:string≤65536, stderrTail:string≤65536, files:[{path, evidence_id, sha256, bytes}]≤10, report?:S3.TEST_REPORT, findings?:[{severity:"INFO"\|"WARN"\|"BLOCKER", text≤2000, criterion_id?}]≤50}`                                                                                                                                                                                                                                                                                                                                |
+| S9 | `commands.payload` / 事件 `payload`   | 见 §6.3 每条消息                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ### 3.17 模块内枚举（00 v1.3 §3：仅本模块使用，不进 00 §5）
 
-| 枚举 | 值 |
-|---|---|
-| `ExecutionPurpose` | DELIVERY, VERIFICATION, HANDOVER |
-| `AuthorizationMode` | READ_ONLY, ON_REQUEST（逐项 TOOL_PERMISSION；MVP 仅 CLAUDE_CODE）, FULL_AUTO |
-| `TurnState` | QUEUED, RUNNING, WAITING, COMPLETED, FAILED, CANCELLED, INTERRUPTED（Preview 01 会话状态） |
-| `InteractionResponseAction` | ACCEPT, DECLINE, CANCEL |
-| `ExecutionEndReason` | COMPLETED, CLAIM_SUBMITTED, CLAIM_INVALID, SESSION_ENDED, RUNTIME_ERROR, TIMEOUT, OUTPUT_LIMIT, COST_CAP, CONTEXT_EXHAUSTED, AGENT_GAVE_UP, TURN_IDLE, USER_PAUSE, DECISION_PAUSE, BUDGET_PAUSE, LEASE_EXPIRED, MACHINE_OFFLINE, SERVER_RESTART, HEARTBEAT_LOST, DISPATCH_UNCONFIRMED, DISPATCH_TIMEOUT, SPAWN_FAILED, RUNTIME_UNAVAILABLE, WORKDIR_UNAVAILABLE, BRIDGE_PROTOCOL_ERROR, USER_CANCEL, WORK_ITEM_CANCELLED, AGENT_STOPPED, AGENT_CRASHED, MACHINE_REVOKED, RULES_UNAVAILABLE, SUPERSEDED, SUPERSEDED_BY_RETRY, ENSEMBLE_STOPPED, MARKED_FAILED |
-| `ArtifactKind` | COMMIT, BRANCH, PATCH, FILE, DOCUMENT, BUILD, CONTINUATION, MERGE |
-| `EvidenceState` | DRAFT, ATTACHED, WITHDRAWN |
-| `CollectionState` | PENDING, RUNNING, SUCCEEDED, PARTIAL, FAILED, TIMED_OUT |
-| `VerificationRunState` | QUEUED, DISPATCHED, RUNNING, DONE |
-| `MergeState` | PENDING, MERGED, CONFLICT, FAILED |
+| 枚举                          | 值                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ExecutionPurpose`          | DELIVERY, VERIFICATION, HANDOVER                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `AuthorizationMode`         | READ_ONLY, ON_REQUEST（逐项 TOOL_PERMISSION；MVP 仅 CLAUDE_CODE）, FULL_AUTO                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `TurnState`                 | QUEUED, RUNNING, WAITING, COMPLETED, FAILED, CANCELLED, INTERRUPTED（Preview 01 会话状态）                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `InteractionResponseAction` | ACCEPT, DECLINE, CANCEL                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `ExecutionEndReason`        | COMPLETED, CLAIM_SUBMITTED, CLAIM_INVALID, SESSION_ENDED, RUNTIME_ERROR, TIMEOUT, OUTPUT_LIMIT, COST_CAP, CONTEXT_EXHAUSTED, AGENT_GAVE_UP, TURN_IDLE, USER_PAUSE, DECISION_PAUSE, BUDGET_PAUSE, LEASE_EXPIRED, MACHINE_OFFLINE, SERVER_RESTART, HEARTBEAT_LOST, DISPATCH_UNCONFIRMED, DISPATCH_TIMEOUT, SPAWN_FAILED, RUNTIME_UNAVAILABLE, WORKDIR_UNAVAILABLE, BRIDGE_PROTOCOL_ERROR, USER_CANCEL, WORK_ITEM_CANCELLED, AGENT_STOPPED, AGENT_CRASHED, MACHINE_REVOKED, RULES_UNAVAILABLE, SUPERSEDED, SUPERSEDED_BY_RETRY, ENSEMBLE_STOPPED, MARKED_FAILED |
+| `ArtifactKind`              | COMMIT, BRANCH, PATCH, FILE, DOCUMENT, BUILD, CONTINUATION, MERGE                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `EvidenceState`             | DRAFT, ATTACHED, WITHDRAWN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `CollectionState`           | PENDING, RUNNING, SUCCEEDED, PARTIAL, FAILED, TIMED_OUT                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `VerificationRunState`      | QUEUED, DISPATCHED, RUNNING, DONE                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `MergeState`                | PENDING, MERGED, CONFLICT, FAILED                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ### 3.18 `execution_merges`
 
@@ -444,51 +443,50 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 ---
 
-
 ### 3.19 执行表增补字段（D112 / D113，00 v2.0 §15）
 
 `execution_executions` 增加：
 
-| 列 | 类型 | 可空 | 默认 | 说明 |
-|---|---|---|---|---|
-| model_family | STR(32) | N | | 执行所用模型家族（如 `anthropic` / `openai` / `google` / `local:<name>`），派发时由 04 模型目录解析并快照，跨模型家族规则据此判定 |
-| verification_stage | ENUM `VerificationStage` | Y | NULL | 仅 `purpose ∈ {INTERNAL_TEST, INTERNAL_ACCEPTANCE}` 时为 `AGENT_TEST` / `AGENT_ACCEPTANCE` |
-| subject_execution_id | ID | Y | NULL | 内部验收执行所验收的那次交付执行 |
-| acceptance_suite_id | ID | Y | NULL | 本执行适用的冻结验收集 |
+| 列                   | 类型                      | 可空 | 默认 | 说明                                                                                                                                     |
+| -------------------- | ------------------------- | ---- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| model_family         | STR(32)                   | N    |      | 执行所用模型家族（如`anthropic` / `openai` / `google` / `local:<name>`），派发时由 04 模型目录解析并快照，跨模型家族规则据此判定 |
+| verification_stage   | ENUM`VerificationStage` | Y    | NULL | 仅`purpose ∈ {INTERNAL_TEST, INTERNAL_ACCEPTANCE}` 时为 `AGENT_TEST` / `AGENT_ACCEPTANCE`                                         |
+| subject_execution_id | ID                        | Y    | NULL | 内部验收执行所验收的那次交付执行                                                                                                         |
+| acceptance_suite_id  | ID                        | Y    | NULL | 本执行适用的冻结验收集                                                                                                                   |
 
 `ExecutionPurpose` 增加 `INTERNAL_TEST`（测试 Agent 执行）、`INTERNAL_ACCEPTANCE`（产品验收 Agent 执行）；二者不进分支树、不能提交完成声明、不得写入交付工作区（工作区以只读快照挂载，测试 Agent 新增的测试写入其自己的输出目录，经 BR-03-97 合入）。
 
 ### 3.20 `execution_acceptance_suites`（验收集，`version` 乐观锁）
 
-| 列 | 类型 | 可空 | 默认 | 说明 |
-|---|---|---|---|---|
-| id | ID | N | | |
-| tenant_id / project_id / work_item_id | ID | N | | 工作项级；需求级验收集可被多个工作项引用（`work_item_id` 可空时为需求级） |
-| requirement_version_no | INT | N | | 冻结时的需求基线版本 |
-| state | STR(16) | N | `DRAFT` | DRAFT / FROZEN / SUPERSEDED |
-| visible_files | JSON | N | `[]` | `[{path, sha256, file_node_id}]`，复制进执行者工作区，执行者只读 |
-| hidden_files | JSON | N | `[]` | `[{path, sha256, file_node_id}]`，**永不进入执行者工作区**，仅在平台副本中运行 |
-| command | JSON | N | | 运行命令数组（不经 shell） |
-| frozen_at / frozen_by | 时间 / ID | Y | | 计划批准时冻结（02 `plan.approved`）；冻结人须有 `acceptance_suite_manage` 或为计划批准动作本身 |
-| superseded_by | ID | Y | | 范围变更生成新版本时指向新集 |
+| 列                                    | 类型      | 可空 | 默认      | 说明                                                                                               |
+| ------------------------------------- | --------- | ---- | --------- | -------------------------------------------------------------------------------------------------- |
+| id                                    | ID        | N    |           |                                                                                                    |
+| tenant_id / project_id / work_item_id | ID        | N    |           | 工作项级；需求级验收集可被多个工作项引用（`work_item_id` 可空时为需求级）                        |
+| requirement_version_no                | INT       | N    |           | 冻结时的需求基线版本                                                                               |
+| state                                 | STR(16)   | N    | `DRAFT` | DRAFT / FROZEN / SUPERSEDED                                                                        |
+| visible_files                         | JSON      | N    | `[]`    | `[{path, sha256, file_node_id}]`，复制进执行者工作区，执行者只读                                 |
+| hidden_files                          | JSON      | N    | `[]`    | `[{path, sha256, file_node_id}]`，**永不进入执行者工作区**，仅在平台副本中运行             |
+| command                               | JSON      | N    |           | 运行命令数组（不经 shell）                                                                         |
+| frozen_at / frozen_by                 | 时间 / ID | Y    |           | 计划批准时冻结（02`plan.approved`）；冻结人须有 `acceptance_suite_manage` 或为计划批准动作本身 |
+| superseded_by                         | ID        | Y    |           | 范围变更生成新版本时指向新集                                                                       |
 
 ### 3.21 `execution_internal_qa_runs`
 
-| 列 | 类型 | 可空 | 默认 | 说明 |
-|---|---|---|---|---|
-| id | ID | N | | |
-| tenant_id / project_id / work_item_id | ID | N | | |
-| subject_execution_id | ID | N | | 被验收的交付执行 |
-| stage | ENUM `VerificationStage` | N | | AUTOMATED / AGENT_TEST / AGENT_ACCEPTANCE |
-| qa_execution_id | ID | Y | | AGENT_* 阶段对应的内部验收执行 |
-| agent_id / model_family | ID / STR(32) | Y | | AGENT_* 阶段的执行主体与模型家族 |
-| family_fallback | BOOL | N | false | 未能满足「不同模型家族」而退化为不同模型时为 true（05 BR-05-109） |
-| state | STR(16) | N | `PENDING` | PENDING / RUNNING / PASSED / FAILED / INCONCLUSIVE / ERROR |
-| waiting_reason | STR(32) | Y | NULL | PENDING 时的等待原因，目前仅 `TOOL_UNCALIBRATED`（BR-03-103） |
-| findings | JSON | N | `[]` | `[{criterion_id?, severity: BLOCKER\|MAJOR\|MINOR, summary, evidence_ids[]}]` |
-| screenshots | JSON | N | `[]` | `[{file_node_id, viewport, route, sha256}]` |
-| rubric_scores | JSON | Y | | 产品验收 Agent 按模板评分标准的逐项得分（11） |
-| started_at / ended_at | 时间 | Y | | |
+| 列                                    | 类型                      | 可空 | 默认        | 说明                                                                          |
+| ------------------------------------- | ------------------------- | ---- | ----------- | ----------------------------------------------------------------------------- |
+| id                                    | ID                        | N    |             |                                                                               |
+| tenant_id / project_id / work_item_id | ID                        | N    |             |                                                                               |
+| subject_execution_id                  | ID                        | N    |             | 被验收的交付执行                                                              |
+| stage                                 | ENUM`VerificationStage` | N    |             | AUTOMATED / AGENT_TEST / AGENT_ACCEPTANCE                                     |
+| qa_execution_id                       | ID                        | Y    |             | AGENT_* 阶段对应的内部验收执行                                                |
+| agent_id / model_family               | ID / STR(32)              | Y    |             | AGENT_* 阶段的执行主体与模型家族                                              |
+| family_fallback                       | BOOL                      | N    | false       | 未能满足「不同模型家族」而退化为不同模型时为 true（05 BR-05-109）             |
+| state                                 | STR(16)                   | N    | `PENDING` | PENDING / RUNNING / PASSED / FAILED / INCONCLUSIVE / ERROR                    |
+| waiting_reason                        | STR(32)                   | Y    | NULL        | PENDING 时的等待原因，目前仅`TOOL_UNCALIBRATED`（BR-03-103）                |
+| findings                              | JSON                      | N    | `[]`      | `[{criterion_id?, severity: BLOCKER\|MAJOR\|MINOR, summary, evidence_ids[]}]` |
+| screenshots                           | JSON                      | N    | `[]`      | `[{file_node_id, viewport, route, sha256}]`                                 |
+| rubric_scores                         | JSON                      | Y    |             | 产品验收 Agent 按模板评分标准的逐项得分（11）                                 |
+| started_at / ended_at                 | 时间                      | Y    |             |                                                                               |
 
 索引：`(work_item_id, subject_execution_id, stage)`；`(tenant_id, state, stage)`。
 
@@ -502,111 +500,111 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 ### 3.24 `execution_preview_sessions`（D119，`version` 乐观锁）
 
-| 列 | 类型 | 可空 | 默认 | 说明 |
-|---|---|---|---|---|
-| id | ID | N | | |
-| tenant_id / project_id | ID | N | | |
-| execution_id | ID | N | | SERVICE / ARTIFACT：被预览的执行；REVIEW：声明所属执行 |
-| claim_id | ID | Y | | 仅 REVIEW |
-| kind | ENUM `PreviewSessionKind` | N | | SERVICE（执行工作区内的运行服务）/ REVIEW（声明提交的隔离副本，BR-03-107）/ ARTIFACT（只读文件流，不启动服务） |
-| origin | ENUM `PreviewOrigin` | N | | PLATFORM（按预览配置由平台启动）/ AGENT_OFFERED（Agent 进程树内已监听的端口，BR-03-113）/ FILES（ARTIFACT） |
-| config_key | STR(64) | Y | | 预览配置项 key（PLATFORM） |
-| config_snapshot | JSON | Y | | `PreviewConfig` 快照（S8，§3.28） |
-| port | INT | Y | | 机器回环端口（SERVICE / REVIEW） |
-| commit | STR(64) | Y | | REVIEW：声明的 `head_commit` |
-| machine_id | ID | N | | |
-| holder_kind / holder_id | STR(16) / ID | N | | 隧道持有者：EXECUTION=execution_id；PREVIEW=本会话 id（REVIEW 占槽，04 `SlotHolderKind=PREVIEW`） |
-| label | STR(26) | N | | 预览子域标签，26 位 base32 小写（≥128 bit 随机，BR-03-111）；UNIQUE |
-| state | ENUM `PreviewSessionState` | N | `REQUESTED` | §4.y |
-| stop_reason | ENUM | Y | | USER, IDLE, MAX_LIFETIME, EXECUTION_ENDED, CLAIM_DECIDED, ACCESS_DISABLED, MACHINE_OFFLINE, HEALTH_FAILED, START_TIMEOUT, PROCESS_EXITED, PORT_LOST |
-| started_by | ID | N | | 发起主体（人或系统） |
-| ready_at / last_access_at / expires_at / ended_at | 时间 | Y | | `expires_at` = 创建 + 最长存活（BR-03-108） |
-| failure_detail | STR(500) | Y | | 启动日志末 20 行摘要（脱敏） |
-| version | INT | N | 1 | |
+| 列                                                | 类型                        | 可空 | 默认          | 说明                                                                                                                                                |
+| ------------------------------------------------- | --------------------------- | ---- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                                                | ID                          | N    |               |                                                                                                                                                     |
+| tenant_id / project_id                            | ID                          | N    |               |                                                                                                                                                     |
+| execution_id                                      | ID                          | N    |               | SERVICE / ARTIFACT：被预览的执行；REVIEW：声明所属执行                                                                                              |
+| claim_id                                          | ID                          | Y    |               | 仅 REVIEW                                                                                                                                           |
+| kind                                              | ENUM`PreviewSessionKind`  | N    |               | SERVICE（执行工作区内的运行服务）/ REVIEW（声明提交的隔离副本，BR-03-107）/ ARTIFACT（只读文件流，不启动服务）                                      |
+| origin                                            | ENUM`PreviewOrigin`       | N    |               | PLATFORM（按预览配置由平台启动）/ AGENT_OFFERED（Agent 进程树内已监听的端口，BR-03-113）/ FILES（ARTIFACT）                                         |
+| config_key                                        | STR(64)                     | Y    |               | 预览配置项 key（PLATFORM）                                                                                                                          |
+| config_snapshot                                   | JSON                        | Y    |               | `PreviewConfig` 快照（S8，§3.28）                                                                                                                |
+| port                                              | INT                         | Y    |               | 机器回环端口（SERVICE / REVIEW）                                                                                                                    |
+| commit                                            | STR(64)                     | Y    |               | REVIEW：声明的`head_commit`                                                                                                                       |
+| machine_id                                        | ID                          | N    |               |                                                                                                                                                     |
+| holder_kind / holder_id                           | STR(16) / ID                | N    |               | 隧道持有者：EXECUTION=execution_id；PREVIEW=本会话 id（REVIEW 占槽，04`SlotHolderKind=PREVIEW`）                                                  |
+| label                                             | STR(26)                     | N    |               | 预览子域标签，26 位 base32 小写（≥128 bit 随机，BR-03-111）；UNIQUE                                                                                |
+| state                                             | ENUM`PreviewSessionState` | N    | `REQUESTED` | §4.y                                                                                                                                               |
+| stop_reason                                       | ENUM                        | Y    |               | USER, IDLE, MAX_LIFETIME, EXECUTION_ENDED, CLAIM_DECIDED, ACCESS_DISABLED, MACHINE_OFFLINE, HEALTH_FAILED, START_TIMEOUT, PROCESS_EXITED, PORT_LOST |
+| started_by                                        | ID                          | N    |               | 发起主体（人或系统）                                                                                                                                |
+| ready_at / last_access_at / expires_at / ended_at | 时间                        | Y    |               | `expires_at` = 创建 + 最长存活（BR-03-108）                                                                                                       |
+| failure_detail                                    | STR(500)                    | Y    |               | 启动日志末 20 行摘要（脱敏）                                                                                                                        |
+| version                                           | INT                         | N    | 1             |                                                                                                                                                     |
 
 索引：(`execution_id`,`state`)；(`state`,`last_access_at`)（空闲回收）；(`state`,`expires_at`)；UNIQUE(`label`)。
 
 ### 3.25 `execution_share_links`（D119）
 
-| 列 | 类型 | 可空 | 默认 | 说明 |
-|---|---|---|---|---|
-| id | ID | N | | |
-| tenant_id / project_id / execution_id / preview_session_id | ID | N | | |
-| state | ENUM `ShareLinkState` | N | `PENDING_APPROVAL` | §4.y |
-| requested_by / decided_by / revoked_by | ID | N / Y / Y | | 申请人、批准或驳回人（人类）、撤销人 |
-| note | STR(500) | Y | | 给审批人与甲方看的说明（甲方页只显示这一项） |
-| ttl_hours | INT | N | 24 | 1–168 |
-| token_hash | HASH | Y | | 批准时生成 32 字节随机令牌，只存 SHA-256；UNIQUE |
-| approved_at / expires_at / revoked_at / ended_at | 时间 | Y | | `expires_at` = 批准时刻 + `ttl_hours` |
-| end_reason | ENUM | Y | | EXPIRED, REVOKED, REJECTED, SESSION_ENDED |
-| access_count / last_access_at | INT / 时间 | N / Y | 0 | 访问计数（每 IP 每小时去重） |
-| version | INT | N | 1 | |
+| 列                                                         | 类型                   | 可空      | 默认                 | 说明                                             |
+| ---------------------------------------------------------- | ---------------------- | --------- | -------------------- | ------------------------------------------------ |
+| id                                                         | ID                     | N         |                      |                                                  |
+| tenant_id / project_id / execution_id / preview_session_id | ID                     | N         |                      |                                                  |
+| state                                                      | ENUM`ShareLinkState` | N         | `PENDING_APPROVAL` | §4.y                                            |
+| requested_by / decided_by / revoked_by                     | ID                     | N / Y / Y |                      | 申请人、批准或驳回人（人类）、撤销人             |
+| note                                                       | STR(500)               | Y         |                      | 给审批人与甲方看的说明（甲方页只显示这一项）     |
+| ttl_hours                                                  | INT                    | N         | 24                   | 1–168                                           |
+| token_hash                                                 | HASH                   | Y         |                      | 批准时生成 32 字节随机令牌，只存 SHA-256；UNIQUE |
+| approved_at / expires_at / revoked_at / ended_at           | 时间                   | Y         |                      | `expires_at` = 批准时刻 + `ttl_hours`        |
+| end_reason                                                 | ENUM                   | Y         |                      | EXPIRED, REVOKED, REJECTED, SESSION_ENDED        |
+| access_count / last_access_at                              | INT / 时间             | N / Y     | 0                    | 访问计数（每 IP 每小时去重）                     |
+| version                                                    | INT                    | N         | 1                    |                                                  |
 
 ### 3.26 `execution_terminal_sessions`（D119）
 
-| 列 | 类型 | 可空 | 默认 | 说明 |
-|---|---|---|---|---|
-| id | ID | N | | |
-| tenant_id / project_id / execution_id / machine_id | ID | N | | |
-| mode | ENUM `TerminalMode` | N | | WATCH（只读观看，MVP）/ SHELL（交互，v1.1） |
-| principal_id | ID | N | | 打开者（SHELL 必须为人类） |
-| state | ENUM `TerminalSessionState` | N | `OPENING` | §4.y |
-| sandboxed | BOOL | Y | | SHELL：机器端是否有目录沙箱（04 BR-04-96） |
-| recording_file_id | ID | Y | | SHELL：asciicast v2 录制文件（files purpose `terminal_recording`） |
-| recording_sha256 | HASH | Y | | 关闭时计算，写入审计 |
-| opened_at / last_input_at / closed_at | 时间 | Y | | |
-| close_reason | ENUM | Y | | USER, IDLE, MAX_DURATION, EXECUTION_ENDED, ACCESS_DISABLED, MACHINE_OFFLINE, STREAM_RESET |
+| 列                                                 | 类型                         | 可空 | 默认        | 说明                                                                                      |
+| -------------------------------------------------- | ---------------------------- | ---- | ----------- | ----------------------------------------------------------------------------------------- |
+| id                                                 | ID                           | N    |             |                                                                                           |
+| tenant_id / project_id / execution_id / machine_id | ID                           | N    |             |                                                                                           |
+| mode                                               | ENUM`TerminalMode`         | N    |             | WATCH（只读观看，MVP）/ SHELL（交互，v1.1）                                               |
+| principal_id                                       | ID                           | N    |             | 打开者（SHELL 必须为人类）                                                                |
+| state                                              | ENUM`TerminalSessionState` | N    | `OPENING` | §4.y                                                                                     |
+| sandboxed                                          | BOOL                         | Y    |             | SHELL：机器端是否有目录沙箱（04 BR-04-96）                                                |
+| recording_file_id                                  | ID                           | Y    |             | SHELL：asciicast v2 录制文件（files purpose`terminal_recording`）                       |
+| recording_sha256                                   | HASH                         | Y    |             | 关闭时计算，写入审计                                                                      |
+| opened_at / last_input_at / closed_at              | 时间                         | Y    |             |                                                                                           |
+| close_reason                                       | ENUM                         | Y    |             | USER, IDLE, MAX_DURATION, EXECUTION_ENDED, ACCESS_DISABLED, MACHINE_OFFLINE, STREAM_RESET |
 
 ### 3.27 执行表增补字段（D119）
 
-| 列 | 类型 | 可空 | 默认 | 说明 |
-|---|---|---|---|---|
-| taken_over_by | ID | Y | | 人工接管者（人类，v1.1，BR-03-126）；非空时 Agent 不得继续该执行 |
-| taken_over_at | 时间 | Y | | |
+| 列            | 类型 | 可空 | 默认 | 说明                                                             |
+| ------------- | ---- | ---- | ---- | ---------------------------------------------------------------- |
+| taken_over_by | ID   | Y    |      | 人工接管者（人类，v1.1，BR-03-126）；非空时 Agent 不得继续该执行 |
+| taken_over_at | 时间 | Y    |      |                                                                  |
 
 人工保存的编辑写入 `execution_artifacts`（`kind=COMMIT`，`producer_kind=HUMAN`，`producer_id=taken_over_by`），不新建表。
 
 ### 3.28 模块内枚举增补（D119，不进 00 §5）
 
-| 枚举 | 值 |
-|---|---|
-| `PreviewSessionKind` / `PreviewOrigin` | SERVICE, REVIEW, ARTIFACT / PLATFORM, AGENT_OFFERED, FILES |
-| `PreviewSessionState` | REQUESTED, STARTING, READY, STOPPED, FAILED |
-| `PreviewKind`（预览配置的 kind） | WEB, API |
-| `ViewerKind` | WEB_DEVICE（设备框网页）, OPENAPI（接口控制台）, DOCUMENT（Markdown / 纯文本 / HTML 报告）, IMAGE, PDF, REPORT（测试报告）, VIDEO（v1.1）, CHAPTER（v1.1） |
-| `ShareLinkState` | PENDING_APPROVAL, ACTIVE, REJECTED, EXPIRED, REVOKED |
-| `TerminalMode` / `TerminalSessionState` | WATCH, SHELL / OPENING, OPEN, CLOSED |
+| 枚举                                        | 值                                                                                                                                                         |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PreviewSessionKind` / `PreviewOrigin`  | SERVICE, REVIEW, ARTIFACT / PLATFORM, AGENT_OFFERED, FILES                                                                                                 |
+| `PreviewSessionState`                     | REQUESTED, STARTING, READY, STOPPED, FAILED                                                                                                                |
+| `PreviewKind`（预览配置的 kind）          | WEB, API                                                                                                                                                   |
+| `ViewerKind`                              | WEB_DEVICE（设备框网页）, OPENAPI（接口控制台）, DOCUMENT（Markdown / 纯文本 / HTML 报告）, IMAGE, PDF, REPORT（测试报告）, VIDEO（v1.1）, CHAPTER（v1.1） |
+| `ShareLinkState`                          | PENDING_APPROVAL, ACTIVE, REJECTED, EXPIRED, REVOKED                                                                                                       |
+| `TerminalMode` / `TerminalSessionState` | WATCH, SHELL / OPENING, OPEN, CLOSED                                                                                                                       |
 
 **JSON Schema S8 `PreviewConfig`**：`{key: ^[a-z0-9-]{1,64}$, kind: "WEB"|"API", start: string[1..64]（argv，不经 shell）, cwd?: 相对工作区路径, port: 1024–65535, health_path: 以 / 开头 ≤256（默认 "/"）, env?: {名: 值}（名须在 04 `env_passthrough_names` 或本表声明，值不得含密钥，≤20 项）, openapi_path?: string（API 时 OpenAPI 文档路径）, start_timeout_s?: 10–600（默认 120）, devices?: ["DESKTOP"|"TABLET"|"PHONE"]}`。
 
 ### 3.29 `execution_comment_threads`（锚定批注线程，D120，`version` 乐观锁）
 
-| 列 | 类型 | 可空 | 默认 | 说明 |
-|---|---|---|---|---|
-| id | ID | N | | |
-| tenant_id / project_id | ID | N | | |
-| execution_id | ID | N | | 产物所属执行（批注按执行的 `execution_read` 授权） |
-| work_item_id | ID | Y | | 冗余（执行关联的工作项），用于工作项流与评审台汇总 |
-| artifact_kind | ENUM `CommentArtifactKind` | N | | WORKSPACE_FILE（执行工作区文件，A63 / A64）/ EVIDENCE_FILE（证据文件，A30）/ ARTIFACT（`execution_artifacts` 行）/ PREVIEW_PAGE（服务预览或评审预览中的页面） |
-| artifact_ref | JSON | N | | S10：`{path?, evidence_id?, artifact_id?, preview_session_id?, url_path?}`（按 kind 必填其一组；`path` 相对工作区，经规范化） |
-| version_kind | ENUM `CommentVersionKind` | N | | COMMIT（已提交文件 / 评审预览）/ CONTENT_SHA256（证据、未提交文件、产物）/ HEAD_COMMIT（运行中服务预览：批注时执行的 `head_commit` + `uncommitted` 标记） |
-| version_ref | STR(64) | N | | commit sha 或内容 sha256；**批注永远绑定它所针对的版本** |
-| version_uncommitted | BOOL | N | false | HEAD_COMMIT 且工作区有未提交改动 |
-| viewer_kind | ENUM `ViewerKind`（§3.28） | N | | 批注时使用的查看器；另含 CODE（文件 Tab 代码视图 / 差异视图） |
-| anchor_kind | ENUM `AnchorKind`（00 §5） | N | | CODE_LINES / TABLE_ROW / HTML_REGION / MEDIA_TIME / TEXT_PARAGRAPH |
-| anchor | JSON | N | | S9（§3.31） |
-| anchor_excerpt | STR(2000) | Y | | 锚定内容的文本快照（代码行、表格行、段落原文、HTML 区域的可见文本）；遮罩文件不可批注（BR-03-135） |
-| anchor_snapshot_file_id | ID | Y | | HTML_REGION 的区域截图（机器有 `browser_capture` 时生成，files purpose `comment_anchor`） |
-| anchor_status | ENUM `AnchorStatus` | N | `CURRENT` | 相对 `anchor_checked_version` 的状态：CURRENT / RELOCATED / OUTDATED（BR-03-137） |
-| anchor_checked_version | STR(64) | Y | | 最近一次判定所针对的版本 |
-| relocated_anchor | JSON | Y | | RELOCATED 时在新版本中的锚点（S9） |
-| visibility | ENUM `CommentVisibility`（00 §5） | N | `INTERNAL` | INTERNAL（团队）/ CLIENT（甲方在交付产物上创建，BR-03-141） |
-| delivery_id / delivery_item_id | ID | Y | | CLIENT 必填：所在交付与交付项（07） |
-| state | ENUM `CommentThreadState` | N | `OPEN` | OPEN / RESOLVED |
-| resolved_by / resolved_at | ID / 时间 | Y | | |
-| created_by_kind / created_by | ENUM / ID | N | | HUMAN / AGENT（principal）/ CLIENT（`intake_contact_id`） |
-| comment_count / last_seq / last_comment_at | INT / BIGINT / 时间 | N / N / Y | 0 / 0 | `last_seq` = 线程内批注序号（`comment_thread` 写入流，BR-03-140） |
-| version | INT | N | 1 | |
+| 列                                         | 类型                                | 可空      | 默认         | 说明                                                                                                                                                            |
+| ------------------------------------------ | ----------------------------------- | --------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                                         | ID                                  | N         |              |                                                                                                                                                                 |
+| tenant_id / project_id                     | ID                                  | N         |              |                                                                                                                                                                 |
+| execution_id                               | ID                                  | N         |              | 产物所属执行（批注按执行的`execution_read` 授权）                                                                                                             |
+| work_item_id                               | ID                                  | Y         |              | 冗余（执行关联的工作项），用于工作项流与评审台汇总                                                                                                              |
+| artifact_kind                              | ENUM`CommentArtifactKind`         | N         |              | WORKSPACE_FILE（执行工作区文件，A63 / A64）/ EVIDENCE_FILE（证据文件，A30）/ ARTIFACT（`execution_artifacts` 行）/ PREVIEW_PAGE（服务预览或评审预览中的页面） |
+| artifact_ref                               | JSON                                | N         |              | S10：`{path?, evidence_id?, artifact_id?, preview_session_id?, url_path?}`（按 kind 必填其一组；`path` 相对工作区，经规范化）                               |
+| version_kind                               | ENUM`CommentVersionKind`          | N         |              | COMMIT（已提交文件 / 评审预览）/ CONTENT_SHA256（证据、未提交文件、产物）/ HEAD_COMMIT（运行中服务预览：批注时执行的`head_commit` + `uncommitted` 标记）    |
+| version_ref                                | STR(64)                             | N         |              | commit sha 或内容 sha256；**批注永远绑定它所针对的版本**                                                                                                  |
+| version_uncommitted                        | BOOL                                | N         | false        | HEAD_COMMIT 且工作区有未提交改动                                                                                                                                |
+| viewer_kind                                | ENUM`ViewerKind`（§3.28）        | N         |              | 批注时使用的查看器；另含 CODE（文件 Tab 代码视图 / 差异视图）                                                                                                   |
+| anchor_kind                                | ENUM`AnchorKind`（00 §5）        | N         |              | CODE_LINES / TABLE_ROW / HTML_REGION / MEDIA_TIME / TEXT_PARAGRAPH                                                                                              |
+| anchor                                     | JSON                                | N         |              | S9（§3.31）                                                                                                                                                    |
+| anchor_excerpt                             | STR(2000)                           | Y         |              | 锚定内容的文本快照（代码行、表格行、段落原文、HTML 区域的可见文本）；遮罩文件不可批注（BR-03-135）                                                              |
+| anchor_snapshot_file_id                    | ID                                  | Y         |              | HTML_REGION 的区域截图（机器有`browser_capture` 时生成，files purpose `comment_anchor`）                                                                    |
+| anchor_status                              | ENUM`AnchorStatus`                | N         | `CURRENT`  | 相对`anchor_checked_version` 的状态：CURRENT / RELOCATED / OUTDATED（BR-03-137）                                                                              |
+| anchor_checked_version                     | STR(64)                             | Y         |              | 最近一次判定所针对的版本                                                                                                                                        |
+| relocated_anchor                           | JSON                                | Y         |              | RELOCATED 时在新版本中的锚点（S9）                                                                                                                              |
+| visibility                                 | ENUM`CommentVisibility`（00 §5） | N         | `INTERNAL` | INTERNAL（团队）/ CLIENT（甲方在交付产物上创建，BR-03-141）                                                                                                     |
+| delivery_id / delivery_item_id             | ID                                  | Y         |              | CLIENT 必填：所在交付与交付项（07）                                                                                                                             |
+| state                                      | ENUM`CommentThreadState`          | N         | `OPEN`     | OPEN / RESOLVED                                                                                                                                                 |
+| resolved_by / resolved_at                  | ID / 时间                           | Y         |              |                                                                                                                                                                 |
+| created_by_kind / created_by               | ENUM / ID                           | N         |              | HUMAN / AGENT（principal）/ CLIENT（`intake_contact_id`）                                                                                                     |
+| comment_count / last_seq / last_comment_at | INT / BIGINT / 时间                 | N / N / Y | 0 / 0        | `last_seq` = 线程内批注序号（`comment_thread` 写入流，BR-03-140）                                                                                           |
+| version                                    | INT                                 | N         | 1            |                                                                                                                                                                 |
 
 索引：(`execution_id`, `state`)；(`tenant_id`, `work_item_id`, `state`)；(`execution_id`, `artifact_kind`, `version_ref`)；(`delivery_id`) WHERE `visibility='CLIENT'`。
 
@@ -614,17 +612,17 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 `execution_comments`：
 
-| 列 | 类型 | 可空 | 默认 | 说明 |
-|---|---|---|---|---|
-| id | ID | N | | |
-| thread_id | ID | N | | UNIQUE(`thread_id`, `seq`) |
-| seq | BIGINT | N | | 线程内单调，从 1 起；在线程行锁内分配 |
-| author_kind / author_id | ENUM / ID | N | | HUMAN / AGENT / CLIENT |
-| body | STR(8000) | N | | 纯文本 + `<@principal_id>` 提及令牌（规则同 05 BR-05-84；CLIENT 不可提及、≤2000） |
-| mention_principal_ids | JSON | N | `[]` | ≤20 |
-| edited_at / edit_count | 时间 / INT | Y / N | / 0 | 作者 15 min 内、≤10 次 |
-| retracted_at | 时间 | Y | | 撤回不物理删除 |
-| created_at | 时间 | N | | |
+| 列                      | 类型       | 可空  | 默认   | 说明                                                                                |
+| ----------------------- | ---------- | ----- | ------ | ----------------------------------------------------------------------------------- |
+| id                      | ID         | N     |        |                                                                                     |
+| thread_id               | ID         | N     |        | UNIQUE(`thread_id`, `seq`)                                                      |
+| seq                     | BIGINT     | N     |        | 线程内单调，从 1 起；在线程行锁内分配                                               |
+| author_kind / author_id | ENUM / ID  | N     |        | HUMAN / AGENT / CLIENT                                                              |
+| body                    | STR(8000)  | N     |        | 纯文本 +`<@principal_id>` 提及令牌（规则同 05 BR-05-84；CLIENT 不可提及、≤2000） |
+| mention_principal_ids   | JSON       | N     | `[]` | ≤20                                                                                |
+| edited_at / edit_count  | 时间 / INT | Y / N | / 0    | 作者 15 min 内、≤10 次                                                             |
+| retracted_at            | 时间       | Y     |        | 撤回不物理删除                                                                      |
+| created_at              | 时间       | N     |        |                                                                                     |
 
 `execution_comment_conversions`（批注 → 下游对象，只追加）：`id`、`thread_id`、`target_kind ENUM CommentConversionTarget`（FEEDBACK（02 裁决的结构化反馈）/ DEFECT（12 缺陷）/ REJECTION_ITEM（07 甲方拒收项））、`target_id`（02 `delivery_decision_feedback` 行 / 工作项 id / 07 `delivery_acceptance_items` 行）、`anchor_snapshot JSON`（转换时的 `{anchor_kind, anchor, version_kind, version_ref, artifact_ref, anchor_excerpt}`，不随线程后续变化）、`converted_by_kind / converted_by`、`converted_at`；UNIQUE(`thread_id`, `target_kind`)。
 
@@ -632,24 +630,25 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 **S9 `Anchor`**（按 `anchor_kind`，`additionalProperties:false`）：
 
-| anchor_kind | 字段 | 适用查看器 | 版本 |
-|---|---|---|---|
-| CODE_LINES | `{path, start_line ≥1, end_line ≥start_line（跨度 ≤500）, side?:"NEW"\|"OLD"（差异视图）, start_col?, end_col?}` | CODE（文件 / 差异）、DOCUMENT 纯文本 | MVP |
-| TABLE_ROW | `{path, row_index ≥0（不含表头）, row_key?:{column, value≤200}（有主键列时）, row_sha256, columns?:[name]≤20}` | DOCUMENT 中的 CSV / TSV / JSON 数组表格、REPORT 中的表格行 | MVP |
-| HTML_REGION | `{url_path ≤2000, selector?（CSS ≤512，辅助脚本可用时）, rect:{x, y, w, h}（CSS 像素，相对文档左上角）, viewport:{w, h, device:"DESKTOP"\|"TABLET"\|"PHONE", dpr}, scroll:{x, y}, text_quote?≤200, precision:"SELECTOR"\|"RECT_ONLY"}` | WEB_DEVICE、REPORT、PDF（rect 相对页，另含 `page`） | MVP |
-| MEDIA_TIME | `{path, start_ms ≥0, end_ms?（区间，> start_ms）, duration_ms, proxy_profile?:"480p"}` | VIDEO | v1.1 |
-| TEXT_PARAGRAPH | `{path, paragraph_index ≥0, paragraph_sha256, quote:{exact≤500, prefix?≤64, suffix?≤64}, chapter_key?}` | DOCUMENT（Markdown / 纯文本）为 MVP；CHAPTER（小说章节）为 v1.1 | MVP / v1.1 |
+| anchor_kind    | 字段                                                                                                                                                                                                                                     | 适用查看器                                                      | 版本       |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------- |
+| CODE_LINES     | `{path, start_line ≥1, end_line ≥start_line（跨度 ≤500）, side?:"NEW"\|"OLD"（差异视图）, start_col?, end_col?}`                                                                                                                     | CODE（文件 / 差异）、DOCUMENT 纯文本                            | MVP        |
+| TABLE_ROW      | `{path, row_index ≥0（不含表头）, row_key?:{column, value≤200}（有主键列时）, row_sha256, columns?:[name]≤20}`                                                                                                                      | DOCUMENT 中的 CSV / TSV / JSON 数组表格、REPORT 中的表格行      | MVP        |
+| HTML_REGION    | `{url_path ≤2000, selector?（CSS ≤512，辅助脚本可用时）, rect:{x, y, w, h}（CSS 像素，相对文档左上角）, viewport:{w, h, device:"DESKTOP"\|"TABLET"\|"PHONE", dpr}, scroll:{x, y}, text_quote?≤200, precision:"SELECTOR"\|"RECT_ONLY"}` | WEB_DEVICE、REPORT、PDF（rect 相对页，另含`page`）            | MVP        |
+| MEDIA_TIME     | `{path, start_ms ≥0, end_ms?（区间，> start_ms）, duration_ms, proxy_profile?:"480p"}`                                                                                                                                                | VIDEO                                                           | v1.1       |
+| TEXT_PARAGRAPH | `{path, paragraph_index ≥0, paragraph_sha256, quote:{exact≤500, prefix?≤64, suffix?≤64}, chapter_key?}`                                                                                                                            | DOCUMENT（Markdown / 纯文本）为 MVP；CHAPTER（小说章节）为 v1.1 | MVP / v1.1 |
 
-| 枚举 | 值 |
-|---|---|
-| `CommentArtifactKind` / `CommentVersionKind` | WORKSPACE_FILE, EVIDENCE_FILE, ARTIFACT, PREVIEW_PAGE / COMMIT, CONTENT_SHA256, HEAD_COMMIT |
-| `AnchorStatus` | CURRENT, RELOCATED, OUTDATED |
-| `CommentThreadState` / `CommentConversionTarget` | OPEN, RESOLVED / FEEDBACK, DEFECT, REJECTION_ITEM |
-| `ViewerKind` 增补 | CODE（文件 Tab 代码视图与差异视图） |
+| 枚举                                                 | 值                                                                                          |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `CommentArtifactKind` / `CommentVersionKind`     | WORKSPACE_FILE, EVIDENCE_FILE, ARTIFACT, PREVIEW_PAGE / COMMIT, CONTENT_SHA256, HEAD_COMMIT |
+| `AnchorStatus`                                     | CURRENT, RELOCATED, OUTDATED                                                                |
+| `CommentThreadState` / `CommentConversionTarget` | OPEN, RESOLVED / FEEDBACK, DEFECT, REJECTION_ITEM                                           |
+| `ViewerKind` 增补                                  | CODE（文件 Tab 代码视图与差异视图）                                                         |
 
 ### 3.32 执行表增补字段（D120 团队工具集）
 
 `execution_executions` 增加列：`toolset JSON NULL`——S11 工具集快照，派发时由 05 `ToolsetResolver.ResolveOn` 解析后写入，**同一派发内不可变**（`{revision, entries:[{source:"CATALOG"|"MACHINE_LOCAL", kind:"MCP_SERVER"|"SKILL", entry_key, version_no?, content_sha256?, transport?}], warnings[]}`，≤64 KB，不含配置与凭据）；`toolset_revision STR(64) NULL`（= `toolset.revision`，便于按版本检索）。返工 / 重试分支是新的派发，各自记录。
+
 ## 4. 状态机
 
 所有迁移在**单一数据库事务**内完成：条件更新（`version` 或 `state` CAS）→ 追加审计（如需）→ 写 outbox 领域事件 → `change_seq+1`。事件与审计在提交成功后才对外可见（09 outbox）。
@@ -669,110 +668,109 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 终态：SUCCEEDED、FAILED、CANCELLED。INTERRUPTED 为"待处置"：**只能由人显式恢复或标记失败**，系统永不自动重放（Preview 01；PRD §16）。
 
-| # | 当前 | 触发（命令/事件） | 守卫 | 目标（reason） | 副作用 |
-|---|---|---|---|---|---|
-| E00 | CREATED（`dispatch_epoch=0`） | `autostart=true` 创建完成 / 人工 `POST .../resumptions`（`autostart=false` 时）/ INTERACTIVE 首轮 | BR-03-20 | 保持 CREATED，`dispatch_epoch=1`，写 START 命令 | |
-| E01 | CREATED | 机器 `execution.accepted`（epoch 一致） | 命令未 SUPERSEDED | RUNNING | `started_at`（首次）、`accepted_at`、`lease_expires_at=now+30s`；同事务调 02 `ExecutionStarted(tx)`；首次发 `execution.started`；`execution.state_changed` |
-| E02 | CREATED | 机器 `execution.rejected` | — | FAILED（SPAWN_FAILED / RUNTIME_UNAVAILABLE / WORKDIR_UNAVAILABLE） | 释放锁与执行槽；BR-03-14 上报 `ExecutionFailed` |
-| E02b | CREATED | 组包时 06 已批准 RULE 记忆无法读取（BR-03-30a） | — | FAILED（RULES_UNAVAILABLE），不写 START 命令 | 释放锁与执行槽；`ExecutionFailed{kind:INFRA}`（运行时未开始）；通知 N3 |
-| E03 | CREATED | 命令 FETCHED 后 60 s 无 accepted/rejected | — | INTERRUPTED（DISPATCH_UNCONFIRMED） | 栅栏 epoch；通知 N2 |
-| E04 | CREATED | 命令 PENDING 超 60 min 未被取走 | — | FAILED（DISPATCH_TIMEOUT） | 命令 → EXPIRED；`ExecutionFailed{INFRA}`（02 可自动重试） |
-| E05 | CREATED | `PUT .../termination {outcome:CANCELLED}` | BR-03-40 | CANCELLED（USER_CANCEL） | 命令 → SUPERSEDED |
-| E06 | RUNNING | `exited{code:0}` + 合法 `claim.json`（AUTONOMOUS） | — | SUCCEEDED（CLAIM_SUBMITTED / COMPLETED） | 同一事务：先落随事件到达的证据 → `EvidenceBinder.ValidateClaimable(tx, execution_id, fromExit=true)`（此时执行仍为 RUNNING，允许）→ 调 02 `ClaimSubmitter.SubmitOn（`from_exit=true`）(tx, …, head_commit)`；成功 CLAIM_SUBMITTED，失败 COMPLETED + `state_detail` + 通知 N3；释放执行槽（04 `ReleaseSlot`）与写锁。**ENSEMBLE 分支例外**：不调 `ClaimSubmitter`，写 `pending_claim`、`state_reason=CLAIM_SUBMITTED`，按 BR-03-60 直接排队验证（BR-03-08） |
-| E07 | RUNNING | `exited{code:0}`，`claim.json` 缺失或不合 Schema | — | FAILED（CLAIM_INVALID） | |
-| E08 | RUNNING | `exited{code:1 或 ∉{0,2,3}}` / `error` 事件 | — | FAILED（RUNTIME_ERROR / BRIDGE_PROTOCOL_ERROR） | 通知 N3 |
-| E09 | RUNNING | `exited{code:2}` | — | PAUSED（CONTEXT_EXHAUSTED） | `continue.md` 存 CONTINUATION 产物，恢复时注入第 3 层 |
-| E10 | RUNNING | `exited{code:3}` | — | PAUSED（AGENT_GAVE_UP） | 同上；通知 N4 |
-| E11 | RUNNING | （INTERACTIVE/ADHOC）`turn_ended` | — | PAUSED（TURN_IDLE） | 轮次终态；释放 SHARED_DIR 锁；未决交互 → CANCELLED |
-| E12 | RUNNING | `now > accepted_at + timeout_ms` | — | 下发 CANCEL；终止事件或 30 s 强制 → FAILED（TIMEOUT）；INTERACTIVE：轮次 FAILED、执行 PAUSED | |
-| E13 | RUNNING | `output_bytes` 将超 8 MiB | — | 拒收该批并下发 CANCEL → AUTONOMOUS：FAILED（OUTPUT_LIMIT）；INTERACTIVE：轮次 FAILED、执行 PAUSED | |
-| E14 | RUNNING | `cost_micros ≥ max_cost_micros` | — | 下发 CANCEL → PAUSED（COST_CAP） | 通知 N5 |
-| E15 | RUNNING | `PUT .../suspension` / 02 `ExecutionLauncher.Pause`（PAUSE 裁决）/ 07 `budget.threshold_reached{threshold_pct≥100}` | 命令需权限 | 下发 CANCEL（保留 `native_session_id`）→ PAUSED（USER_PAUSE / DECISION_PAUSE / BUDGET_PAUSE） | 30 s 未确认则强制并栅栏 |
-| E16 | RUNNING | 看门狗：`lease_expires_at < now` | — | INTERRUPTED（LEASE_EXPIRED） | 栅栏（该 epoch 后续事件 409）；交互 → CANCELLED；锁释放；追加 SYSTEM 消息"执行已中断，请先检查工具副作用再继续"；通知 N2 |
-| E17 | RUNNING / PAUSED（有未完成派发） | 04 `machine.state_changed{OFFLINE\|REVOKED}` | — | INTERRUPTED（OFFLINE → MACHINE_OFFLINE；REVOKED → MACHINE_REVOKED） | 同 E16 |
-| E18 | RUNNING | 进程启动栅栏（BR-03-12） | — | INTERRUPTED（SERVER_RESTART） | 同 E16 |
-| E19 | RUNNING | 机器 `execution.lost`（daemon 重启无法重接 / 适配器心跳 45 s 丢失 / outbox 满 / outbox 缺口无法补发） | epoch 一致 | INTERRUPTED（HEARTBEAT_LOST） | 同 E16 |
-| E19b | RUNNING / PAUSED | 05 `agent.state_changed{to:CRASHED}`（AUTONOMOUS，本 Agent 的执行） | — | INTERRUPTED（AGENT_CRASHED） | 同 E16；**不自动重放**：05 的自动重启只恢复 Agent 进程，不续跑被中断执行；BR-03-14 上报 `kind=RUNTIME` |
-| E20 | RUNNING | `PUT .../termination {CANCELLED}` | BR-03-40 | 下发 CANCEL → CANCELLED（USER_CANCEL）（30 s 强制） | |
-| E21 | PAUSED | 新轮次 `POST .../turns` / `POST .../resumptions` | BR-03-20 | 保持 PAUSED，`dispatch_epoch+1`，写 START 命令；accepted → RUNNING | 新轮次 QUEUED |
-| E22 | PAUSED | 02 `claim.submitted`（本执行） | 已关联工作项 | SUCCEEDED（CLAIM_SUBMITTED） | 排队验证（§5.9）；相似度由 02 在声明事务内经 `ChangeSimilarity` 读取（§5.10） |
-| E23 | PAUSED | `termination {outcome:SUCCEEDED}` | 最后一轮 COMPLETED | SUCCEEDED（SESSION_ENDED） | |
-| E24 | PAUSED / INTERRUPTED | `termination {outcome:FAILED}` | BR-03-40 | FAILED（MARKED_FAILED） | |
-| E25 | PAUSED / INTERRUPTED | `termination {outcome:CANCELLED}` | BR-03-40 | CANCELLED（USER_CANCEL） | |
-| E26 | INTERRUPTED | `POST .../resumptions {acknowledge_side_effects:true}`，或 INTERACTIVE 新轮次带同字段 | BR-03-20 | 同 E21（同机同目录续接原生会话，否则 carryover） | 审计 `execution.resumed_after_interrupt` |
-| E27 | 任一非终态 | 02 经 `ExecutionLauncher.CancelExecution`（工作项取消 / 改派 / 05 ENSEMBLE 落选或超时）/ 05 `agent.state_changed{STOPPED,RETIRING,RETIRED}`（AUTONOMOUS） | `purpose=HANDOVER` 的执行豁免 05 触发（退役期间仍须完成交接文档）；已因 MACHINE_OFFLINE / MACHINE_REVOKED / AGENT_CRASHED 处于 INTERRUPTED 的执行不因 `agent.state_changed` 改变（与事件到达顺序无关） | CANCELLED（WORK_ITEM_CANCELLED / SUPERSEDED / AGENT_STOPPED / ENSEMBLE_STOPPED） | RUNNING 时先下发 CANCEL |
+| #    | 当前                             | 触发（命令/事件）                                                                                                                                            | 守卫                                                                                                                                                                                                       | 目标（reason）                                                                                     | 副作用                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E00  | CREATED（`dispatch_epoch=0`）  | `autostart=true` 创建完成 / 人工 `POST .../resumptions`（`autostart=false` 时）/ INTERACTIVE 首轮                                                      | BR-03-20                                                                                                                                                                                                   | 保持 CREATED，`dispatch_epoch=1`，写 START 命令                                                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| E01  | CREATED                          | 机器`execution.accepted`（epoch 一致）                                                                                                                     | 命令未 SUPERSEDED                                                                                                                                                                                          | RUNNING                                                                                            | `started_at`（首次）、`accepted_at`、`lease_expires_at=now+30s`；同事务调 02 `ExecutionStarted(tx)`；首次发 `execution.started`；`execution.state_changed`                                                                                                                                                                                                                                                                                                             |
+| E02  | CREATED                          | 机器`execution.rejected`                                                                                                                                   | —                                                                                                                                                                                                         | FAILED（SPAWN_FAILED / RUNTIME_UNAVAILABLE / WORKDIR_UNAVAILABLE）                                 | 释放锁与执行槽；BR-03-14 上报`ExecutionFailed`                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| E02b | CREATED                          | 组包时 06 已批准 RULE 记忆无法读取（BR-03-30a）                                                                                                              | —                                                                                                                                                                                                         | FAILED（RULES_UNAVAILABLE），不写 START 命令                                                       | 释放锁与执行槽；`ExecutionFailed{kind:INFRA}`（运行时未开始）；通知 N3                                                                                                                                                                                                                                                                                                                                                                                                           |
+| E03  | CREATED                          | 命令 FETCHED 后 60 s 无 accepted/rejected                                                                                                                    | —                                                                                                                                                                                                         | INTERRUPTED（DISPATCH_UNCONFIRMED）                                                                | 栅栏 epoch；通知 N2                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| E04  | CREATED                          | 命令 PENDING 超 60 min 未被取走                                                                                                                              | —                                                                                                                                                                                                         | FAILED（DISPATCH_TIMEOUT）                                                                         | 命令 → EXPIRED；`ExecutionFailed{INFRA}`（02 可自动重试）                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| E05  | CREATED                          | `PUT .../termination {outcome:CANCELLED}`                                                                                                                  | BR-03-40                                                                                                                                                                                                   | CANCELLED（USER_CANCEL）                                                                           | 命令 → SUPERSEDED                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| E06  | RUNNING                          | `exited{code:0}` + 合法 `claim.json`（AUTONOMOUS）                                                                                                       | —                                                                                                                                                                                                         | SUCCEEDED（CLAIM_SUBMITTED / COMPLETED）                                                           | 同一事务：先落随事件到达的证据 →`EvidenceBinder.ValidateClaimable(tx, execution_id, fromExit=true)`（此时执行仍为 RUNNING，允许）→ 调 02 `ClaimSubmitter.SubmitOn（`from_exit=true`）(tx, …, head_commit)`；成功 CLAIM_SUBMITTED，失败 COMPLETED + `state_detail` + 通知 N3；释放执行槽（04 `ReleaseSlot`）与写锁。**ENSEMBLE 分支例外**：不调 `ClaimSubmitter`，写 `pending_claim`、`state_reason=CLAIM_SUBMITTED`，按 BR-03-60 直接排队验证（BR-03-08） |
+| E07  | RUNNING                          | `exited{code:0}`，`claim.json` 缺失或不合 Schema                                                                                                         | —                                                                                                                                                                                                         | FAILED（CLAIM_INVALID）                                                                            |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| E08  | RUNNING                          | `exited{code:1 或 ∉{0,2,3}}` / `error` 事件                                                                                                             | —                                                                                                                                                                                                         | FAILED（RUNTIME_ERROR / BRIDGE_PROTOCOL_ERROR）                                                    | 通知 N3                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| E09  | RUNNING                          | `exited{code:2}`                                                                                                                                           | —                                                                                                                                                                                                         | PAUSED（CONTEXT_EXHAUSTED）                                                                        | `continue.md` 存 CONTINUATION 产物，恢复时注入第 3 层                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| E10  | RUNNING                          | `exited{code:3}`                                                                                                                                           | —                                                                                                                                                                                                         | PAUSED（AGENT_GAVE_UP）                                                                            | 同上；通知 N4                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| E11  | RUNNING                          | （INTERACTIVE/ADHOC）`turn_ended`                                                                                                                          | —                                                                                                                                                                                                         | PAUSED（TURN_IDLE）                                                                                | 轮次终态；释放 SHARED_DIR 锁；未决交互 → CANCELLED                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| E12  | RUNNING                          | `now > accepted_at + timeout_ms`                                                                                                                           | —                                                                                                                                                                                                         | 下发 CANCEL；终止事件或 30 s 强制 → FAILED（TIMEOUT）；INTERACTIVE：轮次 FAILED、执行 PAUSED      |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| E13  | RUNNING                          | `output_bytes` 将超 8 MiB                                                                                                                                  | —                                                                                                                                                                                                         | 拒收该批并下发 CANCEL → AUTONOMOUS：FAILED（OUTPUT_LIMIT）；INTERACTIVE：轮次 FAILED、执行 PAUSED |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| E14  | RUNNING                          | `cost_micros ≥ max_cost_micros`                                                                                                                           | —                                                                                                                                                                                                         | 下发 CANCEL → PAUSED（COST_CAP）                                                                  | 通知 N5                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| E15  | RUNNING                          | `PUT .../suspension` / 02 `ExecutionLauncher.Pause`（PAUSE 裁决）/ 07 `budget.threshold_reached{threshold_pct≥100}`                                   | 命令需权限                                                                                                                                                                                                 | 下发 CANCEL（保留`native_session_id`）→ PAUSED（USER_PAUSE / DECISION_PAUSE / BUDGET_PAUSE）    | 30 s 未确认则强制并栅栏                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| E16  | RUNNING                          | 看门狗：`lease_expires_at < now`                                                                                                                           | —                                                                                                                                                                                                         | INTERRUPTED（LEASE_EXPIRED）                                                                       | 栅栏（该 epoch 后续事件 409）；交互 → CANCELLED；锁释放；追加 SYSTEM 消息"执行已中断，请先检查工具副作用再继续"；通知 N2                                                                                                                                                                                                                                                                                                                                                          |
+| E17  | RUNNING / PAUSED（有未完成派发） | 04`machine.state_changed{OFFLINE\|REVOKED}`                                                                                                                 | —                                                                                                                                                                                                         | INTERRUPTED（OFFLINE → MACHINE_OFFLINE；REVOKED → MACHINE_REVOKED）                              | 同 E16                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| E18  | RUNNING                          | 进程启动栅栏（BR-03-12）                                                                                                                                     | —                                                                                                                                                                                                         | INTERRUPTED（SERVER_RESTART）                                                                      | 同 E16                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| E19  | RUNNING                          | 机器`execution.lost`（daemon 重启无法重接 / 适配器心跳 45 s 丢失 / outbox 满 / outbox 缺口无法补发）                                                       | epoch 一致                                                                                                                                                                                                 | INTERRUPTED（HEARTBEAT_LOST）                                                                      | 同 E16                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| E19b | RUNNING / PAUSED                 | 05`agent.state_changed{to:CRASHED}`（AUTONOMOUS，本 Agent 的执行）                                                                                         | —                                                                                                                                                                                                         | INTERRUPTED（AGENT_CRASHED）                                                                       | 同 E16；**不自动重放**：05 的自动重启只恢复 Agent 进程，不续跑被中断执行；BR-03-14 上报 `kind=RUNTIME`                                                                                                                                                                                                                                                                                                                                                                     |
+| E20  | RUNNING                          | `PUT .../termination {CANCELLED}`                                                                                                                          | BR-03-40                                                                                                                                                                                                   | 下发 CANCEL → CANCELLED（USER_CANCEL）（30 s 强制）                                               |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| E21  | PAUSED                           | 新轮次`POST .../turns` / `POST .../resumptions`                                                                                                          | BR-03-20                                                                                                                                                                                                   | 保持 PAUSED，`dispatch_epoch+1`，写 START 命令；accepted → RUNNING                              | 新轮次 QUEUED                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| E22  | PAUSED                           | 02`claim.submitted`（本执行）                                                                                                                              | 已关联工作项                                                                                                                                                                                               | SUCCEEDED（CLAIM_SUBMITTED）                                                                       | 排队验证（§5.9）；相似度由 02 在声明事务内经`ChangeSimilarity` 读取（§5.10）                                                                                                                                                                                                                                                                                                                                                                                                   |
+| E23  | PAUSED                           | `termination {outcome:SUCCEEDED}`                                                                                                                          | 最后一轮 COMPLETED                                                                                                                                                                                         | SUCCEEDED（SESSION_ENDED）                                                                         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| E24  | PAUSED / INTERRUPTED             | `termination {outcome:FAILED}`                                                                                                                             | BR-03-40                                                                                                                                                                                                   | FAILED（MARKED_FAILED）                                                                            |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| E25  | PAUSED / INTERRUPTED             | `termination {outcome:CANCELLED}`                                                                                                                          | BR-03-40                                                                                                                                                                                                   | CANCELLED（USER_CANCEL）                                                                           |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| E26  | INTERRUPTED                      | `POST .../resumptions {acknowledge_side_effects:true}`，或 INTERACTIVE 新轮次带同字段                                                                      | BR-03-20                                                                                                                                                                                                   | 同 E21（同机同目录续接原生会话，否则 carryover）                                                   | 审计`execution.resumed_after_interrupt`                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| E27  | 任一非终态                       | 02 经`ExecutionLauncher.CancelExecution`（工作项取消 / 改派 / 05 ENSEMBLE 落选或超时）/ 05 `agent.state_changed{STOPPED,RETIRING,RETIRED}`（AUTONOMOUS） | `purpose=HANDOVER` 的执行豁免 05 触发（退役期间仍须完成交接文档）；已因 MACHINE_OFFLINE / MACHINE_REVOKED / AGENT_CRASHED 处于 INTERRUPTED 的执行不因 `agent.state_changed` 改变（与事件到达顺序无关） | CANCELLED（WORK_ITEM_CANCELLED / SUPERSEDED / AGENT_STOPPED / ENSEMBLE_STOPPED）                   | RUNNING 时先下发 CANCEL                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 所有 DELIVERY 执行进入 FAILED / INTERRUPTED 的迁移都在同一事务内调用 02 `ExecutionFailed(tx, ref, kind)`（kind 规则 BR-03-14）；从 INTERRUPTED/PAUSED 回到 RUNNING（E26、E21）时再次调用 `ExecutionStarted(tx)`：02 T20b 对工作项 `current_execution_id` 的人工恢复把 EXECUTION_FAILED → IN_PROGRESS，且不计入 `infra_retry_count`。执行进入终态、INTERRUPTED 或 PAUSED 的同一事务内释放执行槽（04 `ReleaseSlot`）与写锁（BR-03-74）。E15 的 DECISION_PAUSE 与 E21 的恢复由 02 经 `ExecutionLauncher.Pause/Resume` 在其裁决事务内同步触发（不经事件）。
 
 **非法迁移**（服务层迁移表 = 上表补集，统一校验）：
 
-| 当前 | 命令 | 错误码 |
-|---|---|---|
-| SUCCEEDED / FAILED / CANCELLED | 任何变更（turns、resumptions、suspension、termination、PATCH、work-item-link、新增证据） | 409 130411 `execution.error.terminal` |
-| RUNNING | 新轮次 | 409 130412 `execution.error.turn_active` |
-| RUNNING；CREATED 且 `dispatch_epoch>0` | resumptions | 409 130410 `execution.error.illegal_transition` |
-| CREATED / INTERRUPTED | suspension | 409 130410（PAUSED 再 suspension → 幂等 200） |
-| INTERRUPTED | 新轮次 / resumptions 未带 `acknowledge_side_effects:true` | 422 130450 `execution.error.side_effect_ack_required` |
-| CREATED / RUNNING / INTERRUPTED | `termination {SUCCEEDED}` | 409 130410 |
-| RUNNING | 绑定声明证据 / 换机器 / 切工具开关 | 409 130447 / 130424 |
-| kind=ADHOC | 绑定声明证据 | 409 130425 `execution.error.adhoc_not_linked` |
-| 机器回传 epoch ≠ 当前，或状态不接受事件 | 任何执行级消息 | 409 130427 `execution.error.fenced` |
+| 当前                                     | 命令                                                                                     | 错误码                                                 |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| SUCCEEDED / FAILED / CANCELLED           | 任何变更（turns、resumptions、suspension、termination、PATCH、work-item-link、新增证据） | 409 130411`execution.error.terminal`                 |
+| RUNNING                                  | 新轮次                                                                                   | 409 130412`execution.error.turn_active`              |
+| RUNNING；CREATED 且`dispatch_epoch>0`  | resumptions                                                                              | 409 130410`execution.error.illegal_transition`       |
+| CREATED / INTERRUPTED                    | suspension                                                                               | 409 130410（PAUSED 再 suspension → 幂等 200）         |
+| INTERRUPTED                              | 新轮次 / resumptions 未带`acknowledge_side_effects:true`                               | 422 130450`execution.error.side_effect_ack_required` |
+| CREATED / RUNNING / INTERRUPTED          | `termination {SUCCEEDED}`                                                              | 409 130410                                             |
+| RUNNING                                  | 绑定声明证据 / 换机器 / 切工具开关                                                       | 409 130447 / 130424                                    |
+| kind=ADHOC                               | 绑定声明证据                                                                             | 409 130425`execution.error.adhoc_not_linked`         |
+| 机器回传 epoch ≠ 当前，或状态不接受事件 | 任何执行级消息                                                                           | 409 130427`execution.error.fenced`                   |
 
 ### 4.2 Turn（`TurnState`，Preview 01）
 
-| 当前 | 触发 | 目标 | 执行映射 |
-|---|---|---|---|
-| — | `POST .../turns` | QUEUED | 执行保持原态，UI"排队中" |
-| QUEUED | accepted | RUNNING | 执行 → RUNNING |
-| QUEUED | 取消（命令未被取走） | CANCELLED | 执行回原态 |
-| QUEUED | rejected / E03 / E04 | FAILED / INTERRUPTED | 同 E02–E04 |
-| RUNNING | `interaction_requested` | WAITING | 执行 RUNNING +"待你决定" |
-| WAITING | 全部交互已送达或关闭 | RUNNING | |
-| RUNNING / WAITING | `turn_ended{completed}` | COMPLETED | 执行 → PAUSED（TURN_IDLE） |
-| RUNNING / WAITING | `error` / 超时 / 超限 | FAILED | 执行 → PAUSED |
-| RUNNING / WAITING | `turn_ended{cancelled}` | CANCELLED | 执行 → PAUSED |
-| RUNNING / WAITING | E16–E19 | INTERRUPTED | 执行 → INTERRUPTED |
+| 当前              | 触发                      | 目标                 | 执行映射                    |
+| ----------------- | ------------------------- | -------------------- | --------------------------- |
+| —                | `POST .../turns`        | QUEUED               | 执行保持原态，UI"排队中"    |
+| QUEUED            | accepted                  | RUNNING              | 执行 → RUNNING             |
+| QUEUED            | 取消（命令未被取走）      | CANCELLED            | 执行回原态                  |
+| QUEUED            | rejected / E03 / E04      | FAILED / INTERRUPTED | 同 E02–E04                 |
+| RUNNING           | `interaction_requested` | WAITING              | 执行 RUNNING +"待你决定"    |
+| WAITING           | 全部交互已送达或关闭      | RUNNING              |                             |
+| RUNNING / WAITING | `turn_ended{completed}` | COMPLETED            | 执行 → PAUSED（TURN_IDLE） |
+| RUNNING / WAITING | `error` / 超时 / 超限   | FAILED               | 执行 → PAUSED              |
+| RUNNING / WAITING | `turn_ended{cancelled}` | CANCELLED            | 执行 → PAUSED              |
+| RUNNING / WAITING | E16–E19                  | INTERRUPTED          | 执行 → INTERRUPTED         |
 
 非法：对终态轮次取消 → 幂等 200 返回当前态；取消非当前轮次 → 409 130410。
 
 ### 4.3 Interaction（`InteractionState`）
 
-| 当前 | 触发 | 守卫 | 目标 | 副作用 |
-|---|---|---|---|---|
-| — | 事件 `interaction_requested` | 每派发 ≤100；`native_request_id` 未重复 | PENDING | `expires_at=+30 min`；`pending_interaction_count+1`；`interaction.requested`；通知 N1 |
-| PENDING | `PUT /interactions/{id}/decision` | BR-03-31；CAS `state='PENDING'` | DECIDED | 写 INTERACTION_RESPONSE 命令；审计 `execution.interaction_responded`；`interaction.decided` |
-| PENDING | 到期（看门狗 15 s） | — | EXPIRED | 写 INTERACTION_RESPONSE `{action:CANCEL}`（运行时视为拒绝）；`interaction.closed` |
-| PENDING | 轮次结束 / 取消 / 中断 / 栅栏 | — | CANCELLED | `interaction.closed` |
-| DECIDED | 事件 `interaction_delivered` | 同 epoch | DELIVERED | 轮次 WAITING→RUNNING（若无其他未决） |
-| DECIDED | 派发结束而未送达 | — | CANCELLED（DELIVERY_FAILED） | UI"未送达（执行已结束）"；**禁止**套用到重试/新派发 |
+| 当前    | 触发                                | 守卫                                       | 目标                         | 副作用                                                                                         |
+| ------- | ----------------------------------- | ------------------------------------------ | ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| —      | 事件`interaction_requested`       | 每派发 ≤100；`native_request_id` 未重复 | PENDING                      | `expires_at=+30 min`；`pending_interaction_count+1`；`interaction.requested`；通知 N1    |
+| PENDING | `PUT /interactions/{id}/decision` | BR-03-31；CAS`state='PENDING'`           | DECIDED                      | 写 INTERACTION_RESPONSE 命令；审计`execution.interaction_responded`；`interaction.decided` |
+| PENDING | 到期（看门狗 15 s）                 | —                                         | EXPIRED                      | 写 INTERACTION_RESPONSE`{action:CANCEL}`（运行时视为拒绝）；`interaction.closed`           |
+| PENDING | 轮次结束 / 取消 / 中断 / 栅栏       | —                                         | CANCELLED                    | `interaction.closed`                                                                         |
+| DECIDED | 事件`interaction_delivered`       | 同 epoch                                   | DELIVERED                    | 轮次 WAITING→RUNNING（若无其他未决）                                                          |
+| DECIDED | 派发结束而未送达                    | —                                         | CANCELLED（DELIVERY_FAILED） | UI"未送达（执行已结束）"；**禁止**套用到重试/新派发                                      |
 
 非法：对 DECIDED 再提交**相同** `{action, content}`（规范化 JSON 相等）→ 200 原结果；不同 → 409 130421；对 EXPIRED / CANCELLED / DELIVERED → 409 130420。
 
 ### 4.4 Verification（`VerificationResult` × `run_state`）
 
-| 当前 | 触发 | 目标 | 说明 |
-|---|---|---|---|
-| — | `claim.submitted` 选出验证器 / 手动重跑 | PENDING·QUEUED | |
-| PENDING·QUEUED | 调度器写 VERIFICATION_START（AUTOMATED）/ 创建 VERIFICATION 执行（AI） | PENDING·DISPATCHED | HUMAN 层停在 QUEUED 等人 |
-| PENDING·DISPATCHED | 机器 `verification.started` | PENDING·RUNNING | |
-| PENDING·RUNNING | `verification.result` | PASSED / FAILED / INCONCLUSIVE ·DONE | 映射 BR-03-62 |
-| PENDING·* | 超 `deadline_at`（排队 30 min；运行 = spec.timeout_ms + 60 s；HUMAN 72 h） | INCONCLUSIVE（MACHINE_UNAVAILABLE / TIMEOUT / HUMAN_TIMEOUT） | |
-| PENDING·RUNNING | 机器离线（租约 30 s） | 首次重新 QUEUED；第二次 INCONCLUSIVE（MACHINE_UNAVAILABLE） | 验证视为无副作用，允许一次自动重排（**本规格提议**） |
-| PENDING（HUMAN） | `PUT /verifications/{id}/result` | PASSED / FAILED / INCONCLUSIVE | BR-03-65 |
-| PENDING·* | Claim 被取代 / 工作项取消 | INCONCLUSIVE（CLAIM_SUPERSEDED） | |
+| 当前                | 触发                                                                        | 目标                                                          | 说明                                                       |
+| ------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------- |
+| —                  | `claim.submitted` 选出验证器 / 手动重跑                                   | PENDING·QUEUED                                               |                                                            |
+| PENDING·QUEUED     | 调度器写 VERIFICATION_START（AUTOMATED）/ 创建 VERIFICATION 执行（AI）      | PENDING·DISPATCHED                                           | HUMAN 层停在 QUEUED 等人                                   |
+| PENDING·DISPATCHED | 机器`verification.started`                                                | PENDING·RUNNING                                              |                                                            |
+| PENDING·RUNNING    | `verification.result`                                                     | PASSED / FAILED / INCONCLUSIVE ·DONE                         | 映射 BR-03-62                                              |
+| PENDING·*          | 超`deadline_at`（排队 30 min；运行 = spec.timeout_ms + 60 s；HUMAN 72 h） | INCONCLUSIVE（MACHINE_UNAVAILABLE / TIMEOUT / HUMAN_TIMEOUT） |                                                            |
+| PENDING·RUNNING    | 机器离线（租约 30 s）                                                       | 首次重新 QUEUED；第二次 INCONCLUSIVE（MACHINE_UNAVAILABLE）   | 验证视为无副作用，允许一次自动重排（**本规格提议**） |
+| PENDING（HUMAN）    | `PUT /verifications/{id}/result`                                          | PASSED / FAILED / INCONCLUSIVE                                | BR-03-65                                                   |
+| PENDING·*          | Claim 被取代 / 工作项取消                                                   | INCONCLUSIVE（CLAIM_SUPERSEDED）                              |                                                            |
 
 非法：对非 PENDING 写结果 → 409 130410；对非 HUMAN 层人工写结果 → 409 130434；结果不可改（重跑 = 新行 attempt+1）。
 
 ### 4.5 证据、采集与合并
 
-| 对象 | 迁移 | 非法 → 错误码 |
-|---|---|---|
-| Evidence | DRAFT →（02 Claim 绑定）ATTACHED；DRAFT →（执行者排除）WITHDRAWN；WITHDRAWN → DRAFT（仅声明前） | 修改/撤回 ATTACHED → 409 130430 |
-| Collection | PENDING → RUNNING → SUCCEEDED / PARTIAL / FAILED；非终态超 120 s → TIMED_OUT | 同执行已有进行中采集时再发起 → 返回该条（幂等 200） |
-| Merge | PENDING → MERGED / CONFLICT / FAILED；超 10 min → FAILED | 已 MERGED 再请求 → 409 130436 |
+| 对象       | 迁移                                                                                               | 非法 → 错误码                                       |
+| ---------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Evidence   | DRAFT →（02 Claim 绑定）ATTACHED；DRAFT →（执行者排除）WITHDRAWN；WITHDRAWN → DRAFT（仅声明前） | 修改/撤回 ATTACHED → 409 130430                     |
+| Collection | PENDING → RUNNING → SUCCEEDED / PARTIAL / FAILED；非终态超 120 s → TIMED_OUT                    | 同执行已有进行中采集时再发起 → 返回该条（幂等 200） |
+| Merge      | PENDING → MERGED / CONFLICT / FAILED；超 10 min → FAILED                                         | 已 MERGED 再请求 → 409 130436                       |
 
 ---
-
 
 ### 4.x 内部验收与验收集状态（D112 / D113，00 v2.0 §15）
 
@@ -780,19 +778,19 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 **内部验收运行**（每个交付执行的每个阶段一条）：
 
-| # | 当前 | 触发 | 守卫 | 目标 | 副作用 |
-|---|---|---|---|---|---|
-| Q1 | — | 交付执行 SUCCEEDED 且已提交声明 | — | AUTOMATED: RUNNING | 平台在隔离副本重跑确定性检查（BR-03-95）与隐藏验收（BR-03-96） |
-| Q2 | AUTOMATED RUNNING | 全部通过 且 无测试 diff 违规 | | PASSED | `internal_qa.passed{stage:AUTOMATED}` → 05 派测试 Agent |
-| Q3 | AUTOMATED RUNNING | 任一失败 / 测试 diff 违规 | | FAILED | `internal_qa.failed`；违规另发 `cheating.suspected`；02 → REWORK（内部，不通知人） |
-| Q4 | — | 05 派单生效 | | AGENT_TEST: RUNNING | Launch(purpose=INTERNAL_TEST) |
-| Q5 | AGENT_TEST RUNNING | 无 BLOCKER/MAJOR 发现 | | PASSED | 测试 Agent 新增测试经 BR-03-97 合入；→ 05 派产品验收 Agent |
-| Q6 | AGENT_TEST RUNNING | 有 BLOCKER/MAJOR | | FAILED | 发现作为结构化反馈 → 02 REWORK |
-| Q7 | — | 05 派单生效 | | AGENT_ACCEPTANCE: RUNNING | Launch(purpose=INTERNAL_ACCEPTANCE)，输入含截图 |
-| Q8 | AGENT_ACCEPTANCE RUNNING | 逐条验收标准通过 且 评分达模板阈值 | | PASSED | `internal_qa.passed{stage:AGENT_ACCEPTANCE}` → 02 L2 达成 → NEEDS_HUMAN_REVIEW |
-| Q9 | AGENT_ACCEPTANCE RUNNING | 任一验收标准不通过 / 评分不足 | | FAILED | 反馈 → 02 REWORK |
-| Q10 | 任一 RUNNING | 执行故障 / 超时 | | ERROR | 不计内部轮次；重派一次，仍 ERROR → 升级（`INTERNAL_ROUNDS_EXHAUSTED` 之外的执行故障按 02 T19） |
-| Q11 | AGENT_* RUNNING | 判断无法得出结论（证据不足） | | INCONCLUSIVE | 视同 FAILED 返工一次；连续两次 INCONCLUSIVE → 升级人工（`MANDATORY_HUMAN_GATE`，detail=`INTERNAL_QA_INCONCLUSIVE`） |
+| #   | 当前                     | 触发                               | 守卫 | 目标                      | 副作用                                                                                                                   |
+| --- | ------------------------ | ---------------------------------- | ---- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Q1  | —                       | 交付执行 SUCCEEDED 且已提交声明    | —   | AUTOMATED: RUNNING        | 平台在隔离副本重跑确定性检查（BR-03-95）与隐藏验收（BR-03-96）                                                           |
+| Q2  | AUTOMATED RUNNING        | 全部通过 且 无测试 diff 违规       |      | PASSED                    | `internal_qa.passed{stage:AUTOMATED}` → 05 派测试 Agent                                                               |
+| Q3  | AUTOMATED RUNNING        | 任一失败 / 测试 diff 违规          |      | FAILED                    | `internal_qa.failed`；违规另发 `cheating.suspected`；02 → REWORK（内部，不通知人）                                  |
+| Q4  | —                       | 05 派单生效                        |      | AGENT_TEST: RUNNING       | Launch(purpose=INTERNAL_TEST)                                                                                            |
+| Q5  | AGENT_TEST RUNNING       | 无 BLOCKER/MAJOR 发现              |      | PASSED                    | 测试 Agent 新增测试经 BR-03-97 合入；→ 05 派产品验收 Agent                                                              |
+| Q6  | AGENT_TEST RUNNING       | 有 BLOCKER/MAJOR                   |      | FAILED                    | 发现作为结构化反馈 → 02 REWORK                                                                                          |
+| Q7  | —                       | 05 派单生效                        |      | AGENT_ACCEPTANCE: RUNNING | Launch(purpose=INTERNAL_ACCEPTANCE)，输入含截图                                                                          |
+| Q8  | AGENT_ACCEPTANCE RUNNING | 逐条验收标准通过 且 评分达模板阈值 |      | PASSED                    | `internal_qa.passed{stage:AGENT_ACCEPTANCE}` → 02 L2 达成 → NEEDS_HUMAN_REVIEW                                       |
+| Q9  | AGENT_ACCEPTANCE RUNNING | 任一验收标准不通过 / 评分不足      |      | FAILED                    | 反馈 → 02 REWORK                                                                                                        |
+| Q10 | 任一 RUNNING             | 执行故障 / 超时                    |      | ERROR                     | 不计内部轮次；重派一次，仍 ERROR → 升级（`INTERNAL_ROUNDS_EXHAUSTED` 之外的执行故障按 02 T19）                        |
+| Q11 | AGENT_* RUNNING          | 判断无法得出结论（证据不足）       |      | INCONCLUSIVE              | 视同 FAILED 返工一次；连续两次 INCONCLUSIVE → 升级人工（`MANDATORY_HUMAN_GATE`，detail=`INTERNAL_QA_INCONCLUSIVE`） |
 
 非法：对 PASSED / FAILED 的运行再写结果 → 409 **130452**；INTERNAL_* 执行试图提交完成声明 → 409 **130453**。
 
@@ -800,16 +798,16 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 **预览会话**（`PreviewSessionState`）：
 
-| # | 当前 | 触发 | 守卫 | 目标 | 副作用 |
-|---|---|---|---|---|---|
-| V1 | — | A56 / A57 / 系统（模板 `auto_preview`） | 执行非终态（SERVICE）或声明未裁决（REVIEW）；机器 ONLINE、WebSocket 可用、`allow_remote_preview`；配额（BR-03-110） | REQUESTED | 生成 `label`；PLATFORM：下发 `preview.start`；REVIEW：先 `ReserveSlot(holder=PREVIEW)` |
-| V2 | REQUESTED | 机器 `preview.state{STARTING}` | | STARTING | |
-| V3 | STARTING | 健康检查 `health_path` 返回 2xx/3xx（经隧道） | 在 `start_timeout_s` 内 | READY | `ready_at`；SSE |
-| V4 | REQUESTED | AGENT_OFFERED：端口在 04 `ports.report` 中且开流成功 | | READY | 直接就绪（不启动进程） |
-| V5 | REQUESTED | ARTIFACT | 工作区存在 | READY | 不启动进程 |
-| V6 | STARTING | 超时 / 进程退出 | | FAILED（START_TIMEOUT / PROCESS_EXITED） | `failure_detail`；释放 REVIEW 槽 |
-| V7 | READY | 连续 3 次健康检查失败（每 30 s）或进程退出 / 端口失去归属 | | FAILED（HEALTH_FAILED / PROCESS_EXITED / PORT_LOST） | 04 `ResetHolder`；下发 `preview.stop` |
-| V8 | REQUESTED / STARTING / READY | 用户停止（A59）/ 空闲 30 min / 到 `expires_at` / 执行终态或 INTERRUPTED / 声明已裁决（REVIEW）/ `machine.access_changed{allow_remote_preview:false}` / 机器离线 | | STOPPED（对应 `stop_reason`） | 同 V7 副作用；关联 ACTIVE 分享链接 → EXPIRED（SESSION_ENDED） |
+| #  | 当前                         | 触发                                                                                                                                                               | 守卫                                                                                                                  | 目标                                                 | 副作用                                                                                      |
+| -- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| V1 | —                           | A56 / A57 / 系统（模板`auto_preview`）                                                                                                                           | 执行非终态（SERVICE）或声明未裁决（REVIEW）；机器 ONLINE、WebSocket 可用、`allow_remote_preview`；配额（BR-03-110） | REQUESTED                                            | 生成`label`；PLATFORM：下发 `preview.start`；REVIEW：先 `ReserveSlot(holder=PREVIEW)` |
+| V2 | REQUESTED                    | 机器`preview.state{STARTING}`                                                                                                                                    |                                                                                                                       | STARTING                                             |                                                                                             |
+| V3 | STARTING                     | 健康检查`health_path` 返回 2xx/3xx（经隧道）                                                                                                                     | 在`start_timeout_s` 内                                                                                              | READY                                                | `ready_at`；SSE                                                                           |
+| V4 | REQUESTED                    | AGENT_OFFERED：端口在 04`ports.report` 中且开流成功                                                                                                              |                                                                                                                       | READY                                                | 直接就绪（不启动进程）                                                                      |
+| V5 | REQUESTED                    | ARTIFACT                                                                                                                                                           | 工作区存在                                                                                                            | READY                                                | 不启动进程                                                                                  |
+| V6 | STARTING                     | 超时 / 进程退出                                                                                                                                                    |                                                                                                                       | FAILED（START_TIMEOUT / PROCESS_EXITED）             | `failure_detail`；释放 REVIEW 槽                                                          |
+| V7 | READY                        | 连续 3 次健康检查失败（每 30 s）或进程退出 / 端口失去归属                                                                                                          |                                                                                                                       | FAILED（HEALTH_FAILED / PROCESS_EXITED / PORT_LOST） | 04`ResetHolder`；下发 `preview.stop`                                                    |
+| V8 | REQUESTED / STARTING / READY | 用户停止（A59）/ 空闲 30 min / 到`expires_at` / 执行终态或 INTERRUPTED / 声明已裁决（REVIEW）/ `machine.access_changed{allow_remote_preview:false}` / 机器离线 |                                                                                                                       | STOPPED（对应`stop_reason`）                       | 同 V7 副作用；关联 ACTIVE 分享链接 → EXPIRED（SESSION_ENDED）                              |
 
 终态 STOPPED、FAILED；重新预览 = 新会话（新 `label`，旧链接失效）。
 
@@ -823,13 +821,13 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 **线程 `CommentThreadState`**
 
-| # | 当前 | 事件 / 命令 | 守卫 | 目标 | 副作用 |
-|---|---|---|---|---|---|
-| CT1 | — | A77 新建（或 07 经 `ArtifactComments.CreateClientOn` 建 CLIENT 线程） | BR-03-133…136、BR-03-141 | OPEN | 首条批注 seq=1；02 `WorkItemActivityRecorder.RecordOn(COMMENT_ADDED)`（有工作项时）；`comment.thread_created`；审计 `execution.comment_thread_created` |
-| CT2 | OPEN / RESOLVED | A79 回复 | 同 BR-03-134；CLIENT 线程团队不可回复（130479） | 不变（RESOLVED 上回复 → 重新 OPEN） | seq+1；`comment.posted`；工作项活动 |
-| CT3 | OPEN | A80 `{state:RESOLVED}` | 线程创建者、`work_item_write` 或执行者本人；If-Match | RESOLVED | `comment.thread_resolved`；审计 |
-| CT4 | RESOLVED | A80 `{state:OPEN}` | 同上 | OPEN | 同上 |
-| CT5 | OPEN / RESOLVED | 下游转换（02 D1 / 12 A31 / 07 回执）经 `ArtifactComments.MarkConvertedOn` | 同一 `target_kind` 未转换过；CLIENT 线程只能转为 REJECTION_ITEM，INTERNAL 线程不能转为 REJECTION_ITEM | 不变；FEEDBACK / DEFECT 转换后若线程 OPEN 则自动 RESOLVED | 写 `execution_comment_conversions`（锚点快照）；`comment.converted`；审计 |
+| #   | 当前            | 事件 / 命令                                                                | 守卫                                                                                                   | 目标                                                      | 副作用                                                                                                                                                      |
+| --- | --------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CT1 | —              | A77 新建（或 07 经`ArtifactComments.CreateClientOn` 建 CLIENT 线程）     | BR-03-133…136、BR-03-141                                                                              | OPEN                                                      | 首条批注 seq=1；02`WorkItemActivityRecorder.RecordOn(COMMENT_ADDED)`（有工作项时）；`comment.thread_created`；审计 `execution.comment_thread_created` |
+| CT2 | OPEN / RESOLVED | A79 回复                                                                   | 同 BR-03-134；CLIENT 线程团队不可回复（130479）                                                        | 不变（RESOLVED 上回复 → 重新 OPEN）                      | seq+1；`comment.posted`；工作项活动                                                                                                                       |
+| CT3 | OPEN            | A80`{state:RESOLVED}`                                                    | 线程创建者、`work_item_write` 或执行者本人；If-Match                                                 | RESOLVED                                                  | `comment.thread_resolved`；审计                                                                                                                           |
+| CT4 | RESOLVED        | A80`{state:OPEN}`                                                        | 同上                                                                                                   | OPEN                                                      | 同上                                                                                                                                                        |
+| CT5 | OPEN / RESOLVED | 下游转换（02 D1 / 12 A31 / 07 回执）经`ArtifactComments.MarkConvertedOn` | 同一`target_kind` 未转换过；CLIENT 线程只能转为 REJECTION_ITEM，INTERNAL 线程不能转为 REJECTION_ITEM | 不变；FEEDBACK / DEFECT 转换后若线程 OPEN 则自动 RESOLVED | 写`execution_comment_conversions`（锚点快照）；`comment.converted`；审计                                                                                |
 
 非法：同一 `target_kind` 重复转换 → 409 **130478**（`data.target_id` 为已有对象，便于调用方幂等处理）；对 CLIENT 线程回复或在团队侧解决 → 409 **130479**。
 
@@ -874,15 +872,15 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 ### 5.5 上下文包（七层，移植旧 PRD §18.1）
 
-| 层 | 内容 | 来源 | 可裁剪 |
-|---|---|---|---|
-| 1 角色宪法 | Agent 系统提示 + forbidden actions + 已批准 RULE 记忆（该 Agent 自身 AGENT scope + TEAM scope，06 BR-06-23） | 05；06（`MemoryKind=RULE`） | 否 |
-| 2 任务契约 | 工作项标题/描述、需求版本、验收标准逐条（含 `criterion_id`）、`claim.json` 写法、证据期望 | 02 | 否 |
-| 3 输入 | 父执行摘要（claim 摘要、diffstat、变更文件清单）、`continue.md`、工作项附件路径 | 本模块、02 | 是（第 1 顺位） |
-| 4 结构化反馈 | 祖先链全部 REJECT/REQUEST_CHANGES（含 02 T12 系统裁决）的 `{category, location, expected, detail}` + 失败验证的 `stdoutTail` 前 4 KiB，新在前；每条带 `[Fn]` 引用，写 `execution_context_items(item_kind=FEEDBACK, citation='[Fn]', source=decision_id)` | 02 `DecisionReader`、本模块 | 否 |
-| 5 项目知识 | `Retriever.BuildInjection` 返回条目（agent → project → team），每条带 `[Kn]` 引用与出处 | 06 | 是（第 2 顺位） |
-| 6 技能 | Agent 已挂载技能的 SKILL.md | 06 `SkillCatalog.ForAgent`（挂载关系由 05 管理） | 是（第 3 顺位） |
-| 7 运行环境 | 运行目录、退出语义、心跳、`continue.md` 续跑、证据自动采集说明 | 本模块模板 | 否 |
+| 层           | 内容                                                                                                                                                                                                                                                            | 来源                                              | 可裁剪          |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | --------------- |
+| 1 角色宪法   | Agent 系统提示 + forbidden actions + 已批准 RULE 记忆（该 Agent 自身 AGENT scope + TEAM scope，06 BR-06-23）                                                                                                                                                    | 05；06（`MemoryKind=RULE`）                     | 否              |
+| 2 任务契约   | 工作项标题/描述、需求版本、验收标准逐条（含`criterion_id`）、`claim.json` 写法、证据期望                                                                                                                                                                    | 02                                                | 否              |
+| 3 输入       | 父执行摘要（claim 摘要、diffstat、变更文件清单）、`continue.md`、工作项附件路径                                                                                                                                                                               | 本模块、02                                        | 是（第 1 顺位） |
+| 4 结构化反馈 | 祖先链全部 REJECT/REQUEST_CHANGES（含 02 T12 系统裁决）的`{category, location, expected, detail}` + 失败验证的 `stdoutTail` 前 4 KiB，新在前；每条带 `[Fn]` 引用，写 `execution_context_items(item_kind=FEEDBACK, citation='[Fn]', source=decision_id)` | 02`DecisionReader`、本模块                      | 否              |
+| 5 项目知识   | `Retriever.BuildInjection` 返回条目（agent → project → team），每条带 `[Kn]` 引用与出处                                                                                                                                                                   | 06                                                | 是（第 2 顺位） |
+| 6 技能       | Agent 已挂载技能的 SKILL.md                                                                                                                                                                                                                                     | 06`SkillCatalog.ForAgent`（挂载关系由 05 管理） | 是（第 3 顺位） |
+| 7 运行环境   | 运行目录、退出语义、心跳、`continue.md` 续跑、证据自动采集说明                                                                                                                                                                                                | 本模块模板                                        | 否              |
 
 - **BR-03-28 预算**：预算 = Agent `max_context_tokens`（05，默认 24,000）；关联工作项的 INTERACTIVE 会话仅在首轮把第 2、4、5 层作为前置说明注入（预算 12,000，UI 显示一条可折叠 SYSTEM 消息"已注入上下文"）；ADHOC 不注入。token 估算 = `ceil(UTF-8 字节 / 3)`（**本规格提议**：中文约 1 token/字、英文约 4 字符/token，偏保守，服务端无需 tokenizer）。
 - **BR-03-29 裁剪顺序**：超预算时依次把第 3 层（与工作项相关度低、旧的在先）、第 5 层（得分低在先）、第 6 层条目由 FULL 降为 REFERENCE（只保留路径/ID 与一行标题，约 30 token），仍超则按同序 DROPPED；第 1/2/4/7 层永不裁剪。若 1+2+4+7 层本身超预算 → 创建失败 422 130441（系统自动建枝时改为通知 N3，不建执行）。每条的 `inclusion` 写 `execution_context_items`（"使用的知识"数据源）。
@@ -960,7 +958,6 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 - **BR-03-94**：数据源不可用时路由仍注册并返回 503 130448，`slog.Warn` 说明原因（底座"禁止静默降级"）。
 
 ---
-
 
 ### 5.x 业务规则增补（D112 / D113，00 v2.0 §15）
 
@@ -1051,53 +1048,54 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 ### 6.2 操作清单
 
-| # | 方法 路径（发布形态） | tag | 权限码 | 守卫 | 请求体要点 | 响应 `data` | 主要错误 | 幂/锁 |
-|---|---|---|---|---|---|---|---|---|
-| A01 | GET `/tenants/{t}/entities/{e}/executions` | tenants | execution_read | E | query §6.6；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `ExecutionSummary[]` | 403 | — |
-| A02 | POST `/tenants/{t}/entities/{e}/executions` | tenants | execution_start | E | `{kind:"ADHOC", machine_id, runtime, model?, effort?, authorization_mode?, tools_enabled?, workdir_mode?, title?}` | `Execution`（201，CREATED） | 409 130413；422 130414；403 130403（`FULL_AUTO_FORBIDDEN`） | ✔ |
-| A03 | GET `/tenants/{t}/entities/{e}/evidence` | tenants | execution_read | E | query：`claim_id, execution_id, work_item_id, evidence_type, state`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Evidence[]` | 403 | — |
-| A04 | GET `/tenants/{t}/entities/{e}/verifications` | tenants | execution_read | E | query：`claim_id, work_item_id, result, layer, required`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Verification[]` | 403 | — |
-| A05 | GET `/work-items/{work_item_id}/executions` | work-items | execution_read | O(work_item_id) | `?include=tree` | `{nodes: ExecutionTreeNode[], groups: EnsembleGroup[]}` | 404 | — |
-| A06 | POST `/work-items/{work_item_id}/executions` | work-items | execution_start + work_item_execute | O(work_item_id) | `{kind:"INTERACTIVE", machine_id, runtime, model?, effort?, authorization_mode?, tools_enabled?, workdir_mode?:"WORKTREE"}` | `Execution`（201） | 409 130426/130413；422 130414/130441 | ✔ |
-| A07 | POST `/work-items/{work_item_id}/ensembles` | work-items | execution_start + work_item_assign（人）；主管 Agent 经 `POLICY:ensemble_branch`（BR-03-05） | O(work_item_id) | `{branches:[{agent_id, runtime?, model?, effort?}] 2..3, reason≤2000}` | `{ensemble_group_id, executions: Execution[]}` | 409 130439；403 | ✔ |
-| A08 | GET `/work-items/{work_item_id}/execution-comparisons` | work-items | execution_read | O(work_item_id) | `?execution_ids=a,b[,c]`（2–5，同工作项） | `ComparisonRow[]` | 422 | — |
-| A09 | GET `/executions/{execution_id}` | executions | execution_read | O(execution_id) | — | `Execution`（含 `change_seq`、`branch_label`、当前轮、未决交互数） | 404 | — |
-| A10 | PATCH `/executions/{execution_id}` | executions | execution_start（设置）；FULL_AUTO 另需 step-up | O(execution_id) | `{title?, model?, effort?, authorization_mode?, tools_enabled?, machine_id?, workdir_mode?, archived?:bool}` | `Execution` | 409 130409/130424/130411；422 130446；403 130403（`FULL_AUTO_FORBIDDEN` / `REAUTH_REQUIRED`） | v |
-| A11 | PUT `/executions/{execution_id}/work-item-link` | executions | execution_start + work_item_execute | O(execution_id) | `{work_item_id}` | `Execution` | 409 130426；403 | ✔ v |
-| A12 | PUT `/executions/{execution_id}/suspension` | executions | execution_stop（BR-03-40） | O(execution_id) | `{reason≤2000}` | `Execution` | 409 130410/130411；403 | ✔ |
-| A13 | POST `/executions/{execution_id}/resumptions` | executions | execution_start | O(execution_id) | `{acknowledge_side_effects?:bool, machine_id?}` | `{execution: Execution, dispatch_epoch}`（202） | 409 130410/130413/130415/130438；422 130450 | ✔ |
-| A14 | PUT `/executions/{execution_id}/termination` | executions | execution_stop（BR-03-40） | O(execution_id) | `{outcome:"CANCELLED"\|"FAILED"\|"SUCCEEDED", reason≤2000}` | `Execution` | 409 130410/130411；403 | ✔ |
-| A15 | POST `/executions/{execution_id}/branches` | executions | execution_start | O(execution_id) | `{branch_reason:"RETRY_INFRA"\|"STRATEGY", machine_id?, agent_id?, reason≤2000}`（QUALITY/SCOPE 仅由 02 在裁决事务内经 `ExecutionLauncher.Launch` 同步建） | `Execution`（201，子执行） | 422 130440；409 130426 | ✔ |
-| A16 | GET `/executions/{execution_id}/turns` | executions | execution_read | O(execution_id) | query：`state, turn_no(gte/lte)`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Turn[]` | 404 | — |
-| A17 | POST `/executions/{execution_id}/turns` | executions | execution_start（且为发起者） | O(execution_id) | `{client_request_id≤64, prompt≤64KiB, attachments?:[{name, text}]≤8, retry_of_turn_id?, acknowledge_side_effects?}` | `{turn: Turn, execution: Execution}`（202） | 409 130412/130413/130415/130416/130419/130411；413 130417；422 130418/130450 | client_request_id |
-| A18 | PUT `/executions/{execution_id}/turns/{turn_id}/cancellation` | executions | execution_stop（BR-03-40） | O(execution_id) | `{}` | `Turn` | 409 130410 | ✔ |
-| A19 | GET `/executions/{execution_id}/messages` | executions | execution_read | O(execution_id) | `?after_msg_no=&limit≤500` | `Message[]` + `meta.change_seq` | 404 | — |
-| A20 | GET `/executions/{execution_id}/interactions` | executions | execution_read | O(execution_id) | query：`state, kind`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Interaction[]` | 404 | — |
-| A21 | PUT `/interactions/{interaction_id}/decision` | interactions | interaction_respond（HUMAN） | O(interaction_id) | `{action:"ACCEPT"\|"DECLINE", content?:object}` | `Interaction` | 409 130420/130421；422 130423；403 | ✔（重复相同决定 200） |
-| A22 | GET `/executions/{execution_id}/events` | executions | execution_read | O(execution_id) | `?dispatch_epoch=&after_seq=&limit≤500` | `ExecutionEvent[]` | 404；410（已过保留期） | — |
-| A23 | GET `/executions/{execution_id}/log/content` | executions | execution_read | O(execution_id) | `?tail_bytes=1..1048576`（默认 65536） | `text/plain` 流 | 404 | — |
-| A24 | GET `/executions/{execution_id}/artifacts` | executions | execution_read | O(execution_id) | query：`kind`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Artifact[]` | 404 | — |
-| A25 | GET `/executions/{execution_id}/context-items` | executions | execution_read | O(execution_id) | query：`layer, inclusion`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `ContextItem[]` + `meta{budget, used, bundle_hash}` | 404 | — |
-| A26 | GET `/executions/{execution_id}/evidence` | executions | execution_read | O(execution_id) | query：`state, evidence_type`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Evidence[]` | 404 | — |
-| A27 | POST `/executions/{execution_id}/evidence` | executions | evidence_submit | O(execution_id) | `{evidence_type:"OBSERVATION"\|"SCREENSHOT"\|"ARTIFACT"\|"PULL_REQUEST", title, scope_text?, text?, observed_at?, file_id?, artifact_id?, url?, limitations_extra?≤1000}` | `Evidence`（201，DRAFT） | 422 130422/130432；409 130411/130431 | ✔ |
-| A28 | PATCH `/evidence/{evidence_id}` | evidence | evidence_submit | O(evidence_id) | `{state?:"WITHDRAWN"\|"DRAFT", title?, limitations_extra?}` | `Evidence` | 409 130430 | — |
-| A29 | GET `/evidence/{evidence_id}` | evidence | execution_read | O(evidence_id) | — | `Evidence` | 404 | — |
-| A30 | GET `/evidence/{evidence_id}/content` | evidence | execution_read | O(evidence_id) | — | 文件流（files 授权下载） | 404 | — |
-| A31 | POST `/executions/{execution_id}/evidence-collections` | executions | evidence_submit | O(execution_id) | `{client_request_id, kinds[], report_globs?[]}` | `EvidenceCollection`（202） | 409 130413/130411 | client_request_id |
-| A32 | GET `/evidence-collections/{collection_id}` | evidence-collections | execution_read | O(collection_id) | — | `EvidenceCollection` + 生成的 `Evidence[]` | 404 | — |
-| A33 | POST `/claims/{claim_id}/verifications` | claims | verification_run | O(claim_id) | `{verifier_id}`（重跑或补跑） | `Verification`（201） | 409 130433（验证器已归档）；403 | ✔ |
-| A34 | GET `/verifications/{verification_id}` | verifications | execution_read | O(verification_id) | — | `Verification`（含 evidence_json） | 404 | — |
-| A35 | PUT `/verifications/{verification_id}/result` | verifications | verification_run | O(verification_id) | `{result:"PASSED"\|"FAILED"\|"INCONCLUSIVE", note?≤65536, evidence_ids?[]}` | `Verification` | 409 130434/130410/130409；403 130403（`SELF_REVIEW`） | v |
-| A36 | POST `/executions/{execution_id}/merges` | executions | code_merge（经 08 判定） | O(execution_id) | `{target_branch?, push?:bool, reason≤2000}` | `Merge`（202） | 409 130436；403 | ✔ |
-| A37 | GET `/merges/{merge_id}` | merges | execution_read | O(merge_id) | — | `Merge` | 404 | — |
-| A38 | GET `/tenants/{t}/verifiers` | tenants | policy_read | T | query：`layer, state, required`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Verifier[]` | 403 | — |
-| A39 | POST `/tenants/{t}/verifiers` | tenants | verifier_manage | T | `{key, name, layer, applies_to, required, spec, timeout_ms, change_note?}` | `Verifier`（201，v1） | 422 130433；409（key 重复）130409 | ✔ |
-| A40 | GET `/verifiers/{verifier_id}` | verifiers | policy_read | O(verifier_id) | — | `Verifier` + 当前版本 spec | 404 | — |
-| A41 | PATCH `/verifiers/{verifier_id}` | verifiers | verifier_manage | O(verifier_id) | `{name?, applies_to?, required?, spec?, timeout_ms?, state?:"ARCHIVED"\|"ACTIVE", change_note?}` | `Verifier` | 422 130433；409 130409 | v |
-| A42 | GET `/verifiers/{verifier_id}/versions` | verifiers | policy_read | O(verifier_id) | — | `VerifierVersion[]` | 404 | — |
-| A43 | GET `/tenants/{t}/principals/{principal_id}/executions` | tenants | （本人；行级按项目 `execution_read` 过滤） | P | query §6.6；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `ExecutionSummary[]`（跨项目"我的执行"） | 403 | — |
+| #   | 方法 路径（发布形态）                                          | tag                  | 权限码                                                                                        | 守卫               | 请求体要点                                                                                                                                                                            | 响应`data`                                                             | 主要错误                                                                                          | 幂/锁                  |
+| --- | -------------------------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- | ---------------------- |
+| A01 | GET`/tenants/{t}/entities/{e}/executions`                    | tenants              | execution_read                                                                                | E                  | query §6.6；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10）                                                           | `ExecutionSummary[]`                                                   | 403                                                                                               | —                     |
+| A02 | POST`/tenants/{t}/entities/{e}/executions`                   | tenants              | execution_start                                                                               | E                  | `{kind:"ADHOC", machine_id, runtime, model?, effort?, authorization_mode?, tools_enabled?, workdir_mode?, title?}`                                                                  | `Execution`（201，CREATED）                                            | 409 130413；422 130414；403 130403（`FULL_AUTO_FORBIDDEN`）                                     | ✔                     |
+| A03 | GET`/tenants/{t}/entities/{e}/evidence`                      | tenants              | execution_read                                                                                | E                  | query：`claim_id, execution_id, work_item_id, evidence_type, state`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10） | `Evidence[]`                                                           | 403                                                                                               | —                     |
+| A04 | GET`/tenants/{t}/entities/{e}/verifications`                 | tenants              | execution_read                                                                                | E                  | query：`claim_id, work_item_id, result, layer, required`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10）            | `Verification[]`                                                       | 403                                                                                               | —                     |
+| A05 | GET`/work-items/{work_item_id}/executions`                   | work-items           | execution_read                                                                                | O(work_item_id)    | `?include=tree`                                                                                                                                                                     | `{nodes: ExecutionTreeNode[], groups: EnsembleGroup[]}`                | 404                                                                                               | —                     |
+| A06 | POST`/work-items/{work_item_id}/executions`                  | work-items           | execution_start + work_item_execute                                                           | O(work_item_id)    | `{kind:"INTERACTIVE", machine_id, runtime, model?, effort?, authorization_mode?, tools_enabled?, workdir_mode?:"WORKTREE"}`                                                         | `Execution`（201）                                                     | 409 130426/130413；422 130414/130441                                                              | ✔                     |
+| A07 | POST`/work-items/{work_item_id}/ensembles`                   | work-items           | execution_start + work_item_assign（人）；主管 Agent 经`POLICY:ensemble_branch`（BR-03-05） | O(work_item_id)    | `{branches:[{agent_id, runtime?, model?, effort?}] 2..3, reason≤2000}`                                                                                                             | `{ensemble_group_id, executions: Execution[]}`                         | 409 130439；403                                                                                   | ✔                     |
+| A08 | GET`/work-items/{work_item_id}/execution-comparisons`        | work-items           | execution_read                                                                                | O(work_item_id)    | `?execution_ids=a,b[,c]`（2–5，同工作项）                                                                                                                                          | `ComparisonRow[]`                                                      | 422                                                                                               | —                     |
+| A09 | GET`/executions/{execution_id}`                              | executions           | execution_read                                                                                | O(execution_id)    | —                                                                                                                                                                                    | `Execution`（含 `change_seq`、`branch_label`、当前轮、未决交互数） | 404                                                                                               | —                     |
+| A10 | PATCH`/executions/{execution_id}`                            | executions           | execution_start（设置）；FULL_AUTO 另需 step-up                                               | O(execution_id)    | `{title?, model?, effort?, authorization_mode?, tools_enabled?, machine_id?, workdir_mode?, archived?:bool}`                                                                        | `Execution`                                                            | 409 130409/130424/130411；422 130446；403 130403（`FULL_AUTO_FORBIDDEN` / `REAUTH_REQUIRED`） | v                      |
+| A11 | PUT`/executions/{execution_id}/work-item-link`               | executions           | execution_start + work_item_execute                                                           | O(execution_id)    | `{work_item_id}`                                                                                                                                                                    | `Execution`                                                            | 409 130426；403                                                                                   | ✔ v                   |
+| A12 | PUT`/executions/{execution_id}/suspension`                   | executions           | execution_stop（BR-03-40）                                                                    | O(execution_id)    | `{reason≤2000}`                                                                                                                                                                    | `Execution`                                                            | 409 130410/130411；403                                                                            | ✔                     |
+| A13 | POST`/executions/{execution_id}/resumptions`                 | executions           | execution_start                                                                               | O(execution_id)    | `{acknowledge_side_effects?:bool, machine_id?}`                                                                                                                                     | `{execution: Execution, dispatch_epoch}`（202）                        | 409 130410/130413/130415/130438；422 130450                                                       | ✔                     |
+| A14 | PUT`/executions/{execution_id}/termination`                  | executions           | execution_stop（BR-03-40）                                                                    | O(execution_id)    | `{outcome:"CANCELLED"\|"FAILED"\|"SUCCEEDED", reason≤2000}`                                                                                                                          | `Execution`                                                            | 409 130410/130411；403                                                                            | ✔                     |
+| A15 | POST`/executions/{execution_id}/branches`                    | executions           | execution_start                                                                               | O(execution_id)    | `{branch_reason:"RETRY_INFRA"\|"STRATEGY", machine_id?, agent_id?, reason≤2000}`（QUALITY/SCOPE 仅由 02 在裁决事务内经 `ExecutionLauncher.Launch` 同步建）                        | `Execution`（201，子执行）                                             | 422 130440；409 130426                                                                            | ✔                     |
+| A16 | GET`/executions/{execution_id}/turns`                        | executions           | execution_read                                                                                | O(execution_id)    | query：`state, turn_no(gte/lte)`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10）                                    | `Turn[]`                                                               | 404                                                                                               | —                     |
+| A17 | POST`/executions/{execution_id}/turns`                       | executions           | execution_start（且为发起者）                                                                 | O(execution_id)    | `{client_request_id≤64, prompt≤64KiB, attachments?:[{name, text}]≤8, retry_of_turn_id?, acknowledge_side_effects?}`                                                              | `{turn: Turn, execution: Execution}`（202）                            | 409 130412/130413/130415/130416/130419/130411；413 130417；422 130418/130450                      | client_request_id      |
+| A18 | PUT`/executions/{execution_id}/turns/{turn_id}/cancellation` | executions           | execution_stop（BR-03-40）                                                                    | O(execution_id)    | `{}`                                                                                                                                                                                | `Turn`                                                                 | 409 130410                                                                                        | ✔                     |
+| A19 | GET`/executions/{execution_id}/messages`                     | executions           | execution_read                                                                                | O(execution_id)    | `?after_msg_no=&limit≤500`                                                                                                                                                         | `Message[]` + `meta.change_seq`                                      | 404                                                                                               | —                     |
+| A20 | GET`/executions/{execution_id}/interactions`                 | executions           | execution_read                                                                                | O(execution_id)    | query：`state, kind`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10）                                                | `Interaction[]`                                                        | 404                                                                                               | —                     |
+| A21 | PUT`/interactions/{interaction_id}/decision`                 | interactions         | interaction_respond（HUMAN）                                                                  | O(interaction_id)  | `{action:"ACCEPT"\|"DECLINE", content?:object}`                                                                                                                                      | `Interaction`                                                          | 409 130420/130421；422 130423；403                                                                | ✔（重复相同决定 200） |
+| A22 | GET`/executions/{execution_id}/events`                       | executions           | execution_read                                                                                | O(execution_id)    | `?dispatch_epoch=&after_seq=&limit≤500`                                                                                                                                            | `ExecutionEvent[]`                                                     | 404；410（已过保留期）                                                                            | —                     |
+| A23 | GET`/executions/{execution_id}/log/content`                  | executions           | execution_read                                                                                | O(execution_id)    | `?tail_bytes=1..1048576`（默认 65536）                                                                                                                                              | `text/plain` 流                                                        | 404                                                                                               | —                     |
+| A24 | GET`/executions/{execution_id}/artifacts`                    | executions           | execution_read                                                                                | O(execution_id)    | query：`kind`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10）                                                       | `Artifact[]`                                                           | 404                                                                                               | —                     |
+| A25 | GET`/executions/{execution_id}/context-items`                | executions           | execution_read                                                                                | O(execution_id)    | query：`layer, inclusion`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10）                                           | `ContextItem[]` + `meta{budget, used, bundle_hash}`                  | 404                                                                                               | —                     |
+| A26 | GET`/executions/{execution_id}/evidence`                     | executions           | execution_read                                                                                | O(execution_id)    | query：`state, evidence_type`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10）                                       | `Evidence[]`                                                           | 404                                                                                               | —                     |
+| A27 | POST`/executions/{execution_id}/evidence`                    | executions           | evidence_submit                                                                               | O(execution_id)    | `{evidence_type:"OBSERVATION"\|"SCREENSHOT"\|"ARTIFACT"\|"PULL_REQUEST", title, scope_text?, text?, observed_at?, file_id?, artifact_id?, url?, limitations_extra?≤1000}`             | `Evidence`（201，DRAFT）                                               | 422 130422/130432；409 130411/130431                                                              | ✔                     |
+| A28 | PATCH`/evidence/{evidence_id}`                               | evidence             | evidence_submit                                                                               | O(evidence_id)     | `{state?:"WITHDRAWN"\|"DRAFT", title?, limitations_extra?}`                                                                                                                          | `Evidence`                                                             | 409 130430                                                                                        | —                     |
+| A29 | GET`/evidence/{evidence_id}`                                 | evidence             | execution_read                                                                                | O(evidence_id)     | —                                                                                                                                                                                    | `Evidence`                                                             | 404                                                                                               | —                     |
+| A30 | GET`/evidence/{evidence_id}/content`                         | evidence             | execution_read                                                                                | O(evidence_id)     | —                                                                                                                                                                                    | 文件流（files 授权下载）                                                 | 404                                                                                               | —                     |
+| A31 | POST`/executions/{execution_id}/evidence-collections`        | executions           | evidence_submit                                                                               | O(execution_id)    | `{client_request_id, kinds[], report_globs?[]}`                                                                                                                                     | `EvidenceCollection`（202）                                            | 409 130413/130411                                                                                 | client_request_id      |
+| A32 | GET`/evidence-collections/{collection_id}`                   | evidence-collections | execution_read                                                                                | O(collection_id)   | —                                                                                                                                                                                    | `EvidenceCollection` + 生成的 `Evidence[]`                           | 404                                                                                               | —                     |
+| A33 | POST`/claims/{claim_id}/verifications`                       | claims               | verification_run                                                                              | O(claim_id)        | `{verifier_id}`（重跑或补跑）                                                                                                                                                       | `Verification`（201）                                                  | 409 130433（验证器已归档）；403                                                                   | ✔                     |
+| A34 | GET`/verifications/{verification_id}`                        | verifications        | execution_read                                                                                | O(verification_id) | —                                                                                                                                                                                    | `Verification`（含 evidence_json）                                     | 404                                                                                               | —                     |
+| A35 | PUT`/verifications/{verification_id}/result`                 | verifications        | verification_run                                                                              | O(verification_id) | `{result:"PASSED"\|"FAILED"\|"INCONCLUSIVE", note?≤65536, evidence_ids?[]}`                                                                                                          | `Verification`                                                         | 409 130434/130410/130409；403 130403（`SELF_REVIEW`）                                           | v                      |
+| A36 | POST`/executions/{execution_id}/merges`                      | executions           | code_merge（经 08 判定）                                                                      | O(execution_id)    | `{target_branch?, push?:bool, reason≤2000}`                                                                                                                                        | `Merge`（202）                                                         | 409 130436；403                                                                                   | ✔                     |
+| A37 | GET`/merges/{merge_id}`                                      | merges               | execution_read                                                                                | O(merge_id)        | —                                                                                                                                                                                    | `Merge`                                                                | 404                                                                                               | —                     |
+| A38 | GET`/tenants/{t}/verifiers`                                  | tenants              | policy_read                                                                                   | T                  | query：`layer, state, required`；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10）                                     | `Verifier[]`                                                           | 403                                                                                               | —                     |
+| A39 | POST`/tenants/{t}/verifiers`                                 | tenants              | verifier_manage                                                                               | T                  | `{key, name, layer, applies_to, required, spec, timeout_ms, change_note?}`                                                                                                          | `Verifier`（201，v1）                                                  | 422 130433；409（key 重复）130409                                                                 | ✔                     |
+| A40 | GET`/verifiers/{verifier_id}`                                | verifiers            | policy_read                                                                                   | O(verifier_id)     | —                                                                                                                                                                                    | `Verifier` + 当前版本 spec                                             | 404                                                                                               | —                     |
+| A41 | PATCH`/verifiers/{verifier_id}`                              | verifiers            | verifier_manage                                                                               | O(verifier_id)     | `{name?, applies_to?, required?, spec?, timeout_ms?, state?:"ARCHIVED"\|"ACTIVE", change_note?}`                                                                                     | `Verifier`                                                             | 422 130433；409 130409                                                                            | v                      |
+| A42 | GET`/verifiers/{verifier_id}/versions`                       | verifiers            | policy_read                                                                                   | O(verifier_id)     | —                                                                                                                                                                                    | `VerifierVersion[]`                                                    | 404                                                                                               | —                     |
+| A43 | GET`/tenants/{t}/principals/{principal_id}/executions`       | tenants              | （本人；行级按项目`execution_read` 过滤）                                                   | P                  | query §6.6；`cursor?` / `limit?`（默认50、最大100）/ `sort?`，返回集合 `items,next_cursor?,has_more`（00 §16.10）                                                           | `ExecutionSummary[]`（跨项目"我的执行"）                               | 403                                                                                               | —                     |
 
 **表示（摘要）**：
+
 - `Execution`：A02/A06 的全部设置字段 + `id, project_id, work_item_id, kind, purpose, parent_execution_id, branch_reason, seq_no, reason_ordinal, branch_label, ensemble_group_id, state, state_reason, state_detail, initiator{kind,id,authority_source}, assignee{kind,id,display}, agent_id, machine{id,name,online}, workdir_mode, workdir_path, branch_name, base_commit, head_commit, native_session_bound:bool, carryover_pending, dispatch_epoch, current_turn?: Turn, pending_interaction_count, cost{micros, source, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens}, limits{turns_used, messages_used, output_bytes, max_output_bytes}, timestamps, claim_id, similarity{ratio, flag}, change_seq, version`。**不返回** `native_session_id` 原值（仅布尔，减少跨机误用）。
 - `ExecutionTreeNode`：`{id, parent_id, seq_no, branch_label, branch_reason, state, state_reason, assignee, machine, runtime, model, cost_micros, claim_id, verification{passed, failed, inconclusive, pending, required_total}, similarity_flag, ensemble_group_id, created_at, ended_at}`。
 - `ComparisonRow`：`{execution_id, branch_label, assignee, runtime, model, state, claim_present, required_passed, required_total, criteria_covered, criteria_total（经 02 读取）, diffstat{files, insertions, deletions}, cost_micros, duration_ms}`。
@@ -1108,23 +1106,23 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 信封（04 定义）至少含：协议版本、`message_id`、`machine_id`、连接代次。执行级载荷另含 `execution_id`、`dispatch_epoch`（验证/采集/合并用各自 ID）。
 
-| 方向 | 消息 | 载荷要点 | 服务端处理 / 响应 |
-|---|---|---|---|
-| S→M | `execution.start` | `{command_id, execution_id, dispatch_epoch, kind, purpose, runtime, model?, effort?, authorization_mode, tools_enabled, workdir:{mode, repo_path, base_ref, base_commit?, branch_name?, path?}, native_session_id?, prompt（INTERACTIVE 为本轮提示，含 carryover 前缀；AUTONOMOUS 为引导语）, context:{inline_bundle? \| file_ref?, sha256}, env_extra_names[], limits:{timeout_ms, max_output_bytes:8388608, heartbeat_ms:15000, lease_renew_ms:10000, self_stop_ms:20000}, turn_id?}` | 机器 ACK 命令；按 `command_id` 去重 |
-| S→M | `execution.cancel` | `{command_id, execution_id, dispatch_epoch, reason}` | 机器：bridge cancel → 4 s → kill tree |
-| S→M | `interaction.response` | `{command_id, execution_id, dispatch_epoch, interaction_id, native_request_id, action, content?}` | 机器按原 schema 再校验后交执行桥；随后发 `interaction_delivered` |
-| S→M | `evidence.collect` | `{command_id, collection_id, execution_id, base_commit, kinds[], report_globs[]}` | |
-| S→M | `verification.start` / `verification.cancel` | `{command_id, verification_id, commit, workdir, spec, timeout_ms}` | |
-| S→M | `merge.start` | `{command_id, merge_id, repo_path, source_branch, source_commit, target_branch, push}` | |
-| M→S | `execution.accepted` | `{execution_id, dispatch_epoch, runtime_version, pid?}` | E01；200 `{lease_expires_at}` |
-| M→S | `execution.rejected` | `{execution_id, dispatch_epoch, reason, detail≤2000}` | E02 |
-| M→S | `execution.events` | `{execution_id, dispatch_epoch, events:[{seq, type, at, payload}] ≤200 条 / ≤1 MiB}` | BR-03-21；200 `{ack_seq, cancel_requested:bool}`；409 130428 `{expected_seq}`；409 130427 |
-| M→S | `leases.renew` | `{items:[{execution_id, dispatch_epoch}] ≤64}` | 200 `{items:[{execution_id, status:"OK"\|"FENCED"\|"CANCEL_REQUESTED", lease_expires_at?}]}` |
-| M→S | `execution.lost` | `{execution_id, dispatch_epoch, reason:"HEARTBEAT_LOST"\|"DAEMON_RESTARTED"\|"OUTBOX_FULL"\|"OUTBOX_GAP", detail}` | E19 |
-| M→S | `blob.upload` | 流式；元数据 `{purpose:"evidence"\|"log"\|"artifact"\|"report", owner_id, name, mime, bytes, sha256}`，单个 ≤100 MiB | 服务端计算哈希、脱敏（文本类）、写 files 并绑定；返回 `{file_id, sha256}` |
-| M→S | `evidence.collected` | `{collection_id, state, items:[{type, title, produced_at, summary, file_id?, producer_tool}], error?}` | 去重插入 DRAFT 证据 |
-| M→S | `verification.started` / `verification.result` | `{verification_id, tool_version?, exit_code, signal?, duration_ms, stdout_tail, stderr_tail, files:[{path, file_id}], report?}` | BR-03-62 |
-| M→S | `merge.result` | `{merge_id, state, merge_commit?, conflict_files?, pushed}` | BR-03-86 |
+| 方向 | 消息                                               | 载荷要点                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 服务端处理 / 响应                                                                            |
+| ---- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| S→M | `execution.start`                                | `{command_id, execution_id, dispatch_epoch, kind, purpose, runtime, model?, effort?, authorization_mode, tools_enabled, workdir:{mode, repo_path, base_ref, base_commit?, branch_name?, path?}, native_session_id?, prompt（INTERACTIVE 为本轮提示，含 carryover 前缀；AUTONOMOUS 为引导语）, context:{inline_bundle? \| file_ref?, sha256}, env_extra_names[], limits:{timeout_ms, max_output_bytes:8388608, heartbeat_ms:15000, lease_renew_ms:10000, self_stop_ms:20000}, turn_id?}` | 机器 ACK 命令；按`command_id` 去重                                                         |
+| S→M | `execution.cancel`                               | `{command_id, execution_id, dispatch_epoch, reason}`                                                                                                                                                                                                                                                                                                                                                                                                                                   | 机器：bridge cancel → 4 s → kill tree                                                      |
+| S→M | `interaction.response`                           | `{command_id, execution_id, dispatch_epoch, interaction_id, native_request_id, action, content?}`                                                                                                                                                                                                                                                                                                                                                                                      | 机器按原 schema 再校验后交执行桥；随后发`interaction_delivered`                            |
+| S→M | `evidence.collect`                               | `{command_id, collection_id, execution_id, base_commit, kinds[], report_globs[]}`                                                                                                                                                                                                                                                                                                                                                                                                      |                                                                                              |
+| S→M | `verification.start` / `verification.cancel`   | `{command_id, verification_id, commit, workdir, spec, timeout_ms}`                                                                                                                                                                                                                                                                                                                                                                                                                     |                                                                                              |
+| S→M | `merge.start`                                    | `{command_id, merge_id, repo_path, source_branch, source_commit, target_branch, push}`                                                                                                                                                                                                                                                                                                                                                                                                 |                                                                                              |
+| M→S | `execution.accepted`                             | `{execution_id, dispatch_epoch, runtime_version, pid?}`                                                                                                                                                                                                                                                                                                                                                                                                                                | E01；200`{lease_expires_at}`                                                               |
+| M→S | `execution.rejected`                             | `{execution_id, dispatch_epoch, reason, detail≤2000}`                                                                                                                                                                                                                                                                                                                                                                                                                                 | E02                                                                                          |
+| M→S | `execution.events`                               | `{execution_id, dispatch_epoch, events:[{seq, type, at, payload}] ≤200 条 / ≤1 MiB}`                                                                                                                                                                                                                                                                                                                                                                                                 | BR-03-21；200`{ack_seq, cancel_requested:bool}`；409 130428 `{expected_seq}`；409 130427 |
+| M→S | `leases.renew`                                   | `{items:[{execution_id, dispatch_epoch}] ≤64}`                                                                                                                                                                                                                                                                                                                                                                                                                                        | 200`{items:[{execution_id, status:"OK"\|"FENCED"\|"CANCEL_REQUESTED", lease_expires_at?}]}`  |
+| M→S | `execution.lost`                                 | `{execution_id, dispatch_epoch, reason:"HEARTBEAT_LOST"\|"DAEMON_RESTARTED"\|"OUTBOX_FULL"\|"OUTBOX_GAP", detail}`                                                                                                                                                                                                                                                                                                                                                                        | E19                                                                                          |
+| M→S | `blob.upload`                                    | 流式；元数据`{purpose:"evidence"\|"log"\|"artifact"\|"report", owner_id, name, mime, bytes, sha256}`，单个 ≤100 MiB                                                                                                                                                                                                                                                                                                                                                                      | 服务端计算哈希、脱敏（文本类）、写 files 并绑定；返回`{file_id, sha256}`                   |
+| M→S | `evidence.collected`                             | `{collection_id, state, items:[{type, title, produced_at, summary, file_id?, producer_tool}], error?}`                                                                                                                                                                                                                                                                                                                                                                                 | 去重插入 DRAFT 证据                                                                          |
+| M→S | `verification.started` / `verification.result` | `{verification_id, tool_version?, exit_code, signal?, duration_ms, stdout_tail, stderr_tail, files:[{path, file_id}], report?}`                                                                                                                                                                                                                                                                                                                                                        | BR-03-62                                                                                     |
+| M→S | `merge.result`                                   | `{merge_id, state, merge_commit?, conflict_files?, pushed}`                                                                                                                                                                                                                                                                                                                                                                                                                            | BR-03-86                                                                                     |
 
 **事件类型**（`execution.events` 内，`type` → `payload`；源自 Preview `Event`）：`session_bound{native_session_id}`；`text{delta}`（≤64 KiB/条）；`tool{tool_call_id, title, state:"running"|"completed"|"failed", details}`；`status{text}`（SYSTEM 消息）；`interaction_requested{native_request_id, kind:"TOOL_PERMISSION"|"RUNTIME_INPUT", title, details?, message?, url?, cwd?, schema?, deadline_at?}`；`interaction_delivered{interaction_id}`；`usage{input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd?}`（增量）；`artifact{kind, name, ref, file_id?, metadata}`；`head{commit, changed_files?}`；`turn_ended{outcome:"completed"|"cancelled"}`；`error{message}`；`exited{exit_code, claim?:object（含 citations[]）, continue_file_id?, memory_file_id?（BR-03-30c）, head_commit?, evidence_collection?:{...同 evidence.collected}}`。未知 `type` → 400 130449，机器停止该派发。
 
@@ -1132,81 +1130,80 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 **本模块提供**（`module.Provide`，接口在 `internal/execution` 根包冻结）：
 
-| 接口 | 方法（语义） | 使用者 |
-|---|---|---|
-| `ExecutionLauncher`（00 §8；方法集与 02 CCR-05 对齐） | `Launch(ctx, tx, LaunchRequest{work_item_id, assignment_id, kind, branch_reason, parent_execution_id?, workspace_mode?:RESTART\|CONTINUE, feedback_ref?(=source_decision_id), source_change_record_id?, ensemble_group_id?, assignee_principal_id, agent_id?, machine_id?, runtime?, model?, effort?, max_cost_micros?, autostart, actor, authority_source}) (execution_id, error)`（在调用方事务内写本模块行；同 `feedback_ref` 重复调用返回既有 ID）；`Pause(ctx, tx, work_item_id, reason)`；`Resume(ctx, tx, work_item_id)`（含派发因有界自治停在 CREATED、`autostart=false` 的分支，02 人工 RESUME 时调用）；`CancelExecution(ctx, tx, execution_id, reason)`（单个执行，05 ENSEMBLE 落选/截止与 02 改派用）；工作项取消时 02 对该工作项每个非终态 DELIVERY 执行逐一调用 `CancelExecution`（可经 `ExecutionReader` 列出），不再提供按工作项的 `Cancel`（复审 #17）。`LaunchRequest` 另含 `purpose?`（默认 DELIVERY；05 交接用 HANDOVER）、`project_id`（`kind=ADHOC` 时必填，此时 `work_item_id`/`assignment_id` 为空）、`ensemble_group_id?`、`max_cost_micros?`；`autostart=true` 时发起者为 SYSTEM（BR-03-09） | 02、05 |
-| `EvidenceReader`（00 §8；按 02 §12.1 扩充） | `ListByClaim(claim_id)`；`Get(evidence_id)`；`BelongsToLineage(work_item_id, execution_id, evidence_ids) (own, cited, invalid)`；`VerificationSummary(claim_id) {required_total, passed, failed, inconclusive, pending, automated_passed, has_non_ai_pass}`；`FailedVerifications(claim_id)`；`ChangeSimilarity(execution_id) {ratio?, union_count, changed_count}`；`LiveExecution(work_item_id)`（当前非终态 DELIVERY 执行）；`Participants(work_item_id)`（全部分支的发起者与执行者，供 02 职责分离）；`ExecutionCost(execution_id)`；`WorkItemCost(work_item_id)`（该工作项全部 DELIVERY 执行累计成本，不含 VERIFICATION，08 委托成本条件用）；`DiffSummary(execution_id)`；`SecretFlags(evidence_ids) map[id]{secret_scanned, secret_flagged, redaction_count}`（07 交付包脱敏） | 02、06、07、08 |
-| `ExecutionReader` | `Get(execution_id)`（出处：机器、runtime、模型、发起者、分支，06 知识溯源用）；`ActiveCount(tenant, project)`；`AttentionByDay(tenant, project_ids[], from, to)`（人工回应交互的时长按 UTC 日汇总，07 人工关注分钟用） | 06、07、08 |
-| `EvidenceBinder` | `Attach(ctx, tx, claim_id, work_item_id, execution_id, own_ids, cited_ids) error`（BR-03-56）；`ValidateClaimable(ctx, tx, execution_id, fromExit bool) error`：ADHOC → 130425；`fromExit=true`（E06 事务内）允许 RUNNING；否则允许 PAUSED、或 SUCCEEDED 且尚无 Claim；其余 RUNNING → 130447，终态已有 Claim → 130411 | 02 |
-| `ExecutionDispatchHandler` | `PendingCommands(machine, conn_epoch, max)`；`AckCommands`；`Accept`；`Reject`；`AppendEvents`；`RenewLeases`；`ReportLost`；`UploadBlob`；`ReportCollection`；`ReportVerification`；`ReportMerge` —— §6.3 的服务端处理 | 04（通道） |
+| 接口                                                     | 方法（语义）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 使用者         |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `ExecutionLauncher`（00 §8；方法集与 02 CCR-05 对齐） | `Launch(ctx, tx, LaunchRequest{work_item_id, assignment_id, kind, branch_reason, parent_execution_id?, workspace_mode?:RESTART\|CONTINUE, feedback_ref?(=source_decision_id), source_change_record_id?, ensemble_group_id?, assignee_principal_id, agent_id?, machine_id?, runtime?, model?, effort?, max_cost_micros?, autostart, actor, authority_source}) (execution_id, error)`（在调用方事务内写本模块行；同 `feedback_ref` 重复调用返回既有 ID）；`Pause(ctx, tx, work_item_id, reason)`；`Resume(ctx, tx, work_item_id)`（含派发因有界自治停在 CREATED、`autostart=false` 的分支，02 人工 RESUME 时调用）；`CancelExecution(ctx, tx, execution_id, reason)`（单个执行，05 ENSEMBLE 落选/截止与 02 改派用）；工作项取消时 02 对该工作项每个非终态 DELIVERY 执行逐一调用 `CancelExecution`（可经 `ExecutionReader` 列出），不再提供按工作项的 `Cancel`（复审 #17）。`LaunchRequest` 另含 `purpose?`（默认 DELIVERY；05 交接用 HANDOVER）、`project_id`（`kind=ADHOC` 时必填，此时 `work_item_id`/`assignment_id` 为空）、`ensemble_group_id?`、`max_cost_micros?`；`autostart=true` 时发起者为 SYSTEM（BR-03-09） | 02、05         |
+| `EvidenceReader`（00 §8；按 02 §12.1 扩充）          | `ListByClaim(claim_id)`；`Get(evidence_id)`；`BelongsToLineage(work_item_id, execution_id, evidence_ids) (own, cited, invalid)`；`VerificationSummary(claim_id) {required_total, passed, failed, inconclusive, pending, automated_passed, has_non_ai_pass}`；`FailedVerifications(claim_id)`；`ChangeSimilarity(execution_id) {ratio?, union_count, changed_count}`；`LiveExecution(work_item_id)`（当前非终态 DELIVERY 执行）；`Participants(work_item_id)`（全部分支的发起者与执行者，供 02 职责分离）；`ExecutionCost(execution_id)`；`WorkItemCost(work_item_id)`（该工作项全部 DELIVERY 执行累计成本，不含 VERIFICATION，08 委托成本条件用）；`DiffSummary(execution_id)`；`SecretFlags(evidence_ids) map[id]{secret_scanned, secret_flagged, redaction_count}`（07 交付包脱敏）                                                                                                                                                                                                                                                                                                                                             | 02、06、07、08 |
+| `ExecutionReader`                                      | `Get(execution_id)`（出处：机器、runtime、模型、发起者、分支，06 知识溯源用）；`ActiveCount(tenant, project)`；`AttentionByDay(tenant, project_ids[], from, to)`（人工回应交互的时长按 UTC 日汇总，07 人工关注分钟用）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 06、07、08     |
+| `EvidenceBinder`                                       | `Attach(ctx, tx, claim_id, work_item_id, execution_id, own_ids, cited_ids) error`（BR-03-56）；`ValidateClaimable(ctx, tx, execution_id, fromExit bool) error`：ADHOC → 130425；`fromExit=true`（E06 事务内）允许 RUNNING；否则允许 PAUSED、或 SUCCEEDED 且尚无 Claim；其余 RUNNING → 130447，终态已有 Claim → 130411                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 02             |
+| `ExecutionDispatchHandler`                             | `PendingCommands(machine, conn_epoch, max)`；`AckCommands`；`Accept`；`Reject`；`AppendEvents`；`RenewLeases`；`ReportLost`；`UploadBlob`；`ReportCollection`；`ReportVerification`；`ReportMerge` —— §6.3 的服务端处理                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 04（通道）     |
 
 **本模块使用**：02 `WorkItemReader`（`Get`、`Criteria`、`ActiveAssignment`，以及路由归属解析 `Owner`）、`WorkItemTransitioner`（02 §6.9：`ExecutionStarted`、`ExecutionFailed`、`VerificationQueued`、`VerificationCompleted`、`RenewLease`，均在本模块事务内执行并以 `source_ref` 幂等）、`ClaimSubmitter.SubmitOn`（02 提供，AUTONOMOUS 代 Agent 提交 Claim）、`DecisionReader`（第 4 层反馈全文）；04 `MachineDirectory`（状态、runtime、`ResolveWorkspace(machine, project)`、`ReserveSlot/ReleaseSlot`、模型目录与单价、附加环境变量名单）、`MachineChannelNotifier.Wake`；05 `AgentDirectory`；06 `Retriever.BuildInjection(scope_chain, query, token_budget)`、`Retriever.RecordInclusion`、`Retriever.RecordCitations`、`SkillCatalog.ForAgent`、`MemoryWriter.Propose`；07 `ProjectGate.CanStartExecution`；08 `AuthorityChecker`；09 `JobQueue`、`OutboxPublisher`、`RealtimeBroadcaster`、`Notifier`、平台幂等辅助；底座 `files.ResourceBindings`（注册 purpose：`execution_evidence`、`execution_log`、`execution_context`、`execution_artifact`，均 resource_kind=对应资源、OwnerScopes=`["entity"]`、VersionMode=`pinned`；系统身份写入经 09 C9）、`audit.Appender`、`guid`、`dlock`。
 
 ### 6.5 错误码（execution 段 130000–139999；i18n namespace `execution`，三语齐全）
 
-| 码 | HTTP | i18n key | 含义 |
-|---|---|---|---|
-| 130403 | 403 | execution.error.forbidden | 权限不足；`data.reason_code` ∈ {NOT_OWNER, SELF_REVIEW, FULL_AUTO_FORBIDDEN, REAUTH_REQUIRED, HUMAN_ONLY, AGENT_PROHIBITED, DELEGATION_MERGE_RISK, 及 08 AuthorityChecker 透传码} |
-| 130404 | 404 | execution.error.not_found | 不存在或不属于该租户/项目 |
-| 130409 | 409 | execution.error.version_conflict | 乐观锁 / 序号分配冲突 |
-| 130410 | 409 | execution.error.illegal_transition | 非法状态迁移 |
-| 130411 | 409 | execution.error.terminal | 执行已结束 |
-| 130412 | 409 | execution.error.turn_active | 已有进行中的轮次 |
-| 130413 | 409 | execution.error.machine_offline | 机器离线或排空中 |
-| 130414 | 422 | execution.error.runtime_unsupported | 机器未安装该 runtime |
-| 130415 | 409 | execution.error.workdir_busy | 工作目录已有写入型执行 |
-| 130416 | 409 | execution.error.history_limit | 轮次/消息/输出达到上限，请新开会话 |
-| 130417 | 413 | execution.error.prompt_too_large | 消息与附件合计超过 64 KB |
-| 130418 | 422 | execution.error.attachment_invalid | 附件数量/大小/编码不合法 |
-| 130419 | 409 | execution.error.retry_not_allowed | 只有无输出的失败轮次可重试 |
-| 130420 | 409 | execution.error.interaction_closed | 交互已过期/已取消/已送达 |
-| 130421 | 409 | execution.error.interaction_already_decided | 其他客户端已作出不同决定 |
-| 130422 | 422 | execution.error.validation | 请求体校验失败（含手工提交仅限自动采集的证据类型） |
-| 130423 | 422 | execution.error.interaction_schema | 回答不符合请求的 JSON Schema |
-| 130424 | 409 | execution.error.settings_while_running | 执行中不可修改该设置 |
-| 130425 | 409 | execution.error.adhoc_not_linked | 临时执行须先关联工作项 |
-| 130426 | 409 | execution.error.work_item_state | 工作项状态或分派不允许此操作 |
-| 130427 | 409 | execution.error.fenced | 派发已被栅栏（机器通道） |
-| 130428 | 409 | execution.error.seq_gap | 事件序号缺口（机器通道） |
-| 130430 | 409 | execution.error.evidence_locked | 证据已绑定声明，不可修改 |
-| 130431 | 409 | execution.error.evidence_limit | 证据数量达到上限 |
-| 130432 | 422 | execution.error.hash_mismatch | 内容哈希不一致 |
-| 130433 | 422 | execution.error.verifier_invalid | 验证器定义不合法或已归档 |
-| 130434 | 409 | execution.error.not_human_verification | 只有人工验证可手动记录结果 |
-| 130436 | 409 | execution.error.merge_precondition | 合并条件不满足 |
-| 130437 | 409 | execution.error.merge_conflict | 合并冲突 |
-| 130438 | 409 | execution.error.project_gate_closed | 项目不允许启动执行（预算暂停 / 项目暂停 / 阶段不允许，07 `ProjectGate`） |
-| 130439 | 409 | execution.error.ensemble_limit | 并行分支数达到上限 |
-| 130440 | 422 | execution.error.branch_reason_invalid | 分支原因与父执行不匹配 |
-| 130441 | 422 | execution.error.context_budget | 不可裁剪的上下文超过预算 |
-| 130445 | 409 | execution.error.native_session_mismatch | 原生会话与记录不一致 |
-| 130446 | 422 | execution.error.machine_runtime_mismatch | 目标机器不支持当前 runtime |
-| 130447 | 409 | execution.error.claim_requires_idle | 请先等待本轮结束或停止执行 |
-| 130448 | 503 | execution.error.unavailable | 执行服务暂不可用 |
-| 130449 | 400 | execution.error.event_invalid | 机器事件不合法 |
-| 130450 | 422 | execution.error.side_effect_ack_required | 恢复中断的执行前须确认已检查副作用 |
+| 码     | HTTP | i18n key                                    | 含义                                                                                                                                                                                 |
+| ------ | ---- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 130403 | 403  | execution.error.forbidden                   | 权限不足；`data.reason_code` ∈ {NOT_OWNER, SELF_REVIEW, FULL_AUTO_FORBIDDEN, REAUTH_REQUIRED, HUMAN_ONLY, AGENT_PROHIBITED, DELEGATION_MERGE_RISK, 及 08 AuthorityChecker 透传码} |
+| 130404 | 404  | execution.error.not_found                   | 不存在或不属于该租户/项目                                                                                                                                                            |
+| 130409 | 409  | execution.error.version_conflict            | 乐观锁 / 序号分配冲突                                                                                                                                                                |
+| 130410 | 409  | execution.error.illegal_transition          | 非法状态迁移                                                                                                                                                                         |
+| 130411 | 409  | execution.error.terminal                    | 执行已结束                                                                                                                                                                           |
+| 130412 | 409  | execution.error.turn_active                 | 已有进行中的轮次                                                                                                                                                                     |
+| 130413 | 409  | execution.error.machine_offline             | 机器离线或排空中                                                                                                                                                                     |
+| 130414 | 422  | execution.error.runtime_unsupported         | 机器未安装该 runtime                                                                                                                                                                 |
+| 130415 | 409  | execution.error.workdir_busy                | 工作目录已有写入型执行                                                                                                                                                               |
+| 130416 | 409  | execution.error.history_limit               | 轮次/消息/输出达到上限，请新开会话                                                                                                                                                   |
+| 130417 | 413  | execution.error.prompt_too_large            | 消息与附件合计超过 64 KB                                                                                                                                                             |
+| 130418 | 422  | execution.error.attachment_invalid          | 附件数量/大小/编码不合法                                                                                                                                                             |
+| 130419 | 409  | execution.error.retry_not_allowed           | 只有无输出的失败轮次可重试                                                                                                                                                           |
+| 130420 | 409  | execution.error.interaction_closed          | 交互已过期/已取消/已送达                                                                                                                                                             |
+| 130421 | 409  | execution.error.interaction_already_decided | 其他客户端已作出不同决定                                                                                                                                                             |
+| 130422 | 422  | execution.error.validation                  | 请求体校验失败（含手工提交仅限自动采集的证据类型）                                                                                                                                   |
+| 130423 | 422  | execution.error.interaction_schema          | 回答不符合请求的 JSON Schema                                                                                                                                                         |
+| 130424 | 409  | execution.error.settings_while_running      | 执行中不可修改该设置                                                                                                                                                                 |
+| 130425 | 409  | execution.error.adhoc_not_linked            | 临时执行须先关联工作项                                                                                                                                                               |
+| 130426 | 409  | execution.error.work_item_state             | 工作项状态或分派不允许此操作                                                                                                                                                         |
+| 130427 | 409  | execution.error.fenced                      | 派发已被栅栏（机器通道）                                                                                                                                                             |
+| 130428 | 409  | execution.error.seq_gap                     | 事件序号缺口（机器通道）                                                                                                                                                             |
+| 130430 | 409  | execution.error.evidence_locked             | 证据已绑定声明，不可修改                                                                                                                                                             |
+| 130431 | 409  | execution.error.evidence_limit              | 证据数量达到上限                                                                                                                                                                     |
+| 130432 | 422  | execution.error.hash_mismatch               | 内容哈希不一致                                                                                                                                                                       |
+| 130433 | 422  | execution.error.verifier_invalid            | 验证器定义不合法或已归档                                                                                                                                                             |
+| 130434 | 409  | execution.error.not_human_verification      | 只有人工验证可手动记录结果                                                                                                                                                           |
+| 130436 | 409  | execution.error.merge_precondition          | 合并条件不满足                                                                                                                                                                       |
+| 130437 | 409  | execution.error.merge_conflict              | 合并冲突                                                                                                                                                                             |
+| 130438 | 409  | execution.error.project_gate_closed         | 项目不允许启动执行（预算暂停 / 项目暂停 / 阶段不允许，07`ProjectGate`）                                                                                                            |
+| 130439 | 409  | execution.error.ensemble_limit              | 并行分支数达到上限                                                                                                                                                                   |
+| 130440 | 422  | execution.error.branch_reason_invalid       | 分支原因与父执行不匹配                                                                                                                                                               |
+| 130441 | 422  | execution.error.context_budget              | 不可裁剪的上下文超过预算                                                                                                                                                             |
+| 130445 | 409  | execution.error.native_session_mismatch     | 原生会话与记录不一致                                                                                                                                                                 |
+| 130446 | 422  | execution.error.machine_runtime_mismatch    | 目标机器不支持当前 runtime                                                                                                                                                           |
+| 130447 | 409  | execution.error.claim_requires_idle         | 请先等待本轮结束或停止执行                                                                                                                                                           |
+| 130448 | 503  | execution.error.unavailable                 | 执行服务暂不可用                                                                                                                                                                     |
+| 130449 | 400  | execution.error.event_invalid               | 机器事件不合法                                                                                                                                                                       |
+| 130450 | 422  | execution.error.side_effect_ack_required    | 恢复中断的执行前须确认已检查副作用                                                                                                                                                   |
 
 ### 6.6 列表查询字段（`pkg/query`）
 
-| 资源 | 可过滤（操作符） | 可排序 | 默认 |
-|---|---|---|---|
+| 资源            | 可过滤（操作符）                                                                                                                                                                                                                                                                                                                                                                          | 可排序                                                                                    | 默认                                                      |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | 执行（A01/A43） | `state`(eq,in)、`kind`(eq,in)、`purpose`(eq)、`branch_reason`(in)、`work_item_id`(eq)、`machine_id`(eq)、`runtime`(eq)、`agent_id`(eq)、`assignee_principal_id`(eq)、`initiator_id`(eq)、`pending_interaction_count`(gt)、`similarity_flag`(eq)、`cost_micros`(gte,lte)、`created_at`/`started_at`/`ended_at`(gte,lte)、`title`(like)、`archived`(eq) | `created_at`、`started_at`、`ended_at`、`cost_micros`、`seq_no`、`updated_at` | `-created_at`；`purpose=DELIVERY`、`archived=false` |
-| 证据（A03/A26） | `claim_id`、`execution_id`、`work_item_id`(eq)；`evidence_type`、`state`(in)；`auto_collected`(eq)；`produced_at`(gte,lte) | `produced_at`、`created_at` | `-produced_at` |
-| 验证（A04） | `claim_id`、`work_item_id`、`verifier_id`(eq)；`result`、`layer`(in)；`required`(eq)；`finished_at`(gte,lte) | `queued_at`、`finished_at` | `-queued_at` |
-| 验证器（A38） | `layer`、`state`(in)；`required`(eq)；`key`、`name`(like) | `key`、`updated_at` | `key` |
+| 证据（A03/A26） | `claim_id`、`execution_id`、`work_item_id`(eq)；`evidence_type`、`state`(in)；`auto_collected`(eq)；`produced_at`(gte,lte)                                                                                                                                                                                                                                                  | `produced_at`、`created_at`                                                           | `-produced_at`                                          |
+| 验证（A04）     | `claim_id`、`work_item_id`、`verifier_id`(eq)；`result`、`layer`(in)；`required`(eq)；`finished_at`(gte,lte)                                                                                                                                                                                                                                                                | `queued_at`、`finished_at`                                                            | `-queued_at`                                            |
+| 验证器（A38）   | `layer`、`state`(in)；`required`(eq)；`key`、`name`(like)                                                                                                                                                                                                                                                                                                                       | `key`、`updated_at`                                                                   | `key`                                                   |
 
 ---
 
-
 ### 6.x 接口增补（D112 / D113，00 v2.0 §15）
 
-| # | 方法 | 路径 | tag | 权限 · 守卫 | 请求 | 响应 | 错误 |
-|---|---|---|---|---|---|---|---|
-| A50 | GET | `/work-items/{work_item_id}/acceptance-suites` | work-items | `execution_read` · O | — | 列表（隐藏文件只返回数量与 sha256，不返回路径与内容） | 404 |
-| A51 | POST | `/work-items/{work_item_id}/acceptance-suites` | work-items | `acceptance_suite_manage` · O；HUMAN | `{visible_files[], hidden_files[], command[]}`（文件为 files 节点 id） | 集（DRAFT） | 422 130454（命令为空 / 文件缺失） |
-| A52 | PUT | `/acceptance-suites/{suite_id}/state` | acceptance-suites | `acceptance_suite_manage` · O；HUMAN；If-Match | `{state:"FROZEN"}` | 集 | 409 130451 |
-| A53 | GET | `/work-items/{work_item_id}/internal-qa-runs` | work-items | `execution_read` · O | `?subject_execution_id=` | 运行列表（含发现、截图、评分、同家族回退标记） | 404 |
-| A54 | GET | `/internal-qa-runs/{run_id}` | internal-qa-runs | `execution_read` · O | — | 单条 | 404 |
+| #   | 方法 | 路径                                             | tag               | 权限 · 守卫                                      | 请求                                                                     | 响应                                                  | 错误                              |
+| --- | ---- | ------------------------------------------------ | ----------------- | ------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------- | --------------------------------- |
+| A50 | GET  | `/work-items/{work_item_id}/acceptance-suites` | work-items        | `execution_read` · O                           | —                                                                       | 列表（隐藏文件只返回数量与 sha256，不返回路径与内容） | 404                               |
+| A51 | POST | `/work-items/{work_item_id}/acceptance-suites` | work-items        | `acceptance_suite_manage` · O；HUMAN           | `{visible_files[], hidden_files[], command[]}`（文件为 files 节点 id） | 集（DRAFT）                                           | 422 130454（命令为空 / 文件缺失） |
+| A52 | PUT  | `/acceptance-suites/{suite_id}/state`          | acceptance-suites | `acceptance_suite_manage` · O；HUMAN；If-Match | `{state:"FROZEN"}`                                                     | 集                                                    | 409 130451                        |
+| A53 | GET  | `/work-items/{work_item_id}/internal-qa-runs`  | work-items        | `execution_read` · O                           | `?subject_execution_id=`                                               | 运行列表（含发现、截图、评分、同家族回退标记）        | 404                               |
+| A54 | GET  | `/internal-qa-runs/{run_id}`                   | internal-qa-runs  | `execution_read` · O                           | —                                                                       | 单条                                                  | 404                               |
 
 接口：`ExecutionLauncher.Launch` 接受 `purpose ∈ {INTERNAL_TEST, INTERNAL_ACCEPTANCE}` 与 `subject_execution_id`（05 调用）；新增 `InternalQAReader{Latest(work_item_id), PassedStages(execution_id)}`（02 / 08 读取）。使用：06 `MemoryWriter.Propose`、11 `EvalSetWriter.ProposeCase`、11 `VerifierCatalog.ToolCalibration`（BR-03-103）、04 `MachineDirectory`（`browser_capture` 能力）。
 
@@ -1214,42 +1211,42 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 ### 6.y 接口增补（D119 远程工作区）
 
-| # | 方法 | 路径 | tag | 权限 · 守卫 | 请求 | 响应 | 错误 |
-|---|---|---|---|---|---|---|---|
-| A55 | GET | `/executions/{execution_id}/preview-sessions` | executions | `execution_read` · O | `?state=&kind=` | `PreviewSession[]` + `meta.configs[]`（可用预览配置，BR-03-105）+ `meta.gateway{enabled, mode}` | 404 |
-| A56 | POST | `/executions/{execution_id}/preview-sessions` | executions | `execution_start` · O | `{kind:"SERVICE", config_key}` \| `{kind:"SERVICE", port}`（AGENT_OFFERED）\| `{kind:"ARTIFACT"}` | `PreviewSession`（201 / 200 已存在） | 422 130460；403 130403（`PORT_NOT_OWNED` / `MACHINE_ACCESS_DISABLED`）；409 140484 / 130467 / 130410（执行终态）；429 130463；503 140492 |
-| A57 | POST | `/claims/{claim_id}/preview-sessions` | claims | `execution_read` · O（评审人；REVIEW 只读） | `{config_key?}` | `PreviewSession`（201） | 同 A56；409 130410（声明已裁决） |
-| A58 | GET | `/preview-sessions/{session_id}` | preview-sessions | `execution_read` · O | — | `PreviewSession` | 404 |
-| A59 | PUT | `/preview-sessions/{session_id}/termination` | preview-sessions | 发起者，或 `execution_stop` · O | `{}` | `PreviewSession`（STOPPED，USER） | 幂等 |
-| A60 | POST | `/preview-sessions/{session_id}/access-grants` | preview-sessions | `execution_read` · O；HUMAN（Cookie 会话） | `{return_path? ≤2000}` | `{url, expires_in:60}`（`no-store`） | 409 130462（未就绪 / 已结束） |
-| A61 | GET | `/executions/{execution_id}/offered-ports` | executions | `execution_read` · O | — | `[{port, process_name, offered_by_agent:bool}]`（04 `TunnelBroker.Ports`，只含执行进程树内端口） | 409 140484 |
-| A62 | GET | `/executions/{execution_id}/workspace/entries` | executions | `execution_read` · O | `?path=`（相对，默认根） | `[{name, path, type:"FILE"\|"DIR"\|"LINK", size?, modified_at?, masked:bool, changed?:"A"\|"M"\|"D"}]` | 403 130403（`PATH_OUTSIDE_WORKSPACE` / `MACHINE_ACCESS_DISABLED`）；409 130467 / 140484 |
-| A63 | GET | `/executions/{execution_id}/workspace/content` | executions | `execution_read` · O | `?path=&download=0\|1` | 文本 JSON `{text, sha256, truncated}` 或下载流 | 同 A62；413 130468；422 130469 |
-| A64 | GET | `/executions/{execution_id}/workspace/diff` | executions | `execution_read` · O | `?path=`（缺省 = 变更列表） | `{base_commit, files:[{path, status, additions, deletions, uncommitted}]}` 或 `{path, unified_diff, truncated}` | 同 A62 |
-| A65 | PUT / DELETE | `/executions/{execution_id}/human-takeover` | executions | `execution_stop` + `workspace_file_edit` · O；HUMAN（v1.1） | PUT `{reason ≤2000}` | `Execution`（含 `taken_over_by`） | 409 130410 / 130466；403 130403 |
-| A66 | POST | `/executions/{execution_id}/workspace-commits` | executions | `workspace_file_edit` · O；HUMAN；接管者本人（v1.1） | `{message 1–200, changes:[{path, base_sha256?, text? \| file_id? \| delete?:true}] 1..50}` | `{artifact, commit}`（201） | 409 130466 / 130472；422 130469；403 130403（`PATH_OUTSIDE_WORKSPACE` / `MACHINE_ACCESS_DISABLED`） |
-| A67 | POST | `/executions/{execution_id}/terminal-sessions` | executions | WATCH：`execution_read`；SHELL：`terminal_interact` + HUMAN + step-up `terminal_interactive`（v1.1） · O | `{mode:"WATCH"\|"SHELL", cols?, rows?, reauth_proof?}` | `TerminalSession`（201）+ `channel_url` | 403 130403（`MACHINE_ACCESS_DISABLED` / `REAUTH_REQUIRED` / `NON_DELEGABLE` / `AGENT_PROHIBITED`）；409 140484 / 130467；429 140486 |
-| A68 | GET · PUT | `/terminal-sessions/{session_id}` · `/terminal-sessions/{session_id}/termination` | terminal-sessions | 打开者或 `execution_stop` · O | — | `TerminalSession` | 404 |
-| A69 | GET（WebSocket 升级） | `/terminal-sessions/{session_id}/channel` | terminal-sessions | 打开者本人（同一 Cookie 会话） · O | 文本帧 `{type:"input", data}`（仅 SHELL）、`{type:"resize", cols, rows}`；服务端帧 `{type:"output", data}`、`{type:"closed", reason}` | — | 403；WATCH 收到 input → 关闭（1008） |
-| A70 | POST | `/preview-sessions/{session_id}/share-links` | preview-sessions | `execution_start` · O；HUMAN（v1.1（D126）） | `{ttl_hours 1–168, note? ≤500}` | `ShareLink`（201，PENDING_APPROVAL） | 409 130462 / 130465 |
-| A71 | GET | `/executions/{execution_id}/share-links` · `/share-links/{link_id}` | executions · share-links | `execution_read` · O | — | `ShareLink[]` / `ShareLink`（从不含令牌） | 404 |
-| A72 | PUT | `/share-links/{link_id}/decision` | share-links | `preview_share_approve`（不可委托）· O；HUMAN；非申请人 | `{action:"APPROVE"\|"REJECT", reason? ≤2000}` + If-Match | APPROVE：`{share_link, share_url}`（`no-store`，只此一次）；REJECT：`ShareLink` | 403 130403（`SELF_REVIEW` / `NON_DELEGABLE`）；409 130465 / 130462 |
-| A73 | PUT | `/share-links/{link_id}/revocation` | share-links | 申请人、批准人或 `preview_share_approve` · O；HUMAN | `{reason ≤2000}` | `ShareLink`（REVOKED） | 409 130465 |
-| A74 | POST | `/share-access`（预览域，公开；`authz.RegisterPublic` + 限流 10 次/分钟/IP） | share-access | 令牌即凭据 | `{token}` | 204 + `Set-Cookie: __Host-share` + `Location` | 410 130464（失效 / 不存在，不区分） |
-| A75 | GET | `/executions/{execution_id}/artifact-views` | executions | `execution_read` · O | `?path=` | `{viewer:ViewerKind, src_url（预览域）, proxy?:{available, profile}, previous?:{commit, src_url}}` | 409 130467；422 130473（v1.1 查看器在 MVP 构建中返回此码） |
+| #   | 方法                  | 路径                                                                                   | tag                       | 权限 · 守卫                                                                                                    | 请求                                                                                                                                         | 响应                                                                                                                | 错误                                                                                                                                         |
+| --- | --------------------- | -------------------------------------------------------------------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| A55 | GET                   | `/executions/{execution_id}/preview-sessions`                                        | executions                | `execution_read` · O                                                                                         | `?state=&kind=`                                                                                                                            | `PreviewSession[]` + `meta.configs[]`（可用预览配置，BR-03-105）+ `meta.gateway{enabled, mode}`               | 404                                                                                                                                          |
+| A56 | POST                  | `/executions/{execution_id}/preview-sessions`                                        | executions                | `execution_start` · O                                                                                        | `{kind:"SERVICE", config_key}` \| `{kind:"SERVICE", port}`（AGENT_OFFERED）\| `{kind:"ARTIFACT"}`                                      | `PreviewSession`（201 / 200 已存在）                                                                              | 422 130460；403 130403（`PORT_NOT_OWNED` / `MACHINE_ACCESS_DISABLED`）；409 140484 / 130467 / 130410（执行终态）；429 130463；503 140492 |
+| A57 | POST                  | `/claims/{claim_id}/preview-sessions`                                                | claims                    | `execution_read` · O（评审人；REVIEW 只读）                                                                  | `{config_key?}`                                                                                                                            | `PreviewSession`（201）                                                                                           | 同 A56；409 130410（声明已裁决）                                                                                                             |
+| A58 | GET                   | `/preview-sessions/{session_id}`                                                     | preview-sessions          | `execution_read` · O                                                                                         | —                                                                                                                                           | `PreviewSession`                                                                                                  | 404                                                                                                                                          |
+| A59 | PUT                   | `/preview-sessions/{session_id}/termination`                                         | preview-sessions          | 发起者，或`execution_stop` · O                                                                               | `{}`                                                                                                                                       | `PreviewSession`（STOPPED，USER）                                                                                 | 幂等                                                                                                                                         |
+| A60 | POST                  | `/preview-sessions/{session_id}/access-grants`                                       | preview-sessions          | `execution_read` · O；HUMAN（Cookie 会话）                                                                   | `{return_path? ≤2000}`                                                                                                                    | `{url, expires_in:60}`（`no-store`）                                                                            | 409 130462（未就绪 / 已结束）                                                                                                                |
+| A61 | GET                   | `/executions/{execution_id}/offered-ports`                                           | executions                | `execution_read` · O                                                                                         | —                                                                                                                                           | `[{port, process_name, offered_by_agent:bool}]`（04 `TunnelBroker.Ports`，只含执行进程树内端口）                | 409 140484                                                                                                                                   |
+| A62 | GET                   | `/executions/{execution_id}/workspace/entries`                                       | executions                | `execution_read` · O                                                                                         | `?path=`（相对，默认根）                                                                                                                   | `[{name, path, type:"FILE"\|"DIR"\|"LINK", size?, modified_at?, masked:bool, changed?:"A"\|"M"\|"D"}]`                | 403 130403（`PATH_OUTSIDE_WORKSPACE` / `MACHINE_ACCESS_DISABLED`）；409 130467 / 140484                                                  |
+| A63 | GET                   | `/executions/{execution_id}/workspace/content`                                       | executions                | `execution_read` · O                                                                                         | `?path=&download=0\|1`                                                                                                                      | 文本 JSON`{text, sha256, truncated}` 或下载流                                                                     | 同 A62；413 130468；422 130469                                                                                                               |
+| A64 | GET                   | `/executions/{execution_id}/workspace/diff`                                          | executions                | `execution_read` · O                                                                                         | `?path=`（缺省 = 变更列表）                                                                                                                | `{base_commit, files:[{path, status, additions, deletions, uncommitted}]}` 或 `{path, unified_diff, truncated}` | 同 A62                                                                                                                                       |
+| A65 | PUT / DELETE          | `/executions/{execution_id}/human-takeover`                                          | executions                | `execution_stop` + `workspace_file_edit` · O；HUMAN（v1.1）                                                | PUT`{reason ≤2000}`                                                                                                                       | `Execution`（含 `taken_over_by`）                                                                               | 409 130410 / 130466；403 130403                                                                                                              |
+| A66 | POST                  | `/executions/{execution_id}/workspace-commits`                                       | executions                | `workspace_file_edit` · O；HUMAN；接管者本人（v1.1）                                                         | `{message 1–200, changes:[{path, base_sha256?, text? \| file_id? \| delete?:true}] 1..50}`                                                  | `{artifact, commit}`（201）                                                                                       | 409 130466 / 130472；422 130469；403 130403（`PATH_OUTSIDE_WORKSPACE` / `MACHINE_ACCESS_DISABLED`）                                      |
+| A67 | POST                  | `/executions/{execution_id}/terminal-sessions`                                       | executions                | WATCH：`execution_read`；SHELL：`terminal_interact` + HUMAN + step-up `terminal_interactive`（v1.1） · O | `{mode:"WATCH"\|"SHELL", cols?, rows?, reauth_proof?}`                                                                                      | `TerminalSession`（201）+ `channel_url`                                                                         | 403 130403（`MACHINE_ACCESS_DISABLED` / `REAUTH_REQUIRED` / `NON_DELEGABLE` / `AGENT_PROHIBITED`）；409 140484 / 130467；429 140486  |
+| A68 | GET · PUT            | `/terminal-sessions/{session_id}` · `/terminal-sessions/{session_id}/termination` | terminal-sessions         | 打开者或`execution_stop` · O                                                                                 | —                                                                                                                                           | `TerminalSession`                                                                                                 | 404                                                                                                                                          |
+| A69 | GET（WebSocket 升级） | `/terminal-sessions/{session_id}/channel`                                            | terminal-sessions         | 打开者本人（同一 Cookie 会话） · O                                                                             | 文本帧`{type:"input", data}`（仅 SHELL）、`{type:"resize", cols, rows}`；服务端帧 `{type:"output", data}`、`{type:"closed", reason}` | —                                                                                                                  | 403；WATCH 收到 input → 关闭（1008）                                                                                                        |
+| A70 | POST                  | `/preview-sessions/{session_id}/share-links`                                         | preview-sessions          | `execution_start` · O；HUMAN（v1.1（D126））                                                                 | `{ttl_hours 1–168, note? ≤500}`                                                                                                          | `ShareLink`（201，PENDING_APPROVAL）                                                                              | 409 130462 / 130465                                                                                                                          |
+| A71 | GET                   | `/executions/{execution_id}/share-links` · `/share-links/{link_id}`               | executions · share-links | `execution_read` · O                                                                                         | —                                                                                                                                           | `ShareLink[]` / `ShareLink`（从不含令牌）                                                                       | 404                                                                                                                                          |
+| A72 | PUT                   | `/share-links/{link_id}/decision`                                                    | share-links               | `preview_share_approve`（不可委托）· O；HUMAN；非申请人                                                      | `{action:"APPROVE"\|"REJECT", reason? ≤2000}` + If-Match                                                                                   | APPROVE：`{share_link, share_url}`（`no-store`，只此一次）；REJECT：`ShareLink`                               | 403 130403（`SELF_REVIEW` / `NON_DELEGABLE`）；409 130465 / 130462                                                                       |
+| A73 | PUT                   | `/share-links/{link_id}/revocation`                                                  | share-links               | 申请人、批准人或`preview_share_approve` · O；HUMAN                                                           | `{reason ≤2000}`                                                                                                                          | `ShareLink`（REVOKED）                                                                                            | 409 130465                                                                                                                                   |
+| A74 | POST                  | `/share-access`（预览域，公开；`authz.RegisterPublic` + 限流 10 次/分钟/IP）       | share-access              | 令牌即凭据                                                                                                      | `{token}`                                                                                                                                  | 204 +`Set-Cookie: __Host-share` + `Location`                                                                    | 410 130464（失效 / 不存在，不区分）                                                                                                          |
+| A75 | GET                   | `/executions/{execution_id}/artifact-views`                                          | executions                | `execution_read` · O                                                                                         | `?path=`                                                                                                                                   | `{viewer:ViewerKind, src_url（预览域）, proxy?:{available, profile}, previous?:{commit, src_url}}`                | 409 130467；422 130473（v1.1 查看器在 MVP 构建中返回此码）                                                                                   |
 
 **表示**：`PreviewSession{id, execution_id, claim_id?, kind, origin, config_key?, preview_kind?, viewers[], port?, commit?, machine{id, name, type}, state, stop_reason?, url_mode:"SUBDOMAIN"\|"PATH", path_mode_warning, ready_at?, last_access_at?, expires_at, failure_detail?, share_link_count, version}`（**不含** `label`，URL 只经 A60 换取取得）；`TerminalSession{id, execution_id, mode, state, sandboxed?, opened_by, opened_at, closed_at?, close_reason?, recording?:{file_id, sha256}}`（录制只对 `audit_read` 可见）；`ShareLink{id, preview_session_id, state, note, ttl_hours, requested_by, decided_by?, approved_at?, expires_at?, revoked_at?, end_reason?, access_count, last_access_at?, version}`。
 
 **机器执行级消息增补**（§6.3 同表语义；传输属 04 §6.4 / §6.4b）：
 
-| 方向 | 消息 | 载荷要点 | 服务端处理 |
-|---|---|---|---|
-| S→M | `preview.start` | `{command_id, session_id, holder:{kind, id}, config:S8, workdir:{mode:"EXECUTION"\|"ISOLATED_COPY", commit?}}` | 机器启动预览进程（REVIEW 先建隔离副本）；回 `preview.state` |
-| S→M | `preview.stop` | `{command_id, session_id, reason}` | 杀进程树（4 s），REVIEW 删除副本 |
-| M→S | `preview.state` | `{session_id, state:"STARTING"\|"RUNNING"\|"EXITED", exit_code?, log_tail? ≤4 KiB}` | §4.y V2 / V6 / V7 |
-| M→S | `execution.events` 新事件类型 | `preview_offered{port, title?}` | BR-03-113 |
-| S→M | `workspace.commit` | `{command_id, execution_id, dispatch_epoch, changes:[{path, base_sha256?, file_id? \| inline_b64? \| delete?}], author:{name, email}, message, trailer}`（v1.1） | BR-03-127 |
-| M→S | `workspace.commit_result` | `{command_id, ok, commit?, conflicts?:[{path, current_sha256}], code?}` | 写产物、审计；冲突 → 130472 |
+| 方向 | 消息                            | 载荷要点                                                                                                                                                         | 服务端处理                                                   |
+| ---- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| S→M | `preview.start`               | `{command_id, session_id, holder:{kind, id}, config:S8, workdir:{mode:"EXECUTION"\|"ISOLATED_COPY", commit?}}`                                                  | 机器启动预览进程（REVIEW 先建隔离副本）；回`preview.state` |
+| S→M | `preview.stop`                | `{command_id, session_id, reason}`                                                                                                                             | 杀进程树（4 s），REVIEW 删除副本                             |
+| M→S | `preview.state`               | `{session_id, state:"STARTING"\|"RUNNING"\|"EXITED", exit_code?, log_tail? ≤4 KiB}`                                                                             | §4.y V2 / V6 / V7                                           |
+| M→S | `execution.events` 新事件类型 | `preview_offered{port, title?}`                                                                                                                                | BR-03-113                                                    |
+| S→M | `workspace.commit`            | `{command_id, execution_id, dispatch_epoch, changes:[{path, base_sha256?, file_id? \| inline_b64? \| delete?}], author:{name, email}, message, trailer}`（v1.1） | BR-03-127                                                    |
+| M→S | `workspace.commit_result`     | `{command_id, ok, commit?, conflicts?:[{path, current_sha256}], code?}`                                                                                        | 写产物、审计；冲突 → 130472                                 |
 
 **跨模块接口增补**：本模块提供 `PreviewAccessResolver`（04 网关使用）：`Authorize(ctx, label, cookie, method) (Grant{session_id, tenant, project, machine_id, holder, port, read_only}, error)`、`ExchangeCode(ctx, label, code) (cookie, error)`、`ExchangeShare(ctx, token) (label, cookie, error)`、`Touch(session_id)`（空闲计时）、`HolderActive(ctx, holder) bool`（04 J10）。本模块使用 04 `TunnelBroker`（`Open` / `ResetHolder` / `Ports`）、`MachineDirectory.Type / RemoteAccess`、07 `ConstitutionReader.Active`、11 `TemplateResolver.ForProject`（`params.preview`）、08 `AuthorityChecker`（`terminal_interact`、`preview_share_approve`、`workspace_file_edit`）。
 
@@ -1257,15 +1254,15 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 ### 6.z 接口增补（D120 锚定批注与过期上下文写入）
 
-| # | 方法 | 路径 | tag | 权限 · 守卫 | 请求 | 响应 | 错误 |
-|---|---|---|---|---|---|---|---|
-| A76 | GET | `/executions/{execution_id}/comment-threads` | executions | `execution_read` · O | `?artifact_kind=&path=&evidence_id=&state=&visibility=&view_version=`（`view_version` 给出时逐线程返回相对该版本的 `anchor_status` 与 `relocated_anchor`） | `CommentThread[]`（含首条批注摘要、计数、`anchor_status`、`conversions[]`） | 404 |
-| A77 | POST | `/executions/{execution_id}/comment-threads` | executions | `artifact_comment_write` · O | `{artifact_kind*, artifact_ref*, version_ref*, viewer_kind*, anchor_kind*, anchor*（S9）, body*≤8000, seen_seq?（AGENT 且执行关联工作项时必填）}` | `CommentThread`（201，含 seq=1 的批注）；`meta.next` | 422 130476/130469/130475/130480/130481；409 130477/130474；403 130403 |
-| A78 | GET | `/comment-threads/{thread_id}` | comment-threads | `execution_read` · O | `?view_version=` | `CommentThread` + `comments[]` + `conversions[]`；ETag | 404 |
-| A79 | POST | `/comment-threads/{thread_id}/comments` | comment-threads | `artifact_comment_write` · O | `{body*≤8000, seen_seq?（AGENT 必填，`comment_thread` 流）}` | `Comment`（201） | 409 130474/130479；422 130475/130476/130481 |
-| A80 | PUT | `/comment-threads/{thread_id}/resolution` | comment-threads | 线程创建者、执行者本人或 `work_item_write` · O；If-Match | `{state*:"RESOLVED"\|"OPEN", note?≤500}` | `CommentThread` | 409 130409/130479；403 130403 |
-| A81 | GET | `/work-items/{work_item_id}/comment-threads` | work-items | `execution_read` · O | `?state=&visibility=&anchor_status=&execution_id=` | `CommentThread[]`（跨执行汇总，BR-03-143） | 404 |
-| A82 | PATCH · DELETE | `/comments/{comment_id}` | comments | 作者本人（DELETE 另允许 `work_item_write`）· O | PATCH `{body*}`（If-Match） | `Comment` / 204（撤回） | 409 130409；422 130476 |
+| #   | 方法            | 路径                                           | tag             | 权限 · 守卫                                               | 请求                                                                                                                                                               | 响应                                                                              | 错误                                                                  |
+| --- | --------------- | ---------------------------------------------- | --------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| A76 | GET             | `/executions/{execution_id}/comment-threads` | executions      | `execution_read` · O                                    | `?artifact_kind=&path=&evidence_id=&state=&visibility=&view_version=`（`view_version` 给出时逐线程返回相对该版本的 `anchor_status` 与 `relocated_anchor`） | `CommentThread[]`（含首条批注摘要、计数、`anchor_status`、`conversions[]`） | 404                                                                   |
+| A77 | POST            | `/executions/{execution_id}/comment-threads` | executions      | `artifact_comment_write` · O                            | `{artifact_kind*, artifact_ref*, version_ref*, viewer_kind*, anchor_kind*, anchor*（S9）, body*≤8000, seen_seq?（AGENT 且执行关联工作项时必填）}`               | `CommentThread`（201，含 seq=1 的批注）；`meta.next`                          | 422 130476/130469/130475/130480/130481；409 130477/130474；403 130403 |
+| A78 | GET             | `/comment-threads/{thread_id}`               | comment-threads | `execution_read` · O                                    | `?view_version=`                                                                                                                                                 | `CommentThread` + `comments[]` + `conversions[]`；ETag                      | 404                                                                   |
+| A79 | POST            | `/comment-threads/{thread_id}/comments`      | comment-threads | `artifact_comment_write` · O                            | `{body*≤8000, seen_seq?（AGENT 必填，`comment_thread` 流）}`                                                                                                  | `Comment`（201）                                                                | 409 130474/130479；422 130475/130476/130481                           |
+| A80 | PUT             | `/comment-threads/{thread_id}/resolution`    | comment-threads | 线程创建者、执行者本人或`work_item_write` · O；If-Match | `{state*:"RESOLVED"\|"OPEN", note?≤500}`                                                                                                                         | `CommentThread`                                                                 | 409 130409/130479；403 130403                                         |
+| A81 | GET             | `/work-items/{work_item_id}/comment-threads` | work-items      | `execution_read` · O                                    | `?state=&visibility=&anchor_status=&execution_id=`                                                                                                               | `CommentThread[]`（跨执行汇总，BR-03-143）                                      | 404                                                                   |
+| A82 | PATCH · DELETE | `/comments/{comment_id}`                     | comments        | 作者本人（DELETE 另允许`work_item_write`）· O           | PATCH`{body*}`（If-Match）                                                                                                                                       | `Comment` / 204（撤回）                                                         | 409 130409；422 130476                                                |
 
 **表示**：`CommentThread{id, execution_id, work_item_id?, artifact_kind, artifact_ref, version_kind, version_ref, version_uncommitted, viewer_kind, anchor_kind, anchor, anchor_excerpt, anchor_snapshot_url?（预览域）, anchor_status, relocated_anchor?, visibility, delivery_id?, state, created_by{kind, id, display}, comment_count, last_seq, last_comment_at, conversions[{target_kind, target_id, converted_by, converted_at}], version}`；`Comment{id, thread_id, seq, author{kind, id, display}, body?, mentions[], edited_at?, retracted, created_at}`。CLIENT 作者只显示联系人显示名，不显示联系方式。
 
@@ -1281,51 +1278,50 @@ Machine(04) 1─* WorkdirLock ─1 Execution ；Machine 1─* Command（服务�
 
 ### 7.1 后台任务（经 09 `JobQueue`；互斥用底座 `dlock`，锁 TTL = 2×间隔；每批 ≤200 行，批内逐行独立事务，单行失败不影响其他行）
 
-| 任务 | 触发 / 频率 | 互斥 | 动作 | 重试 |
-|---|---|---|---|---|
-| `execution.lease_watchdog` | 每 5 s | dlock `execution:lease-watchdog` | E16；清理持有者非 RUNNING 的 `workdir_locks` 残留 | 下个周期自然重试 |
-| `execution.startup_fence` | 模块 `Start` 一次（`restart_fencing=all`） | dlock `execution:startup-fence` | E18；验证 RUNNING 中的重排（§4.4） | 失败则 `Start` 失败（不静默降级） |
-| `execution.dispatch_timeout` | 每 30 s | dlock `execution:dispatch-timeout` | E03、E04；`cancel_requested_at+30s` 强制终态；命令重新下发（BR-03-23）；E12 超时检查 | 同上 |
-| `execution.interaction_expiry` | 每 15 s | dlock `execution:interaction-expiry` | PENDING 到期 → EXPIRED（§4.3）；到期前 5 min 触发提醒 N1b | 同上 |
-| `execution.verification_scheduler` | 消费 `claim.submitted` + 每 5 s 轮询 | dlock `execution:verification-scheduler` | 建验证行、派发 QUEUED、超时判 INCONCLUSIVE、离线重排、汇总迁移（BR-03-64） | 消费失败按 09 指数退避（1 s→5 min，最多 10 次）后进死信并告警 |
-| `execution.collection_timeout` | 每 30 s | dlock `execution:collection-timeout` | 采集超 120 s → TIMED_OUT；合并超 10 min → FAILED | 同上 |
-| `execution.knowledge_sync` | 每 60 s | dlock `execution:knowledge-sync` | 重试失败的 `RecordInclusion` / `RecordCitations` / `MemoryWriter.Propose`（BR-03-30b/c），每项最多 10 次后记 `slog.Warn` 放弃 | 同上 |
-| `execution.cost_publisher` | 每 10 s | dlock `execution:cost-publisher` | 按 BR-03-81 合并发布 `execution.cost_updated`；检查 E14 | 同上 |
-| `execution.retention` | 每日 03:00 UTC | dlock `execution:retention` | 删除终态 >30 天执行的 `execution_events`；删除 ACKED/EXPIRED/SUPERSEDED >7 天的 `execution_commands`；解绑并删除**未被证据引用**的日志文件（>90 天）与上下文包文件（>180 天）；证据、验证、消息、产物元数据永不删除 | 次日重试；`execution.retention.failed` 告警 |
+| 任务                                 | 触发 / 频率                                   | 互斥                                      | 动作                                                                                                                                                                                                                         | 重试                                                           |
+| ------------------------------------ | --------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `execution.lease_watchdog`         | 每 5 s                                        | dlock`execution:lease-watchdog`         | E16；清理持有者非 RUNNING 的`workdir_locks` 残留                                                                                                                                                                           | 下个周期自然重试                                               |
+| `execution.startup_fence`          | 模块`Start` 一次（`restart_fencing=all`） | dlock`execution:startup-fence`          | E18；验证 RUNNING 中的重排（§4.4）                                                                                                                                                                                          | 失败则`Start` 失败（不静默降级）                             |
+| `execution.dispatch_timeout`       | 每 30 s                                       | dlock`execution:dispatch-timeout`       | E03、E04；`cancel_requested_at+30s` 强制终态；命令重新下发（BR-03-23）；E12 超时检查                                                                                                                                       | 同上                                                           |
+| `execution.interaction_expiry`     | 每 15 s                                       | dlock`execution:interaction-expiry`     | PENDING 到期 → EXPIRED（§4.3）；到期前 5 min 触发提醒 N1b                                                                                                                                                                  | 同上                                                           |
+| `execution.verification_scheduler` | 消费`claim.submitted` + 每 5 s 轮询         | dlock`execution:verification-scheduler` | 建验证行、派发 QUEUED、超时判 INCONCLUSIVE、离线重排、汇总迁移（BR-03-64）                                                                                                                                                   | 消费失败按 09 指数退避（1 s→5 min，最多 10 次）后进死信并告警 |
+| `execution.collection_timeout`     | 每 30 s                                       | dlock`execution:collection-timeout`     | 采集超 120 s → TIMED_OUT；合并超 10 min → FAILED                                                                                                                                                                           | 同上                                                           |
+| `execution.knowledge_sync`         | 每 60 s                                       | dlock`execution:knowledge-sync`         | 重试失败的`RecordInclusion` / `RecordCitations` / `MemoryWriter.Propose`（BR-03-30b/c），每项最多 10 次后记 `slog.Warn` 放弃                                                                                         | 同上                                                           |
+| `execution.cost_publisher`         | 每 10 s                                       | dlock`execution:cost-publisher`         | 按 BR-03-81 合并发布`execution.cost_updated`；检查 E14                                                                                                                                                                     | 同上                                                           |
+| `execution.retention`              | 每日 03:00 UTC                                | dlock`execution:retention`              | 删除终态 >30 天执行的`execution_events`；删除 ACKED/EXPIRED/SUPERSEDED >7 天的 `execution_commands`；解绑并删除**未被证据引用**的日志文件（>90 天）与上下文包文件（>180 天）；证据、验证、消息、产物元数据永不删除 | 次日重试；`execution.retention.failed` 告警                  |
 
 ### 7.2 发布的领域事件（`data` 字段；载荷外层按 00 §7.1）
 
-| 事件 | 时机 | `data` |
-|---|---|---|
-| `execution.started` | 首次 E01 | `{execution_id, work_item_id?, kind, purpose, branch_reason?, seq_no?, parent_execution_id?, agent_id?, machine_id, runtime, model?}` |
-| `execution.state_changed` | 每次 Execution 迁移 | `{execution_id, work_item_id?, kind, purpose, from, to, reason?, failure_kind?:"INFRA"\|"RUNTIME", dispatch_epoch, claim_id?}` —— 供投影、频道与通知；工作项迁移已经由同步回调完成（BR-03-14、E01），消费方不得据此再迁移 |
-| `execution.cost_updated` | BR-03-81 | `{execution_id, work_item_id?, project_id, agent_id?（AGENT 执行时必填，供 08 编制预算按子 Agent 累计，D110）, cumulative_cost_micros, breakdown{model, compute, platform}, cost_source, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens}`（均为累计） |
-| `verification.human_requested` | HUMAN 层验证进入 PENDING·QUEUED | `{verification_id, claim_id, work_item_id, verifier_key, eligible_role_keys[], deadline_at}`（08 我的裁决） |
-| `interaction.requested` | §4.3 PENDING | `{interaction_id, execution_id, work_item_id?, kind, title, expires_at, initiator_id?, assignee_principal_id}`（不含 details 原文） |
-| `interaction.decided` | DECIDED | `{interaction_id, execution_id, action, responder{kind,id}}` |
-| `evidence.added` | 证据 ATTACHED | `{claim_id, work_item_id, execution_id, evidence_ids[], by_type{...}}` |
-| `verification.completed` | 每条验证进入 DONE | `{verification_id, claim_id, work_item_id, layer, required, advisory, result, result_reason?, all_required_done, aggregate:"PASSED"\|"FAILED"\|"INCONCLUSIVE"\|null}` |
-| `interaction.closed` | EXPIRED / CANCELLED | `{interaction_id, execution_id, state, closed_reason}` |
-| `execution.merged` | 合并 MERGED | `{merge_id, execution_id, work_item_id, target_branch, merge_commit, pushed}` |
+| 事件                             | 时机                             | `data`                                                                                                                                                                                                                                                                    |
+| -------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `execution.started`            | 首次 E01                         | `{execution_id, work_item_id?, kind, purpose, branch_reason?, seq_no?, parent_execution_id?, agent_id?, machine_id, runtime, model?}`                                                                                                                                     |
+| `execution.state_changed`      | 每次 Execution 迁移              | `{execution_id, work_item_id?, kind, purpose, from, to, reason?, failure_kind?:"INFRA"\|"RUNTIME", dispatch_epoch, claim_id?}` —— 供投影、频道与通知；工作项迁移已经由同步回调完成（BR-03-14、E01），消费方不得据此再迁移                                                |
+| `execution.cost_updated`       | BR-03-81                         | `{execution_id, work_item_id?, project_id, agent_id?（AGENT 执行时必填，供 08 编制预算按子 Agent 累计，D110）, cumulative_cost_micros, breakdown{model, compute, platform}, cost_source, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens}`（均为累计） |
+| `verification.human_requested` | HUMAN 层验证进入 PENDING·QUEUED | `{verification_id, claim_id, work_item_id, verifier_key, eligible_role_keys[], deadline_at}`（08 我的裁决）                                                                                                                                                               |
+| `interaction.requested`        | §4.3 PENDING                    | `{interaction_id, execution_id, work_item_id?, kind, title, expires_at, initiator_id?, assignee_principal_id}`（不含 details 原文）                                                                                                                                       |
+| `interaction.decided`          | DECIDED                          | `{interaction_id, execution_id, action, responder{kind,id}}`                                                                                                                                                                                                              |
+| `evidence.added`               | 证据 ATTACHED                    | `{claim_id, work_item_id, execution_id, evidence_ids[], by_type{...}}`                                                                                                                                                                                                    |
+| `verification.completed`       | 每条验证进入 DONE                | `{verification_id, claim_id, work_item_id, layer, required, advisory, result, result_reason?, all_required_done, aggregate:"PASSED"\|"FAILED"\|"INCONCLUSIVE"\|null}`                                                                                                        |
+| `interaction.closed`           | EXPIRED / CANCELLED              | `{interaction_id, execution_id, state, closed_reason}`                                                                                                                                                                                                                    |
+| `execution.merged`             | 合并 MERGED                      | `{merge_id, execution_id, work_item_id, target_branch, merge_commit, pushed}`                                                                                                                                                                                             |
 
 ### 7.3 消费的领域事件
 
-| 事件 | 处理 |
-|---|---|
-| `claim.submitted`（02） | E22（INTERACTIVE）/ 记录 `claim_id`；排队验证（BR-03-60、BR-03-64） |
-| `decision.made`（02） | **不消费**：返工建枝、暂停、恢复、取消均由 02 在裁决事务内同步调用 `ExecutionLauncher`（BR-03-06；00 §7.1） |
-| `work_item.state_changed`（02） | CANCELLED → E27（幂等兜底；主路径为 02 逐个调用 `ExecutionLauncher.CancelExecution`） |
-| `work_item.assigned`（02） | 改派（EXECUTOR 变更）→ 原执行者的非终态 DELIVERY 执行 E27（SUPERSEDED）（幂等兜底） |
-| `machine.state_changed`（04） | OFFLINE → E17（MACHINE_OFFLINE）；REVOKED → E17（MACHINE_REVOKED），已 INTERRUPTED 的不再变更；DRAINING → 不再派发新命令（已运行继续） |
-| `agent.state_changed` / `agent.retired`（05） | STOPPED / RETIRING / RETIRED → E27（AGENT_STOPPED，HANDOVER 豁免）；CRASHED → E19b（AGENT_CRASHED） |
-| `budget.threshold_reached`（07） | `threshold_pct≥100` → BR-03-82 |
+| 事件                                              | 处理                                                                                                                                      |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `claim.submitted`（02）                         | E22（INTERACTIVE）/ 记录`claim_id`；排队验证（BR-03-60、BR-03-64）                                                                      |
+| `decision.made`（02）                           | **不消费**：返工建枝、暂停、恢复、取消均由 02 在裁决事务内同步调用 `ExecutionLauncher`（BR-03-06；00 §7.1）                      |
+| `work_item.state_changed`（02）                 | CANCELLED → E27（幂等兜底；主路径为 02 逐个调用`ExecutionLauncher.CancelExecution`）                                                   |
+| `work_item.assigned`（02）                      | 改派（EXECUTOR 变更）→ 原执行者的非终态 DELIVERY 执行 E27（SUPERSEDED）（幂等兜底）                                                      |
+| `machine.state_changed`（04）                   | OFFLINE → E17（MACHINE_OFFLINE）；REVOKED → E17（MACHINE_REVOKED），已 INTERRUPTED 的不再变更；DRAINING → 不再派发新命令（已运行继续） |
+| `agent.state_changed` / `agent.retired`（05） | STOPPED / RETIRING / RETIRED → E27（AGENT_STOPPED，HANDOVER 豁免）；CRASHED → E19b（AGENT_CRASHED）                                     |
+| `budget.threshold_reached`（07）                | `threshold_pct≥100` → BR-03-82                                                                                                        |
 
 ### 7.4 实时推送（09 SSE）
 
 主题 `tenant/{t}/execution/{id}`（`TopicAuthorizer`：`execution_read`，按归属项目判定）：帧 `{change_seq, kind:"state"|"message"|"message_delta"|"tool"|"interaction"|"cost"|"turn"|"artifact"|"evidence"|"verification", payload}`；文本增量在服务端按 250 ms 合并后推送。客户端发现 `change_seq` 跳号 → 重取 A09 + A19（`after_msg_no`）。主题 `tenant/{t}/project/{project_id}`（项目扇出，帧 `subject.kind=execution`）：列表行变化（状态、成本、未决交互数）。"我的裁决"由 08 订阅 `interaction.*` 聚合，≤1 s 移除已处理项。
 
 ---
-
 
 ### 7.x 任务与事件增补（D112 / D113，00 v2.0 §15）
 
@@ -1408,7 +1404,6 @@ SSE：执行主题 `tenant/{t}/execution/{id}` 帧 `kind` 增加 `comment_thread
 
 ---
 
-
 ### 8.x 页面增补（D112 / D113，00 v2.0 §15）
 
 - **内部验收面板**（执行详情与评审台共用组件 `InternalQAPanel`）：三段进度 AUTOMATED → AGENT_TEST → AGENT_ACCEPTANCE，每段状态、执行主体（Agent 头像 + 模型家族，「同家族回退」黄标）、发现列表（严重度、关联验收标准、证据）、截图缩略图（点击放大，标注视口与路由）、评分（模板评分标准逐项）。内部失败记录只在执行详情可见；评审台只在全部通过后出现该工作项，并显示「内部验收已通过 · 第 n 轮」。
@@ -1445,22 +1440,22 @@ SSE：执行主题 `tenant/{t}/execution/{id}` 帧 `kind` 增加 `comment_thread
 
 ## 9. 通知（经 09 `Notifier`；站内信必达，其余渠道按 08 用户偏好）
 
-| # | 事件 | 接收人 | 渠道 | 文案模板（zh-CN） | 去重 / 合并 |
-|---|---|---|---|---|---|
-| N1 | `interaction.requested` | INTERACTIVE：发起者；AUTONOMOUS：项目内持 `interaction_respond` 的交付负责人 + 工作项 EXECUTOR 的人类负责人 | 站内（我的裁决）+ Web Push / 移动推送 | "{执行标题} 请求{允许工具：{title}/你的输入}，{n} 分钟后过期" | 每 interaction 一条；同一执行 60 s 内多条合并为"{执行} 有 {n} 个待你决定" |
-| N1b | 交互到期前 5 min | 同 N1 | 站内 + 推送 | "还有 5 分钟：{title}" | 每 interaction 至多一次 |
-| N2 | 执行 → INTERRUPTED | 发起者 / 执行者（人）；AUTONOMOUS 另通知交付负责人 | 站内 + 邮件（工作时间外仅站内） | "{执行} 已中断（{原因}），系统不会自动重放，请检查后恢复或标记失败" | 同一机器离线引发的多条 10 min 内合并为"{机器} 离线，{n} 个执行已中断" |
-| N3 | 执行 FAILED（AUTONOMOUS）/ 自动声明失败 / 自动建枝失败（130441） | 交付负责人、工作项 EXECUTOR | 站内 | "{工作项} 的执行 {标签} 失败：{原因}" | 同工作项 10 min 内合并 |
-| N4 | PAUSED（AGENT_GAVE_UP / CONTEXT_EXHAUSTED） | 交付负责人 | 站内 | "{Agent} 暂停了 {工作项}：{continue.md 首行}" | 每执行一次 |
-| N5 | PAUSED（COST_CAP / BUDGET_PAUSE） | 交付负责人、团队所有者 | 站内 + 邮件 | "{执行} 因成本上限暂停（已用 {cost}）" | 预算暂停按项目合并 |
-| N6 | `verification.completed`（必需项 FAILED / INCONCLUSIVE） | 执行者、工作项 REVIEWER | 站内 | "{工作项} 验证{未通过/不确定}：{验证器}（{原因}）" | 同 claim 汇总为一条，全部完成后发送 |
-| N7 | HUMAN 验证进入 QUEUED | `eligible_role_keys` 中且非执行者的成员 | 站内（我的裁决） | "请为 {工作项} 记录人工验证：{验证器}" | 每验证一条 |
-| N9 | 合并 CONFLICT / FAILED / MERGED | 发起合并者 | 站内 | "合并{成功/冲突/失败}：{分支} → {目标}" | 每合并一次 |
-| N10 | 分享链接已批准 / 已驳回（v1.1（D126）） | 申请人 | 站内 | "{批准人}{批准/驳回}了 {执行} 的预览分享{：理由}" | 每链接一次 |
-| N11 | 预览启动失败（PLATFORM / REVIEW） | 发起者 | 站内 | "{执行} 的预览 {配置名} 启动失败：{摘要}" | 同会话一次 |
-| N12 | 交互终端被打开（v1.1） | 执行的人类执行者 / 发起者（非打开者本人）+ 工作项负责人 | 站内 | "{actor} 在 {执行} 上打开了交互终端（已录制）" | 每会话一次 |
-| N13 | `comment.thread_created` / `comment.posted` 中提及人类（D120） | 被提及的人类 | 站内 + Web Push；离线 >10 min 邮件摘要 | "{author} 在 {执行} 的 {文件名} 上提到了你" | 同线程 5 min 内合并 |
-| N14 | 新批注落在本人执行的产物上 / 甲方在交付产物上批注（D120） | 执行的人类执行者或发起者；CLIENT 线程另通知交付负责人 | 站内 | "{author} 批注了 {执行} 的 {文件名}"；甲方："甲方在交付 {编号} 的 {文件名} 上留下了批注" | 同执行 10 min 内合并；Agent 执行者不发通知（经 05 收件箱） |
+| #   | 事件                                                               | 接收人                                                                                                       | 渠道                                   | 文案模板（zh-CN）                                                                        | 去重 / 合并                                                               |
+| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | -------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| N1  | `interaction.requested`                                          | INTERACTIVE：发起者；AUTONOMOUS：项目内持`interaction_respond` 的交付负责人 + 工作项 EXECUTOR 的人类负责人 | 站内（我的裁决）+ Web Push / 移动推送  | "{执行标题} 请求{允许工具：{title}/你的输入}，{n} 分钟后过期"                            | 每 interaction 一条；同一执行 60 s 内多条合并为"{执行} 有 {n} 个待你决定" |
+| N1b | 交互到期前 5 min                                                   | 同 N1                                                                                                        | 站内 + 推送                            | "还有 5 分钟：{title}"                                                                   | 每 interaction 至多一次                                                   |
+| N2  | 执行 → INTERRUPTED                                                | 发起者 / 执行者（人）；AUTONOMOUS 另通知交付负责人                                                           | 站内 + 邮件（工作时间外仅站内）        | "{执行} 已中断（{原因}），系统不会自动重放，请检查后恢复或标记失败"                      | 同一机器离线引发的多条 10 min 内合并为"{机器} 离线，{n} 个执行已中断"     |
+| N3  | 执行 FAILED（AUTONOMOUS）/ 自动声明失败 / 自动建枝失败（130441）   | 交付负责人、工作项 EXECUTOR                                                                                  | 站内                                   | "{工作项} 的执行 {标签} 失败：{原因}"                                                    | 同工作项 10 min 内合并                                                    |
+| N4  | PAUSED（AGENT_GAVE_UP / CONTEXT_EXHAUSTED）                        | 交付负责人                                                                                                   | 站内                                   | "{Agent} 暂停了 {工作项}：{continue.md 首行}"                                            | 每执行一次                                                                |
+| N5  | PAUSED（COST_CAP / BUDGET_PAUSE）                                  | 交付负责人、团队所有者                                                                                       | 站内 + 邮件                            | "{执行} 因成本上限暂停（已用 {cost}）"                                                   | 预算暂停按项目合并                                                        |
+| N6  | `verification.completed`（必需项 FAILED / INCONCLUSIVE）         | 执行者、工作项 REVIEWER                                                                                      | 站内                                   | "{工作项} 验证{未通过/不确定}：{验证器}（{原因}）"                                       | 同 claim 汇总为一条，全部完成后发送                                       |
+| N7  | HUMAN 验证进入 QUEUED                                              | `eligible_role_keys` 中且非执行者的成员                                                                    | 站内（我的裁决）                       | "请为 {工作项} 记录人工验证：{验证器}"                                                   | 每验证一条                                                                |
+| N9  | 合并 CONFLICT / FAILED / MERGED                                    | 发起合并者                                                                                                   | 站内                                   | "合并{成功/冲突/失败}：{分支} → {目标}"                                                 | 每合并一次                                                                |
+| N10 | 分享链接已批准 / 已驳回（v1.1（D126））                            | 申请人                                                                                                       | 站内                                   | "{批准人}{批准/驳回}了 {执行} 的预览分享{：理由}"                                        | 每链接一次                                                                |
+| N11 | 预览启动失败（PLATFORM / REVIEW）                                  | 发起者                                                                                                       | 站内                                   | "{执行} 的预览 {配置名} 启动失败：{摘要}"                                                | 同会话一次                                                                |
+| N12 | 交互终端被打开（v1.1）                                             | 执行的人类执行者 / 发起者（非打开者本人）+ 工作项负责人                                                      | 站内                                   | "{actor} 在 {执行} 上打开了交互终端（已录制）"                                           | 每会话一次                                                                |
+| N13 | `comment.thread_created` / `comment.posted` 中提及人类（D120） | 被提及的人类                                                                                                 | 站内 + Web Push；离线 >10 min 邮件摘要 | "{author} 在 {执行} 的 {文件名} 上提到了你"                                              | 同线程 5 min 内合并                                                       |
+| N14 | 新批注落在本人执行的产物上 / 甲方在交付产物上批注（D120）          | 执行的人类执行者或发起者；CLIENT 线程另通知交付负责人                                                        | 站内                                   | "{author} 批注了 {执行} 的 {文件名}"；甲方："甲方在交付 {编号} 的 {文件名} 上留下了批注" | 同执行 10 min 内合并；Agent 执行者不发通知（经 05 收件箱）                |
 
 所有通知文案三语齐全；不包含消息正文、代码或工具入参原文。
 
@@ -1851,7 +1846,6 @@ Then  执行建立且 work_item_id 为空；A 进入 RETIRING 时该执行不被
 Given 缺 project_id   Then 422 130422
 ```
 
-
 ```
 AC-03-70  [integration]  关联 BR-03-30b、复审 #15
 Given 执行 E 组包时 06 BuildInjection 返回 retrieval_log_id=L
@@ -1866,93 +1860,91 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 
 ---
 
-
 ### 10.x 验收标准增补（D112 / D113，00 v2.0 §15）
 
-| ID | 层 | 关联 | Given / When / Then |
-|---|---|---|---|
-| AC-03-72 | integration | BR-03-95 | **G** 执行者在会话中贴出「全部测试通过」日志，实际有 1 个失败 **W** 提交声明 **T** 平台副本重跑得 FAILED，内部返工，日志不作为证据 |
-| AC-03-73 | integration | BR-03-96 | **G** 工作项有 3 个隐藏验收文件 **W** 交付执行、测试执行、验收执行运行 **T** 三者工作区与上下文包均不含隐藏文件内容或路径；平台副本运行并记录 sha256 |
-| AC-03-74 | integration | BR-03-97 | **G** 冻结集含 `tests/a.test.mjs` **W** 交付 diff 修改该文件 **T** AUTOMATED FAILED（130455），发布 `cheating.suspected`，反馈含「不得修改冻结的验收测试」，无人收到通知 |
-| AC-03-75 | integration | BR-03-97 | **G** 测试命令被改为跳过某文件 **W** 平台重跑 **T** 判定为跳过冻结测试，同 AC-03-74 |
-| AC-03-76 | unit | BR-03-98 | **G** Claim 缺 `unverified` 字段 **W** 提交 **T** 422 130458 |
-| AC-03-77 | integration | BR-03-98 | **G** 验收标准 AC2 无证据且 `unverified=[]` **W** 进入 AGENT_ACCEPTANCE **T** AC2 自动补入 unverified；验收 Agent 不得给 PASSED |
-| AC-03-78 | e2e | BR-03-99 | **G** Web 交付物，模板定义路由 `/` **W** AUTOMATED **T** 产出 1440 与 390 两张截图，作为图片输入进入产品验收执行 |
-| AC-03-79 | e2e | Q8, BR-03-99 | **G** 页面逻辑测试全过但棋盘行高不一致（2048 实测案例）**W** 产品验收 Agent 审查截图 **T** 给出 MAJOR 发现「棋盘行高不一致」并 FAILED，工作项内部返工；人未收到任何通知 |
-| AC-03-80 | integration | BR-03-100 | **G** 交付执行与可选验收 Agent 均为 `openai` 家族 **W** 派验收 **T** 运行记录 `family_fallback=true`，模型不同、主体不同；评审台显示「同家族回退」 |
-| AC-03-81 | integration | Q11 | **G** 验收 Agent 连续两次 INCONCLUSIVE **W** 第二次结束 **T** 升级人工（MANDATORY_HUMAN_GATE，detail INTERNAL_QA_INCONCLUSIVE） |
-| AC-03-82 | integration | BR-03-102 | **G** 工作项 AGENT_TEST 与 AGENT_ACCEPTANCE 均 PASSED（含截图证据）**W** 02 处理人工拒绝时调用 `InternalQAReader.Latest(work_item_id)` **T** 返回两阶段结论、`internal_qa_run_ids[]`、TESTER / ACCEPTOR Agent 与截图证据引用；本模块不发布 `quality.escaped`、不调用 06 / 11 |
-| AC-03-83 | integration | BR-03-102 | **G** 工作项无内部验收记录（`internal_qa_required=false`）**W** `InternalQAReader.Latest` **T** 返回空结论，02 据此不记穿透 |
-| AC-03-84 | unit | 4.x | **G** 验收集 FROZEN **W** PATCH 文件 **T** 409 130451 |
-| AC-03-85 | integration | Q3, BR-03-101 | **G** AUTOMATED 失败 **W** 内部返工 **T** 任何人的收件箱与通知均无新增；执行详情可见失败记录 |
-| AC-03-86 | integration | BR-03-103 | **G** 机器 A 的 `ui_screenshot` CALIBRATED、B 为 DRIFTED，两台都有 `browser_capture` **W** 平台重跑 UI 工作项 **T** VISUAL 只在 A 执行；证据记录 A 的 `provider_ref` 与校准行 id |
+| ID       | 层          | 关联                 | Given / When / Then                                                                                                                                                                                                                                                                                                 |
+| -------- | ----------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC-03-72 | integration | BR-03-95             | **G** 执行者在会话中贴出「全部测试通过」日志，实际有 1 个失败 **W** 提交声明 **T** 平台副本重跑得 FAILED，内部返工，日志不作为证据                                                                                                                                                                |
+| AC-03-73 | integration | BR-03-96             | **G** 工作项有 3 个隐藏验收文件 **W** 交付执行、测试执行、验收执行运行 **T** 三者工作区与上下文包均不含隐藏文件内容或路径；平台副本运行并记录 sha256                                                                                                                                              |
+| AC-03-74 | integration | BR-03-97             | **G** 冻结集含 `tests/a.test.mjs` **W** 交付 diff 修改该文件 **T** AUTOMATED FAILED（130455），发布 `cheating.suspected`，反馈含「不得修改冻结的验收测试」，无人收到通知                                                                                                                      |
+| AC-03-75 | integration | BR-03-97             | **G** 测试命令被改为跳过某文件 **W** 平台重跑 **T** 判定为跳过冻结测试，同 AC-03-74                                                                                                                                                                                                               |
+| AC-03-76 | unit        | BR-03-98             | **G** Claim 缺 `unverified` 字段 **W** 提交 **T** 422 130458                                                                                                                                                                                                                                    |
+| AC-03-77 | integration | BR-03-98             | **G** 验收标准 AC2 无证据且 `unverified=[]` **W** 进入 AGENT_ACCEPTANCE **T** AC2 自动补入 unverified；验收 Agent 不得给 PASSED                                                                                                                                                                 |
+| AC-03-78 | e2e         | BR-03-99             | **G** Web 交付物，模板定义路由 `/` **W** AUTOMATED **T** 产出 1440 与 390 两张截图，作为图片输入进入产品验收执行                                                                                                                                                                                |
+| AC-03-79 | e2e         | Q8, BR-03-99         | **G** 页面逻辑测试全过但棋盘行高不一致（2048 实测案例）**W** 产品验收 Agent 审查截图 **T** 给出 MAJOR 发现「棋盘行高不一致」并 FAILED，工作项内部返工；人未收到任何通知                                                                                                                           |
+| AC-03-80 | integration | BR-03-100            | **G** 交付执行与可选验收 Agent 均为 `openai` 家族 **W** 派验收 **T** 运行记录 `family_fallback=true`，模型不同、主体不同；评审台显示「同家族回退」                                                                                                                                            |
+| AC-03-81 | integration | Q11                  | **G** 验收 Agent 连续两次 INCONCLUSIVE **W** 第二次结束 **T** 升级人工（MANDATORY_HUMAN_GATE，detail INTERNAL_QA_INCONCLUSIVE）                                                                                                                                                                   |
+| AC-03-82 | integration | BR-03-102            | **G** 工作项 AGENT_TEST 与 AGENT_ACCEPTANCE 均 PASSED（含截图证据）**W** 02 处理人工拒绝时调用 `InternalQAReader.Latest(work_item_id)` **T** 返回两阶段结论、`internal_qa_run_ids[]`、TESTER / ACCEPTOR Agent 与截图证据引用；本模块不发布 `quality.escaped`、不调用 06 / 11                |
+| AC-03-83 | integration | BR-03-102            | **G** 工作项无内部验收记录（`internal_qa_required=false`）**W** `InternalQAReader.Latest` **T** 返回空结论，02 据此不记穿透                                                                                                                                                                   |
+| AC-03-84 | unit        | 4.x                  | **G** 验收集 FROZEN **W** PATCH 文件 **T** 409 130451                                                                                                                                                                                                                                             |
+| AC-03-85 | integration | Q3, BR-03-101        | **G** AUTOMATED 失败 **W** 内部返工 **T** 任何人的收件箱与通知均无新增；执行详情可见失败记录                                                                                                                                                                                                      |
+| AC-03-86 | integration | BR-03-103            | **G** 机器 A 的 `ui_screenshot` CALIBRATED、B 为 DRIFTED，两台都有 `browser_capture` **W** 平台重跑 UI 工作项 **T** VISUAL 只在 A 执行；证据记录 A 的 `provider_ref` 与校准行 id                                                                                                            |
 | AC-03-87 | integration | BR-03-103, BR-03-101 | **G** 所有候选机器的 `ui_screenshot` 均未校准 **W** 平台重跑 **T** AUTOMATED 运行保持 PENDING（`TOOL_UNCALIBRATED`），无 FAILED、内部轮次不增加、无人工通知；任一机器校准通过（`verifier.calibration_changed`）后自动开始；假时钟推进 24 h 仍无 → 升级人工（detail `TOOL_UNCALIBRATED`） |
-| AC-03-88 | e2e | §3.23 | **G** 浏览器最小窗口宽度约 500px 的机器 **W** 以 420×800 视口截图 **T** 截图 420×800，页面自报宽度 420，无裁切（2048 误报案例回归） |
+| AC-03-88 | e2e         | §3.23               | **G** 浏览器最小窗口宽度约 500px 的机器 **W** 以 420×800 视口截图 **T** 截图 420×800，页面自报宽度 420，无裁切（2048 误报案例回归）                                                                                                                                                             |
 
 ### 10.y 验收标准增补（D119 远程工作区）
 
-| ID | 层 | 关联 | Given / When / Then |
-|---|---|---|---|
-| AC-03-89 | integration | BR-03-105/106, V1–V3 | **G** 项目宪法含 `preview` 块 `{key:"web", kind:"WEB", start:["npm","run","dev"], port:5173, health_path:"/"}`，执行 E RUNNING，机器 WebSocket 可用 **W** A56{config_key:"web"} **T** 201 REQUESTED → 机器收到 `preview.start` → STARTING → 健康检查 200 后 READY；同请求重复 → 200 返回同一会话；会话 JSON 不含 `label` |
-| AC-03-90 | e2e | BR-03-114/115, A60 | **G** 会话 READY **W** 成员 M（有 `execution_read`）点〔打开〕 **T** 经换取页 → 预览域 `https://<label>.<preview-domain>/` 渲染页面，HMR WebSocket 可用；地址栏不含 `code`；控制台 Cookie 未出现在发往预览域的请求中 |
-| AC-03-91 | integration | BR-03-114（安全） | **G** 会话 READY，成员 N 对该项目无 `execution_read`，成员 M 有 **W** N 调 A60；N 直接访问预览 URL；M 的预览 Cookie 被 N 复制使用后 M 被移出项目 **T** A60 → 403 130403 `MISSING_PERMISSION`；N 直接访问 → 302 换取页 → 无权限页；M 被移出后 ≤30 s 内该 Cookie 的请求 → 403；Agent 主体调 A60 → 403 130403 `AGENT_PROHIBITED` |
-| AC-03-92 | integration | BR-03-113（安全） | **G** E 的进程树监听 5173；同机另一项目执行 F 监听 3000；机器上其他进程监听 8080 **W** A61 **T** 只返回 5173 **W** A56{port:3000} 与 A56{port:8080} **T** 均 403 130403 `PORT_NOT_OWNED`，不向机器发 `tunnel.open`；伪造 `preview_offered{port:8080}` 事件 → 会话 FAILED（机器端 140485 拒绝），审计 `fleet.tunnel_stream_rejected` |
-| AC-03-93 | integration | BR-03-107 | **G** 声明 C（`head_commit=abc`）之后执行又产生提交 def **W** 评审人 A57 **T** 机器在隔离副本检出 abc 并启动；预览内容来自 abc；执行工作区未被改动；会话占一个 PREVIEW 槽；02 对 C 裁决后会话 STOPPED（CLAIM_DECIDED）、副本删除、槽释放 |
-| AC-03-94 | integration | BR-03-108 | **G** 会话 READY **W** 假时钟推进 30 min 无请求 **T** STOPPED（IDLE），机器收到 `preview.stop` **W** 另一会话持续访问至 8 h **T** STOPPED（MAX_LIFETIME） **W** 执行 SUCCEEDED **T** 其 SERVICE 会话 STOPPED（EXECUTION_ENDED），ARTIFACT 会话可新建 |
-| AC-03-95 | integration | BR-03-119 | **G** 机器上 2 个 READY 会话、1 个 SHELL **W** 所有者关闭 `allow_remote_preview` **T** ≤1 s 两会话 STOPPED（ACCESS_DISABLED）、SHELL 保持；**W** 关闭 `allow_remote_terminal` **T** SHELL CLOSED（ACCESS_DISABLED），录制封存 |
-| AC-03-96 | integration | BR-03-112/118 | **G** 工作区有 `docs/spec.md`、`out/chart.png`、`report/index.html`、`a.pdf` **W** A75 逐个 **T** viewer 分别为 DOCUMENT / IMAGE / REPORT / PDF，`src_url` 全在预览域；修改 `docs/spec.md` 后 ≤2 s SSE 推送 `preview_files_changed` |
-| AC-03-97 | integration | BR-03-117（v1.1） | **G** `demo.mov`（ProRes）且机器有 `media_transcode` **W** 打开 **T** 经 MEDIA_PROXY 播放 480p 代理，工作区无新文件；无 ffmpeg 的机器 → 只提供下载；MVP 构建中 A75 对 VIDEO → 422 130473 |
-| AC-03-98 | integration | BR-03-120/123（安全） | **G** 工作区有 `.env`（`DB_PASSWORD=x`）、`src/a.ts`、符号链接 `link → /etc` **W** A62 根目录 **T** 含 `.env`（masked）与 `src`，不含 `.git` **W** A63 `.env` **T** 返回 `DB_PASSWORD=••••` **W** A63 `.env&download=1` **T** 422 130469 **W** A63 `../../etc/passwd`、`link/hosts` **T** 403 130403 `PATH_OUTSIDE_WORKSPACE`，审计 `execution.workspace_path_denied` 一条（合并） |
-| AC-03-99 | integration | BR-03-121 | **G** `bin/app.html`（含脚本）**W** A63 `download=1` **T** 响应 `Content-Type: application/octet-stream`、`Content-Disposition: attachment`、`nosniff`；审计 `execution.workspace_file_downloaded` 含路径 SHA-256 |
-| AC-03-100 | integration | BR-03-124 | **G** E RUNNING，Agent 执行 `npm test` **W** M（只有 `execution_read`）A67{WATCH} 并通过 A69 发送 input 帧 **T** 收到 `npm test` 输出；input 帧导致通道以 1008 关闭；WORKSTATION 开关关闭时 WATCH 仍可打开 |
-| AC-03-101 | integration | BR-03-125（v1.1，安全） | **G** WORKSTATION 机器 `allow_remote_terminal=false`，所有者 O 持 `terminal_interact` **W** A67{SHELL} 带有效 step-up **T** 403 130403 `MACHINE_ACCESS_DISABLED`，不开流 **W** 开关开启后不带 `reauth_proof` **T** 403 `REAUTH_REQUIRED` **W** 持委托的 Agent / 服务账号调用 **T** 403 `AGENT_PROHIBITED`（不可委托） **W** O 带 step-up **T** 201，审计 `execution.terminal_opened`；初始 cwd 为工作区根；15 min 无输入后 CLOSED（IDLE），审计 `execution.terminal_closed{recording_sha256}` 与录制文件 SHA-256 一致；N12 通知执行者 |
-| AC-03-102 | integration | BR-03-126/127（v1.1） | **G** E RUNNING，工程师 X 持 `workspace_file_edit`，机器 `allow_file_edit=true` **W** X 直接 A66 **T** 409 130466（执行正在运行）**W** X A65 PUT **T** E PAUSED（USER_PAUSE），`taken_over_by=X` **W** X A66 改 `src/a.ts`（`base_sha256` 正确）**T** 201，机器提交作者为 X、trailer `Edited-By-Human`，产物 COMMIT `producer_kind=HUMAN`，审计 `execution.workspace_files_edited` **W** `base_sha256` 过期 **T** 409 130472 带当前 sha **W** 另一工程师 Y A66 **T** 409 130466 **W** A13 恢复 **T** 409 130466，A65 DELETE 后恢复成功，上下文含人工编辑说明 |
-| AC-03-103 | integration | BR-03-127 | **G** WORKSTATION `allow_file_edit=false`（默认）**W** 接管者 A66 **T** 403 130403 `MACHINE_ACCESS_DISABLED`；编辑 `.env` → 422 130469 |
-| AC-03-104 | integration | BR-03-128/129（v1.1（D126）） | **G** 会话 READY **W** 申请人 R A70{ttl_hours:24} **T** PENDING_APPROVAL，`share_link.requested` → 08 收件箱 `PREVIEW_SHARE_APPROVAL`（不含 R）**W** R 自己 A72 APPROVE **T** 403 130403 `SELF_REVIEW` **W** 审批人 Q APPROVE **T** 返回 `share_url`（fragment 令牌），库中只有哈希；再次 GET 不含令牌 |
-| AC-03-105 | e2e | BR-03-130（安全） | **G** ACTIVE 链接 **W** 未登录浏览器打开 `share_url` **T** 显示预览与部署显示名、`note`、「只读预览」；页面与网络请求中不含执行 ID、Agent 名、日志、文件或终端入口；POST 表单 → 405「这是只读预览」 |
-| AC-03-106 | integration | BR-03-131（安全） | **G** ACTIVE 链接 L **W** 假时钟越过 `expires_at` 后用同一 Cookie 访问、重新打开 `share_url` **T** 均 410「此预览链接已失效」，L EXPIRED，`share_link.ended` 关闭收件箱项 **W** 另一链接被 A73 撤销 **T** ≤1 s 后访问 410；不存在的令牌与失效令牌返回相同响应 |
-| AC-03-107 | e2e | §8.6 | 桌面 1440 与手机 390：四个 Tab 的加载、空、错误、无权限、网关未配置、仅长轮询、工作区不可用状态；v1.1 项带「v1.1」并禁用；分享按钮带「v1.1（D126）」；路径模式琥珀标签；无横向滚动，触控 ≥44 px |
+| ID        | 层          | 关联                          | Given / When / Then                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --------- | ----------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AC-03-89  | integration | BR-03-105/106, V1–V3         | **G** 项目宪法含 `preview` 块 `{key:"web", kind:"WEB", start:["npm","run","dev"], port:5173, health_path:"/"}`，执行 E RUNNING，机器 WebSocket 可用 **W** A56{config_key:"web"} **T** 201 REQUESTED → 机器收到 `preview.start` → STARTING → 健康检查 200 后 READY；同请求重复 → 200 返回同一会话；会话 JSON 不含 `label`                                                                                                                                                                                                                                                                                                       |
+| AC-03-90  | e2e         | BR-03-114/115, A60            | **G** 会话 READY **W** 成员 M（有 `execution_read`）点〔打开〕 **T** 经换取页 → 预览域 `https://<label>.<preview-domain>/` 渲染页面，HMR WebSocket 可用；地址栏不含 `code`；控制台 Cookie 未出现在发往预览域的请求中                                                                                                                                                                                                                                                                                                                                                                                                                |
+| AC-03-91  | integration | BR-03-114（安全）             | **G** 会话 READY，成员 N 对该项目无 `execution_read`，成员 M 有 **W** N 调 A60；N 直接访问预览 URL；M 的预览 Cookie 被 N 复制使用后 M 被移出项目 **T** A60 → 403 130403 `MISSING_PERMISSION`；N 直接访问 → 302 换取页 → 无权限页；M 被移出后 ≤30 s 内该 Cookie 的请求 → 403；Agent 主体调 A60 → 403 130403 `AGENT_PROHIBITED`                                                                                                                                                                                                                                                                                                  |
+| AC-03-92  | integration | BR-03-113（安全）             | **G** E 的进程树监听 5173；同机另一项目执行 F 监听 3000；机器上其他进程监听 8080 **W** A61 **T** 只返回 5173 **W** A56{port:3000} 与 A56{port:8080} **T** 均 403 130403 `PORT_NOT_OWNED`，不向机器发 `tunnel.open`；伪造 `preview_offered{port:8080}` 事件 → 会话 FAILED（机器端 140485 拒绝），审计 `fleet.tunnel_stream_rejected`                                                                                                                                                                                                                                                                                   |
+| AC-03-93  | integration | BR-03-107                     | **G** 声明 C（`head_commit=abc`）之后执行又产生提交 def **W** 评审人 A57 **T** 机器在隔离副本检出 abc 并启动；预览内容来自 abc；执行工作区未被改动；会话占一个 PREVIEW 槽；02 对 C 裁决后会话 STOPPED（CLAIM_DECIDED）、副本删除、槽释放                                                                                                                                                                                                                                                                                                                                                                                                 |
+| AC-03-94  | integration | BR-03-108                     | **G** 会话 READY **W** 假时钟推进 30 min 无请求 **T** STOPPED（IDLE），机器收到 `preview.stop` **W** 另一会话持续访问至 8 h **T** STOPPED（MAX_LIFETIME） **W** 执行 SUCCEEDED **T** 其 SERVICE 会话 STOPPED（EXECUTION_ENDED），ARTIFACT 会话可新建                                                                                                                                                                                                                                                                                                                                                             |
+| AC-03-95  | integration | BR-03-119                     | **G** 机器上 2 个 READY 会话、1 个 SHELL **W** 所有者关闭 `allow_remote_preview` **T** ≤1 s 两会话 STOPPED（ACCESS_DISABLED）、SHELL 保持；**W** 关闭 `allow_remote_terminal` **T** SHELL CLOSED（ACCESS_DISABLED），录制封存                                                                                                                                                                                                                                                                                                                                                                                             |
+| AC-03-96  | integration | BR-03-112/118                 | **G** 工作区有 `docs/spec.md`、`out/chart.png`、`report/index.html`、`a.pdf` **W** A75 逐个 **T** viewer 分别为 DOCUMENT / IMAGE / REPORT / PDF，`src_url` 全在预览域；修改 `docs/spec.md` 后 ≤2 s SSE 推送 `preview_files_changed`                                                                                                                                                                                                                                                                                                                                                                                         |
+| AC-03-97  | integration | BR-03-117（v1.1）             | **G** `demo.mov`（ProRes）且机器有 `media_transcode` **W** 打开 **T** 经 MEDIA_PROXY 播放 480p 代理，工作区无新文件；无 ffmpeg 的机器 → 只提供下载；MVP 构建中 A75 对 VIDEO → 422 130473                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| AC-03-98  | integration | BR-03-120/123（安全）         | **G** 工作区有 `.env`（`DB_PASSWORD=x`）、`src/a.ts`、符号链接 `link → /etc` **W** A62 根目录 **T** 含 `.env`（masked）与 `src`，不含 `.git` **W** A63 `.env` **T** 返回 `DB_PASSWORD=••••` **W** A63 `.env&download=1` **T** 422 130469 **W** A63 `../../etc/passwd`、`link/hosts` **T** 403 130403 `PATH_OUTSIDE_WORKSPACE`，审计 `execution.workspace_path_denied` 一条（合并）                                                                                                                                                                                    |
+| AC-03-99  | integration | BR-03-121                     | **G** `bin/app.html`（含脚本）**W** A63 `download=1` **T** 响应 `Content-Type: application/octet-stream`、`Content-Disposition: attachment`、`nosniff`；审计 `execution.workspace_file_downloaded` 含路径 SHA-256                                                                                                                                                                                                                                                                                                                                                                                                              |
+| AC-03-100 | integration | BR-03-124                     | **G** E RUNNING，Agent 执行 `npm test` **W** M（只有 `execution_read`）A67{WATCH} 并通过 A69 发送 input 帧 **T** 收到 `npm test` 输出；input 帧导致通道以 1008 关闭；WORKSTATION 开关关闭时 WATCH 仍可打开                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| AC-03-101 | integration | BR-03-125（v1.1，安全）       | **G** WORKSTATION 机器 `allow_remote_terminal=false`，所有者 O 持 `terminal_interact` **W** A67{SHELL} 带有效 step-up **T** 403 130403 `MACHINE_ACCESS_DISABLED`，不开流 **W** 开关开启后不带 `reauth_proof` **T** 403 `REAUTH_REQUIRED` **W** 持委托的 Agent / 服务账号调用 **T** 403 `AGENT_PROHIBITED`（不可委托） **W** O 带 step-up **T** 201，审计 `execution.terminal_opened`；初始 cwd 为工作区根；15 min 无输入后 CLOSED（IDLE），审计 `execution.terminal_closed{recording_sha256}` 与录制文件 SHA-256 一致；N12 通知执行者                                                  |
+| AC-03-102 | integration | BR-03-126/127（v1.1）         | **G** E RUNNING，工程师 X 持 `workspace_file_edit`，机器 `allow_file_edit=true` **W** X 直接 A66 **T** 409 130466（执行正在运行）**W** X A65 PUT **T** E PAUSED（USER_PAUSE），`taken_over_by=X` **W** X A66 改 `src/a.ts`（`base_sha256` 正确）**T** 201，机器提交作者为 X、trailer `Edited-By-Human`，产物 COMMIT `producer_kind=HUMAN`，审计 `execution.workspace_files_edited` **W** `base_sha256` 过期 **T** 409 130472 带当前 sha **W** 另一工程师 Y A66 **T** 409 130466 **W** A13 恢复 **T** 409 130466，A65 DELETE 后恢复成功，上下文含人工编辑说明 |
+| AC-03-103 | integration | BR-03-127                     | **G** WORKSTATION `allow_file_edit=false`（默认）**W** 接管者 A66 **T** 403 130403 `MACHINE_ACCESS_DISABLED`；编辑 `.env` → 422 130469                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| AC-03-104 | integration | BR-03-128/129（v1.1（D126）） | **G** 会话 READY **W** 申请人 R A70{ttl_hours:24} **T** PENDING_APPROVAL，`share_link.requested` → 08 收件箱 `PREVIEW_SHARE_APPROVAL`（不含 R）**W** R 自己 A72 APPROVE **T** 403 130403 `SELF_REVIEW` **W** 审批人 Q APPROVE **T** 返回 `share_url`（fragment 令牌），库中只有哈希；再次 GET 不含令牌                                                                                                                                                                                                                                                                                                    |
+| AC-03-105 | e2e         | BR-03-130（安全）             | **G** ACTIVE 链接 **W** 未登录浏览器打开 `share_url` **T** 显示预览与部署显示名、`note`、「只读预览」；页面与网络请求中不含执行 ID、Agent 名、日志、文件或终端入口；POST 表单 → 405「这是只读预览」                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| AC-03-106 | integration | BR-03-131（安全）             | **G** ACTIVE 链接 L **W** 假时钟越过 `expires_at` 后用同一 Cookie 访问、重新打开 `share_url` **T** 均 410「此预览链接已失效」，L EXPIRED，`share_link.ended` 关闭收件箱项 **W** 另一链接被 A73 撤销 **T** ≤1 s 后访问 410；不存在的令牌与失效令牌返回相同响应                                                                                                                                                                                                                                                                                                                                                           |
+| AC-03-107 | e2e         | §8.6                         | 桌面 1440 与手机 390：四个 Tab 的加载、空、错误、无权限、网关未配置、仅长轮询、工作区不可用状态；v1.1 项带「v1.1」并禁用；分享按钮带「v1.1（D126）」；路径模式琥珀标签；无横向滚动，触控 ≥44 px                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 ### 10.z 验收标准增补（D120 锚定批注与过期上下文写入）
 
-| ID | 层 | 关联 | Given / When / Then |
-|---|---|---|---|
-| AC-03-108 | integration | US-03-37, BR-03-133, BR-03-135 | **G** 执行 E 已提交 `src/app.ts`（commit c1，120 行）**W** 评审人 X A77 `{WORKSPACE_FILE, path, version_ref:c1, viewer_kind:CODE, CODE_LINES{start_line:40, end_line:44}}` **T** 201，`anchor_excerpt` 为第 40–44 行原文，`version_kind=COMMIT`；`end_line:130` → 422 130476（`data.field=end_line`）；对 `.env` 批注 → 422 130469；`viewer_kind=VIDEO` + CODE_LINES → 422 130476 |
-| AC-03-109 | integration | BR-03-133, BR-03-136 | **G** 服务预览 S READY，设备档 PHONE **W** 辅助脚本可用时选中按钮；应用 CSP 禁止脚本时拖框 **T** 前者 `HTML_REGION{selector, rect, viewport{390,844,PHONE}, precision:SELECTOR}`、`version_kind=HEAD_COMMIT`；后者 `precision:RECT_ONLY`、`selector` 为空；来自其他源的 `postMessage` 被忽略；控制台源上无任何注入脚本 |
-| AC-03-110 | integration | BR-03-133 | **G** DOCUMENT 中的 CSV（主键列 `id`）与 Markdown 文档 **W** 对 `id=42` 的行、对第 3 段批注 **T** TABLE_ROW 含 `row_key{column:"id", value:"42"}` 与 `row_sha256`；TEXT_PARAGRAPH 含 `paragraph_sha256` 与引文；MVP 构建中 MEDIA_TIME → 422 130480 |
-| AC-03-111 | integration | US-03-40, BR-03-137 | **G** 线程 T1 锚定 c1 第 40–44 行、T2 锚定第 80 行；c2 只在第 10 行前插入 3 行并改写第 80 行 **W** 以 `view_version=c2` 调 A76 **T** T1 `RELOCATED`、`relocated_anchor` 为 43–47；T2 `OUTDATED`，仍返回原文快照；以 `view_version=c1` → 两者 CURRENT；线程状态均未改变 |
-| AC-03-112 | integration | BR-03-137 | **G** TABLE_ROW 线程 `row_key id=42`；新版本中该行金额被改 **W** 判定 **T** OUTDATED 且仍定位到 id=42 的行并标「此行已修改」；该行被删除 → OUTDATED 无定位；段落线程在段落前插入新段后 → 按 sha 找到，RELOCATED |
-| AC-03-113 | integration | US-03-39, BR-03-139, 02 BR-02-66 | **G** INTERNAL 线程 T（OPEN）**W** 评审人在 02 D1 `REQUEST_CHANGES` 的 `feedback[0].comment_thread_id=T` 提交 **T** 同一事务内写入反馈行（`location` 由锚点生成）、`execution_comment_conversions(FEEDBACK)` 含锚点快照、T 变为 RESOLVED、发布 `comment.converted`；再次以 T 转 FEEDBACK → 02 返回 422 120471（`data.target_id` = 已有反馈）；同一 T 经 12 A31 转缺陷成功（两种转换并存） |
-| AC-03-114 | integration | US-03-41, BR-03-140 | **G** E 关联工作项 W（`activity_seq=12`），执行者 Agent Ada 读到 12 **W** 评审人在 E 的产物上新建批注（W 流到 13）；Ada 以 `seen_seq=12` 调 A27 提交证据 **T** 409 130474，`newer_events` 含 COMMENT_ADDED（线程 ID）；无证据行；Ada 以同一 `Idempotency-Key`、`seen_seq=13` 重试 → 201 且 W 流到 14（EVIDENCE_ADDED）；Ada 不带 `seen_seq` → 422 130475；人类不带 → 201；ADHOC 未关联工作项的执行不要求 `seen_seq` |
-| AC-03-115 | integration | BR-03-140, BR-03-145 | **G** 线程 T 最新 seq=4 **W** Agent 以 `seen_seq=3` 回复；两名人类并发回复 **T** Agent 得 409 130474（`stream="comment_thread:<T>"`）；两条人类回复得到 seq 5、6，无重复 |
-| AC-03-116 | integration | BR-03-134 | **G** Morgan 只有 `execution_read`；纯人工项目中的助理 Agent 持 `artifact_comment_write` **W** 二者调 A77 **T** Morgan 403 130403（`MISSING_PERMISSION`）；助理 403 130403（`HUMAN_ONLY_MODE`，08 S2(e)）；Morgan 仍可 A76 读取 |
-| AC-03-117 | integration | BR-03-141 | **G** 交付 D（SENT）选入证据 Ev（`include_mode=FILE`）；另一证据 Ev2 只入 SUMMARY **W** 07 经门户验收为 Ev 创建 CLIENT 线程、为 Ev2 创建 **T** Ev 成功（`visibility=CLIENT`、作者 `CLIENT:<contact>`）；Ev2 被拒（07 422 127056）；团队成员对该 CLIENT 线程 A79 → 409 130479；门户读取只返回 D 上的 CLIENT 线程，INTERNAL 线程不出现 |
-| AC-03-118 | unit | BR-03-142 | **W** 新建含提及与 2000 字正文的线程 **T** `comment.thread_created` 载荷不含正文、引文与路径原文以外的内容（只含 ID、锚点种类、可见性、作者与提及主体）；Agent 被提及时 05 收件箱新增 MENTION，人类被提及时 N13 |
-| AC-03-119 | e2e | §8.9 | **G** 桌面 1440 与手机 390 **W** 在代码视图、CSV、Markdown、设备框网页、PDF 上依次批注并切换到新版本 **T** 锚点标记、线程栏四个分组（当前 / 已重新定位 / 基于旧版本 / 已解决）、〔查看原版本〕、〔转为反馈〕〔转为缺陷〕可用；甲方线程带徽章且无回复框；视频与章节批注按钮带「v1.1」并禁用；手机上为底部抽屉、长按取点 |
-| AC-03-120 | integration | BR-03-147, 05 BR-05-145 | **G** Ada 在 P 的执行 E1 派发时工具集为 issue-tracker v2、技能 deploy v4、本机 pdf-tools **W** E1 运行中团队发布 issue-tracker v3；E1 返工生成分支 E2；05 在派发时不可用 **T** E1 的 `toolset` 与 `toolset_revision` 不变，执行详情与声明证据摘要列出三项及来源；E2 的快照为 v3；上下文 `06_skills/` 与运行时技能目录内容一致；05 不可用时派发不入队（503），无不带快照的 `execution.start` |
-| AC-03-121 | integration | BR-03-148 | **G** 自定义角色移除了 Agent Bo 的 `interaction_request`；Ada 保留默认授予 **W** 二者的执行各回传一个 TOOL_PERMISSION `interaction_requested` **T** Ada：PENDING 交互、N1 通知；Bo：立即下发 `interaction.response{DENY}`，交互记录 CANCELLED（`closed_reason=CAPABILITY_NOT_AUTHORIZED`），无通知、无收件箱项，审计 `execution.interaction_denied`；任一 Agent 回应 Ada 的交互仍 403 130403 |
+| ID        | 层          | 关联                             | Given / When / Then                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| --------- | ----------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AC-03-108 | integration | US-03-37, BR-03-133, BR-03-135   | **G** 执行 E 已提交 `src/app.ts`（commit c1，120 行）**W** 评审人 X A77 `{WORKSPACE_FILE, path, version_ref:c1, viewer_kind:CODE, CODE_LINES{start_line:40, end_line:44}}` **T** 201，`anchor_excerpt` 为第 40–44 行原文，`version_kind=COMMIT`；`end_line:130` → 422 130476（`data.field=end_line`）；对 `.env` 批注 → 422 130469；`viewer_kind=VIDEO` + CODE_LINES → 422 130476                                |
+| AC-03-109 | integration | BR-03-133, BR-03-136             | **G** 服务预览 S READY，设备档 PHONE **W** 辅助脚本可用时选中按钮；应用 CSP 禁止脚本时拖框 **T** 前者 `HTML_REGION{selector, rect, viewport{390,844,PHONE}, precision:SELECTOR}`、`version_kind=HEAD_COMMIT`；后者 `precision:RECT_ONLY`、`selector` 为空；来自其他源的 `postMessage` 被忽略；控制台源上无任何注入脚本                                                                                                     |
+| AC-03-110 | integration | BR-03-133                        | **G** DOCUMENT 中的 CSV（主键列 `id`）与 Markdown 文档 **W** 对 `id=42` 的行、对第 3 段批注 **T** TABLE_ROW 含 `row_key{column:"id", value:"42"}` 与 `row_sha256`；TEXT_PARAGRAPH 含 `paragraph_sha256` 与引文；MVP 构建中 MEDIA_TIME → 422 130480                                                                                                                                                                        |
+| AC-03-111 | integration | US-03-40, BR-03-137              | **G** 线程 T1 锚定 c1 第 40–44 行、T2 锚定第 80 行；c2 只在第 10 行前插入 3 行并改写第 80 行 **W** 以 `view_version=c2` 调 A76 **T** T1 `RELOCATED`、`relocated_anchor` 为 43–47；T2 `OUTDATED`，仍返回原文快照；以 `view_version=c1` → 两者 CURRENT；线程状态均未改变                                                                                                                                                  |
+| AC-03-112 | integration | BR-03-137                        | **G** TABLE_ROW 线程 `row_key id=42`；新版本中该行金额被改 **W** 判定 **T** OUTDATED 且仍定位到 id=42 的行并标「此行已修改」；该行被删除 → OUTDATED 无定位；段落线程在段落前插入新段后 → 按 sha 找到，RELOCATED                                                                                                                                                                                                                  |
+| AC-03-113 | integration | US-03-39, BR-03-139, 02 BR-02-66 | **G** INTERNAL 线程 T（OPEN）**W** 评审人在 02 D1 `REQUEST_CHANGES` 的 `feedback[0].comment_thread_id=T` 提交 **T** 同一事务内写入反馈行（`location` 由锚点生成）、`execution_comment_conversions(FEEDBACK)` 含锚点快照、T 变为 RESOLVED、发布 `comment.converted`；再次以 T 转 FEEDBACK → 02 返回 422 120471（`data.target_id` = 已有反馈）；同一 T 经 12 A31 转缺陷成功（两种转换并存）                               |
+| AC-03-114 | integration | US-03-41, BR-03-140              | **G** E 关联工作项 W（`activity_seq=12`），执行者 Agent Ada 读到 12 **W** 评审人在 E 的产物上新建批注（W 流到 13）；Ada 以 `seen_seq=12` 调 A27 提交证据 **T** 409 130474，`newer_events` 含 COMMENT_ADDED（线程 ID）；无证据行；Ada 以同一 `Idempotency-Key`、`seen_seq=13` 重试 → 201 且 W 流到 14（EVIDENCE_ADDED）；Ada 不带 `seen_seq` → 422 130475；人类不带 → 201；ADHOC 未关联工作项的执行不要求 `seen_seq` |
+| AC-03-115 | integration | BR-03-140, BR-03-145             | **G** 线程 T 最新 seq=4 **W** Agent 以 `seen_seq=3` 回复；两名人类并发回复 **T** Agent 得 409 130474（`stream="comment_thread:<T>"`）；两条人类回复得到 seq 5、6，无重复                                                                                                                                                                                                                                                         |
+| AC-03-116 | integration | BR-03-134                        | **G** Morgan 只有 `execution_read`；纯人工项目中的助理 Agent 持 `artifact_comment_write` **W** 二者调 A77 **T** Morgan 403 130403（`MISSING_PERMISSION`）；助理 403 130403（`HUMAN_ONLY_MODE`，08 S2(e)）；Morgan 仍可 A76 读取                                                                                                                                                                                              |
+| AC-03-117 | integration | BR-03-141                        | **G** 交付 D（SENT）选入证据 Ev（`include_mode=FILE`）；另一证据 Ev2 只入 SUMMARY **W** 07 经门户验收为 Ev 创建 CLIENT 线程、为 Ev2 创建 **T** Ev 成功（`visibility=CLIENT`、作者 `CLIENT:<contact>`）；Ev2 被拒（07 422 127056）；团队成员对该 CLIENT 线程 A79 → 409 130479；门户读取只返回 D 上的 CLIENT 线程，INTERNAL 线程不出现                                                                                          |
+| AC-03-118 | unit        | BR-03-142                        | **W** 新建含提及与 2000 字正文的线程 **T** `comment.thread_created` 载荷不含正文、引文与路径原文以外的内容（只含 ID、锚点种类、可见性、作者与提及主体）；Agent 被提及时 05 收件箱新增 MENTION，人类被提及时 N13                                                                                                                                                                                                                          |
+| AC-03-119 | e2e         | §8.9                            | **G** 桌面 1440 与手机 390 **W** 在代码视图、CSV、Markdown、设备框网页、PDF 上依次批注并切换到新版本 **T** 锚点标记、线程栏四个分组（当前 / 已重新定位 / 基于旧版本 / 已解决）、〔查看原版本〕、〔转为反馈〕〔转为缺陷〕可用；甲方线程带徽章且无回复框；视频与章节批注按钮带「v1.1」并禁用；手机上为底部抽屉、长按取点                                                                                                               |
+| AC-03-120 | integration | BR-03-147, 05 BR-05-145          | **G** Ada 在 P 的执行 E1 派发时工具集为 issue-tracker v2、技能 deploy v4、本机 pdf-tools **W** E1 运行中团队发布 issue-tracker v3；E1 返工生成分支 E2；05 在派发时不可用 **T** E1 的 `toolset` 与 `toolset_revision` 不变，执行详情与声明证据摘要列出三项及来源；E2 的快照为 v3；上下文 `06_skills/` 与运行时技能目录内容一致；05 不可用时派发不入队（503），无不带快照的 `execution.start`                                  |
+| AC-03-121 | integration | BR-03-148                        | **G** 自定义角色移除了 Agent Bo 的 `interaction_request`；Ada 保留默认授予 **W** 二者的执行各回传一个 TOOL_PERMISSION `interaction_requested` **T** Ada：PENDING 交互、N1 通知；Bo：立即下发 `interaction.response{DENY}`，交互记录 CANCELLED（`closed_reason=CAPABILITY_NOT_AUTHORIZED`），无通知、无收件箱项，审计 `execution.interaction_denied`；任一 Agent 回应 Ada 的交互仍 403 130403                               |
 
 ## 11. 度量与埋点（不得包含代码、消息正文、工具入参、提示词）
 
-| 事件名 | 属性 |
-|---|---|
-| `execution_created` | kind, purpose, branch_reason, runtime, authorization_mode, workdir_mode, actor_kind |
-| `execution_transition` | from, to, reason, kind, duration_in_state_ms |
-| `execution_interrupted` | reason, lease_age_ms, resumed_within_ms?（恢复时补记） |
-| `turn_completed` | state, duration_ms, tool_calls, input_tokens, output_tokens, retried:bool |
-| `interaction_resolved` | kind, state, latency_ms, responder_device:"desktop"|"mobile" |
-| `claim_evidence_mapped` | criteria_total, criteria_covered, evidence_count, auto_collected_count |
-| `evidence_added` | type, auto:bool, size_bucket, redaction_count |
-| `verification_result` | layer, result, result_reason, duration_ms, required（PRD §15） |
-| `rework_branch_created` | category, branch_reason, reason_ordinal（PRD §15） |
-| `similarity_signal` | ratio_bucket（0–2/2–5/5–8%）, union_bucket |
-| `context_bundle_built` | budget, used, trimmed_layers[], knowledge_items_full, knowledge_items_reference |
-| `cost_recorded` | cost_source, cost_bucket, tokens_bucket, runtime, model_family |
-| `merge_result` | state, authority_kind（role/delegation） |
-| `machine_switch` | same_dir:bool, carryover:bool |
+| 事件名                    | 属性                                                                                |
+| ------------------------- | ----------------------------------------------------------------------------------- |
+| `execution_created`     | kind, purpose, branch_reason, runtime, authorization_mode, workdir_mode, actor_kind |
+| `execution_transition`  | from, to, reason, kind, duration_in_state_ms                                        |
+| `execution_interrupted` | reason, lease_age_ms, resumed_within_ms?（恢复时补记）                              |
+| `turn_completed`        | state, duration_ms, tool_calls, input_tokens, output_tokens, retried:bool           |
+| `interaction_resolved`  | kind, state, latency_ms, responder_device:"desktop"                                 |
+| `claim_evidence_mapped` | criteria_total, criteria_covered, evidence_count, auto_collected_count              |
+| `evidence_added`        | type, auto:bool, size_bucket, redaction_count                                       |
+| `verification_result`   | layer, result, result_reason, duration_ms, required（PRD §15）                     |
+| `rework_branch_created` | category, branch_reason, reason_ordinal（PRD §15）                                 |
+| `similarity_signal`     | ratio_bucket（0–2/2–5/5–8%）, union_bucket                                       |
+| `context_bundle_built`  | budget, used, trimmed_layers[], knowledge_items_full, knowledge_items_reference     |
+| `cost_recorded`         | cost_source, cost_bucket, tokens_bucket, runtime, model_family                      |
+| `merge_result`          | state, authority_kind（role/delegation）                                            |
+| `machine_switch`        | same_dir:bool, carryover:bool                                                       |
 
 ---
-
 
 ### 11.x 度量增补（D112 / D113，00 v2.0 §15）
 
@@ -1966,18 +1958,18 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 
 **风险**：① 运行时 SDK 事件形态变化 → 适配器契约测试（夹具桥）隔离；⑤ 预览中运行的是 Agent 写的不可信代码 → 独立预览域 + 每会话子域 + 访问判定逐请求（BR-03-114，04 BR-04-94）；⑥ 交互终端在无沙箱的工作站上可越出工作区 → 开关默认关闭、仅所有者开启、step-up、全程录制（BR-03-125）；② 证据量大（日志）→ 对象存储驱动（09）与保留策略；③ 运行时副作用不可撤销 → 栅栏 + 中断不重放 + UI 强提示；④ token 估算偏差 → 偏保守，并在 `context_bundle_built` 埋点回看。
 
-| # | 待决 | 建议 |
-|---|---|---|
-| Q1 | ADHOC 是否必须属于项目 | **MVP 必须选项目**（00 §3 `project_id NOT NULL` 与 `RegisterEntity` 行过滤要求）；团队可建一个"内部"项目承载探索 |
-| Q2 | 机器上传的证据/日志如何写入 files | 由底座 files 提供系统身份写入 + ResourceBinding 的窄接口（委派模式），execution 不直接写 files 表 |
-| Q3 | 多副本部署是否需要启动栅栏 | 默认 `all`；多副本部署配置 `lease`（BR-03-12） |
-| Q4 | 团队级执行总览 | MVP 只做项目级列表 + "我的执行"（A43）；跨项目聚合待 08 提供按项目授权的行级过滤后再做 |
-| Q5 | 验证失败是否自动建 QUALITY 子执行 | 由 02 决定（REWORK 状态所有者为交付负责人）；本模块只提供系统反馈与 `ExecutionLauncher` |
-| Q6 | ON_REQUEST 对 Codex 的支持 | 待 Codex 提供可回传审批的通道后再开放，不绕过官方客户端限制（Preview 结论） |
-| Q7 | 相似度最小并集 `\|U\| ≥ 5`（BR-03-67） | **已决**：02 BR-02-27 采纳，MVP 固定 |
-| Q8 | INTERRUPTED 上报 `kind=RUNTIME` 后工作项进入 EXECUTION_FAILED，人工恢复同一执行时工作项如何回到 IN_PROGRESS | **已决**：02 T20b（`current_execution_id` 人工恢复，不计重试次数） |
-| Q9 | 甲方分享链接的分期（D119 未列） | **已决（2026-10-12）：v1.1**：MVP 先完成内部预览闭环；分享涉及对外暴露与审批收件箱，按「预览是进度不是交付」放在交付流程成熟之后 |
-| Q10 | 预览配置的结构化来源 | 本规格约定宪法内 `preview` 围栏块与模板 `params.preview`（BR-03-105）；若 07 / 11 希望改为独立字段，由其规格提出，03 只依赖解析结果 |
+| #   | 待决                                                                                                         | 建议                                                                                                                                   |
+| --- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1  | ADHOC 是否必须属于项目                                                                                       | **MVP 必须选项目**（00 §3 `project_id NOT NULL` 与 `RegisterEntity` 行过滤要求）；团队可建一个"内部"项目承载探索            |
+| Q2  | 机器上传的证据/日志如何写入 files                                                                            | 由底座 files 提供系统身份写入 + ResourceBinding 的窄接口（委派模式），execution 不直接写 files 表                                      |
+| Q3  | 多副本部署是否需要启动栅栏                                                                                   | 默认`all`；多副本部署配置 `lease`（BR-03-12）                                                                                      |
+| Q4  | 团队级执行总览                                                                                               | MVP 只做项目级列表 + "我的执行"（A43）；跨项目聚合待 08 提供按项目授权的行级过滤后再做                                                 |
+| Q5  | 验证失败是否自动建 QUALITY 子执行                                                                            | 由 02 决定（REWORK 状态所有者为交付负责人）；本模块只提供系统反馈与`ExecutionLauncher`                                               |
+| Q6  | ON_REQUEST 对 Codex 的支持                                                                                   | 待 Codex 提供可回传审批的通道后再开放，不绕过官方客户端限制（Preview 结论）                                                            |
+| Q7  | 相似度最小并集`\|U\| ≥ 5`（BR-03-67）                                                                       | **已决**：02 BR-02-27 采纳，MVP 固定                                                                                             |
+| Q8  | INTERRUPTED 上报`kind=RUNTIME` 后工作项进入 EXECUTION_FAILED，人工恢复同一执行时工作项如何回到 IN_PROGRESS | **已决**：02 T20b（`current_execution_id` 人工恢复，不计重试次数）                                                             |
+| Q9  | 甲方分享链接的分期（D119 未列）                                                                              | **已决（2026-10-12）：v1.1**：MVP 先完成内部预览闭环；分享涉及对外暴露与审批收件箱，按「预览是进度不是交付」放在交付流程成熟之后 |
+| Q10 | 预览配置的结构化来源                                                                                         | 本规格约定宪法内`preview` 围栏块与模板 `params.preview`（BR-03-105）；若 07 / 11 希望改为独立字段，由其规格提出，03 只依赖解析结果 |
 
 ---
 
@@ -1985,16 +1977,16 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 
 全部已由 00 v1.3 合并或取代（2026-10-11 审校），本节保留为记录：
 
-| ID | 对 00 的请求 | 处理 |
-|---|---|---|
-| CR-03-01 | 时间列类型 | 已并入 00 §3 |
-| CR-03-02 | 事件 `interaction.closed`、`execution.merged` | 已并入 00 §7.1 |
-| CR-03-03 | 本模块枚举 | 按 00 §3 作为模块内枚举，不进 §5（见 §3.17） |
-| CR-03-04 | 权限码 `verifier_manage` | 已并入 00 §6.1 |
+| ID       | 对 00 的请求                                                                                                                              | 处理                                                                                                                                       |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| CR-03-01 | 时间列类型                                                                                                                                | 已并入 00 §3                                                                                                                              |
+| CR-03-02 | 事件`interaction.closed`、`execution.merged`                                                                                          | 已并入 00 §7.1                                                                                                                            |
+| CR-03-03 | 本模块枚举                                                                                                                                | 按 00 §3 作为模块内枚举，不进 §5（见 §3.17）                                                                                            |
+| CR-03-04 | 权限码`verifier_manage`                                                                                                                 | 已并入 00 §6.1                                                                                                                            |
 | CR-03-05 | 跨模块接口（ExecutionLauncher / EvidenceReader 扩充、EvidenceBinder、ExecutionDispatchHandler、ClaimSubmitter、`decision.made` 不建枝） | 已并入 00 §8；`BudgetGuard` 取消，改用 07 `ProjectGate`；`ClaimSubmitter` 由 02 提供；新增 `ExecutionReader`、`CancelExecution` |
-| CR-03-06 | 模块幂等表附加列 | 取代：统一 09 C7 平台幂等表 |
-| CR-03-07 | OpenAPI tag 规则 | 已并入 00 §9（路径首段） |
-| CR-03-08 | ETag / If-Match / 428 | 已并入 00 §3 |
+| CR-03-06 | 模块幂等表附加列                                                                                                                          | 取代：统一 09 C7 平台幂等表                                                                                                                |
+| CR-03-07 | OpenAPI tag 规则                                                                                                                          | 已并入 00 §9（路径首段）                                                                                                                  |
+| CR-03-08 | ETag / If-Match / 428                                                                                                                     | 已并入 00 §3                                                                                                                              |
 
 > **D112 / D113 已并入（00 v2.0 §15）**：新增依赖 06 `MemoryWriter.Propose`（穿透学习）、11 `EvalSetWriter.ProposeCase`（已在 11 §6.8 定义，由 02 调用）、04 `browser_capture` 能力标记、02 `plan.approved` 事件与 `max_internal_rounds` 判断；对 00 无新增变更请求（§15 已定义所用枚举、事件与权限码）。
 
@@ -2003,7 +1995,6 @@ Given 02 T25 PAUSE   Then 调用 ExecutionLauncher.Pause(tx, W, reason)，运行
 > **D120（锚定批注与过期上下文写入，2026-10-12）已并入**：§1 范围、US-03-37…41、表 §3.29–3.31（批注线程、批注、转换记录、S9 锚点与模块内枚举）、§4.z、BR-03-133…146、接口 A76–A82、`ArtifactComments`、错误码 130474–130481、事件 `comment.*`、§8.9、N13 / N14、AC-03-108…119。**CR-03-10**（对 00，已登记入 00 v2.0 D120 补充）：§5 共享枚举 `AnchorKind`（CODE_LINES, TABLE_ROW, HTML_REGION, MEDIA_TIME, TEXT_PARAGRAPH）与 `CommentVisibility`（INTERNAL, CLIENT），所有者 03，02 / 07 / 12 读取；§6.1 权限码 `artifact_comment_write`；§7.1 事件 `comment.thread_created`、`comment.posted`、`comment.thread_resolved`、`comment.converted`；§8 接口 `ArtifactComments`；§9 过期上下文写入约定（与 05 CCR-05-11 同）。依赖：02 `WorkItemActivityRecorder` / `WorkItemActivityReader`（BR-02-64）、07 `DeliveryEvidenceReader.ClientFacing`（BR-07-63）、04 批注辅助脚本注入（BR-04-104）。分期按 D119 查看器：视频时间点与章节段落批注为 v1.1，其余 MVP。
 
 > **D120 第 6 项（团队工具目录）已并入**：§3.32 执行表 `toolset` / `toolset_revision`（S11 快照）、BR-03-147（工具集快照即证据）、BR-03-148（`interaction_request` 判定）、§6.z 增补（`execution.start.toolset`、`leases.renew.tool_tokens`、`TOOLSET_UNAVAILABLE`、交互 `closed_reason` 增加 `CAPABILITY_NOT_AUTHORIZED`）、AC-03-120 / 121。**CR-03-11**（对 00，已登记入 00 v2.0 D120 补充）：§6.1 权限码 `interaction_request`（execution 注册，DataScoped，可委托，默认授予全部会运行执行的角色，08 §3.3d）；依赖 05 `ToolsetResolver`（fleet → execution）；不新增共享枚举与事件。
-
 
 ## 14. 执行器契约、证据完整性与流水线读模型
 
@@ -2026,7 +2017,6 @@ Claude Code 与 Codex 使用同一合同夹具分别验证：①启动 / ack / �
 ### 14.P 本域易用性与大数据验收
 
 本域适用 00 §16.8：服务端权限过滤 / 稳定游标分页，不全量拉取前端后筛；长列表虚拟化、聚合服务端取，精确总数不阻塞首屏；涉及看板按列分页、频道历史锚点与增量、流程图可见渲染 / 子流程惰性加载、文件范围读。切项目 / 筛选取消过期请求，保留阅读 / 草稿上下文，明示 loading / 空 / 超时 / 限流 / 断流 / 重试。协作二级菜单不跳会话域。规模与 API / UI 性能预算是开发后待实测门槛，原型不宣称已通过。
-
 
 交互会话 UI 复审统一：重复独立 session 页面退休；执行资源 / API 不变，执行列表与工具授权待办的对象链接进入会话域 `/t/:tenantID/chat?execution_id=:executionID`（原型 `chat/exec-tax`），新建交互会话复用同一列表创建。旧 `/executions/:executionID/session` UI 路径不注册 / 无 alias 或重定向，所有引用直接使用规范会话路径；消息、工具授权、上下文共用同一真实状态，禁止假操作按钮。此为对象上下文链接，协作侧栏仍不跨域，见 00 §16.9。
 

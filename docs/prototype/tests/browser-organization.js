@@ -38,7 +38,7 @@
   await pane("列表");
   check([...document.querySelectorAll(".org-person-row .org-row-tag")].every(el => el.textContent === "Human"), "Agent appeared in Human organization");
   check(!document.querySelector(".org-tabs").textContent.includes("工作小团队"), "Task team remained under organization");
-  check(location.hash === "#/members", "Organization actions navigated away");
+  check(location.hash.split("?")[0] === "#/members", "Organization actions navigated away");
   const roster = JSON.stringify(state().organization.members);
   await click("邀请成员"); await fill("姓名", "邀请验收"); await fill("电子邮件", "invite@example.test");
   await choose("邀请人", "许言"); await choose("邀请项目", state().projects[1].name); await choose("项目角色", "外部客户");
@@ -48,7 +48,7 @@
   check(JSON.stringify(state().organization.members) === roster, "Pending invitation added member");
   await selectRow("邀请验收"); await click("撤销邀请"); await fill("撤销原因", "调整合作范围"); await click("确认撤销", document.querySelector(".org-editor"));
   check(state().resources.invitations.find((item) => item.id === invitation.id).status === "已撤销", "Invitation not revoked");
-  check(location.hash === "#/members", "Invitation actions left organization page");
+  check(location.hash.split("?")[0] === "#/members", "Invitation actions left organization page");
   await go(`/invitations/${invitation.id}`);
   check(document.querySelector(".org-detail").textContent.includes("邀请验收") && document.querySelector(".org-detail").textContent.includes("已撤销"), "Invitation deep link lost scoped detail");
   await go("/invitations");

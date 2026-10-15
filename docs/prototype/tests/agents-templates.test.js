@@ -95,14 +95,14 @@ test("template AI drafts are explicit simulations; manual edits and published hi
     const flow = templateFlow(s, id);
     flow.flowDraft.nodes.find((n) => n.id === "build").data.label =
       "人工修订节点";
-    publishWorkflowTemplate(s, id, flow.flowDraft);
+    publishWorkflowTemplate(s, id, {...flow.flowDraft,baseVersion:flow.flowVersion});
   });
   const fixed = structuredClone(templateDefinition(read(), id, 1));
   expect(fixed.nodes.find((n) => n.id === "build").data.label).toBe(
     "人工修订节点",
   );
   draftWorkflowTemplate(id, "新的模拟目标");
-  update((s) => publishWorkflowTemplate(s, id, templateFlow(s, id).flowDraft));
+  update((s) => publishWorkflowTemplate(s, id, {...templateFlow(s, id).flowDraft,baseVersion:templateFlow(s,id).flowVersion}));
   expect(templateDefinition(read(), id, 1)).toEqual(fixed);
   expect(
     templateDefinition(read(), id, 2).nodes.find((n) => n.id === "build").data
@@ -117,7 +117,7 @@ test("template publication validates graph, rejects generic bypass and enforces 
   draftWorkflowTemplate(id, "目标");
   const invalid = structuredClone(templateFlow(read(), id).flowDraft);
   invalid.edges.push({ source: "brief", target: "delivery" });
-  expect(() => update((s) => publishWorkflowTemplate(s, id, invalid))).toThrow(
+  expect(() => update((s) => publishWorkflowTemplate(s, id, {...invalid,baseVersion:templateFlow(s,id).flowVersion}))).toThrow(
     "每条交付路径",
   );
   expect(templateFlow(read(), id).flowVersion).toBe(0);
@@ -128,7 +128,7 @@ test("template publication validates graph, rejects generic bypass and enforces 
   update((s) => (s.role = "executor"));
   expect(() =>
     update((s) =>
-      publishWorkflowTemplate(s, id, templateFlow(s, id).flowDraft),
+      publishWorkflowTemplate(s, id, {...templateFlow(s, id).flowDraft,baseVersion:templateFlow(s,id).flowVersion}),
     ),
   ).toThrow("负责人");
   update((s) => (s.offline = true));

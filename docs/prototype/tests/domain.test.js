@@ -10,7 +10,7 @@ Object.defineProperty(globalThis, "localStorage", {
   },
   configurable: true,
 });
-const { log, publishTestReport, startTestBatch, recordBatchResult, read, reset, update, workCommand, resourceCommand, saveResource } =
+const { requestModelApproval, log, publishTestReport, startTestBatch, recordBatchResult, read, reset, update, workCommand, resourceCommand, saveResource } =
   await import("../src/store.js");
 const verifyWork = workId => completeValidation({ read, workCommand, recordBatchResult, publishTestReport, startTestBatch }, workId);
 beforeEach(() => {
@@ -91,7 +91,7 @@ test("all resource editors restrict forms to configuration and preserve runtime 
     expect(fields).toContain("owner");
     for (const field of metadata) expect(fields).not.toContain(field);
   }
-  resourceCommand("approvals", "AP-01", "已批准", "Approved");
+  resourceCommand("approvals", requestModelApproval("MD-02", 1), "已批准", "Approved");
   resourceCommand("models", "MD-02", "生效", "Apply");
   const model = read().resources.models.find((m) => m.id === "MD-02");
   const receipt = structuredClone(model.nodeResults);
@@ -225,17 +225,18 @@ test("executor cannot grant final Human authorization", () => {
   );
 });
 test("editing a model invalidates its old approval target revision", () => {
+  const requestId = requestModelApproval("MD-02", 1);
   const model = {
     ...read().resources.models.find((m) => m.id === "MD-02"),
     model: "changed",
   };
   saveResource("models", model);
-  expect(() => resourceCommand("approvals", "AP-01", "已批准", "同意")).toThrow(
+  expect(() => resourceCommand("approvals", requestId, "已批准", "同意")).toThrow(
     "目标已变更",
   );
 });
 test("partial configuration rollout does not falsely report every node applied", () => {
-  resourceCommand("approvals", "AP-01", "已批准", "限定范围");
+  resourceCommand("approvals", requestModelApproval("MD-02", 1), "已批准", "限定范围");
   resourceCommand("models", "MD-02", "生效", "下发");
   const m = read().resources.models.find((m) => m.id === "MD-02");
   expect(m.status).toBe("部分生效");

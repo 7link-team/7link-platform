@@ -8,25 +8,36 @@ if (typeof window.qaCompleteValidation !== "function") throw Error("Preload test
  const fill=async(label,value)=>{const el=[...document.querySelectorAll('.field')].find(e=>e.querySelector('label')?.textContent.replace(' *','').trim()===label)?.querySelector('input:not([type=hidden]),textarea');check(el,'Missing '+label);Object.getOwnPropertyDescriptor(el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));await wait()};
  const choose=async(label,value)=>{const el=document.querySelector(`[role=combobox][aria-label="${label}"]`);check(el,'Missing select '+label);el.click();await wait();await click(value,document.querySelector('[role=listbox]'))};
  const state=()=>JSON.parse(localStorage.getItem('collaboration-prototype-v1'));
- await go('/p/launch/work-items');await click('发起工作');await fill('想要完成什么','浏览器新工作闭环');await choose('归属项目','Northstar · 新品发布');await fill('怎样才算完成','满足浏览器验收条款并通过内部检查');await click('确认生成工作与计划');
+ const savedNode=()=>state().nodes.find(n=>n.status==='在线'&&n.runtime==='Codex CLI');
+ await go('/p/launch/work-items');await click('发起任务');await fill('想要完成什么','浏览器新工作闭环');check(document.querySelector('[role=combobox][aria-label="归属项目"]')?.textContent.includes('Northstar · 新品发布'),'Task creation ignored project picker');await fill('怎样才算完成','满足浏览器验收条款并通过内部检查');await click('确认生成工作与计划');
  const workId=state().work.find(w=>w.title==='浏览器新工作闭环').id;
- check(state().work.find(w=>w.id===workId).plan===true,'Conversation confirmation did not establish plan');await click('确认工作流版本');await click('开始执行');await click('提交新成果版本');
+ check(state().work.find(w=>w.id===workId).plan===true,'Conversation confirmation did not establish plan');check(location.hash.startsWith('#/p/launch/work-items?')&&!document.querySelector('dialog[open]'),'Task confirmation left list or failed to close');await go(`/p/launch/work-items/${workId}`);await click('确认工作流版本');await click('配置工作小团队');document.querySelector('[aria-label="执行者 Atlas"]').click();document.querySelector('[aria-label="检查者 Verifier"]').click();await fill('编组变更说明','指定 Atlas 执行、Verifier 独立检查、林予负责接收');await click('保存工作小团队');await click('分派Agent执行');await choose('已分派的Agent','Atlas · Codex CLI');const node=savedNode();await choose('匹配Runtime的在线节点',node.name+' · '+node.runtime);await click('创建派发记录，等待节点接受');const dispatched=state().executions.find(e=>e.workId===workId);check(dispatched?.state==='CREATED'&&state().work.find(w=>w.id===workId).status==='待开始','Agent dispatch invented node acceptance');await go('/chat?execution_id='+dispatched.id);await click('模拟节点接受并启动');await fill('操作依据','本地模拟节点接受当前固定工作输入');await click('模拟节点接受并启动',document.querySelector('dialog[open]'));check(state().work.find(w=>w.id===workId).status==='进行中','Node acceptance failed');await go(`/p/launch/work-items/${workId}`);await click('提交新成果版本');
  check(state().work.find(w=>w.id===workId).status==='待验收','Fresh work submit failed without reload');
  await go(`/p/launch/work-items/${workId}?tab=review`);
  check(document.querySelector('main').textContent.includes('未执行'),'Unexecuted is mislabeled failed/passed');
+ await click('接受当前版本');check(document.body.textContent.includes('不能绕过质量门'),'New work accepted without independent checks');
+ await go('/tests');await click('新建用例');await fill('名称','小项目固定版本验收');await fill('关联工作',workId);await fill('版本','v2');await choose('验证来源','平台独立验证');await fill('检查方法','逐项模拟核对固定成果');await fill('前置条件','工作已提交 v2');await fill('输入','固定成果 v2');await fill('执行步骤','逐项核对需求与固定截图');await fill('期望','满足浏览器验收条款并通过内部检查');
+ const requirement=[...document.querySelectorAll('dialog[open] label')].find(e=>e.textContent.trim()==='满足浏览器验收条款并通过内部检查');check(requirement,'New work requirement checkbox missing');requirement.querySelector('input').click();await wait();await click('保存',document.querySelector('dialog[open]'));check(!document.querySelector('dialog[open]'),'New work test case failed to save');
+ await window.qaCompleteValidation(workId);await click('设置交付方式');await choose('完成与接收方式','指定接收人交付');await fill('指定接收人','陈曦');await click('保存交付方式');await click('接受当前版本');await click('批准正式交付');await click('确认',document.querySelector('dialog[open]'));
+ const freshPackage=state().resources.deliveries.find(pack=>pack.work===workId);check(freshPackage&&state().work.find(w=>w.id===workId).delivered,'New work lifecycle did not deliver fixed package: '+JSON.stringify(state().work.find(w=>w.id===workId))+'; notice '+document.querySelector('.toast')?.textContent);
+ await go(`/deliveries/${freshPackage.id}`);await click('记录接收');await fill('依据与说明','本地模拟：接收方核对固定交付包并记录接收');await click('确认操作',document.querySelector('dialog[open]'));
+ check(state().resources.deliveries.find(pack=>pack.id===freshPackage.id).status==='已接受'&&state().work.find(w=>w.id===workId).status==='已完成','New work lifecycle receipt or completion missing');
+
  await go('/tests/TC-02');await click('记录失败');await fill('依据与说明','当前版本未满足条款');await click('确认操作');
  check(state().work.find(w=>w.id==='W-103').qa===false,'Failed record not reflected in gate');
  await go('/p/launch/work-items/W-103?tab=review');await click('接受当前版本');
  check(document.body.textContent.includes('不能绕过质量门'),'Human bypassed failed record');
  await window.qaCompleteValidation('W-103');
  check(state().work.find(w=>w.id==='W-103').qa===true,'Recheck not reflected in task');
- await go('/approvals/AP-01');await click('批准当前版本');await fill('依据与说明','限定当前版本');await click('确认操作');
+ await go('/models/MD-02');await click('提交当前配置审批');await new Promise(resolve=>setTimeout(resolve,180));await click('批准当前版本');await fill('依据与说明','限定当前版本');await click('确认操作');
  await go('/models/MD-02');await click('模拟应用配置');await fill('依据与说明','模拟下发');await click('确认操作');
  const receipts=JSON.stringify(state().resources.models.find(m=>m.id==='MD-02').nodeResults);
  await click('编辑');check(!document.querySelector('dialog').textContent.includes('nodeResults'),'Runtime receipts editable');await fill('名称','模型配置修改');await click('保存');
  check(!document.body.textContent.includes('页面发生错误'),'Model editor crashed');
  check(JSON.stringify(state().resources.models.find(m=>m.id==='MD-02').nodeResults)===receipts,'Editing lost runtime receipts');
- await go('/p/launch/flow');await click('编辑新草案');await fill('节点名称','新版执行节点');await click('确认发布新版本');
+ await go('/p/launch/flow?workflow_id=default');await click('编辑新草案');await fill('节点名称','新版执行节点');
+ await click('节点列表');await click('05  独立检查');await choose('独立检查 Human','周宁 · H-zhou');await fill('独立检查清单','按固定成果逐项检查需求与质量');await fill('必需证据 / 报告','固定测试报告与截图');
+ await click('06  Human 批准');await fill('审批依据 / 固定成果','已通过内部检查的固定版本');await click('07  最终交付');await fill('固定交付包 / 验收证据','固定成果与验收报告交接包');await click('确认发布新版本');
  check(state().flowVersion===4,'Valid gated workflow not published');
  await choose('已发布工作流版本','固定版本 v3');
  check(location.hash.includes('version=3'),'Version selector passed event instead of value');
@@ -35,5 +46,5 @@ if (typeof window.qaCompleteValidation !== "function") throw Error("Preload test
  await go(`/p/launch/work-items/${workId}?tab=plan`);await click('打开 工作流');
  check(location.hash.includes('version=3'),'Existing work uses latest workflow');
  await go('/p/launch/flow?version=999');check(document.querySelector('main').textContent.includes('版本不存在'),'Missing version silently uses latest');
- return {pass:true,checks:['fresh creation to submission','unexecuted state','quality failure/recheck synchronization','runtime receipts immutable in editor','published version selector','historical work binding and unknown version']};
+ return {pass:true,checks:['fresh creation to independent verification, acceptance, delivery and receipt','unexecuted state','quality failure/recheck synchronization','runtime receipts immutable in editor','published version selector','historical work binding and unknown version']};
 })()

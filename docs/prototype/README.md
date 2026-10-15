@@ -22,11 +22,11 @@ bun run dev --port 4173
 2. `/chat?channel_id=launch` 发消息、回复线程、转为工作。工作草稿补充责任与验收要求，确认计划和 SOP 后启动。
 3. `/p/launch/work-items/W-104?tab=review`：直接接受会被质量门阻止；开始独立验证，逐项填写模拟实际结果和证据、结束批次形成固定报告；必需检查通过后由 Human 接受，再确认正式交付。
 4. `/deliveries` 查看同步出现的固定版本包。设置切换 external 后查看共享工作台，提交回执或有理由退回；切回 owner 查活动与返工。
-5. `/p/launch/flow` 编辑新草案、拖动并连接节点、修改契约、发布版本。添加未连接节点会被拒绝，既有发布版本保留。其他项目草案独立。
+5. `/p/launch/flow` 编辑新草案、拖动并连接节点、按配置/输入/输出/运行记录/错误策略完善节点，修改契约、发布版本。协作及 Git CI/CD 节点按业务显示参数；模拟预览不实际构建或部署。添加未连接节点会被拒绝，既有发布版本保留。其他项目草案独立。
 6. `/p/launch/artifacts/W-103` 比较图片；`/p/film/artifacts/W-201` 查看媒体时间点；`/p/novel/artifacts/W-301` 查看文稿；添加版本批注并处理。
 7. `/machines/n1?tab=terminal` 体验模拟终端；files / preview 切换文件与预览释放。节点安装、排空与状态为模拟。
 8. `/models` 配置修改会使旧批准失效；审批当前版本后模拟下发，失联节点保持待应用。
-9. `/reports` 手动生成 / 打开或设置模拟定时报告，同主体同周期只有一份；校准后本人确认上报。`/worklogs` 按任务评估、校准并确认 Human 实际投入，另页签查看只读 Agent 用量。`/goals`、`/testplans`、`/tests`、`/defects`、`/schedules`、`/health` 保留相应资源与状态入口。
+9. `/reports` 手动生成 / 打开或设置模拟定时报告，同主体同周期只有一份；校准后本人确认上报。`/p/launch/work-items/W-104?tab=analysis` 自动分析任务投入及 Agent 运行证据，Human 按需校准并确认；`/worklogs` 只保留历史证据访问，不再独立创建。owner 的 `/performance` 按周期查看租户/项目汇总与 Human/Agent 工作、考核报告。`/goals`、`/testplans`、`/tests`、`/defects`、`/schedules`、`/health` 保留相应资源与状态入口。
 10. `/settings` 切换主题、暗色、角色与离线；`/work?state=empty|loading|error|denied` 分别演示四类状态（将 `|` 分隔内容替换成一个值）。
 
 ## 范围与交付边界
@@ -80,10 +80,30 @@ bun run dev --port 4173
 先启动本地服务，使用已安装的 `agent-browser` 浏览器环境运行：
 
 ```sh
-python3 tests/run-browser.py --url http://127.0.0.1:4173 --width 1440 --output /tmp/prototype-desktop.json
-python3 tests/run-browser.py --url http://127.0.0.1:4173 --width 375 --output /tmp/prototype-mobile.json
+mkdir -p .audit-artifacts
+python3 tests/run-browser.py --url http://127.0.0.1:4173 --width 1440 --output .audit-artifacts/prototype-desktop.json
+python3 tests/run-browser.py --url http://127.0.0.1:4173 --width 375 --output .audit-artifacts/prototype-mobile.json
 ```
 
 脚本为每轮创建独立浏览器会话，每套只重置原型自己的主状态键，预载 QA 逐项录入辅助，再运行 `browser-*.js`。可追加具体脚本文件名做定向复现。辅助脚本本身不计作测试。退出码同时检查断言返回值、路由错误 / 标题 / 溢出、运行期间源码是否变化；完整结果保存到指定 JSON。验收构建产物时先构建并以独立端口服务固定 `dist`，再将 `--url` 指向该服务，运行期间不得替换产物。
 
 浏览器套件通过仅证明列明的交互断言，不自动证明覆盖全部 PRD、所有主题状态或真实外部集成。
+
+测试源码、fixture、修复及评审文档进入 Git；截图、日志、浏览器结果和临时构建保存在本机 `.audit-artifacts/`，该目录已被 Git 忽略。需要迁移或分享证据时，可显式归档选定文件：
+
+```sh
+python3 archive-evidence.py --output .audit-artifacts/review-evidence.zip .audit-artifacts/prototype-desktop.json .audit-artifacts/prototype-mobile.json
+```
+
+归档包含原始文件、来源路径、大小及 SHA-256 索引，保留失败证据；同名归档不会被覆盖。以后复用以 `tests/` 中的正式脚本和 fixture 为准；不能把旧归档通过结果当成当前源码的验收。
+
+
+## 列表设计对齐（2026-10-15）
+
+共享 DataList 参照 [Mall 列表资料](../references/mall-design/README.md)统一筛选区、主操作区、列显隐、三态排序、每页本地序号、固定表头/两侧列与分页。顶部采用紧凑排版，桌面筛选与操作尽量同行，统计置于分页栏。左右和上下只在该方向还有隐藏内容时显示轻阴影，滚到边界或内容不溢出时自动消失；阴影不拦截点击。桌面表格占据剩余空间，手机仅表格内容横向滚动；复用现有主题及权限回调。列显隐随当前视图保存，不允许显示业务声明为不可见的列。文件图标模式同步提供默认顺序，避免切换视图后排序文案失真。
+
+有意保留现有即时筛选和授权后本地 JSON 导出；没有后端导出任务、批量业务动作或导入能力的列表不显示虚假入口。这是原型列表体验调整，不是将来源规范的全部业务能力直接启用。
+
+预览：[桌面列表](screenshots/list-design-desktop.png) · [手机列表](screenshots/list-design-mobile.png)。
+
+验证：678 单元测试 / 8298 断言及构建通过；1440px、375px 各 5 套列表浏览器回归通过（task-list / workflow-list / audit-list / material-files / list-design），期间源码哈希不变。完整产品审计仍按 REVIEW 的独立状态处理。

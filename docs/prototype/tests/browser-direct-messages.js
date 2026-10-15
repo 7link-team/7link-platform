@@ -1,0 +1,33 @@
+(async()=>{
+ const checks=[],check=(ok,name)=>{checks.push({name,pass:Boolean(ok)});if(!ok)throw Error(name)},wait=()=>new Promise(r=>setTimeout(r,280));
+ const state=()=>JSON.parse(localStorage.getItem('collaboration-prototype-v1'));
+ const go=async path=>{location.hash=path;await wait()};
+ const click=async(label,root=document)=>{const el=[...root.querySelectorAll('button,a')].find(el=>el.getAttribute('aria-label')===label||el.textContent.trim()===label);check(el,'Control '+label);el.click();await wait()};
+ const fill=async(el,text)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,text);el.dispatchEvent(new Event('input',{bubbles:true}));await wait()};
+ const start=async name=>{
+  if(innerWidth<768)await click('打开会话列表');await click('发起私信');
+  let dialog=document.querySelector('dialog[open]');check(dialog&&dialog.querySelectorAll('[role=combobox]').length===1&&!dialog.querySelector('input[type=search]'),'Single searchable picker; no separate search field');
+  await click('私信联系人',dialog);const search=dialog.querySelector('input[aria-label="搜索私信联系人"]');check(search&&document.activeElement===search,'Search is inside the dropdown and receives focus');
+  search.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true,cancelable:true}));await wait();check(dialog.querySelector('.select-popover')&&!dialog.querySelector('[role=combobox]').textContent.includes('周宁'),'IME confirmation does not select a contact or close the dropdown');
+  await fill(search,'no-such-contact');check(dialog.textContent.includes('没有匹配的联系人')&&dialog.querySelectorAll('[role=option]').length===0,'Search empty state is explicit');
+  await fill(search,name);const option=[...dialog.querySelectorAll('[role=option]')].find(el=>el.textContent.includes(name));check(option,'Search finds '+name);option.click();await wait();
+  check(!dialog.querySelector('.select-popover')&&dialog.querySelector('[role=combobox]').textContent.includes(name),'Selection closes dropdown and labels chosen identity');
+  await click('打开或创建私信',dialog);
+ };
+ await go('/chat?channel_id=launch');const before=state(),executionIds=before.executions.map(e=>e.id);
+ await start('周宁');const channelId=new URLSearchParams(location.hash.split('?')[1]).get('channel_id'),c=state().channels.find(c=>c.id===channelId);
+ check(c?.kind==='DIRECT'&&c.projectId===null&&c.members.length===2,'Human private conversation has two fixed participants and no project');
+ check(document.querySelector('.chat-heading h1').textContent==='周宁'&&!document.querySelector('dialog[open]'),'Creation opens actual private conversation in the same shell');
+ check(document.querySelector('.chat-heading').textContent.includes('私人会话')&&document.querySelector('main').textContent.includes('租户所有者和组织上级没有旁观权'),'Human private policy is disclosed');
+ const textarea=document.querySelector('.composer textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(textarea,'Private Human conversation test');textarea.dispatchEvent(new Event('input',{bubbles:true}));await click('发送');
+ const message=state().messages.find(m=>m.channel===channelId&&m.text==='Private Human conversation test');check(message&&document.querySelector('.messages').textContent.includes(message.text),'Message is stored and displayed in the selected private conversation');
+ const count=state().channels.length;await start('周宁');check(state().channels.length===count&&new URLSearchParams(location.hash.split('?')[1]).get('channel_id')===channelId,'Repeated start reuses the existing pair and retains history');
+ await start('Quill');check(new URLSearchParams(location.hash.split('?')[1]).get('channel_id')==='private','Existing Quill private conversation is reused');
+ check(document.querySelector('main').textContent.includes('托管 Agent 私信政策')&&document.querySelector('main').textContent.includes('发消息不会自动启动任务或执行'),'Agent policy and execution boundary disclosed');
+ await click('私信详情');let dialog=document.querySelector('dialog[open]');check(dialog.textContent.includes('固定参与者')&&!dialog.querySelector('[aria-label="频道管理栏目"]')&&!dialog.querySelector('input'),'Private details do not offer channel management forms');await click('关闭弹窗',dialog);
+ check(JSON.stringify(state().executions.map(e=>e.id))===JSON.stringify(executionIds),'Private messages never create executions');
+ await go('/agents/atlas');const original=location.hash;await click('发私信');dialog=document.querySelector('dialog[open]');check(dialog.querySelector('[role=combobox]').textContent.includes('Atlas'),'Agent detail preselects the actual Agent');await click('打开或创建私信',dialog);dialog=document.querySelector('dialog[open]');
+ const link=[...dialog.querySelectorAll('a')].find(a=>a.textContent==='在新标签页打开私信');check(link?.target==='_blank'&&new URLSearchParams(link.getAttribute('href').split('?')[1]).get('channel_id')===state().channels.find(c=>c.kind==='DIRECT'&&c.members.some(m=>m.principalId==='atlas')).id,'Agent detail offers an exact new-tab private conversation link');
+ check(location.hash.split('?')[0]===original.split('?')[0],'Agent detail does not unexpectedly jump into chat');await click('关闭弹窗',dialog);
+ check(document.documentElement.scrollWidth<=innerWidth,'Private UI fits viewport');return {pass:true,width:innerWidth,checks};
+})();

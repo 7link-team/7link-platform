@@ -58,7 +58,7 @@ try:
     evaluate("document.querySelector('.flow-list button').click()")
     time.sleep(.15)
     keyboard_tabs('[aria-label="节点详情"]')
-    navigate('/chat?execution_id=W-104')
+    navigate('/chat?execution_id=EX-demo-W-104')
     keyboard_tabs('[aria-label="任务预览标签"]')
     navigate('/testplans')
     headings = evaluate("[...document.querySelectorAll('main h1,main h2,main h3')].map(e=>Number(e.tagName[1]))")
@@ -82,7 +82,30 @@ try:
             assert observed == {'theme': theme, 'dark': dark, 'overflow': False}, observed
             audit = json.loads(command('a11y', '--selector', '.bottom-nav', '--json'))['data']
             assert not audit['violations'], (theme, dark, audit['violations'])
-            summaries.append({'theme': theme, 'dark': dark, 'counts': audit['counts']})
+            # Axe cannot resolve the uniform gradient layer. Resolve its actual
+            # CSS colors in Chromium, including translucent card and active
+            # background layers. An opaque result also prevents the previously
+            # reproduced scrolling text from showing underneath these labels.
+            contrast = evaluate("""(()=>{
+              const nav=document.querySelector('.bottom-nav'),style=getComputedStyle(nav);
+              const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
+              const ctx=canvas.getContext('2d');
+              const paint=(color,reset=false)=>{if(reset)ctx.clearRect(0,0,1,1);ctx.fillStyle=color;ctx.fillRect(0,0,1,1);return [...ctx.getImageData(0,0,1,1).data]};
+              const colors=style.backgroundImage==='none'?[]:style.backgroundImage.match(/rgba?\\([^)]*\\)/g);
+              if(style.backgroundImage!=='none'&&(!colors||colors.length!==2))throw Error('Navigation background needs a rendered contrast review');
+              if(colors&&JSON.stringify(paint(colors[0],true))!==JSON.stringify(paint(colors[1],true)))throw Error('Nonuniform navigation gradient needs a rendered contrast review');
+              const layers=colors?.slice(0,1)||[];
+              const background=()=>{paint(style.backgroundColor,true);for(const color of layers)paint(color);return [...ctx.getImageData(0,0,1,1).data]};
+              const luminance=rgb=>rgb.slice(0,3).map(x=>x/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4).reduce((sum,x,i)=>sum+x*[.2126,.7152,.0722][i],0);
+              const labels=[...nav.querySelectorAll('a')].map(a=>{
+                background();const bg=paint(getComputedStyle(a).backgroundColor),fg=paint(getComputedStyle(a.querySelector('span')).color);
+                const x=luminance(bg),y=luminance(fg);
+                return {label:a.textContent.trim(),ratio:(Math.max(x,y)+.05)/(Math.min(x,y)+.05)};
+              });
+              return {opaque:background()[3]===255,labels};
+            })()""")
+            assert contrast['opaque'] and all(label['ratio'] >= 4.5 for label in contrast['labels']), (theme, dark, contrast)
+            summaries.append({'theme': theme, 'dark': dark, 'counts': audit['counts'], 'label_contrast': contrast})
     print(json.dumps({'result': 'PASS', 'mobile_bottom_nav': summaries}, ensure_ascii=False))
 finally:
     command('close')

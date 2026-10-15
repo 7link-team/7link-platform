@@ -11,7 +11,7 @@
     await wait();
   };
   const click = async (label, root = document) => {
-    const node = [...root.querySelectorAll("button")].find(
+    const node = [...root.querySelectorAll("button,a")].find(
       (node) => node.textContent.trim() === label,
     );
     check(node, `Missing ${label}`);
@@ -106,6 +106,24 @@
     "Missing simulation provenance",
   );
   await fill("节点名称", "人工确认的研究节点");
+  // The former suite failed here with "Template did not publish": the AI draft
+  // intentionally has no Human check evidence, approval basis or delivery package.
+  // Keep that rejected publication as an assertion before completing the fields.
+  await click("确认发布新版本");
+  check(
+    state().resources.templates.find(item => item.id === template.id).flow.flowVersion === 0,
+    "Incomplete template bypassed the publication gate",
+  );
+  await click("节点列表");
+  await click("05  独立检查");
+  await select("独立检查 Human", "周宁 · H-zhou");
+  await fill("独立检查清单", "按固定研究成果逐项核对来源、需求与质量");
+  await fill("必需证据 / 报告", "固定研究报告、来源清单与独立检查记录");
+  await click("06  Human 批准");
+  await fill("审批依据 / 固定成果", "通过独立检查的固定研究报告与来源证据");
+  await click("07  最终交付");
+  await fill("固定交付包 / 验收证据", "固定研究成果、来源清单与验收报告交接包");
+  await click("人工确认的研究节点");
   await click("确认发布新版本");
   template = state().resources.templates.find(
     (item) => item.id === template.id,

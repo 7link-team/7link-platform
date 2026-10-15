@@ -1,3 +1,4 @@
+import { activeProjects, projectIsArchived } from "./project-lifecycle";
 import React, { useState } from "react";
 import { useStore, scheduleWork, workExecutors } from "./store";
 import {
@@ -31,7 +32,7 @@ export function WorkCalendar({ work, toast, projectId }) {
     ...new Set(work.flatMap((w) => [w.owner, ...workExecutors(s, w).map((person) => person.name)]).filter(Boolean)),
   ];
   const items = work.filter(
-    (w) => person === "all" || w.owner === person || workExecutors(s, w).some((executor) => executor.name === person),
+    (w) => !projectIsArchived(s,w.project) && (person === "all" || w.owner === person || workExecutors(s, w).some((executor) => executor.name === person)),
   );
   const center = date(anchor),
     first =
@@ -47,7 +48,7 @@ export function WorkCalendar({ work, toast, projectId }) {
   const active = items.filter((w) => w.plannedStart && w.plannedEnd),
     unscheduled = items.filter((w) => !w.plannedStart || !w.plannedEnd);
   const milestones = (d) =>
-    s.projects.filter(
+    activeProjects(s).filter(
       (p) =>
         (!projectId || p.id === projectId) &&
         (s.project === "all" || p.id === s.project) &&
@@ -277,7 +278,7 @@ function ScheduleEditor({ selected, state, onClose, toast }) {
             </p>
           </ActionForm>
           <Link
-            className="text-link"
+            className="text-link" target="_blank" rel="noopener noreferrer"
             to={`/p/${selected.project}/work-items/${selected.id}`}
           >
             查看工作详情 <Icon name="ArrowUpRight" size={14} />

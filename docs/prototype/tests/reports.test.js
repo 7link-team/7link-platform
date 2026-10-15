@@ -1,6 +1,6 @@
+import { legacyPeriodFixture, prepareStructuredReport } from "./report-lifecycle-fixtures";
 import { reportSubmissionContent } from "../src/report-authorization.js";
 import { beforeEach, expect, test } from "bun:test";
-import { initial } from "../src/data.js";
 if (!globalThis.localStorage) {
   const entries = new Map();
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: {
@@ -11,11 +11,18 @@ if (!globalThis.localStorage) {
 }
 const { reportEvidence, read, reset, update, resourceCommand, saveResource, saveHumanEffort } = await import("../src/store.js");
 beforeEach(() => reset());
-const fresh = () => structuredClone(initial);
+const fresh = () => structuredClone(read());
 const ref = (kind, id, version = 1) => ({ kind, id, version });
 const report = (references, extra = {}) => ({ id: "report-root", name: "本周", owner: "林予", status: "草稿",
   periodStart: "2026-10-12", periodEnd: "2026-10-18", references, ...extra });
 const install = (r) => update((s) => s.resources.reports.push(r));
+const scopedParent = (references, patch = {}) => report(references, {subjectKey:"human:H-lin",cadence:"周报",timezone:"Asia/Singapore",...patch});
+// Represents an incoming fixed submission, not an accepted label alone.
+const fixedChild = (references, patch = {}, s = fresh()) => {
+ const child=report(references,{id:"child",name:"本人日报",subjectKey:"human:H-lin",cadence:"日报",timezone:"Asia/Singapore",periodStart:"2026-10-13",periodEnd:"2026-10-13",status:"已提交",revision:1,...patch});
+ child.submission={revision:1,authorId:"H-lin",authorKind:"Human",content:reportSubmissionContent(child),factSnapshot:reportEvidence(s,child)};
+ return child;
+};
 
 test("report totals separate Human hours from concurrent Agent and tool durations", () => {
   const s = fresh();
@@ -30,8 +37,9 @@ test("report totals separate Human hours from concurrent Agent and tool duration
 
 test("nested reports deduplicate each source identity across direct and child references", () => {
   const s = fresh(), work = ref("work", "W-104", 3), hours = ref("worklog", "WL-01");
-  s.resources.reports.push(report([work, hours], { id: "child", name: "下级", status: "已接受" }));
-  const result = reportEvidence(s, report([hours, hours, work, ref("report", "child"), ref("report", "child")]));
+  s.resources.worklogs.find(log=>log.id==="WL-01").ownerId="H-lin";
+  s.resources.reports.push(fixedChild([work, hours], { status: "已接受" },s));
+  const result = reportEvidence(s, scopedParent([hours, hours, work, ref("report", "child"), ref("report", "child")]));
   expect(result.errors).toEqual([]);
   expect(result.totals.human).toBe(1.5);
   expect(result.totals.works).toBe(1);
@@ -39,16 +47,17 @@ test("nested reports deduplicate each source identity across direct and child re
 });
 
 test("report submission preserves unaudited source state and records warnings in its snapshot", () => {
-  const r = report([ref("worklog", "WL-02"), ref("report", "RP-02")]);
+  const r = scopedParent([ref("worklog", "WL-02"), ref("report", "child")]);
+  install(fixedChild([ref("worklog", "WL-02")],{status:"待审核"}));
   install(r);
   const before = structuredClone(read().resources.worklogs);
   resourceCommand("reports", r.id, "已提交", "本人核对并保留待审核标记");
   const saved = read().resources.reports.find((v) => v.id === r.id);
   expect(saved.status).toBe("已提交");
-  expect(saved.factSnapshot.warnings.some((v) => v.includes("草稿") && v.includes("尚未审核"))).toBe(true);
+  expect(saved.factSnapshot.warnings.some((v) => v.includes("尚未本人确认"))).toBe(true);
   expect(saved.factSnapshot.warnings.some((v) => v.includes("待审核"))).toBe(true);
   expect(read().resources.worklogs).toEqual(before);
-  expect(read().resources.reports.find((v) => v.id === "RP-02").status).toBe("待审核");
+  expect(read().resources.reports.find((v) => v.id === "child").status).toBe("待审核");
 });
 
 for (const status of ["已提交", "已接受"]) {
@@ -85,11 +94,11 @@ test("period validation rejects invalid bounds and checks each child period", ()
     expect(reportEvidence(fresh(), report([ref("worklog", "WL-01")], { periodStart: start, periodEnd: end })).errors.some((v) => v.includes("起止日期"))).toBe(true);
   }
   const s = fresh();
-  s.resources.reports.push(report([ref("worklog", "WL-01")], { id: "child", periodStart: "2026-10-14" }));
+  s.resources.reports.push(fixedChild([ref("worklog", "WL-01")], { periodStart: "2026-10-14",periodEnd:"2026-10-14" }));
   // The same log is also selected directly: global dedupe must not hide a child-period conflict.
-  expect(reportEvidence(s, report([ref("worklog", "WL-01"), ref("report", "child")])).errors.some((v) => v.includes("记录日期不在"))).toBe(true);
-  s.resources.reports.at(-1).periodStart = "2026-10-01";
-  expect(reportEvidence(s, report([ref("report", "child")])).errors.some((v) => v.includes("下级报告周期超出"))).toBe(true);
+  expect(reportEvidence(s, scopedParent([ref("worklog", "WL-01"), ref("report", "child")])).errors.some((v) => v.includes("记录日期不在"))).toBe(true);
+  s.resources.reports[s.resources.reports.length-1]=fixedChild([ref("worklog","WL-01")],{periodStart:"2026-10-01",periodEnd:"2026-10-01"});
+  expect(reportEvidence(s, scopedParent([ref("report", "child")])).errors.some((v) => v.includes("没有交集"))).toBe(true);
 });
 
 test("declared completion counts compare to facts without judging freeform prose", () => {
@@ -97,8 +106,8 @@ test("declared completion counts compare to facts without judging freeform prose
   expect(reportEvidence(fresh(), report(refs, { claimedCompleted: 1 })).errors.some((v) => v.includes("完成 0 项不一致"))).toBe(true);
   expect(reportEvidence(fresh(), report(refs, { claimedCompleted: 0, summary: "全部正常" })).errors).toEqual([]);
   const s = fresh();
-  s.resources.reports.push(report(refs, { id: "child", claimedCompleted: 1 }));
-  expect(reportEvidence(s, report([ref("report", "child")])).errors.some((v) => v.includes("不一致"))).toBe(true);
+  s.resources.reports.push(fixedChild(refs, { claimedCompleted: 1 }));
+  expect(reportEvidence(s, scopedParent([ref("report", "child")])).errors.some((v) => v.includes("不一致"))).toBe(true);
 });
 
 test("malformed and legacy text-only references are not certified as checked", () => {
@@ -126,6 +135,8 @@ test("report source changes are rechecked at submission and do not rewrite its p
 
 const { reportPeriod, dateInZone, periodicReportKey, reportSubjects } = await import("../src/reporting.js");
 const { generatePeriodicReport, saveReportSchedule, createTenant } = await import("../src/store.js");
+const reportTestApi = { read, update, saveResource, ...(await import("../src/store.js")) };
+const prepareRequiredReport = id => { const r=read().resources.reports.find(r=>r.id===id);if(r.contentRequired===true && !r.content.uncompleted.length)prepareStructuredReport(reportTestApi,id); };
 const periodOptions = (extra = {}) => ({ subjectKey: "human:H-lin", cadence: "周报", date: "2026-10-13", timezone: "Asia/Singapore", ...extra });
 test("calendar report periods cover ISO week, leap month, quarter and year boundaries", () => {
   for (const [cadence, date, start, end] of [["日报", "2026-10-13", "2026-10-13", "2026-10-13"], ["周报", "2027-01-01", "2026-12-28", "2027-01-03"],
@@ -165,7 +176,7 @@ test("schedule and manual generation share one record and never overwrite a subm
   expect(read().resources.schedules.find((r) => r.id === scheduleId).lastReportId).toBe(reportId);
   let record = read().resources.reports.find((r) => r.id === reportId);
   saveResource("reports", { ...record, summary: "本人校准", references: [ref("work", "W-104", 3)] });
-  resourceCommand("reports", reportId, "已提交", "确认事实");
+  prepareRequiredReport(reportId); resourceCommand("reports", reportId, "已提交", "确认事实");
   const submitted = structuredClone(read().resources.reports.find((r) => r.id === reportId));
   update((s) => { s.work.find((w) => w.id === "W-104").version++; });
   resourceCommand("schedules", scheduleId, "启用", "重复本地模拟", "模拟运行一次");
@@ -225,9 +236,9 @@ test("Human actual totals exclude drafts and calibration but preserve declared h
 });
 
 
-test("group reports bind the authoritative Human owner rather than their subject display name", () => {
+test("legacy group reports bind the authoritative Human owner rather than their subject display name", () => {
   for (const [subjectKey, name] of [["project:launch", "林予"], ["team:ORG-engineering", "林予"], ["tenant:studio", "林予"], ["project:film", "周宁"], ["team:ORG-creative", "周宁"]]) {
-    const reportId = generatePeriodicReport(periodOptions({ subjectKey }));
+    const reportId = legacyPeriodFixture(reportTestApi,periodOptions({ subjectKey }));
     let record = read().resources.reports.find((item) => item.id === reportId);
     expect(record.owner).toBe(name);
     expect(record.subjectName).toBe(reportSubjects(read()).find((subject) => subject.key === subjectKey).name);
@@ -237,8 +248,9 @@ test("group reports bind the authoritative Human owner rather than their subject
       expect(record.owner).toBe(name);
       resourceCommand("reports", reportId, "已提交", "本人确认归属报告");
       const saved = read().resources.reports.find((item) => item.id === reportId);
-      expect(saved.status).toBe(subjectKey.startsWith("project:") ? "已提交" : "已接受");
-      if (!subjectKey.startsWith("project:")) expect(saved.approval.actorId).toBe("SYSTEM:team_top");
+      expect(saved.status).toBe(subjectKey.startsWith("tenant:") ? "已接受" : "已提交");
+      if (subjectKey.startsWith("tenant:")) expect(saved.approval.actorId).toBe("SYSTEM:team_top");
+      else expect(saved.approval).toBeNull();
     } else {
       const before = structuredClone(read());
       expect(() => saveResource("reports", { ...record, owner: "林予" })).toThrow("本人");
@@ -298,12 +310,12 @@ test("report review cannot bypass author submission and every decision retains i
   expect(() => resourceCommand("reports", reportId, "已提交", "代确认")).toThrow("本人确认");
   expect(read()).toEqual(before);
   const own = generatePeriodicReport(periodOptions({ cadence: "日报" }));
-  resourceCommand("reports", own, "已提交", "本人已确认");
+  prepareRequiredReport(own); resourceCommand("reports", own, "已提交", "本人已确认");
   const submitted = structuredClone(read().resources.reports.find(item => item.id === own));
   expect(() => resourceCommand("reports", own, "已接受", "本人不可自审")).toThrow("本人");
   expect(read().resources.reports.find(item => item.id === own)).toEqual(submitted);
   const agentId = generatePeriodicReport(periodOptions({ subjectKey: "agent:atlas", cadence: "日报", date: "2026-10-14" }));
-  resourceCommand("reports", agentId, "已提交", "明确 Agent 本地模拟", "", { revision: 1, status: "草稿", simulateAgent: true });
+  prepareRequiredReport(agentId); resourceCommand("reports", agentId, "已提交", "明确 Agent 本地模拟", "", { revision: read().resources.reports.find(r=>r.id===agentId).revision, status: "草稿", simulateAgent: true });
   const agentSubmitted = structuredClone(read().resources.reports.find(item => item.id === agentId));
   resourceCommand("reports", agentId, "已接受", "Human 审核有据");
   const accepted = read().resources.reports.find(item => item.id === agentId);
@@ -317,7 +329,7 @@ test("report edit cannot inject accepted status and stale review dialogs cannot 
   const find = () => read().resources.reports.find(item => item.id === reportId);
   saveResource("reports", { ...find(), status: "已接受" });
   expect(find().status).toBe("草稿");
-  resourceCommand("reports", reportId, "已提交", "Agent 本地模拟", "", { revision: find().revision, status: find().status, simulateAgent: true });
+  prepareRequiredReport(reportId); resourceCommand("reports", reportId, "已提交", "Agent 本地模拟", "", { revision: find().revision, status: find().status, simulateAgent: true });
   const old = { revision: find().revision, status: find().status };
   resourceCommand("reports", reportId, "草稿", "请补充校准依据");
   expect(find().history.at(-1).snapshot.status).toBe("已提交");

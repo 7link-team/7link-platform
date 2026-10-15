@@ -26,13 +26,13 @@ test("publication retains fixed definitions and existing work version references
   const original = structuredClone(flowDefinition(state, "launch", 3));
   const next = graph();
   next.nodes.find((n) => n.id === "build").data.label = "Revised build";
-  expect(publishProjectFlow(state, "launch", next)).toBe(4);
+  expect(publishProjectFlow(state, "launch", {...next,baseVersion:3})).toBe(4);
   expect(work.flowVersion).toBe(3);
   expect(flowDefinition(state, "launch", work.flowVersion)).toEqual(original);
   expect(flowDefinition(state, "launch", 4).nodes.find((n) => n.id === "build").data.label).toBe("Revised build");
   next.nodes[0].data.label = "Caller mutation";
   expect(flowDefinition(state, "launch", 4).nodes[0].data.label).not.toBe("Caller mutation");
-  expect(publishProjectFlow(state, "launch", graph())).toBe(5);
+  expect(publishProjectFlow(state, "launch", {...graph(),baseVersion:4})).toBe(5);
   expect(flowDefinition(state, "launch", 4).nodes.find((n) => n.id === "build").data.label).toBe("Revised build");
   expect(flowDefinition(state, "launch", 3)).toEqual(original);
   expect(flowDefinition(state, "launch", 99)).toBeNull();
@@ -48,7 +48,7 @@ test("project publications and work locks reject unpublished templates and inval
   invalid.edges.push({ source: "brief", target: "delivery" });
   expect(() => publishProjectFlow(state, "film", invalid)).toThrow("每条交付路径");
   expect(projectFlow(state, "film").flowVersion).toBe(1);
-  publishProjectFlow(state, "film", graph());
+  publishProjectFlow(state, "film", {...graph(),baseVersion:1});
   expect(projectFlow(state, "film").flowVersion).toBe(2);
   expect(projectFlow(state, "novel")).toEqual(originalNovel);
   expect(state.flowNodes).toEqual(originalLaunch.flowNodes);

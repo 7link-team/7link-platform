@@ -137,3 +137,15 @@ test("historical submitted Human can be reviewed without inventing self-confirma
   expect(get("WL-01").history.at(-1)).toMatchObject({ status: "已提交", hours: "1.5" });
   expect(() => reviewHumanEffort("WL-03", "accept", "错误审核", 1)).toThrow();
 });
+
+
+test("task contextual calibration needs no manual estimate and never auto-confirms", () => {
+ const id=saveHumanEffort({action:"calibrate",workId:"W-104",date:"2026-10-14",timezone:"Asia/Singapore",category:"验收",calibratedHours:1.25,note:"实际参与固定成果复核"});
+ expect(get(id).effortState).toBe("calibrated");expect(get(id).estimateHours).toBeUndefined();expect(humanConfirmedHours(get(id))).toBeNull();
+ expect(()=>saveHumanEffort({action:"calibrate",workId:"W-104",date:"2026-10-14",timezone:"Asia/Singapore",category:"验收",calibratedHours:2,note:"重复记录"})).toThrow("已有本人记录");
+ confirm(id);expect(humanConfirmedHours(get(id))).toBe(1.25);
+});
+test("archived task blocks record-only calibration and confirmation with no lost history", () => {
+ const id=estimate();calibrate(id,1);update(s=>{s.projects.find(p=>p.id==="launch").archivedAt="2026-10-14T00:00:00Z";});
+ const before=structuredClone(read());expect(()=>calibrate(id,2)).toThrow("归档");expect(()=>confirm(id)).toThrow("归档");expect(read()).toEqual(before);
+});

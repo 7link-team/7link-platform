@@ -13,9 +13,17 @@
   input.dispatchEvent(new Event('input',{bubbles:true})); await wait();
  };
  const checks = [];
- for (const [workId, projectId] of [['W-104','launch'],['W-201','film'],['W-301','novel']]) {
-  await go(`/chat?execution_id=${workId}`);
-  const marker = `share-${workId}-${Date.now()}`;
+ const executions=state().executions.filter(item=>item.workId&&item.id!==item.workId);
+ check(executions.length,'Need actual execution identities for the access-boundary checks');
+ for(const execution of executions){
+  await go(`/chat?execution_id=${encodeURIComponent(execution.id)}`);
+  check(document.querySelector('main').textContent.includes(execution.id),'Exact execution view missing');
+  check(!document.querySelector('.message-actions'),'Execution exposes ordinary message-sharing controls');
+ }
+ checks.push('execution records use their own identity and do not offer ordinary message sharing');
+ for (const projectId of ['launch','film','novel']) {
+  await go(`/chat?channel_id=${projectId}`);
+  const marker = `share-${projectId}-${Date.now()}`;
   await fill(marker); await click('发送',document.querySelector('.composer'));
   const message = [...document.querySelectorAll('.message')].find(message => message.textContent.includes(marker));
   await click('共享',message);
@@ -24,7 +32,7 @@
   check(document.querySelector('dialog').textContent.includes(`接收频道：${project.name}`),'Wrong default target preview');
   await click('确认共享选定消息',document.querySelector('dialog'));
   const shared = state().messages.at(-1);
-  check(shared.channel === projectId,`Shared ${workId} into wrong project ${shared.channel}`);
+  check(shared.channel === projectId,`Shared channel message into wrong project ${shared.channel}`);
   check(shared.author === '林予' && !shared.file && !shared.work && !shared.thread, 'Shared unintended fields');
   await go(`/chat?channel_id=${projectId}`);
   check(document.querySelector('.messages').textContent.includes(marker),'Shared text not readable in target');
@@ -32,12 +40,18 @@
   checks.push(`${projectId} explicit preview, delivery and target view`);
  }
  await go('/chat?channel_id=team');
- const url=location.href, historyLength=history.length;
- if (matchMedia('(max-width: 1023px)').matches) {document.querySelector('[aria-label="展开导航"]').click();await wait();}
- await click(state().projects.find(project=>project.id==='film').name,document.querySelector('.sidebar nav'));
- check(location.href===url && history.length===historyLength,'Project channel sidebar changed URL/history');
+ const shell=document.querySelector('.app-shell');
+ document.querySelector('.scope-select [aria-label="项目"]').click();await wait();
+ const projectOption=[...document.querySelectorAll('[role=option]')].find(option=>option.textContent.trim()===state().projects.find(project=>project.id==='film').name);
+ check(projectOption,'Film option missing from the single project picker');projectOption.click();await wait();
+ check(location.hash.split('?')[0]==='#/chat'&&new URLSearchParams(location.hash.split('?')[1]).get('scope')==='film','Project picker did not retain chat with an exact scope URL');
+ let directory=document.querySelector('.channel-list');
+ if(!directory||!directory.getClientRects().length){document.querySelector('[aria-label="打开会话列表"]').click();await wait();directory=document.querySelector('dialog .channel-list');}
+ const channelLink=[...directory.querySelectorAll('button,a')].find(el=>el.querySelector('b')?.textContent.trim()===state().projects.find(project=>project.id==='film').name);
+ check(channelLink,'Film channel missing from conversation directory');channelLink.click();await wait();
+ check(document.querySelector('.app-shell')===shell&&new URLSearchParams(location.hash.split('?')[1]).get('channel_id')==='film'&&state().project==='film','Channel selection lost the shell, URL identity or selected scope');
  check(document.querySelector('.chat-title')?.textContent.includes('品牌短片') || document.querySelector('main').textContent.includes('向海而生'),'Project channel did not switch in place');
- checks.push('project channel sidebar switches in place');
+ checks.push('single project picker and channel directory switch in place with precise URLs');
  await go('/chat?channel_id=private');
  const message = document.querySelector('.message');
  await click('共享',message);
@@ -54,9 +68,9 @@
  await go('/settings');
  document.querySelector('[aria-label="角色视角"]').click();await wait();
  [...document.querySelectorAll('[role=option]')].find(option => option.textContent.trim()==='external').click();await wait();
- for (const workId of ['W-104','W-201','W-301']) {
-  await go(`/chat?channel_id=external&execution_id=${workId}`);
-  check(!document.querySelector('.composer') && !document.querySelector('.execution-events'),'External query combination exposes execution');
+ for (const execution of executions) {
+  await go(`/chat?channel_id=external&execution_id=${encodeURIComponent(execution.id)}`);
+  check(!document.querySelector('.composer') && !document.querySelector('.execution-event') && !document.querySelector('.execution-record'),'External query combination exposes execution');
   check(document.querySelector('main').textContent.includes('不在共享范围'),'Missing access boundary notice');
  }
  await go('/chat?channel_id=external');

@@ -1,8 +1,10 @@
 # PRD → 原型逐项证据与缺口
 
-审计范围仅为 `docs/prototype`，对照 [PRD_FINAL.md](../PRD_FINAL.md) 的 **343 个 REQ** 和 **70 个验收场景**（JNY 18、AC 27、EXT 25）。保留原 ID、要求及关联入口；入口只用于定位，不是行为证据。**没有任何一行据此被判定为整条需求或整场景验收通过，也没有宣称完成两轮无问题评审。**
+审计范围仅为 `docs/prototype`，对照 [PRD_FINAL.md](../PRD_FINAL.md) 的 **350 个 REQ** 和 **70 个验收场景**（JNY 18、AC 27、EXT 25）。保留原 ID、要求及关联入口；入口只用于定位，不是行为证据。**没有任何一行据此被判定为整条需求或整场景验收通过，也没有宣称完成两轮无问题评审。**
 
 ## 判定口径
+
+**交付边界：完整可交互原型。** 用户要求的始终是产品需求和交互的完整设计；本轮不实现真实后端、持久化服务、分布式执行或外部集成。下面的 P 是生产实现边界，不是要求追加真实服务的原型缺陷。对应需求仍必须在原型中有清晰入口、配置/状态、正常与异常交互及待实现说明；缺少这些设计仍属于 D/M，不能用“真实服务待实现”豁免。两轮完整验收针对同一冻结原型版本，不以生产服务上线为条件。
 
 - **D — 设计部分**：存在相关 UI、数据字段或本地模拟（可仅为通用表单），但缺口列尚未落实；通用 CRUD 不代表专业流程已设计。
 - **M — 缺失设计**：在已检查源码中未见该行为的专用状态/流程；证据列只能指向相邻能力，不计覆盖。
@@ -60,7 +62,7 @@
 
 ## 统计
 
-原 332 条初始分类：D 164、M 67、P 101；本次新增 11 条列入 M 待实现/验证（共 343 条；此为证据快照分类，不是当前功能实时盘点）；本表不宣称任何整条生产 PRD 已验收。状态描述剩余工作性质，不是原型完成百分比；已验证的本地交互见对应证据，不能解释为“原型未实现”。
+原 332 条初始分类：D 164、M 67、P 101；后续新增 18 条列入 M 待实现/验证（共 350 条；此为证据快照分类，不是当前功能实时盘点）；本表不宣称任何整条生产 PRD 已验收。状态描述剩余工作性质，不是原型完成百分比；已验证的本地交互见对应证据，不能解释为“原型未实现”。
 
 ## 逐项需求矩阵
 
@@ -253,12 +255,12 @@
 | REQ-APP-010 | 审批前重新核验版本、权限、验收与预算，必要动作重新认证；撤权即时阻止后续动作 | `/approvals、/deliveries、/policies` | D | `src/pages-admin.jsx: ResourcePage(approvals/deliveries); src/store.js: resourceCommand / workCommand`：本地审批/回执状态和部分角色版本校验 | 再认证/撤权/预算复核 | 未执行对应测试 |
 | REQ-APP-011 | 审批流与内部验收相互独立，审批同意不能替代未通过的必需技术 / 专业门禁 | `/approvals、/deliveries、/policies` | D | `src/pages-admin.jsx: ResourcePage(approvals/deliveries); src/store.js: resourceCommand / workCommand`：本地审批/回执状态和部分角色版本校验 | 真实门禁结果与审批不可互代 | T01、Q1、B1 |
 | REQ-APP-012 | 一键人工接管可暂停自治、撤销相关委托、指定负责人并保留恢复方案 | `/approvals、/deliveries、/policies` | D | `src/pages-admin.jsx: ResourcePage(approvals/deliveries); src/store.js: resourceCommand / workCommand`：本地审批/回执状态和部分角色版本校验 | 真实暂停自治/撤销委托/恢复方案 | 未执行对应测试 |
-| REQ-REPORT-001 | 支持定时自动生成及手动生成 / 打开日、周、月、季、年报，支持成员、环节、项目、团队、组织层级；同一租户、主体、周期类型、起止日期和时区只有一份逻辑报告 | `/reports、/worklogs` | D | reporting.js / ReportGeneration：手动与模拟定时共享周期唯一键，归属与Human提交负责人分开，日周月季年边界 | 真实AI及持久调度/并发唯一约束，环节与完整组织汇总 | reports.test.js；browser-reports.js |
+| REQ-REPORT-001 | 支持定时自动生成及手动生成 / 打开日、周、月、季、年报，支持成员、环节、项目、团队、组织层级；同一租户、主体、周期类型和周期起始日期只有一份逻辑报告；首次生成的时区与起止边界保留，变更时区不另建平行报告 | `/reports、/worklogs` | D | reporting.js / ReportGeneration：手动与模拟定时共享周期唯一键，归属与Human提交负责人分开，日周月季年边界 | 真实AI及持久调度/并发唯一约束，环节与完整组织汇总 | reports.test.js；browser-reports.js |
 | REQ-REPORT-002 | Human 可由 AI 生成草稿，但必须本人确认后上报；Agent 报告可按策略自动提交，仍由指定 Human 审核 | `/reports、/worklogs` | D | Human报告本人确认；重复生成保留人工内容及已提交快照，修订不更换逻辑ID | Agent策略自动提交与真实审核通知 | reports.test.js；browser-reports.js |
-| REQ-REPORT-003 | 报告包含完成工作、未完成与原因、风险阻塞、成本质量、复盘和下期计划 | `/reports、/worklogs` | D | `src/pages-admin.jsx: ResourcePage(reports); src/store.js: resourceCommand`：报告字段、静态核对提示与本人提交限制 | 完成/未完成/成本质量/下期结构 | 未执行对应测试 |
-| REQ-REPORT-004 | 时间上日→周→月→季→年、组织上成员→项目 / 团队→组织汇总；避免多重归属重复计数 | `/reports、/worklogs` | D | typed引用树去重/周期核对；Agent稳定ID归属，Human确认投入与遥测分账 | 完整组织层级自动汇总与生产跨时区调度 | reports.test.js；browser-reports.js |
-| REQ-REPORT-005 | 提交前核对计划、OKR、工作状态、验收和下级报告；阻断错误禁止提交，非阻断缺失显式标记 | `/reports、/worklogs` | D | ReportFacts / reportEvidence：可选择固定版本工作、工时、下级报告；来源/日期/版本/完成数核对及提交阻断 | OKR与完整计划事实联动尚缺 | reports.test.js；browser-reports.js主代理1440 PASS |
-| REQ-REPORT-006 | 主管可确认、退回和评论，逾期提醒与升级，历史修订可比较 | `/reports、/worklogs` | D | `src/pages-admin.jsx: ResourcePage(reports); src/store.js: resourceCommand`：报告字段、静态核对提示与本人提交限制 | 逾期升级/历史修订比较 | 未执行对应测试 |
+| REQ-REPORT-003 | 报告包含完成工作、未完成与原因、风险阻塞、成本质量、复盘和下期计划 | `/reports、/worklogs` | D | report-content / ReportContentEditor、Reader：新生成/保存报告必建四章节，旧格式可显式迁移并保留原修订/提交；真实WORK_ITEM固定事件、作者原因确认、复盘和真实下期Plan引用纳入固定提交；错误及本地模拟明示 | 自动建议、其他事实读取器、完整成本质量、本期计划/结转/结果、项目团队投影仍缺；旧格式兼容不等于结构验收 | report-content.test.js / report-content-ui.test.jsx；browser-report-content.js / browser-report-content-rendering.js（局部证据见REVIEW） |
+| REQ-REPORT-004 | 时间上日→周→月→季→年、组织上成员→项目 / 团队→组织汇总；避免多重归属重复计数 | `/reports、/worklogs` | D | TIME同主体相邻周期/HIER固定范围证明；逐路径项目过滤、子报告正文和事实快照、跨月事实裁剪、重复子边去重；个人执行/未知投入分账 | 独立团队成员历史参与证明、应有下级分母、完整组织汇总与生产调度仍缺 | report-links.test.js；report-facts.test.js；browser-report-links.js（局部） |
+| REQ-REPORT-005 | 提交前核对计划、OKR、工作状态、验收和下级报告；阻断错误禁止提交，非阻断缺失显式标记 | `/reports、/worklogs` | D | ReportFacts / reportEvidence：可选择固定版本工作、工时、下级报告；来源/日期/版本/完成数核对及提交阻断 | 新增真实成员nextPlan版本/内容/goal-work依据及新报告必填四章节事实/作者核对，缺章B4阻断且结构要求绑定固定指纹；本期计划、完整OKR/质量/信心核对仍缺 | reports.test.js；report-next-plan.test.js；browser-reports.js / browser-report-next-plan.js（局部） |
+| REQ-REPORT-006 | 主管可确认、退回和评论，逾期提醒与升级，历史修订可比较 | `/reports、/worklogs` | D | report-authorization / resourceCommand：固定确认、禁止直接编辑、原确认人/所有者显式REOPEN，理由/CAS/旧快照审计，已离开作者历史仍可撤销 | 逾期升级、评论及完整历史修订比较 | report-authorization.test.js；browser-report-authorization.js 1440/375 PASS（局部） |
 | REQ-REPORT-007 | 并列展示系统事实和作者主观判断；明显冲突要求解释与纠偏 | `/reports、/worklogs` | D | ReportFacts：系统事实与作者摘要分开显示；声明完成数与实际不符时阻断 | 主观判断解释与纠偏流程尚缺；不对自由文本自动定性 | reports.test.js；browser-reports.js主代理1440 PASS |
 | REQ-REPORT-008 | 从确认的复盘提出改进任务、SOP 调整或经验记忆，分别走对应确认 | `/reports、/worklogs` | M | `src/pages-admin.jsx: ResourcePage(reports); src/store.js: resourceCommand`：仅相邻能力：报告字段、静态核对提示与本人提交限制；未见本条专用流程 | 复盘转任务/SOP/记忆审批 | 未执行对应测试 |
 | REQ-WATCH-001 | 监督 Agent 在授权范围观察 Human / Agent 的目标、计划、任务、Flow、进展、成本和交接 | `/overview、/health、/schedules` | D | `src/pages-work.jsx: Dashboard; src/pages-admin.jsx: ResourcePage(health/schedules)`：风险/告警样例和手动状态动作 | 监督Agent授权观察 | 未执行对应测试 |
@@ -507,13 +509,300 @@
 | 编号 | 新增要求 | 状态 | 尚需验收 |
 |---|---|---|---|
 | REQ-OKR-009 | 区分组织、团队、项目阶段、Human 与 Agent 目标；一个项目允许多个并行或先后阶段目标。归属、责任人、协作者与对齐关系分别记录，不能用负责人类型代替目标类型 | M | 项目成员及获授权的 Agent 能查看本项目阶段目标；不因此暴露其他租户、未授权项目或个人私密资料；尚无本次新增要求的完整执行证据 |
-| REQ-OKR-010 | 各归属支持周、月、季、年周期；阶段目标可按明确起止日期跨自然周期，阶段与周期是不同维度；保留全部历期版本及结转关系 | M | 不能以主体类型禁止合理周期；切换周期可查看历史，结转生成关联的新目标而不改写旧期结果；尚无本次新增要求的完整执行证据 |
+| REQ-OKR-010 | 各归属支持周、月、季、年周期；阶段目标可按明确起止日期跨自然周期，阶段与周期是不同维度；保留全部历期版本及结转关系 | D | 周/月/季/年已实现且五种主体矩阵验证；项目阶段仍缺。 不能以主体类型禁止合理周期；切换周期可查看历史，结转生成关联的新目标而不改写旧期结果；尚无本次新增要求的完整执行证据 |
 | REQ-OKR-011 | 上级按组织管理范围查看下级 OKR；下级 OKR 由本人、指定上级与获授权 Agent 共同制定维护；项目目标由负责人及协作 Agent 维护，Agent 可以起草自身目标 | M | 查看、建议、修改草案、批准分别鉴权；组织树上级不自动获得跨项目权限；Agent 不自行批准自身承诺；尚无本次新增要求的完整执行证据 |
-| REQ-OKR-012 | 目标调整必须声明理由，如请假、临时任务、依赖变化或原假设失效；保存调整前后定义、提出者、理由、时间、影响及审核决定，批准绑定固定修订 | M | 修改目标值、期限、范围或负责人不能覆盖历史；待批准修订与当前生效基线分开呈现，旧审批不可复用；尚无本次新增要求的完整执行证据 |
-| REQ-OKR-013 | 内置可版本化的 O/KR 写作指导：O 描述要改变的结果和受益对象；KR 说明可核验结果、基线、目标、期限、证据与上下游价值；活动清单与结果指标区分 | M | 提供合格与不合格示例；有价值的研究、风险降低和基础建设可用事先约定的证据评审，不强迫虚构收入或数值；尚无本次新增要求的完整执行证据 |
+| REQ-OKR-012 | 目标调整必须声明理由，如请假、临时任务、依赖变化或原假设失效；保存调整前后定义、提出者、理由、时间、影响及审核决定，批准绑定固定修订 | D | 本次调整理由、Human/time与固定before/after已实现，旧审批及观察保留；效果基线/影响与新审核权仍需补齐。 修改目标值、期限、范围或负责人不能覆盖历史；待批准修订与当前生效基线分开呈现，旧审批不可复用；尚无本次新增要求的完整执行证据 |
+| REQ-OKR-013 | 内置可版本化的 O/KR 写作指导：O 描述要改变的结果和受益对象；KR 说明可核验结果、基线、目标、期限、证据与上下游价值；活动清单与结果指标区分 | D | 现有编辑器已内置结果/下游/证据及保障工作正反指导；可版本化管理、定性KR仍需补齐。 提供合格与不合格示例；有价值的研究、风险降低和基础建设可用事先约定的证据评审，不强迫虚构收入或数值；尚无本次新增要求的完整执行证据 |
 | REQ-OKR-014 | 正式发布前 Agent 必须校验目标合理性、可实现性、有效性、项目或下游贡献、重复投入及资源匹配，并给出逐项依据；Human 按既有责任审批 | M | 结构校验不冒充价值审查；审查固定规则和目标版本，定义变更使旧审查失效；失败或未运行不能标为通过，本地模拟须明确标识；尚无本次新增要求的完整执行证据 |
 | REQ-OKR-015 | 共同维护流程覆盖对齐起草、讨论修订、Agent 校验、Human 确认、周期 check-in、带理由变更、期末复核和结转；进度、信心、风险与求助分开记录 | M | 本人和上级可查看建议、分歧和处理记录；check-in 更新事实不暗改目标，未观测结果保持未知；尚无本次新增要求的完整执行证据 |
 | REQ-OKR-016 | 组织、团队、项目等非个人 OKR 提供四象限视图，与列表和目标详情共用同一数据及筛选；个人和 Agent 目标保留独立视角 | M | 四象限轴与分界口径待用户确认，不擅自等同重要/紧急；缺数据不被默认为低价值或已达成，移动端可完整查看；尚无本次新增要求的完整执行证据 |
 | REQ-PRO-015 | 非研发岗位提供可编辑的职责/工作包起点，覆盖运营、行政、HR、财务支持、研究与管理支持，声明服务对象、输入、交付、下游接收者、验收证据与 Human 责任 | M | 新手从业务问题生成建议并由负责人确认；复用统一工作流，不只换模板标题；遵循 P6.4；尚无本次新增要求的完整执行证据 |
 | REQ-PRO-016 | 分别记录成果质量、下游采用和观察期业务效果；支持文档、表格、配置及服务完成证据；定量和定性评价均需事先约定依据 | M | 方案接受不自动完成效果 KR；未知保持未知，负面研究结果可以被接受；不得按文档字数、Agent token 或 Human 在线时长替代价值；尚无本次新增要求的完整执行证据 |
 | REQ-PRO-017 | 区分日常保障、改善目标与探索研究；评价保留来源、成本、观察窗口、归因限制和多人贡献，复盘可形成后续工作 | M | 行政保障可按服务质量评价；探索失败不自动判定无效劳动；不重复计功，不自动生成薪酬绩效结论；敏感材料不会随目标公开；尚无本次新增要求的完整执行证据 |
+
+
+## 2026-10-14 用户补充：项目归档与范围化知识 / 资料库
+
+现有归档存储与通用知识 CRUD 不能证明项目归档及范围化库闭环，新增要求保持未验收。
+
+| 编号 | 要求 | 状态 | 待验证 |
+|---|---|---|---|
+| REQ-CORE-011 | 项目支持归档及恢复，归档状态独立于阶段、业务完成与取消；保留项目及关联目标/计划/工作流/任务/会话/执行/成果/审批/报告/资料/历史的原归属和稳定引用 | M | 归档不伪造完成、不删除或自动搬迁资料；恢复保留原历史，解除归档由有权Human显式决定并记录理由 |
+| REQ-CORE-012 | 归档前显示运行中任务、待审批/交接、周期调度、隧道与终端等影响清单；未处置的持续执行资源必须明确暂停、结束或转交并取得实际回执 | M | 不能用归档按钮静默杀任务、取消审批或声称隧道已释放；节点离线/处置失败显示待处理，未满足条件不标为归档完成 |
+| REQ-CORE-013 | 日常项目选择器、大盘、计划日历、新任务/分派/检索与Agent默认上下文排除归档项目；租户全部项目提供进行中/已归档/全部筛选，归档项目有完整只读入口 | M | 可在租户视角找到归档项目并查看原详情；深链接有归档标识和恢复入口，历史统计可按明确口径包含归档，待处理事项不因隐藏项目消失 |
+| REQ-CORE-014 | 归档后项目业务记录只读，审计/合法治理操作按独立政策处理；归档、恢复、搜索、导出和附件读取保持原租户/项目权限 | M | 归档不向租户全员公开私密资料；恢复不自动重启执行、周期任务或隧道，不恢复已撤销凭据或重新发送通知，相关启用须单独确认 |
+| REQ-KNOW-013 | 租户级和项目级分别提供知识库及素材/资料库：知识保存有来源的规范、结论、经验与规则；资料库保存文件、素材、数据集、模板等原件元数据及版本；个人私有范围继续独立 | M | 统一对象身份、预览、版本、权限与检索，无一份材料复制到多套权威库；租户共享不等于所有成员可读，项目私有不因关联租户知识而公开 |
+| REQ-KNOW-014 | 项目通过授权的固定版本引用复用租户资料/知识，项目本地内容可提出升为租户共享候选，由有权Human确认适用范围、脱敏、许可与来源；更新提示影响但不暗改项目基线 | M | 源对象与授权来源可下钻；更新/撤权/失效传播，自动索引或Agent提取不能自动扩大权限；固定历史引用不会悄悄换为最新版 |
+| REQ-KNOW-015 | 资料与知识入口随当前租户/项目范围切换；项目库提供本项目与引用共享内容视图，归档项目库留在原项目，可显式检索历史资料；租户库继续呈现已独立发布的共享内容 | M | 归档不移动项目资料到租户库；历史检索区分已归档项目、过期知识与有效共享内容；Agent使用历史来源需明确用途、当前授权和版本 |
+
+OKR独立子集执行证据（2026-10-14）：全量254 tests/2353assertions PASS；5个目标变异均捕获；冻结副本 browser-goals/browser-plans/browser-okr 各1440/375 PASS（`/tmp/okr-subset-browser-{1440,375}-recheck.json`）。该结果不能用于证明阶段、共同维护、新审批权限、四象限或真实Agent价值审查，当前整合CSS与报告仍需集成验证。
+
+2026-10-14 report evidence continuation: current289unit tests/2881assertions and buildPASS; malformed adoptedPlan16-shape projection/store/SSR regressions added. The actual prior frozen38browser suites each1440/375 finishedPASS; latest changed report paths still require final scoped browser collection. REQ-REPORT003/005 remain partial: new reports can still omit structured chapters, current-periodPlan/carry/outcomes and multiple typed readers are unfinished. Full clean rounds remain0; no requirement promoted solely for passing technical checks.
+
+Final bounded verification: `/tmp/report-plan-corruption-final-browser-{1440,375}.json` each8suitesPASS/sourceUnchanged=true, including all16corrupt adoptedPlan shapes through actual detail→edit→rejected save→cancel with storage unchanged. All106frozen src/test/dist files match worktree; browser runner syntax and git diff --checkPASS. Independent scoped reviewPASS; owned servers/browser sessions closed, user4173untouched. This closes the corruption class only; global goalACTIVE/NOTREADY, consecutive full clean rounds0.
+
+2026-10-14: REPORT003/005 progress — new reports now initialize required four chapters; missing/incomplete structure cannot submit, requirement is fixed in fingerprints; explicit legacy migration retains original revision/submission history. Full295unit tests/3063assertions/buildPASS, four meaningful mutants detected. Initial browser crash retained and repaired; current frozen browser gate pending. These requirements remain PARTIAL for current-periodPlan/carry/outcomes/aggregateprojection/typedfacts and truthful empty-section policy; no fullcleanround counted.
+
+
+Final bounded required-report verification (2026-10-14): 295 tests/3063 assertions and build PASS; frozen `/tmp/report-required-verified-20261014` all107 src/test/dist hashes independently rechecked against worktree. Both `/tmp/report-required-verified-browser-{1440,375}.json` contain38 suites, pass=true, sourceUnchanged=true, and sourceHashes matching freeze. Four semantic mutants detected; independent scoped reviews passed. Initial React list crash and subsequent modal-test misdiagnosis evidence retained; corrected modal test verifies actual dirty-discard resolution, not background DOM clicks. Owned servers/debug/reviewer browsers closed per terminal checkpoint; user4173 untouched. This is bounded verification only: global ACTIVE/NOT READY, consecutive full clean rounds0; missing currentPlan/carry/aggregate projection and wider requirements remain.
+
+
+2026-10-14 bounded Plan evidence: planConfirmedSnapshotProblem/planFreeTaskFactValid now guard fact projection, dedicated Plan commands and reportNextPlanBinding/Check. Malformed fixed metadata/items/weights no longer crash or certify progress; foreign tenants excluded; generated report and N2 disclose unavailable current baselines. Diagnostic retains read-only raw baseline/history. New plans/report-facts/report-next-plan unit assertions and browser-plan-baselines cover corruption/atomicity/adoption; full300/3585unit+buildPASS,39suite×2 pending. REQ-REPORT-003/005 remain D: these are defensive fixes, not currentPlan binding/unfinished derivation/carry/aggregate implementation.350 distinct PRD requirements remain in scope; no acceptance row upgraded.
+
+
+Final bounded verification 2026-10-14: full300 tests/3585 assertions+buildPASS; `/tmp/plan-baseline-adoption-20261014`108src/test/dist hashes match worktree,39suites each1440/375PASS with sourceUnchanged=true and both source/scriptHashes matched (`/tmp/plan-baseline-adoption-browser-{1440,375}.json`). Seven corrected semantic mutants detected only after unmutated controlPASS; initial missing-React mutant results explicitly INVALID and retained. Independent domain/UI reviews and parent keyboard/raw-history checks passed within stated scope; gradient contrast still incomplete. All this turn owned servers/browser sessions closed, user4173 untouched. GlobalACTIVE/NOT READY, consecutive complete clean rounds0; no requirement-wide acceptance upgrade, no commit/push/backend changes.
+
+
+2026-10-14 current Plan diagnostic coverage: BR-10-17/30 N2 /48 exact-member calendar baseline selection, pending-reconfirmation original baseline, duplicate conflict, draft unknown progress/confirmed-count0, and original fixed warning retention verified by unit/probes + browser-baselines at1440/375. This closes diagnostic selection defects only; current Plan fixed identity/items/outcomes, report derivation and carryover remain unsupported. Denominator350REQ/70scenarios unchanged; no global completeness/clean-round upgrade. Full-browser hash checkpoint pending.
+
+
+Final current-Plan diagnostic checkpoint 2026-10-14: full302tests/3610assertions+buildPASS; controlled5semantic mutants all detected, unmodified controlPASS. `/tmp/report-current-plan-freeze-20261014`107src/test/dist hashes match final worktree. `/tmp/report-current-plan-all-browser-{1440,375}.json` each39suitesPASS/sourceUnchanged=true; all source/scriptHashes match freeze, actual served4223 dist bytes match worktree (`/tmp/report-current-plan-final-hash-audit.json`). Independent product/UI checks and root visual checks passed within diagnostic scope; scoped375light/dark ReportFacts axe0violations/0incomplete. Browser jobs76376/30095 and scoped jobs13484/92172 exited0; runner closes named browsers; independentUI browser closed. Owned4223 preview15663 stopped; user4173untouched. No commit/push/backend changes.
+Global goalACTIVE/NOTREADY, consecutive full clean rounds0. This repairs exact-period selection/N2/fixed diagnosis only; fixed current-Plan baseline identity/items/outcome evidence and report auto-generated unfinished items/typed references/carryover/provenance/outcome history are still next, followed by aggregate/other fact readers/OKR lifecycle/archive/scoped libraries/professional/org/platform/large-data/fullguideline/taste requirements. No reduction of350REQ/70scenario denominator.
+
+
+2026-10-14 current commitment reference: R4.1/REQ-PLAN007–008/BR10-17 original confirmed baseline view and same-tenant/member/calendar reference now provided and fingerprinted in actual report submission/Human acceptance. Notes/real estimates retain old fixed baseline; confirmed new commitment needs explicit draft adoption. Live source deletion/conflict does not rewrite history; forged/corrupt current binding rejected. New actual browser workflow at1440/375PASS. This does not cover current-item link validity, uncompleted derivation, free-task report reader, outcome snapshots or carryover; missing binding remains N2 semantics, denominator350/70unchanged.
+
+
+2026-10-14 Plan-entry correspondence added: explicit completed/uncompleted Plan references checked against adopted fixed items; work/type/goal/KR/duplicate validation; actual themed association selectors and readable fixed sources; relinking invalidates author acknowledgment. Local unit314/3947PASS, focused actual UI matching/clear/reconfirm/save evidence; final41suite regression pending. REQ-REPORT-003/005 remain incomplete: typed readers/fixed outcome derivation/carryover/aggregates still missing.350REQ/70scenarios denominator unchanged, full clean rounds0.
+
+2026-10-14 selected-option contrast evidence: current CSS buildPASS and3related suites×1440/375PASS,112freeze/8servedhashauditPASS. All24six-theme option states verified independently. Prior41suite full regression predates CSS repair. REQ denominator350/scenarios70 unchanged; complete clean rounds0; report FREE_TASK evidence inclusion remains a reproduced missing reader.
+
+2026-10-14 BR-10-25 FREE_TASK evidence reader now available: confirmed adopted Plan item+original event, actor/subject, commitment, calendar/timezone/cutoff validated; FREE completion does not count as accepted Work. Manual picker/save/submit/fixed-history actual reload verified1440/375;321unit testsPASS, six corrected semantic mutants detected. Original direct probe repaired, root actual fixed acceptance probePASS. This covers reading/selecting/snapshotting only, not BR-10-25 automatic filling. New genuine source probe `/tmp/report-free-task-generation-gap.json` proves completed source Plan outcome but new report's completed/uncompleted arrays remain empty and binding absent; automatic generation is a concrete next requirement gap. Full42suite×2 running;350REQ/70scenario denominator unchanged/cleanrounds0.
+
+FREE_TASK current terminal checks2026-10-14:321tests/4010assertions,build,42browser suites×1440/375PASS;114frozen src/test/dist hashes and8served bytes rechecked, allsource/script hashes match. Evidence `/tmp/report-free-task-terminal-hash-audit.json`. Scope covers typed reader/manual selection/submission/frozen-history retention only. Automatic generation/carryover/aggregation/other typed sources still open;350REQ/70scenarios unchanged, fullcleanrounds0.
+
+
+2026-10-14 BR10-25 automatic member WORK_ITEM/FREE_TASK and unfinished confirmed Plan chapters now implemented and scoped tested:331unit/4085assertionsPASS,6browser suites×2widthsPASS,7semantic mutants detected,117freeze+8served hashes match. Draft refresh preserves authored content and offers explicit additive adoption; this is not R10 full chapter re-fill. Decision/delivery/acceptance/child readers, costs/KR observations, retrospective/nextPlan generation and wider aggregate/carryover remain open. Actual local accept+deliver probe `/tmp/report-decision-delivery-gap-probe.json` confirms own DECISION absent and delivery lacking fixed sender/send time. Shared modal focus obstruction reproduced at375/1440; guidelinesFAIL pending repair. Full44browser×2 running,350REQ/70scenario classifications unchanged/completecleanrounds0.
+
+
+2026-10-14 typed new-operation DECISION/DELIVERY local provenance and BR10-25 member generation/readers implemented: successful local accept/return/cancel/Humantakeover/resume/deliver events retain actor/time/scope/version; explicit simulatedSENT receipt, no historicalbackfill. Custom picker/save/Humansubmit/frozenhistory actualreload desktopPASS;352unit/4211assertionsPASS,7semanticmutants detected,8servedhashesverified. Mobile and current45suite×2 validation pending; prior44×2PASS refers to previousbuild only. ASSIGN/SCOPE_CHANGE widerdecisioncoverage, externalACCEPTANCE/CHILD_REPORT, R10fullrefill/retro/nextPlan/carryover/aggregate/KR/cost still open;350REQ/70scenario denominator unchanged,completecleanrounds0.
+
+Typedoperation closureupdate:1440/375newflowPASS includesfixedsource-lossactualreload;118freeze+8servedhashesPASS. Independentactualcustompicker/Humansubmit/reader/keyboard/viewportchecksPASS;6scopedaxe0/0, rootscreenshotsinspected. Fullcurrent45browser suites×2 pending. Broad350REQ/70scenario classification andcompletecleanrounds0unchanged.
+
+
+### Latest-fact report refill evidence
+Endpoint R10 remains incomplete in the workspace: actual previously unfinished task becoming complete cannot be refilled through additive adoption; latest nextPlan binding is not updated by that adoption. Root probes `/tmp/report-regeneration-endpoint-gap.json`, `/tmp/audit-r10-next-plan-gap.json`. Isolated chapter-selection repair has unit evidence only (360 tests / 4259 assertions); no integrated UI/E2E claim. Full350REQ/70scenario coverage and two consecutive complete clean rounds remain unproven (0).
+
+
+### R10 integrated verification — global acceptance remains open
+Selected-chapter latest-fact refill is integrated, including cumulative per-chapter source validation, manual retrospective/history preservation and no automatic acceptance. Independent repeated-refill/key-order defects were reproduced and repaired. Current prototype unit365/4296assertions and buildPASS; sixactualbrowser suites per1440/375PASS,120freeze/source/script/8servedbytesPASS (`/tmp/report-regeneration-scoped-hash-audit.json`). Original pre-R10 full45×2terminalPASS cannot certify newbuild. Rendered independent UIreview pending, newfull46×2notstarted, mainchunk>500kB remains. BR10-25 missingnextPlan automatic drafting personally reproduced and remains required; no fake Plan/items/approval are claimed. Full350REQ/70scenario completeness, globalguidelines/taste and two clean rounds remain unproven(0).
+
+
+Latest R10 touch closure: original37544pxtargetFAIL preserved; new switch-label reuse measured309×44, far-edgeclick/nativekeyboard/unobscuredfocus/viewportAuroralight+darkPASS,2current scopedaxe0violations0incomplete (`/tmp/regeneration-touch-current-review.json`); rootinspected2newmobileimages. Current365unit4296assertions/buildPASS and2scopebrowser each1440/375PASS+120freeze/8servedhashPASS. FullCURRENT46×2serial genuinelyrunning session81181; no terminalfullPASSclaim. Full350REQ/70scenario/globalguidelines/taste acceptance remains open, completecleanrounds0.
+
+
+### 2026-10-14：自动下期 Plan 已集成的局部验证
+
+主工作区 13 文件集成已完成（`/tmp/plan-draft-main-integration.json`）；主集成与长标题/ID 修复后单测均 382 PASS / 4393 assertions（`/tmp/plan-draft-main-unit.log`、`/tmp/plan-long-main-unit.log`），最新 build PASS、>500 kB 告警保留（`/tmp/plan-long-main-build.log`）。这更新此前未集成阶段的状态，不升级需求级验收结论。
+
+1440/375 浅/深色局部 UI 记录验证来源说明、固定引用、导航保护及当前 Plan 修改后报告投影保留、无自动批准：`/tmp/next-plan-ui-review-results.json`、`/tmp/next-plan-report-ui-results.json`、`/tmp/next-plan-fixed-projection-results.json`。来源区四次 axe 各 0 violations / 1 gradient-contrast incomplete；报告区四次 0/0，不能据此认证全局 guidelines/taste。长标题/ID 修复后的 E2E 仍待独立复核；旧 46×2 浏览器 PASS 属 preAutoPlan 版本。全局分母仍 350 REQ / 70 场景、NOT READY、完整 clean rounds 0；不改分类统计，不据局部测试计算完成率。
+
+### 2026-10-14：长计划标题与工作 ID 实际回归闭环
+
+真实自动报告生成 Plan 的长内容在旧构建 1440/375 × Aurora 明暗均失败；最小修复仅为计划项容器允许换行，完整标题、目标及工作 ID 保留。相同新 `browser-plan-long-content.js` 在当前 main 两宽度、两主题 PASS；Range 文本矩形全部在容器内，工作链接进入原工作，Plan/report 没有变更。主代理核对源/脚本/冻结哈希与真实构建身份，并查看修复后的手机明暗截图：`/tmp/plan-long-root-scoped-hash-audit.json`、`/tmp/plan-long-build-identities.json`、`/tmp/plan-long-after-{1440,375}.json`。旧失败原件 `/tmp/plan-long-before-{1440,375}.json` 保留。
+
+当前 47 套 × 1440/375 串行完整浏览器回归正在执行，尚无终态结论；不据此声称全需求/完整 guidelines/taste 通过。独立及主代理实际探针确认项目/团队/租户报告仍缺真实成员下期 Plan 汇总，见 `/tmp/root-aggregate-next-plan-probe.json`；其 B3 阻断是尚缺业务能力，拒绝虚构成员 Plan 的保护需保留。全目标 NOT READY，完整连续 clean rounds 0。
+
+### 2026-10-14：外部接受回执报告链路缺口（未修复）
+
+独立调查及主代理实际执行同一领域探针：完成内部检查与接受、固定交付，再由 external 角色录入逐项全部接受，交付/L4/工作状态成功更新，内部接受事实不变；报告仍无 typed `ACCEPTANCE`，手工引用被 B1 拒绝。真实本地 Human 报告提交的固定结构化事实亦无外部回执。证据 `/tmp/root-external-acceptance-report-probe.json`，原探针 `/tmp/audit-external-acceptance-report-probe.js`。spec07 §3.15/5.6 和 spec10 BR-10-27 要求独立固定回执及甲方验收来源；不能把内部 WORK_ITEM 接受或旧状态/history 当作外部签收。该链路尚未修复，不因既有部分接受按钮/E2E 通过计为完整覆盖。
+
+
+### 2026-10-14 terminal evidence reconciliation — no global acceptance
+Prior long-content main47 suites × desktop1440/mobile375 TERMINAL PASS; `/tmp/plan-long-full-terminal-hash-audit.json` verifies122 frozen files, scripts, sources, prerequisites,63route rows and8served assets. Historical entries saying running are superseded only for that build. Complete clean audit rounds remain0.
+Receipt immutability staged repair: both1440/375 dedicated history and existing receipt suites TERMINAL PASS/sourceUnchanged; stage125freeze and8served assets match `/tmp/receipt-stage-terminal-hash-audit.json`; actual script and foreground prerequisites verified `/tmp/receipt-stage-script-prerequisite-audit.json`. Still isolated, UI review/integration/current-main regression pending. Does not implement typed external ACCEPTANCE reporting or real signatures. Remaining aggregate nextPlan,350REQ/70scenario/global design/platform gates remain open.
+
+
+### 2026-10-14 — Receipt/provenance current evidence (supersedes older pending statuses only within scope)
+Receipt immutability and shared PageHead are integrated. Original current48×desktop1440 allPASS / mobile375 46PASS+2 foreground hidden prerequisiteFAIL remains `/tmp/receipt-pagehead-all-{1440,375}.json`; affected mobile rerun PASS does not erase original fullFAIL. Complete clean rounds0.
+Semantic resource renderer integrated in4 files after127stage freeze/source/script/8served asset audit and independent28actualviews/7exports/7native imported variants; own main386tests4407assertions+buildPASS. Actual new main browser acceptance and full49×2 NOT_RUN. Stage scoped28axe0violations/0incomplete is not full guidelines/taste PASS. Evidence `/tmp/provenance-ui-root-stage-byte-audit.json`, `/tmp/provenance-ui-final-results.json`, `/tmp/provenance-ui-final-edge-results.json`, `/tmp/provenance-ui-main-integration.json`.
+New actual receipt authority defect TRUE: executor fullaccept denied but partial/rejected mutated original package/history/rework/storage. Root reproduced. Isolated repair9role/outcome domain controls/semantic mutant and387tests4428assertions+buildPASS; actual two suites each1440/375 terminalPASS, frozen source/scripts/8servedasset checks allmatch `/tmp/receipt-authority-stage-final-byte-audit.json`. UIreview/mainintegration pending; production Human executor with valid explicit recorder permission is not prohibited by occupational role. Typed external ACCEPTANCE remains absent, global350REQ/70scenarios still incomplete.
+
+
+Current integrated authority status: stage12UI views/scopedaxe and24keyboardcontrolsPASS; rootreviewed/mobile screenshot and integrated4files, preserving semantic renderer. Owncombinedmain387tests4428assertions+buildPASS. Currentmain3affected/newbrowser×1440/375 genuinely running84503; full49×2 NOT_RUN. Do not read earlier pending integration status as current; no global acceptance upgraded. All original failed fullregression evidence retained.
+
+
+### Private library and project-scope actual evidence — not accepted
+Root personally reproduced unrelatedH-lin executor reads/modifies许言私人K03 using actualResourcePageSSR (hookadapteronly) andactualsaveResource `/tmp/root-archive-knowledge-review.json`; private read/write boundary violatesREQ-KNOW013, repairpending. Projectscope launch→film sameSSR list and projectknowledge routefallback confirmKNOW015 incomplete. Tenantpositivecontrol0new/3originalworks, no claimedcross-tenantleak. Existinghistory retained; disabledmanagementlist alone insufficientproof ofretrievalleak. CORE011..014/KNOW014 honestlyM remain missing businessclosures. Current integratedmain3scopedsuites×2widths PASS129freeze/source/scripts/8servedbyteaudit; currentfull49×2live97680, globalNOTREADY/completecleanrounds0.
+
+
+Current integrated main49 suites×1440/375 TERMINALPASS,129freeze/source/scripts/nativeprerequisites/8servedbytes match `/tmp/provenance-authority-main-full-terminal-byte-audit.json`. This does not close private library defect: isolatedrepair396unit4652assertions+buildPASS with domain/SSR/mutation evidence; actualprivate UI browser15524running and integrationNOTDONE. Unknownscope/history bypasses found/fixed inside isolatedstage, otherproject/shared/archive/typedacceptance requirements stillopen. Completecleanrounds0, no globalguidelines/taste/productcertification.
+
+## 2026-10-14 · 资源生命周期盘点（38 类，未整体验收）
+
+用户新增验收要求：逐类核对人工维护与系统维护的边界，验证应有的增删改查、归档和专用业务动作。不能一律增加普通 CRUD，也不能把页面有按钮当成闭环通过。下表是当前 main 源码盘点与有界域复现；没有覆盖全部浏览器状态、真实外部服务或生产权限。独立 private/approval/channel stage 的修复不自动算作已集成。
+
+| 资源 | 权威依据 / 维护类型 | 当前入口 / 创建 | 编辑 | 删除、归档或替代动作 | 搜索 / 权限 | 结论及证据边界 |
+|---|---|---|---|---|---|---|
+| tenant | PRD S9, REQ-ORG-011; human-managed boundary | main.jsx tenant selector; store.js:2561-2603; createTenant/joinTenant | No tenant metadata edit located | No leave/delete located; policy not established here | selector; tenant-switch partitions local state | Only create/join/switch acceptance reviewed; missing leave/delete is NOT automatically a defect |
+| project | PRD P10.5; spec07 §8 project settings :983/:1016; human-managed business lifecycle | pages-work.jsx:419 Project/:1156 ProjectList; createProject :2340 | No project metadata settings action located | No archive/restore/cancel project action located | project cards scoped selector; global work search; createProject owner/current tenant | Requirement gap: project edit/archive explicitly required; do not replace with hard delete; main read-only static evidence |
+| organization nodes | PRD R3; REQ-ORG; human configuration | pages-admin.jsx:880 Team; saveOrganization :2378 | tree edit/move modal | No node removal action located | tabs/tree; canEdit owner; cycle/member validations | Removal policy/active membership restrictions require scoped spec follow-up |
+| human members/project roles | PRD R3; spec07 :1016 project members; human administration | Team members/projectRoles tabs; saveOrganization, invitation path | saveOrganization member/role modal | No project membership remove command located | member list; owner canEdit | Explicit project member removal spec exists; add only with active assignment/last lead guards, not person hard-delete |
+| invitations | PRD REQ-ORG-011; scoped invitations; business lifecycle | Team invitation detail; main tenant invite UI; saveMemberInvitation :2431 | immutable issued invitation intent; revoke/reissue | revokeMemberInvitation :2455; declineTenantInvitation | tabs; owner/tenant guard | Generic saveResource invitations correctly rejected |
+| channels | spec05 C01-C08; PRD R6; human configuration + automatic default channels | pages-collab.jsx:75 Chat; default static/project-derived channels; no custom create located | No channel metadata/membership editor located | No archive action located | channel list; messages search; external channel guard | CUSTOM channel creation/archive specified; current default-only navigation is a real missing lifecycle, no need CRUD on execution channels |
+| messages/threads | PRD R6/P10.3; authored record with retained history | Chat message panels; send message UI | edit owned messages | recall retaining history | chat search; author/channel role checks | No hard-delete request inferred; sharing uses prepareMessageShare |
+| Agent | spec05 A/R lifecycle; human config + managed runtime | pages-admin.jsx:1107 Agents; saveAgent :2115; Human or simulated spawn proposal | config/version editor | pause/resume/retire UI :1254; history retained | roster source view; owner/config/runtime guards | Retirement is valid removal substitute; no generic delete required |
+| models | PRD R23; human config + auto runtime receipts | GenericResourcePage models; generic create | config form whitelist; save invalidates approval | no revoke/delete action; transitions request/apply | generic query/global; assertWrite + final authority guards | nodeResults/runtime receipts not editable through form; missing delete requires policy, not assumed |
+| tools/MCP/Skills | PRD R23/R25; catalog tools unifies MCP+Skills; human capability catalog + authorization | GenericResourcePage tools; generic catalog row create | generic config | 已撤销 transition; no physical uninstall modeled | generic/global; executor cannot 已授权 | Catalog CRUD does not certify installation/runtime; MCP and Skills need no duplicate resource menus |
+| connectors | PRD REQ-KNOW-010; human config + sync facts | GenericResourcePage connectors; generic config | generic config | 暂停传输/撤销绑定 | generic/global; assertWrite; no granular transport IAM | Local simulation explicitly labelled; no production-sync failure misreported as missing button |
+| nodes/machines | spec04 machine lifecycle; human enrollment + automatic telemetry | pages-admin.jsx:1476 Machines; 接入节点 setup modal | maintenance controls; no general metadata editor established | maintenance/disable controls need deeper authority review | nodes list/details tabs; simulated control acquisition | Automatic heartbeat/runtime receipts must not receive generic CRUD; real runner deployment out of scope |
+| node files | PRD R12/R22; spec04; workspace content + remote filesystem | Machines files tab; No real upload/write pipeline established | preview/read simulation | No file-delete policy verified | file tab selector; node control/view gates | Separate from knowledge library; no claim full tenant/project asset management |
+| terminal/control leases | spec04 interactive control; ephemeral runtime | Machines terminal tab; request/take control | send command simulation | release control | not applicable; read-only default vs acquired control | No generic edit/delete of output facts required |
+| previews/tunnels | PRD preview requirements; spec04; ephemeral runtime resources | Machines preview tab; task-previews.jsx; open/create preview simulation | scope/control UI | stop/revoke preview controls require focused review | preview tabs; local simulation | No independent authoritative material duplication; permanent asset storage separate |
+| schedules | PRD R17; spec10 J1/J2; human config + automatic run events | GenericResourcePage schedules; report schedule modal; saveReportSchedule or generic | schedule form | enable/pause; no delete located | generic/global; report schedules owner guard | Deleting generic schedules not inferred; explicit pause supported; real background scheduling unimplemented |
+| workflow templates | PRD R7; spec11; human draft + immutable published versions | pages-admin WorkflowTemplates; pages-flow.jsx:121; createWorkflowTemplate :2237 / AI local draft | canvas draft nodes/edges | draft node removal; published history retained; no template archive found | template list; assertWrite/publish guards | Generic saveResource templates correctly blocked; published versions should not be generic CRUD |
+| project Flow | PRD R7; human versioned business definition | pages-flow.jsx:121; project draft canvas | canvas + explicit publishProjectFlow | node removal in draft; no delete active published revision | canvas/list; publish guard; work frozen version | Preserve versions bound by existing work |
+| goals/OKR/KR | PRD R4/R4.1; spec10 G1-G10; human config + versioned activation and observations | pages-goals.jsx:12; saveStructuredGoal :1210 | draft definition/contributors + new definition revision | period close/roll/cancel actions; no blind delete | goal filters/tree; goalWriteProblem/transition authority | Observation/calibration is business action; no need edit immutable observations directly |
+| period Plan | spec10 §3.6/P1-P6; member authored commitment + Human confirmation | pages-plans.jsx:27; openPeriodPlan :849 unique calendar | savePeriodPlan :902; explicit revision | item removal in draft/reconfirmation; no hard Plan delete | cadence/member selector; planActor/planCanRead/planCanDecide | Generic saveResource/resourceCommand plans blocked correctly |
+| period report | PRD R18; spec10 R1-R11; generated draft + author explanations + fixed submissions | Generic reports + report-content-ui.jsx; generatePeriodicReport :972 | save/regenerate selected chapters | return/REOPEN, no hard fixed report delete | cadence/subject/global; report author/reviewer guards | No fabricate reports with arbitrary resource create; structured lifecycle already specialized |
+| work/work drafts | PRD R5; spec02; human-confirmed business workflow | pages-work.jsx:297/:675/:1139; work draft modal; begin/save/confirmWorkDraft | requirements/team/inputs and versioned submit | cancel action; original facts retained | work filters/global/calendar; assertWrite + command guards | No generic delete accepted work required |
+| artifacts/evidence/acceptance decisions | PRD R8; spec02/03; generated immutable version facts | pages-collab.jsx:777 Artifact; WorkDetail; work submit/check/accept creates evidence | comments/review actions, not fixed content editor | retain old versions; revoke approval by workflow | artifact history/related refs; fixed version/recipient checks | No independent CRUD expected for immutable acceptance/evidence |
+| defects | PRD QA; spec02/11; business issue lifecycle | pages-work.jsx:632 DefectList; WorkDetail; saveDefect :1380 | defect command/fix details | verify close/reopen, not blind deletion | filters; source work/version/run guards | Generic kind routed to domain saveDefect |
+| test plans/cases | PRD QA; spec11; human test definition + execution facts | pages-qa.jsx:7 and Generic tests; saveTestPlan / case config | case/plan definitions | no physical remove established; fixed run references retained | list/filter; assertVerificationMutable | Do not conflate test-case CRUD with immutable run result CRUD |
+| test runs/results/reports | spec03/11; PRD QA; business-action generated fixed facts | QAResourcePage testreports; startTestBatch/recordBatchResult/publishTestReport | no fixed report edit | no hard report delete | QA list/detail; batch/source/version guards | saveResource testreports and resourceCommand testreports correctly rejected |
+| delivery packages/receipts | spec07 §3.15/BR33-35; business-action generated immutable facts | Generic deliveries; workCommand deliver, no generic create | no package editor; one receipt workflow | new version after rework, not overwrite/delete | generic/global; receipt roles/terminal guards (recent isolated repairs) | Correct exceptions to CRUD; typed external ACCEPTANCE report chain still separate gap |
+| human effort | PRD REQ-PRO-001–003; author calibration + confirmation history | pages-effort.jsx:99; saveHumanEffort :1018 | author correction invalidates confirmation | return/correct rather than erase confirmed history | period/work filters; self/manager guards | Generic worklogs writes rejected; actual effort distinct from Agent telemetry |
+| Agent telemetry/cost/budget | PRD R16/R28.1; automatic facts + human budget config | pages-effort/Cost :1884; facts generated; budget set in UI | budget policy only | no manual fabricated telemetry/delete costs | cost dimensions; owner controls | No generic telemetry create required |
+| knowledge/memory | PRD P10.3/P10.5; REQ-KNOW005/013–015; human authored + generated candidates | Generic knowledge; Chat candidate action; saveResource/candidate | generic versioned edit | disable; no delete exists | generic/global; private stage reader; private authorization repair stage, not frozen main | Explicit missing deletion of own derived memory REQ-KNOW005; private/shared/archive gaps tracked separately |
+| tenant/project assets/library | PRD REQ-KNOW013–015; human files with provenance/version | No separate knowledge/material tabs in current knowledge page; No canonical tenant/project asset create located | No versioned asset editor located | No governed asset removal found | node file view is not library; not established | Real product gap, do not claim node file preview fulfills scoped asset lifecycle |
+| repositories | PRD R13; spec07; human config + auto sync events | Generic repositories; generic create | branch/scope config | pause sync; no archive found | generic/global; assertWrite | Project settings spec requires archive; runtime sync remains simulation, not button defect |
+| policies/delegations | PRD R15; spec08; human permission configuration | Generic policies; generic policy create | generic rule form | policy transitions only; formal delegation revoke not modeled | generic/global; coarse role guards | No claim this fulfills detailed grants/delegation lifecycle |
+| approval inbox | spec08 BR32–35 :943–946; §6.10; :1082; event-derived projection; source-specific decisions | Generic approvals; INCORRECT generic 新建审批 | INCORRECT generic target/reason/version editor | decision statuses, no source-specific revoke | generic/global; coarse final decision role guard | TRUE reproduced: approved AP target/reason edited while remaining 已批准; manually creatable projection |
+| health alerts | spec08 governance/health; PRD R19; detected facts + acknowledge/resolve actions | Generic health; generic 新建告警 present | generic metadata editor present | ack/recover/close transitions | generic/global; assertWrite | Manual creation verified; normative ban on manual alerts not established in bounded read, needs exact source policy before flagging |
+| audit/activity events | spec08 audit retention BR44; PRD P10.3; append-only business observations | pages-admin.jsx:2038 Audit; Dashboard :271; log from domain commands | no event editor | no generic delete | audit text filter/export; raw s.events display | TRUE: genuine pre-repair main K03 save/disable events disclose private title in current stage Audit and Dashboard SSR although canonical private reader denies; evidence /tmp/audit-private-activity-history-probe.json. save event target is /knowledge; status event is /knowledge/K-03. |
+| settings/theme/offline/simulated identity | prototype README; PRD UI; human preferences/local demo controls | pages-admin.jsx:2071 Settings; not resource create | theme/role/offline | reset local demo, not business deletion | not applicable; explicit local simulation | Do not classify demo reset as tenant deletion |
+| calendar/scheduling projection | PRD scheduling/calendar requirements; projection of authoritative work scheduling | pages-calendar.jsx; store.js:2614 scheduleWork; No independent calendar task duplication; existing work scheduled | scheduleWork updates actual work dates/revision | Unschedule/cancel follows work contract; no independent event hard delete inferred | calendar period/project filters; scheduleWork actor/revision/date guards | Separate UI projection, not another CRUD record; no independent defect established |
+
+本轮亲自复现的缺陷：固定审批可改写（`/tmp/root-resource-lifecycle-before.json`）；私人旧活动标题泄露（`/tmp/root-private-activity-history-before.json`）；频道管理源码缺失（规格 05 C02/C04/C05–07/C16 对照）。审批和频道正在独立 stage 修复，私人活动读取修复已通过有界域及 SSR，但尚未完成主线集成。完整 350 REQ / 70 场景与连续两轮无新增问题的标准不变。
+
+
+## 历史原型验收账本（2026-10-14 固定盘点）
+本节保留当时盘点，不能作为当前缺口或完成率。该历史快照范围为 **350 个唯一 REQ / 70 个唯一场景**；后续需求与已整合实现须按原文子条款核对。一次静态盘点快照为 2026-10-14 02:08:59 UTC；后续频道集成不能由这份静态盘点认证。完整逐项账本、原文与源快照哈希已保存到本地 `.audit-artifacts/2026-10-14-prototype-acceptance-ledger.zip`，不依赖 /tmp 后续存在。
+| 静态分类 | REQ | 场景 |
+|---|---:|---:|
+| 已有专用设计，仍需逐项验收 | 59 | 0 |
+| 确认缺少原型子句 | 47 | 28 |
+| 证据不足，不能判断整条通过 | 238 | 37 |
+| 频道阶段待集成／复验（盘点时） | 6 | 5 |
+这些数字不是完成率，也不是新增实现量。真实服务未实现属于披露边界，不得列为生产开发待办；缺入口、状态、正常／失败交互仍须补齐。已确认缺口按以下固定 13 类处理；未知项在最终逐项验收中取证，不凭“未看见”新增产品规则。
+| 类 | 明确原型缺口 | 对应 REQ | 对应场景 | 当前处理 |
+|---|---|---|---|---|
+| G01 | 项目归档与恢复 | REQ-CORE-011, REQ-CORE-012, REQ-CORE-013, REQ-CORE-014 | AC-15 | 已整合；现行归档／知识库／OKR领域与浏览器证据另列，整条需求仍须逐项验收 |
+| G02 | 租户/项目知识与素材库及固定版本复用 | REQ-KNOW-013, REQ-KNOW-014, REQ-KNOW-015 | JNY-13, EXT-20 | 已整合；现行归档／知识库／OKR领域与浏览器证据另列，整条需求仍须逐项验收 |
+| G03 | 新增 OKR 共同维护与价值评审 | REQ-OKR-009, REQ-OKR-010, REQ-OKR-011, REQ-OKR-012, REQ-OKR-013, REQ-OKR-014, REQ-OKR-015, REQ-OKR-016 | AC-06, AC-23 | 已整合；现行归档／知识库／OKR领域与浏览器证据另列，整条需求仍须逐项验收 |
+| G04 | 专业工作包与非研发价值闭环 | REQ-PRO-011, REQ-PRO-012, REQ-PRO-013, REQ-PRO-015, REQ-PRO-016, REQ-PRO-017 | JNY-03, JNY-04, AC-04, EXT-11 | 待按原条款闭环 |
+| G05 | Flow 高级编辑与运行变更 | REQ-FLOW-002, REQ-FLOW-003, REQ-FLOW-009, REQ-FLOW-010, REQ-FLOW-011, REQ-FLOW-012 | AC-01, EXT-24 | 待按原条款闭环 |
+| G06 | 多对象授权共享清单 | REQ-DETAIL-002 | EXT-02, JNY-13 | 待按原条款闭环 |
+| G07 | 独立公开发布授权 | REQ-DETAIL-012 | EXT-07 | 待按原条款闭环 |
+| G08 | 运行补充/错误分类与未知副作用处置 | REQ-EXEC-004, REQ-EXEC-008, REQ-EXEC-009, REQ-DETAIL-011 | JNY-10, JNY-17, EXT-06, EXT-14 | 待按原条款闭环 |
+| G09 | 多参与者审批编排 | REQ-APP-002 | JNY-06, EXT-19 | 待按原条款闭环 |
+| G10 | 预算约束与自动调节交互 | REQ-COST-004, REQ-COST-005, REQ-COST-006, REQ-COST-007, REQ-COST-008, REQ-COST-009, REQ-COST-011 | JNY-17, AC-12 | 待按原条款闭环 |
+| G11 | 专业批注定位与候选出处 | REQ-DETAIL-005, REQ-DETAIL-006, REQ-DETAIL-008 | JNY-09, EXT-03, EXT-04 | 待按原条款闭环 |
+| G12 | Human 离职/调岗交接 | REQ-ORG-008 | EXT-17 | 待按原条款闭环 |
+| G13 | 外部回复草稿与写回授权 | REQ-DETAIL-009, REQ-PRO-014 | EXT-05, EXT-12, AC-25, AC-26 | 待按原条款闭环 |
+
+已集成并有局部证据的私人知识／活动权限、自己的有效派生记忆撤销、固定来源审批、仓库归档、项目常规资料，不重复列为缺失。频道管理已合并；默认频道负责人权限和项目改名同步有新增域回归及两个变异验证，当前整合构建的桌面／手机浏览器复验进行中。原先失败和修正原因保留，不以旧绿色结果替代当前构建。
+
+
+## 2026-10-14 最新要求纳入（待实际验收）
+
+PRD_FINAL S11 新增 REQ-UX-014..018、REQ-CHAT-020..021、REQ-DETAIL-015、REQ-PRO-018。旧350REQ/70场景快照仍保留历史，不拿旧分母认证新增需求。
+- 菜单 / tab / 滚动 URL 同步、对象与 segment 直接定位、刷新 / 新标签 / 后退恢复：待当前构建浏览器验证。
+- 页面职责独立、邀请记录专用展示、成员范围与个人工作筛选：待验证。
+- 富消息、当前页工作详情、来源滚动 / 草稿恢复：上一组合构建1440/375两套各PASS；新集成后需复验。
+- G01已集成，G02 / G03现已三方合并，497域测试5943断言与构建PASS；不等同实际浏览器验收。
+- 有界小项目闭环与跨行业交付 / 异常分支推演：仍待执行。不删除G04–G13已知缺口，不宣称全范围完成。
+
+- 最新确认变更同步要求已纳入 PRD S12 / REQUIREMENTS §30，REQ-CHANGE-001..006；现有返工/计划修订能力不可当作完整影响同步与通知证明，当前该整链场景待验证。
+
+- 绩效考核要求已纳入 PRD S13 / REQUIREMENTS §31，REQ-PERF-001..008。owner 独立页面 / 规则与模板 / 多周期最终日00:00 / 事实评分 / 校准确认正在实现；真实定时服务不在原型范围。
+
+
+## 2026-10-14 本轮最新入口验收（覆盖此前pending说明）
+
+- PRD S14/S15 / REQ-EFFORT-001..002、REQ-UX-022..025：任务投入证据与校准/确认，保留历史；节点详情无接入按钮，访问范围按需，示例新标签预览。领域与实际UI通过。
+- REQ-PERF-001..013：owner入口、周期倒序、租户/项目无分汇总、成员/Agent工作与考核、项目分组/筛选、规则模板周期配置、批量模拟生成、固定快照、专业校准确认历史通过相关领域与UI验证；真实定时生成仍待实现。
+- REQ-FLOW-020..022：ReactFlow复用，协作/CI/CD类型配置，配置/输入/输出/运行记录/错误策略，固定输入/交付与发布质量门；扩展配置校验只接原型页面发布入口，没有改变store API的生产契约。真实流水线执行不实现。
+- 软件小项目本地完整创建到接收闭环，桌面/手机通过。邀请区分、导航URL及原会话返回有限定浏览器证据；不代表所有tab/segment、所有行业或全部异常完成。
+- 最终523域测试+构建PASS；同一源码最终桌面/手机各4套受影响回归PASS；前一构建各8套PASS。完整来源与失败记录见REVIEW最新节，生成证据保存在本地ignored归档。
+- 原G04–G13、变更影响同步及其余未逐条取证的条款保留；新增需求不使用旧350/70分母计算全量通过率。
+
+
+## 2026-10-14 全列表配套新增验收范围（待完成）
+
+REQ-LIST-001..008新增，不计入旧350条的已通过数量。已建立 DataList 并接入工作流定义、审计、通用资源和知识/文件主列表；其他列表及适用的导入尚未逐类覆盖，此项仍 NOT READY。逐类需要核验：
+
+| 列表类 | 权威入口/源文件 | 新增/导入语义 | 当前验收 |
+|---|---|---|---|
+| 租户、项目 | main.jsx、pages-work.jsx | 创建/加入租户、创建项目；导入不能继承权限 | 待补齐 |
+| 项目/租户任务 | pages-work.jsx | 会话起草确认，导入只能草案 | 待补齐 |
+| 工作流、模板、关联工作 | pages-workflows.jsx、pages-admin.jsx | 新建/导入未发布定义，关联工作不能造运行 | 待补齐 |
+| 目标/OKR、周期计划 | pages-goals.jsx、pages-plans.jsx | 沿用协作制定及校验，导入草案 | 待补齐 |
+| 周期报告、绩效周期/方案/主体 | pages-admin.jsx、pages-performance.jsx | 生成唯一周期报告、维护方案，禁止导入评分事实 | 待补齐 |
+| 组织部门/成员、邀请 | pages-admin.jsx | 组织维护/邀请，不能导入已加入或已接受事实 | 待补齐 |
+| Agent、执行节点、任务编组 | pages-admin.jsx、pages-work.jsx | Agent创建/配置、节点列表接入、任务内编组 | 待补齐 |
+| 频道目录 | pages-collab.jsx、channel-management.jsx | 新建频道、维护成员/公告，消息来源与权限保护 | 待补齐 |
+| 外部连接器、模型、MCP/Skill工具 | pages-admin.jsx | 维护配置，密钥只引用，导入不授权副作用 | 待补齐 |
+| 知识库/资料库、文件目录 | knowledge-library.jsx、pages-admin.jsx | 上传/导入材料，保持租户/项目/私人边界 | 待补齐 |
+| 源码连接、定时任务、策略 | pages-admin.jsx | 导入配置仍需确认，不自动运行/授权 | 待补齐 |
+| 测试用例/计划、缺陷 | pages-admin.jsx、pages-qa.jsx | 维护定义/缺陷，运行证据不通用新增 | 待补齐 |
+| 验证报告、交付包、审批、活动/审计 | pages-qa.jsx、pages-admin.jsx、pages-work.jsx | 自动事实仅查询与授权导出，正式记录走原流程 | 待补齐 |
+| 健康事件、成本/运行指标、租约 | pages-admin.jsx、pages-work.jsx | 自动采集/记录，处理状态走原动作 | 待补齐 |
+
+每类须覆盖desktop/mobile、长文本、大于一页、过滤归档/权限收缩、刷新编辑保护、真实下载/导入失败，以及URL恢复；当前不能宣称全列表规范通过。
+
+
+### 会话来源互联新增范围
+
+REQ-COLLAB-029..031：现有任务sourceContext/draftId和消息工作卡片仅提供部分基础，不证明计划/目标/工作流/报告/变更/审批等全范围双向互联。逐对象检查来源引用、原位预览/新标签页、消息定位、快捷动作与负向授权；当前NOT READY，不套用任务单项通过。
+
+
+### 执行记录的来源/交互新增澄清
+
+REQ-EXEC-012..014：当前execution_id取work ID、messages按exec-workID聚合，普通composer无输入处理回执，无法区分一次执行/重试。现有UI测试绿色只证明本地消息存储，不能认证执行干预闭环；此项NOT READY。需明确开始执行来源、运行列表/身份、固定上下文、日志和输入权限/回执、终态与重试隔离及回到协作频道。
+
+## 2026-10-14：执行与工作流当前局部进展，整体验收仍未通过
+
+- S20 / G08：独立执行身份/固定快照/输入回执已有实现，RETRY_INFRA与STRATEGY新增本地表单、冻结父revision、SYSTEM分支来源与准确结果链接。结束按钮过滤已按种类/状态/最后轮次校验。不是完整运行补充或工具授权闭环；Interaction与自主派发工作联动仍缺失。
+- S11/S17：规范与旧E2E对齐菜单精确URL、稳定shell、多个工作流列表，模拟预览不写通过事实；固定版本弹窗可切最新定义，URL/new-tab一致。旧文档关于手动关闭预览tab/独立工时已改正。
+- ADHOC创建第一次补上真实desktop/mobile UI验证，明确project且workId为空，有正式关联入口。领域与浏览器证据见REVIEW以及.audit-artifacts，局部证据不能关闭G04–G13或整条需求。
+- Web Guidelines：本轮实际发现并修复未命名会话/预览侧栏。对比度未自动判定项与button导航语义仍保留待审，不宣称所有规范通过。两轮完整clean rounds仍0。
+
+### 术语网本次结构证据（不等于功能验收）
+- 411术语/801关系，9遗漏概念及40条明确关系已补。来源与结构核对见docs/myrmidon/terminology-graph/{COVERAGE,REQUIREMENT_COVERAGE,STRUCTURE}.md。保留7项已登记待核对；总网0断线/1连通不代表业务闭环。
+- 最终desktop1280 20/20PASS、mobile375初次分类断言FAIL/同哈希复测20/20PASS，失败保留、原因未稳定复现。确定性构建PASS。原型完整两轮仍0，不借图测试更新REQ为功能通过。
+
+术语图局部复核（2026-10-14）：414术语/840有依据关系，新增邀请处理与共享资料版本/发布动作；提供业务单邻居复核视图，69项是语义审查队列，非确认缺陷。最终桌面1280与手机375各23项浏览器检查通过，重建及源指纹一致；证据见`.audit-artifacts/terminology-graph/semantic-links-final-*`。需求引用与业务完整性仍未验收，整体NOT READY、全量连续clean rounds仍0。
+
+术语图语义补核（2026-10-14，限定关系网）：新增7漏项、净增90条有原文关系，最终421术语/930关系/0断线/1连通，7既有问题保留。业务单邻居69→13，逐项说明合理端点或待核对边界；旧门户链接标退休，人工关注样本不等于完整工时。规格标题剩余5字段/权限词有明确归属，标题扫描不证明全文术语完整。最终desktop1280/mobile375各26/26检查PASS、截图已查看；中途测试状态丢失记录保留，最终冻结文件复测通过。5500当前会注入Five-server脚本，未断言它是丢状态唯一原因。证据`.audit-artifacts/terminology-graph/semantic-followup-*`，复用脚本`docs/myrmidon/terminology-graph/run-browser.py`，语义报告`SEMANTIC_REVIEW.md`。整体NOT READY、全量clean rounds仍0；逐条需求语义映射尚未完成。
+
+## 列表与配置最新核对 — 2026-10-14
+- cc-switch/cc-switch-cli直接复用而非自建“类似功能”：PRD/REQ的REQ-RUNTIME-014/015逐字一致，ADR记录。模型页明确云端扩展与尚未真实集成；仅需求/原型边界核对，不算真实工具接入。
+- 审计点击原地详情，URL选中记录、目标新标签页 tenant/scope、实际字段与缺失证据说明、DataList搜索/主体过滤/分页/排序/sticky/刷新/投影导出，桌面1440+手机375定向浏览器PASS。审计刷新重新read+授权核对；资料的knowledge/materials别名统一权限防漏。
+- 知识库与文件/素材独立类别和菜单，共享原件版本与授权。列表DataList，旧搜索迁移为可见query；独立SSR/store验证发布投影与固定引用可导出、撤权旧请求拒绝、自有旧私人记录与他人资料隔离。桌面/手机private-knowledge和memory-revocation PASS。
+- 通用资源（周期报告/审批/交付/模型/工具/策略等）DataList接入已构建，不把通用创建、导出当前查询等同完整业务导入。其它主列表仍待落实；完整新增/导入适用性逐类检查未完成。
+- 设置已删除平台标签与Tauri/Web复用/缩窄浏览器说明，中文主题共用themeNames；这是用户文案边界修正。全局需求、列表覆盖、guidelines/taste及两轮完整无新增发现均未验收，不改变clean rounds0。
+
+## 集中评审的可核对增量（2026-10-14）
+- 任务列表：实际UI创建12条，搜索/状态交集、排序后分页、序号偏移与sticky、完整查询Blob导出、刷新倒计时、详情/tab精确URL恢复、创建留原页面、未保存关闭保护、A→B草稿身份切换已在桌面验证。此项不自动关闭全部资源导入或全需求条款。
+- 需求与迭代：独立列表、项目picker范围、负责人/已有任务关联、需求确认与修订历史、迭代准入及未完成任务阻止准出、归档历史，有桌面真实交互证据；需求变更跨OKR/计划/通知的全链路同步仍须按原条款单独验收。
+- 会话任务草稿：一个原位弹窗；明确关联实际消息，来源撤权/撤回重新核验；external草稿深链接不能呈现缓存来源或派生字段。四类领域拒绝检查保持原状态。
+- 旧OKR转换：原标量原件作为调整前快照；新KR没有伪造历史观察/生效批准。
+- 最终手机/桌面全量及真实视觉验收进行中，整体仍NOT READY，完整clean rounds仍0；不缩减既有需求。
+
+## 集中整合的子条款状态（2026-10-14，非完整验收结论）
+
+历史“47缺失需求”不得继续当作当前缺失数。以下是实际源码与证据状态，整体仍 NOT READY，完整干净轮次仍0。
+
+| 分类 | 当前已整合 | 仍须补齐／验收 |
+|---|---|---|
+| G01–G03 | 项目归档恢复、租户／项目知识与素材固定引用、OKR共同维护及历史 | 不以历史盘点重复实现；按新范围复核场景证据 |
+| G05 | 发布基线比较、JSON定义导入导出、历史回滚为新草案、运行变更申请与固定差异审批、循环上限及退出条件 | 运行安全边界应用、已执行节点保护、持久循环事件、分组备注折叠与千节点证据 |
+| G08 | 输入收到／等待边界／应用／拒绝回执；五类失败；操作安全性／有限重试；未知副作用核实补偿；范围变更复用关联原任务的草稿流程 | 实际UI异常分支广度验证；不声明执行了真实工具 |
+| G09 | 顺序／并行ALL、ANY、QUORUM冻结名单；票／代理／超时升级；原最终决定守卫 | 桌面与手机多人审批实际操作验收 |
+| G10 | 多范围每日／周期预算和并发、启动预留、未知计量占额、结算与追加对账、固定调节记录与质量复核；路由与模型边界领域守卫 | 自动调节与模型路由的实际UI闭环、可取消性／安全边界暂停行为、迟到计量与启动联合回归 |
+| G12 | 人员变更立即停用本地访问、活动责任接管、责任未清不可完成、原版本绑定对象保留修订审核 | 真实UI交接验证；固定身份不能自我撤权；真实凭据服务待实现 |
+| G13 | 授权固定事实白名单自动回复、超范围转Human草稿、来源不可信标记、协议／配额／健康／写回开关 | 全部实际UI分支验证；不会把本地模拟写回当成第三方真实送达 |
+| G04／G06／G07／G11 | 独立集中实施中 | 专业包、授权共享清单、公开发布和专业定位批注，尚未签收 |
+
+冻结桌面71套件：70 PASS，chat-rich一次通信中断，保持失败原证据 `concentrated-frozen-desktop.json`；受影响手机8套件PASS。整合执行／工作流／预算后桌面10套件PASS，`concentrated-integrated-desktop.json`。之后的治理整合构建与全部单元678 PASS／8298断言，不能替代待跑的浏览器和全部原文验收。

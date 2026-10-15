@@ -1,18 +1,19 @@
+import { visibleGoals, effectiveGoal } from "./goals";
 import React, { useState } from "react";
-import { useStore, id, openPeriodPlan, savePeriodPlan, submitPeriodPlan, decidePeriodPlan, recordPlanFreeTask } from "./store";
-import { planPeriods, planCategories, planSubject, planCanRead, planActor, planCanDecide, planChecks, planEligibleGoals, planWorkEligible, planReportFacts } from "./plans";
+import { useStore, projectRecordWriteProblem, id, openPeriodPlan, savePeriodPlan, submitPeriodPlan, decidePeriodPlan, recordPlanFreeTask } from "./store";
+import { planPeriods, planCategories, planSubject, planCanRead, planActor, planCanDecide, planChecks, planCurrentItemsProblem, planEligibleGoals, planWorkEligible, planReportFacts } from "./plans";
 import { reportSubjects, dateInZone } from "./reporting";
 import { PageHead, Section, Notice, Empty, Button, Badge, Field, Link, Modal, ActionForm, useRecoverableDraft } from "./ui";
 const labels = { DAY: "日计划", WEEK: "周计划", MONTH: "月计划", QUARTER: "季计划", YEAR: "年计划" };
 function PlanEditor({ plan, onClose, toast }) {
   const s = useStore();
   const [form, setForm, recovery] = useRecoverableDraft(`${s.activeTenant}:plan:${plan.id}`, () => ({ revision: plan.revision, items: structuredClone(plan.items), reason: "" }));
-  const goals = planEligibleGoals(s, plan.subjectKey), works = s.work.filter(work => planWorkEligible(s, plan, work));
+  const goals = planEligibleGoals(s, plan.subjectKey), works = s.work.filter(work => planWorkEligible(s, plan, work) && (!projectRecordWriteProblem(s, work) || plan.items.some(item => item.workId === work.id)));
   const change = (id, key, value) => setForm(old => ({ ...old, items: old.items.map(item => item.id === id ? { ...item, [key]: value, ...(key === "goalId" ? { krId: "" } : {}) } : item) }));
   return <Modal title="编辑周期计划" wide onClose={onClose} {...recovery.modalProps}><ActionForm onCancel={onClose} onSubmit={({ dismiss }) => { savePeriodPlan(plan.id, { ...form, simulateAgent: plan.subjectKey.startsWith("agent:") }, form.revision); dismiss(); toast("计划修订已保存"); }}>
     <Notice>每项关联目标；已确认承诺变更须重新提交，原基线保留。权重默认等权 1，保存时明确确认。</Notice>
-    {!goals.length && <Notice tone="warn">没有可贡献的结构化目标，请先在<Link to="/goals">目标与 KR</Link>中配置。</Notice>}
-    {form.items.map((item, index) => <fieldset key={item.id}><legend>计划项 {index + 1}</legend><div className="form-grid">
+    {!goals.length && <Notice tone="warn">没有可贡献的结构化目标，请先在<Link target="_blank" rel="noopener noreferrer" to="/goals">目标与 KR</Link>中配置。</Notice>}
+    {form.items.map((item, index) => <fieldset key={item.id} disabled={!!projectRecordWriteProblem(s,item)}><legend>计划项 {index + 1}</legend><div className="form-grid">
       <Field label={`任务类型 ${index + 1}`} value={item.kind} onChange={v => change(item.id, "kind", v)} options={[{ value: "WORK_ITEM", label: "关联工作" }, { value: "FREE_TASK", label: "非交付任务" }]} />
       <Field label={`标题 ${index + 1}`} value={item.title} onChange={v => change(item.id, "title", v)} required />
       <Field label={`目标 ${index + 1}`} value={item.goalId} onChange={v => change(item.id, "goalId", v)} options={[{ value: "", label: "请选择可贡献目标" }, ...goals.map(goal => ({ value: goal.id, label: goal.name }))]} />
@@ -38,16 +39,24 @@ export function PlansPage({ planId, toast }) {
     <Field label="周期日期" type="date" value={date} onChange={setDate} /><Field label="计划时区" value={timezone} onChange={setZone} />
   </div>{subjectKey.startsWith("agent:") && <Notice>由负责人类操作本地 Agent 模拟，保留实际操作人，不代表真实 Agent 已提交。</Notice>}<Button onClick={() => attempt(() => { location.hash = `/plans/${openPeriodPlan({ subjectKey, periodKind, date, timezone, simulateAgent: subjectKey.startsWith("agent:") })}`; })}>{subjectKey.startsWith("agent:") ? "生成 / 打开 Agent 模拟计划" : "生成 / 打开本人计划"}</Button></Section>
     <Section title="成员计划">{s.resources.plans.filter(plan => planCanRead(s, plan)).map(plan => <p key={plan.id}><Link to={`/plans/${plan.id}`}>{planSubject(s, plan.subjectKey)?.name || plan.subjectKey} · {labels[plan.periodKind]} · {plan.periodStart}</Link> <Badge>{plan.status}</Badge> · 修订 {plan.revision}</p>)}{!s.resources.plans.length && <Empty title="尚无周期计划" text="既有工作计划不会被自动转换为已确认周期计划。" />}</Section></>;
-  const checks = planChecks(s, plan), facts = planReportFacts(s, plan), simulation = plan.subjectKey.startsWith("agent:");
+  const facts = planReportFacts(s, plan);
+  if (facts.issues.length) return <><PageHead title="周期计划基线无法核对"><Link className="btn" to="/plans/me">计划列表</Link></PageHead><Notice tone="danger">{facts.issues.join("；")} 原始计划与历史仍保留，不能继续编辑、提交或记录完成证据。</Notice>
+    <Section title="原始确认记录"><p className="muted">只读查看原始基线和修订历史，供核对差异；当前记录不会被重新解释为已确认承诺。</p>
+      <details><summary>查看原始基线与历史</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify({ confirmedSnapshot: plan.confirmedSnapshot ?? null, history: plan.history ?? null }, null, 2)}</pre></details>
+    </Section></>;
+  const currentProblem = planCurrentItemsProblem(plan);
+  const checks = planChecks(s, plan), simulation = plan.subjectKey.startsWith("agent:");
   let authorProblem; try { planActor(s, plan, simulation); } catch (error) { authorProblem = error.message; }
-  const decisionProblem = planCanDecide(s, plan);
+  authorProblem ||= currentProblem;
+  const decisionProblem = currentProblem || planCanDecide(s, plan);
   const openAction = (kind, itemId) => { setReason(""); setAction({ kind, itemId, revision: plan.revision, submissionRevision: plan.submission?.revision, contentHash: plan.submission?.contentHash }); };
   return <><PageHead title={`${planSubject(s, plan.subjectKey)?.name || plan.subjectKey} · ${labels[plan.periodKind]}`} subtitle={`${plan.periodStart} — ${plan.periodEnd} · ${plan.timezone} · 修订 ${plan.revision}`}><Badge>{plan.status}</Badge><Link className="btn" to="/plans/me">计划列表</Link></PageHead>
     {simulation && <Notice>Agent 起草与提交为本地模拟；最终确认仍由 Human 决定。</Notice>}
+    {plan.draftedBy?.kind === "System" && <Section title="系统起草来源"><p>{plan.draftedBy.source}。计划仍是待核对草稿；建议、目标关联和分派不代表已作出正式承诺。</p>{(plan.draftIssues || []).map((issue, index) => <p key={index}>{issue}</p>)}{(plan.draftSources || []).map(source => <p key={source.itemId}>{plan.items.find(item => item.id === source.itemId)?.title || source.itemId} · {source.kind === "REPORT_CARRY" ? `报告 ${source.reportId} 修订 ${source.reportRevision} 的结转决定${source.fixedReport ? "（固定提交）" : "（作者已确认处置的草稿）"}` : source.kind === "CURRENT_ASSIGNMENT" ? `当前分派工作 ${source.workId} · v${source.workVersion}` : `目标 ${source.goalId} 定义修订 ${source.definitionRevision} · KR ${source.krId} 的推进建议`}</p>)}</Section>}
     <Section title="核对与上级确认"><p>确认人：{s.organization.members.find(person => person.id === checks.confirmer.id)?.name || "待配置"} · {checks.confirmer.basis || checks.confirmer.issue}</p>{[...checks.blocking, ...checks.warnings].map((issue, i) => <p key={i}>{issue.code || "提示"} · {issue.message}</p>)}
       <div className="actions"><Button disabled={Boolean(authorProblem)} onClick={() => setEditing(true)}>编辑计划项</Button>{["草稿", "已退回"].includes(plan.status) && <Button disabled={Boolean(authorProblem)} onClick={() => attempt(() => submitPeriodPlan(plan.id, plan.revision, simulation), "计划已提交")}>{simulation ? "模拟 Agent 提交计划" : "本人提交计划"}</Button>}{plan.status === "已提交" && <><Button disabled={Boolean(decisionProblem)} onClick={() => openAction("confirm")}>确认固定计划</Button><Button disabled={Boolean(decisionProblem)} onClick={() => openAction("return")}>退回计划</Button></>}</div>{authorProblem && <p>{authorProblem}</p>}{plan.status === "已提交" && decisionProblem && <p>{decisionProblem}</p>}
     </Section>
-    <Section title="当前修订计划项">{plan.items.map(item => <article key={item.id} className="section"><h3>{item.title}</h3><p><Link to={`/goals/${item.goalId}`}>{s.resources.goals.find(goal => goal.id === item.goalId)?.name || "未关联目标"}</Link> · {item.krId || "未指定 KR"}</p><p>权重 {item.weight} · 日期 {item.dueDate || "未声明"} · {item.estimateHours ?? "未知"} 小时 · 成本 {item.estimateCostMicros ?? "未知"} micros</p>{item.workId ? <Link to={`/p/${s.work.find(work => work.id === item.workId)?.project}/work-items/${item.workId}`}>查看工作与责任团队 · {item.workId}</Link> : <p>完成标准：{item.criteria}</p>}{item.note && <p>{item.note}</p>}</article>)}</Section>
+    <Section title="当前修订计划项">{currentProblem ? <><Notice tone="danger">{currentProblem} 已确认基线独立保留。</Notice><details><summary>查看原始当前修订计划项</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(plan.items ?? null, null, 2)}</pre></details></> : plan.items.map(item => <article key={item.id} className="section period-plan-item"><h3>{item.title}</h3><p><Link target="_blank" rel="noopener noreferrer" to={`/goals/${item.goalId}`}>{visibleGoals(s).map(effectiveGoal).find(goal => goal.id === item.goalId)?.name || "未关联目标"}</Link> · {item.krId || "未指定 KR"}</p><p>权重 {item.weight} · 日期 {item.dueDate || "未声明"} · {item.estimateHours ?? "未知"} 小时 · 成本 {item.estimateCostMicros ?? "未知"} micros</p>{item.workId ? <Link target="_blank" rel="noopener noreferrer" to={`/p/${s.work.find(work => work.id === item.workId)?.project}/work-items/${item.workId}`}>查看工作与责任团队 · {item.workId}</Link> : <p>完成标准：{item.criteria}</p>}{item.note && <p>{item.note}</p>}</article>)}</Section>
     <Section title="已确认基线与实际进展"><p>基线修订 {facts.basisRevision || "尚未确认"} · 完成比例 {facts.progress === null ? "未知" : `${Math.round(facts.progress * 100)}%`} · 应完成 {facts.expected === null ? "未知（缺少承诺日期或工作日历）" : `${Math.round(facts.expected * 100)}%`}</p><p>阻塞 {facts.blocked} · 未知 {facts.unknown} · 唯一完成事实 {facts.factKeys.length}</p>
       {facts.outcomes.map(item => <p key={item.itemId}>{item.title} · <Badge>{item.status}</Badge>{plan.confirmedSnapshot.items.find(original => original.id === item.itemId)?.kind === "FREE_TASK" && item.status !== "完成" && <Button disabled={Boolean(authorProblem)} onClick={() => openAction("evidence", item.itemId)}>记录完成证据 · {item.title}</Button>}</p>)}
       {plan.pendingDiff?.length > 0 && <details open><summary>与已确认基线的差异 · {plan.pendingDiff.length} 项</summary>{plan.pendingDiff.map(change => <div key={change.itemId}><strong>{change.kind} · {change.label}</strong><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify({ 原值: change.before, 新值: change.after }, null, 2)}</pre></div>)}</details>}

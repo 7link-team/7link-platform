@@ -7,6 +7,7 @@ import React, {
   useContext,
 } from "react";
 import { createPortal } from "react-dom";
+import { SectionLink, ViewContext, useViewState } from "./view-state";
 import {
   Palette,
   Maximize2,
@@ -16,6 +17,7 @@ import {
   Trash2,
   CalendarDays,
   ChevronLeft,
+  ChevronDown,
   ThumbsUp,
   Ellipsis,
   X,
@@ -51,6 +53,7 @@ import {
   Columns3,
   CornerUpLeft,
   Download,
+  Upload,
   FileCode2,
   FileJson,
   FileText,
@@ -93,6 +96,12 @@ import {
   RotateCcw,
   Save,
   Search,
+  ListFilter,
+  Smile,
+  Mic,
+
+  Table2,
+  Presentation,
   Server,
   Settings2,
   Share2,
@@ -124,6 +133,7 @@ const Icons = {
   Trash2,
   CalendarDays,
   ChevronLeft,
+  ChevronDown,
   ThumbsUp,
   Ellipsis,
   X,
@@ -159,6 +169,7 @@ const Icons = {
   Columns3,
   CornerUpLeft,
   Download,
+  Upload,
   FileCode2,
   FileJson,
   FileText,
@@ -201,6 +212,12 @@ const Icons = {
   RotateCcw,
   Save,
   Search,
+  ListFilter,
+  Smile,
+  Mic,
+
+  Table2,
+  Presentation,
   Server,
   Settings2,
   Share2,
@@ -235,14 +252,14 @@ export function Button({
   ...props
 }) {
   return (
-    <button className={`btn ${variant} ${className}`} {...props}>
+    <button type="button" className={`btn ${variant} ${className}`} {...props}>
       {icon && <Icon name={icon} />} {children}
     </button>
   );
 }
 export function IconButton({ name, label, ...props }) {
   return (
-    <button className="icon-button" aria-label={label} title={label} {...props}>
+    <button type="button" className="icon-button" aria-label={label} title={label} {...props}>
       <Icon name={name} />
     </button>
   );
@@ -300,7 +317,7 @@ export function PageHead({ eyebrow, title, subtitle, children }) {
   return (
     <header className="page-head">
       <div>
-        <div className="eyebrow">{eyebrow || "WORKSPACE / MYRMIDON"}</div>
+        {eyebrow && <div className="eyebrow">{eyebrow}</div>}
         <h1>{title}</h1>
         {subtitle && <p>{subtitle}</p>}
       </div>
@@ -310,9 +327,9 @@ export function PageHead({ eyebrow, title, subtitle, children }) {
 }
 export function Section({ title, extra, children, className = "" }) {
   return (
-    <section className={`section ${className}`}>
+    <section className={`section ${className}`} data-segment={typeof title === "string" ? title : undefined}>
       <div className="section-title">
-        <h2>{title}</h2>
+        <h2>{title}<SectionLink title={title} /></h2>
         {extra}
       </div>
       {children}
@@ -321,6 +338,7 @@ export function Section({ title, extra, children, className = "" }) {
 }
 export function Empty({
   title = "这里还没有记录",
+  heading = "h2",
   text = "开始第一项工作，让协作从这里发生。",
   children,
 }) {
@@ -329,7 +347,7 @@ export function Empty({
       <span className="empty-icon">
         <Icon name="Inbox" size={30} />
       </span>
-      <h2>{title}</h2>
+      {React.createElement(heading, null, title)}
       <p>{text}</p>
       {children}
     </div>
@@ -349,10 +367,18 @@ export function Progress({ value }) {
     </div>
   );
 }
-export function Tabs({ items, value, onChange, label = "内容视图", className = "" }) {
+export function Tabs({ items, value, onChange, label = "内容视图", className = "", restore = true }) {
+  const context=useContext(ViewContext);
+  const [remembered,remember]=useViewState(`tab.${label}`,value);
+  const ref=useRef(null), callback=useRef(onChange); callback.current=onChange;
+  useEffect(()=>{
+    if(!restore || ref.current?.closest("dialog"))return;
+    if(items.some(([key])=>key===remembered) && remembered!==value)callback.current(remembered);
+  },[context?.key,context?.params.get(`state.tab.${label}`),remembered,restore]);
+  const select=key=>{if(!ref.current?.closest("dialog"))remember(key);onChange(key);};
   const active = items.some(([key]) => key === value) ? value : items[0]?.[0];
   return (
-    <div className={`tabs ${className}`} role="tablist" aria-label={label}>
+    <div ref={ref} className={`tabs ${className}`} role="tablist" aria-label={label}>
       {items.map(([key, text], index) => (
         <button
           type="button"
@@ -361,14 +387,14 @@ export function Tabs({ items, value, onChange, label = "内容视图", className
           aria-selected={active === key}
           tabIndex={active === key ? 0 : -1}
           className={active === key ? "selected" : ""}
-          onClick={() => onChange(key)}
+          onClick={() => select(key)}
           onKeyDown={(event) => {
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
             event.preventDefault();
             const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
               : (index + (event.key === "ArrowRight" ? 1 : -1) + items.length) % items.length;
             event.currentTarget.parentElement.querySelectorAll('[role="tab"]')[next]?.focus();
-            onChange(items[next][0]);
+            select(items[next][0]);
           }}
         >
           {text}
@@ -389,17 +415,23 @@ export function PanelButton({
   onView,
   children,
   className = "",
+  onClick,
   ...props
 }) {
   return (
-    <button
-      type="button"
+    <a
+      href={`#${to}`}
       className={`panel-button ${className}`}
-      onClick={() => onView(to)}
       {...props}
+      onClick={event => {
+        onClick?.(event);
+        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.currentTarget.target === "_blank") return;
+        event.preventDefault();
+        onView(to);
+      }}
     >
       {children}
-    </button>
+    </a>
   );
 }
 const ModalContext = createContext(null);
@@ -454,14 +486,22 @@ export function useDraftGuard({ draftValue, draftBaseline, onDraftClear }, onClo
   }, []);
   return { requestClose, dismiss };
 }
-export function Modal({ title, children, onClose, wide = false, returnFocusRef, className = "", draftValue, draftBaseline, onDraftClear }) {
+export function Modal({ title, children, headerActions, onClose, wide = false, returnFocusRef, className = "", draftValue, draftBaseline, onDraftClear }) {
   const ref = useRef();
   const { requestClose, dismiss } = useDraftGuard({ draftValue, draftBaseline, onDraftClear }, onClose);
   useEffect(() => {
     const last = document.activeElement;
     const dialog = ref.current;
     dialog.showModal();
+    // Native keyboard scrolling must leave focused fields below the sticky
+    // heading, including when its height changes with wrapping or resizing.
+    const heading = dialog.querySelector('.modal-heading');
+    const reserveHeading = () => { dialog.style.scrollPaddingTop = `${heading.getBoundingClientRect().height + 8}px`; };
+    const headingObserver = new ResizeObserver(reserveHeading);
+    headingObserver.observe(heading);
+    reserveHeading();
     return () => {
+      headingObserver.disconnect();
       const target = returnFocusRef?.current || last;
       const top = [...document.querySelectorAll("dialog[open]")].filter(item => item !== dialog).at(-1);
       if (target?.isConnected && (!top || top.contains(target))) target.focus();
@@ -478,9 +518,12 @@ export function Modal({ title, children, onClose, wide = false, returnFocusRef, 
       >
         <div className="modal-heading">
           <h2>{title}</h2>
-          <IconButton name="X" label="关闭弹窗" onClick={() => requestClose()} />
+          <div className="modal-heading-actions">
+            {headerActions}
+            <IconButton name="X" label="关闭弹窗" onClick={() => requestClose()} />
+          </div>
         </div>
-        <div className="modal-body">{typeof children === "function" ? children({ requestClose, dismiss }) : children}</div>
+        <div className="modal-body"><ViewContext.Provider value={null}>{typeof children === "function" ? children({ requestClose, dismiss }) : children}</ViewContext.Provider></div>
       </dialog>
     </ModalContext.Provider>
   );
@@ -550,6 +593,16 @@ export function Field({
     </div>
   );
 }
+export function FormError({ error }) {
+  const errorRef = useRef(null);
+  useEffect(() => {
+    if (error) {
+      errorRef.current?.focus({ preventScroll: true });
+      errorRef.current?.scrollIntoView({ block: "center" });
+    }
+  }, [error]);
+  return error ? <p className="error" role="alert" ref={errorRef} tabIndex={-1}>{typeof error === "string" ? error : error.message}</p> : null;
+}
 export function ActionForm({ onSubmit, children, label = "保存", onCancel }) {
   const [error, setError] = useState("");
   const modal = useContext(ModalContext);
@@ -561,16 +614,12 @@ export function ActionForm({ onSubmit, children, label = "保存", onCancel }) {
           setError("");
           await onSubmit({ dismiss: modal?.dismiss || ((done = onCancel) => done?.()) });
         } catch (err) {
-          setError(err.message);
+          setError({ message: err.message });
         }
       }}
     >
       {children}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
+      <FormError error={error} />
       <div className="modal-footer">
         <Button type="button" onClick={() => modal ? modal.requestClose(onCancel) : onCancel?.()}>
           取消
@@ -964,6 +1013,8 @@ export function Select({
   disabled = false,
   name,
   required = false,
+  searchable = false,
+  indicator = "ChevronsUpDown",
   ...props
 }) {
   const items = options
@@ -975,6 +1026,8 @@ export function Select({
           label: v.props.children,
           disabled: v.props.disabled,
         }));
+  const [query, setQuery] = useState("");
+  const filteredItems = searchable ? items.filter(i => String(i.searchText || i.label).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) : items;
   const [open, setOpen] = useState(false),
     [position, setPosition] = useState({});
   const trigger = useRef(null),
@@ -991,6 +1044,7 @@ export function Select({
   };
   const show = () => {
     if (disabled) return;
+    setQuery("");
     const r = trigger.current.getBoundingClientRect(),
       below = innerHeight - r.bottom - 12,
       above = r.top - 12,
@@ -1009,9 +1063,9 @@ export function Select({
   useEffect(() => {
     if (!open) return;
     const selected =
-      list.current?.querySelector("[aria-selected=true]") ||
-      list.current?.querySelector("[role=option]");
-    selected?.focus({ preventScroll: true });
+      list.current?.querySelector("[role=option][aria-selected=true]:not(:disabled)") ||
+      list.current?.querySelector("[role=option]:not(:disabled)");
+    (searchable ? list.current?.querySelector("input[type=search]") : selected)?.focus({ preventScroll: true });
     const outside = (e) => {
       if (
         !list.current?.contains(e.target) &&
@@ -1040,12 +1094,13 @@ export function Select({
         className="custom-select-trigger"
         role="combobox"
         aria-expanded={open}
-        aria-controls={open ? uid : undefined}
+        aria-controls={open ? searchable ? `${uid}-options` : uid : undefined}
         aria-haspopup="listbox"
         aria-required={required || undefined}
         disabled={disabled}
         onClick={() => (open ? close() : show())}
         onKeyDown={(e) => {
+          if (e.nativeEvent?.isComposing || e.nativeEvent?.keyCode === 229) return;
           if (["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) {
             e.preventDefault();
             show();
@@ -1053,7 +1108,7 @@ export function Select({
         }}
       >
         <span>{current?.label || "请选择"}</span>
-        <Icon name="ChevronsUpDown" size={15} />
+        <Icon name={indicator} size={15} />
       </button>
       {name && <input type="hidden" name={name} value={value || ""} />}
       {open &&
@@ -1062,22 +1117,29 @@ export function Select({
             ref={list}
             className="select-popover"
             id={uid}
-            role="listbox"
-            aria-label={props["aria-label"] || "可选项"}
+            role={searchable ? undefined : "listbox"}
+            aria-label={searchable ? undefined : props["aria-label"] || "可选项"}
             style={position}
             onKeyDown={(e) => {
+              if (e.nativeEvent?.isComposing || e.nativeEvent?.keyCode === 229) return;
               const all = [
                   ...list.current.querySelectorAll(
                     "[role=option]:not(:disabled)",
                   ),
                 ],
                 index = all.indexOf(document.activeElement);
-              if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+              if (searchable && e.target.tagName === "INPUT" && e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+                all.find(option => option.dataset.value)?.click();
+                return;
+              }
+              if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key) && !(searchable && e.target.tagName === "INPUT" && ["Home", "End"].includes(e.key))) {
                 e.preventDefault();
                 all[
                   e.key === "Home"
                     ? 0
-                    : e.key === "End"
+                    : e.key === "End" || index === -1 && e.key === "ArrowUp"
                       ? all.length - 1
                       : (index +
                           (e.key === "ArrowDown" ? 1 : -1) +
@@ -1090,7 +1152,7 @@ export function Select({
                 close();
               } else if (e.key === "Tab") {
                 close();
-              } else if (e.key.length === 1) {
+              } else if (e.key.length === 1 && !(searchable && e.target.tagName === "INPUT")) {
                 all
                   .find((el) =>
                     el.textContent
@@ -1101,10 +1163,13 @@ export function Select({
               }
             }}
           >
-            {items.map((i) => (
+            {searchable && <div className="select-search"><Icon name="Search" size={16} /><input type="search" aria-label={`搜索${props["aria-label"] || "选项"}`} name={`${name || "select"}-search`} autoComplete="off" placeholder="搜索姓名、身份或岗位…" value={query} onChange={event => setQuery(event.target.value)} /></div>}
+            <div role={searchable ? "listbox" : undefined} id={searchable ? `${uid}-options` : undefined} aria-label={searchable ? props["aria-label"] || "可选项" : undefined}>
+            {filteredItems.map((i) => (
               <button
                 type="button"
                 role="option"
+                data-value={String(i.value)}
                 aria-selected={String(i.value) === String(value)}
                 disabled={i.disabled}
                 tabIndex={-1}
@@ -1117,6 +1182,8 @@ export function Select({
                 )}
               </button>
             ))}
+            </div>
+            {searchable && !filteredItems.length && <p className="select-search-empty" role="status">没有匹配的联系人</p>}
           </div>,
           trigger.current?.closest("dialog") || document.body,
         )}
