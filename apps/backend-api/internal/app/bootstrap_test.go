@@ -260,8 +260,11 @@ func TestBootstrapWithoutWriterReportsUnhealthy(t *testing.T) {
 			{Name: "dlock", Status: healthservice.StatusNotServing},
 			{Name: "wuid", Status: healthservice.StatusNotServing},
 			{Name: "guid", Status: healthservice.StatusNotServing},
+			{Name: "events", Status: healthservice.StatusUnknown},
+			{Name: "idempotency", Status: healthservice.StatusUnknown},
 			{Name: "telemetry", Status: healthservice.StatusUnknown},
 			{Name: "audit", Status: healthservice.StatusUnknown},
+			{Name: "jobs", Status: healthservice.StatusUnknown},
 			{Name: "deployment", Status: healthservice.StatusUnknown},
 			{Name: "health", Status: healthservice.StatusServing},
 		},
@@ -289,7 +292,7 @@ func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
 		names = append(names, appModule.ModuleName())
 	}
 	assert.Equal(t, []string{
-		"i18n", "respx", "dlock", "wuid", "guid", "metrics", "telemetry", "audit",
+		"i18n", "respx", "dlock", "wuid", "guid", "events", "idempotency", "metrics", "telemetry", "audit", "jobs",
 		"database-monitor", "deployment", "migration-status", "config-inspector", "pprof",
 		"health",
 	}, names)

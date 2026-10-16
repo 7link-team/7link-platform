@@ -7,8 +7,8 @@ package respx
 
 import "time"
 
-// Envelope is the uniform response body. Data carries the payload and is null on
-// error. Code partitions the status space:
+// Envelope is the uniform response body. Data carries the payload; failures may
+// carry structured validation or business details, otherwise null. Code partitions the status space:
 //
 //	0                  success
 //	1..999             HTTP status code (set on error responses)
@@ -18,7 +18,7 @@ type Envelope[T any] struct {
 	Code    int    `json:"code" doc:"0 = success; 1..999 = HTTP status; 100000+ = business code"`
 	Message string `json:"message" doc:"human-readable status; \"ok\" on success"`
 	Meta    Meta   `json:"meta" doc:"request metadata"`
-	Data    T      `json:"data" doc:"response payload; null on error"`
+	Data    T      `json:"data" doc:"response payload; null on error unless validation or business details are supplied"`
 }
 
 // Meta carries per-request metadata. Page is set only for list responses.

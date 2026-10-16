@@ -1,0 +1,17 @@
+{
+  "client_choice": "请选择现有客户或填写新客户名称，两者只能选一。",
+  "primary_contact": "只能设置一个主联系人。",
+  "primary_accept": "主联系人必须有权签收交付。",
+  "repository_url": "请使用不含凭证的 HTTPS、SSH 或 git@host:path 仓库地址。",
+  "repository_name": "同一项目内的仓库名称不能重复。",
+  "primary_repository": "只能设置一个主仓库。",
+  "project_code_taken": "项目代号已被使用。",
+  "project_name_taken": "此处已有同名项目或客户。",
+  "parent_not_client": "请选择当前租户内有效的客户。",
+  "provisioning_unavailable": "暂时无法创建项目，未创建任何项目数据。",
+  "contact_not_found": "所选联系人不属于当前租户或不存在。",
+  "intake_not_found": "来源来件不属于当前租户或不存在。",
+  "member_role_mismatch": "所选成员未激活或不能担任该项目角色。",
+  "project_limit_reached": "当前租户已达到 500 个未归档项目的上限。",
+  "human_only": "只有人类成员可以创建项目。"
+}

@@ -92,6 +92,7 @@ export function AutoTable<T>(options: TableOptions<T>) {
     rows,
     total,
     loading,
+    error,
     query,
     selected,
     setPage,
@@ -178,6 +179,7 @@ export function AutoTable<T>(options: TableOptions<T>) {
                 style={headSticky(0)}
               >
                 <Checkbox
+                  disabled={loading || !!error}
                   checked={allPageSelected}
                   indeterminate={!allPageSelected && anyPageSelected}
                   onCheckedChange={handleHeaderCheckbox}
@@ -251,6 +253,21 @@ export function AutoTable<T>(options: TableOptions<T>) {
                       className="h-8 w-full animate-pulse rounded bg-muted"
                     />
                   ))}
+                </div>
+              </TableCell>
+            </TableRow>
+          ) : error ? (
+            <TableRow>
+              <TableCell colSpan={totalCols} className="h-24 text-center">
+                <div role="alert" className="space-y-2">
+                  <p>{t("loadError")}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={table.refresh}
+                  >
+                    {t("retry")}
+                  </Button>
                 </div>
               </TableCell>
             </TableRow>
@@ -347,8 +364,12 @@ export function AutoTable<T>(options: TableOptions<T>) {
         )}
       >
         <div className="text-sm text-muted-foreground">
-          {t("total", { total })} /{" "}
-          {t("page", { page: query.page, totalPages })}
+          {!loading && !error ? (
+            <>
+              {t("total", { total })} /{" "}
+              {t("page", { page: query.page, totalPages })}
+            </>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -368,7 +389,7 @@ export function AutoTable<T>(options: TableOptions<T>) {
             variant="outline"
             size="icon-xs"
             onClick={() => setPage(query.page - 1)}
-            disabled={query.page <= 1}
+            disabled={loading || !!error || query.page <= 1}
             aria-label={t("previousPage")}
           >
             <ChevronLeft className="size-4" />
@@ -378,7 +399,7 @@ export function AutoTable<T>(options: TableOptions<T>) {
             variant="outline"
             size="icon-xs"
             onClick={() => setPage(query.page + 1)}
-            disabled={query.page >= totalPages}
+            disabled={loading || !!error || query.page >= totalPages}
             aria-label={t("nextPage")}
           >
             <ChevronRight className="size-4" />

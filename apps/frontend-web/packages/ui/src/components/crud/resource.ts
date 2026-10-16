@@ -20,10 +20,9 @@ import type {
 
 /**
  * CrudResource is the single config object that fully describes a CRUD resource — its form,
- * its table, its API and its behavior. Business pages pass one of these to <CrudListPage> /
- * <CrudFormPage>; everything else (data fetching, transforms, navigation, delete, export) is
- * derived by the shared components. Special cases hook in via the optional callbacks below,
- * or a page can ignore this entirely and compose the primitives by hand.
+ * its table, its API and its behavior. crudFactory and crudTableOptions derive the
+ * inputs for the existing CrudForm and CommonTable components. Operation callbacks
+ * bind an existing application client when its routes differ from the REST defaults.
  */
 export interface CrudResource {
   /** Route base for navigation, e.g. '/goods'. */
@@ -40,6 +39,12 @@ export interface CrudResource {
   idKey?: string
 
   // --- form ---
+  /** Bind the existing application client; omitted operations use the REST defaults. */
+  getInfo?: FormFactory["getInfo"]
+  commitAdd?: FormFactory["commitAdd"]
+  commitEdit?: FormFactory["commitEdit"]
+  /** Metadata for this mode's write operation. Return null while unavailable. */
+  getContract?: (mode: FormMode) => FormFactory["contract"]
   /** Field definition; receives the form mode (add/edit/detail/copy) for mode-aware forms. */
   getFormDef: (mode: FormMode) => FormConfig
   /** Server → form mapping (parse JSON, scale prices, …). */
@@ -55,6 +60,16 @@ export interface CrudResource {
   successMessage?: string
 
   // --- table ---
+  fetch?: TableOptions["fetch"]
+  /** Bind deletion to the existing client, retaining its scope/version handling. */
+  deleteRecord?: (row: Row) => Promise<unknown>
+  /** Project existing permission/state decisions onto standard actions. */
+  actionRules?: Partial<
+    Record<
+      "detail" | "edit" | "copy" | "delete",
+      Pick<ActionDef, "show" | "disabled">
+    >
+  >
   columns: ColumnDef[]
   filters?: FilterFieldOption[]
   order?: Record<string, SortDir>
@@ -133,11 +148,17 @@ export function crudFactory(
   const apiPath = resourceApiPath(resource)
   return {
     getFormDef: () => resource.getFormDef(mode),
-    getInfo: async (id) => (await api.get<Row>(`${apiPath}/${id}`)).data,
+    getInfo:
+      resource.getInfo ??
+      (async (id) => (await api.get<Row>(`${apiPath}/${id}`)).data),
+    contract: resource.getContract?.(mode),
     toLocalData: resource.toLocalData,
     toServerData: resource.toServerData,
-    commitAdd: (body) => api.post(resource.createApiPath ?? apiPath, body),
-    commitEdit: (id, body) => api.put(`${apiPath}/${id}`, body),
+    commitAdd:
+      resource.commitAdd ??
+      ((body) => api.post(resource.createApiPath ?? apiPath, body)),
+    commitEdit:
+      resource.commitEdit ?? ((id, body) => api.put(`${apiPath}/${id}`, body)),
     commitCallback: resource.commitCallback,
     editable: resource.editable,
   }
@@ -168,24 +189,45 @@ export function crudTableOptions(
   const idKey = resourceIdKey(resource)
   const labels = opts.labels ?? DEFAULT_ACTION_LABELS
 
+  const rules = resource.actionRules ?? {}
+  const allowed = (action: keyof typeof rules, row: Row) =>
+    rules[action]?.show?.(row) !== false &&
+    rules[action]?.disabled?.(row) !== true
   const actions: ActionDef[] = []
   if (f.edit !== false)
-    actions.push({ name: labels.edit, icon: Pencil, onclick: opts.nav.edit })
+    actions.push({
+      name: labels.edit,
+      icon: Pencil,
+      ...rules.edit,
+      onclick: (row) => {
+        if (allowed("edit", row)) opts.nav.edit(row)
+      },
+    })
   if (f.copy !== false)
-    actions.push({ name: labels.copy, icon: Copy, onclick: opts.nav.copy })
+    actions.push({
+      name: labels.copy,
+      icon: Copy,
+      ...rules.copy,
+      onclick: (row) => {
+        if (allowed("copy", row)) opts.nav.copy(row)
+      },
+    })
   if (resource.extraActions) actions.push(...resource.extraActions)
   if (f.delete !== false) {
     actions.push({
       name: labels.delete,
       icon: Trash2,
       color: "var(--destructive)",
+      ...rules.delete,
       onclick: async (row) => {
+        if (!allowed("delete", row)) return
         const msg =
           resource.deleteConfirm?.(row) ??
           labels.deleteConfirm(String(row.name ?? ""))
         const ok = opts.confirm ? await opts.confirm(msg) : window.confirm(msg)
-        if (!ok) return
-        await opts.api.delete(`${apiPath}/${row[idKey]}`)
+        if (!ok || !allowed("delete", row)) return
+        if (resource.deleteRecord) await resource.deleteRecord(row)
+        else await opts.api.delete(`${apiPath}/${row[idKey]}`)
         opts.refresh()
       },
     })
@@ -193,12 +235,19 @@ export function crudTableOptions(
 
   return {
     url: apiPath,
+    fetch: resource.fetch,
     filter: { ...(resource.staticFilter ?? {}), ...(opts.filter ?? {}) },
     order: resource.order,
     limit: resource.limit,
     filterMode: resource.filterMode,
     sticky: resource.sticky,
-    onclick: f.detail !== false ? opts.nav.detail : undefined,
+    rowClickable: (row) => f.detail !== false && allowed("detail", row),
+    onclick:
+      f.detail !== false
+        ? (row) => {
+            if (allowed("detail", row)) opts.nav.detail(row)
+          }
+        : undefined,
     actions,
     columns: resource.columns,
   }

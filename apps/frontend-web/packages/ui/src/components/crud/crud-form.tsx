@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslations } from "use-intl"
 import { toast } from "sonner"
 
+import { Button } from "../button"
 import { AutoForm } from "../auto-form/auto-form"
 import type { FormMode } from "../auto-form/types"
 import { CrudEditButton } from "./crud-edit-button"
@@ -49,68 +50,109 @@ export function CrudForm({
   const fields = useMemo(() => factory.getFormDef(), [factory])
 
   const isCopy = mode === "copy" || (mode === "add" && !!copyId)
-  const loadId = mode === "add" ? copyId : id
-
-  // undefined = still loading; null = blank (add); object = prefilled.
-  // Seed synchronously from loadId so we never reset state inside the effect: a missing loadId
-  // is immediately "blank", a present one is "loading" until the async fetch resolves below.
-  const [initialData, setInitialData] = useState<Row | null | undefined>(() =>
-    loadId ? undefined : null
+  const loadId = isCopy ? (copyId ?? id) : mode === "add" ? undefined : id
+  const missingId = mode !== "add" && !loadId
+  const [attempt, setAttempt] = useState(0)
+  const [loaded, setLoaded] = useState<{
+    factory: FormFactory
+    id: string
+    attempt: number
+    data?: Row
+    failed: boolean
+  }>()
+  const context = useMemo(
+    () => ({ factory, loadId, mode, attempt }),
+    [factory, loadId, mode, attempt]
   )
-  const [submitting, setSubmitting] = useState(false)
+  const activeContext = useRef<object | null>(null)
+  const [committing, setCommitting] = useState<object | null>(null)
+  const submitting = committing === context
+  useEffect(() => {
+    activeContext.current = context
+    return () => {
+      activeContext.current = null
+    }
+  }, [context])
+  const current =
+    loaded?.factory === factory &&
+    loaded.id === loadId &&
+    loaded.attempt === attempt
+      ? loaded
+      : undefined
 
   useEffect(() => {
     onSubmittingChange?.(submitting)
   }, [submitting, onSubmittingChange])
 
-  // Realign to the loading/blank state during render when loadId changes (avoids a setState
-  // in the effect body), then let the effect own only the async fetch.
-  const [lastLoadId, setLastLoadId] = useState(loadId)
-  if (loadId !== lastLoadId) {
-    setLastLoadId(loadId)
-    setInitialData(loadId ? undefined : null)
-  }
-
   useEffect(() => {
     if (!loadId) return
     let cancelled = false
-    factory
-      .getInfo(loadId)
+    void Promise.resolve()
+      .then(() => factory.getInfo(loadId))
       .then(async (raw) => {
         const data = factory.toLocalData ? await factory.toLocalData(raw) : raw
-        if (!cancelled) setInitialData(data)
+        if (!cancelled)
+          setLoaded({ factory, id: loadId, attempt, data, failed: false })
       })
       .catch(() => {
-        if (!cancelled) setInitialData(null)
+        if (!cancelled)
+          setLoaded({ factory, id: loadId, attempt, failed: true })
       })
     return () => {
       cancelled = true
     }
-  }, [factory, loadId])
+  }, [factory, loadId, attempt])
 
   const effectiveMode: FormMode = isCopy ? "copy" : mode
 
   const handleCommit = async (values: Row) => {
+    if (
+      activeContext.current !== context ||
+      factory.editable === false ||
+      mode === "detail" ||
+      missingId
+    )
+      return
     const body = factory.toServerData ? factory.toServerData(values) : values
-    setSubmitting(true)
+    setCommitting(context)
     try {
-      if (mode === "add") {
+      if (mode === "add" || isCopy) {
         await factory.commitAdd(body)
       } else {
         await factory.commitEdit(id ?? "", body)
       }
+      if (activeContext.current !== context) return
       toast.success(successMessage ?? t("success"))
       factory.commitCallback?.onSuccess?.()
       onSubmitted?.()
     } catch (error) {
-      // the api client already surfaces the error message; just run the callback
+      if (activeContext.current !== context) return
       factory.commitCallback?.onError?.(error)
+      // AutoForm owns inline field/global feedback; transport callbacks may also notify.
+      throw error
     } finally {
-      setSubmitting(false)
+      setCommitting((current) => (current === context ? null : current))
     }
   }
 
-  if (initialData === undefined) {
+  if (missingId || current?.failed) {
+    return (
+      <div role="alert" className="space-y-3 p-6 text-sm">
+        <p>{t("loadError")}</p>
+        {!missingId && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setAttempt((value) => value + 1)}
+          >
+            {t("retry")}
+          </Button>
+        )}
+      </div>
+    )
+  }
+
+  if (loadId && !current) {
     return (
       <div className="p-6 text-sm text-muted-foreground">{t("loading")}</div>
     )
@@ -118,10 +160,13 @@ export function CrudForm({
 
   return (
     <AutoForm
+      key={`${effectiveMode}:${loadId ?? ""}`}
       id={formId}
       fields={fields}
       mode={effectiveMode}
-      initialData={initialData ?? undefined}
+      initialData={current?.data}
+      readonly={factory.editable === false}
+      contract={factory.contract}
       onSubmit={handleCommit}
     >
       {!hideActions && (

@@ -1,4 +1,12 @@
 {
+  "crud": {
+    "loading": "Memuatkan...",
+    "loadError": "Rekod ini tidak dapat dimuatkan.",
+    "retry": "Cuba semula",
+    "success": "Berjaya disimpan.",
+    "submit": "Simpan",
+    "edit": "Edit"
+  },
   "localeSwitcher": {
     "label": "Bahasa",
     "en-US": "English",
@@ -115,6 +123,8 @@
     "close": "tutup"
   },
   "table": {
+    "loadError": "Senarai tidak dapat dimuatkan.",
+    "retry": "Cuba semula",
     "empty": "Tiada data tersedia",
     "loading": "Memuatkan...",
     "actions": "Tindakan",
@@ -137,6 +147,7 @@
     }
   },
   "form": {
+    "submitFailed": "Tidak dapat menghantar. Semak input anda dan cuba lagi.",
     "required": "Diperlukan",
     "invalid": "Input tidak sah",
     "validation": {
@@ -148,6 +159,24 @@
       "requiredField": "Diperlukan",
       "number": "Input tidak sah",
       "numberField": "Input tidak sah"
+    },
+    "contract": {
+      "loading": "Peraturan borang belum tersedia. Cuba semula sebelum menghantar.",
+      "unsupported": "Sesetengah peraturan tidak dapat disemak di sini. Penghantaran tidak tersedia.",
+      "type": "Masukkan nilai dengan jenis yang betul.",
+      "number": "Masukkan nombor yang sah.",
+      "integer": "Masukkan integer yang boleh diwakili dengan tepat.",
+      "date": "Masukkan tarikh atau masa yang sah.",
+      "minLength": "Gunakan sekurang-kurangnya {limit} aksara.",
+      "maxLength": "Gunakan paling banyak {limit} aksara.",
+      "minimum": "Masukkan nilai sekurang-kurangnya {limit}.",
+      "maximum": "Masukkan nilai paling banyak {limit}.",
+      "exclusiveMinimum": "Masukkan nilai melebihi {limit}.",
+      "exclusiveMaximum": "Masukkan nilai kurang daripada {limit}.",
+      "minItems": "Pilih sekurang-kurangnya {limit} item.",
+      "maxItems": "Pilih paling banyak {limit} item.",
+      "pattern": "Gunakan format yang diperlukan.",
+      "enum": "Pilih nilai yang dibenarkan."
     }
   },
   "toast": {

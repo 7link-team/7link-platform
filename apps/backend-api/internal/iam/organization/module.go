@@ -94,6 +94,12 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[core.DepartmentOwnerResolver](services, departmentOwner); err != nil {
 		return fmt.Errorf("provide department owner resolver: %w", err)
 	}
+	if err := module.Provide[ActiveTenantEnumerator](services, m.activeTenantEnumerator()); err != nil {
+		return fmt.Errorf("provide active tenant enumerator: %w", err)
+	}
+	if err := module.Provide[TenantEnumerator](services, m.tenantEnumerator()); err != nil {
+		return fmt.Errorf("provide organization tenant enumerator: %w", err)
+	}
 	return nil
 }
 

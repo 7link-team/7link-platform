@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
+	"7link.com/platform/pkg/extension/policyx"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/stretchr/testify/assert"
@@ -1420,4 +1422,86 @@ func TestAuthenticateGuardsAnOperationTheCallerRegisters(t *testing.T) {
 	assert.PanicsWithValue(t, "authz registrar is nil", func() {
 		(*authz.Registrar)(nil).Authenticate(api, &huma.Operation{OperationID: "x"})
 	})
+}
+
+type creationFactChecker struct {
+	fakeChecker
+	contexts []policyx.TrustedContext
+}
+
+func (c *creationFactChecker) Check(ctx context.Context, tenant guid.ID, permission string, principal guid.ID) (bool, error) {
+	c.contexts = append(c.contexts, policyx.TrustedFromContext(ctx, time.Now()))
+	return c.fakeChecker.Check(ctx, tenant, permission, principal)
+}
+
+func TestCreationGuardUsesAuthenticatedPrincipalAndDeclaredFacts(t *testing.T) {
+	for _, tc := range []struct {
+		name                           string
+		authenticated, member, allowed bool
+		status                         int
+	}{
+		{"allowed", true, true, true, http.StatusOK}, {"denied", true, true, false, http.StatusForbidden}, {"nonmember", true, false, true, http.StatusForbidden}, {"unauthenticated", false, true, true, http.StatusUnauthorized},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, api := humatest.New(t)
+			verifier := validVerifier()
+			verifier.claims.ACR = 2
+			verifier.claims.AMR = []string{"password"}
+			if !tc.authenticated {
+				verifier.err = errors.New("bad token")
+			}
+			checker := &creationFactChecker{fakeChecker: fakeChecker{allowed: tc.allowed}}
+			registrar := authz.NewRegistrar(testRegistry(), verifier, checker, &fakeMembership{active: tc.member})
+			attrs := map[string]string{"environment": "DEFAULT", "project_mode": "HYBRID"}
+			called := false
+			authz.Register(registrar, api, huma.Operation{OperationID: "create-store-facts", Method: http.MethodPost, Path: "/stores", Tags: []string{"tenants"}, Middlewares: huma.Middlewares{func(ctx huma.Context, next func(huma.Context)) {
+				forged := policyx.WithResourceContext(ctx.Context(), policyx.ResourceContext{Type: "forged", ID: "999", Owner: "999", Attrs: map[string]string{"environment": "PRODUCTION"}})
+				next(huma.WithContext(ctx, forged))
+			}}}, authz.Guard{Resource: "store", Verb: "view", CreationAttributes: attrs}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+				called = true
+				facts := policyx.TrustedFromContext(ctx, time.Now())
+				require.Equal(t, checker.contexts[0].Resource, facts.Resource)
+				return &routeOutput{Body: "ok"}, nil
+			})
+			// Declaration maps are snapshotted so later mutation cannot change policy.
+			attrs["environment"] = "PRODUCTION"
+			response := api.Post("/tenants/11/stores")
+			require.Equal(t, tc.status, response.Code, response.Body.String())
+			require.Equal(t, tc.status == http.StatusOK, called)
+			if tc.authenticated && tc.member {
+				require.Len(t, checker.contexts, 1)
+				facts := checker.contexts[0]
+				require.Equal(t, policyx.ResourceContext{Type: "store", Owner: "31", Attrs: map[string]string{"environment": "DEFAULT", "project_mode": "HYBRID"}}, facts.Resource)
+				require.Equal(t, 2, facts.ACR)
+				require.Equal(t, []string{"password"}, facts.AMR)
+			} else {
+				require.Empty(t, checker.contexts)
+			}
+		})
+	}
+}
+
+func TestCreationGuardRejectsOtherRouteScopesAndMethods(t *testing.T) {
+	guard := authz.Guard{Resource: "store", Verb: "view", CreationAttributes: map[string]string{}}
+	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		_, api := humatest.New(t)
+		r := authz.NewRegistrar(testRegistry(), validVerifier(), &fakeChecker{allowed: true}, &fakeMembership{active: true})
+		require.Panics(t, func() {
+			authz.Register(r, api, huma.Operation{OperationID: "bad", Method: method, Path: "/stores", Tags: []string{"tenants"}}, guard, okRoute)
+		})
+	}
+	for _, register := range []func(*authz.Registrar, huma.API, huma.Operation, authz.Guard, func(context.Context, *struct{}) (*routeOutput, error)){
+		authz.RegisterEntity[struct{}, routeOutput], authz.RegisterEntityOrAuthenticated[struct{}, routeOutput], authz.RegisterTenantEntityOrAuthenticated[struct{}, routeOutput], authz.RegisterPlatform[struct{}, routeOutput], authz.RegisterOperatingPlatform[struct{}, routeOutput],
+	} {
+		_, api := humatest.New(t)
+		r := authz.NewRegistrar(testRegistry(), validVerifier(), &fakeChecker{allowed: true}, &fakeMembership{active: true})
+		require.Panics(t, func() { register(r, api, huma.Operation{}, guard, okRoute) })
+	}
+	_, api := humatest.New(t)
+	r := authz.NewRegistrar(testRegistry(), validVerifier(), &fakeChecker{allowed: true}, &fakeMembership{active: true})
+	require.Panics(t, func() {
+		authz.Register(r, api, huma.Operation{Method: http.MethodPost, Path: "/entities/{entity_id}/stores"}, guard, okRoute)
+	})
+	require.Panics(t, func() { authz.RegisterOwned(r, api, huma.Operation{}, "id", nil, guard, okRoute) })
+	require.Panics(t, func() { authz.RegisterEntityAdapter(r, api, huma.Operation{}, guard, func(huma.Context) {}) })
 }

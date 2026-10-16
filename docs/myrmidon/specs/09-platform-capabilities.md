@@ -95,6 +95,8 @@
 | payload | JSONB / JSON / TEXT | N | — | JSON 对象，≤64 KiB，**不得含机密**（机密存业务表并用 C8 封装） |
 | idempotency_key | VARCHAR(128) | Y | NULL | 见 UNIQUE |
 | concurrency_key | VARCHAR(128) | Y | NULL | 非空时同 `(kind, concurrency_key)` 同时只运行 1 个 |
+| fanout_kind | VARCHAR(128) / VARCHAR(128) / TEXT | Y | NULL | 实现细化：`jobs.fan_out` 冻结的目标任务类型；不可递归指向自身 |
+| fanout_fire_ms | BIGINT | Y | NULL | 实现细化：对应计划的逻辑触发点，与 `fanout_kind` 同时为空或同时非空 |
 | attempts | INTEGER | N | 0 | 认领时 +1；CHECK ≥0 |
 | max_attempts | INTEGER | N | 8 | CHECK 1..50 |
 | run_at_ms | BIGINT | N | — | 最早可执行时刻（数据库时钟 ms） |
@@ -113,6 +115,8 @@
 | version | INTEGER | N | 1 | 管理操作乐观锁；系统迁移也 +1 |
 
 索引与约束：`UNIQUE (tenant_id, kind, idempotency_key)`（三方言 NULL 均不冲突）；`idx_background_jobs_claim (queue, state, priority, run_at_ms, id)`；`idx_background_jobs_lease (state, lease_expires_at_ms)`；`idx_background_jobs_tenant (queue, state, tenant_id)`；`idx_background_jobs_concurrency (kind, concurrency_key, state)`；`idx_background_jobs_admin (state, kind, created_at, id)`；`idx_background_jobs_purge (state, finished_at, id)`。PG 另加部分索引 `... WHERE state='PENDING'`（**本规格提议**：认领热点只扫可执行行；MySQL 无部分索引，复合索引首列 state 已足够）。
+
+**租户分发载荷快照（实现细化，2026-10-16）**：`jobs.fan_out` 的 `payload` 直接保存触发时的原始目标载荷，不再包一层 JSON，以保留完整 64 KiB 的有效输入边界；计划名复用 `concurrency_key`，目标类型与触发点保存在上述两个可空元数据列。元数据非空时约束 `kind='jobs.fan_out'`、`tenant_id=0`、计划名非空、触发点非负；普通任务两列均为空。不得在执行时读取可变计划定义来代替触发时快照。
 
 ### 3.2 `background_job_schedules`（C1）
 
@@ -604,7 +608,8 @@ type Store interface {
     Do(ctx context.Context, tx *gorm.DB, key Key, fn func(tx *gorm.DB) (Result, error)) (res Result, replayed bool, err error)
     Middleware(operation string) func(huma.Context, func(huma.Context)) // 弱保证模式（BR-09-73）
 }
-func HashRequest(method, routeTemplate string, pathParams map[string]string, body any) [32]byte
+// 编码失败必须返回错误并停止执行，不能用零哈希继续查键。
+func HashRequest(method, routeTemplate string, pathParams map[string]string, body any) ([32]byte, error)
 
 // ---- internal/infra/secrets ----
 type Sealer interface { // 04 CR-04-07 SecretSealer

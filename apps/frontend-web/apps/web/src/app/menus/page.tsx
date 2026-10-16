@@ -334,7 +334,7 @@ export default function MenusPage({
   ]
 
   return (
-    <>
+    <div className="flex min-h-0 flex-col lg:flex-1" data-menu-workspace>
       <PageHeader
         title={t(
           system
@@ -363,7 +363,7 @@ export default function MenusPage({
       )}
       {loading && <p role="status">{t("loading")}</p>}
       {!loadError && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+        <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b pb-3">
           <span className="text-sm text-muted-foreground">
             {!loading &&
               !loadError &&
@@ -391,14 +391,15 @@ export default function MenusPage({
         </div>
       )}
       {!loadError && (
-        <div className="grid min-w-0 gap-4 md:grid-cols-[240px_minmax(0,1fr)]">
+        <div className="grid min-h-0 min-w-0 gap-4 lg:flex-1 lg:grid-cols-[240px_minmax(0,1fr)]">
           <nav
             aria-label={t("menuTree")}
-            className="min-w-0 border-b pb-4 md:border-e md:border-b-0 md:pe-4"
+            className="flex min-h-0 min-w-0 flex-col border-b pb-4 lg:border-e lg:border-b-0 lg:pe-4"
+            data-menu-navigation
           >
             <button
               type="button"
-              className={`mb-2 flex min-h-10 w-full items-center gap-2 rounded px-2 text-start text-sm font-medium ${selectedID ? "hover:bg-accent" : "bg-accent"} ${dropClass("")}`}
+              className={`mb-2 flex min-h-10 w-full shrink-0 items-center gap-2 rounded px-2 text-start text-sm font-medium ${selectedID ? "hover:bg-accent" : "bg-accent"} ${dropClass("")}`}
               onClick={() => selectBranch("")}
               {...dragProps("")}
               data-menu-root
@@ -409,7 +410,8 @@ export default function MenusPage({
             <div
               role="tree"
               aria-label={t("menuTree")}
-              className="max-h-64 overflow-auto md:max-h-[calc(100vh-260px)]"
+              className="max-h-64 min-h-0 overflow-auto overscroll-contain lg:max-h-none lg:flex-1"
+              tabIndex={0}
             >
               {rows
                 .filter(
@@ -479,8 +481,12 @@ export default function MenusPage({
                 })}
             </div>
           </nav>
-          <section className="min-w-0" aria-label={t("menuChildren")}>
-            <div className="mb-3 flex min-h-10 flex-wrap items-center justify-between gap-2 border-b pb-2">
+          <section
+            className="flex min-h-0 min-w-0 flex-col"
+            aria-label={t("menuChildren")}
+            data-menu-content
+          >
+            <div className="mb-3 flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-2 border-b pb-2">
               <h2 className="min-w-0 text-sm font-semibold break-words">
                 {selected
                   ? [
@@ -498,8 +504,12 @@ export default function MenusPage({
                 {visibleRows.length}
               </span>
             </div>
-            <div className="max-h-[calc(100dvh-320px)] min-h-40 overflow-auto border">
-              <Table className="min-w-[1100px]">
+            <div className="min-h-0 border lg:flex-1">
+              <Table
+                className="min-w-[1100px]"
+                wrapperClassName="lg:h-full"
+                containerClassName="overscroll-contain lg:h-full"
+              >
                 <TableHeader>
                   <TableRow>
                     <TableHead className="min-w-64">{t("menu")}</TableHead>
@@ -690,14 +700,24 @@ export default function MenusPage({
                       )}
                     </TableRow>
                   ))}
+                  {!loading && !loadError && visibleRows.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={
+                          allowed("menu_update") || allowed("menu_delete")
+                            ? 6
+                            : 5
+                        }
+                      >
+                        <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
+                          <Boxes className="mb-2 size-7" />
+                          {t("noMenus")}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
-              {!loading && !loadError && visibleRows.length === 0 && (
-                <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
-                  <Boxes className="mb-2 size-7" />
-                  {t("noMenus")}
-                </div>
-              )}
             </div>
           </section>
         </div>
@@ -885,7 +905,7 @@ export default function MenusPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }
 

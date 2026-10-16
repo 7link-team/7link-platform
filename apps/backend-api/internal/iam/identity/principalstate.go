@@ -39,6 +39,9 @@ type PrincipalStateStore struct {
 	// ActiveRow reads a whole active principal. found is false when no active
 	// principal carries that id.
 	ActiveRow func(context.Context, *gorm.DB, guid.ID) (principal Principal, found bool, err error)
+	// ActiveHumanByID reads an active principal excluding all service accounts,
+	// including disabled or deleted accounts. Tenant membership is checked separately.
+	ActiveHumanByID func(context.Context, *gorm.DB, guid.ID) (principal Principal, found bool, err error)
 	// LockActiveRow takes the row lock and reads the principal in one statement,
 	// and reports whether there was an active row to lock. That report is the
 	// point: a caller that keeps only the error relies on an absent or suspended
@@ -133,6 +136,11 @@ func principalStateStore(prefix string) PrincipalStateStore {
 		ActiveRow: func(ctx context.Context, db *gorm.DB, principalID guid.ID) (Principal, bool, error) {
 			return takeOne(db.WithContext(ctx).Table(principalTable).
 				Where("id = ? AND status = ?", principalID, "active"))
+		},
+		ActiveHumanByID: func(ctx context.Context, db *gorm.DB, principalID guid.ID) (Principal, bool, error) {
+			return takeOne(db.WithContext(ctx).Table(principalAliased).
+				Where("principal.id = ? AND principal.status = ?", principalID, "active").
+				Where("NOT EXISTS (?)", notAServiceAccount(db)))
 		},
 		LockActiveRow: func(ctx context.Context, db *gorm.DB, principalID guid.ID) (Principal, bool, error) {
 			return takeOne(forUpdate(db.WithContext(ctx).Table(principalTable).
@@ -240,6 +248,9 @@ func unavailablePrincipalStateStore() PrincipalStateStore {
 			return "", false, ErrUnavailable
 		},
 		ActiveRow: func(context.Context, *gorm.DB, guid.ID) (Principal, bool, error) {
+			return Principal{}, false, ErrUnavailable
+		},
+		ActiveHumanByID: func(context.Context, *gorm.DB, guid.ID) (Principal, bool, error) {
 			return Principal{}, false, ErrUnavailable
 		},
 		LockActiveRow: func(context.Context, *gorm.DB, guid.ID) (Principal, bool, error) {

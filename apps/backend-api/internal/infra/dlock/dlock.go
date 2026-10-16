@@ -29,6 +29,8 @@ var ErrNotAcquired = errors.New("dlock: not acquired")
 
 var ErrMaxHoldExceeded = errors.New("dlock: max hold exceeded")
 
+var ErrInvalidTransaction = errors.New("dlock: invalid transaction or lease request")
+
 // processStarted anchors elapsedMillis to a monotonic origin.
 var processStarted = time.Now()
 
@@ -128,6 +130,32 @@ type Lock struct {
 func (lk *Lock) Name() string { return lk.name }
 
 func (lk *Lock) Owner() string { return lk.owner }
+
+// FenceOn checks the unexpired owner token and locks its row until the caller's
+// transaction ends. Call it before any protected read or write, on the same
+// database as the lease. PostgreSQL/MySQL use FOR UPDATE; SQLite's transaction
+// locking rejects competing writes or a stale snapshot's write upgrade.
+// An error requires rollback. Unlock only after committing or rolling back.
+func (lk *Lock) FenceOn(ctx context.Context, tx *gorm.DB) error {
+	if tx == nil || tx.Statement == nil {
+		return ErrInvalidTransaction
+	}
+	if _, ok := tx.Statement.ConnPool.(gorm.TxCommitter); !ok {
+		return ErrInvalidTransaction
+	}
+	if lk == nil || lk.locker == nil || !lk.Alive() {
+		return ErrNotAcquired
+	}
+	bound := *lk.locker
+	bound.db = tx
+	locks := bound.locks()
+	_, err := locks.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where(locks.Name.Eq(lk.name), locks.Owner.Eq(lk.owner)).Not(bound.expired()).First()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotAcquired
+	}
+	return err
+}
 
 // Alive reports whether this holder can still guarantee ownership when
 // auto-refresh is enabled. Callers should check it before committing

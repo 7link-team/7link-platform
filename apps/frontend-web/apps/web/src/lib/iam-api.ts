@@ -1,3 +1,8 @@
+import {
+  normalizeValidationIssues,
+  type ValidationIssue,
+} from "@workspace/ui/lib/request-validation"
+import type { OperationRequestContract } from "@workspace/ui/components/auto-form/contract"
 import type { components } from "./api-schema"
 import {
   operatingPlatformID,
@@ -1154,6 +1159,7 @@ export class ApiError extends Error {
   readonly data: unknown
   /** The envelope's business code, when the failure has one. */
   readonly businessCode: number | undefined
+  readonly validationErrors: ValidationIssue[]
 
   constructor(
     status: number,
@@ -1167,6 +1173,7 @@ export class ApiError extends Error {
     this.status = status
     this.code = code
     this.data = data
+    this.validationErrors = normalizeValidationIssues(data)
     this.businessCode = businessCode
   }
 }
@@ -1225,7 +1232,10 @@ export function shouldNotifyMenuCatalogChange(
   path: string,
   method = "GET"
 ): boolean {
-  if (!path.startsWith("/") || ["GET", "HEAD"].includes(method.toUpperCase()))
+  if (
+    !path.startsWith("/") ||
+    ["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())
+  )
     return false
   const segments = path.split("?", 1)[0]?.split("/").filter(Boolean) ?? []
   const resourceIndex = ["files", "file-operations"].includes(segments[0] ?? "")
@@ -1242,9 +1252,13 @@ export function shouldNotifyMenuCatalogChange(
   return !["files", "file-operations"].includes(segments[resourceIndex] ?? "")
 }
 
+type RequestRoute = Pick<ApiRoute, "url"> & {
+  method: ApiRoute["method"] | "OPTIONS"
+}
+
 async function requestWithBase<T>(
   apiBase: string,
-  route: Pick<ApiRoute, "url" | "method">,
+  route: RequestRoute,
   init: Omit<RequestInit, "method"> = {}
 ): Promise<T> {
   return (await requestEnvelopeWithBase<T>(apiBase, route, init)).data
@@ -1252,7 +1266,7 @@ async function requestWithBase<T>(
 
 async function requestEnvelopeWithBase<T>(
   apiBase: string,
-  route: Pick<ApiRoute, "url" | "method">,
+  route: RequestRoute,
   init: Omit<RequestInit, "method"> = {}
 ): Promise<Envelope<T>> {
   const headers = new Headers(init.headers)
@@ -1604,6 +1618,43 @@ export function createIamApi(
     return items
   }
   return {
+    requestContract: async (
+      route: ApiRoute,
+      options: { signal?: AbortSignal; locale?: string } = {}
+    ): Promise<OperationRequestContract> => {
+      const [path, query] = route.url.split("?", 2)
+      const params = new URLSearchParams(query)
+      params.set("method", route.method)
+      const contract = await requestWithBase<OperationRequestContract>(
+        apiBase,
+        {
+          url: `${path}?${params}`,
+          method: "OPTIONS",
+        },
+        {
+          signal: options.signal,
+          cache: "no-store",
+          headers: options.locale
+            ? { "Accept-Language": options.locale }
+            : undefined,
+        }
+      )
+      if (
+        !contract ||
+        contract.method !== route.method ||
+        (options.locale !== undefined && contract.locale !== options.locale) ||
+        typeof contract.version !== "string" ||
+        !contract.version ||
+        typeof contract.operation_id !== "string" ||
+        typeof contract.path !== "string" ||
+        !contract.schemas ||
+        typeof contract.schemas !== "object" ||
+        Array.isArray(contract.schemas)
+      ) {
+        throw new ApiError(200, "invalid_response")
+      }
+      return contract
+    },
     systemAccountOwners: async (
       category: "platform" | "tenant"
     ): Promise<SystemAccountOwner[]> => {
@@ -2204,7 +2255,9 @@ export function createIamApi(
     deployment: () =>
       request<DeploymentIdentity>(apiRoute("get", "/deployment")),
     tenantRegistrationPolicy: () =>
-      request<{ enabled: boolean }>(apiRoute("get", "/tenant-registrations/options")),
+      request<{ enabled: boolean }>(
+        apiRoute("get", "/tenant-registrations/options")
+      ),
     registerTenant: (body: { name: string; slug: string }) =>
       request<Tenant>(apiRoute("post", "/tenant-registrations"), {
         body: JSON.stringify(body),
@@ -2518,10 +2571,9 @@ export function createIamApi(
       return result
     },
     requestMfaPhoneCode: (challengeID: string) =>
-      request<{ accepted: boolean }>(
-        apiRoute("post", "/login/mfa/requests"),
-        { body: JSON.stringify({ challenge_id: challengeID }) }
-      ),
+      request<{ accepted: boolean }>(apiRoute("post", "/login/mfa/requests"), {
+        body: JSON.stringify({ challenge_id: challengeID }),
+      }),
     verifyLoginMfa: async (body: { challenge_id: string; code: string }) => {
       const result = await request<LoginResult>(
         apiRoute("post", "/login/mfa"),
@@ -2606,9 +2658,13 @@ export function createIamApi(
       ),
     decideDeviceRequest: (userCode: string, approve: boolean) =>
       request<{ status: string }>(
-        apiRoute("post", "/tenants/{tenant_id}/oauth/device-requests/decisions", {
-          path: { tenant_id: tenantID() },
-        }),
+        apiRoute(
+          "post",
+          "/tenants/{tenant_id}/oauth/device-requests/decisions",
+          {
+            path: { tenant_id: tenantID() },
+          }
+        ),
         { body: JSON.stringify({ user_code: userCode, approve }) }
       ),
     startPhoneVerification: () =>
@@ -2997,13 +3053,17 @@ export function createIamApi(
     // while a route loader decides where the next one lands.
     memberEntities: async (permission: string, tenant?: string) =>
       request<Entity[]>(
-        apiRoute("get", "/tenants/{tenant_id}/principals/{principal_id}/entities", {
-          path: {
-            tenant_id: tenant || tenantID(),
-            principal_id: await principalID(),
-          },
-          query: { permission },
-        })
+        apiRoute(
+          "get",
+          "/tenants/{tenant_id}/principals/{principal_id}/entities",
+          {
+            path: {
+              tenant_id: tenant || tenantID(),
+              principal_id: await principalID(),
+            },
+            query: { permission },
+          }
+        )
       ),
     entity: (id: string) =>
       request<Entity>(

@@ -460,8 +460,8 @@ await waitFor(
 )
 
 await selectRoleView("scope")
-await waitFor(`document.querySelector("#role-data-scope")`)
-await click("#role-data-scope")
+await waitFor(`document.querySelector("#role-data-scope-form [role=combobox]")`)
+await click("#role-data-scope-form [role=combobox]")
 const selectedDepartmentsOption = `[...document.querySelectorAll('[role="option"]')].find((item) => item.textContent.trim() === "指定部门")`
 await waitFor(selectedDepartmentsOption)
 await clickElement(selectedDepartmentsOption)

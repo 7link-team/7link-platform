@@ -23,6 +23,8 @@ export default defineConfig({
   },
   server: {
     port: 8091,
+    // Resource OPTIONS requests must reach the API instead of becoming empty 204s.
+    cors: { preflightContinue: true },
     proxy: {
       // Browser calls use /api; the backend owns routes from /authn, /iam, and /oauth.
       "/api": {

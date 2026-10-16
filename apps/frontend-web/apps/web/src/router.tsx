@@ -97,6 +97,7 @@ export const router = createBrowserRouter([
               },
               {
                 path: "/system/menus",
+                handle: { layout: "workspace" },
                 lazy: async () => ({
                   Component: (await import("./app/menus/page")).SystemMenusPage,
                 }),
@@ -117,6 +118,7 @@ export const router = createBrowserRouter([
               },
               {
                 path: "/system/roles",
+                handle: { layout: "workspace" },
                 lazy: async () => ({
                   Component: (await import("./app/roles/page")).SystemRolesPage,
                 }),
@@ -208,12 +210,14 @@ export const router = createBrowserRouter([
               },
               {
                 path: "/platform/:platformID/roles",
+                handle: { layout: "workspace" },
                 lazy: async () => ({
                   Component: (await import("./app/roles/page")).default,
                 }),
               },
               {
                 path: "/platform/:platformID/menus",
+                handle: { layout: "workspace" },
                 lazy: async () => ({
                   Component: (await import("./app/menus/page")).default,
                 }),
@@ -380,6 +384,7 @@ export const router = createBrowserRouter([
               },
               {
                 path: "/admin/:tenantID/roles",
+                handle: { layout: "workspace" },
                 lazy: async () => ({
                   Component: (await import("./app/roles/page")).default,
                 }),
@@ -407,6 +412,7 @@ export const router = createBrowserRouter([
               },
               {
                 path: "/admin/:tenantID/menus",
+                handle: { layout: "workspace" },
                 lazy: async () => ({
                   Component: (await import("./app/menus/page")).default,
                 }),

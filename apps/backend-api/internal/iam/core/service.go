@@ -52,6 +52,10 @@ type MenuDeclaration struct {
 // Service coordinates core IAM validation, persistence, authorization, policy
 // revision updates, and audit appends.
 type Service struct {
+	reservedEntityTypes  map[string]struct{}
+	ownedEntityWrites    bool
+	ownedEntityBindings  bool // Internal binding capability; applies only to reserved entity types.
+	seedRoleWrites       bool // Set only on a caller-transaction copy owned by RoleSeeder.
 	registry             *authz.Registry
 	repo                 *Repository
 	checker              AuthorizationEvaluator
@@ -196,14 +200,15 @@ func (s *Service) CreateRole(ctx context.Context, tenantID guid.ID, name, descri
 	if err := validateTenant(tenantID); err != nil {
 		return Role{}, err
 	}
-	name = strings.TrimSpace(name)
-	if name == "" || len(name) > 128 || len(description) > 4096 {
-		return Role{}, fmt.Errorf("%w: invalid role name or description", ErrInvalidArgument)
+	fields, err := normalizeRoleFields(name, description, true)
+	if err != nil {
+		return Role{}, err
 	}
+	name, description = fields.Name, fields.Description
 	var role Role
 	record := newAuditRecord(ctx, tenantID, "role_created", "role", 0)
 	record.PolicyChanged = true
-	err := s.writes.Run(ctx, record, func(repo *Repository) error {
+	err = s.writes.Run(ctx, record, func(repo *Repository) error {
 		var err error
 		role, err = repo.CreateRole(ctx, tenantID, name, description)
 		record.TargetID = role.ID
@@ -249,14 +254,16 @@ func (s *Service) UpdateRole(
 			return err
 		}
 		if name != nil {
-			current.Name = strings.TrimSpace(*name)
+			current.Name = *name
 		}
 		if description != nil {
 			current.Description = *description
 		}
-		if current.Name == "" || len(current.Name) > 128 || len(current.Description) > 4096 {
-			return fmt.Errorf("%w: invalid role name or description", ErrInvalidArgument)
+		fields, err := normalizeRoleFields(current.Name, current.Description, name != nil)
+		if err != nil {
+			return err
 		}
+		current.Name, current.Description = fields.Name, fields.Description
 		updated, err = repo.UpdateRole(ctx, tenantID, roleID, current.Name, current.Description)
 		return err
 	})
@@ -326,6 +333,9 @@ func (s *Service) SetPermissionCondition(
 		return RolePermissionGrant{}, false, fmt.Errorf("%w: %w", ErrInvalidRolePermissionCondition, err)
 	}
 	record := newAuditRecord(ctx, tenantID, "role_permission_condition_updated", "role", roleID)
+	if s.seedRoleWrites {
+		record.Detail["operation_source"] = "role_seed"
+	}
 	record.Detail["permission_code"] = code
 	if len(canonical) > 0 {
 		record.Detail["condition"] = canonical
@@ -335,8 +345,10 @@ func (s *Service) SetPermissionCondition(
 	var grant RolePermissionGrant
 	var changed bool
 	err = s.writes.Run(ctx, record, func(repo *Repository) error {
-		if err := s.requireGrantablePermissionsOn(ctx, repo, tenantID, code); err != nil {
-			return err
+		if !s.seedRoleWrites {
+			if err := s.requireGrantablePermissionsOn(ctx, repo, tenantID, code); err != nil {
+				return err
+			}
 		}
 		verify := func() error { return nil }
 		if isAdministratorPermission(code) || code == "operating_platform_administer" {
@@ -399,16 +411,21 @@ func (s *Service) changePermission(
 		eventType = "role_permission_granted"
 	}
 	record := newAuditRecord(ctx, tenantID, eventType, "role", roleID)
+	if s.seedRoleWrites {
+		record.Detail["operation_source"] = "role_seed"
+	}
 	record.Detail["permission_code"] = code
 	var changed bool
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
 		var err error
 		if grant {
-			if err := s.requireGrantablePermissionsOn(ctx, repo, tenantID, code); err != nil {
-				return err
-			}
-			if err := s.requireGrantableDataScope(ctx, repo, tenantID, roleID, nil, []string{code}); err != nil {
-				return err
+			if !s.seedRoleWrites {
+				if err := s.requireGrantablePermissionsOn(ctx, repo, tenantID, code); err != nil {
+					return err
+				}
+				if err := s.requireGrantableDataScope(ctx, repo, tenantID, roleID, nil, []string{code}); err != nil {
+					return err
+				}
 			}
 			changed, err = repo.GrantPermission(ctx, tenantID, roleID, code)
 		} else {
@@ -473,6 +490,9 @@ func (s *Service) changeMember(
 	}
 	record := newAuditRecord(ctx, tenantID, eventType, "role", roleID)
 	record.Detail["principal_id"] = principalID
+	if s.seedRoleWrites {
+		record.Detail["operation_source"] = "role_seed"
+	}
 	if add && expiresAt != nil {
 		// The end date belongs in the audit record: a grant that lapses is still
 		// a grant somebody made, and a reviewer reads the chain to see until when.
@@ -482,8 +502,10 @@ func (s *Service) changeMember(
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
 		var err error
 		if add {
-			if err := s.requireGrantableRoleWithRepository(ctx, repo, tenantID, roleID); err != nil {
-				return err
+			if !s.seedRoleWrites {
+				if err := s.requireGrantableRoleWithRepository(ctx, repo, tenantID, roleID); err != nil {
+					return err
+				}
 			}
 			active, activeErr := repo.IsMemberActive(ctx, tenantID, principalID)
 			if activeErr != nil {

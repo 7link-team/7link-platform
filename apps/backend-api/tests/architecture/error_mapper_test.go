@@ -20,6 +20,7 @@ import (
 // where the rule is checked; each package's test also feeds huma.Error422
 // through its own mappers (TestErrorMappersKeepChosenStatus).
 var domainErrorMappers = []string{
+	"internal/delivery.projectHTTPError",
 	"internal/files.fileHTTPError",
 	"internal/iam/audit.auditAPIError",
 	"internal/iam/authn.accountViewHTTPError",

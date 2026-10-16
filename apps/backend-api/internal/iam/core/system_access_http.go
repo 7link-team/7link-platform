@@ -24,10 +24,7 @@ type systemPageInput struct {
 	Limit  int `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 type systemRoleCreateInput struct {
-	Body struct {
-		Name        string `json:"name" minLength:"1" maxLength:"128"`
-		Description string `json:"description,omitempty" maxLength:"4096"`
-	}
+	Body roleFields
 }
 type systemRolePermissionInput struct {
 	RoleID         string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`

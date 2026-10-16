@@ -1,0 +1,5 @@
+{
+  "invalid_key": "Gunakan kunci idempotensi sepanjang 1–64 aksara ASCII boleh cetak tanpa ruang.",
+  "key_reused": "Kunci idempotensi ini telah digunakan untuk permintaan yang berbeza.",
+  "in_progress": "Permintaan ini masih diproses. Cuba lagi sebentar lagi."
+}

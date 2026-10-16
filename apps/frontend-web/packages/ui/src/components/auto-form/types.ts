@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from "react"
 import type { ZodType } from "zod"
+import type { OperationRequestContract } from "./contract"
 
 export type FieldType =
   | "text"
@@ -167,7 +168,11 @@ export type FieldRegistry = Record<FieldType, ComponentType<FieldRendererProps>>
 export type FormMode = "add" | "edit" | "detail" | "copy"
 
 export interface UseAutoFormOptions {
+  /** Undefined keeps legacy behavior; null blocks submission while metadata loads. */
+  contract?: OperationRequestContract | null
   fields: FormConfig
+  /** Blocks user changes, validation and submission; detail mode also forces this. */
+  readonly?: boolean
   schema?: ZodType<Record<string, unknown>>
   initialData?: Record<string, unknown>
   mode?: FormMode
@@ -177,6 +182,7 @@ export interface UseAutoFormOptions {
 }
 
 export interface UseAutoFormReturn {
+  fields: FormConfig
   values: Record<string, unknown>
   errors: Record<string, string | undefined>
   touched: Record<string, boolean>
@@ -196,6 +202,7 @@ export interface UseAutoFormReturn {
 }
 
 export interface AutoFormProps {
+  contract?: OperationRequestContract | null
   fields: FormConfig
   schema?: ZodType<Record<string, unknown>>
   initialData?: Record<string, unknown>

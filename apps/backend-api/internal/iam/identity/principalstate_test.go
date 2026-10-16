@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -136,6 +137,7 @@ func TestPrincipalStateStoreRefusesToServeBeforeWiring(t *testing.T) {
 				"lock active row": func() (Principal, bool, error) { return store.LockActiveRow(t.Context(), harness.db, 1) },
 				"lock by login":   func() (Principal, bool, error) { return store.LockByLogin(t.Context(), harness.db, "x") },
 				"human by login":  func() (Principal, bool, error) { return store.HumanByLogin(t.Context(), harness.db, "x") },
+				"human by id":     func() (Principal, bool, error) { return store.ActiveHumanByID(t.Context(), harness.db, 1) },
 			} {
 				principal, found, err := read()
 				assert.ErrorIs(t, err, ErrUnavailable, reader)
@@ -386,4 +388,50 @@ func TestPrincipalStateReadersReportAnUnreadableTableAsAFailure(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "load principal registration origin")
 	assert.False(t, selfRegistered)
+}
+
+func TestActiveHumanByIDExcludesServiceAccountsAndUsesCallerTransaction(t *testing.T) {
+	for _, prefix := range []string{"", "human_lookup_"} {
+		t.Run(prefix, func(t *testing.T) {
+			h := newServiceAccountHarness(t, prefix)
+			ctx := t.Context()
+			human, err := h.repository.CreateBootstrapPrincipalOn(ctx, h.db, BootstrapPrincipalInput{LoginName: "person", DisplayName: "Person"}, identityTestNow)
+			require.NoError(t, err)
+			account, err := h.service.CreateServiceAccount(ctx, 7, "machine", "Machine", "", nil)
+			require.NoError(t, err)
+			store := principalStateStore(prefix)
+			row, found, err := store.ActiveHumanByID(ctx, h.db, human)
+			require.NoError(t, err)
+			require.True(t, found)
+			assert.Equal(t, human, row.ID)
+			for _, id := range []guid.ID{account.ID, 0, -1, 999999} {
+				row, found, err := store.ActiveHumanByID(ctx, h.db, id)
+				require.NoError(t, err)
+				assert.False(t, found)
+				assert.Zero(t, row)
+			}
+			rollback := errors.New("rollback identity state")
+			err = h.db.Transaction(func(tx *gorm.DB) error {
+				require.NoError(t, tx.Table(h.table("iam_principals")).Where("id = ?", human).Update("status", "disabled").Error)
+				_, found, err := store.ActiveHumanByID(ctx, tx, human)
+				require.NoError(t, err)
+				assert.False(t, found)
+				// Deleting a service-account lifecycle never converts it into a human.
+				require.NoError(t, tx.Table(h.table("iam_service_accounts")).Where("principal_id = ?", account.ID).Updates(map[string]any{"status": "deleted", "deleted_at": identityTestNow}).Error)
+				_, found, err = store.ActiveHumanByID(ctx, tx, account.ID)
+				require.NoError(t, err)
+				assert.False(t, found)
+				return rollback
+			})
+			require.ErrorIs(t, err, rollback)
+			_, found, err = store.ActiveHumanByID(ctx, h.db, human)
+			require.NoError(t, err)
+			assert.True(t, found)
+			require.NoError(t, h.db.Migrator().DropTable(h.table("iam_service_accounts")))
+			row, found, err = store.ActiveHumanByID(ctx, h.db, human)
+			require.Error(t, err)
+			assert.False(t, found)
+			assert.Zero(t, row)
+		})
+	}
 }

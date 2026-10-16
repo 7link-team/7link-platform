@@ -3,6 +3,8 @@ import * as React from "react"
 import { cn } from "@workspace/ui/lib/utils"
 
 interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
+  /** Layout class for the outer wrapper, e.g. a bounded workspace height. */
+  wrapperClassName?: string
   /** Class for the scroll container (the element sticky cells position against). */
   containerClassName?: string
   /** Style for the scroll container — set `maxHeight` here to enable a sticky header. */
@@ -10,7 +12,16 @@ interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
 }
 
 const Table = React.forwardRef<HTMLTableElement, TableProps>(
-  ({ className, containerClassName, containerStyle, ...props }, ref) => {
+  (
+    {
+      className,
+      wrapperClassName,
+      containerClassName,
+      containerStyle,
+      ...props
+    },
+    ref
+  ) => {
     const scrollRef = React.useRef<HTMLDivElement>(null)
     const [thumb, setThumb] = React.useState<{
       left: number
@@ -48,7 +59,7 @@ const Table = React.forwardRef<HTMLTableElement, TableProps>(
     }, [updateThumb])
 
     return (
-      <div className="relative w-full">
+      <div className={cn("relative w-full", wrapperClassName)}>
         <div
           ref={scrollRef}
           className={cn("w-full overflow-auto", containerClassName)}

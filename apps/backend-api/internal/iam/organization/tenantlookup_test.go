@@ -1,9 +1,13 @@
 package organization
 
 import (
+	"context"
+	"gorm.io/gorm"
 	"strings"
 	"testing"
 	"time"
+
+	"7link.com/platform/internal/infra/guid"
 
 	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
@@ -120,4 +124,115 @@ func TestTenantLookupIsPublishedForOtherModules(t *testing.T) {
 	resolved, err := module.Resolve[TenantLookup](services)
 	require.NoError(t, err)
 	assert.NotNil(t, resolved)
+}
+
+func TestTenantEnumeratorPagesOnlyLiveTenantRoots(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	for _, row := range []struct {
+		id           guid.ID
+		kind, status string
+	}{
+		{10010, ScopeTenant, TenantActive}, {10020, ScopeTenant, TenantSuspended},
+		{10030, ScopePlatform, TenantActive}, {10040, ScopeSystem, TenantActive},
+		{10050, ScopeTenant, TenantDeleted}, {10060, ScopeTenant, TenantActive},
+	} {
+		require.NoError(t, h.db.Exec("INSERT INTO sl_iam_tenants (id,scope_kind,slug,name,status,version,created_at,updated_at) VALUES (?,?,?,?,?,1,?,?)", row.id, row.kind, "tenant-"+row.id.String(), row.id.String(), row.status, organizationTestNow, organizationTestNow).Error)
+	}
+	m := &Module{runtime: h.runtime, ids: newOrganizationTestIDs(50000), appender: h.appender}
+	services := module.NewServices()
+	require.NoError(t, m.ProvideServices(services))
+	require.NoError(t, services.Seal())
+	enumerate, err := module.Resolve[TenantEnumerator](services)
+	require.NoError(t, err)
+	ids, err := enumerate(t.Context(), 10000, 1)
+	require.NoError(t, err)
+	require.Equal(t, []guid.ID{10010}, ids)
+	ids, err = enumerate(t.Context(), ids[0], 2)
+	require.NoError(t, err)
+	require.Equal(t, []guid.ID{10020, 10060}, ids)
+	ids, err = enumerate(t.Context(), 10060, 100)
+	require.NoError(t, err)
+	require.Empty(t, ids)
+	for _, bounds := range []struct {
+		after guid.ID
+		limit int
+	}{{-1, 1}, {0, 0}, {0, 101}} {
+		_, err = enumerate(t.Context(), bounds.after, bounds.limit)
+		require.Error(t, err)
+	}
+	require.NoError(t, h.db.Exec("DROP TABLE sl_iam_tenants").Error)
+	_, err = enumerate(t.Context(), 10000, 1)
+	require.Error(t, err)
+}
+
+func TestTenantEnumeratorRequiresWiredModule(t *testing.T) {
+	for _, owner := range []*Module{nil, {}} {
+		_, err := owner.tenantEnumerator()(t.Context(), 0, 100)
+		require.ErrorIs(t, err, ErrUnavailable)
+	}
+}
+
+func TestActiveTenantEnumeratorUsesBoundedPagesAndExcludesInactiveRoots(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+		for i := 0; i < 505; i++ {
+			id := guid.ID(20000 + i)
+			kind, status := ScopeTenant, TenantActive
+			switch i {
+			case 501:
+				kind = ScopePlatform
+			case 502:
+				kind = ScopeSystem
+			case 503:
+				status = TenantDeleted
+			case 504:
+				status = TenantSuspended
+			}
+			if err := tx.Exec("INSERT INTO sl_iam_tenants (id,scope_kind,slug,name,status,version,created_at,updated_at) VALUES (?,?,?,?,?,1,?,?)", id, kind, "tenant-"+id.String(), id.String(), status, organizationTestNow, organizationTestNow).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
+	owner := &Module{runtime: h.runtime, ids: newOrganizationTestIDs(50000), appender: h.appender}
+	services := module.NewServices()
+	require.NoError(t, owner.ProvideServices(services))
+	require.NoError(t, services.Seal())
+	enumerate, err := module.Resolve[ActiveTenantEnumerator](services)
+	require.NoError(t, err)
+	first, err := enumerate(t.Context(), 19999, 500)
+	require.NoError(t, err)
+	require.Len(t, first, 500)
+	for i, id := range first {
+		require.Equal(t, guid.ID(20000+i), id)
+	}
+	second, err := enumerate(t.Context(), first[499], 500)
+	require.NoError(t, err)
+	require.Equal(t, []guid.ID{20500}, second)
+	last, err := enumerate(t.Context(), second[0], 500)
+	require.NoError(t, err)
+	require.Empty(t, last)
+	require.NoError(t, h.db.Exec("UPDATE sl_iam_tenants SET status = ? WHERE id = ?", TenantSuspended, 20500).Error)
+	last, err = enumerate(t.Context(), first[499], 500)
+	require.NoError(t, err)
+	require.Empty(t, last)
+	// Governance still intentionally includes suspended roots.
+	governance, err := owner.tenantEnumerator()(t.Context(), first[499], 100)
+	require.NoError(t, err)
+	require.Equal(t, []guid.ID{20500, 20504}, governance)
+	for _, bounds := range []struct {
+		after guid.ID
+		limit int
+	}{{-1, 1}, {0, 0}, {0, 501}} {
+		_, err := enumerate(t.Context(), bounds.after, bounds.limit)
+		require.Error(t, err)
+	}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = enumerate(canceled, 0, 500)
+	require.ErrorIs(t, err, context.Canceled)
+	for _, unwired := range []*Module{nil, {}} {
+		_, err = unwired.activeTenantEnumerator()(t.Context(), 0, 500)
+		require.ErrorIs(t, err, ErrUnavailable)
+	}
 }

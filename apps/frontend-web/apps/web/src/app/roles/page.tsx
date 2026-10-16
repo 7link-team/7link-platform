@@ -1,6 +1,6 @@
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { systemRoleLabel } from "../../lib/membership-presentation"
-import { Link, useSearchParams } from "react-router"
+import { Link, useSearchParams, useParams } from "react-router"
 import {
   useCallback,
   useEffect,
@@ -41,6 +41,11 @@ import {
   TabsList,
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
+import type { FieldRendererProps } from "@workspace/ui/components/auto-form/types"
+import { AutoTable } from "@workspace/ui/components/auto-table/auto-table"
+import { apiRoute } from "../../lib/api-route"
+import { useRequestContract } from "../../lib/use-request-contract"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { operatingPlatformID } from "../../lib/organization-scope"
@@ -146,11 +151,65 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<WorkspaceRole | null>(null)
   const [busy, setBusy] = useState(false)
+  const { tenantID = "", platformID = "" } = useParams()
+  const roleContractRoute = useMemo(() => {
+    if (!open) return null
+    if (editing)
+      return system
+        ? apiRoute("patch", "/system/roles/{role_id}", {
+            path: { role_id: editing.id },
+          })
+        : apiRoute("patch", "/roles/{role_id}", {
+            path: { role_id: editing.id },
+          })
+    if (system) return apiRoute("post", "/system/roles")
+    if (platformID)
+      return apiRoute("post", "/operating-platforms/{platform_id}/roles", {
+        path: { platform_id: platformID },
+      })
+    return apiRoute("post", "/tenants/{tenant_id}/roles", {
+      path: { tenant_id: tenantID },
+    })
+  }, [open, editing, system, platformID, tenantID])
+  const roleContract = useRequestContract(roleContractRoute)
+
   const [error, setError] = useState("")
   const [loadError, setLoadError] = useState("")
   const [scopeDraft, setScopeDraft] = useState<DataScope>("all")
   const [scopeDepartmentIDs, setScopeDepartmentIDs] = useState<string[]>([])
   const scopeDraftVersion = useRef(0)
+  const scopeDirty = useRef(false)
+  const scopeSource = useRef<{ scope: DataScope; department_ids: string[] }>({
+    scope: "all",
+    department_ids: [],
+  })
+  const activeRoleID = useRef(selected?.id)
+  useEffect(() => {
+    activeRoleID.current = selected?.id
+    scopeDirty.current = false
+  }, [selected?.id])
+  const [scopeFormRevision, setScopeFormRevision] = useState(0)
+  const scopeContractRoute = useMemo(
+    () =>
+      !system && selected && view === "scope" && allowed("role_update")
+        ? apiRoute("put", "/roles/{role_id}/data-scope", {
+            path: { role_id: selected.id },
+          })
+        : null,
+    [system, selected, view, allowed]
+  )
+  const scopeContract = useRequestContract(scopeContractRoute)
+  const onScopeChange = useCallback((values: Record<string, unknown>) => {
+    scopeDraftVersion.current += 1
+    const ids = (values.department_ids as string[] | undefined) ?? []
+    scopeDirty.current =
+      values.scope !== scopeSource.current.scope ||
+      ids.length !== scopeSource.current.department_ids.length ||
+      ids.some((id, index) => id !== scopeSource.current.department_ids[index])
+    setScopeDraft(values.scope as DataScope)
+    setScopeDepartmentIDs((values.department_ids as string[] | undefined) ?? [])
+  }, [])
+
   const [conditionPermission, setConditionPermission] =
     useState<Permission | null>(null)
   const [conditionDraft, setConditionDraft] =
@@ -255,9 +314,16 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
             nextDepartments.status === "fulfilled" ? nextDepartments.value : [],
         })
         // A read started before an edit must not reset the newer scope draft.
-        if (scopeVersion === scopeDraftVersion.current) {
-          setScopeDraft(nextDataScope.value.scope)
-          setScopeDepartmentIDs(nextDataScope.value.department_ids)
+        if (scopeVersion === scopeDraftVersion.current && !scopeDirty.current) {
+          const nextScope = nextDataScope.value
+          const changed =
+            nextScope.scope !== scopeSource.current.scope ||
+            JSON.stringify(nextScope.department_ids) !==
+              JSON.stringify(scopeSource.current.department_ids)
+          scopeSource.current = nextScope
+          setScopeDraft(nextScope.scope)
+          setScopeDepartmentIDs(nextScope.department_ids)
+          if (changed) setScopeFormRevision((value) => value + 1)
         }
       }
     )
@@ -313,14 +379,12 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
     setParams(next)
   }
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submit = async (values: Record<string, unknown>) => {
     setBusy(true)
     setError("")
-    const data = new FormData(event.currentTarget)
     const body = {
-      name: String(data.get("name")),
-      description: String(data.get("description")),
+      name: String(values.name ?? ""),
+      description: String(values.description ?? ""),
     }
     try {
       const role = editing
@@ -332,8 +396,6 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
       next.set("role", role.id)
       setParams(next)
       await refresh()
-    } catch (cause) {
-      setError((cause as Error).message)
     } finally {
       setBusy(false)
     }
@@ -424,9 +486,7 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
   const refreshMembers = async () => {
     if (!selected) return
     const nextBoundMembers = await api.roleMembers(selected.id)
-    const nextEnds = system
-      ? []
-      : await iamApi.roleMemberGrants(selected.id)
+    const nextEnds = system ? [] : await iamApi.roleMemberGrants(selected.id)
     setDetails((current) =>
       current.roleID === selected.id
         ? {
@@ -451,8 +511,6 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
     try {
       await api.addRoleMember(selected.id, subject, end)
       await refreshMembers()
-    } catch (cause) {
-      setError((cause as Error).message)
     } finally {
       setBusy(false)
     }
@@ -524,30 +582,35 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
     }
   }
 
-  const saveDataScope = async () => {
+  const saveDataScope = async (values: Record<string, unknown>) => {
     if (!selected) return
     scopeDraftVersion.current += 1
     setBusy(true)
     setError("")
     try {
       const dataScope = await iamApi.setRoleDataScope(selected.id, {
-        scope: scopeDraft,
+        scope: values.scope as DataScope,
         department_ids:
-          scopeDraft === "selected_departments" ? scopeDepartmentIDs : [],
+          values.scope === "selected_departments"
+            ? (values.department_ids as string[])
+            : [],
       })
+      if (activeRoleID.current !== selected.id) return
+      scopeSource.current = dataScope
+      scopeDirty.current = false
       setDetails((current) =>
         current.roleID === selected.id ? { ...current, dataScope } : current
       )
+      setScopeDraft(dataScope.scope)
       setScopeDepartmentIDs(dataScope.department_ids)
-    } catch (cause) {
-      setError((cause as Error).message)
+      setScopeFormRevision((value) => value + 1)
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-col lg:flex-1" data-role-workspace>
       <PageHeader
         title={t(
           system
@@ -586,9 +649,14 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
           </Button>
         </Alert>
       )}
-      <div className="grid min-h-[620px] overflow-hidden rounded-md border bg-card lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="border-b lg:border-r lg:border-b-0">
-          <header className="flex h-12 items-center justify-between border-b bg-muted/30 px-4 text-sm font-semibold">
+      <div className="grid min-h-0 overflow-hidden rounded-md border bg-card lg:flex-1 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <aside
+          className="min-h-0 border-b lg:overflow-y-auto lg:overscroll-contain lg:border-r lg:border-b-0"
+          tabIndex={0}
+          aria-label={t("roleList")}
+          data-role-navigation
+        >
+          <header className="sticky top-0 z-10 flex h-12 items-center justify-between border-b bg-muted px-4 text-sm font-semibold">
             {t("roleList")}
             <span className="text-xs font-normal text-muted-foreground">
               {roles.length}
@@ -624,10 +692,14 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
             </button>
           ))}
         </aside>
-        <section className="min-w-0">
+        <section
+          className="min-h-0 min-w-0 lg:flex lg:flex-col lg:overflow-hidden"
+          aria-label={t("roleWorkspaceSections")}
+          data-role-content
+        >
           {selected ? (
             <>
-              <header className="flex min-h-20 flex-wrap items-center justify-between gap-4 border-b px-5 py-3">
+              <header className="flex min-h-20 shrink-0 flex-wrap items-center justify-between gap-4 border-b px-5 py-3">
                 <div className="min-w-0">
                   <h2 className="font-semibold break-words">
                     {system
@@ -673,14 +745,18 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
                 </div>
               </header>
               {selected.builtin && (
-                <p className="border-b px-5 py-3 text-sm text-muted-foreground">
+                <p className="shrink-0 border-b px-5 py-3 text-sm text-muted-foreground">
                   {t("protectedSuperadminAuthority")}
                 </p>
               )}
-              <Tabs value={view} onValueChange={selectView}>
+              <Tabs
+                value={view}
+                onValueChange={selectView}
+                className="min-h-0 lg:flex lg:flex-1 lg:flex-col lg:overflow-hidden"
+              >
                 <TabsList
                   variant="line"
-                  className="flex w-full justify-start gap-2 overflow-x-auto border-b px-3 sm:gap-5 sm:px-5"
+                  className="flex w-full shrink-0 justify-start gap-2 overflow-x-auto border-b px-3 sm:gap-5 sm:px-5"
                   aria-label={t("roleWorkspaceSections")}
                   data-role-workspace-tabs
                 >
@@ -728,7 +804,7 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
                 </TabsList>
                 <TabsContent
                   value="scope"
-                  className="m-0 p-5"
+                  className="m-0 min-h-0 p-5 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain"
                   data-role-panel="scope"
                 >
                   <section data-role-data-scope>
@@ -742,98 +818,81 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
                       </p>
                     ) : (
                       <div className="grid gap-4">
-                        <div className="grid max-w-md gap-2">
-                          <Label htmlFor="role-data-scope">{t("scope")}</Label>
-                          <SimpleSelect
-                            id="role-data-scope"
-                            value={scopeDraft}
-                            disabled={busy || !allowed("role_update")}
-                            onValueChange={(value) => {
-                              scopeDraftVersion.current += 1
-                              setScopeDraft(value as DataScope)
-                            }}
-                            options={{
-                              all: t("allData"),
-                              self: t("ownData"),
-                              department: t("ownDepartment"),
-                              department_and_descendants: t(
-                                "departmentDescendants"
-                              ),
-                              selected_departments: t("selectedDepartments"),
-                            }}
-                          />
-                        </div>
-                        {scopeDraft === "selected_departments" && (
-                          <div
-                            className="grid gap-2 md:grid-cols-2"
-                            data-scope-departments
-                          >
-                            {departments.map((department) => {
-                              const checked = scopeDepartmentIDs.includes(
-                                department.id
-                              )
-                              return (
-                                <label
-                                  key={department.id}
-                                  className="flex min-h-12 items-center gap-3 rounded-md border p-3 hover:bg-muted/30"
-                                >
-                                  <Checkbox
-                                    data-scope-department-id={department.id}
-                                    checked={checked}
-                                    disabled={
-                                      busy ||
-                                      !allowed("role_update") ||
-                                      (department.status !== "active" &&
-                                        !checked)
-                                    }
-                                    onCheckedChange={(value) => {
-                                      scopeDraftVersion.current += 1
-                                      setScopeDepartmentIDs((current) =>
-                                        value === true
-                                          ? [
-                                              ...new Set([
-                                                ...current,
-                                                department.id,
-                                              ]),
-                                            ]
-                                          : current.filter(
-                                              (id) => id !== department.id
-                                            )
-                                      )
-                                    }}
-                                  />
-                                  <span className="min-w-0 flex-1 text-sm break-words">
-                                    {department.name}
-                                  </span>
-                                  {department.status !== "active" && (
-                                    <Badge variant="destructive">
-                                      {t("disable")}
-                                    </Badge>
-                                  )}
-                                </label>
-                              )
-                            })}
-                          </div>
+                        {scopeContract.failed && allowed("role_update") && (
+                          <Alert>
+                            <Button
+                              variant="outline"
+                              onClick={scopeContract.retry}
+                            >
+                              {t("retryNow")}
+                            </Button>
+                          </Alert>
                         )}
-                        <div>
-                          {allowed("role_update") && (
+                        <AutoForm
+                          key={`${selected.id}:${scopeFormRevision}`}
+                          id="role-data-scope-form"
+                          mode="edit"
+                          readonly={!allowed("role_update")}
+                          contract={scopeContract.contract}
+                          initialData={{
+                            scope: scopeDraft,
+                            department_ids: scopeDepartmentIDs,
+                          }}
+                          onChange={onScopeChange}
+                          onSubmit={saveDataScope}
+                          fields={{
+                            scope: {
+                              name: t("scope"),
+                              type: "select",
+                              value: "all",
+                              disabled: busy,
+                              config: {
+                                options: {
+                                  all: t("allData"),
+                                  self: t("ownData"),
+                                  department: t("ownDepartment"),
+                                  department_and_descendants: t(
+                                    "departmentDescendants"
+                                  ),
+                                  selected_departments: t(
+                                    "selectedDepartments"
+                                  ),
+                                },
+                              },
+                            },
+                            department_ids: {
+                              name: t("selectedDepartments"),
+                              type: "custom",
+                              component: ScopeDepartmentsField,
+                              value: [],
+                              col: 2,
+                              disabled: busy,
+                              show: (values) =>
+                                values?.scope === "selected_departments",
+                              config: { departments },
+                            },
+                          }}
+                        />
+                        {allowed("role_update") && (
+                          <div>
                             <Button
                               size="sm"
-                              disabled={busy}
-                              onClick={() => void saveDataScope()}
+                              type="submit"
+                              form="role-data-scope-form"
+                              disabled={busy || !scopeContract.contract}
                               data-save-data-scope
                             >
                               {t("saveDataScope")}
                             </Button>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </section>
                 </TabsContent>
                 <TabsContent
                   value="assignments"
-                  className="m-0 p-5"
+                  className="m-0 min-h-0 p-5 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain"
                   data-role-panel="assignments"
                 >
                   <section className="mb-7">
@@ -861,57 +920,91 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
                         {t("noAssignableMembers")}
                       </p>
                     ) : (
-                      <div className="grid gap-2 md:grid-cols-2">
-                        {members.map((member) => (
-                          <label
-                            key={member.subject}
-                            className="flex min-h-14 items-center gap-3 rounded-md border p-3 hover:bg-muted/30"
-                          >
-                            <Checkbox
-                              data-role-member-id={member.subject}
-                              checked={boundMembers.includes(member.subject)}
-                              disabled={
-                                busy ||
-                                !allowed("role_manage_member") ||
-                                (system &&
-                                  (selected.builtin || member.protected)) ||
-                                member.status !== "active"
-                              }
-                              onCheckedChange={(value) =>
-                                void toggleMember(
-                                  member.subject,
-                                  value === true
-                                )
-                              }
-                            />
-                            <span className="min-w-0 flex-1">
-                              <strong className="block text-sm break-words">
-                                {member.display_name}
-                              </strong>
-                              <small className="mt-1 block text-xs break-words text-muted-foreground">
-                                {member.email || member.subject}
-                              </small>
-                              {!system &&
-                                boundMembers.includes(member.subject) && (
-                                  <RoleMemberEnd
-                                    end={memberEnds[member.subject] ?? null}
-                                    disabled={
-                                      busy || !allowed("role_manage_member")
-                                    }
-                                    onChange={(value) =>
-                                      void setMemberEnd(member.subject, value)
-                                    }
-                                  />
-                                )}
-                            </span>
-                            {member.status !== "active" && (
-                              <Badge variant="destructive">
-                                {t("disable")}
+                      <AutoTable
+                        key={selected.id}
+                        data={members}
+                        rowKey="subject"
+                        columns={[
+                          {
+                            field: "assignment",
+                            type: "custom",
+                            name: t("roleMembers"),
+                            width: "100px",
+                            render: (_value, member) => (
+                              <label className="inline-flex min-h-11 min-w-11 items-center justify-center">
+                                <Checkbox
+                                  aria-label={`${t("roleMembers")} ${member.display_name}`}
+                                  data-role-member-id={member.subject}
+                                  checked={boundMembers.includes(
+                                    member.subject
+                                  )}
+                                  disabled={
+                                    busy ||
+                                    !allowed("role_manage_member") ||
+                                    (system &&
+                                      (selected.builtin || member.protected)) ||
+                                    member.status !== "active"
+                                  }
+                                  onCheckedChange={(value) =>
+                                    void toggleMember(
+                                      member.subject,
+                                      value === true
+                                    )
+                                  }
+                                />
+                              </label>
+                            ),
+                          },
+                          {
+                            field: "display_name",
+                            type: "custom",
+                            name: t("displayName"),
+                            sortable: true,
+                            render: (_value, member) => (
+                              <div className="min-w-40 break-words whitespace-normal">
+                                <strong className="block text-sm">
+                                  {member.display_name}
+                                </strong>
+                                <small className="mt-1 block text-xs text-muted-foreground">
+                                  {member.email || member.subject}
+                                </small>
+                                {!system &&
+                                  boundMembers.includes(member.subject) && (
+                                    <RoleMemberEnd
+                                      key={`${selected.id}:${member.subject}`}
+                                      end={memberEnds[member.subject] ?? null}
+                                      roleID={selected.id}
+                                      principalID={member.subject}
+                                      busy={busy}
+                                      readonly={!allowed("role_manage_member")}
+                                      onChange={(value) =>
+                                        setMemberEnd(member.subject, value)
+                                      }
+                                    />
+                                  )}
+                              </div>
+                            ),
+                          },
+                          {
+                            field: "status",
+                            type: "custom",
+                            name: t("status"),
+                            render: (_value, member) => (
+                              <Badge
+                                variant={
+                                  member.status === "active"
+                                    ? "secondary"
+                                    : "destructive"
+                                }
+                              >
+                                {member.status === "active"
+                                  ? t("active")
+                                  : t("disable")}
                               </Badge>
-                            )}
-                          </label>
-                        ))}
-                      </div>
+                            ),
+                          },
+                        ]}
+                      />
                     )}
                   </section>
                   {!system && (
@@ -938,7 +1031,7 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
                 </TabsContent>
                 <TabsContent
                   value="permissions"
-                  className="m-0 p-5"
+                  className="m-0 min-h-0 p-5 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain"
                   data-role-panel="permissions"
                 >
                   <section>
@@ -1276,47 +1369,115 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
               {editing ? t("editRoleDescription") : t("createRoleDescription")}
             </DialogDescription>
           </DialogHeader>
-          <form
+          {roleContract.failed && (
+            <Alert>
+              <Button variant="outline" onClick={roleContract.retry}>
+                {t("retryNow")}
+              </Button>
+            </Alert>
+          )}
+          <AutoForm
             key={editing?.id ?? "create"}
             id="role-form"
-            className="grid gap-4"
+            mode={editing ? "edit" : "add"}
+            initialData={
+              editing
+                ? { name: editing.name, description: editing.description }
+                : undefined
+            }
+            fields={{
+              name: { name: t("roleName"), type: "text", value: "" },
+              description: { name: t("description"), type: "text", value: "" },
+            }}
+            contract={roleContract.contract}
+            readonly={!allowed(editing ? "role_update" : "role_create")}
             onSubmit={submit}
-          >
-            <div className="grid gap-2">
-              <Label htmlFor="role-name">{t("roleName")}</Label>
-              <Input
-                id="role-name"
-                name="name"
-                defaultValue={editing?.name}
-                required
-                maxLength={128}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="role-description">{t("description")}</Label>
-              <Input
-                id="role-description"
-                name="description"
-                defaultValue={editing?.description}
-                maxLength={4096}
-              />
-            </div>
-          </form>
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               {t("cancel")}
             </Button>
-            <Button type="submit" form="role-form" disabled={busy}>
+            <Button
+              type="submit"
+              form="role-form"
+              disabled={
+                busy ||
+                !roleContract.contract ||
+                !allowed(editing ? "role_update" : "role_create")
+              }
+            >
               {busy ? t("saving") : editing ? t("save") : t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }
 
 type RoleWorkspaceView = "permissions" | "assignments" | "scope"
+
+function ScopeDepartmentsField({
+  value,
+  onChange,
+  disabled,
+  readonly,
+  config,
+  labelId,
+  error,
+  errorId,
+}: FieldRendererProps) {
+  const t = useTranslations("iam")
+  const selected = Array.isArray(value) ? (value as string[]) : []
+  const departments = config.departments as Department[]
+  return (
+    <div
+      role="group"
+      aria-labelledby={labelId}
+      aria-describedby={error ? errorId : undefined}
+    >
+      <div className="grid gap-2 md:grid-cols-2" data-scope-departments>
+        {departments.map((department) => {
+          const checked = selected.includes(department.id)
+          return (
+            <label
+              key={department.id}
+              className="flex min-h-12 items-center gap-3 rounded-md border p-3 hover:bg-muted/30"
+            >
+              <Checkbox
+                data-scope-department-id={department.id}
+                checked={checked}
+                disabled={
+                  disabled ||
+                  readonly ||
+                  (department.status !== "active" && !checked)
+                }
+                onCheckedChange={(next) =>
+                  onChange(
+                    next === true
+                      ? [...new Set([...selected, department.id])]
+                      : selected.filter((id) => id !== department.id)
+                  )
+                }
+              />
+              <span className="min-w-0 flex-1 text-sm break-words">
+                {department.name}
+              </span>
+              {department.status !== "active" && (
+                <Badge variant="destructive">{t("disable")}</Badge>
+              )}
+            </label>
+          )
+        })}
+      </div>
+      {error && (
+        <p id={errorId} className="mt-1 text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
 
 interface DirectoryOption {
   id: string
@@ -1333,33 +1494,81 @@ function roleWorkspaceView(value: string | null): RoleWorkspaceView {
   return value === "assignments" || value === "scope" ? value : "permissions"
 }
 
+function RoleExpiryField({
+  value,
+  onChange,
+  disabled,
+  readonly,
+  labelId,
+  error,
+  errorId,
+}: FieldRendererProps) {
+  return (
+    <div>
+      <Input
+        type="datetime-local"
+        className="h-8 w-auto text-xs"
+        aria-labelledby={labelId}
+        aria-describedby={error ? errorId : undefined}
+        aria-invalid={Boolean(error)}
+        value={typeof value === "string" ? localInputValue(value) : ""}
+        disabled={disabled || readonly}
+        onChange={(event) => {
+          const local = event.target.value
+          const instant = new Date(local)
+          onChange(
+            !local
+              ? undefined
+              : Number.isNaN(instant.getTime())
+                ? local
+                : instant.toISOString()
+          )
+        }}
+      />
+      {error && (
+        <p id={errorId} className="mt-1 text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function RoleMemberEnd({
   end,
-  disabled,
+  roleID,
+  principalID,
+  busy,
+  readonly,
   onChange,
 }: {
   end: string | null
-  disabled: boolean
-  onChange: (value: string | null) => void
+  roleID: string
+  principalID: string
+  busy: boolean
+  readonly: boolean
+  onChange: (value: string | null) => Promise<void>
 }) {
   const t = useTranslations("iam")
-  const [draft, setDraft] = useState(() => localInputValue(end))
   const [editing, setEditing] = useState(false)
-
+  const route = useMemo(
+    () =>
+      editing && !readonly
+        ? apiRoute("put", "/roles/{role_id}/members/{principal_id}", {
+            path: { role_id: roleID, principal_id: principalID },
+          })
+        : null,
+    [editing, readonly, roleID, principalID]
+  )
+  const metadata = useRequestContract(route)
   if (!editing)
     return (
       <button
         type="button"
         className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-2 hover:underline"
         data-role-member-end={end ?? ""}
-        disabled={disabled}
-        onClick={(event) => {
-          event.preventDefault()
-          // The draft is taken when the editor opens, which is the only moment it
-          // can disagree with what the service holds.
-          setDraft(localInputValue(end))
-          setEditing(true)
-        }}
+        disabled={busy || readonly}
+        onClick={() => setEditing(true)}
       >
         <CalendarClock size={13} />
         {end
@@ -1367,43 +1576,53 @@ function RoleMemberEnd({
           : t("roleMemberNoEnd")}
       </button>
     )
-
   return (
-    <span
-      className="mt-2 flex flex-wrap items-center gap-2"
-      onClick={(event) => event.preventDefault()}
-    >
-      <Input
-        type="datetime-local"
-        className="h-8 w-auto text-xs"
-        value={draft}
-        disabled={disabled}
-        onChange={(event) => setDraft(event.target.value)}
-      />
-      <Button
-        type="button"
-        size="sm"
-        variant="secondary"
-        disabled={disabled}
-        onClick={() => {
-          setEditing(false)
-          onChange(draft ? new Date(draft).toISOString() : null)
+    <div className="mt-2" data-role-member-end-editor>
+      {metadata.failed && (
+        <Button variant="outline" onClick={metadata.retry}>
+          {t("retryNow")}
+        </Button>
+      )}
+      <AutoForm
+        mode="edit"
+        readonly={readonly}
+        contract={metadata.contract}
+        initialData={{ expires_at: end ?? undefined }}
+        fields={{
+          expires_at: {
+            name: t("roleMemberUntil"),
+            type: "custom",
+            component: RoleExpiryField,
+            disabled: busy,
+            col: 2,
+          },
         }}
-      >
-        {t("roleMemberEndSave")}
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        onClick={() => {
-          setDraft(localInputValue(end))
+        onSubmit={async (values) => {
+          await onChange((values.expires_at as string | undefined) ?? null)
           setEditing(false)
         }}
       >
-        {t("cancel")}
-      </Button>
-    </span>
+        <div className="flex flex-wrap gap-2 md:col-span-2">
+          <Button
+            type="submit"
+            size="sm"
+            variant="secondary"
+            disabled={busy || readonly || !metadata.contract}
+          >
+            {t("roleMemberEndSave")}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => setEditing(false)}
+          >
+            {t("cancel")}
+          </Button>
+        </div>
+      </AutoForm>
+    </div>
   )
 }
 
@@ -1470,39 +1689,63 @@ function DirectoryBindingsSection({
           {t("noAssignableItems")}
         </p>
       ) : (
-        <div className="grid gap-2 md:grid-cols-2">
-          {items.map((item) => {
-            const checked = boundIDs.includes(item.id)
-            return (
-              <label
-                key={item.id}
-                className="flex min-h-14 items-center gap-3 rounded-md border p-3 hover:bg-muted/30"
-              >
-                <Checkbox
-                  data-assignee-type={kind}
-                  data-assignee-id={item.id}
-                  aria-label={`${title} ${item.name}`}
-                  checked={checked}
-                  disabled={busy || (item.status !== "active" && !checked)}
-                  onCheckedChange={(value) =>
-                    onToggle(kind, item.id, value === true)
-                  }
-                />
-                <span className="min-w-0 flex-1">
-                  <strong className="block text-sm break-words">
-                    {item.name}
-                  </strong>
-                  <small className="mt-1 block text-xs break-words text-muted-foreground">
+        <AutoTable
+          data={items}
+          rowKey="id"
+          columns={[
+            {
+              field: "assignment",
+              type: "custom",
+              name: title,
+              width: "100px",
+              render: (_value, item) => (
+                <label className="inline-flex min-h-11 min-w-11 items-center justify-center">
+                  <Checkbox
+                    data-assignee-type={kind}
+                    data-assignee-id={item.id}
+                    aria-label={`${title} ${item.name}`}
+                    checked={boundIDs.includes(item.id)}
+                    disabled={
+                      busy ||
+                      (item.status !== "active" && !boundIDs.includes(item.id))
+                    }
+                    onCheckedChange={(value) =>
+                      onToggle(kind, item.id, value === true)
+                    }
+                  />
+                </label>
+              ),
+            },
+            {
+              field: "name",
+              type: "custom",
+              name: t("name"),
+              sortable: true,
+              render: (_value, item) => (
+                <div className="min-w-40 break-words whitespace-normal">
+                  <strong className="block text-sm">{item.name}</strong>
+                  <small className="mt-1 block text-xs text-muted-foreground">
                     {item.detail}
                   </small>
-                </span>
-                {item.status !== "active" && (
-                  <Badge variant="destructive">{t("disable")}</Badge>
-                )}
-              </label>
-            )
-          })}
-        </div>
+                </div>
+              ),
+            },
+            {
+              field: "status",
+              type: "custom",
+              name: t("status"),
+              render: (_value, item) => (
+                <Badge
+                  variant={
+                    item.status === "active" ? "secondary" : "destructive"
+                  }
+                >
+                  {item.status === "active" ? t("active") : t("disable")}
+                </Badge>
+              ),
+            },
+          ]}
+        />
       )}
     </section>
   )

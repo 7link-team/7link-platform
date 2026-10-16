@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"testing"
 
+	"7link.com/platform/pkg/i18n"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -155,4 +156,29 @@ func TestReportCauseToleratesANilContext(t *testing.T) {
 	ReportCause(nil, http.StatusInternalServerError, errors.New("boom"))
 	require.Len(t, logs.records, 1)
 	assert.Equal(t, slog.LevelError, logs.records[0].Level)
+}
+
+func TestCachedErrorPreservesFirstEnvelopeAndExactNumbers(t *testing.T) {
+	initI18n(t)
+	ctx := i18n.WithLocale(t.Context(), "zh-CN")
+	original := ErrStatus(ctx, http.StatusUnprocessableEntity, 127044, InvalidArgument, map[string]any{"amount": int64(9007199254740993)})
+	body, err := MarshalEnvelope(ctx, original)
+	require.NoError(t, err)
+	restored, err := RestoreError(http.StatusUnprocessableEntity, body)
+	require.NoError(t, err)
+	replay, err := MarshalEnvelope(i18n.WithLocale(t.Context(), "en-US"), restored)
+	require.NoError(t, err)
+	require.JSONEq(t, string(body), string(replay))
+	require.Contains(t, string(replay), "9007199254740993")
+	require.Equal(t, http.StatusUnprocessableEntity, restored.GetStatus())
+	for _, body := range []string{`null`, `{}`, `{"code":0,"message":"invalid"}`, `{"code":1,"message":""}`, `{"code":1,"message":"invalid"} {}`, `invalid`} {
+		_, err := RestoreError(http.StatusBadRequest, []byte(body))
+		require.Error(t, err)
+	}
+	_, err = RestoreError(http.StatusCreated, []byte(`{}`))
+	require.Error(t, err)
+	_, err = MarshalEnvelope(ctx, map[string]string{"message": "fake"})
+	require.Error(t, err)
+	_, err = MarshalEnvelope(ctx, OK(ctx, make(chan int)).Body)
+	require.Error(t, err)
 }

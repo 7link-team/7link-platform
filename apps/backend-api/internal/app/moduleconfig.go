@@ -16,6 +16,7 @@ import (
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
 	"7link.com/platform/internal/infra/deployment"
+	"7link.com/platform/internal/infra/jobs"
 	metrics "7link.com/platform/internal/infra/metrics"
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/internal/infra/pprof"
@@ -194,4 +195,13 @@ func iamFederationConfig(c AppConfig) federation.Config {
 
 func iamActivationConfig(c AppConfig) module.Config {
 	return module.Config{Enabled: c.Authn.Enabled}
+}
+
+func jobsConfig(c AppConfig) jobs.Config {
+	return jobs.Config{
+		WorkersEnabled: &c.Jobs.WorkersEnabled, SchedulerEnabled: &c.Jobs.SchedulerEnabled,
+		Queues: c.Jobs.Queues, PollInterval: c.Jobs.PollInterval, ClaimBatch: c.Jobs.ClaimBatch,
+		Lease: c.Jobs.Lease, MaxRunningPerTenant: c.Jobs.MaxRunningPerTenant,
+		MaxPendingPerTenant: c.Jobs.MaxPendingPerTenant, DrainTimeout: c.Jobs.DrainTimeout,
+	}
 }

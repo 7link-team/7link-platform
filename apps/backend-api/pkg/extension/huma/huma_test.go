@@ -119,3 +119,19 @@ func routeStatus(handler http.Handler, target string) int {
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
 	return response.Code
 }
+
+func TestValidationSchemaInstalledBySharedConfiguration(t *testing.T) {
+	api := New(chi.NewRouter(), DefaultConfig("test", "dev"))
+	huma.Register(api, huma.Operation{Method: http.MethodPost, Path: "/validation", OperationID: "validation"},
+		func(context.Context, *struct {
+			Body struct {
+				Name string `json:"name" minLength:"3"`
+			}
+		}) (*struct{}, error) { return &struct{}{}, nil })
+	response := api.OpenAPI().Paths["/validation"].Post.Responses["422"]
+	if assert.NotNil(t, response) {
+		schema := response.Content["application/json"].Schema
+		assert.Len(t, schema.AnyOf, 2)
+		assert.Contains(t, schema.AnyOf[1].Ref, "ValidationError")
+	}
+}

@@ -298,6 +298,14 @@ func requestProperty(t *testing.T, spec *huma.OpenAPI, operation *huma.Operation
 
 func TestCoreOpenAPIUsesOneErrorEnvelopeAndDeclaresDomainStatuses(t *testing.T) {
 	spec := declarationAPI(t).OpenAPI()
+	validationEnvelope := spec.Components.Schemas.Map()["EnvelopeValidationErrorData"]
+	require.NotNil(t, validationEnvelope)
+	assert.Len(t, validationEnvelope.Properties, 4, "validation uses the same code/message/meta/data envelope")
+	for _, field := range []string{"code", "message", "meta", "data"} {
+		assert.Contains(t, validationEnvelope.Properties, field)
+	}
+	assert.Equal(t, "#/components/schemas/ValidationErrorData", validationEnvelope.Properties["data"].Ref)
+
 	for path, item := range spec.Paths {
 		for method, operation := range pathOperations(item) {
 			if operation == nil {
@@ -309,7 +317,14 @@ func TestCoreOpenAPIUsesOneErrorEnvelopeAndDeclaresDomainStatuses(t *testing.T) 
 				}
 				media := response.Content["application/json"]
 				if assert.NotNil(t, media, method+" "+path+" "+status) && assert.NotNil(t, media.Schema) {
-					assert.Equal(t, "#/components/schemas/ErrorEnvelope", media.Schema.Ref, method+" "+path+" "+status)
+					if status == "422" {
+						if assert.Len(t, media.Schema.AnyOf, 2, method+" "+path+" "+status) {
+							assert.Equal(t, "#/components/schemas/ErrorEnvelope", media.Schema.AnyOf[0].Ref)
+							assert.Equal(t, "#/components/schemas/EnvelopeValidationErrorData", media.Schema.AnyOf[1].Ref)
+						}
+					} else {
+						assert.Equal(t, "#/components/schemas/ErrorEnvelope", media.Schema.Ref, method+" "+path+" "+status)
+					}
 				}
 			}
 		}
@@ -367,5 +382,31 @@ func pathOperations(item *huma.PathItem) map[string]*huma.Operation {
 	return map[string]*huma.Operation{
 		http.MethodGet: item.Get, http.MethodPost: item.Post, http.MethodPut: item.Put,
 		http.MethodPatch: item.Patch, http.MethodDelete: item.Delete,
+	}
+}
+
+func TestRoleRequestSchemasPreserveScopeSpecificDescriptionLimits(t *testing.T) {
+	spec := declarationAPI(t).OpenAPI()
+	for _, test := range []struct {
+		path    string
+		maximum int
+	}{
+		{"/tenants/{tenant_id}/roles", 4096},
+		{"/operating-platforms/{platform_id}/roles", 1024},
+		{"/system/roles", 4096},
+	} {
+		t.Run(test.path, func(t *testing.T) {
+			item := spec.Paths[test.path]
+			require.NotNil(t, item)
+			schema := item.Post.RequestBody.Content["application/json"].Schema
+			if schema.Ref != "" {
+				schema = spec.Components.Schemas.Map()[strings.TrimPrefix(schema.Ref, "#/components/schemas/")]
+			}
+			require.NotNil(t, schema)
+			require.NotNil(t, schema.Properties["description"])
+			require.NotNil(t, schema.Properties["description"].MaxLength)
+			assert.Equal(t, test.maximum, *schema.Properties["description"].MaxLength)
+			assert.Contains(t, schema.Required, "name")
+		})
 	}
 }

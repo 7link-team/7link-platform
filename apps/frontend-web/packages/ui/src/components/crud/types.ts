@@ -6,8 +6,10 @@ import type {
   FilterSyntax,
   FilterValue,
   ListResult,
+  ListQuery,
   SortDir,
 } from "@workspace/ui/lib/api-client"
+import type { OperationRequestContract } from "../auto-form/contract"
 import type { FormConfig } from "../auto-form/types"
 import type { StickyConfig } from "../table-sticky"
 
@@ -18,6 +20,8 @@ export type Row = Record<string, unknown>
  * equivalent of the legacy admin's `factory` object passed to `CommonForm.vue`.
  */
 export interface FormFactory {
+  /** Operation metadata; null blocks writes until metadata is available. */
+  contract?: OperationRequestContract | null
   /** Returns the form field definition (AutoForm config). */
   getFormDef: () => FormConfig
   /** Fetches one entity by id (already unwrapped to the entity object). */
@@ -32,7 +36,7 @@ export interface FormFactory {
     onSuccess?: () => void
     onError?: (error: unknown) => void
   }
-  /** When false, hides the submit/edit button (read-only resource). */
+  /** When false, prevents editing and submission as well as hiding actions. */
   editable?: boolean
 }
 
@@ -63,9 +67,12 @@ export interface ActionDef {
 
 export interface TableOptions {
   url: string
+  /** Existing application transport; returns an already normalized page. */
+  fetch?: (query: ListQuery) => Promise<ListResult<Row>>
   columns: ColumnDef[]
   actions?: ActionDef[]
   onclick?: (row: Row) => void
+  rowClickable?: (row: Row) => boolean
   /** Adapter override; defaults to the api-client's adaptList (handles both envelope shapes). */
   request?: (env: ApiEnvelope) => ListResult<Row>
   /** Static filter merged into every request. */

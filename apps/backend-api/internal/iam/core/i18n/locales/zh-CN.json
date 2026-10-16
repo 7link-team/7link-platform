@@ -1,4 +1,5 @@
 {
+  "entity_type_reserved": "此实体类型由业务模块管理，请前往对应业务页面操作。",
   "menu_system_organization": "组织",
   "menu_system_access": "访问控制",
   "menu_system_audit": "审计",

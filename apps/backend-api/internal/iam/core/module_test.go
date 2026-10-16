@@ -172,6 +172,14 @@ func TestModulePublishesTheSameLiveAuthorizationEvaluator(t *testing.T) {
 	require.NoError(t, services.Seal())
 	evaluator, err := module.Resolve[AuthorizationEvaluator](services)
 	require.NoError(t, err)
+	seeder, err := module.Resolve[RoleSeeder](services)
+	require.NoError(t, err)
+	require.NotNil(t, seeder.EnsureRoleOn)
+	require.NotNil(t, seeder.GrantPermissionOn)
+	require.NotNil(t, seeder.GrantConditionalPermissionOn)
+	require.NotNil(t, seeder.SeedAdministratorMembersOn)
+	_, err = seeder.EnsureRoleOn(t.Context(), nil, tenantID, "lead", "Lead", "")
+	require.ErrorIs(t, err, ErrUnavailable)
 	resolveEntityOwner, err := module.Resolve[EntityOwnerResolver](services)
 	require.NoError(t, err)
 	_, _, err = resolveEntityOwner(t.Context(), entity.ID)
@@ -336,6 +344,7 @@ func TestModuleReportsEveryDuplicateCapabilityByName(t *testing.T) {
 		"provide IAM transaction system authorization":         duplicateCapability[PlatformPermissionOn](t, published),
 		"provide IAM entity owner resolver":                    duplicateCapability[EntityOwnerResolver](t, published),
 		"provide IAM transaction tenant authorization":         duplicateCapability[TenantConstraintOn](t, published),
+		"provide IAM authorization explanation":                duplicateCapability[AuthorizationExplanation](t, published),
 		"provide IAM member department reader":                 duplicateCapability[MemberDepartmentReader](t, published),
 		"provide IAM member tenant resolver":                   duplicateCapability[MemberTenantResolver](t, published),
 		"provide IAM directory authorization source connector": duplicateCapability[DirectoryAuthorizationSourceConnector](t, published),
@@ -349,4 +358,29 @@ func TestModuleReportsEveryDuplicateCapabilityByName(t *testing.T) {
 	}
 	duplicate := duplicateCapability[PrincipalPlatformAccessGuard](t, published)
 	require.ErrorIs(t, instance.ProvideServices(duplicate), module.ErrServiceDuplicate)
+}
+
+func TestModuleInjectsReservedEntityTypes(t *testing.T) {
+	for _, kinds := range [][]string{{"project"}, {"bad type"}} {
+		t.Run(kinds[0], func(t *testing.T) {
+			h := newCoreServiceHarness(t)
+			instance := NewModule(h.runtime, enabledModuleConfig())
+			services := module.NewServices()
+			require.NoError(t, instance.ProvideServices(services))
+			require.NoError(t, module.Provide[guid.Source](services, h.repository.ids))
+			require.NoError(t, module.Provide[audit.Appender](services, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }))
+			require.NoError(t, module.Provide[authz.TokenVerifier](services, httpTokenVerifier{principalID: 11}))
+			require.NoError(t, module.Provide[EntityTypeReservations](services, func() []string { return kinds }))
+			require.NoError(t, services.Seal())
+			err := instance.InjectServices(services)
+			if kinds[0] == "bad type" {
+				require.ErrorIs(t, err, ErrInvalidArgument)
+				return
+			}
+			require.NoError(t, err)
+			kinds[0] = "client"
+			require.True(t, instance.service.entityTypeReserved("project"), "declarations must be snapshotted")
+			require.False(t, instance.service.entityTypeReserved("client"))
+		})
+	}
 }

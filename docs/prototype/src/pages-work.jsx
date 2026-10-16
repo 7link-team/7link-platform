@@ -371,37 +371,39 @@ export function WorkList({ params, openNew, projectId, toast, viewPath, workKind
         title={workKind === "BUG" ? "缺陷" : "任务"}
         subtitle={viewPath === "/collaboration" ? "按当前项目范围查看任务；每项任务保留原项目归属。" : "计划、执行、验收与交接，始终是同一件工作。"}
       >
-        <Button variant="primary" icon="Plus" onClick={openNew}>
-          {workKind === "BUG" ? "发起缺陷" : "发起任务"}
-        </Button>
-      </PageHead>
-      <div className="toolbar">
-        {view !== "list" && <><Field label="搜索任务" value={query} onChange={setQuery} />{statusFilter}</>}
-        <div className="grow" />
-        <div className="segmented">
-          <Link
-            to={viewLink("list")}
-            className={view === "list" ? "selected" : ""}
-          >
-            <Icon name="List" />
-            列表
-          </Link>
-          <Link
-            to={viewLink("board")}
-            className={view === "board" ? "selected" : ""}
-          >
-            <Icon name="Columns3" />
-            看板
-          </Link>
-          <Link
-            to={viewLink("calendar")}
-            className={view === "calendar" ? "selected" : ""}
-          >
-            <Icon name="CalendarDays" />
-            日历
-          </Link>
+        <div className="work-view-actions">
+          <div className="segmented">
+            <Link
+              to={viewLink("list")}
+              className={view === "list" ? "selected" : ""}
+            >
+              <Icon name="List" />
+              列表
+            </Link>
+            <Link
+              to={viewLink("board")}
+              className={view === "board" ? "selected" : ""}
+            >
+              <Icon name="Columns3" />
+              看板
+            </Link>
+            <Link
+              to={viewLink("calendar")}
+              className={view === "calendar" ? "selected" : ""}
+            >
+              <Icon name="CalendarDays" />
+              日历
+            </Link>
+          </div>
+          <Button variant="primary" icon="Plus" onClick={openNew}>
+            {workKind === "BUG" ? "发起缺陷" : "发起任务"}
+          </Button>
         </div>
-      </div>
+      </PageHead>
+      {view !== "list" && <div className="toolbar">
+        <Field label="搜索任务" value={query} onChange={setQuery} />
+        {statusFilter}
+      </div>}
       {view === "calendar" ? (
         <WorkCalendar work={work} toast={toast} projectId={projectId} />
       ) : view === "board" ? (

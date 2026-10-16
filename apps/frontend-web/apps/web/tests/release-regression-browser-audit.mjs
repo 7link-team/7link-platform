@@ -1158,7 +1158,7 @@ try {
         }
         state.permissions = ["role_view", "role_update", "dept_view"]
         await page.goto("/admin/t1/roles?role=scope-role&view=scope")
-        const scope = page.locator("#role-data-scope")
+        const scope = page.locator("#role-data-scope-form [role=combobox]")
         await scope.waitFor()
         state.delayRoleScope = true
         const delayed = new Promise((resolve) => {
@@ -1209,7 +1209,7 @@ try {
       }
       state.permissions = ["role_view", "role_update", "dept_view"]
       await page.goto("/admin/t1/roles?role=scope-role&view=scope")
-      const scope = page.locator("#role-data-scope")
+      const scope = page.locator("#role-data-scope-form [role=combobox]")
       await scope.waitFor()
       state.roleScope = {
         role_id: "scope-role",
@@ -1221,7 +1221,7 @@ try {
       )
       await page.waitForFunction(
         () =>
-          document.querySelector("#role-data-scope")?.textContent === "Own data"
+          document.querySelector("#role-data-scope-form [role=combobox]")?.textContent === "Own data"
       )
       assert.equal(await scope.innerText(), "Own data")
     }

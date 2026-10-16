@@ -1,3 +1,4 @@
+import { useWorkspaceLayout } from "../../lib/page-layout"
 import { useEffect, useState } from "react"
 import {
   NavLink,
@@ -37,6 +38,7 @@ import { menuLabel, firstEffectiveMenuPath } from "../../lib/navigation"
 import type { ConsoleOutletContext } from "../../lib/permissions"
 
 export default function AdministrationLayout() {
+  const workspaceLayout = useWorkspaceLayout()
   const t = useTranslations("iam")
   const locale = useLocale()
   const { session, status } = useAuth()
@@ -258,7 +260,9 @@ export default function AdministrationLayout() {
         <aside className="hidden w-64 shrink-0 overflow-y-auto border-e bg-sidebar md:block">
           {navigation}
         </aside>
-        <main className="min-w-0 flex-1 overflow-auto p-4 sm:p-6">
+        <main
+          className={`min-h-0 min-w-0 flex-1 overflow-auto p-4 sm:p-6 ${workspaceLayout ? "lg:flex lg:flex-col lg:overflow-hidden" : ""}`}
+        >
           {error && <Alert>{error}</Alert>}
           {currentCatalog ? (
             <Outlet context={context} key={platformID} />

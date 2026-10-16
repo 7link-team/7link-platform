@@ -54,6 +54,21 @@ type TenantConstraint func(
 // PlatformPermissionOn evaluates global authority in the caller's active transaction.
 type PlatformPermissionOn func(context.Context, *gorm.DB, string, guid.ID) (bool, error)
 
+// AuthorizationExplanationRequest selects one IAM authorization boundary.
+// EntityID zero means tenant scope; a business resource requires its owning
+// entity. All resource facts remain supplied through the trusted policy context.
+type AuthorizationExplanationRequest struct {
+	TenantID, EntityID, PrincipalID guid.ID
+	Permission                      string
+	ResourceType                    string
+	ResourceID                      guid.ID
+}
+
+// AuthorizationExplanation reads grant provenance using the same evaluator as
+// enforcement. A non-nil transaction fences policy changes until it ends; nil
+// supports previews. Callers must still apply their domain authority rules.
+type AuthorizationExplanation func(context.Context, *gorm.DB, AuthorizationExplanationRequest) (authz.Explanation, error)
+
 // AuthorizationSubjects is the current IAM identity set a business module may
 // match against its own ACL. IDs remain tenant-scoped and policy-revision fenced.
 type AuthorizationSubjects struct {

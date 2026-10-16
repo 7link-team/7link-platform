@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { spawnSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { renderToStaticMarkup } from "react-dom/server"
-import { MemoryRouter, Route, Routes } from "react-router"
+import { createMemoryRouter, RouterProvider } from "react-router"
 import { IntlAppProvider } from "@workspace/ui/i18n/intl-provider"
 import { loadMessages } from "../lib/i18n"
 import { AuthContext, type AuthContextValue } from "../components/auth"
@@ -33,22 +33,42 @@ async function renderShell(
   path = "/"
 ): Promise<{ html: string; openMainNav: string }> {
   const messages = await loadMessages("zh-CN")
-  const html = renderToStaticMarkup(
-    <MemoryRouter initialEntries={[path]}>
-      <IntlAppProvider initialLocale="zh-CN" initialMessages={messages}>
-        <AuthContext.Provider value={auth}>
-          <Routes>
-            <Route path="/" element={<AppLayout />} />
-            <Route path="/admin/:tenantID/users" element={<AppLayout />} />
-          </Routes>
-        </AuthContext.Provider>
-      </IntlAppProvider>
-    </MemoryRouter>
+  const router = createMemoryRouter(
+    [
+      { path: "/", element: <AppLayout /> },
+      { path: "/admin/:tenantID/users", element: <AppLayout /> },
+      {
+        path: "/admin/:tenantID/roles",
+        element: <AppLayout />,
+        handle: { layout: "workspace" },
+      },
+    ],
+    { initialEntries: [path] }
   )
-  return { html, openMainNav: (messages.iam as { openMainNav: string }).openMainNav }
+  const html = renderToStaticMarkup(
+    <IntlAppProvider initialLocale="zh-CN" initialMessages={messages}>
+      <AuthContext.Provider value={auth}>
+        <RouterProvider router={router} />
+      </AuthContext.Provider>
+    </IntlAppProvider>
+  )
+  router.dispose()
+  return {
+    html,
+    openMainNav: (messages.iam as { openMainNav: string }).openMainNav,
+  }
 }
 
 describe("AppLayout shell", () => {
+  it("bounds only routes that explicitly declare a desktop workspace", async () => {
+    const workspace = await renderShell("/admin/7/roles")
+    const document = await renderShell("/admin/7/users")
+    expect(workspace.html).toContain("lg:overflow-hidden")
+    expect(workspace.html).toContain("lg:h-full")
+    expect(document.html).not.toContain("lg:overflow-hidden")
+    expect(document.html).not.toContain("lg:h-full")
+  })
+
   it("opens the main navigation from a touch-sized button, not a bare trigger", async () => {
     const { html, openMainNav } = await renderShell()
     // The coarse-pointer rule in globals.css only grows a real Button, so the
@@ -84,10 +104,7 @@ describe("AppLayout shell", () => {
 // the service, and the shell renders here without one. What it pins is the
 // mechanism: re-introducing the platform listing in this file fails it.
 describe("workspace switcher tenant source", () => {
-  const source = readFileSync(
-    new URL("./layout.tsx", import.meta.url),
-    "utf8"
-  )
+  const source = readFileSync(new URL("./layout.tsx", import.meta.url), "utf8")
   it("offers the caller's own tenants and not the whole platform listing", () => {
     expect(source).toContain("iamApi.myTenants()")
     expect(source).not.toContain("iamApi.tenants(")
@@ -107,7 +124,9 @@ describe("workspace switcher tenant source", () => {
   // tenantStanding is what turns a failed lookup into no answer; reading the
   // lookup here directly is how a failure came to hide the tenant.
   it("reads the tenant standing through the rule that a failure withholds nothing", () => {
-    expect(source).toContain("tenantStanding(iamApi.myPermissions(tenantValue))")
+    expect(source).toContain(
+      "tenantStanding(iamApi.myPermissions(tenantValue))"
+    )
     expect(source).not.toContain("standing: false")
   })
   // A chosen tenant is addressed directly, and the tenant route decides which of

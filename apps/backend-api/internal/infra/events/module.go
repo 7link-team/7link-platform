@@ -1,0 +1,97 @@
+package events
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"time"
+
+	"7link.com/platform/internal/infra/events/query"
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/module"
+)
+
+type Module struct {
+	budgets sync.Map
+	names   query.TableNames
+	ids     guid.Source
+	mu      sync.RWMutex
+	types   map[string]TypeSpec
+	sealed  bool
+	now     func() time.Time
+}
+
+func NewModule(rt *appenv.Runtime) *Module {
+	return &Module{names: query.BindNames(rt.TablePrefix()), types: map[string]TypeSpec{}, now: func() time.Time { return time.Now().UTC() }}
+}
+func (*Module) ModuleName() string           { return Name }
+func (*Module) ModuleDependencies() []string { return []string{guid.Name} }
+func (m *Module) ProvideServices(services *module.Services) error {
+	if err := module.Provide[Publisher](services, m); err != nil {
+		return err
+	}
+	return module.Provide[Catalog](services, m)
+}
+func (m *Module) InjectServices(services *module.Services) error {
+	ids, err := module.Resolve[guid.Source](services)
+	if err != nil {
+		return err
+	}
+	m.ids = ids
+	return nil
+}
+func (m *Module) Initialize(context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.ids == nil {
+		return ErrUnavailable
+	}
+	m.sealed = true
+	return nil
+}
+
+// AddTypes atomically registers a module's event declarations. Duplicate names
+// are errors even if their schemas happen to match: one owner per event type.
+func (m *Module) AddTypes(owner string, specs ...TypeSpec) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.sealed {
+		return ErrCatalogSealed
+	}
+	if !kindPattern.MatchString(owner) {
+		return ErrInvalidEvent
+	}
+	pending := make(map[string]TypeSpec, len(specs))
+	for _, spec := range specs {
+		if !eventPattern.MatchString(spec.Name) || len(spec.Name) > 96 || !kindPattern.MatchString(spec.SubjectKind) || spec.SchemaVersion < 1 || spec.SchemaVersion > 32767 {
+			return ErrInvalidEvent
+		}
+		switch spec.Realtime {
+		case RealtimeNone, RealtimeSignal, RealtimeFull:
+		default:
+			return ErrInvalidEvent
+		}
+		if _, exists := m.types[spec.Name]; exists {
+			return fmt.Errorf("%w: duplicate %s", ErrInvalidEvent, spec.Name)
+		}
+		if _, exists := pending[spec.Name]; exists {
+			return fmt.Errorf("%w: duplicate %s", ErrInvalidEvent, spec.Name)
+		}
+		pending[spec.Name] = spec
+	}
+	for name, spec := range pending {
+		m.types[name] = spec
+	}
+	return nil
+}
+
+var (
+	_ module.Depender                = (*Module)(nil)
+	_ module.ServiceProvider         = (*Module)(nil)
+	_ module.ServiceInjector         = (*Module)(nil)
+	_ module.Initializer             = (*Module)(nil)
+	_ module.MigrationSourceProvider = (*Module)(nil)
+	_ Publisher                      = (*Module)(nil)
+	_ Catalog                        = (*Module)(nil)
+)

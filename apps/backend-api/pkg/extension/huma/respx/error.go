@@ -1,8 +1,12 @@
 package respx
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -21,11 +25,14 @@ type errorEnvelope struct {
 	// causes are the internal errors behind the response. They are never
 	// serialized; ReportCause logs them when the response is a server fault.
 	causes []error
+	// A replay already contains the first response's translated message.
+	replayed       bool
+	validationData bool
 
 	Code    int    `json:"code" doc:"the HTTP status code (1..999); business codes are 100000+"`
 	Message string `json:"message" doc:"human-readable error summary"`
 	Meta    Meta   `json:"meta" doc:"request metadata"`
-	Data    any    `json:"data" doc:"null on error, except a business failure that carries the detail the client needs to resolve it"`
+	Data    any    `json:"data" doc:"null on error, except structured request validation or business failure details"`
 }
 
 type errorDetail struct {
@@ -68,6 +75,26 @@ func ErrStatus(ctx context.Context, status, code int, key string, data any) erro
 		Meta:    metaOf(ctx, nil),
 		Data:    data,
 	}
+}
+
+// RestoreError reconstructs a cached error without changing its original
+// metadata, message or exact numeric detail values. Invalid cache data fails
+// closed rather than producing a malformed HTTP response.
+func RestoreError(status int, body []byte) (huma.StatusError, error) {
+	if status < http.StatusBadRequest || status > 599 {
+		return nil, fmt.Errorf("respx: invalid cached error status")
+	}
+	var envelope errorEnvelope
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&envelope); err != nil {
+		return nil, err
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF || envelope.Code <= 0 || envelope.Message == "" {
+		return nil, fmt.Errorf("respx: invalid cached error envelope")
+	}
+	envelope.status, envelope.replayed = status, true
+	return &envelope, nil
 }
 
 // IsStatusError reports whether err already chose its HTTP response: a huma

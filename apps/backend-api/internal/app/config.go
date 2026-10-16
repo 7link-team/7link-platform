@@ -7,6 +7,19 @@ import (
 	authnext "7link.com/platform/pkg/extension/authn"
 )
 
+// Jobs configures durable background workers and scheduling for this replica.
+type Jobs struct {
+	WorkersEnabled      bool           `mapstructure:"workers_enabled" default:"true" description:"execute queued background jobs on this replica"`
+	SchedulerEnabled    bool           `mapstructure:"scheduler_enabled" default:"true" description:"participate in background schedule leadership"`
+	Queues              map[string]int `mapstructure:"queues" group:"queues" mapkey:"<queue>" description:"worker concurrency per queue"`
+	PollInterval        time.Duration  `mapstructure:"poll_interval" default:"1s"`
+	ClaimBatch          int            `mapstructure:"claim_batch" default:"10"`
+	Lease               time.Duration  `mapstructure:"lease" default:"60s"`
+	MaxRunningPerTenant int            `mapstructure:"max_running_per_tenant" default:"4"`
+	MaxPendingPerTenant int            `mapstructure:"max_pending_per_tenant" default:"100000"`
+	DrainTimeout        time.Duration  `mapstructure:"drain_timeout" default:"15s"`
+}
+
 type AppConfig struct {
 	Name    string `mapstructure:"name" description:"application name" trim:"true" default:""`
 	Version string `mapstructure:"version" description:"application version" trim:"true"`
@@ -20,6 +33,7 @@ type AppConfig struct {
 	Pprof        Pprof            `mapstructure:"pprof" group:"pprof"`
 	API          API              `mapstructure:"api" group:"api"`
 	Telemetry    Telemetry        `mapstructure:"telemetry" group:"telemetry"`
+	Jobs         Jobs             `mapstructure:"jobs" group:"jobs"`
 	Audit        Audit            `mapstructure:"audit" group:"audit"`
 	Authn        IAMAuthn         `mapstructure:"authn" group:"authn"`
 	IAM          IAMCore          `mapstructure:"iam" group:"iam"`
@@ -395,6 +409,15 @@ func validateRuntimeConfig(config AppConfig) error {
 	}
 	if config.Shutdown.Graceful && config.Shutdown.Timeout > 0 && config.Shutdown.DrainDelay >= config.Shutdown.Timeout {
 		return fmt.Errorf("shutdown.drain_delay must be less than shutdown.timeout")
+	}
+	if config.Jobs.WorkersEnabled && config.Shutdown.Graceful && config.Shutdown.Timeout > 0 {
+		drain := config.Jobs.DrainTimeout
+		if drain == 0 {
+			drain = 15 * time.Second
+		}
+		if drain >= config.Shutdown.Timeout-config.Shutdown.DrainDelay {
+			return fmt.Errorf("jobs.drain_timeout must be less than shutdown.timeout minus shutdown.drain_delay")
+		}
 	}
 	if config.HttpServer.ReadHeaderTimeout < 0 {
 		return fmt.Errorf("http_server.read_header_timeout cannot be negative")

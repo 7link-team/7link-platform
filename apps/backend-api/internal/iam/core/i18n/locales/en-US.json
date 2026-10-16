@@ -1,4 +1,5 @@
 {
+  "entity_type_reserved": "This entity type is managed by its business module. Use the corresponding business page.",
   "menu_system_organization": "Organization",
   "menu_system_access": "Access",
   "menu_system_audit": "Audit",

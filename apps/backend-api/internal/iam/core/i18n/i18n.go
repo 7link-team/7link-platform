@@ -33,6 +33,7 @@ const (
 	MemberDepartmentNotFound           = Namespace + ".member_department_not_found"
 	MemberDepartmentInactive           = Namespace + ".member_department_inactive"
 	EntityHasRelationships             = Namespace + ".entity_has_relationships"
+	EntityTypeReserved                 = Namespace + ".entity_type_reserved"
 	EntityHasFiles                     = Namespace + ".entity_has_files"
 	InvalidRelationship                = Namespace + ".invalid_relationship"
 	RelationshipSubjectNotFound        = Namespace + ".relationship_subject_not_found"

@@ -234,6 +234,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/entities/{entity_id}/project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a project */
+        get: operations["project.get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/entities/{entity_id}/role-bindings": {
         parameters: {
             query?: never;
@@ -1182,7 +1199,8 @@ export interface paths {
         /** Create an operating platform role */
         post: operations["iam-platform-role-create"];
         delete?: never;
-        options?: never;
+        /** Read an operation request contract */
+        options: operations["request-contract:/operating-platforms/{platform_id}/roles"];
         head?: never;
         patch?: never;
         trace?: never;
@@ -2046,7 +2064,8 @@ export interface paths {
         post?: never;
         /** Delete a tenant role */
         delete: operations["iam-delete-role"];
-        options?: never;
+        /** Read an operation request contract */
+        options: operations["request-contract:/roles/{role_id}"];
         head?: never;
         /** Update a tenant role */
         patch: operations["iam-update-role"];
@@ -2065,7 +2084,8 @@ export interface paths {
         put: operations["iam-set-role-data-scope"];
         post?: never;
         delete?: never;
-        options?: never;
+        /** Read an operation request contract */
+        options: operations["request-contract:/roles/{role_id}/data-scope"];
         head?: never;
         patch?: never;
         trace?: never;
@@ -2152,7 +2172,8 @@ export interface paths {
         post?: never;
         /** Remove a local principal from a role */
         delete: operations["iam-remove-role-member"];
-        options?: never;
+        /** Read an operation request contract */
+        options: operations["request-contract:/roles/{role_id}/members/{principal_id}"];
         head?: never;
         patch?: never;
         trace?: never;
@@ -3470,7 +3491,8 @@ export interface paths {
         /** Create a system role */
         post: operations["iam-system-role-create"];
         delete?: never;
-        options?: never;
+        /** Read an operation request contract */
+        options: operations["request-contract:/system/roles"];
         head?: never;
         patch?: never;
         trace?: never;
@@ -3488,7 +3510,8 @@ export interface paths {
         post?: never;
         /** Delete a system role */
         delete: operations["iam-system-role-delete"];
-        options?: never;
+        /** Read an operation request contract */
+        options: operations["request-contract:/system/roles/{role_id}"];
         head?: never;
         /** Update a system role */
         patch: operations["iam-system-role-update"];
@@ -4609,6 +4632,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenant_id}/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a project */
+        post: operations["project.create"];
+        delete?: never;
+        /** Read an operation request contract */
+        options: operations["request-contract:/tenants/{tenant_id}/projects"];
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenant_id}/requestable-roles": {
         parameters: {
             query?: never;
@@ -4675,7 +4716,8 @@ export interface paths {
         /** Create a tenant role */
         post: operations["iam-create-role"];
         delete?: never;
-        options?: never;
+        /** Read an operation request contract */
+        options: operations["request-contract:/tenants/{tenant_id}/roles"];
         head?: never;
         patch?: never;
         trace?: never;
@@ -5632,10 +5674,6 @@ export interface components {
             due_at: string;
             name: string;
         };
-        CreateRoleInputBody: {
-            description?: string;
-            name: string;
-        };
         CreateTenantInputBody: {
             name: string;
             owner_principal_id: string;
@@ -5863,7 +5901,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIEntity"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -5876,7 +5914,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIEntityRoleBinding"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -5889,7 +5927,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIMemberAuthorizationSnapshot"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -5902,7 +5940,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIMenu"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -5915,7 +5953,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIRelationship"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -5928,7 +5966,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIRole"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -5941,7 +5979,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIRoleDataScope"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -5954,7 +5992,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIRolePermissionGrant"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -5967,7 +6005,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APISystemMember"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -5980,7 +6018,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APISystemRole"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -5993,7 +6031,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APITenantMember"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6006,7 +6044,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["AccessRequest"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6019,7 +6057,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["AccessReview"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6032,7 +6070,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["AccessReviewItem"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6045,7 +6083,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["AccountViewCreated"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6058,7 +6096,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["AccountViewWorkspace"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6071,7 +6109,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Anchor"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6084,7 +6122,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ArchiveJob"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6097,7 +6135,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ArchiveObject"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6110,7 +6148,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ArchiveStatus"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6123,7 +6161,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["AuthenticationCapabilities"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6136,7 +6174,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["AuthorizationDecision"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6149,7 +6187,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Avatar"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6162,7 +6200,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["BrowserSession"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6175,7 +6213,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["CaptchaOutput"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6188,7 +6226,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["CheckData"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6201,7 +6239,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Client"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6214,7 +6252,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ClientCreateData"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6227,7 +6265,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ClientDeleteData"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6240,7 +6278,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ClientSecretData"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6253,7 +6291,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ClosureRequest"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6266,7 +6304,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ConsentRevokeData"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6279,7 +6317,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["CredentialSecret"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6292,7 +6330,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["DataConstraint"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6305,7 +6343,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["DeletedResource"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6318,7 +6356,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Department"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6331,7 +6369,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["DeploymentIdentity"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6344,7 +6382,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["DeviceRequest"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6357,7 +6395,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Directory"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6370,7 +6408,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Event"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6383,7 +6421,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ExchangeGrant"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6396,7 +6434,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Explanation"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6409,7 +6447,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["FieldConstraint"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6422,7 +6460,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["FileChildrenPage"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6435,7 +6473,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["FileEntryView"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6448,7 +6486,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["FilePage"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6461,7 +6499,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["FileTrashResult"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6474,7 +6512,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Governance"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6487,7 +6525,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Group"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6500,7 +6538,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["GroupMember"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6513,7 +6551,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: string | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6526,7 +6564,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["IdentityOperationLocation"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6539,7 +6577,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ImportReport"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6552,7 +6590,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Integrity"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6565,7 +6603,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["InvitationAcceptance"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6578,7 +6616,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["IssuedInvitation"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6591,7 +6629,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIEntity"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6604,7 +6642,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIEntityRoleBinding"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6617,7 +6655,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIMenu"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6630,7 +6668,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIRelationship"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6643,7 +6681,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIRole"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6656,7 +6694,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIRoleDirectoryBinding"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6669,7 +6707,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APIRolePermissionGrant"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6682,7 +6720,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APISystemAccountOwner"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6695,7 +6733,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APISystemMember"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6708,7 +6746,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APISystemRole"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6721,7 +6759,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["APITenantMember"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6734,7 +6772,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["AccessRequest"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6747,7 +6785,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["AccessReview"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6760,7 +6798,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["AccountWorkspace"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6773,7 +6811,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Action"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6786,7 +6824,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ArchiveJob"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6799,7 +6837,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Avatar"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6812,7 +6850,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["BrowserSession"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6825,7 +6863,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Client"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6838,7 +6876,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ClosureRequest"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6851,7 +6889,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ConnectorCatalogEntry"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6864,7 +6902,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Credential"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6877,7 +6915,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Delivery"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6890,7 +6928,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Department"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6903,7 +6941,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Directory"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6916,7 +6954,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Event"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6929,7 +6967,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ExchangeGrant"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6942,7 +6980,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Field"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6955,7 +6993,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["GrantedConsent"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6968,7 +7006,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Group"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6981,7 +7019,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["GroupMember"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -6994,7 +7032,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: (string | null)[] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7007,7 +7045,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Invitation"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7020,7 +7058,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["LinkableProvider"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7033,7 +7071,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ManagedFieldPolicy"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7046,7 +7084,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["MenuDeclaration"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7059,7 +7097,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["MenuItem"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7072,7 +7110,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["MyMembership"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7085,7 +7123,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Passkey"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7098,7 +7136,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["PersonalIdentityLink"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7111,7 +7149,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["PersonalTokenView"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7124,7 +7162,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["PlatformAdministratorView"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7137,7 +7175,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["PrincipalView"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7150,7 +7188,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Provider"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7163,7 +7201,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["RequestableRole"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7176,7 +7214,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["RoleMemberGrant"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7189,7 +7227,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["SAMLServiceProvider"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7202,7 +7240,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ScopeNode"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7215,7 +7253,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ServiceAccount"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7228,7 +7266,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ServiceAccountCredential"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7241,7 +7279,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: string[] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7254,7 +7292,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Subscription"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7267,7 +7305,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Target"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7280,7 +7318,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Tenant"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7293,7 +7331,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["View"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7306,7 +7344,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["LoginResult"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7319,7 +7357,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["LogoutData"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7332,7 +7370,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["MFAConfirmation"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7345,7 +7383,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["MFAEnrollment"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7358,7 +7396,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["MFAStatus"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7371,7 +7409,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ManagedFieldPolicy"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7384,7 +7422,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: {
                 [key: string]: boolean;
             };
@@ -7399,7 +7437,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: {
                 [key: string]: number;
             };
@@ -7414,7 +7452,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: {
                 [key: string]: string;
             };
@@ -7429,7 +7467,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["MeOutput"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7442,8 +7480,21 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["MutationResult"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeOperationContract: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error unless validation or business details are supplied */
+            data: components["schemas"]["OperationContract"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -7455,7 +7506,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["OperationResult"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7468,7 +7519,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Passkey"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7481,7 +7532,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["PasskeyAssertionOptions"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7494,7 +7545,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["PasskeyCreationOptions"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7507,7 +7558,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["PersonalTokenCreated"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7520,7 +7571,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["PersonalTokenPreparation"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7533,7 +7584,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["PlatformAdministratorView"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7546,7 +7597,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Principal"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7559,7 +7610,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["PrincipalLifecycle"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7572,7 +7623,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["PrincipalLifecycleStatus"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7585,8 +7636,34 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["PrincipalView"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeProjectCreateView: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error unless validation or business details are supplied */
+            data: components["schemas"]["ProjectCreateView"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeProjectDetailView: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error unless validation or business details are supplied */
+            data: components["schemas"]["ProjectDetailView"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -7598,7 +7675,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Provider"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7611,7 +7688,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["PushResult"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7624,7 +7701,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ReauthenticationMethods"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7637,7 +7714,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ReauthenticationOptions"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7650,7 +7727,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["RetentionPolicy"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7663,7 +7740,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["RevokedInvitation"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7676,7 +7753,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["SAMLKeyInfo"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7689,7 +7766,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["SAMLServiceProvider"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7702,7 +7779,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ServiceAccount"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7715,7 +7792,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ServiceAccountCredentialRevokeData"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7728,7 +7805,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ServiceAccountCredentialSecret"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7741,7 +7818,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["ServiceAccountDeleteData"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7754,7 +7831,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["StepUpOptions"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7767,7 +7844,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["StepUpResult"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7780,7 +7857,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Subscription"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7793,7 +7870,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Target"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7806,7 +7883,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["TargetSecret"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7819,7 +7896,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["Tenant"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7832,8 +7909,21 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["TenantRegistrationPolicy"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeValidationErrorData: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error unless validation or business details are supplied */
+            data: components["schemas"]["ValidationErrorData"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -7845,7 +7935,7 @@ export interface components {
              * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
              */
             code: number;
-            /** @description response payload; null on error */
+            /** @description response payload; null on error unless validation or business details are supplied */
             data: components["schemas"]["View"];
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -7858,7 +7948,7 @@ export interface components {
              * @description the HTTP status code (1..999); business codes are 100000+
              */
             code: number;
-            /** @description null on error, except a business failure that carries the detail the client needs to resolve it */
+            /** @description null on error, except structured request validation or business failure details */
             data: unknown;
             /** @description human-readable error summary */
             message: string;
@@ -8396,9 +8486,23 @@ export interface components {
                 [key: string]: string;
             };
         };
-        OperatingPlatformRoleInputBody: {
-            description?: string;
-            name: string;
+        OperationContract: {
+            issue_messages: {
+                [key: string]: components["schemas"]["ValidationMessage"];
+            };
+            locale: string;
+            messages: {
+                [key: string]: components["schemas"]["ValidationMessage"];
+            };
+            method: string;
+            operation_id: string;
+            parameters: unknown;
+            path: string;
+            request_body: unknown;
+            schemas: {
+                [key: string]: unknown;
+            };
+            version: string;
         };
         OperationResult: {
             /** Format: int64 */
@@ -8632,6 +8736,10 @@ export interface components {
              */
             version: number;
         };
+        PlatformRoleFields: {
+            description?: string;
+            name: string;
+        };
         Principal: {
             activation_required: boolean;
             avatar?: components["schemas"]["Avatar"];
@@ -8695,6 +8803,226 @@ export interface components {
             status: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        ProjectClientInput: {
+            entity_id?: string;
+            new_name?: string;
+        };
+        ProjectClientView: {
+            id: string | null;
+            name: string;
+        };
+        ProjectContactInput: {
+            /** @default true */
+            can_accept: boolean;
+            intake_contact_id: string;
+            /** @default true */
+            receives_deliveries: boolean;
+            /**
+             * @default CC
+             * @enum {string}
+             */
+            role: "PRIMARY" | "CC";
+        };
+        ProjectCreateBody: {
+            /** Format: int64 */
+            budget_cap_micros?: number;
+            /**
+             * Format: int64
+             * @default 80
+             */
+            budget_notify_pct: number;
+            client?: components["schemas"]["ProjectClientInput"];
+            code: string;
+            contacts?: components["schemas"]["ProjectContactInput"][] | null;
+            description?: string;
+            members?: components["schemas"]["ProjectMemberInput"][] | null;
+            name: string;
+            origin_intake_id?: string;
+            portal_settings?: components["schemas"]["ProjectPortalInput"];
+            repositories?: components["schemas"]["ProjectRepositoryInput"][] | null;
+            /** Format: date */
+            target_date?: string;
+        };
+        ProjectCreateView: {
+            channel_id: string | null;
+            client_entity_id: string | null;
+            entity: components["schemas"]["ProjectEntityView"];
+            project: components["schemas"]["ProjectView"];
+            role_bindings: components["schemas"]["ProjectRoleBindingView"][] | null;
+        };
+        ProjectDetailView: {
+            acceptance_policy: unknown;
+            /** Format: date-time */
+            archived_at: string | null;
+            blocked_kind: string | null;
+            blocked_reason: string | null;
+            /** Format: int64 */
+            budget_cap_micros: number | null;
+            /** Format: int64 */
+            budget_cap_version: number;
+            /** Format: int64 */
+            budget_notify_pct: number;
+            /** Format: int64 */
+            budget_spent_micros: number;
+            budget_state: string;
+            cancel_reason: string | null;
+            /** Format: date-time */
+            cancelled_at: string | null;
+            client: components["schemas"]["ProjectClientView"];
+            client_entity_id: string | null;
+            /** Format: date-time */
+            closed_at: string | null;
+            code: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by: string | null;
+            default_send_channel_id: string | null;
+            /** Format: date-time */
+            delivered_at: string | null;
+            description: string | null;
+            dispatch_policy: string;
+            dispatch_policy_explicit: boolean;
+            /** Format: int64 */
+            ensemble_max_branches: number;
+            health: string;
+            health_reasons: unknown;
+            /** Format: date-time */
+            health_refreshed_at: string | null;
+            holds: unknown;
+            lead_agent_id: string | null;
+            name: string;
+            /** Format: int64 */
+            next_delivery_seq: number;
+            origin_intake_id: string | null;
+            portal_settings: unknown;
+            project_id: string | null;
+            provisioning_issues: unknown;
+            stage: string;
+            /** Format: date-time */
+            stage_changed_at: string;
+            /** Format: date-time */
+            started_at: string | null;
+            target_date: string | null;
+            team_mode: string;
+            /** Format: date-time */
+            team_mode_changed_at: string | null;
+            tenant_id: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        ProjectEntityView: {
+            id: string | null;
+            parent_id: string | null;
+        };
+        ProjectMemberInput: {
+            principal_id: string;
+            role_key: string;
+        };
+        ProjectPortalInput: {
+            /**
+             * @default TEAM_ONLY
+             * @enum {string}
+             */
+            contributor_display: "TEAM_ONLY" | "ROLES";
+            /** @default true */
+            milestones_visible: boolean;
+            /** @default true */
+            show_ai_label: boolean;
+            /** @default true */
+            show_evidence_summary: boolean;
+            /** @default true */
+            show_release_notes: boolean;
+            /** @default true */
+            show_work_item_titles: boolean;
+        };
+        ProjectRepositoryInput: {
+            /** @default main */
+            default_branch: string;
+            /** @default false */
+            is_primary: boolean;
+            name: string;
+            /**
+             * @default [
+             *       "main"
+             *     ]
+             */
+            protected_branches: string[] | null;
+            remote_url: string;
+        };
+        ProjectRoleBindingView: {
+            /** Format: date-time */
+            created_at: string;
+            effect: string;
+            entity_id: string | null;
+            /** Format: date-time */
+            expires_at: string | null;
+            principal_id: string | null;
+            role_id: string | null;
+        };
+        ProjectView: {
+            acceptance_policy: unknown;
+            /** Format: date-time */
+            archived_at: string | null;
+            blocked_kind: string | null;
+            blocked_reason: string | null;
+            /** Format: int64 */
+            budget_cap_micros: number | null;
+            /** Format: int64 */
+            budget_cap_version: number;
+            /** Format: int64 */
+            budget_notify_pct: number;
+            /** Format: int64 */
+            budget_spent_micros: number;
+            budget_state: string;
+            cancel_reason: string | null;
+            /** Format: date-time */
+            cancelled_at: string | null;
+            client_entity_id: string | null;
+            /** Format: date-time */
+            closed_at: string | null;
+            code: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by: string | null;
+            default_send_channel_id: string | null;
+            /** Format: date-time */
+            delivered_at: string | null;
+            description: string | null;
+            dispatch_policy: string;
+            dispatch_policy_explicit: boolean;
+            /** Format: int64 */
+            ensemble_max_branches: number;
+            health: string;
+            health_reasons: unknown;
+            /** Format: date-time */
+            health_refreshed_at: string | null;
+            holds: unknown;
+            lead_agent_id: string | null;
+            /** Format: int64 */
+            next_delivery_seq: number;
+            origin_intake_id: string | null;
+            portal_settings: unknown;
+            project_id: string | null;
+            provisioning_issues: unknown;
+            stage: string;
+            /** Format: date-time */
+            stage_changed_at: string;
+            /** Format: date-time */
+            started_at: string | null;
+            target_date: string | null;
+            team_mode: string;
+            /** Format: date-time */
+            team_mode_changed_at: string | null;
+            tenant_id: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by: string | null;
+            /** Format: int64 */
+            version: number;
         };
         Provider: {
             auto_provision: boolean;
@@ -8926,12 +9254,20 @@ export interface components {
         RevokedInvitation: {
             revoked: boolean;
         };
+        RoleFields: {
+            description?: string;
+            name: string;
+        };
         RoleMemberGrant: {
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             expires_at?: string;
             principal_id: string | null;
+        };
+        RolePatchFields: {
+            description?: string;
+            name?: string;
         };
         RowError: {
             column?: string;
@@ -9179,10 +9515,6 @@ export interface components {
             /** @description E.164 number, or empty to remove it */
             phone?: string;
         };
-        SystemRoleCreateInputBody: {
-            description?: string;
-            name: string;
-        };
         SystemScopeCreateInputBody: {
             department_id?: string;
             display_name: string;
@@ -9336,10 +9668,6 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
-        UpdateRoleInputBody: {
-            description?: string;
-            name?: string;
-        };
         UpdateTenantInputBody: {
             name?: string;
             /** @enum {string} */
@@ -9384,6 +9712,26 @@ export interface components {
             name?: components["schemas"]["UserName"];
             schemas: string[] | null;
             userName?: string;
+        };
+        ValidationErrorData: {
+            validation_errors: components["schemas"]["ValidationIssue"][] | null;
+        };
+        ValidationIssue: {
+            code: string;
+            /** @enum {string} */
+            in: "body" | "query" | "path" | "header" | "cookie";
+            location?: string;
+            message: string;
+            message_key: string;
+            params?: {
+                [key: string]: string;
+            };
+            path?: string;
+        };
+        ValidationMessage: {
+            code: string;
+            message_key: string;
+            template: string;
         };
         View: {
             /** Format: date-time */
@@ -9523,7 +9871,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -9648,7 +9996,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -9781,7 +10129,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -9869,7 +10217,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -9959,7 +10307,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -10051,7 +10399,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -10159,7 +10507,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -10274,7 +10622,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -10359,7 +10707,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -10447,7 +10795,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -10533,7 +10881,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -10623,7 +10971,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -10715,7 +11063,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -10823,7 +11171,85 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "project.get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource identifier */
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeProjectDetailView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -10903,7 +11329,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -10995,7 +11421,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -11074,7 +11500,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -11182,7 +11608,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -11265,7 +11691,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -11372,7 +11798,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -11458,7 +11884,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -11537,7 +11963,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -11626,7 +12052,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -11714,7 +12140,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -11804,7 +12230,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -11891,7 +12317,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -11981,7 +12407,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -12069,7 +12495,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -12193,7 +12619,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -12312,7 +12738,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -12389,7 +12815,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -12486,7 +12912,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Federation unavailable */
@@ -12584,7 +13010,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Federation unavailable */
@@ -12686,7 +13112,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Federation unavailable */
@@ -12767,7 +13193,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -12875,7 +13301,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -13005,7 +13431,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -13094,7 +13520,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -13194,7 +13620,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -13275,7 +13701,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -13356,7 +13782,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -13427,7 +13853,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -13503,7 +13929,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -13581,7 +14007,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -13667,7 +14093,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -13757,7 +14183,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -13834,7 +14260,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -13920,7 +14346,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -14010,7 +14436,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -14091,7 +14517,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -14168,7 +14594,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -14245,7 +14671,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -14322,7 +14748,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -14382,6 +14808,15 @@ export interface operations {
                         error: string;
                         error_description?: string;
                     };
+                };
+            };
+            /** @description Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -14449,6 +14884,15 @@ export interface operations {
                         error: string;
                         error_description?: string;
                     };
+                };
+            };
+            /** @description Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -14535,6 +14979,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -14600,6 +15053,15 @@ export interface operations {
                         error: string;
                         error_description?: string;
                     };
+                };
+            };
+            /** @description Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -14674,6 +15136,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -14744,6 +15215,15 @@ export interface operations {
                         error: string;
                         error_description?: string;
                     };
+                };
+            };
+            /** @description Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Too Many Requests */
@@ -14841,6 +15321,15 @@ export interface operations {
                         error: string;
                         error_description?: string;
                     };
+                };
+            };
+            /** @description Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Too Many Requests */
@@ -14952,6 +15441,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
             /** @description Too Many Requests */
             429: {
                 headers: {
@@ -15043,6 +15541,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
             /** @description Service Unavailable */
             503: {
                 headers: {
@@ -15114,7 +15621,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -15192,7 +15699,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -15268,7 +15775,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -15355,7 +15862,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -15444,7 +15951,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -15515,7 +16022,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -15587,7 +16094,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -15660,7 +16167,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -15732,7 +16239,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -15801,7 +16308,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -15870,7 +16377,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -15943,7 +16450,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -16074,7 +16581,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -16322,7 +16829,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -16394,7 +16901,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -16465,7 +16972,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -16500,7 +17007,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OperatingPlatformRoleInputBody"];
+                "application/json": components["schemas"]["PlatformRoleFields"];
             };
         };
         responses: {
@@ -16537,7 +17044,95 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "request-contract:/operating-platforms/{platform_id}/roles": {
+        parameters: {
+            query: {
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+            };
+            header?: never;
+            path: {
+                /** @description Operating platform identifier */
+                platform_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeOperationContract"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -16615,7 +17210,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -16686,7 +17281,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -16775,7 +17370,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -16860,7 +17455,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -16948,7 +17543,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -17036,7 +17631,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -17126,7 +17721,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -17206,7 +17801,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -17297,7 +17892,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -17384,7 +17979,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -17464,7 +18059,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -17548,7 +18143,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -17632,7 +18227,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -17716,7 +18311,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -17788,7 +18383,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -17868,7 +18463,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -17961,7 +18556,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -18054,7 +18649,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -18147,7 +18742,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -18239,7 +18834,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -18347,7 +18942,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -18427,7 +19022,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -18521,7 +19116,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -18601,7 +19196,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -18695,7 +19290,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -18777,7 +19372,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -18871,7 +19466,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -18948,7 +19543,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -19038,7 +19633,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -19128,7 +19723,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -19229,7 +19824,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -19318,7 +19913,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -19408,7 +20003,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -19488,7 +20083,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -19565,7 +20160,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -19655,7 +20250,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -19743,7 +20338,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -19833,7 +20428,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -19926,7 +20521,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -20008,7 +20603,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -20089,7 +20684,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -20166,7 +20761,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -20247,7 +20842,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -20330,7 +20925,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -20423,7 +21018,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -20506,7 +21101,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -20597,7 +21192,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -20681,7 +21276,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -20769,7 +21364,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -20853,7 +21448,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -20941,7 +21536,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -21019,7 +21614,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -21096,7 +21691,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -21194,7 +21789,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -21353,7 +21948,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -21452,7 +22047,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -21551,7 +22146,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -21628,7 +22223,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -21727,7 +22322,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -21827,7 +22422,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -21904,7 +22499,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -21990,7 +22585,95 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "request-contract:/roles/{role_id}": {
+        parameters: {
+            query: {
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+            };
+            header?: never;
+            path: {
+                /** @description Resource identifier */
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeOperationContract"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -22025,7 +22708,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateRoleInputBody"];
+                "application/json": components["schemas"]["RolePatchFields"];
             };
         };
         responses: {
@@ -22080,7 +22763,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -22157,7 +22840,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -22247,7 +22930,95 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "request-contract:/roles/{role_id}/data-scope": {
+        parameters: {
+            query: {
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+            };
+            header?: never;
+            path: {
+                /** @description Resource identifier */
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeOperationContract"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -22327,7 +23098,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -22415,7 +23186,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -22503,7 +23274,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -22583,7 +23354,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -22663,7 +23434,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -22755,7 +23526,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -22843,7 +23614,97 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "request-contract:/roles/{role_id}/members/{principal_id}": {
+        parameters: {
+            query: {
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+            };
+            header?: never;
+            path: {
+                /** @description Resource identifier */
+                role_id: string;
+                /** @description immutable local principal ID */
+                principal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeOperationContract"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -22920,7 +23781,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -22998,7 +23859,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -23085,7 +23946,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -23176,7 +24037,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -23254,7 +24115,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -23344,7 +24205,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -23421,7 +24282,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -23480,7 +24341,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -23543,7 +24404,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -23610,7 +24471,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -23689,7 +24550,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -23772,7 +24633,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -23862,7 +24723,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -23942,7 +24803,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -24032,7 +24893,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -24110,7 +24971,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -24200,7 +25061,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -24286,7 +25147,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -24376,7 +25237,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -24475,7 +25336,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -24570,7 +25431,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -27502,7 +28363,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -27592,7 +28453,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -27680,7 +28541,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -27757,7 +28618,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -27847,7 +28708,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -27925,7 +28786,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -27999,7 +28860,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -28065,7 +28926,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -28139,7 +29000,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -28229,7 +29090,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Authentication request limit exceeded */
@@ -28316,7 +29177,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -28392,7 +29253,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -28461,7 +29322,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -28529,7 +29390,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -28618,7 +29479,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -28703,7 +29564,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -28786,7 +29647,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -28872,7 +29733,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -28955,7 +29816,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -29040,7 +29901,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -29125,7 +29986,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -29210,7 +30071,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -29286,7 +30147,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -29362,7 +30223,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -29445,7 +30306,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -29510,7 +30371,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -29597,7 +30458,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -29666,7 +30527,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -29734,7 +30595,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -29803,7 +30664,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -29870,7 +30731,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -29939,7 +30800,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -30010,7 +30871,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -30082,7 +30943,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -30153,7 +31014,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -30231,7 +31092,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -30301,7 +31162,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -30370,7 +31231,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -30437,7 +31298,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -30508,7 +31369,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -30575,7 +31436,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -30756,7 +31617,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -30823,7 +31684,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -30890,7 +31751,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -30961,7 +31822,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -31088,7 +31949,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -31161,7 +32022,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -31233,7 +32094,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -31302,7 +32163,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -31371,7 +32232,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -31444,7 +32305,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -31516,7 +32377,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -31589,7 +32450,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -31659,7 +32520,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -31729,7 +32590,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -31916,7 +32777,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -31994,7 +32855,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -32070,7 +32931,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -32150,7 +33011,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -32239,7 +33100,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -32315,7 +33176,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -32404,7 +33265,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -32493,7 +33354,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -32578,7 +33439,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -32663,7 +33524,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -32739,7 +33600,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -32863,7 +33724,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -32895,7 +33756,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SystemRoleCreateInputBody"];
+                "application/json": components["schemas"]["RoleFields"];
             };
         };
         responses: {
@@ -32932,7 +33793,92 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "request-contract:/system/roles": {
+        parameters: {
+            query: {
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeOperationContract"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -32999,7 +33945,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -33066,7 +34012,94 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "request-contract:/system/roles/{role_id}": {
+        parameters: {
+            query: {
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+            };
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeOperationContract"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -33100,7 +34133,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateRoleInputBody"];
+                "application/json": components["schemas"]["RolePatchFields"];
             };
         };
         responses: {
@@ -33137,7 +34170,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -33207,7 +34240,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -33275,7 +34308,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -33343,7 +34376,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -33410,7 +34443,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -33478,7 +34511,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -33546,7 +34579,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -33682,7 +34715,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -33755,7 +34788,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -33827,7 +34860,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -33896,7 +34929,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -33965,7 +34998,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -34038,7 +35071,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -34110,7 +35143,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -34183,7 +35216,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -34253,7 +35286,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -34323,7 +35356,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -34401,7 +35434,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -34528,7 +35561,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -34606,7 +35639,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -34682,7 +35715,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -34769,7 +35802,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -34858,7 +35891,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -34935,7 +35968,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -35021,7 +36054,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -35110,7 +36143,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -35196,7 +36229,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -35283,7 +36316,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -35370,7 +36403,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -35457,7 +36490,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -35538,7 +36571,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -35616,7 +36649,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -35704,7 +36737,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -35775,7 +36808,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -35843,7 +36876,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -35915,7 +36948,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -35992,7 +37025,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -36073,7 +37106,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -36145,7 +37178,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -36226,7 +37259,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -36300,7 +37333,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -36390,7 +37423,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -36466,7 +37499,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -36537,7 +37570,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -36627,7 +37660,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -36698,7 +37731,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -36769,7 +37802,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -36859,7 +37892,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -36954,7 +37987,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -37035,7 +38068,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -37106,7 +38139,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -37179,7 +38212,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -37262,7 +38295,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -37343,7 +38376,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -37436,7 +38469,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -37519,7 +38552,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -37627,7 +38660,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -37757,7 +38790,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -37838,7 +38871,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -37911,7 +38944,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -38002,7 +39035,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -38080,7 +39113,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -38172,7 +39205,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -38259,7 +39292,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -38340,7 +39373,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -38411,7 +39444,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -38501,7 +39534,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -38628,7 +39661,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -38709,7 +39742,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -38780,7 +39813,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -38852,7 +39885,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -38920,7 +39953,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -39001,7 +40034,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -39080,7 +40113,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -39161,7 +40194,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -39291,7 +40324,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -39372,7 +40405,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -39444,7 +40477,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -39526,7 +40559,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -39604,7 +40637,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -39696,7 +40729,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -39778,7 +40811,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -39857,7 +40890,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -39936,7 +40969,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -40015,7 +41048,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -40102,7 +41135,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -40189,7 +41222,189 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "project.create": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional request key, 1–64 printable ASCII characters without spaces; replay window 24 hours. */
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                /** @description Tenant resource identifier */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectCreateBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    "Idempotent-Replayed"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeProjectCreateView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "request-contract:/tenants/{tenant_id}/projects": {
+        parameters: {
+            query: {
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+            };
+            header?: never;
+            path: {
+                /** @description Tenant resource identifier */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeOperationContract"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -40260,7 +41475,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -40331,7 +41546,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -40421,7 +41636,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -40492,7 +41707,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -40573,7 +41788,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -40644,7 +41859,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -40679,7 +41894,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateRoleInputBody"];
+                "application/json": components["schemas"]["RoleFields"];
             };
         };
         responses: {
@@ -40725,7 +41940,95 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "request-contract:/tenants/{tenant_id}/roles": {
+        parameters: {
+            query: {
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+            };
+            header?: never;
+            path: {
+                /** @description Tenant resource identifier */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeOperationContract"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -40796,7 +42099,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -40877,7 +42180,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -40948,7 +42251,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -41029,7 +42332,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -41100,7 +42403,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -41181,7 +42484,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -41253,7 +42556,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -41334,7 +42637,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -41405,7 +42708,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -41486,7 +42789,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -41564,7 +42867,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -41642,7 +42945,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -41728,7 +43031,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -41809,7 +43112,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -41899,7 +43202,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -41976,7 +43279,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */
@@ -42056,7 +43359,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */

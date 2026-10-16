@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"7link.com/platform/internal/iam/organization/model"
+	"7link.com/platform/internal/infra/guid"
 	"gorm.io/gorm"
 )
 
@@ -19,6 +20,56 @@ import (
 // It is a read: repairing the tenant is core's to do, and organization still
 // owns which row that slug means.
 type TenantLookup func(context.Context, *gorm.DB, string) (Tenant, bool, error)
+
+// TenantEnumerator pages non-deleted tenant roots for internal reconciliation.
+// It excludes system/platform roots, includes suspended tenants, and returns
+// increasing IDs strictly after the cursor. Limit must be between 1 and 100.
+type TenantEnumerator func(context.Context, guid.ID, int) ([]guid.ID, error)
+
+// ActiveTenantEnumerator pages only active tenant roots for scheduled fanout.
+// It excludes suspended/deleted/system/platform roots; pages contain at most 500
+// IDs in strictly increasing order after the supplied cursor.
+type ActiveTenantEnumerator func(context.Context, guid.ID, int) ([]guid.ID, error)
+
+func (m *Module) tenantEnumerator() TenantEnumerator {
+	return func(ctx context.Context, after guid.ID, limit int) ([]guid.ID, error) {
+		return m.enumerateTenants(ctx, after, limit, 100, false)
+	}
+}
+func (m *Module) activeTenantEnumerator() ActiveTenantEnumerator {
+	return func(ctx context.Context, after guid.ID, limit int) ([]guid.ID, error) {
+		return m.enumerateTenants(ctx, after, limit, 500, true)
+	}
+}
+func (m *Module) enumerateTenants(ctx context.Context, after guid.ID, limit, maxLimit int, activeOnly bool) ([]guid.ID, error) {
+	if m == nil || m.runtime == nil || m.ids == nil || m.appender == nil {
+		return nil, ErrUnavailable
+	}
+	if after < 0 || limit < 1 || limit > maxLimit {
+		return nil, fmt.Errorf("enumerate tenants: invalid cursor or limit")
+	}
+	repo := NewRepository(m.runtime, m.ids, m.appender)
+	tables, _, err := repo.tables()
+	if err != nil {
+		return nil, err
+	}
+	table := tables.Tenants
+	reader := table.WithContext(ctx).Select(table.ID).Where(table.ID.Gt(after), table.ScopeKind.Eq(ScopeTenant))
+	if activeOnly {
+		reader = reader.Where(table.Status.Eq(TenantActive))
+	} else {
+		reader = reader.Where(table.Status.Neq(TenantDeleted))
+	}
+	rows, err := reader.Order(table.ID).Limit(limit).Find()
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]guid.ID, len(rows))
+	for index, row := range rows {
+		ids[index] = row.ID
+	}
+	return ids, nil
+}
 
 // FindTenantBySlugOn returns the tenant owning slug through the caller's
 // transaction, reporting false when no tenant does. It normalizes the slug the

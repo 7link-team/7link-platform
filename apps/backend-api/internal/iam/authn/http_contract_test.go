@@ -323,6 +323,14 @@ func TestAuthnOpenAPIEmailVerificationRequiresOneCredentialForm(t *testing.T) {
 
 func TestAuthnOpenAPIDeclaresRuntimeErrorsWithOneEnvelope(t *testing.T) {
 	spec := authnContractAPI(t).OpenAPI()
+	validationEnvelope := spec.Components.Schemas.Map()["EnvelopeValidationErrorData"]
+	require.NotNil(t, validationEnvelope)
+	assert.Len(t, validationEnvelope.Properties, 4, "validation uses the same code/message/meta/data envelope")
+	for _, field := range []string{"code", "message", "meta", "data"} {
+		assert.Contains(t, validationEnvelope.Properties, field)
+	}
+	assert.Equal(t, "#/components/schemas/ValidationErrorData", validationEnvelope.Properties["data"].Ref)
+
 	expected := map[string][]string{
 		"authn-login-options":                         {},
 		"authn-me":                                    {"401", "403", "503"},
@@ -366,7 +374,14 @@ func TestAuthnOpenAPIDeclaresRuntimeErrorsWithOneEnvelope(t *testing.T) {
 				}
 				media := response.Content["application/json"]
 				if assert.NotNil(t, media, method+" "+path+" "+status) && assert.NotNil(t, media.Schema) {
-					assert.Equal(t, "#/components/schemas/ErrorEnvelope", media.Schema.Ref, method+" "+path+" "+status)
+					if status == "422" {
+						if assert.Len(t, media.Schema.AnyOf, 2, method+" "+path+" "+status) {
+							assert.Equal(t, "#/components/schemas/ErrorEnvelope", media.Schema.AnyOf[0].Ref)
+							assert.Equal(t, "#/components/schemas/EnvelopeValidationErrorData", media.Schema.AnyOf[1].Ref)
+						}
+					} else {
+						assert.Equal(t, "#/components/schemas/ErrorEnvelope", media.Schema.Ref, method+" "+path+" "+status)
+					}
 				}
 			}
 			for _, status := range expected[operation.OperationID] {

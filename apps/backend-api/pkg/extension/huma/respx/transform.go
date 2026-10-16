@@ -2,6 +2,7 @@ package respx
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -28,6 +29,9 @@ func (e Envelope[T]) localize(ctx context.Context) any {
 // localize translates the summary and client-safe validation details, including
 // their field locations, into the request locale.
 func (e *errorEnvelope) localize(ctx context.Context) any {
+	if e.replayed {
+		return e
+	}
 	summary := e.summary
 	if summary == "" {
 		summary = e.Message
@@ -35,7 +39,9 @@ func (e *errorEnvelope) localize(ctx context.Context) any {
 	msg := localizeToken(ctx, summary)
 	if len(e.details) > 0 {
 		parts := make([]string, 0, len(e.details))
+		issues := make([]ValidationIssue, 0, len(e.details))
 		for _, detail := range e.details {
+			issues = append(issues, validationIssue(ctx, detail))
 			localized := localizeToken(ctx, detail.message)
 			if localized == detail.message {
 				localized = i18n.TContext(ctx, messageKey("validation_invalid_value"))
@@ -46,12 +52,16 @@ func (e *errorEnvelope) localize(ctx context.Context) any {
 			parts = append(parts, localized)
 		}
 		msg += msgSep + strings.Join(parts, detailSep)
+		if e.Data == nil || e.validationData {
+			e.Data = ValidationErrorData{ValidationErrors: issues}
+			e.validationData = true
+		}
 	}
 	e.Message = msg
 	return e
 }
 
-func localizeToken(ctx context.Context, token string) string {
+func normalizeDetailToken(token string) string {
 	if key, ok := frameworkDetailKey[token]; ok {
 		token = key
 	} else if format, ok := strings.CutPrefix(token, "invalid date/time for format "); ok {
@@ -59,7 +69,11 @@ func localizeToken(ctx context.Context, token string) string {
 	} else if strings.HasPrefix(token, "invalid value:") {
 		token = messageKey("validation_invalid_value")
 	}
-	parts := strings.Split(token, argSep)
+	return token
+}
+
+func localizeToken(ctx context.Context, token string) string {
+	parts := strings.Split(normalizeDetailToken(token), argSep)
 	message := i18n.TContext(ctx, parts[0])
 	if len(parts) == 1 || !strings.Contains(message, "%") {
 		return message
@@ -108,5 +122,23 @@ func LocalizeMessage(ctx huma.Context, _ string, v any) (any, error) {
 		}
 		reportCause(ctx.Context(), fault.status, operation, fault.causes)
 	}
-	return localizeBody(ctx.Context(), v), nil
+	localized := localizeBody(ctx.Context(), v)
+	if envelope, ok := localized.(*errorEnvelope); ok && envelope.validationData {
+		if data, ok := envelope.Data.(ValidationErrorData); ok {
+			for index := range data.ValidationErrors {
+				data.ValidationErrors[index].Path = issuePointer(ctx.Operation(), data.ValidationErrors[index])
+			}
+			envelope.Data = data
+		}
+	}
+	return localized, nil
+}
+
+// MarshalEnvelope stores the localized envelope emitted by HTTP serialization.
+// Response caches use it before committing the associated business writes.
+func MarshalEnvelope(ctx context.Context, v any) ([]byte, error) {
+	if _, ok := v.(localizer); !ok {
+		return nil, fmt.Errorf("respx: expected response envelope")
+	}
+	return json.Marshal(localizeBody(ctx, v))
 }

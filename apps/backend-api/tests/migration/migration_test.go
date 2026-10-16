@@ -8,6 +8,9 @@ import (
 	"sort"
 	"testing"
 
+	"7link.com/platform/internal/collab"
+	"7link.com/platform/internal/delivery"
+	businessgovernance "7link.com/platform/internal/governance"
 	iamaudit "7link.com/platform/internal/iam/audit"
 	iamcore "7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/federation"
@@ -17,6 +20,8 @@ import (
 	"7link.com/platform/internal/iam/provisioning"
 	infraaudit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/dlock"
+	"7link.com/platform/internal/infra/events"
+	"7link.com/platform/internal/infra/jobs"
 	"7link.com/platform/internal/infra/wuid"
 	"7link.com/platform/internal/todo"
 	goosex "7link.com/platform/pkg/extension/goose"
@@ -133,6 +138,29 @@ func TestMigrationIdentifiersFitEngineLimitsAtMaximumPrefix(t *testing.T) {
 
 func moduleMigrations() []moduleMigration {
 	return []moduleMigration{
+		{name: "business_governance", table: "governance_role_seeds", target: 1,
+			seedSQL: `INSERT INTO governance_role_seeds (id,tenant_id,role_key,role_id,manifest_version,applied_codes,skipped_codes,created_at,updated_at) VALUES (1,1,'delivery_lead',2,1,'[]','[]','2026-10-16 00:00:00','2026-10-16 00:00:00')`,
+			source:  (&businessgovernance.Module{}).MigrationSource()},
+		{name: "delivery", table: "delivery_projects", target: 2,
+			seedSQL: `INSERT INTO delivery_projects (tenant_id,project_id,code,stage_changed_at,created_at,updated_at) VALUES (1,2,'PR','2026-10-16 00:00:00','2026-10-16 00:00:00','2026-10-16 00:00:00')`,
+			source:  (&delivery.Module{}).MigrationSource()},
+		{name: "collab", table: "collab_channels", target: 1,
+			seedSQL: `INSERT INTO collab_channels (id,tenant_id,project_id,kind,name,created_at,updated_at) VALUES (1,1,2,'PROJECT_DEFAULT','Project','2026-09-02 00:00:00','2026-09-02 00:00:00')`,
+			source:  (&collab.Module{}).MigrationSource()},
+		{
+			name:    "jobs",
+			table:   "background_jobs",
+			target:  2,
+			seedSQL: `INSERT INTO background_jobs (id,kind,payload,error_history,run_at_ms,created_at,updated_at) VALUES (1,'governance.seed_reconcile','{}','[]',0,'2026-10-16 00:00:00','2026-10-16 00:00:00')`,
+			source:  (&jobs.Module{}).MigrationSource(),
+		},
+		{
+			name:    "events",
+			table:   "domain_events",
+			target:  1,
+			seedSQL: `INSERT INTO domain_events (id, tenant_id, event_type, occurred_at, actor_kind, subject_kind, subject_id, topics, data, created_at) VALUES (1, 1, 'project.created', '2026-09-02 00:00:00', 'SYSTEM', 'project', 1, '[]', '{}', '2026-09-02 00:00:00')`,
+			source:  (&events.Module{}).MigrationSource(),
+		},
 		{
 			name:    "todo",
 			table:   "todos",

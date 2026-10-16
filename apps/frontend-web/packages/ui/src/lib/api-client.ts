@@ -10,6 +10,11 @@
  * It also speaks full RSQL when asked (`ListQuery.syntax = 'rsql'`): see {@link ./rsql}.
  */
 
+import {
+  normalizeValidationIssues,
+  type ValidationIssue,
+} from "./request-validation"
+
 import { filterStateToRsql, isFilterValue, isEmptyFilterValue } from "./rsql"
 
 export { rsql, filterStateToRsql, rsqlComparison } from "./rsql"
@@ -139,13 +144,21 @@ export class ApiError extends Error {
   readonly code: number
   readonly status: number
   readonly field?: string
+  readonly validationErrors: ValidationIssue[]
 
-  constructor(message: string, code: number, status: number, field?: string) {
+  constructor(
+    message: string,
+    code: number,
+    status: number,
+    field?: string,
+    data?: unknown
+  ) {
     super(message)
     this.name = "ApiError"
     this.code = code
     this.status = status
     this.field = field
+    this.validationErrors = normalizeValidationIssues(data)
   }
 }
 
@@ -256,7 +269,8 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
         env.message || res.statusText,
         env.code ?? -1,
         res.status,
-        env.field
+        env.field,
+        env.data
       )
       opts.onError?.(err.message, err)
       throw err

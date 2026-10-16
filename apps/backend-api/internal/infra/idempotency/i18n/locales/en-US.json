@@ -1,0 +1,5 @@
+{
+  "invalid_key": "Use an idempotency key of 1–64 printable ASCII characters without spaces.",
+  "key_reused": "This idempotency key was used for a different request.",
+  "in_progress": "This request is still in progress. Retry shortly."
+}

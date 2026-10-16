@@ -1,3 +1,21 @@
+## 2026-10-15 — 多产品兼容目标与架构建议（未实施）
+
+- Decision：用户将技术服务/协作、未来B2B2C商城及其他产品的兼容性纳入架构规划；完成 docs/multi-product-architecture.md，并关联原Web迁移M00/M01及后续适用门禁。具体架构建议是共同身份、独立产品业务/权限/数据、前端按体验分应用、后端先模块化按实际需要拆服务。
+- Reason：全局Principal和OIDC已实现，现有OAuth准入仍要求客户端所属租户成员，受委托token不能调用IAM管理API；产品权益与跨应用退出没有完整现成闭环。pkg/module为进程内能力，不能冒称微服务。
+- Alternatives Considered：所有产品塞同一后台/共用业务表；第一天拆全部微服务；保留IAM底座按领域扩展并逐步独立部署。推荐第三种，不改变现有强隔离来求接入便利。
+- Tradeoffs：第二产品开放前要完成消费者准入、SSO callback、业务API audience/权限及退出撤权契约；无需为未来商城阻塞当前协作UI迁移或重建IAM。公开页面不强制开通；独立治理商家建议Tenant，组织分支可Entity，待具体业务确认。
+- Scope：新增X00–X11工作包、MB01–MB19验收场景；原M00–M20及423需求账本保留。无实现/部署/数据库变更。
+- Status：多业务兼容目标已由用户提出；具体建议供确认，商业模型、消费者准入/退出时限等未替用户决定。现有企业member检查和IAM client-token拒绝必须保留，扩展仅走明确新契约。
+
+## 2026-10-15 — 原型转入生产 Web，先交可验收切换方案
+
+- Decision：用户确认以 apps/frontend-web 为后续实现主线，先完成深入盘点、最终交付定义和逐项清单。本轮仅方案交付，不启动迁移/后端开发/发布。
+- Reason：生产已有身份/作用域/文件和共享 AutoForm/AutoTable；继续扩建独立原型会重复维护。自动组件当前尚未被生产业务页采用，必须真实集成验收。
+- Alternatives Considered：继续独立原型；整目录搬入生产；逐模块复用生产组件。采用第三种，原型保留为设计证据。
+- Tradeoffs：前期要关闭表单只读/错误展示和契约接入缺口；避免将模拟持久化/权限带进生产。U交互迁移、S真实服务、R发布分别签收，不能把mock通过当生产完成。
+- Scope：见 docs/myrmidon/frontend-web-migration.md 与 frontend-web-migration-checklist.md；423唯一REQ/424编号声明、70场景、74原型浏览器脚本。REQ-EXEC-015覆盖旧ADHOC新建入口，两条REQ-EXEC-012均保留；当前源文优于旧350条历史账本。
+- Status：主线方向已由用户确认；具体方案已交付供确认后分批实施。既有完整原型审计仍暂停；未授权自动扩大为全后端即时开发。原生产system/platform/admin/user及账户视角/文件边界必须保留。
+
 ## 2026-10-09 ? Organization file roots must be complete in the UI
 - User explicitly authorized repair after live UI proved department roots were missing despite permitted collection APIs.
 - Keep each backend collection scoped to its owner. Aggregate existing authorized collections in the frontend: tenant/member entity discovery and permitted department catalog, filtered to the selected entity. No expanded grants or aggregate backend contract.
@@ -5049,3 +5067,271 @@ Decision: shared ActionForm focuses and scrolls the inline business error summar
 - Alternatives Considered：自建类似功能；不采用。
 - Tradeoffs：需核实上游版本能力；WebDAV不代替平台授权下发。Go调用独立可执行程序，无新增Node必需依赖。
 - Scope / Status：文档与原型边界已登记；未安装或真实集成。
+
+
+## 2026-10-15 — 多业务边界先行，迁移执行获准
+- Decision：用户批准开始执行。先冻结 X00/X01 当前协作边界，再按 M00–M20 分批推进；当前一期复用 IAM + 协作，同一 Web 壳体，后端沿既有模块单体扩展。
+- Reason：避免迁移把产品、组织和身份混为一层，同时不为未定义商城提前建设基础设施。
+- Alternatives Considered：先做全部空页面、先拆微服务、先实现商城准入；均不作为当前前置条件。
+- Tradeoffs：未来第二产品的消费者准入/audience/权益/退出门禁仍按 X02–X11 触发；当前组件通过不等于业务服务通过。
+- Scope / Status：执行已批准；不替换 IAM 默认落点，不把 operating platform 当产品目录，不建立多余产品注册表，不预设买家属于商家租户。商城商业模型仍待正式需求。
+
+
+## 2026-10-16 — Governance seeding reuses IAM role ownership semantics
+- Decision: core publishes transaction-bound RoleSeeder.EnsureRoleOn / GrantPermissionOn. EnsureRoleOn creates only when the caller's governance ledger has no owned role; an existing normalized display name returns ErrRoleNameConflict and is never adopted. nameKey must match IAM's existing lowercase/trimmed display-name key. Governance role_key and translation key remain separate from IAM name_key.
+- Reason: existing IAM CreateRole/UpdateRole maintain display-name uniqueness; replacing name_key with a business key would break that invariant. Core cannot infer governance ownership from a matching name.
+- Alternatives considered: claim arbitrary same-name roles or overload IAM name_key; rejected because both alter existing IAM semantics and violate spec08's nonowned-name conflict rule.
+- Tradeoffs: governance must consult and persist its role ledger in the same transaction, and use applied_codes to avoid restoring manually revoked permissions. The core capability alone does not implement reconciliation or drift handling.
+- Scope / Status: internal provider capability implemented; reuse existing role validation, grants, auditing and revision transactions. Governance consumer and project creation remain incomplete. No HTTP behavior changed.
+
+
+## 2026-10-16 — Isolate business governance from IAM governance registration
+- Decision: spec08 package internal/governance uses lifecycle ID business_governance and migration version table goose_business_governance. Existing internal/iam/governance keeps governance/goose_governance. Business tables remain governance_* as specified.
+- Reason: the existing IAM module already owns both identifiers. Reusing either would collide in registry composition or interpret business migrations as IAM migration versions.
+- Alternatives considered: rename the published IAM module/stream; rejected as an unnecessary compatibility change. Merge business rules into IAM governance; rejected because spec08 explicitly separates business governance and IAM access governance.
+- Tradeoffs / Scope: internal registration identity differs from the short conceptual module label; no HTTP path, permission code or business table changed. Status: applied to new schema module; production registration pending.
+- Conflict recording: RoleSeeder returns the existing role plus ErrRoleNameConflict on a read-detected collision, without writing or adopting it. This lets governance record the required nonnull conflicting role_id. Zero-role errors still require full rollback, including races during insert.
+
+
+## 2026-10-16 — Fence tenant seeding with the shared lease row
+- Decision: dlock publishes TransactionLease through module services; governance acquires governance:seed:{tenant} for 60 seconds, starts one SQL transaction, calls Lock.FenceOn before protected work, runs the full manifest, then releases the lease after transaction completion.
+- Reason: checking a timer or refreshing a lease alone cannot prevent another worker from taking over while an existing SQL transaction is still writing. FenceOn validates the current unexpired token and holds the row with FOR UPDATE on PostgreSQL/MySQL. SQLite transaction locking rejects competing writes or stale snapshot write upgrades.
+- Alternatives considered: separate automatic renewal during the SQL transaction; rejected for this entry because renewal contends with the fenced row and single-writer connection pools. Existing general lock APIs are unchanged.
+- Tradeoffs: protected work holds the lock row until commit/rollback; callers must fence before any protected reads/writes. Request contention remains ErrNotAcquired rather than a false successful seed; scheduler may skip that pass. Cleanup runs after transaction completion even when the request context was canceled.
+- Scope / Status: provider and private seed entry implemented, SQLite/race verified. Real PostgreSQL concurrent takeover test pending final execution after recovering from system-disk cache exhaustion. Production governance composition still pending.
+
+
+## 2026-10-16 — Conditional permissions must stay conditional during role seeding
+- Decision: RoleSeeder offers GrantConditionalPermissionOn alongside existing unconditional grants. Governance manifest entries carry explicit per-code conditions and use that capability whenever a condition key exists; missing capability fails closed. Empty/null conditions are invalid.
+- Reason: spec08 §3.3b limits engineer plan_approve to LOW/MEDIUM risk. Granting it as a plain permission would widen authority. The existing IAM policyx condition and SetPermissionCondition path already own validation, audits and revisions.
+- Alternatives considered: unconditional grant plus a later update outside the transaction; rejected because it exposes a broad grant and cannot roll back atomically. Overwriting existing administrator conditions on every seed; rejected because reconciliation must preserve manual changes.
+- Tradeoffs / Scope: a newly inserted grant receives its condition in the same caller transaction; an already existing grant remains untouched. Historical applied_codes prevent later regrant/condition overwrite. Status: capability and algorithm integrated, targeted tests pass; fixed production manifest and governance lifecycle still pending.
+
+
+## 2026-10-16 — Initial owner membership is a bounded IAM snapshot
+- Decision: only the first creation of a non-conflicting team_owner seed copies active, unexpired direct members of the IAM Administrator role through the original AddMember transaction path. Preserve source assignment expiration; never synchronize membership on subsequent seed runs.
+- Reason: spec08 §3.3 requires a one-time Administrator snapshot. Copying expired/disabled members or converting limited grants to permanent grants would widen authority. IAM explicitly permits editing/renaming Administrator, so the source must still possess unconditional tenant_administer; a display name alone cannot authorize promotion. Renamed/missing sources are not guessed from arbitrary role names.
+- Alternatives considered: resynchronize on every reconciliation or flatten expiry; rejected because either resurrects revoked access. Copy all effective administrators/group grants; rejected because the specification names direct role membership and does not authorize that expansion.
+- Scope / Status: core capability and first-creation seed hook implemented and tested; full production initialization not yet enabled.
+
+## 2026-10-16 — Periodic job cron parsing
+- Decision: use pinned github.com/robfig/cron/v3 v3.0.1 for the standard five-field parser only. Reject embedded timezone prefixes and descriptors; Schedule.Timezone is the single IANA timezone source.
+- Reason: 09 §6.2 requires standard cron; the repository has no existing parser. Reusing a parser avoids implementing cron grammar and calendar edge cases locally.
+- Alternatives considered: handwritten parser; package-owned in-memory scheduler. Neither is needed: execution leadership, durable progress and misfire handling belong to jobs per spec.
+- Tradeoffs: one Go dependency, recorded in the main and integration-test module locks. No change to database-backed execution semantics.
+- Scope/status: declaration validation implemented; durable scheduler and task execution still pending.
+
+## 2026-10-16 — Queue admission transaction guard
+- Decision: serialize each tenant's admission using a persistent dlock-owned transaction mutex row, acquired in the caller transaction and released by commit/rollback. Batch tenant guards are acquired in increasing tenant ID order.
+- Reason: count-then-insert can exceed the specified pending cap under concurrency; an external renewable lease acquired from inside an existing SQLite writer transaction can deadlock.
+- Alternatives considered: process-local mutex (does not protect multiple replicas), a separate quota counter table (extra storage and reconciliation), unfenced count (racy).
+- Tradeoffs: admission is serialized per tenant. Protected job reads use row locking on PG/MySQL to see current state even with a pre-existing MySQL repeatable-read snapshot; SQLite uses its transaction writer lock. The bounded pending-ID read has a tenant/state index. Callers must roll back on any queue error and maintain consistent lock ordering.
+- Scope/status: queue admission/cancel implemented; worker transitions back to PENDING must synchronize with this guard when implemented; retries retain the specified task lifecycle rather than being discarded when new admissions fill the queue. Real MySQL8 concurrency remains unverified until the daemon is available.
+
+## 2026-10-16 — Bounded job concurrency lock names
+- Decision: retain `jobs:ck:<kind>:<key>` when its UTF-8 byte length fits dlock's 191-byte bound. Longer tuples map to `jobs:ck-sha256:<digest>` using a length-delimited kind/key tuple.
+- Reason: each declared field may be 128 characters; the combined lock name can exceed the provider limit. Truncation would make unrelated tasks contend on the same lock.
+- Alternatives considered: reject valid queue keys, enlarge dlock storage, or truncate; rejected because they respectively narrow the job contract, change a shared provider unnecessarily, or merge identities.
+- Tradeoffs / Scope: long lock names are opaque but deterministic; normal names retain the spec format. No new dependency or storage change. Implemented in the private execution path, not yet production activated.
+
+## 2026-10-16 — Worker cancellation and settlement boundaries
+- Decision: Start creates lifecycle-owned claim and execution contexts. Quiesce stops claims first, drains for the configured duration, then cancels handlers and settles owned attempts through existing finish CAS within a bounded cleanup budget. A handler ignoring cancellation retains its process-local slot until actual return; timeout plus 30s settles TIMEOUT and exposes a queue-labeled leaked-worker gauge.
+- Reason: canceling a startup/root context must not skip graceful drain, while waiting for uncooperative code must not block shutdown indefinitely or permit unlimited replacements. Fenced settlement avoids duplicate attempt refunds.
+- Alternatives considered: release slots at deadline or wait indefinitely; rejected by spec09 BR-09-07/12. Force-killing goroutines is not a Go capability.
+- Tradeoffs: uncooperative handler goroutines can remain until process exit; Go cannot revoke their external effects. Handlers still require idempotency. A quiesced module instance is not restarted; a new lifecycle creates a new instance.
+- Scope/status: worker lifecycle and bounded settlement implemented and SQLite/race + PostgreSQL two-instance tested. Production activation requires the real same-transaction deadletter connector, scheduler and application configuration, which remain unfinished.
+
+## 2026-10-16 — Job deadletters use the real transactional outbox
+- Decision: application wiring binds jobs.DeadLetterConnector to events.Publisher and declares job.dead_lettered before catalog sealing. Publish on the finish transaction, with SYSTEM actor, background_job subject/current version, realtime NONE and safe kind/attempts payload.
+- Reason: spec09 requires DEAD and its event to commit atomically; a jobs-to-events lifecycle dependency would conflict with event dispatchers consuming jobs. Provider capabilities remain module-owned and the composition root joins them.
+- Alternatives considered: direct cross-module storage writes, post-commit publication, or reverse module dependencies; rejected for ownership, atomicity and lifecycle-cycle reasons.
+- Platform semantics: spec09 §3 and CR-09-06 explicitly permit tenant_id0 for infrastructure records. Publisher accepts0 (still rejects negative IDs) and uses explicit decimal tenant topics, including tenant/0. No fabricated tenant or implicit tenant reassignment.
+- Scope/status: wiring and actual SQLite worker/outbox commit + injected post-insert rollback tests implemented for tenant0 and tenant1. Production jobs registration remains pending scheduler/config completion. This does not implement outbox delivery or notifications.
+
+## 2026-10-16 — Schedule definition reconciliation preserves operator state
+- Decision: compare a deterministic hash of the normalized code declaration and effective queue. Identical definitions preserve all stored progress; changed definitions recompute the next occurrence from database time while preserving enabled, creation time and firing history. Removed declarations are disabled and logged as orphaned, not deleted.
+- Reason: spec09 stores runtime progress durably and allows operators to pause plans. Restarting or upgrading code must not silently reset progress or undo a pause. Calendar evaluation uses the declared IANA timezone through the existing cron parser.
+- Alternatives considered: unconditional upsert/reset on startup or deletion of removed definitions; both lose specified runtime/operator state. Re-enabling a reintroduced row cannot distinguish an operator pause from orphan disable with the current schema, so disabled remains disabled.
+- Tradeoffs: reintroduced plans retain their prior disabled state until explicitly enabled. A syntactically valid cron with no future occurrence fails reconciliation atomically instead of writing an unusable next_run_at.
+- Scope/status: reconciliation and calendar calculations implemented and SQLite/race verified. Leader lifecycle, transactional firing, overrides and tenant fanout remain pending; no complete scheduler claim.
+
+## 2026-10-16 — Scheduled firing transaction and missed-slot boundary
+- Decision: enqueue and schedule progress update share a transaction, with queue admission guard before schedule guard. Match the local declaration hash to the stored definition so an old leader cannot fire a newer plan with stale semantics. Long schedule idempotency keys use SHA256 over the full specified logical key when it exceeds the queue's128-byte bound.
+- Reason: failures after enqueue must not leave progress and work disagreeing; maximum128-character schedule names otherwise exceed the queue key limit after adding prefix and timestamp. Truncation would merge distinct occurrences.
+- Misfire interpretation: COALESCE enqueues one due occurrence and computes next from DB now. SKIP considers the whole occurrence slot missed when the following occurrence is also due; sub-slot polling lateness still fires. This makes SKIP usable with a polling scheduler without inventing an arbitrary wall-clock grace threshold.
+- Alternatives considered: separate progress/enqueue commits, truncation/narrowing valid names, or skipping any nonzero lateness. Rejected for atomicity, identity loss and starving virtually all polled SKIP plans.
+- Scope/status: PLATFORM transaction primitive and SQLite tests implemented. PER_TENANT is not silently coerced to PLATFORM; fanout and leader lifecycle integration remain unfinished.
+
+## 2026-10-16 — Tenant fanout snapshot shares the durable job row
+- Decision: preserve the target JSON directly in jobs.fan_out's existing payload column; freeze its target kind and logical firing time in two nullable metadata columns, and reuse concurrency_key for the schedule name. Ordinary jobs keep metadata NULL. Use organization-owned ActiveTenantEnumerator for ascending active tenant pages of at most500; preserve governance's existing suspended-inclusive100-row enumerator.
+- Reason: wrapping a valid64KiB payload with dispatch metadata would exceed the same queue limit. Looking up a mutable schedule at execution time could silently change queued work after deployment. Existing tenant reconciliation has deliberately different inclusion semantics.
+- Alternatives considered: reducing the public payload limit, increasing all job payload limits, compressing payloads, or adding a separate snapshot table. Rejected as incompatible, not reliably bounded, or unnecessary extra storage lifecycle. Two typed nullable fields retain the snapshot in the job's existing retention/transaction boundary.
+- Tradeoffs: additive three-dialect migration00002 and corresponding generated query fields; metadata constraints enforce platform-only/nonrecursive/complete references. Down migration removes dispatch metadata (and therefore cannot preserve future execution of such dispatches), while retaining existing payload rows; rollback is not a mechanism for keeping fanout operational.
+- Scope/status: storage, active-tenant capability, frozen-snapshot handler and root connector implemented with database/race tests; leader activation remains pending. No change to governance membership semantics, ordinary enqueue limits, or production startup inventory.
+
+## 2026-10-16 — Independent scheduler and execution roles
+- Decision: honor separate workers_enabled and scheduler_enabled switches (both defaulttrue per spec09). Scheduler uses existing renewable Singleton leadership, reconciles on acquisition and fires at poll_interval. Quiesce cancels scheduling with new claims before draining existing handlers; bothdisabled starts no background lifecycle.
+- Reason: an enqueue/scheduler-only replica must not execute handlers, and an execution-only replica must not mutate periodic progress. Reusing existing lifecycle and lease primitives keeps stop ordering and failover behavior consistent.
+- Tradeoffs/status: graceful takeover verified on SQLite and three public-lifecycle PostgreSQL instances, including actual periodic handler execution. Process-kill lease expiry remains unverified until production configuration/composition permits process-level testing; production registration is still pending.
+
+## 2026-10-16 — Schedule interval override normalization
+- Decision: normalize deployment interval overrides into the existing schedule catalog during Initialize, before sealing; reject unknown names/invalid durations atomically. Copy caller-owned configuration. Explicit interval replaces cron.
+- Reason: reconciliation and firing must hash and execute the same effective definition; unchanged effective timing must not reset persistent progress.
+- Alternatives: applying overrides only on database write would leave local firing hashes stale; accepting invalid overrides silently would hide configuration errors.
+- Tradeoffs: changing effective timing recalculates the next due instant through existing reconciliation while preserving operator pause and execution history. Enabled override precedence is not implemented by this change.
+- Scope: internal jobs configuration only; production AppConfig mapping remains pending.
+- Status: implemented and tested; full production/business acceptance pending.
+
+## 2026-10-16 — Production jobs composition
+- Decision: register jobs after audit in the single composition inventory; map app-owned settings through moduleconfig.go. Keep existing metrics/telemetry/audit middleware order and event registration unchanged.
+- Reason: job execution requires audit/guid/dlock; existing root connectors bind dead-letter publication and active-tenant enumeration before initialization.
+- Alternatives: separate background registry would duplicate lifecycle/migration ownership and is rejected.
+- Tradeoffs: jobs migrations are now included even in IAM-disabled deployments. Worker drain must fit the configured graceful shutdown budget. Per-schedule enabled precedence awaits explicit clarification.
+- Scope/status: production composition/config implemented with app race/build/architecture verification; running dev process not restarted and full business acceptance pending.
+
+## 2026-10-16 — Job contribution discovery
+- Decision: composition root collects HandlerProvider and ScheduleProvider declarations from the activated registry after Wire; jobs.Initialize validates all references and seals the catalog.
+- Reason: follows spec09 catalog contract, excludes disabled modules and allows plans to reference handlers contributed later in registration order.
+- Alternatives: module-local self-registration would duplicate composition behavior and make declaration discovery inconsistent.
+- Tradeoffs: invalid contributions fail preparation; partial catalog state is not used after failed startup. Owners remain lifecycle module names until an explicit logical namespace exception is needed by a real contributor.
+- Scope/status: root discovery implemented; actual worker/outbox execution and rollback tests pass through discovery. Governance provider and full business acceptance remain pending.
+
+## 2026-10-16 — Governance job logical namespace
+- Decision: business governance declares governance.seed_reconcile as an hourly PLATFORM job; the root maps its concrete module type to JobNamespace governance while lifecycle identity stays business_governance.
+- Reason: spec08 freezes job identity and the existing IAM governance module already occupies the lifecycle name. The job owns tenant pagination, including suspended tenants according to existing seeding semantics.
+- Alternatives: renaming IAM, changing published job identity, or globally allowing arbitrary module prefixes would break ownership or compatibility.
+- Tradeoffs: one explicit composition-root alias; startup sweep and production governance registration remain pending real SYSTEM/first-access authorization.
+- Scope/status: declarations, invocation and actual root composition tested; no claim of live production role initialization.
+
+## 2026-10-16 — Internal role seed authority without erasing caller claims
+- Decision: reuse the IAM transaction-bound Service copy pattern already used by EntityProvisioner. RoleSeeder alone marks its private copy for system manifest grant/condition operations and verified Administrator-member copying; ordinary HTTP Service instances remain unmarked.
+- Reason: first-access role initialization must not depend on the initiating user's grant authority, and erasing authn claims would hide attribution. Manifest ownership stays with the internal governance consumer; this capability must never accept user-defined manifests or be exposed as a role editing endpoint.
+- Preserved constraints: catalog/root/role reference validation, canonical policy conditions, last-administrator protection, active-member/expiry checks, caller transaction, audit append and policy revision updates. Source permission checks apply to ordinary user grants as before. Privileged writes retain initiating principal/account-view context and add operation_source=role_seed.
+- Alternatives: removing caller claims (rejected: loses provenance); duplicating IAM writes in governance (rejected: breaks ownership/audit/revision); global bypass context token (rejected: broader than the existing internal capability).
+- Tradeoffs: code holding the existing RoleSeeder is trusted to submit only its code-owned manifest. The private flag is never placed on the shared HTTP service or exported through configuration/context.
+- Status: targeted and complete core race regression pass using real IAM repository/authorizer; production governance integration remains pending.
+
+## 2026-10-16 — Governance production registration and startup sweep
+- Decision: register business_governance with the IAM activation flag after its IAM/jobs dependencies; Start persists a platform governance.seed_reconcile job through the existing jobs.Queue. Startup and hourly schedule share the same concurrency key/handler.
+- Reason: initialization work must be durable/retryable and use existing worker/audit lifecycle. A queue error fails startup rather than silently omitting the sweep. Synchronous EnsureTenant remains available to first-access consumers.
+- Alternatives: a new goroutine/timer (rejected: duplicates jobs); running all tenant writes synchronously during Start (rejected: blocks startup for the whole fleet); permanently fixed startup idempotency key (rejected: suppresses later required startup sweeps).
+- Tradeoffs: each starting replica can enqueue a sweep; shared concurrency and per-tenant seed ledger serialize execution and prevent duplicate state. Worker-disabled replicas can enqueue for other workers. No new startup schedule identity is invented.
+- Verification: real composed SQLite IAM/governance integration covers14roles, real audit chain, initiator attribution, persisted revoked grant preservation and full transaction rollback after injected final audit failure. Production registration/startup app race and final governance race pass; existing dev process not restarted.
+
+## 2026-10-16 — Delivery transaction core
+- Decision: introduce a private projectService.createOn operating strictly inside the caller's transaction. It delegates entity/root provisioning, role bindings, channel creation, IAM audit and outbox publication through existing provider-owned capabilities; only delivery tables use delivery generated queries.
+- Reason: spec07 BR-07-01 requires one atomic aggregate, including failures after publication. Caller command owns authorization, full request validation, optional client creation, role-key resolution and seed preparation; those are not inferred by storage assembly.
+- Tradeoffs: the core takes private validated draft rows and does not expose persistence models through public APIs. It checks transaction/capability/tenant/actor/member structural boundaries and copies child rows before replacing project IDs. API, command authorization and real cross-module integration remain pending.
+- Alternatives: separate commits per module or compensating deletion rejected because they violate required creation atomicity.
+- Status: real SQLite delivery migrations with provider transaction probes prove success and rollback at every step; not yet a production create endpoint.
+
+## 2026-10-16 — Reserved-entity business binding authority
+- Decision: EntityRoleBindingStore marks only its transaction-local Service copy as a business binding writer. PutEntityRoleBinding skips caller role-grant escalation only after loading a reserved-type entity under the tenant policy revision lock. Unreserved entities still run the original grantability checks; shared HTTP Service remains unmarked. The internal path first acquires the existing empty-code authorization fences in system-authorization then tenant-policy order, and uses the existing current-read helper when checking the reserved entity type.
+- Reason: spec07 mandates automatic creator delivery_lead binding after authorized project creation, even if the initiator does not personally hold all role permissions. The business owner must authorize the command and validate role/subject mapping before invoking this internal capability.
+- Preserved checks: tenant-qualified entity and role ownership, active tenant membership, binding shape/effect/expiry, transaction, policy revision, audit. Caller authn context is retained; business binding audit adds operation_source=entity_provisioning.
+- Alternatives: dropping caller claims, globally changing role-grant authorization, or granting tenant-wide creator rights rejected. Direct writes from delivery would duplicate IAM policy/audit behavior.
+- Tradeoffs: capability trusts the internal business owner, and requires declared reserved entity types. Delivery must publish its project reservation before this path becomes active.
+- Status: targeted and final full core race regression pass, with build/lint/architecture and existing IAM performance regression. New binding path PG/MySQL concurrency acceptance remains pending. Project command/API still pending.
+
+## 2026-10-16 — Delivery ownership, required security and optional provisioning
+- Decision: register delivery under IAM activation after governance/collab. It contributes project EntityTypeReservations, project_read/manage/stage_change/mode_change actions, and SIGNAL project.created schema1. project_create remains a non-delegable pseudo-action and is not registered in IAM.
+- Root wiring: delivery publishes ProjectProvisioningConnector; internal/app/delivery.go resolves existing entity, binding and channel capabilities and binds them before Initialize. Missing optional capabilities remain nil, generate named startup warnings and keep createOn unavailable. Binding cannot repeat or occur after initialization.
+- Reason: required IAM security/audit/guid/governance/events are lifecycle dependencies; optional provisioning must not be silently substituted or force successful project creation without required resources. Existing root-connector pattern avoids a second DI mechanism and an unconditional collab lifecycle dependency.
+- Tradeoffs: the project reservation becomes effective when delivery activates; public project commands/routes are still pending and this code has not been deployed/restarted. Disabled IAM removes delivery with its other dependent modules.
+- Validation: module tests cover permission/event declarations, pseudo-action absence, reservation snapshot, missing required dependencies and optional capability binding lifecycle; real composed app verifies migration and provider registration. Full project HTTP/API behavior remains unimplemented.
+
+## 2026-10-16 — Fleet identity facts in the project transaction
+- Decision: fleet publishes a narrow AgentDirectory.ByPrincipalOn capability using the caller transaction and an explicit tenant boundary. It returns a detached non-secret identity/role view; delivery retains IAM membership, command authority and role-binding responsibility.
+- Reason: service accounts are not necessarily Agents; spec07 BR-07-02 requires real fleet classification and the spec05 role mapping. Revoked roles must disappear in the same transaction.
+- Alternatives: service-account prefix/name inference or trusting incoming role keys rejected. Cross-module table reads rejected by module ownership rules.
+- Tradeoffs: this is the identity portion of AgentDirectory, not its planned runtime/load/statistics operations. Lifecycle state is returned as fact; binding validation follows spec07 active tenant membership and compatible roles, without adding an unrequested ACTIVE-only project membership rule.
+- Scope/status: directory, app activation and delivery member resolution implemented; full command, fleet Agent lifecycle and runtime operations remain pending acceptance.
+
+## 2026-10-16 — Project creation command and authority capability
+- Decision: publish only governance.ProjectCreationAuthority, delegating to the existing project_create Check branch. Delivery owns command orchestration; no full AuthorityChecker claim until remaining actions/ListEligible exist.
+- Reason: provider-owned capability enables real command DI without duplicating policy evaluation or cross-module storage access.
+- Transaction order: preclassify HUMAN on writer and seed roles before the business transaction; lock sorted principal IDs, acquire existing IAM system/tenant authorization fences, revalidate human, check tenant project count, validate references/members, assemble and persist the aggregate. AuthoritySource always comes from the server decision.
+- Alternatives: independently committing aggregate components rejected by BR-07-01; checking count outside fenced transaction rejected because concurrent creators can exceed500; trusting incoming actor/source rejected.
+- Tradeoffs/status: internal H1 command takes already Huma-validated/defaulted input and explicit writer. HTTP mapping/idempotency, full composed integration and actual MySQL concurrency acceptance remain pending. New intake-conversion creation must use the same tenant fence before counting.
+
+## 2026-10-16 — Shared transactional idempotency prerequisite
+- Decision: add provider-owned infra/idempotency Store.Do and platform_idempotency_keys per spec09 C7; do not reuse files-operation/job dedup tables. Unique key is tenant/subject kind/subject/operation/key. Insert-on-conflict plus a current row lock serializes duplicate commands through caller commit.
+- Error semantics: a checked savepoint rolls back callback effects for non-success responses; deterministic4xx can be stored without partial business writes. 5xx/429/version409/interrupted discard the key; Go errors require caller rollback. Large responses retain the mandated resource reference for caller reread.
+- Hashing: preserve typed struct encoding order and exact numbers, omit only top-level seen_seq. HashRequest returns an error on failed encoding; spec09 signature clarified because a silent zero/fallback hash can replay an unrelated request. No existing callers to break.
+- Tradeoffs/scope: strong transactional mode is implemented first for H1. Middleware takeover, configurable limits, purge, metrics and HTTP i18n remain pending, not silently replaced by this mode. Project H1 must use Do inside its actual business transaction after independent role seeding.
+
+## 2026-10-16 — Server-owned creation facts in tenant route guards
+- Decision: extend existing authz.Guard with optional CreationAttributes for tenant POST creation. The declaration is copied at registration; resource Type comes from permission resource and Owner from authenticated principal. Request body/header/query cannot select these facts; resource ID is absent before creation.
+- Reason: H1 must use authz.Register(project_manage), whose permission check precedes the business handler. Existing conditional grants on project type/owner/DEFAULT/HYBRID otherwise fail before the domain checker can provide those facts.
+- Alternatives: authenticated-only route would drop the declared permission guard; weakening IAM condition evaluation would authorize the wrong context; trusting client-provided resource attributes would permit spoofing. All rejected.
+- Scope/tradeoff: only tenant Register accepts creation facts, only POST; other scope helpers reject them. Existing guards and permission/error behavior are preserved. Real IAM HTTP test proves no-facts denial, declared-facts allowance, then revocation denial. H1 must reauthorize transactionally; these facts are never an independent grant.
+
+## 2026-10-16 — Opt-in operation request contracts over OPTIONS (M02 in progress)
+- Decision: shared authz.RegisterRequestContract(api, path) registers OPTIONS after the resource operations; method query selects GET/POST/PUT/PATCH/DELETE. Project creation is the first consumer. Payload projects registered Huma parameters/requestBody plus only reachable schema definitions; SHA-256 versions the canonical payload. No duplicate field constraints or executable rules.
+- Reason: user requested API-derived form rules; migration §5.2 explicitly calls for method-level metadata. Reuse the selected operation middleware chain, with its operation and HTTP method for method-sensitive authorization; restore OPTIONS context for response. Never invoke its business handler. Fail registration for non-public operations without an active middleware chain.
+- Alternatives considered: unauthenticated global schema dump, per-form handwritten rules, invoking mutation handlers for validation. Rejected due to permission mismatch, drift, or side effects.
+- Tradeoffs: opt-in after all resource operations registered; existing resources are not silently changed. Response currently private/no-store to avoid stale authorization caching. CORS preflight carrying Access-Control-Request-Method is rejected by this metadata route; it does not grant cross-origin access or replace deployment CORS policy. Locale-aware rule messages, client validator compilation, unsupported-rule disclosure and wider endpoint adoption remain pending M02 scope.
+- Scope/status: implementing M02/S00 transport; production project endpoint wired and HTTP-tested, not complete dynamic-form acceptance. Full business migration remains NOT READY.
+
+## 2026-10-16 — AutoForm contract interpretation and explicit unsupported rules
+- Decision: reuse existing Zod validation and AutoForm lifecycle; optional contract prop compiles the registered request schema, derives required/numeric input hints, validates on blur/submit, and parses numeric edit strings only at submission. No global input coercion/default mutation or dependency added. Null contract means loading/unavailable, undefined retains existing forms.
+- Reason: schema-driven validation must preserve Unicode code-point lengths, explicit null/omission, exact numeric safety and Go/JS regex semantics. Inspected installed Zod fromJSONSchema: UTF-16 length checks and ignored custom formats do not meet these requirements unchanged. Its semi-experimental converter was not used.
+- Alternatives: hand-coded per-page business constraints (drift); blindly accepting all JS regexes (dialect mismatch); adding a separate validator runtime (extra dependency/runtime behavior). Current adapter uses existing Zod primitives with explicit supported vocabulary.
+- Tradeoffs: unsupported constraints block submitting a contract-backed form and return diagnostics. Full-int64 wire serialization, decimal multipleOf, remaining formats/regexes, server-only validator disclosure and permissions are pending; never claim all schemas are supported. Messages use shared form.contract keys in en-US/zh-CN/ms-MY.
+- Scope/status: M02 partial implementation; existing forms unchanged unless opted in. Production project pages and live OPTIONS fetching not yet wired; full acceptance NOT READY.
+
+## 2026-10-16 — Project detail reuses Entity ownership and snapshot reads
+- Decision: H3 uses core.EntityOwnerResolver through existing authz.RegisterOwned with project_read. Delivery reads its own tenant-scoped project row and delegates Entity/client reads to core.EntityProvisioner.GetOn.
+- Reason: reuse IAM identity/authorization and avoid cross-module storage imports; name/client and version must come from one snapshot for the editor ETag.
+- Alternatives: separate project identity or direct IAM table reads rejected; independent read-committed queries risk mixing concurrent rename/client/version state.
+- Tradeoff: short read-only repeatable-read transaction on writer; actual MySQL compatibility validation remains blocked by local Docker availability. No lifecycle mutation, provisioning or new data model introduced.
+- Scope/status: H3 implemented; composed HTTP, delivery/app race, architecture, lint/build checks passed. Full project list/edit/UI and M00–M20 remain incomplete.
+
+## 2026-10-16 — Project list record query reuses IAM joins and data constraints
+- Decision: H2 record query uses the existing provider-owned core.AccessTableNames for Entity/client JOINs and core.TenantConstraint for project_read. All scope/denial/filter predicates precede count and pagination; total/page share a read-only repeatable-read transaction. No new identity table or query DSL.
+- Reason: name filtering/sorting must occur before pagination; per-row GetEntity after paging cannot supply correct name-filtered totals. This is the existing D39 exception for a real cross-owner JOIN, not arbitrary cross-module storage access.
+- Alternatives: duplicate project names, in-memory post-page filtering, default-zero activity counts rejected. Department-only scope cannot grant all rows when project has no department attribute; eligible Entity grants are carried in ResourceIDs.
+- Tradeoff/status: private record portion implemented and tested; H2 HTTP response is deliberately not exposed until actual work-item/review/delivery counts exist. Required delivery_work_items and delivery_deliveries persistence remains pending; no narrowed H2 acceptance claim. Name contains uses existing pkg/query like operator.
+
+## 2026-10-16 — Requirements storage precedes work-item statistics
+- Decision: implement spec02 project counters, requirements, acceptance criteria and requirement-version storage within delivery, using additive migration00002 in each dialect and generated model/query/dbgen artifacts. Project IDs continue to be existing Entity IDs.
+- Reason: H2 open/review counts require real work items; work items require real requirements. A separate simplified counter table or fabricated zero values would diverge from the accepted business schema.
+- Integrity: same-module foreign keys include tenant/project/requirement as appropriate; supersession cannot cross requirements. Unique project numbers and requirement version numbers remain DB constraints. Migration00001 and published files are not rewritten.
+- Tradeoffs/status: this is storage only. Requirement commands, baseline immutability, allocation/limits and future change-record foreign key remain mandatory before feature acceptance. Cross-module IDs retain spec00 reference-only semantics. Work-item/delivery rows and H2/H4/UI are still pending.
+
+
+## 2026-10-16 — 资源框架先行与既有页面统一
+- Decision: 以既有资源、契约、权限、AutoForm/AutoTable/CRUD 层为落地基础；先规范、全量清册、框架补缺，再逐批迁移。既有 IAM 纳入相同标准。
+- Reason: 用户明确要求复用框架而非页面各自实现，并要求先评审排查再修改。
+- Alternatives considered: 直接修角色页样式、逐页复制校验、另建 CRUD 框架均不采用。
+- Tradeoffs: 前置核对成本增加，但统一缺口在责任层关闭；专业交互保留并记录原因，资源按业务声明支持的操作，不自动开放全部写权限。
+- Scope/status: 流程与原则已确认；详见迁移方案 §10、清单 §11。具体全量影响范围和实现验收待完成，非架构已交付声明。
+
+
+## 2026-10-16 — 显式路由工作区布局
+- Decision: React Router handle.layout=workspace 由共享useWorkspaceLayout读取，应用壳提供桌面剩余高度；页面内部各面板承担滚动。首批仅三个角色路由启用，窄屏维持堆叠文档流。
+- Reason: 已实际复现外层滚动带走短角色列表；修复责任包含壳高度链，不能各页猜测viewport减值。
+- Alternatives considered: 全站强制overflow-hidden会截断未迁移页面；按路径字符串硬编码角色判断不可复用；均不采用。
+- Scope/status: 角色三个作用域运行验证已通过；其他页面需要明确声明并验证后接入，不能仅加handle就签收。角色API/权限语义保持原样。
+
+## 2026-10-16 — 结构化请求错误的兼容落地
+- Decision: 执行既有动态字段规则方案§5；respx增加具名ValidationIssue/Data，422使用保留业务分支的联合schema，普通错误message与四字段封装不变；生成文档和前端类型同步。
+- Reason: 页面不得拆译文定位字段，也不能覆盖已有业务冲突data。
+- Alternatives considered: 按点拆Huma location会混淆字面点号字段与嵌套字段；替换全部错误schema会丢业务类型，均不采用。
+- Tradeoffs: 利用现有操作Schema确认唯一JSON Pointer，歧义/动态位置保留全局反馈；仅发布受控token白名单参数，不暴露Value。前端重译资源与专业嵌套控件仍须后续闭环。
+- Scope/status: 公共响应/类型链已实现并通过HTTP三语、生成一致性、race与全主模块测试；不表示所有资源表单或业务已验收。
+
+## 2026-10-16 — 角色原始与规范化字段规则共源
+- Decision: core拥有roleFields tag声明；Huma SchemaTransformer在预计算前将同一声明投影到创建/PATCH/platform请求，服务复用fieldrules编译结果。首批只提供实际需要的trim-space与UTF8字节上下界。
+- Reason: 原始字符数与规范化后字节数的接受范围不同，直接用原始schema替换service验证会改变兼容性；平台1024字符覆盖须保留。
+- Alternatives considered: 全改字符数、让内部调用也承受HTTP raw限制、前端另写长度常量，均不采用。
+- Tradeoffs: 共用纯框架库但业务声明仍模块自治；PATCH未提供name时只校验旧值、不额外规范化。领域保留名/授权/状态限制继续留在原领域层。
+- Scope/status: 后端tag→Schema/服务桥接与三语字节错误已实现，兼容性/race/生成一致性测试通过；前端扩展执行/元数据消息、OPTIONS和页面接线仍未完成。
+
+
+## 2026-10-16 — 角色工作区滚动边界落到Tab内容
+- Decision: 延续显式workspace布局；桌面角色右栏仅TabPanel滚动，资源header与TabList留在外部flex列中；窄屏保留自然堆叠。
+- Reason: 用户报告并实际复现section滚700导致Tab从y279到-421；原左右独立测试不能证明Tab导航可见。
+- Alternatives considered: 给各页叠加猜测高度/多层sticky未采用；利用既有壳高度链和Tabs组件即可，不新增布局框架。
+- Tradeoffs: 内容可用高度扣除真实标题/导航，不扣固定viewport常量。原测试增加header/Tab稳定及各tab可达断言。
+- Scope/status: 同一角色组件影响租户/平台/系统；与AutoForm/AutoTable迁移状态分开验收，详见MEMORY与清单§12。本决策不宣称整个页面CRUD迁移完成。

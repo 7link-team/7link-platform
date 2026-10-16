@@ -53,6 +53,11 @@ type Action struct {
 type Guard struct {
 	Resource string
 	Verb     string
+	// CreationAttributes supplies code-owned facts for a new resource on a
+	// tenant POST route. A non-nil map enables creation context: Type is Resource,
+	// Owner is the authenticated principal, and ID is absent. Never populate
+	// this declaration from request input. Ordinary routes leave it nil.
+	CreationAttributes map[string]string
 	// FilterData opts a typed entity route into row-scoped authorization. Its
 	// repository must enforce EntityConstraint on every read and write.
 	FilterData bool

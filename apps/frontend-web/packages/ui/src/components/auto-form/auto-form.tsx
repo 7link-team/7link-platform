@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo } from "react"
+import { useTranslations } from "use-intl"
 
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -197,6 +198,7 @@ function FieldRow({
             type={effectiveType}
             config={config}
             value={values[fieldName]}
+            values={values}
           />
         ) : (
           <Renderer {...rendererProps} />
@@ -207,7 +209,8 @@ function FieldRow({
 }
 
 export function AutoForm({
-  fields,
+  fields: configuredFields,
+  contract,
   schema,
   initialData,
   mode = "add",
@@ -221,6 +224,7 @@ export function AutoForm({
   children,
   id,
 }: AutoFormProps & { id?: string }) {
+  const t = useTranslations("form")
   const registry = useMemo(
     () => ({ ...defaultRegistry, ...renderers }),
     [renderers]
@@ -230,14 +234,16 @@ export function AutoForm({
   const effectiveReadonly = readonly || mode === "detail"
 
   const form = useAutoForm({
-    fields,
+    fields: configuredFields,
+    contract,
     schema,
     initialData,
     mode,
+    readonly: effectiveReadonly,
     onSubmit,
     onError,
   })
-  const { values, errors, setValue, validateField } = form
+  const { fields, values, errors, setValue, validateField } = form
 
   useEffect(() => {
     onChange?.(values)
@@ -253,6 +259,19 @@ export function AutoForm({
       onSubmit={form.handleSubmit}
       noValidate
     >
+      {contract === null && !effectiveReadonly && (
+        <p
+          role="status"
+          className="text-sm text-muted-foreground md:col-span-2"
+        >
+          {t("contract.loading")}
+        </p>
+      )}
+      {errors._form && (
+        <div role="alert" className="text-destructive md:col-span-2">
+          {errors._form}
+        </div>
+      )}
       {Object.entries(fields).map(([fieldName, field]) => {
         const col = field.col ?? defaultColForType(field.type)
         const colClass =

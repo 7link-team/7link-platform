@@ -15,6 +15,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
+	"7link.com/platform/pkg/extension/huma/fieldrules"
 	"7link.com/platform/pkg/extension/huma/respx"
 )
 
@@ -248,18 +249,12 @@ type listRoleDirectoryBindingsInput struct {
 
 type createRoleInput struct {
 	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	Body     struct {
-		Name        string `json:"name" minLength:"1" maxLength:"128"`
-		Description string `json:"description,omitempty" maxLength:"4096"`
-	}
+	Body     roleFields
 }
 
 type updateRoleInput struct {
 	RoleID string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	Body   struct {
-		Name        *string `json:"name,omitempty" minLength:"1" maxLength:"128"`
-		Description *string `json:"description,omitempty" maxLength:"4096"`
-	}
+	Body   rolePatchFields
 }
 
 type setRoleDataScopeInput struct {
@@ -1504,6 +1499,11 @@ func apiError(operation string, err error) error {
 	if respx.IsStatusError(err) {
 		return err
 	}
+	var fieldIssue *fieldrules.StringIssue
+	if errors.Is(err, ErrInvalidArgument) && errors.As(err, &fieldIssue) {
+		return huma.Error422UnprocessableEntity(respx.InvalidArgument,
+			respx.ByteLengthDetail("body."+fieldIssue.Field, fieldIssue.Rule == "minBytes", fieldIssue.Limit))
+	}
 	if errors.Is(err, ErrMemberConflict) {
 		return huma.Error409Conflict(corei18n.MembershipAlreadyExists)
 	}
@@ -1536,6 +1536,8 @@ func apiError(operation string, err error) error {
 		return huma.Error409Conflict(corei18n.EntityHasRoleBindings)
 	case errors.Is(err, ErrEntityHasRelationships):
 		return huma.Error409Conflict(corei18n.EntityHasRelationships)
+	case errors.Is(err, ErrEntityTypeReserved):
+		return huma.Error409Conflict(corei18n.EntityTypeReserved)
 	case errors.Is(err, ErrEntityHasFiles):
 		return huma.Error409Conflict(corei18n.EntityHasFiles)
 	case errors.Is(err, ErrEntityHierarchy):

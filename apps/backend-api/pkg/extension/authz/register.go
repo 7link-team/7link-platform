@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"strings"
 
@@ -201,6 +202,12 @@ func Register[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Gua
 	if r == nil {
 		panic("authz registrar is nil")
 	}
+	if guard.CreationAttributes != nil {
+		if op.Method != http.MethodPost || !strings.Contains(tenantPath(op.Path), "{"+TenantPath+"}") || strings.Contains(op.Path, "{"+EntityPath+"}") {
+			panic("creation facts require a tenant POST route")
+		}
+		guard.CreationAttributes = maps.Clone(guard.CreationAttributes)
+	}
 	r.prepare(api, &op, guard)
 	prepareTenantPath(&op)
 	requireResourceTag(&op)
@@ -210,6 +217,9 @@ func Register[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Gua
 // RegisterEntity registers a guarded business operation whose selected entity
 // is verified by IAM before the handler receives trusted snowflake claims.
 func RegisterEntity[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Guard, handler func(context.Context, *I) (*O, error)) {
+	if guard.CreationAttributes != nil {
+		panic("creation facts are supported only by tenant Register")
+	}
 	if r == nil {
 		panic("authz registrar is nil")
 	}
@@ -235,6 +245,9 @@ func RegisterEntity[I, O any](r *Registrar, api huma.API, op huma.Operation, gua
 // its direct subresources. The owning module resolves the resource ID; the
 // registrar then authenticates and authorizes against the trusted owner.
 func RegisterOwned[I, O any](r *Registrar, api huma.API, op huma.Operation, resourceParam string, resolve ResourceOwnerResolver, guard Guard, handler func(context.Context, *I) (*O, error)) {
+	if guard.CreationAttributes != nil {
+		panic("creation facts are supported only by tenant Register")
+	}
 	if r == nil {
 		panic("authz registrar is nil")
 	}
@@ -287,6 +300,9 @@ func RegisterOwnedTenantMember[I, O any](r *Registrar, api huma.API, op huma.Ope
 // selectors uses authenticated self-service. A partial selector never falls
 // back to the self-service context.
 func RegisterEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Guard, handler func(context.Context, *I) (*O, error)) {
+	if guard.CreationAttributes != nil {
+		panic("creation facts are supported only by tenant Register")
+	}
 	if r == nil {
 		panic("authz registrar is nil")
 	}
@@ -317,6 +333,9 @@ func RegisterEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, op huma
 // RegisterTenantEntityOrAuthenticated exposes one resource shape in personal,
 // tenant, and entity contexts. Each URI has exactly one authorization model.
 func RegisterTenantEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Guard, handler func(context.Context, *I) (*O, error)) {
+	if guard.CreationAttributes != nil {
+		panic("creation facts are supported only by tenant Register")
+	}
 	// The self twin is the same resource reached without a tenant selector,
 	// so it belongs to the same published section. Forcing it into a "me"
 	// section split one resource across two places in the document.
@@ -337,6 +356,9 @@ func RegisterTenantEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, o
 // streaming protocols. It executes the same global and entity authorization
 // middleware chain as typed Huma handlers before invoking the raw handler.
 func RegisterEntityAdapter(r *Registrar, api huma.API, op huma.Operation, guard Guard, handler func(huma.Context)) {
+	if guard.CreationAttributes != nil {
+		panic("creation facts are supported only by tenant Register")
+	}
 	if r == nil || api == nil || handler == nil {
 		panic("entity adapter operation requires registrar, api, and handler")
 	}
@@ -539,6 +561,9 @@ func (r *Registrar) authenticatedOnly(api huma.API) func(huma.Context, func(huma
 // whose Scope is ActionScopeSystem. Operating-platform routes use
 // RegisterOperatingPlatform instead.
 func RegisterPlatform[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Guard, handler func(context.Context, *I) (*O, error)) {
+	if guard.CreationAttributes != nil {
+		panic("creation facts are supported only by tenant Register")
+	}
 	if r == nil {
 		panic("authz registrar is nil")
 	}
@@ -570,6 +595,9 @@ func RegisterPlatform[I, O any](r *Registrar, api huma.API, op huma.Operation, g
 
 // RegisterOperatingPlatform authorizes inside one independently operated root.
 func RegisterOperatingPlatform[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Guard, handler func(context.Context, *I) (*O, error)) {
+	if guard.CreationAttributes != nil {
+		panic("creation facts are supported only by tenant Register")
+	}
 	if r == nil || r.registry == nil {
 		panic("operating platform operation requires registrar")
 	}
@@ -921,6 +949,11 @@ func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, fu
 			return
 		}
 		if guard != nil {
+			if guard.CreationAttributes != nil {
+				requestContext = policyx.WithResourceContext(requestContext, policyx.ResourceContext{
+					Type: guard.Resource, Owner: claims.PrincipalID.String(), Attrs: guard.CreationAttributes,
+				})
+			}
 			allowed, err := r.checker.Check(requestContext, tenantID, guard.Code(), claims.PrincipalID)
 			if err != nil {
 				authorizationFailed(api, ctx, "authz check failed", "permission", guard.Code(), "err", err)

@@ -1,4 +1,5 @@
 {
+  "entity_type_reserved": "Jenis entiti ini diurus oleh modul perniagaannya. Gunakan halaman perniagaan yang berkaitan.",
   "menu_system_organization": "Organisasi",
   "menu_system_access": "Akses",
   "menu_system_audit": "Audit",

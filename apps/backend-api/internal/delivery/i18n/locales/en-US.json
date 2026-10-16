@@ -1,0 +1,17 @@
+{
+  "client_choice": "Choose either an existing client or a new client name.",
+  "primary_contact": "Only one primary contact is allowed.",
+  "primary_accept": "The primary contact must be allowed to accept deliveries.",
+  "repository_url": "Use an HTTPS, SSH or git@host:path repository URL without credentials.",
+  "repository_name": "Repository names must be unique within the project.",
+  "primary_repository": "Only one primary repository is allowed.",
+  "project_code_taken": "This project code is already in use.",
+  "project_name_taken": "A project or client with this name already exists here.",
+  "parent_not_client": "Choose an active client in this tenant.",
+  "provisioning_unavailable": "Project creation is temporarily unavailable. No project was created.",
+  "contact_not_found": "A selected contact is unavailable in this tenant.",
+  "intake_not_found": "The source intake record is unavailable in this tenant.",
+  "member_role_mismatch": "A selected member is inactive or cannot hold this project role.",
+  "project_limit_reached": "This tenant has reached the limit of 500 unarchived projects.",
+  "human_only": "Only a human member can create a project."
+}

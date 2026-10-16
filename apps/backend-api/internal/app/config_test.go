@@ -358,3 +358,45 @@ func TestDevelopmentSecurityServerRequiresDebugMode(t *testing.T) {
 		Shutdown: ShutdownConfig{Timeout: time.Second},
 	}))
 }
+
+func TestJobsConfigurationDefaultsAndWorkerIsolation(t *testing.T) {
+	var defaults AppConfig
+	require.NoError(t, configx.New().Parse(&defaults))
+	mapped := jobsConfig(defaults)
+	require.True(t, *mapped.WorkersEnabled)
+	require.True(t, *mapped.SchedulerEnabled)
+	require.Equal(t, time.Second, mapped.PollInterval)
+	require.Equal(t, time.Minute, mapped.Lease)
+	require.Equal(t, 15*time.Second, mapped.DrainTimeout)
+	require.Equal(t, 10, mapped.ClaimBatch)
+	require.Equal(t, 4, mapped.MaxRunningPerTenant)
+	require.Equal(t, 100000, mapped.MaxPendingPerTenant)
+	var configured AppConfig
+	require.NoError(t, configx.New().Parse(&configured,
+		"--jobs.workers-enabled=false", "--jobs.scheduler-enabled=true",
+		"--jobs.poll-interval=2s", "--jobs.claim-batch=3", "--jobs.lease=90s",
+		"--jobs.max-running-per-tenant=2", "--jobs.max-pending-per-tenant=500",
+		"--jobs.drain-timeout=8s", "--jobs.queues.urgent=6",
+	))
+	mapped = jobsConfig(configured)
+	require.False(t, *mapped.WorkersEnabled)
+	require.True(t, *mapped.SchedulerEnabled)
+	require.Equal(t, 2*time.Second, mapped.PollInterval)
+	require.Equal(t, 90*time.Second, mapped.Lease)
+	require.Equal(t, 8*time.Second, mapped.DrainTimeout)
+	require.Equal(t, 3, mapped.ClaimBatch)
+	require.Equal(t, 2, mapped.MaxRunningPerTenant)
+	require.Equal(t, 500, mapped.MaxPendingPerTenant)
+	require.Equal(t, map[string]int{"urgent": 6}, mapped.Queues)
+}
+
+func TestJobsDrainFitsGracefulShutdownBudget(t *testing.T) {
+	config := AppConfig{Jobs: Jobs{WorkersEnabled: true}, Shutdown: ShutdownConfig{Graceful: true, Timeout: 20 * time.Second, DrainDelay: 5 * time.Second}}
+	require.ErrorContains(t, validateRuntimeConfig(config), "jobs.drain_timeout")
+	config.Jobs.DrainTimeout = 14 * time.Second
+	require.NoError(t, validateRuntimeConfig(config))
+	config.Jobs.DrainTimeout = 16 * time.Second
+	require.ErrorContains(t, validateRuntimeConfig(config), "jobs.drain_timeout")
+	config.Jobs.WorkersEnabled = false
+	require.NoError(t, validateRuntimeConfig(config))
+}

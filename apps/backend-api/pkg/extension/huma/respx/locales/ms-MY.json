@@ -1,4 +1,6 @@
 {
+  "validation_expected_min_bytes": "Nilai mesti mengandungi sekurang-kurangnya %s bait UTF-8.",
+  "validation_expected_max_bytes": "Nilai mesti mengandungi paling banyak %s bait UTF-8.",
   "success": "Berjaya",
   "created": "Berjaya dicipta",
   "not_found": "Sumber yang diminta tidak ditemui. Semak pengecam sumber dan cuba lagi.",

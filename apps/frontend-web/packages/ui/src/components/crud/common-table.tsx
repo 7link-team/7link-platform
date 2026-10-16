@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -129,13 +130,17 @@ export const CommonTable = forwardRef<
   const [page, setPage] = useState(0) // zero-based
   const [sort, setSort] = useState<SortState | null>(null)
   const [loading, setLoading] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const requestSequence = useRef(0)
 
   const filterKey = JSON.stringify(tableOptions.filter ?? {})
   const orderKey = JSON.stringify(tableOptions.order ?? {})
   const fieldsKey = fields ? fields.join(",") : ""
 
   const load = useCallback(async () => {
+    const sequence = ++requestSequence.current
     setLoading(true)
+    setFailed(false)
     const order: Record<string, SortDir> = sort
       ? { [sort.field]: sort.dir }
       : (tableOptions.order ?? {})
@@ -157,22 +162,32 @@ export const CommonTable = forwardRef<
             fields,
           }
     try {
-      const env = await api.get<unknown>(tableOptions.url, query)
-      const result = tableOptions.request
-        ? tableOptions.request(env)
-        : adaptList<Row>(env)
+      const result = tableOptions.fetch
+        ? await tableOptions.fetch(query)
+        : await api
+            .get<unknown>(tableOptions.url, query)
+            .then((env) =>
+              tableOptions.request
+                ? tableOptions.request(env)
+                : adaptList<Row>(env)
+            )
+      if (sequence !== requestSequence.current) return
       setRows(result.list)
       setTotal(result.total)
     } catch {
+      if (sequence !== requestSequence.current) return
+      setFailed(true)
       setRows([])
       setTotal(0)
     } finally {
-      setLoading(false)
+      if (sequence === requestSequence.current) setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     api,
     tableOptions.url,
+    tableOptions.request,
+    tableOptions.fetch,
     tableOptions.filterMode,
     page,
     limit,
@@ -183,7 +198,11 @@ export const CommonTable = forwardRef<
   ])
 
   useEffect(() => {
+    const requests = requestSequence
     void load()
+    return () => {
+      requests.current++
+    }
   }, [load])
 
   // reset to first page whenever the static filter changes
@@ -193,6 +212,7 @@ export const CommonTable = forwardRef<
 
   const exportCsv = useCallback(
     (filename = "export.csv") => {
+      if (loading || failed) return
       const visibleCols = tableOptions.columns.filter(
         (c) => !hiddenFields?.has(c.field)
       )
@@ -211,7 +231,7 @@ export const CommonTable = forwardRef<
       a.click()
       URL.revokeObjectURL(url)
     },
-    [rows, tableOptions.columns, hiddenFields]
+    [rows, tableOptions.columns, hiddenFields, loading, failed]
   )
 
   useImperativeHandle(ref, () => ({ refresh: () => void load(), exportCsv }), [
@@ -326,21 +346,44 @@ export const CommonTable = forwardRef<
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.length === 0 ? (
+          {loading || failed || rows.length === 0 ? (
             <TableRow>
               <TableCell
                 colSpan={totalCols}
                 className="h-24 text-center text-sm text-muted-foreground"
               >
-                {loading ? t("loading") : t("empty")}
+                {loading ? (
+                  t("loading")
+                ) : failed ? (
+                  <div role="alert" className="space-y-2">
+                    <p>{t("loadError")}</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void load()}
+                    >
+                      {t("retry")}
+                    </Button>
+                  </div>
+                ) : (
+                  t("empty")
+                )}
               </TableCell>
             </TableRow>
           ) : (
             rows.map((row, i) => (
               <TableRow
                 key={(row.id as string | number | undefined) ?? i}
-                className={tableOptions.onclick ? "cursor-pointer" : undefined}
-                onClick={() => tableOptions.onclick?.(row)}
+                className={
+                  tableOptions.onclick &&
+                  tableOptions.rowClickable?.(row) !== false
+                    ? "cursor-pointer"
+                    : undefined
+                }
+                onClick={() => {
+                  if (tableOptions.rowClickable?.(row) !== false)
+                    tableOptions.onclick?.(row)
+                }}
               >
                 <TableCell
                   className={cn(
@@ -415,25 +458,25 @@ export const CommonTable = forwardRef<
           sticky?.pagination && "sticky bottom-0 z-10 border-t bg-muted py-2"
         )}
       >
-        <span>{t("total", { total })}</span>
+        <span>{!loading && !failed ? t("total", { total }) : null}</span>
         <div className="flex items-center gap-2">
           <Button
             type="button"
             variant="outline"
             size="sm"
-            disabled={page <= 0}
+            disabled={loading || failed || page <= 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
           >
-            {t("prevPage")}
+            {t("previousPage")}
           </Button>
           <span>
-            {page + 1} / {totalPages}
+            {!loading && !failed ? `${page + 1} / ${totalPages}` : null}
           </span>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            disabled={page + 1 >= totalPages}
+            disabled={loading || failed || page + 1 >= totalPages}
             onClick={() => setPage((p) => (p + 1 < totalPages ? p + 1 : p))}
           >
             {t("nextPage")}

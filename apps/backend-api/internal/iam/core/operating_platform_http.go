@@ -19,10 +19,7 @@ type operatingPlatformPageInput struct {
 
 type operatingPlatformRoleInput struct {
 	PlatformID string `path:"platform_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	Body       struct {
-		Name        string `json:"name" minLength:"1" maxLength:"128"`
-		Description string `json:"description,omitempty" maxLength:"1024"`
-	}
+	Body       platformRoleFields
 }
 
 type operatingPlatformMenuInput struct {

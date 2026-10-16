@@ -76,6 +76,7 @@ export function TextFieldRenderer(props: FieldRendererProps) {
           disabled={disabled}
           aria-labelledby={labelId}
           aria-describedby={describedBy}
+          aria-invalid={Boolean(error)}
           placeholder={config.placeholder as string | undefined}
           min={config.min as number | undefined}
           max={config.max as number | undefined}

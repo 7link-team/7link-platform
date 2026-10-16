@@ -1,4 +1,12 @@
 {
+  "crud": {
+    "loading": "加载中…",
+    "loadError": "无法加载此记录。",
+    "retry": "重试",
+    "success": "保存成功。",
+    "submit": "保存",
+    "edit": "编辑"
+  },
   "localeSwitcher": {
     "label": "语言",
     "en-US": "English",
@@ -115,6 +123,8 @@
     "close": "关闭"
   },
   "table": {
+    "loadError": "无法加载列表。",
+    "retry": "重试",
     "empty": "无可用数据",
     "loading": "加载中...",
     "pageSize": "每页",
@@ -137,6 +147,7 @@
     }
   },
   "form": {
+    "submitFailed": "提交失败，请检查输入后重试。",
     "required": "必填",
     "invalid": "输入无效",
     "validation": {
@@ -148,6 +159,24 @@
       "requiredField": "必填",
       "number": "输入无效",
       "numberField": "输入无效"
+    },
+    "contract": {
+      "loading": "表单规则尚未加载，请重试后提交。",
+      "unsupported": "部分规则暂时无法在此校验，当前不能提交。",
+      "type": "请输入正确类型的值。",
+      "number": "请输入有效数字。",
+      "integer": "请输入能够精确表示的整数。",
+      "date": "请输入有效日期或时间。",
+      "minLength": "至少输入 {limit} 个字符。",
+      "maxLength": "最多输入 {limit} 个字符。",
+      "minimum": "请输入不小于 {limit} 的值。",
+      "maximum": "请输入不大于 {limit} 的值。",
+      "exclusiveMinimum": "请输入大于 {limit} 的值。",
+      "exclusiveMaximum": "请输入小于 {limit} 的值。",
+      "minItems": "至少选择 {limit} 项。",
+      "maxItems": "最多选择 {limit} 项。",
+      "pattern": "请输入符合要求格式的值。",
+      "enum": "请选择允许的值。"
     }
   },
   "toast": {

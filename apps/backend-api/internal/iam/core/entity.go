@@ -339,6 +339,9 @@ func (s *Service) CreateEntity(ctx context.Context, entity Entity) (Entity, erro
 	if err := normalizeEntity(&entity); err != nil {
 		return Entity{}, err
 	}
+	if s.entityTypeReserved(entity.Type) {
+		return Entity{}, ErrEntityTypeReserved
+	}
 	if entity.Metadata == nil {
 		entity.Metadata = map[string]any{}
 	}
@@ -403,6 +406,10 @@ func (s *Service) UpdateEntity(
 		if err != nil {
 			return err
 		}
+		if (s.entityTypeReserved(current.Type) && (patch.Type != nil || patch.Name != nil || patch.ParentID != nil)) ||
+			(patch.Type != nil && s.entityTypeReserved(strings.TrimSpace(*patch.Type))) {
+			return ErrEntityTypeReserved
+		}
 		if patch.Type != nil && strings.TrimSpace(*patch.Type) != current.Type {
 			count, err := repo.entityRelationshipCount(ctx, tenantID, entityID)
 			if err != nil {
@@ -435,6 +442,13 @@ func (s *Service) DeleteEntity(ctx context.Context, tenantID, entityID guid.ID) 
 	return s.writes.Run(ctx, record, func(repo *Repository) error {
 		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
 			return err
+		}
+		current, err := repo.GetEntity(ctx, tenantID, entityID)
+		if err != nil {
+			return err
+		}
+		if _, reserved := s.reservedEntityTypes[current.Type]; reserved {
+			return ErrEntityTypeReserved
 		}
 		if s.rootContent != nil {
 			hasContent, err := s.rootContent(ctx, repo.writer(), FileRootProvisionInput{
@@ -478,7 +492,15 @@ func (s *Service) PutEntityRoleBinding(
 	var binding EntityRoleBinding
 	var changed bool
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
-		if effect == BindingAllow {
+		if s.ownedEntityBindings {
+			// Preserve the ordinary system-authorization -> tenant-policy lock
+			// order before looking up the entity's business ownership. Empty
+			// codes acquire the authorization fences without requiring a grant.
+			if err := s.requireGrantablePermissionsOn(ctx, repo, tenantID); err != nil {
+				return err
+			}
+		}
+		if effect == BindingAllow && !s.ownedEntityBindings {
 			if err := s.requireGrantableRoleWithRepository(ctx, repo, tenantID, roleID); err != nil {
 				return err
 			}
@@ -486,8 +508,22 @@ func (s *Service) PutEntityRoleBinding(
 		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
 			return err
 		}
-		if _, err := repo.GetEntity(ctx, tenantID, entityID); err != nil {
+		entityRepo := repo
+		if s.ownedEntityBindings {
+			entityRepo = repo.withDB(systemCurrentRead(repo.writer()))
+		}
+		entity, err := entityRepo.GetEntity(ctx, tenantID, entityID)
+		if err != nil {
 			return err
+		}
+		if s.ownedEntityBindings {
+			if _, reserved := s.reservedEntityTypes[entity.Type]; reserved {
+				record.Detail["operation_source"] = "entity_provisioning"
+			} else if effect == BindingAllow {
+				if err := s.requireGrantableRoleWithRepository(ctx, repo, tenantID, roleID); err != nil {
+					return err
+				}
+			}
 		}
 		if err := repo.ensureRole(ctx, tenantID, roleID); err != nil {
 			return err
@@ -810,4 +846,11 @@ func admittedEntities(entities []Entity, constraint authz.DataConstraint, throug
 		admitted = append(admitted, entity)
 	}
 	return admitted
+}
+
+// Only the internal transaction-bound provisioner can opt into owned writes.
+// HTTP input and context values cannot enable this capability.
+func (s *Service) entityTypeReserved(kind string) bool {
+	_, reserved := s.reservedEntityTypes[kind]
+	return reserved && !s.ownedEntityWrites
 }

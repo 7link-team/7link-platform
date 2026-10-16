@@ -1,3 +1,4 @@
+import { useWorkspaceLayout } from "../lib/page-layout"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useEffect, useMemo, useState } from "react"
 import { Building2, Menu as MenuIcon, ShieldCheck } from "lucide-react"
@@ -36,10 +37,7 @@ import {
   tenantStanding,
 } from "../lib/navigation"
 import { useBranding } from "../lib/branding"
-import {
-  entityIDFromPath,
-  tenantIDFromPath,
-} from "../lib/organization-scope"
+import { entityIDFromPath, tenantIDFromPath } from "../lib/organization-scope"
 import { entrancePath } from "../lib/auth-entrance"
 import { getAccountView } from "../lib/account-view"
 import type { EffectivePermissions } from "../lib/permissions"
@@ -52,6 +50,7 @@ export default function AppLayout() {
 
   const { session, status } = useAuth()
   const accountView = getAccountView()
+  const workspaceLayout = useWorkspaceLayout()
   const location = useLocation()
   const [menuCatalog, setMenuCatalog] = useState<{
     subject: string
@@ -567,12 +566,14 @@ export default function AppLayout() {
           fieldPolicyAccess={Boolean(tenantValue) && fieldPolicyAccess}
           className="hidden md:block"
         />
-        <main className="min-h-0 min-w-0 flex-1 overflow-auto">
+        <main
+          className={`min-h-0 min-w-0 flex-1 overflow-auto ${workspaceLayout ? "lg:overflow-hidden" : ""}`}
+        >
           <div
             className={
               location.pathname.endsWith("/files")
                 ? "h-full w-full max-w-none"
-                : "mx-auto w-full max-w-[1440px] p-4 sm:p-6"
+                : `mx-auto w-full max-w-[1440px] p-4 sm:p-6 ${workspaceLayout ? "lg:flex lg:h-full lg:min-h-0 lg:flex-col" : ""}`
             }
           >
             {menuError && directoryReady && (

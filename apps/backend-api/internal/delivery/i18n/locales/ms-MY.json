@@ -1,0 +1,17 @@
+{
+  "client_choice": "Pilih pelanggan sedia ada atau nama pelanggan baharu, bukan kedua-duanya.",
+  "primary_contact": "Hanya satu kenalan utama dibenarkan.",
+  "primary_accept": "Kenalan utama mesti dibenarkan menerima serahan.",
+  "repository_url": "Gunakan URL repositori HTTPS, SSH atau git@host:path tanpa kelayakan akses.",
+  "repository_name": "Nama repositori mestilah unik dalam projek.",
+  "primary_repository": "Hanya satu repositori utama dibenarkan.",
+  "project_code_taken": "Kod projek ini sudah digunakan.",
+  "project_name_taken": "Projek atau pelanggan dengan nama ini sudah wujud di sini.",
+  "parent_not_client": "Pilih pelanggan aktif dalam penyewa ini.",
+  "provisioning_unavailable": "Penciptaan projek tidak tersedia buat sementara waktu. Tiada projek dicipta.",
+  "contact_not_found": "Kenalan yang dipilih tidak tersedia dalam penyewa ini.",
+  "intake_not_found": "Rekod penerimaan sumber tidak tersedia dalam penyewa ini.",
+  "member_role_mismatch": "Ahli yang dipilih tidak aktif atau tidak boleh memegang peranan projek ini.",
+  "project_limit_reached": "Penyewa ini telah mencapai had 500 projek yang belum diarkibkan.",
+  "human_only": "Hanya ahli manusia boleh mencipta projek."
+}

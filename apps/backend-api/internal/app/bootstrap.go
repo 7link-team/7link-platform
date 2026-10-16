@@ -1,7 +1,12 @@
 package app
 
 import (
+	"7link.com/platform/internal/collab"
+	"7link.com/platform/internal/delivery"
 	"7link.com/platform/internal/files"
+	"7link.com/platform/internal/fleet"
+	businessgovernance "7link.com/platform/internal/governance"
+	"7link.com/platform/internal/intake"
 	"context"
 	"errors"
 	"fmt"
@@ -24,8 +29,11 @@ import (
 	"7link.com/platform/internal/infra/databasemonitor"
 	"7link.com/platform/internal/infra/deployment"
 	"7link.com/platform/internal/infra/dlock"
+	"7link.com/platform/internal/infra/events"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/infra/health"
+	"7link.com/platform/internal/infra/idempotency"
+	"7link.com/platform/internal/infra/jobs"
 	metrics "7link.com/platform/internal/infra/metrics"
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/internal/infra/pprof"
@@ -103,11 +111,14 @@ func (app *App) composeModules() error {
 		dlock.NewModule(rt),
 		wuid.NewModule(rt),
 		guid.NewModule(rt),
+		events.NewModule(rt),
+		idempotency.NewModule(rt),
 
 		// metrics before telemetry/audit keeps its HTTP middleware outermost.
 		metrics.NewModule(rt, metricsConfig(app.config)),
 		telemetry.NewModule(rt, telemetry.WithConfig(telemetryConfig(app.config))),
 		audit.NewModule(rt, auditConfig(app.config)),
+		jobs.NewModule(rt, jobsConfig(app.config)),
 		databasemonitor.NewModule(rt, datasourceMonitorConfig(app.config)),
 
 		// Always registered, and before the debug surfaces: the sign-in page
@@ -127,6 +138,11 @@ func (app *App) composeModules() error {
 
 	modules = append(modules,
 		todo.NewModule(rt, todo.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
+		intake.NewModule(rt, intake.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
+		fleet.NewModule(rt, fleet.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
+		collab.NewModule(rt, collab.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
+		businessgovernance.NewModule(rt, businessgovernance.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
+		delivery.NewModule(rt, delivery.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
 		health.NewModule(rt),
 	)
 	return app.addModule(modules...)
@@ -189,6 +205,18 @@ func (app *App) prepareModules() error {
 	}
 	if err := app.modules.Wire(app.provideCrossCutting); err != nil {
 		return fmt.Errorf("wire modules: %w", err)
+	}
+	if err := wireProjectProvisioning(app.modules.Services()); err != nil {
+		return fmt.Errorf("wire project provisioning: %w", err)
+	}
+	if err := wireJobEvents(app.modules.Services()); err != nil {
+		return fmt.Errorf("wire job events: %w", err)
+	}
+	if err := wireJobTenants(app.modules.Services()); err != nil {
+		return fmt.Errorf("wire job tenant fanout: %w", err)
+	}
+	if err := wireJobCatalog(app.modules); err != nil {
+		return fmt.Errorf("wire job catalog: %w", err)
 	}
 	// Collector aggregation runs after Wire so the rollback list exists: a
 	// failure here cannot strand construction-owned module resources.

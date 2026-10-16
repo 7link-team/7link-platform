@@ -18,6 +18,32 @@ import (
 
 type traceContextKey struct{}
 
+func TestFenceRequiresCurrentUnexpiredOwnerAndTransaction(t *testing.T) {
+	db := newDB(t)
+	locker := NewLocker(db)
+	lease, err := locker.TryLock(t.Context(), "seed")
+	require.NoError(t, err)
+	require.ErrorIs(t, lease.FenceOn(t.Context(), nil), ErrInvalidTransaction)
+	require.ErrorIs(t, lease.FenceOn(t.Context(), db), ErrInvalidTransaction)
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+		require.ErrorIs(t, (*Lock)(nil).FenceOn(t.Context(), tx), ErrNotAcquired)
+		return lease.FenceOn(t.Context(), tx)
+	}))
+	locks := locker.locks()
+	_, err = locks.WithContext(t.Context()).Where(locks.Name.Eq("seed")).UpdateSimple(locks.ExpiresAt.Value(0))
+	require.NoError(t, err)
+	err = db.Transaction(func(tx *gorm.DB) error { return lease.FenceOn(t.Context(), tx) })
+	require.ErrorIs(t, err, ErrNotAcquired, "expiry alone must reject a stale worker")
+	next, err := locker.TryLock(t.Context(), "seed")
+	require.NoError(t, err)
+	err = db.Transaction(func(tx *gorm.DB) error { return lease.FenceOn(t.Context(), tx) })
+	require.ErrorIs(t, err, ErrNotAcquired, "new owner must reject the stale token")
+	require.NoError(t, next.Unlock(t.Context()))
+	err = db.Transaction(func(tx *gorm.DB) error { return next.FenceOn(t.Context(), tx) })
+	require.ErrorIs(t, err, ErrNotAcquired)
+	require.NoError(t, lease.Unlock(t.Context()))
+}
+
 type contextLogger struct {
 	logger.Interface
 	contexts chan context.Context

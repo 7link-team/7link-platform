@@ -1,4 +1,6 @@
 {
+  "validation_expected_min_bytes": "该值至少需要 %s 个 UTF-8 字节。",
+  "validation_expected_max_bytes": "该值最多允许 %s 个 UTF-8 字节。",
   "success": "成功",
   "created": "创建成功",
   "not_found": "未找到请求的资源，请核对资源标识符后重试。",

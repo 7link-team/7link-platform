@@ -71,6 +71,11 @@ func assertModelMatchesNamedTable(t *testing.T, db *sql.DB, dialect string, pers
 	}
 
 	actual := readDatabaseColumns(t, db, dialect, table)
+	if dialect == "mysql" && persisted.TableName() == "fleet_agents" {
+		_, exists := actual["active_name_key"]
+		require.True(t, exists, "fleet active name is the explicit generated-column allowlist")
+		delete(actual, "active_name_key")
+	}
 	if dialect == "mysql" && persisted.TableName() == (model.Entity{}).TableName() {
 		_, ok := actual["parent_key"]
 		require.True(t, ok, "the entity generated-column allowlist must remain explicit")
@@ -80,6 +85,18 @@ func assertModelMatchesNamedTable(t *testing.T, db *sql.DB, dialect string, pers
 		_, ok := actual["parent_key"]
 		require.True(t, ok, "the department generated-column allowlist must remain explicit")
 		delete(actual, "parent_key")
+	}
+	if dialect == "mysql" && persisted.TableName() == "collab_channels" {
+		for _, column := range []string{"default_project", "custom_name", "agent_pair", "direct_pair"} {
+			_, exists := actual[column]
+			require.True(t, exists, "generated partial-index key %s must remain explicit", column)
+			delete(actual, column)
+		}
+	}
+	if dialect == "mysql" && (persisted.TableName() == "delivery_project_contacts" || persisted.TableName() == "delivery_project_repositories") {
+		_, exists := actual["primary_lock"]
+		require.True(t, exists, "delivery primary lock is the explicit generated-column allowlist")
+		delete(actual, "primary_lock")
 	}
 	assert.Equal(t, expected, actual, persisted.TableName())
 }

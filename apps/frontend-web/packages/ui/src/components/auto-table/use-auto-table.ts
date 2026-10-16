@@ -64,6 +64,8 @@ export function useAutoTable<T>(
 
   const fetchData = useCallback(async () => {
     if (isLocal) {
+      setLoading(false)
+      setError(null)
       // Local mode: sort then slice to the current page; total is the full length (only pagination is real)
       const sorted = sortLocalData(data, query.sort)
       const start = (query.page - 1) * query.pageSize
@@ -94,6 +96,9 @@ export function useAutoTable<T>(
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchData()
+    return () => {
+      fetchSeq.current++
+    }
   }, [fetchData])
 
   useEffect(() => {
@@ -131,6 +136,9 @@ export function useAutoTable<T>(
 
   const refresh = useCallback(() => {
     void fetchData()
+    return () => {
+      fetchSeq.current++
+    }
   }, [fetchData])
 
   const toggleSelect = useCallback(

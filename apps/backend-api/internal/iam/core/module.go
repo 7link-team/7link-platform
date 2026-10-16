@@ -172,6 +172,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[TenantConstraintOn](services, m.checker.TenantConstraintOn); err != nil {
 		return fmt.Errorf("provide IAM transaction tenant authorization: %w", err)
 	}
+	if err := module.Provide[AuthorizationExplanation](services, m.checker.ExplainOn); err != nil {
+		return fmt.Errorf("provide IAM authorization explanation: %w", err)
+	}
 	if err := module.Provide[AuthorizationSubjectsOn](services, m.checker.AuthorizationSubjectsOn); err != nil {
 		return fmt.Errorf("provide IAM transaction authorization subjects: %w", err)
 	}
@@ -201,6 +204,15 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}
 	if err := module.Provide[AccessTableNames](services, PublishedAccessTableNames(m.runtime.TablePrefix())); err != nil {
 		return fmt.Errorf("provide IAM access table names: %w", err)
+	}
+	if err := module.Provide[EntityRoleBindingStore](services, m.entityRoleBindingStore()); err != nil {
+		return fmt.Errorf("provide IAM entity role binding store: %w", err)
+	}
+	if err := module.Provide[EntityProvisioner](services, m.entityProvisioner()); err != nil {
+		return fmt.Errorf("provide IAM entity provisioner: %w", err)
+	}
+	if err := module.Provide[RoleSeeder](services, m.roleSeeder()); err != nil {
+		return fmt.Errorf("provide IAM role seeder: %w", err)
 	}
 	return nil
 }
@@ -249,6 +261,19 @@ func (m *Module) InjectServices(services *module.Services) error {
 		}
 	}
 	m.service = NewService(m.registrar.Registry(), repository, m.checker, appender)
+	reservations, err := module.Resolve[EntityTypeReservations](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return fmt.Errorf("resolve reserved entity types: %w", err)
+	}
+	if err == nil {
+		m.service.reservedEntityTypes = make(map[string]struct{})
+		for _, kind := range reservations() {
+			if !validEntityType(kind) {
+				return fmt.Errorf("%w: reserved entity type %q", ErrInvalidArgument, kind)
+			}
+			m.service.reservedEntityTypes[kind] = struct{}{}
+		}
+	}
 	m.service.roots = roots
 	m.service.rootContent = rootContent
 	m.service.administrators = m.administrators
@@ -312,6 +337,14 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 		return fmt.Errorf("register iam: service is unavailable")
 	}
 	RegisterHTTP(api, m.service, m.registrar)
+	for _, path := range []string{
+		"/tenants/{tenant_id}/roles", "/operating-platforms/{platform_id}/roles", "/roles/{role_id}",
+		"/system/roles", "/system/roles/{role_id}", "/roles/{role_id}/data-scope", "/roles/{role_id}/members/{principal_id}",
+	} {
+		if err := authz.RegisterRequestContract(api, path); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

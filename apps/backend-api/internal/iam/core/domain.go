@@ -9,6 +9,7 @@ import (
 )
 
 var (
+	ErrEntityTypeReserved             = errors.New("entity_type_reserved")
 	ErrRoleNotFound                   = errors.New("iam role not found")
 	ErrRoleNameConflict               = errors.New("iam role name already exists")
 	ErrInvalidArgument                = errors.New("invalid iam argument")

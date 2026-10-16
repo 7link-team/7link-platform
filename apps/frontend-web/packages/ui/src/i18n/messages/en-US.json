@@ -1,4 +1,12 @@
 {
+  "crud": {
+    "loading": "Loading...",
+    "loadError": "Unable to load this record.",
+    "retry": "Retry",
+    "success": "Saved successfully.",
+    "submit": "Save",
+    "edit": "Edit"
+  },
   "localeSwitcher": {
     "label": "Language",
     "en-US": "English",
@@ -115,6 +123,8 @@
     "close": "Close"
   },
   "table": {
+    "loadError": "Unable to load records.",
+    "retry": "Retry",
     "empty": "No data available",
     "loading": "Loading...",
     "pageSize": "per page",
@@ -137,6 +147,7 @@
     }
   },
   "form": {
+    "submitFailed": "Could not submit. Please review your input and try again.",
     "required": "Required",
     "invalid": "Invalid input",
     "validation": {
@@ -148,6 +159,24 @@
       "requiredField": "Required",
       "number": "Invalid input",
       "numberField": "Invalid input"
+    },
+    "contract": {
+      "loading": "Form rules are not available yet. Retry before submitting.",
+      "unsupported": "Some form rules cannot be checked here. Submission is unavailable.",
+      "type": "Enter a value of the expected type.",
+      "number": "Enter a valid number.",
+      "integer": "Enter an integer that can be represented exactly.",
+      "date": "Enter a valid date or time.",
+      "minLength": "Use at least {limit} characters.",
+      "maxLength": "Use at most {limit} characters.",
+      "minimum": "Enter a value of at least {limit}.",
+      "maximum": "Enter a value of at most {limit}.",
+      "exclusiveMinimum": "Enter a value greater than {limit}.",
+      "exclusiveMaximum": "Enter a value less than {limit}.",
+      "minItems": "Select at least {limit} items.",
+      "maxItems": "Select at most {limit} items.",
+      "pattern": "Use the required format.",
+      "enum": "Select an allowed value."
     }
   },
   "toast": {

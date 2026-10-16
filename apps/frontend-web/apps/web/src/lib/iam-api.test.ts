@@ -1,3 +1,4 @@
+import { apiRoute } from "./api-route"
 import { afterEach, describe, expect, it } from "bun:test"
 import {
   ApiError,
@@ -20,6 +21,68 @@ interface RecordedRequest {
 }
 
 describe("IAM API client", () => {
+  it("loads operation contracts through OPTIONS without issuing the mutation", async () => {
+    const requests: RecordedRequest[] = []
+    const contract = {
+      version: "v1",
+      operation_id: "iam-create-entity",
+      method: "POST",
+      path: "/tenants/{tenant_id}/entities",
+      request_body: null,
+      schemas: {},
+    }
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({
+          method: request.method,
+          path: url.pathname + url.search,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        return Response.json({ code: 0, data: contract })
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`)
+    const route = apiRoute("post", "/tenants/{tenant_id}/entities", {
+      path: { tenant_id: "11" },
+    })
+    expect(await client.requestContract(route)).toEqual(contract)
+    expect(
+      requests.map(({ method, path, body }) => ({ method, path, body }))
+    ).toEqual([
+      { method: "OPTIONS", path: "/tenants/11/entities?method=POST", body: "" },
+    ])
+    contract.method = "PATCH"
+    await expect(client.requestContract(route)).rejects.toMatchObject({
+      code: "invalid_response",
+    })
+  })
+  it("does not turn contract access failures into an empty rule set and supports cancellation", async () => {
+    server = Bun.serve({
+      port: 0,
+      fetch() {
+        return Response.json(
+          { code: 403, message: "Forbidden" },
+          { status: 403 }
+        )
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`)
+    const route = apiRoute("post", "/tenants/{tenant_id}/entities", {
+      path: { tenant_id: "11" },
+    })
+    await expect(client.requestContract(route)).rejects.toMatchObject({
+      status: 403,
+    })
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      client.requestContract(route, { signal: controller.signal })
+    ).rejects.toBeDefined()
+  })
+
   it("uses explicit system owner routes and walks every assignment page", async () => {
     const requests: RecordedRequest[] = []
     server = Bun.serve({
@@ -514,7 +577,7 @@ describe("IAM API client", () => {
     })
   })
 
-  it("does not invalidate the menu catalog after file mutations", async () => {
+  it("does not invalidate the menu catalog after metadata reads or file mutations", async () => {
     const previous = Object.getOwnPropertyDescriptor(globalThis, "window")
     const browser = new EventTarget()
     let notifications = 0
@@ -525,7 +588,19 @@ describe("IAM API client", () => {
     })
     server = Bun.serve({
       port: 0,
-      fetch() {
+      fetch(request) {
+        if (request.method === "OPTIONS")
+          return Response.json({
+            code: 0,
+            data: {
+              version: "v1",
+              operation_id: "scope",
+              method: "PUT",
+              path: "/roles/{role_id}/data-scope",
+              schemas: {},
+              request_body: null,
+            },
+          })
         return Response.json({ code: 0, data: { id: "7" } })
       },
     })
@@ -535,6 +610,12 @@ describe("IAM API client", () => {
         () => "90",
         () => "101"
       )
+      await client.requestContract(
+        apiRoute("put", "/roles/{role_id}/data-scope", {
+          path: { role_id: "7" },
+        })
+      )
+      expect(notifications).toBe(0)
       await client.createDirectory("80", "1", "Reports")
       await client.createFileOperation(
         "80",
@@ -3068,4 +3149,22 @@ describe("IAM API client", () => {
     await client.sessions()
     expect(discoveries()).toBeGreaterThan(before)
   })
+})
+
+it("retains business conflict data and exposes normalized form issues", () => {
+  const issue = {
+    in: "body" as const,
+    path: "/name",
+    code: "unique",
+    message: "Already used",
+  }
+  const data = {
+    conflict_id: "existing",
+    validation_errors: [{ ...issue, value: "secret" }],
+  }
+  const error = new ApiError(409, "conflict", "Conflict", data, 100001)
+  expect(error.data).toBe(data)
+  expect(error.businessCode).toBe(100001)
+  expect(error.validationErrors).toEqual([issue])
+  expect(new ApiError(403, "forbidden").validationErrors).toEqual([])
 })

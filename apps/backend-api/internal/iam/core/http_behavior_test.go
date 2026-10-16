@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1451,4 +1452,116 @@ func TestSystemAndOperatingPlatformHTTPFailClosedWhenStorageIsGone(t *testing.T)
 			require.Equal(t, "null", string(envelope.Data), "a storage failure never returns partial data")
 		})
 	}
+}
+
+func TestIAMHTTPReservedEntityMutationsReturnConflict(t *testing.T) {
+	h := newHTTPIAMHarness(t, true)
+	entity, err := h.module.service.CreateEntity(t.Context(), Entity{TenantID: 1, Type: "project", Name: "Owned"})
+	require.NoError(t, err)
+	h.module.service.reservedEntityTypes = map[string]struct{}{"project": {}}
+	auth := "Authorization: Bearer test"
+	path := "/entities/" + entity.ID.String()
+	responses := []*httptest.ResponseRecorder{
+		h.api.Post(tenantPathPrefix(1)+"/entities", auth, map[string]any{"type": "project", "name": "Bypass"}),
+		h.api.Patch(path, auth, map[string]any{"name": "Changed"}),
+		h.api.Patch(path, auth, map[string]any{"type": "company"}),
+		h.api.Patch(path, auth, map[string]any{"parent_id": ""}),
+		h.api.Delete(path, auth),
+	}
+	for _, response := range responses {
+		require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+	}
+	require.Equal(t, http.StatusOK, h.api.Get(path, auth).Code)
+}
+
+// These compatibility boundaries must survive consolidation of HTTP tags and
+// service validation. In particular, maxLength is not a UTF-8 byte limit.
+func TestRoleHTTPValidationCompatibility(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		value       string
+		description string
+		status      int
+		stored      string
+	}{
+		{"ascii boundary", strings.Repeat("a", 128), "", 201, strings.Repeat("a", 128)},
+		{"ascii over boundary", strings.Repeat("a", 129), "", 422, ""},
+		{"unicode byte boundary", strings.Repeat("角", 42) + "ab", "", 201, strings.Repeat("角", 42) + "ab"},
+		{"unicode bytes exceed while characters fit", strings.Repeat("角", 43), "", 422, ""},
+		{"trim before byte check", " " + strings.Repeat("角", 42) + "ab ", "", 201, strings.Repeat("角", 42) + "ab"},
+		{"raw character limit before trim", " " + strings.Repeat("a", 128) + " ", "", 422, ""},
+		{"whitespace name", " \t\n ", "", 422, ""},
+		{"description byte boundary", "description boundary", strings.Repeat("描", 1365) + "a", 201, "description boundary"},
+		{"description byte overflow", "description overflow", strings.Repeat("描", 1366), 422, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			harness := newHTTPIAMHarness(t, true)
+			response := harness.api.Post("/tenants/1/roles", "Authorization: Bearer test", map[string]any{"name": test.value, "description": test.description})
+			require.Equal(t, test.status, response.Code, response.Body.String())
+			if response.Code == 201 {
+				role := decodeEnvelope[APIRole](t, response).Data
+				assert.Equal(t, test.stored, role.Name)
+				assert.Equal(t, test.description, role.Description)
+				// PATCH omission and null are not silently turned into a create/default.
+				empty := harness.api.Patch("/roles/"+role.ID.String(), "Authorization: Bearer test", map[string]any{})
+				assert.Equal(t, 422, empty.Code)
+				null := harness.api.Patch("/roles/"+role.ID.String(), "Authorization: Bearer test", map[string]any{"name": nil, "description": nil})
+				assert.Equal(t, 422, null.Code)
+				invalid := harness.api.Patch("/roles/"+role.ID.String(), "Authorization: Bearer test", map[string]any{"name": strings.Repeat("角", 43)})
+				assert.Equal(t, 422, invalid.Code)
+				read := harness.api.Get("/roles/"+role.ID.String(), "Authorization: Bearer test")
+				require.Equal(t, 200, read.Code)
+				assert.Equal(t, test.stored, decodeEnvelope[APIRole](t, read).Data.Name, "invalid patches must not change persisted values")
+			}
+		})
+	}
+}
+
+func TestRoleRequestContractsRegisterAndNeverMutate(t *testing.T) {
+	h := newHTTPIAMHarness(t, true)
+	for _, path := range []string{"/tenants/{tenant_id}/roles", "/operating-platforms/{platform_id}/roles", "/roles/{role_id}", "/system/roles", "/system/roles/{role_id}", "/roles/{role_id}/data-scope", "/roles/{role_id}/members/{principal_id}"} {
+		require.NotNil(t, h.api.OpenAPI().Paths[path].Options, path)
+	}
+	const auth = "Authorization: Bearer test"
+	created := h.api.Post("/tenants/1/roles", auth, map[string]any{"name": "Contract role", "description": "unchanged"})
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	role := decodeEnvelope[APIRole](t, created).Data
+	path := "/roles/" + role.ID.String()
+	for _, method := range []string{"PATCH", "DELETE"} {
+		response := h.api.Do(http.MethodOptions, path+"?method="+method, auth, "Accept-Language: zh-CN")
+		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+		contract := decodeEnvelope[authz.OperationContract](t, response).Data
+		require.Equal(t, method, contract.Method)
+		require.Equal(t, "zh-CN", contract.Locale)
+		require.Contains(t, contract.Messages, "custom:maxBytes")
+		if method == "PATCH" {
+			require.Contains(t, response.Body.String(), "utf8-bytes")
+		}
+		current := h.api.Get(path, auth)
+		require.Equal(t, http.StatusOK, current.Code)
+		require.Equal(t, role, decodeEnvelope[APIRole](t, current).Data)
+	}
+	beforeMembers := h.api.Get(path+"/members", auth)
+	require.Equal(t, http.StatusOK, beforeMembers.Code)
+	expiryContract := h.api.Do(http.MethodOptions, path+"/members/2?method=PUT", auth)
+	require.Equal(t, http.StatusOK, expiryContract.Code, expiryContract.Body.String())
+	require.Contains(t, expiryContract.Body.String(), "expires_at")
+	require.Contains(t, expiryContract.Body.String(), "date-time")
+	afterMembers := h.api.Get(path+"/members", auth)
+	require.Equal(t, http.StatusOK, afterMembers.Code)
+	require.Equal(t, decodeEnvelope[[]RoleMemberGrant](t, beforeMembers).Data, decodeEnvelope[[]RoleMemberGrant](t, afterMembers).Data)
+	beforeScope := h.api.Get(path+"/data-scope", auth)
+	require.Equal(t, http.StatusOK, beforeScope.Code)
+	scopeContract := h.api.Do(http.MethodOptions, path+"/data-scope?method=PUT", auth)
+	require.Equal(t, http.StatusOK, scopeContract.Code, scopeContract.Body.String())
+	require.Contains(t, scopeContract.Body.String(), "selected_departments")
+	require.Contains(t, scopeContract.Body.String(), `"maxItems":200`)
+	afterScope := h.api.Get(path+"/data-scope", auth)
+	require.Equal(t, decodeEnvelope[APIRoleDataScope](t, beforeScope).Data, decodeEnvelope[APIRoleDataScope](t, afterScope).Data)
+	createContract := h.api.Do(http.MethodOptions, "/tenants/1/roles?method=POST", auth)
+	require.Equal(t, http.StatusOK, createContract.Code, createContract.Body.String())
+	require.Contains(t, createContract.Body.String(), "utf8-bytes")
+	missing := h.api.Do(http.MethodOptions, "/roles/99999999?method=PATCH", auth)
+	require.Equal(t, http.StatusNotFound, missing.Code)
+	require.NotContains(t, missing.Body.String(), "schemas")
 }
