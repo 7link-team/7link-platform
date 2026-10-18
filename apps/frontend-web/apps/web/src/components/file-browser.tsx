@@ -1,10 +1,10 @@
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import {
   useRef,
   useState,
   useSyncExternalStore,
   type DragEvent,
   type Dispatch,
-  type FormEvent,
   type KeyboardEvent,
   type ReactNode,
   type SetStateAction,
@@ -36,8 +36,8 @@ import {
   Pencil,
   RefreshCw,
   RotateCcw,
-  Search,
   Scissors,
+  Search,
   SquareCheckBig,
   Trash2,
   Upload,
@@ -52,8 +52,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -461,15 +459,15 @@ function FileBrowserBody({
     )
     if (!range || !anchor) setAnchor(id)
   }
-  const submitEditor = async (event: FormEvent) => {
-    event.preventDefault()
+  const submitEditor = async (values: Record<string, unknown>) => {
     if (!editor || busy) return
     if (editor.kind === "directory") {
-      if (await onCreateDirectory?.(editor.name.trim())) setEditor(null)
+      if (await onCreateDirectory?.(String(values.name ?? "").trim()))
+        setEditor(null)
       return
     }
     if (editor.kind === "file") {
-      const trimmed = editor.name.trim()
+      const trimmed = String(values.name ?? "").trim()
       const name = trimmed.toLowerCase().endsWith(editor.extension)
         ? trimmed
         : `${trimmed}${editor.extension}`
@@ -477,11 +475,15 @@ function FileBrowserBody({
       return
     }
     if (editor.kind === "rename") {
-      if (await onRename?.(editor.node, editor.name.trim())) setEditor(null)
+      if (await onRename?.(editor.node, String(values.name ?? "").trim()))
+        setEditor(null)
       return
     }
     if (editor.kind === "restoreRename") {
-      const result = await onRestore?.(editor.node, editor.name.trim())
+      const result = await onRestore?.(
+        editor.node,
+        String(values.name ?? "").trim()
+      )
       if (result === "restored") {
         const pending = editor.pending
         setSelected((previous) => {
@@ -812,41 +814,43 @@ function FileBrowserBody({
                   </span>
                 )}
               </nav>
-              <div className="relative min-w-48 flex-1 lg:max-w-sm">
-                <Search className="pointer-events-none absolute start-3 top-3 size-4 text-muted-foreground" />
-                <Input
-                  aria-label={tf("search")}
-                  placeholder={tf("search")}
-                  className="h-11 ps-9"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  disabled={!ready}
-                />
-              </div>
-              <div className="w-36 shrink-0">
-                <span id="file-kind-label" className="sr-only">
-                  {tf("type")}
-                </span>
-                <SimpleSelect
-                  aria-labelledby="file-kind-label"
-                  triggerClassName="min-h-11"
-                  value={kind}
-                  options={{
-                    all: tf("allTypes"),
-                    directory: tf("directory"),
-                    file: tf("file"),
-                  }}
-                  onValueChange={(value) => {
-                    if (
-                      value === "all" ||
-                      value === "directory" ||
-                      value === "file"
-                    )
-                      setKind(value)
-                  }}
-                  disabled={!ready}
-                />
-              </div>
+              <AutoForm
+                className="min-w-48 flex-1 md:grid-cols-[minmax(0,1fr)_9rem] [&>*]:col-span-1"
+                hideLabel
+                fields={{
+                  query: {
+                    name: tf("search"),
+                    type: "text",
+                    value: query,
+                    disabled: !ready,
+                    config: { placeholder: tf("search") },
+                  },
+                  kind: {
+                    name: tf("type"),
+                    type: "select",
+                    value: kind,
+                    disabled: !ready,
+                    config: {
+                      options: {
+                        all: tf("allTypes"),
+                        directory: tf("directory"),
+                        file: tf("file"),
+                      },
+                    },
+                  },
+                }}
+                onChange={(values) => {
+                  if (values.query !== query)
+                    setQuery(String(values.query ?? ""))
+                  if (
+                    values.kind !== kind &&
+                    (values.kind === "all" ||
+                      values.kind === "directory" ||
+                      values.kind === "file")
+                  )
+                    setKind(values.kind)
+                }}
+              />
             </div>
             <div className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b px-3 py-1">
               <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-1">
@@ -1653,28 +1657,37 @@ function FileBrowserBody({
                     )}
               </DialogDescription>
             </DialogHeader>
-            <form
+            <AutoForm
+              key={
+                editor?.kind +
+                ":" +
+                (editor && "node" in editor ? editor.node.id : "")
+              }
               id="file-editor-form"
-              className="grid gap-2"
+              className="md:grid-cols-1 [&>*]:col-span-1"
               onSubmit={submitEditor}
-            >
-              <Label htmlFor="file-editor-name">{tf("name")}</Label>
-              <Input
-                id="file-editor-name"
-                autoFocus
-                required
-                minLength={1}
-                maxLength={255}
-                value={editor && "name" in editor ? editor.name : ""}
-                onChange={(event) =>
-                  setEditor((current) =>
-                    current && "name" in current
-                      ? { ...current, name: event.target.value }
-                      : current
-                  )
-                }
-              />
-            </form>
+              fields={{
+                name: {
+                  name: tf("name"),
+                  type: "text",
+                  required: true,
+                  value: editor && "name" in editor ? editor.name : "",
+                  config: {
+                    id: "file-editor-name",
+                    autoFocus: true,
+                    minLength: 1,
+                    maxLength: 255,
+                  },
+                },
+              }}
+              onChange={(values) =>
+                setEditor((current) =>
+                  current && "name" in current && current.name !== values.name
+                    ? { ...current, name: String(values.name ?? "") }
+                    : current
+                )
+              }
+            />
             <DialogFooter>
               <Button
                 type="button"

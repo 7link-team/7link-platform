@@ -1,15 +1,7 @@
+import { AutoForm } from "@workspace/ui/components/auto-form"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useState, type FormEvent } from "react"
-import {
-  Ban,
-  Check,
-  ClipboardCheck,
-  LoaderCircle,
-  Plus,
-  RefreshCw,
-  Undo2,
-  X,
-} from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import { Ban, Check, LoaderCircle, Plus, Undo2, X } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -20,24 +12,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
-import { SimpleSelect } from "@workspace/ui/components/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
-import { Textarea } from "@workspace/ui/components/textarea"
 import { useOutletContext } from "react-router"
 import { Alert } from "../../components/alert"
 import { useAuth } from "../../components/auth"
@@ -101,22 +82,27 @@ export default function AccessRequestsPage() {
     })
   }, [refresh])
 
+  const updateRequestValues = useCallback((values: Record<string, unknown>) => {
+    setRoleID(String(values.role_id ?? ""))
+    setExpiresAt(String(values.access_expires_at ?? ""))
+  }, [])
+
   const openCreate = () => {
     setRoleID(roles[0]?.id ?? "")
     setExpiresAt(toLocalInputValue(new Date(Date.now() + 8 * 60 * 60 * 1000)))
     setCreateOpen(true)
   }
 
-  const submitRequest = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const data = new FormData(event.currentTarget)
+  const submitRequest = async (data: Record<string, unknown>) => {
     setBusy(true)
     setError("")
     try {
       await iamApi.createAccessRequest({
-        role_id: roleID,
-        reason: String(data.get("reason") ?? "").trim(),
-        access_expires_at: new Date(expiresAt).toISOString(),
+        role_id: String(data.role_id ?? ""),
+        reason: String(data.reason ?? "").trim(),
+        access_expires_at: new Date(
+          String(data.access_expires_at)
+        ).toISOString(),
       })
       setCreateOpen(false)
       await refresh()
@@ -127,11 +113,9 @@ export default function AccessRequestsPage() {
     }
   }
 
-  const applyDecision = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const applyDecision = async (data: Record<string, unknown>) => {
     if (!decision) return
-    const data = new FormData(event.currentTarget)
-    const note = String(data.get("note") ?? "").trim()
+    const note = String(data.note ?? "").trim()
     setBusy(true)
     setError("")
     try {
@@ -159,53 +143,61 @@ export default function AccessRequestsPage() {
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <PageHeader
         title={t("accessRequests")}
         description={t("accessRequestsDescription")}
-        action={
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => void refresh().catch(showError(setError))}
-            >
-              <RefreshCw className={busy ? "animate-spin" : ""} />
-              {t("refresh")}
-            </Button>
-            <Button disabled={roles.length === 0 || busy} onClick={openCreate}>
-              <Plus />
-              {t("newRequest")}
-            </Button>
-          </div>
-        }
       />
       {error && <Alert>{error}</Alert>}
-      <Tabs value={canApprove ? tab : "mine"} onValueChange={setTab}>
+      <Tabs
+        className="flex min-h-0 flex-1 flex-col"
+        value={canApprove ? tab : "mine"}
+        onValueChange={setTab}
+      >
         <TabsList className="mb-4">
           <TabsTrigger value="mine">{t("myRequests")}</TabsTrigger>
           {canApprove && (
             <TabsTrigger value="queue">{t("approvalQueue")}</TabsTrigger>
           )}
         </TabsList>
-        <TabsContent value="mine">
+        <TabsContent className="flex min-h-0 flex-1 flex-col" value="mine">
           <AccessRequestTable
             items={mine}
             loaded={loaded}
             mode="mine"
             currentSubject={session?.subject ?? ""}
             busy={busy}
+            onRefresh={() => refresh().catch(showError(setError))}
+            toolbar={
+              <Button
+                disabled={roles.length === 0 || busy}
+                onClick={openCreate}
+              >
+                <Plus />
+                {t("newRequest")}
+              </Button>
+            }
             onDecision={setDecision}
           />
         </TabsContent>
         {canApprove && (
-          <TabsContent value="queue">
+          <TabsContent className="flex min-h-0 flex-1 flex-col" value="queue">
             <AccessRequestTable
               items={queue}
               loaded={loaded}
               mode="queue"
               currentSubject={session?.subject ?? ""}
               busy={busy}
+              onRefresh={() => refresh().catch(showError(setError))}
+              toolbar={
+                <Button
+                  disabled={roles.length === 0 || busy}
+                  onClick={openCreate}
+                >
+                  <Plus />
+                  {t("newRequest")}
+                </Button>
+              }
               onDecision={setDecision}
             />
           </TabsContent>
@@ -220,50 +212,47 @@ export default function AccessRequestsPage() {
               {t("accessRequestFormDescription")}
             </DialogDescription>
           </DialogHeader>
-          <form
+          <AutoForm
             id="access-request-form"
-            className="grid gap-4"
+            fields={{
+              role_id: {
+                name: t("role"),
+                type: "select",
+                value: roleID,
+                config: {
+                  id: "access-request-role",
+                  options: roles.map((role) => ({
+                    value: role.id,
+                    label: role.name,
+                  })),
+                  placeholder: t("selectRole"),
+                },
+              },
+              access_expires_at: {
+                name: t("accessDeadline"),
+                type: "text",
+                value: expiresAt,
+                required: true,
+                config: {
+                  id: "access-request-expiry",
+                  type: "datetime-local",
+                  min: toLocalInputValue(new Date()),
+                },
+              },
+              reason: {
+                name: t("requestReason"),
+                type: "textarea",
+                required: true,
+                config: {
+                  id: "access-request-reason",
+                  minLength: 3,
+                  maxLength: 500,
+                },
+              },
+            }}
             onSubmit={submitRequest}
-          >
-            <div className="grid gap-2">
-              <Label htmlFor="access-request-role">{t("role")}</Label>
-              <SimpleSelect
-                id="access-request-role"
-                value={roleID}
-                onValueChange={setRoleID}
-                options={roles.map((role) => ({
-                  value: role.id,
-                  label: role.name,
-                }))}
-                placeholder={t("selectRole")}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="access-request-expiry">
-                {t("accessDeadline")}
-              </Label>
-              <Input
-                id="access-request-expiry"
-                type="datetime-local"
-                value={expiresAt}
-                min={toLocalInputValue(new Date())}
-                onChange={(event) => setExpiresAt(event.target.value)}
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="access-request-reason">
-                {t("requestReason")}
-              </Label>
-              <Textarea
-                id="access-request-reason"
-                name="reason"
-                minLength={3}
-                maxLength={500}
-                required
-              />
-            </div>
-          </form>
+            onChange={updateRequestValues}
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
               {t("cancel")}
@@ -290,21 +279,24 @@ export default function AccessRequestsPage() {
               {decision?.request.requester_id} · {decision?.request.role_name}
             </DialogDescription>
           </DialogHeader>
-          <form
+          <AutoForm
             id="access-decision-form"
-            className="grid gap-2"
+            fields={{
+              note: {
+                name:
+                  decision?.action === "approve"
+                    ? t("approvalNote")
+                    : t("reason"),
+                type: "textarea",
+                config: {
+                  id: "access-decision-note",
+                  maxLength: 500,
+                  autoFocus: true,
+                },
+              },
+            }}
             onSubmit={applyDecision}
-          >
-            <Label htmlFor="access-decision-note">
-              {decision?.action === "approve" ? t("approvalNote") : t("reason")}
-            </Label>
-            <Textarea
-              id="access-decision-note"
-              name="note"
-              maxLength={500}
-              autoFocus
-            />
-          </form>
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setDecision(null)}>
               {t("cancel")}
@@ -323,7 +315,7 @@ export default function AccessRequestsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }
 
@@ -334,7 +326,11 @@ function AccessRequestTable({
   currentSubject,
   busy,
   onDecision,
+  onRefresh,
+  toolbar,
 }: {
+  toolbar: React.ReactNode
+  onRefresh: () => Promise<void>
   items: AccessRequest[]
   loaded: boolean
   mode: "mine" | "queue"
@@ -346,107 +342,105 @@ function AccessRequestTable({
 
   const t = useTranslations("iam")
 
-  if (loaded && items.length === 0)
-    return (
-      <div className="grid min-h-40 place-items-center rounded-md border bg-card text-sm text-muted-foreground">
-        <div className="grid justify-items-center gap-2">
-          <ClipboardCheck className="size-7" />
-          {t("noAccessRequests")}
-        </div>
-      </div>
-    )
   return (
     <>
-      <div className="space-y-2 md:hidden">
-        {items.map((request) => (
-          <article key={request.id} className="rounded-md border bg-card p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <strong className="block truncate text-sm">
-                  {request.role_name}
-                </strong>
-                <span className="block truncate font-mono text-xs text-muted-foreground">
-                  {request.role_id}
-                </span>
-              </div>
-              <RequestStatus status={request.status} />
-            </div>
-            <p className="mt-3 text-sm break-words">{request.reason}</p>
-            <dl className="mt-3 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-1 text-xs">
-              <dt className="text-muted-foreground">{t("requester")}</dt>
-              <dd className="truncate">{request.requester_id}</dd>
-              <dt className="text-muted-foreground">{t("accessUntil")}</dt>
-              <dd>{formatTime(request.access_expires_at, locale)}</dd>
-              <dt className="text-muted-foreground">{t("approver")}</dt>
-              <dd className="truncate">{request.decided_by || "-"}</dd>
-            </dl>
-            <div className="mt-3 flex min-h-9 items-center justify-end border-t pt-2">
-              <RequestActions
-                request={request}
-                mode={mode}
-                currentSubject={currentSubject}
-                busy={busy}
-                onDecision={onDecision}
-              />
-            </div>
-          </article>
-        ))}
-      </div>
-      <div className="hidden overflow-x-auto rounded-md border bg-card md:block">
-        <Table className="min-w-[1040px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("requester")}</TableHead>
-              <TableHead>{t("role")}</TableHead>
-              <TableHead>{t("reason")}</TableHead>
-              <TableHead className="w-24">{t("status")}</TableHead>
-              <TableHead>{t("accessUntil")}</TableHead>
-              <TableHead>{t("approver")}</TableHead>
-              <TableHead className="w-32 text-right">{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((request) => (
-              <TableRow key={request.id}>
-                <TableCell>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <AutoTable
+          fill
+          toolbar={toolbar}
+          onRefresh={onRefresh}
+          data={items}
+          loading={!loaded}
+          emptyContent={t("noAccessRequests")}
+          rowKey="id"
+          searchable
+          columns={[
+            {
+              field: "requester_id",
+              name: t("requester"),
+              render: (_, request) => (
+                <>
                   <strong className="block text-sm">
                     {request.requester_id}
                   </strong>
                   <span className="font-mono text-xs text-muted-foreground">
                     {request.id}
                   </span>
-                </TableCell>
-                <TableCell>
+                </>
+              ),
+            },
+            {
+              field: "role_name",
+              name: t("role"),
+              render: (_, request) => (
+                <>
                   <strong className="block text-sm">{request.role_name}</strong>
                   <span className="font-mono text-xs text-muted-foreground">
                     {request.role_id}
                   </span>
-                </TableCell>
-                <TableCell className="max-w-72 text-sm whitespace-normal">
-                  {request.reason}
-                </TableCell>
-                <TableCell>
+                </>
+              ),
+            },
+            {
+              field: "reason",
+              name: t("reason"),
+              render: (_, request) => (
+                <>
+                  <div className="max-w-72 text-sm whitespace-normal">
+                    {request.reason}
+                  </div>
+                </>
+              ),
+            },
+            {
+              field: "status",
+              name: t("status"),
+              render: (_, request) => (
+                <>
                   <RequestStatus status={request.status} />
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {formatTime(request.access_expires_at, locale)}
-                </TableCell>
-                <TableCell className="text-sm">
-                  {request.decided_by || "-"}
-                </TableCell>
-                <TableCell className="text-right">
-                  <RequestActions
-                    request={request}
-                    mode={mode}
-                    currentSubject={currentSubject}
-                    busy={busy}
-                    onDecision={onDecision}
-                  />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                </>
+              ),
+            },
+            {
+              field: "access_expires_at",
+              name: t("accessUntil"),
+              render: (_, request) => (
+                <>
+                  <div className="text-xs text-muted-foreground">
+                    {formatTime(request.access_expires_at, locale)}
+                  </div>
+                </>
+              ),
+            },
+            {
+              field: "decided_by",
+              name: t("approver"),
+              render: (_, request) => (
+                <>
+                  <div className="text-sm">{request.decided_by || "-"}</div>
+                </>
+              ),
+            },
+            {
+              field: "actions",
+              type: "actions",
+              name: t("actions"),
+              render: (_, request) => (
+                <>
+                  <div className="text-right">
+                    <RequestActions
+                      request={request}
+                      mode={mode}
+                      currentSubject={currentSubject}
+                      busy={busy}
+                      onDecision={onDecision}
+                    />
+                  </div>
+                </>
+              ),
+            },
+          ]}
+        />
       </div>
     </>
   )

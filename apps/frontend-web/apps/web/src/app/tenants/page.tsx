@@ -1,17 +1,11 @@
+import { PaginationPages } from "@workspace/ui/components/pagination"
+import { AutoForm } from "@workspace/ui/components/auto-form"
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useState, type FormEvent } from "react"
-import {
-  ChevronLeft,
-  ChevronRight,
-  Landmark,
-  Pencil,
-  Plus,
-  Search,
-  Trash2,
-} from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import { Landmark, Pencil, Plus, Trash2 } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
-import { Checkbox } from "@workspace/ui/components/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -20,17 +14,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
-import { SimpleSelect } from "@workspace/ui/components/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
 import { AccountViewDialog } from "../../components/account-view-dialog"
 import { Alert } from "../../components/alert"
 import { useAuth } from "../../components/auth"
@@ -140,22 +123,20 @@ export default function TenantsPage() {
     setOpen(true)
   }
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submit = async (data: Record<string, unknown>) => {
     setBusy(true)
     setError("")
-    const data = new FormData(event.currentTarget)
     try {
       if (editing) {
         await iamApi.updateTenant(editing.id, {
-          name: String(data.get("name")),
+          name: String(data.name),
           status,
           version: editing.version,
         })
       } else {
         await iamApi.createTenant({
-          slug: String(data.get("slug")),
-          name: String(data.get("name")),
+          slug: String(data.slug),
+          name: String(data.name),
           owner_principal_id: ownerID,
         })
       }
@@ -187,18 +168,10 @@ export default function TenantsPage() {
   }
 
   return (
-    <>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
       <PageHeader
         title={t("tenantManagement")}
         description={t("tenantLifecycle")}
-        action={
-          allowed("tenant_create") && (
-            <Button onClick={openCreate}>
-              <Plus />
-              {t("createTenant")}
-            </Button>
-          )
-        }
       />
       {error && <Alert>{error}</Alert>}
       {loadError && !loading && (
@@ -215,67 +188,124 @@ export default function TenantsPage() {
           </Button>
         </Alert>
       )}
-      <div className="mb-3 flex min-h-9 flex-wrap items-center justify-end gap-2">
-        <div className="mr-auto flex items-center gap-2">
-          <Search className="size-4 text-muted-foreground" />
-          <Input
-            aria-label={t("searchTenants")}
-            value={search}
-            onChange={(event) => {
-              setError("")
-              setLoading(true)
-              setSearch(event.target.value)
-              setOffset(0)
-            }}
-            className="max-w-sm"
-          />
-        </div>
-        <label
-          htmlFor="include-deleted-tenants"
-          className="flex min-h-9 cursor-pointer items-center gap-2 text-sm"
-        >
-          <Checkbox
-            id="include-deleted-tenants"
-            checked={includeDeleted}
-            onCheckedChange={(checked) => {
-              setError("")
-              setLoading(true)
-              setIncludeDeleted(checked === true)
-              setOffset(0)
-            }}
-          />
-          {t("showDeletedTenants")}
-        </label>
-      </div>
-      <div className="overflow-x-auto rounded-md border bg-card">
-        <Table className="min-w-[900px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("tenant")}</TableHead>
-              <TableHead>{t("identifier")}</TableHead>
-              <TableHead>{t("id")}</TableHead>
-              <TableHead>{t("status")}</TableHead>
-              <TableHead>{t("version")}</TableHead>
-              <TableHead>{t("updatedAt")}</TableHead>
-              <TableHead className="w-36 text-right">{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(loading || loadError ? [] : tenants).map((tenant) => (
-              <TableRow key={tenant.id}>
-                <TableCell>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border bg-card">
+        <AutoTable
+          fill
+          loading={loading}
+          onRefresh={refresh}
+          rowOffset={offset}
+          toolbar={
+            <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+              {allowed("tenant_create") && (
+                <Button onClick={openCreate}>
+                  <Plus />
+                  {t("createTenant")}
+                </Button>
+              )}
+              <AutoForm
+                className="min-w-64 flex-1"
+                fields={{
+                  search: {
+                    name: t("searchTenants"),
+                    type: "text",
+                    value: search,
+                  },
+                  include_deleted: {
+                    name: t("showDeletedTenants"),
+                    type: "checkbox",
+                    value: includeDeleted,
+                    col: 1,
+                    config: { id: "include-deleted-tenants" },
+                  },
+                }}
+                onChange={(values) => {
+                  const nextSearch = String(values.search)
+                  const nextIncludeDeleted = values.include_deleted === true
+                  if (
+                    nextSearch !== search ||
+                    nextIncludeDeleted !== includeDeleted
+                  ) {
+                    setError("")
+                    setLoading(true)
+                    setSearch(nextSearch)
+                    setIncludeDeleted(nextIncludeDeleted)
+                    setOffset(0)
+                  }
+                }}
+              />
+            </div>
+          }
+          footer={
+            <div className="flex w-full flex-wrap items-center justify-between gap-3">
+              <span className="text-sm text-muted-foreground">
+                {Math.min(offset + tenantPageSize, total)} / {total}
+              </span>
+              <PaginationPages
+                page={Math.floor(offset / tenantPageSize) + 1}
+                totalPages={Math.max(1, Math.ceil(total / tenantPageSize))}
+                disabled={loading}
+                onPageChange={(page) => {
+                  setLoading(true)
+                  setOffset((page - 1) * tenantPageSize)
+                }}
+              />
+            </div>
+          }
+          className="[&_table]:min-w-[900px]"
+          emptyContent={
+            !loading &&
+            !loadError &&
+            tenants.length === 0 && (
+              <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
+                <span className="text-center">
+                  <Landmark className="mx-auto mb-2 size-7" />
+                  {t("noTenants")}
+                </span>
+              </div>
+            )
+          }
+          pagination={false}
+          data={loading || loadError ? [] : tenants}
+          rowKey={(tenant) => tenant.id}
+          columns={[
+            {
+              field: "tenant",
+              name: t("tenant"),
+              type: "custom",
+              render: (_value, tenant) => (
+                <div>
                   <div className="flex min-w-0 items-center gap-2">
                     <Landmark className="size-4 shrink-0 text-primary" />
                     <strong className="truncate text-sm">{tenant.name}</strong>
                   </div>
-                </TableCell>
-                <TableCell className="font-mono text-xs">
-                  {tenant.slug}
-                </TableCell>
-                <TableCell className="max-w-64 truncate font-mono text-xs text-muted-foreground">
+                </div>
+              ),
+            },
+            {
+              field: "identifier",
+              name: t("identifier"),
+              type: "custom",
+              render: (_value, tenant) => (
+                <div className="font-mono text-xs">{tenant.slug}</div>
+              ),
+            },
+            {
+              field: "id",
+              name: t("id"),
+              type: "custom",
+              render: (_value, tenant) => (
+                <div className="max-w-64 truncate font-mono text-xs text-muted-foreground">
                   {tenant.id}
-                </TableCell>
-                <TableCell>
+                </div>
+              ),
+            },
+            {
+              field: "status",
+              name: t("status"),
+              type: "custom",
+              render: (_value, tenant) => (
+                <div>
                   <Badge
                     variant={
                       tenant.status === "active"
@@ -287,16 +317,35 @@ export default function TenantsPage() {
                   >
                     {t(statusLabels[tenant.status])}
                   </Badge>
-                </TableCell>
-                <TableCell className="font-mono text-xs">
-                  v{tenant.version}
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
+                </div>
+              ),
+            },
+            {
+              field: "version",
+              name: t("version"),
+              type: "custom",
+              render: (_value, tenant) => (
+                <div className="font-mono text-xs">v{tenant.version}</div>
+              ),
+            },
+            {
+              field: "updatedAt",
+              name: t("updatedAt"),
+              type: "custom",
+              render: (_value, tenant) => (
+                <div className="text-sm text-muted-foreground">
                   {new Date(tenant.updated_at).toLocaleString(locale, {
                     hour12: false,
                   })}
-                </TableCell>
-                <TableCell className="text-right">
+                </div>
+              ),
+            },
+            {
+              field: "actions",
+              name: t("actions"),
+              type: "actions",
+              render: (_value, tenant) => (
+                <div className="text-right">
                   {tenant.status !== "deleted" && (
                     <div className="flex justify-end gap-1">
                       {allowed("account_view_create") && (
@@ -333,53 +382,17 @@ export default function TenantsPage() {
                       )}
                     </div>
                   )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {!loading && !loadError && tenants.length === 0 && (
-          <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
-            <span className="text-center">
-              <Landmark className="mx-auto mb-2 size-7" />
-              {t("noTenants")}
-            </span>
-          </div>
-        )}
+                </div>
+              ),
+            },
+          ]}
+        />
+
         {loading && (
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             {t("loading")}
           </div>
         )}
-      </div>
-      <div className="mt-4 flex items-center justify-end gap-2">
-        <span className="text-sm text-muted-foreground">
-          {Math.min(offset + tenants.length, total)} / {total}
-        </span>
-        <Button
-          size="icon"
-          aria-label={t("previous")}
-          variant="outline"
-          disabled={offset === 0 || loading}
-          onClick={() => {
-            setLoading(true)
-            setOffset(Math.max(0, offset - tenantPageSize))
-          }}
-        >
-          <ChevronLeft />
-        </Button>
-        <Button
-          size="icon"
-          aria-label={t("next")}
-          variant="outline"
-          disabled={offset + tenantPageSize >= total || loading}
-          onClick={() => {
-            setLoading(true)
-            setOffset(offset + tenantPageSize)
-          }}
-        >
-          <ChevronRight />
-        </Button>
       </div>
 
       <Dialog
@@ -398,67 +411,63 @@ export default function TenantsPage() {
               {editing ? t("tenantSlugImmutable") : t("tenantSlugDescription")}
             </DialogDescription>
           </DialogHeader>
-          <form
+          <AutoForm
             key={editing?.id ?? "create"}
+            mode={editing ? "edit" : "add"}
             id="tenant-form"
-            className="grid gap-4"
-            onSubmit={submit}
-          >
-            <div className="grid gap-2">
-              <Label htmlFor="tenant-name">{t("name")}</Label>
-              <Input
-                id="tenant-name"
-                name="name"
-                defaultValue={editing?.name}
-                maxLength={128}
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="tenant-slug">{t("identifier")}</Label>
-              <Input
-                id="tenant-slug"
-                name="slug"
-                defaultValue={editing?.slug}
-                minLength={3}
-                maxLength={63}
-                pattern="[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?"
-                disabled={Boolean(editing)}
-                required={!editing}
-              />
-            </div>
-            {!editing && (
-              <div className="grid gap-2">
-                <Label htmlFor="tenant-owner">{t("administrator")}</Label>
-                <SimpleSelect
-                  id="tenant-owner"
-                  options={principals.map((principal) => ({
+            fields={{
+              name: {
+                name: t("name"),
+                type: "text",
+                value: editing?.name ?? "",
+                required: true,
+                config: { id: "tenant-name", maxLength: 128 },
+              },
+              slug: {
+                name: t("identifier"),
+                type: "text",
+                value: editing?.slug ?? "",
+                required: !editing,
+                disabled: Boolean(editing),
+                config: {
+                  id: "tenant-slug",
+                  minLength: 3,
+                  maxLength: 63,
+                  pattern: "[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?",
+                },
+              },
+              owner_principal_id: {
+                name: t("administrator"),
+                type: "select",
+                value: ownerID,
+                show: !editing,
+                config: {
+                  id: "tenant-owner",
+                  options: principals.map((principal) => ({
                     value: principal.id,
                     label: `${principal.display_name}（${principal.login_name}）`,
-                  }))}
-                  value={ownerID}
-                  onValueChange={setOwnerID}
-                  placeholder={t("selectTenantAdmin")}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("tenantAdminDescription")}
-                </p>
-              </div>
-            )}
-            {editing && (
-              <div className="grid gap-2">
-                <Label htmlFor="tenant-status">{t("status")}</Label>
-                <SimpleSelect
-                  id="tenant-status"
-                  options={{ active: t("active"), suspended: t("disable") }}
-                  value={status}
-                  onValueChange={(value) =>
-                    setStatus(value as TenantUpdate["status"])
-                  }
-                />
-              </div>
-            )}
-          </form>
+                  })),
+                  placeholder: t("selectTenantAdmin"),
+                  suffix: t("tenantAdminDescription"),
+                },
+              },
+              status: {
+                name: t("status"),
+                type: "select",
+                value: status,
+                show: Boolean(editing),
+                config: {
+                  id: "tenant-status",
+                  options: { active: t("active"), suspended: t("disable") },
+                },
+              },
+            }}
+            onSubmit={submit}
+            onChange={(values) => {
+              setStatus(values.status as TenantUpdate["status"])
+              setOwnerID(String(values.owner_principal_id ?? ""))
+            }}
+          ></AutoForm>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               {t("cancel")}
@@ -499,6 +508,6 @@ export default function TenantsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }

@@ -1,19 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
-import {
-  Plus,
-  Search,
-  Pencil,
-  Loader2,
-  UserCog,
-  ExternalLink,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react"
+import { PaginationPages } from "@workspace/ui/components/pagination"
+import { AutoForm } from "@workspace/ui/components/auto-form"
+import { AutoTable } from "@workspace/ui/components/auto-table"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Plus, Pencil, Loader2, UserCog, ExternalLink } from "lucide-react"
 import { Link } from "react-router"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import {
   Dialog,
   DialogContent,
@@ -21,21 +13,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@workspace/ui/components/dialog"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
 import { PageHeader } from "../../components/page-header"
 import { Alert } from "../../components/alert"
 import { AccountViewDialog } from "../../components/account-view-dialog"
 import { iamApi, type Principal } from "../../lib/iam-api"
 import { useAllowed } from "../../lib/permissions"
 import { getAccountView } from "../../lib/account-view"
-import { SimpleSelect } from "@workspace/ui/components/select"
 import { SystemMembershipDialog } from "../../components/system-membership-dialog"
 import { systemRoleLabel } from "../../lib/membership-presentation"
 import type {
@@ -166,22 +149,20 @@ export default function SystemAccountsPage({
       invalidate()
     }
   }, [refresh, invalidate])
-  const save = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
+  const save = async (data: Record<string, unknown>) => {
     setBusy(true)
     setError("")
     try {
       const profile = {
-        display_name: String(form.get("display_name")),
-        email: String(form.get("email")),
+        display_name: String(data.display_name),
+        email: String(data.email),
       }
       if (editing) await iamApi.updateSystemPrincipal(editing.id, profile)
       else
         await iamApi.createSystemPrincipal({
           ...profile,
-          login_name: String(form.get("login_name")),
-          password: String(form.get("password")),
+          login_name: String(data.login_name),
+          password: String(data.password),
         })
       setOpen(false)
       await refresh()
@@ -192,7 +173,7 @@ export default function SystemAccountsPage({
     }
   }
   return (
-    <>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
       <PageHeader
         title={t(
           category === "system"
@@ -203,234 +184,273 @@ export default function SystemAccountsPage({
                 ? "tenantAccounts"
                 : "userAccounts"
         )}
-        action={
-          category === "user" && allowed("system_account_create") ? (
-            <Button
-              onClick={() => {
-                setEditing(null)
-                setOpen(true)
-              }}
-            >
-              <Plus className="size-4" />
-              {t("createAccount")}
-            </Button>
-          ) : category === "system" && allowed("system_member_create") ? (
-            <Button
-              onClick={() => {
-                setAccessAccount(null)
-                setAccessOpen(true)
-              }}
-            >
-              <Plus />
-              {t("addSystemAccount")}
-            </Button>
-          ) : ownerBase ? (
-            <Button asChild variant="outline">
-              <Link to={ownerBase}>
-                <ExternalLink />
-                {t("manageMemberships")}
-              </Link>
-            </Button>
-          ) : undefined
-        }
       />
       {error && <Alert>{error}</Alert>}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Search className="size-4 text-muted-foreground" />
-        <Input
-          aria-label={t("searchPrincipals")}
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value)
-            setOffset(0)
-          }}
-          className="max-w-sm"
-        />
-        {(category === "platform" || category === "tenant") && (
-          <SimpleSelect
-            id="account-owner"
-            value={owner || "__all__"}
-            onValueChange={(value) => {
-              setOwner(value === "__all__" ? "" : value)
-              setOffset(0)
-            }}
-            options={[
-              {
-                value: "__all__",
-                label: t(
-                  category === "platform" ? "allPlatforms" : "allTenants"
-                ),
-              },
-              ...owners.map((item) => ({ value: item.id, label: item.name })),
-            ]}
-          />
-        )}
-        <SimpleSelect
-          id="account-status"
-          value={status || "__all__"}
-          onValueChange={(value) => {
-            setStatus(value === "__all__" ? "" : (value as typeof status))
-            setOffset(0)
-          }}
-          options={{
-            __all__: t("allStatuses"),
-            active: t("active"),
-            disabled: t("disable"),
-          }}
-        />
-      </div>
-      {loading ? (
-        <Loader2 className="size-5 animate-spin" />
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("loginName")}</TableHead>
-              <TableHead>{t("displayName")}</TableHead>
-              <TableHead>{t("email")}</TableHead>
-              <TableHead>{t("status")}</TableHead>
-              {category === "system" && (
-                <>
-                  <TableHead>{t("department")}</TableHead>
-                  <TableHead>{t("assignedRoles")}</TableHead>
-                </>
-              )}
-              <TableHead>{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((item) => (
-              <TableRow key={item.id} data-account-id={item.id}>
-                <TableCell>{item.login_name ?? item.id}</TableCell>
-                <TableCell>{item.display_name}</TableCell>
-                <TableCell>{item.email}</TableCell>
-                <TableCell>
-                  {t.has(item.status) ? t(item.status) : item.status}
-                </TableCell>
-                {category === "system" && (
-                  <>
-                    <TableCell>
-                      {departments.find(
-                        (department) =>
-                          department.id ===
-                          members.find((member) => member.subject === item.id)
-                            ?.department_id
-                      )?.name ?? "-"}
-                    </TableCell>
-                    <TableCell className="max-w-sm break-words">
-                      {members.find((member) => member.subject === item.id)
-                        ?.protected
-                        ? t("fullSystemAdministrator")
-                        : (
-                            members.find((member) => member.subject === item.id)
-                              ?.role_ids ?? []
-                          )
-                            .map((id) => {
-                              const role = roles.find((role) => role.id === id)
-                              return role
-                                ? systemRoleLabel(
-                                    role,
-                                    t("fullSystemAdministrator"),
-                                    t("importedSystemPermissions")
-                                  )
-                                : id
-                            })
-                            .join(", ") || "-"}
-                    </TableCell>
-                  </>
-                )}
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    {category === "user" &&
-                      allowed("system_account_update") && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          title={t("edit")}
-                          aria-label={t("edit")}
-                          onClick={() => {
-                            setEditing(item)
-                            setOpen(true)
-                          }}
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                      )}
-                    {(category === "system" || category === "user") &&
-                      allowed("system_member_view") && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={t("systemAccessNamed", {
+
+      <AutoTable
+        loading={loading}
+        fill
+        onRefresh={refresh}
+        rowOffset={offset}
+        toolbar={
+          <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+            {category === "user" && allowed("system_account_create") ? (
+              <Button
+                onClick={() => {
+                  setEditing(null)
+                  setOpen(true)
+                }}
+              >
+                <Plus className="size-4" />
+                {t("createAccount")}
+              </Button>
+            ) : category === "system" && allowed("system_member_create") ? (
+              <Button
+                onClick={() => {
+                  setAccessAccount(null)
+                  setAccessOpen(true)
+                }}
+              >
+                <Plus />
+                {t("addSystemAccount")}
+              </Button>
+            ) : ownerBase ? (
+              <Button asChild variant="outline">
+                <Link to={ownerBase}>
+                  <ExternalLink />
+                  {t("manageMemberships")}
+                </Link>
+              </Button>
+            ) : undefined}
+            <AutoForm
+              className="min-w-0 flex-1 lg:grid-cols-3"
+              fields={{
+                search: {
+                  name: t("searchPrincipals"),
+                  type: "text",
+                  value: search,
+                },
+                owner: {
+                  name: t(
+                    category === "platform" ? "allPlatforms" : "allTenants"
+                  ),
+                  type: "select",
+                  value: owner || "__all__",
+                  show: category === "platform" || category === "tenant",
+                  config: {
+                    id: "account-owner",
+                    options: [
+                      {
+                        value: "__all__",
+                        label: t(
+                          category === "platform"
+                            ? "allPlatforms"
+                            : "allTenants"
+                        ),
+                      },
+                      ...owners.map((item) => ({
+                        value: item.id,
+                        label: item.name,
+                      })),
+                    ],
+                  },
+                },
+                status: {
+                  name: t("status"),
+                  type: "select",
+                  value: status || "__all__",
+                  config: {
+                    id: "account-status",
+                    options: {
+                      __all__: t("allStatuses"),
+                      active: t("active"),
+                      disabled: t("disable"),
+                    },
+                  },
+                },
+              }}
+              onChange={(values) => {
+                const nextSearch = String(values.search)
+                const nextOwner =
+                  values.owner === "__all__" ? "" : String(values.owner)
+                const nextStatus =
+                  values.status === "__all__"
+                    ? ""
+                    : (values.status as typeof status)
+                if (
+                  nextSearch !== search ||
+                  nextOwner !== owner ||
+                  nextStatus !== status
+                ) {
+                  setSearch(nextSearch)
+                  setOwner(nextOwner)
+                  setStatus(nextStatus)
+                  setOffset(0)
+                }
+              }}
+            />
+          </div>
+        }
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <span className="text-sm text-muted-foreground">
+              {Math.min(offset + 50, total)} / {total}
+            </span>
+            <PaginationPages
+              page={Math.floor(offset / 50) + 1}
+              totalPages={Math.max(1, Math.ceil(total / 50))}
+              disabled={loading}
+              onPageChange={(page) => {
+                setOffset((page - 1) * 50)
+              }}
+            />
+          </div>
+        }
+        emptyContent={null}
+        rowProps={(item) => ({ "data-account-id": item.id })}
+        pagination={false}
+        data={items}
+        rowKey={(item) => item.id}
+        columns={[
+          {
+            field: "loginName",
+            name: t("loginName"),
+            type: "custom",
+            render: (_value, item) => <div>{item.login_name ?? item.id}</div>,
+          },
+          {
+            field: "display_name",
+            name: t("displayName"),
+            type: "text",
+          },
+          {
+            field: "email",
+            name: t("email"),
+            type: "text",
+          },
+          {
+            field: "status",
+            name: t("status"),
+            type: "custom",
+            render: (_value, item) => (
+              <div>{t.has(item.status) ? t(item.status) : item.status}</div>
+            ),
+          },
+          {
+            field: "department",
+            name: t("department"),
+            type: "custom",
+            render: (_value, item) => (
+              <div>
+                {departments.find(
+                  (department) =>
+                    department.id ===
+                    members.find((member) => member.subject === item.id)
+                      ?.department_id
+                )?.name ?? "-"}
+              </div>
+            ),
+          },
+          {
+            field: "assignedRoles",
+            name: t("assignedRoles"),
+            type: "custom",
+            render: (_value, item) => (
+              <div className="max-w-sm break-words">
+                {members.find((member) => member.subject === item.id)?.protected
+                  ? t("fullSystemAdministrator")
+                  : (
+                      members.find((member) => member.subject === item.id)
+                        ?.role_ids ?? []
+                    )
+                      .map((id) => {
+                        const role = roles.find((role) => role.id === id)
+                        return role
+                          ? systemRoleLabel(
+                              role,
+                              t("fullSystemAdministrator"),
+                              t("importedSystemPermissions")
+                            )
+                          : id
+                      })
+                      .join(", ") || "-"}
+              </div>
+            ),
+          },
+          {
+            field: "actions",
+            name: t("actions"),
+            type: "actions",
+            render: (_value, item) => (
+              <div>
+                <div className="flex items-center gap-1">
+                  {category === "user" && allowed("system_account_update") && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title={t("edit")}
+                      aria-label={t("edit")}
+                      onClick={() => {
+                        setEditing(item)
+                        setOpen(true)
+                      }}
+                    >
+                      <Pencil className="size-4" />
+                    </Button>
+                  )}
+                  {(category === "system" || category === "user") &&
+                    allowed("system_member_view") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t("systemAccessNamed", {
+                          name: item.display_name || item.login_name || item.id,
+                        })}
+                        title={t("systemAccountAccess")}
+                        onClick={() => {
+                          setAccessAccount(item)
+                          setAccessOpen(true)
+                        }}
+                      >
+                        <UserCog />
+                      </Button>
+                    )}
+                  {(category === "platform" || category === "tenant") &&
+                    ownerBase && (
+                      <Button
+                        asChild
+                        variant="ghost"
+                        size="icon"
+                        title={t("manageMemberships")}
+                      >
+                        <Link
+                          to={ownerBase}
+                          aria-label={t("manageMembershipsNamed", {
                             name:
                               item.display_name || item.login_name || item.id,
                           })}
-                          title={t("systemAccountAccess")}
-                          onClick={() => {
-                            setAccessAccount(item)
-                            setAccessOpen(true)
-                          }}
                         >
-                          <UserCog />
-                        </Button>
-                      )}
-                    {(category === "platform" || category === "tenant") &&
-                      ownerBase && (
-                        <Button
-                          asChild
-                          variant="ghost"
-                          size="icon"
-                          title={t("manageMemberships")}
-                        >
-                          <Link
-                            to={ownerBase}
-                            aria-label={t("manageMembershipsNamed", {
-                              name:
-                                item.display_name || item.login_name || item.id,
-                            })}
-                          >
-                            <ExternalLink />
-                          </Link>
-                        </Button>
-                      )}
-                    {allowed("system_account_view") && !getAccountView() && (
-                      <AccountViewDialog
-                        principalID={item.id}
-                        label={item.display_name || item.login_name || item.id}
-                        preferredScope={category === "user" ? undefined : category}
-                        preferredOwner={owner || undefined}
-                      />
+                          <ExternalLink />
+                        </Link>
+                      </Button>
                     )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-      <div className="mt-4 flex items-center justify-end gap-2">
-        <span className="text-sm text-muted-foreground">
-          {Math.min(offset + items.length, total)} / {total}
-        </span>
-        <Button
-          size="icon"
-          aria-label={t("previous")}
-          variant="outline"
-          disabled={offset === 0 || loading}
-          onClick={() => setOffset(Math.max(0, offset - 50))}
-        >
-          <ChevronLeft />
-        </Button>
-        <Button
-          size="icon"
-          aria-label={t("next")}
-          variant="outline"
-          disabled={offset + 50 >= total || loading}
-          onClick={() => setOffset(offset + 50)}
-        >
-          <ChevronRight />
-        </Button>
-      </div>
+                  {allowed("system_account_view") && !getAccountView() && (
+                    <AccountViewDialog
+                      principalID={item.id}
+                      label={item.display_name || item.login_name || item.id}
+                      preferredScope={
+                        category === "user" ? undefined : category
+                      }
+                      preferredOwner={owner || undefined}
+                    />
+                  )}
+                </div>
+              </div>
+            ),
+          },
+        ]}
+      />
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -438,49 +458,45 @@ export default function SystemAccountsPage({
               {t(editing ? "editAccount" : "createAccount")}
             </DialogTitle>
           </DialogHeader>
-          <form
-            onSubmit={(event) => {
-              void save(event)
+          <AutoForm
+            key={editing?.id ?? "create"}
+            mode={editing ? "edit" : "add"}
+            id="system-accounts-form"
+            fields={{
+              login_name: {
+                name: t("loginName"),
+                type: "text",
+                value: "",
+                required: true,
+                show: !editing,
+                config: { id: "system-account-login" },
+              },
+              password: {
+                name: t("password"),
+                type: "password",
+                value: "",
+                required: true,
+                show: !editing,
+                config: {
+                  id: "system-account-password",
+                  autoComplete: "new-password",
+                },
+              },
+              display_name: {
+                name: t("displayName"),
+                type: "text",
+                value: editing?.display_name ?? "",
+                config: { id: "system-account-name" },
+              },
+              email: {
+                name: t("email"),
+                type: "email",
+                value: editing?.email ?? "",
+                config: { id: "system-account-email" },
+              },
             }}
-            className="space-y-4"
+            onSubmit={save}
           >
-            {!editing && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="system-account-login">{t("loginName")}</Label>
-                  <Input id="system-account-login" name="login_name" required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="system-account-password">
-                    {t("password")}
-                  </Label>
-                  <Input
-                    id="system-account-password"
-                    type="password"
-                    name="password"
-                    autoComplete="new-password"
-                    required
-                  />
-                </div>
-              </>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="system-account-name">{t("displayName")}</Label>
-              <Input
-                id="system-account-name"
-                name="display_name"
-                defaultValue={editing?.display_name ?? ""}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="system-account-email">{t("email")}</Label>
-              <Input
-                id="system-account-email"
-                name="email"
-                type="email"
-                defaultValue={editing?.email ?? ""}
-              />
-            </div>
             <DialogFooter>
               <Button
                 type="button"
@@ -494,7 +510,7 @@ export default function SystemAccountsPage({
                 {t("save")}
               </Button>
             </DialogFooter>
-          </form>
+          </AutoForm>
         </DialogContent>
       </Dialog>
       <SystemMembershipDialog
@@ -507,6 +523,6 @@ export default function SystemAccountsPage({
           void refreshAccess()
         }}
       />
-    </>
+    </div>
   )
 }

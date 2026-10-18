@@ -6,13 +6,15 @@ import { fileURLToPath } from "node:url"
 const baseURL = process.env.IAM_CONSOLE_URL ?? "http://127.0.0.1:4303"
 const session = `auto-form-${process.pid}`
 const hookPath =
-  "/@fs" +
+  "/@fs/" +
   fileURLToPath(
     new URL(
       "../../../packages/ui/src/components/auto-form/use-auto-form.ts",
       import.meta.url
     )
-  ).replaceAll("\\", "/")
+  )
+    .replaceAll("\\", "/")
+    .replace(/^\//, "")
 const main = await (await fetch(`${baseURL}/src/main.tsx`)).text()
 const hook = await (await fetch(`${baseURL}${hookPath}`)).text()
 const dependency = (name) => {
@@ -23,7 +25,7 @@ const dependency = (name) => {
   return JSON.stringify(path)
 }
 const run = (...args) =>
-  execFileSync("bunx", ["agent-browser", "--session", session, ...args], {
+  execFileSync("bun", ["x", "agent-browser", "--session", session, ...args], {
     encoding: "utf8",
     windowsHide: true,
     timeout: 60000,
@@ -111,8 +113,8 @@ customLocaleError='old custom error';await localizedApi.validateField('name');aw
 root.unmount();node.remove();return {pass:true,calls,submits,checks:['readonly validation transition','pending errors discarded','readonly setValue','readonly submit','duplicate submit','pending submit transition','editable restoration','pending contract invalidation','stale submit callback','contract invalidation and restoration','contract parsed numeric submit','copy creates and resets unique fields','copy alias creates','factory readonly blocks submit','read error and retry','factory scope race','CRUD contract validation','missing edit ID','pending validation invalidated by record switch','obsolete commit feedback suppressed','structured server field errors','unbound errors visible globally','generic submission failure visible without leaking internals','stale errors after input changes discarded','JSON Schema required uses presence with native form submission','three-language client and server errors preserve inputs and never resubmit','cleared server errors do not reappear','late language validation cannot overwrite newer input']};
 })()`
   const result = execFileSync(
-    "bunx",
-    ["agent-browser", "--session", session, "eval", "--stdin"],
+    "bun",
+    ["x", "agent-browser", "--session", session, "eval", "--stdin"],
     { input: script, encoding: "utf8", windowsHide: true, timeout: 60000 }
   )
   if (!JSON.parse(result).pass) throw new Error(result)

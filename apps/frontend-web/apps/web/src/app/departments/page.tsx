@@ -1,12 +1,11 @@
-import { useTranslations } from "@workspace/ui/i18n/intl-provider"
+import { AutoTable } from "@workspace/ui/components/auto-table"
+import type { ColumnConfig } from "@workspace/ui/components/auto-table"
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react"
+  AutoForm,
+  type UseAutoFormReturn,
+} from "@workspace/ui/components/auto-form"
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Building2,
   ChevronDown,
@@ -25,17 +24,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
-import { SimpleSelect } from "@workspace/ui/components/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { operatingPlatformID } from "../../lib/organization-scope"
@@ -89,6 +77,7 @@ export default function DepartmentsPage({
     [system]
   )
 
+  const departmentForm = useRef<UseAutoFormReturn>(null)
   const [departments, setDepartments] = useState<Department[]>([])
   const [entities, setEntities] = useState<Entity[]>([])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -212,16 +201,14 @@ export default function DepartmentsPage({
     setOpen(true)
   }
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submit = async (data: Record<string, unknown>) => {
     setBusy(true)
     setError("")
-    const data = new FormData(event.currentTarget)
     const values = {
       parent_id: parentID === rootDepartment ? "" : parentID,
-      name: String(data.get("name")),
+      name: String(data.name),
       status,
-      sort_order: Number(data.get("sort_order") || 0),
+      sort_order: Number(data.sort_order || 0),
     }
     try {
       if (editing)
@@ -271,8 +258,18 @@ export default function DepartmentsPage({
     })
   }
 
+  const entityColumn: ColumnConfig<(typeof visibleDepartments)[number]> = {
+    field: "entity",
+    name: t("entity"),
+    type: "custom",
+    render: (_value, department) => (
+      <div className="text-sm">
+        {entityByID.get(department.entity_id)?.name ?? "-"}
+      </div>
+    ),
+  }
   return (
-    <>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
       <PageHeader
         title={t("departmentManagement")}
         description={t(
@@ -282,19 +279,6 @@ export default function DepartmentsPage({
               ? "platformDepartmentsDescription"
               : "departmentsDescription"
         )}
-        action={
-          allowed("dept_create") && (
-            <Button
-              onClick={openCreate}
-              disabled={
-                !system && !operatingPlatformID() && entities.length === 0
-              }
-            >
-              <Plus />
-              {t("createDepartment")}
-            </Button>
-          )
-        }
       />
       {error && <Alert>{error}</Alert>}
       {loadError && (
@@ -306,31 +290,63 @@ export default function DepartmentsPage({
         </Alert>
       )}
       {loading && <p role="status">{t("loading")}</p>}
-      <div className="overflow-x-auto rounded-md border bg-card">
-        <Table className="min-w-[840px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("department")}</TableHead>
-              {!system && <TableHead>{t("entity")}</TableHead>}
-              <TableHead>{t("parentDepartment")}</TableHead>
-              <TableHead>{t("sortOrder")}</TableHead>
-              <TableHead>{t("status")}</TableHead>
-              <TableHead>{t("version")}</TableHead>
-              <TableHead className="w-24 text-right">{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visibleDepartments.map((department) => {
-              const hasChildren = (childrenByParent.get(department.id) ?? 0) > 0
-              const parent = department.parent_id
-                ? departmentByID.get(department.parent_id)
-                : undefined
-              return (
-                <TableRow
-                  key={department.id}
-                  data-department-id={department.id}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border bg-card">
+        <AutoTable
+          fill
+          onRefresh={refresh}
+          searchable={(department) =>
+            [department.name, department.id, department.entity_id].join(" ")
+          }
+          toolbar={
+            <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+              {allowed("dept_create") && (
+                <Button
+                  onClick={openCreate}
+                  disabled={
+                    !system && !operatingPlatformID() && entities.length === 0
+                  }
                 >
-                  <TableCell>
+                  <Plus />
+                  {t("createDepartment")}
+                </Button>
+              )}
+            </div>
+          }
+          footer={
+            <>
+              <span className="text-sm text-muted-foreground">
+                {visibleDepartments.length} {t("items")}
+              </span>
+            </>
+          }
+          className="[&_table]:min-w-[840px]"
+          emptyContent={
+            !loading &&
+            !loadError &&
+            departments.length === 0 && (
+              <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
+                <span className="text-center">
+                  <Building2 className="mx-auto mb-2 size-7" />
+                  {t("noDepartments")}
+                </span>
+              </div>
+            )
+          }
+          pagination={false}
+          loading={loading}
+          data={visibleDepartments}
+          rowKey={(department) => department.id}
+          rowProps={(department) => ({ "data-department-id": department.id })}
+          columns={[
+            {
+              field: "department",
+              name: t("department"),
+              type: "custom" as const,
+              render: (_value, department) => {
+                const hasChildren =
+                  (childrenByParent.get(department.id) ?? 0) > 0
+                return (
+                  <div>
                     <div
                       className="flex min-w-0 items-center gap-1"
                       style={{
@@ -364,19 +380,45 @@ export default function DepartmentsPage({
                         {department.name}
                       </strong>
                     </div>
-                  </TableCell>
-                  {!system && (
-                    <TableCell className="text-sm">
-                      {entityByID.get(department.entity_id)?.name ?? "-"}
-                    </TableCell>
-                  )}
-                  <TableCell className="text-sm text-muted-foreground">
+                  </div>
+                )
+              },
+            },
+            ...(!system ? [entityColumn] : []),
+            {
+              field: "parentDepartment",
+              name: t("parentDepartment"),
+              type: "custom" as const,
+              render: (_value, department) => {
+                const parent = department.parent_id
+                  ? departmentByID.get(department.parent_id)
+                  : undefined
+                return (
+                  <div className="text-sm text-muted-foreground">
                     {parent?.name ?? "-"}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
+                  </div>
+                )
+              },
+            },
+            {
+              field: "sortOrder",
+              name: t("sortOrder"),
+              type: "custom" as const,
+              render: (_value, department) => {
+                return (
+                  <div className="font-mono text-xs">
                     {department.sort_order}
-                  </TableCell>
-                  <TableCell>
+                  </div>
+                )
+              },
+            },
+            {
+              field: "status",
+              name: t("status"),
+              type: "custom" as const,
+              render: (_value, department) => {
+                return (
+                  <div>
                     <Badge
                       variant={
                         department.status === "active"
@@ -388,11 +430,27 @@ export default function DepartmentsPage({
                         ? t("active")
                         : t("disable")}
                     </Badge>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    v{department.version}
-                  </TableCell>
-                  <TableCell className="text-right">
+                  </div>
+                )
+              },
+            },
+            {
+              field: "version",
+              name: t("version"),
+              type: "custom" as const,
+              render: (_value, department) => {
+                return (
+                  <div className="font-mono text-xs">v{department.version}</div>
+                )
+              },
+            },
+            {
+              field: "actions",
+              name: t("actions"),
+              type: "actions" as const,
+              render: (_value, department) => {
+                return (
+                  <div className="text-right">
                     <div className="flex justify-end gap-1">
                       {allowed("dept_update") && (
                         <Button
@@ -421,20 +479,12 @@ export default function DepartmentsPage({
                         </Button>
                       )}
                     </div>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-        {!loading && !loadError && departments.length === 0 && (
-          <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
-            <span className="text-center">
-              <Building2 className="mx-auto mb-2 size-7" />
-              {t("noDepartments")}
-            </span>
-          </div>
-        )}
+                  </div>
+                )
+              },
+            },
+          ]}
+        />
       </div>
 
       <Dialog
@@ -453,75 +503,68 @@ export default function DepartmentsPage({
               {t("departmentFormDescription")}
             </DialogDescription>
           </DialogHeader>
-          <form
+          <AutoForm
+            formRef={departmentForm}
             key={editing?.id ?? "create"}
+            mode={editing ? "edit" : "add"}
             id="department-form"
-            className="grid gap-4"
-            onSubmit={submit}
-          >
-            {!system && !operatingPlatformID() && (
-              <div className="grid gap-2">
-                <Label htmlFor="department-entity">{t("entity")}</Label>
-                <SimpleSelect
-                  id="department-entity"
-                  options={entities.map((entity) => ({
+            fields={{
+              entity_id: {
+                name: t("entity"),
+                type: "select",
+                value: entityID,
+                show: !system && !operatingPlatformID(),
+                disabled: editing !== null,
+                config: {
+                  id: "department-entity",
+                  options: entities.map((entity) => ({
                     value: entity.id,
                     label: entity.name,
-                  }))}
-                  value={entityID}
-                  onValueChange={(value) => {
-                    setEntityID(value)
-                    setParentID(rootDepartment)
-                  }}
-                  disabled={editing !== null}
-                />
-              </div>
-            )}
-            <div className="grid gap-2">
-              <Label htmlFor="department-name">{t("departmentName")}</Label>
-              <Input
-                id="department-name"
-                name="name"
-                defaultValue={editing?.name}
-                required
-                maxLength={128}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="department-parent">{t("parentDepartment")}</Label>
-              <SimpleSelect
-                id="department-parent"
-                options={parentOptions}
-                value={parentID}
-                onValueChange={setParentID}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="department-sort-order">{t("sortOrder")}</Label>
-                <Input
-                  id="department-sort-order"
-                  name="sort_order"
-                  type="number"
-                  min={0}
-                  max={1000000}
-                  defaultValue={editing?.sort_order ?? 0}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="department-status">{t("status")}</Label>
-                <SimpleSelect
-                  id="department-status"
-                  options={{ active: t("active"), disabled: t("disable") }}
-                  value={status}
-                  onValueChange={(value) =>
-                    setStatus(value as DepartmentInput["status"])
-                  }
-                />
-              </div>
-            </div>
-          </form>
+                  })),
+                },
+              },
+              name: {
+                name: t("departmentName"),
+                type: "text",
+                value: editing?.name ?? "",
+                required: true,
+                config: { id: "department-name", maxLength: 128 },
+              },
+              parent_id: {
+                name: t("parentDepartment"),
+                type: "select",
+                value: parentID,
+                config: { id: "department-parent", options: parentOptions },
+              },
+              sort_order: {
+                name: t("sortOrder"),
+                type: "number",
+                value: editing?.sort_order ?? 0,
+                required: true,
+                config: { id: "department-sort-order", min: 0, max: 1000000 },
+              },
+              status: {
+                name: t("status"),
+                type: "select",
+                value: status,
+                config: {
+                  id: "department-status",
+                  options: { active: t("active"), disabled: t("disable") },
+                },
+              },
+            }}
+            onSubmit={submit}
+            onChange={(values) => {
+              setStatus(values.status as DepartmentInput["status"])
+              if (String(values.entity_id) !== entityID) {
+                setEntityID(String(values.entity_id))
+                setParentID(rootDepartment)
+                departmentForm.current?.setValue("parent_id", rootDepartment)
+              } else {
+                setParentID(String(values.parent_id))
+              }
+            }}
+          ></AutoForm>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               {t("cancel")}
@@ -538,7 +581,7 @@ export default function DepartmentsPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }
 

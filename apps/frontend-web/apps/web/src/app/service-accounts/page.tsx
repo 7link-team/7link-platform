@@ -1,5 +1,7 @@
+import { AutoTable } from "@workspace/ui/components/auto-table/auto-table"
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   Bot,
   CheckCircle2,
@@ -21,16 +23,6 @@ import {
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
-import { Switch } from "@workspace/ui/components/switch"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
-import { Textarea } from "@workspace/ui/components/textarea"
 import {
   Tooltip,
   TooltipContent,
@@ -156,8 +148,7 @@ export default function ServiceAccountsPage() {
     setEditing(account)
   }
 
-  const saveAccount = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const saveAccount = async () => {
     setBusy(true)
     setError("")
     setNotice("")
@@ -208,9 +199,12 @@ export default function ServiceAccountsPage() {
     }
   }
 
-  const openCredentials = async (account: ServiceAccount) => {
+  const openCredentials = async (
+    account: ServiceAccount,
+    resetDraft = true
+  ) => {
     setCredentialAccount(account)
-    setCredentialDraft({ ...emptyCredential })
+    if (resetDraft) setCredentialDraft({ ...emptyCredential })
     setCredentials([])
     setCredentialsLoading(true)
     setBusy(true)
@@ -225,8 +219,7 @@ export default function ServiceAccountsPage() {
     }
   }
 
-  const createCredential = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const createCredential = async () => {
     if (!credentialAccount) return
     const scopes = uniqueWords(credentialDraft.scopes)
     if (scopes.length === 0) {
@@ -278,18 +271,10 @@ export default function ServiceAccountsPage() {
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <PageHeader
         title={t("serviceAccounts")}
         description={t("serviceAccountsDescription")}
-        action={
-          allowed("service_account_create") && (
-            <Button onClick={openCreate}>
-              <Plus />
-              {t("createServiceAccount")}
-            </Button>
-          )
-        }
       />
       {error && <Alert>{error}</Alert>}
       {loadError && (
@@ -302,115 +287,80 @@ export default function ServiceAccountsPage() {
       )}
       {notice && <SuccessNotice>{notice}</SuccessNotice>}
 
-      <section className="overflow-hidden rounded-md border bg-card">
-        <header className="flex min-h-14 items-center justify-between gap-4 border-b bg-muted/20 px-4">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Bot className="size-4 text-muted-foreground" />
-            {t("machineIdentity")}
-          </div>
-          <span className="text-xs text-muted-foreground">
-            {loading
-              ? t("loading")
-              : !loadError && t("accountCount", { count: accounts.length })}
-          </span>
-        </header>
-        <div className="hidden md:block">
-          <Table containerClassName="min-h-56">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="min-w-64">{t("loginName")}</TableHead>
-                <TableHead className="min-w-56">{t("notes")}</TableHead>
-                <TableHead className="min-w-44">{t("validity")}</TableHead>
-                <TableHead className="w-24">{t("status")}</TableHead>
-                <TableHead className="w-40 text-right">
-                  {t("actions")}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(loading || loadError ? [] : accounts).map((account) => (
-                <TableRow key={account.id}>
-                  <TableCell>
-                    <strong className="block text-sm">
-                      {account.display_name}
-                    </strong>
-                    <span className="block text-xs text-muted-foreground">
-                      {account.login_name}
-                    </span>
-                    <code className="mt-1 block max-w-72 truncate font-mono text-xs text-muted-foreground">
-                      {account.id}
-                    </code>
-                  </TableCell>
-                  <TableCell className="max-w-72 truncate text-sm text-muted-foreground">
-                    {account.description || "-"}
-                  </TableCell>
-                  <TableCell>
-                    {formatDate(account.expires_at, locale, t("neverExpires"))}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={account.status} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <AccountActions
-                      account={account}
-                      busy={busy}
-                      onCredentials={() => void openCredentials(account)}
-                      onEdit={() => openEdit(account)}
-                      onDelete={() => setDeleting(account)}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!loading && !loadError && accounts.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-52 text-center">
-                    <EmptyAccounts />
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-        <div className="md:hidden">
-          {(loading || loadError ? [] : accounts).map((account) => (
-            <article
-              key={account.id}
-              className="space-y-3 border-b p-4 last:border-0"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <strong className="block text-sm break-words">
-                    {account.display_name}
-                  </strong>
-                  <span className="text-xs text-muted-foreground">
-                    {account.login_name}
-                  </span>
-                </div>
+      <AutoTable
+        fill
+        toolbar={
+          allowed("service_account_create") ? (
+            <Button onClick={openCreate}>
+              <Plus />
+              {t("createServiceAccount")}
+            </Button>
+          ) : null
+        }
+        onRefresh={refresh}
+        searchable
+
+        emptyContent={loadError ? null : <EmptyAccounts />}
+        loading={loading}
+        data={loading || loadError ? [] : accounts}
+        rowKey="id"
+        columns={[
+          {
+            field: "login_name",
+            name: <>{t("loginName")}</>,
+            render: (_, account) => (
+              <>
+                <strong className="block text-sm">
+                  {account.display_name}
+                </strong>
+                <span className="block text-xs text-muted-foreground">
+                  {account.login_name}
+                </span>
+                <code className="mt-1 block max-w-72 truncate font-mono text-xs text-muted-foreground">
+                  {account.id}
+                </code>
+              </>
+            ),
+          },
+          {
+            field: "description",
+            name: <>{t("notes")}</>,
+            render: (_, account) => <>{account.description || "-"}</>,
+          },
+          {
+            field: "expires_at",
+            name: <>{t("validity")}</>,
+            render: (_, account) => (
+              <>{formatDate(account.expires_at, locale, t("neverExpires"))}</>
+            ),
+          },
+          {
+            field: "status",
+            name: <>{t("status")}</>,
+            render: (_, account) => (
+              <>
                 <StatusBadge status={account.status} />
-              </div>
-              <p className="text-sm break-words text-muted-foreground">
-                {account.description || t("withoutDescription")}
-              </p>
-              <div className="text-xs text-muted-foreground">
-                {t("validityLabel")}
-                {formatDate(account.expires_at, locale, t("neverExpires"))}
-              </div>
-              <AccountActions
-                account={account}
-                busy={busy}
-                onCredentials={() => void openCredentials(account)}
-                onEdit={() => openEdit(account)}
-                onDelete={() => setDeleting(account)}
-              />
-            </article>
-          ))}
-          {!loading && !loadError && accounts.length === 0 && (
-            <div className="grid h-52 place-items-center text-center">
-              <EmptyAccounts />
-            </div>
-          )}
-        </div>
-      </section>
+              </>
+            ),
+          },
+          {
+            field: "actions",
+            type: "actions",
+            name: <>{t("actions")}</>,
+            render: (_, account) => (
+              <>
+                <AccountActions
+                  account={account}
+                  busy={busy}
+                  onCredentials={() => void openCredentials(account)}
+                  onEdit={() => openEdit(account)}
+                  onDelete={() => setDeleting(account)}
+                />
+              </>
+            ),
+          },
+        ]}
+      />
 
       <AccountEditor
         open={editing !== undefined}
@@ -429,6 +379,11 @@ export default function ServiceAccountsPage() {
         busy={busy}
         onDraft={setCredentialDraft}
         onClose={() => !busy && setCredentialAccount(null)}
+        onRefresh={() =>
+          credentialAccount
+            ? openCredentials(credentialAccount, false)
+            : Promise.resolve()
+        }
         onSubmit={createCredential}
         onRevoke={setRevokeCredential}
       />
@@ -453,7 +408,7 @@ export default function ServiceAccountsPage() {
         onConfirm={() => void revoke()}
       />
       <SecretDialog value={secret} onClose={() => setSecret(null)} />
-    </>
+    </div>
   )
 }
 
@@ -524,7 +479,7 @@ function AccountEditor({
   busy: boolean
   onDraft: (value: AccountDraft) => void
   onOpenChange: (open: boolean) => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: () => void
 }) {
   const t = useTranslations("iam")
 
@@ -539,72 +494,63 @@ function AccountEditor({
             {account ? account.login_name : t("serviceAccountNoLogin")}
           </DialogDescription>
         </DialogHeader>
-        <form
+        <AutoForm
+          key={account?.id ?? "new"}
           id="service-account-form"
-          className="space-y-4"
-          onSubmit={onSubmit}
-        >
-          <Field label={t("loginIdentifier")} htmlFor="service-account-login">
-            <Input
-              id="service-account-login"
-              value={draft.loginName}
-              disabled={Boolean(account) || busy}
-              required
-              maxLength={200}
-              onChange={(event) =>
-                onDraft({ ...draft, loginName: event.target.value })
-              }
-            />
-          </Field>
-          <Field label={t("displayName")} htmlFor="service-account-display">
-            <Input
-              id="service-account-display"
-              value={draft.displayName}
-              disabled={busy}
-              required={Boolean(account)}
-              maxLength={128}
-              onChange={(event) =>
-                onDraft({ ...draft, displayName: event.target.value })
-              }
-            />
-          </Field>
-          <Field label={t("notes")} htmlFor="service-account-description">
-            <Textarea
-              id="service-account-description"
-              value={draft.description}
-              disabled={busy}
-              maxLength={1000}
-              rows={3}
-              onChange={(event) =>
-                onDraft({ ...draft, description: event.target.value })
-              }
-            />
-          </Field>
-          <Field label={t("validity")} htmlFor="service-account-expiry">
-            <Input
-              id="service-account-expiry"
-              type="datetime-local"
-              value={draft.expiresAt}
-              disabled={busy}
-              onChange={(event) =>
-                onDraft({ ...draft, expiresAt: event.target.value })
-              }
-            />
-          </Field>
-          {account && (
-            <div className="flex min-h-11 items-center justify-between gap-4 rounded-md border px-3">
-              <Label htmlFor="service-account-enabled">
-                {t("enableAccount")}
-              </Label>
-              <Switch
-                id="service-account-enabled"
-                checked={draft.enabled}
-                disabled={busy}
-                onCheckedChange={(enabled) => onDraft({ ...draft, enabled })}
-              />
-            </div>
-          )}
-        </form>
+          mode="edit"
+          initialData={{ ...draft }}
+          fields={{
+            loginName: {
+              name: t("loginIdentifier"),
+              type: "text",
+              required: true,
+              disabled: Boolean(account) || busy,
+              col: 2,
+              config: { id: "service-account-login", maxLength: 200 },
+            },
+            displayName: {
+              name: t("displayName"),
+              type: "text",
+              required: Boolean(account),
+              disabled: busy,
+              col: 2,
+              config: { id: "service-account-display", maxLength: 128 },
+            },
+            description: {
+              name: t("notes"),
+              type: "textarea",
+              required: false,
+              disabled: busy,
+              col: 2,
+              config: {
+                id: "service-account-description",
+                maxLength: 1000,
+                rows: 3,
+              },
+            },
+            expiresAt: {
+              name: t("validity"),
+              type: "text",
+              required: false,
+              disabled: busy,
+              col: 2,
+              config: { id: "service-account-expiry", type: "datetime-local" },
+            },
+            enabled: {
+              name: t("enableAccount"),
+              type: "switch",
+              show: Boolean(account),
+              disabled: busy,
+              col: 2,
+              config: { id: "service-account-enabled" },
+            },
+          }}
+          onChange={(values) => {
+            if (JSON.stringify(values) !== JSON.stringify(draft))
+              onDraft(values as unknown as AccountDraft)
+          }}
+          onSubmit={() => onSubmit()}
+        ></AutoForm>
         <DialogFooter>
           <Button
             type="button"
@@ -632,6 +578,7 @@ function CredentialsDialog({
   onDraft,
   onClose,
   onSubmit,
+  onRefresh,
   onRevoke,
 }: {
   account: ServiceAccount | null
@@ -641,7 +588,8 @@ function CredentialsDialog({
   busy: boolean
   onDraft: (value: CredentialDraft) => void
   onClose: () => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: () => void
+  onRefresh: () => Promise<void>
   onRevoke: (credential: ServiceAccountCredential) => void
 }) {
   const locale = useLocale()
@@ -655,89 +603,126 @@ function CredentialsDialog({
           <DialogTitle>{t("serviceAccountCredentials")}</DialogTitle>
           <DialogDescription>{account?.display_name}</DialogDescription>
         </DialogHeader>
-        <form
+        <AutoForm
+          key={account?.id ?? "new"}
           id="service-credential-form"
-          className="grid gap-3 md:grid-cols-3"
-          onSubmit={onSubmit}
-        >
-          <Field label={t("credentialName")} htmlFor="service-credential-name">
-            <Input
-              id="service-credential-name"
-              value={draft.name}
-              disabled={busy}
-              required
-              maxLength={128}
-              onChange={(event) =>
-                onDraft({ ...draft, name: event.target.value })
-              }
-            />
-          </Field>
-          <Field label={t("scopes")} htmlFor="service-credential-scopes">
-            <Input
-              id="service-credential-scopes"
-              value={draft.scopes}
-              disabled={busy}
-              required
-              onChange={(event) =>
-                onDraft({ ...draft, scopes: event.target.value })
-              }
-            />
-          </Field>
-          <Field label={t("validity")} htmlFor="service-credential-expiry">
-            <Input
-              id="service-credential-expiry"
-              type="datetime-local"
-              value={draft.expiresAt}
-              disabled={busy}
-              onChange={(event) =>
-                onDraft({ ...draft, expiresAt: event.target.value })
-              }
-            />
-          </Field>
-        </form>
-        <div className="overflow-x-auto rounded-md border">
-          <Table containerClassName="min-w-[680px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("name")}</TableHead>
-                <TableHead>{t("clientId")}</TableHead>
-                <TableHead>{t("scopes")}</TableHead>
-                <TableHead>{t("validity")}</TableHead>
-                <TableHead>{t("lastUsedLabel")}</TableHead>
-                <TableHead>{t("status")}</TableHead>
-                <TableHead className="w-20 text-right">
-                  {t("actions")}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {credentials.map((credential) => (
-                <TableRow key={credential.id}>
-                  <TableCell>{credential.name}</TableCell>
-                  <TableCell>
+          mode="edit"
+          initialData={{ ...draft }}
+          fields={{
+            name: {
+              name: t("credentialName"),
+              type: "text",
+              required: true,
+              disabled: busy,
+              col: 2,
+              config: { id: "service-credential-name", maxLength: 128 },
+            },
+            scopes: {
+              name: t("scopes"),
+              type: "text",
+              required: true,
+              disabled: busy,
+              col: 2,
+              config: { id: "service-credential-scopes" },
+            },
+            expiresAt: {
+              name: t("validity"),
+              type: "text",
+              required: false,
+              disabled: busy,
+              col: 2,
+              config: {
+                id: "service-credential-expiry",
+                type: "datetime-local",
+              },
+            },
+          }}
+          onChange={(values) => {
+            if (JSON.stringify(values) !== JSON.stringify(draft))
+              onDraft(values as unknown as CredentialDraft)
+          }}
+          onSubmit={() => onSubmit()}
+        ></AutoForm>
+        <div className="min-w-0">
+          <AutoTable
+            className="max-h-[min(55svh,32rem)]"
+            searchable
+            onRefresh={onRefresh}
+            toolbar={
+              <Button
+                type="submit"
+                form="service-credential-form"
+                disabled={busy}
+              >
+                <Plus />
+                {busy ? t("creating") : t("createCredential")}
+              </Button>
+            }
+            loading={loading}
+            emptyContent={t("noCredentials")}
+            data={credentials}
+            rowKey="id"
+            columns={[
+              {
+                field: "name",
+                name: <>{t("name")}</>,
+                render: (_, credential) => <>{credential.name}</>,
+              },
+              {
+                field: "id",
+                name: <>{t("clientId")}</>,
+                render: (_, credential) => (
+                  <>
                     <code className="font-mono text-xs">{credential.id}</code>
-                  </TableCell>
-                  <TableCell className="max-w-48 truncate">
-                    {credential.scopes.join(" ")}
-                  </TableCell>
-                  <TableCell>
+                  </>
+                ),
+              },
+              {
+                field: "scopes",
+                name: <>{t("scopes")}</>,
+                render: (_, credential) => <>{credential.scopes.join(" ")}</>,
+              },
+              {
+                field: "expires_at",
+                name: <>{t("validity")}</>,
+                render: (_, credential) => (
+                  <>
                     {formatDate(
                       credential.expires_at,
                       locale,
                       t("neverExpires")
                     )}
-                  </TableCell>
-                  <TableCell>
+                  </>
+                ),
+              },
+              {
+                field: "last_used_at",
+                name: <>{t("lastUsedLabel")}</>,
+                render: (_, credential) => (
+                  <>
                     {formatDate(
                       credential.last_used_at,
                       locale,
                       t("neverExpires")
                     )}
-                  </TableCell>
-                  <TableCell>
+                  </>
+                ),
+              },
+              {
+                field: "revoked_at",
+                name: <>{t("status")}</>,
+                render: (_, credential) => (
+                  <>
                     <CredentialStatus credential={credential} />
-                  </TableCell>
-                  <TableCell className="text-right">
+                  </>
+                ),
+              },
+              {
+                field: "actions",
+                type: "actions",
+                name: <>{t("actions")}</>,
+                render: (_, credential) => (
+                  <>
                     {!credential.revoked_at && (
                       <ActionButton
                         label={t("revokeNamed", { name: credential.name })}
@@ -748,21 +733,11 @@ function CredentialsDialog({
                         <Trash2 />
                       </ActionButton>
                     )}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {(loading || credentials.length === 0) && (
-                <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="h-24 text-center text-muted-foreground"
-                  >
-                    {loading ? t("loadingCredentials") : t("noCredentials")}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                  </>
+                ),
+              },
+            ]}
+          />
         </div>
         <DialogFooter>
           <Button
@@ -772,10 +747,6 @@ function CredentialsDialog({
             disabled={busy}
           >
             {t("close")}
-          </Button>
-          <Button type="submit" form="service-credential-form" disabled={busy}>
-            <Plus />
-            {busy ? t("creating") : t("createCredential")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -881,23 +852,6 @@ function SecretField({
           <Copy />
         </Button>
       </div>
-    </div>
-  )
-}
-
-function Field({
-  label,
-  htmlFor,
-  children,
-}: {
-  label: string
-  htmlFor: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={htmlFor}>{label}</Label>
-      {children}
     </div>
   )
 }

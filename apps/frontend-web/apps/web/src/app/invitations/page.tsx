@@ -1,9 +1,10 @@
+import { AutoTable } from "@workspace/ui/components/auto-table/auto-table"
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Ban, Copy, MailPlus, RefreshCw } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
-import { Checkbox } from "@workspace/ui/components/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -14,15 +15,6 @@ import {
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
-import { SimpleSelect } from "@workspace/ui/components/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import {
@@ -45,8 +37,6 @@ export default function InvitationsPage() {
   const [roles, setRoles] = useState<Role[]>([])
   const [open, setOpen] = useState(false)
   const [issued, setIssued] = useState<IssuedInvitation | null>(null)
-  const [departmentID, setDepartmentID] = useState("")
-  const [roleIDs, setRoleIDs] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState("")
@@ -91,22 +81,18 @@ export default function InvitationsPage() {
     }
   }, [refresh, allowed])
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submit = async (data: Record<string, unknown>) => {
     setBusy(true)
     setError("")
-    const data = new FormData(event.currentTarget)
     try {
       const result = await iamApi.createInvitation({
-        email: String(data.get("email") ?? "").trim(),
-        department_id: departmentID || undefined,
-        role_ids: roleIDs,
-        expires_in_hours: Number(data.get("expires_in_hours")),
+        email: String(data.email ?? "").trim(),
+        department_id: String(data.department_id || "") || undefined,
+        role_ids: data.role_ids as string[],
+        expires_in_hours: Number(data.expires_in_hours),
       })
       setOpen(false)
       setIssued(result)
-      setDepartmentID("")
-      setRoleIDs([])
       await refresh()
     } catch (cause) {
       setError((cause as Error).message)
@@ -147,18 +133,10 @@ export default function InvitationsPage() {
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <PageHeader
         title={t("memberInvitations")}
         description={t("invitationManagementDescription")}
-        action={
-          allowed("invitation_create") && (
-            <Button onClick={() => setOpen(true)}>
-              <MailPlus />
-              {t("createInvitation")}
-            </Button>
-          )
-        }
       />
       {error && <Alert>{error}</Alert>}
       {loadError && (
@@ -170,106 +148,127 @@ export default function InvitationsPage() {
         </Alert>
       )}
       {!loaded && <p role="status">{t("loading")}</p>}
-      <div className="overflow-x-auto rounded-md border bg-card">
-        <Table className="min-w-[860px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("email")}</TableHead>
-              <TableHead>{t("status")}</TableHead>
-              <TableHead>{t("defaultDepartment")}</TableHead>
-              <TableHead>{t("defaultRole")}</TableHead>
-              <TableHead>{t("expiresAt")}</TableHead>
-              <TableHead className="w-28 text-right">{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(!loaded || loadError ? [] : items).map((invitation) => (
-              <TableRow key={invitation.id}>
-                <TableCell>
-                  <strong className="block text-sm">{invitation.email}</strong>
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {invitation.id}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <InvitationStatus status={invitation.status} />
-                </TableCell>
-                <TableCell className="text-sm">
-                  {departments.find(
-                    (department) => department.id === invitation.department_id
-                  )?.name ??
-                    invitation.department_id ??
-                    t("unassigned")}
-                </TableCell>
-                <TableCell className="text-sm">
-                  {invitation.role_ids.length
-                    ? invitation.role_ids
-                        .map(
-                          (id) =>
-                            roles.find((role) => role.id === id)?.name ?? id
-                        )
-                        .join("、")
-                    : t("unassigned")}
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {new Date(invitation.expires_at).toLocaleString(locale)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {invitation.status === "pending" && (
-                    <div className="flex justify-end gap-1">
-                      {allowed("invitation_resend") && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          disabled={busy}
-                          onClick={() => void resend(invitation)}
-                          aria-label={t("resendNamed", {
-                            name: invitation.email,
-                          })}
-                          title={t("resendRotate")}
-                        >
-                          <RefreshCw />
-                        </Button>
-                      )}
-                      {allowed("invitation_revoke") && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          disabled={busy}
-                          onClick={() => void revoke(invitation)}
-                          aria-label={t("revokeNamed", {
-                            name: invitation.email,
-                          })}
-                          title={t("revokeInvitation")}
-                        >
-                          <Ban />
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {loaded && !loadError && items.length === 0 && (
-          <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
-            <MailPlus className="mb-2 size-7" />
-            {t("noInvitations")}
-          </div>
-        )}
-      </div>
+      <AutoTable
+        fill
+        toolbar={
+          <>
+            {allowed("invitation_create") && (
+              <Button onClick={() => setOpen(true)}>
+                <MailPlus />
+                {t("createInvitation")}
+              </Button>
+            )}
+          </>
+        }
+        onRefresh={refresh}
+        searchable
+        loading={!loaded}
 
-      <Dialog
-        open={open}
-        onOpenChange={(next) => {
-          setOpen(next)
-          if (!next) {
-            setDepartmentID("")
-            setRoleIDs([])
-          }
-        }}
-      >
+        emptyContent={loadError ? null : t("noInvitations")}
+        data={!loaded || loadError ? [] : items}
+        rowKey="id"
+        columns={[
+          {
+            field: "email",
+            name: <>{t("email")}</>,
+            render: (_, invitation) => (
+              <>
+                <strong className="block text-sm">{invitation.email}</strong>
+                <span className="font-mono text-xs text-muted-foreground">
+                  {invitation.id}
+                </span>
+              </>
+            ),
+          },
+          {
+            field: "status",
+            name: <>{t("status")}</>,
+            render: (_, invitation) => (
+              <>
+                <InvitationStatus status={invitation.status} />
+              </>
+            ),
+          },
+          {
+            field: "department_id",
+            name: <>{t("defaultDepartment")}</>,
+            render: (_, invitation) => (
+              <>
+                {departments.find(
+                  (department) => department.id === invitation.department_id
+                )?.name ??
+                  invitation.department_id ??
+                  t("unassigned")}
+              </>
+            ),
+          },
+          {
+            field: "role_ids",
+            name: <>{t("defaultRole")}</>,
+            render: (_, invitation) => (
+              <>
+                {invitation.role_ids.length
+                  ? invitation.role_ids
+                      .map(
+                        (id) => roles.find((role) => role.id === id)?.name ?? id
+                      )
+                      .join("、")
+                  : t("unassigned")}
+              </>
+            ),
+          },
+          {
+            field: "expires_at",
+            name: <>{t("expiresAt")}</>,
+            render: (_, invitation) => (
+              <>{new Date(invitation.expires_at).toLocaleString(locale)}</>
+            ),
+          },
+          {
+            field: "actions",
+            type: "actions",
+            name: <>{t("actions")}</>,
+            render: (_, invitation) => (
+              <>
+                {invitation.status === "pending" && (
+                  <div className="flex justify-end gap-1">
+                    {allowed("invitation_resend") && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() => void resend(invitation)}
+                        aria-label={t("resendNamed", {
+                          name: invitation.email,
+                        })}
+                        title={t("resendRotate")}
+                      >
+                        <RefreshCw />
+                      </Button>
+                    )}
+                    {allowed("invitation_revoke") && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() => void revoke(invitation)}
+                        aria-label={t("revokeNamed", {
+                          name: invitation.email,
+                        })}
+                        title={t("revokeInvitation")}
+                      >
+                        <Ban />
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </>
+            ),
+          },
+        ]}
+      />
+
+      <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("createMemberInvitation")}</DialogTitle>
@@ -277,83 +276,74 @@ export default function InvitationsPage() {
               {t("invitationCreateDescription")}
             </DialogDescription>
           </DialogHeader>
-          <form id="invitation-form" className="grid gap-4" onSubmit={submit}>
-            <div className="grid gap-2">
-              <Label htmlFor="invitation-email">{t("email")}</Label>
-              <Input
-                id="invitation-email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                maxLength={320}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="invitation-expiry">{t("validHours")}</Label>
-              <Input
-                id="invitation-expiry"
-                name="expires_in_hours"
-                type="number"
-                min={1}
-                max={720}
-                defaultValue={72}
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="invitation-department">
-                {t("defaultDepartment")}
-              </Label>
-              <SimpleSelect
-                id="invitation-department"
-                value={departmentID || "__none__"}
-                onValueChange={(value) =>
-                  setDepartmentID(value === "__none__" ? "" : value)
-                }
-                options={[
-                  { value: "__none__", label: t("unassigned") },
-                  ...departments
-                    .filter((department) => department.status === "active")
-                    .map((department) => ({
-                      value: department.id,
-                      label: department.name,
-                    })),
-                ]}
-              />
-            </div>
-            <fieldset className="grid gap-2">
-              <legend className="text-sm font-medium">
-                {t("defaultRole")}
-              </legend>
-              <div className="max-h-36 space-y-2 overflow-y-auto rounded-md border p-3">
-                {roles.length ? (
-                  roles.map((role) => (
-                    <label
-                      key={role.id}
-                      className="flex min-h-7 items-center gap-2 text-sm"
-                    >
-                      <Checkbox
-                        checked={roleIDs.includes(role.id)}
-                        onCheckedChange={(checked) =>
-                          setRoleIDs((current) =>
-                            checked
-                              ? [...current, role.id]
-                              : current.filter((id) => id !== role.id)
-                          )
-                        }
-                      />
-                      {role.name}
-                    </label>
-                  ))
-                ) : (
-                  <span className="text-sm text-muted-foreground">
-                    {t("noRoles")}
-                  </span>
-                )}
-              </div>
-            </fieldset>
-          </form>
+          <AutoForm
+            id="invitation-form"
+            mode="edit"
+            initialData={{ ...{} }}
+            fields={{
+              email: {
+                name: t("email"),
+                type: "email",
+                required: true,
+                disabled: busy,
+                col: 2,
+                config: {
+                  id: "invitation-email",
+                  type: "email",
+                  maxLength: 320,
+                  autoComplete: "email",
+                },
+              },
+              expires_in_hours: {
+                name: t("validHours"),
+                type: "number",
+                required: true,
+                value: 72,
+                disabled: busy,
+                col: 2,
+                config: { id: "invitation-expiry", min: 1, max: 720 },
+              },
+              department_id: {
+                name: t("defaultDepartment"),
+                type: "select",
+                value: "",
+                disabled: busy,
+                col: 2,
+                config: {
+                  id: "invitation-department",
+                  options: [
+                    { value: "", label: t("unassigned") },
+                    ...departments
+                      .filter((department) => department.status === "active")
+                      .map((department) => ({
+                        value: department.id,
+                        label: department.name,
+                      })),
+                  ],
+                },
+              },
+              role_ids: {
+                name: t("defaultRole"),
+                type: "checkbox-group",
+                value: [],
+                disabled: busy,
+                col: 2,
+                config: {
+                  options: roles.map((role) => ({
+                    value: role.id,
+                    label: role.name,
+                  })),
+                },
+              },
+            }}
+            onSubmit={submit}
+          >
+            {roles.length === 0 && (
+              <p className="text-sm text-muted-foreground md:col-span-2">
+                {t("noRoles")}
+              </p>
+            )}
+          </AutoForm>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               {t("cancel")}
@@ -402,7 +392,7 @@ export default function InvitationsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }
 

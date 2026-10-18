@@ -1,11 +1,7 @@
+import { AutoTable } from "@workspace/ui/components/auto-table/auto-table"
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-} from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ArrowUpFromLine,
   Pencil,
@@ -24,18 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
-import { SimpleSelect } from "@workspace/ui/components/select"
-import { Switch } from "@workspace/ui/components/switch"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import {
@@ -204,8 +188,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
       setBusy(false)
     }
   }
-  const save = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const save = async () => {
     if (conflict) return
     setBusy(true)
     setError("")
@@ -280,8 +263,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
     setResource({ resource_type: "User", resource_id: "" })
     setOperation({ target, remove })
   }
-  const runOperation = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const runOperation = async () => {
     if (!operation) return
     setBusy(true)
     setError("")
@@ -304,34 +286,8 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
   }
 
   return (
-    <>
-      <PageHeader
-        title={t("scimOutboundTargets")}
-        action={
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              title={t("refreshTargets")}
-              aria-label={t("refreshTargets")}
-              disabled={busy || loading}
-              onClick={() => {
-                setError("")
-                setLoading(true)
-                void refresh()
-                  .catch((cause: Error) => setError(cause.message))
-                  .finally(() => setLoading(false))
-              }}
-            >
-              <RefreshCw className={loading ? "animate-spin" : ""} />
-            </Button>
-            <Button disabled={!available || busy} onClick={() => edit(null)}>
-              <Plus />
-              {t("createTarget")}
-            </Button>
-          </div>
-        }
-      />
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <PageHeader title={t("scimOutboundTargets")} />
       {error && editing === undefined && !operation && !deleting && (
         <Alert>{error}</Alert>
       )}
@@ -346,108 +302,136 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
           )}
         </div>
       )}
-      <div className="overflow-hidden rounded-md border bg-card">
-        <Table className="min-w-[950px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("target")}</TableHead>
-              <TableHead>{t("serviceAccounts")}</TableHead>
-              <TableHead>{t("status")}</TableHead>
-              <TableHead>{t("version")}</TableHead>
-              <TableHead className="w-44 text-right">{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {targets.map((target) => (
-              <TableRow key={target.id} data-target-id={target.id}>
-                <TableCell>
-                  <strong className="block text-sm">{target.name}</strong>
-                  <span className="block max-w-lg font-mono text-xs break-all text-muted-foreground">
-                    {target.base_url}
-                  </span>
-                </TableCell>
-                <TableCell className="font-mono text-xs">
-                  {target.service_account_id ?? t("unbound")}
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant={
-                      target.status === "active" ? "secondary" : "outline"
-                    }
+      <AutoTable
+        className="max-h-[min(65svh,44rem)]"
+        toolbar={
+          <Button disabled={!available || busy} onClick={() => edit(null)}>
+            <Plus />
+            {t("createTarget")}
+          </Button>
+        }
+        onRefresh={async () => {
+          setError("")
+          setLoading(true)
+          try {
+            await refresh()
+          } catch (cause) {
+            setError((cause as Error).message)
+          } finally {
+            setLoading(false)
+          }
+        }}
+        loading={loading}
+        searchable
+
+        emptyContent={
+          available ? t("noOutboundTargets") : t("outboundUnavailable")
+        }
+        data={targets}
+        rowKey="id"
+        rowProps={(target) => ({ "data-target-id": target.id })}
+        columns={[
+          {
+            field: "name",
+            name: <>{t("target")}</>,
+            render: (_, target) => (
+              <>
+                <strong className="block text-sm">{target.name}</strong>
+                <span className="block max-w-lg font-mono text-xs break-all text-muted-foreground">
+                  {target.base_url}
+                </span>
+              </>
+            ),
+          },
+          {
+            field: "service_account_id",
+            name: <>{t("serviceAccounts")}</>,
+            render: (_, target) => (
+              <>{target.service_account_id ?? t("unbound")}</>
+            ),
+          },
+          {
+            field: "status",
+            name: <>{t("status")}</>,
+            render: (_, target) => (
+              <>
+                <Badge
+                  variant={target.status === "active" ? "secondary" : "outline"}
+                >
+                  {target.status === "active" ? t("active") : t("disable")}
+                </Badge>
+              </>
+            ),
+          },
+          {
+            field: "version",
+            name: <>{t("version")}</>,
+            render: (_, target) => <>{target.version}</>,
+          },
+          {
+            field: "actions",
+            type: "actions",
+            name: <>{t("actions")}</>,
+            render: (_, target) => (
+              <>
+                <div className="flex justify-end gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={busy}
+                    title={t("editTarget")}
+                    aria-label={t("editNamedSpaced", { name: target.name })}
+                    onClick={() => edit(target)}
                   >
-                    {target.status === "active" ? t("active") : t("disable")}
-                  </Badge>
-                </TableCell>
-                <TableCell>{target.version}</TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      title={t("editTarget")}
-                      aria-label={t("editNamedSpaced", { name: target.name })}
-                      onClick={() => edit(target)}
-                    >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={
-                        busy ||
-                        target.status !== "active" ||
-                        !target.service_account_id
-                      }
-                      title={t("pushResource")}
-                      aria-label={t("pushToNamed", { name: target.name })}
-                      onClick={() => openOperation(target, false)}
-                    >
-                      <ArrowUpFromLine />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={
-                        busy ||
-                        target.status !== "active" ||
-                        !target.service_account_id
-                      }
-                      title={t("removeRemote")}
-                      aria-label={t("removeFromNamed", { name: target.name })}
-                      onClick={() => openOperation(target, true)}
-                    >
-                      <UserMinus />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      title={t("deleteOutbound")}
-                      aria-label={t("deleteNamedSpaced", { name: target.name })}
-                      onClick={() => {
-                        setError("")
-                        setDeleting(target)
-                      }}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {!targets.length && (
-          <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
-            {loading
-              ? t("loadingShort")
-              : available
-                ? t("noOutboundTargets")
-                : t("outboundUnavailable")}
-          </div>
-        )}
-      </div>
+                    <Pencil />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={
+                      busy ||
+                      target.status !== "active" ||
+                      !target.service_account_id
+                    }
+                    title={t("pushResource")}
+                    aria-label={t("pushToNamed", { name: target.name })}
+                    onClick={() => openOperation(target, false)}
+                  >
+                    <ArrowUpFromLine />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={
+                      busy ||
+                      target.status !== "active" ||
+                      !target.service_account_id
+                    }
+                    title={t("removeRemote")}
+                    aria-label={t("removeFromNamed", { name: target.name })}
+                    onClick={() => openOperation(target, true)}
+                  >
+                    <UserMinus />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={busy}
+                    title={t("deleteOutbound")}
+                    aria-label={t("deleteNamedSpaced", { name: target.name })}
+                    onClick={() => {
+                      setError("")
+                      setDeleting(target)
+                    }}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              </>
+            ),
+          },
+        ]}
+      />
 
       <Dialog
         open={editing !== undefined}
@@ -462,89 +446,80 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
             </DialogTitle>
           </DialogHeader>
           {error && <Alert>{error}</Alert>}
-          <form id="scim-target-form" className="grid gap-4" onSubmit={save}>
-            <div className="grid gap-2">
-              <Label htmlFor="scim-target-name">{t("name")}</Label>
-              <Input
-                id="scim-target-name"
-                value={draft.name}
-                onChange={(event) =>
-                  setDraft({ ...draft, name: event.target.value })
-                }
-                required
-                maxLength={128}
-                disabled={busy || conflict}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="scim-target-url">{t("scimBaseUrl")}</Label>
-              <Input
-                id="scim-target-url"
-                type="url"
-                value={draft.url}
-                onChange={(event) =>
-                  setDraft({ ...draft, url: event.target.value })
-                }
-                required
-                maxLength={1024}
-                disabled={busy || conflict}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="scim-target-token">
-                {editing ? t("optionalBearer") : t("bearerToken")}
-              </Label>
-              <Input
-                id="scim-target-token"
-                type="password"
-                value={draft.token}
-                onChange={(event) =>
-                  setDraft({ ...draft, token: event.target.value })
-                }
-                required={!editing}
-                maxLength={4096}
-                autoComplete="new-password"
-                disabled={busy || conflict}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="scim-target-account">
-                {t("serviceAccounts")}
-              </Label>
-              <Input
-                id="scim-target-account"
-                list="scim-target-accounts"
-                value={draft.account}
-                onChange={(event) =>
-                  setDraft({ ...draft, account: event.target.value })
-                }
-                pattern="[1-9][0-9]*"
-                maxLength={64}
-                autoComplete="off"
-                placeholder={t("unbound")}
-                disabled={busy || conflict}
-              />
-              <datalist id="scim-target-accounts">
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.display_name || account.login_name}
-                  </option>
-                ))}
-              </datalist>
-              {accountError && <Alert>{accountError}</Alert>}
-            </div>
-            {editing && (
-              <div className="flex items-center justify-between gap-3">
-                <Label htmlFor="scim-target-enabled">{t("enableTarget")}</Label>
-                <Switch
-                  id="scim-target-enabled"
-                  checked={draft.enabled}
-                  onCheckedChange={(enabled) => setDraft({ ...draft, enabled })}
-                  disabled={busy || conflict}
-                />
-              </div>
-            )}
-          </form>
+          <AutoForm
+            key={`${editing?.id ?? "new"}:${editing?.version ?? 0}`}
+            id="scim-target-form"
+            mode="edit"
+            initialData={{ ...draft }}
+            fields={{
+              name: {
+                name: t("name"),
+                type: "text",
+                required: true,
+                disabled: busy || conflict,
+                col: 2,
+                config: { id: "scim-target-name", maxLength: 128 },
+              },
+              url: {
+                name: t("scimBaseUrl"),
+                type: "text",
+                required: true,
+                disabled: busy || conflict,
+                col: 2,
+                config: { id: "scim-target-url", type: "url", maxLength: 1024 },
+              },
+              token: {
+                name: editing ? t("optionalBearer") : t("bearerToken"),
+                type: "password",
+                required: !editing,
+                disabled: busy || conflict,
+                col: 2,
+                config: {
+                  id: "scim-target-token",
+                  type: "password",
+                  maxLength: 4096,
+                  autoComplete: "new-password",
+                },
+              },
+              account: {
+                name: t("serviceAccounts"),
+                type: "text",
+                required: false,
+                disabled: busy || conflict,
+                col: 2,
+                config: {
+                  id: "scim-target-account",
+                  list: "scim-target-accounts",
+                  pattern: "[1-9][0-9]*",
+                  maxLength: 64,
+                  autoComplete: "off",
+                  placeholder: t("unbound"),
+                },
+              },
+              enabled: {
+                name: t("enableTarget"),
+                type: "switch",
+                show: Boolean(editing),
+                disabled: busy || conflict,
+                col: 2,
+                config: { id: "scim-target-enabled" },
+              },
+            }}
+            onChange={(values) => {
+              if (JSON.stringify(values) !== JSON.stringify(draft))
+                setDraft(values as unknown as TargetDraft)
+            }}
+            onSubmit={() => save()}
+          >
+            <datalist id="scim-target-accounts">
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.display_name || account.login_name}
+                </option>
+              ))}
+            </datalist>
+            {accountError && <Alert>{accountError}</Alert>}
+          </AutoForm>
           <DialogFooter className="gap-2">
             <Button variant="outline" disabled={busy} onClick={closeEditor}>
               {t("cancel")}
@@ -579,60 +554,66 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
             </DialogDescription>
           </DialogHeader>
           {error && <Alert>{error}</Alert>}
-          <form
+          <AutoForm
+            key={resource.resource_type}
             id="scim-resource-form"
-            className="grid gap-4"
-            onSubmit={runOperation}
+            mode="edit"
+            initialData={{ ...resource }}
+            fields={{
+              resource_type: {
+                name: t("resourceType"),
+                type: "select",
+                disabled: busy,
+                col: 2,
+                config: {
+                  id: "scim-resource-type",
+                  options: [
+                    { value: "User", label: t("user") },
+                    { value: "Group", label: t("groups") },
+                  ],
+                },
+              },
+              resource_id: {
+                name:
+                  resource.resource_type === "User"
+                    ? t("principalId")
+                    : t("groupId"),
+                type: "text",
+                required: true,
+                disabled: busy,
+                col: 2,
+                config: {
+                  id: "scim-resource-id",
+                  list: "scim-resource-options",
+                  pattern: "[1-9][0-9]*",
+                  maxLength: 64,
+                  autoComplete: "off",
+                },
+              },
+            }}
+            onChange={(values) => {
+              if (values.resource_type !== resource.resource_type) {
+                setChoices([])
+                setChoiceError("")
+                setResource({
+                  resource_type:
+                    values.resource_type as SCIMResourceInput["resource_type"],
+                  resource_id: "",
+                })
+              } else if (values.resource_id !== resource.resource_id)
+                setResource(values as unknown as SCIMResourceInput)
+            }}
+            onSubmit={() => runOperation()}
           >
-            <div className="grid gap-2">
-              <Label htmlFor="scim-resource-type">{t("resourceType")}</Label>
-              <SimpleSelect
-                id="scim-resource-type"
-                value={resource.resource_type}
-                onValueChange={(value) => {
-                  setChoices([])
-                  setChoiceError("")
-                  setResource({
-                    resource_type: value as SCIMResourceInput["resource_type"],
-                    resource_id: "",
-                  })
-                }}
-                options={[
-                  { value: "User", label: t("user") },
-                  { value: "Group", label: t("groups") },
-                ]}
-                disabled={busy}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="scim-resource-id">
-                {resource.resource_type === "User"
-                  ? t("principalId")
-                  : t("groupId")}
-              </Label>
-              <Input
-                id="scim-resource-id"
-                list="scim-resource-options"
-                value={resource.resource_id}
-                onChange={(event) =>
-                  setResource({ ...resource, resource_id: event.target.value })
-                }
-                required
-                pattern="[1-9][0-9]*"
-                maxLength={64}
-                autoComplete="off"
-                disabled={busy}
-              />
-              <datalist id="scim-resource-options">
-                {choices.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </datalist>
-              {choiceError && <Alert>{choiceError}</Alert>}
-            </div>
-          </form>
+            <datalist id="scim-resource-options">
+              {choices.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </datalist>
+            {choiceError && <Alert>{choiceError}</Alert>}
+          </AutoForm>
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
@@ -699,6 +680,6 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }

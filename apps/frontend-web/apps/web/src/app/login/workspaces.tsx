@@ -1,10 +1,9 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
+import { useEffect, useState } from "react"
 import { Link, Navigate, useLocation, useNavigate } from "react-router"
 import { Building2, Landmark, Network, Plus, LogOut } from "lucide-react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import { useAuth } from "../../components/auth"
 import { Alert } from "../../components/alert"
 import { AuthEntranceLinks } from "../../components/auth-entrance-links"
@@ -96,15 +95,13 @@ function WorkspaceOptions() {
   if (items?.length === 1 && !creating) {
     return <SessionVerification />
   }
-  const createTenant = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const createTenant = async (values: Record<string, unknown>) => {
     setBusy(true)
     setError("")
-    const form = new FormData(event.currentTarget)
     try {
       const tenant = await iamApi.registerTenant({
-        name: String(form.get("name") ?? "").trim(),
-        slug: String(form.get("slug") ?? "").trim(),
+        name: String(values.name ?? "").trim(),
+        slug: String(values.slug ?? "").trim(),
       })
       setTenant(tenant.id)
       navigate(`/admin/${tenant.id}`, { replace: true })
@@ -186,42 +183,46 @@ function WorkspaceOptions() {
         </Button>
       )}
       {creating && (
-        <form className="mt-6 space-y-4" onSubmit={createTenant}>
+        <section className="mt-6 space-y-4">
           <h2 className="text-lg font-semibold">{t("registerTenant")}</h2>
-          <div className="space-y-2">
-            <Label htmlFor="tenant-registration-name">{t("name")}</Label>
-            <Input
-              id="tenant-registration-name"
-              name="name"
-              required
-              maxLength={128}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="tenant-registration-slug">{t("identifier")}</Label>
-            <Input
-              id="tenant-registration-slug"
-              name="slug"
-              required
-              minLength={3}
-              maxLength={63}
-              pattern="[a-z0-9][a-z0-9-]*[a-z0-9]"
-            />
-          </div>
-          <div className="flex gap-2">
-            <Button type="submit" disabled={busy}>
-              {t("registerTenant")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={() => setCreating(false)}
-            >
-              {t("cancel")}
-            </Button>
-          </div>
-        </form>
+          <AutoForm
+            className="mt-6 md:grid-cols-1 [&>*]:col-span-1"
+            onSubmit={createTenant}
+            fields={{
+              name: {
+                name: t("name"),
+                type: "text",
+                required: true,
+                config: { id: "tenant-registration-name", maxLength: 128 },
+              },
+              slug: {
+                name: t("identifier"),
+                type: "text",
+                required: true,
+                config: {
+                  id: "tenant-registration-slug",
+                  minLength: 3,
+                  maxLength: 63,
+                  pattern: "[a-z0-9][a-z0-9-]*[a-z0-9]",
+                },
+              },
+            }}
+          >
+            <div className="flex gap-2">
+              <Button type="submit" disabled={busy}>
+                {t("registerTenant")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setCreating(false)}
+              >
+                {t("cancel")}
+              </Button>
+            </div>
+          </AutoForm>
+        </section>
       )}
     </main>
   )

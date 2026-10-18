@@ -1,10 +1,9 @@
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { CheckCircle2, MonitorSmartphone, ShieldX, XCircle } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { iamApi, type DeviceRequest } from "../../lib/iam-api"
@@ -63,9 +62,9 @@ export default function DevicePage() {
     }
   }, [])
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (code.trim()) void lookup(code.trim())
+  const submit = (values: Record<string, unknown>) => {
+    const next = String(values.user_code ?? "").trim()
+    if (next) return lookup(next)
   }
 
   const decide = (approve: boolean) =>
@@ -155,13 +154,11 @@ export default function DevicePage() {
               </dt>
               <dd className="mt-2 flex flex-wrap gap-1.5">
                 {request.scope
-                  ? request.scope
-                      .split(" ")
-                      .map((scope) => (
-                        <Badge key={scope} variant="secondary">
-                          {scope}
-                        </Badge>
-                      ))
+                  ? request.scope.split(" ").map((scope) => (
+                      <Badge key={scope} variant="secondary">
+                        {scope}
+                      </Badge>
+                    ))
                   : t("deviceNoScopes")}
               </dd>
             </div>
@@ -193,31 +190,34 @@ export default function DevicePage() {
           </footer>
         </section>
       ) : (
-        <form
-          className="max-w-md space-y-4 rounded-md border bg-card p-5"
+        <AutoForm
+          className="max-w-md rounded-md border bg-card p-5 md:grid-cols-1 [&>*]:col-span-1"
           onSubmit={submit}
+          fields={{
+            user_code: {
+              name: t("deviceUserCode"),
+              type: "text",
+              value: code,
+              config: {
+                id: "user_code",
+                autoComplete: "off",
+                autoCapitalize: "characters",
+                placeholder: "ACDE-FGHJ",
+              },
+            },
+          }}
+          onChange={(values) => {
+            if (values.user_code !== code)
+              setCode(String(values.user_code ?? ""))
+          }}
         >
-          <div className="space-y-2">
-            <Label htmlFor="user_code">{t("deviceUserCode")}</Label>
-            <Input
-              id="user_code"
-              name="user_code"
-              autoComplete="off"
-              autoCapitalize="characters"
-              spellCheck={false}
-              placeholder="ACDE-FGHJ"
-              className="font-mono tracking-[0.2em] uppercase"
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              {t("deviceUserCodeHint")}
-            </p>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            {t("deviceUserCodeHint")}
+          </p>
           <Button type="submit" disabled={busy || !code.trim()}>
             {t("deviceLookUp")}
           </Button>
-        </form>
+        </AutoForm>
       )}
     </>
   )

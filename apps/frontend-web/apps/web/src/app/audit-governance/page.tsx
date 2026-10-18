@@ -1,12 +1,6 @@
+import { AutoForm } from "@workspace/ui/components/auto-form"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useParams } from "react-router"
 import {
   CheckCircle2,
@@ -28,17 +22,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import { Tabs, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import {
@@ -201,15 +186,22 @@ function ScopedAuditGovernance({
     return () => window.clearInterval(timer)
   }, [hasPendingJobs, dialogOpen, refresh])
 
-  const saveRetention = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const updateRetentionValues = useCallback(
+    (values: Record<string, unknown>) => {
+      setMinDays(String(values.min_days ?? ""))
+      setArchiveDays(String(values.archive_after_days ?? ""))
+    },
+    []
+  )
+
+  const saveRetention = async (data: Record<string, unknown>) => {
     setBusy(true)
     setError("")
     try {
       await iamApi.setAuditRetention(
         {
-          min_days: Number(minDays),
-          archive_after_days: Number(archiveDays),
+          min_days: Number(data.min_days),
+          archive_after_days: Number(data.archive_after_days),
         },
         scope
       )
@@ -382,6 +374,8 @@ function ScopedAuditGovernance({
             />
             {scope === "tenant" && (
               <AnchorsTable
+                onRefresh={refresh}
+                exportable={allowed("audit_event_export")}
                 anchors={governance?.anchors ?? []}
                 enabled={anchor?.enabled ?? false}
               />
@@ -397,33 +391,31 @@ function ScopedAuditGovernance({
               {t("retentionPolicyDescription")}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={(event) => void saveRetention(event)}>
-            <div className="grid gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="min-days">{t("minimumRetentionDays")}</Label>
-                <Input
-                  id="min-days"
-                  type="number"
-                  min={1}
-                  max={36500}
-                  required
-                  value={minDays}
-                  onChange={(event) => setMinDays(event.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="archive-days">{t("archiveReadyDays")}</Label>
-                <Input
-                  id="archive-days"
-                  type="number"
-                  min={Number(minDays) || 1}
-                  max={36500}
-                  required
-                  value={archiveDays}
-                  onChange={(event) => setArchiveDays(event.target.value)}
-                />
-              </div>
-            </div>
+          <AutoForm
+            onSubmit={saveRetention}
+            fields={{
+              min_days: {
+                name: t("minimumRetentionDays"),
+                type: "number",
+                value: minDays,
+                required: true,
+                config: { id: "min-days", type: "number", min: 1, max: 36500 },
+              },
+              archive_after_days: {
+                name: t("archiveReadyDays"),
+                type: "number",
+                value: archiveDays,
+                required: true,
+                config: {
+                  id: "archive-days",
+                  type: "number",
+                  min: Number(minDays) || 1,
+                  max: 36500,
+                },
+              },
+            }}
+            onChange={updateRetentionValues}
+          >
             <DialogFooter className="mt-6">
               <Button
                 type="button"
@@ -437,7 +429,7 @@ function ScopedAuditGovernance({
                 {t("save")}
               </Button>
             </DialogFooter>
-          </form>
+          </AutoForm>
         </DialogContent>
       </Dialog>
     </>
@@ -555,9 +547,13 @@ function StatsCard({
 }
 
 function AnchorsTable({
+  onRefresh,
+  exportable,
   anchors,
   enabled,
 }: {
+  onRefresh: () => Promise<void>
+  exportable: boolean
   anchors: AuditAnchor[]
   enabled: boolean
 }) {
@@ -571,50 +567,83 @@ function AnchorsTable({
         <FileClock className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">{t("rootAnchorChain")}</h2>
       </div>
-      {anchors.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">
-          {enabled ? t("noAnchors") : t("anchoringDisabled")}
-        </p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("sequence")}</TableHead>
-              <TableHead>{t("chainHeadHash")}</TableHead>
-              <TableHead>{t("anchoredAt")}</TableHead>
-              <TableHead>{t("anchorHash")}</TableHead>
-              <TableHead>{t("signatureStatus")}</TableHead>
-              <TableHead>{t("signingKeyId")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {anchors.map((item) => (
-              <TableRow key={item.head_sequence}>
-                <TableCell className="font-mono text-xs">
-                  {item.head_sequence}
-                </TableCell>
-                <TableCell className="max-w-52 truncate font-mono text-xs">
-                  {item.head_hash}
-                </TableCell>
-                <TableCell className="text-xs">
-                  {new Date(item.anchored_at).toLocaleString(locale)}
-                </TableCell>
-                <TableCell className="max-w-52 truncate font-mono text-xs">
-                  {item.anchor_hash}
-                </TableCell>
-                <TableCell>
+      <div className="flex h-80 min-h-0 flex-col">
+        <AutoTable
+          fill
+          onRefresh={onRefresh}
+          exportable={exportable}
+          emptyContent={enabled ? t("noAnchors") : t("anchoringDisabled")}
+          data={anchors}
+          rowKey="head_sequence"
+          searchable
+          columns={[
+            {
+              field: "head_sequence",
+              name: t("sequence"),
+              render: (_, item) => (
+                <>
+                  <div className="font-mono text-xs">{item.head_sequence}</div>
+                </>
+              ),
+            },
+            {
+              field: "head_hash",
+              name: t("chainHeadHash"),
+              render: (_, item) => (
+                <>
+                  <div className="max-w-52 truncate font-mono text-xs">
+                    {item.head_hash}
+                  </div>
+                </>
+              ),
+            },
+            {
+              field: "anchored_at",
+              name: t("anchoredAt"),
+              render: (_, item) => (
+                <>
+                  <div className="text-xs">
+                    {new Date(item.anchored_at).toLocaleString(locale)}
+                  </div>
+                </>
+              ),
+            },
+            {
+              field: "anchor_hash",
+              name: t("anchorHash"),
+              render: (_, item) => (
+                <>
+                  <div className="max-w-52 truncate font-mono text-xs">
+                    {item.anchor_hash}
+                  </div>
+                </>
+              ),
+            },
+            {
+              field: "root_signature",
+              name: t("signatureStatus"),
+              render: (_, item) => (
+                <>
                   <Badge variant={item.root_signature ? "default" : "outline"}>
                     {item.root_signature ? t("signed") : t("unsigned")}
                   </Badge>
-                </TableCell>
-                <TableCell className="font-mono text-xs">
-                  {item.signing_key_id ?? "-"}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+                </>
+              ),
+            },
+            {
+              field: "signing_key_id",
+              name: t("signingKeyId"),
+              render: (_, item) => (
+                <>
+                  <div className="font-mono text-xs">
+                    {item.signing_key_id ?? "-"}
+                  </div>
+                </>
+              ),
+            },
+          ]}
+        />
+      </div>
     </section>
   )
 }

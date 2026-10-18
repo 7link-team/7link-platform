@@ -1,3 +1,4 @@
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { useEffect, useState } from "react"
 import { ExternalLink, ShieldCheck } from "lucide-react"
 import { Link } from "react-router"
@@ -36,6 +37,7 @@ export function DirectoryRoleBindingsDialog({
   const [loading, setLoading] = useState(true)
   const [busyRoleID, setBusyRoleID] = useState("")
   const [error, setError] = useState("")
+  const [reload, setReload] = useState(0)
 
   useEffect(() => {
     let current = true
@@ -68,7 +70,7 @@ export function DirectoryRoleBindingsDialog({
     return () => {
       current = false
     }
-  }, [assigneeID, assigneeType])
+  }, [assigneeID, assigneeType, reload])
 
   const toggleRole = async (role: Role, checked: boolean) => {
     setBusyRoleID(role.id)
@@ -118,53 +120,73 @@ export function DirectoryRoleBindingsDialog({
           </DialogDescription>
         </DialogHeader>
         {error && <Alert>{error}</Alert>}
-        <div className="grid max-h-[min(32rem,60dvh)] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+        <div className="flex h-[min(32rem,60dvh)] min-h-0 flex-col">
           {loading ? (
             <p className="text-sm text-muted-foreground">{t("loadingShort")}</p>
           ) : roles.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("noRoles")}</p>
           ) : (
-            roles.map((role) => {
-              const checked = boundRoleIDs.includes(role.id)
-              return (
-                <div
-                  key={role.id}
-                  className="flex min-h-14 items-center gap-3 rounded-md border p-3 hover:bg-muted/30"
-                >
-                  <Checkbox
-                    id={`directory-role-${assigneeType}-${role.id}`}
-                    data-directory-role-id={role.id}
-                    aria-label={t("manageRoleBindings", { name: role.name })}
-                    checked={checked}
-                    disabled={Boolean(busyRoleID)}
-                    onCheckedChange={(value) =>
-                      void toggleRole(role, value === true)
-                    }
-                  />
-                  <label
-                    htmlFor={`directory-role-${assigneeType}-${role.id}`}
-                    className="min-w-0 flex-1"
-                  >
-                    <strong className="block text-sm break-words">
-                      {role.name}
-                    </strong>
-                    <small className="mt-1 block text-xs break-words text-muted-foreground">
-                      {role.description || role.id}
-                    </small>
-                  </label>
-                  <Button variant="ghost" size="icon" asChild>
-                    <Link
-                      to={`/roles?role=${encodeURIComponent(role.id)}&view=assignments`}
-                      aria-label={t("openNamedRole", { name: role.name })}
-                      title={t("openNamedRole", { name: role.name })}
-                      data-open-role-id={role.id}
+            <AutoTable
+              fill
+              onRefresh={() => {
+                setLoading(true)
+                setReload((value) => value + 1)
+              }}
+              data={roles}
+              rowKey="id"
+              searchable
+              columns={[
+                {
+                  field: "binding",
+                  name: t("roleBindings"),
+                  render: (_, role) => (
+                    <Checkbox
+                      id={`directory-role-${assigneeType}-${role.id}`}
+                      data-directory-role-id={role.id}
+                      aria-label={t("manageRoleBindings", { name: role.name })}
+                      checked={boundRoleIDs.includes(role.id)}
+                      disabled={Boolean(busyRoleID)}
+                      onCheckedChange={(value) =>
+                        void toggleRole(role, value === true)
+                      }
+                    />
+                  ),
+                },
+                {
+                  field: "name",
+                  name: t("role"),
+                  render: (_, role) => (
+                    <label
+                      htmlFor={`directory-role-${assigneeType}-${role.id}`}
                     >
-                      <ExternalLink />
-                    </Link>
-                  </Button>
-                </div>
-              )
-            })
+                      <strong className="block text-sm break-words">
+                        {role.name}
+                      </strong>
+                      <small className="mt-1 block text-xs break-words text-muted-foreground">
+                        {role.description || role.id}
+                      </small>
+                    </label>
+                  ),
+                },
+                {
+                  field: "actions",
+                  type: "actions",
+                  name: t("actions"),
+                  render: (_, role) => (
+                    <Button variant="ghost" size="icon" asChild>
+                      <Link
+                        to={`/roles?role=${encodeURIComponent(role.id)}&view=assignments`}
+                        aria-label={t("openNamedRole", { name: role.name })}
+                        title={t("openNamedRole", { name: role.name })}
+                        data-open-role-id={role.id}
+                      >
+                        <ExternalLink />
+                      </Link>
+                    </Button>
+                  ),
+                },
+              ]}
+            />
           )}
         </div>
         <DialogFooter>

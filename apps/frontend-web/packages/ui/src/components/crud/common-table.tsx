@@ -11,6 +11,7 @@ import { ArrowDown, ArrowUpDown, ArrowUp } from "lucide-react"
 import { useTranslations } from "use-intl"
 
 import { cn } from "@workspace/ui/lib/utils"
+import { downloadTableCsv } from "@workspace/ui/lib/table-export"
 import {
   adaptList,
   filterStateToRsql,
@@ -20,6 +21,7 @@ import {
 
 import { useApi } from "../api-provider"
 import { Button } from "../button"
+import { PaginationPages } from "../pagination"
 import {
   Table,
   TableBody,
@@ -105,7 +107,7 @@ function csvCell(col: ColumnDef, row: Row): string {
       ? formatted
       : value
   const s = out == null ? "" : String(out)
-  return `"${s.split('"').join('""')}"`
+  return s
 }
 
 /**
@@ -216,20 +218,9 @@ export const CommonTable = forwardRef<
       const visibleCols = tableOptions.columns.filter(
         (c) => !hiddenFields?.has(c.field)
       )
-      const header = visibleCols.map(
-        (c) => `"${String(colName(c)).split('"').join('""')}"`
-      )
-      const lines = rows.map((row) =>
-        visibleCols.map((c) => csvCell(c, row)).join(",")
-      )
-      const content = [header.join(","), ...lines].join("\r\n")
-      const blob = new Blob([content], { type: "text/csv;charset=utf-8" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = filename
-      a.click()
-      URL.revokeObjectURL(url)
+      const header = visibleCols.map((c) => String(colName(c)))
+      const lines = rows.map((row) => visibleCols.map((c) => csvCell(c, row)))
+      downloadTableCsv([header, ...lines], filename)
     },
     [rows, tableOptions.columns, hiddenFields, loading, failed]
   )
@@ -454,34 +445,17 @@ export const CommonTable = forwardRef<
 
       <div
         className={cn(
-          "mt-3 flex items-center justify-between text-sm text-muted-foreground",
+          "mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground",
           sticky?.pagination && "sticky bottom-0 z-10 border-t bg-muted py-2"
         )}
       >
         <span>{!loading && !failed ? t("total", { total }) : null}</span>
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={loading || failed || page <= 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-          >
-            {t("previousPage")}
-          </Button>
-          <span>
-            {!loading && !failed ? `${page + 1} / ${totalPages}` : null}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={loading || failed || page + 1 >= totalPages}
-            onClick={() => setPage((p) => (p + 1 < totalPages ? p + 1 : p))}
-          >
-            {t("nextPage")}
-          </Button>
-        </div>
+        <PaginationPages
+          page={page + 1}
+          totalPages={totalPages}
+          onPageChange={(next) => setPage(next - 1)}
+          disabled={loading || failed}
+        />
       </div>
     </div>
   )

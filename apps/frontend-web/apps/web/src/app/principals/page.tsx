@@ -1,14 +1,9 @@
+import { AutoForm } from "@workspace/ui/components/auto-form"
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Link } from "react-router"
 import { UserAvatar } from "../../components/user-avatar"
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Building2,
   GitBranch,
@@ -16,7 +11,6 @@ import {
   Loader2,
   Pencil,
   Plus,
-  Search,
   ShieldAlert,
   ShieldCheck,
   UserRoundCheck,
@@ -31,9 +25,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
-import { SimpleSelect } from "@workspace/ui/components/select"
 import {
   Sheet,
   SheetContent,
@@ -41,14 +32,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@workspace/ui/components/sheet"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
 import { Alert } from "../../components/alert"
 import { PrincipalLifecycleDialog } from "./lifecycle-dialog"
 import { PageHeader } from "../../components/page-header"
@@ -141,11 +124,9 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
     }
   }, [refresh])
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submit = async (data: Record<string, unknown>) => {
     setBusy(true)
     setError("")
-    const data = new FormData(event.currentTarget)
     try {
       if (editing) {
         const membership = members.find(
@@ -154,8 +135,8 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
         if (!membership) throw new Error(t("pageError"))
         const changes: { display_name?: string; email?: string } = {}
         for (const field of ["display_name", "email"] as const) {
-          if (!data.has(field) || !fields[field]?.update) continue
-          const value = String(data.get(field))
+          if (!Object.hasOwn(data, field) || !fields[field]?.update) continue
+          const value = String(data[field])
           const original =
             fields[field]?.read === "allow" ? (membership[field] ?? "") : ""
           if (value !== original) changes[field] = value
@@ -166,12 +147,14 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
           await iamApi.updateMember(editing.id, { department_id: departmentID })
       } else {
         await iamApi.createPrincipal({
-          login_name: String(data.get("login_name")),
-          password: String(data.get("password")),
-          ...(data.has("display_name")
-            ? { display_name: String(data.get("display_name")) }
+          login_name: String(data.login_name),
+          password: String(data.password),
+          ...(Object.hasOwn(data, "display_name")
+            ? { display_name: String(data.display_name) }
             : {}),
-          ...(data.has("email") ? { email: String(data.get("email")) } : {}),
+          ...(Object.hasOwn(data, "email")
+            ? { email: String(data.email) }
+            : {}),
         })
       }
       setOpen(false)
@@ -223,55 +206,12 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
   }
 
   return (
-    <>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
       <PageHeader
         title={t("principalMembers")}
         description={t("principalManagementDescription")}
-        action={
-          <div className="flex flex-wrap gap-2">
-            {allowed("platform_administer") && (
-              <Link
-                className="inline-flex min-h-11 items-center rounded-md border px-3 text-sm"
-                to="/system/closure-requests"
-              >
-                {t("closureRequests")}
-              </Link>
-            )}
-            {allowed("user_create") && (
-              <Button
-                disabled={!fields.login_name?.create}
-                onClick={() => {
-                  setEditing(null)
-                  setDepartmentID("")
-                  setOpen(true)
-                }}
-              >
-                <Plus />
-                {t("createPrincipal")}
-              </Button>
-            )}
-          </div>
-        }
       />
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <label className="relative w-full max-w-md">
-          <Search className="absolute top-2.5 left-3 size-4 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            aria-label={t("searchPrincipals")}
-            placeholder={t("loginNameOrEmail")}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
-        <span className="text-xs whitespace-nowrap text-muted-foreground">
-          {!loading && !loadError && (
-            <>
-              {items.length} {t("items")}
-            </>
-          )}
-        </span>
-      </div>
+
       {error && <Alert>{error}</Alert>}
       {loadError && (
         <Alert>
@@ -282,22 +222,84 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
         </Alert>
       )}
       {loading && <p role="status">{t("loading")}</p>}
-      <div className="overflow-hidden rounded-md border bg-card">
-        <Table className="min-w-[900px] whitespace-nowrap">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("principal")}</TableHead>
-              <TableHead>{t("loginIdentifier")}</TableHead>
-              <TableHead>{t("status")}</TableHead>
-              <TableHead>{t("primaryDepartment")}</TableHead>
-              <TableHead>{t("updatedAt")}</TableHead>
-              <TableHead className="w-56 text-right">{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(loading || loadError ? [] : items).map((principal) => (
-              <TableRow key={principal.id}>
-                <TableCell>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border bg-card">
+        <AutoTable
+          fill
+          loading={loading}
+          onRefresh={refresh}
+          toolbar={
+            <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+              {
+                <div className="flex flex-wrap gap-2">
+                  {allowed("platform_administer") && (
+                    <Link
+                      className="inline-flex min-h-11 items-center rounded-md border px-3 text-sm"
+                      to="/system/closure-requests"
+                    >
+                      {t("closureRequests")}
+                    </Link>
+                  )}
+                  {allowed("user_create") && (
+                    <Button
+                      disabled={!fields.login_name?.create}
+                      onClick={() => {
+                        setEditing(null)
+                        setDepartmentID("")
+                        setOpen(true)
+                      }}
+                    >
+                      <Plus />
+                      {t("createPrincipal")}
+                    </Button>
+                  )}
+                </div>
+              }
+              <div className="flex min-w-0 flex-1 items-end justify-between gap-3">
+                <div className="relative w-full max-w-md">
+                  <AutoForm
+                    className="w-full max-w-md md:grid-cols-1"
+                    fields={{
+                      search: {
+                        name: t("searchPrincipals"),
+                        type: "text",
+                        value: search,
+                        config: { placeholder: t("loginNameOrEmail") },
+                      },
+                    }}
+                    onChange={(values) => setSearch(String(values.search))}
+                  />
+                </div>
+                <span className="text-xs whitespace-nowrap text-muted-foreground">
+                  {!loading && !loadError && (
+                    <>
+                      {items.length} {t("items")}
+                    </>
+                  )}
+                </span>
+              </div>
+            </div>
+          }
+          className="whitespace-nowrap [&_table]:min-w-[900px]"
+          emptyContent={
+            !loading &&
+            !loadError &&
+            items.length === 0 && (
+              <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
+                <UserRoundCheck className="mb-2 size-7" />
+                {t("noPrincipals")}
+              </div>
+            )
+          }
+
+          data={loading || loadError ? [] : items}
+          rowKey={(principal) => principal.id}
+          columns={[
+            {
+              field: "principal",
+              name: t("principal"),
+              type: "custom",
+              render: (_value, principal) => (
+                <div>
                   <div className="flex items-center gap-3">
                     <UserAvatar id={principal.id} avatar={principal.avatar} />
                     <div>
@@ -337,11 +339,23 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                         )}
                     </div>
                   </div>
-                </TableCell>
-                <TableCell className="font-mono text-xs">
-                  {principal.login_name}
-                </TableCell>
-                <TableCell>
+                </div>
+              ),
+            },
+            {
+              field: "loginIdentifier",
+              name: t("loginIdentifier"),
+              type: "custom",
+              render: (_value, principal) => (
+                <div className="font-mono text-xs">{principal.login_name}</div>
+              ),
+            },
+            {
+              field: "status",
+              name: t("status"),
+              type: "custom",
+              render: (_value, principal) => (
+                <div>
                   <Badge
                     variant={
                       principal.status === "active"
@@ -351,11 +365,15 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                   >
                     {principal.status === "active" ? t("active") : t("disable")}
                   </Badge>
-                </TableCell>
-                <TableCell
-                  className="text-sm"
-                  data-member-department={principal.id}
-                >
+                </div>
+              ),
+            },
+            {
+              field: "primaryDepartment",
+              name: t("primaryDepartment"),
+              type: "custom",
+              render: (_value, principal) => (
+                <div className="text-sm" data-member-department={principal.id}>
                   {departments.find(
                     (department) =>
                       department.id ===
@@ -365,11 +383,25 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                     (members.find((member) => member.subject === principal.id)
                       ?.department_id ||
                       t("unassigned"))}
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
+                </div>
+              ),
+            },
+            {
+              field: "updatedAt",
+              name: t("updatedAt"),
+              type: "custom",
+              render: (_value, principal) => (
+                <div className="text-xs text-muted-foreground">
                   {new Date(principal.updated_at).toLocaleString(locale)}
-                </TableCell>
-                <TableCell className="text-right">
+                </div>
+              ),
+            },
+            {
+              field: "actions",
+              name: t("actions"),
+              type: "actions",
+              render: (_value, principal) => (
+                <div className="text-right">
                   <div className="flex justify-end gap-1">
                     {allowed("role_view") && (
                       <Button
@@ -448,17 +480,11 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                       </Button>
                     )}
                   </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {!loading && !loadError && items.length === 0 && (
-          <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
-            <UserRoundCheck className="mb-2 size-7" />
-            {t("noPrincipals")}
-          </div>
-        )}
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
       <Dialog
         open={open}
@@ -481,42 +507,45 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                 : t("createPrincipalDescription")}
             </DialogDescription>
           </DialogHeader>
-          <form
+          <AutoForm
             key={editing?.id ?? "create"}
+            mode={editing ? "edit" : "add"}
             id="principal-form"
-            className="grid gap-4"
-            onSubmit={submit}
-          >
-            {!editing && (
-              <Field label={t("loginIdentifier")} name="login_name" required />
-            )}
-            <Field
-              label={t("displayName")}
-              name="display_name"
-              defaultValue={
-                fields.display_name?.read === "allow"
-                  ? editingMembership?.display_name
-                  : undefined
-              }
-              disabled={
-                !(editing
+            fields={{
+              login_name: {
+                name: t("loginIdentifier"),
+                type: "text",
+                value: "",
+                show: !editing,
+                required: true,
+                config: { id: "principal-login_name" },
+              },
+              display_name: {
+                name: t("displayName"),
+                type: "text",
+                value:
+                  fields.display_name?.read === "allow"
+                    ? (editingMembership?.display_name ?? "")
+                    : "",
+                disabled: !(editing
                   ? fields.display_name?.update
-                  : fields.display_name?.create)
-              }
-              required={!editing && Boolean(fields.display_name?.create)}
-            />
-            {editing && editingMembership && (
-              <div className="grid gap-2">
-                <Label htmlFor="principal-department">
-                  {t("primaryDepartment")}
-                </Label>
-                <SimpleSelect
-                  id="principal-department"
-                  value={departmentID || "__none__"}
-                  onValueChange={(value) =>
-                    setDepartmentID(value === "__none__" ? "" : value)
-                  }
-                  options={[
+                  : fields.display_name?.create),
+                required: !editing && Boolean(fields.display_name?.create),
+                submit: Boolean(
+                  editing
+                    ? fields.display_name?.update
+                    : fields.display_name?.create
+                ),
+                config: { id: "principal-display_name" },
+              },
+              department_id: {
+                name: t("primaryDepartment"),
+                type: "select",
+                value: departmentID || "__none__",
+                show: Boolean(editing && editingMembership),
+                config: {
+                  id: "principal-department",
+                  options: [
                     { value: "__none__", label: t("unassigned") },
                     ...departments
                       .filter(
@@ -531,33 +560,42 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                             ? department.name
                             : t("disabledNamed", { name: department.name }),
                       })),
-                  ]}
-                />
-              </div>
-            )}
-            <Field
-              label={editing ? t("tenantContactEmail") : t("email")}
-              name="email"
-              type="email"
-              defaultValue={
-                fields.email?.read === "allow"
-                  ? editingMembership?.email
-                  : undefined
-              }
-              disabled={
-                !(editing ? fields.email?.update : fields.email?.create)
-              }
-            />
-            {!editing && (
-              <Field
-                label={t("initialPassword")}
-                name="password"
-                type="password"
-                minLength={12}
-                required
-              />
-            )}
-          </form>
+                  ],
+                },
+              },
+              email: {
+                name: editing ? t("tenantContactEmail") : t("email"),
+                type: "email",
+                value:
+                  fields.email?.read === "allow"
+                    ? (editingMembership?.email ?? "")
+                    : "",
+                disabled: !(editing
+                  ? fields.email?.update
+                  : fields.email?.create),
+                submit: Boolean(
+                  editing ? fields.email?.update : fields.email?.create
+                ),
+                config: { id: "principal-email" },
+              },
+              password: {
+                name: t("initialPassword"),
+                type: "password",
+                value: "",
+                required: true,
+                show: !editing,
+                config: { id: "principal-password", minLength: 12 },
+              },
+            }}
+            onChange={(values) =>
+              setDepartmentID(
+                values.department_id === "__none__"
+                  ? ""
+                  : String(values.department_id)
+              )
+            }
+            onSubmit={submit}
+          />
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setOpen(false)}>
               {t("cancel")}
@@ -588,7 +626,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
           void refresh()
         }}
       />
-    </>
+    </div>
   )
 }
 
@@ -862,40 +900,5 @@ function AuthorizationSourcesSheet({
         </div>
       </SheetContent>
     </Sheet>
-  )
-}
-
-function Field({
-  label,
-  name,
-  type = "text",
-  required = false,
-  minLength,
-  defaultValue,
-  disabled = false,
-}: {
-  label: string
-  name: string
-  type?: string
-  required?: boolean
-  minLength?: number
-  defaultValue?: string
-  disabled?: boolean
-}) {
-  return (
-    <div className="grid gap-2">
-      <Label htmlFor={name}>{label}</Label>
-      <Input
-        id={name}
-        name={name}
-        type={type}
-        required={required}
-        minLength={minLength}
-        defaultValue={defaultValue}
-        disabled={disabled}
-        maxLength={type === "password" ? 1024 : 320}
-        autoComplete={type === "password" ? "new-password" : "off"}
-      />
-    </div>
   )
 }

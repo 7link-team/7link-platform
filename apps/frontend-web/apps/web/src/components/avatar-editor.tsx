@@ -3,6 +3,7 @@ import Cropper, { type Area } from "react-easy-crop"
 import { RefreshCw, Upload } from "lucide-react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { Label } from "@workspace/ui/components/label"
 import {
   Dialog,
@@ -163,26 +164,26 @@ export function AvatarEditor({ id }: { id: string }) {
       <div className="flex flex-wrap items-start gap-5">
         <UserAvatar id={id} avatar={avatar} className="size-24" />
         <div className="min-w-0 flex-1 space-y-3">
-          <fieldset disabled={busy}>
-            <legend className="mb-2 text-sm">{t("avatarStyle")}</legend>
-            <div className="flex flex-wrap gap-2">
-              {styles.map((value) => (
-                <Label
-                  key={value}
-                  className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-2 hover:bg-accent"
-                >
-                  <input
-                    type="radio"
-                    name="avatar-style"
-                    value={value}
-                    checked={style === value}
-                    onChange={() => setStyle(value)}
-                  />
-                  {t(`avatarStyle_${value}`)}
-                </Label>
-              ))}
-            </div>
-          </fieldset>
+          <AutoForm
+            className="md:grid-cols-1 [&>*]:col-span-1"
+            onChange={(values) =>
+              setStyle(values.style as (typeof styles)[number])
+            }
+            fields={{
+              style: {
+                name: t("avatarStyle"),
+                type: "radio",
+                value: style,
+                disabled: busy,
+                config: {
+                  options: styles.map((value) => ({
+                    value,
+                    label: t(`avatarStyle_${value}`),
+                  })),
+                },
+              },
+            }}
+          />
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"

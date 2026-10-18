@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react"
+import type { ComponentType, HTMLAttributes, ReactNode } from "react"
 
 import type { Evaluable } from "../auto-form/types"
 import type { StickyConfig } from "../table-sticky"
@@ -57,6 +57,28 @@ export interface TableOptions<T = unknown> {
   onQueryChange?: (query: TableQuery) => void
   className?: string
   loading?: boolean
+  /** Fill a bounded flex workspace; only the table viewport scrolls. */
+  fill?: boolean
+  /** Show a fixed sequence column. Enabled unless explicitly disabled. */
+  rowNumbers?: boolean
+  /** Offset for rows supplied by an external/server pager. */
+  rowOffset?: number
+  /** Existing page filters and permission-aware create/domain buttons. */
+  toolbar?: ReactNode | false
+  onRefresh?: () => void | Promise<void>
+  onExport?: () => void | Promise<void>
+  onImport?: () => void | Promise<void>
+  exportable?: boolean
+  /** Local search over supplied rows; use a callback for computed columns. */
+  searchable?: boolean | ((row: T) => string)
+  /** Existing server pager or tree summary; never paginates rows a second time. */
+  footer?: ReactNode
+  /** Disable slicing and the built-in pager for trees or externally paged data. */
+  pagination?: boolean
+  emptyContent?: ReactNode
+  rowProps?: (row: T) => HTMLAttributes<HTMLTableRowElement> & {
+    [key: `data-${string}`]: unknown
+  }
   /** Sticky columns/header/pagination config. */
   sticky?: StickyConfig
 }

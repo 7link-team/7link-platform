@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { AutoForm } from "@workspace/ui/components/auto-form"
+import { AutoTable } from "@workspace/ui/components/auto-table"
+import { useCallback, useEffect, useState } from "react"
 import { useParams } from "react-router"
-import { Plus, Loader2, UserRoundX, UserRoundCheck } from "lucide-react"
+import { Plus, UserRoundX, UserRoundCheck } from "lucide-react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import {
   Dialog,
   DialogContent,
@@ -12,14 +12,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@workspace/ui/components/dialog"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { useAllowed } from "../../lib/permissions"
@@ -53,15 +45,13 @@ export default function PlatformMembersPage() {
       active = false
     }
   }, [refresh])
-  const save = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const save = async (data: Record<string, unknown>) => {
     setBusy(true)
-    const data = new FormData(event.currentTarget)
     try {
       await iamApi.addOperatingMember(platformID, {
-        subject: String(data.get("principal_id")),
-        display_name: String(data.get("display_name")),
-        email: String(data.get("email")),
+        subject: String(data.principal_id),
+        display_name: String(data.display_name),
+        email: String(data.email),
       })
       setOpen(false)
       await refresh()
@@ -85,87 +75,104 @@ export default function PlatformMembersPage() {
     }
   }
   return (
-    <>
-      <PageHeader
-        title={t("platformMembers")}
-        action={
-          allowed("platform_member_create") && (
-            <Button onClick={() => setOpen(true)}>
-              <Plus className="size-4" />
-              {t("addPlatformMember")}
-            </Button>
-          )
-        }
-      />
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
+      <PageHeader title={t("platformMembers")} />
       {error && <Alert>{error}</Alert>}
-      {loading ? (
-        <Loader2 className="size-5 animate-spin" />
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("displayName")}</TableHead>
-              <TableHead>{t("email")}</TableHead>
-              <TableHead>{t("status")}</TableHead>
-              <TableHead>{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((item) => (
-              <TableRow key={item.subject}>
-                <TableCell>{item.display_name || item.subject}</TableCell>
-                <TableCell>{item.email}</TableCell>
-                <TableCell>{item.status}</TableCell>
-                <TableCell>
-                  {allowed("platform_member_update") && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      title={t(item.status === "active" ? "disable" : "enable")}
-                      aria-label={t(
-                        item.status === "active" ? "disable" : "enable"
-                      )}
-                      disabled={busy}
-                      onClick={() => {
-                        void toggle(item)
-                      }}
-                    >
-                      {item.status === "active" ? (
-                        <UserRoundX className="size-4" />
-                      ) : (
-                        <UserRoundCheck className="size-4" />
-                      )}
-                    </Button>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+      <AutoTable
+        loading={loading}
+        fill
+        onRefresh={refresh}
+        searchable={(member) =>
+          [
+            member.display_name,
+            member.email,
+            member.subject,
+            member.status,
+          ].join(" ")
+        }
+        toolbar={
+          <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+            {allowed("platform_member_create") && (
+              <Button onClick={() => setOpen(true)}>
+                <Plus className="size-4" />
+                {t("addPlatformMember")}
+              </Button>
+            )}
+          </div>
+        }
+        emptyContent={null}
+        data={items}
+        rowKey={(item) => item.subject}
+        columns={[
+          {
+            field: "displayName",
+            name: t("displayName"),
+            type: "custom",
+            render: (_value, item) => (
+              <div>{item.display_name || item.subject}</div>
+            ),
+          },
+          {
+            field: "email",
+            name: t("email"),
+            type: "text",
+          },
+          {
+            field: "status",
+            name: t("status"),
+            type: "text",
+          },
+          {
+            field: "actions",
+            name: t("actions"),
+            type: "actions",
+            render: (_value, item) => (
+              <div>
+                {allowed("platform_member_update") && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title={t(item.status === "active" ? "disable" : "enable")}
+                    aria-label={t(
+                      item.status === "active" ? "disable" : "enable"
+                    )}
+                    disabled={busy}
+                    onClick={() => {
+                      void toggle(item)
+                    }}
+                  >
+                    {item.status === "active" ? (
+                      <UserRoundX className="size-4" />
+                    ) : (
+                      <UserRoundCheck className="size-4" />
+                    )}
+                  </Button>
+                )}
+              </div>
+            ),
+          },
+        ]}
+      />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("addPlatformMember")}</DialogTitle>
           </DialogHeader>
-          <form
-            onSubmit={(event) => {
-              void save(event)
+          <AutoForm
+            id="system-platform-members-form"
+            fields={{
+              principal_id: {
+                name: t("principalID"),
+                type: "text",
+                value: "",
+                required: true,
+                config: { id: "platform-member-id" },
+              },
+              display_name: { name: t("displayName"), type: "text", value: "" },
+              email: { name: t("email"), type: "email", value: "" },
             }}
-            className="space-y-4"
+            onSubmit={save}
           >
-            <div className="space-y-2">
-              <Label htmlFor="platform-member-id">{t("principalID")}</Label>
-              <Input id="platform-member-id" name="principal_id" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="platform-member-name">{t("displayName")}</Label>
-              <Input id="platform-member-name" name="display_name" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="platform-member-email">{t("email")}</Label>
-              <Input id="platform-member-email" type="email" name="email" />
-            </div>
             <DialogFooter>
               <Button
                 variant="outline"
@@ -178,9 +185,9 @@ export default function PlatformMembersPage() {
                 {t("save")}
               </Button>
             </DialogFooter>
-          </form>
+          </AutoForm>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }

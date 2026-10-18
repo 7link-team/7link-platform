@@ -1,3 +1,4 @@
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { useCallback, useEffect, useState } from "react"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
@@ -56,7 +57,7 @@ export default function AuthorizedApplicationsPage() {
     }
   }
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <PageHeader
         title={t("authorizedApplications")}
         description={t("authorizedApplicationsDescription")}
@@ -75,46 +76,69 @@ export default function AuthorizedApplicationsPage() {
           </Button>
         </Alert>
       )}
-      {!consents ? (
-        !error && <p role="status">{t("loading")}</p>
-      ) : consents.length === 0 ? (
-        <p>{t("noAuthorizedApplications")}</p>
-      ) : (
-        <ul className="space-y-4">
-          {consents.map((consent) => (
-            <li key={consent.client_id} className="rounded-md border p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="min-w-0 font-medium break-words">
-                  {consent.client_name}
-                </h2>
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => {
-                    setError("")
-                    setSelected(consent)
-                  }}
-                >
-                  {t("revokeNamed", { name: consent.client_name })}
-                </Button>
-              </div>
-              <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm [&>dd]:break-all">
-                <dt>{t("tenant")}</dt>
-                <dd>{consent.tenant_id}</dd>
-                <dt>{t("authorizedScopes")}</dt>
-                <dd>{consent.scopes?.join(" ") || "—"}</dd>
-                <dt>{t("grantedAt")}</dt>
-                <dd>{new Date(consent.granted_at).toLocaleString(locale)}</dd>
-              </dl>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {t("lastUsed", {
-                  date: new Date(consent.last_used_at).toLocaleString(locale),
-                })}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
+      <AutoTable
+        fill
+        data={consents ?? []}
+        loading={!consents && !error}
+        emptyContent={t("noAuthorizedApplications")}
+        rowKey="client_id"
+        searchable
+        onRefresh={() =>
+          refresh().catch((cause: Error) => setError(cause.message))
+        }
+        columns={[
+          {
+            field: "client_name",
+            name: t("name"),
+            render: (_, consent) => (
+              <h2 className="font-medium break-words">{consent.client_name}</h2>
+            ),
+          },
+          {
+            field: "tenant_id",
+            name: t("tenant"),
+            render: (_, consent) => (
+              <span className="break-all">{consent.tenant_id}</span>
+            ),
+          },
+          {
+            field: "scopes",
+            name: t("authorizedScopes"),
+            render: (_, consent) => consent.scopes?.join(" ") || "—",
+          },
+          {
+            field: "granted_at",
+            name: t("grantedAt"),
+            render: (_, consent) =>
+              new Date(consent.granted_at).toLocaleString(locale),
+          },
+          {
+            field: "last_used_at",
+            name: t("lastUsed", { date: "" }),
+            render: (_, consent) =>
+              t("lastUsed", {
+                date: new Date(consent.last_used_at).toLocaleString(locale),
+              }),
+          },
+          {
+            field: "actions",
+            type: "actions",
+            name: t("actions"),
+            render: (_, consent) => (
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  setError("")
+                  setSelected(consent)
+                }}
+              >
+                {t("revokeNamed", { name: consent.client_name })}
+              </Button>
+            ),
+          },
+        ]}
+      />
       <Dialog
         open={selected !== null}
         onOpenChange={(open) => {
@@ -155,6 +179,6 @@ export default function AuthorizedApplicationsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }

@@ -1,9 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
+import { useEffect, useState } from "react"
 import { Link } from "react-router"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import {
   Dialog,
   DialogContent,
@@ -102,9 +101,7 @@ export function ReauthenticationDialog({
       }
     })
   }, [purpose, target, onVerified])
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const data = new FormData(event.currentTarget)
+  const submit = async (values: Record<string, unknown>) => {
     setBusy(true)
     setError("")
     try {
@@ -140,9 +137,9 @@ export function ReauthenticationDialog({
               ),
             }
           : {
-              password: String(data.get("password") ?? ""),
+              password: String(values.password ?? ""),
               ...(available?.mfa_required
-                ? { code: String(data.get("code") ?? "") }
+                ? { code: String(values.code ?? "") }
                 : {}),
             }
       const verification = await iamApi.verifyReauthentication({
@@ -193,51 +190,55 @@ export function ReauthenticationDialog({
         ) : !method ? (
           <p>{t("reauthenticationUnavailable")}</p>
         ) : (
-          <form onSubmit={submit} className="grid gap-4">
-            <Label htmlFor="reauth-method">{t("verificationMethod")}</Label>
-            <select
-              id="reauth-method"
-              value={method}
-              disabled={busy}
-              onChange={(event) => setMethod(event.target.value)}
-              className="min-h-11 rounded-md border bg-background px-3"
-            >
-              {available.methods.map((value) => (
-                <option key={value} value={value}>
-                  {t(value === "password" ? "password" : "passkey")}
-                </option>
-              ))}
-              {available.links.map((link) => (
-                <option key={link.id} value={`federation:${link.id}`}>
-                  {link.provider_name}
-                </option>
-              ))}
-            </select>
-            {method === "password" && (
-              <>
-                <Label htmlFor="reauth-password">{t("currentPassword")}</Label>
-                <Input
-                  id="reauth-password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  disabled={busy}
-                />
-                {available.mfa_required && (
-                  <>
-                    <Label htmlFor="reauth-code">{t("verificationCode")}</Label>
-                    <Input
-                      id="reauth-code"
-                      name="code"
-                      autoComplete="one-time-code"
-                      required
-                      disabled={busy}
-                    />
-                  </>
-                )}
-              </>
-            )}
+          <AutoForm
+            key={method}
+            onSubmit={submit}
+            className="md:grid-cols-1 [&>*]:col-span-1"
+            fields={{
+              method: {
+                name: t("verificationMethod"),
+                type: "select",
+                value: method,
+                disabled: busy,
+                submit: false,
+                config: {
+                  id: "reauth-method",
+                  options: [
+                    ...available.methods.map((value) => ({
+                      value,
+                      label: t(value === "password" ? "password" : "passkey"),
+                    })),
+                    ...available.links.map((link) => ({
+                      value: `federation:${link.id}`,
+                      label: link.provider_name,
+                    })),
+                  ],
+                },
+              },
+              password: {
+                name: t("currentPassword"),
+                type: "password",
+                show: method === "password",
+                required: true,
+                disabled: busy,
+                config: {
+                  id: "reauth-password",
+                  autoComplete: "current-password",
+                },
+              },
+              code: {
+                name: t("verificationCode"),
+                type: "text",
+                show: method === "password" && available.mfa_required,
+                required: true,
+                disabled: busy,
+                config: { id: "reauth-code", autoComplete: "one-time-code" },
+              },
+            }}
+            onChange={(values) => {
+              if (values.method !== method) setMethod(String(values.method))
+            }}
+          >
             <DialogFooter>
               <Button
                 type="button"
@@ -251,7 +252,7 @@ export function ReauthenticationDialog({
                 {busy ? t("loading") : t("continue")}
               </Button>
             </DialogFooter>
-          </form>
+          </AutoForm>
         )}
       </DialogContent>
     </Dialog>

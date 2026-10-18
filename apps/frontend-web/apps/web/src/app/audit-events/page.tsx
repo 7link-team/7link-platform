@@ -1,17 +1,8 @@
+import { PaginationPages } from "@workspace/ui/components/pagination"
+import { AutoForm } from "@workspace/ui/components/auto-form"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useEffect, useState, type FormEvent } from "react"
-import {
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  Eye,
-  FileClock,
-  LoaderCircle,
-  RefreshCw,
-  Search,
-  ShieldAlert,
-} from "lucide-react"
+import { useEffect, useState } from "react"
+import { CheckCircle2, Eye, FileClock, Search, ShieldAlert } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button, buttonVariants } from "@workspace/ui/components/button"
 import {
@@ -22,17 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
-import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
-import { SimpleSelect } from "@workspace/ui/components/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import {
   Tooltip,
   TooltipContent,
@@ -94,7 +76,7 @@ export default function AuditEventsPage({
   const [query, setQuery] = useState<Parameters<typeof iamApi.auditExport>[0]>(
     {}
   )
-  const [filters, setFilters] = useState<AuditFilters>(emptyFilters)
+  const [filterReset, setFilterReset] = useState(0)
   const [integrity, setIntegrity] = useState<AuditIntegrity | null>(null)
   const [selected, setSelected] = useState<AuditEvent | null>(null)
   const [loading, setLoading] = useState(true)
@@ -133,8 +115,10 @@ export default function AuditEventsPage({
     }
   }, [offset, query, refreshKey, system])
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submit = (values: Record<string, unknown>) => {
+    const filters = Object.fromEntries(
+      Object.keys(emptyFilters).map((key) => [key, String(values[key] ?? "")])
+    ) as unknown as AuditFilters
     setLoading(true)
     setOffset(0)
     setQuery({
@@ -155,7 +139,7 @@ export default function AuditEventsPage({
 
   const reset = () => {
     setLoading(true)
-    setFilters(emptyFilters)
+    setFilterReset((value) => value + 1)
     setOffset(0)
     setQuery({})
   }
@@ -205,41 +189,10 @@ export default function AuditEventsPage({
   const last = Math.min(offset + events.length, total)
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <PageHeader
         title={t(system ? "systemAuditEvents" : "auditLog")}
         description={t(system ? "systemAuditDescription" : "auditDescription")}
-        action={
-          <div className="flex flex-wrap gap-2">
-            {allowed(
-              system ? "system_audit_event_export" : "audit_event_export"
-            ) && (
-              <Button
-                variant="outline"
-                disabled={loading || exporting || integrity?.valid !== true}
-                onClick={() => void exportEvents()}
-              >
-                {exporting ? (
-                  <LoaderCircle className="animate-spin" />
-                ) : (
-                  <Download />
-                )}
-                {exporting ? t("exporting") : t("exportResults")}
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              disabled={loading || exporting}
-              onClick={() => {
-                setLoading(true)
-                setRefreshKey((value) => value + 1)
-              }}
-            >
-              <RefreshCw className={loading ? "animate-spin" : ""} />
-              {t("refresh")}
-            </Button>
-          </div>
-        }
       />
       {error && <Alert>{error}</Alert>}
       {loadError && !loading && (
@@ -258,236 +211,221 @@ export default function AuditEventsPage({
       )}
       <IntegrityStatus value={integrity} loading={loading} />
 
-      <form
-        className="mb-4 grid gap-3 rounded-md border bg-card p-4 md:grid-cols-2 xl:grid-cols-4"
-        onSubmit={submit}
-      >
-        <FilterInput
-          id="audit-event-type"
-          label={t("eventType")}
-          value={filters.eventType}
-          placeholder="oauth_client_created"
-          onChange={(value) => setFilters({ ...filters, eventType: value })}
-        />
-        <div className="grid gap-2">
-          <Label htmlFor="audit-outcome">{t("outcome")}</Label>
-          <SimpleSelect
-            id="audit-outcome"
-            options={outcomeOptions.map((option) => ({
-              ...option,
-              label: t(option.label),
-            }))}
-            value={filters.outcome || "all"}
-            onValueChange={(value) =>
-              setFilters({ ...filters, outcome: value })
-            }
-          />
-        </div>
-        <FilterInput
-          id="audit-principal"
-          label={t("actorId")}
-          value={filters.principalID}
-          onChange={(value) => setFilters({ ...filters, principalID: value })}
-        />
-        <FilterInput
-          id="audit-target-type"
-          label={t("targetType")}
-          value={filters.targetType}
-          placeholder="oauth_client"
-          onChange={(value) => setFilters({ ...filters, targetType: value })}
-        />
-        <FilterInput
-          id="audit-target-id"
-          label={t("targetId")}
-          value={filters.targetID}
-          onChange={(value) => setFilters({ ...filters, targetID: value })}
-        />
-        <FilterInput
-          id="audit-from"
-          label={t("startTime")}
-          type="datetime-local"
-          value={filters.from}
-          onChange={(value) => setFilters({ ...filters, from: value })}
-        />
-        <FilterInput
-          id="audit-to"
-          label={t("endTime")}
-          type="datetime-local"
-          value={filters.to}
-          onChange={(value) => setFilters({ ...filters, to: value })}
-        />
-        <div className="flex items-end gap-2">
-          <Button type="submit" className="flex-1">
-            <Search />
-            {t("query")}
-          </Button>
-          <Button type="button" variant="outline" onClick={reset}>
-            {t("reset")}
-          </Button>
-        </div>
-      </form>
-
-      <section className="overflow-hidden rounded-md border bg-card">
-        <header className="flex min-h-14 items-center justify-between gap-3 border-b bg-muted/20 px-4">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <FileClock className="size-4 text-muted-foreground" />
-            {t("securityEvents")}
-          </div>
-          <span className="text-xs text-muted-foreground">
-            {loading
-              ? t("loading")
-              : !loadError && `${first}-${last} / ${total}`}
-          </span>
-        </header>
-        <div className="hidden md:block">
-          <Table containerClassName="min-h-64">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="min-w-44">{t("occurredAt")}</TableHead>
-                <TableHead className="min-w-52">{t("event")}</TableHead>
-                <TableHead className="min-w-44">{t("auditActor")}</TableHead>
-                <TableHead className="min-w-52">{t("target")}</TableHead>
-                <TableHead className="w-24">{t("outcome")}</TableHead>
-                <TableHead className="w-24">{t("chainSequence")}</TableHead>
-                <TableHead className="w-20 text-right">
-                  {t("details")}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(loading || loadError ? [] : events).map((event) => (
-                <TableRow key={event.id}>
-                  <TableCell className="text-xs">
-                    {formatTime(event.created_at, locale)}
-                  </TableCell>
-                  <TableCell>
-                    <code className="font-mono text-xs">
-                      {event.event_type}
-                    </code>
-                  </TableCell>
-                  <TableCell>
-                    <code className="block max-w-48 truncate font-mono text-xs text-muted-foreground">
-                      {event.principal_id || "system"}
-                    </code>
-                  </TableCell>
-                  <TableCell>
-                    <span className="block text-xs">
-                      {event.target_type || "-"}
-                    </span>
-                    <code className="mt-1 block max-w-56 truncate font-mono text-xs text-muted-foreground">
-                      {event.target_id || "-"}
-                    </code>
-                  </TableCell>
-                  <TableCell>
-                    <OutcomeBadge outcome={event.outcome} />
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {event.sequence > 0 ? `#${event.sequence}` : "legacy"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DetailButton
-                      event={event}
-                      disabled={detailBusy}
-                      onClick={() => void openDetail(event)}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!loading && !loadError && events.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-56 text-center">
-                    <EmptyEvents />
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-        <div className="md:hidden">
-          {(loading || loadError ? [] : events).map((event) => (
-            <article
-              key={event.id}
-              className="space-y-3 border-b p-4 last:border-0"
+      <AutoTable
+        fill
+        toolbar={
+          <details className="w-full">
+            <summary className="cursor-pointer py-2 text-sm font-medium">
+              {t("query")}
+            </summary>
+            <AutoForm
+              key={filterReset}
+              className="max-h-40 w-full items-end gap-3 overflow-y-auto md:grid-cols-4"
+              onSubmit={submit}
+              fields={{
+                eventType: {
+                  name: t("eventType"),
+                  type: "text",
+                  value: "",
+                  config: {
+                    id: "audit-event-type",
+                    maxLength: 128,
+                    placeholder: "oauth_client_created",
+                  },
+                },
+                outcome: {
+                  name: t("outcome"),
+                  type: "select",
+                  value: "all",
+                  config: {
+                    id: "audit-outcome",
+                    options: outcomeOptions.map((option) => ({
+                      ...option,
+                      label: t(option.label),
+                    })),
+                  },
+                },
+                principalID: {
+                  name: t("actorId"),
+                  type: "text",
+                  value: "",
+                  config: { id: "audit-principal", maxLength: 128 },
+                },
+                targetType: {
+                  name: t("targetType"),
+                  type: "text",
+                  value: "",
+                  config: {
+                    id: "audit-target-type",
+                    maxLength: 128,
+                    placeholder: "oauth_client",
+                  },
+                },
+                targetID: {
+                  name: t("targetId"),
+                  type: "text",
+                  value: "",
+                  config: { id: "audit-target-id", maxLength: 128 },
+                },
+                from: {
+                  name: t("startTime"),
+                  type: "text",
+                  value: "",
+                  config: {
+                    id: "audit-from",
+                    maxLength: 128,
+                    type: "datetime-local",
+                  },
+                },
+                to: {
+                  name: t("endTime"),
+                  type: "text",
+                  value: "",
+                  config: {
+                    id: "audit-to",
+                    maxLength: 128,
+                    type: "datetime-local",
+                  },
+                },
+              }}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <code className="block font-mono text-xs font-semibold break-words">
-                    {event.event_type}
-                  </code>
-                  <time className="mt-1 block text-xs text-muted-foreground">
-                    {formatTime(event.created_at, locale)}
-                  </time>
-                </div>
-                <OutcomeBadge outcome={event.outcome} />
+              <div className="flex items-end gap-2">
+                <Button type="submit" className="flex-1">
+                  <Search />
+                  {t("query")}
+                </Button>
+                <Button type="button" variant="outline" onClick={reset}>
+                  {t("reset")}
+                </Button>
               </div>
-              <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-                <span className="text-muted-foreground">{t("auditActor")}</span>
-                <code className="truncate font-mono">
+            </AutoForm>
+          </details>
+        }
+        title={
+          <span>
+            {t("securityEvents")} {first}-{last} / {total}
+          </span>
+        }
+        rowOffset={offset}
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <span className="text-sm text-muted-foreground">
+              {Math.min(offset + pageSize, total)} / {total}
+            </span>
+            <PaginationPages
+              page={Math.floor(offset / pageSize) + 1}
+              totalPages={Math.max(1, Math.ceil(total / pageSize))}
+              disabled={loading}
+              onPageChange={(page) => {
+                setLoading(true)
+                setOffset((page - 1) * pageSize)
+              }}
+            />
+          </div>
+        }
+        onRefresh={() => {
+          setLoading(true)
+          setRefreshKey((value) => value + 1)
+        }}
+        exportable={
+          allowed(
+            system ? "system_audit_event_export" : "audit_event_export"
+          ) &&
+          integrity?.valid === true &&
+          !exporting
+        }
+        onExport={exportEvents}
+        emptyContent={<EmptyEvents />}
+        loading={loading}
+        data={loading || loadError ? [] : events}
+        rowKey="id"
+        pagination={false}
+        columns={[
+          {
+            field: "created_at",
+            name: t("occurredAt"),
+            render: (_, event) => (
+              <>
+                <div className="text-xs">
+                  {formatTime(event.created_at, locale)}
+                </div>
+              </>
+            ),
+          },
+          {
+            field: "event_type",
+            name: t("event"),
+            render: (_, event) => (
+              <>
+                <code className="font-mono text-xs">{event.event_type}</code>
+              </>
+            ),
+          },
+          {
+            field: "principal_id",
+            name: t("auditActor"),
+            render: (_, event) => (
+              <>
+                <code className="block max-w-48 truncate font-mono text-xs text-muted-foreground">
                   {event.principal_id || "system"}
                 </code>
-                <span className="text-muted-foreground">{t("target")}</span>
-                <code className="truncate font-mono">
-                  {event.target_type || "-"}:{event.target_id || "-"}
+              </>
+            ),
+          },
+          {
+            field: "target_type",
+            name: t("target"),
+            render: (_, event) => (
+              <>
+                <span className="block text-xs">
+                  {event.target_type || "-"}
+                </span>
+                <code className="mt-1 block max-w-56 truncate font-mono text-xs text-muted-foreground">
+                  {event.target_id || "-"}
                 </code>
-                <span className="text-muted-foreground">
-                  {t("chainSequence")}
-                </span>
-                <span>
+              </>
+            ),
+          },
+          {
+            field: "outcome",
+            name: t("outcome"),
+            render: (_, event) => (
+              <>
+                <OutcomeBadge outcome={event.outcome} />
+              </>
+            ),
+          },
+          {
+            field: "sequence",
+            name: t("chainSequence"),
+            render: (_, event) => (
+              <>
+                <div className="text-xs">
                   {event.sequence > 0 ? `#${event.sequence}` : "legacy"}
-                </span>
-              </div>
-              <div className="flex justify-end">
-                <DetailButton
-                  event={event}
-                  disabled={detailBusy}
-                  onClick={() => void openDetail(event)}
-                />
-              </div>
-            </article>
-          ))}
-          {!loading && !loadError && events.length === 0 && (
-            <div className="grid h-56 place-items-center text-center">
-              <EmptyEvents />
-            </div>
-          )}
-        </div>
-        <footer className="flex min-h-14 items-center justify-between gap-3 border-t px-4">
-          <span className="text-xs text-muted-foreground">
-            {t("perPage")}
-            {pageSize} {t("items")}
-          </span>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              aria-label={t("previousPage")}
-              disabled={loading || offset === 0}
-              onClick={() => {
-                setLoading(true)
-                setOffset(Math.max(0, offset - pageSize))
-              }}
-            >
-              <ChevronLeft />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              aria-label={t("nextPage")}
-              disabled={loading || offset + events.length >= total}
-              onClick={() => {
-                setLoading(true)
-                setOffset(offset + pageSize)
-              }}
-            >
-              <ChevronRight />
-            </Button>
-          </div>
-        </footer>
-      </section>
+                </div>
+              </>
+            ),
+          },
+          {
+            field: "actions",
+            type: "actions",
+            name: t("details"),
+            render: (_, event) => (
+              <>
+                <div className="text-right">
+                  <DetailButton
+                    event={event}
+                    disabled={detailBusy}
+                    onClick={() => void openDetail(event)}
+                  />
+                </div>
+              </>
+            ),
+          },
+        ]}
+      />
       <EventDetail value={selected} onClose={() => setSelected(null)} />
-    </>
+    </div>
   )
 }
 
@@ -503,7 +441,7 @@ function IntegrityStatus({
   const valid = value?.valid === true
   return (
     <section
-      className={`mb-4 flex min-h-16 items-center gap-3 rounded-md border px-4 ${valid ? "border-success/30 bg-success/5" : value ? "border-destructive/30 bg-destructive/5" : "bg-muted/20"}`}
+      className={`flex min-h-16 shrink-0 items-center gap-3 rounded-md border px-4 ${valid ? "border-success/30 bg-success/5" : value ? "border-destructive/30 bg-destructive/5" : "bg-muted/20"}`}
       aria-live="polite"
     >
       {valid ? (
@@ -531,36 +469,6 @@ function IntegrityStatus({
         </p>
       </div>
     </section>
-  )
-}
-
-function FilterInput({
-  id,
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-}: {
-  id: string
-  label: string
-  value: string
-  onChange: (value: string) => void
-  type?: string
-  placeholder?: string
-}) {
-  return (
-    <div className="grid gap-2">
-      <Label htmlFor={id}>{label}</Label>
-      <Input
-        id={id}
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        maxLength={128}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </div>
   )
 }
 

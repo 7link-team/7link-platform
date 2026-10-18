@@ -1,10 +1,9 @@
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useState, type FormEvent } from "react"
+import { useState } from "react"
 import { ArrowLeft, CheckCircle2, MailCheck, ShieldCheck } from "lucide-react"
 import { Link } from "react-router"
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi, type InvitationAcceptance } from "../../lib/iam-api"
 import { useBranding, copyrightLine } from "../../lib/branding"
@@ -22,12 +21,10 @@ export default function AcceptInvitationPage() {
   const [error, setError] = useState(token ? "" : t("invitationMissingToken"))
   const [accepted, setAccepted] = useState<InvitationAcceptance | null>(null)
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submit = async (values: Record<string, unknown>) => {
     if (!token) return
-    const data = new FormData(event.currentTarget)
-    const password = String(data.get("password") ?? "")
-    if (password !== String(data.get("confirm_password") ?? "")) {
+    const password = String(values.password ?? "")
+    if (password !== String(values.confirm_password ?? "")) {
       setError(t("passwordMismatchSentence"))
       return
     }
@@ -37,9 +34,9 @@ export default function AcceptInvitationPage() {
       setAccepted(
         await iamApi.acceptInvitation({
           token,
-          login_name: String(data.get("login_name") ?? "").trim(),
+          login_name: String(values.login_name ?? "").trim(),
           password,
-          display_name: String(data.get("display_name") ?? "").trim(),
+          display_name: String(values.display_name ?? "").trim(),
         })
       )
     } catch (cause) {
@@ -89,39 +86,54 @@ export default function AcceptInvitationPage() {
               </div>
             </div>
           ) : (
-            <form className="mt-5 space-y-4" onSubmit={submit}>
-              <InvitationField
-                id="invitation-login"
-                name="login_name"
-                label={t("loginIdentifier")}
-                autoComplete="username"
-                maxLength={200}
-              />
-              <InvitationField
-                id="invitation-display-name"
-                name="display_name"
-                label={t("displayName")}
-                autoComplete="name"
-                maxLength={128}
-              />
-              <InvitationField
-                id="invitation-password"
-                name="password"
-                label={t("password")}
-                type="password"
-                autoComplete="new-password"
-                minLength={12}
-                maxLength={1024}
-              />
-              <InvitationField
-                id="invitation-confirm-password"
-                name="confirm_password"
-                label={t("confirmPassword")}
-                type="password"
-                autoComplete="new-password"
-                minLength={12}
-                maxLength={1024}
-              />
+            <AutoForm
+              className="mt-5 md:grid-cols-1 [&>*]:col-span-1"
+              onSubmit={submit}
+              fields={{
+                login_name: {
+                  name: t("loginIdentifier"),
+                  type: "text",
+                  required: true,
+                  config: {
+                    id: "invitation-login",
+                    autoComplete: "username",
+                    maxLength: 200,
+                  },
+                },
+                display_name: {
+                  name: t("displayName"),
+                  type: "text",
+                  required: true,
+                  config: {
+                    id: "invitation-display-name",
+                    autoComplete: "name",
+                    maxLength: 128,
+                  },
+                },
+                password: {
+                  name: t("password"),
+                  type: "password",
+                  required: true,
+                  config: {
+                    id: "invitation-password",
+                    autoComplete: "new-password",
+                    minLength: 12,
+                    maxLength: 1024,
+                  },
+                },
+                confirm_password: {
+                  name: t("confirmPassword"),
+                  type: "password",
+                  required: true,
+                  config: {
+                    id: "invitation-confirm-password",
+                    autoComplete: "new-password",
+                    minLength: 12,
+                    maxLength: 1024,
+                  },
+                },
+              }}
+            >
               {error && (
                 <p className="text-sm text-destructive" role="alert">
                   {error}
@@ -135,7 +147,7 @@ export default function AcceptInvitationPage() {
                 <ShieldCheck />
                 {busy ? t("accepting") : t("acceptInvitation")}
               </Button>
-            </form>
+            </AutoForm>
           )}
 
           <Button variant="ghost" className="mt-4 w-full" asChild>
@@ -149,29 +161,6 @@ export default function AcceptInvitationPage() {
           {copyrightLine()}
         </p>
       </main>
-    </div>
-  )
-}
-
-function InvitationField({
-  id,
-  name,
-  label,
-  type = "text",
-  ...input
-}: {
-  id: string
-  name: string
-  label: string
-  type?: string
-  autoComplete: string
-  minLength?: number
-  maxLength: number
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <Input id={id} name={name} type={type} required {...input} />
     </div>
   )
 }

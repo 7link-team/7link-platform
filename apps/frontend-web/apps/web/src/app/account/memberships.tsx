@@ -1,3 +1,5 @@
+import { PaginationPages } from "@workspace/ui/components/pagination"
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
@@ -21,6 +23,7 @@ export default function MembershipsPage() {
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
   const [reload, setReload] = useState(0)
+  const [readLoading, setReadLoading] = useState(true)
   const [error, setError] = useState("")
   const [registration, setRegistration] = useState(false)
   useEffect(() => {
@@ -51,18 +54,23 @@ export default function MembershipsPage() {
   })
   useEffect(() => {
     let active = true
-    void iamApi.personalMemberships(offset).then(
-      (result) => {
-        if (active) {
-          setItems(result.items)
-          setTotal(result.total)
-          setError("")
+    void iamApi
+      .personalMemberships(offset)
+      .then(
+        (result) => {
+          if (active) {
+            setItems(result.items)
+            setTotal(result.total)
+            setError("")
+          }
+        },
+        (cause: Error) => {
+          if (active) setError(cause.message)
         }
-      },
-      (cause: Error) => {
-        if (active) setError(cause.message)
-      }
-    )
+      )
+      .finally(() => {
+        if (active) setReadLoading(false)
+      })
     return () => {
       active = false
     }
@@ -82,16 +90,12 @@ export default function MembershipsPage() {
     [selected]
   )
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <PageHeader
         title={t("myMemberships")}
         description={t("myMembershipsDescription")}
       />
-      {registration && (
-        <Button variant="outline" asChild>
-          <Link to="/admin/workspaces?create=1">{t("registerTenant")}</Link>
-        </Button>
-      )}
+
       {error && (
         <Alert>
           <p>{t.has(error) ? t(error) : error}</p>
@@ -100,23 +104,65 @@ export default function MembershipsPage() {
           </Button>
         </Alert>
       )}
-      {!items ? (
-        !error && <p role="status">{t("loading")}</p>
-      ) : items.length === 0 ? (
-        <p>{t("noMemberships")}</p>
-      ) : (
-        <ul className="space-y-3">
-          {items.map((item) => (
-            <li
-              key={item.tenant_id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4"
-            >
-              <div className="min-w-0">
-                <h2 className="font-medium break-all">{item.tenant_name}</h2>
-                <p className="text-sm break-all text-muted-foreground">
-                  {item.tenant_id}
-                </p>
-              </div>
+      <AutoTable
+        fill
+        toolbar={
+          <>
+            {registration && (
+              <Button variant="outline" asChild>
+                <Link to="/admin/workspaces?create=1">
+                  {t("registerTenant")}
+                </Link>
+              </Button>
+            )}
+          </>
+        }
+        data={items ?? []}
+        loading={readLoading || (!items && !error)}
+        emptyContent={t("noMemberships")}
+        rowKey="tenant_id"
+        pagination={false}
+        rowOffset={offset}
+        onRefresh={() => {
+          setReadLoading(true)
+          setReload((value) => value + 1)
+        }}
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <span className="text-sm text-muted-foreground">
+              {Math.min(offset + 50, total)} / {total}
+            </span>
+            <PaginationPages
+              page={Math.floor(offset / 50) + 1}
+              totalPages={Math.max(1, Math.ceil(total / 50))}
+              disabled={!items || !!error}
+              onPageChange={(page) => {
+                setItems(null)
+                setOffset((page - 1) * 50)
+              }}
+            />
+          </div>
+        }
+        columns={[
+          {
+            field: "tenant_name",
+            name: t("tenant"),
+            render: (_, item) => (
+              <h2 className="font-medium break-all">{item.tenant_name}</h2>
+            ),
+          },
+          {
+            field: "tenant_id",
+            name: t("tenant"),
+            render: (_, item) => (
+              <span className="break-all">{item.tenant_id}</span>
+            ),
+          },
+          {
+            field: "actions",
+            type: "actions",
+            name: t("actions"),
+            render: (_, item) => (
               <Button
                 variant="outline"
                 onClick={() => {
@@ -132,37 +178,11 @@ export default function MembershipsPage() {
               >
                 {t("leaveTenant")}
               </Button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {items && (
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <Button
-            variant="outline"
-            disabled={offset === 0}
-            onClick={() => {
-              setItems(null)
-              setOffset(Math.max(0, offset - 50))
-            }}
-          >
-            {t("previous")}
-          </Button>
-          <span>
-            {Math.min(offset + 50, total)} / {total}
-          </span>
-          <Button
-            variant="outline"
-            disabled={offset + 50 >= total}
-            onClick={() => {
-              setItems(null)
-              setOffset(offset + 50)
-            }}
-          >
-            {t("next")}
-          </Button>
-        </div>
-      )}
+            ),
+          },
+        ]}
+      />
+
       {selected && (
         <ReauthenticationDialog
           purpose="tenant_leave"
@@ -174,6 +194,6 @@ export default function MembershipsPage() {
           }}
         />
       )}
-    </>
+    </div>
   )
 }

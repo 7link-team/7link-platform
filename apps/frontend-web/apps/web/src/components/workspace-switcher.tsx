@@ -1,3 +1,4 @@
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useState } from "react"
 import {
   Building2,
@@ -10,7 +11,6 @@ import {
 } from "lucide-react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
 import {
   Popover,
   PopoverContent,
@@ -204,11 +204,21 @@ export function WorkspaceSwitcher({
             ) : tenants ? (
               <>
                 {filterTenants && (
-                  <Input
-                    aria-label={t("searchTenants")}
-                    value={tenantFilter}
-                    onChange={(event) => setTenantFilter(event.target.value)}
-                    className="mb-2 h-9"
+                  <AutoForm
+                    className="mb-2 md:grid-cols-1 [&>*]:col-span-1"
+                    hideLabel
+                    fields={{
+                      query: {
+                        name: t("searchTenants"),
+                        type: "text",
+                        value: tenantFilter,
+                        config: { placeholder: t("searchTenants") },
+                      },
+                    }}
+                    onChange={(values) => {
+                      if (values.query !== tenantFilter)
+                        setTenantFilter(String(values.query ?? ""))
+                    }}
                   />
                 )}
                 <div className="max-h-60 space-y-1 overflow-y-auto">

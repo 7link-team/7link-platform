@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo } from "react"
+import { useEffect, useId, useImperativeHandle, useMemo } from "react"
 import { useTranslations } from "use-intl"
 
 import { cn } from "@workspace/ui/lib/utils"
@@ -149,8 +149,8 @@ function FieldRow({
   const config =
     field.type === "title"
       ? { ...baseConfig, label: baseConfig.label ?? label }
-      : effectiveType === "number"
-        ? { type: "number", ...baseConfig }
+      : ["number", "password", "email"].includes(effectiveType)
+        ? { type: effectiveType, ...baseConfig }
         : baseConfig
   const labelId = `${baseId}-label`
   const errorId = `${baseId}-error`
@@ -159,7 +159,10 @@ function FieldRow({
     name: fieldName,
     value: values[fieldName],
     onChange,
-    config,
+    config: {
+      ...config,
+      ariaLabel: hideLabel && typeof label === "string" ? label : undefined,
+    },
     required,
     disabled,
     readonly,
@@ -209,6 +212,7 @@ function FieldRow({
 }
 
 export function AutoForm({
+  formRef,
   fields: configuredFields,
   contract,
   schema,
@@ -244,6 +248,7 @@ export function AutoForm({
     onError,
   })
   const { fields, values, errors, setValue, validateField } = form
+  useImperativeHandle(formRef, () => form, [form])
 
   useEffect(() => {
     onChange?.(values)
@@ -256,7 +261,21 @@ export function AutoForm({
         "grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2",
         className
       )}
-      onSubmit={form.handleSubmit}
+      onSubmit={(event) => {
+        event.preventDefault()
+        // Preserve native constraints in custom widgets/children. Configured
+        // inputs use the hook's rules, including contract-specific semantics.
+        const nativeInputs = Array.from(event.currentTarget.elements).filter(
+          (
+            element
+          ): element is
+            HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement =>
+            !element.hasAttribute("data-auto-form-managed") &&
+            "reportValidity" in element
+        )
+        if (nativeInputs.every((input) => input.reportValidity()))
+          void form.handleSubmit()
+      }}
       noValidate
     >
       {contract === null && !effectiveReadonly && (

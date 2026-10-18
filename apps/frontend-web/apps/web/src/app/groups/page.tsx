@@ -1,5 +1,10 @@
+import {
+  AutoForm,
+  type FieldRendererProps,
+} from "@workspace/ui/components/auto-form"
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   Eye,
   Pencil,
@@ -20,17 +25,7 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import { SimpleSelect } from "@workspace/ui/components/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
-import { Textarea } from "@workspace/ui/components/textarea"
 import { Alert } from "../../components/alert"
 import { DirectoryRoleBindingsDialog } from "../../components/directory-role-bindings-dialog"
 import {
@@ -136,30 +131,30 @@ export default function GroupsPage() {
     setGroupOpen(true)
   }
 
-  const submitGroup = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submitGroup = async (data: Record<string, unknown>) => {
     setBusy(true)
     setError("")
-    const data = new FormData(event.currentTarget)
     const input: GroupInput = {
-      name: String(data.get("name")),
-      type: groupType,
-      description: String(data.get("description")),
-      status,
-      sort_order: Number(data.get("sort_order") || 0),
-      ...(groupType === "dynamic"
+      name: String(data.name),
+      type: data.type as GroupInput["type"],
+      description: String(data.description),
+      status: data.status as GroupInput["status"],
+      sort_order: Number(data.sort_order || 0),
+      ...(data.type === "dynamic"
         ? {
             membership_rule: {
               version: 1,
-              match: ruleMatch,
-              conditions: ruleConditions.map((condition) => ({
-                field: condition.field,
-                operator: condition.operator,
-                values: condition.values
-                  .split(",")
-                  .map((value) => value.trim())
-                  .filter(Boolean),
-              })),
+              match: data.rule_match as "all" | "any",
+              conditions: (data.rule_conditions as RuleConditionDraft[]).map(
+                (condition) => ({
+                  field: condition.field,
+                  operator: condition.operator,
+                  values: condition.values
+                    .split(",")
+                    .map((value) => value.trim())
+                    .filter(Boolean),
+                })
+              ),
             },
           }
         : {}),
@@ -258,7 +253,7 @@ export default function GroupsPage() {
   }
 
   return (
-    <>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
       <PageHeader
         title={t("groupManagement")}
         description={t(
@@ -266,14 +261,6 @@ export default function GroupsPage() {
             ? "platformGroupsDescription"
             : "groupsDescription"
         )}
-        action={
-          allowed("group_create") && (
-            <Button onClick={openCreate}>
-              <Plus />
-              {t("createGroup")}
-            </Button>
-          )
-        }
       />
       {error && <Alert>{error}</Alert>}
       {loadError && (
@@ -285,40 +272,90 @@ export default function GroupsPage() {
         </Alert>
       )}
       {loading && <p role="status">{t("loading")}</p>}
-      <div className="overflow-x-auto rounded-md border bg-card">
-        <Table className="min-w-[920px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("groups")}</TableHead>
-              <TableHead>{t("type")}</TableHead>
-              <TableHead>{t("notes")}</TableHead>
-              <TableHead>{t("sortOrder")}</TableHead>
-              <TableHead>{t("status")}</TableHead>
-              <TableHead>{t("version")}</TableHead>
-              <TableHead className="w-40 text-right">{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(loading || loadError ? [] : groups).map((group) => (
-              <TableRow key={group.id}>
-                <TableCell>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border bg-card">
+        <AutoTable
+          fill
+          onRefresh={refresh}
+          searchable={(group) =>
+            [group.name, group.id, group.type, group.description].join(" ")
+          }
+          toolbar={
+            <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+              {allowed("group_create") && (
+                <Button onClick={openCreate}>
+                  <Plus />
+                  {t("createGroup")}
+                </Button>
+              )}
+            </div>
+          }
+          className="[&_table]:min-w-[920px]"
+          emptyContent={
+            !loading &&
+            !loadError &&
+            groups.length === 0 && (
+              <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
+                <span className="text-center">
+                  <UsersRound className="mx-auto mb-2 size-7" />
+                  {t("noGroups")}
+                </span>
+              </div>
+            )
+          }
+
+          data={loading || loadError ? [] : groups}
+          loading={loading}
+          rowKey={(group) => group.id}
+          columns={[
+            {
+              field: "groups",
+              name: t("groups"),
+              type: "custom",
+              render: (_value, group) => (
+                <div>
                   <div className="flex min-w-0 items-center gap-2">
                     <UsersRound className="size-4 shrink-0 text-primary" />
                     <strong className="truncate text-sm">{group.name}</strong>
                   </div>
-                </TableCell>
-                <TableCell>
+                </div>
+              ),
+            },
+            {
+              field: "type",
+              name: t("type"),
+              type: "custom",
+              render: (_value, group) => (
+                <div>
                   <Badge variant="outline">
                     {group.type === "dynamic" ? t("dynamic") : t("static")}
                   </Badge>
-                </TableCell>
-                <TableCell className="max-w-72 truncate text-sm text-muted-foreground">
+                </div>
+              ),
+            },
+            {
+              field: "notes",
+              name: t("notes"),
+              type: "custom",
+              render: (_value, group) => (
+                <div className="max-w-72 truncate text-sm text-muted-foreground">
                   {group.description || "-"}
-                </TableCell>
-                <TableCell className="font-mono text-xs">
-                  {group.sort_order}
-                </TableCell>
-                <TableCell>
+                </div>
+              ),
+            },
+            {
+              field: "sortOrder",
+              name: t("sortOrder"),
+              type: "custom",
+              render: (_value, group) => (
+                <div className="font-mono text-xs">{group.sort_order}</div>
+              ),
+            },
+            {
+              field: "status",
+              name: t("status"),
+              type: "custom",
+              render: (_value, group) => (
+                <div>
                   <Badge
                     variant={
                       group.status === "active" ? "secondary" : "destructive"
@@ -326,11 +363,23 @@ export default function GroupsPage() {
                   >
                     {group.status === "active" ? t("active") : t("disable")}
                   </Badge>
-                </TableCell>
-                <TableCell className="font-mono text-xs">
-                  v{group.version}
-                </TableCell>
-                <TableCell className="text-right">
+                </div>
+              ),
+            },
+            {
+              field: "version",
+              name: t("version"),
+              type: "custom",
+              render: (_value, group) => (
+                <div className="font-mono text-xs">v{group.version}</div>
+              ),
+            },
+            {
+              field: "actions",
+              name: t("actions"),
+              type: "actions",
+              render: (_value, group) => (
+                <div className="text-right">
                   <div className="flex justify-end gap-1">
                     {allowed("role_manage_assignee") && (
                       <Button
@@ -392,19 +441,11 @@ export default function GroupsPage() {
                       </Button>
                     )}
                   </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {!loading && !loadError && groups.length === 0 && (
-          <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
-            <span className="text-center">
-              <UsersRound className="mx-auto mb-2 size-7" />
-              {t("noGroups")}
-            </span>
-          </div>
-        )}
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
 
       <Dialog
@@ -421,187 +462,83 @@ export default function GroupsPage() {
             </DialogTitle>
             <DialogDescription>{t("groupFormDescription")}</DialogDescription>
           </DialogHeader>
-          <form
+          <AutoForm
             key={editingGroup?.id ?? "create"}
+            mode={editingGroup ? "edit" : "add"}
             id="group-form"
-            className="grid gap-4"
-            onSubmit={submitGroup}
-          >
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="grid gap-2">
-                <Label htmlFor="group-name">{t("groupName")}</Label>
-                <Input
-                  id="group-name"
-                  name="name"
-                  defaultValue={editingGroup?.name}
-                  maxLength={128}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="group-type">{t("type")}</Label>
-                <SimpleSelect
-                  id="group-type"
-                  options={{
+            fields={{
+              name: {
+                name: t("groupName"),
+                type: "text",
+                value: editingGroup?.name ?? "",
+                required: true,
+                config: { id: "group-name", maxLength: 128 },
+              },
+              type: {
+                name: t("type"),
+                type: "select",
+                value: groupType,
+                disabled: Boolean(editingGroup),
+                config: {
+                  id: "group-type",
+                  options: {
                     static: t("staticGroup"),
                     dynamic: t("dynamicGroup"),
-                  }}
-                  value={groupType}
-                  onValueChange={(value) =>
-                    setGroupType(value as GroupInput["type"])
-                  }
-                  disabled={Boolean(editingGroup)}
-                />
-              </div>
-            </div>
-            {groupType === "dynamic" && (
-              <div className="grid gap-3 border-t pt-4">
-                <div className="flex items-end justify-between gap-3">
-                  <div className="grid flex-1 gap-2">
-                    <Label htmlFor="group-rule-match">{t("matchMode")}</Label>
-                    <SimpleSelect
-                      id="group-rule-match"
-                      options={{ all: t("matchAll"), any: t("matchAny") }}
-                      value={ruleMatch}
-                      onValueChange={(value) =>
-                        setRuleMatch(value as "all" | "any")
-                      }
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() =>
-                      setRuleConditions((current) => [
-                        ...current,
-                        newRuleCondition(),
-                      ])
-                    }
-                    disabled={ruleConditions.length >= 16}
-                  >
-                    <Plus />
-                    {t("addCondition")}
-                  </Button>
-                </div>
-                {ruleConditions.map((condition, index) => (
-                  <div
-                    key={index}
-                    className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_8rem_1.2fr_2.5rem]"
-                  >
-                    <SimpleSelect
-                      id={`group-rule-field-${index}`}
-                      aria-label={t("conditionAttribute", {
-                        number: index + 1,
-                      })}
-                      options={{
-                        "member.subject": t("principalId"),
-                        "member.email": t("email"),
-                        "member.email_domain": t("emailDomain"),
-                        "member.department_id": t("departmentId"),
-                        "member.status": t("memberStatus"),
-                      }}
-                      value={condition.field}
-                      onValueChange={(value) =>
-                        setRuleConditions((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? { ...item, field: value as GroupRuleField }
-                              : item
-                          )
-                        )
-                      }
-                    />
-                    <SimpleSelect
-                      id={`group-rule-operator-${index}`}
-                      aria-label={t("conditionOperator", { number: index + 1 })}
-                      options={{ in: t("inSet"), not_in: t("notInSet") }}
-                      value={condition.operator}
-                      onValueChange={(value) =>
-                        setRuleConditions((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? {
-                                  ...item,
-                                  operator:
-                                    value as GroupRuleCondition["operator"],
-                                }
-                              : item
-                          )
-                        )
-                      }
-                    />
-                    <Input
-                      aria-label={t("conditionValue", { number: index + 1 })}
-                      value={condition.values}
-                      onChange={(event) =>
-                        setRuleConditions((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? { ...item, values: event.target.value }
-                              : item
-                          )
-                        )
-                      }
-                      placeholder={t("commaSeparated")}
-                      required
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={t("deleteConditionNumber", {
-                        number: index + 1,
-                      })}
-                      title={t("deleteCondition")}
-                      disabled={ruleConditions.length === 1}
-                      onClick={() =>
-                        setRuleConditions((current) =>
-                          current.filter((_, itemIndex) => itemIndex !== index)
-                        )
-                      }
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="grid gap-2">
-              <Label htmlFor="group-description">{t("notes")}</Label>
-              <Textarea
-                id="group-description"
-                name="description"
-                defaultValue={editingGroup?.description}
-                maxLength={1024}
-                rows={3}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="group-sort-order">{t("sortOrder")}</Label>
-                <Input
-                  id="group-sort-order"
-                  name="sort_order"
-                  type="number"
-                  min={0}
-                  max={1000000}
-                  defaultValue={editingGroup?.sort_order ?? 0}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="group-status">{t("status")}</Label>
-                <SimpleSelect
-                  id="group-status"
-                  options={{ active: t("active"), disabled: t("disable") }}
-                  value={status}
-                  onValueChange={(value) =>
-                    setStatus(value as GroupInput["status"])
-                  }
-                />
-              </div>
-            </div>
-          </form>
+                  },
+                },
+              },
+              rule_match: {
+                name: t("matchMode"),
+                type: "select",
+                value: ruleMatch,
+                show: (values) => values?.type === "dynamic",
+                config: {
+                  id: "group-rule-match",
+                  options: { all: t("matchAll"), any: t("matchAny") },
+                },
+              },
+              rule_conditions: {
+                name: t("addCondition"),
+                type: "custom",
+                component: GroupRuleConditionsField,
+                value: ruleConditions,
+                show: (values) => values?.type === "dynamic",
+                config: {
+                  rules: [
+                    (value) =>
+                      (value as RuleConditionDraft[]).some(
+                        (condition) => !condition.values
+                      )
+                        ? t("conditionValue", { number: 1 })
+                        : undefined,
+                  ],
+                },
+              },
+              description: {
+                name: t("notes"),
+                type: "textarea",
+                value: editingGroup?.description ?? "",
+                config: { id: "group-description", maxLength: 1024, rows: 3 },
+              },
+              sort_order: {
+                name: t("sortOrder"),
+                type: "number",
+                value: editingGroup?.sort_order ?? 0,
+                required: true,
+                config: { id: "group-sort-order", min: 0, max: 1000000 },
+              },
+              status: {
+                name: t("status"),
+                type: "select",
+                value: status,
+                config: {
+                  id: "group-status",
+                  options: { active: t("active"), disabled: t("disable") },
+                },
+              },
+            }}
+            onSubmit={submitGroup}
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setGroupOpen(false)}>
               {t("cancel")}
@@ -626,6 +563,7 @@ export default function GroupsPage() {
           tenantMembers={tenantMembers}
           busy={busy}
           computed={memberGroup.type === "dynamic"}
+          onRefresh={() => openMembers(memberGroup)}
           onClose={() => setMemberGroup(null)}
           onError={setError}
           onPut={putMember}
@@ -641,6 +579,128 @@ export default function GroupsPage() {
           onClose={() => setRoleGroup(null)}
         />
       )}
-    </>
+    </div>
+  )
+}
+
+function GroupRuleConditionsField({
+  value,
+  onChange,
+  disabled,
+  readonly,
+  labelId,
+  error,
+  errorId,
+}: FieldRendererProps) {
+  const t = useTranslations("iam")
+  const ruleConditions = value as RuleConditionDraft[]
+  const setRuleConditions = (
+    update: (current: RuleConditionDraft[]) => RuleConditionDraft[]
+  ) => {
+    if (!disabled && !readonly) onChange(update(ruleConditions))
+  }
+  return (
+    <fieldset
+      disabled={disabled || readonly}
+      aria-labelledby={labelId}
+      aria-describedby={error ? errorId : undefined}
+    >
+      <Button
+        type="button"
+        variant="outline"
+        disabled={disabled || readonly || ruleConditions.length >= 16}
+        onClick={() =>
+          setRuleConditions((current) => [...current, newRuleCondition()])
+        }
+      >
+        <Plus />
+        {t("addCondition")}
+      </Button>
+      {ruleConditions.map((condition, index) => (
+        <div
+          key={index}
+          className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_8rem_1.2fr_2.5rem]"
+        >
+          <SimpleSelect
+            id={`group-rule-field-${index}`}
+            aria-label={t("conditionAttribute", {
+              number: index + 1,
+            })}
+            options={{
+              "member.subject": t("principalId"),
+              "member.email": t("email"),
+              "member.email_domain": t("emailDomain"),
+              "member.department_id": t("departmentId"),
+              "member.status": t("memberStatus"),
+            }}
+            value={condition.field}
+            onValueChange={(value) =>
+              setRuleConditions((current) =>
+                current.map((item, itemIndex) =>
+                  itemIndex === index
+                    ? { ...item, field: value as GroupRuleField }
+                    : item
+                )
+              )
+            }
+          />
+          <SimpleSelect
+            id={`group-rule-operator-${index}`}
+            aria-label={t("conditionOperator", { number: index + 1 })}
+            options={{ in: t("inSet"), not_in: t("notInSet") }}
+            value={condition.operator}
+            onValueChange={(value) =>
+              setRuleConditions((current) =>
+                current.map((item, itemIndex) =>
+                  itemIndex === index
+                    ? {
+                        ...item,
+                        operator: value as GroupRuleCondition["operator"],
+                      }
+                    : item
+                )
+              )
+            }
+          />
+          <Input
+            aria-label={t("conditionValue", { number: index + 1 })}
+            value={condition.values}
+            onChange={(event) =>
+              setRuleConditions((current) =>
+                current.map((item, itemIndex) =>
+                  itemIndex === index
+                    ? { ...item, values: event.target.value }
+                    : item
+                )
+              )
+            }
+            placeholder={t("commaSeparated")}
+            required
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={t("deleteConditionNumber", {
+              number: index + 1,
+            })}
+            title={t("deleteCondition")}
+            disabled={ruleConditions.length === 1}
+            onClick={() =>
+              setRuleConditions((current) =>
+                current.filter((_, itemIndex) => itemIndex !== index)
+              )
+            }
+          >
+            <Trash2 />
+          </Button>
+        </div>
+      ))}
+      {error && (
+        <p id={errorId} className="mt-1 text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </fieldset>
   )
 }

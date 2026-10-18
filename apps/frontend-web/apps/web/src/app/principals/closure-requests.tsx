@@ -1,3 +1,6 @@
+import { PaginationPages } from "@workspace/ui/components/pagination"
+import { AutoForm } from "@workspace/ui/components/auto-form"
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { useEffect, useState } from "react"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
@@ -21,6 +24,7 @@ export default function ClosureRequestsPage() {
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
   const [reload, setReload] = useState(0)
+  const [readLoading, setReadLoading] = useState(true)
   const [error, setError] = useState("")
   const [operationError, setOperationError] = useState("")
   const [rejecting, setRejecting] = useState<ClosureRequest | null>(null)
@@ -30,21 +34,26 @@ export default function ClosureRequestsPage() {
   const [action, setAction] = useState<"reject" | "process">("reject")
   useEffect(() => {
     let active = true
-    void iamApi.closureRequests(offset, 50, status).then(
-      (result) => {
-        if (active) {
-          setItems(result.items)
-          setTotal(result.total)
-          setError("")
+    void iamApi
+      .closureRequests(offset, 50, status)
+      .then(
+        (result) => {
+          if (active) {
+            setItems(result.items)
+            setTotal(result.total)
+            setError("")
+          }
+        },
+        (cause: Error) => {
+          if (active) {
+            setItems(null)
+            setError(cause.message)
+          }
         }
-      },
-      (cause: Error) => {
-        if (active) {
-          setItems(null)
-          setError(cause.message)
-        }
-      }
-    )
+      )
+      .finally(() => {
+        if (active) setReadLoading(false)
+      })
     return () => {
       active = false
     }
@@ -73,30 +82,12 @@ export default function ClosureRequestsPage() {
     }
   }
   return (
-    <>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
       <PageHeader
         title={t("closureRequests")}
         description={t("closureRequestsDescription")}
       />
-      <label className="mb-4 flex items-center gap-3">
-        {t("status")}
-        <select
-          className="min-h-11 rounded-md border bg-background px-3"
-          value={status}
-          onChange={(event) => {
-            setItems(null)
-            setOffset(0)
-            if (
-              event.target.value === "pending" ||
-              event.target.value === "processing"
-            )
-              setStatus(event.target.value)
-          }}
-        >
-          <option value="pending">{t("closureStatus_pending")}</option>
-          <option value="processing">{t("closureStatus_processing")}</option>
-        </select>
-      </label>
+
       {error && (
         <Alert>
           <p>{t.has(error) ? t(error) : error}</p>
@@ -105,24 +96,86 @@ export default function ClosureRequestsPage() {
           </Button>
         </Alert>
       )}
-      {!items ? (
-        !error && <p role="status">{t("loading")}</p>
-      ) : items.length === 0 ? (
-        <p>{t("noClosureRequests")}</p>
-      ) : (
-        <ul className="space-y-3">
-          {items.map((item) => (
-            <li
-              key={item.principal_id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4"
-            >
-              <div className="min-w-0">
+      <AutoTable
+        loading={readLoading || (!items && !error)}
+        fill
+        onRefresh={() => {
+          setReadLoading(true)
+          setReload((value) => value + 1)
+        }}
+        rowOffset={offset}
+        toolbar={
+          <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+            <AutoForm
+              key={status}
+              className="w-full max-w-sm md:grid-cols-1"
+              fields={{
+                status: {
+                  name: t("status"),
+                  type: "select",
+                  value: status,
+                  config: {
+                    options: {
+                      pending: t("closureStatus_pending"),
+                      processing: t("closureStatus_processing"),
+                    },
+                  },
+                },
+              }}
+              onChange={(values) => {
+                if (
+                  (values.status === "pending" ||
+                    values.status === "processing") &&
+                  values.status !== status
+                ) {
+                  setItems(null)
+                  setOffset(0)
+                  setStatus(values.status)
+                }
+              }}
+            />
+          </div>
+        }
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <span className="text-sm text-muted-foreground">
+              {Math.min(offset + 50, total)} / {total}
+            </span>
+            <PaginationPages
+              page={Math.floor(offset / 50) + 1}
+              totalPages={Math.max(1, Math.ceil(total / 50))}
+              disabled={!items}
+              onPageChange={(page) => {
+                setItems(null)
+                setOffset((page - 1) * 50)
+              }}
+            />
+          </div>
+        }
+        pagination={false}
+        emptyContent={error ? null : t("noClosureRequests")}
+        data={items ?? []}
+        rowKey="principal_id"
+        columns={[
+          {
+            field: "principal_id",
+            name: t("principalId"),
+            type: "custom",
+            render: (_value, item) => (
+              <div>
                 <h2 className="font-medium break-all">{item.principal_id}</h2>
                 <p className="text-sm">
                   {item.requested_at &&
                     new Date(item.requested_at).toLocaleString(locale)}
                 </p>
               </div>
+            ),
+          },
+          {
+            field: "actions",
+            name: t("actions"),
+            type: "actions",
+            render: (_value, item) => (
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
@@ -155,37 +208,11 @@ export default function ClosureRequestsPage() {
                   </Button>
                 )}
               </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      {items && (
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <Button
-            variant="outline"
-            disabled={offset === 0}
-            onClick={() => {
-              setItems(null)
-              setOffset(Math.max(0, offset - 50))
-            }}
-          >
-            {t("previous")}
-          </Button>
-          <span>
-            {Math.min(offset + 50, total)} / {total}
-          </span>
-          <Button
-            variant="outline"
-            disabled={offset + 50 >= total}
-            onClick={() => {
-              setItems(null)
-              setOffset(offset + 50)
-            }}
-          >
-            {t("next")}
-          </Button>
-        </div>
-      )}
+            ),
+          },
+        ]}
+      />
+
       <PrincipalLifecycleDialog
         principal={principal}
         iamApi={iamApi}
@@ -239,6 +266,6 @@ export default function ClosureRequestsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }

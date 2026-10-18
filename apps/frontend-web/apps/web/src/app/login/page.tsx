@@ -1,5 +1,7 @@
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
+import type { UseAutoFormReturn } from "@workspace/ui/components/auto-form/types"
 import { useTranslations, useLocale } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   ArrowLeft,
   Eye,
@@ -118,12 +120,10 @@ export default function LoginPage() {
   if (status === "loading" || status === "error") return <SessionVerification />
   if (status === "authenticated") return <Navigate to={requested} replace />
 
-  const submitPassword = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submitPassword = async (values: Record<string, unknown>) => {
     setBusy(true)
     setError("")
-    const data = new FormData(event.currentTarget)
-    const devTenantID = String(data.get("dev_tenant_id") ?? "")
+    const devTenantID = String(values.dev_tenant_id ?? "")
     const previousTenantID = devTenantID ? getTenant() : ""
     if (!delegatedCaptcha && !captcha) {
       setBusy(false)
@@ -132,8 +132,8 @@ export default function LoginPage() {
     try {
       if (devTenantID) setTenant(devTenantID)
       const result = await login(
-        String(data.get("login_name") ?? ""),
-        String(data.get("password") ?? ""),
+        String(values.login_name ?? ""),
+        String(values.password ?? ""),
         `${window.location.origin}${requested}`,
         delegatedCaptcha
           ? { type: "turnstile", id: "widget", answer }
@@ -156,12 +156,9 @@ export default function LoginPage() {
   // so the page always moves on to the code step. Anything else would tell
   // whoever typed the number whether it has one, and they are not always its
   // owner.
-  const requestPhoneCode = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const requestPhoneCode = async (values: Record<string, unknown>) => {
     if (!delegatedCaptcha && !captcha) return
-    const typed = String(
-      new FormData(event.currentTarget).get("phone") ?? ""
-    ).trim()
+    const typed = String(values.phone ?? "").trim()
     if (!typed) return
     setBusy(true)
     setError("")
@@ -181,11 +178,10 @@ export default function LoginPage() {
     }
   }
 
-  const submitPhoneCode = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submitPhoneCode = async (values: Record<string, unknown>) => {
     setBusy(true)
     setError("")
-    const code = String(new FormData(event.currentTarget).get("code") ?? "").trim()
+    const code = String(values.code ?? "").trim()
     try {
       const result = await loginWithPhoneCode(
         phone,
@@ -221,16 +217,14 @@ export default function LoginPage() {
       }
     })()
 
-  const submitMfa = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submitMfa = async (values: Record<string, unknown>) => {
     if (!challenge?.challenge_id) return
     setBusy(true)
     setError("")
-    const data = new FormData(event.currentTarget)
     try {
       await verifyLoginMfa(
         challenge.challenge_id,
-        String(data.get("code") ?? "").trim()
+        String(values.code ?? "").trim()
       )
     } catch (cause) {
       setError(t(loginError(cause, "invalidChallenge")))
@@ -438,7 +432,7 @@ function PhoneForm({
 }: {
   busy: boolean
   error: string
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: (values: Record<string, unknown>) => void
   onBack: () => void
   captcha: Captcha | null
   captchaProvider: CaptchaCapability | undefined
@@ -450,44 +444,51 @@ function PhoneForm({
 }) {
   const t = useTranslations("iam")
   return (
-    <form className="space-y-5" onSubmit={onSubmit}>
+    <div className="space-y-5">
       <BrandHeader />
-      <FormError error={error} />
-      <div className="space-y-2">
-        <Label htmlFor="phone">{t("phoneNumber")}</Label>
-        <Input
-          id="phone"
-          name="phone"
-          type="tel"
-          autoComplete="tel"
-          placeholder="+8613800138000"
-          required
-          disabled={busy}
-        />
-        <p className="text-xs text-muted-foreground">{t("phoneLoginHint")}</p>
-      </div>
-      <CaptchaField
-        captcha={captcha}
-        provider={captchaProvider}
-        widget={captchaWidget}
-        answer={captchaAnswer}
-        onAnswerChange={onCaptchaAnswerChange}
-        onUnavailable={onCaptchaUnavailable}
-        onRefresh={onRefreshCaptcha}
-      />
-      <Button type="submit" className="w-full" disabled={busy}>
-        {t("sendPhoneCode")}
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        className="w-full"
-        onClick={onBack}
-        disabled={busy}
+      <AutoForm
+        className="md:grid-cols-1 [&>*]:col-span-1"
+        onSubmit={onSubmit}
+        fields={{
+          phone: {
+            name: t("phoneNumber"),
+            type: "text",
+            required: true,
+            disabled: busy,
+            config: {
+              id: "phone",
+              type: "tel",
+              autoComplete: "tel",
+              placeholder: "+8613800138000",
+            },
+          },
+        }}
       >
-        {t("usePasswordInstead")}
-      </Button>
-    </form>
+        <FormError error={error} />
+        <p className="text-xs text-muted-foreground">{t("phoneLoginHint")}</p>
+        <CaptchaField
+          captcha={captcha}
+          provider={captchaProvider}
+          widget={captchaWidget}
+          answer={captchaAnswer}
+          onAnswerChange={onCaptchaAnswerChange}
+          onUnavailable={onCaptchaUnavailable}
+          onRefresh={onRefreshCaptcha}
+        />
+        <Button type="submit" className="w-full" disabled={busy}>
+          {t("sendPhoneCode")}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full"
+          onClick={onBack}
+          disabled={busy}
+        >
+          {t("usePasswordInstead")}
+        </Button>
+      </AutoForm>
+    </div>
   )
 }
 
@@ -501,43 +502,49 @@ function PhoneCodeForm({
   phone: string
   busy: boolean
   error: string
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: (values: Record<string, unknown>) => void
   onBack: () => void
 }) {
   const t = useTranslations("iam")
   return (
-    <form className="space-y-5" onSubmit={onSubmit}>
+    <div className="space-y-5">
       <BrandHeader />
-      <FormError error={error} />
-      <p className="text-sm text-muted-foreground">
-        {t("phoneCodeSent", { phone })}
-      </p>
-      <div className="space-y-2">
-        <Label htmlFor="code">{t("phoneCode")}</Label>
-        <Input
-          id="code"
-          name="code"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          maxLength={6}
-          className="font-mono tracking-[0.3em]"
-          required
-          disabled={busy}
-        />
-      </div>
-      <Button type="submit" className="w-full" disabled={busy}>
-        {t("signIn")}
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        className="w-full"
-        onClick={onBack}
-        disabled={busy}
+      <AutoForm
+        className="md:grid-cols-1 [&>*]:col-span-1"
+        onSubmit={onSubmit}
+        fields={{
+          code: {
+            name: t("phoneCode"),
+            type: "text",
+            required: true,
+            disabled: busy,
+            config: {
+              id: "code",
+              inputMode: "numeric",
+              autoComplete: "one-time-code",
+              maxLength: 6,
+            },
+          },
+        }}
       >
-        {t("back")}
-      </Button>
-    </form>
+        <FormError error={error} />
+        <p className="text-sm text-muted-foreground">
+          {t("phoneCodeSent", { phone })}
+        </p>
+        <Button type="submit" className="w-full" disabled={busy}>
+          {t("signIn")}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full"
+          onClick={onBack}
+          disabled={busy}
+        >
+          {t("back")}
+        </Button>
+      </AutoForm>
+    </div>
   )
 }
 
@@ -592,7 +599,7 @@ function PasswordForm({
   error: string
   visible: boolean
   onVisibleChange: () => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: (values: Record<string, unknown>) => void
   onPasskey: () => void
   onPhone?: () => void
   capabilities: AuthnCapabilities | null
@@ -613,37 +620,25 @@ function PasswordForm({
   const [selectedAccount, setSelectedAccount] = useState(
     defaultAccount?.id ?? ""
   )
-  const [loginName, setLoginName] = useState(defaultAccount?.loginName ?? "")
-  const [password, setPassword] = useState(defaultAccount?.password ?? "")
   const [tenantID, setTenantID] = useState(defaultAccount?.tenantID ?? "")
   const [platformID, setPlatformID] = useState(defaultAccount?.platformID ?? "")
 
+  const formRef = useRef<UseAutoFormReturn>(null)
   const selectAccount = (id: string) => {
     const account = accounts.find((candidate) => candidate.id === id)
     if (!account) return
     setSelectedAccount(account.id)
-    setLoginName(account.loginName)
-    setPassword(account.password)
+    formRef.current?.setValues({
+      login_name: account.loginName,
+      password: account.password,
+    })
     setTenantID(account.tenantID ?? "")
     setPlatformID(account.platformID ?? "")
   }
 
-  const editCredential = (setter: (value: string) => void, value: string) => {
-    setSelectedAccount("")
-    setTenantID("")
-    setPlatformID("")
-    setter(value)
-  }
-
   return (
-    <form
-      className="space-y-5"
-      onSubmit={onSubmit}
-      aria-labelledby="login-title"
-    >
-      <input type="hidden" name="dev_tenant_id" value={tenantID} />
-      <input type="hidden" name="dev_platform_id" value={platformID} />
-      <BrandHeader />
+    <div className="space-y-5">
+      <BrandHeader />{" "}
       {accounts.length > 0 && (
         <div className="space-y-2 rounded-md border border-dashed bg-muted/40 p-3">
           <Label id="dev-login-account-label">{t("devLoginAccount")}</Label>
@@ -666,127 +661,150 @@ function PasswordForm({
           </p>
         </div>
       )}
-      <div className="space-y-2">
-        <Label htmlFor="login-name">{t("loginName")}</Label>
-        <Input
-          id="login-name"
-          name="login_name"
-          autoComplete="username"
-          autoFocus
-          value={loginName}
-          onChange={(event) => editCredential(setLoginName, event.target.value)}
-          required
-          maxLength={200}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="password">{t("password")}</Label>
-        <div className="relative">
-          <Input
-            id="password"
-            name="password"
-            type={visible ? "text" : "password"}
-            value={password}
-            onChange={(event) =>
-              editCredential(setPassword, event.target.value)
-            }
-            className="pr-10"
-            autoComplete="current-password"
-            required
-            maxLength={1024}
-          />
-          <button
-            type="button"
-            className="absolute top-1 right-1 grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            onClick={onVisibleChange}
-            aria-label={visible ? t("hidePassword") : t("showPassword")}
-          >
-            {visible ? (
-              <EyeOff className="size-4" />
-            ) : (
-              <Eye className="size-4" />
-            )}
-          </button>
-        </div>
-      </div>
-      <CaptchaField
-        captcha={captcha}
-        provider={captchaProvider}
-        widget={captchaWidget}
-        answer={captchaAnswer}
-        onAnswerChange={onCaptchaAnswerChange}
-        onUnavailable={onCaptchaUnavailable}
-        onRefresh={onRefreshCaptcha}
-      />
-      <FormError error={error} />
-      <Button
-        type="submit"
-        className="w-full"
-        disabled={
-          busy || (captchaProvider?.provider !== "turnstile" && !captcha)
+      <AutoForm
+        formRef={formRef}
+        className="md:grid-cols-1 [&>*]:col-span-1"
+        onSubmit={(values) =>
+          onSubmit({
+            ...values,
+            dev_tenant_id: tenantID,
+            dev_platform_id: platformID,
+          })
         }
+        onChange={(values) => {
+          const selected = accounts.find(
+            (account) => account.id === selectedAccount
+          )
+          if (
+            selected &&
+            (values.login_name !== selected.loginName ||
+              values.password !== selected.password)
+          ) {
+            setSelectedAccount("")
+            setTenantID("")
+            setPlatformID("")
+          }
+        }}
+        fields={{
+          login_name: {
+            name: t("loginName"),
+            type: "text",
+            value: defaultAccount?.loginName ?? "",
+            required: true,
+            config: {
+              id: "login-name",
+              autoComplete: "username",
+              autoFocus: true,
+              maxLength: 200,
+            },
+          },
+          password: {
+            name: t("password"),
+            type: "password",
+            value: defaultAccount?.password ?? "",
+            required: true,
+            config: {
+              id: "password",
+              type: visible ? "text" : "password",
+              autoComplete: "current-password",
+              maxLength: 1024,
+              suffix: (
+                <button
+                  type="button"
+                  className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  onClick={onVisibleChange}
+                  aria-label={visible ? t("hidePassword") : t("showPassword")}
+                >
+                  {visible ? (
+                    <EyeOff className="size-4" />
+                  ) : (
+                    <Eye className="size-4" />
+                  )}
+                </button>
+              ),
+            },
+          },
+        }}
       >
-        {busy ? t("verifying") : t("signIn")}
-      </Button>
-      {capabilities?.passkey && (
-        <>
-          <div className="relative text-center text-xs text-muted-foreground before:absolute before:top-1/2 before:left-0 before:h-px before:w-full before:bg-border">
-            <span className="relative bg-card px-2">{t("or")}</span>
-          </div>
+        <CaptchaField
+          captcha={captcha}
+          provider={captchaProvider}
+          widget={captchaWidget}
+          answer={captchaAnswer}
+          onAnswerChange={onCaptchaAnswerChange}
+          onUnavailable={onCaptchaUnavailable}
+          onRefresh={onRefreshCaptcha}
+        />
+        <FormError error={error} />
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={
+            busy || (captchaProvider?.provider !== "turnstile" && !captcha)
+          }
+        >
+          {busy ? t("verifying") : t("signIn")}
+        </Button>
+        {capabilities?.passkey && (
+          <>
+            <div className="relative text-center text-xs text-muted-foreground before:absolute before:top-1/2 before:left-0 before:h-px before:w-full before:bg-border">
+              <span className="relative bg-card px-2">{t("or")}</span>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={busy}
+              onClick={onPasskey}
+            >
+              <Fingerprint />
+              {t("usePasskey")}
+            </Button>
+          </>
+        )}
+        {/* Offered only where the service says a code signs somebody in. Without
+          that check this button walks somebody through typing their number to a
+          refusal the deployment had already decided on. */}
+        {onPhone && (
           <Button
             type="button"
             variant="outline"
             className="w-full"
             disabled={busy}
-            onClick={onPasskey}
+            onClick={onPhone}
           >
-            <Fingerprint />
-            {t("usePasskey")}
+            <Smartphone />
+            {t("usePhoneCode")}
           </Button>
-        </>
-      )}
-      {/* Offered only where the service says a code signs somebody in. Without
-          that check this button walks somebody through typing their number to a
-          refusal the deployment had already decided on. */}
-      {onPhone && (
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          disabled={busy}
-          onClick={onPhone}
-        >
-          <Smartphone />
-          {t("usePhoneCode")}
-        </Button>
-      )}
-      {selfService &&
-        (capabilities?.password_recovery || capabilities?.registration) && (
-          <div className="space-y-2 text-center text-sm">
-            {capabilities?.password_recovery && (
-              <p>
-                <Link
-                  className="font-medium text-primary hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                  to={entrancePath(entry, "recover")}
-                >
-                  {t("forgotPassword")}
-                </Link>
-              </p>
-            )}
-            {capabilities?.registration && (
-              <p className="text-muted-foreground">
-                {t("noAccount")}{" "}
-                <Link
-                  className="font-medium text-primary hover:underline"
-                  to={entrancePath(entry, "register")}
-                >
-                  {t("createAccount")}
-                </Link>
-              </p>
-            )}
-          </div>
         )}
-    </form>
+        {selfService &&
+          (capabilities?.password_recovery || capabilities?.registration) && (
+            <div className="space-y-2 text-center text-sm">
+              {capabilities?.password_recovery && (
+                <p>
+                  <Link
+                    className="font-medium text-primary hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    to={entrancePath(entry, "recover")}
+                  >
+                    {t("forgotPassword")}
+                  </Link>
+                </p>
+              )}
+              {capabilities?.registration && (
+                <p className="text-muted-foreground">
+                  {t("noAccount")}{" "}
+                  <Link
+                    className="font-medium text-primary hover:underline"
+                    to={entrancePath(entry, "register")}
+                  >
+                    {t("createAccount")}
+                  </Link>
+                </p>
+              )}
+            </div>
+          )}
+      </AutoForm>
+    </div>
   )
 }
 
@@ -804,32 +822,35 @@ function MfaForm({
   error: string
   codeSent: boolean
   onSendPhoneCode: () => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: (values: Record<string, unknown>) => void
   onBack: () => void
 }) {
   const t = useTranslations("iam")
   const locale = useLocale()
 
   return (
-    <form
-      className="space-y-5"
-      onSubmit={onSubmit}
-      aria-labelledby="login-title"
-    >
+    <div className="space-y-5">
       <BrandHeader mfa />
-      <div className="space-y-2">
-        <Label htmlFor="mfa-code">{t("verificationOrRecovery")}</Label>
-        <Input
-          id="mfa-code"
-          name="code"
-          autoComplete="one-time-code"
-          autoCapitalize="characters"
-          autoFocus
-          required
-          minLength={6}
-          maxLength={64}
-          placeholder="000000"
-        />
+      <AutoForm
+        className="md:grid-cols-1 [&>*]:col-span-1"
+        onSubmit={onSubmit}
+        fields={{
+          code: {
+            name: t("verificationOrRecovery"),
+            type: "text",
+            required: true,
+            config: {
+              id: "mfa-code",
+              autoComplete: "one-time-code",
+              autoCapitalize: "characters",
+              autoFocus: true,
+              minLength: 6,
+              maxLength: 64,
+              placeholder: "000000",
+            },
+          },
+        }}
+      >
         {challenge.expires_at && (
           <p className="text-xs text-muted-foreground">
             {t("challengeExpiry", {
@@ -837,35 +858,35 @@ function MfaForm({
             })}
           </p>
         )}
-      </div>
-      {challenge.methods?.includes("sms") && (
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          disabled={busy}
-          onClick={onSendPhoneCode}
-        >
-          <Smartphone />
-          {codeSent ? t("resendPhoneCode") : t("sendPhoneCode")}
-        </Button>
-      )}
-      <FormError error={error} />
-      <div className="grid grid-cols-[auto_1fr] gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onBack}
-          disabled={busy}
-        >
-          <ArrowLeft />
-          {t("back")}
-        </Button>
-        <Button type="submit" disabled={busy}>
-          {busy ? t("verifying") : t("continue")}
-        </Button>
-      </div>
-    </form>
+        {challenge.methods?.includes("sms") && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={busy}
+            onClick={onSendPhoneCode}
+          >
+            <Smartphone />
+            {codeSent ? t("resendPhoneCode") : t("sendPhoneCode")}
+          </Button>
+        )}
+        <FormError error={error} />
+        <div className="grid grid-cols-[auto_1fr] gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onBack}
+            disabled={busy}
+          >
+            <ArrowLeft />
+            {t("back")}
+          </Button>
+          <Button type="submit" disabled={busy}>
+            {busy ? t("verifying") : t("continue")}
+          </Button>
+        </div>
+      </AutoForm>
+    </div>
   )
 }
 

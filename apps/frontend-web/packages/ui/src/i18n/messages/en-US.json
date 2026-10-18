@@ -123,6 +123,15 @@
     "close": "Close"
   },
   "table": {
+    "rowNumber": "No.",
+    "pagination": "Pagination",
+    "pageNumber": "Page {page}",
+    "search": "Search this list",
+    "refresh": "Refresh",
+    "export": "Export",
+    "exportPage": "Export current page",
+    "import": "Import",
+    "actionError": "The action failed. Please retry.",
     "loadError": "Unable to load records.",
     "retry": "Retry",
     "empty": "No data available",
@@ -136,6 +145,11 @@
     "selectAll": "Select all rows",
     "selectRow": "Select row",
     "filter": {
+      "refresh": "Refresh",
+      "autoRefresh": "Auto refresh",
+      "autoOff": "Off",
+      "autoEvery": "Every {s} seconds",
+      "secLeft": "{s}s",
       "selectPlaceholder": "Select",
       "inputPlaceholder": "Enter value",
       "yes": "Yes",

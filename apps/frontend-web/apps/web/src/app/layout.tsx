@@ -573,7 +573,7 @@ export default function AppLayout() {
             className={
               location.pathname.endsWith("/files")
                 ? "h-full w-full max-w-none"
-                : `mx-auto w-full max-w-[1440px] p-4 sm:p-6 ${workspaceLayout ? "lg:flex lg:h-full lg:min-h-0 lg:flex-col" : ""}`
+                : `mx-auto w-full p-4 sm:p-6 ${workspaceLayout ? "lg:flex lg:h-full lg:min-h-0 lg:flex-col" : "max-w-[1440px]"}`
             }
           >
             {menuError && directoryReady && (

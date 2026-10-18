@@ -1,7 +1,8 @@
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { useCallback, useEffect, useState } from "react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
-import { Label } from "@workspace/ui/components/label"
+import { AutoForm } from "@workspace/ui/components/auto-form"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { ReauthenticationDialog } from "../../components/reauthentication-dialog"
@@ -22,6 +23,7 @@ export default function IdentitiesPage() {
   const [provider, setProvider] = useState("")
   const [error, setError] = useState("")
   const [reload, setReload] = useState(0)
+  const [readLoading, setReadLoading] = useState(true)
   const [pending, setPending] = useState<Pending | null>(() => {
     try {
       const saved = JSON.parse(sessionStorage.getItem(pendingKey) ?? "null")
@@ -39,25 +41,32 @@ export default function IdentitiesPage() {
   })
   useEffect(() => {
     let active = true
-    void Promise.all([
-      iamApi.identityLinks(),
-      iamApi.identityLinkProviders(),
-    ]).then(
-      ([next, available]) => {
-        if (active) {
-          setLinks(next)
-          setProviders(available)
-          setError("")
+    void Promise.all([iamApi.identityLinks(), iamApi.identityLinkProviders()])
+      .then(
+        ([next, available]) => {
+          if (active) {
+            setLinks(next)
+            setProviders(available)
+            setError("")
+          }
+        },
+        (cause: Error) => {
+          if (active) setError(cause.message)
         }
-      },
-      (cause: Error) => {
-        if (active) setError(cause.message)
-      }
-    )
+      )
+      .finally(() => {
+        if (active) setReadLoading(false)
+      })
     return () => {
       active = false
     }
   }, [reload])
+  const updateProvider = useCallback(
+    (values: Record<string, unknown>) =>
+      setProvider(String(values.provider_id ?? "")),
+    []
+  )
+
   const begin = (action: Pending) => {
     sessionStorage.setItem(
       pendingKey,
@@ -88,7 +97,7 @@ export default function IdentitiesPage() {
     [pending]
   )
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <PageHeader
         title={t("linkedIdentities")}
         description={t("linkedIdentitiesDescription")}
@@ -101,71 +110,91 @@ export default function IdentitiesPage() {
           </Button>
         </Alert>
       )}
-      {!links ? (
-        !error && <p role="status">{t("loading")}</p>
-      ) : (
-        <>
-          {links.length === 0 ? (
-            <p>{t("noLinkedIdentities")}</p>
-          ) : (
-            <ul className="space-y-3">
-              {links.map((link) => (
-                <li
-                  key={link.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4"
-                >
-                  <div className="min-w-0">
-                    <h2 className="font-medium break-all">
-                      {link.provider_name}
-                    </h2>
-                    <p className="text-sm break-all">
-                      {link.display_name || link.external_subject}
-                    </p>
-                    <p className="text-sm break-all text-muted-foreground">
-                      {link.tenant_id}
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      begin({ purpose: "identity_unlink", target: link.id })
-                    }
-                  >
-                    {t("unlinkIdentity")}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <form
-            className="mt-6 grid gap-3 rounded-md border p-4"
-            onSubmit={(event) => {
-              event.preventDefault()
-              begin({ purpose: "identity_link", target: provider })
+      <AutoTable
+        fill
+        toolbar={
+          <AutoForm
+            className="w-full items-end md:grid-cols-[minmax(12rem,1fr)_auto]"
+            fields={{
+              provider_id: {
+                name: t("identityProvider"),
+                type: "select",
+                required: true,
+                value: provider,
+                config: {
+                  id: "identity-provider",
+                  placeholder: t("selectIdentityProvider"),
+                  options: providers.map((item) => ({
+                    value: item.id,
+                    label: `${item.name} · ${item.tenant_id}`,
+                  })),
+                },
+              },
             }}
+            onChange={updateProvider}
+            onSubmit={(values) =>
+              begin({
+                purpose: "identity_link",
+                target: String(values.provider_id),
+              })
+            }
           >
-            <Label htmlFor="identity-provider">{t("identityProvider")}</Label>
-            <select
-              id="identity-provider"
-              required
-              value={provider}
-              onChange={(event) => setProvider(event.target.value)}
-              className="min-h-11 w-full min-w-0 rounded-md border bg-background px-3"
-            >
-              <option value="">{t("selectIdentityProvider")}</option>
-              {providers.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} · {item.tenant_id}
-                </option>
-              ))}
-            </select>
             {providers.length === 0 && <p>{t("noIdentityProviders")}</p>}
             <Button type="submit" disabled={!provider}>
               {t("linkIdentity")}
             </Button>
-          </form>
-        </>
-      )}
+          </AutoForm>
+        }
+        onRefresh={() => {
+          setReadLoading(true)
+          setReload((value) => value + 1)
+        }}
+        data={links ?? []}
+        loading={readLoading || (!links && !error)}
+        emptyContent={t("noLinkedIdentities")}
+        rowKey="id"
+        searchable
+        columns={[
+          {
+            field: "provider_name",
+            name: t("identityProvider"),
+            render: (_, link) => (
+              <h2 className="font-medium break-all">{link.provider_name}</h2>
+            ),
+          },
+          {
+            field: "display_name",
+            name: t("name"),
+            render: (_, link) => (
+              <span className="break-all">
+                {link.display_name || link.external_subject}
+              </span>
+            ),
+          },
+          {
+            field: "tenant_id",
+            name: t("tenant"),
+            render: (_, link) => (
+              <span className="break-all">{link.tenant_id}</span>
+            ),
+          },
+          {
+            field: "actions",
+            type: "actions",
+            name: t("actions"),
+            render: (_, link) => (
+              <Button
+                variant="outline"
+                onClick={() =>
+                  begin({ purpose: "identity_unlink", target: link.id })
+                }
+              >
+                {t("unlinkIdentity")}
+              </Button>
+            ),
+          },
+        ]}
+      />
       {pending && (
         <ReauthenticationDialog
           purpose={pending.purpose}
@@ -177,6 +206,6 @@ export default function IdentitiesPage() {
           }}
         />
       )}
-    </>
+    </div>
   )
 }

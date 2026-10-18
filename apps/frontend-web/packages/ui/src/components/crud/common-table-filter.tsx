@@ -1,18 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { useTranslations } from "use-intl"
-import { ChevronDown, RefreshCw } from "lucide-react"
 
 import type { FilterOp, FilterValue } from "@workspace/ui/lib/api-client"
 
 import { Button } from "../button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "../dropdown-menu"
+import { RefreshButton } from "../refresh-button"
 import { Input } from "../input"
 import { DatePicker } from "../pickers/date-picker"
 import { DateTimePicker } from "../pickers/date-time-picker"
@@ -74,8 +66,6 @@ export interface CommonTableFilterProps {
  * CommonTableFilter renders the list filter bar (= CommonTableFilter.vue). It keeps a draft
  * locally and only commits to `onChange` on Search/Reset, so typing doesn't refetch.
  */
-const AUTO_REFRESH_SECONDS = [5, 10, 15, 30, 60] as const
-
 export function CommonTableFilter({
   filterOptions,
   value,
@@ -84,28 +74,6 @@ export function CommonTableFilter({
 }: CommonTableFilterProps) {
   const t = useTranslations("table.filter")
   const [draft, setDraft] = useState<FilterState>(value ?? {})
-
-  // 自动刷新：默认关闭（0）。用 ref 持有最新 onRefresh，避免其每次渲染变更重置定时器。
-  // 每秒 tick 一次做显式倒计时，归零即刷新并重置。
-  const [autoSec, setAutoSec] = useState(0)
-  const [remaining, setRemaining] = useState(0)
-  const refreshRef = useRef(onRefresh)
-  useEffect(() => {
-    refreshRef.current = onRefresh
-  }, [onRefresh])
-  useEffect(() => {
-    if (!autoSec) return
-    const id = window.setInterval(() => {
-      setRemaining((r) => {
-        if (r <= 1) {
-          refreshRef.current?.()
-          return autoSec
-        }
-        return r - 1
-      })
-    }, 1000)
-    return () => window.clearInterval(id)
-  }, [autoSec])
 
   const setField = (field: string, patch: Partial<FilterValue>) => {
     setDraft((prev) => {
@@ -242,59 +210,7 @@ export function CommonTableFilter({
           >
             {t("reset")}
           </Button>
-          {onRefresh ? (
-            // 一体化 split 按钮：单边框容器，左点刷新、中缝分隔、右 ▼ 下拉选定时
-            <div className="inline-flex h-8 items-center overflow-hidden rounded-md border border-input bg-background text-sm shadow-sm">
-              {/* 左：直接手动刷新（定时开启时也可点，并重置倒计时） */}
-              <button
-                type="button"
-                title={t("refresh")}
-                onClick={() => {
-                  onRefresh()
-                  if (autoSec) setRemaining(autoSec)
-                }}
-                className="inline-flex h-full items-center gap-1.5 px-3 tabular-nums transition-colors hover:bg-accent hover:text-accent-foreground"
-              >
-                <RefreshCw
-                  className={autoSec ? "size-4 animate-spin" : "size-4"}
-                />
-                {autoSec ? t("secLeft", { s: remaining }) : t("refresh")}
-              </button>
-              {/* 右：▼ 下拉选定时 */}
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  title={t("autoRefresh")}
-                  className="inline-flex h-full items-center border-l border-input px-1.5 transition-colors hover:bg-accent hover:text-accent-foreground data-[state=open]:bg-accent"
-                >
-                  <ChevronDown className="size-4" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>{t("autoRefresh")}</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={String(autoSec)}
-                    onValueChange={(v) => {
-                      const seconds = Number(v)
-                      setAutoSec(seconds)
-                      setRemaining(seconds)
-                    }}
-                  >
-                    <DropdownMenuRadioItem value="0" closeOnClick>
-                      {t("autoOff")}
-                    </DropdownMenuRadioItem>
-                    {AUTO_REFRESH_SECONDS.map((s) => (
-                      <DropdownMenuRadioItem
-                        key={s}
-                        value={String(s)}
-                        closeOnClick
-                      >
-                        {t("autoEvery", { s })}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          ) : null}
+          {onRefresh ? <RefreshButton onRefresh={onRefresh} /> : null}
         </div>
       </div>
     </div>

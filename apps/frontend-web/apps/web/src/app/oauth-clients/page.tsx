@@ -1,5 +1,8 @@
+import type { FieldRendererProps } from "@workspace/ui/components/auto-form/types"
+import { AutoTable } from "@workspace/ui/components/auto-table/auto-table"
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   AppWindow,
   CheckCircle2,
@@ -21,18 +24,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
-import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { Switch } from "@workspace/ui/components/switch"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
-import { Textarea } from "@workspace/ui/components/textarea"
 import {
   Tooltip,
   TooltipContent,
@@ -179,8 +172,7 @@ export default function OAuthClientsPage() {
     if (!open && !busy) setEditing(undefined)
   }
 
-  const save = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const save = async () => {
     const body: OAuthClientInput = {
       name: draft.name.trim(),
       redirect_uris: uniqueLines(draft.redirectUris),
@@ -257,18 +249,10 @@ export default function OAuthClientsPage() {
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <PageHeader
         title={t("oauthClients")}
         description={t("oauthDescription")}
-        action={
-          allowed("oauth_client_create") && (
-            <Button onClick={openCreate}>
-              <Plus />
-              {t("createClient")}
-            </Button>
-          )
-        }
       />
       {error && <Alert>{error}</Alert>}
       {loadError && !loading && (
@@ -287,126 +271,96 @@ export default function OAuthClientsPage() {
       )}
       {notice && <SuccessNotice>{notice}</SuccessNotice>}
 
-      <section className="overflow-hidden rounded-md border bg-card">
-        <header className="flex min-h-14 items-center justify-between gap-4 border-b bg-muted/20 px-4">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <AppWindow className="size-4 text-muted-foreground" />
-            {t("registeredApplications")}
-          </div>
-          <span className="text-xs text-muted-foreground">
-            {loading
-              ? t("loading")
-              : !loadError && t("clientCount", { count: clients.length })}
-          </span>
-        </header>
-        <div className="hidden md:block">
-          <Table containerClassName="min-h-56">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="min-w-56">{t("client")}</TableHead>
-                <TableHead className="min-w-40">{t("type")}</TableHead>
-                <TableHead className="min-w-64">{t("grantTypes")}</TableHead>
-                <TableHead className="min-w-52">{t("scopes")}</TableHead>
-                <TableHead className="w-24">{t("status")}</TableHead>
-                <TableHead className="w-36 text-right">
-                  {t("actions")}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(loading || loadError ? [] : clients).map((client) => (
-                <TableRow key={client.id}>
-                  <TableCell>
-                    <strong className="block text-sm">{client.name}</strong>
-                    <code className="mt-1 block max-w-72 truncate font-mono text-xs text-muted-foreground">
-                      {client.id}
-                    </code>
-                  </TableCell>
-                  <TableCell>
-                    {client.public_client
-                      ? t("publicClient")
-                      : t("confidentialClient")}
-                  </TableCell>
-                  <TableCell>
-                    <GrantBadges client={client} />
-                  </TableCell>
-                  <TableCell>
-                    <span className="block max-w-72 truncate text-xs text-muted-foreground">
-                      {client.scopes.join(" ")}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={client.status} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <ClientActions
-                      client={client}
-                      busy={busy}
-                      onEdit={() => openEdit(client)}
-                      onRotate={() =>
-                        setConfirmation({ action: "rotate", client })
-                      }
-                      onDelete={() =>
-                        setConfirmation({ action: "delete", client })
-                      }
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!loading && !loadError && clients.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-52 text-center">
-                    <EmptyClients />
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-        <div className="md:hidden">
-          {(loading || loadError ? [] : clients).map((client) => (
-            <article
-              key={client.id}
-              className="space-y-3 border-b p-4 last:border-0"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <strong className="block text-sm break-words">
-                    {client.name}
-                  </strong>
-                  <code className="mt-1 block truncate font-mono text-xs text-muted-foreground">
-                    {client.id}
-                  </code>
-                </div>
-                <StatusBadge status={client.status} />
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Badge variant="secondary">
-                  {client.public_client
-                    ? t("publicClient")
-                    : t("confidentialClient")}
-                </Badge>
+      <AutoTable
+        fill
+        toolbar={
+          <>
+            {allowed("oauth_client_create") && (
+              <Button onClick={openCreate}>
+                <Plus />
+                {t("createClient")}
+              </Button>
+            )}
+          </>
+        }
+        onRefresh={refresh}
+        searchable
+
+        emptyContent={loadError ? null : <EmptyClients />}
+        loading={loading}
+        data={loading || loadError ? [] : clients}
+        rowKey="id"
+        columns={[
+          {
+            field: "name",
+            name: <>{t("client")}</>,
+            render: (_, client) => (
+              <>
+                <strong className="block text-sm">{client.name}</strong>
+                <code className="mt-1 block max-w-72 truncate font-mono text-xs text-muted-foreground">
+                  {client.id}
+                </code>
+              </>
+            ),
+          },
+          {
+            field: "public_client",
+            name: <>{t("type")}</>,
+            render: (_, client) => (
+              <>
+                {client.public_client
+                  ? t("publicClient")
+                  : t("confidentialClient")}
+              </>
+            ),
+          },
+          {
+            field: "grant_types",
+            name: <>{t("grantTypes")}</>,
+            render: (_, client) => (
+              <>
                 <GrantBadges client={client} />
-              </div>
-              <p className="font-mono text-xs break-words text-muted-foreground">
-                {client.scopes.join(" ")}
-              </p>
-              <ClientActions
-                client={client}
-                busy={busy}
-                onEdit={() => openEdit(client)}
-                onRotate={() => setConfirmation({ action: "rotate", client })}
-                onDelete={() => setConfirmation({ action: "delete", client })}
-              />
-            </article>
-          ))}
-          {!loading && !loadError && clients.length === 0 && (
-            <div className="grid h-52 place-items-center text-center">
-              <EmptyClients />
-            </div>
-          )}
-        </div>
-      </section>
+              </>
+            ),
+          },
+          {
+            field: "scopes",
+            name: <>{t("scopes")}</>,
+            render: (_, client) => (
+              <>
+                <span className="block max-w-72 truncate text-xs text-muted-foreground">
+                  {client.scopes.join(" ")}
+                </span>
+              </>
+            ),
+          },
+          {
+            field: "status",
+            name: <>{t("status")}</>,
+            render: (_, client) => (
+              <>
+                <StatusBadge status={client.status} />
+              </>
+            ),
+          },
+          {
+            field: "actions",
+            type: "actions",
+            name: <>{t("actions")}</>,
+            render: (_, client) => (
+              <>
+                <ClientActions
+                  client={client}
+                  busy={busy}
+                  onEdit={() => openEdit(client)}
+                  onRotate={() => setConfirmation({ action: "rotate", client })}
+                  onDelete={() => setConfirmation({ action: "delete", client })}
+                />
+              </>
+            ),
+          },
+        ]}
+      />
 
       <ClientEditor
         open={editing !== undefined}
@@ -424,7 +378,7 @@ export default function OAuthClientsPage() {
         onConfirm={() => void confirm()}
       />
       <SecretDialog value={secret} onClose={() => setSecret(null)} />
-    </>
+    </div>
   )
 }
 
@@ -558,27 +512,9 @@ function ClientEditor({
   busy: boolean
   onDraft: (value: ClientDraft) => void
   onOpenChange: (open: boolean) => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: () => void
 }) {
   const t = useTranslations("iam")
-
-  const update = <K extends keyof ClientDraft>(key: K, value: ClientDraft[K]) =>
-    onDraft({ ...draft, [key]: value })
-  const toggleGrant = (grant: OAuthGrantType, checked: boolean) =>
-    update(
-      "grantTypes",
-      checked
-        ? [...draft.grantTypes, grant]
-        : draft.grantTypes.filter((value) => value !== grant)
-    )
-  const setPublic = (checked: boolean) =>
-    onDraft({
-      ...draft,
-      publicClient: checked,
-      grantTypes: checked
-        ? draft.grantTypes.filter((grant) => grant !== "client_credentials")
-        : draft.grantTypes,
-    })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -589,97 +525,89 @@ function ClientEditor({
           </DialogTitle>
           <DialogDescription>{t("oauthFormDescription")}</DialogDescription>
         </DialogHeader>
-        <form id="oauth-client-form" className="grid gap-5" onSubmit={onSubmit}>
-          <div className="grid gap-2">
-            <Label htmlFor="oauth-client-name">{t("applicationName")}</Label>
-            <Input
-              id="oauth-client-name"
-              value={draft.name}
-              onChange={(event) => update("name", event.target.value)}
-              required
-              minLength={1}
-              maxLength={128}
-              autoFocus
-            />
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <BinarySetting
-              id="oauth-public-client"
-              label={t("publicClient")}
-              description={t("publicPkce")}
-              checked={draft.publicClient}
-              onCheckedChange={setPublic}
-            />
-            {client && (
-              <BinarySetting
-                id="oauth-client-status"
-                label={t("enableClient")}
-                description={t("disabledClientHint")}
-                checked={draft.status === "active"}
-                onCheckedChange={(checked) =>
-                  update("status", checked ? "active" : "disabled")
-                }
-              />
-            )}
-          </div>
-          <fieldset className="grid gap-2">
-            <legend className="mb-1 text-sm font-medium">
-              {t("grantTypes")}
-            </legend>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {grants.map((grant) => {
-                const disabled =
-                  draft.publicClient && grant.value === "client_credentials"
-                return (
-                  <label
-                    key={grant.value}
-                    className="flex min-h-12 items-center gap-2 rounded-md border px-3 text-sm"
-                  >
-                    <Checkbox
-                      checked={draft.grantTypes.includes(grant.value)}
-                      disabled={disabled}
-                      onCheckedChange={(value) =>
-                        toggleGrant(grant.value, value === true)
-                      }
-                    />
-                    <span className={disabled ? "text-muted-foreground" : ""}>
-                      {t(grant.labelKey)}
-                    </span>
-                  </label>
-                )
-              })}
-            </div>
-          </fieldset>
-          <div className="grid gap-2">
-            <Label htmlFor="oauth-redirect-uris">{t("redirectUris")}</Label>
-            <Textarea
-              id="oauth-redirect-uris"
-              value={draft.redirectUris}
-              onChange={(event) => update("redirectUris", event.target.value)}
-              placeholder="https://app.example.test/oauth/callback"
-              rows={3}
-              maxLength={8192}
-              spellCheck={false}
-              className="font-mono text-xs"
-            />
-            <p className="text-xs text-muted-foreground">
-              {t("redirectUriHint")}
-            </p>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="oauth-scopes">{t("scopes")}</Label>
-            <Input
-              id="oauth-scopes"
-              value={draft.scopes}
-              onChange={(event) => update("scopes", event.target.value)}
-              placeholder="openid profile email"
-              required
-              maxLength={2048}
-              className="font-mono text-xs"
-            />
-            <p className="text-xs text-muted-foreground">{t("scopeHint")}</p>
-          </div>
-        </form>
+        <AutoForm
+          key={client?.id ?? "new"}
+          id="oauth-client-form"
+          mode="edit"
+          initialData={{ ...draft }}
+          fields={{
+            name: {
+              name: t("applicationName"),
+              type: "text",
+              required: true,
+              disabled: false,
+              col: 2,
+              config: {
+                id: "oauth-client-name",
+                minLength: 1,
+                maxLength: 128,
+                autoFocus: true,
+              },
+            },
+            publicClient: {
+              name: t("publicClient"),
+              type: "switch",
+              col: 2,
+              config: { id: "oauth-public-client", label: t("publicPkce") },
+            },
+            status: {
+              name: t("enableClient"),
+              type: "custom",
+              show: Boolean(client),
+              col: 2,
+              component: ClientStatusField,
+            },
+            grantTypes: {
+              name: t("grantTypes"),
+              type: "custom",
+              col: 2,
+              component: GrantTypesField,
+            },
+            redirectUris: {
+              name: t("redirectUris"),
+              type: "textarea",
+              required: false,
+              disabled: false,
+              col: 2,
+              config: {
+                id: "oauth-redirect-uris",
+                placeholder: "https://app.example.test/oauth/callback",
+                rows: 3,
+                maxLength: 8192,
+                suffix: t("redirectUriHint"),
+              },
+            },
+            scopes: {
+              name: t("scopes"),
+              type: "text",
+              required: true,
+              disabled: false,
+              col: 2,
+              config: {
+                id: "oauth-scopes",
+                maxLength: 2048,
+                placeholder: "openid profile email",
+                suffix: t("scopeHint"),
+              },
+            },
+          }}
+          onChange={(values) => {
+            const next = { ...values } as unknown as ClientDraft
+            if (
+              next.publicClient &&
+              next.grantTypes.includes("client_credentials")
+            )
+              next.grantTypes = next.grantTypes.filter(
+                (grant) => grant !== "client_credentials"
+              )
+            if (JSON.stringify(next) !== JSON.stringify(draft)) onDraft(next)
+          }}
+          onSubmit={() => onSubmit()}
+        >
+          <p className="text-xs text-muted-foreground md:col-span-2">
+            {t("redirectUriHint")}
+          </p>
+        </AutoForm>
         <DialogFooter>
           <Button
             type="button"
@@ -858,5 +786,69 @@ function SuccessNotice({ children }: { children: string }) {
     >
       {children}
     </div>
+  )
+}
+
+function GrantTypesField({ value, onChange, values }: FieldRendererProps) {
+  const t = useTranslations("iam")
+  const selected = value as OAuthGrantType[]
+  const publicClient = Boolean(values?.publicClient)
+  useEffect(() => {
+    if (publicClient && selected.includes("client_credentials"))
+      onChange(selected.filter((grant) => grant !== "client_credentials"))
+  }, [publicClient, selected, onChange])
+  return (
+    <fieldset className="grid gap-2">
+      <legend className="mb-1 text-sm font-medium">{t("grantTypes")}</legend>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {grants.map((grant) => {
+          const disabled =
+            Boolean(values?.publicClient) &&
+            grant.value === "client_credentials"
+          return (
+            <label
+              key={grant.value}
+              className="flex min-h-12 items-center gap-2 rounded-md border px-3 text-sm"
+            >
+              <Checkbox
+                checked={
+                  !disabled &&
+                  ((value as OAuthGrantType[]) ?? []).includes(grant.value)
+                }
+                disabled={disabled}
+                onCheckedChange={(value) =>
+                  onChange(
+                    value === true
+                      ? [
+                          ...((values?.grantTypes as OAuthGrantType[]) ?? []),
+                          grant.value,
+                        ]
+                      : ((values?.grantTypes as OAuthGrantType[]) ?? []).filter(
+                          (item) => item !== grant.value
+                        )
+                  )
+                }
+              />
+              <span className={disabled ? "text-muted-foreground" : ""}>
+                {t(grant.labelKey)}
+              </span>
+            </label>
+          )
+        })}
+      </div>
+    </fieldset>
+  )
+}
+
+function ClientStatusField({ value, onChange }: FieldRendererProps) {
+  const t = useTranslations("iam")
+  return (
+    <BinarySetting
+      id="oauth-client-status"
+      label={t("enableClient")}
+      description={t("disabledClientHint")}
+      checked={value === "active"}
+      onCheckedChange={(checked) => onChange(checked ? "active" : "disabled")}
+    />
   )
 }

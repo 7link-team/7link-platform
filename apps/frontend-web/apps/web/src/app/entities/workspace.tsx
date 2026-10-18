@@ -1,14 +1,7 @@
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { useEffect, useState } from "react"
 import { Link, Navigate, useNavigate, useParams } from "react-router"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { Tabs, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
@@ -61,6 +54,8 @@ function EntityDetails({
     members: Member[]
   } | null>(null)
   const [error, setError] = useState("")
+  const [reload, setReload] = useState(0)
+  const [readLoading, setReadLoading] = useState(true)
   useEffect(() => {
     let active = true
     void Promise.all([
@@ -79,24 +74,29 @@ function EntityDetails({
       view === "roles" && allowed("user_view")
         ? iamApi.members()
         : Promise.resolve([]),
-    ]).then(
-      ([entity, bindings, relationships, roles, members]) => {
-        if (active) setData({ entity, bindings, relationships, roles, members })
-      },
-      (cause: Error) => {
-        if (active) setError(cause.message)
-      }
-    )
+    ])
+      .then(
+        ([entity, bindings, relationships, roles, members]) => {
+          if (active)
+            setData({ entity, bindings, relationships, roles, members })
+        },
+        (cause: Error) => {
+          if (active) setError(cause.message)
+        }
+      )
+      .finally(() => {
+        if (active) setReadLoading(false)
+      })
     return () => {
       active = false
     }
-  }, [entityID, view, allowed])
+  }, [entityID, view, allowed, reload])
   if (error) return <Alert>{error}</Alert>
   if (!data) return <p role="status">{t("loading")}</p>
   const accessControl = view === "roles" || view === "resources"
   const title = accessControl ? "entityAccessControl" : "entityOverview"
   return (
-    <>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
       <PageHeader
         title={t(title)}
         description={data.entity.name}
@@ -137,7 +137,7 @@ function EntityDetails({
         </p>
       )}
       {view === "overview" && (
-        <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-4 text-sm [&>dd]:border-b [&>dd]:py-4 [&>dd]:break-all [&>dt]:border-b [&>dt]:py-4 [&>dt]:text-muted-foreground">
+        <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-4 overflow-auto text-sm [&>dd]:border-b [&>dd]:py-4 [&>dd]:break-all [&>dt]:border-b [&>dt]:py-4 [&>dt]:text-muted-foreground">
           <dt>{t("entity")}</dt>
           <dd>{data.entity.name}</dd>
           <dt>{t("id")}</dt>
@@ -157,94 +157,164 @@ function EntityDetails({
         </dl>
       )}
       {view === "roles" && (
-        <div className="overflow-x-auto border-y">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("roleName")}</TableHead>
-                <TableHead>{t("principal")}</TableHead>
-                <TableHead>{t("effect")}</TableHead>
-                <TableHead>{t("expiresAt")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.bindings.map((binding) => (
-                <TableRow key={`${binding.role_id}:${binding.principal_id}`}>
-                  <TableCell>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-y">
+          <AutoTable
+            fill
+            loading={readLoading}
+            onRefresh={() => {
+              setReadLoading(true)
+              setReload((value) => value + 1)
+            }}
+            searchable={(binding) =>
+              [
+                binding.role_id,
+                binding.principal_id,
+                data.roles.find((role) => role.id === binding.role_id)?.name,
+                data.members.find(
+                  (member) => member.subject === binding.principal_id
+                )?.display_name,
+                binding.effect,
+              ].join(" ")
+            }
+            emptyContent={t("noEntityRoles")}
+
+            data={data.bindings}
+            rowKey={(binding) => `${binding.role_id}:${binding.principal_id}`}
+            columns={[
+              {
+                field: "roleName",
+                name: t("roleName"),
+                type: "custom",
+                render: (_value, binding) => (
+                  <div>
                     {data.roles.find((role) => role.id === binding.role_id)
                       ?.name ?? binding.role_id}
-                  </TableCell>
-                  <TableCell>
+                  </div>
+                ),
+              },
+              {
+                field: "principal",
+                name: t("principal"),
+                type: "custom",
+                render: (_value, binding) => (
+                  <div>
                     {data.members.find(
                       (member) => member.subject === binding.principal_id
                     )?.display_name || binding.principal_id}
-                  </TableCell>
-                  <TableCell>
-                    {t(binding.effect === "allow" ? "allow" : "deny")}
-                  </TableCell>
-                  <TableCell>
+                  </div>
+                ),
+              },
+              {
+                field: "effect",
+                name: t("effect"),
+                type: "custom",
+                render: (_value, binding) => (
+                  <div>{t(binding.effect === "allow" ? "allow" : "deny")}</div>
+                ),
+              },
+              {
+                field: "expiresAt",
+                name: t("expiresAt"),
+                type: "custom",
+                render: (_value, binding) => (
+                  <div>
                     {binding.expires_at
                       ? new Date(binding.expires_at).toLocaleString(locale)
                       : t("neverExpires")}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {data.bindings.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4}>{t("noEntityRoles")}</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                  </div>
+                ),
+              },
+            ]}
+          />
         </div>
       )}
       {view === "resources" && (
-        <div className="overflow-x-auto border-y">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("resourceType")}</TableHead>
-                <TableHead>{t("resourceId")}</TableHead>
-                <TableHead>{t("grantRelation")}</TableHead>
-                <TableHead>{t("grantRecipient")}</TableHead>
-                <TableHead>{t("type")}</TableHead>
-                <TableHead>{t("startTime")}</TableHead>
-                <TableHead>{t("endTime")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.relationships.map((relationship) => (
-                <TableRow key={JSON.stringify(relationship)}>
-                  <TableCell>{relationship.resource_type}</TableCell>
-                  <TableCell className="break-all">
-                    {relationship.resource_id}
-                  </TableCell>
-                  <TableCell>{t(relationship.relation)}</TableCell>
-                  <TableCell className="break-all">
-                    {relationship.subject_id}
-                  </TableCell>
-                  <TableCell>{t(relationship.subject_type)}</TableCell>
-                  <TableCell>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-y">
+          <AutoTable
+            fill
+            loading={readLoading}
+            onRefresh={() => {
+              setReadLoading(true)
+              setReload((value) => value + 1)
+            }}
+            searchable={(relationship) =>
+              [
+                relationship.resource_type,
+                relationship.resource_id,
+                relationship.subject_id,
+                relationship.relation,
+              ].join(" ")
+            }
+            emptyContent={t("noRelations")}
+
+            data={data.relationships}
+            rowKey={(relationship) => JSON.stringify(relationship)}
+            columns={[
+              {
+                field: "resource_type",
+                name: t("resourceType"),
+                type: "text",
+              },
+              {
+                field: "resourceId",
+                name: t("resourceId"),
+                type: "custom",
+                render: (_value, relationship) => (
+                  <div className="break-all">{relationship.resource_id}</div>
+                ),
+              },
+              {
+                field: "grantRelation",
+                name: t("grantRelation"),
+                type: "custom",
+                render: (_value, relationship) => (
+                  <div>{t(relationship.relation)}</div>
+                ),
+              },
+              {
+                field: "grantRecipient",
+                name: t("grantRecipient"),
+                type: "custom",
+                render: (_value, relationship) => (
+                  <div className="break-all">{relationship.subject_id}</div>
+                ),
+              },
+              {
+                field: "type",
+                name: t("type"),
+                type: "custom",
+                render: (_value, relationship) => (
+                  <div>{t(relationship.subject_type)}</div>
+                ),
+              },
+              {
+                field: "startTime",
+                name: t("startTime"),
+                type: "custom",
+                render: (_value, relationship) => (
+                  <div>
                     {relationship.starts_at
                       ? new Date(relationship.starts_at).toLocaleString(locale)
                       : "—"}
-                  </TableCell>
-                  <TableCell>
+                  </div>
+                ),
+              },
+              {
+                field: "endTime",
+                name: t("endTime"),
+                type: "custom",
+                render: (_value, relationship) => (
+                  <div>
                     {relationship.ends_at
                       ? new Date(relationship.ends_at).toLocaleString(locale)
                       : t("neverExpires")}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {data.relationships.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7}>{t("noRelations")}</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                  </div>
+                ),
+              },
+            ]}
+          />
         </div>
       )}
-    </>
+    </div>
   )
 }

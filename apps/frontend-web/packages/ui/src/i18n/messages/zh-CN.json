@@ -123,6 +123,15 @@
     "close": "关闭"
   },
   "table": {
+    "pagination": "分页",
+    "pageNumber": "第 {page} 页",
+    "rowNumber": "序号",
+    "search": "搜索当前列表",
+    "refresh": "刷新",
+    "export": "导出",
+    "exportPage": "导出当前页",
+    "import": "导入",
+    "actionError": "操作失败，请重试。",
     "loadError": "无法加载列表。",
     "retry": "重试",
     "empty": "无可用数据",
@@ -136,6 +145,11 @@
     "selectAll": "选择所有行",
     "selectRow": "选择行",
     "filter": {
+      "refresh": "刷新",
+      "autoRefresh": "自动刷新",
+      "autoOff": "关闭",
+      "autoEvery": "每 {s} 秒",
+      "secLeft": "{s} 秒",
       "selectPlaceholder": "选择",
       "inputPlaceholder": "输入值",
       "yes": "是的",

@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react"
+import type { ComponentType, ReactNode, Ref } from "react"
 import type { ZodType } from "zod"
 import type { OperationRequestContract } from "./contract"
 
@@ -44,6 +44,15 @@ export interface SelectOption {
 }
 
 export interface FieldComponentConfig {
+  id?: string
+  autoComplete?: string
+  autoFocus?: boolean
+  inputMode?:
+    "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search"
+  autoCapitalize?: string
+  minLength?: number
+  maxLength?: number
+  pattern?: string
   placeholder?: Evaluable<ReactNode>
   label?: Evaluable<ReactNode>
   prefix?: Evaluable<ReactNode>
@@ -54,8 +63,8 @@ export interface FieldComponentConfig {
   options?: SelectOption[] | Record<string, string>
   tabs?: Record<string, string> | SelectOption[]
   rows?: number
-  min?: number
-  max?: number
+  min?: number | string
+  max?: number | string
   step?: number
   fromDate?: Date
   toDate?: Date
@@ -202,6 +211,7 @@ export interface UseAutoFormReturn {
 }
 
 export interface AutoFormProps {
+  formRef?: Ref<UseAutoFormReturn>
   contract?: OperationRequestContract | null
   fields: FormConfig
   schema?: ZodType<Record<string, unknown>>

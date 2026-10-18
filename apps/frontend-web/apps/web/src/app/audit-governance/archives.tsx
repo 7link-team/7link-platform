@@ -1,9 +1,8 @@
+import { PaginationPages } from "@workspace/ui/components/pagination"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useEffect, useRef, useState } from "react"
 import {
   Archive,
-  ChevronLeft,
-  ChevronRight,
   Download,
   FileSearch,
   LoaderCircle,
@@ -18,14 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { Alert } from "../../components/alert"
 import type {
   AuditArchiveJob,
@@ -171,33 +163,6 @@ export function ArchiveJobs({
             {status.enabled ? t("enabled") : t("notEnabled")}
           </Badge>
         </div>
-        {allowed(scopedCode("audit_event_export")) && (
-          <Button
-            size="sm"
-            disabled={
-              !status.enabled ||
-              status.pending_events === 0 ||
-              pending > 0 ||
-              !!busy ||
-              loading
-            }
-            onClick={() => void requestArchive()}
-            title={
-              !status.enabled
-                ? t("archiveStorageDisabled")
-                : status.pending_events === 0
-                  ? t("noEligibleArchiveEvents")
-                  : undefined
-            }
-          >
-            {busy === "request" ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <Archive />
-            )}
-            {t("createArchiveJob")}
-          </Button>
-        )}
       </div>
       <dl className="mb-4 grid grid-cols-2 gap-4 border-y py-3 sm:grid-cols-4">
         <Metric label={t("archivedEvents")} value={status.archived_events} />
@@ -217,44 +182,99 @@ export function ArchiveJobs({
           {notice}
         </p>
       )}
-      {loading ? (
-        <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-          <LoaderCircle className="size-4 animate-spin" />
-          {t("loadingArchiveJobs")}
-        </p>
-      ) : jobs.length === 0 ? (
-        <p className="py-6 text-sm text-muted-foreground">
-          {!status.enabled
-            ? t("archiveStorageDisabled")
-            : status.eligible_events === 0
-              ? t("noEligibleArchiveEvents")
-              : t("noArchiveJobs")}
-        </p>
-      ) : (
-        <Table className="min-w-[880px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("jobCreatedAt")}</TableHead>
-              <TableHead>{t("eventSequence")}</TableHead>
-              <TableHead>{t("status")}</TableHead>
-              <TableHead>{t("attemptNextRetry")}</TableHead>
-              <TableHead>{t("retainUntil")}</TableHead>
-              <TableHead className="w-40 text-right">{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {jobs.map((job) => (
-              <TableRow key={job.id}>
-                <TableCell>
+      <div className="flex h-96 min-h-0 flex-col">
+        <AutoTable
+          fill
+          loading={loading}
+          toolbar={
+            <>
+              {allowed(scopedCode("audit_event_export")) && (
+                <Button
+                  size="sm"
+                  disabled={
+                    !status.enabled ||
+                    status.pending_events === 0 ||
+                    pending > 0 ||
+                    !!busy ||
+                    loading
+                  }
+                  onClick={() => void requestArchive()}
+                  title={
+                    !status.enabled
+                      ? t("archiveStorageDisabled")
+                      : status.pending_events === 0
+                        ? t("noEligibleArchiveEvents")
+                        : undefined
+                  }
+                >
+                  {busy === "request" ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : (
+                    <Archive />
+                  )}
+                  {t("createArchiveJob")}
+                </Button>
+              )}
+            </>
+          }
+          onRefresh={onChanged}
+          exportable={allowed(scopedCode("audit_event_export"))}
+          rowOffset={offset}
+          footer={
+            <div className="flex w-full flex-wrap items-center justify-between gap-3">
+              <span className="text-sm text-muted-foreground">
+                {Math.min(offset + pageSize, total)} / {total}
+              </span>
+              <PaginationPages
+                page={Math.floor(offset / pageSize) + 1}
+                totalPages={Math.max(1, Math.ceil(total / pageSize))}
+                disabled={loading || !!busy}
+                onPageChange={(page) => {
+                  setLoading(true)
+                  setOffset((page - 1) * pageSize)
+                }}
+              />
+            </div>
+          }
+          emptyContent={
+            !status.enabled
+              ? t("archiveStorageDisabled")
+              : status.eligible_events === 0
+                ? t("noEligibleArchiveEvents")
+                : t("noArchiveJobs")
+          }
+          data={jobs}
+          rowKey="id"
+          pagination={false}
+          columns={[
+            {
+              field: "created_at",
+              name: t("jobCreatedAt"),
+              render: (_, job) => (
+                <>
                   <div className="font-mono text-xs">{job.id}</div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {date(job.created_at, locale)}
                   </div>
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {job.after_sequence + 1} - {job.head_sequence}
-                </TableCell>
-                <TableCell>
+                </>
+              ),
+            },
+            {
+              field: "head_sequence",
+              name: t("eventSequence"),
+              render: (_, job) => (
+                <>
+                  <div className="tabular-nums">
+                    {job.after_sequence + 1} - {job.head_sequence}
+                  </div>
+                </>
+              ),
+            },
+            {
+              field: "state",
+              name: t("status"),
+              render: (_, job) => (
+                <>
                   <Badge
                     variant={
                       job.state === "failed"
@@ -273,21 +293,44 @@ export function ArchiveJobs({
                         : job.error_code}
                     </div>
                   )}
-                </TableCell>
-                <TableCell className="text-xs">
-                  <div>
-                    {job.attempts} {t("attemptsSuffix")}
+                </>
+              ),
+            },
+            {
+              field: "attempts",
+              name: t("attemptNextRetry"),
+              render: (_, job) => (
+                <>
+                  <div className="text-xs">
+                    <div>
+                      {job.attempts} {t("attemptsSuffix")}
+                    </div>
+                    <div className="mt-1 text-muted-foreground">
+                      {job.next_attempt > 0
+                        ? date(job.next_attempt, locale)
+                        : "-"}
+                    </div>
                   </div>
-                  <div className="mt-1 text-muted-foreground">
-                    {job.next_attempt > 0
-                      ? date(job.next_attempt, locale)
-                      : "-"}
+                </>
+              ),
+            },
+            {
+              field: "retain_until",
+              name: t("retainUntil"),
+              render: (_, job) => (
+                <>
+                  <div className="text-xs">
+                    {date(job.retain_until, locale)}
                   </div>
-                </TableCell>
-                <TableCell className="text-xs">
-                  {date(job.retain_until, locale)}
-                </TableCell>
-                <TableCell>
+                </>
+              ),
+            },
+            {
+              field: "actions",
+              type: "actions",
+              name: t("actions"),
+              render: (_, job) => (
+                <>
                   <div className="flex justify-end gap-1">
                     <Button
                       size="icon-sm"
@@ -363,50 +406,13 @@ export function ArchiveJobs({
                       </>
                     )}
                   </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-      <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-        <span className="text-muted-foreground">
-          {t("totalPrefix")}
-          {total} {t("jobsSuffix")}
-        </span>
-        <div className="flex items-center gap-2">
-          <Button
-            size="icon-sm"
-            variant="outline"
-            title={t("previousPage")}
-            aria-label={t("previousArchives")}
-            disabled={loading || offset === 0 || !!busy}
-            onClick={() => {
-              setLoading(true)
-              setOffset(Math.max(0, offset - pageSize))
-            }}
-          >
-            <ChevronLeft />
-          </Button>
-          <span className="min-w-16 text-center tabular-nums">
-            {Math.floor(offset / pageSize) + 1} /{" "}
-            {Math.max(1, Math.ceil(total / pageSize))}
-          </span>
-          <Button
-            size="icon-sm"
-            variant="outline"
-            title={t("nextPage")}
-            aria-label={t("nextArchives")}
-            disabled={loading || offset + pageSize >= total || !!busy}
-            onClick={() => {
-              setLoading(true)
-              setOffset(offset + pageSize)
-            }}
-          >
-            <ChevronRight />
-          </Button>
-        </div>
+                </>
+              ),
+            },
+          ]}
+        />
       </div>
+
       <Dialog
         open={!!selected}
         onOpenChange={(open) => {

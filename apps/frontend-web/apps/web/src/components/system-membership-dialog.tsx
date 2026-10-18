@@ -1,10 +1,8 @@
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import { Checkbox } from "@workspace/ui/components/checkbox"
-import { SimpleSelect } from "@workspace/ui/components/select"
 import {
   Dialog,
   DialogContent,
@@ -262,29 +260,41 @@ export function SystemMembershipDialog({
         </DialogHeader>
         {error && <Alert>{error}</Alert>}
         {!account && (
-          <div className="grid gap-2">
-            <Label htmlFor="system-member-search">
-              {t("searchPrincipals")}
-            </Label>
-            <Input
-              id="system-member-search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            <SimpleSelect
-              id="system-member-principal"
-              value={selected?.id ?? ""}
-              onValueChange={(id) => {
+          <AutoForm
+            mode="edit"
+            initialData={{ search, principal: selected?.id ?? "" }}
+            fields={{
+              search: {
+                name: t("searchPrincipals"),
+                type: "text",
+                col: 2,
+                config: { id: "system-member-search" },
+              },
+              principal: {
+                name: t("selectAccount"),
+                type: "select",
+                col: 2,
+                config: {
+                  id: "system-member-principal",
+                  placeholder: t("selectAccount"),
+                  options: candidates.map((item) => ({
+                    value: item.id,
+                    label: `${item.display_name || item.login_name || item.id} (${item.login_name || item.id})`,
+                  })),
+                },
+              },
+            }}
+            onChange={(values) => {
+              if (values.search !== search) setSearch(String(values.search))
+              if (values.principal !== (selected?.id ?? "")) {
                 setLoading(true)
-                setSelected(candidates.find((item) => item.id === id) ?? null)
-              }}
-              options={candidates.map((item) => ({
-                value: item.id,
-                label: `${item.display_name || item.login_name || item.id} (${item.login_name || item.id})`,
-              }))}
-              placeholder={t("selectAccount")}
-            />
-          </div>
+                setSelected(
+                  candidates.find((item) => item.id === values.principal) ??
+                    null
+                )
+              }
+            }}
+          />
         )}
         {loading ? (
           <p role="status">{t("loading")}</p>
@@ -296,42 +306,48 @@ export function SystemMembershipDialog({
                   {t("protectedSuperadminAuthority")}
                 </p>
               )}
-              <div className="grid gap-2">
-                <Label htmlFor="system-member-department">
-                  {t("department")}
-                </Label>
-                <SimpleSelect
-                  id="system-member-department"
-                  value={department || "__none__"}
-                  onValueChange={(id) =>
-                    setDepartment(id === "__none__" ? "" : id)
-                  }
-                  options={[
-                    { value: "__none__", label: t("unassignedDepartment") },
-                    ...departments.map((item) => ({
-                      value: item.id,
-                      label: item.name,
-                    })),
-                  ]}
-                  disabled={busy || !(member ? memberAllowed : createAllowed)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="system-member-status">{t("status")}</Label>
-                <SimpleSelect
-                  id="system-member-status"
-                  value={status}
-                  onValueChange={(value) =>
-                    setStatus(value as Member["status"])
-                  }
-                  options={{ active: t("active"), disabled: t("disable") }}
-                  disabled={
-                    busy ||
-                    member?.protected ||
-                    !(member ? memberAllowed : createAllowed)
-                  }
-                />
-              </div>
+              <AutoForm
+                key={selected.id}
+                mode="edit"
+                initialData={{ department, status }}
+                fields={{
+                  department: {
+                    name: t("department"),
+                    type: "select",
+                    col: 2,
+                    disabled: busy || !(member ? memberAllowed : createAllowed),
+                    config: {
+                      id: "system-member-department",
+                      options: [
+                        { value: "", label: t("unassignedDepartment") },
+                        ...departments.map((item) => ({
+                          value: item.id,
+                          label: item.name,
+                        })),
+                      ],
+                    },
+                  },
+                  status: {
+                    name: t("status"),
+                    type: "select",
+                    col: 2,
+                    disabled:
+                      busy ||
+                      member?.protected ||
+                      !(member ? memberAllowed : createAllowed),
+                    config: {
+                      id: "system-member-status",
+                      options: { active: t("active"), disabled: t("disable") },
+                    },
+                  },
+                }}
+                onChange={(values) => {
+                  if (values.department !== department)
+                    setDepartment(String(values.department))
+                  if (values.status !== status)
+                    setStatus(values.status as Member["status"])
+                }}
+              />
               {member && (
                 <section className="grid gap-2">
                   <h3 className="text-sm font-semibold">

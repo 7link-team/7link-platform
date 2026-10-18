@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { PaginationPages } from "@workspace/ui/components/pagination"
+import {
+  AutoForm,
+  type UseAutoFormReturn,
+} from "@workspace/ui/components/auto-form"
+import { AutoTable } from "@workspace/ui/components/auto-table"
+import { useCallback, useEffect, useState, useRef } from "react"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
-import { Checkbox } from "@workspace/ui/components/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -35,11 +38,14 @@ export default function PersonalTokensPage() {
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
   const [reload, setReload] = useState(0)
+  const [readLoading, setReadLoading] = useState(true)
   const [error, setError] = useState("")
   const [operationError, setOperationError] = useState("")
   const [open, setOpen] = useState(false)
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [tenant, setTenant] = useState("")
+  const tenantSelection = useRef("")
+  const tokenForm = useRef<UseAutoFormReturn>(null)
   const [permissions, setPermissions] = useState<Permission[] | null>(null)
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([])
   const [catalogError, setCatalogError] = useState("")
@@ -66,21 +72,26 @@ export default function PersonalTokensPage() {
   })
   useEffect(() => {
     let active = true
-    void iamApi.personalTokens(offset).then(
-      (result) => {
-        if (active) {
-          setItems(result.items)
-          setTotal(result.total)
-          setError("")
+    void iamApi
+      .personalTokens(offset)
+      .then(
+        (result) => {
+          if (active) {
+            setItems(result.items)
+            setTotal(result.total)
+            setError("")
+          }
+        },
+        (cause: Error) => {
+          if (active) {
+            setItems(null)
+            setError(cause.message)
+          }
         }
-      },
-      (cause: Error) => {
-        if (active) {
-          setItems(null)
-          setError(cause.message)
-        }
-      }
-    )
+      )
+      .finally(() => {
+        if (active) setReadLoading(false)
+      })
     return () => {
       active = false
     }
@@ -142,17 +153,33 @@ export default function PersonalTokensPage() {
     },
     [prepared]
   )
-  const prepare = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
+  const updatePreparation = useCallback((values: Record<string, unknown>) => {
+    const nextTenant = String(values.tenant_id ?? "")
+    if (nextTenant !== tenantSelection.current) {
+      tenantSelection.current = nextTenant
+      setTenant(nextTenant)
+      setSelectedPermissions([])
+      setPermissions(null)
+      setCatalogError("")
+      tokenForm.current?.setValue("permissions", [])
+      return
+    }
+    setSelectedPermissions(
+      Array.isArray(values.permissions) ? (values.permissions as string[]) : []
+    )
+  }, [])
+
+  const prepare = async (values: Record<string, unknown>) => {
     setBusy(true)
     setOperationError("")
     try {
       const result = await iamApi.preparePersonalToken({
-        name: String(form.get("name")),
-        tenant_id: tenant,
-        permissions: selectedPermissions,
-        expires_at: new Date(String(form.get("expires_at"))).toISOString(),
+        name: String(values.name),
+        tenant_id: String(values.tenant_id),
+        permissions: Array.isArray(values.permissions)
+          ? (values.permissions as string[])
+          : [],
+        expires_at: new Date(String(values.expires_at)).toISOString(),
       })
       sessionStorage.setItem(
         pendingKey,
@@ -182,23 +209,10 @@ export default function PersonalTokensPage() {
     }
   }
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <PageHeader
         title={t("personalTokens")}
         description={t("personalTokensDescription")}
-        action={
-          <Button
-            onClick={() => {
-              setOperationError("")
-              setTenant("")
-              setPermissions(null)
-              setSelectedPermissions([])
-              setOpen(true)
-            }}
-          >
-            {t("createPersonalToken")}
-          </Button>
-        }
       />
       {error && (
         <Alert>
@@ -211,69 +225,102 @@ export default function PersonalTokensPage() {
       {operationError && !open && !revoking && !secret && (
         <Alert>{operationError}</Alert>
       )}
-      {!items ? (
-        !error && <p role="status">{t("loading")}</p>
-      ) : items.length === 0 ? (
-        <p>{t("noPersonalTokens")}</p>
-      ) : (
-        <ul className="space-y-3">
-          {items.map((token) => (
-            <li key={token.id} className="rounded-md border p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="font-medium break-all">{token.name}</h2>
-                <Button
-                  variant="outline"
-                  disabled={Boolean(token.revoked_at)}
-                  onClick={() => {
-                    setOperationError("")
-                    setRevoking(token)
-                  }}
-                >
-                  {token.revoked_at ? t("revoked") : t("revoke")}
-                </Button>
-              </div>
-              <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm [&>dd]:break-all">
-                <dt>{t("tenant")}</dt>
-                <dd>{token.tenant_id}</dd>
-                <dt>{t("permissions")}</dt>
-                <dd>{token.permissions.join(", ")}</dd>
-                <dt>{t("createdAt")}</dt>
-                <dd>{new Date(token.created_at).toLocaleString(locale)}</dd>
-                <dt>{t("expiresAt")}</dt>
-                <dd>{new Date(token.expires_at).toLocaleString(locale)}</dd>
-              </dl>
-            </li>
-          ))}
-        </ul>
-      )}
-      {items && (
-        <div className="mt-4 flex items-center justify-between gap-3">
+      <AutoTable
+        fill
+        toolbar={
           <Button
-            variant="outline"
-            disabled={offset === 0}
             onClick={() => {
-              setItems(null)
-              setOffset(Math.max(0, offset - 20))
+              setOperationError("")
+              tenantSelection.current = ""
+              setTenant("")
+              setPermissions(null)
+              setSelectedPermissions([])
+              setOpen(true)
             }}
           >
-            {t("previous")}
+            {t("createPersonalToken")}
           </Button>
-          <span>
-            {offset + 1 > total ? 0 : offset + 1}–{Math.min(offset + 20, total)}{" "}
-            / {total}
-          </span>
-          <Button
-            variant="outline"
-            disabled={offset + 20 >= total}
-            onClick={() => {
-              setItems(null)
-              setOffset(offset + 20)
-            }}
-          >
-            {t("next")}
-          </Button>
-        </div>
-      )}
+        }
+        data={items ?? []}
+        loading={readLoading || (!items && !error)}
+        emptyContent={t("noPersonalTokens")}
+        rowKey="id"
+        pagination={false}
+        rowOffset={offset}
+        onRefresh={() => {
+          setReadLoading(true)
+          setReload((value) => value + 1)
+        }}
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <span className="text-sm text-muted-foreground">
+              {Math.min(offset + 20, total)} / {total}
+            </span>
+            <PaginationPages
+              page={Math.floor(offset / 20) + 1}
+              totalPages={Math.max(1, Math.ceil(total / 20))}
+              disabled={!items || !!error}
+              onPageChange={(page) => {
+                setItems(null)
+                setOffset((page - 1) * 20)
+              }}
+            />
+          </div>
+        }
+        columns={[
+          {
+            field: "name",
+            name: t("name"),
+            render: (_, token) => (
+              <h2 className="font-medium break-all">{token.name}</h2>
+            ),
+          },
+          {
+            field: "tenant_id",
+            name: t("tenant"),
+            render: (_, token) => (
+              <span className="break-all">{token.tenant_id}</span>
+            ),
+          },
+          {
+            field: "permissions",
+            name: t("permissions"),
+            render: (_, token) => (
+              <span className="break-all">{token.permissions.join(", ")}</span>
+            ),
+          },
+          {
+            field: "created_at",
+            name: t("createdAt"),
+            render: (_, token) =>
+              new Date(token.created_at).toLocaleString(locale),
+          },
+          {
+            field: "expires_at",
+            name: t("expiresAt"),
+            render: (_, token) =>
+              new Date(token.expires_at).toLocaleString(locale),
+          },
+          {
+            field: "actions",
+            type: "actions",
+            name: t("actions"),
+            render: (_, token) => (
+              <Button
+                variant="outline"
+                disabled={Boolean(token.revoked_at)}
+                onClick={() => {
+                  setOperationError("")
+                  setRevoking(token)
+                }}
+              >
+                {token.revoked_at ? t("revoked") : t("revoke")}
+              </Button>
+            ),
+          },
+        ]}
+      />
+
       <Dialog
         open={open}
         onOpenChange={(next) => {
@@ -296,63 +343,54 @@ export default function PersonalTokensPage() {
               </Button>
             </Alert>
           )}
-          <form onSubmit={prepare} className="grid gap-3">
-            <Label htmlFor="token-name">{t("name")}</Label>
-            <Input id="token-name" name="name" required maxLength={128} />
-            <Label htmlFor="token-tenant">{t("tenant")}</Label>
-            <select
-              id="token-tenant"
-              required
-              value={tenant}
-              className="min-h-11 rounded-md border bg-background px-3"
-              onChange={(event) => {
-                setTenant(event.target.value)
-                setSelectedPermissions([])
-                setPermissions(null)
-                setCatalogError("")
-              }}
-            >
-              <option value="">{t("selectTenant")}</option>
-              {tenants.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-            <Label htmlFor="token-expiry">{t("expiresAt")}</Label>
-            <Input
-              id="token-expiry"
-              name="expires_at"
-              type="datetime-local"
-              required
-            />
-            <fieldset className="grid gap-2">
-              <legend className="mb-2 text-sm font-medium">
-                {t("permissions")}
-              </legend>
-              {tenant && !permissions && !catalogError && (
-                <p role="status">{t("loading")}</p>
-              )}
-              {permissions?.length === 0 && <p>{t("noTokenPermissions")}</p>}
-              {permissions?.map((permission) => (
-                <label
-                  key={permission.code}
-                  className="flex min-h-11 items-center gap-3 break-all"
-                >
-                  <Checkbox
-                    checked={selectedPermissions.includes(permission.code)}
-                    onCheckedChange={(checked) =>
-                      setSelectedPermissions((previous) =>
-                        checked
-                          ? [...previous, permission.code]
-                          : previous.filter((code) => code !== permission.code)
-                      )
-                    }
-                  />
-                  {permission.code}
-                </label>
-              ))}
-            </fieldset>
+          <AutoForm
+            formRef={tokenForm}
+            onSubmit={prepare}
+            onChange={updatePreparation}
+            fields={{
+              name: {
+                name: t("name"),
+                type: "text",
+                required: true,
+                config: { id: "token-name", maxLength: 128 },
+              },
+              tenant_id: {
+                name: t("tenant"),
+                type: "select",
+                required: true,
+                value: "",
+                config: {
+                  id: "token-tenant",
+                  placeholder: t("selectTenant"),
+                  options: tenants.map((item) => ({
+                    value: item.id,
+                    label: item.name,
+                  })),
+                },
+              },
+              expires_at: {
+                name: t("expiresAt"),
+                type: "text",
+                required: true,
+                config: { id: "token-expiry", type: "datetime-local" },
+              },
+              permissions: {
+                name: t("permissions"),
+                type: "checkbox-group",
+                value: [],
+                config: {
+                  options: (permissions ?? []).map((permission) => ({
+                    value: permission.code,
+                    label: permission.code,
+                  })),
+                },
+              },
+            }}
+          >
+            {tenant && !permissions && !catalogError && (
+              <p role="status">{t("loading")}</p>
+            )}
+            {permissions?.length === 0 && <p>{t("noTokenPermissions")}</p>}
             <DialogFooter>
               <Button
                 type="button"
@@ -373,7 +411,7 @@ export default function PersonalTokensPage() {
                 {t("continue")}
               </Button>
             </DialogFooter>
-          </form>
+          </AutoForm>
         </DialogContent>
       </Dialog>
       {prepared && (
@@ -447,6 +485,6 @@ export default function PersonalTokensPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }

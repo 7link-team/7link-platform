@@ -25,6 +25,7 @@ import { getTenant } from "../../lib/iam-api"
 import { NavigationGroup } from "../../components/navigation-group"
 import { personalNavigation } from "../../lib/navigation"
 import { getAccountView } from "../../lib/account-view"
+import { useWorkspaceLayout } from "../../lib/page-layout"
 
 export function AccountNavigation({ onNavigate }: { onNavigate?: () => void }) {
   const t = useTranslations("iam")
@@ -65,14 +66,18 @@ export function AccountNavigation({ onNavigate }: { onNavigate?: () => void }) {
 export function AccountContent({
   pathname,
   children,
+  workspace = false,
 }: {
   pathname: string
   children: ReactNode
+  workspace?: boolean
 }) {
   const className =
     pathname.replace(/\/+$/, "") === "/user/files"
       ? "h-full w-full max-w-none"
-      : "mx-auto max-w-5xl p-4 sm:p-6"
+      : workspace
+        ? "mx-auto flex h-full min-h-0 w-full flex-col p-4 sm:p-6"
+        : "mx-auto max-w-5xl p-4 sm:p-6"
   return <div className={className}>{children}</div>
 }
 
@@ -81,6 +86,7 @@ export default function AccountLayout() {
 
   const { session, status } = useAuth()
   const location = useLocation()
+  const workspaceLayout = useWorkspaceLayout()
   const [open, setOpen] = useState(false)
   if (status === "loading" || status === "error") return <SessionVerification />
   if (!session)
@@ -123,8 +129,13 @@ export default function AccountLayout() {
         <aside className="hidden w-64 shrink-0 overflow-y-auto border-e bg-sidebar md:block">
           <AccountNavigation />
         </aside>
-        <main className="min-w-0 flex-1 overflow-auto">
-          <AccountContent pathname={location.pathname}>
+        <main
+          className={`min-h-0 min-w-0 flex-1 overflow-auto ${workspaceLayout ? "lg:overflow-hidden" : ""}`}
+        >
+          <AccountContent
+            pathname={location.pathname}
+            workspace={workspaceLayout}
+          >
             <fieldset
               className="contents"
               disabled={

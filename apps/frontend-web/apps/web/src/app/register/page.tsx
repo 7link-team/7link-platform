@@ -1,5 +1,6 @@
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useState } from "react"
 import {
   ArrowLeft,
   Eye,
@@ -76,14 +77,12 @@ export default function RegisterPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [capabilities, t])
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submit = async (values: Record<string, unknown>) => {
     if (!delegated && !captcha) return
     setBusy(true)
     setError("")
-    const data = new FormData(event.currentTarget)
-    const password = String(data.get("password") ?? "")
-    if (password !== String(data.get("confirm_password") ?? "")) {
+    const password = String(values.password ?? "")
+    if (password !== String(values.confirm_password ?? "")) {
       setError(t("passwordMismatch"))
       setBusy(false)
       return
@@ -91,9 +90,9 @@ export default function RegisterPage() {
     try {
       await iamApi.register({
         ...(entry ? { entry } : {}),
-        email: String(data.get("email") ?? "").trim(),
+        email: String(values.email ?? "").trim(),
         password,
-        display_name: String(data.get("display_name") ?? "").trim(),
+        display_name: String(values.display_name ?? "").trim(),
         ...(delegated
           ? { captcha_type: "turnstile", captcha_id: "widget" }
           : { captcha_type: captcha!.type, captcha_id: captcha!.captcha_id }),
@@ -150,41 +149,72 @@ export default function RegisterPage() {
               </div>
             </div>
           ) : (
-            <form className="mt-5 space-y-5" onSubmit={submit}>
-              <div className="space-y-2">
-                <Label htmlFor="registration-email">{t("email")}</Label>
-                <Input
-                  id="registration-email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  autoFocus
-                  required
-                  maxLength={320}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="registration-name">{t("displayName")}</Label>
-                <Input
-                  id="registration-name"
-                  name="display_name"
-                  autoComplete="name"
-                  maxLength={128}
-                />
-              </div>
-              <PasswordField
-                id="registration-password"
-                name="password"
-                label={t("password")}
-                visible={visible}
-                onVisible={() => setVisible((value) => !value)}
-              />
-              <PasswordField
-                id="registration-confirm"
-                name="confirm_password"
-                label={t("confirmPassword")}
-                visible={visible}
-              />
+            <AutoForm
+              className="mt-5 md:grid-cols-1 [&>*]:col-span-1"
+              onSubmit={submit}
+              fields={{
+                email: {
+                  name: t("email"),
+                  type: "email",
+                  required: true,
+                  config: {
+                    id: "registration-email",
+                    autoComplete: "email",
+                    autoFocus: true,
+                    maxLength: 320,
+                  },
+                },
+                display_name: {
+                  name: t("displayName"),
+                  type: "text",
+                  config: {
+                    id: "registration-name",
+                    autoComplete: "name",
+                    maxLength: 128,
+                  },
+                },
+                password: {
+                  name: t("password"),
+                  type: "password",
+                  required: true,
+                  config: {
+                    id: "registration-password",
+                    type: visible ? "text" : "password",
+                    autoComplete: "new-password",
+                    minLength: 12,
+                    maxLength: 1024,
+                    suffix: (
+                      <button
+                        type="button"
+                        className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        onClick={() => setVisible((v) => !v)}
+                        aria-label={
+                          visible ? t("hidePassword") : t("showPassword")
+                        }
+                      >
+                        {visible ? (
+                          <EyeOff className="size-4" />
+                        ) : (
+                          <Eye className="size-4" />
+                        )}
+                      </button>
+                    ),
+                  },
+                },
+                confirm_password: {
+                  name: t("confirmPassword"),
+                  type: "password",
+                  required: true,
+                  config: {
+                    id: "registration-confirm",
+                    type: visible ? "text" : "password",
+                    autoComplete: "new-password",
+                    minLength: 12,
+                    maxLength: 1024,
+                  },
+                },
+              }}
+            >
               {delegated ? (
                 <div className="space-y-2">
                   <Label>{t("captcha")}</Label>
@@ -244,7 +274,7 @@ export default function RegisterPage() {
               >
                 {busy ? t("submitting") : t("createAccount")}
               </Button>
-            </form>
+            </AutoForm>
           )}
 
           <Button variant="ghost" className="mt-4 w-full" asChild>
@@ -258,54 +288,6 @@ export default function RegisterPage() {
           {copyrightLine()}
         </p>
       </main>
-    </div>
-  )
-}
-
-function PasswordField({
-  id,
-  name,
-  label,
-  visible,
-  onVisible,
-}: {
-  id: string
-  name: string
-  label: string
-  visible: boolean
-  onVisible?: () => void
-}) {
-  const t = useTranslations("iam")
-
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="relative">
-        <Input
-          id={id}
-          name={name}
-          type={visible ? "text" : "password"}
-          className={onVisible ? "pr-10" : undefined}
-          autoComplete="new-password"
-          required
-          minLength={12}
-          maxLength={1024}
-        />
-        {onVisible && (
-          <button
-            type="button"
-            className="absolute top-1 right-1 grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            onClick={onVisible}
-            aria-label={visible ? t("hidePassword") : t("showPassword")}
-          >
-            {visible ? (
-              <EyeOff className="size-4" />
-            ) : (
-              <Eye className="size-4" />
-            )}
-          </button>
-        )}
-      </div>
     </div>
   )
 }

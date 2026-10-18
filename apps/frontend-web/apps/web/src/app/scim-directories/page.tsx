@@ -1,12 +1,7 @@
+import { AutoTable } from "@workspace/ui/components/auto-table/auto-table"
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   CheckCircle2,
   Copy,
@@ -36,15 +31,6 @@ import {
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
-import { Switch } from "@workspace/ui/components/switch"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
 import {
   Tooltip,
   TooltipContent,
@@ -96,6 +82,7 @@ export default function SCIMDirectoriesPage() {
   }, [])
   return (
     <Tabs
+      className="flex min-h-0 flex-1 flex-col"
       value={view}
       onValueChange={(value) => {
         const next = new URLSearchParams(params)
@@ -112,12 +99,12 @@ export default function SCIMDirectoriesPage() {
           {t("outboundTargets")}
         </TabsTrigger>
       </TabsList>
-      <TabsContent value="directories">
+      <TabsContent value="directories" className="flex min-h-0 flex-1 flex-col">
         {view === "directories" && (
           <TenantSCIMDirectories key={tenant} tenant={tenant} />
         )}
       </TabsContent>
-      <TabsContent value="targets">
+      <TabsContent value="targets" className="min-h-0 overflow-auto">
         {view === "targets" && <SCIMTargets key={tenant} tenant={tenant} />}
       </TabsContent>
     </Tabs>
@@ -213,8 +200,7 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
     }
   }
 
-  const saveDirectory = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const saveDirectory = async () => {
     setBusy(true)
     setError("")
     setNotice("")
@@ -245,9 +231,12 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
     }
   }
 
-  const openCredentials = async (directory: SCIMDirectory) => {
+  const openCredentials = async (
+    directory: SCIMDirectory,
+    resetDraft = true
+  ) => {
     setCredentialDirectory(directory)
-    setCredentialDraft({ ...emptyCredential })
+    if (resetDraft) setCredentialDraft({ ...emptyCredential })
     setCredentials([])
     setCredentialsLoading(true)
     setError("")
@@ -260,8 +249,7 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
     }
   }
 
-  const createCredential = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const createCredential = async () => {
     if (!credentialDirectory) return
     setBusy(true)
     setError("")
@@ -305,16 +293,10 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <PageHeader
         title={t("scimDirectories")}
         description={t("scimDescription")}
-        action={
-          <Button onClick={openCreate}>
-            <Plus />
-            {t("createDirectory")}
-          </Button>
-        }
       />
       {error && <Alert>{error}</Alert>}
       {loadError && (
@@ -347,108 +329,72 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
         </Button>
       </section>
 
-      <section className="overflow-hidden rounded-md border bg-card">
-        <header className="flex min-h-14 items-center justify-between gap-4 border-b bg-muted/20 px-4">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <FolderSync className="size-4 text-muted-foreground" />
-            {t("provisioningDirectories")}
-          </div>
-          <span className="text-xs text-muted-foreground">
-            {loading
-              ? t("loading")
-              : !loadError &&
-                t("directoryCount", { count: directories.length })}
-          </span>
-        </header>
-        <div className="hidden md:block">
-          <Table containerClassName="min-h-56">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="min-w-64">{t("directory")}</TableHead>
-                <TableHead className="min-w-44">{t("updatedAt")}</TableHead>
-                <TableHead className="w-24">{t("version")}</TableHead>
-                <TableHead className="w-24">{t("status")}</TableHead>
-                <TableHead className="w-32 text-right">
-                  {t("actions")}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(loading || loadError ? [] : directories).map((directory) => (
-                <TableRow key={directory.id}>
-                  <TableCell>
-                    <strong className="block text-sm">{directory.name}</strong>
-                    <code className="mt-1 block max-w-72 truncate font-mono text-xs text-muted-foreground">
-                      {directory.id}
-                    </code>
-                  </TableCell>
-                  <TableCell>
-                    {formatDate(
-                      directory.updated_at,
-                      locale,
-                      t("neverExpires")
-                    )}
-                  </TableCell>
-                  <TableCell>v{directory.version}</TableCell>
-                  <TableCell>
-                    <DirectoryStatus status={directory.status} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DirectoryActions
-                      directory={directory}
-                      busy={busy}
-                      onCredentials={() => void openCredentials(directory)}
-                      onEdit={() => openEdit(directory)}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!loading && !loadError && directories.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-52 text-center">
-                    <EmptyDirectories />
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-        <div className="md:hidden">
-          {(loading || loadError ? [] : directories).map((directory) => (
-            <article
-              key={directory.id}
-              className="space-y-3 border-b p-4 last:border-0"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <strong className="block text-sm break-words">
-                    {directory.name}
-                  </strong>
-                  <code className="mt-1 block truncate font-mono text-xs text-muted-foreground">
-                    {directory.id}
-                  </code>
-                </div>
+      <AutoTable
+        fill
+        toolbar={
+          <Button onClick={openCreate}>
+            <Plus />
+            {t("createDirectory")}
+          </Button>
+        }
+        onRefresh={refresh}
+        searchable
+
+        emptyContent={loadError ? null : <EmptyDirectories />}
+        loading={loading}
+        data={loading || loadError ? [] : directories}
+        rowKey="id"
+        columns={[
+          {
+            field: "name",
+            name: <>{t("directory")}</>,
+            render: (_, directory) => (
+              <>
+                <strong className="block text-sm">{directory.name}</strong>
+                <code className="mt-1 block max-w-72 truncate font-mono text-xs text-muted-foreground">
+                  {directory.id}
+                </code>
+              </>
+            ),
+          },
+          {
+            field: "updated_at",
+            name: <>{t("updatedAt")}</>,
+            render: (_, directory) => (
+              <>{formatDate(directory.updated_at, locale, t("neverExpires"))}</>
+            ),
+          },
+          {
+            field: "version",
+            name: <>{t("version")}</>,
+            render: (_, directory) => <>v{directory.version}</>,
+          },
+          {
+            field: "status",
+            name: <>{t("status")}</>,
+            render: (_, directory) => (
+              <>
                 <DirectoryStatus status={directory.status} />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                v{directory.version} ·{" "}
-                {formatDate(directory.updated_at, locale, t("neverExpires"))}
-              </p>
-              <DirectoryActions
-                directory={directory}
-                busy={busy}
-                onCredentials={() => void openCredentials(directory)}
-                onEdit={() => openEdit(directory)}
-              />
-            </article>
-          ))}
-          {!loading && !loadError && directories.length === 0 && (
-            <div className="grid h-52 place-items-center text-center">
-              <EmptyDirectories />
-            </div>
-          )}
-        </div>
-      </section>
+              </>
+            ),
+          },
+          {
+            field: "actions",
+            type: "actions",
+            name: <>{t("actions")}</>,
+            render: (_, directory) => (
+              <>
+                <DirectoryActions
+                  directory={directory}
+                  busy={busy}
+                  onCredentials={() => void openCredentials(directory)}
+                  onEdit={() => openEdit(directory)}
+                />
+              </>
+            ),
+          },
+        ]}
+      />
 
       <DirectoryEditor
         api={api}
@@ -471,6 +417,11 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
         draft={credentialDraft}
         onDraft={setCredentialDraft}
         onClose={() => !busy && setCredentialDirectory(null)}
+        onRefresh={() =>
+          credentialDirectory
+            ? openCredentials(credentialDirectory, false)
+            : Promise.resolve()
+        }
         onSubmit={createCredential}
         onRevoke={setRevoking}
       />
@@ -490,7 +441,7 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
         onCopy={copy}
         onClose={() => setSecret(null)}
       />
-    </>
+    </div>
   )
 }
 
@@ -552,7 +503,7 @@ function DirectoryEditor({
   busy: boolean
   onDraft: (value: DirectoryDraft) => void
   onClose: () => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: () => void
 }) {
   const t = useTranslations("iam")
 
@@ -596,70 +547,67 @@ function DirectoryEditor({
           </DialogTitle>
           <DialogDescription>{t("scimFormDescription")}</DialogDescription>
         </DialogHeader>
-        <form
+        <AutoForm
+          key={`${directory?.id ?? "new"}:${directory?.version ?? 0}`}
           id="scim-directory-form"
-          className="grid gap-5"
-          onSubmit={onSubmit}
+          mode="edit"
+          initialData={{ ...draft }}
+          fields={{
+            name: {
+              name: t("directoryName"),
+              type: "text",
+              required: true,
+              disabled: busy,
+              col: 2,
+              config: {
+                id: "scim-directory-name",
+                minLength: 1,
+                maxLength: 128,
+                autoFocus: true,
+              },
+            },
+            serviceAccountId: {
+              name: t("serviceAccounts"),
+              type: "text",
+              required: false,
+              disabled: busy,
+              col: 2,
+              config: {
+                id: "scim-directory-service-account",
+                list: "scim-service-account-options",
+                pattern: "[1-9][0-9]*",
+                maxLength: 64,
+                placeholder: t("unbound"),
+                autoComplete: "off",
+              },
+            },
+            enabled: {
+              name: t("enableDirectory"),
+              type: "switch",
+              show: Boolean(directory),
+              col: 2,
+              config: {
+                id: "scim-directory-enabled",
+                label: t("disabledDirectoryHint"),
+              },
+            },
+          }}
+          onChange={(values) => {
+            if (JSON.stringify(values) !== JSON.stringify(draft))
+              onDraft(values as unknown as DirectoryDraft)
+          }}
+          onSubmit={() => onSubmit()}
         >
           {error && <Alert>{error}</Alert>}
-          <div className="grid gap-2">
-            <Label htmlFor="scim-directory-name">{t("directoryName")}</Label>
-            <Input
-              id="scim-directory-name"
-              value={draft.name}
-              onChange={(event) =>
-                onDraft({ ...draft, name: event.target.value })
-              }
-              required
-              minLength={1}
-              maxLength={128}
-              autoFocus
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="scim-directory-service-account">
-              {t("serviceAccounts")}
-            </Label>
-            <Input
-              id="scim-directory-service-account"
-              list="scim-service-account-options"
-              value={draft.serviceAccountId}
-              onChange={(event) =>
-                onDraft({ ...draft, serviceAccountId: event.target.value })
-              }
-              pattern="[1-9][0-9]*"
-              maxLength={64}
-              placeholder={t("unbound")}
-              autoComplete="off"
-              disabled={busy}
-            />
-            <datalist id="scim-service-account-options">
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.display_name || account.login_name}
-                </option>
-              ))}
-            </datalist>
-            {accountError && <Alert>{accountError}</Alert>}
-          </div>
-          {directory && (
-            <div className="flex min-h-16 items-center justify-between gap-3 rounded-md border px-3">
-              <div>
-                <Label htmlFor="scim-directory-enabled">
-                  {t("enableDirectory")}
-                </Label>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t("disabledDirectoryHint")}
-                </p>
-              </div>
-              <Switch
-                id="scim-directory-enabled"
-                checked={draft.enabled}
-                onCheckedChange={(enabled) => onDraft({ ...draft, enabled })}
-              />
-            </div>
-          )}
-        </form>
+          <datalist id="scim-service-account-options">
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.display_name || account.login_name}
+              </option>
+            ))}
+          </datalist>
+          {accountError && <Alert>{accountError}</Alert>}
+        </AutoForm>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>
             {t("cancel")}
@@ -689,6 +637,7 @@ function CredentialsDialog({
   onDraft,
   onClose,
   onSubmit,
+  onRefresh,
   onRevoke,
 }: {
   directory: SCIMDirectory | null
@@ -698,7 +647,8 @@ function CredentialsDialog({
   draft: CredentialDraft
   onDraft: (value: CredentialDraft) => void
   onClose: () => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: () => void
+  onRefresh: () => Promise<void>
   onRevoke: (credential: SCIMCredential) => void
 }) {
   const locale = useLocale()
@@ -718,81 +668,116 @@ function CredentialsDialog({
           </DialogTitle>
           <DialogDescription>{t("newBearerOnce")}</DialogDescription>
         </DialogHeader>
-        <form
+        <AutoForm
+          key={directory?.id ?? "new"}
           id="scim-credential-form"
-          className="grid gap-4 border-y py-4 sm:grid-cols-2"
-          onSubmit={onSubmit}
-        >
-          <div className="grid gap-2">
-            <Label htmlFor="scim-credential-name">{t("credentialName")}</Label>
-            <Input
-              id="scim-credential-name"
-              value={draft.name}
-              onChange={(event) =>
-                onDraft({ ...draft, name: event.target.value })
-              }
-              required
-              minLength={1}
-              maxLength={128}
-              disabled={disabled}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="scim-credential-expiry">
-              {t("expirationTime")}
-            </Label>
-            <Input
-              id="scim-credential-expiry"
-              type="datetime-local"
-              value={draft.expiresAt}
-              onChange={(event) =>
-                onDraft({ ...draft, expiresAt: event.target.value })
-              }
-              min={localDateTime(new Date().toISOString())}
-              disabled={disabled}
-            />
-          </div>
-        </form>
-        <div className="hidden sm:block">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("credential")}</TableHead>
-                <TableHead>{t("expirationTime")}</TableHead>
-                <TableHead>{t("lastUsage")}</TableHead>
-                <TableHead>{t("status")}</TableHead>
-                <TableHead className="w-16 text-right">
-                  {t("actions")}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {credentials.map((credential) => (
-                <TableRow key={credential.id}>
-                  <TableCell>
+          mode="edit"
+          initialData={{ ...draft }}
+          fields={{
+            name: {
+              name: t("credentialName"),
+              type: "text",
+              required: true,
+              disabled: disabled,
+              col: 2,
+              config: {
+                id: "scim-credential-name",
+                minLength: 1,
+                maxLength: 128,
+              },
+            },
+            expiresAt: {
+              name: t("expirationTime"),
+              type: "text",
+              required: false,
+              disabled: disabled,
+              col: 2,
+              config: {
+                id: "scim-credential-expiry",
+                type: "datetime-local",
+                min: localDateTime(new Date().toISOString()),
+              },
+            },
+          }}
+          onChange={(values) => {
+            if (JSON.stringify(values) !== JSON.stringify(draft))
+              onDraft(values as unknown as CredentialDraft)
+          }}
+          onSubmit={() => onSubmit()}
+        ></AutoForm>
+        <div className="min-w-0">
+          <AutoTable
+            className="max-h-[min(55svh,32rem)]"
+            searchable
+            onRefresh={onRefresh}
+            toolbar={
+              <Button
+                type="submit"
+                form="scim-credential-form"
+                disabled={busy || disabled}
+              >
+                <Plus />
+                {busy ? t("creating") : t("createCredential")}
+              </Button>
+            }
+            loading={loading}
+            emptyContent={t("noCredentials")}
+            data={credentials}
+            rowKey="id"
+            columns={[
+              {
+                field: "name",
+                name: <>{t("credential")}</>,
+                render: (_, credential) => (
+                  <>
                     <strong className="block text-sm">{credential.name}</strong>
                     <code className="block max-w-48 truncate font-mono text-xs text-muted-foreground">
                       {credential.id}
                     </code>
-                  </TableCell>
-                  <TableCell>
+                  </>
+                ),
+              },
+              {
+                field: "expires_at",
+                name: <>{t("expirationTime")}</>,
+                render: (_, credential) => (
+                  <>
                     {formatDate(
                       credential.expires_at,
                       locale,
                       t("neverExpires")
                     )}
-                  </TableCell>
-                  <TableCell>
+                  </>
+                ),
+              },
+              {
+                field: "last_used_at",
+                name: <>{t("lastUsage")}</>,
+                render: (_, credential) => (
+                  <>
                     {formatDate(
                       credential.last_used_at,
                       locale,
                       t("neverExpires")
                     )}
-                  </TableCell>
-                  <TableCell>
+                  </>
+                ),
+              },
+              {
+                field: "revoked_at",
+                name: <>{t("status")}</>,
+                render: (_, credential) => (
+                  <>
                     <CredentialStatus credential={credential} />
-                  </TableCell>
-                  <TableCell className="text-right">
+                  </>
+                ),
+              },
+              {
+                field: "actions",
+                type: "actions",
+                name: <>{t("actions")}</>,
+                render: (_, credential) => (
+                  <>
                     {!credential.revoked_at && (
                       <ActionButton
                         label={t("revokeNamed", { name: credential.name })}
@@ -803,65 +788,15 @@ function CredentialsDialog({
                         <Trash2 />
                       </ActionButton>
                     )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  </>
+                ),
+              },
+            ]}
+          />
         </div>
-        <div className="sm:hidden">
-          {credentials.map((credential) => (
-            <article key={credential.id} className="space-y-2 border-b py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <strong className="block text-sm">{credential.name}</strong>
-                  <code className="block truncate font-mono text-xs text-muted-foreground">
-                    {credential.id}
-                  </code>
-                </div>
-                <CredentialStatus credential={credential} />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t("expiry")}
-                {formatDate(
-                  credential.expires_at,
-                  locale,
-                  t("neverExpires")
-                )}{" "}
-                {t("lastUsageSuffix")}{" "}
-                {formatDate(credential.last_used_at, locale, t("neverExpires"))}
-              </p>
-              {!credential.revoked_at && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => onRevoke(credential)}
-                >
-                  <Trash2 />
-                  {t("revoke")}
-                </Button>
-              )}
-            </article>
-          ))}
-        </div>
-        {(loading || credentials.length === 0) && (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            {loading ? t("loadingCredentials") : t("noCredentials")}
-          </p>
-        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy}>
             {t("close")}
-          </Button>
-          <Button
-            type="submit"
-            form="scim-credential-form"
-            disabled={busy || disabled}
-          >
-            <Plus />
-            {busy ? t("creating") : t("createCredential")}
           </Button>
         </DialogFooter>
       </DialogContent>

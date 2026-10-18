@@ -123,6 +123,15 @@
     "close": "tutup"
   },
   "table": {
+    "pagination": "Penomboran halaman",
+    "pageNumber": "Halaman {page}",
+    "rowNumber": "No.",
+    "search": "Cari senarai ini",
+    "refresh": "Muat semula",
+    "export": "Eksport",
+    "exportPage": "Eksport halaman semasa",
+    "import": "Import",
+    "actionError": "Tindakan gagal. Sila cuba lagi.",
     "loadError": "Senarai tidak dapat dimuatkan.",
     "retry": "Cuba semula",
     "empty": "Tiada data tersedia",
@@ -136,6 +145,11 @@
     "previousPage": "Halaman sebelumnya",
     "nextPage": "Halaman seterusnya",
     "filter": {
+      "refresh": "Muat semula",
+      "autoRefresh": "Muat semula automatik",
+      "autoOff": "Matikan",
+      "autoEvery": "Setiap {s} saat",
+      "secLeft": "{s}s",
       "selectPlaceholder": "Pilih",
       "inputPlaceholder": "Masukkan nilai",
       "yes": "ya",

@@ -40,6 +40,7 @@ export function useAutoTable<T>(
     filter,
     onSelectionChange,
     onQueryChange,
+    pagination = true,
   } = options
 
   const [query, setQuery] = useState<TableQuery>({
@@ -68,8 +69,15 @@ export function useAutoTable<T>(
       setError(null)
       // Local mode: sort then slice to the current page; total is the full length (only pagination is real)
       const sorted = sortLocalData(data, query.sort)
-      const start = (query.page - 1) * query.pageSize
-      setRows(sorted.slice(start, start + query.pageSize))
+      const page = pagination
+        ? Math.min(
+            query.page,
+            Math.max(1, Math.ceil(sorted.length / query.pageSize))
+          )
+        : query.page
+      const start = (page - 1) * query.pageSize
+      if (page !== query.page) setQuery((previous) => ({ ...previous, page }))
+      setRows(pagination ? sorted.slice(start, start + query.pageSize) : sorted)
       setTotal(sorted.length)
       return
     }
@@ -91,7 +99,7 @@ export function useAutoTable<T>(
         setLoading(false)
       }
     }
-  }, [data, fetch, isLocal, query])
+  }, [data, fetch, isLocal, query, pagination])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

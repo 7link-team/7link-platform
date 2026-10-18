@@ -1,8 +1,17 @@
 # Web 迁移实施与验收清单
 
+### 2026-10-18 提交前复核补充
+
+- deep-review 安全、复用/架构、命名/注释和跨平台视角无可证实新增问题；产品视角确认部分 effect 驱动页面未传递实际刷新加载状态，已补 account 三页、注销申请、实体工作区及角色成员/目录表的请求期间 loading，阻止定时器重叠读取。
+- 浏览器回归增加四个实际页面组件的延迟读取场景：推进两个刷新周期仍只有一个未完成请求，完成后解锁并允许下一周期。测试使用受控 API 夹具，不代表真实后端慢网络验收。
+- 同类检查修正五处条件 toolbar 内容为 false 时误关闭整个工具栏的问题：租户注册关闭或没有新建/归档权限，仍保留刷新等通用能力。
+- 本批未修改后端业务、审批语义或权限规则。SQL/迁移/事务、金额计算和依赖变更视角不适用；A 类关注表单失败保值、导出隔离、重复提交和异步刷新，未引入离线批量写入或存量 schema 变更。
+
+> 2026-10-17 更新：当前全部页面的 Auto 组件接入盘点和不适用清单在 §13；§12 的状态表为历史快照，入口可继续用于定位。
+
 日期：2026-10-15。配套：[切换方案](frontend-web-migration.md)。**已批准执行；M02 公共表单基础部分已实施，未整包验收，其余状态以各行及证据为准。**
 
-当前旧 Web 页面接入状态和可点击入口集中在本文 §12「当前全部生产页面接入快照」（搜索标题可直达）；含全部41个路由模块、作用域变体、页内弹窗和未迁移项。公共组件通过不等于这些页面已完成迁移。
+当前组件接入状态和不适用清单集中在 §13；全部41个路由模块、作用域变体的可点击入口仍可查 §12 历史底册。组件测试通过不等于真实后端业务验收通过。
 
 ## 1. 使用方式
 
@@ -1565,9 +1574,11 @@ M02 的 02.1/02.2 **部分实现**：复用 `useAutoForm` 与 `ReadonlyValue`，
 - 尚缺：后端元数据消息字典、前端精确三语模板/切语言重译、角色5条OPTIONS及生产CrudForm接线。缺专用消息当前回退已有通用invalid，不另复制后端翻译；此回退不是专用错误文案验收。未做本批真实浏览器/角色写请求验收，保持M02/P1 NOT READY。
 
 
-## 12. 当前全部生产页面接入快照（2026-10-16，供逐页验收）
+## 12. 历史生产页面接入快照（2026-10-16，已由 §13 更新）
 
-本节是当前状态；§11早期“已确认障碍/静态底册”保留历史发现，不能作为当前完成状态。当前router的41个去重lazy模块已逐项对应下表（含布局模块和多路由变体）。角色页已有AutoForm/AutoTable生产接入（详见该行及后续增量证据），不能再沿用此前“生产src无运行时引用”的结论。共享组件、测试fixture通过不代表其他生产页面接入。
+> 本节及其表格为上一轮历史记录，“未/待适配”和“完整迁移签收 0”不代表本轮状态。当前组件接入结果、41 个路由模块及不适用清单见 §13；历史真实业务验收证据仍按原范围保留。
+
+本节是 2026-10-16 历史状态；§11早期“已确认障碍/静态底册”同样保留历史发现，不能作为当前完成状态。router的41个去重lazy模块逐项对应下表（含布局模块和多路由变体），当前接入盘点见 §13。共享组件、测试fixture通过不代表完整业务验收。
 
 **生产页面完整迁移签收：0；角色页部分接入并有专项验收证据。** 原有页面功能并非不存在，而是尚未按统一组件/契约规范迁移签收。角色和菜单已有局部滚动整改证据；角色Tab标题滚走本轮已独立修复并完成三作用域浏览器验证，证据见本节末尾；不算AutoForm/AutoTable迁移完成。
 
@@ -1690,3 +1701,143 @@ AutoForm已消费OPTIONS的issue_messages：字段和全局服务端错误按稳
 排查同时发现OPTIONS被客户端当作写操作，触发菜单刷新循环。已在统一通知判断中排除OPTIONS，真实HTTP客户端测试确认其不发变更事件、真正写操作仍发事件；实际页面观察0次伪变更通知。后端完整core测试、契约不写入测试、lint/build、OpenAPI与客户端生成一致性通过；前端typecheck/lint/build通过。
 
 未签收：平台范围专项、只读实时刷新和切角色延迟保存的独立浏览器场景、权限条件/成员有效期AutoForm迁移及其他IAM页面。完整页面/全目标仍NOT READY。
+
+
+## 13. 全页面 AutoForm / AutoTable 接入与不适用清单（2026-10-17）
+
+本轮覆盖 `apps/frontend-web` 当前所有生产路由的适用表单、列表、筛选及共享弹窗。复用既有 AutoForm 的字段配置、custom renderer 和 AutoTable 的列配置，保留现有 API、权限、分页和领域动作；没有新增后端接口或依赖。登录、注册、安全设置、文件命名、菜单树、系统目录等均在范围内，不以“复杂页面”整体豁免。
+
+以下是当前组件接入盘点，取代 §12 的历史“未迁移”状态。组件替换完成不等于所有作用域的真实后端 CRUD、越权拒绝、三语布局和缩放专项均已验收。
+
+### 13.1 全部 41 个路由模块
+
+数字为当前源码中的 JSX 调用点数，不是资源数量或业务签收数；0 表示该文件不直接调用，共享弹窗与文件操作见后表。包含 router.tsx 的全部 41 个去重 lazy app 模块；各作用域变体继续复用原模块。`entities/workspace` 的管理视图复用实体页，文件页复用 file-browser，个人注销复用重新认证弹窗。
+
+| Source under apps/web/src/app | AutoForm | AutoTable |
+|---|---:|---:|
+| `accept-invitation/page.tsx` | 1 | 0 |
+| `access-requests/page.tsx` | 2 | 1 |
+| `access-reviews/page.tsx` | 2 | 2 |
+| `account/applications.tsx` | 0 | 1 |
+| `account/closure.tsx` | 0 | 0 |
+| `account/files.tsx` | 0 | 0 |
+| `account/identities.tsx` | 1 | 1 |
+| `account/layout.tsx` | 0 | 0 |
+| `account/memberships.tsx` | 0 | 1 |
+| `account/tokens.tsx` | 1 | 1 |
+| `audit-events/page.tsx` | 1 | 1 |
+| `audit-governance/page.tsx` | 1 | 1 |
+| `dashboard/page.tsx` | 0 | 0 |
+| `departments/page.tsx` | 1 | 1 |
+| `device/page.tsx` | 1 | 0 |
+| `entities/page.tsx` | 4 | 4 |
+| `entities/workspace.tsx` | 0 | 2 |
+| `field-policies/page.tsx` | 2 | 1 |
+| `files/page.tsx` | 0 | 0 |
+| `groups/page.tsx` | 1 | 1 |
+| `invitations/page.tsx` | 1 | 1 |
+| `layout.tsx` | 0 | 0 |
+| `login/page.tsx` | 4 | 0 |
+| `login/workspaces.tsx` | 1 | 0 |
+| `menus/page.tsx` | 2 | 1 |
+| `oauth-clients/page.tsx` | 1 | 1 |
+| `principals/closure-requests.tsx` | 1 | 1 |
+| `principals/page.tsx` | 2 | 1 |
+| `recover/page.tsx` | 1 | 0 |
+| `register/page.tsx` | 1 | 0 |
+| `roles/page.tsx` | 4 | 2 |
+| `scim-directories/page.tsx` | 2 | 2 |
+| `security/page.tsx` | 5 | 2 |
+| `service-accounts/page.tsx` | 2 | 2 |
+| `system/accounts.tsx` | 2 | 1 |
+| `system/layout.tsx` | 0 | 0 |
+| `system/operating-platforms.tsx` | 1 | 1 |
+| `system/owner-members.tsx` | 1 | 1 |
+| `system/platform-members.tsx` | 1 | 1 |
+| `tenants/page.tsx` | 2 | 1 |
+| `verify-email/page.tsx` | 1 | 0 |
+
+### 13.2 共享及嵌套交互
+
+| Source under apps/web/src | AutoForm | AutoTable |
+|---|---:|---:|
+| `components/account-view-dialog.tsx` | 1 | 0 |
+| `components/avatar-editor.tsx` | 1 | 0 |
+| `components/directory-members-dialog.tsx` | 1 | 1 |
+| `components/directory-role-bindings-dialog.tsx` | 0 | 1 |
+| `components/file-browser.tsx` | 2 | 0 |
+| `components/reauthentication-dialog.tsx` | 1 | 0 |
+| `components/system-membership-dialog.tsx` | 2 | 0 |
+| `components/workspace-switcher.tsx` | 1 | 0 |
+| `app/audit-governance/archives.tsx` | 0 | 1 |
+| `app/principals/lifecycle-dialog.tsx` | 2 | 0 |
+| `app/scim-directories/targets.tsx` | 2 | 1 |
+
+### 13.3 确实不适用的交互（最终保留清单）
+
+这些是具体交互的保留范围，不是整页豁免；对应页的普通表单和数据列表已接入上表中的 Auto 组件。
+
+| 位置 | 保留的交互 | 不适用原因 / 已迁移部分 |
+|---|---|---|
+| `app/dashboard/page.tsx`，`app/layout.tsx`，`app/account/layout.tsx`，`app/system/layout.tsx` | 指标卡、首页入口、导航和路由壳 | 没有可编辑记录或普通数据表，不构造空表单/空表格。 |
+| `components/file-browser.tsx`，`app/files/page.tsx`，`app/account/files.tsx` | 文件网格/列表、目录树、预览、上传、拖放、多选、上下文菜单 | 文件系统交互包含路径、拖放和预览语义，继续复用专用浏览器；新建/重命名表单、搜索和类型筛选已接 AutoForm。 |
+| `app/roles/page.tsx` | 角色侧栏导航、权限动作矩阵 | 导航选择和权限矩阵不是普通记录列表；新建/编辑、权限条件、数据范围、有效期已接 AutoForm，成员/组绑定已接 AutoTable。 |
+| `app/field-policies/page.tsx` | 角色 × 字段权限矩阵的原有表格布局 | 双轴单元格是权限编辑器，作为 AutoForm custom 字段保留；策略表单和列表已接入。该处是业务源码唯一保留的直接 `<Table>`。 |
+| `app/menus/page.tsx`，`app/departments/page.tsx` | 树节点展开、缩进、拖放/重挂等领域动作 | 已在 AutoTable 列与 rowProps 内保留树语义，不把树另算普通平铺列表；编辑和成员/角色弹窗均已接入。 |
+| `app/account/closure.tsx` 及各页确认弹窗、行操作 | 注销状态、提交/取消确认、撤销/删除/审批等即时命令 | 无记录字段的确认命令继续使用已有按钮/确认框；需要填写的理由、参数和重新认证已用 AutoForm。 |
+| 登录/注册/恢复/安全页，`components/reauthentication-dialog.tsx` | CAPTCHA/Turnstile、WebAuthn、TOTP 二维码、恢复码和设备确认 | 挑战组件、浏览器凭据协议和一次性输出不适合通用字段；普通账号/密码/验证码/手机/email 输入已接 AutoForm，原生 CAPTCHA 校验保留并有浏览器回归。 |
+| 服务账号、OAuth、SCIM、邀请、个人令牌/安全页 | 一次性密钥、邀请链接、二维码、复制/下载输出 | 这些是敏感结果展示和显式命令，不是可编辑表单；原有只读 Input 保留，创建/编辑表单与凭据/资源列表已迁移。 |
+| `app/login/workspaces.tsx`，`components/workspace-switcher.tsx` | 工作区入口卡片和切换菜单 | 属于导航选择，不替换为管理表格；创建组织和工作区搜索已接 AutoForm。 |
+| `components/avatar-editor.tsx` | 图片上传、带头像预览的候选选择、裁剪画布与缩放滑块 | 图像选取和裁剪使用专用交互；普通头像风格单选已接 AutoForm。 |
+| 保留窄屏卡片视图的资源页 | 移动端摘要卡片 | 保留已有响应式交互；对应普通桌面列表已接 AutoTable，不强制窄屏横向表格。 |
+
+重复用户组规则、菜单多语言行、部门多选、手机号分段、本地日期时间等使用 AutoForm custom 字段；它们已属于统一表单，不列为未迁移。授权复选框/即时动作在配置列内保留。原生 Input 的剩余命中仅为这些 custom 字段或只读结果，业务页/组件中没有直接 `<form>`。
+
+### 13.4 共享兼容和验证范围
+
+- AutoTable 新增可关闭的内置分页，避免外部分页/树列表被再次截断；rowProps 保留行数据标记、事件及拖放，emptyContent 保留页级空态。
+- AutoForm 通过现有字段配置传递 ID、自动填充和原生输入属性，保证密码遮蔽及 email/number 类型；formRef 支持依赖字段重置与异步加载回填。契约字段继续按现有 OPTIONS 规则验证；普通字段保留原生约束，custom CAPTCHA 仍必须通过原生校验。
+- 前端根目录 `bun run typecheck`、`bun run lint`、`bun run test`、`bun run build` 均通过（UI 159 + Web 208 测试）；最后补齐头像风格选择后已重新执行，日志为系统临时目录 `frontend-final-{typecheck,lint,test,build}.log`。没有把日志/构建产物提交进源码。
+- `bun apps/web/tests/auto-form-browser-audit.mjs` 通过：覆盖既有只读、异步提交、契约切换、CRUD 失败与多语言错误回归。
+- `bun apps/web/tests/auto-components-migration-browser-audit.mjs` 通过：七组浏览器验证覆盖 31 行不截断、行属性与事件、密码/email、custom CAPTCHA 必填/模式、小数契约提交、依赖重置、重复输入约束和数字预填。
+- `bun apps/web/tests/page-components-migration-browser-audit.mjs` 通过：41 个模块、51 个唯一路由导出、53 个场景；52 个正常渲染，AppLayout 空工作区预期跳转 1 个，0 运行时异常、0 缺失夹具（未知请求使检查失败）。7 个创建弹窗打开及文本编辑通过（系统/租户菜单、系统/租户部门、租户、组、实体）；个人资料页选择 pixel 后 `avatarCandidates("pixel")` 参数断言通过。额外覆盖个人资料和 MFA；其他弹窗、填充数据后的行操作及实际工作区内容仍未逐项运行验收。
+- 浏览器组件夹具使用实际 Vite/React 组件和模拟边界；本轮没有运行真实后端服务，不宣称已验证所有页面的 API 持久化、权限和跨作用域完整业务流程。既有 §12 的真实业务证据只在其原范围内有效。
+
+
+### 13.5 2026-10-18: layout and toolbar corrective acceptance
+
+This section supersedes completion claims based only on component tags.
+
+- AutoTable defaults: sticky sequence at left, sticky actions at right, sticky header. Main tables use workspace + fill; the middle viewport scrolls in both axes; the footer stays at the bottom. Paging/search returns to the top.
+- Existing create/search/filter controls compose with refresh/export in the toolbar, retaining original permissions and API semantics. Complete local arrays paginate; server-paged lists retain original offset/pager; trees retain hierarchy and footer counts. Compound screens and dialogs use bounded local tables.
+- Ordinary tables export current-page displayed text as CSV, excluding hidden properties, sequence, selection and actions. Audit export retains its original endpoint, permission and integrity guard. CSV handles UTF-8, quotes, newlines and formula prefixes.
+- Audit conditions expand under Search so short windows retain a usable data viewport. Existing filter submission/reset behavior remains.
+
+Remaining exceptions:
+
+| Location / capability | Reason / current behavior |
+|---|---|
+| Bulk import for IAM accounts, members, tenants, platforms, entities, departments, groups, role assignments, invitations, service accounts, OAuth, SCIM, policies, requests/reviews, tokens, identities and audit lists | No matching import API, field mapping or conflict contract exists. No fake import button is shown. Shared onImport callback wiring is tested, which does not establish business import support. Existing todo import/template endpoints have no current production todo page. |
+| Creation on read-only histories, audit events, sessions and membership lists | Preserve existing domain operations such as binding/revoking; do not invent arbitrary record creation. |
+| File browser, permission matrices, CAPTCHA/WebAuthn and one-time secrets | See 13.3 for concrete exceptions. Existing specialized upload/download/create operations remain. |
+| Existing fetch caps, e.g. service accounts at200 | Local search/pagination/current-page export apply to loaded rows. This change does not extend API contracts or claim whole-database export. |
+
+Executed evidence:
+
+- auto-components-migration-browser-audit.mjs:9 groups PASS. An800x480 container with80 records/50 per page verifies sticky coordinates, moving middle cells, fixed header/footer, filled height, page-two sequence51, search reset, scroll reset, refresh/create/import callbacks, actual CSV Blob contents, shrinking data page clamp and failed-refresh feedback. Import is callback-only evidence.
+- page-components-migration-browser-audit.mjs:fresh Vite4317;41 modules/51 exports/53 scenarios and7 create dialogs PASS. Component fixtures are distinct from backend acceptance.
+- Real Web4303/API8080:tenant admin logged in through demo selector. At1262x624 the accounts table has both scroll axes and fixed side columns; footer bottom598. At1440x900 table bottom875 and data viewport518 (25px outer page padding).
+- Real accounts/groups/invitations/departments/menus/service accounts/OAuth/access requests/audit pages:fill, toolbar, footer and no document horizontal overflow checked. Account search UAT Tenant returns one row; refresh preserves search; actual Create account AutoForm opens (creation was not submitted). Refresh issues four real reads, all200.
+- Audit refresh issues events + integrity-verifications reads, both200. Filtering account_created issues event_type query and shows empty results. Collapsed conditions leave a158px viewport at624px window height.
+- Services remain running at http://127.0.0.1:4303/admin/login . Development account selector displays personas and fills credentials. No commit/push. Full write flows, every permission persona and every breakpoint have not been accepted.
+
+- Final frontend gates after all fixes: bun run typecheck/lint/test/build PASS; UI161 + Web208 tests, zero failures. git diff --check PASS; tracked frontend has no CRLF/mixed working-tree files. At390x844 real accounts viewport is506px (60svh) and document width390; desktop fill retained. Own browser closed; managed services remain running. Scoped self-review and applicable frontend acceptance PASS; IAM business import remains explicitly unsupported.
+
+### 13.6 复合刷新与数字页码补验收
+
+- 前次 AutoTable 使用普通刷新按钮，未复用 CommonTableFilter 已有复合按钮，属于接入遗漏。现将该控件提取为共享 `RefreshButton`，两处统一使用；补齐三语翻译。默认关闭，可选 5/10/15/30/60 秒，显示倒计时，手动刷新重置倒计时；慢请求不重入，关闭/卸载清理定时器。
+- 在现有 pagination 组件中增加受控 `PaginationPages`：数字页码、当前页高亮、边界页、省略号、上一页/下一页。AutoTable、CommonTable 及七处服务端分页 footer 统一使用，保持原 offset/limit 和加载行为；重复点击当前页不触发重新加载。
+- 用户点名的访问申请页：真实演示账号当前没有申请，显示 `< 1 >`；未制造业务数据。该真实页面的组件夹具以 240 条申请验证 12 页、省略号、末页序号 221、点击回首页及高亮。全路由夹具 41 模块/51 导出/53 场景 PASS。
+- 组件浏览器回归 11 组 PASS：额外覆盖 StrictMode 定时刷新不重复、最新回调、手动重置、慢请求锁、外部 loading、关闭/卸载停止、CommonTableFilter 共用定时逻辑、数字跳页及修改每页条数后重算页码。
+- 真实访问申请页开启 5 秒刷新，申请/可申请角色/审批列表读取返回 200；验收后恢复关闭。真实审计页点击第 3 页发出 `offset=100&limit=50` 请求，返回 200、首行序号 101、当前页高亮 3；390px 窄屏页码区域宽 258px，页面无横向溢出。
+- 最终 `bun run typecheck`、`bun run lint`（零警告）、`bun run test`（UI161 + Web208）、`bun run build` 均 PASS。没有修改后端接口或权限语义，没有提交/推送；4303/8080 验收服务保持运行。

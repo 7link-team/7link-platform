@@ -1,3 +1,41 @@
+# Task State - commit/push and production prototype continuation 2026-10-18
+## Active Request
+User explicitly authorized committing and pushing all current deliverables, then implementing prototype functionality. Branch chaosplus; fetched origin with no divergence. Precommit deep-review in progress (security, product/testing, reuse/naming/platform read-only workers). Previous frontend acceptance evidence below remains valid; no commit/push yet for this request.
+## Continuation Plan
+First production prototype slice: wire the existing authorized H3 project detail endpoint into Web using generated schema types, existing API transport and readonly AutoForm. Reuse entity overview entry and add a direct tenant project detail route. Do not fabricate H2 activity counts, introduce mock persistence, alter backend authorization or build an incomplete list API. Project list/create/edit and overall M00-M20 remain outstanding.
+## Immediate Next Action
+Precommit review completed: confirmed and fixed real page refresh loading/overlap plus five conditional-toolbar suppressions. Frontend typecheck/lint/test/build PASS (session17082); API types check PASS. Browser fresh4317 41 modules/51 exports/53 cases PASS including four delayed actual-page reads (session63562; TEMP/page-refresh-precommit-pass.log). Explicitly stage reviewed frontend/docs/state paths, commit and push origin chaosplus, then implement production project detail.
+
+# Previous completed frontend correction evidence
+## Objective
+Complete all applicable AutoForm/AutoTable integration, including sticky sides/header, full-height center scroll, toolbars and pagination. Latest user corrections: split manual/auto-refresh button, numbered page controls, specifically Access Requests.
+## Current Phase
+ACCEPTANCE
+## Current Step
+Latest refresh and numeric pagination corrections implemented and verified. Prior tag-only acceptance and plain-refresh/arrow-only pagination conclusions are superseded.
+## Overall Progress
+- [x] Original page migration and shared layout/toolbar correction integrated from three existing bounded workers.
+- [x] Extracted existing CommonTableFilter split refresh into shared RefreshButton; AutoTable and CommonTableFilter reuse it. Default off,5/10/15/30/60 seconds, countdown/manual reset/latest callback, no overlap, stop on off/unmount. Missing3-locale translations added.
+- [x] Extended existing pagination.tsx with controlled PaginationPages. Reused in AutoTable/CommonTable and7 server footers. Numbered buttons/current highlight/ellipsis/first-last/arrow boundaries; active click no-op; server offsets and limits preserved; external paging resets scroll.
+- [x] Component browser11 groups PASS, including StrictMode timers, async locking/loading, stop/cleanup, CommonTableFilter shared timer, page jump/page-size change.
+- [x] Fresh route fixture41 modules/51 exports/53 cases PASS; Access Requests240 fixtures verify12 pages/last sequence221/first return/highlight/ellipsis/split refresh.
+- [x] Real Access Requests demo login:0 real rows, page1 only;5s scheduled reads return200; restored off. Real audit Page3 -> offset100&limit50 ->200,sequence101,current3. Mobile390px no horizontal page overflow, pager258px.
+- [x] Final typecheck/lint/test/build PASS; lint zero warnings; UI161+Web208 tests. Final session55526 exit0; logs TEMP/frontend-refresh-pagination-{typecheck,lint,test,build}.log. diff-check and LF checks PASS.
+## Execution / Integration
+Latest corrections Direct; no new delegation. Earlier migration Hybrid with directory_pages/integration_pages/governance_pages, all integrated and scoped checks complete.
+## Confirmed Constraints / Decisions
+No backend/permissions/API changes. Existing IAM import endpoints do not exist; no fake import buttons. CSV exports current displayed page excluding hidden fields; audit preserves original export guard/API. Original loaded-row caps (some200) retained. Trees retain complete hierarchy/counts. Compound screens/dialogs use bounded scrolling. Do not create fake business requests just to display multiple pages.
+## Verification / Review
+Self-review scope/reuse/architecture/regression/complexity/durable state PASS. Latest requirement acceptance PASS with explicit distinction between populated page fixtures and real empty Access Requests. Browser evidence and exceptions in docs/myrmidon/frontend-web-migration-checklist.md13.5/13.6. No commit/push requested or performed; changes uncommitted.
+## Services
+Managed Web4303/API8080 remain RUNNING, original session97340. Demo selector enabled at http://127.0.0.1:4303/admin/login ; choose tenant-admin to fill credentials. Do not print passwords. Own browser closed, temporary fixture Vite4317 session28767 stopped. Preserve unrelated ports8091/8092. Stop managed services only if user requests via node apps/backend-api/scripts/dev.mjs --stop.
+## Known Issues / Limits
+IAM business bulk import needs backend field mapping/conflict semantics contracts; existing fetch caps retained. No blanket claim of all write workflows/personas/breakpoints verified. Real Access Requests currently empty; multi-page behavior tested with component page fixtures, not fabricated backend records.
+## Next Action
+User acceptance of http://127.0.0.1:4303/admin/40670914005696512/access-requests ; no outstanding code/check tasks for refresh+pagination. User may hard-refresh existing tab. Further IAM business import requires contract decisions; recommend template fields and duplicate handling first. No commit/push pending authorization request.
+## Last Checkpoint
+2026-10-18 split refresh and Access Requests numeric-pagination delivery checkpoint, all finite checks collected, temporary browser/server stopped, managed demo left running.
+
 ## 2026-10-16 — 旧Web全页面清单完成；角色Tab固定三作用域验证通过
 - Phase REVIEW；上一轮UTF8解释属progress。本轮原计划元数据文案尚未修改，用户要求先给旧页面完整状态/指出执行偏差，随后要求核对角色Tabs随右栏滚走；三项均保留。
 - Inventory：迁移清单§12已列router全部41/41 lazy模块、各scope路由/实体4视图/登录入口/共享弹窗/重定向。源码生产src无AutoForm/AutoTable/CrudForm/CommonTable运行时引用，只有iam-api的contract类型，生产页面迁移完成数0；角色/菜单局部滚动不算页面迁移。原型P01–P33仍待生产集成。

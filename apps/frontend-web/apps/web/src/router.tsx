@@ -103,6 +103,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/system/audit/events",
                 lazy: async () => ({
                   Component: (await import("./app/audit-events/page"))
@@ -110,6 +111,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/system/departments",
                 lazy: async () => ({
                   Component: (await import("./app/departments/page"))
@@ -134,6 +136,7 @@ export const router = createBrowserRouter([
                 element: <Navigate to="/system/accounts/system" replace />,
               },
               {
+                handle: { layout: "workspace" },
                 path: "/system/accounts/system",
                 lazy: async () => ({
                   Component: (await import("./app/system/accounts"))
@@ -141,6 +144,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/system/accounts/platform",
                 lazy: async () => ({
                   Component: (await import("./app/system/accounts"))
@@ -148,6 +152,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/system/accounts/tenant",
                 lazy: async () => ({
                   Component: (await import("./app/system/accounts"))
@@ -155,6 +160,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/system/accounts/platform/:ownerID",
                 lazy: async () => ({
                   Component: (await import("./app/system/owner-members"))
@@ -162,6 +168,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/system/accounts/tenant/:ownerID",
                 lazy: async () => ({
                   Component: (await import("./app/system/owner-members"))
@@ -169,12 +176,14 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/system/accounts",
                 lazy: async () => ({
                   Component: (await import("./app/system/accounts")).default,
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/system/operating-platforms",
                 lazy: async () => ({
                   Component: (await import("./app/system/operating-platforms"))
@@ -182,12 +191,14 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/system/tenants",
                 lazy: async () => ({
                   Component: (await import("./app/tenants/page")).default,
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/system/audit-governance",
                 lazy: async () => ({
                   Component: (await import("./app/audit-governance/page"))
@@ -195,6 +206,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/system/closure-requests",
                 lazy: async () => ({
                   Component: (await import("./app/principals/closure-requests"))
@@ -223,18 +235,21 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/platform/:platformID/departments",
                 lazy: async () => ({
                   Component: (await import("./app/departments/page")).default,
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/platform/:platformID/groups",
                 lazy: async () => ({
                   Component: (await import("./app/groups/page")).default,
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/platform/:platformID/members",
                 lazy: async () => ({
                   Component: (await import("./app/system/platform-members"))
@@ -255,6 +270,7 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <Navigate to="files" replace /> },
               {
+                handle: { layout: "workspace" },
                 path: "tokens",
                 lazy: async () => ({
                   Component: (await import("./app/account/tokens")).default,
@@ -267,6 +283,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "memberships",
                 lazy: async () => ({
                   Component: (await import("./app/account/memberships"))
@@ -274,6 +291,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "identities",
                 lazy: async () => ({
                   Component: (await import("./app/account/identities")).default,
@@ -286,6 +304,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "applications",
                 lazy: async () => ({
                   Component: (await import("./app/account/applications"))
@@ -323,18 +342,21 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/users",
                 lazy: async () => ({
                   Component: (await import("./app/principals/page")).default,
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/invitations",
                 lazy: async () => ({
                   Component: (await import("./app/invitations/page")).default,
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/service-accounts",
                 lazy: async () => ({
                   Component: (await import("./app/service-accounts/page"))
@@ -342,6 +364,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/entities",
                 lazy: async () => ({
                   Component: (await import("./app/entities/page")).default,
@@ -359,24 +382,28 @@ export const router = createBrowserRouter([
               // that reaching it does not leave the entity perspective, the way
               // the files view above does not.
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/entities/:entityID/departments",
                 lazy: async () => ({
                   Component: (await import("./app/departments/page")).default,
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/entities/:entityID/:view",
                 lazy: async () => ({
                   Component: (await import("./app/entities/workspace")).default,
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/departments",
                 lazy: async () => ({
                   Component: (await import("./app/departments/page")).default,
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/groups",
                 lazy: async () => ({
                   Component: (await import("./app/groups/page")).default,
@@ -390,6 +417,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/field-policies",
                 lazy: async () => ({
                   Component: (await import("./app/field-policies/page"))
@@ -397,6 +425,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/access-requests",
                 lazy: async () => ({
                   Component: (await import("./app/access-requests/page"))
@@ -404,6 +433,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/access-reviews",
                 lazy: async () => ({
                   Component: (await import("./app/access-reviews/page"))
@@ -418,6 +448,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/oauth-clients",
                 lazy: async () => ({
                   Component: (await import("./app/oauth-clients/page")).default,
@@ -430,6 +461,7 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/scim-directories",
                 lazy: async () => ({
                   Component: (await import("./app/scim-directories/page"))
@@ -437,12 +469,14 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/audit/events",
                 lazy: async () => ({
                   Component: (await import("./app/audit-events/page")).default,
                 }),
               },
               {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/audit-governance",
                 lazy: async () => ({
                   Component: (await import("./app/audit-governance/page"))

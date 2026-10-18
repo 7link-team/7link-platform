@@ -1,5 +1,6 @@
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   ArrowLeft,
   CheckCircle2,
@@ -9,8 +10,6 @@ import {
 } from "lucide-react"
 import { Link } from "react-router"
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi } from "../../lib/iam-api"
 import { useBranding, copyrightLine } from "../../lib/branding"
@@ -51,13 +50,10 @@ export default function VerifyEmailPage() {
 
   // The link proves the mailbox; activating a new registration also needs the
   // password chosen for it. A refusal leaves the link usable, so the form stays.
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submit = async (values: Record<string, unknown>) => {
     setBusy(true)
     setError("")
-    const password = String(
-      new FormData(event.currentTarget).get("password") ?? ""
-    )
+    const password = String(values.password ?? "")
     try {
       await iamApi.completeEmailVerification(token, password || undefined)
       setState("success")
@@ -97,19 +93,21 @@ export default function VerifyEmailPage() {
           </header>
 
           {state === "form" ? (
-            <form className="mt-5 space-y-5" onSubmit={submit}>
-              <div className="space-y-2">
-                <Label htmlFor="verification-password">
-                  {t("registrationPassword")}
-                </Label>
-                <Input
-                  id="verification-password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  maxLength={1024}
-                />
-              </div>
+            <AutoForm
+              className="mt-5 md:grid-cols-1 [&>*]:col-span-1"
+              onSubmit={submit}
+              fields={{
+                password: {
+                  name: t("registrationPassword"),
+                  type: "password",
+                  config: {
+                    id: "verification-password",
+                    maxLength: 1024,
+                    autoComplete: "current-password",
+                  },
+                },
+              }}
+            >
               {error && (
                 <p className="text-sm text-destructive" role="alert">
                   {error}
@@ -123,7 +121,7 @@ export default function VerifyEmailPage() {
                 )}
                 {busy ? t("verifying") : t("verifyEmail")}
               </Button>
-            </form>
+            </AutoForm>
           ) : (
             <VerificationResult state={state} />
           )}

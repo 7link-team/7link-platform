@@ -1,10 +1,9 @@
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useState, type FormEvent } from "react"
+import { useState } from "react"
 import { ArrowLeft, KeyRound, Mail, ShieldCheck } from "lucide-react"
 import { Link, useLocation } from "react-router"
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi } from "../../lib/iam-api"
 import { useBranding, copyrightLine } from "../../lib/branding"
@@ -23,20 +22,18 @@ export default function RecoverPage() {
   const [complete, setComplete] = useState(false)
   const [error, setError] = useState("")
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submit = async (values: Record<string, unknown>) => {
     setBusy(true)
     setError("")
-    const data = new FormData(event.currentTarget)
     try {
       if (!token) {
         await iamApi.startPasswordRecovery(
-          String(data.get("identifier") ?? "").trim(),
+          String(values.identifier ?? "").trim(),
           entry ?? undefined
         )
       } else {
-        const password = String(data.get("new_password") ?? "")
-        if (password !== String(data.get("confirm_password") ?? "")) {
+        const password = String(values.new_password ?? "")
+        if (password !== String(values.confirm_password ?? "")) {
           setError(t("passwordMismatch"))
           return
         }
@@ -82,8 +79,52 @@ export default function RecoverPage() {
           {complete ? (
             <RecoveryComplete reset={Boolean(token)} />
           ) : (
-            <form className="mt-5 space-y-5" onSubmit={submit}>
-              {token ? <ResetFields /> : <IdentifierField />}
+            <AutoForm
+              key={token ? "reset" : "request"}
+              className="mt-5 md:grid-cols-1 [&>*]:col-span-1"
+              onSubmit={submit}
+              fields={
+                token
+                  ? {
+                      new_password: {
+                        name: t("newPassword"),
+                        type: "password",
+                        required: true,
+                        config: {
+                          id: "recovery-password",
+                          minLength: 12,
+                          maxLength: 1024,
+                          autoFocus: true,
+                          autoComplete: "new-password",
+                        },
+                      },
+                      confirm_password: {
+                        name: t("confirmNewPassword"),
+                        type: "password",
+                        required: true,
+                        config: {
+                          id: "recovery-confirm",
+                          minLength: 12,
+                          maxLength: 1024,
+                          autoComplete: "new-password",
+                        },
+                      },
+                    }
+                  : {
+                      identifier: {
+                        name: t("accountOrEmail"),
+                        type: "text",
+                        required: true,
+                        config: {
+                          id: "recovery-identifier",
+                          maxLength: 320,
+                          autoFocus: true,
+                          autoComplete: "username",
+                        },
+                      },
+                    }
+              }
+            >
               {error && (
                 <p className="text-sm text-destructive" role="alert">
                   {error}
@@ -97,7 +138,7 @@ export default function RecoverPage() {
                     ? t("updatePassword")
                     : t("sendRecoveryEmail")}
               </Button>
-            </form>
+            </AutoForm>
           )}
 
           <Button variant="ghost" className="mt-4 w-full" asChild>
@@ -112,58 +153,6 @@ export default function RecoverPage() {
         </p>
       </main>
     </div>
-  )
-}
-
-function IdentifierField() {
-  const t = useTranslations("iam")
-
-  return (
-    <div className="space-y-2">
-      <Label htmlFor="recovery-identifier">{t("accountOrEmail")}</Label>
-      <Input
-        id="recovery-identifier"
-        name="identifier"
-        autoComplete="username"
-        autoFocus
-        required
-        maxLength={320}
-      />
-    </div>
-  )
-}
-
-function ResetFields() {
-  const t = useTranslations("iam")
-
-  return (
-    <>
-      <div className="space-y-2">
-        <Label htmlFor="recovery-password">{t("newPassword")}</Label>
-        <Input
-          id="recovery-password"
-          name="new_password"
-          type="password"
-          autoComplete="new-password"
-          autoFocus
-          required
-          minLength={12}
-          maxLength={1024}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="recovery-confirm">{t("confirmNewPassword")}</Label>
-        <Input
-          id="recovery-confirm"
-          name="confirm_password"
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={12}
-          maxLength={1024}
-        />
-      </div>
-    </>
   )
 }
 

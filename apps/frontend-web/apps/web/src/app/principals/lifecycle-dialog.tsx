@@ -1,8 +1,11 @@
 "use client"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 
+import {
+  AutoForm,
+  type UseAutoFormReturn,
+} from "@workspace/ui/components/auto-form"
 import { Button } from "@workspace/ui/components/button"
-import { Checkbox } from "@workspace/ui/components/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -11,9 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Alert } from "../../components/alert"
 import type {
@@ -50,6 +51,8 @@ export function PrincipalLifecycleDialog({
 }) {
   const t = useTranslations("iam")
 
+  const retentionForm = useRef<UseAutoFormReturn>(null)
+  const loadGeneration = useRef(0)
   const [status, setStatus] = useState<PrincipalLifecycleStatus | null>(null)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
@@ -60,20 +63,33 @@ export function PrincipalLifecycleDialog({
   const [confirmation, setConfirmation] = useState("")
 
   const load = useCallback(
-    (id: string) =>
-      iamApi.principalLifecycle(id).then((next) => {
-        setError("")
-        setStatus(next)
-        setRetainUntil(toDateInput(next.lifecycle.retain_until))
-        setLegalHold(next.lifecycle.legal_hold)
-        setReference(next.lifecycle.reference)
-      }),
+    async (id: string) => {
+      const generation = loadGeneration.current
+      const next = await iamApi.principalLifecycle(id)
+      if (generation !== loadGeneration.current) return
+      setError("")
+      setStatus(next)
+      setRetainUntil(toDateInput(next.lifecycle.retain_until))
+      setLegalHold(next.lifecycle.legal_hold)
+      setReference(next.lifecycle.reference)
+      retentionForm.current?.setValues({
+        retain_until: toDateInput(next.lifecycle.retain_until),
+        reference: next.lifecycle.reference,
+        legal_hold: next.lifecycle.legal_hold,
+      })
+    },
     [iamApi]
   )
 
   useEffect(() => {
-    if (!principal) return
-    void load(principal.id).catch((cause: Error) => setError(cause.message))
+    const generation = ++loadGeneration.current
+    if (principal)
+      void load(principal.id).catch((cause: Error) => {
+        if (generation === loadGeneration.current) setError(cause.message)
+      })
+    return () => {
+      loadGeneration.current = generation + 1
+    }
   }, [principal, load])
 
   const saveRetention = async () => {
@@ -170,59 +186,79 @@ export function PrincipalLifecycleDialog({
 
             {!status.anonymized && (
               <>
-                <div className="grid gap-3">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="retain-until">{t("retainUntil")}</Label>
-                    <Input
-                      id="retain-until"
-                      type="date"
-                      value={retainUntil}
-                      disabled={busy}
-                      onChange={(event) => setRetainUntil(event.target.value)}
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="retention-reference">
-                      {t("caseReference")}
-                    </Label>
-                    <Input
-                      id="retention-reference"
-                      value={reference}
-                      maxLength={200}
-                      disabled={busy}
-                      onChange={(event) => setReference(event.target.value)}
-                    />
-                  </div>
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={legalHold}
-                      disabled={busy}
-                      onCheckedChange={(value) => setLegalHold(value === true)}
-                    />
-                    {t("legalHold")}
-                  </label>
+                <AutoForm
+                  formRef={retentionForm}
+                  mode="edit"
+                  key={`${principal?.id}:${status.lifecycle.version}`}
+                  fields={{
+                    retain_until: {
+                      name: t("retainUntil"),
+                      type: "date",
+                      value: retainUntil,
+                      disabled: busy,
+                      config: { id: "retain-until" },
+                    },
+                    reference: {
+                      name: t("caseReference"),
+                      type: "text",
+                      value: reference,
+                      disabled: busy,
+                      config: { id: "retention-reference", maxLength: 200 },
+                    },
+                    legal_hold: {
+                      name: t("legalHold"),
+                      type: "checkbox",
+                      value: legalHold,
+                      disabled: busy,
+                    },
+                  }}
+                  onChange={(values) => {
+                    setRetainUntil(String(values.retain_until))
+                    setReference(String(values.reference))
+                    setLegalHold(values.legal_hold === true)
+                  }}
+                  onSubmit={async () => {
+                    if (!busy && retainUntil && reference.trim())
+                      await saveRetention()
+                  }}
+                >
                   <Button
+                    className="md:col-span-2"
                     variant="outline"
+                    type="submit"
                     disabled={busy || !retainUntil || !reference.trim()}
-                    onClick={() => void saveRetention()}
                   >
                     {busy ? t("processing") : t("saveRetention")}
                   </Button>
-                </div>
-
-                <div className="grid gap-1.5 border-t pt-4">
-                  <Label htmlFor="anonymize-confirmation">
-                    {t("enterLoginName")}
-                    <b>{status.login_name}</b> {t("confirmErasureSuffix")}
-                  </Label>
-                  <Input
-                    id="anonymize-confirmation"
-                    value={confirmation}
-                    disabled={busy || blocked}
-                    autoComplete="off"
-                    onChange={(event) => setConfirmation(event.target.value)}
-                  />
-                </div>
+                </AutoForm>
+                <AutoForm
+                  id="anonymize-principal-form"
+                  className="border-t pt-4"
+                  fields={{
+                    confirmation: {
+                      name: (
+                        <>
+                          {t("enterLoginName")}
+                          <b>{status.login_name}</b> {t("confirmErasureSuffix")}
+                        </>
+                      ),
+                      type: "text",
+                      value: confirmation,
+                      disabled: busy || blocked,
+                      col: 2,
+                      config: {
+                        id: "anonymize-confirmation",
+                        autoComplete: "off",
+                      },
+                    },
+                  }}
+                  onChange={(values) =>
+                    setConfirmation(String(values.confirmation))
+                  }
+                  onSubmit={async () => {
+                    if (!busy && !blocked && namedCorrectly) await anonymize()
+                  }}
+                />
               </>
             )}
           </>
@@ -236,7 +272,8 @@ export function PrincipalLifecycleDialog({
             <Button
               variant="destructive"
               disabled={busy || blocked || !namedCorrectly}
-              onClick={() => void anonymize()}
+              type="submit"
+              form="anonymize-principal-form"
             >
               {busy ? t("erasing") : t("permanentErasure")}
             </Button>

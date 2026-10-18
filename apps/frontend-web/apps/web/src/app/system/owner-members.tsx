@@ -1,17 +1,10 @@
+import { AutoForm } from "@workspace/ui/components/auto-form"
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useParams } from "react-router"
-import { ArrowLeft, Plus, UserCog, Loader2 } from "lucide-react"
+import { ArrowLeft, Plus, UserCog } from "lucide-react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import {
-  Table,
-  TableHeader,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-} from "@workspace/ui/components/table"
 import { PageHeader } from "../../components/page-header"
 import { Alert } from "../../components/alert"
 import { SystemMembershipDialog } from "../../components/system-membership-dialog"
@@ -101,105 +94,130 @@ function OwnerMembersPage({ kind }: { kind: SystemOwnerScope["kind"] }) {
     }
   }, [refresh, invalidate])
   return (
-    <>
-      <PageHeader
-        title={`${t("manageMemberships")} · ${name || ownerID}`}
-        action={
-          allowed("platform_administer") ? (
-            <Button
-              onClick={() => {
-                setAccount(null)
-                setOpen(true)
-              }}
-            >
-              <Plus />
-              {t("create")}
-            </Button>
-          ) : undefined
-        }
-      />
-      <Button asChild variant="ghost" className="mb-4">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
+      <PageHeader title={`${t("manageMemberships")} · ${name || ownerID}`} />
+      <Button asChild variant="ghost" className="shrink-0 self-start">
         <Link to={`/system/accounts/${kind}`}>
           <ArrowLeft />
           {t(kind === "platform" ? "platformAccounts" : "tenantAccounts")}
         </Link>
       </Button>
       {error && <Alert>{error}</Alert>}
-      <Input
-        aria-label={t("searchPrincipals")}
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        className="mb-4 max-w-sm"
-      />
-      {loading ? (
-        <Loader2 className="size-5 animate-spin" />
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("displayName")}</TableHead>
-              <TableHead>{t("email")}</TableHead>
-              <TableHead>{t("status")}</TableHead>
-              <TableHead>{t("department")}</TableHead>
-              <TableHead>{t("assignedRoles")}</TableHead>
-              <TableHead>{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {members
-              .filter((member) =>
-                `${member.display_name ?? ""} ${member.email ?? ""}`
-                  .toLowerCase()
-                  .includes(search.toLowerCase())
-              )
-              .map((member) => (
-                <TableRow
-                  key={member.subject}
-                  data-owner-member-id={member.subject}
+
+      <AutoTable
+        loading={loading}
+        fill
+        onRefresh={refresh}
+        toolbar={
+          <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+            {allowed("platform_administer") ? (
+              <Button
+                onClick={() => {
+                  setAccount(null)
+                  setOpen(true)
+                }}
+              >
+                <Plus />
+                {t("create")}
+              </Button>
+            ) : undefined}
+            <AutoForm
+              className="w-full max-w-md md:grid-cols-1"
+              fields={{
+                search: {
+                  name: t("searchPrincipals"),
+                  type: "text",
+                  value: search,
+                },
+              }}
+              onChange={(values) => setSearch(String(values.search))}
+            />
+          </div>
+        }
+        rowProps={(member) => ({ "data-owner-member-id": member.subject })}
+
+        data={members.filter((member) =>
+          `${member.display_name ?? ""} ${member.email ?? ""}`
+            .toLowerCase()
+            .includes(search.toLowerCase())
+        )}
+        rowKey={(member) => member.subject}
+        columns={[
+          {
+            field: "displayName",
+            name: t("displayName"),
+            type: "custom",
+            render: (_value, member) => (
+              <div>{member.display_name || member.subject}</div>
+            ),
+          },
+          {
+            field: "email",
+            name: t("email"),
+            type: "text",
+          },
+          {
+            field: "status",
+            name: t("status"),
+            type: "custom",
+            render: (_value, member) => <div>{t(member.status)}</div>,
+          },
+          {
+            field: "department",
+            name: t("department"),
+            type: "custom",
+            render: (_value, member) => (
+              <div>
+                {departments.find(
+                  (department) => department.id === member.department_id
+                )?.name ?? "-"}
+              </div>
+            ),
+          },
+          {
+            field: "assignedRoles",
+            name: t("assignedRoles"),
+            type: "custom",
+            render: (_value, member) => (
+              <div>
+                {(member.role_ids ?? [])
+                  .map((id) => roles.find((role) => role.id === id)?.name ?? id)
+                  .join(", ") || "-"}
+              </div>
+            ),
+          },
+          {
+            field: "actions",
+            name: t("actions"),
+            type: "actions",
+            render: (_value, member) => (
+              <div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label={t("manageMembershipsNamed", {
+                    name: member.display_name || member.subject,
+                  })}
+                  onClick={() => {
+                    setAccount({
+                      id: member.subject,
+                      display_name: member.display_name,
+                      email: member.email,
+                      status: member.status,
+                      activation_required: false,
+                      created_at: member.created_at,
+                      updated_at: member.updated_at,
+                    })
+                    setOpen(true)
+                  }}
                 >
-                  <TableCell>{member.display_name || member.subject}</TableCell>
-                  <TableCell>{member.email}</TableCell>
-                  <TableCell>{t(member.status)}</TableCell>
-                  <TableCell>
-                    {departments.find(
-                      (department) => department.id === member.department_id
-                    )?.name ?? "-"}
-                  </TableCell>
-                  <TableCell>
-                    {(member.role_ids ?? [])
-                      .map(
-                        (id) => roles.find((role) => role.id === id)?.name ?? id
-                      )
-                      .join(", ") || "-"}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label={t("manageMembershipsNamed", {
-                        name: member.display_name || member.subject,
-                      })}
-                      onClick={() => {
-                        setAccount({
-                          id: member.subject,
-                          display_name: member.display_name,
-                          email: member.email,
-                          status: member.status,
-                          activation_required: false,
-                          created_at: member.created_at,
-                          updated_at: member.updated_at,
-                        })
-                        setOpen(true)
-                      }}
-                    >
-                      <UserCog />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-          </TableBody>
-        </Table>
-      )}
+                  <UserCog />
+                </Button>
+              </div>
+            ),
+          },
+        ]}
+      />
       <SystemMembershipDialog
         key={`${kind}:${ownerID}:${account?.id ?? "new"}`}
         scope={scope}
@@ -208,6 +226,6 @@ function OwnerMembersPage({ kind }: { kind: SystemOwnerScope["kind"] }) {
         onClose={() => setOpen(false)}
         onChanged={() => void refresh()}
       />
-    </>
+    </div>
   )
 }

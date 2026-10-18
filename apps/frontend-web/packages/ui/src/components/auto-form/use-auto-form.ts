@@ -205,6 +205,64 @@ export function useAutoForm(options: UseAutoFormOptions): UseAutoFormReturn {
           return checked.error.issues[0]?.message ?? t("invalid")
       }
       const config = field.config ?? {}
+      // Explicit legacy input constraints survive migration to config-driven fields.
+      // Contract-backed fields continue to use the server schema's semantics.
+      if (
+        !contractField &&
+        value !== undefined &&
+        value !== null &&
+        value !== ""
+      ) {
+        const text = String(value)
+        if (config.minLength !== undefined && text.length < config.minLength)
+          return t("invalid")
+        if (config.maxLength !== undefined && text.length > config.maxLength)
+          return t("invalid")
+        if (config.pattern) {
+          try {
+            if (!new RegExp(`^(?:${config.pattern})$`, "v").test(text))
+              return t("invalid")
+          } catch {
+            // Invalid HTML patterns have no browser constraint either.
+          }
+        }
+        if (field.type === "email" || config.type === "email") {
+          if (
+            !/^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(
+              text
+            )
+          )
+            return t("invalid")
+        }
+        if (field.type === "number" || config.type === "number") {
+          const number = Number(value)
+          if (!Number.isFinite(number)) return t("invalid")
+          if (config.min !== undefined && number < Number(config.min))
+            return t("invalid")
+          if (config.max !== undefined && number > Number(config.max))
+            return t("invalid")
+          const step = config.step ?? 1
+          const base = Number(
+            config.min ?? originalDataRef.current?.[key] ?? field.value ?? 0
+          )
+          const steps = (number - base) / step
+          if (step > 0 && Math.abs(steps - Math.round(steps)) > 1e-8)
+            return t("invalid")
+        }
+        if (config.type === "url") {
+          try {
+            new URL(text)
+          } catch {
+            return t("invalid")
+          }
+        }
+        if (["date", "datetime-local", "time"].includes(String(config.type))) {
+          if (config.min !== undefined && text < String(config.min))
+            return t("invalid")
+          if (config.max !== undefined && text > String(config.max))
+            return t("invalid")
+        }
+      }
       if (config.rules) {
         for (const rule of config.rules) {
           const message = await rule(value, vals)

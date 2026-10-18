@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent,
   type ReactNode,
 } from "react"
 import {
@@ -33,8 +32,6 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
-import { SimpleSelect } from "@workspace/ui/components/select"
 import {
   Tabs,
   TabsContent,
@@ -123,6 +120,7 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
 
   const [roles, setRoles] = useState<WorkspaceRole[]>([])
   const [catalog, setCatalog] = useState<Permission[]>([])
+  const [detailsRevision, setDetailsRevision] = useState(0)
   const selected =
     roles.find((role) => role.id === params.get("role")) ?? roles[0] ?? null
   const [details, setDetails] = useState<{
@@ -235,6 +233,7 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
     void refresh()
   }, [refresh, locale])
 
+  const [refreshingDetails, setRefreshingDetails] = useState(false)
   useEffect(() => {
     if (!selected) return
     let current = true
@@ -262,75 +261,85 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
           })
         : iamApi.roleDataScope(selected.id),
       allowed("dept_view") ? api.departments() : Promise.resolve([]),
-    ]).then(
-      ([
-        nextGrants,
-        nextBoundMembers,
-        nextMemberGrants,
-        nextMembers,
-        nextBindings,
-        nextGroups,
-
-        nextDataScope,
-        nextDepartments,
-      ]) => {
-        if (!current) return
-        const refused = [
+    ])
+      .then(
+        ([
           nextGrants,
           nextBoundMembers,
+          nextMemberGrants,
+          nextMembers,
           nextBindings,
-          nextDataScope,
-        ].find((result) => result.status === "rejected")
-        if (refused?.status === "rejected") {
-          setLoadError((refused.reason as Error | undefined)?.message ?? "")
-          return
-        }
-        if (
-          nextGrants.status !== "fulfilled" ||
-          nextBoundMembers.status !== "fulfilled" ||
-          nextBindings.status !== "fulfilled" ||
-          nextDataScope.status !== "fulfilled"
-        )
-          return
-        setDetails({
-          roleID: selected.id,
-          grants: nextGrants.value,
-          boundMembers: nextBoundMembers.value,
-          memberEnds:
-            nextMemberGrants.status === "fulfilled"
-              ? Object.fromEntries(
-                  nextMemberGrants.value.map((grant) => [
-                    grant.principal_id,
-                    grant.expires_at ?? null,
-                  ])
-                )
-              : {},
-          members: nextMembers.status === "fulfilled" ? nextMembers.value : [],
-          bindings: nextBindings.value,
-          groups: nextGroups.status === "fulfilled" ? nextGroups.value : [],
+          nextGroups,
 
-          dataScope: nextDataScope.value,
-          departments:
-            nextDepartments.status === "fulfilled" ? nextDepartments.value : [],
-        })
-        // A read started before an edit must not reset the newer scope draft.
-        if (scopeVersion === scopeDraftVersion.current && !scopeDirty.current) {
-          const nextScope = nextDataScope.value
-          const changed =
-            nextScope.scope !== scopeSource.current.scope ||
-            JSON.stringify(nextScope.department_ids) !==
-              JSON.stringify(scopeSource.current.department_ids)
-          scopeSource.current = nextScope
-          setScopeDraft(nextScope.scope)
-          setScopeDepartmentIDs(nextScope.department_ids)
-          if (changed) setScopeFormRevision((value) => value + 1)
+          nextDataScope,
+          nextDepartments,
+        ]) => {
+          if (!current) return
+          const refused = [
+            nextGrants,
+            nextBoundMembers,
+            nextBindings,
+            nextDataScope,
+          ].find((result) => result.status === "rejected")
+          if (refused?.status === "rejected") {
+            setLoadError((refused.reason as Error | undefined)?.message ?? "")
+            return
+          }
+          if (
+            nextGrants.status !== "fulfilled" ||
+            nextBoundMembers.status !== "fulfilled" ||
+            nextBindings.status !== "fulfilled" ||
+            nextDataScope.status !== "fulfilled"
+          )
+            return
+          setDetails({
+            roleID: selected.id,
+            grants: nextGrants.value,
+            boundMembers: nextBoundMembers.value,
+            memberEnds:
+              nextMemberGrants.status === "fulfilled"
+                ? Object.fromEntries(
+                    nextMemberGrants.value.map((grant) => [
+                      grant.principal_id,
+                      grant.expires_at ?? null,
+                    ])
+                  )
+                : {},
+            members:
+              nextMembers.status === "fulfilled" ? nextMembers.value : [],
+            bindings: nextBindings.value,
+            groups: nextGroups.status === "fulfilled" ? nextGroups.value : [],
+
+            dataScope: nextDataScope.value,
+            departments:
+              nextDepartments.status === "fulfilled"
+                ? nextDepartments.value
+                : [],
+          })
+          // A read started before an edit must not reset the newer scope draft.
+          if (
+            scopeVersion === scopeDraftVersion.current &&
+            !scopeDirty.current
+          ) {
+            const nextScope = nextDataScope.value
+            const changed =
+              nextScope.scope !== scopeSource.current.scope ||
+              JSON.stringify(nextScope.department_ids) !==
+                JSON.stringify(scopeSource.current.department_ids)
+            scopeSource.current = nextScope
+            setScopeDraft(nextScope.scope)
+            setScopeDepartmentIDs(nextScope.department_ids)
+            if (changed) setScopeFormRevision((value) => value + 1)
+          }
         }
-      }
-    )
+      )
+      .finally(() => {
+        if (current) setRefreshingDetails(false)
+      })
     return () => {
       current = false
     }
-  }, [selected, allowed, api, system])
+  }, [selected, allowed, api, system, detailsRevision])
 
   const loadingDetails = details.roleID !== selected?.id
   const grants = loadingDetails ? [] : details.grants
@@ -433,8 +442,15 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
     setConditionPermission(permission)
   }
 
-  const savePermissionCondition = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const savePermissionCondition = async (values: Record<string, unknown>) => {
+    const condition = trustedContextCondition(
+      String(values.minimumAcr ?? ""),
+      String(values.clientID ?? ""),
+      String(values.networkZone ?? ""),
+      String(values.timeStart ?? ""),
+      String(values.timeEnd ?? ""),
+      String(values.timezone ?? "")
+    )
     if (!selected || !conditionPermission || !condition) return
     setBusy(true)
     setError("")
@@ -924,6 +940,15 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
                         key={selected.id}
                         data={members}
                         rowKey="subject"
+                        searchable={(member) =>
+                          `${member.display_name} ${member.email} ${member.subject}`
+                        }
+                        loading={refreshingDetails}
+                        onRefresh={() => {
+                          setRefreshingDetails(true)
+                          setDetailsRevision((value) => value + 1)
+                        }}
+                        sticky={{ maxHeight: "24rem" }}
                         columns={[
                           {
                             field: "assignment",
@@ -1014,7 +1039,7 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
                       linkLabel={t("openGroupDirectory")}
                       kind="group"
                       icon={<UsersRound size={15} />}
-                      loading={loadingDetails}
+                      loading={loadingDetails || refreshingDetails}
                       busy={busy || !allowed("role_manage_assignee")}
                       items={directoryGroups.map((group) => ({
                         id: group.id,
@@ -1026,6 +1051,10 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
                         .filter((binding) => binding.assignee_type === "group")
                         .map((binding) => binding.assignee_id)}
                       onToggle={toggleDirectoryBinding}
+                      onRefresh={() => {
+                        setRefreshingDetails(true)
+                        setDetailsRevision((value) => value + 1)
+                      }}
                     />
                   )}
                 </TabsContent>
@@ -1162,122 +1191,93 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
               )}
             </DialogDescription>
           </DialogHeader>
-          <form
+          <AutoForm
+            key={conditionPermission?.code}
             id="role-permission-condition-form"
             className="grid gap-4 md:grid-cols-2"
             onSubmit={savePermissionCondition}
+            mode="edit"
+            initialData={{ ...conditionDraft }}
+            onChange={(values) =>
+              setConditionDraft((current) =>
+                Object.keys(current).every(
+                  (key) => current[key as keyof typeof current] === values[key]
+                )
+                  ? current
+                  : {
+                      minimumAcr: String(values.minimumAcr ?? ""),
+                      clientID: String(values.clientID ?? ""),
+                      networkZone: String(values.networkZone ?? ""),
+                      timeStart: String(values.timeStart ?? ""),
+                      timeEnd: String(values.timeEnd ?? ""),
+                      timezone: String(values.timezone ?? ""),
+                    }
+              )
+            }
+            fields={{
+              minimumAcr: {
+                name: t("minimumAcr"),
+                type: "select",
+                config: {
+                  id: "permission-minimum-acr",
+                  options: [
+                    { value: "", label: t("unrestricted") },
+                    { value: "1", label: t("basicAuthentication") },
+                    { value: "2", label: t("strongAuthentication") },
+                    ...(conditionDraft.minimumAcr &&
+                    !["1", "2"].includes(conditionDraft.minimumAcr)
+                      ? [
+                          {
+                            value: conditionDraft.minimumAcr,
+                            label: t("authenticationLevel", {
+                              level: conditionDraft.minimumAcr,
+                            }),
+                          },
+                        ]
+                      : []),
+                  ],
+                },
+              },
+              clientID: {
+                name: t("oauthClientIdentifier"),
+                type: "text",
+                config: {
+                  id: "permission-client-id",
+                  placeholder: t("unrestricted"),
+                  maxLength: 255,
+                },
+              },
+              networkZone: {
+                name: t("trustedNetworkZone"),
+                type: "text",
+                config: {
+                  id: "permission-network-zone",
+                  placeholder: t("unrestricted"),
+                  maxLength: 255,
+                },
+              },
+              timezone: {
+                name: t("ianaTimezone"),
+                type: "text",
+                disabled: (values) => !values?.timeStart && !values?.timeEnd,
+                required: (values) =>
+                  Boolean(values?.timeStart || values?.timeEnd),
+                config: { id: "permission-timezone", maxLength: 64 },
+              },
+              timeStart: {
+                name: t("dailyStart"),
+                type: "text",
+                required: (values) => Boolean(values?.timeEnd),
+                config: { id: "permission-time-start", type: "time" },
+              },
+              timeEnd: {
+                name: t("dailyEnd"),
+                type: "text",
+                required: (values) => Boolean(values?.timeStart),
+                config: { id: "permission-time-end", type: "time" },
+              },
+            }}
           >
-            <div className="grid gap-2">
-              <Label htmlFor="permission-minimum-acr">{t("minimumAcr")}</Label>
-              <SimpleSelect
-                id="permission-minimum-acr"
-                value={conditionDraft.minimumAcr}
-                onValueChange={(value) =>
-                  setConditionDraft((current) => ({
-                    ...current,
-                    minimumAcr: value,
-                  }))
-                }
-                options={[
-                  { value: "", label: t("unrestricted") },
-                  { value: "1", label: t("basicAuthentication") },
-                  { value: "2", label: t("strongAuthentication") },
-                  ...(conditionDraft.minimumAcr &&
-                  !["1", "2"].includes(conditionDraft.minimumAcr)
-                    ? [
-                        {
-                          value: conditionDraft.minimumAcr,
-                          label: t("authenticationLevel", {
-                            level: conditionDraft.minimumAcr,
-                          }),
-                        },
-                      ]
-                    : []),
-                ]}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="permission-client-id">
-                {t("oauthClientIdentifier")}
-              </Label>
-              <Input
-                id="permission-client-id"
-                value={conditionDraft.clientID}
-                onChange={(event) =>
-                  setConditionDraft((current) => ({
-                    ...current,
-                    clientID: event.target.value,
-                  }))
-                }
-                placeholder={t("unrestricted")}
-                maxLength={255}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="permission-network-zone">
-                {t("trustedNetworkZone")}
-              </Label>
-              <Input
-                id="permission-network-zone"
-                value={conditionDraft.networkZone}
-                onChange={(event) =>
-                  setConditionDraft((current) => ({
-                    ...current,
-                    networkZone: event.target.value,
-                  }))
-                }
-                placeholder={t("unrestricted")}
-                maxLength={255}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="permission-timezone">{t("ianaTimezone")}</Label>
-              <Input
-                id="permission-timezone"
-                value={conditionDraft.timezone}
-                disabled={!conditionDraft.timeStart && !conditionDraft.timeEnd}
-                onChange={(event) =>
-                  setConditionDraft((current) => ({
-                    ...current,
-                    timezone: event.target.value,
-                  }))
-                }
-                required={Boolean(
-                  conditionDraft.timeStart || conditionDraft.timeEnd
-                )}
-                maxLength={64}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="permission-time-start">{t("dailyStart")}</Label>
-              <Input
-                id="permission-time-start"
-                type="time"
-                value={conditionDraft.timeStart}
-                onChange={(event) =>
-                  setConditionDraft((current) => ({
-                    ...current,
-                    timeStart: event.target.value,
-                  }))
-                }
-                required={Boolean(conditionDraft.timeEnd)}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="permission-time-end">{t("dailyEnd")}</Label>
-              <Input
-                id="permission-time-end"
-                type="time"
-                value={conditionDraft.timeEnd}
-                onChange={(event) =>
-                  setConditionDraft((current) => ({
-                    ...current,
-                    timeEnd: event.target.value,
-                  }))
-                }
-                required={Boolean(conditionDraft.timeStart)}
-              />
-            </div>
             <div
               className="space-y-2 border-t pt-3 text-sm md:col-span-2"
               data-permission-condition-effect
@@ -1323,7 +1323,7 @@ export default function RolesPage({ system = false }: { system?: boolean }) {
                 {t("conditionGrantBoundary")}
               </p>
             </div>
-          </form>
+          </AutoForm>
           <DialogFooter>
             {conditionGrant?.condition && (
               <Button
@@ -1650,6 +1650,7 @@ function DirectoryBindingsSection({
   loading,
   busy,
   onToggle,
+  onRefresh,
 }: {
   title: string
   href: string
@@ -1660,6 +1661,7 @@ function DirectoryBindingsSection({
   boundIDs: string[]
   loading: boolean
   busy: boolean
+  onRefresh: () => void
   onToggle: (
     kind: RoleDirectoryBinding["assignee_type"],
     id: string,
@@ -1692,6 +1694,9 @@ function DirectoryBindingsSection({
         <AutoTable
           data={items}
           rowKey="id"
+          searchable={(item) => `${item.name} ${item.detail}`}
+          onRefresh={onRefresh}
+          sticky={{ maxHeight: "24rem" }}
           columns={[
             {
               field: "assignment",

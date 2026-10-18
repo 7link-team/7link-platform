@@ -338,7 +338,8 @@ async function createAndRevokeToken(context, page, messages, label, method) {
     .getByRole("button", { name: messages.createPersonalToken, exact: true })
     .click()
   await page.locator("#token-name").fill(label)
-  await page.locator("#token-tenant").selectOption(tenant.id)
+  await page.locator("#token-tenant").click()
+  await page.getByRole("option", { name: tenant.name, exact: true }).click()
   await page.getByRole("checkbox", { name: "role_view", exact: true }).check()
   const expires = new Date(Date.now() + 60 * 60_000)
   const local = new Date(
@@ -442,7 +443,7 @@ async function createAndRevokeToken(context, page, messages, label, method) {
     "Secret must not be retained in browser storage"
   )
   const item = page
-    .locator("li")
+    .locator("tbody tr")
     .filter({ has: page.getByRole("heading", { name: label, exact: true }) })
   await item.getByRole("button", { name: messages.revoke, exact: true }).click()
   await page
@@ -472,7 +473,13 @@ async function passwordLink(context, page, messages) {
   await page
     .getByRole("heading", { name: messages.linkedIdentities, exact: true })
     .waitFor()
-  await page.locator("#identity-provider").selectOption(provider.id)
+  await page.locator("#identity-provider").click()
+  await page
+    .getByRole("option", {
+      name: `${provider.name} · ${tenant.id}`,
+      exact: true,
+    })
+    .click()
   const oldCookie = await sessionCookie(context)
   const oldSession = await ok(context, "/me")
   const membersBefore = await ok(
@@ -527,7 +534,7 @@ async function passwordLink(context, page, messages) {
     1
   )
   await page
-    .locator("li")
+    .locator("tbody tr")
     .filter({
       has: page.getByRole("heading", { name: provider.name, exact: true }),
     })

@@ -1,3 +1,4 @@
+import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useState } from "react"
 import { useLocation } from "react-router"
 import { Eye, ExternalLink, Loader2 } from "lucide-react"
@@ -10,8 +11,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@workspace/ui/components/dialog"
-import { Label } from "@workspace/ui/components/label"
-import { SimpleSelect } from "@workspace/ui/components/select"
 import { Alert } from "./alert"
 import {
   openAccountViewTab,
@@ -152,47 +151,52 @@ export function AccountViewDialog({
             </DialogTitle>
           </DialogHeader>
           {error && <Alert>{error}</Alert>}
-          <div className="space-y-4">
-            {!organization && (
-              <div className="space-y-2">
-                <Label htmlFor="account-view-scope">
-                  {t("accountViewScope")}
-                </Label>
-                <SimpleSelect
-                  id="account-view-scope"
-                  value={`${scope}:${scopeID}`}
-                  onValueChange={(value) => {
-                    const next = workspaces.find(
-                      (item) => `${item.scope_type}:${item.scope_id}` === value
-                    )
-                    if (!next) return
-                    setScope(next.scope_type)
-                    setScopeID(
-                      next.scope_type === "system" ? "1" : next.scope_id
-                    )
-                    setTenantID(next.tenant_id ?? "")
-                  }}
-                  disabled={loading}
-                  options={workspaces.map((item) => ({
+          <AutoForm
+            key={`${loading}:${principalID}:${organization?.kind ?? ""}:${organization?.id ?? ""}`}
+            mode="edit"
+            initialData={{ workspace: `${scope}:${scopeID}`, mode }}
+            fields={{
+              workspace: {
+                name: t("accountViewScope"),
+                type: "select",
+                col: 2,
+                show: !organization,
+                disabled: loading,
+                config: {
+                  id: "account-view-scope",
+                  options: workspaces.map((item) => ({
                     value: `${item.scope_type}:${item.scope_id}`,
                     label: `${t(`accountViewScope_${item.scope_type}`)} · ${item.name}`,
-                  }))}
-                />
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="account-view-mode">{t("accountViewMode")}</Label>
-              <SimpleSelect
-                id="account-view-mode"
-                value={mode}
-                onValueChange={(value) => setMode(value as AccountViewMode)}
-                options={[
-                  { value: "read_only", label: t("accountViewReadOnly") },
-                  { value: "read_write", label: t("accountViewWritable") },
-                ]}
-              />
-            </div>
-          </div>
+                  })),
+                },
+              },
+              mode: {
+                name: t("accountViewMode"),
+                type: "select",
+                col: 2,
+                config: {
+                  id: "account-view-mode",
+                  options: [
+                    { value: "read_only", label: t("accountViewReadOnly") },
+                    { value: "read_write", label: t("accountViewWritable") },
+                  ],
+                },
+              },
+            }}
+            onChange={(values) => {
+              if (values.mode !== mode) setMode(values.mode as AccountViewMode)
+              if (values.workspace !== `${scope}:${scopeID}`) {
+                const next = workspaces.find(
+                  (item) =>
+                    `${item.scope_type}:${item.scope_id}` === values.workspace
+                )
+                if (!next) return
+                setScope(next.scope_type)
+                setScopeID(next.scope_type === "system" ? "1" : next.scope_id)
+                setTenantID(next.tenant_id ?? "")
+              }
+            }}
+          />
           <DialogFooter>
             <Button
               variant="outline"

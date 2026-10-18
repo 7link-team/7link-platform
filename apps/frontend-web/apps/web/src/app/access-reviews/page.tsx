@@ -1,14 +1,13 @@
+import { AutoForm } from "@workspace/ui/components/auto-form"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   Ban,
   Check,
   CircleCheckBig,
   Eye,
-  ListChecks,
   LoaderCircle,
   Plus,
-  RefreshCw,
   X,
 } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
@@ -21,17 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
-import { Textarea } from "@workspace/ui/components/textarea"
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { Alert } from "../../components/alert"
 import { useAuth } from "../../components/auth"
 import { PageHeader } from "../../components/page-header"
@@ -104,20 +93,23 @@ export default function AccessReviewsPage() {
     }
   }, [refresh])
 
+  const updateDueAt = useCallback(
+    (values: Record<string, unknown>) => setDueAt(String(values.due_at ?? "")),
+    []
+  )
+
   const openCreate = () => {
     setDueAt(toLocalInputValue(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)))
     setCreateOpen(true)
   }
 
-  const createReview = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const data = new FormData(event.currentTarget)
+  const createReview = async (data: Record<string, unknown>) => {
     setBusy(true)
     setError("")
     try {
       const created = await iamApi.createAccessReview({
-        name: String(data.get("name") ?? "").trim(),
-        due_at: new Date(dueAt).toISOString(),
+        name: String(data.name ?? "").trim(),
+        due_at: new Date(String(data.due_at)).toISOString(),
       })
       setCreateOpen(false)
       setSelected(created)
@@ -129,19 +121,17 @@ export default function AccessReviewsPage() {
     }
   }
 
-  const applyAction = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const applyAction = async (data: Record<string, unknown>) => {
     if (!action) return
     setBusy(true)
     setError("")
     try {
       if (action.kind === "decide") {
-        const data = new FormData(event.currentTarget)
         await iamApi.decideAccessReviewItem(
           action.review.id,
           action.item.id,
           action.decision,
-          String(data.get("note") ?? "").trim()
+          String(data.note ?? "").trim()
         )
       } else if (action.kind === "complete") {
         await iamApi.completeAccessReview(action.review.id)
@@ -159,30 +149,8 @@ export default function AccessReviewsPage() {
   }
 
   return (
-    <>
-      <PageHeader
-        title={t("accessReviews")}
-        action={
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() =>
-                void refresh(selected?.id).catch(showError(setError))
-              }
-            >
-              <RefreshCw className={busy ? "animate-spin" : ""} />
-              {t("refresh")}
-            </Button>
-            {allowed("access_review_create") && (
-              <Button disabled={busy} onClick={openCreate}>
-                <Plus />
-                {t("newReview")}
-              </Button>
-            )}
-          </div>
-        }
-      />
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <PageHeader title={t("accessReviews")} />
       {error && <Alert>{error}</Alert>}
       {loadError && (
         <Alert>
@@ -193,7 +161,10 @@ export default function AccessReviewsPage() {
         </Alert>
       )}
 
-      <section aria-labelledby="review-campaigns-heading">
+      <section
+        className="flex min-h-0 flex-1 flex-col"
+        aria-labelledby="review-campaigns-heading"
+      >
         <h2
           id="review-campaigns-heading"
           className="mb-3 text-sm font-semibold"
@@ -202,6 +173,15 @@ export default function AccessReviewsPage() {
         </h2>
         {!loadError && (
           <CampaignList
+            toolbar={
+              allowed("access_review_create") ? (
+                <Button disabled={busy} onClick={openCreate}>
+                  <Plus />
+                  {t("newReview")}
+                </Button>
+              ) : undefined
+            }
+            onRefresh={() => refresh(selected?.id).catch(showError(setError))}
             items={reviews}
             loaded={loaded}
             selectedID={selected?.id}
@@ -221,7 +201,7 @@ export default function AccessReviewsPage() {
 
       {selected && (
         <section
-          className="mt-8 border-t pt-6"
+          className="flex min-h-0 flex-1 flex-col border-t pt-4"
           aria-labelledby="review-detail-heading"
         >
           <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
@@ -283,6 +263,7 @@ export default function AccessReviewsPage() {
             review={selected}
             currentSubject={session?.subject ?? ""}
             busy={busy}
+            onRefresh={() => refresh(selected.id).catch(showError(setError))}
             onAction={setAction}
           />
         </section>
@@ -296,34 +277,35 @@ export default function AccessReviewsPage() {
               {t("accessReviewFormDescription")}
             </DialogDescription>
           </DialogHeader>
-          <form
+          <AutoForm
             id="access-review-create"
-            className="grid gap-4"
+            fields={{
+              name: {
+                name: t("name"),
+                type: "text",
+                required: true,
+                config: {
+                  id: "access-review-name",
+                  minLength: 3,
+                  maxLength: 128,
+                  autoFocus: true,
+                },
+              },
+              due_at: {
+                name: t("deadline"),
+                type: "text",
+                value: dueAt,
+                required: true,
+                config: {
+                  id: "access-review-due-at",
+                  type: "datetime-local",
+                  min: toLocalInputValue(new Date()),
+                },
+              },
+            }}
             onSubmit={createReview}
-          >
-            <div className="grid gap-2">
-              <Label htmlFor="access-review-name">{t("name")}</Label>
-              <Input
-                id="access-review-name"
-                name="name"
-                minLength={3}
-                maxLength={128}
-                autoFocus
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="access-review-due-at">{t("deadline")}</Label>
-              <Input
-                id="access-review-due-at"
-                type="datetime-local"
-                value={dueAt}
-                min={toLocalInputValue(new Date())}
-                onChange={(event) => setDueAt(event.target.value)}
-                required
-              />
-            </div>
-          </form>
+            onChange={updateDueAt}
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
               {t("cancel")}
@@ -353,23 +335,22 @@ export default function AccessReviewsPage() {
                     : `${action.item.principal_name} · ${action.item.role_name}`)}
             </DialogDescription>
           </DialogHeader>
-          <form
+          <AutoForm
             id="access-review-action"
-            className="grid gap-2"
+            fields={{
+              note: {
+                name: t("reviewNote"),
+                type: "textarea",
+                show: action?.kind === "decide",
+                config: {
+                  id: "access-review-note",
+                  maxLength: 500,
+                  autoFocus: true,
+                },
+              },
+            }}
             onSubmit={applyAction}
-          >
-            {action?.kind === "decide" && (
-              <>
-                <Label htmlFor="access-review-note">{t("reviewNote")}</Label>
-                <Textarea
-                  id="access-review-note"
-                  name="note"
-                  maxLength={500}
-                  autoFocus
-                />
-              </>
-            )}
-          </form>
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setAction(null)}>
               {t("back")}
@@ -391,7 +372,7 @@ export default function AccessReviewsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }
 
@@ -401,7 +382,11 @@ function CampaignList({
   selectedID,
   busy,
   onSelect,
+  toolbar,
+  onRefresh,
 }: {
+  toolbar?: React.ReactNode
+  onRefresh: () => Promise<void>
   items: AccessReview[]
   loaded: boolean
   selectedID?: string
@@ -412,113 +397,97 @@ function CampaignList({
 
   const t = useTranslations("iam")
 
-  if (!loaded)
-    return (
-      <div
-        className="grid min-h-32 place-items-center"
-        aria-label={t("loadingReviews")}
-      >
-        <LoaderCircle className="animate-spin text-muted-foreground" />
-      </div>
-    )
-  if (items.length === 0)
-    return (
-      <div className="grid min-h-40 place-items-center rounded-md border bg-card text-sm text-muted-foreground">
-        <div className="grid justify-items-center gap-2">
-          <ListChecks className="size-7" />
-          {t("noReviews")}
-        </div>
-      </div>
-    )
   return (
     <>
-      <div className="space-y-2 md:hidden">
-        {items.map((review) => (
-          <article
-            key={review.id}
-            className="rounded-md border bg-card p-4"
-            data-review-id={review.id}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <strong className="min-w-0 truncate text-sm">
-                {review.name}
-              </strong>
-              <ReviewStatus status={review.status} />
-            </div>
-            <dl className="mt-3 grid grid-cols-[4rem_1fr] gap-x-3 gap-y-1 text-xs">
-              <dt className="text-muted-foreground">{t("progress")}</dt>
-              <dd>
-                {review.total - review.pending}/{review.total}
-              </dd>
-              <dt className="text-muted-foreground">{t("due")}</dt>
-              <dd>{formatTime(review.due_at, locale)}</dd>
-              <dt className="text-muted-foreground">{t("reviewOwner")}</dt>
-              <dd className="truncate">{review.owner_id}</dd>
-            </dl>
-            <Button
-              className="mt-3 w-full"
-              variant={selectedID === review.id ? "secondary" : "outline"}
-              disabled={busy}
-              onClick={() => onSelect(review)}
-            >
-              <Eye />
-              {t("view")}
-            </Button>
-          </article>
-        ))}
-      </div>
-      <div className="hidden overflow-x-auto rounded-md border bg-card md:block">
-        <Table className="min-w-[760px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("name")}</TableHead>
-              <TableHead>{t("status")}</TableHead>
-              <TableHead>{t("progress")}</TableHead>
-              <TableHead>{t("deadline")}</TableHead>
-              <TableHead>{t("reviewOwner")}</TableHead>
-              <TableHead className="w-24 text-right">{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((review) => (
-              <TableRow
-                key={review.id}
-                data-review-id={review.id}
-                data-state={selectedID === review.id ? "selected" : undefined}
-              >
-                <TableCell>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <AutoTable
+          fill
+          toolbar={toolbar}
+          onRefresh={onRefresh}
+          data={items}
+          loading={!loaded}
+          emptyContent={t("noReviews")}
+          rowKey="id"
+          searchable
+          rowProps={(review) => ({
+            "data-review-id": review.id,
+            "data-state": selectedID === review.id ? "selected" : undefined,
+          })}
+          columns={[
+            {
+              field: "name",
+              name: t("name"),
+              render: (_, review) => (
+                <>
                   <strong className="block text-sm">{review.name}</strong>
                   <span className="font-mono text-xs text-muted-foreground">
                     {review.id}
                   </span>
-                </TableCell>
-                <TableCell>
+                </>
+              ),
+            },
+            {
+              field: "status",
+              name: t("status"),
+              render: (_, review) => (
+                <>
                   <ReviewStatus status={review.status} />
-                </TableCell>
-                <TableCell>
+                </>
+              ),
+            },
+            {
+              field: "progress",
+              name: t("progress"),
+              render: (_, review) => (
+                <>
                   {review.total - review.pending}/{review.total}
-                </TableCell>
-                <TableCell className="text-xs">
-                  {formatTime(review.due_at, locale)}
-                </TableCell>
-                <TableCell className="max-w-48 truncate text-sm">
-                  {review.owner_id}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => onSelect(review)}
-                  >
-                    <Eye />
-                    {t("view")}
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                </>
+              ),
+            },
+            {
+              field: "due_at",
+              name: t("deadline"),
+              render: (_, review) => (
+                <>
+                  <div className="text-xs">
+                    {formatTime(review.due_at, locale)}
+                  </div>
+                </>
+              ),
+            },
+            {
+              field: "owner_id",
+              name: t("reviewOwner"),
+              render: (_, review) => (
+                <>
+                  <div className="max-w-48 truncate text-sm">
+                    {review.owner_id}
+                  </div>
+                </>
+              ),
+            },
+            {
+              field: "actions",
+              type: "actions",
+              name: t("actions"),
+              render: (_, review) => (
+                <>
+                  <div className="text-right">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => onSelect(review)}
+                    >
+                      <Eye />
+                      {t("view")}
+                    </Button>
+                  </div>
+                </>
+              ),
+            },
+          ]}
+        />
       </div>
     </>
   )
@@ -529,10 +498,12 @@ function ReviewItems({
   currentSubject,
   busy,
   onAction,
+  onRefresh,
 }: {
   review: AccessReview
   currentSubject: string
   busy: boolean
+  onRefresh: () => Promise<void>
   onAction: (action: PendingAction) => void
 }) {
   const locale = useLocale()
@@ -574,108 +545,101 @@ function ReviewItems({
 
   return (
     <>
-      <div className="space-y-2 md:hidden">
-        {review.items.map((item) => (
-          <article
-            key={item.id}
-            className="rounded-md border bg-card p-4"
-            data-review-item-id={item.id}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <strong className="block truncate text-sm">
-                  {item.principal_name}
-                </strong>
-                <span className="block truncate font-mono text-xs text-muted-foreground">
-                  {item.principal_id}
-                </span>
-              </div>
-              <Badge variant="outline">
-                {item.grant_type === "permanent"
-                  ? t("permanent")
-                  : t("temporary")}
-              </Badge>
-            </div>
-            <dl className="mt-3 grid grid-cols-[4rem_1fr] gap-x-3 gap-y-1 text-xs">
-              <dt className="text-muted-foreground">{t("role")}</dt>
-              <dd className="truncate">{item.role_name}</dd>
-              <dt className="text-muted-foreground">{t("grantedAt")}</dt>
-              <dd>{formatTime(item.grant_created_at, locale)}</dd>
-              <dt className="text-muted-foreground">{t("grantUntil")}</dt>
-              <dd>
-                {item.grant_expires_at
-                  ? formatTime(item.grant_expires_at, locale)
-                  : t("noExpiry")}
-              </dd>
-              {item.principal_id === currentSubject &&
-                item.decision === "pending" && (
-                  <>
-                    <dt className="text-muted-foreground">
-                      {t("restriction")}
-                    </dt>
-                    <dd>{t("cannotReviewOwn")}</dd>
-                  </>
-                )}
-            </dl>
-            <div className="mt-3 border-t pt-3">{actions(item)}</div>
-          </article>
-        ))}
-      </div>
-      <div className="hidden overflow-x-auto rounded-md border bg-card md:block">
-        <Table className="min-w-[980px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("principal")}</TableHead>
-              <TableHead>{t("role")}</TableHead>
-              <TableHead>{t("type")}</TableHead>
-              <TableHead>{t("grantedAt")}</TableHead>
-              <TableHead>{t("grantUntil")}</TableHead>
-              <TableHead>{t("decidedBy")}</TableHead>
-              <TableHead className="w-48 text-right">
-                {t("reviewDecision")}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {review.items.map((item) => (
-              <TableRow key={item.id} data-review-item-id={item.id}>
-                <TableCell>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <AutoTable
+          fill
+          onRefresh={onRefresh}
+          data={review.items}
+          rowKey="id"
+          searchable
+          rowProps={(item) => ({ "data-review-item-id": item.id })}
+          columns={[
+            {
+              field: "principal_name",
+              name: t("principal"),
+              render: (_, item) => (
+                <>
                   <strong className="block text-sm">
                     {item.principal_name}
                   </strong>
                   <span className="font-mono text-xs text-muted-foreground">
                     {item.principal_id}
                   </span>
-                </TableCell>
-                <TableCell>
+                </>
+              ),
+            },
+            {
+              field: "role_name",
+              name: t("role"),
+              render: (_, item) => (
+                <>
                   <strong className="block text-sm">{item.role_name}</strong>
                   <span className="font-mono text-xs text-muted-foreground">
                     {item.role_id}
                   </span>
-                </TableCell>
-                <TableCell>
+                </>
+              ),
+            },
+            {
+              field: "grant_type",
+              name: t("type"),
+              render: (_, item) => (
+                <>
                   <Badge variant="outline">
                     {item.grant_type === "permanent"
                       ? t("permanent")
                       : t("temporary")}
                   </Badge>
-                </TableCell>
-                <TableCell className="text-xs">
-                  {formatTime(item.grant_created_at, locale)}
-                </TableCell>
-                <TableCell className="text-xs">
-                  {item.grant_expires_at
-                    ? formatTime(item.grant_expires_at, locale)
-                    : t("noExpiry")}
-                </TableCell>
-                <TableCell className="max-w-40 truncate text-sm">
-                  {item.decided_by || "-"}
-                </TableCell>
-                <TableCell className="text-right">{actions(item)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                </>
+              ),
+            },
+            {
+              field: "grant_created_at",
+              name: t("grantedAt"),
+              render: (_, item) => (
+                <>
+                  <div className="text-xs">
+                    {formatTime(item.grant_created_at, locale)}
+                  </div>
+                </>
+              ),
+            },
+            {
+              field: "grant_expires_at",
+              name: t("grantUntil"),
+              render: (_, item) => (
+                <>
+                  <div className="text-xs">
+                    {item.grant_expires_at
+                      ? formatTime(item.grant_expires_at, locale)
+                      : t("noExpiry")}
+                  </div>
+                </>
+              ),
+            },
+            {
+              field: "decided_by",
+              name: t("decidedBy"),
+              render: (_, item) => (
+                <>
+                  <div className="max-w-40 truncate text-sm">
+                    {item.decided_by || "-"}
+                  </div>
+                </>
+              ),
+            },
+            {
+              field: "actions",
+              type: "actions",
+              name: t("reviewDecision"),
+              render: (_, item) => (
+                <>
+                  <div className="text-right">{actions(item)}</div>
+                </>
+              ),
+            },
+          ]}
+        />
       </div>
     </>
   )

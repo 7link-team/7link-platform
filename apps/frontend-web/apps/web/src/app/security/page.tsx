@@ -1,5 +1,5 @@
 import { useTranslations, useLocale } from "@workspace/ui/i18n/intl-provider"
-import { useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useLocation } from "react-router"
 import {
   CheckCircle2,
@@ -29,7 +29,12 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
+import {
+  AutoForm,
+  type FieldConfig,
+  type FieldRendererProps,
+} from "@workspace/ui/components/auto-form"
+import { AutoTable } from "@workspace/ui/components/auto-table"
 import { Alert } from "../../components/alert"
 import { useAuth } from "../../components/auth"
 import { PageHeader } from "../../components/page-header"
@@ -171,45 +176,33 @@ export default function SecurityPage() {
       await refresh()
     })
 
-  const changePassword = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const form = event.currentTarget
-    const data = new FormData(form)
-    void run(async () => {
+  const changePassword = (data: Record<string, unknown>) => {
+    return run(async () => {
       await iamApi.changePassword({
-        current_password: String(data.get("current_password") ?? ""),
-        new_password: String(data.get("new_password") ?? ""),
+        current_password: String(data.current_password ?? ""),
+        new_password: String(data.new_password ?? ""),
       })
-      form.reset()
       setPasswordOpen(false)
       setNotice(t("passwordUpdated"))
       await refresh()
     })
   }
 
-  const beginEnrollment = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const form = event.currentTarget
-    const data = new FormData(form)
-    void run(async () => {
+  const beginEnrollment = (data: Record<string, unknown>) => {
+    return run(async () => {
       const next = await iamApi.beginTotpEnrollment(
-        String(data.get("current_password") ?? "")
+        String(data.current_password ?? "")
       )
-      form.reset()
       setEnrollment(next)
       setMfaDialog("enroll-confirm")
     })
   }
 
-  const confirmEnrollment = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const form = event.currentTarget
-    const data = new FormData(form)
-    void run(async () => {
+  const confirmEnrollment = (data: Record<string, unknown>) => {
+    return run(async () => {
       const result = await iamApi.confirmTotpEnrollment(
-        String(data.get("code") ?? "").trim()
+        String(data.code ?? "").trim()
       )
-      form.reset()
       setEnrollment(null)
       setRecoveryCodes(result.recovery_codes)
       setMfaDialog("recovery")
@@ -218,17 +211,14 @@ export default function SecurityPage() {
   }
 
   const verifyMfaChange = (
-    event: FormEvent<HTMLFormElement>,
+    data: Record<string, unknown>,
     action: "regenerate" | "disable"
   ) => {
-    event.preventDefault()
-    const form = event.currentTarget
-    const data = new FormData(form)
     const input = {
-      current_password: String(data.get("current_password") ?? ""),
-      code: String(data.get("code") ?? "").trim(),
+      current_password: String(data.current_password ?? ""),
+      code: String(data.code ?? "").trim(),
     }
-    void run(async () => {
+    return run(async () => {
       if (action === "regenerate") {
         const result = await iamApi.regenerateRecoveryCodes(input)
         setRecoveryCodes(result.recovery_codes)
@@ -238,7 +228,6 @@ export default function SecurityPage() {
         setMfaDialog(null)
         setNotice(t("mfaDisabled"))
       }
-      form.reset()
       await refresh()
     })
   }
@@ -250,50 +239,39 @@ export default function SecurityPage() {
     setMfaDialog(null)
   }
 
-  const registerPasskey = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const form = event.currentTarget
-    const data = new FormData(form)
-    void run(async () => {
+  const registerPasskey = (data: Record<string, unknown>) => {
+    return run(async () => {
       const options = await iamApi.beginPasskeyRegistration(
-        String(data.get("current_password") ?? "")
+        String(data.current_password ?? "")
       )
       const credential = await createPasskeyCredential(options.options)
       await iamApi.finishPasskeyRegistration({
         challenge_id: options.challenge_id,
-        name: String(data.get("name") ?? "").trim(),
+        name: String(data.name ?? "").trim(),
         credential,
       })
-      form.reset()
       setPasskeyDialog(null)
       setNotice(t("passkeyAdded"))
       await refresh()
     })
   }
 
-  const renamePasskey = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const renamePasskey = (data: Record<string, unknown>) => {
     if (passkeyDialog?.type !== "rename") return
-    const form = event.currentTarget
-    const data = new FormData(form)
     const id = passkeyDialog.passkey.id
-    void run(async () => {
-      await iamApi.renamePasskey(id, String(data.get("name") ?? "").trim())
+    return run(async () => {
+      await iamApi.renamePasskey(id, String(data.name ?? "").trim())
       setPasskeyDialog(null)
       setNotice(t("passkeyRenamed"))
       await refresh()
     })
   }
 
-  const deletePasskey = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const deletePasskey = (data: Record<string, unknown>) => {
     if (passkeyDialog?.type !== "delete") return
-    const form = event.currentTarget
-    const data = new FormData(form)
     const id = passkeyDialog.passkey.id
-    void run(async () => {
-      await iamApi.deletePasskey(id, String(data.get("current_password") ?? ""))
-      form.reset()
+    return run(async () => {
+      await iamApi.deletePasskey(id, String(data.current_password ?? ""))
       setPasskeyDialog(null)
       setNotice(t("passkeyDeleted"))
       await refresh()
@@ -367,6 +345,7 @@ export default function SecurityPage() {
             passkeys={passkeys}
             error={passkeyError}
             busy={busy}
+            onRefresh={refresh}
             onRegister={() => setPasskeyDialog({ type: "register" })}
             onRename={(passkey) =>
               setPasskeyDialog({ type: "rename", passkey })
@@ -379,6 +358,7 @@ export default function SecurityPage() {
           <SessionSection
             sessions={sessions}
             busy={busy}
+            onRefresh={refresh}
             onLogoutAll={logoutAll}
             onRevoke={revoke}
           />
@@ -477,10 +457,14 @@ function PhoneSection({
   session: Session | null
   busy: boolean
   onSend: () => void
-  onSubmit: (code: string) => void
+  onSubmit: (code: string) => void | Promise<void>
 }) {
   const t = useTranslations("iam")
   const [code, setCode] = useState("")
+  const updateCode = useCallback(
+    (values: Record<string, unknown>) => setCode(String(values.code ?? "")),
+    []
+  )
   const [entering, setEntering] = useState(false)
 
   const phone = session?.phone ?? ""
@@ -527,31 +511,27 @@ function PhoneSection({
         )}
       </header>
       {entering && !verified && phone && (
-        <form
-          className="flex flex-wrap items-end gap-3 px-5 py-4"
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (code.length === 6) onSubmit(code)
+        <AutoForm
+          className="px-5 py-4"
+          onChange={updateCode}
+          fields={{
+            code: {
+              name: t("phoneCode"),
+              type: "custom",
+              component: PhoneCodeField,
+              value: "",
+              config: { id: "phone_code" },
+            },
+          }}
+          onSubmit={(values) => {
+            const nextCode = String(values.code ?? "")
+            if (nextCode.length === 6) return onSubmit(nextCode)
           }}
         >
-          <div className="space-y-2">
-            <Label htmlFor="phone_code">{t("phoneCode")}</Label>
-            <Input
-              id="phone_code"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              className="w-32 font-mono tracking-[0.3em]"
-              value={code}
-              onChange={(event) =>
-                setCode(event.target.value.replace(/\D/g, "").slice(0, 6))
-              }
-            />
-          </div>
           <Button type="submit" disabled={busy || code.length !== 6}>
             {t("phoneCodeSubmit")}
           </Button>
-        </form>
+        </AutoForm>
       )}
     </section>
   )
@@ -561,6 +541,7 @@ function PasskeySection({
   passkeys,
   error,
   busy,
+  onRefresh,
   onRegister,
   onRename,
   onDelete,
@@ -568,6 +549,7 @@ function PasskeySection({
   passkeys: Passkey[]
   error: string
   busy: boolean
+  onRefresh: () => Promise<void>
   onRegister: () => void
   onRename: (passkey: Passkey) => void
   onDelete: (passkey: Passkey) => void
@@ -589,63 +571,86 @@ function PasskeySection({
             </p>
           </div>
         </div>
-        <Button disabled={busy || Boolean(error)} onClick={onRegister}>
-          <Plus />
-          {t("addPasskey")}
-        </Button>
       </header>
-      {passkeys.map((passkey) => (
-        <article
-          key={passkey.id}
-          className="grid min-h-20 grid-cols-[40px_minmax(0,1fr)_36px_36px] items-center gap-3 border-b px-5 py-3 last:border-0"
-        >
-          <span className="grid size-10 place-items-center rounded-md bg-primary/10 text-primary">
-            <KeyRound size={20} />
-          </span>
-          <div className="min-w-0">
-            <strong className="block truncate text-sm">{passkey.name}</strong>
-            <small className="mt-1 block text-xs text-muted-foreground">
-              {passkey.last_used_at
-                ? t("lastUsed", {
-                    date: new Date(passkey.last_used_at).toLocaleString(locale),
-                  })
-                : t("addedAt", {
-                    date: new Date(passkey.created_at).toLocaleString(locale),
-                  })}
-            </small>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            disabled={busy}
-            onClick={() => onRename(passkey)}
-            aria-label={t("renameNamedPasskey", { name: passkey.name })}
-            title={t("rename")}
-          >
-            <Pencil />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            disabled={busy}
-            onClick={() => onDelete(passkey)}
-            aria-label={t("deleteNamedPasskey", { name: passkey.name })}
-            title={t("delete")}
-          >
-            <Trash2 className="text-destructive" />
-          </Button>
-        </article>
-      ))}
+      <div className="flex h-80 min-h-0 flex-col">
+        <AutoTable
+          toolbar={
+            <Button disabled={busy || Boolean(error)} onClick={onRegister}>
+              <Plus />
+              {t("addPasskey")}
+            </Button>
+          }
+          emptyContent={error ? t("passkeyUnavailable") : t("noPasskeys")}
+          data={passkeys}
+          rowKey="id"
+          searchable
+          fill
+          onRefresh={onRefresh}
+          columns={[
+            {
+              field: "name",
+              name: t("passkeys"),
+              render: (_, passkey) => (
+                <div className="flex items-center gap-3">
+                  <KeyRound size={20} />{" "}
+                  <div className="min-w-0">
+                    <strong className="block truncate text-sm">
+                      {passkey.name}
+                    </strong>
+                    <small className="mt-1 block text-xs text-muted-foreground">
+                      {passkey.last_used_at
+                        ? t("lastUsed", {
+                            date: new Date(passkey.last_used_at).toLocaleString(
+                              locale
+                            ),
+                          })
+                        : t("addedAt", {
+                            date: new Date(passkey.created_at).toLocaleString(
+                              locale
+                            ),
+                          })}
+                    </small>
+                  </div>
+                </div>
+              ),
+            },
+            {
+              field: "actions",
+              type: "actions",
+              name: t("actions"),
+              render: (_, passkey) => (
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={busy}
+                    onClick={() => onRename(passkey)}
+                    aria-label={t("renameNamedPasskey", { name: passkey.name })}
+                    title={t("rename")}
+                  >
+                    <Pencil />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={busy}
+                    onClick={() => onDelete(passkey)}
+                    aria-label={t("deleteNamedPasskey", { name: passkey.name })}
+                    title={t("delete")}
+                  >
+                    <Trash2 className="text-destructive" />
+                  </Button>
+                </div>
+              ),
+            },
+          ]}
+        />
+      </div>
       {error && (
         <div className="px-5 py-4">
           <Alert>{t("passkeyUnavailable")}</Alert>
-        </div>
-      )}
-      {!error && passkeys.length === 0 && (
-        <div className="grid min-h-32 place-items-center px-5 text-sm text-muted-foreground">
-          {t("noPasskeys")}
         </div>
       )}
     </section>
@@ -663,9 +668,9 @@ function PasskeyFlowDialog({
   state: PasskeyDialog
   busy: boolean
   onOpenChange: (open: boolean) => void
-  onRegister: (event: FormEvent<HTMLFormElement>) => void
-  onRename: (event: FormEvent<HTMLFormElement>) => void
-  onDelete: (event: FormEvent<HTMLFormElement>) => void
+  onRegister: (data: Record<string, unknown>) => void | Promise<void>
+  onRename: (data: Record<string, unknown>) => void | Promise<void>
+  onDelete: (data: Record<string, unknown>) => void | Promise<void>
 }) {
   const t = useTranslations("iam")
 
@@ -689,9 +694,27 @@ function PasskeyFlowDialog({
                 : t("deletePasskeyDescription")}
           </DialogDescription>
         </DialogHeader>
-        <form
+        <AutoForm
+          key={formID}
           id={formID}
-          className="grid gap-4"
+          fields={{
+            name: {
+              name: t("name"),
+              type: "text",
+              show: state?.type !== "delete",
+              value: state?.type === "rename" ? state.passkey.name : "",
+              required: true,
+              config: {
+                id: `${formID}-name`,
+                autoComplete: "off",
+                maxLength: 200,
+              },
+            },
+            current_password: {
+              ...passwordField(`${formID}-password`, t("currentPassword")),
+              show: state?.type !== "rename",
+            },
+          }}
           onSubmit={
             state?.type === "register"
               ? onRegister
@@ -699,29 +722,7 @@ function PasskeyFlowDialog({
                 ? onRename
                 : onDelete
           }
-        >
-          {state?.type !== "delete" && (
-            <div className="grid gap-2">
-              <Label htmlFor={`${formID}-name`}>{t("name")}</Label>
-              <Input
-                id={`${formID}-name`}
-                name="name"
-                defaultValue={
-                  state?.type === "rename" ? state.passkey.name : ""
-                }
-                autoComplete="off"
-                required
-                maxLength={200}
-              />
-            </div>
-          )}
-          {state?.type !== "rename" && (
-            <PasswordField
-              id={`${formID}-password`}
-              label={t("currentPassword")}
-            />
-          )}
-        </form>
+        />
         <DialogFooter>
           <Button
             type="button"
@@ -823,11 +824,13 @@ function MfaSection({
 function SessionSection({
   sessions,
   busy,
+  onRefresh,
   onLogoutAll,
   onRevoke,
 }: {
   sessions: BrowserSession[]
   busy: boolean
+  onRefresh: () => Promise<void>
   onLogoutAll: () => void
   onRevoke: (session: BrowserSession) => void
 }) {
@@ -842,32 +845,80 @@ function SessionSection({
             {t("sessionsDescription")}
           </p>
         </div>
-        <Button
-          variant="destructive"
-          disabled={busy || sessions.length === 0}
-          onClick={onLogoutAll}
-        >
-          <LogOut />
-          {t("logoutAll")}
-        </Button>
       </header>
-      <div>
-        {sessions.map((session) => (
-          <SessionRow
-            key={session.id}
-            session={session}
-            busy={busy}
-            onRevoke={() => onRevoke(session)}
-          />
-        ))}
-        {sessions.length === 0 && (
-          <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
-            <div className="text-center">
+      <div className="flex h-80 min-h-0 flex-col">
+        <AutoTable
+          toolbar={
+            <Button
+              variant="destructive"
+              disabled={busy || sessions.length === 0}
+              onClick={onLogoutAll}
+            >
+              <LogOut />
+              {t("logoutAll")}
+            </Button>
+          }
+          data={sessions}
+          rowKey="id"
+          searchable
+          fill
+          onRefresh={onRefresh}
+          emptyContent={
+            <div className="py-6">
               <ShieldCheck className="mx-auto mb-2 size-7" />
               {t("noSessions")}
             </div>
-          </div>
-        )}
+          }
+          columns={[
+            {
+              field: "user_agent",
+              name: t("sessions"),
+              render: (_, session) => (
+                <div className="flex items-center gap-3">
+                  <span className="text-primary">
+                    {/android|iphone|ipad|mobile/i.test(
+                      session.user_agent ?? ""
+                    ) ? (
+                      <Smartphone size={20} />
+                    ) : (
+                      <Laptop size={20} />
+                    )}
+                  </span>
+                  <SessionDetails session={session} />
+                </div>
+              ),
+            },
+            {
+              field: "current",
+              name: t("currentDevice"),
+              render: (_, session) =>
+                session.current ? (
+                  <span className="rounded bg-success/10 px-2 py-1 text-xs font-semibold text-success">
+                    {t("currentDevice")}
+                  </span>
+                ) : null,
+            },
+            {
+              field: "actions",
+              type: "actions",
+              name: t("actions"),
+              render: (_, session) => (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={busy}
+                  onClick={() => onRevoke(session)}
+                  aria-label={t(
+                    session.current ? "revokeCurrentSession" : "revokeSession"
+                  )}
+                >
+                  <Trash2 className="text-destructive" />
+                </Button>
+              ),
+            },
+          ]}
+        />
       </div>
     </section>
   )
@@ -882,7 +933,7 @@ function PasswordDialog({
   open: boolean
   busy: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: (data: Record<string, unknown>) => void | Promise<void>
 }) {
   const t = useTranslations("iam")
 
@@ -893,21 +944,28 @@ function PasswordDialog({
           <DialogTitle>{t("changePassword")}</DialogTitle>
           <DialogDescription>{t("passwordDescription")}</DialogDescription>
         </DialogHeader>
-        <form id="password-form" className="grid gap-4" onSubmit={onSubmit}>
-          <PasswordField id="current-password" label={t("currentPassword")} />
-          <div className="grid gap-2">
-            <Label htmlFor="new-password">{t("newPassword")}</Label>
-            <Input
-              id="new-password"
-              name="new_password"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={12}
-              maxLength={1024}
-            />
-          </div>
-        </form>
+        <AutoForm
+          id="password-form"
+          onSubmit={onSubmit}
+          fields={{
+            current_password: passwordField(
+              "current-password",
+              t("currentPassword")
+            ),
+            new_password: {
+              name: t("newPassword"),
+              type: "password",
+              required: true,
+              config: {
+                id: "new-password",
+                type: "password",
+                autoComplete: "new-password",
+                minLength: 12,
+                maxLength: 1024,
+              },
+            },
+          }}
+        />
         <DialogFooter>
           <Button
             type="button"
@@ -941,10 +999,10 @@ function MfaFlowDialog({
   recoveryCodes: string[]
   busy: boolean
   onOpenChange: (open: boolean) => void
-  onBegin: (event: FormEvent<HTMLFormElement>) => void
-  onConfirm: (event: FormEvent<HTMLFormElement>) => void
-  onRegenerate: (event: FormEvent<HTMLFormElement>) => void
-  onDisable: (event: FormEvent<HTMLFormElement>) => void
+  onBegin: (data: Record<string, unknown>) => void | Promise<void>
+  onConfirm: (data: Record<string, unknown>) => void | Promise<void>
+  onRegenerate: (data: Record<string, unknown>) => void | Promise<void>
+  onDisable: (data: Record<string, unknown>) => void | Promise<void>
 }) {
   const t = useTranslations("iam")
 
@@ -1018,7 +1076,7 @@ function VerificationForm({
   submitLabel: string
   passwordOnly?: boolean
   destructive?: boolean
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: (data: Record<string, unknown>) => void | Promise<void>
 }) {
   const t = useTranslations("iam")
 
@@ -1028,10 +1086,24 @@ function VerificationForm({
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
-      <form id={id} className="grid gap-4" onSubmit={onSubmit}>
-        <PasswordField id={`${id}-password`} label={t("currentPassword")} />
-        {!passwordOnly && <CodeField id={`${id}-code`} />}
-      </form>
+      <AutoForm
+        id={id}
+        onSubmit={onSubmit}
+        fields={{
+          current_password: passwordField(
+            `${id}-password`,
+            t("currentPassword")
+          ),
+          code: {
+            ...codeField(
+              `${id}-code`,
+              t("authOrRecoveryCode"),
+              t("codePlaceholder")
+            ),
+            show: !passwordOnly,
+          },
+        }}
+      />
       <DialogFooter>
         <Button
           type="submit"
@@ -1053,7 +1125,7 @@ function EnrollmentForm({
 }: {
   enrollment: MfaEnrollment
   busy: boolean
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: (data: Record<string, unknown>) => void | Promise<void>
 }) {
   const { name: appName } = useBranding()
   const t = useTranslations("iam")
@@ -1086,9 +1158,18 @@ function EnrollmentForm({
           </p>
         </div>
       </div>
-      <form id="mfa-confirm-form" onSubmit={onSubmit}>
-        <CodeField id="mfa-confirm-code" totpOnly />
-      </form>
+      <AutoForm
+        id="mfa-confirm-form"
+        onSubmit={onSubmit}
+        fields={{
+          code: codeField(
+            "mfa-confirm-code",
+            t("sixDigitCode"),
+            "000000",
+            true
+          ),
+        }}
+      />
       <DialogFooter>
         <Button type="submit" form="mfa-confirm-form" disabled={busy}>
           {busy ? t("confirming") : t("confirmEnable")}
@@ -1155,49 +1236,40 @@ function RecoveryCodes({
   )
 }
 
-function PasswordField({ id, label }: { id: string; label: string }) {
-  return (
-    <div className="grid gap-2">
-      <Label htmlFor={id}>{label}</Label>
-      <Input
-        id={id}
-        name="current_password"
-        type="password"
-        autoComplete="current-password"
-        required
-        maxLength={1024}
-      />
-    </div>
-  )
+function passwordField(id: string, label: string): FieldConfig {
+  return {
+    name: label,
+    type: "password",
+    required: true,
+    config: {
+      id,
+      type: "password",
+      autoComplete: "current-password",
+      maxLength: 1024,
+    },
+  }
 }
 
-function CodeField({
-  id,
-  totpOnly = false,
-}: {
-  id: string
-  totpOnly?: boolean
-}) {
-  const t = useTranslations("iam")
-
-  return (
-    <div className="grid gap-2">
-      <Label htmlFor={id}>
-        {totpOnly ? t("sixDigitCode") : t("authOrRecoveryCode")}
-      </Label>
-      <Input
-        id={id}
-        name="code"
-        inputMode={totpOnly ? "numeric" : "text"}
-        autoComplete="one-time-code"
-        autoCapitalize="characters"
-        required
-        minLength={6}
-        maxLength={64}
-        placeholder={totpOnly ? "000000" : t("codePlaceholder")}
-      />
-    </div>
-  )
+function codeField(
+  id: string,
+  label: string,
+  placeholder: string,
+  totpOnly = false
+): FieldConfig {
+  return {
+    name: label,
+    type: "text",
+    required: true,
+    config: {
+      id,
+      inputMode: totpOnly ? "numeric" : "text",
+      autoComplete: "one-time-code",
+      autoCapitalize: "characters",
+      minLength: 6,
+      maxLength: 64,
+      placeholder,
+    },
+  }
 }
 
 function SuccessNotice({ children }: { children: string }) {
@@ -1211,52 +1283,47 @@ function SuccessNotice({ children }: { children: string }) {
   )
 }
 
-function SessionRow({
-  session,
-  busy,
-  onRevoke,
-}: {
-  session: BrowserSession
-  busy: boolean
-  onRevoke: () => void
-}) {
+function SessionDetails({ session }: { session: BrowserSession }) {
   const t = useTranslations("iam")
   const locale = useLocale()
-
-  const mobile = /android|iphone|ipad|mobile/i.test(session.user_agent ?? "")
   return (
-    <article className="grid min-h-20 grid-cols-[40px_minmax(0,1fr)_auto_36px] items-center gap-3 border-b px-5 py-3 last:border-0 max-sm:grid-cols-[40px_minmax(0,1fr)_36px]">
-      <span className="grid size-10 place-items-center rounded-md bg-primary/10 text-primary">
-        {mobile ? <Smartphone size={20} /> : <Laptop size={20} />}
-      </span>
-      <div className="min-w-0">
-        <strong className="block truncate text-sm">
-          {session.user_agent || t("unknownBrowser")}
-        </strong>
-        <small className="mt-1 block text-xs text-muted-foreground">
-          {t("sessionActivity", {
-            ip: session.ip_address || t("noIp"),
-            date: new Date(session.last_seen_at).toLocaleString(locale),
-          })}
-        </small>
-      </div>
-      {session.current && (
-        <span className="rounded bg-success/10 px-2 py-1 text-xs font-semibold text-success max-sm:col-start-2">
-          {t("currentDevice")}
-        </span>
-      )}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        disabled={busy}
-        onClick={onRevoke}
-        aria-label={t(
-          session.current ? "revokeCurrentSession" : "revokeSession"
-        )}
-      >
-        <Trash2 className="text-destructive" />
-      </Button>
-    </article>
+    <div className="min-w-0">
+      <strong className="block truncate text-sm">
+        {session.user_agent || t("unknownBrowser")}
+      </strong>
+      <small className="mt-1 block text-xs text-muted-foreground">
+        {t("sessionActivity", {
+          ip: session.ip_address || t("noIp"),
+          date: new Date(session.last_seen_at).toLocaleString(locale),
+        })}
+      </small>
+    </div>
+  )
+}
+
+function PhoneCodeField({
+  value,
+  onChange,
+  config,
+  disabled,
+  labelId,
+  describedBy,
+}: FieldRendererProps) {
+  return (
+    <Input
+      id={config.id}
+      name="code"
+      inputMode="numeric"
+      autoComplete="one-time-code"
+      maxLength={6}
+      className="w-32 font-mono tracking-[0.3em]"
+      value={String(value ?? "")}
+      disabled={disabled}
+      aria-labelledby={labelId}
+      aria-describedby={describedBy}
+      onChange={(event) =>
+        onChange(event.target.value.replace(/\D/g, "").slice(0, 6))
+      }
+    />
   )
 }

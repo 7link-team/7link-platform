@@ -68,19 +68,28 @@ export function TextFieldRenderer(props: FieldRendererProps) {
           )}
         />
         <Input
-          id={id}
+          data-auto-form-managed
+          id={config.id ?? id}
           name={name}
           type={inputType}
           value={(value as string | number | undefined) ?? ""}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
           aria-labelledby={labelId}
+          aria-label={config.ariaLabel as string | undefined}
           aria-describedby={describedBy}
           aria-invalid={Boolean(error)}
           placeholder={config.placeholder as string | undefined}
           min={config.min as number | undefined}
           max={config.max as number | undefined}
           step={config.step as number | undefined}
+          minLength={config.minLength}
+          maxLength={config.maxLength}
+          pattern={config.pattern}
+          autoComplete={config.autoComplete}
+          autoFocus={config.autoFocus}
+          inputMode={config.inputMode}
+          autoCapitalize={config.autoCapitalize}
           className={[
             config.prefix ? "pl-10" : "",
             config.suffix ? "pr-10" : "",
@@ -125,15 +134,20 @@ export function TextAreaFieldRenderer(props: FieldRendererProps) {
   return (
     <div className="w-full">
       <Textarea
-        id={id}
+        data-auto-form-managed
+        id={config.id ?? id}
         name={name}
         value={(value as string | undefined) ?? ""}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         aria-labelledby={labelId}
+        aria-label={config.ariaLabel as string | undefined}
         aria-describedby={describedBy}
         placeholder={config.placeholder as string | undefined}
         rows={config.rows ?? 3}
+        minLength={config.minLength}
+        maxLength={config.maxLength}
+        autoComplete={config.autoComplete}
         className={
           error ? "border-destructive focus-visible:ring-destructive" : ""
         }
@@ -181,6 +195,7 @@ export function SelectFieldRenderer(props: FieldRendererProps) {
   return (
     <div className="w-full">
       <SimpleSelect
+        id={config.id}
         options={options}
         value={current ?? ""}
         onValueChange={(v) => onChange(v)}
@@ -191,6 +206,7 @@ export function SelectFieldRenderer(props: FieldRendererProps) {
           error ? "border-destructive focus:ring-destructive" : "",
         ].join(" ")}
         aria-labelledby={labelId}
+        aria-label={config.ariaLabel as string | undefined}
         aria-describedby={describedBy}
       />
       {error ? (
@@ -246,6 +262,7 @@ export function CheckboxFieldRenderer(props: FieldRendererProps) {
   return (
     <label className="flex items-center gap-2 text-sm">
       <Checkbox
+        id={config.id}
         checked={Boolean(value)}
         onCheckedChange={(checked) => onChange(checked === true)}
         disabled={disabled}
@@ -261,6 +278,7 @@ export function SwitchFieldRenderer(props: FieldRendererProps) {
   return (
     <label className="flex items-center gap-3 text-sm">
       <Switch
+        id={config.id}
         checked={Boolean(value)}
         onCheckedChange={(checked) => onChange(checked === true)}
         disabled={disabled}

@@ -332,3 +332,52 @@ describe("operation required preserves JSON Schema presence semantics", () => {
     expect(submitted).toBe(false)
   })
 })
+
+describe("migrated input validation", () => {
+  it.each([
+    { type: "text", config: { minLength: 3 }, value: "ab" },
+    { type: "text", config: { maxLength: 3 }, value: "abcd" },
+    { type: "text", config: { pattern: "[a-z]+" }, value: "UPPER" },
+    { type: "email", config: {}, value: "invalid" },
+    { type: "number", config: { min: 1 }, value: "0" },
+    { type: "number", config: { max: 5 }, value: "6" },
+    { type: "text", config: { type: "url" }, value: "relative/path" },
+    {
+      type: "text",
+      config: { type: "datetime-local", min: "2026-10-17T12:00" },
+      value: "2026-10-16T12:00",
+    },
+  ] as const)(
+    "blocks invalid configured input %# before calling API",
+    async ({ type, config, value }) => {
+      let calls = 0
+      const form = formFor({
+        fields: { value: { name: "Value", type, config, value } },
+        onSubmit: () => {
+          calls++
+        },
+      })
+      await form.handleSubmit()
+      expect(calls).toBe(0)
+      expect(await form.validate()).toBe(false)
+    }
+  )
+  it("submits valid values unchanged", async () => {
+    let submitted: unknown
+    const form = formFor({
+      fields: {
+        value: {
+          name: "Value",
+          type: "text",
+          config: { minLength: 2, maxLength: 5, pattern: "[a-z]+" },
+          value: "valid",
+        },
+      },
+      onSubmit: (data) => {
+        submitted = data
+      },
+    })
+    await form.handleSubmit()
+    expect(submitted).toEqual({ value: "valid" })
+  })
+})

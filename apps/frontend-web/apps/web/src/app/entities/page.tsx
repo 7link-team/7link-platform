@@ -1,11 +1,11 @@
-import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-} from "react"
+  AutoForm,
+  type UseAutoFormReturn,
+  type FieldRendererProps,
+} from "@workspace/ui/components/auto-form"
+import { AutoTable } from "@workspace/ui/components/auto-table"
+import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
+import { useCallback, useEffect, useMemo, useState, useRef } from "react"
 import {
   Building2,
   ChevronDown,
@@ -27,17 +27,6 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
-import { SimpleSelect } from "@workspace/ui/components/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
-import { Textarea } from "@workspace/ui/components/textarea"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import {
@@ -82,6 +71,9 @@ export default function EntitiesPage({
   const t = useTranslations("iam")
   const allowed = useAllowed()
 
+  const bindingForm = useRef<UseAutoFormReturn>(null)
+  const inspectionForm = useRef<UseAutoFormReturn>(null)
+  const relationshipForm = useRef<UseAutoFormReturn>(null)
   const [entities, setEntities] = useState<Entity[]>([])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState(false)
@@ -238,18 +230,16 @@ export default function EntitiesPage({
     setOpen(true)
   }
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submit = async (data: Record<string, unknown>) => {
     setBusy(true)
     setError("")
-    const data = new FormData(event.currentTarget)
     try {
       const input: EntityInput = {
         parent_id: parentID === rootEntity ? "" : parentID,
-        type: String(data.get("type")),
-        name: String(data.get("name")),
+        type: String(data.type),
+        name: String(data.name),
         status,
-        metadata: parseMetadata(String(data.get("metadata") || "{}")),
+        metadata: parseMetadata(String(data.metadata || "{}")),
       }
       if (editing) await iamApi.updateEntity(editing.id, input)
       else await iamApi.createEntity(input)
@@ -341,8 +331,7 @@ export default function EntitiesPage({
     }
   }
 
-  const putRelationship = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const putRelationship = async () => {
     if (!bindingEntity || !relationshipSubjectID) return
     setBusy(true)
     setError("")
@@ -379,6 +368,16 @@ export default function EntitiesPage({
         ),
       })
       setRelationships(await loadRelationships(bindingEntity.id))
+      for (const field of [
+        "starts_at",
+        "ends_at",
+        "minimum_acr",
+        "client_id",
+        "network_zone",
+        "time_start",
+        "time_end",
+      ])
+        relationshipForm.current?.setValue(field, "")
       setRelationshipStartsAt("")
       setRelationshipEndsAt("")
       setRelationshipMinimumAcr("")
@@ -430,8 +429,7 @@ export default function EntitiesPage({
     }
   }
 
-  const putBinding = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const putBinding = async () => {
     if (!bindingEntity || !roleID || !principalID) return
     setBusy(true)
     setError("")
@@ -509,21 +507,10 @@ export default function EntitiesPage({
   }
 
   return (
-    <>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
       <PageHeader
         title={t(scopeEntityID ? "entitySettings" : "entityManagement")}
         description={t("entitiesDescription")}
-        action={
-          !scopeEntityID &&
-          loaded &&
-          !loadError &&
-          allowed("entity_create") && (
-            <Button onClick={openCreate}>
-              <Plus />
-              {t("createEntity")}
-            </Button>
-          )
-        }
       />
       {error && !open && !bindingEntity && <Alert>{error}</Alert>}
       {loadError ? (
@@ -543,27 +530,57 @@ export default function EntitiesPage({
       ) : !loaded ? (
         <p role="status">{t("loading")}</p>
       ) : (
-        <div className="overflow-x-auto rounded-md border bg-card">
-          <Table className="min-w-[900px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("entity")}</TableHead>
-                <TableHead>{t("type")}</TableHead>
-                <TableHead>{t("parentEntity")}</TableHead>
-                <TableHead>{t("status")}</TableHead>
-                <TableHead>{t("metadata")}</TableHead>
-                <TableHead className="w-32 text-right">
-                  {t("actions")}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tree.map(({ entity, depth }) => {
-                const hasChildren =
-                  !scopeEntityID && (childCounts.get(entity.id) ?? 0) > 0
-                return (
-                  <TableRow key={entity.id}>
-                    <TableCell>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border bg-card">
+          <AutoTable
+            fill
+            onRefresh={refresh}
+            searchable={({ entity }) =>
+              [entity.name, entity.id, entity.type].join(" ")
+            }
+            toolbar={
+              <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+                {!scopeEntityID &&
+                  loaded &&
+                  !loadError &&
+                  allowed("entity_create") && (
+                    <Button onClick={openCreate}>
+                      <Plus />
+                      {t("createEntity")}
+                    </Button>
+                  )}
+              </div>
+            }
+            footer={
+              <>
+                <span className="text-sm text-muted-foreground">
+                  {tree.length} {t("items")}
+                </span>
+              </>
+            }
+            className="[&_table]:min-w-[900px]"
+            emptyContent={
+              tree.length === 0 && (
+                <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
+                  <span className="text-center">
+                    <Building2 className="mx-auto mb-2 size-7" />
+                    {t(scopeEntityID ? "entityUnavailable" : "noEntities")}
+                  </span>
+                </div>
+              )
+            }
+            pagination={false}
+            data={tree}
+            rowKey={(row) => row.entity.id}
+            columns={[
+              {
+                field: "entity",
+                name: t("entity"),
+                type: "custom" as const,
+                render: (_value, { entity, depth }) => {
+                  const hasChildren =
+                    !scopeEntityID && (childCounts.get(entity.id) ?? 0) > 0
+                  return (
+                    <div>
                       <div
                         className="flex min-w-0 items-center gap-1"
                         style={{ paddingInlineStart: `${depth * 24}px` }}
@@ -595,17 +612,44 @@ export default function EntitiesPage({
                           {entity.name}
                         </strong>
                       </div>
-                    </TableCell>
-                    <TableCell>
+                    </div>
+                  )
+                },
+              },
+              {
+                field: "type",
+                name: t("type"),
+                type: "custom" as const,
+                render: (_value, { entity }) => {
+                  return (
+                    <div>
                       <Badge variant="outline">{entity.type}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    </div>
+                  )
+                },
+              },
+              {
+                field: "parentEntity",
+                name: t("parentEntity"),
+                type: "custom" as const,
+                render: (_value, { entity }) => {
+                  return (
+                    <div className="text-sm text-muted-foreground">
                       {entity.parent_id
                         ? (entityByID.get(entity.parent_id)?.name ??
                           entity.parent_id)
                         : "-"}
-                    </TableCell>
-                    <TableCell>
+                    </div>
+                  )
+                },
+              },
+              {
+                field: "status",
+                name: t("status"),
+                type: "custom" as const,
+                render: (_value, { entity }) => {
+                  return (
+                    <div>
                       <Badge
                         variant={
                           entity.status === "active"
@@ -617,11 +661,29 @@ export default function EntitiesPage({
                           ? t("active")
                           : t("disable")}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="max-w-72 truncate font-mono text-xs text-muted-foreground">
+                    </div>
+                  )
+                },
+              },
+              {
+                field: "metadata",
+                name: t("metadata"),
+                type: "custom" as const,
+                render: (_value, { entity }) => {
+                  return (
+                    <div className="max-w-72 truncate font-mono text-xs text-muted-foreground">
                       {metadataSummary(entity.metadata)}
-                    </TableCell>
-                    <TableCell className="text-right">
+                    </div>
+                  )
+                },
+              },
+              {
+                field: "actions",
+                name: t("actions"),
+                type: "actions" as const,
+                render: (_value, { entity }) => {
+                  return (
+                    <div className="text-right">
                       <div className="flex justify-end gap-1">
                         {allowed("entity_manage_binding") && (
                           <Button
@@ -662,20 +724,12 @@ export default function EntitiesPage({
                           </Button>
                         )}
                       </div>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-          {tree.length === 0 && (
-            <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
-              <span className="text-center">
-                <Building2 className="mx-auto mb-2 size-7" />
-                {t(scopeEntityID ? "entityUnavailable" : "noEntities")}
-              </span>
-            </div>
-          )}
+                    </div>
+                  )
+                },
+              },
+            ]}
+          />
         </div>
       )}
 
@@ -694,70 +748,63 @@ export default function EntitiesPage({
             <DialogDescription>{t("entityFormDescription")}</DialogDescription>
           </DialogHeader>
           {error && <Alert>{error}</Alert>}
-          <form
+          <AutoForm
             key={editing?.id ?? "create"}
+            mode={editing ? "edit" : "add"}
             id="entity-form"
-            className="grid gap-4"
+            fields={{
+              name: {
+                name: t("name"),
+                type: "text",
+                value: editing?.name ?? "",
+                required: true,
+                config: { id: "entity-name", maxLength: 200 },
+              },
+              type: {
+                name: t("type"),
+                type: "text",
+                value: editing?.type ?? "",
+                required: true,
+                config: {
+                  id: "entity-type",
+                  pattern: "[a-z][a-z0-9_-]{0,63}",
+                  placeholder: "company",
+                  maxLength: 64,
+                },
+              },
+              parent_id: {
+                name: t("parentEntity"),
+                type: "select",
+                value: parentID,
+                config: { id: "entity-parent", options: parentOptions },
+              },
+              status: {
+                name: t("status"),
+                type: "select",
+                value: status,
+                config: {
+                  id: "entity-status",
+                  options: { active: t("active"), disabled: t("disable") },
+                },
+              },
+              metadata: {
+                name: t("metadataJson"),
+                type: "textarea",
+                value: JSON.stringify(editing?.metadata ?? {}, null, 2),
+                config: {
+                  id: "entity-metadata",
+                  rows: 5,
+                  spellCheck: false,
+                  className: "font-mono text-xs",
+                },
+              },
+            }}
             onSubmit={submit}
-          >
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="grid gap-2">
-                <Label htmlFor="entity-name">{t("name")}</Label>
-                <Input
-                  id="entity-name"
-                  name="name"
-                  defaultValue={editing?.name}
-                  required
-                  maxLength={200}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="entity-type">{t("type")}</Label>
-                <Input
-                  id="entity-type"
-                  name="type"
-                  defaultValue={editing?.type}
-                  pattern="[a-z][a-z0-9_-]{0,63}"
-                  placeholder="company"
-                  required
-                  maxLength={64}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="grid gap-2">
-                <Label htmlFor="entity-parent">{t("parentEntity")}</Label>
-                <SimpleSelect
-                  id="entity-parent"
-                  options={parentOptions}
-                  value={parentID}
-                  onValueChange={setParentID}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="entity-status">{t("status")}</Label>
-                <SimpleSelect
-                  id="entity-status"
-                  options={{ active: t("active"), disabled: t("disable") }}
-                  value={status}
-                  onValueChange={(value) =>
-                    setStatus(value as EntityInput["status"])
-                  }
-                />
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="entity-metadata">{t("metadataJson")}</Label>
-              <Textarea
-                id="entity-metadata"
-                name="metadata"
-                className="font-mono text-xs"
-                defaultValue={JSON.stringify(editing?.metadata ?? {}, null, 2)}
-                rows={5}
-                spellCheck={false}
-              />
-            </div>
-          </form>
+            onChange={(values) => {
+              setStatus(values.status as EntityInput["status"])
+              setParentID(String(values.parent_id))
+            }}
+          ></AutoForm>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               {t("cancel")}
@@ -788,82 +835,118 @@ export default function EntitiesPage({
             </DialogDescription>
           </DialogHeader>
           {error && <Alert>{error}</Alert>}
-          <form
+          <AutoForm
+            formRef={bindingForm}
             id="entity-binding-form"
-            className="grid grid-cols-1 gap-3 md:grid-cols-4"
+            fields={{
+              role_id: {
+                name: t("role"),
+                type: "select",
+                value: roleID,
+                config: {
+                  id: "entity-binding-role",
+                  options: roles.map((role) => ({
+                    value: role.id,
+                    label: role.name,
+                  })),
+                  placeholder: t("noAvailableRoles"),
+                },
+              },
+              principal_id: {
+                name: t("member"),
+                type: "select",
+                value: principalID,
+                config: {
+                  id: "entity-binding-principal",
+                  options: members.map((member) => ({
+                    value: member.subject,
+                    label: member.display_name || member.subject,
+                  })),
+                  placeholder: t("noActiveMembers"),
+                },
+              },
+              effect: {
+                name: t("effect"),
+                type: "select",
+                value: effect,
+                config: {
+                  id: "entity-binding-effect",
+                  options: { allow: t("allow"), deny: t("deny") },
+                },
+              },
+              expires_at: {
+                name: t("expiresAt"),
+                type: "custom",
+                component: LocalDateTimeField,
+                value: expiresAt,
+                col: 1,
+                config: { id: "entity-binding-expiry" },
+              },
+            }}
             onSubmit={putBinding}
-          >
-            <div className="grid gap-2">
-              <Label htmlFor="entity-binding-role">{t("role")}</Label>
-              <SimpleSelect
-                id="entity-binding-role"
-                options={roles.map((role) => ({
-                  value: role.id,
-                  label: role.name,
-                }))}
-                value={roleID}
-                onValueChange={setRoleID}
-                placeholder={t("noAvailableRoles")}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="entity-binding-principal">{t("member")}</Label>
-              <SimpleSelect
-                id="entity-binding-principal"
-                options={members.map((member) => ({
-                  value: member.subject,
-                  label: member.display_name || member.subject,
-                }))}
-                value={principalID}
-                onValueChange={setPrincipalID}
-                placeholder={t("noActiveMembers")}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="entity-binding-effect">{t("effect")}</Label>
-              <SimpleSelect
-                id="entity-binding-effect"
-                options={{ allow: t("allow"), deny: t("deny") }}
-                value={effect}
-                onValueChange={(value) =>
-                  setEffect(value as EntityRoleBinding["effect"])
-                }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="entity-binding-expiry">{t("expiresAt")}</Label>
-              <Input
-                id="entity-binding-expiry"
-                type="datetime-local"
-                value={expiresAt}
-                onChange={(event) => setExpiresAt(event.target.value)}
-              />
-            </div>
-          </form>
-          <div className="overflow-x-auto rounded-md border">
-            <Table className="min-w-[720px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("role")}</TableHead>
-                  <TableHead>{t("member")}</TableHead>
-                  <TableHead>{t("effect")}</TableHead>
-                  <TableHead>{t("expiresAt")}</TableHead>
-                  <TableHead className="w-16 text-right">
-                    {t("actions")}
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {bindings.map((binding) => (
-                  <TableRow key={`${binding.role_id}:${binding.principal_id}`}>
-                    <TableCell>
+            onChange={(values) => {
+              setRoleID(String(values.role_id))
+              if (String(values.principal_id) !== principalID) {
+                setPrincipalID(String(values.principal_id))
+                inspectionForm.current?.setValue(
+                  "principal_id",
+                  String(values.principal_id)
+                )
+              }
+              setEffect(values.effect as EntityRoleBinding["effect"])
+              setExpiresAt(String(values.expires_at))
+            }}
+          ></AutoForm>
+          <div className="overflow-hidden rounded-md border">
+            <AutoTable
+              searchable={(binding) =>
+                [
+                  binding.role_id,
+                  binding.principal_id,
+                  roles.find((role) => role.id === binding.role_id)?.name,
+                  members.find(
+                    (member) => member.subject === binding.principal_id
+                  )?.display_name,
+                  binding.effect,
+                ].join(" ")
+              }
+              onRefresh={async () => {
+                if (bindingEntity)
+                  setBindings(await iamApi.entityRoleBindings(bindingEntity.id))
+              }}
+              sticky={{ maxHeight: "20rem" }}
+              className="[&_table]:min-w-[720px]"
+              emptyContent={null}
+              data={bindings}
+              rowKey={(binding) => `${binding.role_id}:${binding.principal_id}`}
+              columns={[
+                {
+                  field: "role",
+                  name: t("role"),
+                  type: "custom",
+                  render: (_value, binding) => (
+                    <div>
                       {roleByID.get(binding.role_id)?.name ?? binding.role_id}
-                    </TableCell>
-                    <TableCell>
+                    </div>
+                  ),
+                },
+                {
+                  field: "member",
+                  name: t("member"),
+                  type: "custom",
+                  render: (_value, binding) => (
+                    <div>
                       {memberByID.get(binding.principal_id)?.display_name ??
                         binding.principal_id}
-                    </TableCell>
-                    <TableCell>
+                    </div>
+                  ),
+                },
+                {
+                  field: "effect",
+                  name: t("effect"),
+                  type: "custom",
+                  render: (_value, binding) => (
+                    <div>
                       <Badge
                         variant={
                           binding.effect === "allow"
@@ -873,13 +956,27 @@ export default function EntitiesPage({
                       >
                         {binding.effect === "allow" ? t("allow") : t("deny")}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    </div>
+                  ),
+                },
+                {
+                  field: "expiresAt",
+                  name: t("expiresAt"),
+                  type: "custom",
+                  render: (_value, binding) => (
+                    <div className="text-sm text-muted-foreground">
                       {binding.expires_at
                         ? new Date(binding.expires_at).toLocaleString(locale)
                         : t("noExpiry")}
-                    </TableCell>
-                    <TableCell className="text-right">
+                    </div>
+                  ),
+                },
+                {
+                  field: "actions",
+                  name: t("actions"),
+                  type: "actions",
+                  render: (_value, binding) => (
+                    <div className="text-right">
                       {allowed("entity_manage_binding") && (
                         <Button
                           variant="ghost"
@@ -892,11 +989,11 @@ export default function EntitiesPage({
                           <Trash2 />
                         </Button>
                       )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    </div>
+                  ),
+                },
+              ]}
+            />
             {bindings.length === 0 && (
               <div className="grid min-h-24 place-items-center text-sm text-muted-foreground">
                 {t("noDirectBindings")}
@@ -910,224 +1007,200 @@ export default function EntitiesPage({
             <h3 id="relationship-title" className="mb-3 text-sm font-semibold">
               {t("relationshipGrants")}
             </h3>
-            <form
+            <AutoForm
+              formRef={relationshipForm}
               id="entity-relationship-form"
-              className="grid grid-cols-1 items-end gap-3 md:grid-cols-2 xl:grid-cols-4"
-              onSubmit={putRelationship}
-            >
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-subject-type">
-                  {t("principalType")}
-                </Label>
-                <SimpleSelect
-                  id="relationship-subject-type"
-                  options={{
-                    principal: t("member"),
-                    group: t("groups"),
-
-                    entity: t("entity"),
-                  }}
-                  value={relationshipSubjectType}
-                  onValueChange={(value) => {
-                    const type = value as RelationshipSubjectType
-                    setRelationshipSubjectType(type)
-                    setRelationshipSubjectID("")
-                  }}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-subject">{t("principal")}</Label>
-                <SimpleSelect
-                  id="relationship-subject"
-                  options={relationshipSubjectOptions}
-                  value={relationshipSubjectID}
-                  onValueChange={setRelationshipSubjectID}
-                  placeholder={t("noPrincipalsAvailable")}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-subject-relation">
-                  {t("subjectRelation")}
-                </Label>
-                {relationshipSubjectType === "entity" ? (
-                  <SimpleSelect
-                    id="relationship-subject-relation"
-                    options={{
+              fields={{
+                subject_type: {
+                  name: t("principalType"),
+                  type: "select",
+                  value: relationshipSubjectType,
+                  config: {
+                    id: "relationship-subject-type",
+                    options: {
+                      principal: t("member"),
+                      group: t("groups"),
+                      entity: t("entity"),
+                    },
+                  },
+                },
+                subject_id: {
+                  name: t("principal"),
+                  type: "select",
+                  value: relationshipSubjectID,
+                  config: {
+                    id: "relationship-subject",
+                    options: relationshipSubjectOptions,
+                    placeholder: t("noPrincipalsAvailable"),
+                  },
+                },
+                subject_relation: {
+                  name: t("subjectRelation"),
+                  type: "select",
+                  value: relationshipSubjectRelation,
+                  show: (values) => values?.subject_type === "entity",
+                  config: {
+                    id: "relationship-subject-relation",
+                    options: {
                       owner: t("owner"),
                       editor: t("editor"),
                       viewer: t("viewer"),
-                    }}
-                    value={relationshipSubjectRelation}
-                    onValueChange={(value) =>
-                      setRelationshipSubjectRelation(
-                        value as RelationshipRelation
-                      )
-                    }
-                  />
-                ) : (
-                  <Input
-                    id="relationship-subject-relation"
-                    value={
+                    },
+                  },
+                },
+                direct_subject_relation: {
+                  name: t("subjectRelation"),
+                  type: "text",
+                  value:
+                    relationshipSubjectType === "principal"
+                      ? t("directPrincipal")
+                      : "member",
+                  disabled: true,
+                  show: (values) => values?.subject_type !== "entity",
+                  config: {
+                    placeholder:
                       relationshipSubjectType === "principal"
                         ? t("directPrincipal")
-                        : "member"
-                    }
-                    disabled
-                  />
-                )}
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-relation">
-                  {t("grantRelation")}
-                </Label>
-                <SimpleSelect
-                  id="relationship-relation"
-                  options={{
-                    owner: t("owner"),
-                    editor: t("editor"),
-                    viewer: t("viewer"),
-                  }}
-                  value={relationshipRelation}
-                  onValueChange={(value) =>
-                    setRelationshipRelation(value as RelationshipRelation)
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-resource-type">
-                  {t("businessResourceType")}
-                </Label>
-                <SimpleSelect
-                  id="relationship-resource-type"
-                  options={resourceTypeOptions}
-                  value={relationshipResourceType}
-                  onValueChange={setRelationshipResourceType}
-                  placeholder={t("selectType")}
-                  disabled={!relationshipResourceID}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-resource-id">
-                  {t("businessResourceId")}
-                </Label>
-                <Input
-                  id="relationship-resource-id"
-                  value={relationshipResourceID}
-                  onChange={(event) =>
-                    setRelationshipResourceID(event.target.value)
-                  }
-                  placeholder={t("blankCurrentEntity")}
-                  maxLength={255}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-starts-at">
-                  {t("effectiveAt")}
-                </Label>
-                <Input
-                  id="relationship-starts-at"
-                  type="datetime-local"
-                  value={relationshipStartsAt}
-                  onChange={(event) =>
-                    setRelationshipStartsAt(event.target.value)
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-ends-at">{t("expiresAt")}</Label>
-                <Input
-                  id="relationship-ends-at"
-                  type="datetime-local"
-                  value={relationshipEndsAt}
-                  onChange={(event) =>
-                    setRelationshipEndsAt(event.target.value)
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-minimum-acr">
-                  {t("minimumAcr")}
-                </Label>
-                <Input
-                  id="relationship-minimum-acr"
-                  type="number"
-                  min="1"
-                  max="99"
-                  value={relationshipMinimumAcr}
-                  onChange={(event) =>
-                    setRelationshipMinimumAcr(event.target.value)
-                  }
-                  placeholder={t("unrestricted")}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-client-id">
-                  {t("oauthClients")}
-                </Label>
-                <Input
-                  id="relationship-client-id"
-                  value={relationshipClientID}
-                  onChange={(event) =>
-                    setRelationshipClientID(event.target.value)
-                  }
-                  placeholder={t("unrestricted")}
-                  maxLength={255}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-network-zone">
-                  {t("networkZone")}
-                </Label>
-                <Input
-                  id="relationship-network-zone"
-                  value={relationshipNetworkZone}
-                  onChange={(event) =>
-                    setRelationshipNetworkZone(event.target.value)
-                  }
-                  placeholder={t("unrestricted")}
-                  maxLength={255}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-time-start">
-                  {t("dailyStart")}
-                </Label>
-                <Input
-                  id="relationship-time-start"
-                  type="time"
-                  value={relationshipTimeStart}
-                  onChange={(event) =>
-                    setRelationshipTimeStart(event.target.value)
-                  }
-                  required={Boolean(relationshipTimeEnd)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-time-end">{t("dailyEnd")}</Label>
-                <Input
-                  id="relationship-time-end"
-                  type="time"
-                  value={relationshipTimeEnd}
-                  onChange={(event) =>
-                    setRelationshipTimeEnd(event.target.value)
-                  }
-                  required={Boolean(relationshipTimeStart)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="relationship-timezone">{t("timezone")}</Label>
-                <Input
-                  id="relationship-timezone"
-                  value={relationshipTimezone}
-                  onChange={(event) =>
-                    setRelationshipTimezone(event.target.value)
-                  }
-                  required={Boolean(
-                    relationshipTimeStart || relationshipTimeEnd
-                  )}
-                  maxLength={64}
-                />
-              </div>
+                        : "member",
+                  },
+                },
+                relation: {
+                  name: t("grantRelation"),
+                  type: "select",
+                  value: relationshipRelation,
+                  config: {
+                    id: "relationship-relation",
+                    options: {
+                      owner: t("owner"),
+                      editor: t("editor"),
+                      viewer: t("viewer"),
+                    },
+                  },
+                },
+                resource_type: {
+                  name: t("businessResourceType"),
+                  type: "select",
+                  value: relationshipResourceType,
+                  disabled: (values) => !values?.resource_id,
+                  config: {
+                    id: "relationship-resource-type",
+                    options: resourceTypeOptions,
+                    placeholder: t("selectType"),
+                  },
+                },
+                resource_id: {
+                  name: t("businessResourceId"),
+                  type: "text",
+                  value: relationshipResourceID,
+                  config: {
+                    id: "relationship-resource-id",
+                    placeholder: t("blankCurrentEntity"),
+                    maxLength: 255,
+                  },
+                },
+                starts_at: {
+                  name: t("effectiveAt"),
+                  type: "custom",
+                  component: LocalDateTimeField,
+                  value: relationshipStartsAt,
+                  col: 1,
+                  config: { id: "relationship-starts-at" },
+                },
+                ends_at: {
+                  name: t("expiresAt"),
+                  type: "custom",
+                  component: LocalDateTimeField,
+                  value: relationshipEndsAt,
+                  col: 1,
+                  config: { id: "relationship-ends-at" },
+                },
+                minimum_acr: {
+                  name: t("minimumAcr"),
+                  type: "number",
+                  value: relationshipMinimumAcr,
+                  config: {
+                    id: "relationship-minimum-acr",
+                    min: 1,
+                    max: 99,
+                    placeholder: t("unrestricted"),
+                  },
+                },
+                client_id: {
+                  name: t("oauthClients"),
+                  type: "text",
+                  value: relationshipClientID,
+                  config: {
+                    id: "relationship-client-id",
+                    maxLength: 255,
+                    placeholder: t("unrestricted"),
+                  },
+                },
+                network_zone: {
+                  name: t("networkZone"),
+                  type: "text",
+                  value: relationshipNetworkZone,
+                  config: {
+                    id: "relationship-network-zone",
+                    maxLength: 255,
+                    placeholder: t("unrestricted"),
+                  },
+                },
+                time_start: {
+                  name: t("dailyStart"),
+                  type: "time",
+                  value: relationshipTimeStart,
+                  required: (values) => Boolean(values?.time_end),
+                  config: { id: "relationship-time-start" },
+                },
+                time_end: {
+                  name: t("dailyEnd"),
+                  type: "time",
+                  value: relationshipTimeEnd,
+                  required: (values) => Boolean(values?.time_start),
+                  config: { id: "relationship-time-end" },
+                },
+                timezone: {
+                  name: t("timezone"),
+                  type: "text",
+                  value: relationshipTimezone,
+                  required: (values) =>
+                    Boolean(values?.time_start || values?.time_end),
+                  config: { id: "relationship-timezone", maxLength: 64 },
+                },
+              }}
+              onSubmit={putRelationship}
+              onChange={(values) => {
+                if (values.subject_type !== relationshipSubjectType) {
+                  setRelationshipSubjectType(
+                    values.subject_type as RelationshipSubjectType
+                  )
+                  setRelationshipSubjectID("")
+                  relationshipForm.current?.setValue("subject_id", "")
+                  relationshipForm.current?.setValue(
+                    "direct_subject_relation",
+                    values.subject_type === "principal"
+                      ? t("directPrincipal")
+                      : "member"
+                  )
+                } else {
+                  setRelationshipSubjectID(String(values.subject_id))
+                }
+                setRelationshipSubjectRelation(
+                  values.subject_relation as RelationshipRelation
+                )
+                setRelationshipRelation(values.relation as RelationshipRelation)
+                setRelationshipResourceType(String(values.resource_type))
+                setRelationshipResourceID(String(values.resource_id))
+                setRelationshipStartsAt(String(values.starts_at))
+                setRelationshipEndsAt(String(values.ends_at))
+                setRelationshipMinimumAcr(String(values.minimum_acr ?? ""))
+                setRelationshipClientID(String(values.client_id))
+                setRelationshipNetworkZone(String(values.network_zone))
+                setRelationshipTimeStart(String(values.time_start))
+                setRelationshipTimeEnd(String(values.time_end))
+                setRelationshipTimezone(String(values.timezone))
+              }}
+            >
               <Button
                 type="submit"
                 className="md:col-span-2 xl:col-span-4 xl:justify-self-end"
@@ -1141,47 +1214,82 @@ export default function EntitiesPage({
                 <Plus />
                 {t("grantRelation")}
               </Button>
-            </form>
-            <div className="mt-3 overflow-x-auto rounded-md border">
-              <Table className="min-w-[1160px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t("principalType")}</TableHead>
-                    <TableHead>{t("principal")}</TableHead>
-                    <TableHead>{t("subjectRelation")}</TableHead>
-                    <TableHead>{t("grantRelation")}</TableHead>
-                    <TableHead>{t("target")}</TableHead>
-                    <TableHead>{t("validity")}</TableHead>
-                    <TableHead>{t("condition")}</TableHead>
-                    <TableHead className="w-16 text-right">
-                      {t("actions")}
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {relationships.map((relationship) => (
-                    <TableRow
-                      key={`${relationship.entity_id}:${relationship.subject_type}:${relationship.subject_id}:${relationship.subject_relation}:${relationship.relation}:${relationship.resource_type}:${relationship.resource_id}`}
-                    >
-                      <TableCell>{relationship.subject_type}</TableCell>
-                      <TableCell>
-                        {relationshipSubjectLabel(relationship)}
-                      </TableCell>
-                      <TableCell>
-                        {relationship.subject_relation || t("direct")}
-                      </TableCell>
-                      <TableCell>
+            </AutoForm>
+            <div className="mt-3 overflow-hidden rounded-md border">
+              <AutoTable
+                searchable={(relationship) =>
+                  [
+                    relationship.resource_type,
+                    relationship.resource_id,
+                    relationship.relation,
+                    relationshipSubjectLabel(relationship),
+                    relationship.subject_id,
+                  ].join(" ")
+                }
+                onRefresh={async () => {
+                  if (bindingEntity)
+                    setRelationships(await loadRelationships(bindingEntity.id))
+                }}
+                sticky={{ maxHeight: "20rem" }}
+                className="[&_table]:min-w-[1160px]"
+                emptyContent={null}
+                data={relationships}
+                rowKey={(relationship) =>
+                  `${relationship.entity_id}:${relationship.subject_type}:${relationship.subject_id}:${relationship.subject_relation}:${relationship.relation}:${relationship.resource_type}:${relationship.resource_id}`
+                }
+                columns={[
+                  {
+                    field: "subject_type",
+                    name: t("principalType"),
+                    type: "text",
+                  },
+                  {
+                    field: "principal",
+                    name: t("principal"),
+                    type: "custom",
+                    render: (_value, relationship) => (
+                      <div>{relationshipSubjectLabel(relationship)}</div>
+                    ),
+                  },
+                  {
+                    field: "subjectRelation",
+                    name: t("subjectRelation"),
+                    type: "custom",
+                    render: (_value, relationship) => (
+                      <div>{relationship.subject_relation || t("direct")}</div>
+                    ),
+                  },
+                  {
+                    field: "grantRelation",
+                    name: t("grantRelation"),
+                    type: "custom",
+                    render: (_value, relationship) => (
+                      <div>
                         <Badge variant="secondary">
                           {relationship.relation}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="max-w-64 font-mono text-xs break-all text-muted-foreground">
+                      </div>
+                    ),
+                  },
+                  {
+                    field: "target",
+                    name: t("target"),
+                    type: "custom",
+                    render: (_value, relationship) => (
+                      <div className="max-w-64 font-mono text-xs break-all text-muted-foreground">
                         {relationship.entity_id
                           ? `${relationship.resource_type}:${relationship.resource_id}`
                           : (entityByID.get(relationship.resource_id)?.name ??
                             `${relationship.resource_type}:${relationship.resource_id}`)}
-                      </TableCell>
-                      <TableCell
+                      </div>
+                    ),
+                  },
+                  {
+                    field: "validity",
+                    name: t("validity"),
+                    type: "custom",
+                    render: (_value, relationship) => (
+                      <div
                         className="text-xs whitespace-nowrap text-muted-foreground"
                         data-relationship-window
                       >
@@ -1196,8 +1304,15 @@ export default function EntitiesPage({
                               locale
                             )
                           : t("noExpiry")}
-                      </TableCell>
-                      <TableCell
+                      </div>
+                    ),
+                  },
+                  {
+                    field: "condition",
+                    name: t("condition"),
+                    type: "custom",
+                    render: (_value, relationship) => (
+                      <div
                         className="max-w-72 text-xs text-muted-foreground"
                         data-relationship-condition
                       >
@@ -1205,8 +1320,15 @@ export default function EntitiesPage({
                           relationship.condition,
                           t("unrestricted")
                         )}
-                      </TableCell>
-                      <TableCell className="text-right">
+                      </div>
+                    ),
+                  },
+                  {
+                    field: "actions",
+                    name: t("actions"),
+                    type: "actions",
+                    render: (_value, relationship) => (
+                      <div className="text-right">
                         {allowed("entity_manage_binding") && (
                           <Button
                             variant="ghost"
@@ -1221,11 +1343,11 @@ export default function EntitiesPage({
                             <Trash2 />
                           </Button>
                         )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                      </div>
+                    ),
+                  },
+                ]}
+              />
               {relationships.length === 0 && (
                 <div className="grid min-h-20 place-items-center text-sm text-muted-foreground">
                   {t("noRelations")}
@@ -1244,70 +1366,83 @@ export default function EntitiesPage({
               <ScanSearch className="size-4 text-primary" />
               {t("authorizationExplanation")}
             </h3>
-            <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
-              <div className="grid gap-2">
-                <Label htmlFor="authorization-inspection-principal">
-                  {t("member")}
-                </Label>
-                <SimpleSelect
-                  id="authorization-inspection-principal"
-                  options={members.map((member) => ({
-                    value: member.subject,
-                    label: member.display_name || member.subject,
-                  }))}
-                  value={principalID}
-                  onValueChange={(value) => {
-                    setPrincipalID(value)
-                    setInspection(null)
-                  }}
-                  placeholder={t("noActiveMembers")}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="authorization-inspection-permission">
-                  {t("dataPermission")}
-                </Label>
-                <SimpleSelect
-                  id="authorization-inspection-permission"
-                  options={permissions.map((permission) => ({
-                    value: permission.code,
-                    label: `${permission.code} · ${permission.summary}`,
-                  }))}
-                  value={inspectionPermission}
-                  onValueChange={(value) => {
-                    setInspectionPermission(value)
-                    setInspection(null)
-                  }}
-                  placeholder={t("noDataPermission")}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="authorization-inspection-resource">
-                  {t("businessResourceId")}
-                </Label>
-                <Input
-                  id="authorization-inspection-resource"
-                  value={inspectionResourceID}
-                  onChange={(event) => {
-                    setInspectionResourceID(event.target.value)
-                    setInspection(null)
-                  }}
-                  placeholder={t("blankCheckCurrentEntity")}
-                  maxLength={255}
-                />
-              </div>
+            <AutoForm
+              formRef={inspectionForm}
+              fields={{
+                principal_id: {
+                  name: t("member"),
+                  type: "select",
+                  value: principalID,
+                  config: {
+                    id: "authorization-inspection-principal",
+                    options: members.map((member) => ({
+                      value: member.subject,
+                      label: member.display_name || member.subject,
+                    })),
+                    placeholder: t("noActiveMembers"),
+                  },
+                },
+                permission: {
+                  name: t("dataPermission"),
+                  type: "select",
+                  value: inspectionPermission,
+                  config: {
+                    id: "authorization-inspection-permission",
+                    options: permissions.map((permission) => ({
+                      value: permission.code,
+                      label: `${permission.code} · ${permission.summary}`,
+                    })),
+                    placeholder: t("noDataPermission"),
+                  },
+                },
+                resource_id: {
+                  name: t("businessResourceId"),
+                  type: "text",
+                  value: inspectionResourceID,
+                  config: {
+                    id: "authorization-inspection-resource",
+                    maxLength: 255,
+                    placeholder: t("blankCheckCurrentEntity"),
+                  },
+                },
+              }}
+              onChange={(values) => {
+                if (
+                  String(values.principal_id) !== principalID ||
+                  String(values.permission) !== inspectionPermission ||
+                  String(values.resource_id) !== inspectionResourceID
+                ) {
+                  setPrincipalID(String(values.principal_id))
+                  bindingForm.current?.setValue(
+                    "principal_id",
+                    String(values.principal_id)
+                  )
+                  setInspectionPermission(String(values.permission))
+                  setInspectionResourceID(String(values.resource_id))
+                  setInspection(null)
+                }
+              }}
+              onSubmit={async () => {
+                if (
+                  allowed("role_view") &&
+                  !busy &&
+                  principalID &&
+                  inspectionPermission
+                )
+                  await inspectAuthorization()
+              }}
+            >
               {allowed("role_view") && (
                 <Button
-                  type="button"
+                  type="submit"
                   variant="outline"
                   disabled={busy || !principalID || !inspectionPermission}
-                  onClick={() => void inspectAuthorization()}
                 >
                   <ScanSearch />
                   {t("evaluateAuthorization")}
                 </Button>
               )}
-            </div>
+            </AutoForm>
             {inspection && (
               <div className="mt-4" data-authorization-explanation>
                 <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
@@ -1338,45 +1473,90 @@ export default function EntitiesPage({
                         })}
                   </span>
                 </div>
-                <div className="overflow-x-auto rounded-md border">
-                  <Table className="min-w-[760px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{t("permission")}</TableHead>
-                        <TableHead>{t("role")}</TableHead>
-                        <TableHead>{t("source")}</TableHead>
-                        <TableHead>{t("authorizationScope")}</TableHead>
-                        <TableHead>{t("relationshipPath")}</TableHead>
-                        <TableHead>{t("effect")}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {inspection.explanation.matches.map((match, index) => (
-                        <TableRow
-                          key={`${match.role_id}:${match.scope_type}:${match.scope_id}:${match.effect}:${index}`}
-                        >
-                          <TableCell className="font-mono text-xs">
+                <div className="overflow-hidden rounded-md border">
+                  <AutoTable
+                    searchable={(match) =>
+                      [
+                        match.permission_code,
+                        match.role_id,
+                        match.source_type,
+                        match.source_id,
+                        match.scope_type,
+                        match.scope_id,
+                        match.effect,
+                      ].join(" ")
+                    }
+                    onRefresh={inspectAuthorization}
+                    sticky={{ maxHeight: "20rem" }}
+                    className="[&_table]:min-w-[760px]"
+                    emptyContent={null}
+                    data={inspection.explanation.matches.map(
+                      (match, index) => ({ ...match, rowIndex: index })
+                    )}
+                    rowKey={(match) => String(match.rowIndex)}
+                    columns={[
+                      {
+                        field: "permission",
+                        name: t("permission"),
+                        type: "custom",
+                        render: (_value, match) => (
+                          <div className="font-mono text-xs">
                             {match.permission_code}
-                          </TableCell>
-                          <TableCell>
+                          </div>
+                        ),
+                      },
+                      {
+                        field: "role",
+                        name: t("role"),
+                        type: "custom",
+                        render: (_value, match) => (
+                          <div>
                             {roleByID.get(match.role_id)?.name ?? match.role_id}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
+                          </div>
+                        ),
+                      },
+                      {
+                        field: "source",
+                        name: t("source"),
+                        type: "custom",
+                        render: (_value, match) => (
+                          <div className="text-sm text-muted-foreground">
                             {match.source_type}
-                          </TableCell>
-                          <TableCell className="max-w-80 text-xs break-all text-muted-foreground">
+                          </div>
+                        ),
+                      },
+                      {
+                        field: "authorizationScope",
+                        name: t("authorizationScope"),
+                        type: "custom",
+                        render: (_value, match) => (
+                          <div className="max-w-80 text-xs break-all text-muted-foreground">
                             {match.path
                               ?.map(
                                 (step) =>
                                   `${step.subject_type}:${step.subject_id}${step.subject_relation ? `#${step.subject_relation}` : ""} → ${step.relation} → ${step.resource_type}:${step.resource_id}`
                               )
                               .join(" / ") ?? "-"}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
+                          </div>
+                        ),
+                      },
+                      {
+                        field: "relationshipPath",
+                        name: t("relationshipPath"),
+                        type: "custom",
+                        render: (_value, match) => (
+                          <div className="text-sm text-muted-foreground">
                             {match.scope_type}:{match.scope_id}
                             {match.inherited ? t("inherited") : ""}
-                          </TableCell>
-                          <TableCell>
+                          </div>
+                        ),
+                      },
+                      {
+                        field: "effect",
+                        name: t("effect"),
+                        type: "custom",
+                        render: (_value, match) => (
+                          <div>
                             <Badge
                               variant={
                                 match.effect === "allow"
@@ -1388,11 +1568,11 @@ export default function EntitiesPage({
                                 ? t("allow")
                                 : t("deny")}
                             </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                          </div>
+                        ),
+                      },
+                    ]}
+                  />
                   {inspection.explanation.matches.length === 0 && (
                     <div className="grid min-h-20 place-items-center text-sm text-muted-foreground">
                       {t("noMatchingSources")}
@@ -1416,7 +1596,7 @@ export default function EntitiesPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }
 
@@ -1493,4 +1673,36 @@ function authorizationReason(
     relationship_grant: "relationshipGrantedReason",
     no_matching_grant: "noMatchingGrant",
   }[reason]
+}
+
+// The API handlers interpret these controls as local wall-clock time before converting to an instant.
+function LocalDateTimeField({
+  config,
+  value,
+  onChange,
+  disabled,
+  readonly,
+  labelId,
+  error,
+  errorId,
+}: FieldRendererProps) {
+  return (
+    <div>
+      <Input
+        id={config.id}
+        type="datetime-local"
+        value={String(value ?? "")}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled || readonly}
+        aria-labelledby={labelId}
+        aria-describedby={error ? errorId : undefined}
+        aria-invalid={Boolean(error)}
+      />
+      {error && (
+        <p id={errorId} className="mt-1 text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  )
 }
