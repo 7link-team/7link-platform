@@ -15,7 +15,11 @@ import (
 	"testing/fstest"
 	"time"
 
+	"7link.com/platform/internal/collab"
+	"7link.com/platform/internal/delivery"
 	"7link.com/platform/internal/files"
+	"7link.com/platform/internal/fleet"
+	businessgovernance "7link.com/platform/internal/governance"
 	iamaudit "7link.com/platform/internal/iam/audit"
 	iamauthn "7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/core"
@@ -28,8 +32,12 @@ import (
 	"7link.com/platform/internal/iam/webhook"
 	infraaudit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/dlock"
+	"7link.com/platform/internal/infra/events"
+	"7link.com/platform/internal/infra/idempotency"
+	"7link.com/platform/internal/infra/jobs"
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/internal/infra/wuid"
+	"7link.com/platform/internal/intake"
 	"7link.com/platform/internal/todo"
 	authnext "7link.com/platform/pkg/extension/authn"
 	goosex "7link.com/platform/pkg/extension/goose"
@@ -206,14 +214,14 @@ func assertIAMMigrationActionState(t *testing.T, config AppConfig, action Migrat
 
 func assertIAMMigrationReports(t *testing.T, reports []MigrationReport, state goosex.State) {
 	t.Helper()
-	require.Len(t, reports, 15)
+	expected := iamMigrationFlowNames()
+	require.Len(t, reports, len(expected))
 	names := make([]string, 0, len(reports))
 	for _, report := range reports {
 		names = append(names, report.Module)
 		assertMigrationReportState(t, report, state)
 	}
 	sort.Strings(names)
-	expected := iamMigrationFlowNames()
 	sort.Strings(expected)
 	assert.Equal(t, expected, names)
 }
@@ -275,15 +283,18 @@ func iamMigrationFlowNames() []string {
 	return []string{
 		dlock.Name, wuid.Name, infraaudit.Name, iamaudit.Name, core.Name, files.Name, iamauthn.Name, identity.Name,
 		organization.Name, oauth.Name, provisioning.Name, governance.Name, federation.Name, webhook.Name, todo.Name,
+		events.Name, idempotency.Name, jobs.Name, intake.Name, fleet.Name, collab.Name, businessgovernance.Name, delivery.Name,
 	}
 }
 
 func iamMigrationReverseOrder() []string {
 	return []string{
-		// Webhook comes down first: it only reads what the others record, so
+		// Business aggregates come down before the IAM entities they reference.
+		delivery.Name, businessgovernance.Name, collab.Name, fleet.Name, intake.Name,
+		// Webhook comes down before its IAM dependencies: it only reads what they record, so
 		// nothing depends on it and removing it frees the chain it follows.
 		webhook.Name, federation.Name, iamauthn.Name, oauth.Name, governance.Name, provisioning.Name,
 		organization.Name, files.Name, core.Name, identity.Name, iamaudit.Name,
-		todo.Name, infraaudit.Name, wuid.Name, dlock.Name,
+		todo.Name, jobs.Name, infraaudit.Name, idempotency.Name, events.Name, wuid.Name, dlock.Name,
 	}
 }

@@ -1,31 +1,42 @@
 # Task State - production prototype continuation 2026-10-18
 ## Objective
-User: commit/push all reviewed work, then begin implementing prototype into production Web/backend.
+User authorized commit/push and continuing the prototype in production; latest continuation includes minimal repairs for three existing CI blockers.
 ## Current Phase
 ACCEPTANCE
+## Current Step
+Work-item/delivery root storage slice accepted. This checkpoint accompanies its delivery commit. Whole prototype and H2 remain incomplete.
 ## Completed Work
-- Frontend migration committed/pushed as 3d4f48311b0e5e932dbbb0b876bfa12ba51e0602 to origin/chaosplus; remote hash verified.
-- First production prototype slice H3 implemented: /admin/:tenantID/entities/:entityID/project, existing generated ProjectDetailView and IAM transport, readonly AutoForm, automatic RefreshButton, three locales, overview/sidebar links.
-- Response tenant/entity checked; abort on scope change, ignore late responses, clear old details after errors, retry supported. Project-read-only users admitted through real AppLayout independently of file_view directory.
-- Three read-only deep-review workers completed. Product layout finding fixed; mutation removing exemption fails as expected, restored implementation passes.
-## Confirmed Constraints
-No fake H2 counters, mock production persistence, new authorization semantics or Todo-as-business-task. No budget UI before lossless int64 transport. No backend contract/code changes. Preserve managed Web4303/API8080 and unrelated ports8091/8092. Whole M00-M20 prototype remains incomplete.
+- Previously pushed frontend migration3d4f483 and H3 project detaila6054bf; remote hashes verified. Prior H3 frontend typecheck/lint/tests/build and55 browser cases pass.
+- Full persisted WorkItem78-column and Delivery44-column models; generated queries and typed deployment table bindings reuse delivery module conventions.
+- New three-dialect00003 migration: tenant/project-qualified references, unique sequence numbers, enums, JSON shapes/limits, numeric bounds, archive rules and indexes. Published00001/00002 unchanged.
+- Migration tests preserve seeded v2 projects/requirements across v3 upgrade/downgrade/reupgrade, reject tenant/project cross references, check defaults and exact activity_seq9007199254740993 roundtrip.
+- MySQL enum fields use ascii_bin. In-process MySQL explicitly matches real gate's case-insensitive database collation. Nullable budget preserves SQL NULL.
+- Approved CI repairs: gofmt-only huma_test.go; explicit23-module migration report inventory plus rollback ordering; project error contract tests check status/code/message/reason and private-error exclusion. No threshold or production behavior changes.
 ## Verification
-- PASS: frontend bun run typecheck/lint/test/build; 161 UI +210 Web tests; API-types check separately executed successfully. TEMP/prototype-project-{typecheck,lint,test,build,api-types}.log.
-- PASS: existing backend go test ./internal/app -run TestProjectCreateHTTPUsesEntityAndReplaysAtomically -count=1 (1.279s). TEMP/prototype-project-backend.log. No full backend CI claim.
-- PASS: API real HTTP test checks large string ID path,403 and abort; navigation permission/type tests.
-- PASS: earlier browser55 cases, including2 project cases and real shell, scope cancellation/late response/failure/retry/mobile. TEMP/prototype-project-browser-default.log; layout mutation proof prototype-project-layout-mutation.log.
-- Cold fixture investigation: main live root routing raced with mocked session APIs; React router emitted maximum-update-depth warnings. Harness now waits for stable anonymous login form before stubbing, catches console update-depth errors with stack. Final cold full run PASS:55 cases in4 batches, no captured update-depth errors; TEMP/prototype-project-console-final.log.
-- No sample projects in development SQLite: successful real development-database project E2E not claimed.
-## Remaining Work
-1. Self-review and final slice acceptance PASS: scope/reuse/architecture/regression/complexity/durable state checked. Commit/push reviewed slice and verify remote.
-2. Future prototype: real work-item/delivery counters prerequisites, H2 list and project create/edit workflows; full prototype acceptance outstanding.
-## Services
-Managed Web4303/API8080 running; demo selector enabled at http://127.0.0.1:4303/admin/login. Credentials remain in ignored development files. Temporary Vite4317 session20272 stopped; own fixture browsers closed.
+- PASS full make ci, session82245 exit0, TEMP/prototype-gates-ci.log: formatting, lint0issues, schema lock255 published migrations unchanged, main unit tests/coverage, integration, build, OpenAPI check and frontend contract.
+- Coverage overall91.3%, delivery91.6%; all registered module gates>=90%.
+- Full integration packages PASS: architecture177.306s, goose10.759s, testdb0.282s, lifecycle166.811s, migration166.289s, performance47.623s.
+- PASS real MySQL8.4 gate session2569 exit0; new storage mysql8 case0.53s, storage suite12.86s. TEMP/prototype-storage-mysql8-final.log.
+- PASS focused model/requirements/storage21.859s; migration-status three engines/two prefixes81.627s; focused delivery/huma tests.
+- PASS make generate-check; all delivery query fingerprints stable around focused regeneration, including new files.
+- PASS existing make test-performance66.748s. This is an existing baseline, not proof of new H2 performance SLOs.
+- Mutation sensitivity PASS: removed channel enum, weakened project FK, missing MySQL binary collation, wrong project conflict status all caught; every mutation restored.
+## Reviews
+- Three independent storage reviews (SQL/spec/compatibility) complete; supported findings fixed and rechecked.
+- Independent gate-test review PASS: explicit inventory/assertions retained, rollback order covers all owners, error contracts meaningful, formatting only.
+- Self-review scope/reuse/architecture/regression/complexity/durable state PASS. Storage-slice acceptance PASS; no claim of complete work-item/delivery workflows.
+## Confirmed Constraints
+- No fake H2 counters, mock production persistence, Todo-as-business-task, new authorization semantics, or budget UI before lossless int64 transport.
+- Preserve managed Web4303/API8080, demo account selector, unrelated8091/8092; no automatic live service restart or business-data migration.
+- No new HTTP API contract in this slice; no business state machine or subtables implemented.
+## Deferred Dependencies / Remaining Work
+- Same-module FKs to add with owning tables: work_item pause_decision_id/current_claim_id/accepted_decision_id/decomposition_id/current_plan_id/active_exception_id; delivery release_notes_draft_id/deliver_decision_id/acceptance_id; previous requirement_version change_record_id.
+- Cross-module principal/agent/execution/intake/files references intentionally have no FK per spec.
+- H2 real project activity aggregates/list API and production list page, then remaining create/edit and work-item/delivery workflows.
 ## Next Action
-Commit/push reviewed project slice and verify origin/chaosplus; next implementation is real H2 prerequisite persistence/counters per specs02/07.
+Implement H2 project list from existing project_list.go and spec07 API2, using persisted activity sources and permission filtering before count/pagination. Inspect precise count semantics and reuse project record query/transport/AutoTable; do not fabricate counters or silently decide undefined product semantics.
 ## Last Checkpoint
-2026-10-18 H3 implementation and gates complete; cold browser regression PASS, temporary server stopped, ready for second commit.
+2026-10-18 storage and approved baseline repairs accepted after full CI PASS; all validation processes collected, no mutation active. Explicitly reviewed source/tests/docs only are eligible for the delivery commit; generated outputs/logs/secrets remain excluded.
 
 # Previous completed frontend correction evidence
 ## Objective

@@ -113,7 +113,7 @@ IAM_LIFECYCLE_TABLE_PREFIX=grant_mysql_ \
 
 MYSQL8_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
 MYSQL8_EXPECTED_SQL_MODE="${mysql_sql_mode}" \
-  run_named_tests go -C tests test ./migration -run '^(TestIAMMigrationsOnRealMySQL8|TestIAMPrincipalErasureOwnerMigrations|TestIAMDefaultMenuTranslationUpgrade|TestIAMPersonalTokenMigrations|TestIAMPositionRetirementUpgrade)$' -count=1 -v
+  run_named_tests go -C tests test ./migration -run '^(TestIAMMigrationsOnRealMySQL8|TestIAMPrincipalErasureOwnerMigrations|TestIAMDefaultMenuTranslationUpgrade|TestIAMPersonalTokenMigrations|TestIAMPositionRetirementUpgrade|TestDeliveryActivityStorageUpgradeAndConstraintsAcrossEngines)$' -count=1 -v
 
 # Assert the frozen latency thresholds, not only the query plans. Measuring
 # without asserting is how scim_bulk_25 drifted from 50ms to 78ms while every

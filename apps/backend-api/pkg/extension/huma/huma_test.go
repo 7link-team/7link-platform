@@ -127,7 +127,9 @@ func TestValidationSchemaInstalledBySharedConfiguration(t *testing.T) {
 			Body struct {
 				Name string `json:"name" minLength:"3"`
 			}
-		}) (*struct{}, error) { return &struct{}{}, nil })
+		}) (*struct{}, error) {
+			return &struct{}{}, nil
+		})
 	response := api.OpenAPI().Paths["/validation"].Post.Responses["422"]
 	if assert.NotNil(t, response) {
 		schema := response.Content["application/json"].Schema

@@ -18,35 +18,41 @@ import (
 var (
 	Q                   = new(Query)
 	AcceptanceCriterion *acceptanceCriterion
+	Delivery            *delivery
 	Project             *project
 	ProjectContact      *projectContact
 	ProjectCounter      *projectCounter
 	ProjectRepository   *projectRepository
 	Requirement         *requirement
 	RequirementVersion  *requirementVersion
+	WorkItem            *workItem
 )
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
 	AcceptanceCriterion = &Q.AcceptanceCriterion
+	Delivery = &Q.Delivery
 	Project = &Q.Project
 	ProjectContact = &Q.ProjectContact
 	ProjectCounter = &Q.ProjectCounter
 	ProjectRepository = &Q.ProjectRepository
 	Requirement = &Q.Requirement
 	RequirementVersion = &Q.RequirementVersion
+	WorkItem = &Q.WorkItem
 }
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
 		db:                  db,
 		AcceptanceCriterion: newAcceptanceCriterion(db, opts...),
+		Delivery:            newDelivery(db, opts...),
 		Project:             newProject(db, opts...),
 		ProjectContact:      newProjectContact(db, opts...),
 		ProjectCounter:      newProjectCounter(db, opts...),
 		ProjectRepository:   newProjectRepository(db, opts...),
 		Requirement:         newRequirement(db, opts...),
 		RequirementVersion:  newRequirementVersion(db, opts...),
+		WorkItem:            newWorkItem(db, opts...),
 	}
 }
 
@@ -54,12 +60,14 @@ type Query struct {
 	db *gorm.DB
 
 	AcceptanceCriterion acceptanceCriterion
+	Delivery            delivery
 	Project             project
 	ProjectContact      projectContact
 	ProjectCounter      projectCounter
 	ProjectRepository   projectRepository
 	Requirement         requirement
 	RequirementVersion  requirementVersion
+	WorkItem            workItem
 }
 
 func (q *Query) Available() bool { return q.db != nil }
@@ -70,12 +78,14 @@ func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
 		db:                  db,
 		AcceptanceCriterion: q.AcceptanceCriterion.clone(db),
+		Delivery:            q.Delivery.clone(db),
 		Project:             q.Project.clone(db),
 		ProjectContact:      q.ProjectContact.clone(db),
 		ProjectCounter:      q.ProjectCounter.clone(db),
 		ProjectRepository:   q.ProjectRepository.clone(db),
 		Requirement:         q.Requirement.clone(db),
 		RequirementVersion:  q.RequirementVersion.clone(db),
+		WorkItem:            q.WorkItem.clone(db),
 	}
 }
 
@@ -91,34 +101,40 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
 		db:                  db,
 		AcceptanceCriterion: q.AcceptanceCriterion.replaceDB(db),
+		Delivery:            q.Delivery.replaceDB(db),
 		Project:             q.Project.replaceDB(db),
 		ProjectContact:      q.ProjectContact.replaceDB(db),
 		ProjectCounter:      q.ProjectCounter.replaceDB(db),
 		ProjectRepository:   q.ProjectRepository.replaceDB(db),
 		Requirement:         q.Requirement.replaceDB(db),
 		RequirementVersion:  q.RequirementVersion.replaceDB(db),
+		WorkItem:            q.WorkItem.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
 	AcceptanceCriterion IAcceptanceCriterionDo
+	Delivery            IDeliveryDo
 	Project             IProjectDo
 	ProjectContact      IProjectContactDo
 	ProjectCounter      IProjectCounterDo
 	ProjectRepository   IProjectRepositoryDo
 	Requirement         IRequirementDo
 	RequirementVersion  IRequirementVersionDo
+	WorkItem            IWorkItemDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
 		AcceptanceCriterion: q.AcceptanceCriterion.WithContext(ctx),
+		Delivery:            q.Delivery.WithContext(ctx),
 		Project:             q.Project.WithContext(ctx),
 		ProjectContact:      q.ProjectContact.WithContext(ctx),
 		ProjectCounter:      q.ProjectCounter.WithContext(ctx),
 		ProjectRepository:   q.ProjectRepository.WithContext(ctx),
 		Requirement:         q.Requirement.WithContext(ctx),
 		RequirementVersion:  q.RequirementVersion.WithContext(ctx),
+		WorkItem:            q.WorkItem.WithContext(ctx),
 	}
 }
 

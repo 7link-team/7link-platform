@@ -141,7 +141,7 @@ func moduleMigrations() []moduleMigration {
 		{name: "business_governance", table: "governance_role_seeds", target: 1,
 			seedSQL: `INSERT INTO governance_role_seeds (id,tenant_id,role_key,role_id,manifest_version,applied_codes,skipped_codes,created_at,updated_at) VALUES (1,1,'delivery_lead',2,1,'[]','[]','2026-10-16 00:00:00','2026-10-16 00:00:00')`,
 			source:  (&businessgovernance.Module{}).MigrationSource()},
-		{name: "delivery", table: "delivery_projects", target: 2,
+		{name: "delivery", table: "delivery_projects", target: 3,
 			seedSQL: `INSERT INTO delivery_projects (tenant_id,project_id,code,stage_changed_at,created_at,updated_at) VALUES (1,2,'PR','2026-10-16 00:00:00','2026-10-16 00:00:00','2026-10-16 00:00:00')`,
 			source:  (&delivery.Module{}).MigrationSource()},
 		{name: "collab", table: "collab_channels", target: 1,

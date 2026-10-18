@@ -7,10 +7,10 @@ import (
 )
 
 // TableNames holds the names resolved once for this deployment.
-type TableNames struct{ Projects, Contacts, Repositories, Counters, Requirements, Criteria, RequirementVersions gormx.TableName }
+type TableNames struct{ Projects, Contacts, Repositories, Counters, Requirements, Criteria, RequirementVersions, WorkItems, Deliveries gormx.TableName }
 
 func BindNames(prefix string) TableNames {
-	return TableNames{Counters: gormx.NewTableName(prefix, model.ProjectCounter{}.TableName()), Requirements: gormx.NewTableName(prefix, model.Requirement{}.TableName()), Criteria: gormx.NewTableName(prefix, model.AcceptanceCriterion{}.TableName()), RequirementVersions: gormx.NewTableName(prefix, model.RequirementVersion{}.TableName()), Projects: gormx.NewTableName(prefix, model.Project{}.TableName()), Contacts: gormx.NewTableName(prefix, model.ProjectContact{}.TableName()), Repositories: gormx.NewTableName(prefix, model.ProjectRepository{}.TableName())}
+	return TableNames{WorkItems: gormx.NewTableName(prefix, model.WorkItem{}.TableName()), Deliveries: gormx.NewTableName(prefix, model.Delivery{}.TableName()), Counters: gormx.NewTableName(prefix, model.ProjectCounter{}.TableName()), Requirements: gormx.NewTableName(prefix, model.Requirement{}.TableName()), Criteria: gormx.NewTableName(prefix, model.AcceptanceCriterion{}.TableName()), RequirementVersions: gormx.NewTableName(prefix, model.RequirementVersion{}.TableName()), Projects: gormx.NewTableName(prefix, model.Project{}.TableName()), Contacts: gormx.NewTableName(prefix, model.ProjectContact{}.TableName()), Repositories: gormx.NewTableName(prefix, model.ProjectRepository{}.TableName())}
 }
 func BindProjects(db *gorm.DB, names TableNames) *project {
 	return Use(db).Project.Table(names.Projects.String())
@@ -33,4 +33,11 @@ func BindCriteria(db *gorm.DB, names TableNames) *acceptanceCriterion {
 }
 func BindRequirementVersions(db *gorm.DB, names TableNames) *requirementVersion {
 	return Use(db).RequirementVersion.Table(names.RequirementVersions.String())
+}
+
+func BindWorkItems(db *gorm.DB, names TableNames) *workItem {
+	return Use(db).WorkItem.Table(names.WorkItems.String())
+}
+func BindDeliveries(db *gorm.DB, names TableNames) *delivery {
+	return Use(db).Delivery.Table(names.Deliveries.String())
 }

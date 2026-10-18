@@ -6,5 +6,5 @@ import (
 )
 
 func main() {
-	gengorm.Generate(model.Project{}, model.ProjectContact{}, model.ProjectRepository{}, model.ProjectCounter{}, model.Requirement{}, model.AcceptanceCriterion{}, model.RequirementVersion{})
+	gengorm.Generate(model.Project{}, model.ProjectContact{}, model.ProjectRepository{}, model.ProjectCounter{}, model.Requirement{}, model.AcceptanceCriterion{}, model.RequirementVersion{}, model.WorkItem{}, model.Delivery{})
 }

@@ -1,5 +1,14 @@
 # Web 迁移实施与验收清单
 
+### 2026-10-18 原型生产实现：项目活动存储前置
+
+- 验收：完整 `make ci`、真实 MySQL 8.4 门禁、生成稳定性和三类存储变异检查通过；总体覆盖率 91.3%，delivery 模块 91.6%。同步最小修复三项存量门禁：测试格式、迁移状态的 23 模块清单及回滚顺序、项目错误响应契约覆盖；未降低阈值或修改生产行为。
+- 接续已推送的 H3 项目详情（`a6054bf`），本批实现 `delivery_work_items`、`delivery_deliveries` 两个聚合根的持久化行；包含 02 §3.6 / D112 / D113 / D120 与 07 §3.10 的字段。复用 delivery 模块、GUID、生成查询和部署表名绑定，没有新建另一套存储或模块。
+- 新增三方言 `00003_work_items_deliveries.sql`，保留已发布 00001 / 00002；约束项目内编号唯一、租户／项目限定的需求与父项／返工引用、合法枚举、JSON 形状及已定义边界，增加列表和到期扫描索引。迁移测试从有项目和需求数据的 v2 升到 v3，再带自引用数据回滚、重升；旧数据保留。
+- 本批只完成主表存储前置，**没有**开放 H2 列表接口、返回伪造统计或实现工作项／交付业务状态机。工作项标准映射、分派、声明、裁决、计划、交付项、发送与验收子表及命令仍需按后续顺序完成。
+- 同模块待补 FK 依赖明确保留：工作项 `pause_decision_id`、`current_claim_id`、`accepted_decision_id`、`decomposition_id`、`current_plan_id`、`active_exception_id`；交付 `release_notes_draft_id`、`deliver_decision_id`、`acceptance_id`；前批需求版本 `change_record_id`。对应表落地时追加约束，当前不声明完整引用完整性验收。跨模块 principal / agent / execution / intake / files 引用按规格不建 FK。
+- 测试补充 MySQL 真实门禁使用的大小写不敏感数据库排序规则，枚举列显式复用 `ascii_bin`；避免内存 MySQL 的默认二进制规则掩盖缺陷。三类变异验证与最终门禁证据见根 `MEMORY.md`；开发演示服务和业务数据不自动迁移、重启或改写。
+
 ### 2026-10-18 原型生产实现：H3 项目详情首批
 
 - 组件迁移已提交并推送：`3d4f483`，远端 `origin/chaosplus` 哈希核对一致。
