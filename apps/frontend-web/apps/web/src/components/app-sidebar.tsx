@@ -36,6 +36,7 @@ const routeIcons: Record<string, ReactElement> = {
   "/invitations": <MailPlus />,
   "/service-accounts": <Bot />,
   "/entities": <Network />,
+  "/projects": <Boxes />,
   "/departments": <Building2 />,
   "/groups": <UsersRound />,
   "/roles": <KeyRound />,
@@ -74,7 +75,12 @@ export function AppSidebar({
   menus = tenantNavigation(menus)
   const paths = effectiveMenuPaths(menus)
   const fileAccess = can(permissions, "file_view")
-  const systemLinks = tenantSystemNavigation(paths, fileAccess, fieldPolicyAccess)
+  const systemLinks = tenantSystemNavigation(
+    paths,
+    fileAccess,
+    fieldPolicyAccess,
+    can(permissions, "project_read")
+  )
   if (entityID) {
     const base = `${tenantBase}/entities/${encodeURIComponent(entityID)}`
     // Taken from what this caller holds in this entity, not from a list of what

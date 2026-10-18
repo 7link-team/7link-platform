@@ -6973,6 +6973,41 @@
         ],
         "type": "object"
       },
+      "EnvelopeListProjectListView": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error unless validation or business details are supplied",
+            "items": {
+              "$ref": "#/components/schemas/ProjectListView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeListProvider": {
         "additionalProperties": false,
         "properties": {
@@ -12486,6 +12521,145 @@
         "required": [
           "id",
           "parent_id"
+        ],
+        "type": "object"
+      },
+      "ProjectListBudget": {
+        "additionalProperties": false,
+        "properties": {
+          "cap": {
+            "description": "Budget cap in USD micros as a decimal integer string; null means no cap.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pct": {
+            "description": "Percentage of cap used; null when no cap exists. Amounts remain exact in cap and spent.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "spent": {
+            "description": "Spent USD micros as a decimal integer string.",
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cap",
+          "spent",
+          "state",
+          "pct"
+        ],
+        "type": "object"
+      },
+      "ProjectListCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "needs_review": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "open_work_items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "waiting_deliveries": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "open_work_items",
+          "needs_review",
+          "waiting_deliveries"
+        ],
+        "type": "object"
+      },
+      "ProjectListView": {
+        "additionalProperties": false,
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/ProjectListBudget"
+          },
+          "client": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectClientView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ProjectListCounts"
+          },
+          "health": {
+            "type": "string"
+          },
+          "health_reasons": {},
+          "lead_agent_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "project_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stage": {
+            "type": "string"
+          },
+          "target_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "team_mode": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "counts",
+          "project_id",
+          "code",
+          "name",
+          "client",
+          "stage",
+          "team_mode",
+          "health",
+          "health_reasons",
+          "budget",
+          "target_date",
+          "lead_agent_id",
+          "version",
+          "updated_at"
         ],
         "type": "object"
       },
@@ -67145,6 +67319,218 @@
       }
     },
     "/tenants/{tenant_id}/projects": {
+      "get": {
+        "operationId": "project.list",
+        "parameters": [
+          {
+            "description": "Tenant resource identifier",
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Up to three comma-separated keys: name, stage_changed_at, health, target_date, created_at. Prefix - for descending. Default -created_at.",
+            "explode": false,
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "description": "Up to three comma-separated keys: name, stage_changed_at, health, target_date, created_at. Prefix - for descending. Default -created_at.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "eq:STATE or in:STATE,STATE; INTAKE, DISCOVERY, PLANNING, ACTIVE, BLOCKED, ACCEPTANCE_PENDING, DELIVERED, CLOSED, CANCELLED.",
+            "explode": false,
+            "in": "query",
+            "name": "stage",
+            "schema": {
+              "description": "eq:STATE or in:STATE,STATE; INTAKE, DISCOVERY, PLANNING, ACTIVE, BLOCKED, ACCEPTANCE_PENDING, DELIVERED, CLOSED, CANCELLED.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "eq:HUMAN_ONLY, eq:HYBRID or eq:AUTONOMOUS.",
+            "explode": false,
+            "in": "query",
+            "name": "team_mode",
+            "schema": {
+              "description": "eq:HUMAN_ONLY, eq:HYBRID or eq:AUTONOMOUS.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "eq:VALUE or in:VALUE,VALUE; GREEN, AMBER, RED, NONE.",
+            "explode": false,
+            "in": "query",
+            "name": "health",
+            "schema": {
+              "description": "eq:VALUE or in:VALUE,VALUE; GREEN, AMBER, RED, NONE.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "eq:ID of the client entity.",
+            "explode": false,
+            "in": "query",
+            "name": "client_entity_id",
+            "schema": {
+              "description": "eq:ID of the client entity.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "eq:CODE exact project code.",
+            "explode": false,
+            "in": "query",
+            "name": "code",
+            "schema": {
+              "description": "eq:CODE exact project code.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "like:TEXT matches project names containing TEXT.",
+            "explode": false,
+            "in": "query",
+            "name": "name",
+            "schema": {
+              "description": "like:TEXT matches project names containing TEXT.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "eq:true or eq:false; default eq:false.",
+            "explode": false,
+            "in": "query",
+            "name": "archived",
+            "schema": {
+              "description": "eq:true or eq:false; default eq:false.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "eq:ID of the lead agent.",
+            "explode": false,
+            "in": "query",
+            "name": "lead_agent_id",
+            "schema": {
+              "description": "eq:ID of the lead agent.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeListProjectListView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EnvelopeValidationErrorData"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List projects with activity counts",
+        "tags": [
+          "tenants"
+        ],
+        "x-authz-data-filter": true,
+        "x-authz-permission": "project_read"
+      },
       "options": {
         "operationId": "request-contract:/tenants/{tenant_id}/projects",
         "parameters": [

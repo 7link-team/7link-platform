@@ -27,6 +27,8 @@ import {
 
 export type GrantedConsent = components["schemas"]["GrantedConsent"]
 export type ProjectDetail = components["schemas"]["ProjectDetailView"]
+export type ProjectListItem = components["schemas"]["ProjectListView"]
+export type ProjectListQuery = RouteQuery<"/tenants/{tenant_id}/projects">
 export type FilePage = components["schemas"]["FilePage"]
 export interface SystemOwnerScope {
   kind: "platform" | "tenant"
@@ -1527,14 +1529,17 @@ export function createIamApi(
       throw new ApiError(401, "unauthorized")
     return subject
   }
-  const requestEnvelope = <T>(route: ApiRoute) =>
-    requestEnvelopeWithBase<T>(apiBase, route)
+  const requestEnvelope = <T>(
+    route: ApiRoute,
+    init?: Omit<RequestInit, "method">
+  ) => requestEnvelopeWithBase<T>(apiBase, route, init)
   // One page of a list endpoint: the items are the data and the total is the
   // envelope's meta.page, which is how every collection reports its size.
   const requestPage = async <T>(
-    route: ApiRoute
+    route: ApiRoute,
+    signal?: AbortSignal
   ): Promise<{ items: T[]; total: number }> => {
-    const envelope = await requestEnvelope<T[]>(route)
+    const envelope = await requestEnvelope<T[]>(route, { signal })
     const items = envelope.data ?? []
     return { items, total: envelope.meta?.page?.total ?? items.length }
   }
@@ -3065,6 +3070,14 @@ export function createIamApi(
             query: { permission },
           }
         )
+      ),
+    projects: (tenant: string, query: ProjectListQuery, signal?: AbortSignal) =>
+      requestPage<ProjectListItem>(
+        apiRoute("get", "/tenants/{tenant_id}/projects", {
+          path: { tenant_id: tenant },
+          query,
+        }),
+        signal
       ),
     project: (id: string, signal?: AbortSignal) =>
       request<ProjectDetail>(

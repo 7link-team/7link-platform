@@ -5343,3 +5343,17 @@ Decision: shared ActionForm focuses and scrolls the inline business error summar
 - Alternatives considered: change existing detail ProjectView (wire compatibility impact); stringify after converting to float64 (already loses precision); expose entire detail record (unnecessary fields).
 - Tradeoffs: old detail amount transport remains unchanged and is not claimed fixed; client must format list amounts from decimal strings. No HTTP list exposed until real summaries are implemented. No rounding/clamping or new budget rules introduced.
 - Scope/status: private H2 record projection implemented; seven DB-to-JSON boundary/NULL cases and unchanged detail cap/spent contract pass. Full H2 and count semantics still pending.
+
+
+## 2026-10-18 - Approved H2 project-wide activity counts
+- Decision: user explicitly approved open work items as all nonarchived rows outside ACCEPTED/CANCELLED/SKIPPED, including summary items; review as nonarchived NEEDS_HUMAN_REVIEW; waiting deliveries as nonarchived SENT. Counts are project-wide, not current-approver queues.
+- Reason: project list summarizes persisted project activity; approval resolved unspecified collection semantics.
+- Alternatives considered: leaf-only open counts, current-approver review counts. Not selected.
+- Tradeoffs/scope/status: grouped per-page tenant-scoped queries share the existing repeatable-read transaction; no workflow or authorization changes. Implemented and verified against real isolated HTTP data and independent browser fixture.
+
+## 2026-10-18 - Project-list pagination contract
+- Decision: use default 50 and maximum 100 for project.list. Frontend explicitly requests 20 initially.
+- Reason: specification 07 API #2 and section 8.1 explicitly cap this collection at 100; default 50 follows the common API convention.
+- Alternatives considered: raising maximum to the generic collection limit of 200 would violate the project specification.
+- Tradeoffs: the generic OpenAPI pagination gate retains every assertion and precisely expects 100 only for project.list; all other collections retain 200.
+- Scope/status: project list only; focused composed HTTP/OpenAPI tests pass.

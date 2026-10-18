@@ -4639,7 +4639,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List projects with activity counts */
+        get: operations["project.list"];
         put?: never;
         /** Create a project */
         post: operations["project.create"];
@@ -7182,6 +7183,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeListProjectListView: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error unless validation or business details are supplied */
+            data: components["schemas"]["ProjectListView"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeListProvider: {
             /**
              * Format: int64
@@ -8917,6 +8931,44 @@ export interface components {
         ProjectEntityView: {
             id: string | null;
             parent_id: string | null;
+        };
+        ProjectListBudget: {
+            /** @description Budget cap in USD micros as a decimal integer string; null means no cap. */
+            cap: string | null;
+            /**
+             * Format: double
+             * @description Percentage of cap used; null when no cap exists. Amounts remain exact in cap and spent.
+             */
+            pct: number | null;
+            /** @description Spent USD micros as a decimal integer string. */
+            spent: string;
+            state: string;
+        };
+        ProjectListCounts: {
+            /** Format: int64 */
+            needs_review: number;
+            /** Format: int64 */
+            open_work_items: number;
+            /** Format: int64 */
+            waiting_deliveries: number;
+        };
+        ProjectListView: {
+            budget: components["schemas"]["ProjectListBudget"];
+            client: components["schemas"]["ProjectClientView"] | null;
+            code: string;
+            counts: components["schemas"]["ProjectListCounts"];
+            health: string;
+            health_reasons: unknown;
+            lead_agent_id: string | null;
+            name: string;
+            project_id: string | null;
+            stage: string;
+            target_date: string | null;
+            team_mode: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: int64 */
+            version: number;
         };
         ProjectMemberInput: {
             principal_id: string;
@@ -41209,6 +41261,95 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "project.list": {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+                /** @description Up to three comma-separated keys: name, stage_changed_at, health, target_date, created_at. Prefix - for descending. Default -created_at. */
+                sort?: string;
+                /** @description eq:STATE or in:STATE,STATE; INTAKE, DISCOVERY, PLANNING, ACTIVE, BLOCKED, ACCEPTANCE_PENDING, DELIVERED, CLOSED, CANCELLED. */
+                stage?: string;
+                /** @description eq:HUMAN_ONLY, eq:HYBRID or eq:AUTONOMOUS. */
+                team_mode?: string;
+                /** @description eq:VALUE or in:VALUE,VALUE; GREEN, AMBER, RED, NONE. */
+                health?: string;
+                /** @description eq:ID of the client entity. */
+                client_entity_id?: string;
+                /** @description eq:CODE exact project code. */
+                code?: string;
+                /** @description like:TEXT matches project names containing TEXT. */
+                name?: string;
+                /** @description eq:true or eq:false; default eq:false. */
+                archived?: string;
+                /** @description eq:ID of the lead agent. */
+                lead_agent_id?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Tenant resource identifier */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListProjectListView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

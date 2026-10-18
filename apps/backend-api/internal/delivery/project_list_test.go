@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"math"
 	"net/url"
@@ -19,6 +20,58 @@ import (
 	"7link.com/platform/pkg/extension/authz"
 	"github.com/stretchr/testify/require"
 )
+
+func TestProjectListRealActivityIsTenantScopedAndDoesNotMultiply(t *testing.T) {
+	s, db, draft := projectHarness(t)
+	names := core.PublishedAccessTableNames("d_")
+	require.NoError(t, db.Exec("CREATE TABLE d_iam_entities (tenant_id INTEGER NOT NULL,id INTEGER NOT NULL,name TEXT NOT NULL,type TEXT NOT NULL,PRIMARY KEY(tenant_id,id))").Error)
+	now := time.Now().UTC()
+	for _, scope := range [][2]guid.ID{{1, 101}, {1, 102}, {1, 103}, {2, 101}} {
+		p := draft.project
+		p.TenantID, p.ProjectID, p.Code = scope[0], scope[1], "P"+scope[1].String()
+		require.NoError(t, query.BindProjects(db, s.names).WithContext(t.Context()).Create(&p))
+		require.NoError(t, db.Exec("INSERT INTO d_iam_entities VALUES (?,?,?,'project')", scope[0], scope[1], p.Code).Error)
+		require.NoError(t, db.Exec("INSERT INTO d_delivery_requirements (tenant_id,id,project_id,number,title,created_at,updated_at) VALUES (?,?,?,1,'Requirement',?,?)", scope[0], scope[1], scope[1], now, now).Error)
+		for i, state := range []string{"BLOCKED", "NEEDS_HUMAN_REVIEW", "NEEDS_HUMAN_REVIEW", "ACCEPTED", "CANCELLED", "SKIPPED"} { //nolint:misspell // Frozen state.
+			var archived *time.Time
+			if state == "CANCELLED" { //nolint:misspell // Frozen state.
+				archived = &now
+			}
+			require.NoError(t, db.Exec("INSERT INTO d_delivery_work_items (tenant_id,id,project_id,requirement_id,number,title,type,state,is_container,baseline_version_no,accountable_principal_id,state_changed_at,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,'Task','TASK',?,?,0,11,?,?,?,?)", scope[0], scope[1]*10+guid.ID(i), scope[1], scope[1], i+1, state, i == 2, now, now, now, archived).Error)
+		}
+		for i, state := range []string{"SENT", "SENT", "DRAFT", "READY", "ACCEPTED", "REJECTED", "PARTIALLY_ACCEPTED"} {
+			var archived *time.Time
+			if state == "DRAFT" {
+				archived = &now
+			}
+			require.NoError(t, db.Exec("INSERT INTO d_delivery_deliveries (tenant_id,id,project_id,sequence_no,number,title,state,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,'Delivery',?,?,?,?)", scope[0], scope[1]*10+guid.ID(i), scope[1], i+1, fmt.Sprint(i+1), state, now, now, archived).Error)
+		}
+	}
+	ctx := authn.WithClaims(t.Context(), &authn.Claims{TenantID: 1, PrincipalID: 11})
+	m := &Module{service: s, projectAccess: names, listConstraint: func(context.Context, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+		return authz.DataConstraint{AllowAll: true, DeniedIDs: []string{"103"}}, nil
+	}}
+	page, err := m.listProjectRecords(ctx, db, projectListInput{Limit: 1, Offset: 1, Sort: "name"})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), page.Total)
+	require.Len(t, page.Records, 1)
+	require.Equal(t, guid.ID(102), page.Records[0].ProjectID)
+	require.Equal(t, projectListCounts{OpenWorkItems: 3, NeedsReview: 2, WaitingDeliveries: 2}, page.Records[0].Counts)
+	page, err = m.listProjectRecords(ctx, db, projectListInput{Limit: 100, Sort: "name"})
+	require.NoError(t, err)
+	require.Len(t, page.Records, 2)
+	for _, view := range page.Records {
+		require.Equal(t, projectListCounts{OpenWorkItems: 3, NeedsReview: 2, WaitingDeliveries: 2}, view.Counts)
+	}
+	// An empty page keeps its filtered total and never reads activity tables.
+	require.NoError(t, db.Exec("DROP TABLE d_delivery_deliveries").Error)
+	page, err = m.listProjectRecords(ctx, db, projectListInput{Limit: 1, Offset: 9})
+	require.NoError(t, err)
+	require.Empty(t, page.Records)
+	require.Equal(t, int64(2), page.Total)
+	_, err = m.listProjectRecords(ctx, db, projectListInput{Limit: 1})
+	require.Error(t, err, "missing activity storage must fail rather than fabricate zero counts")
+}
 
 func TestProjectListBudgetWirePrecision(t *testing.T) {
 	s, db, draft := projectHarness(t)

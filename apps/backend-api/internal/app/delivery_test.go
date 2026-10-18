@@ -336,6 +336,45 @@ func TestProjectCreateHTTPUsesEntityAndReplaysAtomically(t *testing.T) {
 	require.Nil(t, detailBody.Data.Client)
 	require.Equal(t, result.Data.Project, detailBody.Data.ProjectView)
 	require.Equal(t, http.StatusNotFound, get(999, token).Code)
+	list := func(raw, bearer string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/tenants/201/projects"+raw, nil)
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		out := httptest.NewRecorder()
+		router.ServeHTTP(out, req)
+		return out
+	}
+	require.Equal(t, http.StatusUnauthorized, list("", "").Code)
+	listed := list("?name=like:HTTP&limit=1&sort=name", token)
+	require.Equal(t, http.StatusOK, listed.Code, listed.Body.String())
+	var projectList struct {
+		Data []struct {
+			Name   string `json:"name"`
+			Budget struct {
+				Cap   *string `json:"cap"`
+				Spent string  `json:"spent"`
+			} `json:"budget"`
+			Counts map[string]int64 `json:"counts"`
+		} `json:"data"`
+		Meta struct {
+			Page struct {
+				Total int64 `json:"total"`
+				Limit int   `json:"limit"`
+			} `json:"page"`
+		} `json:"meta"`
+	}
+	require.NoError(t, json.Unmarshal(listed.Body.Bytes(), &projectList))
+	require.Len(t, projectList.Data, 1)
+	require.Equal(t, "HTTP project", projectList.Data[0].Name)
+	require.Equal(t, "9007199254740993", *projectList.Data[0].Budget.Cap)
+	require.Equal(t, "0", projectList.Data[0].Budget.Spent)
+	require.Equal(t, map[string]int64{"open_work_items": 0, "needs_review": 0, "waiting_deliveries": 0}, projectList.Data[0].Counts)
+	require.Equal(t, int64(1), projectList.Meta.Page.Total)
+	require.Equal(t, 1, projectList.Meta.Page.Limit)
+	for _, raw := range []string{"?unknown=eq:1", "?name=eq:HTTP", "?stage=eq:INVALID", "?limit=101", "?offset=-1", "?sort=unsupported", "?archived=true"} {
+		require.Equal(t, http.StatusUnprocessableEntity, list(raw, token).Code, raw)
+	}
 	replay := post(body, "project-http-1", token)
 	require.Equal(t, http.StatusCreated, replay.Code, replay.Body.String())
 	require.Equal(t, "true", replay.Header().Get("Idempotent-Replayed"))

@@ -103,6 +103,47 @@ func resolveSchema(document *huma.OpenAPI, schema *huma.Schema) *huma.Schema {
 	return schema
 }
 
+func TestComposedOpenAPIProjectListContract(t *testing.T) {
+	document, _ := composedOpenAPI(t)
+	operation := document.Paths["/tenants/{tenant_id}/projects"].Get
+	require.NotNil(t, operation)
+	require.Equal(t, "project.list", operation.OperationID)
+	data := successData(document, operation)["200"]
+	require.NotNil(t, data)
+	require.NotNil(t, data.Items)
+	list := resolveSchema(document, data.Items)
+	require.NotNil(t, list)
+	fields := []string{"project_id", "code", "name", "client", "stage", "team_mode", "health", "health_reasons", "budget", "target_date", "lead_agent_id", "version", "updated_at", "counts"}
+	actual := make([]string, 0, len(list.Properties))
+	for name := range list.Properties {
+		actual = append(actual, name)
+	}
+	assert.ElementsMatch(t, fields, actual)
+	assert.ElementsMatch(t, fields, list.Required)
+
+	// Inspect serialized schema bytes, as consumed by client generators.
+	encoded, err := json.Marshal(document)
+	require.NoError(t, err)
+	var published map[string]any
+	require.NoError(t, json.Unmarshal(encoded, &published))
+	client, ok := resolveOpenAPIPointer(published, data.Items.Ref+"/properties/client")
+	require.True(t, ok)
+	require.Equal(t, map[string]any{"anyOf": []any{
+		map[string]any{"$ref": "#/components/schemas/ProjectClientView"},
+		map[string]any{"type": "null"},
+	}}, client)
+	budget := resolveSchema(document, list.Properties["budget"])
+	require.NotNil(t, budget)
+	require.NotNil(t, budget.Properties["cap"])
+	require.NotNil(t, budget.Properties["spent"])
+	capType, ok := resolveOpenAPIPointer(published, list.Properties["budget"].Ref+"/properties/cap/type")
+	require.True(t, ok)
+	assert.Equal(t, []any{"string", "null"}, capType)
+	spentType, ok := resolveOpenAPIPointer(published, list.Properties["budget"].Ref+"/properties/spent/type")
+	require.True(t, ok)
+	assert.Equal(t, "string", spentType)
+}
+
 // successData returns the data schema of each 2xx JSON envelope the operation
 // answers with.
 func successData(document *huma.OpenAPI, operation *huma.Operation) map[string]*huma.Schema {
@@ -251,7 +292,12 @@ func TestComposedOpenAPIPagesListsOneWay(t *testing.T) {
 				assert.InDelta(t, 1, *limit.Schema.Minimum, 0, "%s: limit minimum", entry)
 			}
 			if assert.NotNil(t, limit.Schema.Maximum, "%s: limit maximum", entry) {
-				assert.InDelta(t, 200, *limit.Schema.Maximum, 0, "%s: limit maximum", entry)
+				maximum := 200
+				// The project-list specification explicitly caps this collection at 100.
+				if entry.operation.OperationID == "project.list" {
+					maximum = 100
+				}
+				assert.InDelta(t, maximum, *limit.Schema.Maximum, 0, "%s: limit maximum", entry)
 			}
 		}
 		offset := query["offset"]

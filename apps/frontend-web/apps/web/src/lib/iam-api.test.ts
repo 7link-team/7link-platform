@@ -21,6 +21,66 @@ interface RecordedRequest {
 }
 
 describe("IAM API client", () => {
+  it("reads project list totals, exact budgets and tenant query parameters", async () => {
+    const urls: URL[] = []
+    const item = {
+      project_id: "9007199254740993",
+      client: null,
+      code: "P1",
+      name: "all",
+      stage: "ACTIVE",
+      team_mode: "HYBRID",
+      health: "GREEN",
+      health_reasons: [],
+      target_date: null,
+      lead_agent_id: null,
+      version: 1,
+      updated_at: "2026-10-18T00:00:00Z",
+      counts: { open_work_items: 2, needs_review: 1, waiting_deliveries: 0 },
+      budget: { cap: null, spent: "9007199254740993", pct: null, state: "NORMAL" },
+    }
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        urls.push(new URL(request.url))
+        return urls.length === 1
+          ? Response.json({
+              code: 0,
+              data: [item],
+              meta: { page: { total: 147 } },
+            })
+          : Response.json(
+              { code: 120403, message: "Forbidden" },
+              { status: 403 }
+            )
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`)
+    expect(
+      await client.projects("11", {
+        name: "like:all",
+        offset: 20,
+        limit: 10,
+        sort: "name",
+      })
+    ).toEqual({ items: [item], total: 147 })
+    expect(urls[0]?.pathname).toBe("/tenants/11/projects")
+    expect(Object.fromEntries(urls[0]!.searchParams)).toEqual({
+      name: "like:all",
+      offset: "20",
+      limit: "10",
+      sort: "name",
+    })
+    await expect(client.projects("12", {})).rejects.toMatchObject({
+      status: 403,
+    })
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      client.projects("13", {}, controller.signal)
+    ).rejects.toBeDefined()
+    expect(urls).toHaveLength(2)
+  })
   it("reads project details by entity identity and preserves access errors and cancellation", async () => {
     const paths: string[] = []
     const project = {

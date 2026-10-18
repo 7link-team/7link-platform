@@ -17,6 +17,7 @@ import (
 	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	platformquery "7link.com/platform/pkg/query"
+	"github.com/danielgtaylor/huma/v2"
 	"gorm.io/gen"
 	"gorm.io/gen/field"
 	"gorm.io/gorm"
@@ -25,14 +26,39 @@ import (
 // projectRecordPage is the record portion of H2. Activity counts must be joined
 // from their real owners before exposing the complete HTTP list response.
 type projectRecordPage struct {
-	Records []projectListRecordView
+	Records []ProjectListRecordView
 	Total   int64
 }
 
-// projectListRecordView is the non-activity portion of the H2 response. It must
+type projectListCounts struct {
+	OpenWorkItems     int64 `json:"open_work_items"`
+	NeedsReview       int64 `json:"needs_review"`
+	WaitingDeliveries int64 `json:"waiting_deliveries"`
+}
+
+type projectListView struct {
+	ProjectListRecordView
+	Counts projectListCounts `json:"counts"`
+}
+
+// TransformSchema permits the explicit null emitted when a project has no
+// client. Huma's nullable tag only supports scalar schemas, not object refs.
+func (projectListView) TransformSchema(_ huma.Registry, schema *huma.Schema) *huma.Schema {
+	schema.Properties["client"] = &huma.Schema{AnyOf: []*huma.Schema{
+		schema.Properties["client"], {Type: "null"},
+	}}
+	return schema
+}
+
+type projectPage struct {
+	Records []projectListView
+	Total   int64
+}
+
+// ProjectListRecordView is the non-activity portion of the H2 response. It must
 // not embed ProjectView: that detail contract contains numeric int64 amounts
 // and configuration fields that do not belong in the list response.
-type projectListRecordView struct {
+type ProjectListRecordView struct {
 	ProjectID     guid.ID            `json:"project_id"`
 	Code          string             `json:"code"`
 	Name          string             `json:"name"`
@@ -55,7 +81,7 @@ type projectListBudget struct {
 	Pct   *float64 `json:"pct" doc:"Percentage of cap used; null when no cap exists. Amounts remain exact in cap and spent."`
 }
 
-func projectListRecord(record ProjectView, name string) projectListRecordView {
+func projectListRecord(record ProjectView, name string) ProjectListRecordView {
 	budget := projectListBudget{Spent: strconv.FormatInt(record.BudgetSpentMicros, 10), State: record.BudgetState}
 	if record.BudgetCapMicros != nil {
 		capMicros := strconv.FormatInt(*record.BudgetCapMicros, 10)
@@ -65,7 +91,7 @@ func projectListRecord(record ProjectView, name string) projectListRecordView {
 		pct := float64(record.BudgetSpentMicros) / float64(*record.BudgetCapMicros) * 100
 		budget.Pct = &pct
 	}
-	return projectListRecordView{
+	return ProjectListRecordView{
 		ProjectID: record.ProjectID, Code: record.Code, Name: name,
 		Stage: record.Stage, TeamMode: record.TeamMode, Health: record.Health,
 		HealthReasons: record.HealthReasons, Budget: budget, TargetDate: record.TargetDate,
@@ -207,7 +233,7 @@ func (s *projectService) listRecords(ctx context.Context, db *gorm.DB, access co
 	if err != nil {
 		return projectRecordPage{}, err
 	}
-	page.Records = make([]projectListRecordView, 0, len(rows))
+	page.Records = make([]ProjectListRecordView, 0, len(rows))
 	for _, row := range rows {
 		record, err := projectRecordView(row.Project)
 		if err != nil {
@@ -225,10 +251,9 @@ func (s *projectService) listRecords(ctx context.Context, db *gorm.DB, access co
 	return page, nil
 }
 
-// listProjectRecords resolves policy from the authenticated caller. A future H2
-// handler must add activity summaries before serializing its public response.
-func (m *Module) listProjectRecords(ctx context.Context, db *gorm.DB, in projectListInput) (projectRecordPage, error) {
-	var page projectRecordPage
+// listProjectRecords reads authorized records and real activity in one snapshot.
+func (m *Module) listProjectRecords(ctx context.Context, db *gorm.DB, in projectListInput) (projectPage, error) {
+	var page projectPage
 	if m == nil || db == nil || m.listConstraint == nil {
 		return page, ErrUnavailable
 	}
@@ -241,12 +266,65 @@ func (m *Module) listProjectRecords(ctx context.Context, db *gorm.DB, in project
 		return page, err
 	}
 	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var err error
-		page, err = m.service.listRecords(ctx, tx, m.projectAccess, tenant, constraint, in)
+		records, err := m.service.listRecords(ctx, tx, m.projectAccess, tenant, constraint, in)
+		if err != nil {
+			return err
+		}
+		page.Total = records.Total
+		page.Records, err = m.service.listActivity(ctx, tx, tenant, records.Records)
 		return err
 	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
-		return projectRecordPage{}, err
+		return projectPage{}, err
 	}
 	return page, nil
+}
+
+// listActivity uses separate grouped reads to avoid work-item/delivery JOIN
+// fanout. Only authorized page IDs are queried, never the whole tenant's rows.
+func (s *projectService) listActivity(ctx context.Context, db *gorm.DB, tenant guid.ID, records []ProjectListRecordView) ([]projectListView, error) {
+	views := make([]projectListView, len(records))
+	if len(records) == 0 {
+		return views, nil
+	}
+	ids := make([]driver.Valuer, len(records))
+	indices := make(map[guid.ID]int, len(records))
+	for i, record := range records {
+		ids[i], indices[record.ProjectID] = record.ProjectID, i
+		views[i].ProjectListRecordView = record
+	}
+	w := query.BindWorkItems(db, s.names)
+	var work []struct {
+		ProjectID guid.ID
+		State     string
+		RowCount  int64
+	}
+	err := w.WithContext(ctx).Select(w.ProjectID, w.State, w.ID.Count().As("row_count")).
+		Where(w.TenantID.Eq(tenant), w.ProjectID.In(ids...), w.ArchivedAt.IsNull(), w.State.NotIn("ACCEPTED", "CANCELLED", "SKIPPED")). //nolint:misspell // Frozen business state.
+		Group(w.ProjectID, w.State).Scan(&work)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range work {
+		i := indices[row.ProjectID]
+		views[i].Counts.OpenWorkItems += row.RowCount
+		if row.State == "NEEDS_HUMAN_REVIEW" {
+			views[i].Counts.NeedsReview += row.RowCount
+		}
+	}
+	d := query.BindDeliveries(db, s.names)
+	var deliveries []struct {
+		ProjectID guid.ID
+		RowCount  int64
+	}
+	err = d.WithContext(ctx).Select(d.ProjectID, d.ID.Count().As("row_count")).
+		Where(d.TenantID.Eq(tenant), d.ProjectID.In(ids...), d.ArchivedAt.IsNull(), d.State.Eq("SENT")).
+		Group(d.ProjectID).Scan(&deliveries)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range deliveries {
+		views[indices[row.ProjectID]].Counts.WaitingDeliveries = row.RowCount
+	}
+	return views, nil
 }

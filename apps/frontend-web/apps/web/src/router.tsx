@@ -372,6 +372,13 @@ export const router = createBrowserRouter([
               },
               {
                 handle: { layout: "workspace" },
+                path: "/admin/:tenantID/projects",
+                lazy: async () => ({
+                  Component: (await import("./app/projects/page")).default,
+                }),
+              },
+              {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/entities/:entityID/project",
                 lazy: async () => ({
                   Component: (await import("./app/projects/detail")).default,

@@ -122,6 +122,17 @@ describe("effective navigation", () => {
       tenantSystemNavigation(new Set(), false, false).map((item) => item.path)
     ).toEqual(["", "/access-requests"])
   })
+  it("offers the project list only with read access and avoids duplicate entries", () => {
+    const paths = (configured: Set<string>, allowed: boolean) =>
+      tenantSystemNavigation(configured, false, false, allowed).map(
+        (item) => item.path
+      )
+    expect(paths(new Set(), false)).not.toContain("/projects")
+    expect(
+      paths(new Set(), true).filter((path) => path === "/projects")
+    ).toHaveLength(1)
+    expect(paths(new Set(["/projects"]), true)).not.toContain("/projects")
+  })
   it("omits empty authorized groups while keeping accessible descendants", () => {
     const empty = {
       id: "empty",

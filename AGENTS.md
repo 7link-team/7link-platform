@@ -227,16 +227,12 @@ If something couldn't be tested or verified, say so — don't hide limitations.
 
 For the second kind, **give a recommendation and its reason, not a bare menu.** Offering "A or B?" when you already have the evidence to argue for one hands the analysis back. Say which you would do and why; they can still choose the other. A next step buried in `### Notes` does not count as reported.
 
-## 12. Repository Conventions
+## 12. Project Neutrality and Environment
 
-**Workspace layout.** `apps/backend-api` is Go. `apps/frontend-web` is a bun + Turborepo workspace (`apps/*` for deployables, `packages/*` for shared code). Run frontend checks from `apps/frontend-web` — `bun run typecheck`, `bun run lint`, `bun run test` fan out to every package. Invoking `tsc` directly from the wrong directory emits `.js` beside the sources and pollutes the tree; if that happens, delete the output before staging.
+**Keep this contract reusable.** Agent instruction files MUST remain neutral and general. Do not embed project-specific directory layouts, source paths, product names, module inventories, commands, ports, deployment details or implementation status. Put those details in the relevant project documentation, module README, configuration or durable task state. Discover and read that documentation before work; moving details out of this contract does not waive the underlying project conventions.
 
-**New app scaffolds.** `apps/frontend-app` is a Tauri 2 packaging shell reusing the Web application and its build output; run `bun run tauri dev` from that directory. `apps/runner` is an independent Go module with entry point `cmd/runner`; run its Go commands from `apps/runner`. These are initialization scaffolds only; runner task execution and daemon behavior are not implemented.
+**Execution environment.** Use the active operating system's native path and process conventions. Avoid visible command windows that disrupt other desktop applications. On Windows, use hidden child-process windows and non-interactive shells where supported. If the user reports flashing windows, stop new launches and correct the execution path before resuming.
 
-**Agent skills.** Skills live once, in `.agents/skills`, pinned by `skills-lock.json`. `.claude/skills` is a per-clone link to it and is never committed: run `make skills-link` once after cloning (a junction on Windows, a symlink elsewhere). Add or change a skill under `.agents/skills`, never through the link.
+**Line endings.** Discover and honor version-control attributes and local conventions. Verify tracked and working-tree line endings before staging; avoid turning a small change into a whole-file rewrite.
 
-**Windows execution.** Avoid visible command windows that disrupt other desktop applications. Agent `exec_command` calls on Windows use `tty: true` and `login: false` so commands run through ConPTY without profile startup. Node child-process launches use `windowsHide: true`; do not detach Windows test processes into a new console. Background `Start-Process` launches use `-WindowStyle Hidden`. If the user reports flashing windows, stop new launches and fix the execution path before resuming.
-
-**Line endings.** Every area is LF and `core.autocrlf` is `false`. `apps/backend-api` lists its file types; `apps/frontend-web` declares `* text=auto eol=lf`, which also lets Git keep binary assets out of conversion. Confirm with `git ls-files --eol` rather than by eye — a byte dump of a file's first line is easy to misread, and writing CRLF into an LF tree turns a three-line change into a whole-file diff.
-
-**Generated files.** Anything marked AUTO-GENERATED is derived output. Change the generator or its input and regenerate; never hand-edit the result. A generator must produce the same bytes on every machine — normalize platform-dependent input rather than copying it through.
+**Generated files.** Treat marked generated output as derived. Change the generator or its input and regenerate; never hand-edit the result. Generators must produce the same bytes across machines by normalizing platform-dependent inputs.

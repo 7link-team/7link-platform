@@ -45,6 +45,7 @@ func (m *Module) RegisterHTTP(ctx context.Context, api huma.API) error {
 	if m.runtime == nil || m.runtime.Database() == nil || m.runtime.Database().Write() == nil {
 		slog.WarnContext(ctx, "project creation unavailable; configure a writable database")
 	}
+	authz.Register(m.registrar, api, huma.Operation{OperationID: "project.list", Method: http.MethodGet, Path: "/projects", Summary: "List projects with activity counts", Tags: []string{"tenants"}, Errors: []int{401, 403, 422, 500, 503}}, authz.Guard{Resource: "project", Verb: "read", FilterData: true}, m.listProjectsHTTP)
 	authz.Register(m.registrar, api, huma.Operation{OperationID: projectCreateOperation, Method: http.MethodPost, Path: "/projects", Summary: "Create a project", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated, Errors: []int{400, 401, 403, 409, 422, 500, 503}}, authz.Guard{Resource: "project", Verb: "manage", CreationAttributes: map[string]string{"environment": "DEFAULT", "project_mode": "HYBRID"}}, m.createProjectHTTP)
 	authz.RegisterOwned(m.registrar, api, huma.Operation{OperationID: "project.get", Method: http.MethodGet, Path: "/entities/{entity_id}/project", Summary: "Get a project", Tags: []string{"entities"}, Errors: []int{401, 403, 404, 422, 500, 503}}, authz.EntityPath, authz.ResourceOwnerResolver(m.entityOwner), authz.Guard{Resource: "project", Verb: "read"}, m.getProjectHTTP)
 	return authz.RegisterRequestContract(api, projectCreatePath)

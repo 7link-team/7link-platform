@@ -119,10 +119,14 @@ export function entityWorkspaceView(
 export function tenantSystemNavigation(
   paths: Set<string>,
   fileAccess: boolean,
-  fieldPolicyAccess: boolean
+  fieldPolicyAccess: boolean,
+  projectAccess = false
 ): SystemNavigationItem[] {
   return [
     { path: "", label: "overview" },
+    ...(projectAccess && !paths.has("/projects")
+      ? [{ path: "/projects", label: "projects" }]
+      : []),
     ...(!paths.has("/access-requests")
       ? [{ path: "/access-requests", label: "accessRequests" }]
       : []),
