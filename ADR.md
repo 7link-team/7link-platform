@@ -5335,3 +5335,11 @@ Decision: shared ActionForm focuses and scrolls the inline business error summar
 - Alternatives considered: 给各页叠加猜测高度/多层sticky未采用；利用既有壳高度链和Tabs组件即可，不新增布局框架。
 - Tradeoffs: 内容可用高度扣除真实标题/导航，不扣固定viewport常量。原测试增加header/Tab稳定及各tab可达断言。
 - Scope/status: 同一角色组件影响租户/平台/系统；与AutoForm/AutoTable迁移状态分开验收，详见MEMORY与清单§12。本决策不宣称整个页面CRUD迁移完成。
+
+
+## 2026-10-18 - H2 list amount transport remains exact without changing detail API
+- Decision: use a dedicated list record projection in existing delivery/project_list.go. Budget cap/spent are decimal integer strings in USD micros; cap and display-only pct are null without a cap. pct is a floating-point display ratio, never used to reconstruct amounts or alter budget state.
+- Reason: int64 micros can exceed JavaScript safe integers. Embedding existing ProjectView would also expose detail-only configuration fields and retain unsafe numeric amount transport.
+- Alternatives considered: change existing detail ProjectView (wire compatibility impact); stringify after converting to float64 (already loses precision); expose entire detail record (unnecessary fields).
+- Tradeoffs: old detail amount transport remains unchanged and is not claimed fixed; client must format list amounts from decimal strings. No HTTP list exposed until real summaries are implemented. No rounding/clamping or new budget rules introduced.
+- Scope/status: private H2 record projection implemented; seven DB-to-JSON boundary/NULL cases and unchanged detail cap/spent contract pass. Full H2 and count semantics still pending.

@@ -4,8 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"7link.com/platform/internal/delivery/model"
 	"7link.com/platform/internal/delivery/query"
@@ -22,8 +25,52 @@ import (
 // projectRecordPage is the record portion of H2. Activity counts must be joined
 // from their real owners before exposing the complete HTTP list response.
 type projectRecordPage struct {
-	Records []projectDetailView
+	Records []projectListRecordView
 	Total   int64
+}
+
+// projectListRecordView is the non-activity portion of the H2 response. It must
+// not embed ProjectView: that detail contract contains numeric int64 amounts
+// and configuration fields that do not belong in the list response.
+type projectListRecordView struct {
+	ProjectID     guid.ID            `json:"project_id"`
+	Code          string             `json:"code"`
+	Name          string             `json:"name"`
+	Client        *projectClientView `json:"client"`
+	Stage         string             `json:"stage"`
+	TeamMode      string             `json:"team_mode"`
+	Health        string             `json:"health"`
+	HealthReasons json.RawMessage    `json:"health_reasons"`
+	Budget        projectListBudget  `json:"budget"`
+	TargetDate    *string            `json:"target_date"`
+	LeadAgentID   *guid.ID           `json:"lead_agent_id"`
+	Version       int                `json:"version"`
+	UpdatedAt     time.Time          `json:"updated_at"`
+}
+
+type projectListBudget struct {
+	Cap   *string  `json:"cap" doc:"Budget cap in USD micros as a decimal integer string; null means no cap."`
+	Spent string   `json:"spent" doc:"Spent USD micros as a decimal integer string."`
+	State string   `json:"state"`
+	Pct   *float64 `json:"pct" doc:"Percentage of cap used; null when no cap exists. Amounts remain exact in cap and spent."`
+}
+
+func projectListRecord(record ProjectView, name string) projectListRecordView {
+	budget := projectListBudget{Spent: strconv.FormatInt(record.BudgetSpentMicros, 10), State: record.BudgetState}
+	if record.BudgetCapMicros != nil {
+		capMicros := strconv.FormatInt(*record.BudgetCapMicros, 10)
+		budget.Cap = &capMicros
+		// The persisted cap is strictly positive. Divide before multiplying so
+		// int64 amounts cannot overflow while computing the display percentage.
+		pct := float64(record.BudgetSpentMicros) / float64(*record.BudgetCapMicros) * 100
+		budget.Pct = &pct
+	}
+	return projectListRecordView{
+		ProjectID: record.ProjectID, Code: record.Code, Name: name,
+		Stage: record.Stage, TeamMode: record.TeamMode, Health: record.Health,
+		HealthReasons: record.HealthReasons, Budget: budget, TargetDate: record.TargetDate,
+		LeadAgentID: record.LeadAgentID, Version: record.Version, UpdatedAt: record.UpdatedAt,
+	}
 }
 
 type projectListInput struct {
@@ -160,13 +207,13 @@ func (s *projectService) listRecords(ctx context.Context, db *gorm.DB, access co
 	if err != nil {
 		return projectRecordPage{}, err
 	}
-	page.Records = make([]projectDetailView, 0, len(rows))
+	page.Records = make([]projectListRecordView, 0, len(rows))
 	for _, row := range rows {
 		record, err := projectRecordView(row.Project)
 		if err != nil {
 			return projectRecordPage{}, err
 		}
-		view := projectDetailView{ProjectView: record, Name: row.Name}
+		view := projectListRecord(record, row.Name)
 		if row.ClientEntityID != nil {
 			if row.ClientName == nil {
 				return projectRecordPage{}, ErrProjectNotFound

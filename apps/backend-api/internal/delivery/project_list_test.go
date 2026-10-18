@@ -2,8 +2,13 @@ package delivery
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"maps"
+	"math"
 	"net/url"
+	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -14,6 +19,64 @@ import (
 	"7link.com/platform/pkg/extension/authz"
 	"github.com/stretchr/testify/require"
 )
+
+func TestProjectListBudgetWirePrecision(t *testing.T) {
+	s, db, draft := projectHarness(t)
+	names := core.PublishedAccessTableNames("d_")
+	require.NoError(t, db.Exec("CREATE TABLE d_iam_entities (tenant_id INTEGER NOT NULL,id INTEGER NOT NULL,name TEXT NOT NULL,type TEXT NOT NULL,PRIMARY KEY(tenant_id,id))").Error)
+	require.NoError(t, db.Exec("INSERT INTO d_iam_entities VALUES (1,101,'Exact','project')").Error)
+	p := query.BindProjects(db, s.names)
+	row := draft.project
+	row.ProjectID, row.TenantID = 101, 1
+	require.NoError(t, p.WithContext(t.Context()).Create(&row))
+	for _, tc := range []struct {
+		name  string
+		cap   *int64
+		spent int64
+		json  string
+	}{
+		{name: "no cap", spent: 9007199254740993, json: `{"cap":null,"spent":"9007199254740993","state":"NORMAL","pct":null}`},
+		{name: "zero spent", cap: new(int64(100000000)), json: `{"cap":"100000000","spent":"0","state":"NORMAL","pct":0}`},
+		{name: "eighty five percent", cap: new(int64(100000000)), spent: 85000000, json: `{"cap":"100000000","spent":"85000000","state":"NORMAL","pct":85}`},
+		{name: "over cap", cap: new(int64(100000000)), spent: 125000000, json: `{"cap":"100000000","spent":"125000000","state":"NORMAL","pct":125}`},
+		{name: "maximum int64", cap: new(int64(math.MaxInt64)), spent: math.MaxInt64, json: `{"cap":"9223372036854775807","spent":"9223372036854775807","state":"NORMAL","pct":100}`},
+		{name: "multiply overflow boundary", cap: new(int64(100)), spent: math.MaxInt64, json: `{"cap":"100","spent":"9223372036854775807","state":"NORMAL","pct":9223372036854776000}`},
+		{name: "clear existing cap", spent: 9007199254740993, json: `{"cap":null,"spent":"9007199254740993","state":"NORMAL","pct":null}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			capValue := p.BudgetCapMicros.Null()
+			if tc.cap != nil {
+				capValue = p.BudgetCapMicros.Value(*tc.cap)
+			}
+			_, err := p.WithContext(t.Context()).Where(p.ProjectID.Eq(guid.ID(101))).UpdateSimple(capValue, p.BudgetSpentMicros.Value(tc.spent))
+			require.NoError(t, err)
+			page, err := s.listRecords(t.Context(), db, names, 1, authz.DataConstraint{AllowAll: true}, projectListInput{Limit: 10})
+			require.NoError(t, err)
+			require.Len(t, page.Records, 1)
+			encoded, err := json.Marshal(page.Records[0].Budget)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.json, string(encoded))
+			encoded, err = json.Marshal(page.Records[0])
+			require.NoError(t, err)
+			var fields map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(encoded, &fields))
+			require.ElementsMatch(t, []string{"project_id", "code", "name", "client", "stage", "team_mode", "health", "health_reasons", "budget", "target_date", "lead_agent_id", "version", "updated_at"}, slices.Collect(maps.Keys(fields)))
+			// The existing detail response deliberately retains its original numeric
+			// amount contract; the list must not silently rewrite that API.
+			row, err := p.WithContext(t.Context()).Where(p.ProjectID.Eq(guid.ID(101))).First()
+			require.NoError(t, err)
+			detail, err := projectRecordView(*row)
+			require.NoError(t, err)
+			encoded, err = json.Marshal(detail)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(encoded, &fields))
+			require.Equal(t, json.RawMessage(strconv.FormatInt(tc.spent, 10)), fields["budget_spent_micros"]) //nolint:testifylint // JSONEq converts numbers to float64 and cannot detect int64 precision loss.
+			capJSON, err := json.Marshal(tc.cap)
+			require.NoError(t, err)
+			require.Equal(t, json.RawMessage(capJSON), fields["budget_cap_micros"]) //nolint:testifylint // Preserve exact numeric bytes in the existing detail contract.
+		})
+	}
+}
 
 func TestProjectListFiltersBeforeCountingAndPaging(t *testing.T) {
 	s, db, draft := projectHarness(t)
