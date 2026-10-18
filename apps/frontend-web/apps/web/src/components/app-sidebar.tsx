@@ -56,6 +56,7 @@ export function AppSidebar({
   className = "",
   language = "",
   entityID = "",
+  entityType,
   tenantID = "",
 }: {
   permissions?: EffectivePermissions
@@ -64,6 +65,7 @@ export function AppSidebar({
   className?: string
   language?: string
   entityID?: string
+  entityType?: string
   tenantID?: string
 }) {
   const t = useTranslations("iam")
@@ -83,7 +85,9 @@ export function AppSidebar({
     // null permission set rendered an empty sidebar for as long as the request
     // took -- three quarters of a second here -- and the links then appeared,
     // which from the outside is the menu changing on its own.
-    const entityLinks = permissions ? entityNavigation(permissions) : null
+    const entityLinks = permissions
+      ? entityNavigation(permissions, entityType)
+      : null
     return (
       <aside
         className={`w-64 shrink-0 overflow-y-auto border-e border-sidebar-border bg-sidebar p-3 ${className}`}

@@ -204,6 +204,22 @@ describe("tenantStanding", () => {
 })
 
 describe("entityNavigation", () => {
+  it("offers project details only with the endpoint's read permission", () => {
+    expect(entityNavigation(["project_read"], "project")).toEqual([
+      { path: "/project", label: "projectDetails" },
+    ])
+    for (const type of [undefined, "client", "organization"])
+      expect(
+        entityNavigation(["project_read"], type).some(
+          (item) => item.path === "/project"
+        )
+      ).toBe(false)
+    expect(
+      entityNavigation(["project_manage"], "project").some(
+        (item) => item.path === "/project"
+      )
+    ).toBe(false)
+  })
   // What an entity account is offered follows the grants it holds in that
   // entity. The list used to be two booleans, so a permission whose page exists
   // -- the department register -- had no entry at all and the grant was

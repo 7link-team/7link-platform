@@ -1,10 +1,31 @@
-# Task State - commit/push and production prototype continuation 2026-10-18
-## Active Request
-User explicitly authorized committing and pushing all current deliverables, then implementing prototype functionality. Branch chaosplus; fetched origin with no divergence. Precommit deep-review in progress (security, product/testing, reuse/naming/platform read-only workers). Previous frontend acceptance evidence below remains valid; no commit/push yet for this request.
-## Continuation Plan
-First production prototype slice: wire the existing authorized H3 project detail endpoint into Web using generated schema types, existing API transport and readonly AutoForm. Reuse entity overview entry and add a direct tenant project detail route. Do not fabricate H2 activity counts, introduce mock persistence, alter backend authorization or build an incomplete list API. Project list/create/edit and overall M00-M20 remain outstanding.
-## Immediate Next Action
-Precommit review completed: confirmed and fixed real page refresh loading/overlap plus five conditional-toolbar suppressions. Frontend typecheck/lint/test/build PASS (session17082); API types check PASS. Browser fresh4317 41 modules/51 exports/53 cases PASS including four delayed actual-page reads (session63562; TEMP/page-refresh-precommit-pass.log). Explicitly stage reviewed frontend/docs/state paths, commit and push origin chaosplus, then implement production project detail.
+# Task State - production prototype continuation 2026-10-18
+## Objective
+User: commit/push all reviewed work, then begin implementing prototype into production Web/backend.
+## Current Phase
+ACCEPTANCE
+## Completed Work
+- Frontend migration committed/pushed as 3d4f48311b0e5e932dbbb0b876bfa12ba51e0602 to origin/chaosplus; remote hash verified.
+- First production prototype slice H3 implemented: /admin/:tenantID/entities/:entityID/project, existing generated ProjectDetailView and IAM transport, readonly AutoForm, automatic RefreshButton, three locales, overview/sidebar links.
+- Response tenant/entity checked; abort on scope change, ignore late responses, clear old details after errors, retry supported. Project-read-only users admitted through real AppLayout independently of file_view directory.
+- Three read-only deep-review workers completed. Product layout finding fixed; mutation removing exemption fails as expected, restored implementation passes.
+## Confirmed Constraints
+No fake H2 counters, mock production persistence, new authorization semantics or Todo-as-business-task. No budget UI before lossless int64 transport. No backend contract/code changes. Preserve managed Web4303/API8080 and unrelated ports8091/8092. Whole M00-M20 prototype remains incomplete.
+## Verification
+- PASS: frontend bun run typecheck/lint/test/build; 161 UI +210 Web tests; API-types check separately executed successfully. TEMP/prototype-project-{typecheck,lint,test,build,api-types}.log.
+- PASS: existing backend go test ./internal/app -run TestProjectCreateHTTPUsesEntityAndReplaysAtomically -count=1 (1.279s). TEMP/prototype-project-backend.log. No full backend CI claim.
+- PASS: API real HTTP test checks large string ID path,403 and abort; navigation permission/type tests.
+- PASS: earlier browser55 cases, including2 project cases and real shell, scope cancellation/late response/failure/retry/mobile. TEMP/prototype-project-browser-default.log; layout mutation proof prototype-project-layout-mutation.log.
+- Cold fixture investigation: main live root routing raced with mocked session APIs; React router emitted maximum-update-depth warnings. Harness now waits for stable anonymous login form before stubbing, catches console update-depth errors with stack. Final cold full run PASS:55 cases in4 batches, no captured update-depth errors; TEMP/prototype-project-console-final.log.
+- No sample projects in development SQLite: successful real development-database project E2E not claimed.
+## Remaining Work
+1. Self-review and final slice acceptance PASS: scope/reuse/architecture/regression/complexity/durable state checked. Commit/push reviewed slice and verify remote.
+2. Future prototype: real work-item/delivery counters prerequisites, H2 list and project create/edit workflows; full prototype acceptance outstanding.
+## Services
+Managed Web4303/API8080 running; demo selector enabled at http://127.0.0.1:4303/admin/login. Credentials remain in ignored development files. Temporary Vite4317 session20272 stopped; own fixture browsers closed.
+## Next Action
+Commit/push reviewed project slice and verify origin/chaosplus; next implementation is real H2 prerequisite persistence/counters per specs02/07.
+## Last Checkpoint
+2026-10-18 H3 implementation and gates complete; cold browser regression PASS, temporary server stopped, ready for second commit.
 
 # Previous completed frontend correction evidence
 ## Objective

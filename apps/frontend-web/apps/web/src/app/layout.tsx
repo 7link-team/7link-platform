@@ -139,7 +139,8 @@ export default function AppLayout() {
   const entityOwnPage =
     Boolean(entityID) &&
     (location.pathname.endsWith("/files") ||
-      location.pathname.endsWith("/departments"))
+      location.pathname.endsWith("/departments") ||
+      location.pathname.endsWith("/project"))
   const [entityCatalog, setEntityCatalog] = useState<{
     subject: string
     tenant: string
@@ -467,6 +468,7 @@ export default function AppLayout() {
                   permissions={permissions}
                   tenantID={tenantValue}
                   entityID={entityID}
+                  entityType={selectedEntity?.type}
                   language={menuLanguage}
                   menus={directoryReady ? (menus ?? []) : []}
                   fieldPolicyAccess={Boolean(tenantValue) && fieldPolicyAccess}
@@ -561,6 +563,7 @@ export default function AppLayout() {
           permissions={permissions}
           tenantID={tenantValue}
           entityID={entityID}
+          entityType={selectedEntity?.type}
           language={menuLanguage}
           menus={directoryReady ? (menus ?? []) : []}
           fieldPolicyAccess={Boolean(tenantValue) && fieldPolicyAccess}

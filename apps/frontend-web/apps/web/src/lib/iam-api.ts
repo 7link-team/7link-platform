@@ -26,6 +26,7 @@ import {
 } from "./api-route"
 
 export type GrantedConsent = components["schemas"]["GrantedConsent"]
+export type ProjectDetail = components["schemas"]["ProjectDetailView"]
 export type FilePage = components["schemas"]["FilePage"]
 export interface SystemOwnerScope {
   kind: "platform" | "tenant"
@@ -3064,6 +3065,13 @@ export function createIamApi(
             query: { permission },
           }
         )
+      ),
+    project: (id: string, signal?: AbortSignal) =>
+      request<ProjectDetail>(
+        apiRoute("get", "/entities/{entity_id}/project", {
+          path: { entity_id: id },
+        }),
+        { signal }
       ),
     entity: (id: string) =>
       request<Entity>(

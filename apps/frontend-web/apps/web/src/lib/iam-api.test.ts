@@ -21,6 +21,37 @@ interface RecordedRequest {
 }
 
 describe("IAM API client", () => {
+  it("reads project details by entity identity and preserves access errors and cancellation", async () => {
+    const paths: string[] = []
+    const project = {
+      project_id: "9007199254740993",
+      tenant_id: "11",
+      name: "Project",
+      version: 2,
+    }
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        paths.push(new URL(request.url).pathname)
+        return paths.length === 1
+          ? Response.json({ code: 0, data: project })
+          : Response.json(
+              { code: 120403, message: "Forbidden" },
+              { status: 403 }
+            )
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`)
+    expect<unknown>(await client.project(project.project_id)).toEqual(project)
+    await expect(client.project("12")).rejects.toMatchObject({ status: 403 })
+    const controller = new AbortController()
+    controller.abort()
+    await expect(client.project("13", controller.signal)).rejects.toBeDefined()
+    expect(paths).toEqual([
+      "/entities/9007199254740993/project",
+      "/entities/12/project",
+    ])
+  })
   it("loads operation contracts through OPTIONS without issuing the mutation", async () => {
     const requests: RecordedRequest[] = []
     const contract = {

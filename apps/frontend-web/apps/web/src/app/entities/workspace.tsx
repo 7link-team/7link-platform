@@ -138,6 +138,16 @@ function EntityDetails({
       )}
       {view === "overview" && (
         <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-4 overflow-auto text-sm [&>dd]:border-b [&>dd]:py-4 [&>dd]:break-all [&>dt]:border-b [&>dt]:py-4 [&>dt]:text-muted-foreground">
+          {data.entity.type === "project" && allowed("project_read") && (
+            <>
+              <dt>{t("projectDetails")}</dt>
+              <dd>
+                <Link className="text-primary underline" to={`${base}/project`}>
+                  {t("projectDetails")}
+                </Link>
+              </dd>
+            </>
+          )}
           <dt>{t("entity")}</dt>
           <dd>{data.entity.name}</dd>
           <dt>{t("id")}</dt>

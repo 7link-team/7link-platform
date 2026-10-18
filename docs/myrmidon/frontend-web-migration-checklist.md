@@ -1,5 +1,14 @@
 # Web 迁移实施与验收清单
 
+### 2026-10-18 原型生产实现：H3 项目详情首批
+
+- 组件迁移已提交并推送：`3d4f483`，远端 `origin/chaosplus` 哈希核对一致。
+- 正式 Web 新增 `/admin/:tenantID/entities/:entityID/project`，调用已有 H3 `GET /entities/{entity_id}/project`，复用生成类型、身份请求客户端、AutoForm detail、RefreshButton 和实体视角。项目实体的概览链接与侧栏入口使用 `project_read`；侧栏还要求已知实体类型为 project。
+- 展示项目基本档案、客户、阶段、团队模式、健康、主责 Agent ID、目标日期、版本、描述及时间；三语枚举已接通。不展示未经无损 int64 客户端支持的预算金额，不伪造活动统计或编辑动作。
+- 独立实体页面准入复用现有模式，避免 `file_view` 目录挡住仅持有 `project_read` 的合法详情读取。后端原鉴权保持不变；响应必须与当前 tenant/entity 参数一致，切换作用域取消请求并忽略迟到结果，读取失败清除旧详情。
+- 本批范围是 H3 详情读取切片；历史 S01 的“Web 详情尚未接通”描述由本段更新。M04 项目列表、创建、编辑、归档及 M00–M20 整体仍未完成。当前开发库没有项目记录，未声明真实开发库项目成功读取的端到端验收。
+- 验证：前端 typecheck/lint/test/build、API 生成物校验；客户端实际 HTTP 服务器测试覆盖 int64 ID、403 和取消；原后端 `TestProjectCreateHTTPUsesEntityAndReplaysAtomically` 通过，涵盖真实组合的项目创建/详情鉴权。浏览器增加裸详情与真实 AppLayout 两个场景，覆盖只读、翻译、失败重试、作用域取消/迟到响应、租户不匹配和390px容器；移除布局修复的变异验证按预期失败，恢复后重新验收。最终运行证据见根 MEMORY.md。
+
 ### 2026-10-18 提交前复核补充
 
 - deep-review 安全、复用/架构、命名/注释和跨平台视角无可证实新增问题；产品视角确认部分 effect 驱动页面未传递实际刷新加载状态，已补 account 三页、注销申请、实体工作区及角色成员/目录表的请求期间 loading，阻止定时器重叠读取。

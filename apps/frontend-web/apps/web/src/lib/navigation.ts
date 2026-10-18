@@ -30,11 +30,15 @@ export const personalNavigation: SystemNavigationItem[] = [
 // offered are the same decision, so a permission with a page has an entry and a
 // permission without one is a gap in the console rather than a policy.
 export function entityNavigation(
-  permissions: Iterable<string>
+  permissions: Iterable<string>,
+  entityType?: string
 ): SystemNavigationItem[] {
   const held = new Set(permissions)
   const entityAccess = held.has("entity_view")
   return [
+    ...(entityType === "project" && held.has("project_read")
+      ? [{ path: "/project", label: "projectDetails" }]
+      : []),
     ...(entityAccess
       ? [
           { path: "/overview", label: "entityOverview" },

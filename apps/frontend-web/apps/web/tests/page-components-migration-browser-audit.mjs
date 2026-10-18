@@ -21,7 +21,7 @@ const pages = [
       ) === index
   )
 const moduleCount = new Set(pages.map((page) => page.path)).size
-if (moduleCount !== 41)
+if (moduleCount !== 42)
   throw new Error(`Router coverage changed: found ${moduleCount} modules`)
 pages.push(
   {
@@ -31,6 +31,28 @@ pages.push(
   },
   { path: "/src/app/security/page.tsx", export: "default", route: "/user/mfa" }
 )
+pages.push({path:"/src/app/projects/detail.tsx",export:"default",route:"/admin/1/entities/1/project",shell:true})
+const batchSize = 18
+if (!process.env.PAGE_AUDIT_MATCH && process.env.PAGE_AUDIT_BATCH === undefined) {
+  for (let batch = 0; batch < Math.ceil(pages.length / batchSize); batch++) {
+    const output = execFileSync(process.execPath, [fileURLToPath(import.meta.url)], {
+      env: { ...process.env, PAGE_AUDIT_BATCH: String(batch) },
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 60000,
+      maxBuffer: 4 * 1024 * 1024,
+    })
+    process.stdout.write(output)
+  }
+  process.exit(0)
+}
+const matchedPages = process.env.PAGE_AUDIT_MATCH
+  ? pages.filter(page => page.path.includes(process.env.PAGE_AUDIT_MATCH))
+  : pages
+// Bound each browser eval below the CLI daemon's response deadline on Windows.
+const auditPages = process.env.PAGE_AUDIT_BATCH === undefined
+  ? matchedPages
+  : matchedPages.slice(Number(process.env.PAGE_AUDIT_BATCH) * batchSize, (Number(process.env.PAGE_AUDIT_BATCH) + 1) * batchSize)
 const shared = (path) =>
   "/@fs/" +
   fileURLToPath(new URL(`../../../packages/ui/src/${path}`, import.meta.url))
@@ -57,7 +79,10 @@ const run = (...args) =>
     timeout: 60000,
   })
 try {
-  run("open", baseURL)
+  // Start on a stable anonymous route: the live root redirect must not race
+  // with the fixture's temporary session/API replacements.
+  run("open", `${baseURL}/admin/login`)
+  run("wait", "#login-name")
   run("snapshot", "-i")
   const script = String.raw`(async () => {
     const React = (await import(${dependency("react")})).default;
@@ -77,7 +102,11 @@ try {
     Object.assign(reads,{serviceAccounts:emptyPage,operatingPlatforms:[],systemMenus:[],systemRolePermissionCatalog:[],myAvatar:{mode:'generated'},files:{items:[]},closureRequest:null,systemAuditIntegrity:{valid:true,verified_events:0,head_sequence:0},tenantRegistrationPolicy:{enabled:false},entity:{id:'1',name:'Fixture entity',type:'organization',status:'active',version:1},mfaStatus:{totp_enabled:false,recovery_codes_remaining:0},capabilities:{password:true,registration:true,captcha:{enabled:false},phone:{enabled:false},passkey:{enabled:false}},deployment:{name:'Fixture'}});
     reads.entity.metadata={};reads.entity.parent_id='';reads.entities=[reads.entity];reads.auditIntegrity=reads.systemAuditIntegrity;
     reads.myAccessRequests=Array.from({length:240},(_,i)=>({id:'request-'+i,requester_id:'1',role_id:'role-1',role_name:'Fixture role',reason:'Request '+i,status:'pending',access_expires_at:'2027-01-01T00:00:00Z'}));
+    reads.sessionForTenant=fixtureSession;
+    reads.project={tenant_id:'1',project_id:'1',name:'Fixture project <script>',code:'PROJECT-1',description:'Real API contract fixture',stage:'ACTIVE',team_mode:'HYBRID',health:'GREEN',client:null,lead_agent_id:null,target_date:'2026-12-01',version:1,created_at:'2026-10-18T08:00:00Z',updated_at:'2026-10-18T09:00:00Z',archived_at:null,blocked_reason:null};
     let calls=[],missing=[],errors=[];
+    const originalConsoleError=console.error;
+    console.error=(...args)=>{if(args.some(value=>String(value).includes('Maximum update depth exceeded')))errors.push(args.map(String).join(' ')+new Error().stack);originalConsoleError(...args)};
     for (const name of Object.keys(iamApi)) {
       if(typeof iamApi[name]!=='function')continue;
       iamApi[name]=async()=>{calls.push(name);if(Object.hasOwn(reads,name))return structuredClone(reads[name]);missing.push(name);throw Error('Fixture missing: '+name)};
@@ -108,17 +137,24 @@ try {
     const outlet={menus:[],permissions:{has:()=>true},permissionsResolved:true,tenantID:'1',tenantName:'Fixture',entityID:'1',entityNames:{'1':'Fixture'}};
     const tick=()=>new Promise(resolve=>setTimeout(resolve,100));
     const results=[];
-    for(const page of ${JSON.stringify(pages)}){
+    for(const page of ${JSON.stringify(auditPages)}){
       calls=[];missing=[];errors=[];
       const node=document.createElement('div');document.body.append(node);const root=createRoot(node);
       let router;
+      const originalTenants=iamApi.myTenants, originalPermissions=iamApi.myPermissions;
       try{
         const module=await import(page.path);const Component=module[page.export];
         if(typeof Component!=='function')throw Error('Missing component '+page.export);
         const anonymous=/\/(register|recover|verify-email|accept-invitation|login\/page)/.test(page.path);
         const auth={session:anonymous?null:fixtureSession,status:anonymous?'anonymous':'authenticated',refresh:async()=>{},logout:async()=>{}};
         const location=page.route??(page.path.includes('/system/')||page.export.startsWith('System')?'/system/fixture':page.export.startsWith('Platform')?'/platform/1/fixture':page.path.includes('/account/')?'/account/fixture':page.path.includes('/security/')?'/user/security':'/admin/1/entities/1/overview');
-        router=createMemoryRouter([{element:React.createElement(Outlet,{context:outlet}),children:[{path:location.includes('/admin/')?'/admin/:tenantID/entities/:entityID/:view':location,element:React.createElement(Component),children:[{path:'*',element:React.createElement('span',null,'Fixture outlet')}]},{path:'*',element:React.createElement('span',{'data-fixture-redirect':true},'Fixture redirect destination')}]}],{initialEntries:[location]});
+        let shell;
+        if(page.shell){
+          shell=(await import('/src/app/layout.tsx')).default;
+          iamApi.myTenants=async()=>[{id:'1',name:'Fixture tenant',slug:'fixture',status:'active'},{id:'2',name:'Second tenant',slug:'second',status:'active'}];
+          iamApi.myPermissions=async()=>['project_read'];
+        }
+        router=createMemoryRouter([{element:page.shell?React.createElement(shell):React.createElement(Outlet,{context:outlet}),children:[{path:location.includes('/admin/')?'/admin/:tenantID/entities/:entityID/:view':location,element:React.createElement(Component),children:[{path:'*',element:React.createElement('span',null,'Fixture outlet')}]},{path:'*',element:React.createElement('span',{'data-fixture-redirect':true},'Fixture redirect destination')}]}],{initialEntries:[location]});
         root.render(React.createElement(Boundary,null,React.createElement(IntlAppProvider,{initialLocale:'en-US',initialMessages:messages,loadMessages:async()=>messages,timeZone:'UTC'},React.createElement(ThemeProvider,null,React.createElement(AuthContext.Provider,{value:auth},React.createElement(RouterProvider,{router}))))));
         await tick();await tick();await tick();
         if(!node.textContent.trim())errors.push('Empty rendered page');
@@ -142,6 +178,30 @@ try {
             finish();await tick();if(node.querySelector('[aria-label="Refresh"]')?.disabled)throw Error('Refresh stayed locked after read');
             clock+=6000;scheduled();await tick();if(count!==2)throw Error('Next scheduled refresh did not run');finish();await tick();
           }finally{iamApi[slowRead]=previous;window.setInterval=originalInterval;window.clearInterval=originalClear;Date.now=originalNow}
+        }
+        if(page.path==='/src/app/projects/detail.tsx'){
+          const previous=iamApi.project;
+          const refresh=()=>node.querySelector('[aria-label="Refresh"]').click();
+          const form=()=>node.querySelector('form');
+          if(!form()||form().querySelector('input,textarea,select,button[type=submit]'))throw Error('Project detail is not a readonly AutoForm: '+node.textContent.slice(-300));
+          if(!node.textContent.includes('Human and agent')||!node.textContent.includes('Healthy'))errors.push('Project enum labels missing');
+          if(node.querySelector('script')?.textContent.includes('Fixture project'))errors.push('Project title injected markup');
+          try{
+            iamApi.project=async()=>{throw Error('Project access denied fixture')};refresh();await tick();await tick();
+            if(form()||!node.textContent.includes('Project access denied fixture'))throw Error('Failed project refresh retained accessible details');
+            iamApi.project=previous;refresh();await tick();await tick();if(!form())throw Error('Project retry did not recover');
+            const pending=new Map();
+            iamApi.project=(id,signal)=>new Promise(resolve=>pending.set(id,{signal,resolve}));
+            refresh();await tick();
+            await router.navigate('/admin/1/entities/2/project');await tick();
+            if(!pending.get('1')?.signal.aborted||form())throw Error('Project switch retained old read or form');
+            pending.get('2').resolve({...reads.project,project_id:'2',name:'Second project',code:'PROJECT-2'});await tick();await tick();
+            pending.get('1').resolve({...reads.project,name:'Obsolete project'});await tick();
+            if(!node.textContent.includes('Second project')||node.textContent.includes('Obsolete project'))throw Error('Stale project response crossed scope');
+            node.style.width='390px';await tick();if(node.scrollWidth>node.clientWidth+1)throw Error('Project detail horizontal overflow');
+            await router.navigate('/admin/2/entities/3/project');await tick();pending.get('3').resolve(reads.project);await tick();await tick();
+            if(form()||!node.textContent.includes('unavailable in the current workspace'))throw Error('Project tenant mismatch was displayed');
+          }finally{iamApi.project=previous}
         }
         let createDialog='not-targeted';
         if(/\/(groups|departments|entities|menus|tenants)\/page.tsx$/.test(page.path)){
@@ -172,9 +232,9 @@ try {
         }
         results.push({module:page.path,export:page.export,route:page.route,avatarStyle,accessRequestPagination,state:missing.length?'fixture-error':node.querySelector('[data-fixture-redirect]')?'redirect':'rendered',forms:node.querySelectorAll('form').length,tables:node.querySelectorAll('table').length,createDialog,reads:[...new Set(calls)],missing:[...new Set(missing)],errors:[...errors]});
       }catch(error){results.push({module:page.path,errors:[String(error.stack??error)]})}
-      finally{root.unmount();router?.dispose();node.remove();await tick()}
+      finally{root.unmount();router?.dispose();node.remove();iamApi.myTenants=originalTenants;iamApi.myPermissions=originalPermissions;await tick()}
     }
-    window.fetch=originalFetch;window.removeEventListener('error',capture);window.removeEventListener('unhandledrejection',capture);
+    console.error=originalConsoleError;window.fetch=originalFetch;window.removeEventListener('error',capture);window.removeEventListener('unhandledrejection',capture);
     return {pass:results.every(result=>result.errors.length===0 && result.missing?.length===0),uniqueModules:new Set(results.map(result=>result.module)).size,exports:new Set(results.map(result=>result.module+'#'+result.export)).size,cases:results.length,avatarStyle:results.find(result=>result.route==='/user/profile')?.avatarStyle,rendered:results.filter(result=>result.state==='rendered').length,fixtureErrors:results.filter(result=>result.state==='fixture-error').length,redirects:results.filter(result=>result.state==='redirect').length,limitations:['Read fixtures only; no backend writes, populated row actions, authorization, or backend acceptance.'],results};
   })()`
   const output = execFileSync(
