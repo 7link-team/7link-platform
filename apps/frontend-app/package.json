@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
+    "test": "bun test tests",
     "build": "tauri build",
     "tauri": "tauri"
   },

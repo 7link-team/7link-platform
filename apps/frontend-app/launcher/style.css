@@ -1,0 +1,22 @@
+:root { color-scheme: light dark; font: 16px/1.6 system-ui, sans-serif; background: Canvas; color: CanvasText; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 680px; margin: 0 auto; padding: 48px 24px; }
+h1 { font-size: 28px; margin: 0 0 8px; }
+h2 { font-size: 18px; margin-top: 32px; }
+p { margin: 8px 0 20px; }
+label { display: block; font-weight: 600; margin-bottom: 8px; }
+.entry, li { display: flex; gap: 12px; align-items: center; }
+input { width: 100%; min-width: 0; }
+input, button { font: inherit; padding: 10px 14px; border: 1px solid GrayText; border-radius: 6px; min-height: 44px; }
+button { cursor: pointer; flex-shrink: 0; }
+button:hover { filter: brightness(.92); }
+:focus-visible { outline: 3px solid Highlight; outline-offset: 3px; }
+#address-help, footer { font-size: 14px; }
+#status:empty { display: none; }
+#status { color: light-dark(#a32121, #ffb4b4); }
+ul { list-style: none; padding: 0; }
+li { border-bottom: 1px solid GrayText; padding: 16px 0; }
+li a { overflow-wrap: anywhere; flex: 1; color: LinkText; padding: 10px 0; }
+footer { margin-top: 36px; }
+@media (max-width: 480px) { main { padding: 24px 16px; } .entry { align-items: stretch; flex-direction: column; } }

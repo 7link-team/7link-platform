@@ -1,0 +1,81 @@
+const storageKey = "desktop-server-origins"
+
+export function serverOrigin(value) {
+  const url = new URL(value.trim())
+  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password ||
+      url.pathname !== "/" || url.search || url.hash) {
+    throw new Error("请输入 HTTP(S) 网页入口，不含账号、密码、路径或查询参数。")
+  }
+  return url.origin
+}
+
+export function savedServers(storage) {
+  const data = JSON.parse(storage.getItem(storageKey) ?? "[]")
+  if (!Array.isArray(data) || data.some(value => typeof value !== "string")) {
+    throw new Error("服务器列表格式无效。")
+  }
+  return [...new Set(data.map(serverOrigin))]
+}
+
+export function startChooser(doc, storage) {
+  const status = doc.querySelector("#status")
+  let servers
+  try {
+    servers = savedServers(storage)
+  } catch {
+    status.textContent = "无法读取已保存的服务器。请检查本地存储；仍可输入地址连接。"
+    servers = []
+  }
+  const render = () => {
+    doc.querySelector("#empty").hidden = servers.length > 0
+    doc.querySelector("#servers").replaceChildren(...servers.map(origin => {
+      const row = doc.createElement("li")
+      const link = doc.createElement("a")
+      link.href = origin
+      link.textContent = origin
+      const remove = doc.createElement("button")
+      remove.type = "button"
+      remove.textContent = "移除"
+      remove.setAttribute("aria-label", `移除 ${origin}`)
+      remove.addEventListener("click", () => {
+        try {
+          const next = servers.filter(value => value !== origin)
+          storage.setItem(storageKey, JSON.stringify(next))
+          servers = next
+          status.textContent = ""
+          render()
+        } catch {
+          status.textContent = "无法保存更改，服务器地址未移除。"
+        }
+      })
+      row.append(link, remove)
+      return row
+    }))
+  }
+  render()
+  doc.querySelector("#server-form").addEventListener("submit", event => {
+    event.preventDefault()
+    let origin
+    try {
+      origin = serverOrigin(doc.querySelector("#server-address").value)
+    } catch {
+      status.textContent = "请输入完整的 HTTP(S) 网页入口，不含账号、密码、路径或查询参数。"
+      doc.querySelector("#server-address").focus()
+      return
+    }
+    try {
+      storage.setItem(storageKey, JSON.stringify([...new Set([...servers, origin])]))
+    } catch {
+      status.textContent = "无法保存服务器地址。请检查本地存储后重试。"
+      return
+    }
+    doc.defaultView.location.assign(origin)
+  })
+}
+
+if (typeof document !== "undefined") {
+  // Access to localStorage itself can be denied by the runtime.
+  try { startChooser(document, window.localStorage) } catch {
+    document.querySelector("#status").textContent = "本地存储不可用，无法保存服务器地址。"
+  }
+}

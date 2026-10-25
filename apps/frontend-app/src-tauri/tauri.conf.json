@@ -4,10 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.example.frontendapp",
   "build": {
-    "beforeDevCommand": "bun run --cwd ../frontend-web/apps/web dev --host 127.0.0.1 --port 1420 --strictPort",
-    "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "bun run --cwd ../frontend-web build",
-    "frontendDist": "../../frontend-web/apps/web/dist"
+    "frontendDist": "../launcher"
   },
   "app": {
     "windows": [

@@ -188,8 +188,6 @@ jobs:
     env:
       TAG: ${{ needs.metadata.outputs.tag }}
       REPOSITORY: ${{ needs.metadata.outputs.repository }}
-      VITE_API_URL: ${{ vars.VITE_API_URL }}
-      VITE_DEFAULT_TENANT: ${{ vars.VITE_DEFAULT_TENANT }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -201,18 +199,14 @@ jobs:
       - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
         with:
           bun-version: 1.3.12
-      - name: Validate desktop deployment configuration
-        run: |
-          $api = $null
-          if (-not [Uri]::TryCreate($env:VITE_API_URL, [UriKind]::Absolute, [ref]$api) -or $api.Scheme -notin @('http', 'https')) {
-            throw 'Set repository variable VITE_API_URL to the absolute desktop API URL before releasing.'
-          }
-      - name: Install locked frontend dependencies
+      - name: Install locked desktop dependencies
         run: |
           bun install --frozen-lockfile
           if ($LASTEXITCODE -ne 0) { throw 'Desktop dependency installation failed' }
-          bun install --cwd ../frontend-web --frozen-lockfile
-          if ($LASTEXITCODE -ne 0) { throw 'Shared Web dependency installation failed' }
+      - name: Test runtime server address rules
+        run: |
+          bun run test
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop launcher tests failed' }
       - name: Prepare Windows Rust target
         run: rustup target add x86_64-pc-windows-msvc
       - id: desktop-build
@@ -225,10 +219,8 @@ jobs:
           $binaries = @($packages.targets | Where-Object { $_.kind -contains 'bin' })
           if ($packages.Count -ne 1 -or $binaries.Count -ne 1) { throw 'Expected one desktop package and binary' }
           $config = Join-Path $env:RUNNER_TEMP 'desktop-release.json'
-          # Build the shared Web package directly so Turbo cannot filter VITE_* deployment variables.
           @{
             version = $env:TAG.Substring(1)
-            build = @{ beforeBuildCommand = 'bun run --cwd ../frontend-web/apps/web build' }
           } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $config -Encoding utf8
           bun run build --ci --target x86_64-pc-windows-msvc --bundles nsis --config $config -- --locked
           if ($LASTEXITCODE -ne 0) { throw 'Desktop build failed' }

@@ -5,7 +5,7 @@ The server ships as two GHCR images, `<owner>/<repository>-api` and
 lowercased for GHCR. The runner ships as native binaries, not a container: it
 needs access to the user's local tools, credentials and workspace. Its existing
 npm launcher remains available for local packaging; this workflow does not
-publish the private npm package. The shared Tauri desktop shell also ships as
+publish the private npm package. The Tauri desktop server launcher also ships as
 a Windows x64 NSIS installer and a portable ZIP.
 
 ## Cut a release
@@ -66,17 +66,25 @@ installation scope. The portable ZIP contains the actual `frontend-app.exe`
 from that same build and can be extracted and run without installing the app.
 It requires Microsoft Edge WebView2 Runtime to be present; it does not install
 WebView2 or promise that application/WebView state remains beside the executable.
-This packages the existing shared Web shell, not a completed native integration
+This packages a server chooser that loads the deployed Web, not a completed native integration
 or an accepted native login flow. See `apps/frontend-app/README.md` for its scope.
 
-Before releasing, configure the repository Actions variable `VITE_API_URL` as the
-desktop deployment's absolute HTTP(S) API URL, and optionally
-`VITE_DEFAULT_TENANT`. The Windows job fails if the API URL is missing or relative:
-desktop builds have no same-origin nginx or Vite proxy. The shared Web build
-embeds these public deployment settings, so changing them requires rebuilding;
-never put credentials in them. Backend origin, cookie and login callback policy
-must admit the deployed desktop shell. The app version is injected from the tag
-through a temporary Tauri config; source development versions remain unchanged.
+Desktop releases do not embed a server or API address and need no `VITE_API_URL`
+repository variable. At runtime users save and select multiple HTTP(S) server
+origins (scheme, host and optional port, without a path, credentials or query).
+The WebView navigates to that server's Web page; its relative `/api` requests
+use the same nginx origin. Deploy Web with the existing same-origin API proxy,
+without a baked absolute `VITE_API_URL`. Server aliases still need corresponding
+server-side cookie and login callback configuration.
+
+Every launch opens the bundled chooser. The native **Connection -> Servers**
+menu (`Ctrl+Shift+S`) returns there even if the remote page is unavailable.
+Saved origins live in local WebView storage; remote Web storage is isolated by
+origin. Cookies follow browser Domain/Path/Secure rules: different ports on the
+same host do not isolate cookies. Removing or switching an address does not log out another
+server. This is selection, not automatic failover. The launcher needs a running
+Web deployment; no shared Web assets are embedded for offline use. The app
+version is injected from the tag through a temporary Tauri config.
 
 ## Repository settings
 

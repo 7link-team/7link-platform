@@ -4,10 +4,10 @@
 Deliver the existing implementation batch after recovery, final review and commit hygiene. User authorized this delivery work on 2026-10-24. Full accepted prototype remains incomplete; do not claim full product readiness.
 
 ## Current Phase
-TESTING
+REVIEW
 
 ## Current Step
-Hosted40158258024 frontend/Runner PASS; backend lint PASS0issues (8m cold start) and all Go package tests except one Linux temporary-storage fixture PASS. Failure: clientwork/submission_bundle_test.go temporary_storage sets only TMP/TEMP, Unix os.TempDir uses TMPDIR, so fault was never injected. Corrected all3same-class temp fixtures with TMPDIR plus existing TMP/TEMP; original assertions/production unchanged. Local all TestSubmissionBundle PASS0.370s; gofmt/diffcheck PASS. Commit/push minimal test-only fix and follow new hosted run. API URL remains pending; no tag/GHCR/official assets.
+Runtime multiple-server desktop change implemented; completing native verification/review before explicit commit/push. User explicitly superseded fixed VITE_API_URL release requirement; no deployment-address input is pending. Bundled chooser navigates to chosen nginx Web origin; native menu returns locally. Scope desktop/release/docs/tests only; shared Web/backend behavior unchanged. Direct implementation plus two bounded read-only deep-review workers.
 
 ## Overall Progress
 - [x] Read continuation transcript; reconcile Git/source/ADR/final gate evidence.
@@ -21,13 +21,14 @@ Hosted40158258024 frontend/Runner PASS; backend lint PASS0issues (8m cold start)
 - [x] Complete local backend/frontend/Runner gates, actual Windows NSIS build and portable ZIP equality verification.
 - [x] Complete326s copied populated-runtime/browser acceptance and clean all owned runtime resources.
 - [ ] Hosted Windows both-scope install/uninstall and official deployment-configured assets.
-- [ ] Obtain deployment API URL (async question pending), validate public GHCR after first publication.
+- [x] User rejected fixed deployment address: runtime multiple-server chooser replaces compile-time endpoint.
+- [ ] Validate public GHCR after first publication.
 - [x] Review explicit staging manifest/staged diff and commit candidate04ab3fd9.
 - [x] Push HEAD:main to intended public GitHub repository; anonymous SHA verification PASS; Codeup unchanged.
-- [ ] Complete latest hosted CI40158258024 and remaining release acceptance.
+- [ ] Complete latest hosted CI40160442566 and remaining release acceptance.
 
 ## Active Work
-All three review workers finished and released owned heavy processes. Main monitors hosted CI40158258024 on public main d8874964: frontend and Runner SUCCESS, backend complete CI step still running. Local source/Windows packaging/copied-runtime gates PASS. Pending user API URL and later hosted Windows installation/public GHCR release acceptance. No tag or Release has been created.
+Runtime server chooser local implementation and acceptance PASS; preparing explicit reviewed commit. No fixed API/server input is pending. Old public main ce9c6b40 CI40160442566 backend still active, frontend/Runner success; avoid push cancelling it. No tag/GHCR/official Release yet. Native tests used only owned hidden processes, isolated profiles and random ports.
 
 ## Completed Work / Recovery Evidence
 - HEAD 51d4922, branch chaosplus; origin remains existing Codeup URL. No new commit/staging at recovery.
@@ -71,15 +72,14 @@ Local capability matrix .temp/lanes/final-gaps.md records198rows: DONE157/PARTIA
 
 ## Known Issues / Risks
 - GitHub blocker resolved: user confirmed repository must be created; GCM HTTPS identity robotism is active org admin. Created empty https://github.com/7link-team/7link-platform via API; user explicitly required public visibility, PATCH confirmed public. No credentials printed. Added separate github SSH remote, Codeup origin unchanged. GHCR packages not published yet; current GCM credential package listing403(read:packages missing), public package access requires separate verification. User chose v0.1.0-rc.1 for first release.
-- Bounded code review complete and both confirmed defects fixed; final delivery acceptance still depends on current gates, Windows build/install tests, deployment API URL and anonymous GHCR access.
-- Original two confirmed review defects are fixed and regression-tested. Current blockers are unfinished final gates, Windows real packaging acceptance, deployment API URL and actual anonymous GHCR access after publication.
+- Bounded code review complete and both confirmed defects fixed; final delivery acceptance still depends on current hosted gates, official Windows install tests and anonymous GHCR access.
+- Original two confirmed review defects are fixed and regression-tested. Current blockers are unfinished hosted gates, official Windows scope installation acceptance and actual anonymous GHCR access after publication.
 
 ## Next Action
-Commit/push the platform-correct temporary-storage fixture fix and checkpoint. Monitor the next hosted CI through full coverage/integration/build/contracts and actual MySQL/PostgreSQL gates; do not stop at prior partial results. Preserve origin/localchaosplus/upstream. API URL is still required from user before official desktop release; after gates/input pass, release v0.1.0-rc.1 and separately make/verify GHCR public.
+Monitor hosted CI40160442566 for ce9c6b40 through full coverage/integration/build/contracts and real MySQL/PostgreSQL gates; repair only evidenced failures. Preserve origin/localchaosplus/upstream. No API URL input required after user decision; after gates pass, release v0.1.0-rc.1 and separately make/verify GHCR public.
 
 ## Last Checkpoint
-2026-10-24 20:36 PDT: public source pushed through d8874964. Latest hosted CI40158258024 frontend/Runner SUCCESS; backend still running (~9min), no failed step at latest check. Both prior hosted failures diagnosed and minimally repaired (Chromium provisioning, lint cold-cache timeout); local full gates/Windows build-ZIP/runtime326s PASS. API URL unanswered; no tag/GHCR/official Release. Only pending MEMORY is uncommitted to avoid cancelling active CI.
-
+Runtime desktop multiple-server change: local Windows release/NSIS build PASS; actual native menu4returns incl connection refusal and remote IPC denial PASS; persisted dual-domain browser test/API/storage/cookie checks PASS; new portable ZIP SHA256 equality/version PASS; desktop unit4tests/21assertions PASS; web typecheck/lint/actionlint/diffcheck PASS. Security/distribution independent deep-review complete, only Cookie docs issue corrected. Original hosted CI40160442566 still backend original gates in progress; no failures reported; frontend/Runner pass. Do not request API URL again. Preparing explicit local commit; delay main push to avoid cancelling old CI. Test processes closed. Auto-review rejected recursive deletion of the6owned isolated WebView profiles, which remain ignored under .temp (no product/user profile touched).
 
 ## Final Review Findings / Evidence
 ### Class1: unexported embedded HTTP path input (4reachable operations)
@@ -149,3 +149,19 @@ Commit/push the platform-correct temporary-storage fixture fix and checkpoint. M
 
 - Hosted40158258024 complete FAILURE: pinned frontend/Runner jobs SUCCESS; backend lint0issues at03:35:49UTC (15m timeout fix valid), all main Go packages except clientwork temp fixture PASS. Only failure TestSubmissionBundleMissingPinsReadFailuresAndUnavailableStorageFailClosed/temporary_storage, expected error gotnil atline311 because TMPDIR omitted on Unix. Log .temp/delivery-hosted-backend-2.log. Same-class whole-app scan found only3temp-fixture locations, all in submission_bundle_test.go; added TMPDIR to success cleanup/failure cleanup/unavailable-storage scenarios and use one nonexistent scratch path for all3OS envvars. No production/assertion/coverage-floor change. Local GOFLAGS=-p=1 go test -p1 ./internal/clientwork -run ^TestSubmissionBundle -count=1 EXIT0/0.370s; gofmt/diffcheck PASS. Hosted full rerun still required.
 - Public reachable-history credential-pattern scan:13,037blobs/424,618,159bytes/6matches. All benign: existing redaction/poison tests, federation rewrap_test.go explicitly not-a-real SAML key text, Scalar vendored JS private-key input placeholder. No credential content printed; ignored .temp/delivery-history-secret-patterns.json stores paths/kinds/blobIDs only.
+
+- Temp-fixture correction published ce9c6b40973732d030c8ca218ad2474d936a4361, push EXIT0. Latest hosted https://github.com/7link-team/7link-platform/actions/runs/40160442566 in_progress. Do not push MEMORY-only checkpoint during active CI because existing concurrency cancels it.
+
+## Runtime server chooser checkpoint (2026-10-25)
+- Implemented launcher with save/select/remove multiple HTTP(S) roots, URL normalization and invalid-data/storage-write error behavior; native menu returns to local chooser without remote IPC privileges. Release workflow no longer consumes VITE_API_URL or builds embedded shared Web.
+- Windows actual release/NSIS build PASS (1.30MiB), desktop unit4/21 PASS; browser multiple-origin selection/same-origin API/persistence/remove/storage-denial/mobile-width PASS; web typecheck/lint PASS; actionlint PASS.
+- Deep-review security: no evidenced flaw; verified Tauri remote contexts do not inherit local capability. Distribution review: Cookie isolation docs overstated origin guarantees; corrected README/docs/ADR to browser Domain/Path/Secure rules, ports not isolated.
+- Actual native first run: remote pages load and denied native invocation checked. Reproduced menu returning about:blank because setup window.url() precedes real navigation. Fixed using first non-about page-load URL in OnceLock; rebuilding, then must rerun native menu return (including failed remote connection), two domains, storage isolation.
+- Test-tool issue (not product): agent-browser daemon inherited subprocess pipes and held communicate; fixed ignored helper to capture into TemporaryFile and use unique sessions. Owned hung helper/application trees terminated, other applications untouched.
+- Next: finish active Windows rebuild; run .temp/delivery-desktop-native.py with fresh isolated profile; extend/rerun browser domain/cookie/storage test; review, explicit commit/push then hosted CI/release. Current old hosted CI40160442566 still backend original gates in progress (frontend/Runner success).
+
+### Runtime chooser final verification
+- New native build resolved actual about:blank return bug. Native helper EXIT0:2hostnames,3same-origin API requests,4native menu returns including refused remote connection, real remote window command denied. Screenshot .temp/delivery-desktop-chooser.png. Browser regression EXIT0 includes persistent multiple saved addresses, remove, storage denial, mobile width, independent-host Cookie/Web storage checks.
+- Fresh executable ProductVersion0.1.0-rc.1,4,231,680bytes; portable ZIP1,689,083bytes with exact EXE SHA256 equality; generated NSIS INSTALLMODEboth and rc version confirmed. Official hosted scope installation remains pending.
+- Final delta security review PASS for first-non-about page-load capture protected by OnceLock. No production shared Web/backend change, no new dependency or generated-source edits. Self-review/requirement acceptance of runtime chooser PASS; overall release NOT READY pending hosted gates/public packages/assets.
+- Next: explicit commit13reviewed files; wait old CI outcome before pushing main; then finish hosted candidate release. Remaining ignored profile cleanup was policy-rejected and must not be silently retried through another deletion mechanism.

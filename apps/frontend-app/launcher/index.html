@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>服务器 / Servers</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>连接服务器</h1>
+      <p>添加部署的网页入口，或选择已保存的服务器。</p>
+      <form id="server-form">
+        <label for="server-address">服务器地址</label>
+        <div class="entry">
+          <input id="server-address" name="address" type="url" required autocomplete="url" placeholder="https://…" aria-describedby="address-help status" />
+          <button type="submit">保存并连接</button>
+        </div>
+        <p id="address-help">使用 HTTP 或 HTTPS 地址。可保存多个域名，每次选择要连接的入口。</p>
+      </form>
+      <p id="status" role="alert"></p>
+      <section aria-labelledby="saved-heading">
+        <h2 id="saved-heading">已保存的服务器</h2>
+        <ul id="servers"></ul>
+        <p id="empty">尚未添加服务器。</p>
+      </section>
+      <footer>连接后，可通过菜单「连接 → 服务器」或 Ctrl+Shift+S 返回此页。移除地址不会退出该服务器的登录。</footer>
+    </main>
+    <script type="module" src="./servers.mjs"></script>
+  </body>
+</html>
