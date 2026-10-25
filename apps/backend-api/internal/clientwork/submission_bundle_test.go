@@ -68,6 +68,7 @@ func bundleBytesHash(s string) string { // Hash actual bytes, independently of J
 func TestSubmissionBundleSignedZIPIsSourceIsolatedAndCleaned(t *testing.T) {
 	m, _, _, in, _ := bundleFixture(t)
 	scratch := t.TempDir()
+	t.Setenv("TMPDIR", scratch)
 	t.Setenv("TMP", scratch)
 	t.Setenv("TEMP", scratch)
 	_, api := humatest.New(t)
@@ -170,6 +171,7 @@ func TestSubmissionBundleRejectsTamperingExpiryRevocationAndArchive(t *testing.T
 				}
 			}
 			scratch := t.TempDir()
+			t.Setenv("TMPDIR", scratch)
 			t.Setenv("TMP", scratch)
 			t.Setenv("TEMP", scratch)
 			response, err := copyModule.submissionBundleHTTP(ctx, in)
@@ -300,8 +302,10 @@ func TestSubmissionBundleMissingPinsReadFailuresAndUnavailableStorageFailClosed(
 			case "no_file_provider":
 				copyModule.files.OpenOn = nil
 			case "temporary_storage":
-				t.Setenv("TMP", filepath.Join(t.TempDir(), "absent"))
-				t.Setenv("TEMP", filepath.Join(t.TempDir(), "absent"))
+				scratch := filepath.Join(t.TempDir(), "absent")
+				t.Setenv("TMPDIR", scratch)
+				t.Setenv("TMP", scratch)
+				t.Setenv("TEMP", scratch)
 			case "bad_signing_config":
 				copyModule.config.SubmissionBundles.SigningKey = "invalid"
 				_, err := copyModule.getSubmissionHTTP(ctx, &SubmissionObjectInput{ID: "50"})

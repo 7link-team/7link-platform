@@ -7,7 +7,7 @@ Deliver the existing implementation batch after recovery, final review and commi
 TESTING
 
 ## Current Step
-Hosted40157562412 frontend/Runner SUCCESS; backend FAIL during golangci-lint cold-cache go/packages loading (5m context deadline), before tests. Minimal tool timeout correction5m?15m preserves every check. Local make lint with new config EXIT0/0issues. Commit/push timeout fix, then monitor next hosted CI. API URL still unanswered; no release tag/GHCR/official assets.
+Hosted40158258024 frontend/Runner PASS; backend lint PASS0issues (8m cold start) and all Go package tests except one Linux temporary-storage fixture PASS. Failure: clientwork/submission_bundle_test.go temporary_storage sets only TMP/TEMP, Unix os.TempDir uses TMPDIR, so fault was never injected. Corrected all3same-class temp fixtures with TMPDIR plus existing TMP/TEMP; original assertions/production unchanged. Local all TestSubmissionBundle PASS0.370s; gofmt/diffcheck PASS. Commit/push minimal test-only fix and follow new hosted run. API URL remains pending; no tag/GHCR/official assets.
 
 ## Overall Progress
 - [x] Read continuation transcript; reconcile Git/source/ADR/final gate evidence.
@@ -24,10 +24,10 @@ Hosted40157562412 frontend/Runner SUCCESS; backend FAIL during golangci-lint col
 - [ ] Obtain deployment API URL (async question pending), validate public GHCR after first publication.
 - [x] Review explicit staging manifest/staged diff and commit candidate04ab3fd9.
 - [x] Push HEAD:main to intended public GitHub repository; anonymous SHA verification PASS; Codeup unchanged.
-- [ ] Complete hosted CI40157294283 and remaining release acceptance.
+- [ ] Complete latest hosted CI40158258024 and remaining release acceptance.
 
 ## Active Work
-API repair worker complete: real-Huma and required-path collection regressions PASS and reverse mutation killed. Nginx repair/real proxy boundary checks PASS. Data worker runs serial final CI then frontend/Runner checks. Release worker completed Windows NSIS installMode=both/portable ZIP workflow and static verification. Main will run prepared local packaging verifier only after data worker releases heavy-task resources. Main owns integration, deployment API URL/public GHCR handling, final acceptance, commit/tag/push.
+All three review workers finished and released owned heavy processes. Main monitors hosted CI40158258024 on public main d8874964: frontend and Runner SUCCESS, backend complete CI step still running. Local source/Windows packaging/copied-runtime gates PASS. Pending user API URL and later hosted Windows installation/public GHCR release acceptance. No tag or Release has been created.
 
 ## Completed Work / Recovery Evidence
 - HEAD 51d4922, branch chaosplus; origin remains existing Codeup URL. No new commit/staging at recovery.
@@ -56,7 +56,7 @@ API repair worker complete: real-Huma and required-path collection regressions P
 - Release worker actionlint/both image builds/amd64 runtime smoke and six Runner cross-builds PASS. Hosted CI/GHCR/signing/Release and ARM64 image execution NOT_RUN.
 - Deadline14:30all-green MISSED; required RED status published14:27:42. Later green gates do not erase timing miss.
 ### Current continuation
-- GitHub direct SSH ls-remote exit1 Repository not found; no remote config change.
+- Initial GitHub direct SSH probe failed before repository creation; resolved by creating public repo and pushing through separate github remote. Codeup unchanged.
 - Inventory/historical evidence reconciliation PASS. Fresh final CI RUNNING after confirmed fixes; fmt/lint/schema-lock and Delivery/Execution tests PASS, remaining phases pending.
 - apps/backend-api/notification identified as local mode:set coverage report; excluded from delivery.
 
@@ -75,10 +75,10 @@ Local capability matrix .temp/lanes/final-gaps.md records198rows: DONE157/PARTIA
 - Original two confirmed review defects are fixed and regression-tested. Current blockers are unfinished final gates, Windows real packaging acceptance, deployment API URL and actual anonymous GHCR access after publication.
 
 ## Next Action
-Commit/push the minimal lint cold-cache timeout correction and updated checkpoint; monitor the newest hosted CI and repair only evidenced failures. Keep origin/localchaosplus/upstream unchanged. Await deployment VITE_API_URL before tagging official desktop release; after gates/input pass, release v0.1.0-rc.1 and separately make/verify both GHCR packages public.
+Commit/push the platform-correct temporary-storage fixture fix and checkpoint. Monitor the next hosted CI through full coverage/integration/build/contracts and actual MySQL/PostgreSQL gates; do not stop at prior partial results. Preserve origin/localchaosplus/upstream. API URL is still required from user before official desktop release; after gates/input pass, release v0.1.0-rc.1 and separately make/verify GHCR public.
 
 ## Last Checkpoint
-2026-10-24 local technical gates and source-stage reviews PASS; candidate staged, no commit/push/tag yet. Windows actual local NSIS/ZIP verification PASS and copied-runtime326s PASS. API URL, hosted CI, actual hosted installer acceptance and GHCR publication/public visibility remain pending.
+2026-10-24 20:36 PDT: public source pushed through d8874964. Latest hosted CI40158258024 frontend/Runner SUCCESS; backend still running (~9min), no failed step at latest check. Both prior hosted failures diagnosed and minimally repaired (Chromium provisioning, lint cold-cache timeout); local full gates/Windows build-ZIP/runtime326s PASS. API URL unanswered; no tag/GHCR/official Release. Only pending MEMORY is uncommitted to avoid cancelling active CI.
 
 
 ## Final Review Findings / Evidence
@@ -144,3 +144,8 @@ Commit/push the minimal lint cold-cache timeout correction and updated checkpoin
 - Latest hosted run40157562412 frontend SUCCESS17steps (including pinned Chromium installation, actual browser tests and build), Runner SUCCESS13steps. Backend still inside existing make ci step, no failed job step yet; running log redirect points to an unpublished blob404, so wait for completed-job logs rather than inferring live package outcomes. Anonymous public main exact939d5346 SHA PASS. Only local MEMORY is uncommitted.
 
 - Hosted40157562412 is now FAILURE: frontend SUCCESS17steps and Runner SUCCESS13steps, backend golangci-lint failed before completing package loading at5m context deadline. No lint finding/test assertion failed; complete log .temp/delivery-hosted-backend.log. Minimal .golangci.yml timeout5m?15m with cold-cache/serialized-build comment; no disabled check/budget changes. Local GOFLAGS=-p=1 make lint EXIT0/0issues (delivery-lint-timeout-fix.log). Source-stage self-review on this config-only correction PASS; real hosted rerun pending.
+
+- Timeout fix committed/pushed: d88749640e1b6080dc3de00e46a33e25b955ec9f; git push EXIT0. Latest hosted run https://github.com/7link-team/7link-platform/actions/runs/40158258024 in_progress. Local pending MEMORY-only update records this exact head/run; do not create another branch push merely to checkpoint while CI is running (existing concurrency would cancel it).
+
+- Hosted40158258024 complete FAILURE: pinned frontend/Runner jobs SUCCESS; backend lint0issues at03:35:49UTC (15m timeout fix valid), all main Go packages except clientwork temp fixture PASS. Only failure TestSubmissionBundleMissingPinsReadFailuresAndUnavailableStorageFailClosed/temporary_storage, expected error gotnil atline311 because TMPDIR omitted on Unix. Log .temp/delivery-hosted-backend-2.log. Same-class whole-app scan found only3temp-fixture locations, all in submission_bundle_test.go; added TMPDIR to success cleanup/failure cleanup/unavailable-storage scenarios and use one nonexistent scratch path for all3OS envvars. No production/assertion/coverage-floor change. Local GOFLAGS=-p=1 go test -p1 ./internal/clientwork -run ^TestSubmissionBundle -count=1 EXIT0/0.370s; gofmt/diffcheck PASS. Hosted full rerun still required.
+- Public reachable-history credential-pattern scan:13,037blobs/424,618,159bytes/6matches. All benign: existing redaction/poison tests, federation rewrap_test.go explicitly not-a-real SAML key text, Scalar vendored JS private-key input placeholder. No credential content printed; ignored .temp/delivery-history-secret-patterns.json stores paths/kinds/blobIDs only.
