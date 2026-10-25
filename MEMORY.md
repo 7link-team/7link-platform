@@ -7,7 +7,7 @@ Deliver the existing implementation batch after recovery, final review and commi
 TESTING
 
 ## Current Step
-Public main995b3bad3c8935ae1737eeb3bd08d5263e4614df contains CI optimization. New hosted CI40203888389 tests backend checks/coverage/integration concurrently plus frontend/Runner. Local real1.18GB aggregation and all gate equivalence PASS; full coverage-check9.507s. Old CI40198862519 cancelled by intended source push. Monitor all new gates and hosted walltime before tag/release; no state-only push.
+CI40206473266 completed FAILURE27.9min only realMySQL execution comment-sequence historical rollback test; other4jobs PASS (checks2.7min,coverage20.4min,total90.6%/55floors,frontend2.5min,Runner1.6min). Existing migration18 already repairs14's MySQL FK supporting index; failing test omitted18. Main minimally adjusts test safe cycle14->18->14->13, preserving all assertions/SQL. Real-engine target and reverse mutation verification underway before next exact-head CI.
 
 ## Overall Progress
 - [x] Read continuation transcript; reconcile Git/source/ADR/final gate evidence.
@@ -25,10 +25,10 @@ Public main995b3bad3c8935ae1737eeb3bd08d5263e4614df contains CI optimization. Ne
 - [ ] Validate public GHCR after first publication.
 - [x] Review explicit staging manifest/staged diff and commit candidate04ab3fd9.
 - [x] Push HEAD:main to intended public GitHub repository; anonymous SHA verification PASS; Codeup unchanged.
-- [ ] Complete latest optimized hosted CI40203888389 and remaining release acceptance.
+- [ ] Complete latest optimized hosted CI40206473266 and remaining release acceptance.
 
 ## Active Work
-Main monitors optimized CI40203888389 on995b3bad: backend checks/coverage/integration run on separate runners alongside frontend/Runner. Real1.18GB profile exact equivalence, full make coverage-check9.507s, mutation tests and independent reviews PASS. All original gates/thresholds retained; no tag/GHCR/Release yet. Pending local MEMORY-only checkpoint must not cancel active CI.
+Monitor CI40206473266 (f5e80f3a) with3parallel backend groups plus frontend/Runner. Prior hosted logs prove aggregation reduction~49min ->6.426s and full coverage PASS. Cold-cache architecture correction full suite PASS210.480s, reverse mutation and independent review PASS. Static/coverage caches saved successfully; await exact-head complete gates including realMySQL/PG. Only local MEMORY checkpoint dirty; no images/tag/release yet.
 
 ## Completed Work / Recovery Evidence
 - HEAD 51d4922, branch chaosplus; origin remains existing Codeup URL. No new commit/staging at recovery.
@@ -76,7 +76,7 @@ Local capability matrix .temp/lanes/final-gaps.md records198rows: DONE157/PARTIA
 - Original two confirmed review defects are fixed and regression-tested. Current blockers are unfinished hosted gates, official Windows scope installation acceptance and actual anonymous GHCR access after publication.
 
 ## Next Action
-Monitor CI40203888389's five jobs; download completed logs to verify hosted aggregation duration, total/all55floors, full nested integration and real MySQL/PG gates. Repair only proven failures. If green, finish authorized prerelease publication/official Windows scope acceptance/public GHCR/signature checks. No fixed API/server input and no state-only push during CI.
+Monitor CI40206473266 all5jobs; download completed logs for actual new walltime/cache restore and complete nested+realMySQL+MySQL/PG lifecycle/archive results. Repair only proven failures. Once exact-head CI green, finish authorized prerelease publication/official Windows scope acceptance/public GHCR/signatures. No fixed endpoint input and no state-only push while active.
 
 ## Last Checkpoint
 Runtime desktop multiple-server change: local Windows release/NSIS build PASS; actual native menu4returns incl connection refusal and remote IPC denial PASS; persisted dual-domain browser test/API/storage/cookie checks PASS; new portable ZIP SHA256 equality/version PASS; desktop unit4tests/21assertions PASS; web typecheck/lint/actionlint/diffcheck PASS. Security/distribution independent deep-review complete, only Cookie docs issue corrected. Original hosted CI40160442566 still backend original gates in progress; no failures reported; frontend/Runner pass. Do not request API URL again. Local commit4ecbfe6f complete (13reviewed files, staged diffcheck PASS); delay main push to avoid cancelling old CI. Test processes closed. Auto-review rejected recursive deletion of the6owned isolated WebView profiles, which remain ignored under .temp (no product/user profile touched).
@@ -222,3 +222,20 @@ Reviewed/staged exactly3files (test/script/MEMORY), staged diffcheck PASS. Commi
 ### Cold-cache architecture correction local acceptance
 - Full architecture package PASS210.480s after stdout/stderr correction; original failing target+real subprocess regression PASS32.903s. Reverse mutation CombinedOutput rejected with identical JSON'g'failure. Main self-review and bounded read-only review PASS; no weakened assertions, no production change.
 - Only architecture_test.go and MEMORY changed since995b3bad. Prepare explicit2file commit; wait current coverage job to finish/save cache before pushing. Existing optimized run overall cannot be accepted due architecture failure; subsequent exact-head CI is mandatory.
+
+### Hosted optimization evidence and repaired candidate push
+- Coverage job121200665897 completed SUCCESS31.5min on995b3bad. Full log .temp/delivery-optimized-coverage.log: tool tests15:18:58.302, streaming aggregation15:18:58.554 ->55module reports15:19:03.643?03.653, total90.6% at15:19:04.728. Full statistics step6.426s; all55original90%floors PASS. Module aggregation itself~5.1s versus previous~49min. Cache saved15:19:15.974. Compiler/tests remain dominant; do not equate6.4s with whole CI.
+- Original optimized run40203888389 overallFAIL only cold-cache architecture fixture (fixed). Checks/frontend/Runner/coverage SUCCESS. Retained first jobs snapshot .temp/delivery-optimized-first-jobs.json.
+- Commitf5e80f3aea40358d808f0cad09be71f149bf93ec exactly2reviewed files (architecture test+MEMORY), diffcheck PASS; push github HEAD:main EXIT0. New run https://github.com/7link-team/7link-platform/actions/runs/40206473266 IN_PROGRESS. Waited prior coverage/cache completion before push; no duplicate cancellation waste. Existing Codeup unchanged.
+
+### Second optimized hosted outcome / existing migration repair test correction
+- CI40206473266 onf5e80f3a completed27.9min FAILURE only TestExecutionCommentSequencesMigrationAcrossEngines/mysql8; full nested suite including fixed architecture PASS. Real migration package398.775s. Log .temp/delivery-optimized-integration-2.log: actualMySQL8.4.13, migration14Down1553 cannot drop sequence index needed byFK. Real lifecycle/archive steps not yet run because prior gate failed.
+- Other4jobs PASS:checks2.7min (vs17.9cold),coverage20.4min (vs31.5cold),frontend2.5min,Runner1.6min. Second coverage log .temp/delivery-optimized-coverage-2.log:55floors PASS/total90.6%, full stats15:40:47.522->15:40:53.452=5.930s. Cache restored~827MB coverage/~1328MB checks; all thresholds unchanged.
+- Existing execution00018_comment_thread_indexes in ALL3dialects expressly fixes14rollback supporting indexes;18Down deliberatelyretains indexes. Current test incorrectly directly rolls14->13 without existing repair. Independent review confirms minimum proper path14->18->14->13. Keep14frozen schema/backfill/actor/time/version/positive-seq assertions; retaincycle1 duplicate rejection/newreply rollback refusal/data retention. NoSQL/production modification.
+- Source test adds UpTo18 thenDownTo14 before original safeDown13. Real MySQL test helper .temp/delivery-real-comment-rollback.py reuses owned remote tmpfscontainer protocol; original remote4dayoldcontainer untouched. Run currently active. Next confirm4engine target, reverse mutation repair-removal fails1553, then full real migration/gates as appropriate and push reviewed test+MEMORY; exact-head complete CI still required before release.
+- Attempt: optimized exact-head CI; Result: realMySQL historical rollback test failure; Cause: fixture omits existing forward repair18; Resolution in progress: exercise retained support indexes via18Down before14Down, preservepublishedSQL and allassertions.
+
+### Existing comment-index repair path acceptance / pre-push
+- Real4engine target PASS9.323s (sqlite0.11s/compatMySQL0.06s/Postgres7.15s/realMySQL8.4.11 0.62s), log apps/backend-api/.temp/delivery-real-comment-rollback.log. Safe14->18->14->13 cycle and subsequent14upgrade duplicate/newreply/data-retention assertions all pass.
+- Reverse mutation removing18repair path reproduces real1553 and FAIL on fresh owned MySQL; log delivery-real-comment-rollback-mutation.log. Original source restored byte-for-byte. Both owned remote containers removed exactly; existing remote services untouched. Independent read-only review PASS; noSQL/schema/production changes.
+- Main self-review scope/reuse/existingmigrationmechanism/regression/complexity PASS. This is reuse of existing migration18, not a weakened assertion or edit to historical14. Stage exactly migrationtest+MEMORY; push next candidate, then rerun exact-head fullCI including stillpending externalMySQL/PG lifecycle/archive.

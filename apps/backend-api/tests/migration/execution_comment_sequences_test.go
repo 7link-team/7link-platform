@@ -56,6 +56,10 @@ func TestExecutionCommentSequencesMigrationAcrossEngines(t *testing.T) {
 				require.Error(t, db.Table(messages).Where("id=20").Update("seq", 0).Error)
 				require.Error(t, db.Table(conversions).Where("id=30").Update("seq", 0).Error)
 				if cycle == 0 {
+					// Migration 18 repairs MySQL's implicit FK support index;
+					// its Down retains that index for the published 14 rollback.
+					require.NoError(t, goosex.MigrateUpTo(t.Context(), raw, source, engine.dialect, 18))
+					require.NoError(t, goosex.MigrateDownTo(t.Context(), raw, source, engine.dialect, 14))
 					require.NoError(t, goosex.MigrateDownTo(t.Context(), raw, source, engine.dialect, 13))
 				}
 			}
