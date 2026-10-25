@@ -2,10 +2,12 @@ package migration_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -55,7 +57,17 @@ func TestRealtimeCrossReplicaCommitToBrowserLatencyAcrossEngines(t *testing.T) {
 		t.Run(dialect, func(t *testing.T) {
 			var dsn string
 			if dialect == "mysql" {
-				_, dsn = testdb.OpenMySQLWithDSN(t)
+				// The in-memory MySQL engine can roll back concurrent commits
+				// even from a read-only transaction. Cross-replica delivery must
+				// exercise the real engine in the mandatory MySQL 8 gate.
+				dsn = os.Getenv("MYSQL8_DSN")
+				if dsn == "" {
+					t.Skip("requires real MySQL 8; run through make test-mysql8")
+				}
+				raw, err := sql.Open("mysql", dsn)
+				require.NoError(t, err)
+				t.Cleanup(func() { require.NoError(t, raw.Close()) })
+				verifyRealMySQLServer(t, raw)
 			} else {
 				_, dsn = testdb.OpenPostgresWithDSN(t)
 			}
@@ -138,7 +150,7 @@ for(;;){const {value,done}=await reader.read();if(done)throw Error('early EOF');
 			require.NoError(t, err)
 			// Use the repository's installed browser test dependency; do not install
 			// a second automation package or silently skip missing browser coverage.
-			program := fmt.Sprintf(`const {createRequire}=require('node:module');const req=createRequire(%q);const {chromium}=req('playwright');const fs=require('node:fs');(async()=>{const paths=['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Google/Chrome/Application/chrome.exe'];const browser=await chromium.launch({headless:true,executablePath:paths.find(p=>fs.existsSync(p))});try{const page=await browser.newPage();await page.goto(%q);await page.waitForFunction(()=>window.failure||window.results.length===200,{},{timeout:180000});const result=await page.evaluate(()=>({samples:window.results,error:window.failure}));console.log(JSON.stringify(result));if(result.error)process.exitCode=1}finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1})`, webPackage, server.URL)
+			program := fmt.Sprintf(`const {createRequire}=require('node:module');const req=createRequire(%q);const {chromium}=req('playwright');const fs=require('node:fs');(async()=>{const paths=['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Google/Chrome/Application/chrome.exe'];const browser=await chromium.launch({headless:true,executablePath:paths.find(p=>fs.existsSync(p))});try{const page=await browser.newPage();await page.goto(%q);try{await page.waitForFunction(()=>window.failure||window.results.length===200,{},{timeout:180000})}catch(error){console.error(JSON.stringify(await page.evaluate(()=>({url:location.href,samples:window.results,error:window.failure,rendered:document.getElementById('rendered')?.textContent}))));throw error}const result=await page.evaluate(()=>({samples:window.results,error:window.failure}));console.log(JSON.stringify(result));if(result.error)process.exitCode=1}finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1})`, webPackage, server.URL)
 			command := exec.CommandContext(t.Context(), "node", "-e", program)
 			command.SysProcAttr = &syscall.SysProcAttr{}
 			if field := reflect.ValueOf(command.SysProcAttr).Elem().FieldByName("HideWindow"); field.IsValid() && field.CanSet() {

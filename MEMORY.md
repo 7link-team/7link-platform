@@ -7,7 +7,7 @@ Deliver the existing implementation batch after recovery, final review and commi
 TESTING
 
 ## Current Step
-Hosted CI40160442566 completed FAILURE at backend integration because backend runner lacked locked Playwright Chromium1208; main Go tests, lint0issues, schema279, total90.6% and all55module floors passed. Frontend/Runner passed. Add same existing Chromium install to backend job, then commit/push including runtime desktop4ecbfe6f. Fixed-address input obsolete; no user decision pending.
+CI40190097176 completed FAILURE only at mysql realtime latency subtest (180s timeout), after all main tests/lint/schema/90.6%+55floors PASS. Deterministic temporary probe proved memory MySQL read-only commit can undo concurrent writer2->1. Minimal test repair uses existing real MYSQL8_DSN gate instead of unsupported concurrent memory engine, keeps200samples/700ms/300ms/180s, adds failure snapshot. Actual MySQL8.4+PG targeted PASS; preparing reviewed commit/push and full hosted rerun. No production change, no fixed server/API input.
 
 ## Overall Progress
 - [x] Read continuation transcript; reconcile Git/source/ADR/final gate evidence.
@@ -28,7 +28,7 @@ Hosted CI40160442566 completed FAILURE at backend integration because backend ru
 - [ ] Complete latest hosted CI40160442566 and remaining release acceptance.
 
 ## Active Work
-Main repairs only evidenced hosted integration environment failure: backend job requires its own Chromium install (frontend runner installation is isolated). No production/test assertion changes. Runtime server chooser4ecbfe6f locally fully verified/reviewed, awaiting push with CI fix. No tag/GHCR/official Release yet.
+Preparing explicit commit of realtime test engine correction and mandatory local MySQL gate selection. Local actual real MySQL8.4/PG test PASS; owned remote container removed, old remote containers untouched. Default test path explicitly reports MySQL requires real gate and runs PG PASS. Independent deep-review verified both hosted full migration gate and local script execute real MySQL case with original thresholds. Source main stilld9b54467 until this commit/push.
 
 ## Completed Work / Recovery Evidence
 - HEAD 51d4922, branch chaosplus; origin remains existing Codeup URL. No new commit/staging at recovery.
@@ -76,7 +76,7 @@ Local capability matrix .temp/lanes/final-gaps.md records198rows: DONE157/PARTIA
 - Original two confirmed review defects are fixed and regression-tested. Current blockers are unfinished hosted gates, official Windows scope installation acceptance and actual anonymous GHCR access after publication.
 
 ## Next Action
-Monitor hosted CI40160442566 for ce9c6b40 through full coverage/integration/build/contracts and real MySQL/PostgreSQL gates; repair only evidenced failures. Preserve origin/localchaosplus/upstream. No API URL input required after user decision; after gates pass, release v0.1.0-rc.1 and separately make/verify GHCR public.
+Commit/push only repaired realtime test, MySQL gate script and reviewed MEMORY. Monitor new hosted CI; if green create/push authorized v0.1.0-rc.1 and finish images/Runner/Windows release, public package visibility/anonymous access, cosign and asset checksum verification. Do not re-request server/API address; runtime chooser supersedes that prerequisite. Preserve origin/localchaosplus/upstream.
 
 ## Last Checkpoint
 Runtime desktop multiple-server change: local Windows release/NSIS build PASS; actual native menu4returns incl connection refusal and remote IPC denial PASS; persisted dual-domain browser test/API/storage/cookie checks PASS; new portable ZIP SHA256 equality/version PASS; desktop unit4tests/21assertions PASS; web typecheck/lint/actionlint/diffcheck PASS. Security/distribution independent deep-review complete, only Cookie docs issue corrected. Original hosted CI40160442566 still backend original gates in progress; no failures reported; frontend/Runner pass. Do not request API URL again. Local commit4ecbfe6f complete (13reviewed files, staged diffcheck PASS); delay main push to avoid cancelling old CI. Test processes closed. Auto-review rejected recursive deletion of the6owned isolated WebView profiles, which remain ignored under .temp (no product/user profile touched).
@@ -170,3 +170,19 @@ Runtime desktop multiple-server change: local Windows release/NSIS build PASS; a
 - Downloaded full completed backend log to .temp/delivery-hosted-backend-3.log (2,479,037bytes). Actual only named failing test: TestRealtimeCrossReplicaCommitToBrowserLatencyAcrossEngines/mysql and /postgres, events_model_realtime_test.go:148, missing Chromium headless shell1208. These tests deliberately require actual browser; no skip/fallback/assertion weakening.
 - Hosted lint0issues,279published migrations unchanged, main Go tests and total90.6%/all55module floors PASS (module-floor scans took~49min); nested integration failed on missing browser, no evidence of coverage timeout. Job completed05:43:41UTC,~101min.
 - Minimal repair: after existing locked frontend tooling install, backend job runs bun run --cwd ../frontend-web/apps/web playwright install --with-deps chromium. Same pinned dependency and installation already used by passing frontend job. Verify actionlint/diffcheck/CLI then explicit commit/push. Do not optimize coverage or change timeout speculatively.
+
+### Public push checkpoint d9b54467
+- Explicitly staged only .github/workflows/ci.yml and MEMORY.md; staged diffcheck/actionlint for both workflows PASS, actual locked Playwright CLI1.58.2 verified. Commitd9b54467 adds2workflow lines. Pushed git push --quiet github HEAD:main (includes runtime desktop4ecbfe6f); anonymous API confirms exact fullSHA public main. No force, Codeup unchanged.
+- New run40190097176 started2026-10-25T11:44:03Z; jobs backend121159059580/frontend121159059387/Runner121159059626. At11:44:42Z all in progress/no failures.
+
+### Latest hosted checkpoint
+CI40190097176: frontend17steps SUCCESS (includes new desktop multi-origin browser regression), Runner13steps SUCCESS. Backend Chromium installation SUCCESS and original make ci gates IN_PROGRESS with no failed step. Main now waits hosted gate outcome; no extra source edits, tag or Release. Do not push local MEMORY-only checkpoint while job active.
+
+### CI40190097176 failure diagnosis and locally verified repair
+- Completed backend log .temp/delivery-hosted-backend-4.log (2,502,159bytes): main tests/lint/schema/total90.6%/55floors PASS; migration's realtime mysql subcase timed out180s (181.04s); PG samecase passed. No production error proven from timeout alone.
+- Direct local original test PASS (mysql200samples P95=253ms, PG4ms), revealing scheduling sensitivity. Deep-review two read-only workers traced testdb.OpenMySQLWithDSN to go-mysql-server memory which explicitly does not support concurrency; SELECT/autocommit can write back stale entire-table snapshots.
+- Main deterministic temporary probe: reader SELECT1, writer COMMIT2 and verified2, reader COMMIT then actual1 instead of2. Intentional FAIL captured apps/backend-api/.temp/delivery-mysql-concurrency-probe.log. Own probe removed. This proves fixture cannot validate concurrent replicas, not a production Tail defect.
+- Corrected only tests/migration/events_model_realtime_test.go: mysql uses standard MYSQL8_DSN and verifyRealMySQLServer; without DSN explicitly skips mysql with required real-gate instruction, PG remains active. Hosted mandatory RealMySQL8 gate already runs full migration package with DSN. Local scripts/test-mysql8.sh selected-regex now explicitly includes same realtime test. Sample200/P95mysql700ms/PG300ms/wait180s unchanged; timeout adds browser sample/error/rendered snapshot then rethrows.
+- Actual isolated remote real MySQL8.4.11 + PG targeted test EXIT0: MySQL200samples P95=252ms max1087ms, PG200 P95=3ms max7ms,62.334s. Log apps/backend-api/.temp/delivery-real-realtime.log; helper .temp/delivery-real-realtime.py. Created only owned realtime-gate-20261025133744 tmpfs2GiB container and removed exact ID on completion; existing remote four-day-old container untouched. No passwords printed.
+- Default no-DSN test EXIT0 with explicit mysql SKIP and PG200/P954ms; log delivery-realtime-default-gate.log. Shell bash -n/gofmt/actionlint/diffcheck PASS, LF preserved. Independent diff review PASS, no weakened/omitted real gate. Same-class scan: other OpenMySQLWithDSN callers are sequential metadata/audit/pool probes or lifecycle already serializes emulator and reserves concurrency for realMySQL; no other in-scope correction.
+- Prepared ignored .temp/delivery-public-verify.py for anonymous exact-tag multiarch+attestation manifests and ten release asset checksums; syntax checked only, actual artifacts not published yet. Downloaded official cosignv2.5.0 Windows binary to ignored .temp/delivery-tools, SHA256 verified and version executed; later verify exact workflow identity/issuer after images exist.
