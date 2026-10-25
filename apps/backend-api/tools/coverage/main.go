@@ -9,9 +9,11 @@ import (
 	"io"
 	"math"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,10 +30,95 @@ type total struct {
 }
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout); err != nil {
+	args := os.Args[1:]
+	var err error
+	if len(args) > 0 && args[0] == "collect" {
+		err = collect(args[1:], os.Stdout, os.Stderr)
+	} else {
+		err = run(args, os.Stdout)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// collect preserves go test's own per-test coverage processing, including
+// auxiliary zero-hit packages and subprocess counters. Only its final duplicate
+// text stream is intercepted; shared binary coverage directories lose those
+// semantics. Linux can reopen the dedicated inherited pipe through /dev/fd/3.
+// Other systems compact a temporary regular profile before publishing it.
+func collect(args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("collect", flag.ContinueOnError)
+	dir := flags.String("dir", ".", "Go module working directory")
+	output := flags.String("output", "", "compacted unfiltered profile")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	packages := flags.Args()
+	if *output == "" || len(packages) == 0 {
+		return errors.New("output and test packages are required")
+	}
+	cmd := exec.Command("go", "test", "-timeout=60m", "-count=1",
+		"-covermode=atomic", "-coverpkg="+strings.Join(packages, ","))
+	cmd.Dir = *dir
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+	var blocks map[string]block
+	if runtime.GOOS == "linux" {
+		reader, writer, err := os.Pipe()
+		if err != nil {
+			return err
+		}
+		defer reader.Close()
+		defer writer.Close()
+		cmd.ExtraFiles = []*os.File{writer}
+		cmd.Args = append(cmd.Args, "-coverprofile=/dev/fd/3")
+		cmd.Args = append(cmd.Args, packages...)
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		// Only the child keeps a writer, so EOF also arrives on test failure.
+		closeErr := writer.Close()
+		blocks, err = readBlocks(reader)
+		if err != nil {
+			// os.Create opens /dev/fd/3 read-write, so the producer itself
+			// retains a read end. Closing ours alone cannot unblock writes.
+			// Drain rejected data so the original test command can finish.
+			_, drainErr := io.Copy(io.Discard, reader)
+			err = errors.Join(err, drainErr)
+		}
+		readCloseErr := reader.Close()
+		if err := errors.Join(err, closeErr, readCloseErr, cmd.Wait()); err != nil {
+			return err
+		}
+	} else {
+		// Keep the compatibility profile on the requested output's volume.
+		tempDir, err := os.MkdirTemp(filepath.Dir(*output), ".coverage-collect-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tempDir)
+		profile := filepath.Join(tempDir, "raw.out")
+		cmd.Args = append(cmd.Args, "-coverprofile="+profile)
+		cmd.Args = append(cmd.Args, packages...)
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+		file, err := os.Open(profile)
+		if err != nil {
+			return err
+		}
+		blocks, err = readBlocks(file)
+		if err := errors.Join(err, file.Close()); err != nil {
+			return err
+		}
+	}
+	keys := make([]string, 0, len(blocks))
+	for key := range blocks {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return writeProfile(*output, keys, blocks, false)
 }
 
 func run(args []string, stdout io.Writer) error {

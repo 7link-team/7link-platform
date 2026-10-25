@@ -266,14 +266,26 @@ ownership; bind mounts require explicit host permissions.
 
 ## CI scope
 
-CI runs `make ci` unchanged (format, pinned lint, schema lock, coverage floors,
-embedded-engine integration, build, OpenAPI/client drift), explicit architecture
-tests, real MySQL 8 migration tests, and lifecycle/archive tests against both
-MySQL and PostgreSQL service containers. Existing integration helpers still use
+CI runs the gates from `make ci` (format, pinned lint, schema lock, coverage floors,
+embedded-engine integration, build, OpenAPI/client drift) in independent backend
+checks, coverage and integration jobs. The nested integration suite includes
+architecture tests. CI also runs real MySQL 8 migration tests and lifecycle/archive tests against both
+MySQL and PostgreSQL service containers. Lifecycle/archive fixtures use a separate
+`lifecycle` database so migration fixture data in `integration` cannot leak into
+application bootstrap. Existing integration helpers still use
 their embedded PostgreSQL instance for isolated per-test databases. Services use
 password-free ephemeral CI authentication; do not copy that configuration into
 a deployment. Frontend typecheck/lint/test/build and runner build/test/vet plus
 npm-launcher tests run separately, with Go/Bun caches and superseded-run cancellation.
+Coverage retains the full cross-package atomic instrumentation, test set and
+thresholds. On Linux, Go's merged profile flows through a dedicated pipe into
+the coverage tool, which sums repeated blocks as they arrive and writes one
+record per block. This avoids storing the large duplicate aggregate profile;
+Go still creates and cleans its own per-test fragments. Other operating systems
+collect into a temporary regular profile and compact it before writing
+`coverage.raw.out`. Module floors still include generated blocks, while the
+total uses the existing generated-code exclusions. Test/build/collection
+failures stop the gate, and normal test output remains separate from profile data.
 The release workflow additionally builds the Windows desktop NSIS installer and
 portable ZIP on a Windows runner using locked dependencies and tag-derived app
 versioning; CI configuration checks do not substitute for that hosted build or

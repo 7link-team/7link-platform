@@ -99,12 +99,14 @@ jobs:
       - name: Full integration suite including architecture
         if: matrix.gate == 'integration'
         run: make test-integration
-      - name: Configure deterministic MySQL migration settings
+      - name: Prepare isolated real database gates
         if: matrix.gate == 'integration'
         env:
           MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: |
-          docker exec "$MYSQL_CONTAINER" mysql -uroot -e "SET GLOBAL sql_mode='ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'; SET GLOBAL log_bin_trust_function_creators=ON;"
+          docker exec "$MYSQL_CONTAINER" mysql -uroot -e "SET GLOBAL sql_mode='ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'; SET GLOBAL log_bin_trust_function_creators=ON; CREATE DATABASE lifecycle;"
+          docker exec "$POSTGRES_CONTAINER" createdb -U postgres lifecycle
       - name: Real MySQL 8 migration gate
         if: matrix.gate == 'integration'
         env:
@@ -121,9 +123,9 @@ jobs:
           for engine in mysql postgres; do
             export IAM_LIFECYCLE_DATABASE_TYPE="$engine"
             if [[ "$engine" == mysql ]]; then
-              export IAM_LIFECYCLE_DATABASE_DSN="root@tcp(127.0.0.1:${MYSQL_PORT})/integration?parseTime=true&multiStatements=true&charset=utf8mb4"
+              export IAM_LIFECYCLE_DATABASE_DSN="root@tcp(127.0.0.1:${MYSQL_PORT})/lifecycle?parseTime=true&multiStatements=true&charset=utf8mb4"
             else
-              export IAM_LIFECYCLE_DATABASE_DSN="postgres://postgres@127.0.0.1:${POSTGRES_PORT}/integration?sslmode=disable"
+              export IAM_LIFECYCLE_DATABASE_DSN="postgres://postgres@127.0.0.1:${POSTGRES_PORT}/lifecycle?sslmode=disable"
             fi
             go test ./internal/integration/iam -run '^TestIAMLifecycleExternalDatabase$' -count=1 -v
             go test ./internal/iam/audit -run '^TestArchiveExternalDatabase$' -count=1 -v

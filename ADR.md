@@ -5480,3 +5480,14 @@ Decision: shared ActionForm focuses and scrolls the inline business error summar
 - Tradeoffs: raw Go test generation still produces duplicate intermediate records; compaction occurs immediately afterward. Parallel jobs use independent runner caches/resources and expose individual failures. Local make ci remains sequential and complete.
 - Scope: build tooling, CI workflow and documentation only; no production behavior, migrations, dependencies or test thresholds changed.
 - Status: implemented; all129,126block counts,55module results and filtered bytes match the existing gate. Local full coverage-check9.507s PASS on the1.18GBprofile; hosted full CI verification pending.
+
+
+## 2026-10-25 - Stream the duplicate coverage aggregate without changing Go semantics
+- Decision: keep the original full-package atomic go test invocation; on Linux pass its final profile through a dedicated inherited pipe to the existing int64 block aggregator. Other operating systems collect a temporary regular profile and publish only the compact result.
+- Reason: the original aggregate contains99.18%duplicate rows and occupies1.18GB. Streaming removes the large retained aggregate while preserving Go-owned per-test processing, zero-hit auxiliary packages, subprocess counters, tests and thresholds.
+- Alternatives Considered: shared binary coverage directories and go tool covdata textfmt. Rejected after a concrete early-os.Exit subprocess loses its production count, isolated no-test packages disappear, and official cross-pod formatting saturates uint32 instead of preserving existing int64 sums. Per-test wrappers introduce additional process lifetime and cancellation machinery and are unnecessary for this bounded change.
+- Tradeoffs: test instrumentation/compiler cost and Go-owned temporary fragments remain. Non-Linux systems still temporarily generate a regular duplicate profile. Linux collection requires /dev/fd/3; absence or any collection/test error fails the gate.
+- Scope: coverage tooling, Makefile, CI fixture isolation and documentation; production code, instrumentation scope, SQL migrations, test selection and thresholds unchanged.
+- Status: implemented; real Linux and Windows cross-package/orphan/subprocess/failure equivalence tests pass. Original1.18GB pipe replay PASS4.051s/52.2MiB RSS/output9.69MB with exact reference SHA. Malformed-producer reverse mutation rejected; Linux and Windows expanded suites pass. Independent review passed; full gates pending.
+
+- CI fixture isolation: migrations retain integration database; lifecycle/archive use a separately created lifecycle database in each ephemeral engine service. Reason: migrated fixture principal101 leaked into application bootstrap and caused audit duplicate keys. Reused archive_ prefix separates archive tables. Original real MySQL8.4.11/PostgreSQL16.15 lifecycle+archive tests allPASS with unchanged assertions; hosted pinned-toolchain verification remains.

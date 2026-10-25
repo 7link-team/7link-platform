@@ -331,7 +331,8 @@ test:
 # the union of covered blocks, so only the numerator can grow.
 test-coverage:
 	@packages="$$(go list ./... | grep -Ev '/proto/gen/go/|/node_modules/|/dbgen$$')"; \
-	go test -timeout=60m -count=1 -covermode=atomic -coverpkg="$$(echo $$packages | tr ' ' ',')" -coverprofile="$(COVERAGE_RAW_PROFILE)" $$packages
+	go -C tools run ./coverage collect -dir "$(CURDIR)" \
+		-output "$(abspath $(COVERAGE_RAW_PROFILE))" $$packages
 	@"$(MAKE)" --no-print-directory coverage-check
 
 # Also usable against an existing profile: avoid rerunning tests when checking
