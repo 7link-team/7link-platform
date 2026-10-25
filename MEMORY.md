@@ -7,7 +7,7 @@ Deliver the existing implementation batch after recovery, final review and commi
 TESTING
 
 ## Current Step
-User explicitly requested substantial CI optimization. Preserve all tests, full cross-package atomic instrumentation, total/module thresholds and real-engine gates. Replace repeated large-profile processing with streaming deduplication and one-pass module totals; split independent backend CI jobs and remove only proven duplicate architecture execution. Existing hosted CI40198862519 remains active; do not tag/release the old candidate while optimization is underway.
+Public main995b3bad3c8935ae1737eeb3bd08d5263e4614df contains CI optimization. New hosted CI40203888389 tests backend checks/coverage/integration concurrently plus frontend/Runner. Local real1.18GB aggregation and all gate equivalence PASS; full coverage-check9.507s. Old CI40198862519 cancelled by intended source push. Monitor all new gates and hosted walltime before tag/release; no state-only push.
 
 ## Overall Progress
 - [x] Read continuation transcript; reconcile Git/source/ADR/final gate evidence.
@@ -25,10 +25,10 @@ User explicitly requested substantial CI optimization. Preserve all tests, full 
 - [ ] Validate public GHCR after first publication.
 - [x] Review explicit staging manifest/staged diff and commit candidate04ab3fd9.
 - [x] Push HEAD:main to intended public GitHub repository; anonymous SHA verification PASS; Codeup unchanged.
-- [ ] Complete latest hosted CI40160442566 and remaining release acceptance.
+- [ ] Complete latest optimized hosted CI40203888389 and remaining release acceptance.
 
 ## Active Work
-Main monitors CI40198862519 after pushing realMySQL realtime test correction1c9a2711. Anonymous exactSHA confirmed public main. Local target, normal no-DSN path, shell/gofmt/actionlint and independent review PASS. Owned remote test container removed. No tag/GHCR/official Release yet. Only this local active MEMORY update dirty.
+Main monitors optimized CI40203888389 on995b3bad: backend checks/coverage/integration run on separate runners alongside frontend/Runner. Real1.18GB profile exact equivalence, full make coverage-check9.507s, mutation tests and independent reviews PASS. All original gates/thresholds retained; no tag/GHCR/Release yet. Pending local MEMORY-only checkpoint must not cancel active CI.
 
 ## Completed Work / Recovery Evidence
 - HEAD 51d4922, branch chaosplus; origin remains existing Codeup URL. No new commit/staging at recovery.
@@ -76,7 +76,7 @@ Local capability matrix .temp/lanes/final-gaps.md records198rows: DONE157/PARTIA
 - Original two confirmed review defects are fixed and regression-tested. Current blockers are unfinished hosted gates, official Windows scope installation acceptance and actual anonymous GHCR access after publication.
 
 ## Next Action
-Monitor CI40198862519 on1c9a2711 through full main gates and mandatory realMySQL migration/realtime test and lifecycle/archive checks. If failure, download completed logs and minimally repair proven cause. If green, tag/push authorized v0.1.0-rc.1, then verify official Windows scopes/assets, both GHCR public anonymous access and cosign signatures/checksums. No API/server address question; no state-only push while active.
+Monitor CI40203888389's five jobs; download completed logs to verify hosted aggregation duration, total/all55floors, full nested integration and real MySQL/PG gates. Repair only proven failures. If green, finish authorized prerelease publication/official Windows scope acceptance/public GHCR/signature checks. No fixed API/server input and no state-only push during CI.
 
 ## Last Checkpoint
 Runtime desktop multiple-server change: local Windows release/NSIS build PASS; actual native menu4returns incl connection refusal and remote IPC denial PASS; persisted dual-domain browser test/API/storage/cookie checks PASS; new portable ZIP SHA256 equality/version PASS; desktop unit4tests/21assertions PASS; web typecheck/lint/actionlint/diffcheck PASS. Security/distribution independent deep-review complete, only Cookie docs issue corrected. Original hosted CI40160442566 still backend original gates in progress; no failures reported; frontend/Runner pass. Do not request API URL again. Local commit4ecbfe6f complete (13reviewed files, staged diffcheck PASS); delay main push to avoid cancelling old CI. Test processes closed. Auto-review rejected recursive deletion of the6owned isolated WebView profiles, which remain ignored under .temp (no product/user profile touched).
@@ -206,3 +206,19 @@ Reviewed/staged exactly3files (test/script/MEMORY), staged diffcheck PASS. Commi
 - Bounded independent review_coverage/review_ci_plan PASS/no actionable defects; main compared all8gates/source/diff and verified results personally. A1-A8 do not change production paths; large-profile resource path tested at real size. No HTTP/SQL/schema/dependency changes;279published migrations unchanged; fmt/actionlint/diffcheck/LF PASS.
 - Remote branch protection GET404 (no configured protection) and rulesets0; no old backend-required-check migration required. Read-only API evidence, no settings mutation.
 - Self-review scope/reuse/architecture/regression/complexity/commit hygiene/durable state PASS for local optimization. Hosted full workflow and end-to-end walltime remain NOT_RUN for new candidate; release remains pending. Next push reviewed8files, intentionally superseding the old still-active CI40198862519; then monitor all5jobs and exact aggregation step timestamps. Do not claim full CI speedup from local aggregation benchmark alone.
+
+### CI optimization publication checkpoint
+- Commit995b3bad3c8935ae1737eeb3bd08d5263e4614df: exactly8reviewed deliverables, staged diffcheck PASS; push github HEAD:main EXIT0. New run https://github.com/7link-team/7link-platform/actions/runs/40203888389 IN_PROGRESS. Old run40198862519 CANCELLED by preexisting concurrency. No tag/release/images yet.
+- Local tree clean immediately after push; this checkpoint remains local during hosted CI. Next query new jobs and inspect completed logs for per-gate durations, all55floors and total; any failure must be minimally repaired without reduced coverage.
+
+### First optimized hosted run: confirmed cold-cache architecture fixture failure
+- CI40203888389: frontend SUCCESS3.2min, Runner SUCCESS1.5min, backend checks SUCCESS17.9min. Checks log .temp/delivery-optimized-checks.log: lint0issues,279migrations unchanged, OpenAPI matches, Go cache saved.
+- Integration FAILURE18.5min: only TestContributedActionsNameTheirScopeByConstant, architecture_test.go goList helper decodes CombinedOutput asJSON. Fresh isolated runner downloads dependencies on stderr, mixed into valid stdoutJSON; actual invalid character'g'. Full log .temp/delivery-optimized-integration.log. Other nested goose/testdb/lifecycle/migration/performance packages PASS; realDB steps skipped after architecture failure, must still run next candidate. Coverage job remains active; allow completion/cache save before fix push.
+- Minimal necessary correction: goList uses Output with separate stderr buffer retained in command-error assertion. Added real subprocess regression producing stderr download message+stdoutJSON, using native cross-platform executable/PATH restoration. Existing architecture assertions unchanged. Target original failing test+new regression PASS32.903s. Restoring CombinedOutput makes regression deterministically FAIL with same'g'JSON error; evidence apps/backend-api/.temp/delivery-architecture-stderr-mutation.log. Full architecture suite currently running.
+- Bounded read-only review_ci_plan reviewed correction PASS; class scan found only one Go-list JSON mixed-stream helper; other Go-list callers already use Output. Node/browser CombinedOutput JSON is distinct and unchanged; no unsupported all-output-use claim.
+- Attempt: optimized independent CI; Result: cold-cache fixture parsing failure; Cause: stderr mixed into JSON; Resolution: stdout-only JSON plus preserved stderr diagnostics, regression and reverse-mutation proof; full hosted repair rerun pending.
+- Next: finish full architecture test and current coverage job; review/commit/push only this test fixture+MEMORY, then monitor complete optimized CI and real-engine gates. No threshold/assertion skipping or production fix needed.
+
+### Cold-cache architecture correction local acceptance
+- Full architecture package PASS210.480s after stdout/stderr correction; original failing target+real subprocess regression PASS32.903s. Reverse mutation CombinedOutput rejected with identical JSON'g'failure. Main self-review and bounded read-only review PASS; no weakened assertions, no production change.
+- Only architecture_test.go and MEMORY changed since995b3bad. Prepare explicit2file commit; wait current coverage job to finish/save cache before pushing. Existing optimized run overall cannot be accepted due architecture failure; subsequent exact-head CI is mandatory.

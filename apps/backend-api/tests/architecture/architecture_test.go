@@ -745,8 +745,10 @@ func goList(t *testing.T, root string, patterns ...string) []listedPackage {
 	arguments := append([]string{"list", "-json"}, patterns...)
 	command := exec.Command("go", arguments...)
 	command.Dir = root
-	output, err := command.CombinedOutput()
-	require.NoError(t, err, string(output))
+	var diagnostics bytes.Buffer
+	command.Stderr = &diagnostics
+	output, err := command.Output()
+	require.NoError(t, err, diagnostics.String())
 	decoder := json.NewDecoder(bytes.NewReader(output))
 	var packages []listedPackage
 	for {
@@ -759,6 +761,33 @@ func goList(t *testing.T, root string, patterns ...string) []listedPackage {
 		packages = append(packages, pkg)
 	}
 	return packages
+}
+
+func TestGoListKeepsDiagnosticsOutOfJSON(t *testing.T) {
+	directory := t.TempDir()
+	filename := filepath.Join(directory, "main.go")
+	// A cold Go module cache reports downloads on stderr even when listing
+	// packages succeeds. Exercise that stream boundary with a real subprocess.
+	source := `package main
+import ("fmt"; "os")
+func main() {
+ fmt.Fprintln(os.Stderr, "go: downloading example.test/dependency v1.0.0")
+ fmt.Fprintln(os.Stdout, ` + "`" + `{"ImportPath":"example.test/module","GoFiles":["a.go"]}` + "`" + `)
+}
+`
+	require.NoError(t, os.WriteFile(filename, []byte(source), 0o600))
+	binary := filepath.Join(directory, "go")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", binary, filename)
+	output, err := build.CombinedOutput()
+	require.NoError(t, err, string(output))
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	packages := goList(t, directory, "./...")
+	require.Len(t, packages, 1)
+	assert.Equal(t, "example.test/module", packages[0].ImportPath)
+	assert.Equal(t, []string{"a.go"}, packages[0].GoFiles)
 }
 
 func hasFileWithExtension(directory, extension string) bool {
