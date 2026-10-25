@@ -34,6 +34,66 @@ func TestDatasourceOpenSQLite(t *testing.T) {
 	assert.Equal(t, 7, sqlDB.Stats().MaxOpenConnections)
 }
 
+func TestSQLiteDefaultConnectionsAllowWriterWhileReaderIsActive(t *testing.T) {
+	db, err := (Datasource{Type: "sqlite", DSN: filepath.Join(t.TempDir(), "requests.sqlite"), MaxOpenConns: 3}).Open(t.Context())
+	require.NoError(t, err)
+	pool, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = pool.Close() })
+	_, err = pool.ExecContext(t.Context(), "CREATE TABLE request_fixture (id INTEGER PRIMARY KEY, value INTEGER NOT NULL)")
+	require.NoError(t, err)
+	_, err = pool.ExecContext(t.Context(), "INSERT INTO request_fixture VALUES (1, 0)")
+	require.NoError(t, err)
+	reader, err := pool.Conn(t.Context())
+	require.NoError(t, err)
+	defer reader.Close()
+	_, err = reader.ExecContext(t.Context(), "BEGIN")
+	require.NoError(t, err)
+	defer reader.ExecContext(context.Background(), "ROLLBACK")
+	var value int
+	require.NoError(t, reader.QueryRowContext(t.Context(), "SELECT value FROM request_fixture WHERE id=1").Scan(&value))
+	writer, err := pool.Conn(t.Context())
+	require.NoError(t, err)
+	defer writer.Close()
+	var mode string
+	var timeout int
+	for _, conn := range []*sql.Conn{reader, writer} {
+		require.NoError(t, conn.QueryRowContext(t.Context(), "PRAGMA journal_mode").Scan(&mode))
+		assert.Equal(t, "wal", mode)
+		require.NoError(t, conn.QueryRowContext(t.Context(), "PRAGMA busy_timeout").Scan(&timeout))
+		assert.Equal(t, 5000, timeout)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+	_, err = writer.ExecContext(ctx, "UPDATE request_fixture SET value=1 WHERE id=1")
+	require.NoError(t, err, "an active request reader must not prevent an independent writer from committing")
+	require.NoError(t, reader.QueryRowContext(t.Context(), "SELECT value FROM request_fixture WHERE id=1").Scan(&value))
+	assert.Equal(t, 0, value, "the reader retains its transaction snapshot")
+	require.NoError(t, writer.QueryRowContext(t.Context(), "SELECT value FROM request_fixture WHERE id=1").Scan(&value))
+	assert.Equal(t, 1, value)
+}
+
+func TestSQLiteDefaultsPreserveExplicitOptionsAndReadOnlyMode(t *testing.T) {
+	for _, test := range []struct{ dsn, journal, timeout string }{
+		{"db.sqlite", "WAL", "5000"},
+		{"folder with spaces/preview.sqlite", "WAL", "5000"},
+		{"sqlite://db.sqlite", "WAL", "5000"},
+		{"file:db.sqlite", "WAL", "5000"},
+		{"db.sqlite?_journal=DELETE&_timeout=100", "", ""},
+		{"db.sqlite?_journal_mode=TRUNCATE&_busy_timeout=200", "TRUNCATE", "200"},
+		{"file:db.sqlite?mode=ro", "", "5000"},
+		{"file:db.sqlite?immutable=1", "", "5000"},
+	} {
+		dsn, err := normalizeSQLiteDSN(test.dsn)
+		require.NoError(t, err)
+		_, query, _ := strings.Cut(dsn, "?")
+		params, err := url.ParseQuery(query)
+		require.NoError(t, err)
+		assert.Equal(t, test.journal, params.Get("_journal_mode"))
+		assert.Equal(t, test.timeout, params.Get("_busy_timeout"))
+	}
+}
+
 func TestDatasourceOpenSQLiteEnforcesForeignKeysOnEveryConnection(t *testing.T) {
 	db, err := (Datasource{
 		Type:         "sqlite",

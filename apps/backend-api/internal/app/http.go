@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"7link.com/platform/internal/agents"
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
 	metrics "7link.com/platform/internal/infra/metrics"
@@ -46,6 +47,9 @@ func (app *App) startHTTPServer() error {
 	api := humax.New(router, apiConfig)
 	if app.modules != nil {
 		if err := app.modules.RegisterHTTP(app.ctx, api); err != nil {
+			return err
+		}
+		if err := agents.FinalizeMountedOperations(app.modules.Services(), api); err != nil {
 			return err
 		}
 		for _, route := range app.modules.RawHTTPRoutes() {
@@ -115,6 +119,9 @@ func (app *App) RegisterHTTP(ctx context.Context, router chi.Router) error {
 	}
 	api := humax.New(router, humax.Config{Name: app.config.Name, Version: app.config.Version})
 	if err := app.modules.RegisterHTTP(ctx, api); err != nil {
+		return err
+	}
+	if err := agents.FinalizeMountedOperations(app.modules.Services(), api); err != nil {
 		return err
 	}
 	for _, route := range app.modules.RawHTTPRoutes() {

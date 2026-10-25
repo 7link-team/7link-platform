@@ -71,10 +71,18 @@ func (r *Repository) BootstrapTenantOn(
 	if err := repo.grantAdministratorRole(ctx, input, roleID, stamp); err != nil {
 		return TenantBootstrapResult{}, err
 	}
-	menus, err := repo.createMenus(ctx, input.TenantID, bootstrapMenus(input.ScopeKind), stamp)
+	_, err = repo.createMenus(ctx, input.TenantID, bootstrapMenus(input.ScopeKind), stamp)
 	if err != nil {
 		return TenantBootstrapResult{}, err
 	}
+	if _, err := repo.syncContributedMenus(ctx, input.TenantID, input.ScopeKind); err != nil {
+		return TenantBootstrapResult{}, err
+	}
+	allMenus, err := repo.ListMenus(ctx, input.TenantID, false)
+	if err != nil {
+		return TenantBootstrapResult{}, err
+	}
+	menus := len(allMenus)
 	return TenantBootstrapResult{
 		AdministratorRoleID: roleID,
 		PermissionCount:     1,
@@ -335,6 +343,9 @@ func (m *Module) tenantBootstrapper() TenantBootstrapper {
 			}
 			repo := m.repository.withDB(db)
 			if _, err := repo.createMenus(ctx, ownerID, repo.systemMenuDefaults(), now); err != nil {
+				return err
+			}
+			if _, err := repo.syncContributedMenus(ctx, ownerID, "system"); err != nil {
 				return err
 			}
 			return repo.bumpPolicyRevision(ctx, ownerID)

@@ -51,7 +51,7 @@ func (m *Module) projectMembersOn(ctx context.Context, tx *gorm.DB, tenant, crea
 			if principal.ID != member.PrincipalID {
 				return nil, ErrUnavailable
 			}
-			if member.RoleKey != "delivery_lead" && member.RoleKey != "engineer" {
+			if member.RoleKey != "delivery_lead" && member.RoleKey != "engineer" && member.RoleKey != "tester" {
 				return nil, ErrInvalidMember
 			}
 		} else {

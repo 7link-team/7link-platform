@@ -21,17 +21,69 @@ var (
 // Other directory operations (load, runtime profile, statistics) remain separate
 // work and are not supplied by this identity capability.
 type AgentDirectory struct {
-	ByPrincipalOn func(context.Context, *gorm.DB, guid.ID, guid.ID) (AgentIdentity, bool, error)
+	ByPrincipalOn  func(context.Context, *gorm.DB, guid.ID, guid.ID) (AgentIdentity, bool, error)
+	ActiveByRoleOn func(context.Context, *gorm.DB, guid.ID, string) ([]AgentIdentity, error)
 }
 
-// AgentIdentity contains no prompt, credential or runtime secret.
+// ActiveByRoleOn enumerates at most 100 actual active identities for bounded
+// participant locking. Overflow is unavailable, never proof of no candidates.
+// Callers recheck current identity and IAM after acquiring principal locks.
+func (m *Module) ActiveByRoleOn(ctx context.Context, tx *gorm.DB, tenant guid.ID, role string) ([]AgentIdentity, error) {
+	if m == nil || m.names.Agents.IsZero() || m.names.AgentRoles.IsZero() {
+		return nil, ErrUnavailable
+	}
+	if tx == nil || tx.Statement == nil || tenant <= 0 {
+		return nil, ErrInvalidArgument
+	}
+	if _, ok := tx.Statement.ConnPool.(gorm.TxCommitter); !ok {
+		return nil, ErrInvalidArgument
+	}
+	if _, valid := AgentIAMRoleKey(role); !valid {
+		return nil, ErrInvalidRoles
+	}
+	a, r := query.BindAgents(tx, m.names), query.BindAgentRoles(tx, m.names)
+	rows, err := a.WithContext(ctx).Select(a.ALL).Join(r, a.ID.EqCol(r.AgentID), a.TenantID.EqCol(r.TenantID)).Where(a.TenantID.Eq(tenant), a.State.Eq("ACTIVE"), r.Role.Eq(role), r.RevokedAt.IsNull()).Order(a.PrincipalID).Limit(101).Find()
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) > 100 {
+		return nil, ErrUnavailable
+	}
+	out := make([]AgentIdentity, 0, len(rows))
+	for _, row := range rows {
+		identity, found, err := m.ByPrincipalOn(ctx, tx, tenant, row.PrincipalID)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			out = append(out, identity)
+		}
+	}
+	return out, nil
+}
+
+// AgentIdentity exposes internal identity/configuration facts; the prompt is never serialized.
 type AgentIdentity struct {
+	AuthorizationMode                           string
+	SystemPrompt                                string `json:"-"`
 	ID, TenantID, PrincipalID, OwnerPrincipalID guid.ID
 	Name, State, Origin, ModelFamily            string
+	RuntimeKind, ModelID                        string
 	ParentAgentID                               *guid.ID
 	AdoptedAt                                   *time.Time
 	Roles                                       []string
 	IAMRoleKeys                                 []string
+}
+
+// AcceptsInboxEvents describes lifecycle eligibility for durable receipts only.
+// It grants neither source access nor authority to wake or execute a runtime.
+func (a AgentIdentity) AcceptsInboxEvents() bool {
+	switch a.State {
+	case "DRAFT", "STOPPED", "ACTIVE", "CRASHED", "RETIRING":
+		return true
+	default:
+		return false
+	}
 }
 
 // AgentIAMRoleKey returns the frozen role mapping used by Agent configuration
@@ -58,6 +110,10 @@ func AgentIAMRoleKey(role string) (string, bool) {
 }
 
 func (m *Module) ByPrincipalOn(ctx context.Context, tx *gorm.DB, tenant, principal guid.ID) (AgentIdentity, bool, error) {
+	return m.agentIdentityOn(ctx, tx, tenant, principal, true)
+}
+
+func (m *Module) agentIdentityOn(ctx context.Context, tx *gorm.DB, tenant, principal guid.ID, resolveFamily bool) (AgentIdentity, bool, error) {
 	if m == nil || m.names.Agents.IsZero() || m.names.AgentRoles.IsZero() {
 		return AgentIdentity{}, false, ErrUnavailable
 	}
@@ -80,7 +136,13 @@ func (m *Module) ByPrincipalOn(ctx context.Context, tx *gorm.DB, tenant, princip
 	if err != nil {
 		return AgentIdentity{}, false, err
 	}
-	result := AgentIdentity{ID: row.ID, TenantID: row.TenantID, PrincipalID: row.PrincipalID, OwnerPrincipalID: row.OwnerPrincipalID, Name: row.Name, State: row.State, Origin: row.Origin, ModelFamily: row.ModelFamily, ParentAgentID: row.ParentAgentID, AdoptedAt: row.AdoptedAt, Roles: []string{}, IAMRoleKeys: []string{}}
+	result := AgentIdentity{AuthorizationMode: row.AuthorizationMode, SystemPrompt: row.SystemPrompt, ID: row.ID, TenantID: row.TenantID, PrincipalID: row.PrincipalID, OwnerPrincipalID: row.OwnerPrincipalID, Name: row.Name, State: row.State, Origin: row.Origin, ModelFamily: row.ModelFamily, RuntimeKind: row.RuntimeKind, ModelID: row.ModelID, ParentAgentID: row.ParentAgentID, AdoptedAt: row.AdoptedAt, Roles: []string{}, IAMRoleKeys: []string{}}
+	if resolveFamily && row.MachineID != nil {
+		result.ModelFamily, err = m.ModelFamilyOn(ctx, tx, tenant, *row.MachineID, row.RuntimeKind, row.ModelID)
+		if err != nil {
+			return AgentIdentity{}, false, err
+		}
+	}
 	seen := make(map[string]bool, len(rows))
 	for _, role := range rows {
 		key, valid := AgentIAMRoleKey(role.Role)

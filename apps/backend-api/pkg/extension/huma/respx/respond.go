@@ -9,6 +9,17 @@ import (
 // startKey keys the request start time stored by Timing.
 type startKey struct{}
 
+type nextKey struct{}
+
+// WithNext carries at most five operation suggestions into success or error
+// metadata. Copying the input prevents later caller changes to the response.
+func WithNext(ctx context.Context, next ...NextStep) context.Context {
+	if len(next) > 5 {
+		next = next[:5]
+	}
+	return context.WithValue(ctx, nextKey{}, append([]NextStep(nil), next...))
+}
+
 // Timing is a chi middleware that records the request start time so OK and List
 // can report request_at and elapsed_ms in the response meta. Mount it early, so
 // the measured time covers as much of the request as possible.
@@ -45,7 +56,8 @@ func List[T any](ctx context.Context, data T, page Page) *Body[T] {
 // reading so ElapsedMS stays accurate; only the wall-clock RequestAt is UTC-normalized.
 func metaOf(ctx context.Context, page *Page) Meta {
 	start := startOf(ctx)
-	return Meta{RequestAt: start.UTC(), ElapsedMS: float64(time.Since(start).Nanoseconds()) / 1e6, Page: page}
+	next, _ := ctx.Value(nextKey{}).([]NextStep)
+	return Meta{RequestAt: start.UTC(), ElapsedMS: float64(time.Since(start).Nanoseconds()) / 1e6, Page: page, Next: append([]NextStep(nil), next...)}
 }
 
 func startOf(ctx context.Context) time.Time {

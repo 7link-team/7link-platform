@@ -30,11 +30,71 @@ import (
 )
 
 type mysqlProvider struct {
-	provider gmssql.DatabaseProvider
+	provider            gmssql.DatabaseProvider
+	transactionProvider gmssql.DatabaseProvider
 }
 
 func (p mysqlProvider) Resolve(dsn string, _ *driver.Options) (string, gmssql.DatabaseProvider, error) {
 	return dsn, p.provider, nil
+}
+
+// The embedded session commits only concrete memory database types, while the
+// query provider applies the DDL bookkeeping adapter to that same database.
+func (p mysqlProvider) NewSession(_ context.Context, _ uint32, _ *driver.Connector) (gmssql.Session, error) {
+	return memory.NewSession(gmssql.NewBaseSession(), p.transactionProvider), nil
+}
+
+// mysqlMemoryDatabase repairs the embedded engine's DDL bookkeeping: dropping
+// a table must drop its declared foreign keys, and renaming must retarget them.
+// Without this, rebuild migrations leave stale constraints on the old table.
+type mysqlMemoryDatabase struct {
+	*memory.Database
+}
+
+func (d *mysqlMemoryDatabase) DropTable(ctx *gmssql.Context, name string) error {
+	if err := d.Database.DropTable(ctx, name); err != nil {
+		return err
+	}
+	collection := d.GetForeignKeyCollection()
+	for _, key := range append([]gmssql.ForeignKeyConstraint(nil), collection.Keys()...) {
+		if strings.EqualFold(key.Table, name) {
+			collection.DropFK(key.Name)
+		}
+	}
+	return nil
+}
+
+func (d *mysqlMemoryDatabase) RenameTable(ctx *gmssql.Context, oldName, newName string) error {
+	if err := d.Database.RenameTable(ctx, oldName, newName); err != nil {
+		return err
+	}
+	for i := range d.GetForeignKeyCollection().Keys() {
+		key := &d.GetForeignKeyCollection().Keys()[i]
+		if strings.EqualFold(key.Table, oldName) {
+			key.Table = newName
+		}
+		if strings.EqualFold(key.ParentTable, oldName) {
+			key.ParentTable = newName
+		}
+	}
+	table, found, err := d.GetTableInsensitive(ctx, newName)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return gmssql.ErrTableNotFound.New(newName)
+	}
+	indexes, err := table.(*memory.Table).GetIndexes(ctx)
+	if err != nil {
+		return err
+	}
+	for _, index := range indexes {
+		if current, ok := index.(*memory.Index); ok {
+			current.Tbl = table.(*memory.Table)
+			current.TableName = newName
+		}
+	}
+	return nil
 }
 
 // OpenMySQL opens the in-process go-mysql-server engine. It exercises the
@@ -43,9 +103,9 @@ func OpenMySQL(t *testing.T) *sql.DB {
 	t.Helper()
 
 	const databaseName = "integration"
-	database := memory.NewDatabase(databaseName)
+	database := &mysqlMemoryDatabase{Database: memory.NewDatabase(databaseName)}
 	database.BaseDatabase.EnablePrimaryKeyIndexes()
-	drv := driver.New(mysqlProvider{provider: memory.NewDBProvider(database)}, nil)
+	drv := driver.New(mysqlProvider{provider: memory.NewDBProvider(database), transactionProvider: memory.NewDBProvider(database.Database)}, nil)
 	t.Cleanup(func() {
 		if err := drv.Close(); err != nil && !errors.Is(err, context.Canceled) {
 			t.Errorf("close MySQL engine: %v", err)
@@ -70,7 +130,7 @@ func OpenMySQLWithDSN(t *testing.T) (*sql.DB, string) {
 	t.Helper()
 
 	const databaseName = "integration"
-	database := memory.NewDatabase(databaseName)
+	database := &mysqlMemoryDatabase{Database: memory.NewDatabase(databaseName)}
 	database.BaseDatabase.EnablePrimaryKeyIndexes()
 	provider := memory.NewDBProvider(database)
 	engine := sqle.NewDefault(provider)
@@ -78,7 +138,7 @@ func OpenMySQLWithDSN(t *testing.T) (*sql.DB, string) {
 	require.NoError(t, err)
 	mysqlServer, err := server.NewServer(
 		server.Config{Listener: listener}, engine, gmssql.NewContext,
-		memory.NewSessionBuilder(provider), nil,
+		memory.NewSessionBuilder(memory.NewDBProvider(database.Database)), nil,
 	)
 	require.NoError(t, err)
 	serverErrors := make(chan error, 1)

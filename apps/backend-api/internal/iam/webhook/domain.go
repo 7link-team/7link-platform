@@ -9,8 +9,10 @@ import (
 )
 
 const (
-	SubscriptionActive   = "active"
-	SubscriptionDisabled = "disabled"
+	PayloadAudit          = "audit"
+	PayloadIntakeMetadata = "intake_metadata"
+	SubscriptionActive    = "active"
+	SubscriptionDisabled  = "disabled"
 
 	DeliveryPending    = "pending"
 	DeliveryDelivering = "delivering"
@@ -29,6 +31,7 @@ var (
 // never returned: a caller is told whether one is set, which is all it needs to
 // render a form, and rotating it is a write.
 type Subscription struct {
+	PayloadMode   string    `json:"payload_mode" enum:"audit,intake_metadata" doc:"Immutable delivery protocol; intake_metadata contains only event_type, target_id and occurred_at"`
 	ID            guid.ID   `json:"id"`
 	TenantID      guid.ID   `json:"tenant_id"`
 	Name          string    `json:"name"`
@@ -43,11 +46,12 @@ type Subscription struct {
 
 // SubscriptionInput carries the validated fields the management API accepts.
 type SubscriptionInput struct {
-	Name       string
-	URL        string
-	Secret     string
-	EventTypes []string
-	Status     string
+	PayloadMode string
+	Name        string
+	URL         string
+	Secret      string
+	EventTypes  []string
+	Status      string
 }
 
 // matchesEventType reports whether a subscription wants an event type. An empty

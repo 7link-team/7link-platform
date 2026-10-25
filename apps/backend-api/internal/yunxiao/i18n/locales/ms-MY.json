@@ -1,0 +1,12 @@
+{
+  "state_in_use": "Status paparan ini masih digunakan. Pilih sasaran migrasi aktif dalam kumpulan dan status perniagaan yang sama.",
+  "ingress_exhausted": "Pemprosesan webhook integrasi telah menghabiskan percubaan semula. Semak peristiwa integrasi dan cuba semula selepas menyelesaikan kegagalan.",
+  "ingress_signature": "Tandatangan webhook tidak sah atau sambungan dinyahdayakan.",
+  "transition_blocked": "Syarat peralihan aliran kerja belum dipenuhi. Selesaikan syarat yang disenaraikan sebelum mencuba semula.",
+  "transition_unavailable": "Sumber fakta aliran kerja yang diperlukan tidak tersedia. Tiada bukti atau hasil masa jalan diandaikan.",
+  "unavailable": "Yunxiao tidak tersedia. Keupayaan API jauh belum dikonfigurasi dan disahkan.",
+  "invalid": "Konfigurasi integrasi tidak sah.",
+  "forbidden": "Hanya pentadbir integrasi manusia aktif yang dibenarkan boleh melakukan tindakan ini.",
+  "not_found": "Rekod integrasi tidak ditemui.",
+  "conflict": "Integrasi telah berubah. Muat semula dan cuba lagi."
+}

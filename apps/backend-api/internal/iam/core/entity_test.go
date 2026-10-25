@@ -1,6 +1,8 @@
 package core
 
 import (
+	"errors"
+	"gorm.io/gorm"
 	"testing"
 	"time"
 
@@ -9,6 +11,38 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestDepartmentOwnerResolutionIsDistinctActiveAndTenantScoped(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	owners := map[int]guid.ID{}
+	for _, in := range []struct{ tenant, id int }{{1, 10}, {1, 11}, {2, 12}} {
+		entity, err := h.repository.CreateEntity(t.Context(), Entity{TenantID: guid.ID(in.tenant), Type: "company", Name: "Owner-" + guid.ID(in.id).String(), Status: EntityActive})
+		require.NoError(t, err)
+		owners[in.id] = entity.ID
+	}
+	for _, row := range []struct {
+		tenant, id, entity int
+		status             string
+	}{{1, 100, 10, "active"}, {1, 101, 10, "active"}, {1, 102, 11, "disabled"}, {2, 103, 12, "active"}} {
+		require.NoError(t, h.db.Exec("INSERT INTO sl_iam_departments (tenant_id,id,entity_id,name,name_key,status,sort_order,version,created_at,updated_at) VALUES (?,?,?,?,?,?,0,1,?,?)", row.tenant, row.id, owners[row.entity], "Department", "department-"+guid.ID(row.id).String(), row.status, repositoryTestTime, repositoryTestTime).Error)
+	}
+	ids, err := h.service.EntitiesOwningDepartments(t.Context(), 1, []guid.ID{100, 101, 102, 103, 999})
+	require.NoError(t, err)
+	require.Equal(t, []guid.ID{owners[10]}, ids)
+	ids, err = h.repository.EntitiesOwningDepartments(t.Context(), 1, nil)
+	require.NoError(t, err)
+	require.Empty(t, ids)
+	broken := *h.repository
+	broken.foreign = &foreignTables{}
+	_, err = broken.EntitiesOwningDepartments(t.Context(), 1, []guid.ID{100})
+	require.ErrorIs(t, err, ErrUnavailable)
+	failure := errors.New("department owner query failed")
+	require.NoError(t, h.db.Callback().Query().Before("gorm:query").Register("department_owners_failure", func(tx *gorm.DB) { tx.AddError(failure) }))
+	_, err = h.repository.EntitiesOwningDepartments(t.Context(), 1, []guid.ID{100})
+	require.ErrorIs(t, err, failure)
+	require.ErrorContains(t, err, "list entities owning departments")
+	require.NoError(t, h.db.Callback().Query().Remove("department_owners_failure"))
+}
 
 func TestEntityRepositoryLifecycleIsolationAndNameKey(t *testing.T) {
 	harness := newRepositoryHarness(t, "sl_")

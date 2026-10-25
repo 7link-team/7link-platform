@@ -17,25 +17,37 @@ import (
 
 var (
 	Q        = new(Query)
+	Cursor   *cursor
 	EventRow *eventRow
+	Parked   *parked
+	Receipt  *receipt
 )
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
+	Cursor = &Q.Cursor
 	EventRow = &Q.EventRow
+	Parked = &Q.Parked
+	Receipt = &Q.Receipt
 }
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
 		db:       db,
+		Cursor:   newCursor(db, opts...),
 		EventRow: newEventRow(db, opts...),
+		Parked:   newParked(db, opts...),
+		Receipt:  newReceipt(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
+	Cursor   cursor
 	EventRow eventRow
+	Parked   parked
+	Receipt  receipt
 }
 
 func (q *Query) Available() bool { return q.db != nil }
@@ -45,7 +57,10 @@ func (q *Query) UnderlyingDB() *gorm.DB { return q.db }
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
 		db:       db,
+		Cursor:   q.Cursor.clone(db),
 		EventRow: q.EventRow.clone(db),
+		Parked:   q.Parked.clone(db),
+		Receipt:  q.Receipt.clone(db),
 	}
 }
 
@@ -60,17 +75,26 @@ func (q *Query) WriteDB() *Query {
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
 		db:       db,
+		Cursor:   q.Cursor.replaceDB(db),
 		EventRow: q.EventRow.replaceDB(db),
+		Parked:   q.Parked.replaceDB(db),
+		Receipt:  q.Receipt.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
+	Cursor   ICursorDo
 	EventRow IEventRowDo
+	Parked   IParkedDo
+	Receipt  IReceiptDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
+		Cursor:   q.Cursor.WithContext(ctx),
 		EventRow: q.EventRow.WithContext(ctx),
+		Parked:   q.Parked.WithContext(ctx),
+		Receipt:  q.Receipt.WithContext(ctx),
 	}
 }
 

@@ -1,0 +1,12 @@
+{
+  "state_in_use": "This display state is in use. Select an active migration target in the same group and business state.",
+  "ingress_exhausted": "Integration webhook processing exhausted its retries. Review the integration event and retry after resolving the failure.",
+  "ingress_signature": "The webhook signature is invalid or the connection is disabled.",
+  "transition_blocked": "The workflow transition conditions are not met. Resolve the listed conditions before retrying.",
+  "transition_unavailable": "A required workflow fact source is unavailable. No evidence or runtime result has been assumed.",
+  "unavailable": "Yunxiao is unavailable. Remote API capabilities are not configured and verified.",
+  "invalid": "Invalid integration configuration.",
+  "forbidden": "Only an authorized active Human integration administrator may perform this action.",
+  "not_found": "Integration record not found.",
+  "conflict": "The integration changed. Refresh and try again."
+}

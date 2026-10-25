@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,12 +11,57 @@ import (
 	"7link.com/platform/internal/collab"
 	deliveryi18n "7link.com/platform/internal/delivery/i18n"
 	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/infra/idempotency"
 	idemi18n "7link.com/platform/internal/infra/idempotency/i18n"
+	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/stretchr/testify/require"
 )
+
+func TestDeliveryRegistrationKeepsAllRoutesGuardedWithoutWriter(t *testing.T) {
+	var actions []authz.Action
+	for resource, verbs := range map[string][]string{
+		"project": {"read", "manage", "stage_change", "mode_change", "takeover"}, "work_item": {"read", "write", "execute"},
+		"workflow":    {"manage"},
+		"intake":      {"read"},
+		"andon":       {"pull", "clear"},
+		"requirement": {"read", "write"}, "scope": {"change"}, "artifact_comment": {"write"},
+		"review": {"initiate", "participate"}, "plan": {"approve"}, "verification": {"run"}, "decision": {"approve", "request_changes", "force_valid"}, "delivery": {"compose", "send"},
+	} {
+		for _, verb := range verbs {
+			actions = append(actions, authz.Action{Resource: resource, Verb: verb, Scope: authz.ActionScopeTenant, DataScoped: true})
+		}
+	}
+	registry, err := authz.NewRegistry(actions...)
+	require.NoError(t, err)
+	_, _, ctx, _ := workHTTPHarness(t)
+	guard := resultHTTPGuard{ctx: ctx}
+	m := &Module{registrar: authz.NewRegistrar(registry, guard, guard, guard), entityOwner: func(_ context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+		return authz.ResourceOwner{ScopeType: "tenant", TenantID: 1, EntityID: id}, true, nil
+	}}
+	_, api := humatest.New(t)
+	require.NoError(t, m.RegisterHTTP(t.Context(), api))
+	count := 0
+	for path, item := range api.OpenAPI().Paths {
+		for _, op := range []*huma.Operation{item.Get, item.Post, item.Put, item.Patch, item.Delete} {
+			if op == nil {
+				continue
+			}
+			count++
+			require.NotEmpty(t, op.Extensions[authz.GuardExtensionKey], path+" "+op.OperationID)
+			require.NotEmpty(t, op.Security, op.OperationID)
+		}
+	}
+	require.Greater(t, count, 40)
+	for _, path := range []string{"/tenants/1/projects", "/entities/99/project", "/entities/99/work-items", "/entities/99/requirements"} {
+		require.Equal(t, http.StatusServiceUnavailable, api.Get(path).Code, path)
+	}
+	require.ErrorIs(t, (&Module{}).RegisterHTTP(t.Context(), api), ErrUnavailable)
+}
 
 func TestErrorMappersKeepChosenStatus(t *testing.T) {
 	chosen := huma.Error422UnprocessableEntity("invalid input")
@@ -60,7 +106,9 @@ func TestProjectErrorResponsesPreservePublicContract(t *testing.T) {
 			var body respx.Envelope[map[string]string]
 			require.NoError(t, json.Unmarshal(result.Body, &body))
 			require.Equal(t, tc.code, body.Code)
-			require.Equal(t, tc.key, body.Message)
+			// Translation namespaces may already be loaded by another HTTP test.
+			// Assert the selected public key in the current locale, independent of order.
+			require.Equal(t, platformi18n.TContext(t.Context(), tc.key), body.Message)
 			if tc.reason == "" {
 				require.Nil(t, body.Data)
 			} else {

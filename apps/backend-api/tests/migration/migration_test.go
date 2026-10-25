@@ -8,6 +8,8 @@ import (
 	"sort"
 	"testing"
 
+	"7link.com/platform/internal/agents"
+	"7link.com/platform/internal/budget"
 	"7link.com/platform/internal/collab"
 	"7link.com/platform/internal/delivery"
 	businessgovernance "7link.com/platform/internal/governance"
@@ -23,6 +25,7 @@ import (
 	"7link.com/platform/internal/infra/events"
 	"7link.com/platform/internal/infra/jobs"
 	"7link.com/platform/internal/infra/wuid"
+	"7link.com/platform/internal/knowledge"
 	"7link.com/platform/internal/todo"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"7link.com/platform/tests/internal/testdb"
@@ -138,13 +141,19 @@ func TestMigrationIdentifiersFitEngineLimitsAtMaximumPrefix(t *testing.T) {
 
 func moduleMigrations() []moduleMigration {
 	return []moduleMigration{
-		{name: "business_governance", table: "governance_role_seeds", target: 1,
+		{name: "budget", table: "budget_reservations", target: 1, seedSQL: `INSERT INTO budget_reservations (id,tenant_id,project_id,source,source_id,reserved_micros,price_known,state,created_at) VALUES (1,1,10,'EXECUTION',20,1,true,'RESERVED','2026-10-20 00:00:00')`, source: (&budget.Module{}).MigrationSource()},
+		{name: "agents", table: "agents_live_states", target: 10,
+			seedSQL: `INSERT INTO agents_live_states (agent_principal_id,tenant_id,head,ack,activity,session_epoch,workspace_epoch,updated_at) VALUES (7,1,0,0,'OFFLINE',1,1,'2026-10-16 00:00:00')`, source: (&agents.Module{}).MigrationSource()},
+		{name: "knowledge", table: "knowledge_entries", target: 14,
+			seedSQL: `INSERT INTO knowledge_entries (id,tenant_id,scope,kind,state,title,body,content_hash,provenance,created_by,created_at,updated_at) VALUES (1,1,'TEAM','DOCUMENT','ACTIVE','Guide','Body','hash','Human source',2,'2026-10-16 00:00:00','2026-10-16 00:00:00')`,
+			source:  (&knowledge.Module{}).MigrationSource()},
+		{name: "business_governance", table: "governance_role_seeds", target: 13,
 			seedSQL: `INSERT INTO governance_role_seeds (id,tenant_id,role_key,role_id,manifest_version,applied_codes,skipped_codes,created_at,updated_at) VALUES (1,1,'delivery_lead',2,1,'[]','[]','2026-10-16 00:00:00','2026-10-16 00:00:00')`,
 			source:  (&businessgovernance.Module{}).MigrationSource()},
-		{name: "delivery", table: "delivery_projects", target: 3,
+		{name: "delivery", table: "delivery_projects", target: 38,
 			seedSQL: `INSERT INTO delivery_projects (tenant_id,project_id,code,stage_changed_at,created_at,updated_at) VALUES (1,2,'PR','2026-10-16 00:00:00','2026-10-16 00:00:00','2026-10-16 00:00:00')`,
 			source:  (&delivery.Module{}).MigrationSource()},
-		{name: "collab", table: "collab_channels", target: 1,
+		{name: "collab", table: "collab_channels", target: 8,
 			seedSQL: `INSERT INTO collab_channels (id,tenant_id,project_id,kind,name,created_at,updated_at) VALUES (1,1,2,'PROJECT_DEFAULT','Project','2026-09-02 00:00:00','2026-09-02 00:00:00')`,
 			source:  (&collab.Module{}).MigrationSource()},
 		{
@@ -157,7 +166,7 @@ func moduleMigrations() []moduleMigration {
 		{
 			name:    "events",
 			table:   "domain_events",
-			target:  1,
+			target:  3,
 			seedSQL: `INSERT INTO domain_events (id, tenant_id, event_type, occurred_at, actor_kind, subject_kind, subject_id, topics, data, created_at) VALUES (1, 1, 'project.created', '2026-09-02 00:00:00', 'SYSTEM', 'project', 1, '[]', '{}', '2026-09-02 00:00:00')`,
 			source:  (&events.Module{}).MigrationSource(),
 		},
@@ -206,7 +215,7 @@ func moduleMigrations() []moduleMigration {
 		{
 			name:         "iam-core",
 			table:        "iam_roles",
-			target:       18,
+			target:       20,
 			seedSQL:      `INSERT INTO iam_roles (tenant_id, id, name, name_key, created_at, updated_at) VALUES (1, 1, 'First', 'first', '2026-09-02 00:00:00', '2026-09-02 00:00:00')`,
 			source:       (&iamcore.Module{}).MigrationSource(),
 			dependencies: []goosex.Source{(&identity.Module{}).MigrationSource()},

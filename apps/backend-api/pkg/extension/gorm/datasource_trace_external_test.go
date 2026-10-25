@@ -24,7 +24,7 @@ func TestDatasourceSQLLogContainsTraceID(t *testing.T) {
 	previousLogger := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })
 	var output bytes.Buffer
-	slog.SetDefault(slog.New(slogx.NewTraceHandler(slog.NewJSONHandler(&output, nil))))
+	slog.SetDefault(slog.New(slogx.NewTraceHandler(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))))
 
 	router, err := gormx.NewDatasourceRouter(t.Context(), true, map[string]gormx.Datasource{
 		"primary": {
@@ -36,7 +36,7 @@ func TestDatasourceSQLLogContainsTraceID(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, router.Close()) })
 
 	ctx, span := telemetryModule.Tracer("test").Start(t.Context(), "query")
-	require.NoError(t, router.Write().WithContext(ctx).Exec("SELECT 1").Error)
+	require.NoError(t, router.Write().Debug().WithContext(ctx).Exec("SELECT 1").Error)
 	span.End()
 
 	assert.Contains(t, output.String(), `"trace_id":"`+traceID+`"`)

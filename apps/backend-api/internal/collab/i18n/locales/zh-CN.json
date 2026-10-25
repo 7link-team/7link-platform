@@ -1,0 +1,8 @@
+{
+  "forbidden": "无权访问此对话。",
+  "not_found": "频道或消息不存在。",
+  "invalid": "对话请求无效。",
+  "conflict": "对话状态或版本已变更。",
+  "unavailable": "对话服务暂不可用。",
+  "message_not_editable": "此消息已不可编辑或撤回。"
+}

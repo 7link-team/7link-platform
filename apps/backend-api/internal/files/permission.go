@@ -319,6 +319,9 @@ func (a *nodeAuthorizer) authorizeLoaded(
 	constraint, management authz.DataConstraint,
 	action string,
 ) (bool, error) {
+	if tenantSystemDirectoryDenied(permissions, action) {
+		return false, errOperationForbidden
+	}
 	if permissions.managementMode != "user" {
 		return false, errOperationForbidden
 	}

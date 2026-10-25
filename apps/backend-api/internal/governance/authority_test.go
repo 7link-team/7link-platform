@@ -14,6 +14,107 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestProjectStageAuthorityUsesEligibleDirectGrants(t *testing.T) {
+	for _, tc := range []struct {
+		name, kind, reason, source string
+		allowed                    bool
+		roles                      []string
+	}{
+		{"human seeded", "HUMAN", "", "ROLE:delivery_lead", true, []string{"21"}},
+		{"human custom", "HUMAN", "", "ROLE:custom.22", true, []string{"22"}},
+		{"agent custom", "AGENT", "", "ROLE:custom.22", true, []string{"22"}},
+		{"agent custom and seeded", "AGENT", "", "ROLE:custom.22", true, []string{"21", "22"}},
+		{"agent seeded alone", "AGENT", "", "", true, []string{"21"}},
+		{"carrier alone", "HUMAN", "", "", true, []string{"23"}},
+		{"no grant", "HUMAN", "no_matching_grant", "", false, nil},
+		{"deny overrides custom", "AGENT", "explicit_deny", "", true, []string{"22"}},
+		{"admin scope denied", "HUMAN", "administrator_scope_denied", "", true, []string{"22"}},
+		{"inactive tenant", "HUMAN", "inactive_tenant", "", true, []string{"22"}},
+		{"inactive membership", "HUMAN", "inactive_membership", "", true, []string{"22"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			seed, db, rt := seedHarnessRuntime(t)
+			require.NoError(t, seed.registry.Contribute([]authz.Action{{Resource: "project", Verb: "stage_change", Scope: authz.ActionScopeTenant, DataScoped: true}}, nil))
+			rows := query.BindRoleSeeds(db, seed.names)
+			for i, key := range []string{"delivery_lead", "delegated_decision_approve"} {
+				id := guid.ID(21)
+				if i == 1 {
+					id = 23
+				}
+				require.NoError(t, rows.WithContext(t.Context()).Create(&model.RoleSeed{ID: guid.ID(i + 1), TenantID: 1, RoleKey: key, RoleID: id, AppliedCodes: "[]", SkippedCodes: "[]", CreatedAt: seed.now(), UpdatedAt: seed.now()}))
+			}
+			owner := &Module{runtime: rt, seed: seed}
+			require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+				owner.explain = func(_ context.Context, actual *gorm.DB, req core.AuthorizationExplanationRequest) (authz.Explanation, error) {
+					require.Same(t, tx, actual)
+					require.Equal(t, core.AuthorizationExplanationRequest{TenantID: 1, EntityID: 99, PrincipalID: 11, Permission: "project_stage_change"}, req)
+					matches := []authz.DecisionMatch{}
+					for _, role := range tc.roles {
+						matches = append(matches, authz.DecisionMatch{RoleID: role, PermissionCode: "project_stage_change", Effect: "allow"})
+					}
+					return authz.Explanation{Allowed: tc.allowed, Reason: tc.reason, Revision: 8, Matches: matches}, nil
+				}
+				decision, err := owner.projectStageAuthority(t.Context(), tx, 1, 99, 11, tc.kind)
+				require.NoError(t, err)
+				require.Equal(t, tc.source != "", decision.Allowed)
+				require.Equal(t, tc.source, decision.AuthoritySource)
+				require.EqualValues(t, 8, decision.PolicyRevision)
+				require.Zero(t, decision.DelegationID)
+				if tc.source == "" {
+					require.NotEmpty(t, decision.ReasonCode)
+				}
+				return nil
+			}))
+		})
+	}
+}
+
+func TestProjectStageAuthorityFailsClosed(t *testing.T) {
+	seed, db, rt := seedHarnessRuntime(t)
+	require.NoError(t, seed.registry.Contribute([]authz.Action{{Resource: "project", Verb: "stage_change", Scope: authz.ActionScopeTenant, DataScoped: true}}, nil))
+	owner := &Module{runtime: rt, seed: seed}
+	request := AuthorityRequest{TenantID: 1, ProjectID: 99, PrincipalID: 11, ActorKind: "HUMAN", Code: "project_stage_change", Resource: ResourceRef{Kind: "project", ID: 99}}
+	for _, change := range []func(*AuthorityRequest){
+		func(r *AuthorityRequest) { r.ProjectID = 0 }, func(r *AuthorityRequest) { r.Resource.ID = 98 }, func(r *AuthorityRequest) { r.Resource.Kind = "work_item" },
+		func(r *AuthorityRequest) { r.Facts = &WorkItemFacts{} }, func(r *AuthorityRequest) { r.Spawn = &SpawnRequestFacts{} },
+		func(r *AuthorityRequest) { r.ActorKind = "MACHINE" }, func(r *AuthorityRequest) { r.ActorKind = "SYSTEM"; r.PrincipalID = 0; r.SystemJob = "phase" },
+	} {
+		r := request
+		change(&r)
+		decision, err := owner.Check(t.Context(), nil, r)
+		require.NoError(t, err)
+		require.False(t, decision.Allowed)
+		require.NotEmpty(t, decision.ReasonCode)
+	}
+	_, err := owner.Check(t.Context(), nil, request)
+	require.ErrorIs(t, err, ErrUnavailable)
+	failure := errors.New("authorization source unavailable")
+	owner.explain = func(context.Context, *gorm.DB, core.AuthorizationExplanationRequest) (authz.Explanation, error) {
+		return authz.Explanation{}, failure
+	}
+	_, err = owner.Check(t.Context(), nil, request)
+	require.ErrorIs(t, err, failure)
+	request.Environment = "PRODUCTION"
+	_, err = owner.Check(t.Context(), nil, request)
+	require.ErrorIs(t, err, ErrUnavailable)
+	request.Environment = ""
+	owner.explain = func(context.Context, *gorm.DB, core.AuthorizationExplanationRequest) (authz.Explanation, error) {
+		return authz.Explanation{Allowed: true, Matches: []authz.DecisionMatch{{RoleID: "22", PermissionCode: "project_stage_change", Effect: "allow"}}}, nil
+	}
+	decision, err := owner.Check(t.Context(), nil, request)
+	require.NoError(t, err)
+	require.True(t, decision.Allowed)
+	owner.runtime = nil
+	_, err = owner.Check(t.Context(), nil, request)
+	require.ErrorIs(t, err, ErrUnavailable)
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+		require.NoError(t, tx.Migrator().DropTable(seed.names.RoleSeeds.String()))
+		_, err := owner.Check(t.Context(), tx, request)
+		require.Error(t, err)
+		return nil
+	}))
+}
+
 func TestRoleAuthorityUsesSeedIdentityAndStablePriority(t *testing.T) {
 	service, db := seedHarness(t)
 	table := query.BindRoleSeeds(db, service.names)

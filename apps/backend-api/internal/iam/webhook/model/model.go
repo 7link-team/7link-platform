@@ -13,6 +13,7 @@ import (
 // subscription rather than in a side table is what makes "deliver each event
 // once" a single row update in the same transaction that enqueues the work.
 type Subscription struct {
+	PayloadMode      string  `gorm:"column:payload_mode;size:32;not null;default:audit"`
 	ID               guid.ID `gorm:"column:id;primaryKey;autoIncrement:false"`
 	TenantID         guid.ID `gorm:"column:tenant_id;not null"`
 	Name             string  `gorm:"column:name;size:128;not null"`

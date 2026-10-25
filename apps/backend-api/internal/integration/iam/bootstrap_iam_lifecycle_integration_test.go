@@ -36,6 +36,7 @@ const (
 	iamLifecycleDatabaseType = "IAM_LIFECYCLE_DATABASE_TYPE"
 	iamLifecycleDatabaseDSN  = "IAM_LIFECYCLE_DATABASE_DSN"
 	iamLifecycleTablePrefix  = "IAM_LIFECYCLE_TABLE_PREFIX"
+	iamLifecycleMemoryMySQL  = "IAM_LIFECYCLE_MEMORY_MYSQL"
 )
 
 func TestIAMLifecycleExternalDatabase(t *testing.T) {
@@ -44,10 +45,17 @@ func TestIAMLifecycleExternalDatabase(t *testing.T) {
 	if databaseType == "" || dsn == "" {
 		t.Skip("external IAM lifecycle database is not configured")
 	}
-	fixture := newIAMTenantFixtureWithDatabase(t, app.Database{
+	database := app.Database{
 		Type: databaseType, Dsn: dsn, Writable: true, Readable: true,
 		MaxOpenConns: 8, MaxIdleConns: 4,
-	}, os.Getenv(iamLifecycleTablePrefix))
+	}
+	if databaseType == "sqlite" {
+		// Match the composed fixture pool: consumers can hold SQLite write
+		// waiters while a foreground transaction resolves field permissions.
+		// Capping this shared pool can starve that independent read.
+		database.MaxOpenConns = 0
+	}
+	fixture := newIAMTenantFixtureWithDatabase(t, database, os.Getenv(iamLifecycleTablePrefix))
 	fixture.runIAMLifecycle(t)
 	fixture.runSCIMTenantLifecycle(t)
 	fixture.runSCIMActorLifecycle(t)

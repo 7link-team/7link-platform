@@ -38,7 +38,7 @@ container_id=
 cleanup() {
   local exit_code=$?
   trap - EXIT
-  if ! "${docker_command[@]}" rm --force "${container_id:-${container_name}}" >/dev/null 2>&1; then
+  if ! "${docker_command[@]}" rm --force --volumes "${container_id:-${container_name}}" >/dev/null 2>&1; then
     if (( exit_code == 0 )); then
       echo "failed to remove MySQL gate container ${container_id:-${container_name}}" >&2
       exit_code=1
@@ -113,7 +113,13 @@ IAM_LIFECYCLE_TABLE_PREFIX=grant_mysql_ \
 
 MYSQL8_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
 MYSQL8_EXPECTED_SQL_MODE="${mysql_sql_mode}" \
-  run_named_tests go -C tests test ./migration -run '^(TestIAMMigrationsOnRealMySQL8|TestIAMPrincipalErasureOwnerMigrations|TestIAMDefaultMenuTranslationUpgrade|TestIAMPersonalTokenMigrations|TestIAMPositionRetirementUpgrade|TestDeliveryActivityStorageUpgradeAndConstraintsAcrossEngines)$' -count=1 -v
+  run_named_tests go -C tests test ./migration -run '^(TestWebhookMetadataPopulatedUpgradeAndSafeRollbackAcrossEngines|TestIAMMigrationsOnRealMySQL8|TestExecutionQualityOnRealMySQL8|TestExecutionHandoverArtifactsAcrossEngines|TestPlanningSchemasAcrossEngines|TestGovernanceRoleSeedsAcrossEngines|TestFleetEnsembleRecordsAcrossEngines|TestYunxiaoSchemaModelsAndIsolationAcrossEngines|TestTemplatesSchemasAcrossEngines|TestDeliveryReadonlyReviewPlanConstraintsAcrossEngines|TestDeliveryRequirementReviewLifecycleUpgradeAndRollbackAcrossEngines|TestIAMPrincipalErasureOwnerMigrations|TestIAMDefaultMenuTranslationUpgrade|TestIAMPersonalTokenMigrations|TestIAMPositionRetirementUpgrade|TestDeliveryActivityStorageUpgradeAndConstraintsAcrossEngines|TestDeliveryWorkContractsUpgradeAndRefusedRollbackRecoverAcrossEngines|TestDeliveryReadinessUpgradeAndRefusedRollbackAcrossEngines|TestDeliveryConstitutionsUpgradeAndRefusedRollbackAcrossEngines|TestDeliveryAssignmentsAndStagesConstraintsAcrossEngines)$' -count=1 -v
+
+# Remote terminal and preview schemas must also exercise the actual server;
+# the normal cross-engine gate otherwise has no MYSQL8_DSN and skips that path.
+MYSQL8_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
+MYSQL8_EXPECTED_SQL_MODE="${mysql_sql_mode}" \
+  run_named_tests go -C tests test ./migration -run '^(TestFleetTerminalModelsAndActiveExecutionAcrossEngines|TestExecutionPreviewModelsAcrossEngines)$' -count=1 -v
 
 # Assert the frozen latency thresholds, not only the query plans. Measuring
 # without asserting is how scim_bulk_25 drifted from 50ms to 78ms while every
@@ -133,6 +139,10 @@ IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_ho
 # Space initialization inserts if absent and reads back under a lock; on MySQL
 # that insert is ON DUPLICATE KEY UPDATE, which SQLite and PostgreSQL never run.
 IAM_LIFECYCLE_DATABASE_TYPE=mysql IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4"   run_named_tests go test ./internal/files -run '^TestSpaceInitializationConcurrencyExternalDatabase$' -count=1 -v
+
+IAM_LIFECYCLE_DATABASE_TYPE=mysql \
+IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
+  run_named_tests go test ./internal/delivery -run '^(TestReadinessCurrentFactsExternalDatabase|TestProjectStageCurrentFactsExternalDatabase)$' -count=1 -v
 
 IAM_LIFECYCLE_DATABASE_TYPE=mysql \
 IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \

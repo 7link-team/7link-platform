@@ -1,0 +1,397 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (for example v0.1.0 or v0.1.0-rc.1)
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      sha: ${{ steps.meta.outputs.sha }}
+      image: ${{ steps.meta.outputs.image }}
+      repository: ${{ steps.meta.outputs.repository }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      created: ${{ steps.meta.outputs.created }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: meta
+        name: Resolve an existing tag
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          OWNER: ${{ github.repository_owner }}
+          REPOSITORY: ${{ github.event.repository.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Docker tags cannot contain SemVer build metadata (+).
+          [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]
+          (( ${#TAG} <= 128 ))
+          sha=$(git rev-parse --verify "refs/tags/$TAG^{commit}")
+          prerelease=false
+          [[ "$TAG" != *-* ]] || prerelease=true
+          {
+            echo "tag=$TAG"
+            echo "sha=$sha"
+            echo "image=ghcr.io/${OWNER,,}/${REPOSITORY,,}"
+            echo "repository=$REPOSITORY"
+            echo "prerelease=$prerelease"
+            echo "created=$(git show -s --format=%cI "$sha")"
+          } >> "$GITHUB_OUTPUT"
+
+  images:
+    needs: metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - component: api
+            context: apps/backend-api
+          - component: web
+            context: apps/frontend-web
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.metadata.outputs.sha }}
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: tags
+        env:
+          IMAGE: ${{ needs.metadata.outputs.image }}-${{ matrix.component }}
+          TAG: ${{ needs.metadata.outputs.tag }}
+          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+        run: |
+          {
+            echo 'tags<<IMAGE_TAGS'
+            echo "$IMAGE:$TAG"
+            if [[ "$PRERELEASE" == false ]]; then echo "$IMAGE:latest"; fi
+            echo IMAGE_TAGS
+          } >> "$GITHUB_OUTPUT"
+      - id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: ${{ matrix.context }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            VERSION=${{ needs.metadata.outputs.tag }}
+            REVISION=${{ needs.metadata.outputs.sha }}
+            SOURCE=${{ github.server_url }}/${{ github.repository }}
+            CREATED=${{ needs.metadata.outputs.created }}
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+        with:
+          cosign-release: v2.5.0
+      - name: Sign image index by digest (keyless OIDC)
+        env:
+          IMAGE: ${{ needs.metadata.outputs.image }}-${{ matrix.component }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+
+  runner:
+    needs: metadata
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      max-parallel: 1
+      matrix:
+        os: [windows, linux, darwin]
+        arch: [amd64, arm64]
+    env:
+      CGO_ENABLED: '0'
+      GOFLAGS: -p=1
+      TAG: ${{ needs.metadata.outputs.tag }}
+      REPOSITORY: ${{ needs.metadata.outputs.repository }}
+      GOOS: ${{ matrix.os }}
+      GOARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.metadata.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: apps/runner/go.mod
+          cache: false
+      - name: Build and archive versioned native binary
+        working-directory: apps/runner
+        run: |
+          set -euo pipefail
+          mkdir -p out dist
+          binary=machine-runner
+          [[ "$GOOS" != windows ]] || binary=machine-runner.exe
+          platform=$GOOS
+          [[ "$GOOS" != darwin ]] || platform=macos
+          go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=$TAG" -o "out/$binary" ./cmd/runner
+          if [[ "$GOOS/$GOARCH" == linux/amd64 ]]; then
+            [[ "$(out/machine-runner --version)" == "$TAG" ]]
+          fi
+          asset="${REPOSITORY}-runner_${TAG}_${platform}_${GOARCH}"
+          if [[ "$GOOS" == windows ]]; then
+            (cd out && zip "../dist/$asset.zip" "$binary")
+          else
+            tar -C out -czf "dist/$asset.tar.gz" "$binary"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: runner-${{ matrix.os }}-${{ matrix.arch }}
+          path: apps/runner/dist/*
+          if-no-files-found: error
+          retention-days: 3
+
+  desktop:
+    needs: metadata
+    runs-on: windows-2022
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/frontend-app
+        shell: pwsh
+    env:
+      TAG: ${{ needs.metadata.outputs.tag }}
+      REPOSITORY: ${{ needs.metadata.outputs.repository }}
+      VITE_API_URL: ${{ vars.VITE_API_URL }}
+      VITE_DEFAULT_TENANT: ${{ vars.VITE_DEFAULT_TENANT }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.metadata.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: 1.3.12
+      - name: Validate desktop deployment configuration
+        run: |
+          $api = $null
+          if (-not [Uri]::TryCreate($env:VITE_API_URL, [UriKind]::Absolute, [ref]$api) -or $api.Scheme -notin @('http', 'https')) {
+            throw 'Set repository variable VITE_API_URL to the absolute desktop API URL before releasing.'
+          }
+      - name: Install locked frontend dependencies
+        run: |
+          bun install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop dependency installation failed' }
+          bun install --cwd ../frontend-web --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { throw 'Shared Web dependency installation failed' }
+      - name: Prepare Windows Rust target
+        run: rustup target add x86_64-pc-windows-msvc
+      - id: desktop-build
+        name: Build versioned NSIS installer and portable archive
+        run: |
+          $metadataJSON = cargo metadata --no-deps --locked --format-version 1 --manifest-path src-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve desktop Cargo metadata' }
+          $metadata = $metadataJSON | ConvertFrom-Json
+          $packages = @($metadata.packages | Where-Object { $metadata.workspace_default_members -contains $_.id })
+          $binaries = @($packages.targets | Where-Object { $_.kind -contains 'bin' })
+          if ($packages.Count -ne 1 -or $binaries.Count -ne 1) { throw 'Expected one desktop package and binary' }
+          $config = Join-Path $env:RUNNER_TEMP 'desktop-release.json'
+          # Build the shared Web package directly so Turbo cannot filter VITE_* deployment variables.
+          @{
+            version = $env:TAG.Substring(1)
+            build = @{ beforeBuildCommand = 'bun run --cwd ../frontend-web/apps/web build' }
+          } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $config -Encoding utf8
+          bun run build --ci --target x86_64-pc-windows-msvc --bundles nsis --config $config -- --locked
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop build failed' }
+          $releaseDir = Join-Path $metadata.target_directory 'x86_64-pc-windows-msvc/release'
+          $binary = Get-Item -LiteralPath (Join-Path $releaseDir ($binaries[0].name + '.exe'))
+          $installers = @(Get-ChildItem -LiteralPath (Join-Path $releaseDir 'bundle/nsis') -Filter '*-setup.exe' -File)
+          if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
+          $dist = New-Item -ItemType Directory -Path dist -Force
+          $asset = "$($env:REPOSITORY)-desktop_$($env:TAG)_windows_amd64"
+          Copy-Item -LiteralPath $installers[0].FullName -Destination (Join-Path $dist.FullName "$asset-setup.exe")
+          $archive = Join-Path $dist.FullName "${asset}_portable.zip"
+          Compress-Archive -LiteralPath $binary.FullName -DestinationPath $archive
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($archive)
+          try {
+            if ($zip.Entries.Count -ne 1 -or $zip.Entries[0].FullName -ne $binary.Name -or $zip.Entries[0].Length -ne $binary.Length) {
+              throw 'Portable archive must contain the actual desktop executable'
+            }
+          } finally { $zip.Dispose() }
+          "binary-name=$($binary.Name)" >> $env:GITHUB_OUTPUT
+      - name: Verify both installer scopes and actual uninstall cleanup
+        env:
+          BINARY_NAME: ${{ steps.desktop-build.outputs.binary-name }}
+        run: |
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows') {
+            throw 'Installer acceptance is restricted to the disposable Windows Actions runner'
+          }
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw 'Both-scope installer acceptance requires the hosted runner administrator token'
+          }
+          $product = (Get-Content -LiteralPath src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).productName
+          $scopes = @(
+            @{ Flag = '/CurrentUser'; Hive = 'HKCU'; Directory = (Join-Path $env:LOCALAPPDATA "Programs/$product") },
+            @{ Flag = '/AllUsers'; Hive = 'HKLM'; Directory = (Join-Path $env:ProgramW6432 $product) }
+          )
+          function Get-DesktopUninstallEntries {
+            foreach ($hive in @('HKCU', 'HKLM')) {
+              foreach ($branch in @('Software\Microsoft\Windows\CurrentVersion\Uninstall', 'Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall')) {
+                $root = "${hive}:\$branch"
+                if (-not (Test-Path -LiteralPath $root)) { continue }
+                foreach ($key in Get-ChildItem -LiteralPath $root) {
+                  $values = Get-ItemProperty -LiteralPath $key.PSPath
+                  [pscustomobject]@{
+                    Hive = $hive
+                    Key = $key.PSPath
+                    Name = $key.PSChildName
+                    DisplayName = [string]$values.DisplayName
+                    Version = [string]$values.DisplayVersion
+                    Location = ([string]$values.InstallLocation).Trim().Trim('"').TrimEnd('\')
+                    Uninstall = [string]$values.UninstallString
+                  }
+                }
+              }
+            }
+          }
+          $before = @(Get-DesktopUninstallEntries)
+          foreach ($scope in $scopes) {
+            if (Test-Path -LiteralPath $scope.Directory) { throw "Refusing an existing install directory: $($scope.Directory)" }
+            if (@($before | Where-Object { $_.Location -eq $scope.Directory -or $_.DisplayName -eq $product -or $_.Name -eq $product }).Count) {
+              throw 'Refusing to touch an existing desktop uninstall entry'
+            }
+          }
+          $setups = @(Get-ChildItem -LiteralPath dist -Filter '*-setup.exe' -File)
+          $archives = @(Get-ChildItem -LiteralPath dist -Filter '*_portable.zip' -File)
+          if ($setups.Count -ne 1 -or $archives.Count -ne 1) { throw 'Expected one installer and portable archive' }
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($archives[0].FullName)
+          try {
+            $stream = $zip.GetEntry($env:BINARY_NAME).Open()
+            try { $expectedHash = (Get-FileHash -InputStream $stream -Algorithm SHA256).Hash } finally { $stream.Dispose() }
+          } finally { $zip.Dispose() }
+          # Tauri CLI 2.12.2 enables NSIS 3.11 MultiUser command-line scope selection:
+          # https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.2/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi#L114-L128
+          # https://github.com/kichik/nsis/blob/v311/Contrib/MultiUser/MultiUser.nsh#L303-L325
+          # Do not pass /R (launch app). /NS suppresses shortcut creation.
+          foreach ($scope in $scopes) {
+            $installed = Start-Process -FilePath $setups[0].FullName -ArgumentList @('/S', '/NS', $scope.Flag) -WindowStyle Hidden -Wait -PassThru
+            if ($installed.ExitCode -ne 0) { throw "Installer failed for $($scope.Flag): $($installed.ExitCode)" }
+            $entries = @(Get-DesktopUninstallEntries | Where-Object { $_.Location -eq $scope.Directory })
+            if ($entries.Count -ne 1 -or $entries[0].Hive -ne $scope.Hive -or $entries[0].DisplayName -ne $product -or $entries[0].Version -ne $env:TAG.Substring(1)) {
+              throw "Installer scope, location or version mismatch for $($scope.Flag); refusing manual cleanup"
+            }
+            $exe = Join-Path $scope.Directory $env:BINARY_NAME
+            $uninstaller = Join-Path $scope.Directory 'uninstall.exe'
+            if (-not (Test-Path -LiteralPath $uninstaller -PathType Leaf) -or $entries[0].Uninstall -ne ('"' + $uninstaller + '"')) {
+              throw 'Uninstall command does not point to this verified installation'
+            }
+            if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -ne $expectedHash) {
+              throw 'Installed executable differs from the released portable executable'
+            }
+            $removed = Start-Process -FilePath $uninstaller -ArgumentList @('/S', $scope.Flag) -WindowStyle Hidden -Wait -PassThru
+            if ($removed.ExitCode -ne 0) { throw "Uninstaller failed for $($scope.Flag): $($removed.ExitCode)" }
+            $deadline = [DateTime]::UtcNow.AddSeconds(30)
+            while ((Test-Path -LiteralPath $scope.Directory) -or (Test-Path -LiteralPath $entries[0].Key)) {
+              if ([DateTime]::UtcNow -ge $deadline) { throw "Uninstall left files or its registry key for $($scope.Flag)" }
+              Start-Sleep -Milliseconds 250
+            }
+            if (@(Get-DesktopUninstallEntries | Where-Object { $_.Location -eq $scope.Directory }).Count) {
+              throw 'Uninstall left a registration for this installation'
+            }
+            Write-Output "Installed and uninstalled $($scope.Flag): scope, executable hash, files and registry cleanup PASS"
+          }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-windows-amd64
+          path: apps/frontend-app/dist/*
+          if-no-files-found: error
+          retention-days: 3
+
+  release:
+    needs: [metadata, images, runner, desktop]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Require anonymous access to both public GHCR images
+        env:
+          IMAGE: ${{ needs.metadata.outputs.image }}
+          TAG: ${{ needs.metadata.outputs.tag }}
+        run: |
+          set -euo pipefail
+          for component in api web; do
+            repository="${IMAGE#ghcr.io/}-${component}"
+            message="Make GHCR package ${repository} public in Package settings, then rerun this release. A public source repository does not make its packages public."
+            # No GitHub/user credentials: request a token for an anonymous pull only.
+            if ! token=$(curl --fail --silent --show-error --get https://ghcr.io/token \
+              --data-urlencode service=ghcr.io \
+              --data-urlencode "scope=repository:${repository}:pull" | jq --exit-status --raw-output '.token // .access_token'); then
+              echo "::error::$message"
+              exit 1
+            fi
+            if ! curl --fail --silent --show-error --output /dev/null \
+              --header "Authorization: Bearer $token" \
+              --header 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
+              "https://ghcr.io/v2/${repository}/manifests/${TAG}"; then
+              echo "::error::$message"
+              exit 1
+            fi
+            unset token
+            echo "Anonymous pull verified: ${repository}:${TAG}"
+          done
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: runner-*
+          merge-multiple: true
+          path: assets
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-windows-amd64
+          path: assets
+      - name: Checksums and GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.metadata.outputs.tag }}
+          REPOSITORY: ${{ needs.metadata.outputs.repository }}
+          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          cd assets
+          # Keep each product's checksum list scoped to its own native assets.
+          sha256sum -- "${REPOSITORY}-runner_${TAG}_"*.zip "${REPOSITORY}-runner_${TAG}_"*.tar.gz > "${REPOSITORY}-runner_${TAG}_checksums.txt"
+          sha256sum -- "${REPOSITORY}-desktop_${TAG}_"*.exe "${REPOSITORY}-desktop_${TAG}_"*.zip > "${REPOSITORY}-desktop_${TAG}_checksums.txt"
+          args=(--verify-tag --generate-notes --title "$TAG")
+          if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease --latest=false); fi
+          gh release create "$TAG" "${args[@]}" ./*

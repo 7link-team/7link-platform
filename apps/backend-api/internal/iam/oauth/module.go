@@ -74,6 +74,9 @@ func (*Module) ModuleDependencies() []string {
 
 // ProvideServices exposes grant validation without making authn depend on OAuth.
 func (m *Module) ProvideServices(services *module.Services) error {
+	if err := m.provideEnrollment(services); err != nil {
+		return err
+	}
 	if err := module.Provide[identity.PrincipalOAuthRevoker](services, func(ctx context.Context, tx *gorm.DB, id guid.ID) error {
 		if m.Service == nil {
 			return ErrUnavailable

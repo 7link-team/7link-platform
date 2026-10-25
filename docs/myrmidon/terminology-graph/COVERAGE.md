@@ -276,17 +276,17 @@
 | docs/myrmidon/specs/09-platform-capabilities.md | 12 | 1. 范围与目标 | 0 | 0 | 尚无直接引用，待核对 |
 | docs/myrmidon/specs/09-platform-capabilities.md | 58 | 2. 用户故事 | 0 | 0 | 尚无直接引用，待核对 |
 | docs/myrmidon/specs/09-platform-capabilities.md | 81 | 3. 领域模型与数据表 | 11 | 20 | 部分已引用，仍需语义核对 |
-| docs/myrmidon/specs/09-platform-capabilities.md | 311 | 4. 状态机 | 0 | 0 | 尚无直接引用，待核对 |
-| docs/myrmidon/specs/09-platform-capabilities.md | 361 | 5. 业务规则与边界情况 | 0 | 0 | 尚无直接引用，待核对 |
-| docs/myrmidon/specs/09-platform-capabilities.md | 466 | 6. 接口契约 | 0 | 0 | 尚无直接引用，待核对 |
-| docs/myrmidon/specs/09-platform-capabilities.md | 809 | 7. 后台任务与事件 | 0 | 0 | 尚无直接引用，待核对 |
-| docs/myrmidon/specs/09-platform-capabilities.md | 852 | 8. 页面规格 | 0 | 0 | 尚无直接引用，待核对 |
-| docs/myrmidon/specs/09-platform-capabilities.md | 905 | 9. 通知 | 0 | 0 | 尚无直接引用，待核对 |
-| docs/myrmidon/specs/09-platform-capabilities.md | 917 | 10. 验收标准 | 0 | 0 | 尚无直接引用，待核对 |
-| docs/myrmidon/specs/09-platform-capabilities.md | 1041 | 11. 度量与埋点 | 0 | 0 | 尚无直接引用，待核对 |
-| docs/myrmidon/specs/09-platform-capabilities.md | 1079 | 12. 依赖、风险与待决 | 0 | 0 | 尚无直接引用，待核对 |
-| docs/myrmidon/specs/09-platform-capabilities.md | 1141 | 13. 契约变更请求 | 0 | 0 | 尚无直接引用，待核对 |
-| docs/myrmidon/specs/09-platform-capabilities.md | 1164 | 14. D123 / D124 菜单、身份投影与富媒体分期 | 0 | 0 | 尚无直接引用，待核对 |
+| docs/myrmidon/specs/09-platform-capabilities.md | 315 | 4. 状态机 | 0 | 0 | 尚无直接引用，待核对 |
+| docs/myrmidon/specs/09-platform-capabilities.md | 365 | 5. 业务规则与边界情况 | 0 | 0 | 尚无直接引用，待核对 |
+| docs/myrmidon/specs/09-platform-capabilities.md | 470 | 6. 接口契约 | 0 | 0 | 尚无直接引用，待核对 |
+| docs/myrmidon/specs/09-platform-capabilities.md | 814 | 7. 后台任务与事件 | 0 | 0 | 尚无直接引用，待核对 |
+| docs/myrmidon/specs/09-platform-capabilities.md | 857 | 8. 页面规格 | 0 | 0 | 尚无直接引用，待核对 |
+| docs/myrmidon/specs/09-platform-capabilities.md | 910 | 9. 通知 | 0 | 0 | 尚无直接引用，待核对 |
+| docs/myrmidon/specs/09-platform-capabilities.md | 922 | 10. 验收标准 | 0 | 0 | 尚无直接引用，待核对 |
+| docs/myrmidon/specs/09-platform-capabilities.md | 1046 | 11. 度量与埋点 | 0 | 0 | 尚无直接引用，待核对 |
+| docs/myrmidon/specs/09-platform-capabilities.md | 1084 | 12. 依赖、风险与待决 | 0 | 0 | 尚无直接引用，待核对 |
+| docs/myrmidon/specs/09-platform-capabilities.md | 1146 | 13. 契约变更请求 | 0 | 0 | 尚无直接引用，待核对 |
+| docs/myrmidon/specs/09-platform-capabilities.md | 1169 | 14. D123 / D124 菜单、身份投影与富媒体分期 | 0 | 0 | 尚无直接引用，待核对 |
 | docs/myrmidon/specs/10-goals-reports.md | 11 | 1. 范围与目标 | 0 | 0 | 尚无直接引用，待核对 |
 | docs/myrmidon/specs/10-goals-reports.md | 37 | 2. 用户故事 | 0 | 0 | 尚无直接引用，待核对 |
 | docs/myrmidon/specs/10-goals-reports.md | 76 | 3. 领域模型与数据表 | 12 | 45 | 部分已引用，仍需语义核对 |

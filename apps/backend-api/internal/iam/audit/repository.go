@@ -217,6 +217,7 @@ func (r *Repository) readExport(ctx context.Context, filter Filter, cursor, maxS
 }
 
 func applyFilter(db *gorm.DB, filter Filter) *gorm.DB {
+	db = applyBusinessFilter(db, filter)
 	if !filter.PrincipalID.Zero() {
 		db = db.Where("principal_id = ?", filter.PrincipalID)
 	}

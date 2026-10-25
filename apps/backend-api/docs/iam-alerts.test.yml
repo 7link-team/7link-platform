@@ -4,6 +4,48 @@ evaluation_interval: 1m
 tests:
   - interval: 1m
     input_series:
+      - series: 'notification_smtp_consecutive_failures{job="api",instance="a"}'
+        values: '0 9 10 11 0'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: NotificationSMTPConsecutiveFailures
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: NotificationSMTPConsecutiveFailures
+        exp_alerts:
+          - exp_labels:
+              job: api
+              instance: a
+              severity: warning
+            exp_annotations:
+              summary: Ten consecutive SMTP attempts have failed
+              description: Check the configured SMTP endpoint, credentials and TLS settings. A successful SMTP attempt resets this process-local count; inspect delivery records for affected recipients.
+      - eval_time: 4m
+        alertname: NotificationSMTPConsecutiveFailures
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'domain_events_sequencer_lag_seconds{job="api",instance="a"}'
+        values: '0 60 61 0'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: DomainEventSequencerLagging
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: DomainEventSequencerLagging
+        exp_alerts:
+          - exp_labels:
+              job: api
+              instance: a
+              severity: warning
+            exp_annotations:
+              summary: Domain event sequencing is more than one minute behind
+              description: Inspect the sequencer worker and database connectivity. Committed events are waiting for a stream sequence; downstream consumers cannot receive them yet.
+      - eval_time: 3m
+        alertname: DomainEventSequencerLagging
+        exp_alerts: []
+  - interval: 1m
+    input_series:
       - series: 'iam_scim_unfinished_operations{job="iam",instance="a"}'
         values: '1 1 1 1 1 0 0 0'
       - series: 'iam_scim_oldest_operation_age_seconds{job="iam",instance="a"}'
@@ -297,4 +339,47 @@ tests:
               description: No sink accepted these events, so those operations have no record. Check audit_sink_errors_total and the log for the sink error, and restore database access or the failing sink.
       - eval_time: 15m
         alertname: OperationLogEventsFailed
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'jobs_claim_success{job="api",instance="a",queue="default"}'
+        values: '1 0x6 1x3'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: JobsClaimContinuouslyFailing
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: JobsClaimContinuouslyFailing
+        exp_alerts:
+          - exp_labels:
+              job: api
+              instance: a
+              queue: default
+              severity: warning
+            exp_annotations:
+              summary: Queue claims have failed continuously for five minutes
+              description: Check database connectivity and the queue claim lock. A successful poll, including an empty queue, clears the failure episode. Cancellation during worker shutdown is excluded.
+      - eval_time: 8m
+        alertname: JobsClaimContinuouslyFailing
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'iam_audit_s3_available{job="api",instance="a"}'
+        values: '1 0 1'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: AuditS3Unavailable
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AuditS3Unavailable
+        exp_alerts:
+          - exp_labels:
+              job: api
+              instance: a
+              severity: warning
+            exp_annotations:
+              summary: Audit S3 storage is unavailable
+              description: The last actual audit S3 request failed to reach or access the service. Check endpoint reachability, credentials and bucket permissions. This metric covers audit anchoring, archives and erasure storage only; file storage has no S3 driver.
+      - eval_time: 2m
+        alertname: AuditS3Unavailable
         exp_alerts: []

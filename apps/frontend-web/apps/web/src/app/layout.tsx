@@ -1,6 +1,8 @@
+import { NotificationBell } from "../components/notification-bell"
+import { WorkspaceRealtime, WorkspaceRealtimeStatus } from "../components/workspace-realtime"
 import { useWorkspaceLayout } from "../lib/page-layout"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Building2, Menu as MenuIcon, ShieldCheck } from "lucide-react"
 import {
   Navigate,
@@ -18,7 +20,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@workspace/ui/components/sheet"
-import { AppSidebar } from "../components/app-sidebar"
+import { AppSidebar, WorkspaceAreaNavigation } from "../components/app-sidebar"
 import { useAuth } from "../components/auth"
 import { SessionVerification } from "../components/session-verification"
 import { ThemeModeButton } from "../components/theme-mode-button"
@@ -32,7 +34,9 @@ import {
   type Entity,
 } from "../lib/iam-api"
 import {
-  entityWorkspaceView,
+  workspaceEntityPermissions,
+  workspaceResource,
+  workspaceScopePath,
   tenantPerspectiveOffered,
   tenantStanding,
 } from "../lib/navigation"
@@ -55,7 +59,9 @@ export default function AppLayout() {
   const [menuCatalog, setMenuCatalog] = useState<{
     subject: string
     tenant: string
+    entity: string
     items: EffectiveMenu[] | null
+    external: boolean
     permissions: EffectivePermissions
     error: string
   } | null>(null)
@@ -87,9 +93,14 @@ export default function AppLayout() {
     routeParams.tenantID !== undefined &&
     (!routeTenantID || (directoryReady && !routeTenantAdmitted))
   const currentMenus =
-    menuCatalog?.subject === subject && menuCatalog?.tenant === tenantValue
+    menuCatalog?.subject === subject &&
+    menuCatalog?.tenant === tenantValue &&
+    menuCatalog?.entity ===
+      (routeParams.entityID ?? entityIDFromPath(location.pathname))
       ? menuCatalog
       : null
+  const externalClient = currentMenus?.external ?? false
+  const internalServicesReady = directoryReady && currentMenus !== null && !externalClient
   const menus = currentMenus?.items ?? null
   const permissions = currentMenus?.permissions ?? null
   // The shell loads the menu tree and the caller's own codes together, so one
@@ -115,6 +126,57 @@ export default function AppLayout() {
   // destination has to dismiss it; leaving it open hides the page the person
   // just asked for behind the menu they used to ask.
   const [navOpen, setNavOpen] = useState(false)
+  const [scopeError, setScopeError] = useState("")
+  const [scopeChanging, setScopeChanging] = useState(false)
+  const scopeContext = JSON.stringify([location.pathname, subject, accountView])
+  const [previousScopeContext, setPreviousScopeContext] = useState(scopeContext)
+  if (previousScopeContext !== scopeContext) {
+    setPreviousScopeContext(scopeContext)
+    setScopeChanging(false)
+    setScopeError("")
+  }
+  const scopeRequest = useRef(0)
+  const mainRef = useRef<HTMLElement>(null)
+  const scrollPositions = useRef(
+    new Map<string, { top: number; left: number }>()
+  )
+  const restoringScroll = useRef(false)
+  const previousScrollPath = useRef(location.pathname)
+  useEffect(() => {
+    const requests = scopeRequest
+    return () => {
+      requests.current++
+    }
+  }, [scopeContext])
+  useLayoutEffect(() => {
+    const main = mainRef.current
+    if (!main) return
+    const position = scrollPositions.current.get(location.key)
+    const samePage = previousScrollPath.current === location.pathname
+    previousScrollPath.current = location.pathname
+    if (!position && samePage) return
+    restoringScroll.current = Boolean(position)
+    const restore = () => {
+      if (!position) {
+        main.scrollTo(0, 0)
+        return true
+      }
+      main.scrollTo(position.left, position.top)
+      const restored =
+        main.scrollTop === position.top && main.scrollLeft === position.left
+      if (restored) restoringScroll.current = false
+      return restored
+    }
+    if (restore()) return
+    const observer = new MutationObserver(() => {
+      if (restore()) observer.disconnect()
+    })
+    observer.observe(main, { childList: true, subtree: true })
+    return () => {
+      observer.disconnect()
+      restoringScroll.current = false
+    }
+  }, [location.key, location.pathname])
   const [operatingPlatforms, setOperatingPlatforms] = useState<Tenant[]>([])
   useEffect(() => {
     if (status !== "authenticated" || getAccountView()) return
@@ -139,6 +201,7 @@ export default function AppLayout() {
   const entityOwnPage =
     Boolean(entityID) &&
     (location.pathname.endsWith("/files") ||
+      (externalClient && location.pathname.endsWith("/conversations")) ||
       location.pathname.endsWith("/departments") ||
       location.pathname.endsWith("/project"))
   const [entityCatalog, setEntityCatalog] = useState<{
@@ -198,6 +261,7 @@ export default function AppLayout() {
     )
       return
     let active = true
+    let generation = 0
     // No client-side pre-judgement here any more. This used to decide the list
     // was empty whenever the caller lacked entity_view, because the endpoint it
     // called refused without it -- and entity_view is the permission to
@@ -205,10 +269,9 @@ export default function AppLayout() {
     // does not have. The endpoint below answers for the caller, so the caller
     // is no longer the one deciding what it may see.
     const refresh = () => {
-      // file_view is what the console does inside an entity, and the switcher
-      // offers the entities it can take somebody into. Asking for the entities
-      // this caller may administer instead was why a member of exactly one
-      // entity was shown none of them.
+      const request = ++generation
+      // Merge admission for the existing workspace pages. File-only discovery
+      // would hide instances from project-only or department-only members.
       // The tenant-level answer, asked here because this effect already runs for
       // the same subject and tenant inside an entity as well as outside one. A
       // data-scoped grant is absent from this list unless its constraint admits
@@ -220,13 +283,13 @@ export default function AppLayout() {
             setTenantStanding({ subject, tenant: tenantValue, standing })
         }
       )
-      void iamApi.memberEntities("file_view").then(
+      void iamApi.memberEntities(workspaceEntityPermissions, tenantValue).then(
         (items) => {
-          if (active)
+          if (active && request === generation)
             setEntityCatalog({ subject, tenant: tenantValue, items, error: "" })
         },
         (cause: Error) => {
-          if (active)
+          if (active && request === generation)
             setEntityCatalog({
               subject,
               tenant: tenantValue,
@@ -263,23 +326,34 @@ export default function AppLayout() {
     const refresh = () => {
       if (status === "authenticated" && directoryReady) {
         const request = ++generation
-        void Promise.allSettled([
-          tenantValue && accountView?.scope_type !== "entity"
-            ? iamApi.effectiveMenus(tenantValue)
-            : Promise.resolve([]),
-          iamApi.myPermissions(tenantValue || undefined, entityID || undefined),
-        ]).then(([menuResult, permissionResult]) => {
+        // External members use the client projection. Internal permission
+        // enumeration can outlast the refresh interval and is not their menu.
+        void (async () => {
+          const [clientResult] = await Promise.allSettled([
+            tenantValue ? iamApi.deliveryResultRequest<{external:boolean}>({method:"GET",url:`/tenants/${encodeURIComponent(tenantValue)}/client-access`}) : Promise.resolve({external:false}),
+          ])
+          const external = clientResult.status === "fulfilled" && clientResult.value.external
+          const [menuResult, permissionResult] = await Promise.allSettled([
+            !external && tenantValue && accountView?.scope_type !== "entity"
+              ? iamApi.effectiveMenus(tenantValue) : Promise.resolve([]),
+            external ? Promise.resolve([]) : iamApi.myPermissions(tenantValue || undefined, entityID || undefined),
+          ])
+          return [menuResult, permissionResult, clientResult] as const
+        })().then(([menuResult, permissionResult, clientResult]) => {
           if (!active || request !== generation) return
           // Failed permission reads remain unknown and protected actions stay
           // unavailable until the caller retries successfully.
+          const external = clientResult.status === "fulfilled" && clientResult.value.external
           const permissions =
-            permissionResult.status === "fulfilled"
+            clientResult.status === "rejected" ? null : external ? new Set(entityID ? ["channel_read"] : []) : permissionResult.status === "fulfilled"
               ? new Set(permissionResult.value)
               : null
           setMenuCatalog({
             subject,
             tenant: tenantValue,
-            items: menuResult.status === "fulfilled" ? menuResult.value : null,
+            entity: entityID,
+            external,
+            items: external ? [] : menuResult.status === "fulfilled" ? menuResult.value : null,
             permissions,
             error:
               menuResult.status === "rejected"
@@ -420,6 +494,10 @@ export default function AppLayout() {
 
   const commitTenant = (next: string) => {
     if (!next || !availableTenants?.some((tenant) => tenant.id === next)) return
+    if (next === tenantValue) return
+    scopeRequest.current++
+    setScopeChanging(false)
+    setScopeError("")
     setMenuCatalog(null)
     setTenant(next)
     setTenantValue(next)
@@ -427,10 +505,88 @@ export default function AppLayout() {
     // the workspace home: that answers "nowhere was asked for" and sends an
     // operator with system authority to /system, which would bounce somebody who
     // had just picked a tenant straight back out of it.
-    navigate(`/admin/${encodeURIComponent(next)}`)
+    navigate(
+      workspaceScopePath(location.pathname, next, "") ??
+        `/admin/${encodeURIComponent(next)}`
+    )
   }
 
+  const switchInstance = async (id: string) => {
+    if (id === entityID) return
+    if (
+      id &&
+      !catalog?.items.some(
+        (item) =>
+          item.id === id && item.status === "active" && item.type !== "client"
+      )
+    )
+      return
+    const request = ++scopeRequest.current
+    setScopeChanging(true)
+    setScopeError("")
+    try {
+      const target = catalog?.items.find((item) => item.id === id)
+      const granted = id ? await iamApi.myPermissions(tenantValue, id) : []
+      if (request !== scopeRequest.current) return
+      const path = workspaceScopePath(
+        location.pathname,
+        tenantValue,
+        id,
+        granted,
+        target?.type
+      )
+      if (!path) {
+        setScopeError(t("tenantOnlyResource"))
+        return
+      }
+      setMenuCatalog(null)
+      navigate(path)
+    } catch (cause) {
+      if (request === scopeRequest.current)
+        setScopeError(
+          cause instanceof Error ? cause.message : t("entityUnavailable")
+        )
+    } finally {
+      if (request === scopeRequest.current) setScopeChanging(false)
+    }
+  }
+  const tenantOnlyResource =
+    !entityID &&
+    !["", "/projects", "/files", "/departments"].includes(
+      workspaceResource(location.pathname)
+    )
+  const instanceControl = !accountView ? (
+    <div className="mb-4 space-y-2 border-b pb-4">
+      <p className="text-xs font-medium text-muted-foreground">
+        {t("instanceScope")}
+      </p>
+      <WorkspaceSwitcher
+        mode="instance"
+        tenantID={tenantValue}
+        entityID={entityID}
+        tenants={availableTenants}
+        entities={catalog?.items ?? null}
+        error={catalog?.error ?? ""}
+        onTenant={commitTenant}
+        onEntity={switchInstance}
+        tenantPerspective={tenantPerspective}
+        entitySwitchDisabled={tenantOnlyResource || scopeChanging}
+      />
+      {tenantOnlyResource && (
+        <p className="text-xs text-muted-foreground">
+          {t("tenantOnlyResource")}
+        </p>
+      )}
+      {scopeChanging && (
+        <p role="status" className="text-xs">
+          {t("loading")}
+        </p>
+      )}
+    </div>
+  ) : null
+
   return (
+    <WorkspaceRealtime tenantID={internalServicesReady ? (tenantValue || "0") : ""} principal={subject}>
     <div className="flex h-svh flex-col bg-background">
       <header className="sticky top-0 z-40 border-b bg-background shadow-sm">
         <div className="flex min-h-14 flex-wrap items-center gap-2 px-4 py-2 sm:gap-3">
@@ -465,6 +621,7 @@ export default function AppLayout() {
                 }}
               >
                 <AppSidebar
+                  instanceControl={instanceControl}
                   permissions={permissions}
                   tenantID={tenantValue}
                   entityID={entityID}
@@ -488,13 +645,14 @@ export default function AppLayout() {
           </div>
           {!accountView && (
             <WorkspaceSwitcher
+              mode="tenant"
               operatingPlatforms={operatingPlatforms}
               onOperatingPlatform={(id) =>
                 navigate(`/platform/${encodeURIComponent(id)}`)
               }
               systemPath={systemPath}
               onSystem={() => navigate(systemPath)}
-              onPersonal={() => navigate("/user/profile")}
+              onPersonal={() => navigate(entrancePath("tenant", "workspaces"))}
               tenantID={tenantValue}
               entityID={entityID}
               tenants={availableTenants}
@@ -506,22 +664,22 @@ export default function AppLayout() {
               entities={catalog?.items ?? null}
               error={entityOwnPage ? "" : (catalog?.error ?? "")}
               onTenant={commitTenant}
-              onEntity={(id) => {
-                const owner = tenantValue
-                // The overview reads the entity itself, which is tenant-wide
-                // entity administration. Sending somebody who merely belongs to
-                // the entity there turned the whole perspective into one refusal,
-                // so they go to the view they do have.
-                navigate(
-                  id
-                    ? `/admin/${encodeURIComponent(owner)}/entities/${encodeURIComponent(id)}/${entityWorkspaceView(permissions ?? [])}`
-                    : `/admin/${encodeURIComponent(owner)}`
-                )
-              }}
+              onEntity={switchInstance}
             />
           )}
+          <WorkspaceAreaNavigation
+            externalClient={externalClient}
+            tenantID={tenantValue}
+            entityID={entityID}
+            entityType={selectedEntity?.type}
+            permissions={permissions}
+            menus={directoryReady ? (menus ?? []) : []}
+            fieldPolicyAccess={fieldPolicyAccess}
+          />
           <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
             <LanguageSwitcher />
+            {internalServicesReady && <WorkspaceRealtimeStatus />}
+            {internalServicesReady && <NotificationBell tenantID={tenantValue} />}
             <ThemeModeButton />
             <UserMenu
               tenantID={directoryReady ? tenantValue : ""}
@@ -550,7 +708,7 @@ export default function AppLayout() {
           {entityID && (
             <>
               <span aria-hidden="true">/</span>
-              <span>{t("entityPerspective")}</span>
+              <span>{t("instanceScope")}</span>
               <strong className="break-all">
                 {selectedEntity?.name ?? entityID}
               </strong>
@@ -560,6 +718,7 @@ export default function AppLayout() {
       </div>
       <div className="flex min-h-0 flex-1">
         <AppSidebar
+          instanceControl={instanceControl}
           permissions={permissions}
           tenantID={tenantValue}
           entityID={entityID}
@@ -570,6 +729,15 @@ export default function AppLayout() {
           className="hidden md:block"
         />
         <main
+          ref={mainRef}
+          onScroll={(event) => {
+            if (event.target !== event.currentTarget || restoringScroll.current)
+              return
+            scrollPositions.current.set(location.key, {
+              top: event.currentTarget.scrollTop,
+              left: event.currentTarget.scrollLeft,
+            })
+          }}
           className={`min-h-0 min-w-0 flex-1 overflow-auto ${workspaceLayout ? "lg:overflow-hidden" : ""}`}
         >
           <div
@@ -579,6 +747,7 @@ export default function AppLayout() {
                 : `mx-auto w-full p-4 sm:p-6 ${workspaceLayout ? "lg:flex lg:h-full lg:min-h-0 lg:flex-col" : "max-w-[1440px]"}`
             }
           >
+            {scopeError && <Alert>{scopeError}</Alert>}
             {menuError && directoryReady && (
               <Alert>
                 <p>{t.has(menuError) ? t(menuError) : menuError}</p>
@@ -627,5 +796,6 @@ export default function AppLayout() {
         </main>
       </div>
     </div>
+    </WorkspaceRealtime>
   )
 }

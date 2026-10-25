@@ -1,0 +1,10 @@
+{
+  "name": "machine-runner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Machine execution node",
+  "bin": {"machine-runner": "cli.cjs"},
+  "files": ["cli.cjs", "bin", "README.md"],
+  "engines": {"node": ">=24"},
+  "scripts": {"build:package": "node release.mjs", "test:package": "node --test cli.test.cjs release.test.mjs"}
+}

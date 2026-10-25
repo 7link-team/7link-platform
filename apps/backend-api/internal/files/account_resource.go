@@ -367,7 +367,7 @@ func (r *AccountResourceFiles) Open(ctx context.Context, db *gorm.DB, principalI
 	if err != nil {
 		return nil, err
 	}
-	reader, err := r.driver.Open(ctx, object.StorageKey)
+	reader, err := openStoredObject(ctx, r.driver, object)
 	if err != nil {
 		return nil, err
 	}

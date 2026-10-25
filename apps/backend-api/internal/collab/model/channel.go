@@ -10,6 +10,7 @@ type Channel struct {
 	ID            guid.ID    `gorm:"column:id;primaryKey;autoIncrement:false"`
 	TenantID      guid.ID    `gorm:"column:tenant_id;not null"`
 	ProjectID     *guid.ID   `gorm:"column:project_id"`
+	Visibility    string     `gorm:"column:visibility;not null;default:INTERNAL"`
 	Kind          string     `gorm:"column:kind;not null"`
 	Name          string     `gorm:"column:name;size:40;not null"`
 	Topic         *string    `gorm:"column:topic"`
@@ -30,6 +31,7 @@ type ChannelMember struct {
 	ChannelID   guid.ID    `gorm:"column:channel_id;primaryKey;autoIncrement:false"`
 	PrincipalID guid.ID    `gorm:"column:principal_id;primaryKey;autoIncrement:false"`
 	TenantID    guid.ID    `gorm:"column:tenant_id;not null"`
+	External    bool       `gorm:"column:external;not null;default:false"`
 	MemberKind  string     `gorm:"column:member_kind;not null"`
 	Role        string     `gorm:"column:role;not null"`
 	Source      string     `gorm:"column:source;not null"`

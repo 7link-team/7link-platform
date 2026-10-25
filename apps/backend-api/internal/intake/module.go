@@ -15,8 +15,17 @@ type Config struct{ module.Config }
 
 // Module owns intake persistence and reference capabilities.
 type Module struct {
-	config Config
-	names  query.TableNames
+	triageRequestAuthority   TriageRequestAuthority
+	triageRequestCoordinator TriageRequestCoordinator
+	delegatedNewAuthority    DelegatedNewAuthority
+	triageAgent              TriageAgentReader
+	dispositionRoundCloser   DispositionRoundCloser
+	dispositionNotification  DispositionNotification
+	mergeAuthority           DelegatedNewAuthority
+	channelTiming            ChannelTimingReader
+	brief                    signedBriefServices
+	config                   Config
+	names                    query.TableNames
 }
 
 func NewModule(rt *appenv.Runtime, config Config) *Module {
@@ -25,7 +34,40 @@ func NewModule(rt *appenv.Runtime, config Config) *Module {
 func (*Module) ModuleName() string { return Name }
 func (m *Module) Enabled() bool    { return m != nil && m.config.Enabled }
 func (m *Module) ProvideServices(s *module.Services) error {
-	return module.Provide[IntakeReader](s, IntakeReader{ContactsOn: m.ContactsOn, GetOn: m.GetOn})
+	if err := m.provideSubmissionEvents(s); err != nil {
+		return err
+	}
+	if err := m.provideMergedReplies(s); err != nil {
+		return err
+	}
+	if err := m.provideMemorySourceText(s); err != nil {
+		return err
+	}
+	if err := m.provideDelegatedNew(s); err != nil {
+		return err
+	}
+	if err := m.provideTriageAgent(s); err != nil {
+		return err
+	}
+	if err := m.provideDispositionRound(s); err != nil {
+		return err
+	}
+	if err := m.provideChannelTiming(s); err != nil {
+		return err
+	}
+	if e := m.provideNotificationFacts(s); e != nil {
+		return e
+	}
+	if e := m.provideApiReceiving(s); e != nil {
+		return e
+	}
+	if e := m.provideChangeSources(s); e != nil {
+		return e
+	}
+	if e := module.Provide[SignedBriefs](s, SignedBriefs{SignOn: m.signBriefOn, ReadOn: m.readSignedBriefOn}); e != nil {
+		return e
+	}
+	return module.Provide[IntakeReader](s, IntakeReader{ContactsOn: m.ContactsOn, GetOn: m.GetOn, ProjectFactsOn: m.ProjectFactsOn})
 }
 
 var (

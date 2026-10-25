@@ -22,6 +22,7 @@ func (ProjectCounter) TableName() string { return "delivery_project_counters" }
 
 // Requirement is owned by delivery (spec 02).
 type Requirement struct {
+	ReviewState      string     `gorm:"column:review_state;not null;default:NEEDS_WORK"`
 	TenantID         guid.ID    `gorm:"column:tenant_id;primaryKey;autoIncrement:false;not null"`
 	ID               guid.ID    `gorm:"column:id;primaryKey;autoIncrement:false;not null"`
 	ProjectID        guid.ID    `gorm:"column:project_id;not null"`
@@ -64,19 +65,21 @@ func (AcceptanceCriterion) TableName() string { return "delivery_acceptance_crit
 
 // RequirementVersion is owned by delivery (spec 02).
 type RequirementVersion struct {
-	TenantID       guid.ID   `gorm:"column:tenant_id;primaryKey;autoIncrement:false;not null"`
-	ID             guid.ID   `gorm:"column:id;primaryKey;autoIncrement:false;not null"`
-	ProjectID      guid.ID   `gorm:"column:project_id;not null"`
-	RequirementID  guid.ID   `gorm:"column:requirement_id;not null"`
-	VersionNo      int       `gorm:"column:version_no;not null"`
-	Title          string    `gorm:"column:title;not null"`
-	Description    string    `gorm:"column:description;not null"`
-	Priority       int       `gorm:"column:priority;not null"`
-	Criteria       string    `gorm:"column:criteria;not null"`
-	ChangeRecordID *guid.ID  `gorm:"column:change_record_id"`
-	ContentHash    string    `gorm:"column:content_hash;not null"`
-	CreatedAt      time.Time `gorm:"column:created_at;not null;autoCreateTime:false"`
-	CreatedBy      *guid.ID  `gorm:"column:created_by"`
+	AcceptanceSuite string    `gorm:"column:acceptance_suite;not null;default:{}"`
+	SuiteHash       string    `gorm:"column:suite_hash;not null;default:''"`
+	TenantID        guid.ID   `gorm:"column:tenant_id;primaryKey;autoIncrement:false;not null"`
+	ID              guid.ID   `gorm:"column:id;primaryKey;autoIncrement:false;not null"`
+	ProjectID       guid.ID   `gorm:"column:project_id;not null"`
+	RequirementID   guid.ID   `gorm:"column:requirement_id;not null"`
+	VersionNo       int       `gorm:"column:version_no;not null"`
+	Title           string    `gorm:"column:title;not null"`
+	Description     string    `gorm:"column:description;not null"`
+	Priority        int       `gorm:"column:priority;not null"`
+	Criteria        string    `gorm:"column:criteria;not null"`
+	ChangeRecordID  *guid.ID  `gorm:"column:change_record_id"`
+	ContentHash     string    `gorm:"column:content_hash;not null"`
+	CreatedAt       time.Time `gorm:"column:created_at;not null;autoCreateTime:false"`
+	CreatedBy       *guid.ID  `gorm:"column:created_by"`
 }
 
 func (RequirementVersion) TableName() string { return "delivery_requirement_versions" }

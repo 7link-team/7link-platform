@@ -14,6 +14,7 @@ const (
 	lifecycleDatabaseType = "IAM_LIFECYCLE_DATABASE_TYPE"
 	lifecycleDatabaseDSN  = "IAM_LIFECYCLE_DATABASE_DSN"
 	lifecycleTablePrefix  = "IAM_LIFECYCLE_TABLE_PREFIX"
+	lifecycleMemoryMySQL  = "IAM_LIFECYCLE_MEMORY_MYSQL"
 )
 
 type lifecycleEngine struct {
@@ -114,6 +115,11 @@ func TestIAMLifecycleAcrossEnginesAndPrefixes(t *testing.T) {
 					lifecycleDatabaseDSN+"="+dsn,
 					lifecycleTablePrefix+"="+prefix,
 				)
+				if engine.name == "mysql" {
+					// This marker applies only to the memory emulator. The real
+					// MySQL gate uses the default concurrent connection pool.
+					command.Env = append(command.Env, lifecycleMemoryMySQL+"=true")
+				}
 				output, runErr := command.CombinedOutput()
 				require.NoError(t, runErr, string(output))
 				require.Contains(t, string(output), "--- PASS: TestIAMLifecycleExternalDatabase")

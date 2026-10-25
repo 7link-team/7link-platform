@@ -4,6 +4,22 @@
 # including webhook delivery. files covers the file cleanup loop, and
 # operation-log covers operation log events that never reached storage.
 groups:
+  - name: domain-events
+    rules:
+      - alert: DomainEventSequencerLagging
+        expr: domain_events_sequencer_lag_seconds > 60
+        labels:
+          severity: warning
+        annotations:
+          summary: Domain event sequencing is more than one minute behind
+          description: Inspect the sequencer worker and database connectivity. Committed events are waiting for a stream sequence; downstream consumers cannot receive them yet.
+      - alert: NotificationSMTPConsecutiveFailures
+        expr: notification_smtp_consecutive_failures >= 10
+        labels:
+          severity: warning
+        annotations:
+          summary: Ten consecutive SMTP attempts have failed
+          description: Check the configured SMTP endpoint, credentials and TLS settings. A successful SMTP attempt resets this process-local count; inspect delivery records for affected recipients.
   - name: iam-scim
     rules:
       - alert: IAMSCIMUnresolvedOperation
@@ -124,3 +140,20 @@ groups:
         annotations:
           summary: Operation log events were rejected by every sink
           description: No sink accepted these events, so those operations have no record. Check audit_sink_errors_total and the log for the sink error, and restore database access or the failing sink.
+  - name: platform-source-availability
+    rules:
+      - alert: JobsClaimContinuouslyFailing
+        expr: jobs_claim_success == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Queue claims have failed continuously for five minutes
+          description: Check database connectivity and the queue claim lock. A successful poll, including an empty queue, clears the failure episode. Cancellation during worker shutdown is excluded.
+      - alert: AuditS3Unavailable
+        expr: iam_audit_s3_available == 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Audit S3 storage is unavailable
+          description: The last actual audit S3 request failed to reach or access the service. Check endpoint reachability, credentials and bucket permissions. This metric covers audit anchoring, archives and erasure storage only; file storage has no S3 driver.

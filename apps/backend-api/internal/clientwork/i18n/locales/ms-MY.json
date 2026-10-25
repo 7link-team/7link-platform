@@ -1,0 +1,17 @@
+{
+ "bundle_stale": "Bina semula pakej penyerahan sebelum menerbitkan.",
+ "bundle_failed": "Pakej penyerahan tidak dapat dibina dengan selamat.",
+  "dispatch_expired": "Cadangan penugasan ini telah tamat tempoh. Jana cadangan baharu.",
+  "share_ended": "Pautan pratonton ini telah tamat tempoh atau dibatalkan.",
+  "invalid": "Input kerjasama tidak sah.",
+  "not_found": "Objek tidak ditemui.",
+  "conflict": "Versi atau keadaan berubah. Muat semula dan cuba lagi.",
+  "forbidden": "Tindakan ini tidak dibenarkan.",
+  "unavailable": "Storan kerjasama tidak tersedia.",
+  "internal": "Operasi kerjasama tidak dapat diselesaikan.",
+  "open_exception": "Selesaikan pengecualian toleransi sebelum mengubah komitmen ini.",
+  "clarification_reminder": "Soalan penjelasan menunggu jawapan anda. Tarikh akhir: {due_at}.",
+  "dispatch_starved": "Item kerja {subject_id} tiada penugasan aktif selama lebih daripada empat jam.",
+  "acceptance_reminder": "Penghantaran {package_id} menunggu resit anda. Tarikh akhir: {due_at}.",
+  "acceptance_overdue": "Penerimaan pelanggan untuk penghantaran {package_id} telah lewat. Sila buat susulan."
+}

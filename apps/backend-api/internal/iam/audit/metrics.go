@@ -15,12 +15,14 @@ var archiveMetricDescriptions = []*prometheus.Desc{
 func (m *Module) Collector() prometheus.Collector { return m }
 
 func (m *Module) Describe(ch chan<- *prometheus.Desc) {
+	m.describeS3Telemetry(ch)
 	for _, desc := range archiveMetricDescriptions {
 		ch <- desc
 	}
 }
 
 func (m *Module) Collect(ch chan<- prometheus.Metric) {
+	m.collectS3Telemetry(ch)
 	values := []float64{0, 0}
 	if m.service != nil {
 		values[0], values[1] = float64(m.service.archiveSweepFailures.Load()), float64(m.service.archiveAttemptFailures.Load())

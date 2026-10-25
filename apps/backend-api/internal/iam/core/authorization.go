@@ -24,6 +24,58 @@ func (s *Service) AuthorizationConstraint(
 	return s.checker.Constraint(ctx, tenantID, permission, subject)
 }
 
+// MemberEntities returns the union of independently authorized entity lists.
+// Each permission keeps its own deny and department scope before unioning.
+func (s *Service) MemberEntities(ctx context.Context, tenantID, subject guid.ID, permissions []string) ([]Entity, error) {
+	if len(permissions) == 0 || len(permissions) > 32 {
+		return nil, ErrInvalidArgument
+	}
+	for _, permission := range permissions {
+		if err := s.validateDataPermission(strings.TrimSpace(permission)); err != nil {
+			return nil, err
+		}
+	}
+	entities, err := s.ListEntities(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	admitted := make(map[guid.ID]bool)
+	seen := make(map[string]bool)
+	for _, permission := range permissions {
+		permission = strings.TrimSpace(permission)
+		if seen[permission] {
+			continue
+		}
+		seen[permission] = true
+		constraint, err := s.AuthorizationConstraint(ctx, tenantID, permission, subject)
+		if err != nil {
+			return nil, err
+		}
+		departments := make([]guid.ID, 0, len(constraint.DepartmentIDs))
+		for _, raw := range constraint.DepartmentIDs {
+			id, err := guid.RequireID(raw)
+			if err != nil {
+				return nil, err
+			}
+			departments = append(departments, id)
+		}
+		throughDepartments, err := s.EntitiesOwningDepartments(ctx, tenantID, departments)
+		if err != nil {
+			return nil, err
+		}
+		for _, entity := range admittedEntities(entities, constraint, throughDepartments) {
+			admitted[entity.ID] = true
+		}
+	}
+	result := make([]Entity, 0, len(admitted))
+	for _, entity := range entities {
+		if admitted[entity.ID] {
+			result = append(result, entity)
+		}
+	}
+	return result, nil
+}
+
 // ExplainEntityAuthorization returns the effective decision and matching
 // grants for one entity.
 func (s *Service) ExplainEntityAuthorization(

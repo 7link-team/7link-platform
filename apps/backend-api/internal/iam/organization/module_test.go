@@ -9,6 +9,7 @@ import (
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/internal/infra/jobs"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -85,7 +86,7 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 	})
 	instance := NewModule(h.runtime, enabledModuleConfig())
 	assert.Equal(t, []string{
-		platformi18n.Name, guid.Name, audit.Name, core.Name, authn.Name, identity.Name,
+		platformi18n.Name, guid.Name, audit.Name, core.Name, authn.Name, identity.Name, jobs.Name,
 	}, instance.ModuleDependencies())
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 	_, api := humatest.New(t)
@@ -150,6 +151,7 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 				Bind: func(identity.DirectoryTableNames) error { return nil },
 			})
 		}},
+		&organizationDependencyProvider{name: jobs.Name, provide: func(*module.Services) error { return nil }},
 		instance,
 	))
 	require.NoError(t, registry.Activate())

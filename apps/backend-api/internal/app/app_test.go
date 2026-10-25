@@ -1,17 +1,55 @@
 package app
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"net"
 	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/infra/secrets"
 	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// testBusinessSecretsConfig provisions a fresh, test-lifetime business key.
+// It deliberately does not reuse authentication keys or production defaults.
+func testBusinessSecretsConfig(t *testing.T) BusinessSecretsConfig {
+	t.Helper()
+	key := make([]byte, 32)
+	_, err := rand.Read(key)
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "business.key")
+	require.NoError(t, os.WriteFile(path, []byte(base64.StdEncoding.EncodeToString(key)), 0600))
+	return BusinessSecretsConfig{Enabled: true, ActiveKeyFile: path}
+}
+
+func TestBusinessSecretsFixtureKeysAreIsolatedAndRequired(t *testing.T) {
+	first := secrets.NewModule(businessSecretsConfig(AppConfig{Secrets: testBusinessSecretsConfig(t)}))
+	second := secrets.NewModule(businessSecretsConfig(AppConfig{Secrets: testBusinessSecretsConfig(t)}))
+	for _, sealer := range []*secrets.Module{first, second} {
+		require.NoError(t, sealer.Initialize(t.Context()))
+		require.NoError(t, sealer.RegisterPurpose("fixture.secret"))
+	}
+	aad, err := secrets.AssociatedData(1, 2)
+	require.NoError(t, err)
+	envelope, err := first.Seal("fixture.secret", aad, []byte("fixture value"))
+	require.NoError(t, err)
+	plain, err := first.Open("fixture.secret", aad, envelope)
+	require.NoError(t, err)
+	require.Equal(t, "fixture value", string(plain))
+	_, err = second.Open("fixture.secret", aad, envelope)
+	require.Error(t, err, "another fixture must not share its business key")
+	missing := secrets.NewModule(businessSecretsConfig(AppConfig{Secrets: BusinessSecretsConfig{Enabled: true}}))
+	require.Error(t, missing.Initialize(t.Context()))
+	_, err = missing.Seal("fixture.secret", aad, []byte("fixture value"))
+	require.ErrorIs(t, err, secrets.ErrUnavailable)
+}
 
 func TestRunRejectsInvalidConfigurationAndTimezone(t *testing.T) {
 	invalidConfig := validTestAppConfig()

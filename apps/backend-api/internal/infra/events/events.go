@@ -63,3 +63,6 @@ type Publisher interface {
 type Catalog interface {
 	AddTypes(owner string, specs ...TypeSpec) error
 }
+
+// EphemeralPublisher transports realtime hints without domain subscriber delivery.
+type EphemeralPublisher func(context.Context, *gorm.DB, Event) (guid.ID, error)

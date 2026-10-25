@@ -1,18 +1,22 @@
 package events
 
 import (
+	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/module"
+	"context"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 	"testing"
+	"time"
 )
 
 func TestModuleLifecycleAndCapabilities(t *testing.T) {
 	rt := appenv.NewRuntime(appenv.NewIdentity("test", "1"))
 	m := NewModule(rt)
 	require.Equal(t, Name, m.ModuleName())
-	require.Equal(t, []string{guid.Name}, m.ModuleDependencies())
+	require.Equal(t, []string{guid.Name, dlock.Name, "i18n"}, m.ModuleDependencies())
 	require.ErrorIs(t, m.Initialize(t.Context()), ErrUnavailable)
 	missing := module.NewServices()
 	require.NoError(t, missing.Seal())
@@ -21,6 +25,10 @@ func TestModuleLifecycleAndCapabilities(t *testing.T) {
 	require.NoError(t, m.ProvideServices(services))
 	require.Error(t, m.ProvideServices(services))
 	require.NoError(t, module.Provide[guid.Source](services, &testIDs{}))
+	require.NoError(t, module.Provide[dlock.TransactionGuard](services, func(context.Context, *gorm.DB, string) error { return nil }))
+	require.NoError(t, module.Provide[dlock.TryRenewingLease](services, func(context.Context, string, time.Duration, func(string, error)) (*dlock.Lock, error) {
+		return nil, dlock.ErrNotAcquired
+	}))
 	require.NoError(t, services.Seal())
 	require.NoError(t, m.InjectServices(services))
 	publisher, err := module.Resolve[Publisher](services)

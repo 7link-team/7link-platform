@@ -16,30 +16,58 @@ import (
 )
 
 var (
-	Q             = new(Query)
-	Channel       *channel
-	ChannelMember *channelMember
+	Q                 = new(Query)
+	Channel           *channel
+	ChannelMember     *channelMember
+	Message           *message
+	MessageAttachment *messageAttachment
+	MessageMention    *messageMention
+	MessageRevision   *messageRevision
+	MessageWork       *messageWork
+	SavedMessage      *savedMessage
+	SystemCard        *systemCard
 )
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
 	Channel = &Q.Channel
 	ChannelMember = &Q.ChannelMember
+	Message = &Q.Message
+	MessageAttachment = &Q.MessageAttachment
+	MessageMention = &Q.MessageMention
+	MessageRevision = &Q.MessageRevision
+	MessageWork = &Q.MessageWork
+	SavedMessage = &Q.SavedMessage
+	SystemCard = &Q.SystemCard
 }
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:            db,
-		Channel:       newChannel(db, opts...),
-		ChannelMember: newChannelMember(db, opts...),
+		db:                db,
+		Channel:           newChannel(db, opts...),
+		ChannelMember:     newChannelMember(db, opts...),
+		Message:           newMessage(db, opts...),
+		MessageAttachment: newMessageAttachment(db, opts...),
+		MessageMention:    newMessageMention(db, opts...),
+		MessageRevision:   newMessageRevision(db, opts...),
+		MessageWork:       newMessageWork(db, opts...),
+		SavedMessage:      newSavedMessage(db, opts...),
+		SystemCard:        newSystemCard(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	Channel       channel
-	ChannelMember channelMember
+	Channel           channel
+	ChannelMember     channelMember
+	Message           message
+	MessageAttachment messageAttachment
+	MessageMention    messageMention
+	MessageRevision   messageRevision
+	MessageWork       messageWork
+	SavedMessage      savedMessage
+	SystemCard        systemCard
 }
 
 func (q *Query) Available() bool { return q.db != nil }
@@ -48,9 +76,16 @@ func (q *Query) UnderlyingDB() *gorm.DB { return q.db }
 
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:            db,
-		Channel:       q.Channel.clone(db),
-		ChannelMember: q.ChannelMember.clone(db),
+		db:                db,
+		Channel:           q.Channel.clone(db),
+		ChannelMember:     q.ChannelMember.clone(db),
+		Message:           q.Message.clone(db),
+		MessageAttachment: q.MessageAttachment.clone(db),
+		MessageMention:    q.MessageMention.clone(db),
+		MessageRevision:   q.MessageRevision.clone(db),
+		MessageWork:       q.MessageWork.clone(db),
+		SavedMessage:      q.SavedMessage.clone(db),
+		SystemCard:        q.SystemCard.clone(db),
 	}
 }
 
@@ -64,21 +99,42 @@ func (q *Query) WriteDB() *Query {
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:            db,
-		Channel:       q.Channel.replaceDB(db),
-		ChannelMember: q.ChannelMember.replaceDB(db),
+		db:                db,
+		Channel:           q.Channel.replaceDB(db),
+		ChannelMember:     q.ChannelMember.replaceDB(db),
+		Message:           q.Message.replaceDB(db),
+		MessageAttachment: q.MessageAttachment.replaceDB(db),
+		MessageMention:    q.MessageMention.replaceDB(db),
+		MessageRevision:   q.MessageRevision.replaceDB(db),
+		MessageWork:       q.MessageWork.replaceDB(db),
+		SavedMessage:      q.SavedMessage.replaceDB(db),
+		SystemCard:        q.SystemCard.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	Channel       IChannelDo
-	ChannelMember IChannelMemberDo
+	Channel           IChannelDo
+	ChannelMember     IChannelMemberDo
+	Message           IMessageDo
+	MessageAttachment IMessageAttachmentDo
+	MessageMention    IMessageMentionDo
+	MessageRevision   IMessageRevisionDo
+	MessageWork       IMessageWorkDo
+	SavedMessage      ISavedMessageDo
+	SystemCard        ISystemCardDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		Channel:       q.Channel.WithContext(ctx),
-		ChannelMember: q.ChannelMember.WithContext(ctx),
+		Channel:           q.Channel.WithContext(ctx),
+		ChannelMember:     q.ChannelMember.WithContext(ctx),
+		Message:           q.Message.WithContext(ctx),
+		MessageAttachment: q.MessageAttachment.WithContext(ctx),
+		MessageMention:    q.MessageMention.WithContext(ctx),
+		MessageRevision:   q.MessageRevision.WithContext(ctx),
+		MessageWork:       q.MessageWork.WithContext(ctx),
+		SavedMessage:      q.SavedMessage.WithContext(ctx),
+		SystemCard:        q.SystemCard.WithContext(ctx),
 	}
 }
 

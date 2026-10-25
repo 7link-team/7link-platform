@@ -133,6 +133,7 @@ export interface SimpleSelectProps {
   triggerClassName?: string
   id?: string
   "aria-labelledby"?: string
+  "aria-label"?: string
   "aria-describedby"?: string
 }
 
@@ -153,6 +154,7 @@ export function SimpleSelect({
   triggerClassName,
   id,
   "aria-labelledby": ariaLabelledby,
+  "aria-label": ariaLabel,
   "aria-describedby": ariaDescribedby,
 }: SimpleSelectProps) {
   const items = normalizeSelectOptions(options)
@@ -167,6 +169,7 @@ export function SimpleSelect({
         id={id}
         className={cn(className, triggerClassName)}
         aria-labelledby={ariaLabelledby}
+        aria-label={ariaLabel}
         aria-describedby={ariaDescribedby}
       >
         <SelectValue placeholder={placeholder as React.ReactNode} />

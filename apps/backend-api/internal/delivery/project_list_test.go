@@ -113,7 +113,8 @@ func TestProjectListBudgetWirePrecision(t *testing.T) {
 			require.NoError(t, err)
 			var fields map[string]json.RawMessage
 			require.NoError(t, json.Unmarshal(encoded, &fields))
-			require.ElementsMatch(t, []string{"project_id", "code", "name", "client", "stage", "team_mode", "health", "health_reasons", "budget", "target_date", "lead_agent_id", "version", "updated_at"}, slices.Collect(maps.Keys(fields)))
+			require.ElementsMatch(t, []string{"project_id", "code", "name", "client", "stage", "team_mode", "health", "health_reasons", "budget", "target_date", "lead_agent_id", "version", "updated_at", "archived_at"}, slices.Collect(maps.Keys(fields)))
+			require.JSONEq(t, `null`, string(fields["archived_at"]), "active projects retain the explicit nullable archive marker")
 			// The existing detail response deliberately retains its original numeric
 			// amount contract; the list must not silently rewrite that API.
 			row, err := p.WithContext(t.Context()).Where(p.ProjectID.Eq(guid.ID(101))).First()
@@ -196,6 +197,11 @@ func TestProjectListFiltersBeforeCountingAndPaging(t *testing.T) {
 	require.Equal(t, &projectClientView{ID: 98, Name: "Customer"}, page.Records[0].Client)
 	require.Equal(t, "Beta", list(all, "", 1, 1).Records[0].Name)
 	require.Equal(t, int64(1), list(all, "archived=eq:true", 0, 100).Total)
+	require.Equal(t, int64(4), list(all, "archived=in:true,false", 0, 100).Total)
+	archivedPage := list(all, "archived=eq:true", 0, 100)
+	require.NotNil(t, archivedPage.Records[0].ArchivedAt)
+	require.Equal(t, int64(3), list(authz.DataConstraint{AllowAll: true, DeniedIDs: []string{"102"}}, "archived=in:true,false", 0, 100).Total)
+
 	require.Equal(t, int64(1), list(all, "health=in:AMBER,RED&name=like:amm", 0, 100).Total)
 	require.Equal(t, int64(1), list(all, "client_entity_id=eq:98", 0, 100).Total)
 	require.Equal(t, int64(1), list(all, "code=eq:P102&stage=in:INTAKE,ACTIVE&team_mode=eq:HYBRID", 0, 100).Total)

@@ -281,7 +281,7 @@ func (a *AccountObjects) UseAvatarCandidate(ctx context.Context, tx *gorm.DB, pr
 	}
 	q := query.Bind(tx, a.prefix)
 	object := q.Object
-	row, err := object.WithContext(ctx).Where(object.BackendID.Eq(a.backend), object.StorageKey.Eq(key), object.State.Eq("verified")).Take()
+	row, err := object.WithContext(ctx).Where(object.BackendID.In(a.readableBackends()...), object.StorageKey.Eq(key), object.State.Eq("verified")).Take()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrNotFound
 	}
@@ -335,7 +335,7 @@ func (a *AccountObjects) AccountKeyReadable(ctx context.Context, db *gorm.DB, pr
 	}
 	q := query.Bind(db, a.prefix)
 	object := q.Object
-	row, err := object.WithContext(ctx).Where(object.BackendID.Eq(a.backend), object.StorageKey.Eq(key), object.State.Eq("verified")).Take()
+	row, err := object.WithContext(ctx).Where(object.BackendID.In(a.readableBackends()...), object.StorageKey.Eq(key), object.State.Eq("verified")).Take()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, nil
 	}
@@ -343,7 +343,7 @@ func (a *AccountObjects) AccountKeyReadable(ctx context.Context, db *gorm.DB, pr
 		return false, err
 	}
 	ref := q.AccountReference
-	count, err := ref.WithContext(ctx).Where(ref.PrincipalID.Eq(principalID), ref.ObjectID.Eq(row.ID), ref.State.Eq("active")).Where(ref.WithContext(ctx).Where(ref.ExpiresAt.IsNull()).Or(ref.ExpiresAt.Gt(now.UnixMilli()))).Count()
+	count, err := ref.WithContext(ctx).Where(ref.PrincipalID.Eq(principalID), ref.ObjectID.Eq(row.ID), ref.Purpose.Neq("terminal_recording"), ref.State.Eq("active")).Where(ref.WithContext(ctx).Where(ref.ExpiresAt.IsNull()).Or(ref.ExpiresAt.Gt(now.UnixMilli()))).Count()
 	return count > 0, err
 }
 

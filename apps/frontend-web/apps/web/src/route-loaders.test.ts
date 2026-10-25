@@ -61,7 +61,7 @@ it("sends the console home to the view the caller can use", () => {
       myPermissions:async()=>access.permissions,
       myOperatingPlatforms:async()=>access.platforms,
       systemPermissions:async()=>{if(access.fail)throw new Error("offline");return access.system},
-      memberEntities:async(permission)=>access.entities[permission]??[],
+      memberEntities:async(permission)=>(Array.isArray(permission)?permission:[permission]).flatMap(code=>access.entities[code]??[]),
     });
     const home=async(next,stored)=>{
       access={memberships:[],permissions:[],platforms:[],system:[],entities:{},...next};
@@ -112,9 +112,8 @@ it("sends the console home to the view the caller can use", () => {
   expect(result.status).toBe(0)
 })
 
-// Entering a tenant decides its perspective before the navigation commits, so
-// everything this loader asks has to name the tenant being entered rather than
-// follow the address bar, which still shows the tenant or platform being left.
+// Perspective discovery may start before navigation commits, so every lookup
+// names the tenant being entered rather than following the address bar.
 it("decides the perspective of the tenant being entered", () => {
   const result = spawnSync(
     process.execPath,
@@ -127,11 +126,13 @@ it("decides the perspective of the tenant being entered", () => {
     globalThis.window=Object.assign(new EventTarget(),{location:{origin:"http://console.test",pathname:"/"},close(){}});
     const {tenantWorkspaceLoader}=await import("./route-loaders.ts");
     const {iamApi}=await import("./lib/iam-api.ts");
+    const {workspaceEntityPermissions}=await import("./lib/navigation.ts");
     let access;
     const asked=[];
     globalThis.fetch=async(input)=>{
       const url=new URL(String(input),"http://console.test");
       if(url.pathname.endsWith("/me"))return Response.json({code:0,data:{subject:"9"}});
+      if(url.pathname.endsWith("/client-access"))return Response.json({code:0,data:{external:false,projects:{items:[],has_more:false}}});
       const entities=url.pathname.match(/^.api.tenants.([0-9]+).principals.9.entities$/);
       if(entities){
         asked.push(entities[1]);
@@ -148,14 +149,18 @@ it("decides the perspective of the tenant being entered", () => {
       access={tenant,permissions:[],entities:[],...next};
       asked.length=0;
       window.location.pathname=from;
-      const result=await tenantWorkspaceLoader({params:{tenantID:tenant}});
-      return result?.headers.get("Location")??null;
+      const result=tenantWorkspaceLoader({params:{tenantID:tenant}});
+      return (await result.workspacePath)||null;
     };
     const active=(id)=>({id,name:"Entity "+id,status:"active"});
     // Any standing at tenant level keeps the tenant's own perspective.
     assert.equal(await enter("2",{permissions:["user_view"],entities:[active("5")]}),null);
+    assert.deepEqual(asked,[]);
     // Nothing at tenant level and an entity that admits the caller.
     assert.equal(await enter("2",{entities:[active("5")]}),"/admin/2/entities/5/files");
+    // Project roles may explicitly open the scoped Home without acquiring
+    // tenant permissions. Generic entity-only accounts keep their default.
+    assert.equal(await enter("2",{entities:[{...active("5"),type:"project"}]}),null);
     // The switcher offers only active entities, so the loader lands in one.
     assert.equal(
       await enter("2",{entities:[{id:"4",name:"Old",status:"suspended"},active("5")]}),
@@ -163,6 +168,7 @@ it("decides the perspective of the tenant being entered", () => {
     assert.equal(await enter("2",{entities:[{id:"4",name:"Old",status:"suspended"}]}),null);
     // A failed lookup moves nobody.
     assert.equal(await enter("2",{fail:true,entities:[active("5")]}),null);
+    assert.deepEqual(asked,[]);
     // Leaving another tenant or a platform: the entity listing still asks about
     // the tenant being entered.
     assert.equal(
@@ -177,6 +183,49 @@ it("decides the perspective of the tenant being entered", () => {
     ],
     { cwd: import.meta.dir, stdio: "pipe", windowsHide: true }
   )
+  expect(result.stderr.toString()).toBe("")
+  expect(result.status).toBe(0)
+})
+
+it("commits the copied tenant-admin workspace before its real permission shape resolves", () => {
+  const result = spawnSync(process.execPath, ["--eval", `
+    import assert from "node:assert/strict";
+    import { readFileSync } from "node:fs";
+    import { createMemoryRouter } from "react-router";
+    const fixture=JSON.parse(readFileSync("../tests/fixtures/tenant-admin-permissions.json","utf8"));
+    const saved=new Map();
+    globalThis.sessionStorage={getItem:key=>saved.get(key)??null,setItem:(key,value)=>saved.set(key,value)};
+    globalThis.window=Object.assign(new EventTarget(),{location:{origin:"http://console.test",pathname:"/admin/workspaces"},close(){}});
+    const {tenantWorkspaceLoader}=await import("./route-loaders.ts");
+    let complete;
+    const permissions=new Promise(resolve=>{complete=resolve});
+    const asked=[];
+    globalThis.fetch=async(input)=>{
+      const path=new URL(String(input),"http://console.test").pathname;
+      asked.push(path);
+      if(path==="/api/me")return Response.json({code:0,data:{subject:fixture.subject,organization_id:fixture.tenantID}});
+      if(path==="/api/tenants/"+fixture.tenantID+"/principals/"+fixture.subject+"/permissions") {
+        await permissions;
+        return Response.json(fixture.response);
+      }
+      throw new Error("unexpected discovery: "+path);
+    };
+    const destination="/admin/"+fixture.tenantID;
+    const router=createMemoryRouter([
+      {path:"/admin/workspaces"},
+      {path:"/admin/:tenantID",loader:tenantWorkspaceLoader},
+    ],{initialEntries:["/admin/workspaces"]});
+    try {
+      await Promise.race([router.navigate(destination),new Promise(resolve=>setTimeout(resolve,150))]);
+      assert.equal(router.state.location.pathname,destination,"slow permission discovery must not hold the chooser URL");
+      assert.equal(router.state.navigation.state,"idle");
+      const {workspacePath}=Object.values(router.state.loaderData)[0];
+      assert(workspacePath instanceof Promise);
+      complete();
+      assert.equal(await workspacePath,"","the real tenant-admin response retains tenant perspective");
+      assert.deepEqual(asked,["/api/me","/api/tenants/"+fixture.tenantID+"/principals/"+fixture.subject+"/permissions"]);
+    } finally {complete();router.dispose()}
+  `], {cwd: import.meta.dir, stdio: "pipe", windowsHide: true})
   expect(result.stderr.toString()).toBe("")
   expect(result.status).toBe(0)
 })

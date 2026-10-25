@@ -1,6 +1,10 @@
 import { redirect, type LoaderFunctionArgs } from "react-router"
 import { getTenant, iamApi, setTenant } from "./lib/iam-api"
-import { defaultWorkspacePath, entityWorkspaceView } from "./lib/navigation"
+import {
+  defaultWorkspacePath,
+  entityWorkspaceView,
+  workspaceEntityPermissions,
+} from "./lib/navigation"
 import { accountViewPath, getAccountView } from "./lib/account-view"
 import {
   authEntrance,
@@ -52,24 +56,34 @@ export function legacyRouteLoader({ request }: LoaderFunctionArgs) {
 // perspective, and one the service cannot answer for keeps it too -- a failed
 // lookup must not move anybody.
 //
-// Both lookups name the tenant. A loader runs before the navigation commits, so
-// the address bar -- which the selected tenant follows -- still shows wherever
-// the caller is leaving, another tenant or a platform.
-async function entityWorkspacePath(tenantID: string): Promise<string> {
+// Both lookups name the tenant. Discovery can begin before navigation commits
+// and finish after it; the selected tenant must not follow the address bar's
+// timing or inherit the tenant or platform the caller is leaving.
+async function entityWorkspacePath(tenantID: string, projectHome = false): Promise<string> {
   if (!tenantID) return ""
   const none: { id: string; status: string }[] = []
-  const [tenantPermissions, entities] = await Promise.all([
-    iamApi.myPermissions(tenantID).catch(() => ["unknown"]),
-    iamApi.memberEntities("file_view", tenantID).catch(() => none),
-  ])
+  const tenantPermissions = await iamApi.myPermissions(tenantID).catch(() => ["unknown"])
   if ((tenantPermissions ?? []).length > 0) return ""
+  const entities = await iamApi
+    .memberEntities(workspaceEntityPermissions, tenantID)
+    .catch(() => none)
   // The same listing the switcher offers, filtered the way it filters, so the
   // two name the same entity; and the files view because an account with no
   // tenant standing has no tenant-wide entity administration either -- the
   // overview would be one refusal.
-  const entity = entities.find((candidate) => candidate.status === "active")
+  const entity = entities.find(
+    (candidate) =>
+      candidate.status === "active" &&
+      (!("type" in candidate) || candidate.type !== "client")
+  )
   if (!entity) return ""
-  return `/admin/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entity.id)}/${entityWorkspaceView(tenantPermissions ?? [])}`
+  // Explicit Home navigation admits project members. Its source API applies
+  // project and row authority; this does not grant tenant administration.
+  if (projectHome && "type" in entity && entity.type === "project") return ""
+  const granted = await iamApi
+    .myPermissions(tenantID, entity.id)
+    .catch(() => [])
+  return `/admin/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entity.id)}/${entityWorkspaceView(granted, "type" in entity ? String(entity.type) : undefined)}`
 }
 
 // tenantWorkspaceLoader decides which perspective of one named tenant the caller
@@ -82,11 +96,16 @@ async function entityWorkspacePath(tenantID: string): Promise<string> {
 // that admits it. Everybody else -- a member with any standing, an operator whose
 // authority comes from above and who has no tenant grants at all -- gets the
 // tenant's own perspective, which is what they asked for.
-export async function tenantWorkspaceLoader({ params }: LoaderFunctionArgs) {
+export function tenantWorkspaceLoader({ params }: LoaderFunctionArgs) {
   const tenantID = String(params.tenantID ?? "")
-  if (!tenantID || getAccountView()) return null
-  const entityHome = await entityWorkspacePath(tenantID)
-  return entityHome ? redirect(entityHome) : null
+  // Commit the destination before its perspective lookup finishes. Returning
+  // this promise as data keeps a slow permission read from pinning a click to
+  // the chooser's URL; the destination waits before rendering its contents.
+  return {
+    workspacePath: !tenantID || getAccountView()
+      ? Promise.resolve("")
+      : entityWorkspacePath(tenantID, true),
+  }
 }
 
 export async function workspaceHomeLoader() {

@@ -176,7 +176,7 @@ func assertProvisioningUp(t *testing.T, db *gorm.DB, modules []module.Module, pr
 		milestones[report.Module] = report.Milestone
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
-	assert.Equal(t, "role-member-expiry", milestones[iamcore.Name])
+	assert.Equal(t, "menu-contributions", milestones[iamcore.Name])
 	assert.Equal(t, "administration-scopes", milestones[organization.Name])
 	assert.Equal(t, "phone", milestones[identity.Name])
 	assert.Equal(t, "outbound-coordination", milestones[provisioning.Name])

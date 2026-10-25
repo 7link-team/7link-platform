@@ -1,6 +1,8 @@
 package app
 
 import (
+	"7link.com/platform/internal/clientwork"
+	"7link.com/platform/internal/execution"
 	"fmt"
 	"time"
 
@@ -20,9 +22,28 @@ type Jobs struct {
 	DrainTimeout        time.Duration  `mapstructure:"drain_timeout" default:"15s"`
 }
 
+// BusinessSecretsConfig exposes deployment settings independently of module activation internals.
+type BusinessSecretsConfig struct {
+	Enabled          bool     `mapstructure:"enabled" default:"false" description:"enable purpose-bound business secret sealing"`
+	ActiveKey        string   `mapstructure:"active_key" secret:"true"`
+	ActiveKeyFile    string   `mapstructure:"active_key_file"`
+	PreviousKeys     []string `mapstructure:"previous_keys" secret:"true"`
+	PreviousKeyFiles []string `mapstructure:"previous_key_files"`
+}
+
 type AppConfig struct {
-	Name    string `mapstructure:"name" description:"application name" trim:"true" default:""`
-	Version string `mapstructure:"version" description:"application version" trim:"true"`
+	SubmissionBundles clientwork.SubmissionBundleConfig `mapstructure:"submission_bundles" group:"submission_bundles"`
+	Secrets           BusinessSecretsConfig             `mapstructure:"secrets" group:"secrets"`
+	Execution         execution.Config                  `mapstructure:"execution" group:"execution"`
+	HiddenVerifier    HiddenVerifierConfig              `mapstructure:"hidden_verifier" group:"hidden_verifier"`
+	Notification      NotificationConfig                `mapstructure:"notification" group:"notification"`
+	Integration       IntegrationCredentialsConfig      `mapstructure:"integration" group:"integration"`
+	Fleet             FleetGatewayConfig                `mapstructure:"fleet" group:"fleet"`
+	Agents            AgentProtocolConfig               `mapstructure:"agents" group:"agents"`
+	Knowledge         KnowledgeConfig                   `mapstructure:"knowledge" group:"knowledge"`
+	Collaboration     CollaborationConfig               `mapstructure:"collaboration" group:"collaboration"`
+	Name              string                            `mapstructure:"name" description:"application name" trim:"true" default:""`
+	Version           string                            `mapstructure:"version" description:"application version" trim:"true"`
 
 	Debug bool `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
 	// Deployment is what people signing in see. Name above is what operators
@@ -79,10 +100,45 @@ type IAMCore struct {
 	RequirePlatformAdministrator bool `mapstructure:"require_platform_administrator" description:"report IAM unready until a platform administrator exists" default:"true"`
 }
 
+// CollaborationConfig protects persisted channel connector credentials.
+type CollaborationConfig struct {
+	ConnectorEncryptionKey              string   `mapstructure:"connector_encryption_key" default:"" secret:"true"`
+	ConnectorEncryptionKeyFile          string   `mapstructure:"connector_encryption_key_file" default:""`
+	PreviousConnectorEncryptionKeys     []string `mapstructure:"previous_connector_encryption_keys" secret:"true"`
+	PreviousConnectorEncryptionKeyFiles []string `mapstructure:"previous_connector_encryption_key_files"`
+}
+
+// KnowledgeConfig controls optional outbound knowledge source transports.
+type KnowledgeConfig struct {
+	Remote    KnowledgeRemoteConfig    `mapstructure:"remote" group:"remote"`
+	Embedding KnowledgeEmbeddingConfig `mapstructure:"embedding" group:"embedding"`
+}
+
+type KnowledgeEmbeddingConfig struct {
+	Enabled         bool     `mapstructure:"enabled" default:"false" description:"enable optional PostgreSQL vector retrieval and sealed embedding configuration"`
+	AllowedHosts    []string `mapstructure:"allowed_hosts" description:"explicit embedding provider HTTPS host allowlist"`
+	AllowedNetworks []string `mapstructure:"allowed_networks" description:"explicit permitted embedding service CIDR ranges"`
+}
+
+type KnowledgeRemoteConfig struct {
+	Enabled              bool   `mapstructure:"enabled" default:"false" description:"enable strict public HTTPS knowledge source fetching"`
+	RepositoryHost       string `mapstructure:"repository_host" default:"" description:"repository locator host using a GitHub-compatible archive API"`
+	RepositoryAPIBaseURL string `mapstructure:"repository_api_base_url" default:"" description:"HTTPS repository archive API base URL"`
+	RepositoryToken      string `mapstructure:"repository_token" default:"" secret:"true" description:"optional repository API bearer credential"`
+}
+
+type FileReadBackendConfig struct {
+	Driver  string            `mapstructure:"driver" description:"file storage driver"`
+	Options map[string]string `mapstructure:"options" group:"options" mapkey:"<option>" secret:"true" description:"file storage driver settings"`
+}
+
 // FilesConfig owns storage settings shared by all file consumers.
 type FilesConfig struct {
-	LocalRoot        string            `mapstructure:"local_root" description:"final local file storage root" default:"data/files"`
-	LegacyLocalRoots map[string]string `mapstructure:"legacy_local_roots" group:"legacy_local_roots" mapkey:"<key-prefix>" description:"migration-only mapping from legacy key prefixes to source local roots"`
+	Backend          string                           `mapstructure:"backend" description:"active file storage driver" default:"local"`
+	Options          map[string]string                `mapstructure:"options" group:"options" mapkey:"<option>" secret:"true" description:"active storage settings; use credential files for secrets"`
+	ReadBackends     map[string]FileReadBackendConfig `mapstructure:"read_backends" group:"read_backends" mapkey:"<backend>" description:"legacy storage identities retained during migration"`
+	LocalRoot        string                           `mapstructure:"local_root" description:"final local file storage root" default:"data/files"`
+	LegacyLocalRoots map[string]string                `mapstructure:"legacy_local_roots" group:"legacy_local_roots" mapkey:"<key-prefix>" description:"migration-only mapping from legacy key prefixes to source local roots"`
 }
 
 // IAMAudit configures the IAM domain audit chain. It is intentionally separate
@@ -470,4 +526,27 @@ func validateRuntimeConfig(config AppConfig) error {
 		}
 	}
 	return nil
+}
+
+// IntegrationCredentialsConfig seals connector credentials with deployment-owned keys.
+type IntegrationCredentialsConfig struct {
+	EncryptionKey              string   `mapstructure:"encryption_key" default:"" secret:"true"`
+	EncryptionKeyFile          string   `mapstructure:"encryption_key_file" default:""`
+	PreviousEncryptionKeys     []string `mapstructure:"previous_encryption_keys" secret:"true"`
+	PreviousEncryptionKeyFiles []string `mapstructure:"previous_encryption_key_files"`
+}
+
+// HiddenVerifierConfig selects an operator-managed verifier adapter. No executor
+// request may select its identity, runtime, model, family or command.
+type HiddenVerifierConfig struct {
+	RuntimeAuthEnv string   `mapstructure:"runtime_auth_env" description:"backend environment variable containing dedicated model API credential"`
+	OSUser         string   `mapstructure:"os_user" description:"dedicated non-administrator Windows verifier account"`
+	OSDomain       string   `mapstructure:"os_domain" description:"Windows verifier account domain"`
+	PasswordEnv    string   `mapstructure:"password_env" secret:"true" description:"name of environment variable holding verifier account password"`
+	PrincipalID    int64    `mapstructure:"principal_id" description:"dedicated existing IAM service principal with acceptance_suite_verify authority" default:"0"`
+	Executable     string   `mapstructure:"executable" description:"absolute trusted verifier adapter executable outside all executor repositories" default:""`
+	Args           []string `mapstructure:"args" description:"trusted verifier adapter arguments; hidden content is sent on stdin only"`
+	Model          string   `mapstructure:"model" description:"actual model pinned by the trusted verifier adapter" default:""`
+	Family         string   `mapstructure:"family" description:"actual provider model family; must differ from the frozen executor family" default:""`
+	TimeoutSec     int      `mapstructure:"timeout_sec" description:"verifier clone and command timeout in seconds (1 to 3600)" default:"300"`
 }

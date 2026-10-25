@@ -1,0 +1,17 @@
+{
+ "bundle_stale": "Build the delivery bundle again before publishing.",
+ "bundle_failed": "The delivery bundle could not be safely built.",
+  "dispatch_expired": "This dispatch proposal has expired. Generate a new proposal.",
+  "share_ended": "This preview link has expired or been revoked.",
+  "invalid": "Invalid collaboration input.",
+  "not_found": "Object not found.",
+  "conflict": "The version or state changed. Reload and try again.",
+  "forbidden": "This action is not allowed.",
+  "unavailable": "Collaboration storage is unavailable.",
+  "internal": "Unable to complete the collaboration operation.",
+  "open_exception": "Resolve the open tolerance exception before changing this commitment.",
+  "clarification_reminder": "You have clarification questions awaiting your response. Due: {due_at}.",
+  "dispatch_starved": "Work item {subject_id} has had no active assignment for more than four hours.",
+  "acceptance_reminder": "Delivery {package_id} is awaiting your receipt. Due: {due_at}.",
+  "acceptance_overdue": "Delivery {package_id} is overdue for client acceptance. Follow up with the client."
+}

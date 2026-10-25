@@ -40,6 +40,8 @@ export function WorkspaceSwitcher({
   onOperatingPlatform,
   operatingPlatformID = "",
   tenantPerspective = false,
+  mode = "combined",
+  entitySwitchDisabled = false,
 }: {
   tenantID: string
   entityID: string
@@ -62,6 +64,8 @@ export function WorkspaceSwitcher({
    *  shell there is shaped for administering the tenant, and offering it is
    *  showing a view that is not theirs. */
   tenantPerspective?: boolean
+  mode?: "combined" | "tenant" | "instance"
+  entitySwitchDisabled?: boolean
 }) {
   const t = useTranslations("iam")
   const [open, setOpen] = useState(false)
@@ -110,8 +114,20 @@ export function WorkspaceSwitcher({
         render={
           <Button
             variant="outline"
-            className="h-11 max-w-52 min-w-0 justify-start sm:max-w-80"
-            aria-label={t("switchWorkspace")}
+            className={`h-11 min-w-0 justify-start ${mode === "instance" ? "w-full" : "max-w-52 sm:max-w-80"}`}
+            aria-label={t(
+              mode === "instance"
+                ? "switchInstance"
+                : mode === "tenant"
+                  ? "switchTenant"
+                  : "switchWorkspace"
+            )}
+            disabled={mode === "instance" && entitySwitchDisabled}
+            title={
+              mode === "instance" && entitySwitchDisabled
+                ? t("tenantOnlyResource")
+                : undefined
+            }
           />
         }
       >
@@ -121,48 +137,57 @@ export function WorkspaceSwitcher({
           <Building2 className="shrink-0" />
         )}
         <span className="min-w-0 truncate">
-          {operatingPlatformID
-            ? operatingPlatforms.find(
-                (platform) => platform.id === operatingPlatformID
-              )?.name || `${t("operatingPlatforms")} · ${operatingPlatformID}`
-            : systemView
-              ? t("platformManagement")
-              : `${tenantName} / ${entityID ? entityName : t("tenantPerspective")}`}
+          {mode === "instance"
+            ? entityID
+              ? entityName
+              : t("allInstances")
+            : mode === "tenant"
+              ? tenantName
+              : operatingPlatformID
+                ? operatingPlatforms.find(
+                    (platform) => platform.id === operatingPlatformID
+                  )?.name ||
+                  `${t("operatingPlatforms")} · ${operatingPlatformID}`
+                : systemView
+                  ? t("platformManagement")
+                  : `${tenantName} / ${entityID ? entityName : t("tenantPerspective")}`}
         </span>
         <ChevronsUpDown className="shrink-0" />
       </PopoverTrigger>
       <PopoverContent
         data-workspace-switcher
         align="start"
-        className="max-h-[min(75svh,var(--available-height))] w-[min(640px,calc(100vw-24px))] overflow-y-auto"
+        className={`max-h-[min(75svh,var(--available-height))] overflow-y-auto ${mode === "combined" ? "w-[min(640px,calc(100vw-24px))]" : "w-[min(320px,calc(100vw-24px))]"}`}
         aria-label={t("switchWorkspace")}
         aria-describedby={undefined}
       >
-        <div className="mb-4 flex flex-wrap gap-2 border-b pb-3">
-          {systemPath && (
+        {mode === "combined" && (
+          <div className="mb-4 flex flex-wrap gap-2 border-b pb-3">
+            {systemPath && (
+              <Button
+                variant={systemView ? "secondary" : "outline"}
+                onClick={() => {
+                  onSystem?.()
+                  setOpen(false)
+                }}
+              >
+                <Landmark />
+                {t("platformManagement")}
+              </Button>
+            )}
             <Button
-              variant={systemView ? "secondary" : "outline"}
+              variant="outline"
               onClick={() => {
-                onSystem?.()
+                onPersonal?.()
                 setOpen(false)
               }}
             >
-              <Landmark />
-              {t("platformManagement")}
+              <UserRound />
+              {t("account")}
             </Button>
-          )}
-          <Button
-            variant="outline"
-            onClick={() => {
-              onPersonal?.()
-              setOpen(false)
-            }}
-          >
-            <UserRound />
-            {t("account")}
-          </Button>
-        </div>
-        {operatingPlatforms.length > 0 && (
+          </div>
+        )}
+        {mode === "combined" && operatingPlatforms.length > 0 && (
           <section className="mb-4 border-b pb-3">
             <h2 className="mb-2 text-sm font-semibold">
               {t("operatingPlatforms")}
@@ -188,137 +213,177 @@ export function WorkspaceSwitcher({
             </div>
           </section>
         )}
-        <div className="grid min-h-64 grid-cols-1 gap-4 sm:grid-cols-[1fr_1.4fr]">
-          <section
-            className="min-w-0 sm:border-e sm:pe-4"
-            aria-label={t("currentTenant")}
-          >
-            <h2 className="mb-2 text-sm font-semibold">{t("currentTenant")}</h2>
-            {tenantError ? (
-              <Alert>
-                <p>{tenantError}</p>
-                <Button variant="outline" onClick={onRetryTenants}>
-                  {t("retryNow")}
-                </Button>
-              </Alert>
-            ) : tenants ? (
-              <>
-                {filterTenants && (
-                  <AutoForm
-                    className="mb-2 md:grid-cols-1 [&>*]:col-span-1"
-                    hideLabel
-                    fields={{
-                      query: {
-                        name: t("searchTenants"),
-                        type: "text",
-                        value: tenantFilter,
-                        config: { placeholder: t("searchTenants") },
-                      },
-                    }}
-                    onChange={(values) => {
-                      if (values.query !== tenantFilter)
-                        setTenantFilter(String(values.query ?? ""))
-                    }}
-                  />
-                )}
-                <div className="max-h-60 space-y-1 overflow-y-auto">
-                  {activeTenants.length === 0 && (
-                    <p className="text-sm">{t("noAvailableTenants")}</p>
+        <div
+          className={
+            mode === "combined"
+              ? "grid min-h-64 grid-cols-1 gap-4 sm:grid-cols-[1fr_1.4fr]"
+              : "space-y-3"
+          }
+        >
+          {mode !== "instance" && (
+            <section
+              className="min-w-0 sm:border-e sm:pe-4"
+              aria-label={t("currentTenant")}
+            >
+              <h2 className="mb-2 text-sm font-semibold">
+                {t("currentTenant")}
+              </h2>
+              {tenantError ? (
+                <Alert>
+                  <p>{tenantError}</p>
+                  <Button variant="outline" onClick={onRetryTenants}>
+                    {t("retryNow")}
+                  </Button>
+                </Alert>
+              ) : tenants ? (
+                <>
+                  {filterTenants && (
+                    <AutoForm
+                      className="mb-2 md:grid-cols-1 [&>*]:col-span-1"
+                      hideLabel
+                      fields={{
+                        query: {
+                          name: t("searchTenants"),
+                          type: "text",
+                          value: tenantFilter,
+                          config: { placeholder: t("searchTenants") },
+                        },
+                      }}
+                      onChange={(values) => {
+                        if (values.query !== tenantFilter)
+                          setTenantFilter(String(values.query ?? ""))
+                      }}
+                    />
                   )}
-                  {activeTenants.length > 0 && shownTenants.length === 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      {t("noMatches")}
-                    </p>
-                  )}
-                  <WorkspaceTenantRows
-                    tenants={shownTenants}
-                    tenantID={tenantID}
-                    groupEntitiesUnderTenant={groupEntitiesUnderTenant}
-                    onTenant={(id) => {
-                      onTenant(id)
-                      setOpen(false)
-                    }}
-                  />
-                </div>
-              </>
-            ) : (
-              <p role="status" className="text-sm">
-                {t("loading")}
-              </p>
-            )}
-          </section>
-          <section className="min-w-0" aria-label={t("entityPerspective")}>
-            <h2 className="mb-2 text-sm font-semibold break-words">
-              {tenantName}
-            </h2>
-            {!groupEntitiesUnderTenant && (
-              <button
-                type="button"
-                disabled={!tenantID}
-                onClick={() => {
-                  onEntity("")
-                  setOpen(false)
-                }}
-                className="mb-3 flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-accent"
-              >
-                <Building2 className="size-4 shrink-0" />
-                <span>{t("tenantPerspective")}</span>
-                {tenantView && !entityID && (
-                  <Check className="ms-auto size-4 shrink-0" />
-                )}
-              </button>
-            )}
-            {tenantView && (
-              <>
-                <h3 className="mb-2 text-xs font-medium text-muted-foreground">
-                  {t("entityPerspective")}
-                </h3>
-                {error ? (
-                  <Alert>{error}</Alert>
-                ) : !entities ? (
-                  <p role="status" className="text-sm">
-                    {t("loading")}
-                  </p>
-                ) : (
                   <div className="max-h-60 space-y-1 overflow-y-auto">
-                    {entities
-                      .filter((entity) => entity.status === "active")
-                      .map((entity) => (
-                        <button
-                          key={entity.id}
-                          type="button"
-                          onClick={() => {
-                            onEntity(entity.id)
-                            setOpen(false)
-                          }}
-                          className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
-                        >
-                          <Network className="size-4 shrink-0" />
-                          <span className="min-w-0 break-words">
-                            {entity.name}
-                            {entity.parent_id && (
-                              <span className="block text-xs text-muted-foreground">
-                                {entities.find(
-                                  (parent) => parent.id === entity.parent_id
-                                )?.name ?? entity.parent_id}
-                              </span>
-                            )}
-                          </span>
-                          {entityID === entity.id && (
-                            <Check className="ms-auto size-4 shrink-0" />
-                          )}
-                        </button>
-                      ))}
-                    {!entities.some((entity) => entity.status === "active") && (
-                      <p className="p-3 text-sm text-muted-foreground">
-                        {t("noEntities")}
+                    {activeTenants.length === 0 && (
+                      <p className="text-sm">{t("noAvailableTenants")}</p>
+                    )}
+                    {activeTenants.length > 0 && shownTenants.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        {t("noMatches")}
                       </p>
                     )}
+                    <WorkspaceTenantRows
+                      tenants={shownTenants}
+                      tenantID={tenantID}
+                      groupEntitiesUnderTenant={groupEntitiesUnderTenant}
+                      onTenant={(id) => {
+                        onTenant(id)
+                        setOpen(false)
+                      }}
+                    />
                   </div>
-                )}
-              </>
-            )}
-          </section>
+                </>
+              ) : (
+                <p role="status" className="text-sm">
+                  {t("loading")}
+                </p>
+              )}
+            </section>
+          )}
+          {mode === "tenant" && (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                onPersonal?.()
+                setOpen(false)
+              }}
+            >
+              {t("manageWorkspaces")}
+            </Button>
+          )}
+          {mode !== "tenant" && (
+            <section className="min-w-0" aria-label={t("instanceScope")}>
+              <h2 className="mb-2 text-sm font-semibold break-words">
+                {tenantName}
+              </h2>
+              {!groupEntitiesUnderTenant && (
+                <button
+                  type="button"
+                  disabled={!tenantID}
+                  onClick={() => {
+                    onEntity("")
+                    setOpen(false)
+                  }}
+                  className="mb-3 flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-accent"
+                >
+                  <Building2 className="size-4 shrink-0" />
+                  <span>
+                    {t(
+                      mode === "instance" ? "allInstances" : "tenantPerspective"
+                    )}
+                  </span>
+                  {tenantView && !entityID && (
+                    <Check className="ms-auto size-4 shrink-0" />
+                  )}
+                </button>
+              )}
+              {tenantView && (
+                <>
+                  <h3 className="mb-2 text-xs font-medium text-muted-foreground">
+                    {t(
+                      mode === "instance"
+                        ? "instanceScope"
+                        : "entityPerspective"
+                    )}
+                  </h3>
+                  {error ? (
+                    <Alert>{error}</Alert>
+                  ) : !entities ? (
+                    <p role="status" className="text-sm">
+                      {t("loading")}
+                    </p>
+                  ) : (
+                    <div className="max-h-60 space-y-1 overflow-y-auto">
+                      {entities
+                        .filter(
+                          (entity) =>
+                            entity.status === "active" &&
+                            (mode !== "instance" || entity.type !== "client")
+                        )
+                        .map((entity) => (
+                          <button
+                            key={entity.id}
+                            type="button"
+                            onClick={() => {
+                              onEntity(entity.id)
+                              setOpen(false)
+                            }}
+                            className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
+                          >
+                            <Network className="size-4 shrink-0" />
+                            <span className="min-w-0 break-words">
+                              {entity.name}
+                              {mode === "combined" && entity.parent_id && (
+                                <span className="block text-xs text-muted-foreground">
+                                  {entities.find(
+                                    (parent) => parent.id === entity.parent_id
+                                  )?.name ?? entity.parent_id}
+                                </span>
+                              )}
+                            </span>
+                            {entityID === entity.id && (
+                              <Check className="ms-auto size-4 shrink-0" />
+                            )}
+                          </button>
+                        ))}
+                      {!entities.some(
+                        (entity) =>
+                          entity.status === "active" &&
+                          (mode !== "instance" || entity.type !== "client")
+                      ) && (
+                        <p className="p-3 text-sm text-muted-foreground">
+                          {t("noEntities")}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+          )}
         </div>
       </PopoverContent>
     </Popover>

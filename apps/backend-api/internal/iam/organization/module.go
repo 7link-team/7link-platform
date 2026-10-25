@@ -11,6 +11,7 @@ import (
 	"7link.com/platform/internal/iam/identity"
 	organizationi18n "7link.com/platform/internal/iam/organization/i18n"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/internal/infra/jobs"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
 	platformi18n "7link.com/platform/pkg/i18n"
@@ -72,7 +73,7 @@ func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 func (*Module) ModuleName() string { return Name }
 
 func (*Module) ModuleDependencies() []string {
-	return []string{platformi18n.Name, guid.Name, audit.Name, core.Name, authn.Name, identity.Name}
+	return []string{platformi18n.Name, guid.Name, audit.Name, core.Name, authn.Name, identity.Name, jobs.Name}
 }
 
 func (m *Module) ProvideServices(services *module.Services) error {

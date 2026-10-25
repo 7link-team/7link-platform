@@ -15,6 +15,12 @@ func randomAvatarPNG(style string) ([]byte, error) {
 	if _, err := rand.Read(seed[:]); err != nil {
 		return nil, err
 	}
+	return avatarPNG(style, seed)
+}
+
+// avatarPNG shares the portrait renderer between random Human candidates and
+// reproducible Agent candidates; callers choose the seed's source.
+func avatarPNG(style string, seed [64]byte) ([]byte, error) {
 	palette := []color.NRGBA{{72, 190, 163, 255}, {242, 115, 143, 255}, {110, 145, 240, 255}, {243, 197, 73, 255}, {170, 115, 220, 255}, {74, 178, 215, 255}}
 	main := palette[int(seed[0])%len(palette)]
 	accent := palette[(int(seed[0])+1+int(seed[1])%(len(palette)-1))%len(palette)]

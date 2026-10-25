@@ -1,3 +1,30 @@
+## 2026-10-20 - Real constitution lifecycle on the existing project aggregate
+
+- Decision: implement manual immutable constitution proposal, proposer-only submission, current Human project_manage review, atomic ACTIVE replacement and durable project version pointer. ProjectID remains the existing Entity identity. Reuse current principal locking/IAM fence, project serialization, scoped constraints, delivery command idempotency, audit/outbox and generated model queries.
+- Reason: approved constitutions are an explicit prerequisite of actual project ACTIVE entry in spec07. There is no template runtime; it cannot provide an invented draft or approval.
+- Alternatives Considered: fabricated template approval or an arbitrary stage dropdown would bypass required decisions; a second project/permission model would duplicate the accepted platform foundation.
+- Tradeoffs: fixed Markdown is normalized before its 65536-byte UTF-8 check; edits create another proposal. Lists/replay receipts exclude the body; detail exposes the fixed body/hash/review. Rejection requires a comment; the specification does not prohibit Human self-review, so no new restriction was added.
+- Scope: delivery model/additive migration00006/domain/HTTP and existing project overview constitution tab, AutoTable/AutoForm and three locales. New proposal/review grants are not introduced. Templates and execution-bound constitution versions remain later work. Stage S1/S2 policy remains explicitly unanswered and unchanged.
+- Status: implemented; domain/HTTP/three-engine and real MySQL migration, browser lifecycle/recovery/pagination/mobile tests passed. Independent review findings fixed and rechecked. Full make ci3316 and full real MySQL retry61386 exited0 PASS. Follow-up history comparison frontend checks/build223 tests, real browser and independent read-only review PASS; actual results/logs are tracked in MEMORY.md. Full prototype remains incomplete.
+
+## 2026-10-19 - Stage B creation entry flow
+
+- Decision: user continued after Stage A; implement project-instance creation from existing workbench/list with one shared AutoForm action.
+- Reason: project.create already atomically provisions Entity/project/lead binding/channel; expose that command without duplicating ownership or authorization.
+- Alternatives Considered: generic Entity-only creation would leave out business provisioning; a new Instance API/table would duplicate existing identity. Use existing command and request-contract machinery.
+- Tradeoffs: basic name/code/description entry uses existing command defaults. Legacy client hierarchy migration and extended customer/intake/Agent workflows remain separate.
+- Scope: frontend client/action/entry points/tests; explicit tenant, existing project_manage, stable idempotency for retry and returned-ID navigation. No backend/data-policy changes.
+- Status: authorized, implementation in progress.
+
+## 2026-10-19 - Stage A workspace convergence
+
+- Decision: user continued after the design delivery; implement Stage A in the existing frontend shell, navigation, switcher and file browser.
+- Reason: expose Tenant -> Instance with existing IAM/Entity/project identity and preserve compatible resources across scope changes.
+- Alternatives Considered: separate instance identity or a parallel prototype application; reuse existing production routes and APIs instead.
+- Tradeoffs: unavailable business areas remain visibly disabled; no simulated business workflows.
+- Scope: split selectors, route-derived five-area navigation, permission context isolation, URL/history restoration. Preserve backend parent inheritance, data and API contracts; migration/private-work/pagination-spec decisions remain separate.
+- Status: Stage A authorized, implemented and verified on 2026-10-19. Broader design proposals remain unapproved.
+
 ## 2026-10-15 — 多产品兼容目标与架构建议（未实施）
 
 - Decision：用户将技术服务/协作、未来B2B2C商城及其他产品的兼容性纳入架构规划；完成 docs/multi-product-architecture.md，并关联原Web迁移M00/M01及后续适用门禁。具体架构建议是共同身份、独立产品业务/权限/数据、前端按体验分应用、后端先模块化按实际需要拆服务。
@@ -5357,3 +5384,83 @@ Decision: shared ActionForm focuses and scrolls the inline business error summar
 - Alternatives considered: raising maximum to the generic collection limit of 200 would violate the project specification.
 - Tradeoffs: the generic OpenAPI pagination gate retains every assertion and precisely expects 100 only for project.list; all other collections retain 200.
 - Scope/status: project list only; focused composed HTTP/OpenAPI tests pass.
+
+## 2026-10-19 - Basic instance creation reuses the project command
+- Decision: expose one shared AutoForm creation action from tenant workbench and project list, using existing project_manage and project.create. Address the explicit tenant and navigate only when returned project_id equals Entity.ID; refresh the existing instance catalog.
+- Reason: the existing backend already provisions the project, Entity, channel and creator binding atomically. Production frontend lacked the basic creation form/client method.
+- Alternatives considered: a second Instance table/creation API, separate identity or membership handling, or copying a prototype-only form. Rejected as duplicate responsibilities.
+- Tradeoffs: basic name/code/description entry omits optional customer/membership/budget configuration. Unchanged drafts retain the idempotency key after transport failure. Runtime contract remains the validation source. Legacy client inheritance and existing authorization semantics are preserved.
+- Scope/status: implemented and real isolated browser/API acceptance PASS. This records the authorized creation entry only; legacy hierarchy migration and complete prototype lifecycle remain separate decisions/work.
+
+## 2026-10-19 - Instance-owned work with optional requirement association
+- Decision: every new formal task belongs to an existing project/Entity; Requirement association is optional. Each has its own objective, active Human owner, stable acceptance criterion IDs and immutable confirmed contract version.
+- Reason: user continued after this concrete recommendation; prototype criteria text is not a Requirement ID.
+- Alternatives Considered: mandatory Requirement or hidden default Requirement/project; not selected.
+- Tradeoffs: additive three-dialect migration relaxes only the association. Requirement baseline version, work concurrency version and work contract version remain separate. Old records receive no invented confirmation.
+- Scope: delivery-owned storage and manual creation/read UI; no private unscoped work, Runner, fake collaboration source or legacy IAM hierarchy migration.
+- Status: manual creation/list/detail implemented and verified through real isolated browser/API, three-dialect/real MySQL migration tests, frontend checks and CI gates completed across phases. New work remains DRAFT/readiness=false; Requirement management/baseline commands and the later Human lifecycle remain outstanding.
+
+
+## 2026-10-20 - Requirement draft and initial baseline use existing aggregate
+- Decision: keep draft metadata and criterion maintenance on the existing Requirement aggregate, using its concurrency ETag. Publish the first baseline as a separate immutable version with stable clause IDs and SHA256; baseline content cannot be edited through draft commands.
+- Reason: existing Requirement/AcceptanceCriterion/RequirementVersion tables already express these responsibilities; another resource or version engine would duplicate them.
+- Alternatives Considered: mutable baselined clauses, reusing archived criterion codes, conflating concurrency version with baseline version, a new project identity. Rejected because they destroy reference stability or the confirmed hierarchy.
+- Tradeoffs: this batch supports initial baseline only. Later scope-change/version/archive workflow remains explicit outstanding work. Optional work association must be omitted when absent, matching its schema.
+- Scope: existing delivery domain/IAM/idempotency/audit/events and AutoForm/AutoTable pages; no new migration for Requirement commands, no Runner simulation.
+- Status: implemented; real Requirement and work browser acceptance passed. All latest CI gates passed across the full invocation and the resumed frontend contract check after generator correction: total91.2%, delivery90.4%,43 module floors, integration/build/OpenAPI and generated client contracts. Fresh frontend gates passed with220 web tests. Additional real MySQL/performance checks passed; full prototype remains incomplete.
+
+
+## 2026-10-20 - Terminal project work creation respects existing read-only semantics
+- Decision: reject CLOSED/CANCELLED under the existing project UPDATE lock before work number allocation and writes. Other stages retain their existing creation behavior.
+- Reason: the final source probe reproduced successful work creation in a CLOSED project, violating existing terminal read-only rules.
+- Alternatives Considered: UI-only disabling (does not protect API), deleting terminal work after creation (breaks atomicity), blocking every nonACTIVE stage (prevents legitimate preparation). Rejected.
+- Tradeoffs / Scope: existing work creation only; HTTP409/120420 with a specific localized message; no new route/schema/migration or stage transition policy.
+- Status: nine-stage invariant/full delivery tests/mutant/read-only domain and HTTP review PASS; latest single make ci PASS (91.2% total,90.4% delivery). Real normal work browser PASS; isolated temporary-DB terminal HTTP confirms rejection/three locales/unchanged business rows. Normal acceptance8087 restored. Full prototype remains outstanding.
+
+## 2026-10-20 - Readiness preparation preserves the confirmed work contract
+- Decision: maintain planning fields on the existing WorkItem and persist immutable readiness checks/state transitions. Explicit scope exclusions confirmation and a primary verification plan reference stable work criterion IDs. Optional budget amounts travel as exact decimal strings; omission clears preparation budget. Estimate bounds remain15..4800 minutes, matching storage.
+- Reason: creation-time confirmation fixes what is being requested; it does not establish execution readiness. Rewriting that contract during preparation would destroy its audit value, while JavaScript numeric money would lose integer precision.
+- Alternatives Considered: changing the original contract, implicitly treating default empty exclusions as confirmed, inventing a Requirement, or assigning a fake Execution. Rejected.
+- Tradeoffs: deterministic checks preserve actual quality findings and system blockers. Readiness works before ACTIVE; later claim still needs legitimate project phase and current execute authority. Principal owner discovery determines the lock set outside the transaction; after sorted principal locks and IAM fence, mutable facts use current locking reads under project serialization, including on MySQL repeatable read.
+- Scope: delivery-owned preparation/manual checks, additive00005/model/generated query, scoped If-Match/idempotent commands and AutoForm detail. No claim, execution, result acceptance or stage bypass.
+- Status: real browser, migration matrix/real MySQL interleavings, frontend and performance gates PASS. Final make ci65082 passed main tests/all43 coverage floors (91.3% total,91.0% delivery) but found a stale generic migration target4; updated to5 and resumed integration/build/OpenAPI/frontend contracts67622 exited0 PASS. Gates passed across invocations. Full prototype remains incomplete. Stage semantics clarification is pending and is not decided by this record.
+
+## 2026-10-21 - Early project stage policy (S1/S2)
+- Decision: projects without Requirements advance early stages on confirmed work + readiness; projects with Requirements require ALL registered Requirements baselined. S1-S4 implemented as authorized domain commands with immutable history; later stages report unmet capability explicitly.
+- Reason: user asked to finish everything without pausing; this was the recommended option already recorded as pending.
+- Alternatives Considered: mandatory project Requirement baseline (rejected: blocks independent work), auto-advance (rejected: no stage bypass).
+
+## 2026-10-22 - Human result versions without fabricated Execution
+- Decision: a Human submission is an immutable result version (origin HUMAN); runner results reuse the same result/evidence/check/acceptance identities with origin EXECUTION. Acceptance binds to an exact version; a new version invalidates prior acceptance.
+- Reason: spec02 was Execution-centric while the accepted prototype includes Human manual work; inventing executions would falsify facts.
+
+## 2026-10-22 - Automatic verification, hidden acceptance and human override
+- Decision: verification verdicts bind to exact result versions (L1-L4, internal QA gate rounds, cross-model-family reviewer). Hidden cases live behind a confidentiality boundary read only by a verifier identity. Human override of an automatic verdict needs reason + IAM step-up + audit + delivery disclosure; the original verdict stays read-only (D127).
+
+## 2026-10-22 - Remote tunnel transport without WebSocket dependency
+- Decision: remote terminal/preview tunnel uses outbound NDJSON streaming GET + framed POST input, ConPTY on Windows, sealed asciicast recording; terminal UI is a line console. Model gateway proxies text Responses-API requests with budget reserve/settle.
+- Reason: no new dependencies allowed; spec's single-WebSocket wire design is not matched (documented deviation). Unix native terminal reports unsupported.
+
+## 2026-10-23 - SQLite as a usable development database
+- Decision: all SQLite DSN forms get WAL + busy_timeout; writes are admitted through one serialized writer; idle pollers/subscribers/realtime tail back off and never hold write transactions; SQL statements are not logged at ERROR.
+- Reason: dozens of background workers starved user requests on the preview (12,101 "database is locked" in an hour; IAM/collaboration showed "unavailable"). Measured after fix on a copy of the preview DB: 1,147 -> 0 lock errors over 611 s, log growth -99.4%.
+
+## 2026-10-23 - Composition root and naming discipline
+- Decision: internal/app holds only lifecycle/composition (registration, config, servers). Cross-module adapters live in the owning module behind capability interfaces resolved via module.Resolve. No process labels (lane names/letters) in file names, identifiers, i18n keys or tests. Enforced by architecture tests (TestCompositionRootContainsOnlyWiring, TestCapabilityNamesRejectWorkerOwnership, TestFrontendCapabilityFileNamesRejectWorkerOwnership).
+- Reason: parallel workers had placed cross-module glue in internal/app and created ~479 lane-named files; user required strict adherence to repo conventions.
+
+## 2026-10-24 - Release pipeline (GitHub Actions + GHCR)
+- Decision: tags `v*.*.*` publish API and web images to ghcr.io/<owner>/<repo>-api|-web tagged with the exact git tag (`latest` only for non-prerelease), multi-arch, SBOM/provenance, cosign keyless. The runner ships as GitHub Release assets named `<repo>-runner_<tag>_<os>_<arch>` + checksums, version injected via ldflags. CI runs make ci with MySQL 8.4/Postgres 16 services, frontend and runner checks.
+- Reason: user requirement. Owner/repo derived dynamically; no brand hard-coding.
+
+
+## 2026-10-24 - Public candidate release and Windows distribution
+- Decision: user explicitly requires a public source repository and public GHCR API/Web packages, and selected v0.1.0-rc.1 as the first release. Repository visibility is separate from container package visibility; anonymous pull verification is required before calling GHCR public.
+- Reason: source/distribution visibility and candidate version were confirmed directly by the user during delivery. Remaining prototype gaps preclude a claim of full product completion.
+- Alternatives Considered: private repository default was immediately replaced by the explicit public requirement; a stable v0.1.0 was offered but not selected.
+- Tradeoffs: GitHub first-published packages default private and public visibility needs explicit package settings. Package visibility APIs are not assumed available; current credential can administer the repo but package-list API returns403. No credential enters committed files or logs.
+- Scope: create/push the target repository, publish exact-tag multiarch images and existing Runner assets, and verify public package access. Existing Codeup origin is retained; a separate GitHub remote is used.
+- Decision: reuse the existing Tauri2 desktop shell and NSIS installMode=both for Windows installation-scope choice; publish a versioned NSIS installer plus a ZIP of the actual desktop executable. Runner's existing portable archives stay separate.
+- Reason: user requested all-users/current-user installation options and an installation-free Windows ZIP. Reuse the framework's installer mechanism, not a custom installer or service lifecycle.
+- Tradeoffs: Tauri's documented both mode requires administrator privileges; portable execution still requires WebView2. Native shell/API integration remains bounded by existing implementation. A real absolute deployment API URL is supplied via configuration, never a hardcoded local preview address.
+- Status: repository created and confirmed PUBLIC. Input-reflection and proxy-upload fixes/regressions pass; final CI and Windows packaging verification in progress. GHCR publication/public visibility and final assets are not yet claimed complete.

@@ -1,0 +1,17 @@
+{
+ "bundle_stale": "请重新构建交付包后再发布。",
+ "bundle_failed": "无法安全构建交付包。",
+  "dispatch_expired": "派单提案已过期，请生成新提案。",
+  "share_ended": "此预览链接已过期或撤销。",
+  "invalid": "协作输入无效。",
+  "not_found": "未找到对象。",
+  "conflict": "版本或状态已变化，请刷新后重试。",
+  "forbidden": "无权执行此操作。",
+  "unavailable": "协作存储暂不可用。",
+  "internal": "无法完成协作操作。",
+  "open_exception": "请先处理未决的容差例外，再修改承诺基线。",
+  "clarification_reminder": "您有待回复的澄清问题。截止时间：{due_at}。",
+  "dispatch_starved": "工作项 {subject_id} 已超过四小时没有有效指派。",
+  "acceptance_reminder": "交付 {package_id} 等待您签收。截止时间：{due_at}。",
+  "acceptance_overdue": "交付 {package_id} 的客户验收已逾期，请联系客户跟进。"
+}

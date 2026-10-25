@@ -1,0 +1,12 @@
+{
+  "state_in_use": "该显示状态仍有工作项。请选择同组、同业务状态的有效迁移目标。",
+  "ingress_exhausted": "集成 Webhook 处理已耗尽重试次数。请检查集成事件，排除故障后重试。",
+  "ingress_signature": "Webhook 签名无效或连接已停用。",
+  "transition_blocked": "未满足流转条件，请处理列出的条件后重试。",
+  "transition_unavailable": "所需的流转事实来源不可用，未推定任何证据或运行结果。",
+  "unavailable": "云效暂不可用，远程 API 能力尚未配置并验证。",
+  "invalid": "集成配置无效。",
+  "forbidden": "仅已授权且处于活跃状态的人工集成管理员可执行此操作。",
+  "not_found": "未找到集成记录。",
+  "conflict": "集成已发生变化，请刷新后重试。"
+}

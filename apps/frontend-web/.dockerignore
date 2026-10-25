@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.turbo
+**/.temp
+**/.git
+**/coverage
+**/*.log
+**/*.tsbuildinfo
+**/.env*
+**/playwright-report
+**/test-results

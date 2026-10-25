@@ -206,6 +206,7 @@ func (m *Module) finalizeHTTP(
 		event.Request = Payload{Size: max(r.ContentLength, int64(0)), Omitted: omitted}
 	}
 
+	omitConfidentialResponse(entry, &event)
 	m.record(ctx, &event)
 }
 

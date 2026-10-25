@@ -162,7 +162,7 @@ func (m *SystemMenus) Defaults() []Menu {
 const retiredOrganizationBranch = "Operations management"
 
 var retiredOrganizationBranchTranslations = map[string]string{
-	"en-US": "Operations management", "zh-CN": "运营管理", "ms-MY": "Pengurusan operasi",
+	"en-US": "Operations management", "zh-CN": "杩愯惀绠＄悊", "ms-MY": "Pengurusan operasi",
 }
 
 // systemMenuDefaults is the system menu this repository seeds and upgrades to.
@@ -244,7 +244,7 @@ func (r *Repository) upgradeSystemMenus(ctx context.Context, owner guid.ID, _ ti
 	if !legacy {
 		return localized, nil
 	}
-	defaults := r.systemMenuDefaults()
+	defaults := r.unversionedSystemMenuDefaults()
 	parents := map[guid.ID]guid.ID{}
 	oldDefaults := map[string]Menu{}
 	oldBranches := map[string]Menu{}

@@ -71,10 +71,9 @@ func requireNoPrincipalPlatformAccess(
 // erasure reaches a later one: the principallifecycle erasure-version test
 // fails until then.
 //
-// It is 18 because the platform-access guard now reads a role assignment's end:
-// an assignment that has lapsed is not authority worth refusing a withdrawal
-// over, and that column arrived with role-member-expiry.
-const PrincipalErasureVersion = 18
+// It is 19 because erasure closes the observed membership intervals as it
+// withdraws admission. Keeping an open interval would invent later eligibility.
+const PrincipalErasureVersion = 19
 
 // ErasePrincipalData redacts every membership profile and withdraws admission.
 // The caller owns the transaction and the suspended principal's row lock, and
@@ -100,6 +99,10 @@ func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, registr
 		if err := revisions.Bump(ctx, tx, tenant, now); err != nil {
 			return err
 		}
+	}
+	periods := query.Bind(tx, prefix).MembershipPeriods
+	if _, err := periods.WithContext(ctx).Where(periods.PrincipalID.Eq(id), periods.EndedAt.IsNull()).Update(periods.EndedAt, now); err != nil {
+		return err
 	}
 	return tx.WithContext(ctx).Table(members.String()).Where("principal_id = ?", id).
 		Updates(map[string]any{"display_name": "Anonymized account", "email": "", "status": "disabled",

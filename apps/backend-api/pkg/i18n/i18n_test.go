@@ -2,16 +2,46 @@ package i18n
 
 import (
 	"context"
+	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestInternalLocaleBundlesHaveValidKeysAndIntactChinese(t *testing.T) {
+	root := filepath.Join("..", "..", "internal")
+	files := 0
+	require.NoError(t, filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || filepath.Base(filepath.Dir(path)) != "locales" || filepath.Ext(path) != ".json" {
+			return nil
+		}
+		files++
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.True(t, utf8.Valid(data), "%s must be UTF-8", path)
+		var messages map[string]string
+		require.NoError(t, json.Unmarshal(data, &messages), "%s", path)
+		for key, value := range messages {
+			require.True(t, validLocalKey(key), "%s: invalid local key %q", path, key)
+			if entry.Name() == "zh-CN.json" {
+				require.NotContains(t, value, "??", "%s: corrupted Chinese for %q", path, key)
+				require.NotContains(t, value, "\uFFFD", "%s: invalid Unicode replacement for %q", path, key)
+			}
+		}
+		return nil
+	}))
+	require.Positive(t, files, "the scan must find the real module locale files")
+}
 
 // writeLocale is a small helper to create a locale JSON file in dir.
 func writeLocale(t *testing.T, dir, locale, body string) {

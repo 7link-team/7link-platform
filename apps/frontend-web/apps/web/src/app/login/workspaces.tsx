@@ -1,13 +1,13 @@
 import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useEffect, useState } from "react"
-import { Link, Navigate, useLocation, useNavigate } from "react-router"
+import { Link, Navigate, useLocation, useNavigate, useNavigation } from "react-router"
 import { Building2, Landmark, Network, Plus, LogOut } from "lucide-react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
 import { useAuth } from "../../components/auth"
 import { Alert } from "../../components/alert"
-import { AuthEntranceLinks } from "../../components/auth-entrance-links"
 import { SessionVerification } from "../../components/session-verification"
+import { PendingRoute } from "../../components/pending-route"
 import { authEntrance, entranceLoginPath } from "../../lib/auth-entrance"
 import { iamApi, setTenant, type Tenant } from "../../lib/iam-api"
 
@@ -25,6 +25,7 @@ function WorkspaceOptions() {
   const t = useTranslations("iam")
   const location = useLocation()
   const navigate = useNavigate()
+  const navigation = useNavigation()
   const entry = authEntrance(location.pathname.split("/")[1])
   const { status, session, logout } = useAuth()
   const [items, setItems] = useState<Tenant[] | null>(null)
@@ -73,7 +74,6 @@ function WorkspaceOptions() {
   useEffect(() => {
     if (status !== "authenticated" || items?.length !== 1 || creating) return
     const selected = items[0]!
-    if (entry === "tenant") setTenant(selected.id)
     // The tenant route decides which of its perspectives this caller gets, so a
     // chosen tenant is addressed directly: routing this through the workspace
     // home would send an operator with system authority to /system instead of
@@ -92,8 +92,8 @@ function WorkspaceOptions() {
   if (entry === "user") return <Navigate to="/user/files" replace />
   if (items && entry === "system" && system)
     return <Navigate to="/system" replace />
-  if (items?.length === 1 && !creating) {
-    return <SessionVerification />
+  if ((items?.length === 1 && !creating) || navigation.state !== "idle") {
+    return <PendingRoute />
   }
   const createTenant = async (values: Record<string, unknown>) => {
     setBusy(true)
@@ -115,7 +115,6 @@ function WorkspaceOptions() {
     entry === "platform" ? Network : entry === "system" ? Landmark : Building2
   return (
     <main className="mx-auto w-full max-w-xl px-4 py-10">
-      <AuthEntranceLinks entry={entry} />
       <header className="mt-6 flex items-start justify-between gap-3 border-b pb-4">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold">
@@ -157,9 +156,6 @@ function WorkspaceOptions() {
                   ? `/platform/${item.id}`
                   : `/admin/${item.id}`
               }
-              onClick={() => {
-                if (entry === "tenant") setTenant(item.id)
-              }}
             >
               <Icon className="size-5" />
               <span>{item.name}</span>

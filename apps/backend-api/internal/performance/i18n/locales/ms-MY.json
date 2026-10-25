@@ -1,0 +1,8 @@
+{
+  "invalid": "Semak skop penilaian, wajaran, peraturan bukti dan templat laporan.",
+  "forbidden": "Pemilik tenant manusia yang aktif diperlukan.",
+  "unavailable": "Konfigurasi prestasi tidak tersedia.",
+  "conflict": "Skim telah berubah. Muat semula sebelum menyemak.",
+  "not_found": "Semakan skim penilaian tidak ditemui.",
+  "failed": "Konfigurasi penilaian tidak dapat disimpan."
+}

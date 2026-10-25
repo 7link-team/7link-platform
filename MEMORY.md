@@ -1,49 +1,135 @@
 # Task State
-## Objective
-Deliver H2 production project list with real counts/API/AutoTable and make all AGENTS.md neutral/general. User authorized commit and push.
+
+## Task / Objective
+Deliver the existing implementation batch after recovery, final review and commit hygiene. User authorized this delivery work on 2026-10-24. Full accepted prototype remains incomplete; do not claim full product readiness.
+
 ## Current Phase
-ACCEPTANCE
+REVIEW
+
 ## Current Step
-H2 slice and AGENTS neutrality accepted after all final gates PASS. This checkpoint accompanies the delivery commit; Git remains the authority for commit/push and clean-tree status.
-## Completed Work
-- Baseline origin/chaosplus efebae4: exact list record budget projection; previous commits 3d4f483 (all-page AutoTable/AutoForm), a6054bf (H3 detail), a22ee69 (activity storage) delivered.
-- Current changes implement tenant/permission-filtered GET /tenants/{tenant_id}/projects with same-snapshot page-scoped grouped activity queries, no fanout/N+1.
-- Production ProjectsPage reuses AutoForm/AutoTable, server filters/sort/pagination, fixed sequence/actions, bounded scrolling, manual/automatic refresh, current-page CSV, details and exact BigInt micros formatting. Three locales added.
-- Failure/retry retains query/offset/total; literal name/code all remains a real filter; cancelled requests cannot overwrite new data. Short viewport filter area scrolls without displacing all table rows.
-- Nullable client Huma panic repaired via TransformSchema; full exact OpenAPI field/null/string gate added. Regenerated OpenAPI and API types.
-- Both AGENTS.md files generalized; project conventions moved intact to docs/development.md and backend README; source/path/brand scan has zero matches in agent instructions.
-## Confirmed Decisions / Constraints
-- Approved counts: open excludes archived/ACCEPTED/CANCELLED/SKIPPED, includes containers; review=nonarchived NEEDS_HUMAN_REVIEW; waiting=nonarchived SENT; project-wide, not per-approver.
-- Per specification project.list uses default50/max100; frontend explicitly20. Generic pagination contract gate asserts exact max100 only for this operation, all other max200 checks preserved.
-- Reuse typed queries, authz FilterData, existing DSL/respx/generated types. Preserve existing detail numeric amount contract and all authorization semantics.
-- Preserve original Web4303/API8080, demo selector, unrelated8091/8092; no original service restart or business-data migration. No fabricated production counts or Todo substitution.
+Local source-stage self-review and acceptance PASS; explicit staged candidate ready for commit and HEAD:main push to github. Run hosted CI next. Release acceptance remains pending deployment API URL, hosted both-scope install/uninstall and anonymous GHCR access. No tag/release yet.
+
+## Overall Progress
+- [x] Read continuation transcript; reconcile Git/source/ADR/final gate evidence.
+- [x] Confirm 15:30 final technical handoff supersedes the interrupted 12:40 coordinator snapshot.
+- [x] Recheck target GitHub access through direct SSH: Repository not found.
+- [x] Finish three bounded independent reviews; main agent reproduced path binding failure and verified upload-limit call chain.
+- [x] User confirmed fixes and instructed creation of the target repository.
+- [x] Created GitHub repository7link-team/7link-platform; user then required public repository and public GHCR. Repository visibility PATCH confirmed public; robotism has admin/push permissions.
+- [x] Fix4HTTPoperations, add real-Huma/path collection gates, kill reverse mutation; nginx101m real proxy byte-boundary tests PASS.
+- [x] Regenerate OpenAPI/client; all1343operations have required path variables.
+- [x] Complete local backend/frontend/Runner gates, actual Windows NSIS build and portable ZIP equality verification.
+- [x] Complete326s copied populated-runtime/browser acceptance and clean all owned runtime resources.
+- [ ] Hosted Windows both-scope install/uninstall and official deployment-configured assets.
+- [ ] Obtain deployment API URL (async question pending), validate public GHCR after first publication.
+- [ ] Review explicit staging manifest/staged diff and commit accepted batch locally.
+- [ ] Push to intended GitHub repository when access is available; never substitute Codeup.
+
+## Active Work
+API repair worker complete: real-Huma and required-path collection regressions PASS and reverse mutation killed. Nginx repair/real proxy boundary checks PASS. Data worker runs serial final CI then frontend/Runner checks. Release worker completed Windows NSIS installMode=both/portable ZIP workflow and static verification. Main will run prepared local packaging verifier only after data worker releases heavy-task resources. Main owns integration, deployment API URL/public GHCR handling, final acceptance, commit/tag/push.
+
+## Completed Work / Recovery Evidence
+- HEAD 51d4922, branch chaosplus; origin remains existing Codeup URL. No new commit/staging at recovery.
+- Recovery status: 242 modified tracked paths, 9 deleted paths, 1322 untracked status entries (3363 individual files). No deliverable file mtime exceeded final CI completion 2026-10-24 15:12:21 PDT. This supports continuity but is not a cryptographic source fingerprint.
+- Transcript stopped receiving useful results at12:40 after repeated API503. Final gate worker finished15:30. Do NOT resume the stale Human Assignment step formerly recorded here.
+- Current source includes stages/assignments/results, collaboration/agents/knowledge, execution/fleet, planning/templates/notifications and release infrastructure. Presence does not prove full product acceptance.
+- Local historical evidence: .temp/lanes/lane-y-report.md, lane-y-last-2.md, lane-x-report.md; apps/backend-api/.temp/gate-r2-*.log. Reports/logs are ignored local evidence, not deliverables.
+
+## Confirmed Constraints / Important Decisions
+- Preserve intentional changes; no reset/stash/unrelated cleanup. Stage explicit reviewed paths, never git add -A or git add .
+- Current user delivery authorization supersedes the earlier no-staging/no-commit instruction for the main agent. Review workers remain read-only. User explicitly requires public repository/public GHCR and selected release v0.1.0-rc.1. After final local/hosted CI acceptance, authorized next actions include push, tag v0.1.0-rc.1, release workflow (multiarch API/Web + Runner assets), public package visibility and anonymous image-access verification. Do not claim GHCR public based on repository visibility alone.
+- Intended target: ssh://git@github.com/7link-team/7link-platform.git. Keep existing Codeup origin unchanged; do not push there as fallback.
+- Preserve Tenant -> Entity/Instance -> resources identity (ProjectID=Entity.ID), existing IAM/current scoped authority, principal/IAM/project locking, idempotency and audit/outbox; cross-module capabilities use module.Resolve.
+- No hidden Requirement or fabricated Execution/Runner/approval/evidence/acceptance. Frozen objectives/criteria/contracts remain immutable.
+- ADR now records early-stage policy, Human result versions, immutable verification/override, transport limitations, SQLite write admission, composition boundaries and exact-tag releases; preserve those decisions.
+- Do not touch live ports4303/8080/8091/8092 or preview8087. Runtime checks use copied populated preview DB/config, random ports and owned-process cleanup.
+- Native Windows, hidden child windows, UTF8/LF; one heavy command at a time, Go -p1. No new dependencies/published migration edits; regenerate derived output.
+
 ## Verification
-- PASS focused delivery/list tests and composed HTTP/OpenAPI tests, including 401,422,precise amounts, field set, nullable client and pagination.
-- PASS independent SQL, HTTP and UI reviews. HTTP registration panic repaired; reviewer confirmed pagination exception against spec07 lines774/1515.
-- PASS independent agent-browser fixture: literal all filters, page2 failure/retry, numbered pager, fixed columns/header and fullheight 2D scrolling, actual5s auto-refresh, exact max-int64 micros and detail route.
-- PASS main-agent real isolated API/browser: persisted activity yields3/2/2, actual AutoTable renders project, default50 and limit101=>422, nullable client/budget strings, search works; 1262x624 row/footer visible and390x844 no horizontal document overflow.
-- PASS four count mutations (tenant removal, accepted inclusion, container exclusion, wrong delivery state), source restored byte-for-byte.
-- PASS final frontend bun run typecheck/lint/test/build (sessions70901/18938/64465/53572 exit0). Web212 tests; UI package also passes. Only unrelated autoformat hunks restored afterward, no semantic changes.
-- PASS make test-performance (50.474s; existing baseline, not new H2 SLO proof).
-- PASS final make ci, session35311 exit0: formatting, lint0issues, schema lock255 unchanged, unit/coverage (delivery91.9%), architecture213.453s, lifecycle181.061s, migration180.643s, performance49.887s, build, OpenAPI check and frontend contract. First-run pagination mismatch fixed according to explicit spec and independently reviewed.
-- PASS final make test-mysql8, session64447 exit0; TEMP/h2-mysql8-final.log. Real MySQL8.4 thresholds/storage and existing external database gates passed; schema lock255 unchanged.
-## Active Acceptance Environment
-- Isolated http://127.0.0.1:4317/admin/login, demo account selector enabled; use tenant-admin. API8087 runs final binary; original ports remain listening.
-- Source SQLite online backup copied to ignored apps/backend-api/.temp/dev/h2-acceptance/acceptance.sqlite. Original database untouched.
-- One project H2-UAT-1 labeled H2 acceptance demo (isolated copy), created through real API; explicitly isolated test activity fixtures persisted for counts3/2/2. Not production records or full workflow evidence.
-- API exec session85611; Web session36359. Config/binaries/credentials/screenshots ignored and excluded from staging. Browser sessions closed.
-- Browser evidence: ignored TEMP/h2-independent-browser-result.json and TEMP/h2-projects-live.png. Gate logs in OS TEMP.
-## Reviews / Acceptance
-- Self-review PASS: requested scope only, existing components/query/authz/schema mechanisms reused, no new dependencies or migrations, old API preserved, all gates executed, no artifacts/secrets staged.
-- Final acceptance PASS for H2 list and neutral AGENTS requirements; not acceptance of the entire prototype. Main-agent real HTTP/browser acceptance retained independently of delegated reviews.
-- Explicit24-file staging reviewed; unrelated formatter-only edits restored. Both AGENTS files contain zero project-specific path/product/port matches; original conventions preserved in project docs.
-## Remaining Work
-- Commit/push the reviewed delivery and verify remote HEAD/clean tree using Git. No implementation or validation remains for this slice.
-## Notes / Scope Limits
-- Entire prototype is not finished. H2 list slice is implemented; project create/edit UI and remaining work-item/delivery command workflows remain future slices.
-- Existing module coverage and architecture/schema gates remain enabled; do not weaken them.
-- New app scaffolds remain scaffolds; no runner daemon/task execution added. Prior frontend exceptions inventory remains docs/myrmidon/frontend-web-migration-checklist.md.
+### Historical final-tree evidence (prior worker execution, not a fresh run)
+- Backend make ci exit0 at15:12: total90.6%, all55module floors PASS, merged execution90.4%. Independent execution8311/9232=90.0238301559792%.
+- Nested architecture/integration PASS: architecture134.827s/lifecycle219.780s/migration322.708s/performance48.569s. Build/OpenAPI/client drift/typecheck PASS.
+- Real pinned MySQL8.4 PASS with temporary2GiB tmpfs because remote disk was full; original tests/thresholds/cleanup unchanged, no remote pruning. Schema lock279published migrations unchanged.
+- Runner build/test/vet/Node package PASS. Frontend typecheck/API types/lint/tests/build PASS:825web tests,0fail,98702assertions. Recovery independently read final CI/MySQL/frontend log tails.
+- Actual copied populated-preview login/workspace/project/work list/create/persisted detail/API PASS:312.8s,10projects,health200,record only in copy,zero page errors/500s/alerts/disabled navigation/DB locks. Owned processes/copies/binaries/helpers cleaned.
+- Release worker actionlint/both image builds/amd64 runtime smoke and six Runner cross-builds PASS. Hosted CI/GHCR/signing/Release and ARM64 image execution NOT_RUN.
+- Deadline14:30all-green MISSED; required RED status published14:27:42. Later green gates do not erase timing miss.
+### Current continuation
+- GitHub direct SSH ls-remote exit1 Repository not found; no remote config change.
+- Inventory/historical evidence reconciliation PASS. Fresh final CI RUNNING after confirmed fixes; fmt/lint/schema-lock and Delivery/Execution tests PASS, remaining phases pending.
+- apps/backend-api/notification identified as local mode:set coverage report; excluded from delivery.
+
+## Remaining Product Scope
+Local capability matrix .temp/lanes/final-gaps.md records198rows: DONE157/PARTIAL27/MISSING10/SUPERSEDED4. DONE is bounded implementation evidence, not universal live acceptance. Authoritative requirements remain docs/PRD_FINAL.md and applicable specifications. Preserve all37remaining IDs:
+- MISSING: P-C10 inbound mail/thread routing; P-C22 interactive execution/ADHOC association; P-C44 remote file edit/upload; P09-09 browser-closed Web Push; P12-16 Agent Yunxiao MCP; P-R04 Centrifugo presence/recovery; P-R05 global search/index lifecycle; P-R08 health incidents/remediation; P-R10 mobile clients/background push; P-R11 actual cc-switch reuse/config release/apply/rollback.
+- PARTIAL infrastructure/UI: P-C47 preissued SERVER enrollment/K8S pools; P-C48 consistent authorized query/page/export/import/refresh/context; P-C49 virtualization and measured100k-row/100-user performance.
+- PARTIAL collaboration/agents: P05-08 manual dispatch; P05-09 automatic dispatch/fairness/recovery; P05-10 heavy branches/comparison/synthesis; P05-19 external channel projection; P05-20 hooks/rich media; P05-21 spawn/adoption/orphan lifecycle; P05-23 persistent Agent inbox/interruption; P05-30 default-deny grants; P06-15 accepted-work skill distillation.
+- PARTIAL shell/notifications: P08-09 catalog/preferences/DND/channel completeness; P08-10 canonical scoped shell/contextual conversation; P09-08 complete producer-to-recipient in-app/mail delivery/live acceptance.
+- PARTIAL integrations: P12-05 automation dry-run/logs; P12-07 acceptance cases/plans/runs/frozen suites; P12-14 remote state-map/import/sync; P12-15 signed Codeup ingress/trusted Flow redlines/manual gates.
+- PARTIAL cross-cutting: P-R06 repository-event compensation; P-R07 node telemetry/probes; P-R09 native desktop/release proof; P-R12 cross-domain change coordination; P-R13 conversation provenance/exact-position actions; P-R15 organization/invitation/handover; P-R16 multi-Human/Agent teams/history; P-R17 archive/recovery/retention/export/backup.
+
+## Known Issues / Risks
+- GitHub blocker resolved: user confirmed repository must be created; GCM HTTPS identity robotism is active org admin. Created empty https://github.com/7link-team/7link-platform via API; user explicitly required public visibility, PATCH confirmed public. No credentials printed. Added separate github SSH remote, Codeup origin unchanged. GHCR packages not published yet; current GCM credential package listing403(read:packages missing), public package access requires separate verification. User chose v0.1.0-rc.1 for first release.
+- Bounded code review complete and both confirmed defects fixed; final delivery acceptance still depends on current gates, Windows build/install tests, deployment API URL and anonymous GHCR access.
+- Original two confirmed review defects are fixed and regression-tested. Current blockers are unfinished final gates, Windows real packaging acceptance, deployment API URL and actual anonymous GHCR access after publication.
+
 ## Next Action
-After the delivery commit, verify origin/chaosplus points to HEAD and git status is clean, then provide the user the isolated4317 login URL and demo-account instructions for acceptance.
+Commit the explicit reviewed staged candidate, push HEAD:main to github (preserve Codeup origin/local chaosplus/upstream), monitor hosted CI and resolve actual failures minimally. Deployment VITE_API_URL is still requested from user; do not tag/publish a desktop with fabricated or localhost API configuration. After the input and gates pass, release authorized v0.1.0-rc.1 and independently make/verify both GHCR packages public.
+
 ## Last Checkpoint
-All H2/frontend/live/browser/mutation/backend/MySQL gates and both final reviews PASS. No mutation active, no validation process outstanding. Original services unchanged; isolated acceptance services remain running.
+2026-10-24 local technical gates and source-stage reviews PASS; candidate staged, no commit/push/tag yet. Windows actual local NSIS/ZIP verification PASS and copied-runtime326s PASS. API URL, hosted CI, actual hosted installer acceptance and GHCR publication/public visibility remain pending.
+
+
+## Final Review Findings / Evidence
+### Class1: unexported embedded HTTP path input (4reachable operations)
+- collab/connectors_http.go:22 connectorPutHTTPInput embeds connectorKindPath; PUT /channels/{channel_id}/connectors/{kind} leaves ChannelID and Kind empty.
+- delivery/code_links_http.go:95/100 requirementCodeLinkInput/requirementCodeEvidenceInput embed requirementGetInput; POST requirement code-links and GET code-link evidence leave EntityID/RequirementID empty.
+- yunxiao/planning_http.go:49 assignmentInput embeds assignmentPath; PUT /tenants/{tenant_id}/projects/{project_id}/work-items/{work_item_id}/planning leaves TenantID/ProjectID/WorkItemID empty.
+- Main actual Huma probe: three temporary tests using real production input types and actual HTTP parsing expected123/HOOK,99/123,1/99/77; all captured empty strings and FAILED. Command: go test -p1 ./internal/collab ./internal/delivery ./internal/yunxiao -run ^TestReviewProbePathBinding$ -count=1 -timeout3m. This was intentional defect reproduction, not a passing regression. Temporary tests removed after result; production unchanged.
+- Huma v2.39.1 huma.go:579 skips !f.IsExported(). Shared authz only adds selector declarations; it does not populate skipped input fields. Source handlers reject blank IDs422. Whole actual OpenAPI scan finds exactly4operations missing required template parameters; same fields missing from generated client.
+- Same-class scan: notification principalInput handlers use trusted session identity and shared principal-self guard; not the same defect. Body JSON embeddings reviewed separately, not automatically declared broken.
+### Class2: Web proxy upload limit disagrees with existing API
+- apps/frontend-web/docker/nginx.conf:11 sets client_max_body_size32m. files/module.go:248 defaults100MiB; files/http.go:196/204/211/218 permits multipart request bodies maxUploadBytes+1MiB. files/basic.go:276 accepts a40MiBfile; frontend iam-api.ts:2420 sends the entire File in one FormData, no chunks.
+- Main verified source call chain. Deploying Web image rejects a valid40MiBupload at nginx413 before API. No actual nginx40MiBrequest probe executed. Exact directive same-class scan:1instance.
+
+## Review Coverage / Verification Boundaries
+- API/security review scanned actual409->1343operations (934new,0deleted,4existing additive parameter changes); no duplicate operationId. Shared authz/classification/anonymous/mapping and published route/format tests PASS; generated API types check PASS. Did NOT execute auth matrix for all934new routes.
+- Data review: budget reserve/settle/threshold/overflow, gateway, Delivery/Execution CodeMerge storage rollback, Jobs claim/idle/workers, SQLite busy targeted tests PASS. Existing execution/code_merge.go infrastructure guard correctly propagates storage errors; only forbidden/conflict/notfound become revoked outcomes. No new confirmed defect.
+- Release/frontend/Runner review: workflows/Docker/config/packaging, shared routing/scope/recovery, selected cross-platform source checked. Node package tests3PASS; frontend shared navigation/loaders/preview42tests353assertionsPASS. Did NOT inspect every business page or execute hosted CI/Release/ARM64images.
+- Triggered views: concurrency,SQL,NULL,precision,wire/legacy compatibility,OpenAPI,architecture,reuse,security,resources,dependencies,tests,operations,product closure,naming,cross-platform,transactions. Grouped into3bounded workers; main confirmed findings. No irrelevant-view blanket exemptions; limited per-path runtime coverage remains explicit.
+- A1 offline staging not live-tested; A2 upload-limit finding, bounded gateway testsPASS but no scale run; A3 merge recovery/storage rollbackPASS; A4 budget isolation/auth-registry testsPASS, not every endpoint; A5 exact money testsPASS; A6 receipt/reserve/settle/idempotency testsPASS; A7 static migration review and current lockPASS, fresh external upgradeNOT_RUN; A8 job/merge watchdog testsPASS, multiprocess failure deploymentNOT_RUN.
+- Commit manifest prepared locally at .temp/delivery-manifest.json (ignored):3614candidate files,41905298bytes at initial inventory. Two .txt files are tracked authz contract fixtures, not logs; secret markers only in explicit secret-redaction test fixtures. No credential values printed.
+-91untracked non-generated text files normalized CRLF->LF only. Initial script stopped on one mixed-ending file after81normalizations; follow-up completed remaining10, preserving content. No tracked published migration normalized. make -C apps/backend-api schema-lock-check PASS:279published files unchanged;285static files/80IAMtables/37cross-module foreign keys.
+- git diff --check PASS before normalization; final hygiene check follows state update. This was the pre-fix checkpoint. Both classes are now fixed and regression-tested; no staging/commit/push yet. Entire release remains NOT READY until remaining gates/deployment inputs/package visibility pass.
+
+
+## Active Delivery Expansion / Current Evidence
+- User additionally requested Windows installer choice all-users/current-user plus portable ZIP. Reuse apps/frontend-app Tauri2, NSIS installMode=both. New Windows x64 release job produces versioned setup.exe and portable.zip, injected tag version and existing configured API base. API URL question pending; do not publish a package wired to a fabricated/local URL.
+- Tauri official both mode requires administrator privileges even for selected current-user scope; README will state this. Portable ZIP requires existing WebView2. This does not close all P-R09 native-client features.
+- API fix exports ConnectorKindPath/RequirementGetInput/PlanningAssignmentPath without wire or business changes. Tests red on old code and green after fix; reverse mutation killed by whole generated OpenAPI path-param gate, source bytes restored. Main regenerated document/client and independently scanned1343operations:zero missing required path variables.
+- Nginx101m actual remote proxy test:32m mutant40MiB->413;fixed40MiB+145B->200/full41943185bytes;100MiB+145B->200/full104857745bytes;exact101MiB->200;101MiB+1->413. Used cached Alpine/nginx1.30.6 because pinned nginx1.28 image pull had DockerHubEOF. Owned containers/files removed; not a claim of pinned-image runtime smoke.
+- Main make openapi with isolated .temp/delivery-openapi exit0; frontend generate:api-types exit0; actual document required-param scanPASS. Final local CI log .temp/delivery-ci.log:fmtPASS/lint0issues/schema-lock279unchangedPASS,coverage executing. No concurrent local heavy commands.
+- Public GHCR requirement researched against official docs: first publication defaults private. GraphQL Mutation introspection exposes only deletePackageVersion, no visibility mutation. Current GCM credential lacks package-list scope; explicit public visibility/anonymous access remains outstanding.
+
+- Windows workflow additional review: official NSIS /CurrentUser and /AllUsers switches are used only on disposable Windows Actions runner, with admin/preexisting-dir/registry guards. It installs to framework defaults, compares EXE hash with portable ZIP, invokes verified uninstaller and asserts owned dir/registry cleanup; no product hook or manual registry deletion. Actionlint/PowerShell AST and anonymous registry control probe PASS; real Windows build/install tests NOT_RUN yet.
+- Release now retains separate Runner checksum filename contract and adds desktop checksums. Release creation is gated on both GHCR exact-tag manifests being anonymously readable. A source-public repo alone is insufficient.
+- Anonymous GitHub repository GET confirmed200/public. Actions enabled, all actions allowed, default token read-only with per-job explicit permissions. No existing repository Actions variables yet; VITE_API_URL requested from user.
+- GitHub first push will use HEAD:main on separate github remote, preserving local chaosplus and Codeup origin/upstream. Historical9484blobs total382638441uncompressed bytes; no blob>=50MiB, so no GitHub100MiBhistory blocker identified.
+
+- Recovery checkpoint: inspected actual Windows workflow/config and durable decisions; NSIS both plus actual executable ZIP are present. Corrected ignored smoke helper to the verified app-local Vite path. Backend integration/IAM coverage active; no concurrent local heavy task launched. Deployment API URL question re-presented after context recovery.
+
+- Current final CI first failure: TestScheduleJobGeneratesDuePeriodOnceAsSystemAndRollsBackFailures (schedule_test.go:72), expected1/actual2. Independently diagnosed by main/worker: UTC crossed Sunday2026-10-25; weekly cutoff intentionally excludes final day, so now-7d fixture activates two legitimately due windows. Production schedule unchanged. Authorized minimal fixture correction to latest due week while preserving all assertions; worker will reproduce, repair, rerun targeted coverage and remaining CI gates after active command exits. Initial full CI is FAIL, not PASS.
+
+- Schedule fixture original targeted reproduction FAIL, minimal latest-due-week fixture fix PASS; full Performance same atomic/all-package coverpkg PASS0.703s. Worker appends real successful profile to original raw coverage and runs unchanged Makefile total/module recipes (no floor changes): total90.6% PASS;55floor readers still active. Full CI is not yet complete; subsequent integration/build/contract gates remain.
+
+- Coverage gates now PASS: total90.6%,55/55 floors?90 via unchanged recipes and explicit normalized-profile variable. Exact normalization evidence:15,795,297raw lines?129,126unique blocks;186,007statements/144,521covered statements identical before/after; per-block numstmts/count sums independently equal. Original raw and initial failure retained. Worker now runs remaining fmt/lint/integration/build/OpenAPI/frontend-contract gates serially (delivery-ci-continuation.log), then frontend/Runner. Windows actual build still not started.
+
+- Explicit staging checkpoint:3616reviewed paths submitted via literal pathspec manifest (not blanket add), cached diffcheck PASS after14pure-whitespace fixes in newly added files; all token sequences asserted unchanged. Three SQL EOF fixes are unpublished governance00002 files absent from HEAD; no published migration changed. Source snapshot is staged but NOT committed/pushed/tagged. Pending final MEMORY restage after tests; source/manifest hashes must be refreshed before commit.
+
+- Backend gates COMPLETE/PASS across invocations, not a single all-green make ci: initial coverage run FAIL on clock-dependent fixture; original targeted FAIL?fixture-only fix PASS; same-coverpkg Performance PASS; total90.6%/55floors PASS; original fmt/lint/integration/build/OpenAPI/frontend-contract continuation EXIT0; explicit schema-lock-check EXIT0 confirming279published migrations unchanged. Integration timings:Architecture166.410s/Lifecycle263.006s/Migration381.273s/Performance49.910s. Data worker now frontend lint?test?build?Runner. Main verified MSVC environment preparation, local Windows build not yet started.
+
+- Final data worker acceptance: backend all original gates PASS across documented invocations; frontend lint/test/build EXIT0 (UI169/Web825tests;Web98,702assertions); Runner build/test4packages/vet/Node3tests all EXIT0. Data worker has released all owned heavy processes. Main started actual local NSIS release build/session38472, log .temp/delivery-windows-build.log. It reuses validated Web dist only for local packaging verification; local test artifacts must NEVER be uploaded as deployment-configured release assets. Official hosted build still needs user VITE_API_URL and real both-scope install/uninstall acceptance.
+
+- Windows real packaging PASS: Python helper session38472 EXIT0, Rust release4m44s, actual NSIS3.11 generated frontend-app_0.1.0-rc.1_x64-setup.exe5.93MiB. Generated installer.nsi confirms VERSION0.1.0-rc.1/INSTALLMODEboth/MULTIUSER_PAGE_INSTALLMODE. Actual EXE ProductVersion0.1.0-rc.1. Real Compress-Archive ZIP contains exactly that EXE; length/SHA256 equality PASS. Local files are packaging-only and must NOT be uploaded as configured release assets. Hosted installation/uninstallation NOT_RUN.
+- Current copied runtime/browser PASS326s: populated source DB online backup; random API54037/Web54038 ports; real prefilled tenant login/workspace/projects9/work-list/create/detail-refresh PASS; created ID43070307166126080, DRAFT, criterion stable, frozen contract hash recomputed equal, foreign-project404. Source record count0/copy1. Final health200/API5xx0/DBlocks0/ERRORlines0; browser errors0/visible alerts0/disabled navigation0/horizontal overflow0 at1366x768. First-row click initially under sticky header due retained scroll; normal scroll-to-top restored click, no product change. Readonly criterion correctly checked via textarea.readOnly (not disabled). Browser/owned process trees/copy/config/hardlink cleaned; scratch absent and helper EXIT0. Initial helper-only loader/SQLite handle/EOF issues fixed before successful acceptance; no product code involved.
+- Source-stage self-review PASS: scope/reuse/module ownership/regression/complexity/commit hygiene checked; previous bounded deep-review findings fixed and tested. Staged credential-pattern matches only intentional redaction fixtures in clientwork/package_archive_test.go and knowledge/memory_test.go. This is acceptance of the current candidate source stage, NOT full product or published release acceptance. Full known37product gaps remain above.

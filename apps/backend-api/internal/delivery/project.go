@@ -42,12 +42,13 @@ type projectCreated struct {
 	bindings  []core.EntityRoleBinding
 }
 type projectService struct {
-	names    query.TableNames
-	entities core.EntityProvisioner
-	roles    core.EntityRoleBindingStore
-	channels collab.ChannelProvisioner
-	audit    audit.Appender
-	events   events.Publisher
+	budgetHistory ProjectBudgetHistory
+	names         query.TableNames
+	entities      core.EntityProvisioner
+	roles         core.EntityRoleBindingStore
+	channels      collab.ChannelProvisioner
+	audit         audit.Appender
+	events        events.Publisher
 }
 
 // createOn writes the complete project aggregate through one caller-owned

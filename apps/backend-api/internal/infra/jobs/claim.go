@@ -42,8 +42,23 @@ func (m *Module) claim(ctx context.Context, queue, owner string, slots int) ([]m
 	if slots == 0 || len(kinds) == 0 {
 		return claimed, nil
 	}
+	// A read-only hint avoids taking the queue guard and SQLite writer slot
+	// when there is no due work. Admission is still rechecked under the guard.
+	if m.runtime == nil || m.runtime.Database() == nil || m.runtime.Database().Write() == nil {
+		return nil, ErrUnavailable
+	}
+	db := m.runtime.Database().Write()
+	nowMS, err := gormx.DatabaseClockMillis(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	table := query.BindJobs(db, m.names)
+	pending, err := table.WithContext(ctx).Where(table.Queue.Eq(queue), table.State.Eq("PENDING"), table.RunAtMS.Lte(nowMS), table.Kind.In(kinds...)).Limit(1).Find()
+	if err != nil || len(pending) == 0 {
+		return claimed, err
+	}
 	slices.Sort(kinds)
-	err := m.queueTransaction(ctx, nil, func(tx *gorm.DB) error {
+	err = m.queueTransaction(ctx, nil, func(tx *gorm.DB) error {
 		if err := m.guard(ctx, tx, "jobs:claim:"+queue); err != nil {
 			return err
 		}

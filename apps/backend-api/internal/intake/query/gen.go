@@ -16,30 +16,38 @@ import (
 )
 
 var (
-	Q       = new(Query)
-	Contact *contact
-	Record  *record
+	Q           = new(Query)
+	Contact     *contact
+	Record      *record
+	SignedBrief *signedBrief
+	TriageCard  *triageCard
 )
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
 	Contact = &Q.Contact
 	Record = &Q.Record
+	SignedBrief = &Q.SignedBrief
+	TriageCard = &Q.TriageCard
 }
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:      db,
-		Contact: newContact(db, opts...),
-		Record:  newRecord(db, opts...),
+		db:          db,
+		Contact:     newContact(db, opts...),
+		Record:      newRecord(db, opts...),
+		SignedBrief: newSignedBrief(db, opts...),
+		TriageCard:  newTriageCard(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	Contact contact
-	Record  record
+	Contact     contact
+	Record      record
+	SignedBrief signedBrief
+	TriageCard  triageCard
 }
 
 func (q *Query) Available() bool { return q.db != nil }
@@ -48,9 +56,11 @@ func (q *Query) UnderlyingDB() *gorm.DB { return q.db }
 
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:      db,
-		Contact: q.Contact.clone(db),
-		Record:  q.Record.clone(db),
+		db:          db,
+		Contact:     q.Contact.clone(db),
+		Record:      q.Record.clone(db),
+		SignedBrief: q.SignedBrief.clone(db),
+		TriageCard:  q.TriageCard.clone(db),
 	}
 }
 
@@ -64,21 +74,27 @@ func (q *Query) WriteDB() *Query {
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:      db,
-		Contact: q.Contact.replaceDB(db),
-		Record:  q.Record.replaceDB(db),
+		db:          db,
+		Contact:     q.Contact.replaceDB(db),
+		Record:      q.Record.replaceDB(db),
+		SignedBrief: q.SignedBrief.replaceDB(db),
+		TriageCard:  q.TriageCard.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	Contact IContactDo
-	Record  IRecordDo
+	Contact     IContactDo
+	Record      IRecordDo
+	SignedBrief ISignedBriefDo
+	TriageCard  ITriageCardDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		Contact: q.Contact.WithContext(ctx),
-		Record:  q.Record.WithContext(ctx),
+		Contact:     q.Contact.WithContext(ctx),
+		Record:      q.Record.WithContext(ctx),
+		SignedBrief: q.SignedBrief.WithContext(ctx),
+		TriageCard:  q.TriageCard.WithContext(ctx),
 	}
 }
 

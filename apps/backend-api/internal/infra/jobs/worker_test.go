@@ -30,11 +30,13 @@ func workerHarness(t *testing.T, slots int) (*Module, *gorm.DB) {
 
 func TestWorkersRunQueuedJobsWithinSlotsAndStopClaiming(t *testing.T) {
 	m, db := workerHarness(t, 2)
+	barrier, release := context.WithCancel(t.Context())
+	defer release()
 	var active, peak atomic.Int32
 	var mu sync.Mutex
 	calls := map[string]int{}
 	h := m.handlers["jobs.work"]
-	h.Run = func(_ context.Context, job Job) error {
+	h.Run = func(ctx context.Context, job Job) error {
 		n := active.Add(1)
 		for old := peak.Load(); n > old; old = peak.Load() {
 			if peak.CompareAndSwap(old, n) {
@@ -45,8 +47,14 @@ func TestWorkersRunQueuedJobsWithinSlotsAndStopClaiming(t *testing.T) {
 		mu.Lock()
 		calls[job.ID.String()]++
 		mu.Unlock()
-		time.Sleep(30 * time.Millisecond)
-		return nil
+		// SQLite ownership checks may serialize before handlers enter. Keep
+		// both slots occupied until the test observes their overlap.
+		select {
+		case <-barrier.Done():
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 	m.handlers[h.Kind] = h
 	reqs := make([]EnqueueRequest, 8)
@@ -59,6 +67,9 @@ func TestWorkersRunQueuedJobsWithinSlotsAndStopClaiming(t *testing.T) {
 	firstRun := m.workers
 	require.NoError(t, m.Start(t.Context()))
 	require.Same(t, firstRun, m.workers)
+	require.Eventually(t, func() bool { return active.Load() == 2 }, 3*time.Second, time.Millisecond,
+		"both worker slots must be occupied before releasing handlers")
+	release()
 	require.Eventually(t, func() bool {
 		for _, row := range rows {
 			if storedJob(t, db, row.JobID).State != "SUCCEEDED" {

@@ -24,6 +24,47 @@ export type FileBrowserRoot = FileBrowserLocation & {
 }
 export type FileBrowserSort = "name" | "size" | "updated"
 
+export type FileBrowserViewState = {
+  view: "details" | "small" | "large"
+  query: string
+  kind: "all" | "file" | "directory"
+  sort: FileBrowserSort
+  descending: boolean
+}
+
+export function fileBrowserViewState(
+  params: URLSearchParams
+): FileBrowserViewState {
+  const view = params.get("view")
+  const kind = params.get("kind")
+  const sort = params.get("sort")
+  return {
+    view: view === "small" || view === "large" ? view : "details",
+    query: params.get("q") ?? "",
+    kind: kind === "file" || kind === "directory" ? kind : "all",
+    sort: sort === "size" || sort === "updated" ? sort : "name",
+    descending: params.get("descending") === "1",
+  }
+}
+
+export function fileBrowserViewParams(
+  current: URLSearchParams,
+  state: FileBrowserViewState
+): URLSearchParams {
+  const next = new URLSearchParams(current)
+  for (const [key, value, fallback] of [
+    ["view", state.view, "details"],
+    ["q", state.query, ""],
+    ["kind", state.kind, "all"],
+    ["sort", state.sort, "name"],
+    ["descending", state.descending ? "1" : "", ""],
+  ]) {
+    if (value === fallback) next.delete(key!)
+    else next.set(key!, value!)
+  }
+  return next
+}
+
 export const FILE_PREVIEW_MAX_BYTES = 32 * 1024 * 1024
 export const FILE_THUMBNAIL_MAX_BYTES = 8 * 1024 * 1024
 

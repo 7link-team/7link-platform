@@ -7,7 +7,11 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
+	infraaudit "7link.com/platform/internal/infra/audit"
+	"7link.com/platform/internal/infra/events"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/internal/infra/idempotency"
+	"7link.com/platform/internal/infra/jobs"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -33,7 +37,7 @@ func TestModuleActivationComesFromConfig(t *testing.T) {
 func TestModuleIdentityDependenciesAndReadiness(t *testing.T) {
 	module := &Module{}
 	assert.Equal(t, Name, module.ModuleName())
-	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name}, module.ModuleDependencies())
+	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, infraaudit.Name, jobs.Name, events.Name, idempotency.Name}, module.ModuleDependencies())
 	assert.ErrorIs(t, module.CheckHealth(t.Context()), ErrUnavailable)
 
 	_, api := humatest.New(t)
@@ -288,6 +292,8 @@ func TestModuleMigrationSourceRemainsSelfDescribing(t *testing.T) {
 		{Name: "resource-menu-routes", Version: 16},
 		{Name: "retire-positions", Version: 17, Dependencies: []module.MigrationMilestoneRef{{Module: "organization", Name: "retire-positions"}}},
 		{Name: "role-member-expiry", Version: 18},
+		{Name: "membership-periods", Version: 19},
+		{Name: "menu-contributions", Version: 20},
 	}, (&Module{}).MigrationMilestones())
 }
 

@@ -28,6 +28,9 @@ func newMenu(db *gorm.DB, opts ...gen.DOOption) menu {
 
 	tableName := _menu.menuDo.TableName()
 	_menu.ALL = field.NewAsterisk(tableName)
+	_menu.App = field.NewString(tableName, "app")
+	_menu.Domain = field.NewString(tableName, "domain")
+	_menu.Space = field.NewString(tableName, "space")
 	_menu.TenantID = field.NewField(tableName, "tenant_id")
 	_menu.ID = field.NewField(tableName, "id")
 	_menu.ParentID = field.NewField(tableName, "parent_id")
@@ -50,6 +53,9 @@ type menu struct {
 	menuDo menuDo
 
 	ALL            field.Asterisk
+	App            field.String
+	Domain         field.String
+	Space          field.String
 	TenantID       field.Field
 	ID             field.Field
 	ParentID       field.Field
@@ -78,6 +84,9 @@ func (m menu) As(alias string) *menu {
 
 func (m *menu) updateTableName(table string) *menu {
 	m.ALL = field.NewAsterisk(table)
+	m.App = field.NewString(table, "app")
+	m.Domain = field.NewString(table, "domain")
+	m.Space = field.NewString(table, "space")
 	m.TenantID = field.NewField(table, "tenant_id")
 	m.ID = field.NewField(table, "id")
 	m.ParentID = field.NewField(table, "parent_id")
@@ -114,7 +123,10 @@ func (m *menu) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (m *menu) fillFieldMap() {
-	m.fieldMap = make(map[string]field.Expr, 12)
+	m.fieldMap = make(map[string]field.Expr, 15)
+	m.fieldMap["app"] = m.App
+	m.fieldMap["domain"] = m.Domain
+	m.fieldMap["space"] = m.Space
 	m.fieldMap["tenant_id"] = m.TenantID
 	m.fieldMap["id"] = m.ID
 	m.fieldMap["parent_id"] = m.ParentID

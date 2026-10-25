@@ -30,7 +30,7 @@ const (
 // body is only used to explain a failure, so there is no reason to accept more.
 const maxResponseBody = 4 << 10
 
-// payload is what a receiver is sent. It is audit's projection verbatim, which is
+// payload preserves the existing audit subscription protocol. It is audit's projection verbatim, which is
 // how the decision about what may leave stays in the module that owns the data
 // rather than being re-made here.
 type payload struct {
@@ -52,8 +52,19 @@ func sign(secret []byte, timestamp int64, body []byte) string {
 
 // post sends one delivery. A receiver that answers outside 2xx has not accepted
 // it, and the status is reported back so an operator can see why.
-func (s *Service) post(ctx context.Context, row deliveryRow, secret []byte, event audit.StreamEvent, url string) error {
-	body, err := json.Marshal(payload{Delivery: row.ID.String(), Attempt: row.Attempts, Event: event})
+func (s *Service) post(ctx context.Context, row deliveryRow, secret []byte, event audit.StreamEvent, url, mode string) error {
+	var value any = payload{Delivery: row.ID.String(), Attempt: row.Attempts, Event: event}
+	if mode == PayloadIntakeMetadata {
+		if len(secret) == 0 || event.TargetType != "intake" || event.TargetID <= 0 {
+			return ErrInvalidSubscription
+		}
+		value = struct {
+			EventType  string    `json:"event_type"`
+			TargetID   string    `json:"target_id"`
+			OccurredAt time.Time `json:"occurred_at"`
+		}{event.EventType, event.TargetID.String(), event.OccurredAt}
+	}
+	body, err := json.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("encode webhook payload: %w", err)
 	}
@@ -132,6 +143,9 @@ func (s *Service) fanOutOne(ctx context.Context, subscription subscriptionRow) e
 	through := subscription.AfterSequence
 	for _, event := range events {
 		through = event.Sequence
+		if subscription.PayloadMode == PayloadIntakeMetadata && (event.TargetType != "intake" || event.TargetID <= 0 || event.TenantID != subscription.TenantID) {
+			continue
+		}
 		if !matchesEventType(subscription.EventTypes, event.EventType) {
 			// Skipped types still move the cursor: the subscription has been
 			// offered them, and it does not want them.
@@ -199,6 +213,9 @@ func (s *Service) deliverOne(ctx context.Context, row deliveryRow) error {
 	if err != nil {
 		return s.recordFailure(ctx, row, err)
 	}
+	if subscription.PayloadMode == PayloadIntakeMetadata && subscription.Status != SubscriptionActive {
+		return s.terminate(ctx, row, "the callback subscription is disabled")
+	}
 	secret, err := s.openSecret(subscription)
 	if err != nil {
 		return s.recordFailure(ctx, row, err)
@@ -214,7 +231,10 @@ func (s *Service) deliverOne(ctx context.Context, row deliveryRow) error {
 		// There is nothing left to deliver and no point retrying.
 		return s.terminate(ctx, row, "the event is no longer retained")
 	}
-	if err := s.post(ctx, row, secret, events[0], subscription.URL); err != nil {
+	if subscription.PayloadMode == PayloadIntakeMetadata && (events[0].TenantID != row.TenantID || events[0].TargetType != "intake" || events[0].TargetID <= 0) {
+		return s.terminate(ctx, row, "the callback event is not an Intake event in this tenant")
+	}
+	if err := s.post(ctx, row, secret, events[0], subscription.URL, subscription.PayloadMode); err != nil {
 		return s.recordFailure(ctx, row, err)
 	}
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), outcomeWriteTimeout)

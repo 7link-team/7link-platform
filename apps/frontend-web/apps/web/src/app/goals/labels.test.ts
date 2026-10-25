@@ -1,0 +1,3 @@
+import { expect, test } from "bun:test"
+import { planningLabels } from "./labels"
+test("all planning controls have real translated text in all three locales", () => {const english = planningLabels("en-US");for (const locale of ["en-US", "zh-CN", "ms-MY"]) {const labels = planningLabels(locale);expect(Object.keys(labels).sort()).toEqual(Object.keys(english).sort());for (const value of Object.values(labels)) {expect(value.trim()).not.toBe("");expect(value).not.toMatch(/^\?+$/)}}expect(planningLabels("zh-CN").goals).toBe("目标");expect(planningLabels("ms-MY").myPlans).toBe("Pelan saya");expect(planningLabels("zh-CN").notice).toContain("不作推断")})

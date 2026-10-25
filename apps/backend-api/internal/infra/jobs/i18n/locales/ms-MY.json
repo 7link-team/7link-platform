@@ -1,0 +1,8 @@
+{
+  "menu_jobs": "Tugas latar belakang",
+  "menu_schedules": "Tugas berjadual",
+  "version_required": "Pengepala If-Match diperlukan.",
+  "version_conflict": "Tugas atau jadual telah diubah. Muat semula dan cuba lagi.",
+  "invalid_transition": "Keadaan semasa tugas atau jadual tidak membenarkan operasi ini.",
+  "schedule_active": "Jadual ini sudah mempunyai tugas yang menunggu atau sedang berjalan."
+}

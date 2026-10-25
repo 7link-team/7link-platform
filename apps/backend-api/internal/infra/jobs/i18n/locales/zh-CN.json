@@ -1,0 +1,8 @@
+{
+  "menu_jobs": "后台任务",
+  "menu_schedules": "定时任务",
+  "version_required": "必须提供 If-Match 请求头。",
+  "version_conflict": "任务或调度已被修改，请刷新后重试。",
+  "invalid_transition": "任务或调度的当前状态不允许此操作。",
+  "schedule_active": "此调度已有待处理或运行中的任务。"
+}

@@ -27,6 +27,9 @@ type ScopeNode struct {
 
 // MenuItem is one visible node in the effective navigation tree.
 type MenuItem struct {
+	App            string            `json:"app,omitempty"`
+	Domain         string            `json:"domain,omitempty"`
+	Space          string            `json:"space,omitempty"`
 	ID             guid.ID           `json:"id"`
 	Label          string            `json:"label"`
 	Translations   map[string]string `json:"translations,omitempty"`

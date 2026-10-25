@@ -5,4 +5,4 @@ import (
 	gengorm "7link.com/platform/pkg/extension/gorm/gen"
 )
 
-func main() { gengorm.Generate(model.EventRow{}) }
+func main() { gengorm.Generate(model.EventRow{}, model.Cursor{}, model.Receipt{}, model.Parked{}) }

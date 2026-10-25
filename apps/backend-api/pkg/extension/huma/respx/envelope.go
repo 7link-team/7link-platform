@@ -23,14 +23,21 @@ type Envelope[T any] struct {
 
 // Meta carries per-request metadata. Page is set only for list responses.
 type Meta struct {
-	RequestAt time.Time `json:"request_at" doc:"when the server received the request"`
-	ElapsedMS float64   `json:"elapsed_ms" doc:"server processing time in milliseconds (sub-millisecond precision)"`
-	Page      *Page     `json:"page,omitempty" doc:"pagination; present on list responses only"`
+	Next      []NextStep `json:"next,omitempty" maxItems:"5" doc:"suggested operations only; never an authorization grant"`
+	RequestAt time.Time  `json:"request_at" doc:"when the server received the request"`
+	ElapsedMS float64    `json:"elapsed_ms" doc:"server processing time in milliseconds (sub-millisecond precision)"`
+	Page      *Page      `json:"page,omitempty" doc:"pagination; present on list responses only"`
 	// Capabilities describes what a list endpoint accepts, so a client can build
 	// a filter and sort interface without hard-coding the contract. It is
 	// static per endpoint and therefore returned only on request, rather than
 	// repeated on every page.
 	Capabilities *Capabilities `json:"capabilities,omitempty" doc:"filter, sort and field contract; returned only when requested"`
+}
+
+// NextStep suggests a protocol operation without granting permission to call it.
+type NextStep struct {
+	Operation string `json:"operation"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 // Capabilities is the machine-readable contract of a list endpoint.

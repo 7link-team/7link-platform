@@ -16,58 +16,194 @@ import (
 )
 
 var (
-	Q                   = new(Query)
-	AcceptanceCriterion *acceptanceCriterion
-	Delivery            *delivery
-	Project             *project
-	ProjectContact      *projectContact
-	ProjectCounter      *projectCounter
-	ProjectRepository   *projectRepository
-	Requirement         *requirement
-	RequirementVersion  *requirementVersion
-	WorkItem            *workItem
+	Q                        = new(Query)
+	AcceptanceCriterion      *acceptanceCriterion
+	ArtifactConsumption      *artifactConsumption
+	Assignment               *assignment
+	AttentionSession         *attentionSession
+	ChangeImpact             *changeImpact
+	ChangeRecord             *changeRecord
+	ClarificationReceipt     *clarificationReceipt
+	CodeLink                 *codeLink
+	CodeLinkScan             *codeLinkScan
+	CommentDefect            *commentDefect
+	Delivery                 *delivery
+	DeliveryConfirmation     *deliveryConfirmation
+	Deployment               *deployment
+	Project                  *project
+	ProjectBudgetEvent       *projectBudgetEvent
+	ProjectConstitution      *projectConstitution
+	ProjectContact           *projectContact
+	ProjectCounter           *projectCounter
+	ProjectModeChange        *projectModeChange
+	ProjectRepository        *projectRepository
+	ProjectStageTransition   *projectStageTransition
+	ReadinessCheck           *readinessCheck
+	ReportQualityObservation *reportQualityObservation
+	ReportQualityReceipt     *reportQualityReceipt
+	Requirement              *requirement
+	RequirementVersion       *requirementVersion
+	ResultAction             *resultAction
+	ResultEvidence           *resultEvidence
+	ResultFeedback           *resultFeedback
+	ResultHandoff            *resultHandoff
+	ResultVersion            *resultVersion
+	ReviewOpinion            *reviewOpinion
+	ReviewPlan               *reviewPlan
+	ReviewSheet              *reviewSheet
+	ReviewType               *reviewType
+	VerificationOverride     *verificationOverride
+	VerificationRun          *verificationRun
+	WorkItem                 *workItem
+	WorkItemActivity         *workItemActivity
+	WorkItemContract         *workItemContract
+	WorkItemCriterion        *workItemCriterion
+	WorkItemDependency       *workItemDependency
+	WorkItemTransition       *workItemTransition
 )
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
 	AcceptanceCriterion = &Q.AcceptanceCriterion
+	ArtifactConsumption = &Q.ArtifactConsumption
+	Assignment = &Q.Assignment
+	AttentionSession = &Q.AttentionSession
+	ChangeImpact = &Q.ChangeImpact
+	ChangeRecord = &Q.ChangeRecord
+	ClarificationReceipt = &Q.ClarificationReceipt
+	CodeLink = &Q.CodeLink
+	CodeLinkScan = &Q.CodeLinkScan
+	CommentDefect = &Q.CommentDefect
 	Delivery = &Q.Delivery
+	DeliveryConfirmation = &Q.DeliveryConfirmation
+	Deployment = &Q.Deployment
 	Project = &Q.Project
+	ProjectBudgetEvent = &Q.ProjectBudgetEvent
+	ProjectConstitution = &Q.ProjectConstitution
 	ProjectContact = &Q.ProjectContact
 	ProjectCounter = &Q.ProjectCounter
+	ProjectModeChange = &Q.ProjectModeChange
 	ProjectRepository = &Q.ProjectRepository
+	ProjectStageTransition = &Q.ProjectStageTransition
+	ReadinessCheck = &Q.ReadinessCheck
+	ReportQualityObservation = &Q.ReportQualityObservation
+	ReportQualityReceipt = &Q.ReportQualityReceipt
 	Requirement = &Q.Requirement
 	RequirementVersion = &Q.RequirementVersion
+	ResultAction = &Q.ResultAction
+	ResultEvidence = &Q.ResultEvidence
+	ResultFeedback = &Q.ResultFeedback
+	ResultHandoff = &Q.ResultHandoff
+	ResultVersion = &Q.ResultVersion
+	ReviewOpinion = &Q.ReviewOpinion
+	ReviewPlan = &Q.ReviewPlan
+	ReviewSheet = &Q.ReviewSheet
+	ReviewType = &Q.ReviewType
+	VerificationOverride = &Q.VerificationOverride
+	VerificationRun = &Q.VerificationRun
 	WorkItem = &Q.WorkItem
+	WorkItemActivity = &Q.WorkItemActivity
+	WorkItemContract = &Q.WorkItemContract
+	WorkItemCriterion = &Q.WorkItemCriterion
+	WorkItemDependency = &Q.WorkItemDependency
+	WorkItemTransition = &Q.WorkItemTransition
 }
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:                  db,
-		AcceptanceCriterion: newAcceptanceCriterion(db, opts...),
-		Delivery:            newDelivery(db, opts...),
-		Project:             newProject(db, opts...),
-		ProjectContact:      newProjectContact(db, opts...),
-		ProjectCounter:      newProjectCounter(db, opts...),
-		ProjectRepository:   newProjectRepository(db, opts...),
-		Requirement:         newRequirement(db, opts...),
-		RequirementVersion:  newRequirementVersion(db, opts...),
-		WorkItem:            newWorkItem(db, opts...),
+		db:                       db,
+		AcceptanceCriterion:      newAcceptanceCriterion(db, opts...),
+		ArtifactConsumption:      newArtifactConsumption(db, opts...),
+		Assignment:               newAssignment(db, opts...),
+		AttentionSession:         newAttentionSession(db, opts...),
+		ChangeImpact:             newChangeImpact(db, opts...),
+		ChangeRecord:             newChangeRecord(db, opts...),
+		ClarificationReceipt:     newClarificationReceipt(db, opts...),
+		CodeLink:                 newCodeLink(db, opts...),
+		CodeLinkScan:             newCodeLinkScan(db, opts...),
+		CommentDefect:            newCommentDefect(db, opts...),
+		Delivery:                 newDelivery(db, opts...),
+		DeliveryConfirmation:     newDeliveryConfirmation(db, opts...),
+		Deployment:               newDeployment(db, opts...),
+		Project:                  newProject(db, opts...),
+		ProjectBudgetEvent:       newProjectBudgetEvent(db, opts...),
+		ProjectConstitution:      newProjectConstitution(db, opts...),
+		ProjectContact:           newProjectContact(db, opts...),
+		ProjectCounter:           newProjectCounter(db, opts...),
+		ProjectModeChange:        newProjectModeChange(db, opts...),
+		ProjectRepository:        newProjectRepository(db, opts...),
+		ProjectStageTransition:   newProjectStageTransition(db, opts...),
+		ReadinessCheck:           newReadinessCheck(db, opts...),
+		ReportQualityObservation: newReportQualityObservation(db, opts...),
+		ReportQualityReceipt:     newReportQualityReceipt(db, opts...),
+		Requirement:              newRequirement(db, opts...),
+		RequirementVersion:       newRequirementVersion(db, opts...),
+		ResultAction:             newResultAction(db, opts...),
+		ResultEvidence:           newResultEvidence(db, opts...),
+		ResultFeedback:           newResultFeedback(db, opts...),
+		ResultHandoff:            newResultHandoff(db, opts...),
+		ResultVersion:            newResultVersion(db, opts...),
+		ReviewOpinion:            newReviewOpinion(db, opts...),
+		ReviewPlan:               newReviewPlan(db, opts...),
+		ReviewSheet:              newReviewSheet(db, opts...),
+		ReviewType:               newReviewType(db, opts...),
+		VerificationOverride:     newVerificationOverride(db, opts...),
+		VerificationRun:          newVerificationRun(db, opts...),
+		WorkItem:                 newWorkItem(db, opts...),
+		WorkItemActivity:         newWorkItemActivity(db, opts...),
+		WorkItemContract:         newWorkItemContract(db, opts...),
+		WorkItemCriterion:        newWorkItemCriterion(db, opts...),
+		WorkItemDependency:       newWorkItemDependency(db, opts...),
+		WorkItemTransition:       newWorkItemTransition(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	AcceptanceCriterion acceptanceCriterion
-	Delivery            delivery
-	Project             project
-	ProjectContact      projectContact
-	ProjectCounter      projectCounter
-	ProjectRepository   projectRepository
-	Requirement         requirement
-	RequirementVersion  requirementVersion
-	WorkItem            workItem
+	AcceptanceCriterion      acceptanceCriterion
+	ArtifactConsumption      artifactConsumption
+	Assignment               assignment
+	AttentionSession         attentionSession
+	ChangeImpact             changeImpact
+	ChangeRecord             changeRecord
+	ClarificationReceipt     clarificationReceipt
+	CodeLink                 codeLink
+	CodeLinkScan             codeLinkScan
+	CommentDefect            commentDefect
+	Delivery                 delivery
+	DeliveryConfirmation     deliveryConfirmation
+	Deployment               deployment
+	Project                  project
+	ProjectBudgetEvent       projectBudgetEvent
+	ProjectConstitution      projectConstitution
+	ProjectContact           projectContact
+	ProjectCounter           projectCounter
+	ProjectModeChange        projectModeChange
+	ProjectRepository        projectRepository
+	ProjectStageTransition   projectStageTransition
+	ReadinessCheck           readinessCheck
+	ReportQualityObservation reportQualityObservation
+	ReportQualityReceipt     reportQualityReceipt
+	Requirement              requirement
+	RequirementVersion       requirementVersion
+	ResultAction             resultAction
+	ResultEvidence           resultEvidence
+	ResultFeedback           resultFeedback
+	ResultHandoff            resultHandoff
+	ResultVersion            resultVersion
+	ReviewOpinion            reviewOpinion
+	ReviewPlan               reviewPlan
+	ReviewSheet              reviewSheet
+	ReviewType               reviewType
+	VerificationOverride     verificationOverride
+	VerificationRun          verificationRun
+	WorkItem                 workItem
+	WorkItemActivity         workItemActivity
+	WorkItemContract         workItemContract
+	WorkItemCriterion        workItemCriterion
+	WorkItemDependency       workItemDependency
+	WorkItemTransition       workItemTransition
 }
 
 func (q *Query) Available() bool { return q.db != nil }
@@ -76,16 +212,50 @@ func (q *Query) UnderlyingDB() *gorm.DB { return q.db }
 
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:                  db,
-		AcceptanceCriterion: q.AcceptanceCriterion.clone(db),
-		Delivery:            q.Delivery.clone(db),
-		Project:             q.Project.clone(db),
-		ProjectContact:      q.ProjectContact.clone(db),
-		ProjectCounter:      q.ProjectCounter.clone(db),
-		ProjectRepository:   q.ProjectRepository.clone(db),
-		Requirement:         q.Requirement.clone(db),
-		RequirementVersion:  q.RequirementVersion.clone(db),
-		WorkItem:            q.WorkItem.clone(db),
+		db:                       db,
+		AcceptanceCriterion:      q.AcceptanceCriterion.clone(db),
+		ArtifactConsumption:      q.ArtifactConsumption.clone(db),
+		Assignment:               q.Assignment.clone(db),
+		AttentionSession:         q.AttentionSession.clone(db),
+		ChangeImpact:             q.ChangeImpact.clone(db),
+		ChangeRecord:             q.ChangeRecord.clone(db),
+		ClarificationReceipt:     q.ClarificationReceipt.clone(db),
+		CodeLink:                 q.CodeLink.clone(db),
+		CodeLinkScan:             q.CodeLinkScan.clone(db),
+		CommentDefect:            q.CommentDefect.clone(db),
+		Delivery:                 q.Delivery.clone(db),
+		DeliveryConfirmation:     q.DeliveryConfirmation.clone(db),
+		Deployment:               q.Deployment.clone(db),
+		Project:                  q.Project.clone(db),
+		ProjectBudgetEvent:       q.ProjectBudgetEvent.clone(db),
+		ProjectConstitution:      q.ProjectConstitution.clone(db),
+		ProjectContact:           q.ProjectContact.clone(db),
+		ProjectCounter:           q.ProjectCounter.clone(db),
+		ProjectModeChange:        q.ProjectModeChange.clone(db),
+		ProjectRepository:        q.ProjectRepository.clone(db),
+		ProjectStageTransition:   q.ProjectStageTransition.clone(db),
+		ReadinessCheck:           q.ReadinessCheck.clone(db),
+		ReportQualityObservation: q.ReportQualityObservation.clone(db),
+		ReportQualityReceipt:     q.ReportQualityReceipt.clone(db),
+		Requirement:              q.Requirement.clone(db),
+		RequirementVersion:       q.RequirementVersion.clone(db),
+		ResultAction:             q.ResultAction.clone(db),
+		ResultEvidence:           q.ResultEvidence.clone(db),
+		ResultFeedback:           q.ResultFeedback.clone(db),
+		ResultHandoff:            q.ResultHandoff.clone(db),
+		ResultVersion:            q.ResultVersion.clone(db),
+		ReviewOpinion:            q.ReviewOpinion.clone(db),
+		ReviewPlan:               q.ReviewPlan.clone(db),
+		ReviewSheet:              q.ReviewSheet.clone(db),
+		ReviewType:               q.ReviewType.clone(db),
+		VerificationOverride:     q.VerificationOverride.clone(db),
+		VerificationRun:          q.VerificationRun.clone(db),
+		WorkItem:                 q.WorkItem.clone(db),
+		WorkItemActivity:         q.WorkItemActivity.clone(db),
+		WorkItemContract:         q.WorkItemContract.clone(db),
+		WorkItemCriterion:        q.WorkItemCriterion.clone(db),
+		WorkItemDependency:       q.WorkItemDependency.clone(db),
+		WorkItemTransition:       q.WorkItemTransition.clone(db),
 	}
 }
 
@@ -99,42 +269,144 @@ func (q *Query) WriteDB() *Query {
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:                  db,
-		AcceptanceCriterion: q.AcceptanceCriterion.replaceDB(db),
-		Delivery:            q.Delivery.replaceDB(db),
-		Project:             q.Project.replaceDB(db),
-		ProjectContact:      q.ProjectContact.replaceDB(db),
-		ProjectCounter:      q.ProjectCounter.replaceDB(db),
-		ProjectRepository:   q.ProjectRepository.replaceDB(db),
-		Requirement:         q.Requirement.replaceDB(db),
-		RequirementVersion:  q.RequirementVersion.replaceDB(db),
-		WorkItem:            q.WorkItem.replaceDB(db),
+		db:                       db,
+		AcceptanceCriterion:      q.AcceptanceCriterion.replaceDB(db),
+		ArtifactConsumption:      q.ArtifactConsumption.replaceDB(db),
+		Assignment:               q.Assignment.replaceDB(db),
+		AttentionSession:         q.AttentionSession.replaceDB(db),
+		ChangeImpact:             q.ChangeImpact.replaceDB(db),
+		ChangeRecord:             q.ChangeRecord.replaceDB(db),
+		ClarificationReceipt:     q.ClarificationReceipt.replaceDB(db),
+		CodeLink:                 q.CodeLink.replaceDB(db),
+		CodeLinkScan:             q.CodeLinkScan.replaceDB(db),
+		CommentDefect:            q.CommentDefect.replaceDB(db),
+		Delivery:                 q.Delivery.replaceDB(db),
+		DeliveryConfirmation:     q.DeliveryConfirmation.replaceDB(db),
+		Deployment:               q.Deployment.replaceDB(db),
+		Project:                  q.Project.replaceDB(db),
+		ProjectBudgetEvent:       q.ProjectBudgetEvent.replaceDB(db),
+		ProjectConstitution:      q.ProjectConstitution.replaceDB(db),
+		ProjectContact:           q.ProjectContact.replaceDB(db),
+		ProjectCounter:           q.ProjectCounter.replaceDB(db),
+		ProjectModeChange:        q.ProjectModeChange.replaceDB(db),
+		ProjectRepository:        q.ProjectRepository.replaceDB(db),
+		ProjectStageTransition:   q.ProjectStageTransition.replaceDB(db),
+		ReadinessCheck:           q.ReadinessCheck.replaceDB(db),
+		ReportQualityObservation: q.ReportQualityObservation.replaceDB(db),
+		ReportQualityReceipt:     q.ReportQualityReceipt.replaceDB(db),
+		Requirement:              q.Requirement.replaceDB(db),
+		RequirementVersion:       q.RequirementVersion.replaceDB(db),
+		ResultAction:             q.ResultAction.replaceDB(db),
+		ResultEvidence:           q.ResultEvidence.replaceDB(db),
+		ResultFeedback:           q.ResultFeedback.replaceDB(db),
+		ResultHandoff:            q.ResultHandoff.replaceDB(db),
+		ResultVersion:            q.ResultVersion.replaceDB(db),
+		ReviewOpinion:            q.ReviewOpinion.replaceDB(db),
+		ReviewPlan:               q.ReviewPlan.replaceDB(db),
+		ReviewSheet:              q.ReviewSheet.replaceDB(db),
+		ReviewType:               q.ReviewType.replaceDB(db),
+		VerificationOverride:     q.VerificationOverride.replaceDB(db),
+		VerificationRun:          q.VerificationRun.replaceDB(db),
+		WorkItem:                 q.WorkItem.replaceDB(db),
+		WorkItemActivity:         q.WorkItemActivity.replaceDB(db),
+		WorkItemContract:         q.WorkItemContract.replaceDB(db),
+		WorkItemCriterion:        q.WorkItemCriterion.replaceDB(db),
+		WorkItemDependency:       q.WorkItemDependency.replaceDB(db),
+		WorkItemTransition:       q.WorkItemTransition.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	AcceptanceCriterion IAcceptanceCriterionDo
-	Delivery            IDeliveryDo
-	Project             IProjectDo
-	ProjectContact      IProjectContactDo
-	ProjectCounter      IProjectCounterDo
-	ProjectRepository   IProjectRepositoryDo
-	Requirement         IRequirementDo
-	RequirementVersion  IRequirementVersionDo
-	WorkItem            IWorkItemDo
+	AcceptanceCriterion      IAcceptanceCriterionDo
+	ArtifactConsumption      IArtifactConsumptionDo
+	Assignment               IAssignmentDo
+	AttentionSession         IAttentionSessionDo
+	ChangeImpact             IChangeImpactDo
+	ChangeRecord             IChangeRecordDo
+	ClarificationReceipt     IClarificationReceiptDo
+	CodeLink                 ICodeLinkDo
+	CodeLinkScan             ICodeLinkScanDo
+	CommentDefect            ICommentDefectDo
+	Delivery                 IDeliveryDo
+	DeliveryConfirmation     IDeliveryConfirmationDo
+	Deployment               IDeploymentDo
+	Project                  IProjectDo
+	ProjectBudgetEvent       IProjectBudgetEventDo
+	ProjectConstitution      IProjectConstitutionDo
+	ProjectContact           IProjectContactDo
+	ProjectCounter           IProjectCounterDo
+	ProjectModeChange        IProjectModeChangeDo
+	ProjectRepository        IProjectRepositoryDo
+	ProjectStageTransition   IProjectStageTransitionDo
+	ReadinessCheck           IReadinessCheckDo
+	ReportQualityObservation IReportQualityObservationDo
+	ReportQualityReceipt     IReportQualityReceiptDo
+	Requirement              IRequirementDo
+	RequirementVersion       IRequirementVersionDo
+	ResultAction             IResultActionDo
+	ResultEvidence           IResultEvidenceDo
+	ResultFeedback           IResultFeedbackDo
+	ResultHandoff            IResultHandoffDo
+	ResultVersion            IResultVersionDo
+	ReviewOpinion            IReviewOpinionDo
+	ReviewPlan               IReviewPlanDo
+	ReviewSheet              IReviewSheetDo
+	ReviewType               IReviewTypeDo
+	VerificationOverride     IVerificationOverrideDo
+	VerificationRun          IVerificationRunDo
+	WorkItem                 IWorkItemDo
+	WorkItemActivity         IWorkItemActivityDo
+	WorkItemContract         IWorkItemContractDo
+	WorkItemCriterion        IWorkItemCriterionDo
+	WorkItemDependency       IWorkItemDependencyDo
+	WorkItemTransition       IWorkItemTransitionDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		AcceptanceCriterion: q.AcceptanceCriterion.WithContext(ctx),
-		Delivery:            q.Delivery.WithContext(ctx),
-		Project:             q.Project.WithContext(ctx),
-		ProjectContact:      q.ProjectContact.WithContext(ctx),
-		ProjectCounter:      q.ProjectCounter.WithContext(ctx),
-		ProjectRepository:   q.ProjectRepository.WithContext(ctx),
-		Requirement:         q.Requirement.WithContext(ctx),
-		RequirementVersion:  q.RequirementVersion.WithContext(ctx),
-		WorkItem:            q.WorkItem.WithContext(ctx),
+		AcceptanceCriterion:      q.AcceptanceCriterion.WithContext(ctx),
+		ArtifactConsumption:      q.ArtifactConsumption.WithContext(ctx),
+		Assignment:               q.Assignment.WithContext(ctx),
+		AttentionSession:         q.AttentionSession.WithContext(ctx),
+		ChangeImpact:             q.ChangeImpact.WithContext(ctx),
+		ChangeRecord:             q.ChangeRecord.WithContext(ctx),
+		ClarificationReceipt:     q.ClarificationReceipt.WithContext(ctx),
+		CodeLink:                 q.CodeLink.WithContext(ctx),
+		CodeLinkScan:             q.CodeLinkScan.WithContext(ctx),
+		CommentDefect:            q.CommentDefect.WithContext(ctx),
+		Delivery:                 q.Delivery.WithContext(ctx),
+		DeliveryConfirmation:     q.DeliveryConfirmation.WithContext(ctx),
+		Deployment:               q.Deployment.WithContext(ctx),
+		Project:                  q.Project.WithContext(ctx),
+		ProjectBudgetEvent:       q.ProjectBudgetEvent.WithContext(ctx),
+		ProjectConstitution:      q.ProjectConstitution.WithContext(ctx),
+		ProjectContact:           q.ProjectContact.WithContext(ctx),
+		ProjectCounter:           q.ProjectCounter.WithContext(ctx),
+		ProjectModeChange:        q.ProjectModeChange.WithContext(ctx),
+		ProjectRepository:        q.ProjectRepository.WithContext(ctx),
+		ProjectStageTransition:   q.ProjectStageTransition.WithContext(ctx),
+		ReadinessCheck:           q.ReadinessCheck.WithContext(ctx),
+		ReportQualityObservation: q.ReportQualityObservation.WithContext(ctx),
+		ReportQualityReceipt:     q.ReportQualityReceipt.WithContext(ctx),
+		Requirement:              q.Requirement.WithContext(ctx),
+		RequirementVersion:       q.RequirementVersion.WithContext(ctx),
+		ResultAction:             q.ResultAction.WithContext(ctx),
+		ResultEvidence:           q.ResultEvidence.WithContext(ctx),
+		ResultFeedback:           q.ResultFeedback.WithContext(ctx),
+		ResultHandoff:            q.ResultHandoff.WithContext(ctx),
+		ResultVersion:            q.ResultVersion.WithContext(ctx),
+		ReviewOpinion:            q.ReviewOpinion.WithContext(ctx),
+		ReviewPlan:               q.ReviewPlan.WithContext(ctx),
+		ReviewSheet:              q.ReviewSheet.WithContext(ctx),
+		ReviewType:               q.ReviewType.WithContext(ctx),
+		VerificationOverride:     q.VerificationOverride.WithContext(ctx),
+		VerificationRun:          q.VerificationRun.WithContext(ctx),
+		WorkItem:                 q.WorkItem.WithContext(ctx),
+		WorkItemActivity:         q.WorkItemActivity.WithContext(ctx),
+		WorkItemContract:         q.WorkItemContract.WithContext(ctx),
+		WorkItemCriterion:        q.WorkItemCriterion.WithContext(ctx),
+		WorkItemDependency:       q.WorkItemDependency.WithContext(ctx),
+		WorkItemTransition:       q.WorkItemTransition.WithContext(ctx),
 	}
 }
 

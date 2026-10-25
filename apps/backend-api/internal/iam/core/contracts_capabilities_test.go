@@ -20,6 +20,7 @@ import (
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
+	"7link.com/platform/internal/iam/webhook"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authz"
 	"github.com/stretchr/testify/assert"
@@ -47,6 +48,8 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		{"authz.PermissionChecker", reflect.TypeFor[authz.PermissionChecker](), "7link.com/platform/pkg/extension/authz"},
 		{"core.ActiveMemberChecker", reflect.TypeFor[core.ActiveMemberChecker](), "7link.com/platform/internal/iam/core"},
 		{"core.MemberDepartmentReader", reflect.TypeFor[core.MemberDepartmentReader](), "7link.com/platform/internal/iam/core"},
+		{"core.MenuContributor", reflect.TypeFor[core.MenuContributor](), "7link.com/platform/internal/iam/core"},
+		{"core.MenuSink", reflect.TypeFor[core.MenuSink](), "7link.com/platform/internal/iam/core"},
 		{"core.MemberTenantResolver", reflect.TypeFor[core.MemberTenantResolver](), "7link.com/platform/internal/iam/core"},
 		{"core.DirectoryAuthorizationSourceConnector", reflect.TypeFor[core.DirectoryAuthorizationSourceConnector](), "7link.com/platform/internal/iam/core"},
 		// The two table-name connectors are keys of the same registry, so they
@@ -71,9 +74,11 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		{"federation.SecretRewrapper", reflect.TypeFor[federation.SecretRewrapper](), "7link.com/platform/internal/iam/federation"},
 		{"federation.LegacyIdentityMaintenance", reflect.TypeFor[federation.LegacyIdentityMaintenance](), "7link.com/platform/internal/iam/federation"},
 		{"provisioning.SecretRewrapper", reflect.TypeFor[provisioning.SecretRewrapper](), "7link.com/platform/internal/iam/provisioning"},
+		{"webhook.IntakeCallbackSubscriptions", reflect.TypeFor[webhook.IntakeCallbackSubscriptions](), "7link.com/platform/internal/iam/webhook"},
+		{"webhook.IntakeCallbackReceiver", reflect.TypeFor[webhook.IntakeCallbackReceiver](), "7link.com/platform/internal/iam/webhook"},
 	}
 
-	require.Len(t, capabilities, 28)
+	require.Len(t, capabilities, 32)
 	seen := make(map[reflect.Type]struct{}, len(capabilities))
 	for _, capability := range capabilities {
 		require.NotNil(t, capability.typ)
@@ -108,11 +113,16 @@ func TestIAMRootExportedInterfacesMatchFrozenSet(t *testing.T) {
 		"core.AdministratorGuard",
 		"core.AuthorizationEvaluator",
 		"core.MemberDepartmentReader",
+		"core.MenuContributor",
+		"core.MenuSink",
 		"federation.LegacyIdentityMaintenance",
 		"federation.SecretRewrapper",
+		"identity.EnrollmentAccounts",
 		"identity.IdentityProvisioner",
+		"oauth.EnrollmentTokens",
 		"organization.GroupProvisioner",
 		"provisioning.SecretRewrapper",
+		"webhook.IntakeCallbackSubscriptions",
 	}
 	assert.Equal(t, expected, actual)
 }
@@ -130,6 +140,8 @@ func TestIAMCapabilitiesAreDeclaredByTheirProviderRoots(t *testing.T) {
 		"authn.WebService":                           "interface",
 		"core.ActiveMemberChecker":                   "interface",
 		"core.MemberDepartmentReader":                "interface",
+		"core.MenuContributor":                       "interface",
+		"core.MenuSink":                              "interface",
 		"core.MemberTenantResolver":                  "func",
 		"core.AdministratorGuard":                    "interface",
 		"core.AuthorizationEvaluator":                "interface",
@@ -144,6 +156,8 @@ func TestIAMCapabilitiesAreDeclaredByTheirProviderRoots(t *testing.T) {
 		"identity.InvitationPrincipalCreator":        "func",
 		"identity.ServiceAccountValidator":           "func",
 		"organization.GroupProvisioner":              "interface",
+		"webhook.IntakeCallbackSubscriptions":        "interface",
+		"webhook.IntakeCallbackReceiver":             "struct",
 	}
 	declarations := readIAMRootDeclarations(t)
 	for name, kind := range expected {

@@ -225,3 +225,20 @@ func TestPublishPlatformEventUsesExplicitZeroTenantTopic(t *testing.T) {
 	e.ExtraTopics = []string{"tenant/1/projects"}
 	require.ErrorIs(t, db.Transaction(func(tx *gorm.DB) error { _, err := m.Publish(t.Context(), tx, e); return err }), ErrInvalidEvent)
 }
+
+func TestEphemeralTransportIsFullAndExcludedFromDomainConsumers(t *testing.T) {
+	m, db := newTestPublisher(t)
+	e := testEvent()
+	e.Type = "notification.created"
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error { _, err := m.PublishEphemeral(t.Context(), tx, e); return err }))
+	var rows []model.EventRow
+	require.NoError(t, db.Table(m.names.Events.String()).Find(&rows).Error)
+	require.Len(t, rows, 1)
+	require.False(t, rows[0].Durable)
+	require.Equal(t, string(RealtimeFull), rows[0].RealtimeMode)
+	domain, err := m.ReadEventsOn(t.Context(), db, 0, 100)
+	require.NoError(t, err)
+	require.Empty(t, domain)
+	e.Type = "invalid"
+	require.Error(t, db.Transaction(func(tx *gorm.DB) error { _, err := m.PublishEphemeral(t.Context(), tx, e); return err }))
+}

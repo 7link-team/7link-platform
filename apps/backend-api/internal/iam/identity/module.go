@@ -94,6 +94,18 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[IdentityProvisioner](services, m); err != nil {
 		return fmt.Errorf("provide identity provisioner: %w", err)
 	}
+	if err := m.provideEnrollment(services); err != nil {
+		return err
+	}
+	if err := m.provideAgentCredentialRotation(services); err != nil {
+		return err
+	}
+	if err := module.Provide[NotificationCandidates](services, m.notificationCandidates); err != nil {
+		return err
+	}
+	if err := m.provideAccountNotifications(services); err != nil {
+		return err
+	}
 	validateAccount := ServiceAccountValidator(func(ctx context.Context, db *gorm.DB, tenantID, principalID guid.ID, now time.Time) (bool, error) {
 		if m == nil || m.Service == nil {
 			return false, ErrUnavailable
@@ -155,7 +167,7 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[PrincipalTableNames](services, PublishedPrincipalTableNames(m.runtime.TablePrefix())); err != nil {
 		return fmt.Errorf("provide identity principal table names: %w", err)
 	}
-	return nil
+	return m.provideAgentAvatar(services)
 }
 
 // bootstrapPrincipalStore is provided before injection, so each closure builds

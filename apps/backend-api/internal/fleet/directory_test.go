@@ -3,6 +3,7 @@ package fleet
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ func directoryHarness(t *testing.T) (*Module, *gorm.DB) {
 	db := router.Write()
 	raw, err := db.DB()
 	require.NoError(t, err)
-	m := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1"), appenv.WithTablePrefix("dir_")), Config{Config: module.Config{Enabled: true}})
+	m := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1"), appenv.WithTablePrefix("dir_"), appenv.WithDatabase(router)), Config{Config: module.Config{Enabled: true}})
 	source := m.MigrationSource()
 	source.Prefix = "dir_"
 	require.NoError(t, goosex.Migrate(t.Context(), raw, source, "sqlite"))
@@ -50,6 +51,8 @@ func TestDirectoryIsolationRevocationAndRollback(t *testing.T) {
 		require.Equal(t, []string{"agent_executor", "agent_reviewer"}, view.IAMRoleKeys)
 		require.Equal(t, "DRAFT", view.State)
 		require.Equal(t, "HUMAN_CREATED", view.Origin)
+		require.Equal(t, "CODEX", view.RuntimeKind)
+		require.Equal(t, "model", view.ModelID)
 		for _, ids := range [][2]guid.ID{{8, 101}, {7, 999}} {
 			v, ok, e := m.ByPrincipalOn(t.Context(), tx, ids[0], ids[1])
 			require.NoError(t, e)
@@ -129,4 +132,62 @@ func TestDirectoryProvider(t *testing.T) {
 	directory, err := module.Resolve[AgentDirectory](services)
 	require.NoError(t, err)
 	require.NotNil(t, directory.ByPrincipalOn)
+	require.NotNil(t, directory.ActiveByRoleOn)
+}
+
+func TestDirectoryActiveRoleCandidatesUseActualTenantStateAndRevocation(t *testing.T) {
+	m, db := directoryHarness(t)
+	now := time.Now().UTC()
+	for _, tc := range []struct {
+		id, principal, tenant int
+		state, role           string
+		revoked               bool
+	}{
+		{2, 300, 7, "ACTIVE", "TESTER", false}, {3, 200, 7, "ACTIVE", "TESTER", false},
+		{4, 400, 7, "DRAFT", "TESTER", false}, {5, 500, 7, "STOPPED", "TESTER", false},
+		{6, 600, 7, "ACTIVE", "TESTER", true}, {7, 700, 7, "ACTIVE", "REVIEWER", false}, {8, 800, 8, "ACTIVE", "TESTER", false},
+	} {
+		require.NoError(t, db.Table(m.names.Agents.String()).Create(map[string]any{"id": tc.id, "tenant_id": tc.tenant, "principal_id": tc.principal, "name": fmt.Sprintf("Candidate %d", tc.id), "handle": fmt.Sprintf("candidate-%d", tc.id), "avatar_seed": tc.id, "system_prompt": "Private", "runtime_kind": "CODEX", "model_id": "model", "model_family": "family", "state": tc.state, "created_by_principal_id": 11, "owner_principal_id": 11, "created_at": now, "updated_at": now}).Error)
+		key, _ := AgentIAMRoleKey(tc.role)
+		var revoked *time.Time
+		if tc.revoked {
+			revoked = &now
+		}
+		require.NoError(t, db.Table(m.names.AgentRoles.String()).Create(map[string]any{"tenant_id": tc.tenant, "agent_id": tc.id, "role": tc.role, "iam_role_key": key, "revoked_at": revoked, "created_at": now, "updated_at": now}).Error)
+	}
+	_, err := m.ActiveByRoleOn(t.Context(), db, 7, "TESTER")
+	require.ErrorIs(t, err, ErrInvalidArgument)
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+		got, err := m.ActiveByRoleOn(t.Context(), tx, 7, "TESTER")
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		require.Equal(t, []guid.ID{200, 300}, []guid.ID{got[0].PrincipalID, got[1].PrincipalID})
+		for _, a := range got {
+			require.Equal(t, guid.ID(7), a.TenantID)
+			require.Equal(t, []string{"TESTER"}, a.Roles)
+		}
+		got, err = m.ActiveByRoleOn(t.Context(), tx, 9, "TESTER")
+		require.NoError(t, err)
+		require.Empty(t, got)
+		_, err = m.ActiveByRoleOn(t.Context(), tx, 7, "INVALID")
+		require.ErrorIs(t, err, ErrInvalidRoles)
+		_, err = m.ActiveByRoleOn(t.Context(), tx, 0, "TESTER")
+		require.ErrorIs(t, err, ErrInvalidArgument)
+		return nil
+	}))
+}
+
+func TestDirectoryCandidateOverflowNeverClaimsEmptyEligibility(t *testing.T) {
+	m, db := directoryHarness(t)
+	now := time.Now().UTC()
+	for i := 2; i <= 102; i++ {
+		require.NoError(t, db.Table(m.names.Agents.String()).Create(map[string]any{"id": i, "tenant_id": 7, "principal_id": 100 + i, "name": fmt.Sprintf("Bounded %d", i), "handle": fmt.Sprintf("bounded-%d", i), "avatar_seed": i, "system_prompt": "Private", "runtime_kind": "CODEX", "model_id": "model", "model_family": "family", "state": "ACTIVE", "created_by_principal_id": 11, "owner_principal_id": 11, "created_at": now, "updated_at": now}).Error)
+		require.NoError(t, db.Table(m.names.AgentRoles.String()).Create(map[string]any{"tenant_id": 7, "agent_id": i, "role": "TESTER", "iam_role_key": "agent_tester", "created_at": now, "updated_at": now}).Error)
+	}
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+		got, err := m.ActiveByRoleOn(t.Context(), tx, 7, "TESTER")
+		require.ErrorIs(t, err, ErrUnavailable)
+		require.Nil(t, got)
+		return nil
+	}))
 }

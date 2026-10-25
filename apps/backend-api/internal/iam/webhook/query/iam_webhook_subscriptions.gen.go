@@ -28,6 +28,7 @@ func newSubscription(db *gorm.DB, opts ...gen.DOOption) subscription {
 
 	tableName := _subscription.subscriptionDo.TableName()
 	_subscription.ALL = field.NewAsterisk(tableName)
+	_subscription.PayloadMode = field.NewString(tableName, "payload_mode")
 	_subscription.ID = field.NewField(tableName, "id")
 	_subscription.TenantID = field.NewField(tableName, "tenant_id")
 	_subscription.Name = field.NewString(tableName, "name")
@@ -48,6 +49,7 @@ type subscription struct {
 	subscriptionDo subscriptionDo
 
 	ALL              field.Asterisk
+	PayloadMode      field.String
 	ID               field.Field
 	TenantID         field.Field
 	Name             field.String
@@ -74,6 +76,7 @@ func (s subscription) As(alias string) *subscription {
 
 func (s *subscription) updateTableName(table string) *subscription {
 	s.ALL = field.NewAsterisk(table)
+	s.PayloadMode = field.NewString(table, "payload_mode")
 	s.ID = field.NewField(table, "id")
 	s.TenantID = field.NewField(table, "tenant_id")
 	s.Name = field.NewString(table, "name")
@@ -112,7 +115,8 @@ func (s *subscription) GetFieldByName(fieldName string) (field.OrderExpr, bool) 
 }
 
 func (s *subscription) fillFieldMap() {
-	s.fieldMap = make(map[string]field.Expr, 10)
+	s.fieldMap = make(map[string]field.Expr, 11)
+	s.fieldMap["payload_mode"] = s.PayloadMode
 	s.fieldMap["id"] = s.ID
 	s.fieldMap["tenant_id"] = s.TenantID
 	s.fieldMap["name"] = s.Name

@@ -65,6 +65,7 @@ type AnchorStatus struct {
 
 type AnchorStore struct {
 	client    *minio.Client
+	telemetry *s3Telemetry
 	bucket    string
 	prefix    string
 	region    string
@@ -81,14 +82,19 @@ func NewAnchorStore(cfg AnchorConfig) (*AnchorStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	telemetry, err := newS3Telemetry(secure)
+	if err != nil {
+		return nil, err
+	}
 	client, err := minio.New(address, &minio.Options{
-		Creds: credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""), Secure: secure,
+		Transport: telemetry,
+		Creds:     credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""), Secure: secure,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build anchor client: %w", err)
 	}
 	return &AnchorStore{
-		client: client, bucket: cfg.Bucket, prefix: anchorPrefix, region: cfg.Region,
+		client: client, telemetry: telemetry, bucket: cfg.Bucket, prefix: anchorPrefix, region: cfg.Region,
 		retention: time.Duration(cfg.RetentionDays) * 24 * time.Hour,
 	}, nil
 }

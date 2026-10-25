@@ -4,16 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
-	"7link.com/platform/internal/iam/core"
-	"7link.com/platform/internal/iam/identity"
 	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/internal/principallifecycle"
-	"7link.com/platform/pkg/extension/authz"
+
 	"7link.com/platform/pkg/module"
-	"gorm.io/gorm"
 )
 
 // provideCrossCutting registers the app-scoped cross-module views consumed by
@@ -21,24 +17,7 @@ import (
 // module ServiceProviders but before the registry is sealed, and propagates every
 // error.
 func (app *App) provideCrossCutting(services *module.Services) error {
-	anonymize := identity.PrincipalAnonymizer(func(ctx context.Context, tx *gorm.DB, principal identity.Principal, now time.Time) error {
-		if app.runtime == nil {
-			return identity.ErrUnavailable
-		}
-		guard, err := module.Resolve[core.PrincipalPlatformAccessGuard](services)
-		if err != nil {
-			return identity.ErrUnavailable
-		}
-		registrar, err := module.Resolve[*authz.Registrar](services)
-		if err != nil || registrar.Registry() == nil {
-			return identity.ErrUnavailable
-		}
-		if err := guard(ctx, tx, principal.ID); err != nil {
-			return err
-		}
-		return principallifecycle.AnonymizePrincipalData(ctx, tx, app.runtime.TablePrefix(), registrar.Registry(), principal, now)
-	})
-	if err := module.Provide[identity.PrincipalAnonymizer](services, anonymize); err != nil {
+	if err := principallifecycle.ProvideAnonymizer(services, app.runtime); err != nil {
 		return err
 	}
 	if err := module.Provide[healthservice.CheckerProvider](services, app.healthCheckers); err != nil {

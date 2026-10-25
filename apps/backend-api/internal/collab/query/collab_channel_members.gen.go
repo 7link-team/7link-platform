@@ -31,6 +31,7 @@ func newChannelMember(db *gorm.DB, opts ...gen.DOOption) channelMember {
 	_channelMember.ChannelID = field.NewField(tableName, "channel_id")
 	_channelMember.PrincipalID = field.NewField(tableName, "principal_id")
 	_channelMember.TenantID = field.NewField(tableName, "tenant_id")
+	_channelMember.External = field.NewBool(tableName, "external")
 	_channelMember.MemberKind = field.NewString(tableName, "member_kind")
 	_channelMember.Role = field.NewString(tableName, "role")
 	_channelMember.Source = field.NewString(tableName, "source")
@@ -55,6 +56,7 @@ type channelMember struct {
 	ChannelID   field.Field
 	PrincipalID field.Field
 	TenantID    field.Field
+	External    field.Bool
 	MemberKind  field.String
 	Role        field.String
 	Source      field.String
@@ -85,6 +87,7 @@ func (c *channelMember) updateTableName(table string) *channelMember {
 	c.ChannelID = field.NewField(table, "channel_id")
 	c.PrincipalID = field.NewField(table, "principal_id")
 	c.TenantID = field.NewField(table, "tenant_id")
+	c.External = field.NewBool(table, "external")
 	c.MemberKind = field.NewString(table, "member_kind")
 	c.Role = field.NewString(table, "role")
 	c.Source = field.NewString(table, "source")
@@ -124,10 +127,11 @@ func (c *channelMember) GetFieldByName(fieldName string) (field.OrderExpr, bool)
 }
 
 func (c *channelMember) fillFieldMap() {
-	c.fieldMap = make(map[string]field.Expr, 14)
+	c.fieldMap = make(map[string]field.Expr, 15)
 	c.fieldMap["channel_id"] = c.ChannelID
 	c.fieldMap["principal_id"] = c.PrincipalID
 	c.fieldMap["tenant_id"] = c.TenantID
+	c.fieldMap["external"] = c.External
 	c.fieldMap["member_kind"] = c.MemberKind
 	c.fieldMap["role"] = c.Role
 	c.fieldMap["source"] = c.Source

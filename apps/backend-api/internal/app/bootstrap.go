@@ -1,12 +1,22 @@
 package app
 
 import (
+	"7link.com/platform/internal/agents"
+	"7link.com/platform/internal/budget"
+	"7link.com/platform/internal/clientwork"
 	"7link.com/platform/internal/collab"
 	"7link.com/platform/internal/delivery"
+	"7link.com/platform/internal/execution"
 	"7link.com/platform/internal/files"
 	"7link.com/platform/internal/fleet"
 	businessgovernance "7link.com/platform/internal/governance"
 	"7link.com/platform/internal/intake"
+	"7link.com/platform/internal/knowledge"
+	"7link.com/platform/internal/notification"
+	"7link.com/platform/internal/performance"
+	"7link.com/platform/internal/planning"
+	"7link.com/platform/internal/templates"
+	"7link.com/platform/internal/yunxiao"
 	"context"
 	"errors"
 	"fmt"
@@ -37,6 +47,8 @@ import (
 	metrics "7link.com/platform/internal/infra/metrics"
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/internal/infra/pprof"
+	"7link.com/platform/internal/infra/realtime"
+	"7link.com/platform/internal/infra/secrets"
 	telemetry "7link.com/platform/internal/infra/telemetry"
 	"7link.com/platform/internal/infra/wuid"
 	"7link.com/platform/internal/todo"
@@ -113,6 +125,7 @@ func (app *App) composeModules() error {
 		guid.NewModule(rt),
 		events.NewModule(rt),
 		idempotency.NewModule(rt),
+		secrets.NewModule(businessSecretsConfig(app.config)),
 
 		// metrics before telemetry/audit keeps its HTTP middleware outermost.
 		metrics.NewModule(rt, metricsConfig(app.config)),
@@ -137,12 +150,29 @@ func (app *App) composeModules() error {
 	modules = append(modules, app.composeIAMRuntimeModules()...)
 
 	modules = append(modules,
+		realtime.NewModule(rt, realtime.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
 		todo.NewModule(rt, todo.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
 		intake.NewModule(rt, intake.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
-		fleet.NewModule(rt, fleet.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
-		collab.NewModule(rt, collab.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
+		fleet.NewModule(rt, fleet.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}, Preview: app.config.Fleet.Preview, GatewayEncryptionKey: app.config.Fleet.GatewayEncryptionKey, GatewayEncryptionKeyFile: app.config.Fleet.GatewayEncryptionKeyFile, PreviousGatewayEncryptionKeys: app.config.Fleet.PreviousGatewayEncryptionKeys}),
+		collab.NewModule(rt, collaborationConfig(app.config)),
+		knowledge.NewModule(rt, knowledgeConfig(app.config)),
 		businessgovernance.NewModule(rt, businessgovernance.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
+		performance.NewModule(rt, performance.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
 		delivery.NewModule(rt, delivery.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
+		agents.NewModule(rt, agents.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}, EncryptionKey: app.config.Agents.EncryptionKey, EncryptionKeyFile: app.config.Agents.EncryptionKeyFile, PreviousEncryptionKeys: app.config.Agents.PreviousEncryptionKeys, PreviousEncryptionKeyFiles: app.config.Agents.PreviousEncryptionKeyFiles}),
+		core.NewOperationLogs(app.config.Authn.Enabled),
+		templates.NewModule(rt, templates.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
+		yunxiao.NewModule(rt, yunxiao.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}, EncryptionKey: app.config.Integration.EncryptionKey, EncryptionKeyFile: app.config.Integration.EncryptionKeyFile, PreviousEncryptionKeys: app.config.Integration.PreviousEncryptionKeys, PreviousEncryptionKeyFiles: app.config.Integration.PreviousEncryptionKeyFiles}),
+		budget.NewModule(rt, budget.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
+		execution.NewDeliveryBridge(app.config.Authn.Enabled),
+		execution.NewModule(rt, executionModuleConfig(app.config)),
+		execution.NewRealtimeBridge(app.config.Authn.Enabled),
+		clientwork.NewModule(rt, clientworkConfig(app.config)),
+		execution.NewVerificationBridge(app.config.Authn.Enabled),
+		execution.NewVerificationAutomationBridge(app.config.Authn.Enabled),
+		notification.NewModule(rt, notificationConfig(app.config)),
+		planning.NewModule(rt, planning.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
+		planning.NewRuntimeCostsBridge(app.config.Authn.Enabled),
 		health.NewModule(rt),
 	)
 	return app.addModule(modules...)
@@ -153,14 +183,17 @@ func (app *App) composeModules() error {
 // exclusively through module.Services during Wire.
 func (app *App) composeIAMRuntimeModules() []module.Module {
 	rt := app.runtime
+	fleetIdentity := identity.NewModule(rt, iamIdentityConfig(app.config))
+	fleetOAuth := oauth.NewModule(rt, iamOAuthConfig(app.config))
 	return []module.Module{
 		iamaudit.NewModule(rt, iamAuditConfig(app.config)),
 		core.NewModule(rt, iamCoreConfig(app.config)),
 		files.NewModule(app.runtime, fileConfig(app.config)),
 		iamauthn.NewModule(rt, iamAuthnConfig(app.config)),
-		identity.NewModule(rt, iamIdentityConfig(app.config)),
+		fleetIdentity,
 		organization.NewModule(rt, iamOrganizationConfig(app.config)),
-		oauth.NewModule(rt, iamOAuthConfig(app.config)),
+		fleetOAuth,
+		fleet.NewIAMBridge(app.config.Authn.Enabled),
 		provisioning.NewModule(rt, iamProvisioningConfig(app.config)),
 		governance.NewModule(rt, iamGovernanceConfig(app.config)),
 		federation.NewModule(rt, iamFederationConfig(app.config)),
@@ -206,14 +239,17 @@ func (app *App) prepareModules() error {
 	if err := app.modules.Wire(app.provideCrossCutting); err != nil {
 		return fmt.Errorf("wire modules: %w", err)
 	}
-	if err := wireProjectProvisioning(app.modules.Services()); err != nil {
+	if err := delivery.WireProjectProvisioning(app.modules.Services()); err != nil {
 		return fmt.Errorf("wire project provisioning: %w", err)
 	}
-	if err := wireJobEvents(app.modules.Services()); err != nil {
+	if err := jobs.WireJobEvents(app.modules.Services()); err != nil {
 		return fmt.Errorf("wire job events: %w", err)
 	}
-	if err := wireJobTenants(app.modules.Services()); err != nil {
+	if err := organization.WireJobTenants(app.modules.Services()); err != nil {
 		return fmt.Errorf("wire job tenant fanout: %w", err)
+	}
+	if err := core.WireMenuContributions(app.modules); err != nil {
+		return fmt.Errorf("wire menu contributions: %w", err)
 	}
 	if err := wireJobCatalog(app.modules); err != nil {
 		return fmt.Errorf("wire job catalog: %w", err)

@@ -1,5 +1,7 @@
 import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
+import type { UseAutoFormReturn } from "@workspace/ui/components/auto-form/types"
 import {
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -92,12 +94,15 @@ import {
   type FileBrowserNode,
   type FileBrowserRoot,
   type FileBrowserRootScope,
-  type FileBrowserSort,
+  type FileBrowserViewState,
+  fileBrowserViewState,
 } from "../lib/file-browser"
 import { FilePreviewDialog } from "./file-preview"
 import { FileTypeIcon, FileVisual } from "./file-type-icon"
 
 export type FileBrowserProps = {
+  viewState?: FileBrowserViewState
+  onViewStateChange?: (state: FileBrowserViewState) => void
   roots: readonly FileBrowserRoot[]
   path: readonly FileBrowserLocation[]
   nodes: readonly FileBrowserNode[]
@@ -257,6 +262,8 @@ export function FileBrowser(props: FileBrowserProps) {
 }
 
 function FileBrowserBody({
+  viewState: controlledViewState,
+  onViewStateChange,
   roots,
   path,
   nodes,
@@ -304,11 +311,35 @@ function FileBrowserBody({
     () => window.matchMedia("(min-width: 1280px)").matches,
     () => false
   )
-  const [view, setView] = useState<"details" | "small" | "large">("details")
-  const [query, setQuery] = useState("")
-  const [kind, setKind] = useState<"all" | FileBrowserNode["kind"]>("all")
-  const [sort, setSort] = useState<FileBrowserSort>("name")
-  const [descending, setDescending] = useState(false)
+  const [localViewState, setLocalViewState] = useState(() =>
+    fileBrowserViewState(new URLSearchParams())
+  )
+  const viewState = controlledViewState ?? localViewState
+  const { view, query, kind, sort, descending } = viewState
+  const updateView = (patch: Partial<FileBrowserViewState>) => {
+    const next = { ...viewState, ...patch }
+    if (
+      Object.keys(next).every(
+        (key) =>
+          next[key as keyof FileBrowserViewState] ===
+          viewState[key as keyof FileBrowserViewState]
+      )
+    )
+      return
+    if (!controlledViewState) setLocalViewState(next)
+    onViewStateChange?.(next)
+  }
+  const filterForm = useRef<UseAutoFormReturn>(null)
+  const restoringFilters = useRef<{ query: string; kind: string } | null>(null)
+  useLayoutEffect(() => {
+    const form = filterForm.current
+    if (!form || (form.values.query === query && form.values.kind === kind))
+      return
+    // History changes defaults on a mounted form. Ignore the old passive
+    // onChange emission until AutoForm has rendered the restored values.
+    restoringFilters.current = { query, kind }
+    form.setValues({ query, kind })
+  }, [query, kind])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [anchor, setAnchor] = useState<string | null>(null)
   const [detailsID, setDetailsID] = useState<string | null>(null)
@@ -815,6 +846,7 @@ function FileBrowserBody({
                 )}
               </nav>
               <AutoForm
+                formRef={filterForm}
                 className="min-w-48 flex-1 md:grid-cols-[minmax(0,1fr)_9rem] [&>*]:col-span-1"
                 hideLabel
                 fields={{
@@ -840,15 +872,21 @@ function FileBrowserBody({
                   },
                 }}
                 onChange={(values) => {
-                  if (values.query !== query)
-                    setQuery(String(values.query ?? ""))
+                  const restoring = restoringFilters.current
                   if (
-                    values.kind !== kind &&
-                    (values.kind === "all" ||
-                      values.kind === "directory" ||
-                      values.kind === "file")
+                    restoring &&
+                    (values.query !== restoring.query ||
+                      values.kind !== restoring.kind)
                   )
-                    setKind(values.kind)
+                    return
+                  restoringFilters.current = null
+                  updateView({
+                    query: String(values.query ?? ""),
+                    kind:
+                      values.kind === "file" || values.kind === "directory"
+                        ? values.kind
+                        : "all",
+                  })
                 }}
               />
             </div>
@@ -1044,21 +1082,21 @@ function FileBrowserBody({
                   <Tool
                     label={tf("detailsView")}
                     active={view === "details"}
-                    onClick={() => setView("details")}
+                    onClick={() => updateView({ view: "details" })}
                   >
                     <List />
                   </Tool>
                   <Tool
                     label={tf("smallView")}
                     active={view === "small"}
-                    onClick={() => setView("small")}
+                    onClick={() => updateView({ view: "small" })}
                   >
                     <Grid2X2 className="size-4" />
                   </Tool>
                   <Tool
                     label={tf("largeView")}
                     active={view === "large"}
-                    onClick={() => setView("large")}
+                    onClick={() => updateView({ view: "large" })}
                   >
                     <Grid2X2 />
                   </Tool>
@@ -1082,7 +1120,7 @@ function FileBrowserBody({
                         value === "size" ||
                         value === "updated"
                       )
-                        setSort(value)
+                        updateView({ sort: value })
                     }}
                     disabled={!ready}
                   />
@@ -1090,7 +1128,7 @@ function FileBrowserBody({
                 <Tool
                   label={tf(descending ? "ascending" : "descending")}
                   disabled={!ready}
-                  onClick={() => setDescending((value) => !value)}
+                  onClick={() => updateView({ descending: !descending })}
                 >
                   {descending ? <ArrowDown /> : <ArrowUp />}
                 </Tool>

@@ -1,0 +1,22 @@
+{
+  "comment_limit": "This comment thread has reached its limit.",
+  "client_thread_read_only": "Client comment threads are read only for team members.",
+  "git_connector_unverified": "Not verified by a Git platform connector.",
+  "evidence_attached": "Evidence already attached to a claim cannot be changed.",
+  "write_interrupted": "Read the updated work context before retrying.",
+  "seen_seq_required": "Read the work activity stream and include seen_seq.",
+  "forbidden": "Permission denied.",
+  "approval_unavailable": "The required Human approval protocol or authorization grant is unavailable.",
+  "not_found": "Execution not found.",
+  "invalid": "Invalid execution request.",
+  "conflict": "Execution state or receipt changed.",
+  "unavailable": "Execution capability is unavailable.",
+  "preview_port_not_owned": "The port does not belong to this execution.",
+  "preview_access_disabled": "Remote preview is disabled for this machine.",
+  "preview_unavailable": "The isolated preview gateway is not configured or connected.",
+  "preview_quota": "The execution preview session limit has been reached.",
+  "anchor_invalid": "The anchor does not match the pinned artifact content.",
+  "anchor_kind_unavailable": "This anchor kind requires a later viewer version.",
+  "anchor_invalid": "The anchor does not match the pinned artifact content.",
+  "anchor_kind_unavailable": "This anchor kind requires a later viewer version."
+}

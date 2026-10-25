@@ -119,6 +119,7 @@ type serviceAccountCredentialIDInput struct {
 // operations. Suspension is modeled as a subresource so disabling and
 // restoring a principal use HTTP methods instead of RPC-style verbs.
 func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
+	registerProfileHTTP(api, service, registrar)
 	registerSystemPrincipalHTTP(api, service, registrar)
 	registerAvatarHTTP(api, service, registrar)
 	registerClosureHTTP(api, service, registrar)

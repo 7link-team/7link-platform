@@ -1,0 +1,19 @@
+{
+  "forbidden": "Kebenaran ditolak.",
+  "not_found": "Mesin tidak ditemukan.",
+  "invalid": "Permintaan mesin tidak sah.",
+  "conflict": "Keadaan atau versi mesin telah berubah.",
+  "unavailable": "Perkhidmatan mesin tidak tersedia.",
+  "slow_down": "Pemeriksaan terlalu kerap. Tambah sela pemeriksaan sebanyak lima saat.",
+  "pending": "Menunggu kebenaran peranti.",
+  "consumed": "Bukti kelayakan mesin telah dihantar; mulakan pendaftaran baharu jika hilang.",
+  "enrollment_failed": "Pendaftaran gagal atau tamat tempoh. Mulakan kebenaran peranti semula.",
+  "ensemble_not_found": "Rekod tidak ditemui.",
+  "ensemble_invalid": "Permintaan ensemble tidak sah.",
+  "ensemble_conflict": "Keadaan atau versi ensemble telah berubah.",
+  "ensemble_unavailable": "Perkhidmatan ensemble tidak tersedia.",
+  "terminal_disabled": "Akses terminal jauh dilumpuhkan.",
+  "terminal_closed": "Sesi terminal ini ditutup atau tamat tempoh.",
+  "terminal_reauthentication": "Pengesahan pelayar baharu diperlukan.",
+  "tunnel_quota": "Had aliran terowong serentak mesin telah dicapai."
+}

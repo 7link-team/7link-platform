@@ -388,7 +388,21 @@ func TestSchedulerLeadershipHandoffPreservesPlanAndStopsAfterQuiesce(t *testing.
 	require.NoError(t, db.Raw("SELECT COUNT(*) FROM (SELECT idempotency_key FROM j_background_jobs GROUP BY idempotency_key HAVING COUNT(*) > 1)").Scan(&duplicate).Error)
 	require.Zero(t, duplicate)
 	total := queueCount(t, db)
-	require.Never(t, func() bool { return queueCount(t, db) != total }, 1100*time.Millisecond, 50*time.Millisecond)
+	// Keep database checks on the test goroutine. Never's asynchronous condition
+	// can outlive its timeout and race the harness's database cleanup.
+	deadline := time.NewTimer(1100 * time.Millisecond)
+	defer deadline.Stop()
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-deadline.C:
+			require.Equal(t, total, queueCount(t, db))
+			return
+		case <-tick.C:
+			require.Equal(t, total, queueCount(t, db))
+		}
+	}
 }
 
 func TestSchedulerLifecycleRunsTenantFanoutAndChildren(t *testing.T) {

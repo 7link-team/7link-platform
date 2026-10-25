@@ -7025,7 +7025,7 @@
       "sources": [
         {
           "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-          "line": 283,
+          "line": 287,
           "quote": "### 3.10 `notification_push_subscriptions`（C5，v1.1）"
         }
       ]
@@ -7154,7 +7154,7 @@
       "sources": [
         {
           "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-          "line": 287,
+          "line": 291,
           "quote": "### 3.11 `iam_menu_contributions`（C6，`internal/iam/core` 迁移）"
         }
       ],
@@ -9408,7 +9408,7 @@
       "label": "tenant_id 引用（必填）",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 147
+        "line": 151
       },
       "status": "defined",
       "from": "domain_events"
@@ -9418,7 +9418,7 @@
       "label": "project_id 引用（可空）",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 148
+        "line": 152
       },
       "status": "defined",
       "from": "domain_events"
@@ -9428,7 +9428,7 @@
       "label": "tenant_id 引用（必填）",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 203
+        "line": 207
       },
       "status": "defined",
       "from": "domain_event_parked"
@@ -9438,7 +9438,7 @@
       "label": "tenant_id 引用（必填）",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 243
+        "line": 247
       },
       "status": "defined",
       "from": "notifications"
@@ -9448,7 +9448,7 @@
       "label": "tenant_id 引用（必填）",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 264
+        "line": 268
       },
       "status": "defined",
       "from": "notification_deliveries"
@@ -9458,7 +9458,7 @@
       "label": "notification_id 引用（可空）",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 265
+        "line": 269
       },
       "status": "defined",
       "from": "notification_deliveries"
@@ -9468,7 +9468,7 @@
       "label": "job_id 引用（可空）",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 275
+        "line": 279
       },
       "status": "defined",
       "from": "notification_deliveries"
@@ -13382,7 +13382,7 @@
       "status": "defined",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 125,
+        "line": 129,
         "quote": "| kind / queue | 同 3.1 | N | — | 触发时入队的任务 |"
       }
     },
@@ -13393,7 +13393,7 @@
       "status": "defined",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 135,
+        "line": 139,
         "quote": "| last_job_id | BIGINT | Y | NULL | |"
       }
     },
@@ -13404,7 +13404,7 @@
       "status": "defined",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 177,
+        "line": 181,
         "quote": "| last_seq | BIGINT | N | 0 | 已处理（定序器：已分配）的最大 `stream_seq` |"
       }
     },
@@ -13415,7 +13415,7 @@
       "status": "defined",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 190,
+        "line": 194,
         "quote": "| event_id | BIGINT | N | |"
       }
     },
@@ -13426,7 +13426,7 @@
       "status": "defined",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 224,
+        "line": 228,
         "quote": "| subject_id | BIGINT | N | — | principal id 或 intake_contact_id |"
       }
     },
@@ -13437,7 +13437,7 @@
       "status": "defined",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 224,
+        "line": 228,
         "quote": "| subject_id | BIGINT | N | — | principal id 或 intake_contact_id |"
       }
     },
@@ -13448,7 +13448,7 @@
       "status": "defined",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 222,
+        "line": 226,
         "quote": "| tenant_id | BIGINT | N | 0 | |"
       }
     },
@@ -15438,7 +15438,7 @@
       "label": "推送设备归属主体，可撤销订阅",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 285,
+        "line": 289,
         "quote": "`id`、`principal_id`、`endpoint_hash CHAR(64) UNIQUE`、`endpoint_sealed TEXT`、`p256dh VARCHAR(128)`、`auth_sealed TEXT`（C8）、`user_agent VARCHAR(256)`、`failure_count INT DEFAULT 0`、`last_success_at`、`created_at`、`revoked_at`；`idx (principal_id, revoked_at)`。"
       },
       "status": "defined"
@@ -15449,7 +15449,7 @@
       "label": "WEB_PUSH投递使用有效订阅",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 266,
+        "line": 270,
         "quote": "| channel | VARCHAR(16) | N | — | `EMAIL` / `WEB_PUSH` |"
       },
       "status": "defined"
@@ -15559,7 +15559,7 @@
       "label": "对应失败或阻塞的领域事件",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 202,
+        "line": 206,
         "quote": "| event_id / stream_seq | BIGINT | N | — | |"
       },
       "status": "defined"
@@ -16220,7 +16220,7 @@
       "status": "defined",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 296,
+        "line": 300,
         "quote": "| menu_id | BIGINT | Y | NULL | 播种出的 `iam_menus.id`；NULL=管理员已删除（永不复活） |"
       }
     },
@@ -16594,7 +16594,7 @@
       "status": "defined",
       "source": {
         "file": "docs/myrmidon/specs/09-platform-capabilities.md",
-        "line": 179,
+        "line": 183,
         "quote": "| paused | BOOLEAN | N | false | 运维暂停 |"
       }
     },

@@ -30,7 +30,7 @@ func channelHarness(t *testing.T) (*Module, *gorm.DB) {
 	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{"primary": {Type: "sqlite", DSN: filepath.Join(t.TempDir(), "channels.sqlite"), Writable: true, Readable: true}})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, router.Close()) })
-	m := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1"), appenv.WithTablePrefix("c_")), Config{})
+	m := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1"), appenv.WithTablePrefix("c_"), appenv.WithDatabase(router)), Config{})
 	m.ids, err = guid.New(1)
 	require.NoError(t, err)
 	m.members = testMembers{}

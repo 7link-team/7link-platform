@@ -1,0 +1,19 @@
+{
+  "forbidden": "没有操作权限。",
+  "not_found": "机器不存在。",
+  "invalid": "机器请求无效。",
+  "conflict": "机器状态或版本已变更。",
+  "unavailable": "机器服务暂时不可用。",
+  "slow_down": "轮询过于频繁，请将轮询间隔增加五秒。",
+  "pending": "正在等待设备授权。",
+  "consumed": "机器凭据已领取；如果凭据丢失，请重新发起接入。",
+  "enrollment_failed": "接入失败或已过期，请重新发起设备授权。",
+  "ensemble_not_found": "记录不存在。",
+  "ensemble_invalid": "比较请求无效。",
+  "ensemble_conflict": "状态或版本已变更。",
+  "ensemble_unavailable": "比较服务暂不可用。",
+  "terminal_disabled": "远程终端访问已关闭。",
+  "terminal_closed": "此终端会话已关闭或过期。",
+  "terminal_reauthentication": "需要重新验证浏览器身份。",
+  "tunnel_quota": "已达到此机器的隧道并发流数量上限。"
+}

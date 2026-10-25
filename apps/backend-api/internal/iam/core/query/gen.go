@@ -19,7 +19,9 @@ var (
 	Q                     = new(Query)
 	Entity                *entity
 	FieldPolicy           *fieldPolicy
+	MembershipPeriod      *membershipPeriod
 	Menu                  *menu
+	MenuContribution      *menuContribution
 	PlatformAdministrator *platformAdministrator
 	PlatformGrant         *platformGrant
 	PolicyRevision        *policyRevision
@@ -37,7 +39,9 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
 	Entity = &Q.Entity
 	FieldPolicy = &Q.FieldPolicy
+	MembershipPeriod = &Q.MembershipPeriod
 	Menu = &Q.Menu
+	MenuContribution = &Q.MenuContribution
 	PlatformAdministrator = &Q.PlatformAdministrator
 	PlatformGrant = &Q.PlatformGrant
 	PolicyRevision = &Q.PolicyRevision
@@ -56,7 +60,9 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		db:                    db,
 		Entity:                newEntity(db, opts...),
 		FieldPolicy:           newFieldPolicy(db, opts...),
+		MembershipPeriod:      newMembershipPeriod(db, opts...),
 		Menu:                  newMenu(db, opts...),
+		MenuContribution:      newMenuContribution(db, opts...),
 		PlatformAdministrator: newPlatformAdministrator(db, opts...),
 		PlatformGrant:         newPlatformGrant(db, opts...),
 		PolicyRevision:        newPolicyRevision(db, opts...),
@@ -76,7 +82,9 @@ type Query struct {
 
 	Entity                entity
 	FieldPolicy           fieldPolicy
+	MembershipPeriod      membershipPeriod
 	Menu                  menu
+	MenuContribution      menuContribution
 	PlatformAdministrator platformAdministrator
 	PlatformGrant         platformGrant
 	PolicyRevision        policyRevision
@@ -99,7 +107,9 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		db:                    db,
 		Entity:                q.Entity.clone(db),
 		FieldPolicy:           q.FieldPolicy.clone(db),
+		MembershipPeriod:      q.MembershipPeriod.clone(db),
 		Menu:                  q.Menu.clone(db),
+		MenuContribution:      q.MenuContribution.clone(db),
 		PlatformAdministrator: q.PlatformAdministrator.clone(db),
 		PlatformGrant:         q.PlatformGrant.clone(db),
 		PolicyRevision:        q.PolicyRevision.clone(db),
@@ -127,7 +137,9 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		db:                    db,
 		Entity:                q.Entity.replaceDB(db),
 		FieldPolicy:           q.FieldPolicy.replaceDB(db),
+		MembershipPeriod:      q.MembershipPeriod.replaceDB(db),
 		Menu:                  q.Menu.replaceDB(db),
+		MenuContribution:      q.MenuContribution.replaceDB(db),
 		PlatformAdministrator: q.PlatformAdministrator.replaceDB(db),
 		PlatformGrant:         q.PlatformGrant.replaceDB(db),
 		PolicyRevision:        q.PolicyRevision.replaceDB(db),
@@ -145,7 +157,9 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 type queryCtx struct {
 	Entity                IEntityDo
 	FieldPolicy           IFieldPolicyDo
+	MembershipPeriod      IMembershipPeriodDo
 	Menu                  IMenuDo
+	MenuContribution      IMenuContributionDo
 	PlatformAdministrator IPlatformAdministratorDo
 	PlatformGrant         IPlatformGrantDo
 	PolicyRevision        IPolicyRevisionDo
@@ -163,7 +177,9 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
 		Entity:                q.Entity.WithContext(ctx),
 		FieldPolicy:           q.FieldPolicy.WithContext(ctx),
+		MembershipPeriod:      q.MembershipPeriod.WithContext(ctx),
 		Menu:                  q.Menu.WithContext(ctx),
+		MenuContribution:      q.MenuContribution.WithContext(ctx),
 		PlatformAdministrator: q.PlatformAdministrator.WithContext(ctx),
 		PlatformGrant:         q.PlatformGrant.WithContext(ctx),
 		PolicyRevision:        q.PolicyRevision.WithContext(ctx),

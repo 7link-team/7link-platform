@@ -55,6 +55,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[ErasureRecorder](services, ErasureRecorder(m.recordErasure)); err != nil {
 		return fmt.Errorf("provide erasure recorder: %w", err)
 	}
+	if err := m.provideBusinessEvents(services); err != nil {
+		return err
+	}
 	return nil
 }
 

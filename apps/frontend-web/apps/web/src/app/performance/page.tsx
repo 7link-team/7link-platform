@@ -1,0 +1,42 @@
+import {useEffect,useState} from "react"
+import {useParams,useSearchParams} from "react-router"
+import {Button} from "@workspace/ui/components/button"
+import {AutoTable} from "@workspace/ui/components/auto-table"
+import {useTranslations} from "@workspace/ui/i18n/intl-provider"
+import {PageHeader} from "../../components/page-header"
+import {useAllowed} from "../../lib/permissions"
+import {performanceApi,type Revision} from "./api"
+import {SchemeEditor} from "./scheme-editor"
+import {ReportBoard} from "./report-board"
+export default function PerformancePage(){const{tenantID=""}=useParams();return <PerformanceContent key={tenantID} tenantID={tenantID}/>}
+function PerformanceContent({tenantID}:{tenantID:string}){
+ const t=useTranslations("iam"),allowed=useAllowed(),[search,setSearch]=useSearchParams()
+ const tab=(search.get("tab")??(search.has("scheme")?"schemes":"periods"))==="schemes"?"schemes":"periods"
+ if(!allowed("tenant_administer")||!allowed("performance_manage"))return <div className="space-y-3"><PageHeader title={t("performanceTitle")}/><p role="alert">{t("performanceOwnerOnly")}</p></div>
+ return <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-auto"><div role="tablist" aria-label={t("performanceTitle")} className="flex flex-wrap gap-2">{["periods","schemes"].map(value=><Button key={value} role="tab" id={`performance-tab-${value}`} aria-controls="performance-tabpanel" tabIndex={tab===value?0:-1} aria-selected={tab===value} variant={tab===value?"default":"outline"} onClick={()=>setSearch({tab:value})} onKeyDown={event=>{if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;event.preventDefault();const next=event.key==="Home"?"periods":event.key==="End"?"schemes":value==="periods"?"schemes":"periods";setSearch({tab:next});document.getElementById(`performance-tab-${next}`)?.focus()}}>{t(value==="periods"?"performancePeriods":"performanceSchemes")}</Button>)}</div><div role="tabpanel" id="performance-tabpanel" aria-labelledby={`performance-tab-${tab}`}>{tab==="schemes"?<SchemeContent tenantID={tenantID}/>:<ReportBoard tenantID={tenantID}/>}</div></div>
+}
+function SchemeContent({tenantID}:{tenantID:string}){
+ const t=useTranslations("iam"),allowed=useAllowed()
+ const [search,setSearch]=useSearchParams()
+ const cursor=search.get("cursor")??"",scheme=search.get("scheme")??"",revision=Number(search.get("revision")??0)
+ const [rows,setRows]=useState<Revision[]>([]),[selected,setSelected]=useState<Revision|null>(null)
+ const [next,setNext]=useState(""),[loading,setLoading]=useState(true),[error,setError]=useState("")
+ const [editor,setEditor]=useState<{base:Revision|null}|null>(null),[refresh,setRefresh]=useState(0)
+ const owner=allowed("tenant_administer")&&allowed("performance_manage")
+ useEffect(()=>{
+  const abort=new AbortController()
+  queueMicrotask(()=>{if(!abort.signal.aborted){setLoading(true);setRows([]);setSelected(null);setError("");setNext("")}})
+  if(!owner){queueMicrotask(()=>{if(!abort.signal.aborted)setLoading(false)});return()=>abort.abort()}
+  const request=scheme ? Promise.all([performanceApi.get(tenantID,scheme,revision||undefined,abort.signal),performanceApi.history(tenantID,scheme,cursor,abort.signal)]).then(([current,history])=>{if(!abort.signal.aborted){setSelected(current);setRows(history.items);setNext(history.next_cursor??"")}}) : performanceApi.list(tenantID,cursor,abort.signal).then(page=>{if(!abort.signal.aborted){setRows(page.items);setNext(page.next_cursor??"")}})
+  void request.catch(cause=>{if(!abort.signal.aborted)setError(cause instanceof Error ? cause.message:String(cause))}).finally(()=>{if(!abort.signal.aborted)setLoading(false)})
+  return()=>abort.abort()
+ },[tenantID,owner,cursor,scheme,revision,refresh])
+ const navigate=(patch:Record<string,string>)=>setSearch(previous=>{const params=new URLSearchParams(previous);for(const[key,value]of Object.entries(patch)){if(value)params.set(key,value);else params.delete(key)}return params})
+ if(!owner)return <div className="space-y-3"><PageHeader title={t("performanceTitle")}/><p role="alert">{t("performanceOwnerOnly")}</p></div>
+ return <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-auto"><PageHeader title={t("performanceTitle")} action={<Button onClick={()=>setEditor({base:null})}>{t("performanceCreate")}</Button>}/><p className="text-sm text-muted-foreground">{t("performanceConfigNotice")}</p>{error&&<p role="alert">{error}</p>}
+ {scheme&&<Button variant="outline" className="self-start" onClick={()=>navigate({scheme:"",revision:"",cursor:""})}>{t("performanceBack")}</Button>}
+ {selected&&<section className="space-y-3 rounded-md border p-4"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-medium">{selected.definition.name} / {t("performanceRevision")} {selected.version}</h2>{!revision&&<Button onClick={()=>setEditor({base:selected})}>{t("performanceRevise")}</Button>}</div><dl className="grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-muted-foreground">{t("performanceSubjectKind")}</dt><dd>{t(`performanceValue_${selected.definition.subject_kind}`)}</dd></div><div><dt className="text-muted-foreground">{t("performanceScope")}</dt><dd className="whitespace-pre-wrap break-words">{selected.definition.scope}</dd></div><div><dt className="text-muted-foreground">{t("performanceEnabled")}</dt><dd>{t(selected.definition.enabled ? "performanceYes":"performanceNo")}</dd></div><div><dt className="text-muted-foreground">{t("performanceSubjectIDs")}</dt><dd>{selected.definition.subject_ids?.join(", ")||t("performanceDeclaredCohort")}</dd></div></dl><p className="text-sm">{t("performanceFormula")}</p>{selected.definition.dimensions.map(dim=><section key={dim.key} className="space-y-2 border-t pt-3"><h3 className="font-medium">{dim.title} / {dim.weight_bps}/10000 / {t("performanceCap")}: {dim.maximum_points}</h3><ul className="space-y-2 text-sm">{dim.rules.map(rule=><li key={rule.key} className="space-y-1"><p>{rule.description}</p><p>{t(`performanceValue_${rule.condition.metric}`)} {t(`performanceValue_${rule.condition.operator}`)} {rule.condition.threshold}: {t(`performanceValue_${rule.effect}`)} {rule.points}</p><p>{t("performanceEvidence")}: {rule.evidence_kinds.map(kind=>t(`performanceValue_${kind}`)).join(", ")}</p></li>)}</ul></section>)}<section className="space-y-2 border-t pt-3"><h3 className="font-medium">{t("performanceTemplate")}: {selected.definition.template.title}</h3><p className="whitespace-pre-wrap text-sm">{selected.definition.template.summary}</p><ol className="list-inside list-decimal text-sm">{selected.definition.template.dimension_order.map(key=><li key={key}>{selected.definition.dimensions.find(dim=>dim.key===key)?.title??key}</li>)}</ol></section><p className="text-sm">{t("performanceReason")}: {selected.reason}</p><p className="break-all text-xs text-muted-foreground">{selected.created_by} / {selected.created_at} / {selected.sha256}</p>{revision>0&&<Button variant="outline" onClick={()=>navigate({revision:""})}>{t("performanceCurrent")}</Button>}</section>}
+ <AutoTable data={loading ? []:rows} loading={loading} rowKey="id" pagination={false} onRefresh={()=>setRefresh(value=>value+1)} exportable={!error} emptyContent={error||t("performanceEmpty")} columns={[{field:"name",name:t("name"),format:(_,row)=>row.definition.name},{field:"version",name:t("performanceRevision")},{field:"subject_kind",name:t("performanceSubjectKind"),format:(_,row)=>t(`performanceValue_${row.definition.subject_kind}`)},{field:"enabled",name:t("performanceEnabled"),format:(_,row)=>t(row.definition.enabled ? "performanceYes":"performanceNo")},{field:"reason",name:t("performanceReason")},{field:"created_at",name:t("createdAt")}]} actions={[{name:t(scheme ? "performanceOpenRevision":"performanceOpenScheme"),onclick:row=>navigate({scheme:row.scheme_id,revision:scheme ? String(row.version):"",cursor:""})}]} footer={<div className="flex flex-wrap gap-2"><Button variant="outline" disabled={loading||!cursor} onClick={()=>navigate({cursor:""})}>{t("templateFirstPage")}</Button><Button variant="outline" disabled={loading||!next} onClick={()=>navigate({cursor:next})}>{t("templateNext")}</Button></div>}/>
+ {editor&&<SchemeEditor key={editor.base?.id??"new"} tenantID={tenantID} base={editor.base} onClose={()=>setEditor(null)} onSaved={saved=>{setEditor(null);setRefresh(value=>value+1);navigate({scheme:saved.scheme_id,revision:"",cursor:""})}}/>}
+ </div>
+}

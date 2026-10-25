@@ -9,10 +9,15 @@ import (
 // WorkItem is the persisted aggregate row defined by the delivery specifications.
 // References to future same-module aggregates are bound by later migrations.
 type WorkItem struct {
+	ReopenedFromWorkItemID *guid.ID   `gorm:"column:reopened_from_work_item_id"`
+	EscapedFromStage       *string    `gorm:"column:escaped_from_stage"`
+	ScheduledStart         *time.Time `gorm:"column:scheduled_start"`
+	ScheduledEnd           *time.Time `gorm:"column:scheduled_end"`
+	ScheduleTimezone       string     `gorm:"column:schedule_timezone;not null;default:UTC"`
 	TenantID               guid.ID    `gorm:"column:tenant_id;primaryKey;autoIncrement:false;not null"`
 	ID                     guid.ID    `gorm:"column:id;primaryKey;autoIncrement:false;not null"`
 	ProjectID              guid.ID    `gorm:"column:project_id;not null"`
-	RequirementID          guid.ID    `gorm:"column:requirement_id;not null"`
+	RequirementID          *guid.ID   `gorm:"column:requirement_id"`
 	Number                 int        `gorm:"column:number;not null"`
 	ParentID               *guid.ID   `gorm:"column:parent_id"`
 	IsContainer            bool       `gorm:"column:is_container;not null"`
@@ -55,6 +60,7 @@ type WorkItem struct {
 	AccountablePrincipalID guid.ID    `gorm:"column:accountable_principal_id;not null"`
 	AutonomyLevel          string     `gorm:"column:autonomy_level;not null"`
 	Objective              *string    `gorm:"column:objective"`
+	OutOfScopeConfirmedAt  *time.Time `gorm:"column:out_of_scope_confirmed_at"`
 	OutOfScope             string     `gorm:"column:out_of_scope;not null"`
 	ContextRefs            string     `gorm:"column:context_refs;not null"`
 	VerificationPlan       string     `gorm:"column:verification_plan;not null"`
@@ -80,6 +86,7 @@ type WorkItem struct {
 	IntroducedStage        *string    `gorm:"column:introduced_stage"`
 	IntroducedReason       *string    `gorm:"column:introduced_reason"`
 	Module                 *string    `gorm:"column:module"`
+	DefectDetails          *string    `gorm:"column:defect_details"`
 	DefectStage            *string    `gorm:"column:defect_stage"`
 	ActivitySeq            int64      `gorm:"column:activity_seq;not null"`
 	CreatedAt              time.Time  `gorm:"column:created_at;not null;autoCreateTime:false"`
@@ -90,3 +97,21 @@ type WorkItem struct {
 }
 
 func (WorkItem) TableName() string { return "delivery_work_items" }
+
+// WorkItemActivity is an immutable, ordered work-context receipt.
+type WorkItemActivity struct {
+	TenantID   guid.ID   `gorm:"column:tenant_id;not null" json:"-"`
+	ID         guid.ID   `gorm:"column:id;primaryKey;autoIncrement:false" json:"id"`
+	ProjectID  guid.ID   `gorm:"column:project_id;not null" json:"project_id"`
+	WorkItemID guid.ID   `gorm:"column:work_item_id;not null" json:"work_item_id"`
+	Seq        int64     `gorm:"column:seq;not null" json:"seq"`
+	Kind       string    `gorm:"column:kind;not null" json:"kind"`
+	ActorKind  string    `gorm:"column:actor_kind;not null" json:"actor_kind"`
+	ActorID    guid.ID   `gorm:"column:actor_id;not null" json:"actor_id"`
+	RefKind    string    `gorm:"column:ref_kind;not null" json:"ref_kind"`
+	RefID      guid.ID   `gorm:"column:ref_id;not null" json:"ref_id"`
+	Title      string    `gorm:"column:title;not null" json:"title"`
+	OccurredAt time.Time `gorm:"column:occurred_at;not null;autoCreateTime:false" json:"occurred_at"`
+}
+
+func (WorkItemActivity) TableName() string { return "delivery_work_item_activities" }

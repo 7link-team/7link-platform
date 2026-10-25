@@ -12,6 +12,29 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestDepartmentMoveGuardRequiresTenantWideAuthority(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	h.seedMember(t, 1, 11, MemberActive)
+	guard := boundGuard(t, h.runtime, "sl_")
+	guard.registry = h.service.registry
+	var absent *tenantAdministratorGuard
+	require.ErrorIs(t, absent.RequireGrantableDepartmentMove(t.Context(), h.db, 1), ErrUnavailable)
+	require.ErrorIs(t, guard.RequireGrantableDepartmentMove(t.Context(), nil, 1), ErrUnavailable)
+	ctx := authn.WithClaims(t.Context(), &authn.Claims{TenantID: 1, PrincipalID: 11})
+	require.ErrorIs(t, h.db.Transaction(func(tx *gorm.DB) error {
+		return guard.RequireGrantableDepartmentMove(ctx, tx, 1)
+	}), ErrPrivilegeEscalation)
+	role, err := h.repository.CreateRole(t.Context(), 1, "Tenant administrators", "")
+	require.NoError(t, err)
+	_, err = h.repository.GrantPermission(t.Context(), 1, role.ID, tenantAdministratorPermission)
+	require.NoError(t, err)
+	_, err = h.repository.AddMember(t.Context(), 1, role.ID, 11, nil)
+	require.NoError(t, err)
+	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+		return guard.RequireGrantableDepartmentMove(ctx, tx, 1)
+	}))
+}
+
 func TestAdministratorGuardRollsBackLastDurableAdministratorRemoval(t *testing.T) {
 	harness := newRepositoryHarness(t, "sl_")
 	repository := harness.repository

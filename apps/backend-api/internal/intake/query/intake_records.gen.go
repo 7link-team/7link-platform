@@ -55,6 +55,8 @@ func newRecord(db *gorm.DB, opts ...gen.DOOption) record {
 	_record.DeclineReasonCode = field.NewString(tableName, "decline_reason_code")
 	_record.DeclineReason = field.NewString(tableName, "decline_reason")
 	_record.ClientMessage = field.NewString(tableName, "client_message")
+	_record.ClientNotificationState = field.NewString(tableName, "client_notification_state")
+	_record.ClientNotificationMessageID = field.NewField(tableName, "client_notification_message_id")
 	_record.ResolvedAt = field.NewTime(tableName, "resolved_at")
 	_record.ResolvedActorKind = field.NewString(tableName, "resolved_actor_kind")
 	_record.ResolvedActorID = field.NewField(tableName, "resolved_actor_id")
@@ -63,6 +65,7 @@ func newRecord(db *gorm.DB, opts ...gen.DOOption) record {
 	_record.OriginAcceptanceID = field.NewField(tableName, "origin_acceptance_id")
 	_record.LastClientActivityAt = field.NewTime(tableName, "last_client_activity_at")
 	_record.LastTeamActivityAt = field.NewTime(tableName, "last_team_activity_at")
+	_record.LastTriageRequestedAt = field.NewTime(tableName, "last_triage_requested_at")
 	_record.ChangeOfIntakeID = field.NewField(tableName, "change_of_intake_id")
 	_record.TargetRequirementID = field.NewField(tableName, "target_requirement_id")
 	_record.ClientApproval = field.NewString(tableName, "client_approval")
@@ -82,52 +85,55 @@ func newRecord(db *gorm.DB, opts ...gen.DOOption) record {
 type record struct {
 	recordDo recordDo
 
-	ALL                     field.Asterisk
-	ID                      field.Field
-	RefNo                   field.Int
-	ChannelID               field.Field
-	ChannelKind             field.String
-	ContactID               field.Field
-	Kind                    field.String
-	Status                  field.String
-	Title                   field.String
-	RawContent              field.String
-	RawContentFormat        field.String
-	RawContentHash          field.String
-	SourceMessageID         field.String
-	ExternalRef             field.String
-	DesiredBy               field.String
-	ReceivedAt              field.Time
-	SubmittedByPrincipalID  field.Field
-	ReplyToken              field.String
-	LatestCardRevision      field.Int
-	OpenRoundID             field.Field
-	ClientUnresponsive      field.Bool
-	ProjectID               field.Field
-	RequirementID           field.Field
-	ConversionMode          field.String
-	MergedIntoIntakeID      field.Field
-	DeclineReasonCode       field.String
-	DeclineReason           field.String
-	ClientMessage           field.String
-	ResolvedAt              field.Time
-	ResolvedActorKind       field.String
-	ResolvedActorID         field.Field
-	ResolvedAuthoritySource field.String
-	OriginDeliveryID        field.Field
-	OriginAcceptanceID      field.Field
-	LastClientActivityAt    field.Time
-	LastTeamActivityAt      field.Time
-	ChangeOfIntakeID        field.Field
-	TargetRequirementID     field.Field
-	ClientApproval          field.String
-	ResultVersionNo         field.Int
-	Version                 field.Int
-	TenantID                field.Field
-	CreatedAt               field.Time
-	UpdatedAt               field.Time
-	CreatedBy               field.Field
-	UpdatedBy               field.Field
+	ALL                         field.Asterisk
+	ID                          field.Field
+	RefNo                       field.Int
+	ChannelID                   field.Field
+	ChannelKind                 field.String
+	ContactID                   field.Field
+	Kind                        field.String
+	Status                      field.String
+	Title                       field.String
+	RawContent                  field.String
+	RawContentFormat            field.String
+	RawContentHash              field.String
+	SourceMessageID             field.String
+	ExternalRef                 field.String
+	DesiredBy                   field.String
+	ReceivedAt                  field.Time
+	SubmittedByPrincipalID      field.Field
+	ReplyToken                  field.String
+	LatestCardRevision          field.Int
+	OpenRoundID                 field.Field
+	ClientUnresponsive          field.Bool
+	ProjectID                   field.Field
+	RequirementID               field.Field
+	ConversionMode              field.String
+	MergedIntoIntakeID          field.Field
+	DeclineReasonCode           field.String
+	DeclineReason               field.String
+	ClientMessage               field.String
+	ClientNotificationState     field.String
+	ClientNotificationMessageID field.Field
+	ResolvedAt                  field.Time
+	ResolvedActorKind           field.String
+	ResolvedActorID             field.Field
+	ResolvedAuthoritySource     field.String
+	OriginDeliveryID            field.Field
+	OriginAcceptanceID          field.Field
+	LastClientActivityAt        field.Time
+	LastTeamActivityAt          field.Time
+	LastTriageRequestedAt       field.Time
+	ChangeOfIntakeID            field.Field
+	TargetRequirementID         field.Field
+	ClientApproval              field.String
+	ResultVersionNo             field.Int
+	Version                     field.Int
+	TenantID                    field.Field
+	CreatedAt                   field.Time
+	UpdatedAt                   field.Time
+	CreatedBy                   field.Field
+	UpdatedBy                   field.Field
 
 	fieldMap map[string]field.Expr
 }
@@ -171,6 +177,8 @@ func (r *record) updateTableName(table string) *record {
 	r.DeclineReasonCode = field.NewString(table, "decline_reason_code")
 	r.DeclineReason = field.NewString(table, "decline_reason")
 	r.ClientMessage = field.NewString(table, "client_message")
+	r.ClientNotificationState = field.NewString(table, "client_notification_state")
+	r.ClientNotificationMessageID = field.NewField(table, "client_notification_message_id")
 	r.ResolvedAt = field.NewTime(table, "resolved_at")
 	r.ResolvedActorKind = field.NewString(table, "resolved_actor_kind")
 	r.ResolvedActorID = field.NewField(table, "resolved_actor_id")
@@ -179,6 +187,7 @@ func (r *record) updateTableName(table string) *record {
 	r.OriginAcceptanceID = field.NewField(table, "origin_acceptance_id")
 	r.LastClientActivityAt = field.NewTime(table, "last_client_activity_at")
 	r.LastTeamActivityAt = field.NewTime(table, "last_team_activity_at")
+	r.LastTriageRequestedAt = field.NewTime(table, "last_triage_requested_at")
 	r.ChangeOfIntakeID = field.NewField(table, "change_of_intake_id")
 	r.TargetRequirementID = field.NewField(table, "target_requirement_id")
 	r.ClientApproval = field.NewString(table, "client_approval")
@@ -213,7 +222,7 @@ func (r *record) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (r *record) fillFieldMap() {
-	r.fieldMap = make(map[string]field.Expr, 45)
+	r.fieldMap = make(map[string]field.Expr, 48)
 	r.fieldMap["id"] = r.ID
 	r.fieldMap["ref_no"] = r.RefNo
 	r.fieldMap["channel_id"] = r.ChannelID
@@ -241,6 +250,8 @@ func (r *record) fillFieldMap() {
 	r.fieldMap["decline_reason_code"] = r.DeclineReasonCode
 	r.fieldMap["decline_reason"] = r.DeclineReason
 	r.fieldMap["client_message"] = r.ClientMessage
+	r.fieldMap["client_notification_state"] = r.ClientNotificationState
+	r.fieldMap["client_notification_message_id"] = r.ClientNotificationMessageID
 	r.fieldMap["resolved_at"] = r.ResolvedAt
 	r.fieldMap["resolved_actor_kind"] = r.ResolvedActorKind
 	r.fieldMap["resolved_actor_id"] = r.ResolvedActorID
@@ -249,6 +260,7 @@ func (r *record) fillFieldMap() {
 	r.fieldMap["origin_acceptance_id"] = r.OriginAcceptanceID
 	r.fieldMap["last_client_activity_at"] = r.LastClientActivityAt
 	r.fieldMap["last_team_activity_at"] = r.LastTeamActivityAt
+	r.fieldMap["last_triage_requested_at"] = r.LastTriageRequestedAt
 	r.fieldMap["change_of_intake_id"] = r.ChangeOfIntakeID
 	r.fieldMap["target_requirement_id"] = r.TargetRequirementID
 	r.fieldMap["client_approval"] = r.ClientApproval

@@ -1,0 +1,8 @@
+{
+  "forbidden": "Conversation access denied.",
+  "not_found": "Conversation not found.",
+  "invalid": "Invalid conversation input.",
+  "conflict": "The request conflicts with the current conversation.",
+  "unavailable": "Conversations are temporarily unavailable.",
+  "message_not_editable": "This message can no longer be edited or retracted."
+}

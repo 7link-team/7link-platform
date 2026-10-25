@@ -1,3 +1,4 @@
+import { NotificationBell } from "../../components/notification-bell"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useState, type ReactNode } from "react"
 import {
@@ -121,7 +122,8 @@ export default function AccountLayout() {
         </Link>
         <div className="ml-auto flex items-center gap-1">
           <LanguageSwitcher />
-          <ThemeModeButton />
+          <NotificationBell />
+            <ThemeModeButton />
           <UserMenu tenantID={getTenant()} />
         </div>
       </header>

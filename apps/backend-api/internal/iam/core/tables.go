@@ -16,6 +16,7 @@ import (
 type AccessTableNames struct {
 	Entities               gormx.TableName
 	FieldPolicies          gormx.TableName
+	MenuContributions      gormx.TableName
 	Menus                  gormx.TableName
 	PlatformAdministrators gormx.TableName
 	PlatformGrants         gormx.TableName
@@ -28,6 +29,7 @@ type AccessTableNames struct {
 	RolePermissions        gormx.TableName
 	TemporaryRoleGrants    gormx.TableName
 	TenantMembers          gormx.TableName
+	MembershipPeriods      gormx.TableName
 }
 
 // PublishedAccessTableNames binds every name core owns to one deployment prefix. It builds
@@ -39,6 +41,7 @@ func PublishedAccessTableNames(prefix string) AccessTableNames {
 	return AccessTableNames{
 		Entities:               names.Entities,
 		FieldPolicies:          names.FieldPolicies,
+		MenuContributions:      names.MenuContributions,
 		Menus:                  names.Menus,
 		PlatformAdministrators: names.PlatformAdministrators,
 		PlatformGrants:         names.PlatformGrants,
@@ -51,6 +54,7 @@ func PublishedAccessTableNames(prefix string) AccessTableNames {
 		RolePermissions:        names.RolePermissions,
 		TemporaryRoleGrants:    names.TemporaryRoleGrants,
 		TenantMembers:          names.TenantMembers,
+		MembershipPeriods:      names.MembershipPeriods,
 	}
 }
 

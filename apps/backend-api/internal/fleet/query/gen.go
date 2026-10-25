@@ -16,30 +16,114 @@ import (
 )
 
 var (
-	Q         = new(Query)
-	Agent     *agent
-	AgentRole *agentRole
+	Q                   = new(Query)
+	Agent               *agent
+	AgentMachineCommand *agentMachineCommand
+	AgentRole           *agentRole
+	CredentialRotation  *credentialRotation
+	Enrollment          *enrollment
+	EnsembleBranch      *ensembleBranch
+	EnsemblePlan        *ensemblePlan
+	GatewayConfig       *gatewayConfig
+	GatewayKey          *gatewayKey
+	GatewayRequest      *gatewayRequest
+	Inspection          *inspection
+	Machine             *machine
+	MachineCredential   *machineCredential
+	MachineRuntime      *machineRuntime
+	MachineTool         *machineTool
+	ManualModelCatalog  *manualModelCatalog
+	ModelPrice          *modelPrice
+	ResetCommand        *resetCommand
+	RunnerSession       *runnerSession
+	SlotReservation     *slotReservation
+	TerminalAccess      *terminalAccess
+	TerminalSession     *terminalSession
+	Workdir             *workdir
 )
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
 	Agent = &Q.Agent
+	AgentMachineCommand = &Q.AgentMachineCommand
 	AgentRole = &Q.AgentRole
+	CredentialRotation = &Q.CredentialRotation
+	Enrollment = &Q.Enrollment
+	EnsembleBranch = &Q.EnsembleBranch
+	EnsemblePlan = &Q.EnsemblePlan
+	GatewayConfig = &Q.GatewayConfig
+	GatewayKey = &Q.GatewayKey
+	GatewayRequest = &Q.GatewayRequest
+	Inspection = &Q.Inspection
+	Machine = &Q.Machine
+	MachineCredential = &Q.MachineCredential
+	MachineRuntime = &Q.MachineRuntime
+	MachineTool = &Q.MachineTool
+	ManualModelCatalog = &Q.ManualModelCatalog
+	ModelPrice = &Q.ModelPrice
+	ResetCommand = &Q.ResetCommand
+	RunnerSession = &Q.RunnerSession
+	SlotReservation = &Q.SlotReservation
+	TerminalAccess = &Q.TerminalAccess
+	TerminalSession = &Q.TerminalSession
+	Workdir = &Q.Workdir
 }
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:        db,
-		Agent:     newAgent(db, opts...),
-		AgentRole: newAgentRole(db, opts...),
+		db:                  db,
+		Agent:               newAgent(db, opts...),
+		AgentMachineCommand: newAgentMachineCommand(db, opts...),
+		AgentRole:           newAgentRole(db, opts...),
+		CredentialRotation:  newCredentialRotation(db, opts...),
+		Enrollment:          newEnrollment(db, opts...),
+		EnsembleBranch:      newEnsembleBranch(db, opts...),
+		EnsemblePlan:        newEnsemblePlan(db, opts...),
+		GatewayConfig:       newGatewayConfig(db, opts...),
+		GatewayKey:          newGatewayKey(db, opts...),
+		GatewayRequest:      newGatewayRequest(db, opts...),
+		Inspection:          newInspection(db, opts...),
+		Machine:             newMachine(db, opts...),
+		MachineCredential:   newMachineCredential(db, opts...),
+		MachineRuntime:      newMachineRuntime(db, opts...),
+		MachineTool:         newMachineTool(db, opts...),
+		ManualModelCatalog:  newManualModelCatalog(db, opts...),
+		ModelPrice:          newModelPrice(db, opts...),
+		ResetCommand:        newResetCommand(db, opts...),
+		RunnerSession:       newRunnerSession(db, opts...),
+		SlotReservation:     newSlotReservation(db, opts...),
+		TerminalAccess:      newTerminalAccess(db, opts...),
+		TerminalSession:     newTerminalSession(db, opts...),
+		Workdir:             newWorkdir(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	Agent     agent
-	AgentRole agentRole
+	Agent               agent
+	AgentMachineCommand agentMachineCommand
+	AgentRole           agentRole
+	CredentialRotation  credentialRotation
+	Enrollment          enrollment
+	EnsembleBranch      ensembleBranch
+	EnsemblePlan        ensemblePlan
+	GatewayConfig       gatewayConfig
+	GatewayKey          gatewayKey
+	GatewayRequest      gatewayRequest
+	Inspection          inspection
+	Machine             machine
+	MachineCredential   machineCredential
+	MachineRuntime      machineRuntime
+	MachineTool         machineTool
+	ManualModelCatalog  manualModelCatalog
+	ModelPrice          modelPrice
+	ResetCommand        resetCommand
+	RunnerSession       runnerSession
+	SlotReservation     slotReservation
+	TerminalAccess      terminalAccess
+	TerminalSession     terminalSession
+	Workdir             workdir
 }
 
 func (q *Query) Available() bool { return q.db != nil }
@@ -48,9 +132,30 @@ func (q *Query) UnderlyingDB() *gorm.DB { return q.db }
 
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:        db,
-		Agent:     q.Agent.clone(db),
-		AgentRole: q.AgentRole.clone(db),
+		db:                  db,
+		Agent:               q.Agent.clone(db),
+		AgentMachineCommand: q.AgentMachineCommand.clone(db),
+		AgentRole:           q.AgentRole.clone(db),
+		CredentialRotation:  q.CredentialRotation.clone(db),
+		Enrollment:          q.Enrollment.clone(db),
+		EnsembleBranch:      q.EnsembleBranch.clone(db),
+		EnsemblePlan:        q.EnsemblePlan.clone(db),
+		GatewayConfig:       q.GatewayConfig.clone(db),
+		GatewayKey:          q.GatewayKey.clone(db),
+		GatewayRequest:      q.GatewayRequest.clone(db),
+		Inspection:          q.Inspection.clone(db),
+		Machine:             q.Machine.clone(db),
+		MachineCredential:   q.MachineCredential.clone(db),
+		MachineRuntime:      q.MachineRuntime.clone(db),
+		MachineTool:         q.MachineTool.clone(db),
+		ManualModelCatalog:  q.ManualModelCatalog.clone(db),
+		ModelPrice:          q.ModelPrice.clone(db),
+		ResetCommand:        q.ResetCommand.clone(db),
+		RunnerSession:       q.RunnerSession.clone(db),
+		SlotReservation:     q.SlotReservation.clone(db),
+		TerminalAccess:      q.TerminalAccess.clone(db),
+		TerminalSession:     q.TerminalSession.clone(db),
+		Workdir:             q.Workdir.clone(db),
 	}
 }
 
@@ -64,21 +169,84 @@ func (q *Query) WriteDB() *Query {
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:        db,
-		Agent:     q.Agent.replaceDB(db),
-		AgentRole: q.AgentRole.replaceDB(db),
+		db:                  db,
+		Agent:               q.Agent.replaceDB(db),
+		AgentMachineCommand: q.AgentMachineCommand.replaceDB(db),
+		AgentRole:           q.AgentRole.replaceDB(db),
+		CredentialRotation:  q.CredentialRotation.replaceDB(db),
+		Enrollment:          q.Enrollment.replaceDB(db),
+		EnsembleBranch:      q.EnsembleBranch.replaceDB(db),
+		EnsemblePlan:        q.EnsemblePlan.replaceDB(db),
+		GatewayConfig:       q.GatewayConfig.replaceDB(db),
+		GatewayKey:          q.GatewayKey.replaceDB(db),
+		GatewayRequest:      q.GatewayRequest.replaceDB(db),
+		Inspection:          q.Inspection.replaceDB(db),
+		Machine:             q.Machine.replaceDB(db),
+		MachineCredential:   q.MachineCredential.replaceDB(db),
+		MachineRuntime:      q.MachineRuntime.replaceDB(db),
+		MachineTool:         q.MachineTool.replaceDB(db),
+		ManualModelCatalog:  q.ManualModelCatalog.replaceDB(db),
+		ModelPrice:          q.ModelPrice.replaceDB(db),
+		ResetCommand:        q.ResetCommand.replaceDB(db),
+		RunnerSession:       q.RunnerSession.replaceDB(db),
+		SlotReservation:     q.SlotReservation.replaceDB(db),
+		TerminalAccess:      q.TerminalAccess.replaceDB(db),
+		TerminalSession:     q.TerminalSession.replaceDB(db),
+		Workdir:             q.Workdir.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	Agent     IAgentDo
-	AgentRole IAgentRoleDo
+	Agent               IAgentDo
+	AgentMachineCommand IAgentMachineCommandDo
+	AgentRole           IAgentRoleDo
+	CredentialRotation  ICredentialRotationDo
+	Enrollment          IEnrollmentDo
+	EnsembleBranch      IEnsembleBranchDo
+	EnsemblePlan        IEnsemblePlanDo
+	GatewayConfig       IGatewayConfigDo
+	GatewayKey          IGatewayKeyDo
+	GatewayRequest      IGatewayRequestDo
+	Inspection          IInspectionDo
+	Machine             IMachineDo
+	MachineCredential   IMachineCredentialDo
+	MachineRuntime      IMachineRuntimeDo
+	MachineTool         IMachineToolDo
+	ManualModelCatalog  IManualModelCatalogDo
+	ModelPrice          IModelPriceDo
+	ResetCommand        IResetCommandDo
+	RunnerSession       IRunnerSessionDo
+	SlotReservation     ISlotReservationDo
+	TerminalAccess      ITerminalAccessDo
+	TerminalSession     ITerminalSessionDo
+	Workdir             IWorkdirDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		Agent:     q.Agent.WithContext(ctx),
-		AgentRole: q.AgentRole.WithContext(ctx),
+		Agent:               q.Agent.WithContext(ctx),
+		AgentMachineCommand: q.AgentMachineCommand.WithContext(ctx),
+		AgentRole:           q.AgentRole.WithContext(ctx),
+		CredentialRotation:  q.CredentialRotation.WithContext(ctx),
+		Enrollment:          q.Enrollment.WithContext(ctx),
+		EnsembleBranch:      q.EnsembleBranch.WithContext(ctx),
+		EnsemblePlan:        q.EnsemblePlan.WithContext(ctx),
+		GatewayConfig:       q.GatewayConfig.WithContext(ctx),
+		GatewayKey:          q.GatewayKey.WithContext(ctx),
+		GatewayRequest:      q.GatewayRequest.WithContext(ctx),
+		Inspection:          q.Inspection.WithContext(ctx),
+		Machine:             q.Machine.WithContext(ctx),
+		MachineCredential:   q.MachineCredential.WithContext(ctx),
+		MachineRuntime:      q.MachineRuntime.WithContext(ctx),
+		MachineTool:         q.MachineTool.WithContext(ctx),
+		ManualModelCatalog:  q.ManualModelCatalog.WithContext(ctx),
+		ModelPrice:          q.ModelPrice.WithContext(ctx),
+		ResetCommand:        q.ResetCommand.WithContext(ctx),
+		RunnerSession:       q.RunnerSession.WithContext(ctx),
+		SlotReservation:     q.SlotReservation.WithContext(ctx),
+		TerminalAccess:      q.TerminalAccess.WithContext(ctx),
+		TerminalSession:     q.TerminalSession.WithContext(ctx),
+		Workdir:             q.Workdir.WithContext(ctx),
 	}
 }
 

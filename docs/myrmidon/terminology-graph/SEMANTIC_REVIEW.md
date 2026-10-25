@@ -1,5 +1,31 @@
 # 术语关系语义补核 · 2026-10-14
 
+## 2026-10-24 当前契约复核
+
+本次按 `docs/PRD_FINAL.md:2596–2607` 的 REQ-MODEL-001..005 与 `docs/REQUIREMENTS.md:916–926` 复核图工具本身。验收边界是当前已登记产品关系、准确原文来源、交互筛选及可重现诊断。要求明确把未引用声明、业务单邻居和待澄清问题保留为人工核对队列；清空这些队列不是图工具完成条件，也不能据此宣称全产品功能或语义覆盖已验收。
+
+| 要求 | 当前实现与核对依据 |
+| --- | --- |
+| MODEL-001 共享总网与独立 HTML | `data.json` 是唯一节点/关系源；`build.py` 把本地固定版本资源与同一模型嵌入单个 HTML，不依赖在线图服务。 |
+| MODEL-002 身份、含义、方向和来源 | 421 个术语均有定义与来源；930 条关系均有方向、含义和来源。生成器逐一验证端点、原文引用和问题证据；没有为清空诊断新增关系。 |
+| MODEL-003 总网结构与遗漏诊断 | 总网孤立/连通分组、仅归属/枚举连接、业务单邻居、规格章节与逐条需求引用分别展示；结构诊断不替代产品验收。 |
+| MODEL-004 分类上下游与范围 | 分类、搜索、关联上下游均筛选同一模型；保留直接跨类别背景节点，当前视图与总网孤立数分开。来源覆盖含原始/最终 PRD、需求清单和规格。 |
+| MODEL-005 精确路径、重复编号及指定关系 | 总网/待核对路径保留直接邻居与 URL 定位；同文档重复编号的两条声明独立保留。下列既定关系仍有原文依据，未用实现状态替代产品语义。 |
+
+再次确认指定概念及其直接关系存在：`workflow_trigger`、`workflow_input_mapping`、`credential_reference`、`workflow_error_policy`；OKR 校验、`okr_checkin`、`okr_carryover`；`performance_template`、`performance_calibration`、`performance_confirmation`；`archive_impact_check`、`project_restore`；跨平台能力、`external_message_receipt`、`external_message_mapping`。这些是图中产品关系的登记，不证明相应业务模块已完成。
+
+本次当前来源生成通过，保持 421 术语 / 930 关系 / 7 待核对问题。七项问题分别涉及原型执行身份验收边界、原生会话节点作用域、旧客户端术语、同名异常表、上下文快照身份、成果版本身份及重复需求编号；保留各自原文与上下游，不以当前后端已有同名类型自动宣布语义等价。13 个业务单邻居的既有逐项说明仍保留；610 条无直接引用声明及 REQ-EXEC-012 两种含义均作为可见诊断保留。
+
+2026-10-24 executed verification: default and explicit UTF-8 builds produced identical SHA-256 values for all 6 JSON/Markdown/HTML artifacts. Current browser-check.js passed all 26 checks at both 1280px and 375px. Temporary server and isolated browser session stopped.
+
+## 2026-10-22 引用维护与复验
+
+当前来源核对发现平台能力规格增行后，13 个不同的原文引用（14 处出现）及 7 处字段关系来源行号偏移。已按唯一的未变原文定位前者，并逐条对照 `tenant_id`、`project_id`、`notification_id`、`job_id` 字段定位后者；未改变关系含义。`build.py` 统一使用显式 UTF-8 读写和 LF 输出，避免 Windows 默认编码或换行影响生成结果。普通模式与 UTF-8 模式连续生成的四个产物字节一致。
+
+生成后仍为 421 个术语、930 条关系、7 项待核对问题、13 个业务单邻居。需求引用诊断仍保留 610 条无直接引用的声明；`docs/PRD_FINAL.md` 的 `REQ-EXEC-012` 在 1264、2580 行重复声明，两处均保留。以上是可重现的文档诊断，不表示这些声明已逐条完成语义映射，也不构成产品功能验收。
+
+桌面 1280px 与移动 375px 均执行当前 `browser-check.js` 的全部 26 项检查，结果通过；使用临时本地 HTTP 服务与已安装的 Edge，无新增浏览器依赖。覆盖检索、筛选、来源展开、结构诊断、待核对上下游及精确术语深链；未清空语义问题队列。
+
 本轮响应“仍有孤立、不全”：以前的 0 断线只证明图连通，不证明业务关系完整。本轮从 69 个业务单邻居及规格二、三级标题中的结构化术语继续核对。
 
 ## 已修正

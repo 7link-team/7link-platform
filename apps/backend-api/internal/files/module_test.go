@@ -162,6 +162,33 @@ func TestFileModuleRefusesDuplicateCapabilities(t *testing.T) {
 	}
 }
 
+func TestFileModuleRejectsConflictingDomainFileCapabilities(t *testing.T) {
+	prototype := &Module{}
+	providers := []func(*module.Services) error{
+		func(s *module.Services) error { return module.Provide[DeliveryBundleFiles](s, DeliveryBundleFiles{}) },
+		func(s *module.Services) error { return module.Provide[ObjectMigrator](s, prototype.MigrateObject) },
+		func(s *module.Services) error {
+			return module.Provide[ClientCollaborationResources](s, ClientCollaborationResources{})
+		},
+		func(s *module.Services) error {
+			return module.Provide[ConversationResources](s, ConversationResources{})
+		},
+		func(s *module.Services) error { return module.Provide[PinnedResources](s, pinnedResources{}) },
+		func(s *module.Services) error { return module.Provide[*IntegrationPayloads](s, &IntegrationPayloads{}) },
+		func(s *module.Services) error { return module.Provide[*TerminalRecordings](s, &TerminalRecordings{}) },
+		func(s *module.Services) error {
+			return module.Provide[*ExecutionArtifactFiles](s, &ExecutionArtifactFiles{})
+		},
+		func(s *module.Services) error { return module.Provide[*TenantResourceFiles](s, &TenantResourceFiles{}) },
+	}
+	for i, provide := range providers {
+		s := module.NewServices()
+		require.NoError(t, provide(s))
+		m := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1")), Config{LocalRoot: t.TempDir()})
+		require.ErrorIs(t, m.ProvideServices(s), module.ErrServiceDuplicate, "provider %d", i)
+	}
+}
+
 func TestFileCleanupWorkerExpiresDurableOperationAndReleasesPins(t *testing.T) {
 	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{"primary": {Type: "sqlite", DSN: filepath.Join(t.TempDir(), "worker.sqlite") + "?_foreign_keys=on&_busy_timeout=10000", Writable: true, Readable: true}})
 	require.NoError(t, err)

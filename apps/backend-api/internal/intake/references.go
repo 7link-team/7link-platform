@@ -9,6 +9,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/intake/query"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -17,10 +18,57 @@ var (
 )
 
 // IntakeReader supplies transactional record and contact reference facts.
-// Channel, clarification and aggregate readers remain to be implemented.
+// Phase facts are read under the caller's project serialization lock.
 type IntakeReader struct {
-	GetOn      func(context.Context, *gorm.DB, guid.ID, guid.ID) (IntakeRef, bool, error)
-	ContactsOn func(context.Context, *gorm.DB, guid.ID, []guid.ID) ([]ContactReference, error)
+	GetOn          func(context.Context, *gorm.DB, guid.ID, guid.ID) (IntakeRef, bool, error)
+	ContactsOn     func(context.Context, *gorm.DB, guid.ID, []guid.ID) ([]ContactReference, error)
+	ProjectFactsOn func(context.Context, *gorm.DB, guid.ID, guid.ID, *guid.ID) (ProjectFacts, error)
+}
+
+// ProjectFacts contains only the source and open clarification facts needed by
+// project phase guards. It never exposes source content or external identities.
+type ProjectFacts struct {
+	HasSource          bool
+	OpenClarifications int
+}
+
+// ProjectFactsOn uses current locking reads, including on MySQL repeatable read.
+// The caller must hold the project lock before calling. Future source-link and
+// clarification writers must acquire that same lock before changing these facts.
+func (m *Module) ProjectFactsOn(ctx context.Context, tx *gorm.DB, tenant, project guid.ID, origin *guid.ID) (ProjectFacts, error) {
+	var facts ProjectFacts
+	if m == nil || m.names.Records.IsZero() {
+		return facts, ErrUnavailable
+	}
+	if tx == nil || tx.Statement == nil || tenant <= 0 || project <= 0 || (origin != nil && *origin <= 0) {
+		return facts, ErrInvalidArgument
+	}
+	if _, ok := tx.Statement.ConnPool.(gorm.TxCommitter); !ok {
+		return facts, ErrInvalidArgument
+	}
+	q := query.BindRecords(tx, m.names)
+	linked := q.ProjectID.Eq(project)
+	base := q.WithContext(ctx).Where(q.TenantID.Eq(tenant))
+	if origin == nil {
+		base = base.Where(linked)
+	} else {
+		base = base.Where(q.WithContext(ctx).Where(linked).Or(q.ID.Eq(*origin)))
+	}
+	rows, err := base.Select(q.ID, q.ProjectID, q.Status, q.OpenRoundID).Clauses(clause.Locking{Strength: "UPDATE"}).Order(q.ID).Find()
+	if err != nil {
+		return facts, err
+	}
+	for _, row := range rows {
+		isOrigin := origin != nil && row.ID == *origin && (row.ProjectID == nil || *row.ProjectID == project)
+		isLinked := row.ProjectID != nil && *row.ProjectID == project
+		if isOrigin || (isLinked && row.Status == "CONVERTED") {
+			facts.HasSource = true
+		}
+		if (isOrigin || isLinked) && row.OpenRoundID != nil {
+			facts.OpenClarifications++
+		}
+	}
+	return facts, nil
 }
 
 // ContactReference exposes ownership and lifecycle facts without private contact
@@ -78,10 +126,11 @@ func (m *Module) ContactsOn(ctx context.Context, tx *gorm.DB, tenant guid.ID, id
 // IntakeRef identifies a source record without exposing its original content,
 // internal decline reason, reply token or client-approval details.
 type IntakeRef struct {
-	ID, TenantID, ContactID, ChannelID           guid.ID
-	RefNo                                        int
-	Title, Kind, ChannelKind, Status             string
-	ProjectID, RequirementID, OriginAcceptanceID *guid.ID
+	Version                                                           int
+	ID, TenantID, ContactID, ChannelID                                guid.ID
+	RefNo                                                             int
+	Title, Kind, ChannelKind, Status                                  string
+	ProjectID, RequirementID, OriginAcceptanceID, TargetRequirementID *guid.ID
 }
 
 // GetOn reads a tenant-scoped source reference in the caller transaction.
@@ -96,12 +145,12 @@ func (m *Module) GetOn(ctx context.Context, tx *gorm.DB, tenant, id guid.ID) (In
 		return IntakeRef{}, false, ErrInvalidArgument
 	}
 	q := query.BindRecords(tx, m.names)
-	row, err := q.WithContext(ctx).Select(q.ID, q.TenantID, q.RefNo, q.Title, q.Kind, q.ContactID, q.ChannelID, q.ChannelKind, q.Status, q.ProjectID, q.RequirementID, q.OriginAcceptanceID).Where(q.TenantID.Eq(tenant), q.ID.Eq(id)).First()
+	row, err := q.WithContext(ctx).Select(q.Version, q.ID, q.TenantID, q.RefNo, q.Title, q.Kind, q.ContactID, q.ChannelID, q.ChannelKind, q.Status, q.ProjectID, q.RequirementID, q.OriginAcceptanceID, q.TargetRequirementID).Where(q.TenantID.Eq(tenant), q.ID.Eq(id)).First()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return IntakeRef{}, false, nil
 	}
 	if err != nil {
 		return IntakeRef{}, false, err
 	}
-	return IntakeRef{ID: row.ID, TenantID: row.TenantID, RefNo: row.RefNo, Title: row.Title, Kind: row.Kind, ContactID: row.ContactID, ChannelID: row.ChannelID, ChannelKind: row.ChannelKind, Status: row.Status, ProjectID: row.ProjectID, RequirementID: row.RequirementID, OriginAcceptanceID: row.OriginAcceptanceID}, true, nil
+	return IntakeRef{Version: row.Version, ID: row.ID, TenantID: row.TenantID, RefNo: row.RefNo, Title: row.Title, Kind: row.Kind, ContactID: row.ContactID, ChannelID: row.ChannelID, ChannelKind: row.ChannelKind, Status: row.Status, ProjectID: row.ProjectID, RequirementID: row.RequirementID, OriginAcceptanceID: row.OriginAcceptanceID, TargetRequirementID: row.TargetRequirementID}, true, nil
 }

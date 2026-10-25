@@ -31,6 +31,7 @@ func newChannel(db *gorm.DB, opts ...gen.DOOption) channel {
 	_channel.ID = field.NewField(tableName, "id")
 	_channel.TenantID = field.NewField(tableName, "tenant_id")
 	_channel.ProjectID = field.NewField(tableName, "project_id")
+	_channel.Visibility = field.NewString(tableName, "visibility")
 	_channel.Kind = field.NewString(tableName, "kind")
 	_channel.Name = field.NewString(tableName, "name")
 	_channel.Topic = field.NewString(tableName, "topic")
@@ -56,6 +57,7 @@ type channel struct {
 	ID            field.Field
 	TenantID      field.Field
 	ProjectID     field.Field
+	Visibility    field.String
 	Kind          field.String
 	Name          field.String
 	Topic         field.String
@@ -87,6 +89,7 @@ func (c *channel) updateTableName(table string) *channel {
 	c.ID = field.NewField(table, "id")
 	c.TenantID = field.NewField(table, "tenant_id")
 	c.ProjectID = field.NewField(table, "project_id")
+	c.Visibility = field.NewString(table, "visibility")
 	c.Kind = field.NewString(table, "kind")
 	c.Name = field.NewString(table, "name")
 	c.Topic = field.NewString(table, "topic")
@@ -123,10 +126,11 @@ func (c *channel) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (c *channel) fillFieldMap() {
-	c.fieldMap = make(map[string]field.Expr, 15)
+	c.fieldMap = make(map[string]field.Expr, 16)
 	c.fieldMap["id"] = c.ID
 	c.fieldMap["tenant_id"] = c.TenantID
 	c.fieldMap["project_id"] = c.ProjectID
+	c.fieldMap["visibility"] = c.Visibility
 	c.fieldMap["kind"] = c.Kind
 	c.fieldMap["name"] = c.Name
 	c.fieldMap["topic"] = c.Topic

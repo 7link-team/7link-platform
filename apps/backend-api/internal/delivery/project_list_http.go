@@ -21,7 +21,7 @@ type projectListHTTPInput struct {
 	ClientEntityID string `query:"client_entity_id" doc:"eq:ID of the client entity."`
 	Code           string `query:"code" doc:"eq:CODE exact project code."`
 	Name           string `query:"name" doc:"like:TEXT matches project names containing TEXT."`
-	Archived       string `query:"archived" doc:"eq:true or eq:false; default eq:false."`
+	Archived       string `query:"archived" doc:"eq:true, eq:false or in:true,false for all; default eq:false."`
 	LeadAgentID    string `query:"lead_agent_id" doc:"eq:ID of the lead agent."`
 	RawQuery       url.Values
 }

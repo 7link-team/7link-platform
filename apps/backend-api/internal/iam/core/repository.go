@@ -33,7 +33,8 @@ type Repository struct {
 	foreign   *foreignTables
 	// systemMenus is shared with the module, which publishes it for other
 	// modules to contribute their system pages to.
-	systemMenus *SystemMenus
+	systemMenus   *SystemMenus
+	contributions *menuContributions
 	repositoryTables
 }
 

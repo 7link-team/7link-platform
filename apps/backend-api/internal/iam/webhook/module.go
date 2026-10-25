@@ -75,7 +75,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 		return err
 	}
 	m.service = NewService(m.runtime, reader, m.config, keys, ids, outbound)
-	return nil
+	return m.bindIntakeCallbacks(services)
 }
 
 func (m *Module) Initialize(context.Context) error {

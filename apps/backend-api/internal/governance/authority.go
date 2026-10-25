@@ -17,8 +17,9 @@ import (
 // are evidence for S6, never a direct role grant. This does not authorize an
 // action by itself: S0-S3 and the nondelegable/delegation/policy gates still apply.
 type roleAuthority struct {
-	source   string
-	carriers []authz.DecisionMatch
+	source       string
+	carriers     []authz.DecisionMatch
+	customSource string
 }
 
 // roleAuthoritySource resolves stable business identities from the tenant's
@@ -74,7 +75,12 @@ func (s *seedService) roleAuthoritySource(ctx context.Context, db *gorm.DB, tena
 	result := roleAuthority{}
 	bestRank := 6
 	var bestID guid.ID
+	var customID guid.ID
 	choose := func(key string, id guid.ID) {
+		if strings.HasPrefix(key, "custom.") && (customID == 0 || id < customID) {
+			customID = id
+			result.customSource = "ROLE:" + key
+		}
 		rank := roleAuthorityRank(key)
 		if result.source == "" || rank < bestRank || (rank == bestRank && id < bestID) {
 			result.source = "ROLE:" + key
@@ -152,6 +158,70 @@ type AuthorityDecision struct {
 // decision. actorKind must be resolved by the server, never from request JSON.
 // With tx it fences authorization until the caller commits or rolls back.
 type ProjectCreationAuthority func(ctx context.Context, tx *gorm.DB, tenant, principal guid.ID, actorKind string) (AuthorityDecision, error)
+
+// ProjectStageAuthority evaluates a direct role grant for an existing project.
+// Actor identity/lifecycle and the phase-specific guards remain with its owner.
+type ProjectStageAuthority func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, string) (AuthorityDecision, error)
+
+func (m *Module) projectStageAuthority(ctx context.Context, tx *gorm.DB, tenant, project, principal guid.ID, actorKind string) (AuthorityDecision, error) {
+	return m.Check(ctx, tx, AuthorityRequest{TenantID: tenant, ProjectID: project, PrincipalID: principal, ActorKind: actorKind, Code: "project_stage_change", Resource: ResourceRef{Kind: "project", ID: project}})
+}
+
+func (m *Module) checkProjectStage(ctx context.Context, tx *gorm.DB, req AuthorityRequest) (AuthorityDecision, error) {
+	result := AuthorityDecision{Steps: []AuthorityStep{{Step: "S0", Outcome: "PASS"}}}
+	deny := func(step, reason string) (AuthorityDecision, error) {
+		result.Steps = append(result.Steps, AuthorityStep{Step: step, Outcome: "DENY"})
+		result.ReasonCode = reason
+		return result, nil
+	}
+	if req.ProjectID <= 0 || req.Resource.Kind != "project" || req.Resource.ID != req.ProjectID || req.Spawn != nil || req.Facts != nil {
+		return deny("S0", "INVALID_REQUEST")
+	}
+	if req.ActorKind != "HUMAN" && req.ActorKind != "AGENT" {
+		return deny("S2", "ACTOR_NOT_ELIGIBLE")
+	}
+	if req.Environment == "PRODUCTION" || m.explain == nil {
+		return AuthorityDecision{}, ErrUnavailable
+	}
+	if _, ok := m.seed.registry.Find(req.Code); !ok {
+		return AuthorityDecision{}, ErrUnavailable
+	}
+	explanation, err := m.explain(ctx, tx, core.AuthorizationExplanationRequest{TenantID: req.TenantID, EntityID: req.ProjectID, PrincipalID: req.PrincipalID, Permission: req.Code})
+	if err != nil {
+		return AuthorityDecision{}, err
+	}
+	result.PolicyRevision = explanation.Revision
+	if explanation.Reason == "inactive_membership" || explanation.Reason == "inactive_tenant" {
+		return deny("S1", "PRINCIPAL_INACTIVE")
+	}
+	result.Steps = append(result.Steps, AuthorityStep{Step: "S1", Outcome: "PASS"})
+	if explanation.Reason == "explicit_deny" || explanation.Reason == "administrator_scope_denied" {
+		return deny("S4", "EXPLICIT_DENY")
+	}
+	if !explanation.Allowed {
+		return deny("S4", "NO_ROLE_GRANT")
+	}
+	read := tx
+	if read == nil {
+		if m.runtime == nil || m.runtime.Database() == nil {
+			return AuthorityDecision{}, ErrUnavailable
+		}
+		read = m.runtime.Database().Write()
+	}
+	source, err := m.seed.roleAuthoritySource(ctx, read, req.TenantID, req.Code, explanation)
+	if err != nil {
+		return AuthorityDecision{}, err
+	}
+	if req.ActorKind == "AGENT" {
+		source.source = source.customSource
+	}
+	if source.source == "" {
+		return deny("S5", "NON_DELEGABLE")
+	}
+	result.Allowed, result.AuthoritySource = true, source.source
+	result.Steps = append(result.Steps, AuthorityStep{Step: "S4", Outcome: "MATCH"})
+	return result, nil
+}
 
 func (m *Module) projectCreationAuthority(ctx context.Context, tx *gorm.DB, tenant, principal guid.ID, actorKind string) (AuthorityDecision, error) {
 	return m.Check(ctx, tx, AuthorityRequest{TenantID: tenant, PrincipalID: principal, ActorKind: actorKind, Code: "project_create"})
@@ -249,6 +319,7 @@ type AuthorityRequest struct {
 // CostMicros excludes verification executions; zero verification records cannot
 // be represented as RequiredVerificationsPassed=true.
 type WorkItemFacts struct {
+	ClaimID                      guid.ID
 	Type, Risk                   string
 	CostMicros                   int64
 	QualityReworkCount           int
@@ -265,12 +336,14 @@ type WorkItemFacts struct {
 // SpawnRequestFacts describes the proposed Agent, not an already-reserved quota.
 // The fleet module must reserve quota transactionally after authority succeeds.
 type SpawnRequestFacts struct {
-	SupervisorAgentID      guid.ID
-	ProjectIDs             []guid.ID
-	Role                   string
-	MachineID              guid.ID
-	Runtime, Model, Effort string
-	EstimatedCapMicros     int64
+	SupervisorAgentID  guid.ID   `json:"supervisor_agent_id"`
+	ProjectIDs         []guid.ID `json:"project_ids" maxItems:"200"`
+	Role               string    `json:"role" enum:"EXECUTOR,ASSISTANT"`
+	MachineID          guid.ID   `json:"machine_id"`
+	Runtime            string    `json:"runtime" enum:"CODEX,CLAUDE_CODE"`
+	Model              string    `json:"model" minLength:"1" maxLength:"160"`
+	Effort             string    `json:"effort" maxLength:"20"`
+	EstimatedCapMicros int64     `json:"estimated_cap_micros" minimum:"1"`
 }
 
 // Check dispatches implemented domain authority branches using the frozen
@@ -299,6 +372,35 @@ func (m *Module) Check(ctx context.Context, tx *gorm.DB, req AuthorityRequest) (
 	if m == nil || m.seed == nil || m.seed.registry == nil {
 		return AuthorityDecision{}, ErrUnavailable
 	}
+	if req.Code == "production_access" || req.Environment == "PRODUCTION" {
+		decision, err := m.checkProductionAuthority(ctx, tx, req)
+		if err != nil || !decision.Allowed || req.Code == "production_access" {
+			return decision, err
+		}
+		// The independent action still needs its ordinary authority and SoD gates.
+		req.Environment = "DEFAULT"
+	}
+	if req.Code == "agent_spawn" {
+		return m.checkSpawnAuthority(ctx, tx, req)
+	}
+	if req.ActorKind == "AGENT" && RulesForAction(req.Code, "AGENT").Delegable {
+		if _, known := m.seed.registry.Find(req.Code); !known {
+			return invalid("INVALID_REQUEST")
+		}
+		return m.checkDelegationAuthority(ctx, tx, req)
+	}
+	if req.Code == "code_merge" {
+		return m.codeMergeAuthority(ctx, tx, req)
+	}
+	if req.Code == "work_item_assign" {
+		return m.dispatchAuthority(ctx, tx, req)
+	}
+	if req.Code == "project_stage_change" {
+		return m.checkProjectStage(ctx, tx, req)
+	}
+	if req.Code == "decision_force_valid" || req.Code == "scope_change" || req.Code == "decision_approve" || req.Code == "decision_request_changes" || req.Code == "decision_pause" || req.Code == "delivery_send" {
+		return m.checkDeliveryAuthority(ctx, tx, req)
+	}
 	if req.Code != "project_create" {
 		if _, known := m.seed.registry.Find(req.Code); !known {
 			return invalid("INVALID_REQUEST")
@@ -312,9 +414,6 @@ func (m *Module) Check(ctx context.Context, tx *gorm.DB, req AuthorityRequest) (
 		// project_create is NonDelegable and cannot be registered in SystemActions.
 		return AuthorityDecision{ReasonCode: "SYSTEM_NOT_REGISTERED", Steps: []AuthorityStep{{Step: "S0", Outcome: "PASS"}, {Step: "S1", Outcome: "DENY"}}}, nil
 	}
-	if req.Environment == "PRODUCTION" {
-		return AuthorityDecision{}, ErrUnavailable
-	} // Temporary production-grant validation is not wired yet.
 	// H1 creates a HYBRID project in its default environment. These are server
 	// facts; a context for another resource must not influence creation grants.
 	ctx = policyx.WithResourceContext(ctx, policyx.ResourceContext{Type: "project", Owner: req.PrincipalID.String(), Attrs: map[string]string{"environment": "DEFAULT", "project_mode": "HYBRID"}})

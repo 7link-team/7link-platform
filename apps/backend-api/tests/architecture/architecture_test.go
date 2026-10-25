@@ -13,6 +13,8 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -831,4 +833,226 @@ func uniqueViolations(input []architectureViolation) []architectureViolation {
 		return left < right
 	})
 	return result
+}
+
+// Worker ownership is temporary; Go symbols and files describe capabilities.
+func workerLabel(name string) bool {
+	if name == "lanes" {
+		return false
+	}
+	for i := 0; i+5 <= len(name); i++ {
+		if name[i:i+4] != "lane" && name[i:i+4] != "Lane" {
+			continue
+		}
+		if name[i:i+4] == "lane" && i > 0 && name[i-1] != '_' {
+			continue
+		}
+		j := i + 4
+		if name[j] == '_' {
+			j++
+			if j >= len(name) {
+				continue
+			}
+		}
+		letter := name[j]
+		if letter >= 'A' && letter <= 'Z' {
+			if j+1 == len(name) || name[j+1] == '_' || name[j+1] >= 'A' && name[j+1] <= 'Z' {
+				return true
+			}
+		}
+		if letter >= 'a' && letter <= 'z' && (j+1 == len(name) || name[j+1] == '_' || name[j+1] == '.') {
+			return true
+		}
+	}
+	return false
+}
+
+func workerFilename(name string) bool {
+	if workerLabel(strings.TrimSuffix(name, ".go")) {
+		return true
+	}
+	if strings.HasPrefix(name, "provider_") {
+		tail := strings.TrimPrefix(name, "provider_")
+		return len(tail) > 1 && tail[0] >= 'a' && tail[0] <= 'z' && (tail[1] == '_' || tail[1] == '.')
+	}
+	return false
+}
+
+func TestCapabilityNamesRejectWorkerOwnership(t *testing.T) {
+	root := backendRoot(t)
+	areas := []string{"internal", "pkg", "cmd", "tools", "tests"}
+	for i := range areas {
+		areas[i] = filepath.Join(root, areas[i])
+	}
+	areas = append(areas, filepath.Join(root, "..", "runner"))
+	for _, area := range areas {
+		err := filepath.WalkDir(area, func(filename string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				if entry.Name() == "testdata" || strings.HasPrefix(entry.Name(), ".") || entry.Name() == "vendor" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !strings.HasSuffix(filename, ".go") {
+				return nil
+			}
+			if workerFilename(entry.Name()) {
+				t.Errorf("capability filename required: %s", filename)
+			}
+			parsed, err := parser.ParseFile(token.NewFileSet(), filename, nil, 0)
+			if err != nil {
+				return err
+			}
+			ast.Inspect(parsed, func(node ast.Node) bool {
+				if field, ok := node.(*ast.Field); ok && field.Tag != nil {
+					tag, err := strconv.Unquote(field.Tag.Value)
+					if err == nil && workerLabel(reflect.StructTag(tag).Get("nameHint")) {
+						t.Errorf("capability schema name required: %s: %s", filename, tag)
+					}
+				}
+				if ident, ok := node.(*ast.Ident); ok && workerLabel(ident.Name) {
+					t.Errorf("capability identifier required: %s: %s", filename, ident.Name)
+				}
+				return true
+			})
+			return nil
+		})
+		require.NoError(t, err)
+	}
+}
+
+func TestCompositionRootContainsOnlyWiring(t *testing.T) {
+	root := filepath.Join(backendRoot(t), "internal", "app")
+	allowed := map[string]bool{
+		"app.go": true, "banner.go": true, "bootstrap.go": true,
+		"config.go": true, "config_agents.go": true, "config_fleet.go": true, "config_notification.go": true,
+		"debug.go": true, "grpc.go": true, "http.go": true, "jobcatalog.go": true,
+		"migration.go": true, "module.go": true, "moduleconfig.go": true, "openapi.go": true, "shutdown.go": true,
+	}
+
+	err := filepath.WalkDir(root, func(filename string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if strings.HasSuffix(entry.Name(), "_test.go") {
+			production := strings.TrimSuffix(entry.Name(), "_test.go") + ".go"
+			if !fileExists(filepath.Join(root, production)) {
+				t.Errorf("app test must map one-to-one to a composition source: %s", entry.Name())
+			}
+			return nil
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+			return nil
+		}
+		relative, err := filepath.Rel(root, filename)
+		if err != nil {
+			return err
+		}
+		if !allowed[filepath.ToSlash(relative)] {
+			t.Errorf("move non-composition responsibility to its owner: %s", relative)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	entries, err := os.ReadDir(root)
+	require.NoError(t, err)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(root, entry.Name()), nil, 0)
+		require.NoError(t, err)
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok {
+				continue
+			}
+			switch fn.Name.Name {
+			case "RegisterHTTP":
+				if entry.Name() != "http.go" || fn.Recv == nil || len(fn.Recv.List) != 1 {
+					t.Errorf("domain HTTP registrar belongs outside app: %s", entry.Name())
+				} else if star, ok := fn.Recv.List[0].Type.(*ast.StarExpr); !ok {
+					t.Errorf("unexpected HTTP registrar receiver: %s", entry.Name())
+				} else if receiver, ok := star.X.(*ast.Ident); !ok || receiver.Name != "App" {
+					t.Errorf("domain HTTP registrar belongs outside app: %s", entry.Name())
+				}
+			case "ModuleName", "ModuleDependencies", "ProvideServices", "InjectServices":
+				t.Errorf("domain module lifecycle belongs outside app: %s: %s", entry.Name(), fn.Name.Name)
+			}
+			ast.Inspect(fn, func(node ast.Node) bool {
+				literal, ok := node.(*ast.FuncLit)
+				if !ok {
+					return true
+				}
+				for _, parameter := range literal.Type.Params.List {
+					star, ok := parameter.Type.(*ast.StarExpr)
+					if !ok {
+						continue
+					}
+					selector, ok := star.X.(*ast.SelectorExpr)
+					if !ok {
+						continue
+					}
+					qualifier, ok := selector.X.(*ast.Ident)
+					if ok && qualifier.Name == "gorm" && selector.Sel.Name == "DB" {
+						t.Errorf("transactional domain callback belongs outside app: %s: %s", entry.Name(), fn.Name.Name)
+					}
+				}
+				return true
+			})
+		}
+	}
+}
+
+func TestWorkerOwnershipDetection(t *testing.T) {
+	for _, name := range []string{"provider_a.go", "provider_laned.go", "bootstrap_laneu_team_test.go"} {
+		require.True(t, workerFilename(name), name)
+	}
+	for _, name := range []string{"LaneKAdapter", "bindLaneTMetrics", "laneURubricRoute", "lane_n_fact"} {
+		require.True(t, workerLabel(name), name)
+	}
+	for _, name := range []string{"plane", "planes", "lanes", "controlPlane", "projectArchiveResourcesOn", "pipeline.go"} {
+		require.False(t, workerLabel(name), name)
+	}
+}
+
+func TestFrontendCapabilityFileNamesRejectWorkerOwnership(t *testing.T) {
+	root := filepath.Join(backendRoot(t), "..", "frontend-web", "apps", "web")
+	ownership := regexp.MustCompile(`(?i)(^|[_-])lane[-_]?[a-z]([_.-]|$)`)
+	for _, area := range []string{"src", "tests", "scripts"} {
+		err := filepath.WalkDir(filepath.Join(root, area), func(filename string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				if strings.HasPrefix(entry.Name(), ".") || entry.Name() == "node_modules" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if ownership.MatchString(entry.Name()) || workerLabel(entry.Name()) {
+				t.Errorf("frontend capability filename required: %s", filename)
+			}
+			if filepath.Ext(filename) == ".json" && filepath.Base(filepath.Dir(filename)) == "messages" {
+				data, err := os.ReadFile(filename)
+				if err != nil {
+					return err
+				}
+				var messages map[string]json.RawMessage
+				if err := json.Unmarshal(data, &messages); err != nil {
+					return err
+				}
+				for key := range messages {
+					if workerLabel(key) || ownership.MatchString(key) {
+						t.Errorf("frontend capability translation key required: %s: %s", filename, key)
+					}
+				}
+			}
+			return nil
+		})
+		require.NoError(t, err)
+	}
 }

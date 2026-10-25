@@ -7,6 +7,10 @@ import {
   type FileBrowserProps,
 } from "../../src/components/file-browser"
 import type { DroppedEntry, FileBrowserNode } from "../../src/lib/file-browser"
+import {
+  fileBrowserViewState,
+  type FileBrowserViewState,
+} from "../../src/lib/file-browser"
 import en from "../../src/messages/files/en-US.json"
 import zh from "../../src/messages/files/zh-CN.json"
 import ms from "../../src/messages/files/ms-MY.json"
@@ -43,6 +47,17 @@ export default function Fixture() {
   const [revokedMetadata, setRevokedMetadata] = useState(false)
   const [operation, setOperation] = useState("")
   const [canForward, setCanForward] = useState(false)
+  const controlled = new URLSearchParams(window.location.search).has(
+    "controlled"
+  )
+  const [viewState, setViewState] = useState(() =>
+    fileBrowserViewState(new URLSearchParams())
+  )
+  const [viewChanges, setViewChanges] = useState(0)
+  const updateView = (next: FileBrowserViewState) => {
+    setViewChanges((count) => count + 1)
+    setViewState(next)
+  }
   const [clipboard, setClipboard] = useState<{
     action: "copy" | "move"
     count: number
@@ -61,8 +76,33 @@ export default function Fixture() {
         </button>
         <output data-testid="location">{location}</output>
         <output data-testid="operation">{operation}</output>
+        {controlled && (
+          <>
+            <button
+              onClick={() =>
+                setViewState((current) => ({
+                  ...current,
+                  query: "Notes",
+                  kind: "file",
+                }))
+              }
+            >
+              Fixture: restore filters
+            </button>
+            <button
+              onClick={() =>
+                setViewState(fileBrowserViewState(new URLSearchParams()))
+              }
+            >
+              Fixture: reset filters
+            </button>
+            <output data-testid="view-changes">{viewChanges}</output>
+          </>
+        )}
       </div>
       <FileBrowser
+        viewState={controlled ? viewState : undefined}
+        onViewStateChange={controlled ? updateView : undefined}
         roots={[
           {
             id: "root",

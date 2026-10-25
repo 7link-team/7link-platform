@@ -19,6 +19,8 @@ import {
 import {
   materializeDroppedEntries,
   parentFileBrowserDirectoryID,
+  fileBrowserViewState,
+  fileBrowserViewParams,
   type FileBrowserLocation,
   type FileBrowserNode,
   type FileBrowserRoot,
@@ -432,6 +434,12 @@ export default function FilesPage({
   return (
     <>
       <FileBrowser
+        viewState={fileBrowserViewState(searchParams)}
+        onViewStateChange={(next) =>
+          setSearchParams((current) => fileBrowserViewParams(current, next), {
+            replace: true,
+          })
+        }
         roots={roots}
         path={visibleState.path}
         nodes={visibleState.nodes}

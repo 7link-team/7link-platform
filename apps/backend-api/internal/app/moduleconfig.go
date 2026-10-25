@@ -1,6 +1,9 @@
 package app
 
 import (
+	"7link.com/platform/internal/clientwork"
+	"7link.com/platform/internal/collab"
+	"7link.com/platform/internal/execution"
 	"7link.com/platform/internal/files"
 	iamaudit "7link.com/platform/internal/iam/audit"
 	iamauthn "7link.com/platform/internal/iam/authn"
@@ -16,11 +19,14 @@ import (
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
 	"7link.com/platform/internal/infra/deployment"
+	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/infra/jobs"
 	metrics "7link.com/platform/internal/infra/metrics"
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/internal/infra/pprof"
+	"7link.com/platform/internal/infra/secrets"
 	"7link.com/platform/internal/infra/telemetry"
+	"7link.com/platform/internal/knowledge"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/module"
 )
@@ -30,7 +36,11 @@ func fileConfig(c AppConfig) files.Config {
 	if roots == nil {
 		roots = map[string]string{"avatars": "data/avatars"}
 	}
-	return files.Config{Config: iamActivationConfig(c), LocalRoot: c.Files.LocalRoot, LegacyLocalRoots: roots}
+	backends := make(map[string]files.BackendConfig, len(c.Files.ReadBackends))
+	for name, backend := range c.Files.ReadBackends {
+		backends[name] = files.BackendConfig{Driver: backend.Driver, Options: backend.Options}
+	}
+	return files.Config{Config: iamActivationConfig(c), LocalRoot: c.Files.LocalRoot, LegacyLocalRoots: roots, Backend: c.Files.Backend, Options: files.DriverConfig(c.Files.Options), ReadBackends: backends}
 }
 
 // moduleconfig.go is the only seam between AppConfig and per-module configs.
@@ -204,4 +214,29 @@ func jobsConfig(c AppConfig) jobs.Config {
 		Lease: c.Jobs.Lease, MaxRunningPerTenant: c.Jobs.MaxRunningPerTenant,
 		MaxPendingPerTenant: c.Jobs.MaxPendingPerTenant, DrainTimeout: c.Jobs.DrainTimeout,
 	}
+}
+
+func clientworkConfig(c AppConfig) clientwork.Config {
+	return clientwork.Config{Config: iamActivationConfig(c), SubmissionBundles: c.SubmissionBundles, HiddenVerifier: clientwork.HiddenVerifierConfig{RuntimeAuthEnv: c.HiddenVerifier.RuntimeAuthEnv, OSUser: c.HiddenVerifier.OSUser, OSDomain: c.HiddenVerifier.OSDomain, PasswordEnv: c.HiddenVerifier.PasswordEnv, PrincipalID: guid.ID(c.HiddenVerifier.PrincipalID), Executable: c.HiddenVerifier.Executable, Args: append([]string(nil), c.HiddenVerifier.Args...), Model: c.HiddenVerifier.Model, Family: c.HiddenVerifier.Family, TimeoutSec: c.HiddenVerifier.TimeoutSec}}
+}
+
+func knowledgeConfig(c AppConfig) knowledge.Config {
+	return knowledge.Config{Config: iamActivationConfig(c), Embedding: knowledge.EmbeddingDeploymentConfig{Enabled: c.Knowledge.Embedding.Enabled, AllowedHosts: append([]string(nil), c.Knowledge.Embedding.AllowedHosts...), AllowedNetworks: append([]string(nil), c.Knowledge.Embedding.AllowedNetworks...)}, Remote: knowledge.RemoteConfig{
+		Enabled: c.Knowledge.Remote.Enabled, RepositoryHost: c.Knowledge.Remote.RepositoryHost,
+		RepositoryAPIBaseURL: c.Knowledge.Remote.RepositoryAPIBaseURL, RepositoryToken: c.Knowledge.Remote.RepositoryToken,
+	}}
+}
+
+func collaborationConfig(c AppConfig) collab.Config {
+	return collab.Config{Config: iamActivationConfig(c), ConnectorEncryptionKey: c.Collaboration.ConnectorEncryptionKey, ConnectorEncryptionKeyFile: c.Collaboration.ConnectorEncryptionKeyFile, PreviousConnectorEncryptionKeys: append([]string(nil), c.Collaboration.PreviousConnectorEncryptionKeys...), PreviousConnectorEncryptionKeyFiles: append([]string(nil), c.Collaboration.PreviousConnectorEncryptionKeyFiles...)}
+}
+
+func businessSecretsConfig(c AppConfig) secrets.Config {
+	return secrets.Config{Config: module.Config{Enabled: c.Secrets.Enabled}, ActiveKey: c.Secrets.ActiveKey, ActiveKeyFile: c.Secrets.ActiveKeyFile, PreviousKeys: append([]string(nil), c.Secrets.PreviousKeys...), PreviousKeyFiles: append([]string(nil), c.Secrets.PreviousKeyFiles...)}
+}
+
+func executionModuleConfig(config AppConfig) execution.Config {
+	result := config.Execution
+	result.Config = module.Config{Enabled: config.Authn.Enabled}
+	return result
 }

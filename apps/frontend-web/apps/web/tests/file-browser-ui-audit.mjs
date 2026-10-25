@@ -61,6 +61,56 @@ async function waitCount(page, count) {
   )
 }
 try {
+  const filtersPage = await browser.newPage()
+  filtersPage.on("pageerror", (error) => errors.push(error.message))
+  await filtersPage.goto(
+    `${baseURL}/tests/fixtures/file-browser.html?controlled`
+  )
+  await waitCount(filtersPage, 5)
+  assert.equal(
+    await filtersPage.getByTestId("view-changes").textContent(),
+    "0",
+    "mount must not emit unchanged form values"
+  )
+  const search = filtersPage.getByRole("textbox", { name: "Search this page" })
+  await search.fill("Budget")
+  await waitCount(filtersPage, 1)
+  await filtersPage
+    .getByRole("button", { name: "Fixture: restore filters" })
+    .click()
+  await filtersPage.waitForFunction(
+    () =>
+      document.querySelector('input[placeholder="Search this page"]')?.value ===
+      "Notes"
+  )
+  await row(filtersPage, "c").waitFor()
+  assert.equal(
+    await filtersPage
+      .getByRole("combobox", { name: "Type", exact: true })
+      .textContent(),
+    "File"
+  )
+  const emitted = await filtersPage.getByTestId("view-changes").textContent()
+  await filtersPage
+    .getByRole("button", { name: "Fixture: reset filters" })
+    .click()
+  await waitCount(filtersPage, 5)
+  assert.equal(await search.inputValue(), "")
+  assert.equal(
+    await filtersPage
+      .getByRole("combobox", { name: "Type", exact: true })
+      .textContent(),
+    "All types"
+  )
+  assert.equal(
+    await filtersPage.getByTestId("view-changes").textContent(),
+    emitted,
+    "history restoration must not emit stale or unchanged filters"
+  )
+  await filtersPage.close()
+  console.log(
+    "PASS controlled file filters: settled mount, typing, external restoration without stale emissions"
+  )
   for (const [name, viewport] of [
     ["desktop", { width: 1440, height: 1000 }],
     ["tablet", { width: 768, height: 1024 }],

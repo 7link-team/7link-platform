@@ -3,7 +3,6 @@ package app
 import (
 	"fmt"
 
-	businessgovernance "7link.com/platform/internal/governance"
 	"7link.com/platform/internal/infra/jobs"
 	"7link.com/platform/pkg/module"
 )
@@ -19,8 +18,8 @@ func wireJobCatalog(registry *module.Registry) error {
 			continue
 		}
 		owner := current.ModuleName()
-		if _, ok := current.(*businessgovernance.Module); ok {
-			owner = businessgovernance.JobNamespace
+		if provider, ok := current.(jobs.NamespaceProvider); ok {
+			owner = provider.JobNamespace()
 		}
 		if catalog == nil {
 			var err error

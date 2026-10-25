@@ -30,6 +30,9 @@ import (
 // plan: 14 operations covering the source module's 14 principal and
 // service-account capabilities.
 const identityRouteManifest = `
+identity-my-profile|GET|/principals/{principal_id}/profile
+identity-human-contacts|GET|/tenants/{tenant_id}/human-contacts
+identity-update-my-profile|PATCH|/principals/{principal_id}/profile
 identity-system-list-principals|GET|/system/principals
 identity-system-create-principal|POST|/system/principals
 identity-system-get-principal|GET|/system/principals/{principal_id}
@@ -247,7 +250,7 @@ func TestIdentityRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 34)
+	require.Len(t, got, 37)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -276,13 +279,16 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 			operationIDs[operation.OperationID] = location
 			// Identity owns the principal record, the principal's own view of
 			// it, and the platform-wide lifecycle over it.
-			assert.Contains(t, []string{"directory", "account", "platform", "system"},
+			assert.Contains(t, []string{"directory", "account", "platform", "system", "tenants"},
 				operation.Tags[0], location)
 			assert.NotEmpty(t, operation.Security, location)
 
 			guard, declared := identityGuards[operation.OperationID]
 			switch operation.OperationID {
-			case "identity-my-closure-request", "identity-submit-closure-request", "identity-cancel-closure-request", "identity-set-my-avatar", "identity-avatar-candidates", "identity-avatar-candidate-image":
+			case "identity-human-contacts":
+				assert.True(t, authz.IsTenantMemberOperation(operation), location)
+				assert.NotContains(t, operation.Metadata, "authz.guard", location)
+			case "identity-my-profile", "identity-update-my-profile", "identity-my-closure-request", "identity-submit-closure-request", "identity-cancel-closure-request", "identity-set-my-avatar", "identity-avatar-candidates", "identity-avatar-candidate-image":
 				assert.True(t, authz.IsAuthenticatedOperation(operation), location)
 				assert.Equal(t, []map[string][]string{{authz.SessionScheme: {}}}, operation.Security, location)
 				assert.NotContains(t, operation.Metadata, "authz.guard", location)
@@ -317,7 +323,7 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, operationIDs, 34)
+	require.Len(t, operationIDs, 37)
 }
 
 func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {

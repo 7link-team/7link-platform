@@ -1,8 +1,11 @@
 package app
 
 import (
+	"7link.com/platform/pkg/appenv"
+	configx "7link.com/platform/pkg/config"
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -317,6 +320,7 @@ func TestBootstrapRegistersAuditRecorderWhenDisabled(t *testing.T) {
 
 func TestIAMCompositionUsesFrozenRuntimeInventory(t *testing.T) {
 	app := &App{config: AppConfig{
+		Secrets:    testBusinessSecretsConfig(t),
 		Authn:      IAMAuthn{Enabled: true},
 		Federation: IAMFederation{Enabled: true},
 		Database: map[string]Database{"primary": {
@@ -388,7 +392,8 @@ func TestIAMCompositionReportsEveryMissingBusinessProvider(t *testing.T) {
 	}{
 		{iamaudit.Name, "resolve IAM audit appender"},
 		{core.Name, "resolve audit authorization registrar"},
-		{iamauthn.Name, "resolve authentication verifier"},
+		// Core now consumes the step-up proof verifier before HTTP authentication.
+		{iamauthn.Name, "authn.ReauthenticationConsumer"},
 		{identity.Name, "resolve authn registration principal creator"},
 		// Files consumes organization-owned entity and department resolvers,
 		// so replacing organization makes that dependency fail first.
@@ -398,6 +403,7 @@ func TestIAMCompositionReportsEveryMissingBusinessProvider(t *testing.T) {
 		t.Run(test.provider, func(t *testing.T) {
 			app := &App{config: AppConfig{
 				Authn: IAMAuthn{Enabled: true}, Federation: IAMFederation{Enabled: true},
+				Secrets: testBusinessSecretsConfig(t),
 				Database: map[string]Database{"primary": {
 					Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "missing.sqlite"), Writable: true,
 				}},
@@ -438,4 +444,98 @@ func TestConfigureProcessRuntime(t *testing.T) {
 	require.NoError(t, configureProcessRuntime("UTC", false, "test-api"))
 	assert.ErrorContains(t, configureProcessRuntime("Invalid/Timezone", false, "test-api"), "initialize timezone")
 	require.NoError(t, configureProcessRuntime("UTC", true, "test-api"))
+}
+
+func TestProductionCompositionRequirementsWithoutSecrets(t *testing.T) {
+	for _, args := range [][]string{nil, {"--secrets.enabled=false"}, {"--authn.enabled=true", "--secrets.enabled=false"}} {
+		t.Run("defaults/"+fmt.Sprint(args), func(t *testing.T) {
+			var config AppConfig
+			require.NoError(t, configx.New().Parse(&config, args...))
+			rt := appenv.NewRuntime(appenv.NewIdentity("test", "test"))
+			t.Cleanup(func() { require.NoError(t, rt.Close()) })
+			application := &App{config: config, runtime: rt}
+			require.NoError(t, application.composeModules())
+			// Activate validates every enabled module's dependency existence and order.
+			require.NoError(t, application.modules.Activate())
+			for _, owner := range application.modules.Modules() {
+				if depender, ok := owner.(module.Depender); ok {
+					for _, dependency := range depender.ModuleDependencies() {
+						_, found := application.modules.ByName(dependency)
+						require.True(t, found, "%s requires %s", owner.ModuleName(), dependency)
+					}
+				}
+			}
+		})
+	}
+}
+
+// Drive the actual server inventory, rather than a hand-picked test registry.
+// Activation catches undeclared modules; wiring and startup catch missing services.
+func TestProductionCompositionBootsWithoutSecrets(t *testing.T) {
+	t.Setenv("WUID", "31")
+	application := bootstrapComposedAppConfigured(t, func(config *AppConfig) {
+		config.Secrets = BusinessSecretsConfig{Enabled: false}
+	})
+	_, found := application.modules.ByName("templates")
+	require.True(t, found, "authentication must enable the production business inventory")
+	require.NoError(t, application.checkHealth(t.Context()))
+}
+
+func TestProductionCompositionRejectsMissingRequiredModule(t *testing.T) {
+	var config AppConfig
+	require.NoError(t, configx.New().Parse(&config, "--authn.enabled=true", "--secrets.enabled=false"))
+	rt := appenv.NewRuntime(appenv.NewIdentity("test", "test"))
+	t.Cleanup(func() { require.NoError(t, rt.Close()) })
+	application := &App{config: config, runtime: rt}
+	require.NoError(t, application.composeModules())
+	inventory := application.modules.Modules()
+	registry := module.NewRegistry()
+	removed := false
+	for _, owner := range inventory {
+		if owner.ModuleName() == "jobs" {
+			removed = true
+			continue
+		}
+		require.NoError(t, registry.Register(owner))
+	}
+	require.True(t, removed)
+	require.ErrorContains(t, registry.Activate(), `requires unregistered module "jobs"`)
+}
+
+type legacyStartupProbe struct{ initialized bool }
+
+func (*legacyStartupProbe) ModuleName() string { return "legacy-startup-probe" }
+func (probe *legacyStartupProbe) Initialize(context.Context) error {
+	probe.initialized = true
+	return nil
+}
+
+func TestAuthenticationStartupRequiresDisabledFederationQuarantine(t *testing.T) {
+	for _, retained := range []bool{false, true} {
+		t.Run(map[bool]string{false: "fresh", true: "retained"}[retained], func(t *testing.T) {
+			instance := &App{config: AppConfig{
+				TablePrefix: "sl_",
+				Database:    map[string]Database{"primary": {Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "startup.sqlite"), Writable: true}},
+			}, modules: module.NewRegistry()}
+			instance.config.Authn.Enabled = true
+			require.NoError(t, instance.initializeRuntime(t.Context()))
+			t.Cleanup(func() { _ = instance.runtime.Close() })
+			probe := &legacyStartupProbe{}
+			require.NoError(t, instance.modules.Register(probe))
+			require.NoError(t, instance.prepareModules())
+			db := instance.runtime.Database().Write()
+			if retained {
+				require.NoError(t, db.Exec("CREATE TABLE sl_iam_identity_links (principal_id BIGINT, binding_provenance TEXT, quarantined_at DATETIME, recovery_evidence TEXT)").Error)
+				require.NoError(t, db.Exec("INSERT INTO sl_iam_identity_links VALUES (11, 'unknown', NULL, '')").Error)
+				require.ErrorIs(t, instance.lifecycle(t.Context()), federation.ErrLegacyQuarantineRequired)
+				require.False(t, probe.initialized, "gate must run before authentication starts")
+				require.NoError(t, db.Exec("UPDATE sl_iam_identity_links SET quarantined_at = CURRENT_TIMESTAMP").Error)
+				require.ErrorIs(t, instance.lifecycle(t.Context()), federation.ErrLegacyQuarantineRequired, "unknown mailbox ownership cannot become recoverable by disabling federation")
+				require.False(t, probe.initialized)
+				require.NoError(t, db.Exec("UPDATE sl_iam_identity_links SET recovery_evidence = 'independent ownership review'").Error)
+			}
+			require.NoError(t, instance.lifecycle(t.Context()))
+			require.True(t, probe.initialized)
+		})
+	}
 }

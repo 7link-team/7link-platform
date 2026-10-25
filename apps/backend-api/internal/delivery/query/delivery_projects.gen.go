@@ -31,6 +31,7 @@ func newProject(db *gorm.DB, opts ...gen.DOOption) project {
 	_project.TenantID = field.NewField(tableName, "tenant_id")
 	_project.ProjectID = field.NewField(tableName, "project_id")
 	_project.Code = field.NewString(tableName, "code")
+	_project.ConstitutionVersionNo = field.NewInt(tableName, "constitution_version_no")
 	_project.Description = field.NewString(tableName, "description")
 	_project.ClientEntityID = field.NewField(tableName, "client_entity_id")
 	_project.Stage = field.NewString(tableName, "stage")
@@ -39,6 +40,7 @@ func newProject(db *gorm.DB, opts ...gen.DOOption) project {
 	_project.BlockedReason = field.NewString(tableName, "blocked_reason")
 	_project.TeamMode = field.NewString(tableName, "team_mode")
 	_project.TeamModeChangedAt = field.NewTime(tableName, "team_mode_changed_at")
+	_project.AutonomyVersion = field.NewInt64(tableName, "autonomy_version")
 	_project.LeadAgentID = field.NewField(tableName, "lead_agent_id")
 	_project.DispatchPolicy = field.NewString(tableName, "dispatch_policy")
 	_project.DispatchPolicyExplicit = field.NewBool(tableName, "dispatch_policy_explicit")
@@ -83,6 +85,7 @@ type project struct {
 	TenantID               field.Field
 	ProjectID              field.Field
 	Code                   field.String
+	ConstitutionVersionNo  field.Int
 	Description            field.String
 	ClientEntityID         field.Field
 	Stage                  field.String
@@ -91,6 +94,7 @@ type project struct {
 	BlockedReason          field.String
 	TeamMode               field.String
 	TeamModeChangedAt      field.Time
+	AutonomyVersion        field.Int64
 	LeadAgentID            field.Field
 	DispatchPolicy         field.String
 	DispatchPolicyExplicit field.Bool
@@ -141,6 +145,7 @@ func (p *project) updateTableName(table string) *project {
 	p.TenantID = field.NewField(table, "tenant_id")
 	p.ProjectID = field.NewField(table, "project_id")
 	p.Code = field.NewString(table, "code")
+	p.ConstitutionVersionNo = field.NewInt(table, "constitution_version_no")
 	p.Description = field.NewString(table, "description")
 	p.ClientEntityID = field.NewField(table, "client_entity_id")
 	p.Stage = field.NewString(table, "stage")
@@ -149,6 +154,7 @@ func (p *project) updateTableName(table string) *project {
 	p.BlockedReason = field.NewString(table, "blocked_reason")
 	p.TeamMode = field.NewString(table, "team_mode")
 	p.TeamModeChangedAt = field.NewTime(table, "team_mode_changed_at")
+	p.AutonomyVersion = field.NewInt64(table, "autonomy_version")
 	p.LeadAgentID = field.NewField(table, "lead_agent_id")
 	p.DispatchPolicy = field.NewString(table, "dispatch_policy")
 	p.DispatchPolicyExplicit = field.NewBool(table, "dispatch_policy_explicit")
@@ -204,10 +210,11 @@ func (p *project) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (p *project) fillFieldMap() {
-	p.fieldMap = make(map[string]field.Expr, 42)
+	p.fieldMap = make(map[string]field.Expr, 44)
 	p.fieldMap["tenant_id"] = p.TenantID
 	p.fieldMap["project_id"] = p.ProjectID
 	p.fieldMap["code"] = p.Code
+	p.fieldMap["constitution_version_no"] = p.ConstitutionVersionNo
 	p.fieldMap["description"] = p.Description
 	p.fieldMap["client_entity_id"] = p.ClientEntityID
 	p.fieldMap["stage"] = p.Stage
@@ -216,6 +223,7 @@ func (p *project) fillFieldMap() {
 	p.fieldMap["blocked_reason"] = p.BlockedReason
 	p.fieldMap["team_mode"] = p.TeamMode
 	p.fieldMap["team_mode_changed_at"] = p.TeamModeChangedAt
+	p.fieldMap["autonomy_version"] = p.AutonomyVersion
 	p.fieldMap["lead_agent_id"] = p.LeadAgentID
 	p.fieldMap["dispatch_policy"] = p.DispatchPolicy
 	p.fieldMap["dispatch_policy_explicit"] = p.DispatchPolicyExplicit

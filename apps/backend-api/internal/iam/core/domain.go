@@ -208,6 +208,9 @@ const (
 )
 
 type Menu struct {
+	App            string
+	Domain         string
+	Space          string
 	ID             guid.ID
 	TenantID       guid.ID
 	ParentID       guid.ID

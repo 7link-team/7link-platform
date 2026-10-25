@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 root = Path(__file__).resolve().parent
-model = json.loads((root / 'data.json').read_text())
+model = json.loads((root / 'data.json').read_text(encoding='utf-8'))
 ids = [n['id'] for n in model['nodes']]
 assert len(ids) == len(set(ids)), 'Duplicate term IDs'
 assert all(e['from'] in ids and e['to'] in ids for e in model['edges']), 'Dangling relations'
@@ -13,7 +13,7 @@ for n in model['nodes']:
     for s in n['sources']:
         source = root.parents[2] / s['file']
         assert source.is_file(), source
-        lines = source.read_text().splitlines()
+        lines = source.read_text(encoding='utf-8').splitlines()
         assert 1 <= s['line'] <= len(lines), s
         if s.get('quote'):
             assert s['quote'] == lines[s['line'] - 1], s
@@ -22,7 +22,7 @@ for n in model['nodes']:
 for edge in model['edges']:
     citation = edge.get('source')
     assert citation and citation.get('file') and citation.get('line'), edge
-    source_lines = (root.parents[2] / citation['file']).read_text().splitlines()
+    source_lines = (root.parents[2] / citation['file']).read_text(encoding='utf-8').splitlines()
     assert 1 <= citation['line'] <= len(source_lines), citation
     if citation.get('quote'):
         assert citation['quote'] == source_lines[citation['line'] - 1], citation
@@ -33,7 +33,7 @@ for issue in model['issues']:
     assert issue.get('reason') and issue.get('evidence'), issue
     assert all(node_id in ids for node_id in issue.get('nodeIds', [])), issue
     for citation in issue['evidence']:
-        source_lines = (root.parents[2] / citation['file']).read_text().splitlines()
+        source_lines = (root.parents[2] / citation['file']).read_text(encoding='utf-8').splitlines()
         assert 1 <= citation['line'] <= len(source_lines), citation
         assert citation['quote'] == source_lines[citation['line'] - 1], citation
 adjacency = {id: set() for id in ids}
@@ -88,11 +88,11 @@ for id in business_leaves:
     node = node_by_id[id]
     review = node.get('relationshipReview', {})
     structure_report.append(f'- {node["label"]}（{id}）：' + review.get('explanation', '尚未逐项语义核对。'))
-(root / 'STRUCTURE.md').write_text('\n'.join(structure_report) + '\n')
+(root / 'STRUCTURE.md').write_text('\n'.join(structure_report) + '\n', encoding='utf-8', newline='\n')
 # Direct citations are a review index, not a percentage of requirements implemented.
 chapters = []
 for filename in sorted(set(model['meta']['sourceScope']) | {'docs/PRD.md'}):
-    source_lines = (root.parents[2] / filename).read_text().splitlines()
+    source_lines = (root.parents[2] / filename).read_text(encoding='utf-8').splitlines()
     headings = [(i + 1, line.lstrip('#').strip()) for i, line in enumerate(source_lines)
                 if re.match(r'^##\s+\S', line)]
     for index, (start, title) in enumerate(headings):
@@ -109,7 +109,7 @@ model['coverageAudit'] = {'chapters': chapters,
 # Keep every occurrence: reused IDs must never silently overwrite earlier meanings.
 requirements = []
 for filename in ['docs/PRD_FINAL.md', 'docs/REQUIREMENTS.md']:
-    for line_number, text in enumerate((root.parents[2] / filename).read_text().splitlines(), 1):
+    for line_number, text in enumerate((root.parents[2] / filename).read_text(encoding='utf-8').splitlines(), 1):
         match = re.match(r'^\|\s*(REQ-[A-Z0-9]+-\d+)\s*\|', text) or re.match(r'^-\s*(?:\*\*)?(REQ-[A-Z0-9]+-\d+)(?:\*\*)?\s*[：:]', text)
         if not match:
             continue
@@ -140,7 +140,7 @@ for r in requirements:
     quote = r['quote'].replace('|', '\\|')
     requirement_report.append(f"| {r['id']} | {r['file']}:{r['line']} | {quote} | {len(r['nodeIds'])} | {r['edgeCount']} | "
                               + ('尚无直接引用，待语义核对' if r['status'] == 'uncited' else '部分已引用，非完整覆盖证明') + ' |')
-(root / 'REQUIREMENT_COVERAGE.md').write_text('\n'.join(requirement_report) + '\n')
+(root / 'REQUIREMENT_COVERAGE.md').write_text('\n'.join(requirement_report) + '\n', encoding='utf-8', newline='\n')
 report = ['# 术语网文档覆盖核对', '',
           '由 build.py 按原始 PRD、最终 PRD、需求清单及规格的二级章节生成。', '',
           '“尚无直接引用”只表示该章节需要人工核对；有引用也只证明部分内容已登记，不能证明整章覆盖、业务闭环或功能验收。', '',
@@ -149,12 +149,12 @@ report = ['# 术语网文档覆盖核对', '',
 for c in chapters:
     report.append(f"| {c['file']} | {c['line']} | {c['title'].replace('|', '/')} | {len(c['nodeIds'])} | {c['edgeCount']} | "
                   + ('尚无直接引用，待核对' if c['status'] == 'uncited' else '部分已引用，仍需语义核对') + ' |')
-(root / 'COVERAGE.md').write_text('\n'.join(report) + '\n')
+(root / 'COVERAGE.md').write_text('\n'.join(report) + '\n', encoding='utf-8', newline='\n')
 libraries = []
 for name in ['vue-3.5.24.js','screenfull-5.2.0.js','html2canvas-1.4.1.js','relation-graph-2.2.11.js']:
-    content = (root / 'vendor' / name).read_text().replace('</script', '<\\/script')
+    content = (root / 'vendor' / name).read_text(encoding='utf-8').replace('</script', '<\\/script')
     libraries.append('<script>\n' + content + '\n</script>')
-html = (root / 'template.html').read_text().replace('@@DATA@@', json.dumps(model, ensure_ascii=False).replace('<','\\u003c')).replace('@@THEMES@@',(root.parents[1] / 'prototype/src/themes.css').read_text()).replace('@@LIBRARIES@@','\n'.join(libraries))
+html = (root / 'template.html').read_text(encoding='utf-8').replace('@@DATA@@', json.dumps(model, ensure_ascii=False).replace('<','\\u003c')).replace('@@THEMES@@',(root.parents[1] / 'prototype/src/themes.css').read_text(encoding='utf-8')).replace('@@LIBRARIES@@','\n'.join(libraries))
 output = root.parent / 'terminology-graph.html'
-output.write_text('<!-- Generated by terminology-graph/build.py; edit template.html/data.json. Pinned MIT assets retain licenses in vendor/. -->\n' + html)
+output.write_text('<!-- Generated by terminology-graph/build.py; edit template.html/data.json. Pinned MIT assets retain licenses in vendor/. -->\n' + html, encoding='utf-8', newline='\n')
 print(f'{output}: {len(ids)} terms / {len(model["edges"])} relations / {len(model["issues"])} issues')

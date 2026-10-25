@@ -2,6 +2,8 @@ package iamintegration
 
 import (
 	"7link.com/platform/internal/app"
+	"7link.com/platform/internal/infra/events"
+	"7link.com/platform/internal/infra/jobs"
 	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
@@ -11,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -425,6 +428,15 @@ func newIAMTenantFixture(t *testing.T) *iamTenantFixture {
 
 func newIAMTenantFixtureWithDatabase(t *testing.T, database app.Database, prefix string, configure ...func(*app.AppConfig)) *iamTenantFixture {
 	t.Helper()
+	// Foreground commands and real background consumers share this SQLite file.
+	// Use the same WAL/busy-wait configuration as the composed OpenAPI fixture.
+	if database.Type == "sqlite" {
+		separator := "?"
+		if strings.Contains(database.Dsn, "?") {
+			separator = "&"
+		}
+		database.Dsn += separator + "_journal_mode=WAL&_busy_timeout=30000"
+	}
 	seed := make([]byte, ed25519.SeedSize)
 	for index := range seed {
 		seed[index] = byte(index + 1)
@@ -469,6 +481,14 @@ func newIAMTenantFixtureWithDatabase(t *testing.T, database app.Database, prefix
 	application := app.New(config)
 	require.NoError(t, application.Bootstrap(t.Context()))
 	t.Cleanup(func() { assert.NoError(t, application.Shutdown()) })
+	if os.Getenv(iamLifecycleMemoryMySQL) == "true" {
+		require.Equal(t, "mysql", database.Type)
+		// The memory engine cannot merge concurrent transaction snapshots.
+		// This foreground lifecycle suite retains all domain/audit assertions;
+		// asynchronous consumers run on real MySQL and PostgreSQL instead.
+		require.NoError(t, requireIAMModule[*jobs.Module](t, &iamTenantFixture{app: application}, jobs.Name).Quiesce(t.Context()))
+		require.NoError(t, requireIAMModule[*events.Module](t, &iamTenantFixture{app: application}, events.Name).Quiesce(t.Context()))
+	}
 
 	router := chi.NewRouter()
 	require.NoError(t, application.RegisterHTTP(t.Context(), router))

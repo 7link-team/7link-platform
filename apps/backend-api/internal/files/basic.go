@@ -381,7 +381,7 @@ func (s *operationService) downloadFile(ctx context.Context, nodeID guid.ID) (fi
 		if err != nil {
 			return err
 		}
-		reader, err := s.driver.Open(ctx, object.StorageKey)
+		reader, err := openStoredObject(ctx, s.driver, object)
 		if err != nil {
 			return err
 		}

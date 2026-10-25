@@ -2,6 +2,7 @@ import { PaginationPages } from "@workspace/ui/components/pagination"
 import { AutoForm } from "@workspace/ui/components/auto-form"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useEffect, useState } from "react"
+import { useSearchParams } from "react-router"
 import { CheckCircle2, Eye, FileClock, Search, ShieldAlert } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button, buttonVariants } from "@workspace/ui/components/button"
@@ -29,6 +30,10 @@ import { useAllowed } from "../../lib/permissions"
 const pageSize = 50
 
 interface AuditFilters {
+  projectID: string
+  module: string
+  actorKind: string
+  authoritySource: string
   eventType: string
   outcome: string
   principalID: string
@@ -39,6 +44,10 @@ interface AuditFilters {
 }
 
 const emptyFilters: AuditFilters = {
+  projectID: "",
+  module: "",
+  actorKind: "",
+  authoritySource: "",
   eventType: "",
   outcome: "",
   principalID: "",
@@ -69,6 +78,9 @@ export default function AuditEventsPage({
   const t = useTranslations("iam")
   const allowed = useAllowed()
   const system = scope === "system"
+  const [params, setParams] = useSearchParams()
+  const detailID = params.get("id") ?? ""
+  const canView = allowed(system ? "system_audit_event_view" : "audit_event_view")
 
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [total, setTotal] = useState(0)
@@ -82,8 +94,8 @@ export default function AuditEventsPage({
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
   const [exporting, setExporting] = useState(false)
-  const [detailBusy, setDetailBusy] = useState(false)
   const [error, setError] = useState("")
+  const detailBusy = Boolean(detailID && selected?.id !== detailID && !error)
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
@@ -122,6 +134,12 @@ export default function AuditEventsPage({
     setLoading(true)
     setOffset(0)
     setQuery({
+      ...(!system ? {
+        project_id: filters.projectID.trim() || undefined,
+        module: filters.module.trim() || undefined,
+        actor_kind: (["HUMAN", "AGENT", "MACHINE", "CLIENT", "SYSTEM"] as const).find(kind => kind === filters.actorKind),
+        authority_source: filters.authoritySource.trim() || undefined,
+      } : {}),
       event_type: filters.eventType.trim() || undefined,
       outcome:
         filters.outcome === "success" ||
@@ -144,20 +162,19 @@ export default function AuditEventsPage({
     setQuery({})
   }
 
-  const openDetail = async (event: AuditEvent) => {
-    setDetailBusy(true)
+  useEffect(() => {
+    if (!detailID || !canView) return
+    let active = true
+    void (system ? iamApi.systemAuditEvent(detailID) : iamApi.auditEvent(detailID)).then(
+      event => { if (active) { setSelected(event); setError("") } },
+      cause => { if (active) { setSelected(null); setError((cause as Error).message) } }
+    )
+    return () => { active = false }
+  }, [detailID, system, canView])
+
+  const openDetail = (event: AuditEvent) => {
     setError("")
-    try {
-      setSelected(
-        await (system
-          ? iamApi.systemAuditEvent(event.id)
-          : iamApi.auditEvent(event.id))
-      )
-    } catch (cause) {
-      setError((cause as Error).message)
-    } finally {
-      setDetailBusy(false)
-    }
+    setParams(current => { const next = new URLSearchParams(current); next.set("id", event.id); return next })
   }
 
   const exportEvents = async () => {
@@ -223,6 +240,27 @@ export default function AuditEventsPage({
               className="max-h-40 w-full items-end gap-3 overflow-y-auto md:grid-cols-4"
               onSubmit={submit}
               fields={{
+                ...(!system ? {
+                  projectID: {
+                    name: t("auditProjectID"), type: "text" as const, value: "",
+                    config: { id: "audit-project", maxLength: 19 },
+                  },
+                  module: {
+                    name: t("auditModule"), type: "text" as const, value: "",
+                    config: { id: "audit-module", maxLength: 64, placeholder: "delivery" },
+                  },
+                  actorKind: {
+                    name: t("auditActorKind"), type: "select" as const, value: "all",
+                    config: { id: "audit-actor-kind", options: [
+                      { value: "all", label: t("auditAllActors") },
+                      ...(["HUMAN", "AGENT", "MACHINE", "CLIENT", "SYSTEM"] as const).map(kind => ({value: kind, label: t(`auditActor_${kind}`)})),
+                    ] },
+                  },
+                  authoritySource: {
+                    name: t("auditAuthoritySource"), type: "text" as const, value: "",
+                    config: { id: "audit-authority-source", maxLength: 91, placeholder: "ROLE:engineer" },
+                  },
+                } : {}),
                 eventType: {
                   name: t("eventType"),
                   type: "text",
@@ -424,7 +462,9 @@ export default function AuditEventsPage({
           },
         ]}
       />
-      <EventDetail value={selected} onClose={() => setSelected(null)} />
+      <EventDetail value={canView && selected?.id === detailID ? selected : null} onClose={() => {
+        setParams(current => { const next = new URLSearchParams(current); next.delete("id"); return next })
+      }} />
     </div>
   )
 }

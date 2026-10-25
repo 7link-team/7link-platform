@@ -4,7 +4,15 @@ import (
 	"errors"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/mattn/go-sqlite3"
 )
+
+// IsSQLiteBusy identifies temporary SQLite writer contention, including wrapped
+// and extended result codes. Background pollers retry it after backing off.
+func IsSQLiteBusy(err error) bool {
+	var sqliteError sqlite3.Error
+	return errors.As(err, &sqliteError) && (sqliteError.Code == sqlite3.ErrBusy || sqliteError.Code == sqlite3.ErrLocked)
+}
 
 // Serialization failure and deadlock. A database reports these when it has
 // already rolled the transaction back to break a cycle, so the work never

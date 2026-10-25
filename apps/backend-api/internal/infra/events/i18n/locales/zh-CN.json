@@ -1,0 +1,1 @@
+{"version_required":"必须提供 If-Match 版本。","version_conflict":"资源已变更，请刷新后重试。","invalid_transition":"搁置事件当前状态不允许此操作。","replay_range":"请求重放的序号超出保留事件范围。","replay_active":"该订阅者已有正在进行的重放。","menu_events":"领域事件"}

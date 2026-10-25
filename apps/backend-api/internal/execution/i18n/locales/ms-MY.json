@@ -1,0 +1,20 @@
+{
+  "comment_limit": "Utas komen ini telah mencapai hadnya.",
+  "client_thread_read_only": "Ahli pasukan tidak boleh membalas utas komen pelanggan.",
+  "git_connector_unverified": "Belum disahkan oleh penyambung platform Git.",
+  "evidence_attached": "Bukti yang dilampirkan pada tuntutan tidak boleh diubah.",
+  "write_interrupted": "Baca konteks kerja terkini sebelum mencuba semula.",
+  "seen_seq_required": "Baca aktiviti kerja dan sertakan seen_seq.",
+  "forbidden": "Kebenaran ditolak.",
+  "approval_unavailable": "Protokol kelulusan manusia atau pemberian kebenaran yang diperlukan tidak tersedia.",
+  "not_found": "Pelaksanaan tidak ditemui.",
+  "invalid": "Permintaan pelaksanaan tidak sah.",
+  "conflict": "Keadaan pelaksanaan atau resit berubah.",
+  "unavailable": "Keupayaan pelaksanaan tidak tersedia.",
+  "preview_port_not_owned": "Port ini bukan milik pelaksanaan ini.",
+  "preview_access_disabled": "Pratonton jauh dinyahdayakan untuk mesin ini.",
+  "preview_unavailable": "Gerbang pratonton terpencil belum dikonfigurasi atau disambungkan.",
+  "preview_quota": "Had sesi pratonton pelaksanaan telah dicapai.",
+  "anchor_invalid": "Penambat tidak sepadan dengan kandungan artifak yang dipinkan.",
+  "anchor_kind_unavailable": "Jenis penambat ini memerlukan versi pemapar seterusnya."
+}

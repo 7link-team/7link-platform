@@ -25,8 +25,11 @@ func TestModuleDeclaresWhatItNeedsAndWhatItOwns(t *testing.T) {
 	// declared or the registry would admit this module before them.
 	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, core.Name}, instance.ModuleDependencies())
 	assert.Equal(t, "goose_webhook", instance.MigrationSource().TableName)
-	require.Len(t, instance.MigrationMilestones(), 1)
+	require.Len(t, instance.MigrationMilestones(), 2)
 	assert.Equal(t, "base", instance.MigrationMilestones()[0].Name)
+	assert.EqualValues(t, 1, instance.MigrationMilestones()[0].Version)
+	assert.Equal(t, "intake_metadata", instance.MigrationMilestones()[1].Name)
+	assert.EqualValues(t, 2, instance.MigrationMilestones()[1].Version)
 }
 
 func TestModuleIsOffUntilItIsConfiguredOn(t *testing.T) {

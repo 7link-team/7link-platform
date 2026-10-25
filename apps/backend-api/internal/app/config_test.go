@@ -13,6 +13,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestInspectRedactsFileStorageCredentials(t *testing.T) {
+	c := AppConfig{}
+	c.Files.Options = map[string]string{"secret_key": "active-storage-test-secret"}
+	c.Files.ReadBackends = map[string]FileReadBackendConfig{"old": {Driver: "s3", Options: map[string]string{"secret_key": "old-storage-test-secret"}}}
+	value, err := configx.Inspect(c)
+	require.NoError(t, err)
+	raw, err := json.Marshal(value)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "active-storage-test-secret")
+	assert.NotContains(t, string(raw), "old-storage-test-secret")
+}
+
 func TestDatabaseRolesDefaultToReadWriteDuringParsing(t *testing.T) {
 	var parsed AppConfig
 	require.NoError(t, configx.New().Parse(&parsed, "--database.main.type=sqlite", "--database.main.dsn=:memory:"))

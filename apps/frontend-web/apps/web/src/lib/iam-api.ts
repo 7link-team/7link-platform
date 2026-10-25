@@ -25,10 +25,64 @@ import {
   type RouteQuery,
 } from "./api-route"
 
+export type KnowledgeEntry = components["schemas"]["EntryView"]
+export type MachineListFilters = {state?: "ONLINE" | "OFFLINE" | "DRAINING" | "REVOKED"; runtime?: "CODEX" | "CLAUDE_CODE"; free_slots?: boolean}
+export type MachineRemoteAccess = components["schemas"]["TerminalAccessView"]
+export type RemotePreviewSession = components["schemas"]["PreviewSessionView"]
+export type RemotePreviewAccess = components["schemas"]["PreviewAccessGrant"]
+export type RemoteTerminalSession = components["schemas"]["TerminalSession"]
+export type RemoteTerminalFrame = Pick<components["schemas"]["TerminalFrame"], "session_id" | "seq" | "reason"> & {sandboxed: false} & ({kind: "output"; data: string} | {kind: "closed"; data?: string})
+export type KnowledgeWrite = components["schemas"]["EntryInput"]
+export type KnowledgeReview = components["schemas"]["ReviewInput"]
+export type KnowledgeQuery = RouteQuery<"/tenants/{tenant_id}/knowledge">
+export type ConversationChannel = components["schemas"]["ChannelView"]
+export type ConversationMessage = components["schemas"]["MessageView"]
+export type ConversationMember = components["schemas"]["ChannelMemberView"]
+export type ConversationPost = components["schemas"]["PostMessageInput"]
+export type ConversationCreate = components["schemas"]["CreateChannelInput"]
+export type ConversationMessageQuery = RouteQuery<"/channels/{channel_id}/messages">
 export type GrantedConsent = components["schemas"]["GrantedConsent"]
 export type ProjectDetail = components["schemas"]["ProjectDetailView"]
+export type ProjectStageReadiness = components["schemas"]["StageReadiness"]
+export type ProjectStageTransition = components["schemas"]["StageTransitionView"]
+export type ProjectStageChange = components["schemas"]["StageChangeBody"]
+export type WorkAssignment = components["schemas"]["AssignmentView"]
+export type WorkAssignmentReceipt = components["schemas"]["AssignmentReceipt"]
+export type Constitution = components["schemas"]["ConstitutionView"]
+export type ConstitutionDetail = components["schemas"]["ConstitutionDetailView"]
+export type ConstitutionProposal =
+  components["schemas"]["ConstitutionProposalBody"]
+export type ConstitutionDecision =
+  components["schemas"]["ConstitutionDecisionBody"]
+export type ConstitutionQuery =
+  RouteQuery<"/entities/{entity_id}/project/constitution-versions">
 export type ProjectListItem = components["schemas"]["ProjectListView"]
 export type ProjectListQuery = RouteQuery<"/tenants/{tenant_id}/projects">
+export type ProjectCreateInput = Omit<
+  components["schemas"]["ProjectCreateBody"],
+  "budget_notify_pct"
+> & { budget_notify_pct?: number }
+export type ProjectCreated = components["schemas"]["ProjectCreateView"]
+export type WorkDependency = components["schemas"]["DependencyView"]
+export type WorkItem = components["schemas"]["WorkView"]
+export type WorkItemDetail = components["schemas"]["WorkDetailView"]
+export type WorkPreparationInput = components["schemas"]["WorkPreparationBody"]
+export type WorkPreparationReceipt =
+  components["schemas"]["WorkPreparationReceipt"]
+export type WorkItemInput = components["schemas"]["WorkCreateBody"]
+export type WorkItemCreated = components["schemas"]["WorkCreatedView"]
+export type WorkItemQuery = RouteQuery<"/entities/{entity_id}/work-items">
+export type Requirement = components["schemas"]["RequirementView"]
+export type RequirementDetail = components["schemas"]["RequirementDetailView"]
+export type RequirementInput = components["schemas"]["RequirementCreateBody"]
+export type RequirementBaseline =
+  components["schemas"]["RequirementBaselineView"]
+export type RequirementQuery = RouteQuery<"/entities/{entity_id}/requirements">
+export type RequirementPatch = components["schemas"]["RequirementPatchBody"]
+export type RequirementCriterionInput =
+  components["schemas"]["CriterionCreateBody"]
+export type RequirementCriterionPatch =
+  components["schemas"]["CriterionPatchBody"]
 export type FilePage = components["schemas"]["FilePage"]
 export interface SystemOwnerScope {
   kind: "platform" | "tenant"
@@ -127,6 +181,7 @@ export interface Envelope<T> {
   data: T
   meta?: {
     page?: { offset: number; limit: number; count: number; total: number }
+    index_lag_seconds?: number
   }
 }
 
@@ -809,6 +864,9 @@ export interface GroupMember {
 export type GroupMemberInput = MembershipWindowInput
 
 export interface Menu {
+  app?: string
+  domain?: string
+  space?: string
   translations?: Record<string, string>
   id: string
   tenant_id: string
@@ -843,6 +901,9 @@ export interface MenuDeclaration extends Omit<
 }
 
 export interface EffectiveMenu {
+  app?: string
+  domain?: string
+  space?: string
   translations?: Record<string, string>
   id: string
   label: string
@@ -997,6 +1058,13 @@ export interface SCIMPushResult extends SCIMResourceInput {
   target_id: string
   external_id: string
   remote_id?: string
+}
+
+export interface AuditBusinessFilters {
+  project_id?: string
+  module?: string
+  actor_kind?: "HUMAN" | "AGENT" | "MACHINE" | "CLIENT" | "SYSTEM"
+  authority_source?: string
 }
 
 export interface AuditEvent {
@@ -1316,7 +1384,7 @@ async function requestEnvelopeWithBase<T>(
 
 async function requestFileDownloadWithBase(
   apiBase: string,
-  route: ApiRoute,
+  route: RequestRoute,
   options: { maxBytes?: number; signal?: AbortSignal } = {}
 ): Promise<Blob> {
   const viewRevision = getAccountViewRevision()
@@ -1490,23 +1558,32 @@ export function createIamApi(
   ) => requestWithBase<T>(apiBase, await route, init)
   let subject: string | undefined
   let discovery: Promise<Session> | undefined
+  let tenantDiscovery: Promise<Tenant[]> | undefined
   let identityEpoch = 0
   let viewRevision = getAccountViewRevision()
   const resetPrincipal = () => {
     identityEpoch++
     subject = undefined
     discovery = undefined
+    tenantDiscovery = undefined
   }
   const discoverSession = async () => {
     if (viewRevision !== getAccountViewRevision()) {
       viewRevision = getAccountViewRevision()
       resetPrincipal()
     }
-    const epoch = identityEpoch
-    const session = await request<Session>(apiRoute("get", "/me"))
-    if (epoch !== identityEpoch) throw new ApiError(401, "unauthorized")
-    subject = session.subject
-    return session
+    if (!discovery) {
+      const epoch = identityEpoch
+      const pending = request<Session>(apiRoute("get", "/me")).then((session) => {
+        if (epoch !== identityEpoch) throw new ApiError(401, "unauthorized")
+        subject = session.subject
+        return session
+      }).finally(() => {
+        if (discovery === pending) discovery = undefined
+      })
+      discovery = pending
+    }
+    return discovery
   }
   const principalID = async () => {
     if (viewRevision !== getAccountViewRevision()) {
@@ -1517,13 +1594,7 @@ export function createIamApi(
     const explicit = explicitPrincipalID?.()
     if (explicit) return explicit
     if (!subject) {
-      if (!discovery) {
-        const pending = discoverSession().finally(() => {
-          if (discovery === pending) discovery = undefined
-        })
-        discovery = pending
-      }
-      await discovery
+      await discoverSession()
     }
     if (!subject || epoch !== identityEpoch)
       throw new ApiError(401, "unauthorized")
@@ -1624,6 +1695,198 @@ export function createIamApi(
     return items
   }
   return {
+    deliveryResultRequest: <T>(route: RequestRoute, init?: Omit<RequestInit, "method">) =>
+      requestWithBase<T>(apiBase, route, init),
+    deliveryResultPage: async <T>(route: RequestRoute, signal?: AbortSignal) => {
+      const envelope = await requestEnvelopeWithBase<T[]>(apiBase, route, { signal })
+      const items = envelope.data ?? []
+      return { items, total: envelope.meta?.page?.total ?? items.length }
+    },
+    deliveryResultDownload: (route: RequestRoute, options?: {maxBytes?:number;signal?:AbortSignal}) =>
+      requestFileDownloadWithBase(apiBase, route, options),
+    machines: (tenant: string, cursor?: string, signal?: AbortSignal, filters?: MachineListFilters) =>
+      request<components["schemas"]["MachinePage"]>(apiRoute("get", "/tenants/{tenant_id}/machines", {path: {tenant_id: tenant}, query: {cursor, limit: 30, ...filters}}), {signal}),
+    machine: (id: string, signal?: AbortSignal) =>
+      request<components["schemas"]["MachineView"]>(apiRoute("get", "/machines/{machine_id}", {path: {machine_id: id}}), {signal}),
+    machineRemoteAccess: (id: string, signal?: AbortSignal) =>
+      request<MachineRemoteAccess>(apiRoute("get", "/machines/{machine_id}/remote-access", {path: {machine_id: id}}), {signal}),
+    setMachineRemoteAccess: (id: string, version: number, enabled: boolean, proof?: string) =>
+      request<MachineRemoteAccess>(apiRoute("put", "/machines/{machine_id}/remote-access", {path: {machine_id: id}}), {headers: {"If-Match": String(version)}, body: JSON.stringify({allow_remote_terminal: enabled, ...(proof ? {reauth_proof: proof} : {})} satisfies components["schemas"]["TerminalAccessInputBody"])}),
+    setMachinePreviewAccess: (id: string, version: number, terminalEnabled: boolean, previewEnabled: boolean) =>
+      request<MachineRemoteAccess>(apiRoute("put", "/machines/{machine_id}/remote-access", {path: {machine_id: id}}), {headers: {"If-Match": String(version)}, body: JSON.stringify({allow_remote_terminal: terminalEnabled, allow_remote_preview: previewEnabled} satisfies components["schemas"]["TerminalAccessInputBody"])}),
+    previewSessions: (executionID: string, signal?: AbortSignal) =>
+      request<RemotePreviewSession[] | null>(apiRoute("get", "/executions/{execution_id}/preview-sessions", {path: {execution_id: executionID}}), {signal}).then((rows) => rows ?? []),
+    createPreviewSession: (executionID: string, port: number) =>
+      request<RemotePreviewSession>(apiRoute("post", "/executions/{execution_id}/preview-sessions", {path: {execution_id: executionID}}), {body: JSON.stringify({kind: "SERVICE", port} satisfies components["schemas"]["PreviewCreateInputBody"])}),
+    stopPreviewSession: (id: string) =>
+      request<RemotePreviewSession>(apiRoute("put", "/preview-sessions/{session_id}/termination", {path: {session_id: id}}), {body: "{}"}),
+    previewSessionAccess: (id: string) =>
+      request<RemotePreviewAccess>(apiRoute("post", "/preview-sessions/{session_id}/access-grants", {path: {session_id: id}}), {body: JSON.stringify({return_path: "/"} satisfies components["schemas"]["PreviewAccessInputBody"])}),
+    previewLabelAccess: (label: string, signal?: AbortSignal) =>
+      request<RemotePreviewAccess>(apiRoute("post", "/preview-access-grants"), {body: JSON.stringify({label, return_path: "/"} satisfies components["schemas"]["PreviewLabelAccessInputBody"]), signal}),
+    createTerminalSession: (id: string, executionID: string, proof: string, idempotencyKey?: string) =>
+      request<RemoteTerminalSession>(apiRoute("post", "/machines/{machine_id}/terminal-sessions", {path: {machine_id: id}}), {headers: idempotencyKey ? {"Idempotency-Key": idempotencyKey} : undefined, body: JSON.stringify({execution_id: executionID, cols: 80, rows: 24, reauth_proof: proof} satisfies components["schemas"]["TerminalOpenInputBody"])}),
+    terminalSession: (id: string, signal?: AbortSignal) =>
+      request<RemoteTerminalSession>(apiRoute("get", "/terminal-sessions/{terminal_session_id}", {path: {terminal_session_id: id}}), {signal}),
+    revokeTerminalSession: (id: string) =>
+      request<RemoteTerminalSession>(apiRoute("post", "/terminal-sessions/{terminal_session_id}/revoke", {path: {terminal_session_id: id}})),
+    terminalInput: (id: string, seq: number, data: string) =>
+      request<components["schemas"]["TerminalAccepted"]>(apiRoute("post", "/terminal-sessions/{terminal_session_id}/input", {path: {terminal_session_id: id}}), {body: JSON.stringify({seq, data} satisfies components["schemas"]["TerminalInputHTTPInputBody"])}),
+    streamTerminalSession: async (id: string, onFrame: (frame: RemoteTerminalFrame) => void, signal: AbortSignal, onConnected?: () => void) => {
+      const revision = getAccountViewRevision()
+      const route = apiRoute("get", "/terminal-sessions/{terminal_session_id}/stream", {path: {terminal_session_id: id}})
+      const identity = accountViewRequest(route.method)
+      const headers = new Headers(identity.headers)
+      headers.set("Accept", "application/x-ndjson")
+      const response = await fetch(`${apiBase}${organizationRouteURL(route.url)}`, {...identity, method: route.method, headers, signal})
+      accountViewResponse(response.status, revision)
+      if (revision !== getAccountViewRevision()) {await response.body?.cancel(); throw new ApiError(401, "unauthorized")}
+      if (!response.ok) throw apiError(response.status, await response.json().catch(() => null))
+      if (!response.headers.get("Content-Type")?.startsWith("application/x-ndjson") || !response.body) {
+        await response.body?.cancel()
+        throw new ApiError(502, "invalid_response")
+      }
+      if (!signal.aborted) onConnected?.()
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let pending = ""
+      const consume = (line: string) => {
+        if (line.length > 65536) throw new ApiError(502, "invalid_response")
+        if (!line.trim()) return false
+        if (revision !== getAccountViewRevision()) throw new ApiError(401, "unauthorized")
+        let parsed: unknown
+        try {parsed = JSON.parse(line)} catch {throw new ApiError(502, "invalid_response")}
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new ApiError(502, "invalid_response")
+        const candidate = parsed as Record<string, unknown>
+        // The server heartbeat has no session/data; it is transport metadata.
+        if (candidate.kind === "ping") {
+          if (candidate.session_id !== undefined && candidate.session_id !== "") throw new ApiError(502, "invalid_response")
+          return false
+        }
+        if (candidate.session_id !== id || !["output", "closed"].includes(String(candidate.kind)) || candidate.sandboxed !== false || !Number.isSafeInteger(candidate.seq) || Number(candidate.seq) < 0 || candidate.reason !== undefined && typeof candidate.reason !== "string") throw new ApiError(502, "invalid_response")
+        if (candidate.kind === "output" || candidate.data !== undefined) {
+          const data = candidate.data
+          if (typeof data !== "string" || data.length > 21848 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(data)) throw new ApiError(502, "invalid_response")
+          const decoded = atob(data)
+          if (decoded.length > 16384 || btoa(decoded) !== data) throw new ApiError(502, "invalid_response")
+        }
+        const frame = candidate as RemoteTerminalFrame
+        onFrame(frame)
+        return frame.kind === "closed"
+      }
+      try {
+        while (!signal.aborted) {
+          const chunk = await reader.read()
+          pending += decoder.decode(chunk.value, {stream: !chunk.done})
+          let boundary: number
+          while ((boundary = pending.indexOf("\n")) >= 0) {
+            const line = pending.slice(0, boundary); pending = pending.slice(boundary + 1)
+            if (consume(line)) return
+          }
+          if (pending.length > 65536) throw new ApiError(502, "invalid_response")
+          if (chunk.done) {consume(pending); return}
+        }
+      } finally {await reader.cancel().catch(() => {}); reader.releaseLock()}
+    },
+    machineCapabilities: (id: string, signal?: AbortSignal) =>
+      request<components["schemas"]["MachineCapabilities"]>(apiRoute("get", "/machines/{machine_id}/capabilities", {path: {machine_id: id}}), {signal}),
+    machineCredentials: (id: string, signal?: AbortSignal) =>
+      request<components["schemas"]["MachineCredentials"]>(apiRoute("get", "/machines/{machine_id}/credentials", {path: {machine_id: id}}), {signal}),
+    rotateMachineCredential: (id: string) =>
+      request<components["schemas"]["CredentialRotationView"]>(apiRoute("post", "/machines/{machine_id}/credential-rotations", {path: {machine_id: id}})),
+    machineInspections: (id: string, cursor?: string, signal?: AbortSignal) =>
+      request<components["schemas"]["InspectionPage"]>(apiRoute("get", "/machines/{machine_id}/inspections", {path: {machine_id: id}, query: {cursor, limit: 30}}), {signal}),
+    requestMachineInspection: (id: string, kind: "RUNTIMES" | "MODELS" | "CAPABILITIES", workdirID?: string) =>
+      request<components["schemas"]["InspectionView"]>(apiRoute("post", "/machines/{machine_id}/inspections", {path: {machine_id: id}}), {body: JSON.stringify({kind, ...(workdirID ? {workdir_id: workdirID} : {})})}),
+    registerMachineWorkdir: (id: string, body: {project_id: string; repository_id: string; path: string}) =>
+      request<components["schemas"]["MachineWorkdirView"]>(apiRoute("post", "/machines/{machine_id}/workdirs", {path: {machine_id: id}}), {body: JSON.stringify(body)}),
+    drainMachine: (id: string, version: number, drain: boolean) =>
+      request<components["schemas"]["MachineView"]>(apiRoute("put", "/machines/{machine_id}/drain", {path: {machine_id: id}}), {headers: {"If-Match": String(version)}, body: JSON.stringify({drain})}),
+    decideMachineEnrollment: (tenant: string, id: string, userCode: string, approve: boolean, name?: string) =>
+      request<boolean>(apiRoute("put", "/tenants/{tenant_id}/machine-enrollments/{enrollment_id}/decision", {path: {tenant_id: tenant, enrollment_id: id}}), {body: JSON.stringify({user_code: userCode, approve, ...(name === undefined ? {} : {name})})}),
+    gatewayConfig: (tenant: string, signal?: AbortSignal) =>
+      request<components["schemas"]["GatewayView"]>(apiRoute("get", "/tenants/{tenant_id}/model-gateway/config", {path: {tenant_id: tenant}}), {signal}),
+    saveGatewayConfig: (tenant: string, version: number, body: components["schemas"]["GatewayWrite"]) =>
+      request<components["schemas"]["GatewayView"]>(apiRoute("put", "/tenants/{tenant_id}/model-gateway/config", {path: {tenant_id: tenant}}), {headers: {"If-Match": `"${version}"`}, body: JSON.stringify({enabled: body.enabled, machine_id: body.machine_id, default_model: body.default_model, key_ref: body.key_ref, providers: body.providers, models: body.models, budgets: body.budgets})}),
+    gatewayRequests: (tenant: string, signal?: AbortSignal) =>
+      request<components["schemas"]["GatewayRequestView"][]>(apiRoute("get", "/tenants/{tenant_id}/model-gateway/requests", {path: {tenant_id: tenant}}), {signal}),
+    importGatewayProviderKey: (tenant: string, secret: string, key: string) =>
+      request<components["schemas"]["GatewayKeyView"]>(apiRoute("post", "/tenants/{tenant_id}/model-gateway/provider-keys", {path: {tenant_id: tenant}}), {headers: {"Idempotency-Key": key}, body: JSON.stringify({secret})}),
+    createGatewayKey: (tenant: string, key: string) =>
+      request<components["schemas"]["GatewayKeyView"]>(apiRoute("post", "/tenants/{tenant_id}/model-gateway/keys", {path: {tenant_id: tenant}}), {headers: {"Idempotency-Key": key}}),
+    createGatewayRequest: (tenant: string, model: string, key: string, projectID: string, maxInputTokens: number, maxOutputTokens: number) =>
+      request<components["schemas"]["GatewayRequestView"]>(apiRoute("post", "/tenants/{tenant_id}/model-gateway/requests", {path: {tenant_id: tenant}}), {headers: {"Idempotency-Key": key}, body: JSON.stringify({model, project_id: projectID, max_input_tokens: maxInputTokens, max_output_tokens: maxOutputTokens})}),
+    modelGateway: (tenant: string, signal?: AbortSignal) =>
+      request<components["schemas"]["ModelGatewayStatus"]>(apiRoute("get", "/tenants/{tenant_id}/model-gateway", {path: {tenant_id: tenant}}), {signal}),
+    executions: (tenant: string, project: string, cursor?: string, signal?: AbortSignal) =>
+      request<components["schemas"]["ExecutionPage"]>(apiRoute("get", "/tenants/{tenant_id}/executions", {path: {tenant_id: tenant}, query: {project_id: project, cursor, limit: 30}}), {signal}),
+    execution: (id: string, signal?: AbortSignal) =>
+      request<components["schemas"]["ExecutionDetail"]>(apiRoute("get", "/executions/{execution_id}", {path: {execution_id: id}}), {signal}),
+    decideExecutionPermission: (id: string, approval: string, state: "ALLOW" | "DENY", reason: string) =>
+      request<components["schemas"]["ApprovalView"]>(apiRoute("put", "/executions/{execution_id}/approval-requests/{approval_id}/decision", {path: {execution_id: id, approval_id: approval}}), {body: JSON.stringify({state, reason})}),
+    cancelExecution: (id: string, version: number) =>
+      request<components["schemas"]["ExecutionView"]>(apiRoute("put", "/executions/{execution_id}/cancellation", {path: {execution_id: id}}), {headers: {"If-Match": String(version)}, body: JSON.stringify({acknowledge_unknown_result: false})}),
+    recoverExecution: (id: string, version: number, acknowledge: boolean) =>
+      request<components["schemas"]["ExecutionView"]>(apiRoute("put", "/executions/{execution_id}/recovery", {path: {execution_id: id}}), {headers: {"If-Match": String(version)}, body: JSON.stringify({acknowledge_unknown_result: acknowledge})}),
+    registerAgent: (tenant: string, body: components["schemas"]["AgentRegistration"], key: string) =>
+      request<components["schemas"]["RegisteredAgent"]>(apiRoute("post", "/tenants/{tenant_id}/agents", {path: {tenant_id: tenant}}), {headers: {"Idempotency-Key": key}, body: JSON.stringify(body)}),
+    createAgent: (tenant: string, body: components["schemas"]["AgentCreation"], key: string) =>
+      request<components["schemas"]["RegisteredAgent"]>(apiRoute("post", "/tenants/{tenant_id}/agent-registrations", {path: {tenant_id: tenant}}), {headers: {"Idempotency-Key": key}, body: JSON.stringify(body)}),
+    agentCreationAvatars: (tenant: string, style: "PIXEL" | "ROBOT" | "MONSTER" | "GEOMETRIC", batch: number, signal?: AbortSignal) =>
+      request<components["schemas"]["AvatarCandidate"][]>(apiRoute("get", "/tenants/{tenant_id}/agent-registrations/avatar-candidates", {path: {tenant_id: tenant}, query: {style, batch}}), {signal}),
+    agentLive: (tenant: string, agent: string, signal?: AbortSignal) => request<components["schemas"]["LiveView"]>(apiRoute("get","/tenants/{tenant_id}/agents/{agent_principal_id}/lifecycle",{path:{tenant_id:tenant,agent_principal_id:agent}}),{signal}),
+    agentInbox: (tenant: string, agent: string, since?: number, signal?: AbortSignal, kind?: "MESSAGE" | "MENTION" | "REMINDER" | "STATE" | "EXECUTION" | "INTERACTION" | "DISPATCH" | "REVIEW_FEEDBACK") => request<components["schemas"]["AgentInboxPage"]>(apiRoute("get","/tenants/{tenant_id}/agents/{agent_principal_id}/inbox-events",{path:{tenant_id:tenant,agent_principal_id:agent}, query: {...(since === undefined ? {} : {since: String(since)}),limit:50,...(kind ? {kind} : {})}}),{signal}),
+    agentAcknowledge: (tenant: string, agent: string, since: number, key: string) => request<components["schemas"]["LiveView"]>(apiRoute("post","/tenants/{tenant_id}/agents/{agent_principal_id}/inbox-acks",{path:{tenant_id:tenant,agent_principal_id:agent}}),{headers:{"Idempotency-Key":key},body:JSON.stringify({since})}),
+    agentReset: (tenant: string, agent: string, body: components["schemas"]["ResetInput"], key: string) => request<components["schemas"]["ResetView"]>(apiRoute("post","/tenants/{tenant_id}/agents/{agent_principal_id}/resets",{path:{tenant_id:tenant,agent_principal_id:agent}}),{headers:{"Idempotency-Key":key},body:JSON.stringify(body)}),
+    agentReminders: (tenant: string, agent: string, cursor?: string, signal?: AbortSignal) => request<components["schemas"]["PageReminderView"]>(apiRoute("get","/tenants/{tenant_id}/agents/{agent_principal_id}/reminders",{path:{tenant_id:tenant,agent_principal_id:agent}, query: {cursor,limit:50}}),{signal}),
+    createAgentReminder: (tenant: string, agent: string, body: components["schemas"]["ReminderInput"], key: string) => request<components["schemas"]["ReminderView"]>(apiRoute("post","/tenants/{tenant_id}/agents/{agent_principal_id}/reminders",{path:{tenant_id:tenant,agent_principal_id:agent}}),{headers:{"Idempotency-Key":key},body:JSON.stringify(body)}),
+    changeAgentReminder: (tenant: string, agent: string, id: string, body: {state:"ACTIVE"|"PAUSED"|"CANCELLED";version:number}, key:string) => request<components["schemas"]["ReminderView"]>(apiRoute("post","/tenants/{tenant_id}/agents/{agent_principal_id}/reminders/{reminder_id}/state",{path:{tenant_id:tenant,agent_principal_id:agent,reminder_id:id}}),{headers:{"Idempotency-Key":key},body:JSON.stringify(body)}),
+    agentOperations: (tenant: string, signal?: AbortSignal) => request<components["schemas"]["Manifest"]>(apiRoute("get","/tenants/{tenant_id}/agent-operations",{path:{tenant_id:tenant}}),{signal}),
+    agentTools: (tenant: string, agent?: string, cursor?: string, signal?: AbortSignal) => request<components["schemas"]["PageToolView"]>(apiRoute("get","/tenants/{tenant_id}/agent-tools",{path:{tenant_id:tenant}, query: {agent_principal_id:agent,cursor,limit:50}}),{signal}),
+    createAgentTool: (tenant: string, body: components["schemas"]["ToolInput"], key:string) => request<components["schemas"]["ToolView"]>(apiRoute("post","/tenants/{tenant_id}/agent-tools",{path:{tenant_id:tenant}}),{headers:{"Idempotency-Key":key},body:JSON.stringify(body)}),
+    grantAgentTool: (tenant: string, id: string, body: {agent_principal_id:string;state:"ACTIVE"|"REVOKED"}, key:string) => request<components["schemas"]["GrantView"]>(apiRoute("post","/tenants/{tenant_id}/agent-tools/{tool_id}/grants",{path:{tenant_id:tenant,tool_id:id}}),{headers:{"Idempotency-Key":key},body:JSON.stringify(body)}),
+    workbenchSummary: (tenant: string, query: {from?: string; to?: string}, signal?: AbortSignal) =>
+      request<components["schemas"]["WorkbenchSummary"]>(apiRoute("get", "/tenants/{tenant_id}/workbench-summary", {path: {tenant_id: tenant}, query}), {signal}),
+    reportTimeliness: (tenant: string, query: {from?: string; to?: string}, signal?: AbortSignal) =>
+      request<components["schemas"]["ReportTimelinessHistory"]>(apiRoute("get", "/tenants/{tenant_id}/metrics/report-timeliness", {path: {tenant_id: tenant}, query}), {signal}),
+    deliveryQuality: (tenant: string, query: {from?: string; to?: string}, signal?: AbortSignal) =>
+      request<components["schemas"]["DeliveryQualityHistory"]>(apiRoute("get", "/tenants/{tenant_id}/metrics/delivery-quality", {path: {tenant_id: tenant}, query}), {signal}),
+    knowledgeMetrics: (tenant: string, query: RouteQuery<"/tenants/{tenant_id}/knowledge-metrics">, signal?: AbortSignal) =>
+      request<components["schemas"]["KnowledgeMetrics"]>(apiRoute("get", "/tenants/{tenant_id}/knowledge-metrics", {path: {tenant_id: tenant}, query}), {signal}),
+    retrievalHistory: (tenant: string, query: RouteQuery<"/tenants/{tenant_id}/knowledge/retrieval-debug/history">, signal?: AbortSignal) =>
+      request<components["schemas"]["DiagnosticHistoryPage"]>(apiRoute("get", "/tenants/{tenant_id}/knowledge/retrieval-debug/history", {path: {tenant_id: tenant}, query}), {signal}),
+    retrievalDebug: (tenant: string, body: components["schemas"]["RetrievalDebugQuery"], key: string, signal?: AbortSignal) =>
+      request<components["schemas"]["RetrievalDebugResult"]>(apiRoute("post", "/tenants/{tenant_id}/knowledge/retrieval-debug", {path: {tenant_id: tenant}}), {body: JSON.stringify(body), headers: {"Idempotency-Key": key}, signal}),
+    knowledgeEntries: (tenant: string, query: KnowledgeQuery, signal?: AbortSignal) =>
+      request<components["schemas"]["KnowledgePage"]>(apiRoute("get", "/tenants/{tenant_id}/knowledge", { path: {tenant_id: tenant}, query }), {signal}),
+    knowledgeEntry: (tenant: string, entry: string, signal?: AbortSignal) =>
+      request<KnowledgeEntry>(apiRoute("get", "/tenants/{tenant_id}/knowledge/{entry_id}", {path: {tenant_id: tenant, entry_id: entry}}), {signal}),
+    writeKnowledge: (tenant: string, body: KnowledgeWrite, key: string) =>
+      request<KnowledgeEntry>(apiRoute("post", "/tenants/{tenant_id}/knowledge", { path: {tenant_id: tenant} }), {body: JSON.stringify(body), headers: {"Idempotency-Key": key}}),
+    reviewKnowledge: (tenant: string, entry: string, body: KnowledgeReview, key: string) =>
+      request<KnowledgeEntry>(apiRoute("post", "/tenants/{tenant_id}/knowledge/{entry_id}/reviews", { path: {tenant_id: tenant, entry_id: entry} }), {body: JSON.stringify(body), headers: {"Idempotency-Key": key}}),
+    conversationAttachmentCandidate: (channel: string, file: string) =>
+      request<components["schemas"]["AttachmentCandidate"]>(apiRoute("get", "/channels/{channel_id}/attachment-candidates/{file_id}", {path:{channel_id:channel,file_id:file}})),
+    downloadConversationAttachment: (channel: string, message: string, attachment: string) =>
+      requestFileDownloadWithBase(apiBase,apiRoute("get", "/channels/{channel_id}/messages/{message_id}/attachments/{attachment_id}/content", {path:{channel_id:channel,message_id:message,attachment_id:attachment}})),
+    convertConversationMessage: (channel: string, message: string, body: components["schemas"]["ConvertWorkInput"], key: string) =>
+      request<components["schemas"]["WorkReceipt"]>(apiRoute("post", "/channels/{channel_id}/messages/{message_id}/work-items", {path:{channel_id:channel,message_id:message}}),{body:JSON.stringify(body),headers:{"Idempotency-Key":key}}),
+    conversationChannels: (entityID: string, cursor?: string, signal?: AbortSignal) =>
+      request<components["schemas"]["CursorPageChannelView"]>(apiRoute("get", "/entities/{entity_id}/channels", {path: {entity_id: entityID}, query: {cursor, limit: 50}}), {signal}),
+    createConversation: (entityID: string, body: ConversationCreate, key: string) =>
+      request<ConversationChannel>(apiRoute("post", "/entities/{entity_id}/channels", {path: {entity_id: entityID}}), {body: JSON.stringify(body), headers: {"Idempotency-Key": key}}),
+    conversationMessages: (channelID: string, query: ConversationMessageQuery, signal?: AbortSignal) =>
+      request<components["schemas"]["CursorPageMessageView"]>(apiRoute("get", "/channels/{channel_id}/messages", {path: {channel_id: channelID}, query}), {signal}),
+    postConversationMessage: (channelID: string, body: ConversationPost, key: string) =>
+      request<ConversationMessage>(apiRoute("post", "/channels/{channel_id}/messages", {path: {channel_id: channelID}}), {body: JSON.stringify(body), headers: {"Idempotency-Key": key}}),
+    conversationMembers: (channelID: string, cursor?: string, signal?: AbortSignal) =>
+      request<components["schemas"]["CursorPageChannelMemberView"]>(apiRoute("get", "/channels/{channel_id}/members", {path: {channel_id: channelID}, query: {cursor, limit: 100}}), {signal}),
+    inviteConversationMember: (channelID: string, principalID: string, external: boolean) =>
+      request<ConversationMember>(apiRoute("put", "/channels/{channel_id}/members/{principal_id}", {path: {channel_id: channelID, principal_id: principalID}}), {body: JSON.stringify({external})}),
+    readConversation: (channelID: string, seq: number) =>
+      request<number>(apiRoute("put", "/channels/{channel_id}/read-marker", {path: {channel_id: channelID}}), {body: JSON.stringify({seq})}),
+    saveConversationMessage: (channelID: string, messageID: string, saved: boolean) =>
+      request<boolean>(apiRoute("put", "/channels/{channel_id}/messages/{message_id}/saved", {path: {channel_id: channelID, message_id: messageID}}), {body: JSON.stringify({saved})}),
     requestContract: async (
       route: ApiRoute,
       options: { signal?: AbortSignal; locale?: string } = {}
@@ -2289,12 +2552,20 @@ export function createIamApi(
       void tenant
       return discoverSession()
     },
-    myTenants: async () =>
-      request<Tenant[]>(
+    myTenants: async () => {
+      const principal = await principalID()
+      if (!tenantDiscovery) {
+        const pending = request<Tenant[]>(
         apiRoute("get", "/principals/{principal_id}/tenants", {
-          path: { principal_id: await principalID() },
+          path: { principal_id: principal },
         })
-      ),
+        ).finally(() => {
+          if (tenantDiscovery === pending) tenantDiscovery = undefined
+        })
+        tenantDiscovery = pending
+      }
+      return tenantDiscovery
+    },
     personalTokenPermissions: async (tenant: string) =>
       request<Permission[]>(
         apiRoute(
@@ -3057,20 +3328,32 @@ export function createIamApi(
     // already knows which tenant it is asking about names it: the selected
     // tenant follows the address bar, which still shows the previous tenant
     // while a route loader decides where the next one lands.
-    memberEntities: async (permission: string, tenant?: string) =>
-      request<Entity[]>(
-        apiRoute(
-          "get",
-          "/tenants/{tenant_id}/principals/{principal_id}/entities",
-          {
-            path: {
-              tenant_id: tenant || tenantID(),
-              principal_id: await principalID(),
-            },
-            query: { permission },
-          }
-        )
-      ),
+    memberEntities: async (
+      permission: string | readonly string[],
+      tenant?: string
+    ): Promise<Entity[]> => {
+      const owner = tenant || tenantID()
+      let projection = await requestWithBase<{external:boolean;projects:{items:Pick<Entity,"id"|"tenant_id"|"name"|"type"|"status">[];has_more:boolean;next_cursor?:string}}>(apiBase,{method:"GET",url:`/tenants/${encodeURIComponent(owner)}/client-access`})
+      if (projection.external) {
+        const projects = [...projection.projects.items]
+        while (projection.projects.has_more) {
+          projection = await requestWithBase<typeof projection>(apiBase,{method:"GET",url:`/tenants/${encodeURIComponent(owner)}/client-access?${new URLSearchParams({cursor:projection.projects.next_cursor!})}`})
+          projects.push(...projection.projects.items)
+        }
+        return projects as Entity[]
+      }
+      const principal = await principalID()
+      const codes = typeof permission === "string" ? [permission] : permission
+      if (codes.length === 0) return []
+      return (await request<Entity[]>(
+        apiRoute("get", "/tenants/{tenant_id}/principals/{principal_id}/entities", {
+          path: { tenant_id: owner, principal_id: principal },
+          query: typeof permission === "string"
+            ? { permission }
+            : { permissions: [...new Set(codes)] },
+        })
+      )) ?? []
+    },
     projects: (tenant: string, query: ProjectListQuery, signal?: AbortSignal) =>
       requestPage<ProjectListItem>(
         apiRoute("get", "/tenants/{tenant_id}/projects", {
@@ -3078,6 +3361,260 @@ export function createIamApi(
           query,
         }),
         signal
+      ),
+    createProject: (
+      tenant: string,
+      body: ProjectCreateInput,
+      idempotencyKey: string
+    ) =>
+      request<ProjectCreated>(
+        apiRoute("post", "/tenants/{tenant_id}/projects", {
+          path: { tenant_id: tenant },
+        }),
+        {
+          headers: { "Idempotency-Key": idempotencyKey },
+          body: JSON.stringify(body),
+        }
+      ),
+    requirements: (
+      entity: string,
+      query: RequirementQuery,
+      signal?: AbortSignal
+    ) =>
+      requestPage<Requirement>(
+        apiRoute("get", "/entities/{entity_id}/requirements", {
+          path: { entity_id: entity },
+          query,
+        }),
+        signal
+      ),
+    createRequirement: (entity: string, body: RequirementInput, key: string) =>
+      request<Requirement>(
+        apiRoute("post", "/entities/{entity_id}/requirements", {
+          path: { entity_id: entity },
+        }),
+        { headers: { "Idempotency-Key": key }, body: JSON.stringify(body) }
+      ),
+    requirement: (entity: string, id: string, signal?: AbortSignal) =>
+      request<RequirementDetail>(
+        apiRoute("get", "/entities/{entity_id}/requirements/{requirement_id}", {
+          path: { entity_id: entity, requirement_id: id },
+        }),
+        { signal }
+      ),
+    baselineRequirement: (
+      entity: string,
+      id: string,
+      version: number,
+      key: string
+    ) =>
+      request<RequirementBaseline>(
+        apiRoute(
+          "post",
+          "/entities/{entity_id}/requirements/{requirement_id}/versions",
+          { path: { entity_id: entity, requirement_id: id } }
+        ),
+        {
+          headers: { "Idempotency-Key": key, "If-Match": `"${version}"` },
+          body: "{}",
+        }
+      ),
+    updateRequirement: (
+      entity: string,
+      id: string,
+      version: number,
+      body: RequirementPatch,
+      key: string
+    ) =>
+      request<Requirement>(
+        apiRoute(
+          "patch",
+          "/entities/{entity_id}/requirements/{requirement_id}",
+          { path: { entity_id: entity, requirement_id: id } }
+        ),
+        {
+          headers: { "If-Match": `"${version}"`, "Idempotency-Key": key },
+          body: JSON.stringify(body),
+        }
+      ),
+    createRequirementCriterion: (
+      entity: string,
+      id: string,
+      version: number,
+      body: RequirementCriterionInput,
+      key: string
+    ) =>
+      request<Requirement>(
+        apiRoute(
+          "post",
+          "/entities/{entity_id}/requirements/{requirement_id}/acceptance-criteria",
+          { path: { entity_id: entity, requirement_id: id } }
+        ),
+        {
+          headers: { "If-Match": `"${version}"`, "Idempotency-Key": key },
+          body: JSON.stringify(body),
+        }
+      ),
+    updateRequirementCriterion: (
+      entity: string,
+      id: string,
+      criterionID: string,
+      version: number,
+      body: RequirementCriterionPatch,
+      key: string
+    ) =>
+      request<Requirement>(
+        apiRoute(
+          "patch",
+          "/entities/{entity_id}/requirements/{requirement_id}/acceptance-criteria/{criterion_id}",
+          {
+            path: {
+              entity_id: entity,
+              requirement_id: id,
+              criterion_id: criterionID,
+            },
+          }
+        ),
+        {
+          headers: { "If-Match": `"${version}"`, "Idempotency-Key": key },
+          body: JSON.stringify(body),
+        }
+      ),
+    workItems: (entity: string, query: WorkItemQuery, signal?: AbortSignal) =>
+      requestPage<WorkItem>(
+        apiRoute("get", "/entities/{entity_id}/work-items", {
+          path: { entity_id: entity },
+          query,
+        }),
+        signal
+      ),
+    personalWork: (tenant: string, entity: string, cursor: string, signal?: AbortSignal) =>
+      request<components["schemas"]["PersonalWorkPage"]>(
+        entity ? apiRoute("get", "/entities/{entity_id}/my-work", {
+          path: { entity_id: entity }, query: { cursor: cursor || undefined, limit: 50 },
+        }) : apiRoute("get", "/tenants/{tenant_id}/my-work", {
+          path: { tenant_id: tenant }, query: { cursor: cursor || undefined, limit: 50 },
+        }), { signal },
+      ),
+    createWorkItem: (entity: string, body: WorkItemInput, key: string) =>
+      request<WorkItemCreated>(
+        apiRoute("post", "/entities/{entity_id}/work-items", {
+          path: { entity_id: entity },
+        }),
+        { headers: { "Idempotency-Key": key }, body: JSON.stringify(body) }
+      ),
+    workItem: (entity: string, id: string, signal?: AbortSignal) =>
+      request<WorkItemDetail>(
+        apiRoute("get", "/entities/{entity_id}/work-items/{work_item_id}", {
+          path: { entity_id: entity, work_item_id: id },
+        }),
+        { signal }
+      ),
+    workDependencies: (entity: string, id: string, signal?: AbortSignal) =>
+      requestPage<WorkDependency>(apiRoute("get", "/entities/{entity_id}/work-items/{work_item_id}/dependencies", {path:{entity_id:entity, work_item_id:id}, query:{offset:0,limit:200}}), signal),
+    addWorkDependency: (entity:string,id:string,predecessor:string) =>
+      request<{dependency:WorkDependency;work_item:WorkItem}>(apiRoute("put","/entities/{entity_id}/work-items/{work_item_id}/dependencies/{depends_on_id}",{path:{entity_id:entity,work_item_id:id,depends_on_id:predecessor}})),
+    removeWorkDependency: (entity:string,id:string,predecessor:string) =>
+      request<void>(apiRoute("delete","/entities/{entity_id}/work-items/{work_item_id}/dependencies/{depends_on_id}",{path:{entity_id:entity,work_item_id:id,depends_on_id:predecessor}})),
+    prepareWorkItem: (
+      entity: string,
+      id: string,
+      version: number,
+      body: WorkPreparationInput,
+      key: string
+    ) =>
+      request<WorkPreparationReceipt>(
+        apiRoute("patch", "/entities/{entity_id}/work-items/{work_item_id}", {
+          path: { entity_id: entity, work_item_id: id },
+        }),
+        {
+          headers: { "If-Match": `"${version}"`, "Idempotency-Key": key },
+          body: JSON.stringify(body),
+        }
+      ),
+    checkWorkReadiness: (
+      entity: string,
+      id: string,
+      version: number,
+      key: string
+    ) =>
+      request<WorkPreparationReceipt>(
+        apiRoute(
+          "post",
+          "/entities/{entity_id}/work-items/{work_item_id}/readiness-checks",
+          {
+            path: { entity_id: entity, work_item_id: id },
+          }
+        ),
+        { headers: { "If-Match": `"${version}"`, "Idempotency-Key": key } }
+      ),
+    projectStageReadiness: (entity: string, signal?: AbortSignal) =>
+      request<ProjectStageReadiness[]>(apiRoute("get", "/entities/{entity_id}/project/stage-readiness", { path: { entity_id: entity } }), { signal }),
+    projectStageHistory: (entity: string, offset: number, limit: number, signal?: AbortSignal) =>
+      requestPage<ProjectStageTransition>(apiRoute("get", "/entities/{entity_id}/project/stage-transitions", { path: { entity_id: entity }, query: { offset, limit } }), signal),
+    changeProjectStage: (entity: string, version: number, body: ProjectStageChange, key: string) =>
+      request<components["schemas"]["StageReceipt"]>(apiRoute("post", "/entities/{entity_id}/project/stage-transitions", { path: { entity_id: entity } }), { headers: { "If-Match": `"${version}"`, "Idempotency-Key": key }, body: JSON.stringify(body) }),
+    workAssignments: (id: string, signal?: AbortSignal) =>
+      requestPage<WorkAssignment>(apiRoute("get", "/work-items/{work_item_id}/assignments", { path: { work_item_id: id }, query: { status: "ACTIVE", role: "EXECUTOR", limit: 100 } }), signal),
+    claimWork: (id: string, version: number, principal: string, acknowledge: boolean, key: string) =>
+      request<WorkAssignmentReceipt>(apiRoute("post", "/work-items/{work_item_id}/assignments", { path: { work_item_id: id } }), { headers: { "If-Match": `"${version}"`, "Idempotency-Key": key }, body: JSON.stringify({ role: "EXECUTOR", assignee_principal_id: principal, acknowledge_readiness_issues: acknowledge }) }),
+    renewWorkAssignment: (id: string, version: number, key: string) =>
+      request<WorkAssignmentReceipt>(apiRoute("put", "/assignments/{assignment_id}/lease", { path: { assignment_id: id } }), { headers: { "If-Match": `"${version}"`, "Idempotency-Key": key }, body: JSON.stringify({}) }),
+    releaseWorkAssignment: (id: string, version: number, key: string) =>
+      request<WorkAssignmentReceipt>(apiRoute("post", "/assignments/{assignment_id}/release", { path: { assignment_id: id } }), { headers: { "If-Match": `"${version}"`, "Idempotency-Key": key } }),
+    constitutions: (
+      entity: string,
+      query: ConstitutionQuery,
+      signal?: AbortSignal
+    ) =>
+      requestPage<Constitution>(
+        apiRoute("get", "/entities/{entity_id}/project/constitution-versions", {
+          path: { entity_id: entity },
+          query,
+        }),
+        signal
+      ),
+    constitution: (id: string, signal?: AbortSignal) =>
+      request<ConstitutionDetail>(
+        apiRoute("get", "/constitution-versions/{version_id}", {
+          path: { version_id: id },
+        }),
+        { signal }
+      ),
+    proposeConstitution: (
+      entity: string,
+      body: ConstitutionProposal,
+      key: string
+    ) =>
+      request<Constitution>(
+        apiRoute(
+          "post",
+          "/entities/{entity_id}/project/constitution-versions",
+          { path: { entity_id: entity } }
+        ),
+        { headers: { "Idempotency-Key": key }, body: JSON.stringify(body) }
+      ),
+    submitConstitution: (id: string, version: number, key: string) =>
+      request<Constitution>(
+        apiRoute("post", "/constitution-versions/{version_id}/submissions", {
+          path: { version_id: id },
+        }),
+        { headers: { "If-Match": `"${version}"`, "Idempotency-Key": key } }
+      ),
+    decideConstitution: (
+      id: string,
+      version: number,
+      body: ConstitutionDecision,
+      key: string
+    ) =>
+      request<Constitution>(
+        apiRoute("post", "/constitution-versions/{version_id}/decision", {
+          path: { version_id: id },
+        }),
+        {
+          headers: { "If-Match": `"${version}"`, "Idempotency-Key": key },
+          body: JSON.stringify(body),
+        }
       ),
     project: (id: string, signal?: AbortSignal) =>
       request<ProjectDetail>(
@@ -3933,7 +4470,7 @@ export function createIamApi(
         apiRoute("get", "/system/audit/exports", { query })
       ),
     auditEvents: async (
-      query: RouteQuery<"/tenants/{tenant_id}/audit/events"> = {}
+      query: RouteQuery<"/tenants/{tenant_id}/audit/events"> & AuditBusinessFilters = {}
     ) => {
       const envelope = await requestEnvelope<AuditEvent[]>(
         apiRoute("get", "/tenants/{tenant_id}/audit/events", {
@@ -3944,6 +4481,26 @@ export function createIamApi(
       return {
         items: envelope.data,
         total: envelope.meta?.page?.total ?? envelope.data.length,
+      }
+    },
+    businessAuditEvents: async (
+      tenant: string,
+      query: Record<string, string | number | undefined>,
+      signal?: AbortSignal
+    ) => {
+      const params = new URLSearchParams()
+      for (const [key, value] of Object.entries(query)) {
+        if (value !== undefined && value !== "") params.set(key, String(value))
+      }
+      const envelope = await requestEnvelopeWithBase<components["schemas"]["BusinessEvent"][]>(
+        apiBase,
+        {method: "GET", url: `/tenants/${encodeURIComponent(tenant)}/business-audit-events?${params}`},
+        {signal}
+      )
+      return {
+        items: envelope.data,
+        total: envelope.meta?.page?.total ?? envelope.data.length,
+        indexLagSeconds: envelope.meta?.index_lag_seconds ?? null,
       }
     },
     auditEvent: (id: string) =>
@@ -3959,7 +4516,7 @@ export function createIamApi(
         })
       ),
     auditExport: (
-      query: RouteQuery<"/tenants/{tenant_id}/audit/exports"> = {}
+      query: RouteQuery<"/tenants/{tenant_id}/audit/exports"> & AuditBusinessFilters = {}
     ) =>
       requestAuditDownloadWithBase(
         apiBase,

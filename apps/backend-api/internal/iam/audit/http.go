@@ -18,6 +18,7 @@ import (
 )
 
 type listInput struct {
+	BusinessFilterInput
 	TenantID    string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	PrincipalID string `query:"principal_id" maxLength:"64" doc:"acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)"`
 	EventType   string `query:"event_type" maxLength:"64"`
@@ -45,6 +46,7 @@ type tenantInput struct {
 }
 
 type exportInput struct {
+	BusinessFilterInput
 	TenantID    string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	PrincipalID string `query:"principal_id" maxLength:"64" doc:"acting operator: under an account view, the operator who opened it, not the viewed account (detail.viewed_principal_id)"`
 	EventType   string `query:"event_type" maxLength:"64"`
@@ -221,11 +223,15 @@ func listFilter(in *listInput) (Filter, error) {
 		return Filter{}, err
 	}
 	filter.Offset, filter.Limit = in.Offset, in.Limit
-	return filter, nil
+	return withBusinessFilter(filter, in.BusinessFilterInput)
 }
 
 func exportFilter(in *exportInput) (Filter, error) {
-	return filterValues(in.TenantID, in.PrincipalID, in.EventType, in.Outcome, in.TargetType, in.TargetID, in.From, in.To)
+	filter, err := filterValues(in.TenantID, in.PrincipalID, in.EventType, in.Outcome, in.TargetType, in.TargetID, in.From, in.To)
+	if err != nil {
+		return Filter{}, err
+	}
+	return withBusinessFilter(filter, in.BusinessFilterInput)
 }
 
 func filterValues(tenant, principal, eventType, outcome, targetType, target, from, to string) (Filter, error) {

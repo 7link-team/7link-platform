@@ -56,7 +56,8 @@ OPENAPI_SIGNING_KEY_FILE := $(OPENAPI_SECRET_DIR)/signing-key
 OPENAPI_MFA_KEY_FILE := $(OPENAPI_SECRET_DIR)/mfa-key
 OPENAPI_FEDERATION_KEY_FILE := $(OPENAPI_SECRET_DIR)/federation-key
 OPENAPI_WEBHOOK_KEY_FILE := $(OPENAPI_SECRET_DIR)/webhook-key
-OPENAPI_KEY_FILES := $(OPENAPI_SIGNING_KEY_FILE) $(OPENAPI_MFA_KEY_FILE) $(OPENAPI_FEDERATION_KEY_FILE) $(OPENAPI_WEBHOOK_KEY_FILE)
+OPENAPI_BUSINESS_KEY_FILE := $(OPENAPI_SECRET_DIR)/business-key
+OPENAPI_KEY_FILES := $(OPENAPI_SIGNING_KEY_FILE) $(OPENAPI_MFA_KEY_FILE) $(OPENAPI_FEDERATION_KEY_FILE) $(OPENAPI_WEBHOOK_KEY_FILE) $(OPENAPI_BUSINESS_KEY_FILE)
 # A throwaway schema. The export composes the real application, and composition
 # expects its tables to be there; nothing is read from this database and nothing
 # survives the run.
@@ -72,7 +73,8 @@ OPENAPI_ARGS = openapi --name "$(OPENAPI_NAME)" --migrate \
 	--federation.enabled \
 	--federation.encryption-key-file $(OPENAPI_FEDERATION_KEY_FILE) \
 	--webhook.enabled \
-	--webhook.encryption-key-file $(OPENAPI_WEBHOOK_KEY_FILE)
+	--webhook.encryption-key-file $(OPENAPI_WEBHOOK_KEY_FILE) \
+	--secrets.enabled --secrets.active-key-file $(OPENAPI_BUSINESS_KEY_FILE)
 COVERAGE_MIN ?= 90
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_RAW_PROFILE ?= coverage.raw.out
@@ -87,6 +89,9 @@ DOCKER_TEST_HOST ?= 127.0.0.1
 MYSQL8_IMAGE ?= mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
 PROMTOOL ?= promtool
 ifeq ($(OS),Windows_NT)
+# Recursive native make must receive DOCKER_CMD verbatim. Git Bash otherwise
+# rewrites its embedded drive path as a path list while forwarding MAKEFLAGS.
+export MSYS_NO_PATHCONV := 1
 MKDIR_OUTPUT = powershell.exe -NoProfile -NonInteractive -Command "New-Item -ItemType Directory -Force -Path '$(dir $(OUTPUT))' | Out-Null"
 else
 MKDIR_OUTPUT = mkdir -p $(dir $(OUTPUT))
@@ -95,11 +100,23 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/internal/infra/jobs \
 	7link.com/platform/internal/governance \
 	7link.com/platform/internal/delivery \
+	7link.com/platform/internal/clientwork \
+	7link.com/platform/internal/planning \
+	7link.com/platform/internal/templates \
+	7link.com/platform/internal/performance \
+	7link.com/platform/internal/yunxiao \
+	7link.com/platform/internal/budget \
+	7link.com/platform/internal/infra/realtime \
+	7link.com/platform/internal/notification \
 	7link.com/platform/internal/fleet \
+	7link.com/platform/internal/execution \
 	7link.com/platform/internal/intake \
 	7link.com/platform/internal/collab \
+	7link.com/platform/internal/agents \
+	7link.com/platform/internal/knowledge \
 	7link.com/platform/internal/infra/events \
 	7link.com/platform/internal/infra/idempotency \
+	7link.com/platform/internal/infra/secrets \
 	7link.com/platform/internal/files \
 	7link.com/platform/internal/infra/audit \
 	7link.com/platform/internal/infra/configinspector \
@@ -314,7 +331,7 @@ test:
 # the union of covered blocks, so only the numerator can grow.
 test-coverage:
 	@packages="$$(go list ./... | grep -Ev '/proto/gen/go/|/node_modules/|/dbgen$$')"; \
-	go test -count=1 -covermode=atomic -coverpkg="$$(echo $$packages | tr ' ' ',')" -coverprofile="$(COVERAGE_RAW_PROFILE)" $$packages
+	go test -timeout=60m -count=1 -covermode=atomic -coverpkg="$$(echo $$packages | tr ' ' ',')" -coverprofile="$(COVERAGE_RAW_PROFILE)" $$packages
 	@awk 'NR == 1 || ($$1 !~ /\/cmd\/7link-api\/main.go:/ && $$1 !~ /\/cmd\/infra-api\/main.go:/ && $$1 !~ /\.gen\.go:/ && $$1 !~ /\/query\/gen\.go:/)' \
 		"$(COVERAGE_RAW_PROFILE)" > "$(COVERAGE_PROFILE)"
 	@coverage="$$(go tool cover -func="$(COVERAGE_PROFILE)" | awk '/^total:/ {gsub(/%/, "", $$3); print $$3}')"; \

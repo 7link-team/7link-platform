@@ -73,7 +73,7 @@ func migratePlatformAdminDatabase(t *testing.T, config PlatformAdminConfig) {
 
 func newPlatformAdminDSN(t *testing.T) string {
 	t.Helper()
-	return filepath.Join(t.TempDir(), "platform-admin.sqlite")
+	return filepath.Join(t.TempDir(), "platform-admin.sqlite") + "?_journal_mode=WAL&_busy_timeout=30000"
 }
 
 // TestPlatformAdminBootstrapCreatesTheFirstAdministrator is the end-to-end

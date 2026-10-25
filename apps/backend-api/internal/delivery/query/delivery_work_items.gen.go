@@ -28,6 +28,11 @@ func newWorkItem(db *gorm.DB, opts ...gen.DOOption) workItem {
 
 	tableName := _workItem.workItemDo.TableName()
 	_workItem.ALL = field.NewAsterisk(tableName)
+	_workItem.ReopenedFromWorkItemID = field.NewField(tableName, "reopened_from_work_item_id")
+	_workItem.EscapedFromStage = field.NewString(tableName, "escaped_from_stage")
+	_workItem.ScheduledStart = field.NewTime(tableName, "scheduled_start")
+	_workItem.ScheduledEnd = field.NewTime(tableName, "scheduled_end")
+	_workItem.ScheduleTimezone = field.NewString(tableName, "schedule_timezone")
 	_workItem.TenantID = field.NewField(tableName, "tenant_id")
 	_workItem.ID = field.NewField(tableName, "id")
 	_workItem.ProjectID = field.NewField(tableName, "project_id")
@@ -74,6 +79,7 @@ func newWorkItem(db *gorm.DB, opts ...gen.DOOption) workItem {
 	_workItem.AccountablePrincipalID = field.NewField(tableName, "accountable_principal_id")
 	_workItem.AutonomyLevel = field.NewString(tableName, "autonomy_level")
 	_workItem.Objective = field.NewString(tableName, "objective")
+	_workItem.OutOfScopeConfirmedAt = field.NewTime(tableName, "out_of_scope_confirmed_at")
 	_workItem.OutOfScope = field.NewString(tableName, "out_of_scope")
 	_workItem.ContextRefs = field.NewString(tableName, "context_refs")
 	_workItem.VerificationPlan = field.NewString(tableName, "verification_plan")
@@ -99,6 +105,7 @@ func newWorkItem(db *gorm.DB, opts ...gen.DOOption) workItem {
 	_workItem.IntroducedStage = field.NewString(tableName, "introduced_stage")
 	_workItem.IntroducedReason = field.NewString(tableName, "introduced_reason")
 	_workItem.Module = field.NewString(tableName, "module")
+	_workItem.DefectDetails = field.NewString(tableName, "defect_details")
 	_workItem.DefectStage = field.NewString(tableName, "defect_stage")
 	_workItem.ActivitySeq = field.NewInt64(tableName, "activity_seq")
 	_workItem.CreatedAt = field.NewTime(tableName, "created_at")
@@ -116,6 +123,11 @@ type workItem struct {
 	workItemDo workItemDo
 
 	ALL                    field.Asterisk
+	ReopenedFromWorkItemID field.Field
+	EscapedFromStage       field.String
+	ScheduledStart         field.Time
+	ScheduledEnd           field.Time
+	ScheduleTimezone       field.String
 	TenantID               field.Field
 	ID                     field.Field
 	ProjectID              field.Field
@@ -162,6 +174,7 @@ type workItem struct {
 	AccountablePrincipalID field.Field
 	AutonomyLevel          field.String
 	Objective              field.String
+	OutOfScopeConfirmedAt  field.Time
 	OutOfScope             field.String
 	ContextRefs            field.String
 	VerificationPlan       field.String
@@ -187,6 +200,7 @@ type workItem struct {
 	IntroducedStage        field.String
 	IntroducedReason       field.String
 	Module                 field.String
+	DefectDetails          field.String
 	DefectStage            field.String
 	ActivitySeq            field.Int64
 	CreatedAt              field.Time
@@ -210,6 +224,11 @@ func (w workItem) As(alias string) *workItem {
 
 func (w *workItem) updateTableName(table string) *workItem {
 	w.ALL = field.NewAsterisk(table)
+	w.ReopenedFromWorkItemID = field.NewField(table, "reopened_from_work_item_id")
+	w.EscapedFromStage = field.NewString(table, "escaped_from_stage")
+	w.ScheduledStart = field.NewTime(table, "scheduled_start")
+	w.ScheduledEnd = field.NewTime(table, "scheduled_end")
+	w.ScheduleTimezone = field.NewString(table, "schedule_timezone")
 	w.TenantID = field.NewField(table, "tenant_id")
 	w.ID = field.NewField(table, "id")
 	w.ProjectID = field.NewField(table, "project_id")
@@ -256,6 +275,7 @@ func (w *workItem) updateTableName(table string) *workItem {
 	w.AccountablePrincipalID = field.NewField(table, "accountable_principal_id")
 	w.AutonomyLevel = field.NewString(table, "autonomy_level")
 	w.Objective = field.NewString(table, "objective")
+	w.OutOfScopeConfirmedAt = field.NewTime(table, "out_of_scope_confirmed_at")
 	w.OutOfScope = field.NewString(table, "out_of_scope")
 	w.ContextRefs = field.NewString(table, "context_refs")
 	w.VerificationPlan = field.NewString(table, "verification_plan")
@@ -281,6 +301,7 @@ func (w *workItem) updateTableName(table string) *workItem {
 	w.IntroducedStage = field.NewString(table, "introduced_stage")
 	w.IntroducedReason = field.NewString(table, "introduced_reason")
 	w.Module = field.NewString(table, "module")
+	w.DefectDetails = field.NewString(table, "defect_details")
 	w.DefectStage = field.NewString(table, "defect_stage")
 	w.ActivitySeq = field.NewInt64(table, "activity_seq")
 	w.CreatedAt = field.NewTime(table, "created_at")
@@ -312,7 +333,12 @@ func (w *workItem) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (w *workItem) fillFieldMap() {
-	w.fieldMap = make(map[string]field.Expr, 78)
+	w.fieldMap = make(map[string]field.Expr, 85)
+	w.fieldMap["reopened_from_work_item_id"] = w.ReopenedFromWorkItemID
+	w.fieldMap["escaped_from_stage"] = w.EscapedFromStage
+	w.fieldMap["scheduled_start"] = w.ScheduledStart
+	w.fieldMap["scheduled_end"] = w.ScheduledEnd
+	w.fieldMap["schedule_timezone"] = w.ScheduleTimezone
 	w.fieldMap["tenant_id"] = w.TenantID
 	w.fieldMap["id"] = w.ID
 	w.fieldMap["project_id"] = w.ProjectID
@@ -359,6 +385,7 @@ func (w *workItem) fillFieldMap() {
 	w.fieldMap["accountable_principal_id"] = w.AccountablePrincipalID
 	w.fieldMap["autonomy_level"] = w.AutonomyLevel
 	w.fieldMap["objective"] = w.Objective
+	w.fieldMap["out_of_scope_confirmed_at"] = w.OutOfScopeConfirmedAt
 	w.fieldMap["out_of_scope"] = w.OutOfScope
 	w.fieldMap["context_refs"] = w.ContextRefs
 	w.fieldMap["verification_plan"] = w.VerificationPlan
@@ -384,6 +411,7 @@ func (w *workItem) fillFieldMap() {
 	w.fieldMap["introduced_stage"] = w.IntroducedStage
 	w.fieldMap["introduced_reason"] = w.IntroducedReason
 	w.fieldMap["module"] = w.Module
+	w.fieldMap["defect_details"] = w.DefectDetails
 	w.fieldMap["defect_stage"] = w.DefectStage
 	w.fieldMap["activity_seq"] = w.ActivitySeq
 	w.fieldMap["created_at"] = w.CreatedAt

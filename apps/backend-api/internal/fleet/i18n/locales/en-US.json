@@ -1,0 +1,19 @@
+{
+  "forbidden": "Permission denied.",
+  "not_found": "Machine not found.",
+  "invalid": "Invalid machine request.",
+  "conflict": "Machine state or version changed.",
+  "unavailable": "Machine service is unavailable.",
+  "slow_down": "Polling too frequently. Increase the polling interval by five seconds.",
+  "pending": "Waiting for device authorization.",
+  "consumed": "Machine credential was already delivered; start a new enrollment if it was lost.",
+  "enrollment_failed": "Enrollment failed or expired. Start device authorization again.",
+  "ensemble_not_found": "Record not found.",
+  "ensemble_invalid": "Invalid ensemble request.",
+  "ensemble_conflict": "Ensemble state or version changed.",
+  "ensemble_unavailable": "Ensemble service unavailable.",
+  "terminal_disabled": "Remote terminal access is disabled.",
+  "terminal_closed": "This terminal session is closed or expired.",
+  "terminal_reauthentication": "Fresh browser verification is required.",
+  "tunnel_quota": "The machine tunnel stream limit has been reached."
+}

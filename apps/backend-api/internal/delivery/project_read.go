@@ -22,8 +22,9 @@ type projectClientView struct {
 
 type projectDetailView struct {
 	ProjectView
-	Name   string             `json:"name"`
-	Client *projectClientView `json:"client"`
+	BudgetTrend ProjectBudgetTrend `json:"budget_trend"`
+	Name        string             `json:"name"`
+	Client      *projectClientView `json:"client"`
 }
 
 type projectGetInput struct {
@@ -78,6 +79,13 @@ func (s *projectService) read(ctx context.Context, db *gorm.DB, tenant, id guid.
 		view.ProjectView, err = projectRecordView(*row)
 		if err != nil {
 			return err
+		}
+		view.BudgetTrend = ProjectBudgetTrend{Points: []ProjectBudgetPoint{}}
+		if s.budgetHistory != nil {
+			view.BudgetTrend, err = s.budgetHistory(ctx, tx, tenant, id, row.BudgetSpentMicros)
+			if err != nil {
+				return err
+			}
 		}
 		view.Name = entity.Name
 		if row.ClientEntityID != nil {

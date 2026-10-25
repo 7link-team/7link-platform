@@ -214,7 +214,9 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 	require.NoError(t, registry.Start(t.Context()))
 	_, api := humatest.New(t)
 	require.NoError(t, registry.RegisterHTTP(t.Context(), api))
-	assert.Len(t, identityOperationManifest(api.OpenAPI()), 34)
+	manifest := identityOperationManifest(api.OpenAPI())
+	assert.Len(t, manifest, 38)
+	assert.Contains(t, manifest, "request-contract:/principals/{principal_id}/profile|OPTIONS|/principals/{principal_id}/profile")
 	require.NoError(t, registry.Stop(context.Background()))
 	require.NoError(t, registry.Deinitialize(context.Background()))
 }

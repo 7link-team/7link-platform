@@ -1,0 +1,13 @@
+{
+  "spawn_warning_title": "派生预算已达 80%",
+  "spawn_warning_body": "授权 {{.grant_id}} 已结算 {{.spent_micros}} 微单位，总预算 {{.cap_micros}} 微单位。请检查剩余预算。",
+  "spawn_warning_email_subject": "派生预算已达 80%",
+  "spawn_warning_email_text": "授权 {{.grant_id}} 已结算 {{.spent_micros}} 微单位，总预算 {{.cap_micros}} 微单位。",
+  "spawn_warning_email_html": "<p>授权 {{.grant_id}} 已结算 {{.spent_micros}} 微单位，总预算 {{.cap_micros}} 微单位。</p>",
+  "escape_not_found": "质量穿透记录不存在。",
+  "escape_decided": "学习记录已被决定或版本已过期。",
+  "spawn_invalid": "编制授权范围无效或主管 Agent 不符合条件。",
+  "spawn_quota": "编制名额或今日新建次数已达上限。",
+  "spawn_budget": "编制授权预算已耗尽。",
+  "spawn_active": "该主管 Agent 已有未终结的编制授权。"
+}

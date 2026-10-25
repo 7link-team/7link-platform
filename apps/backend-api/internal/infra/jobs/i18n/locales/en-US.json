@@ -1,0 +1,8 @@
+{
+  "menu_jobs": "Background jobs",
+  "menu_schedules": "Scheduled jobs",
+  "version_required": "The If-Match header is required.",
+  "version_conflict": "The job or schedule was modified. Reload it and try again.",
+  "invalid_transition": "The job or schedule does not allow this operation in its current state.",
+  "schedule_active": "This schedule already has a pending or running job."
+}

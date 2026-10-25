@@ -26,7 +26,7 @@ func (a *AccountObjects) CollectAccountObjects(ctx context.Context, db *gorm.DB,
 		return after, err
 	}
 	intent := q.AccountPreparation
-	rows, err := intent.WithContext(ctx).Where(intent.BackendID.Eq(a.backend), intent.State.In("writing", "ready", "attached", "releasing", "abandoned"), intent.ID.Gt(after)).Order(intent.ID.Asc()).Limit(limit).Find()
+	rows, err := intent.WithContext(ctx).Where(intent.BackendID.In(a.readableBackends()...), intent.State.In("writing", "ready", "attached", "releasing", "abandoned"), intent.ID.Gt(after)).Order(intent.ID.Asc()).Limit(limit).Find()
 	if err != nil {
 		return after, err
 	}

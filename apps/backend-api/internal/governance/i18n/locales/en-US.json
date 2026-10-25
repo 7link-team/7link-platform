@@ -1,0 +1,13 @@
+{
+  "spawn_warning_title": "Spawn budget reached 80%",
+  "spawn_warning_body": "Grant {{.grant_id}} has settled cost {{.spent_micros}} of {{.cap_micros}} micros. Review the remaining budget.",
+  "spawn_warning_email_subject": "Spawn budget reached 80%",
+  "spawn_warning_email_text": "Grant {{.grant_id}} has settled cost {{.spent_micros}} of {{.cap_micros}} micros.",
+  "spawn_warning_email_html": "<p>Grant {{.grant_id}} has settled cost {{.spent_micros}} of {{.cap_micros}} micros.</p>",
+  "escape_not_found": "The quality escape was not found.",
+  "escape_decided": "This escape learning decision is stale or already recorded.",
+  "spawn_invalid": "The spawn grant scope or supervisor is invalid.",
+  "spawn_quota": "The spawn quota is full or below current usage.",
+  "spawn_budget": "The spawn grant budget is exhausted.",
+  "spawn_active": "This supervisor already has a live spawn grant."
+}

@@ -1,0 +1,13 @@
+{
+  "memory_quota": "Kuota memori Agent telah habis.",
+  "memory_secret": "Memori mengandungi rahsia yang disyaki.",
+  "memory_provenance": "Memori memerlukan pelaksanaan tamat terkini milik Agent ini dalam projek sama.",
+  "skill_frontmatter": "Frontmatter SKILL.md tidak sah.",
+  "skill_not_mountable": "Versi kemahiran ini tidak dapat dipasang.",
+  "forbidden": "Akses pengetahuan ditolak.",
+  "not_found": "Entri pengetahuan tidak ditemukan.",
+  "invalid": "Input pengetahuan tidak sah.",
+  "conflict": "Versi atau keadaan pengetahuan telah berubah.",
+  "unavailable": "Pengetahuan tidak tersedia buat sementara.",
+  "skill_distillation_not_accepted": "Penyulingan kemahiran memerlukan item kerja yang diterima."
+}

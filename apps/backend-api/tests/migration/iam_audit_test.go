@@ -1,16 +1,105 @@
 package migration_test
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 
 	iamaudit "7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
 	goosex "7link.com/platform/pkg/extension/goose"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/tests/internal/testdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestIAMAuditBusinessFilterAcrossEngines(t *testing.T) {
+	engines := []struct {
+		name, dialect string
+		open          func(*testing.T) (*sql.DB, string)
+	}{
+		{"mysql", "mysql", testdb.OpenMySQLWithDSN}, {"postgres", "postgres", testdb.OpenPostgresWithDSN},
+	}
+	if dsn := os.Getenv("MYSQL8_DSN"); dsn != "" {
+		engines = append(engines, struct {
+			name, dialect string
+			open          func(*testing.T) (*sql.DB, string)
+		}{"mysql8", "mysql", func(t *testing.T) (*sql.DB, string) {
+			raw, err := sql.Open("mysql", dsn)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, raw.Close()) })
+			verifyRealMySQLServer(t, raw)
+			return raw, dsn
+		}})
+	}
+	for _, engine := range engines {
+		t.Run(engine.name, func(t *testing.T) {
+			raw, dsn := engine.open(t)
+			source := (&iamaudit.Module{}).MigrationSource()
+			source.Prefix = "business_filter_"
+			require.NoError(t, goosex.Migrate(t.Context(), raw, source, engine.dialect))
+			router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{"primary": {Type: engine.dialect, DSN: dsn, Readable: true, Writable: true}})
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, router.Close()) })
+			ids, err := guid.New(1)
+			require.NoError(t, err)
+			service := iamaudit.NewService(appenv.NewRuntime(appenv.NewIdentity("test", "1"), appenv.WithDatabase(router), appenv.WithTablePrefix(source.Prefix)), ids)
+			var wanted []guid.ID
+			for i := range 9 {
+				detail := map[string]any{"project_id": "3", "actor_kind": "AGENT", "authority_source": "POLICY:dispatch_auto"}
+				in := iamaudit.EventInput{TenantID: 1, EventType: "dispatch_auto.applied", Outcome: "success", Detail: detail}
+				switch i {
+				case 1:
+					detail["project_id"] = 3
+				case 2:
+					detail["project_id"] = "33"
+				case 3:
+					detail["project_id"] = nil
+				case 4:
+					delete(detail, "actor_kind")
+				case 5:
+					detail["authority_source"] = "POLICY:DISPATCH_AUTO"
+				case 6:
+					in.EventType = "dispatchXauto.applied"
+				case 7:
+					in.TenantID = 2
+				case 8:
+					in.EventType = "DISPATCH_AUTO.applied"
+				}
+				event, err := service.Append(t.Context(), in)
+				require.NoError(t, err)
+				if i < 2 {
+					wanted = append(wanted, event.ID)
+				}
+			}
+			filter := iamaudit.Filter{TenantID: 1, ProjectID: 3, Module: "dispatch_auto", ActorKind: "AGENT", AuthoritySource: "POLICY:dispatch_auto", Limit: 1}
+			page, total, err := service.List(t.Context(), filter)
+			require.NoError(t, err)
+			require.EqualValues(t, 2, total)
+			require.Len(t, page, 1)
+			require.Equal(t, wanted[1], page[0].ID)
+			snapshot, err := service.PrepareExport(t.Context(), filter)
+			require.NoError(t, err)
+			var output bytes.Buffer
+			require.NoError(t, service.WriteExport(t.Context(), snapshot, &output))
+			lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+			require.Len(t, lines, 4)
+			for i := range 2 {
+				var entry struct {
+					Event iamaudit.Event `json:"event"`
+				}
+				require.NoError(t, json.Unmarshal([]byte(lines[i+1]), &entry))
+				require.Equal(t, wanted[i], entry.Event.ID)
+			}
+		})
+	}
+}
 
 const (
 	auditHashA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

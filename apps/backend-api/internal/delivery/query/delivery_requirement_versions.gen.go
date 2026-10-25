@@ -28,6 +28,8 @@ func newRequirementVersion(db *gorm.DB, opts ...gen.DOOption) requirementVersion
 
 	tableName := _requirementVersion.requirementVersionDo.TableName()
 	_requirementVersion.ALL = field.NewAsterisk(tableName)
+	_requirementVersion.AcceptanceSuite = field.NewString(tableName, "acceptance_suite")
+	_requirementVersion.SuiteHash = field.NewString(tableName, "suite_hash")
 	_requirementVersion.TenantID = field.NewField(tableName, "tenant_id")
 	_requirementVersion.ID = field.NewField(tableName, "id")
 	_requirementVersion.ProjectID = field.NewField(tableName, "project_id")
@@ -50,20 +52,22 @@ func newRequirementVersion(db *gorm.DB, opts ...gen.DOOption) requirementVersion
 type requirementVersion struct {
 	requirementVersionDo requirementVersionDo
 
-	ALL            field.Asterisk
-	TenantID       field.Field
-	ID             field.Field
-	ProjectID      field.Field
-	RequirementID  field.Field
-	VersionNo      field.Int
-	Title          field.String
-	Description    field.String
-	Priority       field.Int
-	Criteria       field.String
-	ChangeRecordID field.Field
-	ContentHash    field.String
-	CreatedAt      field.Time
-	CreatedBy      field.Field
+	ALL             field.Asterisk
+	AcceptanceSuite field.String
+	SuiteHash       field.String
+	TenantID        field.Field
+	ID              field.Field
+	ProjectID       field.Field
+	RequirementID   field.Field
+	VersionNo       field.Int
+	Title           field.String
+	Description     field.String
+	Priority        field.Int
+	Criteria        field.String
+	ChangeRecordID  field.Field
+	ContentHash     field.String
+	CreatedAt       field.Time
+	CreatedBy       field.Field
 
 	fieldMap map[string]field.Expr
 }
@@ -80,6 +84,8 @@ func (r requirementVersion) As(alias string) *requirementVersion {
 
 func (r *requirementVersion) updateTableName(table string) *requirementVersion {
 	r.ALL = field.NewAsterisk(table)
+	r.AcceptanceSuite = field.NewString(table, "acceptance_suite")
+	r.SuiteHash = field.NewString(table, "suite_hash")
 	r.TenantID = field.NewField(table, "tenant_id")
 	r.ID = field.NewField(table, "id")
 	r.ProjectID = field.NewField(table, "project_id")
@@ -121,7 +127,9 @@ func (r *requirementVersion) GetFieldByName(fieldName string) (field.OrderExpr, 
 }
 
 func (r *requirementVersion) fillFieldMap() {
-	r.fieldMap = make(map[string]field.Expr, 13)
+	r.fieldMap = make(map[string]field.Expr, 15)
+	r.fieldMap["acceptance_suite"] = r.AcceptanceSuite
+	r.fieldMap["suite_hash"] = r.SuiteHash
 	r.fieldMap["tenant_id"] = r.TenantID
 	r.fieldMap["id"] = r.ID
 	r.fieldMap["project_id"] = r.ProjectID

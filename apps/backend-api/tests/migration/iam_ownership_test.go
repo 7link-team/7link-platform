@@ -68,12 +68,12 @@ func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 // iamOwnedTableCount is how many tables the contracts below claim between them.
 // It is one constant because two tests count the same set: a table added to a
 // contract and not to the database, or the other way round, has to fail in both.
-const iamOwnedTableCount = 78
+const iamOwnedTableCount = 80
 
 func iamMigrationContracts() []iamMigrationContract {
 	return []iamMigrationContract{
 		{name: "iam", tables: []string{
-			"iam_entities", "iam_field_policies", "iam_menus", "iam_platform_administrators", "iam_platform_grants",
+			"iam_entities", "iam_field_policies", "iam_membership_periods", "iam_menu_contributions", "iam_menus", "iam_platform_administrators", "iam_platform_grants",
 			"iam_policy_revisions", "iam_relationships", "iam_resource_relationships", "iam_role_bindings",
 			"iam_role_members", "iam_role_permissions", "iam_roles", "iam_temporary_role_grants", "iam_tenant_members",
 		}, module: &iamcore.Module{}},
@@ -124,6 +124,7 @@ func iamMigrationTables(t *testing.T, source goosex.Source, dialect string) []st
 	root, err := fs.Sub(source.FS, subdirectory)
 	require.NoError(t, err)
 	tables := make(map[string]struct{})
+	renamed := map[string]string{}
 	require.NoError(t, fs.WalkDir(root, ".", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil || entry.IsDir() || filepath.Ext(path) != ".sql" || strings.Contains(entry.Name(), "constraints") {
 			return walkErr
@@ -135,8 +136,20 @@ func iamMigrationTables(t *testing.T, source goosex.Source, dialect string) []st
 		for _, match := range createIAMTablePattern.FindAllSubmatch(contents, -1) {
 			tables[strings.ToLower(string(match[1]))] = struct{}{}
 		}
+		// SQLite rebuilds tables through temporary names; ownership is the
+		// resulting table name, not the transient CREATE name.
+		rename := regexp.MustCompile(`(?i)ALTER\s+TABLE\s+\{\{\.Prefix\}\}(iam_[a-z0-9_]+)\s+RENAME\s+TO\s+\{\{\.Prefix\}\}(iam_[a-z0-9_]+)`)
+		for _, match := range rename.FindAllSubmatch(contents, -1) {
+			renamed[strings.ToLower(string(match[1]))] = strings.ToLower(string(match[2]))
+		}
+
 		return nil
 	}))
+	for from, to := range renamed {
+		if _, exists := tables[to]; exists {
+			delete(tables, from)
+		}
+	}
 	result := make([]string, 0, len(tables))
 	for table := range tables {
 		result = append(result, table)

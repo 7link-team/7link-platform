@@ -29,13 +29,17 @@ func TestManifestPrivilegedPermissionsStaySeparated(t *testing.T) {
 			require.Equal(t, []string{strings.TrimPrefix(role.Key, "delegated_")}, role.Codes)
 		}
 	}
-	require.Len(t, roles, 14, "spec08 table has seven base roles, intake client, production operator, and five carriers")
+	require.Len(t, roles, 15, "spec08 roles plus the spec12 Human tester role")
 	require.Equal(t, []string{"production_access"}, roles["production_operator"].Codes)
 	for _, code := range []string{"machine_revoke", "gateway_manage", "policy_manage", "takeover", "project_mode_change", "delegation_grant", "spawn_grant_manage", "planning_settings_manage", "integration_manage", "machine_access_manage", "agent_workspace_read", "tool_catalog_manage"} {
 		require.Contains(t, roles["team_owner"].Codes, code)
 		require.NotContains(t, roles["delivery_lead"].Codes, code)
 	}
 	require.Contains(t, roles["team_owner"].Codes, "access_request_approve")
+	require.Contains(t, roles["team_owner"].Codes, "project_takeover")
+	require.NotContains(t, roles["delivery_lead"].Codes, "project_takeover")
+	require.True(t, RulesForAction("project_takeover", "AGENT").HumanOnly)
+	require.True(t, RulesForAction("project_takeover", "HUMAN").NonDelegable)
 	require.NotContains(t, roles["delivery_lead"].Codes, "access_request_approve")
 	require.NotContains(t, roles["engineer"].Codes, "decision_approve")
 	require.NotContains(t, roles["engineer"].Codes, "decision_force_valid")

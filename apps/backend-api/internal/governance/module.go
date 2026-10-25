@@ -7,17 +7,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"sync"
 	"time"
 
+	"7link.com/platform/internal/fleet"
+	governancei18n "7link.com/platform/internal/governance/i18n"
 	"7link.com/platform/internal/governance/query"
 	"7link.com/platform/internal/iam/audit"
+	iamauthn "7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/dlock"
+	"7link.com/platform/internal/infra/events"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/internal/infra/idempotency"
 	"7link.com/platform/internal/infra/jobs"
+	"7link.com/platform/internal/infra/realtime"
+	"7link.com/platform/internal/intake"
+	"7link.com/platform/internal/knowledge"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"gorm.io/gorm"
 )
@@ -44,14 +57,34 @@ type SeededRoles struct {
 
 // Module owns governance records and capabilities.
 type Module struct {
-	runtime       *appenv.Runtime
-	config        Config
-	seed          *seedService
-	tenants       organization.TenantEnumerator
-	queue         jobs.Queue
-	explain       core.AuthorizationExplanation
-	systemActions systemActionRegistry
-	policies      policyRegistry
+	businessAudit      audit.BusinessReader
+	escapeEval         EscapeEvalWriter
+	temporaryGrants    core.TemporaryGrantReader
+	qualityReviews     QualityReviewSource
+	pendingRules       knowledge.PendingRules
+	spawnRegistration  fleet.AgentRegistrationCommands
+	automatedDecisions AutomatedDecisionSource
+	learningRules      knowledge.LearningRules
+	spawnCosts         spawnCostSources
+	localeOnce         sync.Once
+	localeErr          error
+	spawnFence         dlock.TransactionGuard
+	spawnDirectory     fleet.SpawnGrantDirectory
+	claimSource        ClaimEvaluationSource
+	delegations        delegationServices
+	runtime            *appenv.Runtime
+	config             Config
+	seed               *seedService
+	tenants            organization.TenantEnumerator
+	queue              jobs.Queue
+	explain            core.AuthorizationExplanation
+	systemActions      systemActionRegistry
+	policies           policyRegistry
+	inbox              inboxRegistry
+	registrar          *authz.Registrar
+	principals         identity.PrincipalStateStore
+	publisher          events.Publisher
+	reauth             authn.ReauthenticationConsumer
 }
 
 func NewModule(rt *appenv.Runtime, config Config) *Module {
@@ -60,10 +93,82 @@ func NewModule(rt *appenv.Runtime, config Config) *Module {
 func (*Module) ModuleName() string { return Name }
 func (m *Module) Enabled() bool    { return m != nil && m.config.Enabled }
 func (*Module) ModuleDependencies() []string {
-	return []string{guid.Name, core.Name, audit.Name, dlock.Name, organization.Name, jobs.Name}
+	return []string{platformi18n.Name, guid.Name, core.Name, audit.Name, dlock.Name, organization.Name, jobs.Name, identity.Name, events.Name, iamauthn.Name, fleet.Name, idempotency.Name, knowledge.Name, intake.Name, realtime.Name}
 }
 
 func (m *Module) ProvideServices(services *module.Services) error {
+	if err := m.provideProjectTerminal(services); err != nil {
+		return err
+	}
+	if err := m.provideArchiveEvaluation(services); err != nil {
+		return err
+	}
+	if err := m.provideSpawnModes(services); err != nil {
+		return err
+	}
+	if err := module.Provide[SpawnNotificationFacts](services, m.spawnNotificationFacts); err != nil {
+		return err
+	}
+	if err := module.Provide[IncidentNotificationFacts](services, m.incidentNotificationFacts); err != nil {
+		return err
+	}
+	if err := module.Provide[QualityReviewConnector](services, QualityReviewConnector{Bind: m.bindQualityReviews}); err != nil {
+		return err
+	}
+	if err := module.Provide[AppliedDelegations](services, m.appliedDelegationsOn); err != nil {
+		return err
+	}
+	if err := module.Provide[ProjectLead](services, m.projectLeadOn); err != nil {
+		return err
+	}
+	if err := m.inbox.Register(InboxSource{Kind: "MEMORY_RULE_APPROVAL", Read: m.memoryRuleInbox}); err != nil {
+		return err
+	}
+	if err := m.inbox.Register(InboxSource{Kind: "ESCALATION_ALERT", Read: m.escalationInbox}); err != nil {
+		return err
+	}
+	if err := m.inbox.Register(InboxSource{Kind: "AGENT_SPAWN_APPROVAL", Read: m.agentSpawnRequestInbox}); err != nil {
+		return err
+	}
+	if err := module.Provide[AutomatedDecisionConnector](services, AutomatedDecisionConnector{Bind: m.bindAutomatedDecisions}); err != nil {
+		return err
+	}
+	if err := m.inbox.Register(InboxSource{Kind: "QUALITY_ESCAPE", Read: m.qualityEscapeInbox}); err != nil {
+		return err
+	}
+	if err := module.Provide[DelegationNotificationFacts](services, m.delegationNotificationFacts); err != nil {
+		return err
+	}
+	if err := m.provideSpawnCosts(services); err != nil {
+		return err
+	}
+	if err := module.Provide[SpawnGrantUsage](services, SpawnGrantUsage{Reserve: m.reserveSpawnOn, Release: m.releaseSpawnOn}); err != nil {
+		return err
+	}
+	if err := module.Provide[ClaimEvaluationConnector](services, ClaimEvaluationConnector{Bind: m.bindClaimEvaluationSource}); err != nil {
+		return err
+	}
+	if err := module.Provide[DelegationProjectConnector](services, DelegationProjectConnector{Bind: m.bindDelegationProjects}); err != nil {
+		return err
+	}
+	if err := module.Provide[WorkflowDecisions](services, WorkflowDecisions{RecordOn: m.recordWorkflowDecisionOn, ReadOn: m.readWorkflowDecisionOn}); err != nil {
+		return err
+	}
+	if err := module.Provide[SettingsReader](services, SettingsReader(m.readSettingsOn)); err != nil {
+		return err
+	}
+	if err := module.Provide[EscalationRecorder](services, EscalationRecorder(m.recordEscalationOn)); err != nil {
+		return err
+	}
+	if err := module.Provide[InboxSources](services, &m.inbox); err != nil {
+		return err
+	}
+	if err := module.Provide[DeliveryAuthority](services, DeliveryAuthority(m.deliveryAuthority)); err != nil {
+		return err
+	}
+	if err := module.Provide[ProjectStageAuthority](services, ProjectStageAuthority(m.projectStageAuthority)); err != nil {
+		return err
+	}
 	if err := module.Provide[ProjectCreationAuthority](services, ProjectCreationAuthority(m.projectCreationAuthority)); err != nil {
 		return err
 	}
@@ -73,13 +178,100 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[SystemActions](services, &m.systemActions); err != nil {
 		return err
 	}
+	if err := m.provideSystemActions(services); err != nil {
+		return err
+	}
 	return module.Provide[PolicyRegistry](services, &m.policies)
 }
 func (m *Module) InjectServices(services *module.Services) error {
 	if m == nil || m.seed == nil {
 		return ErrUnavailable
 	}
+	if err := m.bindInboxRealtime(services); err != nil {
+		return err
+	}
+	if err := m.injectRetirement(services); err != nil {
+		return err
+	}
+	if err := m.injectProductionAuthority(services); err != nil {
+		return err
+	}
+	if err := m.bindAgentSpawn(services); err != nil {
+		return err
+	}
+	if err := m.bindIntakeInbox(services); err != nil {
+		return err
+	}
+	if source, err := module.Resolve[knowledge.PendingRules](services); err == nil {
+		m.pendingRules = source
+	} else if !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	if source, err := module.Resolve[fleet.AgentRegistrationCommands](services); err == nil {
+		m.spawnRegistration = source
+	} else if !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	if rules, err := module.Resolve[knowledge.LearningRules](services); err == nil {
+		m.learningRules = rules
+	} else if !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+
+	if err := m.bindAutoDispatch(services); err != nil {
+		return err
+	}
+	if err := m.injectDelegations(services); err != nil {
+		return err
+	}
+	var spawnErr error
+	if m.spawnDirectory, spawnErr = module.Resolve[fleet.SpawnGrantDirectory](services); spawnErr != nil {
+		return spawnErr
+	}
+	if m.spawnFence, spawnErr = module.Resolve[dlock.TransactionGuard](services); spawnErr != nil {
+		return spawnErr
+	}
+	subscribers, subscriberErr := module.Resolve[events.SubscriberCatalog](services)
+	if subscriberErr != nil {
+		return subscriberErr
+	}
+	if subscriberErr = subscribers.AddSubscribers(Name, events.Subscriber{Name: "business_governance.automated_decisions", EventTypes: []string{"work_item.state_changed"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: m.consumeAutomatedDecision}); subscriberErr != nil {
+		return subscriberErr
+	}
+	if subscriberErr = subscribers.AddSubscribers(Name, events.Subscriber{Name: "business_governance.quality_escapes", EventTypes: []string{"quality.escaped", "quality.escape_learning_proposed"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: m.consumeQualityEscape}); subscriberErr != nil {
+		return subscriberErr
+	}
+	if subscriberErr = subscribers.AddSubscribers(Name, events.Subscriber{Name: "business_governance.spawn_settlements", EventTypes: []string{"budget.settled"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: m.consumeSpawnSettlement}); subscriberErr != nil {
+		return subscriberErr
+	}
+	if subscriberErr = subscribers.AddSubscribers(Name, events.Subscriber{Name: "business_governance.escalation_evaluator", EventTypes: []string{"claim.submitted", "work_item.state_changed"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: m.evaluateClaimEvent}); subscriberErr != nil {
+		return subscriberErr
+	}
 	var err error
+	if m.principals, err = module.Resolve[identity.PrincipalStateStore](services); err != nil {
+		return err
+	}
+	if m.publisher, err = module.Resolve[events.Publisher](services); err != nil {
+		return err
+	}
+	if m.reauth, err = module.Resolve[authn.ReauthenticationConsumer](services); err != nil {
+		return err
+	}
+	catalog, err := module.Resolve[events.Catalog](services)
+	if err != nil {
+		return err
+	}
+	if err = catalog.AddTypes(Name, events.TypeSpec{Name: "governance.inbox_acknowledged", SchemaVersion: 1, SubjectKind: "inbox_item", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "governance.spawn_request_changed", SchemaVersion: 1, SubjectKind: "spawn_request", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "governance.automated_decision_recorded", SchemaVersion: 1, SubjectKind: "automated_decision", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "governance.workflow_decided", SchemaVersion: 1, SubjectKind: "workflow_decision", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "governance.settings_updated", SchemaVersion: 1, SubjectKind: "governance_settings", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "governance.rule_updated", SchemaVersion: 1, SubjectKind: "escalation_rule", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "governance.incident_changed", SchemaVersion: 1, SubjectKind: "escalation_incident", Realtime: events.RealtimeSignal}); err != nil {
+		return err
+	}
+	for _, kind := range []string{"spawn_grant.granted", "spawn_grant.updated", "spawn_grant.exhausted", "spawn_grant.revoked", "spawn_grant.expired", "spawn_grant.budget_threshold"} {
+		if err = catalog.AddTypes(Name, events.TypeSpec{Name: kind, SchemaVersion: 1, SubjectKind: "spawn_grant", Realtime: events.RealtimeSignal}); err != nil {
+			return err
+		}
+	}
+	if err = catalog.AddTypes(Name, events.TypeSpec{Name: "quality.escape_recorded", SchemaVersion: 1, SubjectKind: "quality_escape", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "quality.escape_learning_decided", SchemaVersion: 1, SubjectKind: "quality_escape", Realtime: events.RealtimeSignal}); err != nil {
+		return err
+	}
 	if m.seed.ids, err = module.Resolve[guid.Source](services); err != nil {
 		return err
 	}
@@ -87,6 +279,9 @@ func (m *Module) InjectServices(services *module.Services) error {
 		return err
 	}
 	if m.explain, err = module.Resolve[core.AuthorizationExplanation](services); err != nil {
+		return err
+	}
+	if m.businessAudit, err = module.Resolve[audit.BusinessReader](services); err != nil {
 		return err
 	}
 	if m.seed.audit, err = module.Resolve[audit.Appender](services); err != nil {
@@ -106,11 +301,32 @@ func (m *Module) InjectServices(services *module.Services) error {
 		return err
 	}
 	m.seed.registry = registrar.Registry()
+	m.registrar = registrar
+	if m.seed.registry == nil {
+		return nil // Initialize retains the existing missing-registry failure.
+	}
+	if err := m.seed.registry.Contribute([]authz.Action{
+		{Resource: "spawn_grant", Verb: "manage", Scope: authz.ActionScopeTenant, Summary: "Manage bounded Agent spawn grants"},
+		{Resource: "agent", Verb: "spawn", Scope: authz.ActionScopeTenant, Summary: "Create an Agent through a bounded policy grant"},
+		{Resource: "delegation", Verb: "grant", Scope: authz.ActionScopeTenant, DataScoped: true, Summary: "Grant and revoke bounded project delegation"},
+		{Resource: "workflow_gate", Verb: "team", Scope: authz.ActionScopeTenant, DataScoped: true, Summary: "Record team workflow gate decisions"},
+		{Resource: "workflow_gate", Verb: "client", Scope: authz.ActionScopeTenant, DataScoped: true, Summary: "Record client workflow gate decisions"},
+		{Resource: "brief", Verb: "sign", Scope: authz.ActionScopeTenant, DataScoped: true, Summary: "Sign requirement confirmation sheets"},
+		{Resource: "policy", Verb: "read", Scope: authz.ActionScopeTenant, Menu: true, Summary: "Read business authorization policies"},
+		{Resource: "policy", Verb: "manage", Scope: authz.ActionScopeTenant, Summary: "Manage business authorization policies"},
+		{Resource: "audit", Verb: "read", Scope: authz.ActionScopeTenant, Menu: true, Summary: "Read business audit events"},
+	}, nil); err != nil {
+		return err
+	}
 	return nil
 }
 func (m *Module) Initialize(context.Context) error {
 	if m == nil || m.seed == nil || m.seed.ids == nil || m.seed.roles.EnsureRoleOn == nil || m.seed.roles.GrantPermissionOn == nil || m.seed.roles.GrantConditionalPermissionOn == nil || m.seed.roles.SeedAdministratorMembersOn == nil || m.seed.audit == nil || m.seed.acquire == nil || m.seed.registry == nil || m.explain == nil {
 		return ErrUnavailable
+	}
+	m.localeOnce.Do(func() { m.localeErr = governancei18n.Register() })
+	if m.localeErr != nil {
+		return m.localeErr
 	}
 	if err := m.systemActions.seal(m.seed.registry); err != nil {
 		return err
@@ -125,23 +341,28 @@ func (m *Module) JobHandlers() []jobs.Handler {
 			return jobs.Permanent(ErrInvalidArgument)
 		}
 		return m.reconcileTenants(ctx)
-	}}}
+	}}, {Kind: JobNamespace + ".delegation_expiry", Run: m.expireDelegations}, {Kind: JobNamespace + ".spawn_grant_reconcile", Run: m.reconcileSpawnGrants}, {Kind: JobNamespace + ".spawn_request_reconcile", Run: m.reconcileAgentSpawnRequests}, {Kind: JobNamespace + ".delegation_activation", Run: m.activateScheduledDelegations}}
 }
 
 // JobSchedules declares hourly tenant role reconciliation. The platform sweep
 // owns tenant paging itself rather than using the active-tenant fanout handler.
 func (*Module) JobSchedules() []jobs.Schedule {
-	return []jobs.Schedule{{Name: JobNamespace + ".seed_reconcile", Kind: JobNamespace + ".seed_reconcile", Interval: time.Hour, TenantScope: jobs.ScopePlatform}}
+	return []jobs.Schedule{{Name: JobNamespace + ".seed_reconcile", Kind: JobNamespace + ".seed_reconcile", Interval: time.Hour, TenantScope: jobs.ScopePlatform}, {Name: JobNamespace + ".delegation_expiry", Kind: JobNamespace + ".delegation_expiry", Interval: 30 * time.Second, TenantScope: jobs.ScopePlatform}, {Name: JobNamespace + ".spawn_grant_reconcile", Kind: JobNamespace + ".spawn_grant_reconcile", Interval: 30 * time.Second, TenantScope: jobs.ScopePlatform}, {Name: JobNamespace + ".spawn_request_reconcile", Kind: JobNamespace + ".spawn_request_reconcile", Interval: 30 * time.Second, TenantScope: jobs.ScopePlatform}, {Name: JobNamespace + ".delegation_activation", Kind: JobNamespace + ".delegation_activation", Interval: 30 * time.Second, TenantScope: jobs.ScopePlatform}}
 }
 
-// Start persists the startup sweep. Every replica may submit a sweep; the
-// shared concurrency key serializes execution and the seed ledger makes replay
-// safe. A failed enqueue fails startup instead of silently skipping seeding.
+// Start persists one startup sweep per role manifest. Replicas and restarts
+// share the durable queue receipt; the hourly schedule owns subsequent sweeps.
+// Queue pressure must not prevent workers from starting and draining the queue.
 func (m *Module) Start(ctx context.Context) error {
 	if m == nil || m.queue == nil {
 		return ErrUnavailable
 	}
-	_, err := m.queue.Enqueue(ctx, nil, jobs.EnqueueRequest{Kind: JobNamespace + ".seed_reconcile", ConcurrencyKey: JobNamespace + ".seed_reconcile"})
+	kind := JobNamespace + ".seed_reconcile"
+	_, err := m.queue.Enqueue(ctx, nil, jobs.EnqueueRequest{Kind: kind, ConcurrencyKey: kind, IdempotencyKey: fmt.Sprintf("startup:manifest:%d", RoleManifestVersion)})
+	if errors.Is(err, jobs.ErrQueueFull) {
+		slog.WarnContext(ctx, "governance startup reconciliation deferred; hourly schedule will retry", "kind", kind, "error", err)
+		return nil
+	}
 	return err
 }
 func (m *Module) ensureTenant(ctx context.Context, tenantID guid.ID) error {
@@ -219,6 +440,9 @@ var (
 	_ module.Initializer             = (*Module)(nil)
 	_ module.Starter                 = (*Module)(nil)
 	_ module.MigrationSourceProvider = (*Module)(nil)
+	_ module.HTTPRegistrar           = (*Module)(nil)
 	_ jobs.HandlerProvider           = (*Module)(nil)
 	_ jobs.ScheduleProvider          = (*Module)(nil)
 )
+
+func (*Module) JobNamespace() string { return JobNamespace }

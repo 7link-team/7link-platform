@@ -1,0 +1,20 @@
+{
+  "comment_limit": "此批注线程已达到条数上限。",
+  "client_thread_read_only": "团队成员不能回复客户批注线程。",
+  "git_connector_unverified": "未经 Git 平台连接器核验。",
+  "evidence_attached": "已绑定声明的证据不能修改。",
+  "write_interrupted": "工作上下文已更新，请读取后重试。",
+  "seen_seq_required": "请读取工作项动态并提交 seen_seq。",
+  "forbidden": "没有权限。",
+  "approval_unavailable": "所需的人工审批协议或授权许可不可用。",
+  "not_found": "执行记录不存在。",
+  "invalid": "执行请求无效。",
+  "conflict": "执行状态或回执已改变。",
+  "unavailable": "执行能力暂不可用。",
+  "preview_port_not_owned": "此端口不属于当前执行。",
+  "preview_access_disabled": "此机器未开启远程预览。",
+  "preview_unavailable": "独立域名预览网关未配置或未连接。",
+  "preview_quota": "已达到此执行的预览会话数量上限。",
+  "anchor_invalid": "锚点与固定版本的制品内容不匹配。",
+  "anchor_kind_unavailable": "此锚点类型需要更高版本的查看器。"
+}

@@ -30,11 +30,12 @@ type deliveryListInput struct {
 }
 
 type subscriptionBody struct {
-	Name       string   `json:"name" minLength:"1" maxLength:"128"`
-	URL        string   `json:"url" minLength:"1" maxLength:"2048" doc:"Receiver endpoint; https unless the deployment permits plaintext"`
-	Secret     string   `json:"secret,omitempty" maxLength:"512" doc:"Signing secret; an empty value keeps the stored secret on update"`
-	EventTypes []string `json:"event_types,omitempty" maxItems:"64" doc:"Event types to deliver; omit for every type"`
-	Status     string   `json:"status,omitempty" enum:"active,disabled" default:"active"`
+	PayloadMode string   `json:"payload_mode,omitempty" enum:"audit,intake_metadata" default:"audit" doc:"Immutable protocol; intake_metadata requires a signing secret and sends only Intake event metadata"`
+	Name        string   `json:"name" minLength:"1" maxLength:"128"`
+	URL         string   `json:"url" minLength:"1" maxLength:"2048" doc:"Receiver endpoint; https unless the deployment permits plaintext"`
+	Secret      string   `json:"secret,omitempty" maxLength:"512" doc:"Signing secret; an empty value keeps the stored secret on update"`
+	EventTypes  []string `json:"event_types,omitempty" maxItems:"64" doc:"Event types to deliver; omit for every type"`
+	Status      string   `json:"status,omitempty" enum:"active,disabled" default:"active"`
 }
 
 type subscriptionCreateInput struct {

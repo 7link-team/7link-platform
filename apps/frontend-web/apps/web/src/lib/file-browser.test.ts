@@ -1,4 +1,40 @@
 import { describe, expect, it } from "bun:test"
+
+it("restores file filters and presentation from URL without changing the addressed directory", () => {
+  const params = new URLSearchParams(
+    "directory=12&preview=13&q=report&view=large&kind=file&sort=updated&descending=1"
+  )
+  const state = fileBrowserViewState(params)
+  expect(state).toEqual({
+    view: "large",
+    query: "report",
+    kind: "file",
+    sort: "updated",
+    descending: true,
+  })
+  const next = fileBrowserViewParams(params, {
+    ...state,
+    query: "revised",
+    view: "details",
+  })
+  expect(next.get("directory")).toBe("12")
+  expect(next.get("preview")).toBe("13")
+  expect(next.has("view")).toBe(false)
+  expect(fileBrowserViewState(next)).toEqual({
+    ...state,
+    query: "revised",
+    view: "details",
+  })
+  expect(
+    fileBrowserViewState(new URLSearchParams("view=bad&kind=bad&sort=bad"))
+  ).toEqual({
+    view: "details",
+    query: "",
+    kind: "all",
+    sort: "name",
+    descending: false,
+  })
+})
 import {
   classifyFilePresentation,
   fileBrowserChildren,
@@ -11,6 +47,8 @@ import {
   parseDroppedEntries,
   selectFileRange,
   visibleFileNodes,
+  fileBrowserViewState,
+  fileBrowserViewParams,
   type DroppedDataTransferItem,
   type DroppedFileSystemEntry,
   type FileBrowserNode,

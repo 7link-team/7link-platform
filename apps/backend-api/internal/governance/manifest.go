@@ -6,7 +6,7 @@ import (
 )
 
 // RoleManifestVersion changes when the declared default grants change.
-const RoleManifestVersion = 1
+const RoleManifestVersion = 3
 
 // defaultRoleManifest expands spec08 §3.3 and its D112/D119/D120 additions.
 // Lists are explicit: registry growth alone never grants an unknown permission.
@@ -14,6 +14,7 @@ const RoleManifestVersion = 1
 // Display names are stable IAM seed names; UI localization uses the role key.
 func defaultRoleManifest() []roleManifestEntry {
 	return []roleManifestEntry{
+		{Key: "tester", Name: "Tester", Codes: strings.Fields(`project_read requirement_read work_item_read work_item_write decision_approve decision_request_changes verification_run evidence_submit test_run_execute artifact_comment_write`)},
 		{Key: "team_owner", Name: "Team owner", Codes: strings.Fields(`
    intake_read intake_triage intake_convert intake_decline intake_channel_manage intake_submit
    project_read project_manage project_stage_change project_mode_change requirement_read requirement_write
@@ -25,7 +26,7 @@ func defaultRoleManifest() []roleManifestEntry {
    channel_read channel_post channel_manage
    goal_read goal_manage goal_member_manage plan_submit plan_confirm report_read report_submit report_confirm planning_settings_manage
    knowledge_read knowledge_write memory_approve knowledge_manage
-   policy_read policy_manage delegation_grant takeover audit_read spawn_grant_manage
+   policy_read policy_manage delegation_grant takeover project_takeover audit_read spawn_grant_manage
    andon_pull andon_clear exception_decide plan_approve acceptance_suite_manage template_manage integration_manage
    terminal_interact workspace_file_edit preview_share_approve machine_access_manage
    agent_workspace_read artifact_comment_write interaction_request tool_catalog_manage

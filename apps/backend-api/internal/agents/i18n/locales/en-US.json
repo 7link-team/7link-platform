@@ -1,0 +1,14 @@
+{
+  "forbidden": "Agent collaboration access denied.",
+  "retirement_name_mismatch": "Enter the Agent's current name exactly to confirm forced retirement.",
+  "not_found": "Agent collaboration entry not found.",
+  "invalid": "Invalid agents input.",
+  "conflict": "The agents version or state changed.",
+  "unavailable": "Agent collaboration is temporarily unavailable.",
+  "wake_failed": "Signed Agent wake delivery failed 20 times. Polling is now enabled; check the webhook endpoint.",
+  "wake_failed_title": "Agent webhook wake failed",
+  "wake_failed_body": "Agent {{.subject_id}} wake delivery failed {{.failures}} times. Polling is now enabled. Check the receiver endpoint.",
+  "wake_failed_email_subject": "Agent webhook wake failed",
+  "wake_failed_email_text": "Agent {{.subject_id}} wake delivery failed {{.failures}} times. Polling is now enabled. Check the receiver endpoint.",
+  "wake_failed_email_html": "<p>Agent {{.subject_id}} wake delivery failed {{.failures}} times. Polling is now enabled. Check the receiver endpoint.</p>"
+}

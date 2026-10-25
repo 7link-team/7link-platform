@@ -41,6 +41,7 @@ import { PageHeader } from "../../components/page-header"
 import { AvatarEditor } from "../../components/avatar-editor"
 import {
   iamApi,
+  getTenant,
   setTenant,
   type BrowserSession,
   type MfaEnrollment,
@@ -50,6 +51,8 @@ import {
 } from "../../lib/iam-api"
 import { useBranding } from "../../lib/branding"
 import { createPasskeyCredential } from "../../lib/webauthn"
+import { ProfileEditor } from "./profile"
+import { ProfilePreferences } from "./preferences"
 
 type MfaDialog =
   | "enroll-password"
@@ -303,6 +306,8 @@ export default function SecurityPage() {
       {section === "profile" && (
         <>
           {session && <AvatarEditor id={session.subject} />}
+          {session && <ProfileEditor key={session.subject} principal={session.subject} />}
+          {session && <ProfilePreferences principal={session.subject} tenant={getTenant()} />}
           <dl className="mb-5 grid gap-4 border-b py-5 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-muted-foreground">{t("username")}</dt>

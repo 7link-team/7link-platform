@@ -1,0 +1,47 @@
+import { toISOString } from "../../lib/membership-presentation"
+import { iamApi } from "../../lib/iam-api"
+export type ReportScope = "MEMBER" | "PROJECT" | "TEAM"
+export type PlanningKind = "goals" | "plans" | "reports"
+export type PlanItem = {id?: string; carried_from_item_id?: string; notes?: string; estimate_hours?: number; estimate_cost_micros?: string; carried_from_report_id?: string; carried_from_key?: string; carried_from_hash?: string; title: string; goal_id: string; kr: string; work_item_id?: string; category?: string; weight?: number; due_at?: string; completed_at?: string; completion_evidence?: string}
+export type GoalInput = {level: string; title: string; weight?: number; parent_goal_id?: string; parent_kr?: string; key_results: {key: string; title: string; weight?: number; source: "MANUAL" | "AUTO"; metric?: "ACCEPTED_WORK_ITEMS"; baseline: number; target: number; current: number; evidence?: string}[]}
+export type UncompletedItem = {detail_ai_drafted?: boolean; detail_confirmed?: boolean; key: string; reason: string; detail: string; carry_over: "CARRY_TO_NEXT" | "DROP" | "ESCALATE"; item: PlanItem}
+export type ReportInput = {retrospective_sections?: {went_well:string[]; problems:string[]; root_causes:string[]}; retrospective_ai_drafted?:boolean; retrospective_confirmed?:boolean; uncompleted_items?: UncompletedItem[]; status_explanation?: string; scope?: ReportScope; children?: {id: string; content_hash: string}[]; completed: {work_item_id: string; note?: string}[]; uncompleted: string; retrospective: string; next_plan: PlanItem[]; declared_confidence: string; improvement_plan?: {propose_memory?: boolean; memory_project_id?: string; action: string; owner_principal_id: string; due_date: string; kr_id?: string}[]}
+export type PlanningFacts = {execution_cost_micros?: number; execution_created?: number; execution_states?: Record<string, number>; work: {id: string; title: string; state: string; accepted_at?: string; result_id?: string}[]; result_count: number; handoff_count: number; missing_sources: string[]}
+export type PlanningRecord = {unconfirmed?: boolean; can_reopen?: boolean; due_at?: string; submitted_late?: boolean; author_id?: string; progress?: number; id: string; kind: string; project_id: string; principal_id: string; period_kind: string; period_start: string; state: string; content: GoalInput | {items: PlanItem[]; suggestions?: PlanItem[]} | ReportInput; content_hash: string; version: number; facts?: PlanningFacts; confirmed_by?: string; confirmed_at?: string}
+export type PlanningCheck = {report_progress?: {computed_progress?: number; expected_progress?: number; progress_lag?: number; expected_source?: string; missing_sources: string[]}; result: string; content_hash: string; facts: PlanningFacts; issues: {code: string; blocking: boolean; work_item_id?: string}[]}
+export type PlanningWrite = {project_id: string; principal_id: string; period_kind: string; period_start: string; goal?: GoalInput; plan?: {items: PlanItem[]}}
+export type GoalAlignment = {goal_id: string; version: number; coverage?: number; uncovered: string[]; contributors: {kr:string; principal_id:string; source:"OWNER"|"CHILD_GOAL"|"ASSIGNED"; child_goal_id?:string}[]; children: PlanningRecord[]; visibility_limited:boolean}
+const root = (tenant: string, kind: PlanningKind) => `/tenants/${encodeURIComponent(tenant)}/${kind}`
+export function planPath(tenant: string, project: string, id?: string): string {
+ const base = `/admin/${encodeURIComponent(tenant)}${project ? `/entities/${encodeURIComponent(project)}` : ""}/plans`
+ return id ? `${base}/${encodeURIComponent(id)}` : project ? base : `${base}/me`
+}
+const request = <T>(method: "GET" | "POST" | "PATCH", url: string, body?: unknown, key?: string, signal?: AbortSignal) => iamApi.deliveryResultRequest<T>({method, url}, {signal, ...(body === undefined ? {} : {body: JSON.stringify(body), headers: {"Idempotency-Key": key ?? crypto.randomUUID()}})})
+export type GoalTreeRow = PlanningRecord & {origin: string; elapsed: number}
+export const planningApi = {
+ tree: (tenant: string, cursor: string, signal?: AbortSignal) => request<{items: GoalTreeRow[]; has_more: boolean; next_cursor?: string}>("GET", `${root(tenant, "goals")}/tree?${new URLSearchParams({limit:"100",sort:"id",...(cursor?{cursor}:{})})}`, undefined, undefined, signal),
+ aggregate: (tenant: string, body: {scope: "PROJECT" | "TEAM"; project_id: string; period_kind: string; period_start: string}, key: string) => request<PlanningRecord>("POST", `${root(tenant, "reports")}/aggregations`, {...body, project_id: body.project_id === "0" ? null : body.project_id}, key),
+ alignment: (tenant:string,id:string,signal?:AbortSignal)=>request<GoalAlignment>("GET",`${root(tenant,"goals")}/${encodeURIComponent(id)}/alignment`,undefined,undefined,signal),
+ changeGoal: (tenant: string, record: PlanningRecord, change: {action: "EDIT" | "ACTIVATE" | "CLOSE" | "MANUAL" | "REFRESH" | "ASSIGN_CONTRIBUTOR" | "REMOVE_CONTRIBUTOR"; principal_id?:string; content?: GoalInput; result?: string; reason?: string; key?: string; current?: number; evidence?: string}, key: string) => request<PlanningRecord>("POST", `${root(tenant, "goals")}/${encodeURIComponent(record.id)}/changes`, {version: record.version, expected_content_hash: record.content_hash, ...change}, key),
+ editPlan: (tenant: string, record: PlanningRecord, items: PlanItem[], key: string) => request<PlanningRecord>("PATCH", `${root(tenant, "plans")}/${encodeURIComponent(record.id)}`, {version: record.version, expected_content_hash: record.content_hash, content: {items}}, key),
+ list: (tenant: string, kind: PlanningKind, query: {project?: string; principal?: string; cursor?: string; scope?: ReportScope}, signal?: AbortSignal) => {const params = new URLSearchParams({limit: "30", sort: "-id"});if (query.project) params.set("project_id", query.project);if (query.principal) params.set("principal_id", query.principal);if (query.cursor) params.set("cursor", query.cursor);if (query.scope) params.set("scope", query.scope);return request<{items: PlanningRecord[]; has_more: boolean; next_cursor?: string}>("GET", `${root(tenant, kind)}?${params}`, undefined, undefined, signal)},
+ get: (tenant: string, kind: PlanningKind, id: string, signal?: AbortSignal) => request<PlanningRecord>("GET", `${root(tenant, kind)}/${encodeURIComponent(id)}`, undefined, undefined, signal),
+ create: (tenant: string, kind: PlanningKind, body: PlanningWrite, key: string) => request<PlanningRecord>("POST", root(tenant, kind), {...body, project_id: body.project_id === "0" ? null : body.project_id}, key),
+ editReport: (tenant: string, record: PlanningRecord, content: ReportInput, key: string) => request<PlanningRecord>("PATCH", `${root(tenant, "reports")}/${encodeURIComponent(record.id)}`, {version: record.version, content}, key),
+ decide: (tenant: string, kind: "plans" | "reports", record: PlanningRecord, action: "SUBMIT" | "CONFIRM" | "RETURN" | "REOPEN", reason: string, key: string) => request<PlanningRecord>("POST", `${root(tenant, kind)}/${encodeURIComponent(record.id)}/decisions`, {version: record.version, expected_content_hash: record.content_hash, action, reason}, key),
+ reconcile: (tenant: string, id: string, signal?: AbortSignal) => request<PlanningCheck>("GET", `${root(tenant, "reports")}/${encodeURIComponent(id)}/reconciliation`, undefined, undefined, signal),
+}
+
+export function isSystemAggregateDraft(record: PlanningRecord): boolean {const scope = (record.content as ReportInput).scope;return record.state === "DRAFT" && (!record.author_id || record.author_id === "0") && record.principal_id === "0" && (scope === "PROJECT" || scope === "TEAM")}
+export function planItems(values: Record<string, unknown>, count: number, originals: PlanItem[] = []): PlanItem[] {
+ return Array.from({length: count}, (_, i) => {
+  const work = String(values[`item_work_${i}`] ?? "").trim()
+  const due = toISOString(String(values[`item_due_${i}`] ?? ""))
+  const completed = toISOString(String(values[`item_completed_${i}`] ?? ""))
+  const evidence = String(values[`item_evidence_${i}`] ?? "").trim()
+  const source = originals[i]
+  const hours = values[`item_hours_${i}`] ?? source?.estimate_hours
+  const cost = values[`item_cost_${i}`] ?? source?.estimate_cost_micros
+  return {...(source?.id ? {id: source.id} : {}), ...(source?.carried_from_item_id ? {carried_from_item_id: source.carried_from_item_id} : {}), ...(String(values[`item_notes_${i}`] ?? source?.notes ?? "") ? {notes: String(values[`item_notes_${i}`] ?? source?.notes)} : {}), ...(hours !== undefined && hours !== "" ? {estimate_hours: Number(hours)} : {}), ...(cost !== undefined && cost !== "" ? {estimate_cost_micros: String(cost)} : {}), ...(source?.carried_from_report_id ? {carried_from_report_id: source.carried_from_report_id, carried_from_key: source.carried_from_key, carried_from_hash: source.carried_from_hash} : {}), title: String(values[`item_title_${i}`] ?? "").trim(), goal_id: String(values[`item_goal_${i}`] ?? "").trim(), kr: String(values[`item_kr_${i}`] ?? "").trim(), ...(values[`item_weight_${i}`] !== undefined && values[`item_weight_${i}`] !== "" ? {weight: Number(values[`item_weight_${i}`])} : {}), ...(due ? {due_at: due} : {}), ...(work ? {work_item_id: work} : {category: String(values[`item_category_${i}`] ?? "OTHER"), ...(completed ? {completed_at: completed} : {}), ...(evidence ? {completion_evidence: evidence} : {})})}
+ })
+}

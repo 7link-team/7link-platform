@@ -24,6 +24,15 @@ var kindPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 var eventPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$`)
 
 func (m *Module) Publish(ctx context.Context, tx *gorm.DB, e Event) (guid.ID, error) {
+	return m.publish(ctx, tx, e, true)
+}
+
+// PublishEphemeral stores only the temporary cross-replica realtime transport.
+func (m *Module) PublishEphemeral(ctx context.Context, tx *gorm.DB, e Event) (guid.ID, error) {
+	return m.publish(ctx, tx, e, false)
+}
+
+func (m *Module) publish(ctx context.Context, tx *gorm.DB, e Event, durable bool) (guid.ID, error) {
 	if tx == nil || tx.Statement == nil {
 		return 0, ErrInvalidEvent
 	}
@@ -36,6 +45,13 @@ func (m *Module) Publish(ctx context.Context, tx *gorm.DB, e Event) (guid.ID, er
 	m.mu.RUnlock()
 	if !ready {
 		return 0, ErrUnavailable
+	}
+	if !durable {
+		if !eventPattern.MatchString(e.Type) || len(e.Type) > 96 {
+			return 0, ErrInvalidEvent
+		}
+		spec = TypeSpec{Name: e.Type, SchemaVersion: 1, SubjectKind: e.Subject.Kind, Realtime: RealtimeFull}
+		known = kindPattern.MatchString(e.Subject.Kind)
 	}
 	if !known {
 		return 0, ErrUnknownEventType
@@ -86,7 +102,7 @@ func (m *Module) Publish(ctx context.Context, tx *gorm.DB, e Event) (guid.ID, er
 		return 0, ErrUnavailable
 	}
 	now := m.now().UTC().Truncate(time.Millisecond)
-	row := model.EventRow{ID: guid.ID(id), TenantID: e.TenantID, ProjectID: optionalID(e.ProjectID), EventType: e.Type, SchemaVersion: spec.SchemaVersion, Durable: true, OccurredAt: now, ActorKind: e.Actor.Kind, ActorID: optionalID(e.Actor.ID), AuthoritySource: e.Actor.AuthoritySource, SubjectKind: e.Subject.Kind, SubjectID: e.Subject.ID, SubjectVersion: e.SubjectVersion, Topics: string(topicJSON), RealtimeMode: string(spec.Realtime), Data: string(payload), CorrelationID: e.CorrelationID, CausationID: optionalID(e.CausationID), CreatedAt: now}
+	row := model.EventRow{ID: guid.ID(id), TenantID: e.TenantID, ProjectID: optionalID(e.ProjectID), EventType: e.Type, SchemaVersion: spec.SchemaVersion, Durable: durable, OccurredAt: now, ActorKind: e.Actor.Kind, ActorID: optionalID(e.Actor.ID), AuthoritySource: e.Actor.AuthoritySource, SubjectKind: e.Subject.Kind, SubjectID: e.Subject.ID, SubjectVersion: e.SubjectVersion, Topics: string(topicJSON), RealtimeMode: string(spec.Realtime), Data: string(payload), CorrelationID: e.CorrelationID, CausationID: optionalID(e.CausationID), CreatedAt: now}
 	if err := query.BindWithNames(tx, m.names).WithContext(ctx).Create(&row); err != nil {
 		return 0, err
 	}
@@ -148,6 +164,9 @@ func (m *Module) transactionBudget(tx *gorm.DB) (*atomic.Int64, error) {
 			break
 		}
 		pool = prepared.Tx
+	}
+	if wrapped, ok := pool.(interface{ SQLTx() *sql.Tx }); ok {
+		pool = wrapped.SQLTx()
 	}
 	transaction, ok := pool.(*sql.Tx)
 	if !ok {

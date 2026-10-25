@@ -14,6 +14,7 @@ import (
 	"7link.com/platform/pkg/appenv"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
+	"7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -154,7 +155,7 @@ func TestSingletonCancellationAndInvalidDependencies(t *testing.T) {
 	m.Run(t.Context(), "", func(context.Context) error { return nil })
 	m.Run(t.Context(), "leader", nil)
 	require.Equal(t, Name, m.ModuleName())
-	require.Equal(t, []string{dlock.Name, guid.Name, audit.Name}, m.ModuleDependencies())
+	require.Equal(t, []string{dlock.Name, guid.Name, audit.Name, i18n.Name}, m.ModuleDependencies())
 	unwired := NewModule(nil, Config{})
 	require.ErrorIs(t, unwired.Initialize(t.Context()), ErrUnavailable)
 	services := module.NewServices()

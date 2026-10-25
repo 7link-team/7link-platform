@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/jobs/model"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -116,6 +117,7 @@ func (m *Module) workQueue(claimCtx, runCtx context.Context, run *workerRun, que
 	completed := make(chan struct{}, capacity)
 	timer := time.NewTimer(0)
 	defer timer.Stop()
+	delay := m.config.PollInterval
 	for {
 		select {
 		case <-claimCtx.Done():
@@ -129,9 +131,14 @@ func (m *Module) workQueue(claimCtx, runCtx context.Context, run *workerRun, que
 		}
 		slots := min(available, m.config.ClaimBatch)
 		if slots > 0 {
-			rows, err := m.claim(claimCtx, queue, owner, slots)
-			if err != nil && claimCtx.Err() == nil {
+			rows, err := m.claimObserved(claimCtx, queue, owner, slots)
+			if err != nil && claimCtx.Err() == nil && !gormx.IsSQLiteBusy(err) {
 				slog.ErrorContext(claimCtx, "claim background jobs", "queue", queue, "error", err)
+			}
+			if len(rows) == 0 || err != nil {
+				delay = min(2*delay, max(m.config.PollInterval, 2*time.Second))
+			} else {
+				delay = m.config.PollInterval
 			}
 			for _, row := range rows {
 				available--
@@ -151,7 +158,7 @@ func (m *Module) workQueue(claimCtx, runCtx context.Context, run *workerRun, que
 				}()
 			}
 		}
-		timer.Reset(m.config.PollInterval)
+		timer.Reset(delay)
 	}
 }
 

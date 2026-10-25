@@ -28,6 +28,7 @@ func newRequirement(db *gorm.DB, opts ...gen.DOOption) requirement {
 
 	tableName := _requirement.requirementDo.TableName()
 	_requirement.ALL = field.NewAsterisk(tableName)
+	_requirement.ReviewState = field.NewString(tableName, "review_state")
 	_requirement.TenantID = field.NewField(tableName, "tenant_id")
 	_requirement.ID = field.NewField(tableName, "id")
 	_requirement.ProjectID = field.NewField(tableName, "project_id")
@@ -54,6 +55,7 @@ type requirement struct {
 	requirementDo requirementDo
 
 	ALL              field.Asterisk
+	ReviewState      field.String
 	TenantID         field.Field
 	ID               field.Field
 	ProjectID        field.Field
@@ -86,6 +88,7 @@ func (r requirement) As(alias string) *requirement {
 
 func (r *requirement) updateTableName(table string) *requirement {
 	r.ALL = field.NewAsterisk(table)
+	r.ReviewState = field.NewString(table, "review_state")
 	r.TenantID = field.NewField(table, "tenant_id")
 	r.ID = field.NewField(table, "id")
 	r.ProjectID = field.NewField(table, "project_id")
@@ -128,7 +131,8 @@ func (r *requirement) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (r *requirement) fillFieldMap() {
-	r.fieldMap = make(map[string]field.Expr, 16)
+	r.fieldMap = make(map[string]field.Expr, 17)
+	r.fieldMap["review_state"] = r.ReviewState
 	r.fieldMap["tenant_id"] = r.TenantID
 	r.fieldMap["id"] = r.ID
 	r.fieldMap["project_id"] = r.ProjectID

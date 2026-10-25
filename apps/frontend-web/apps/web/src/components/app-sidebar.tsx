@@ -1,5 +1,5 @@
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useState, type ReactElement } from "react"
+import { useState, type ReactElement, type ReactNode } from "react"
 import {
   AppWindow,
   Bot,
@@ -14,12 +14,13 @@ import {
   LayoutDashboard,
   ListChecks,
   MailPlus,
+  MessageSquare,
   Network,
   SlidersHorizontal,
   Users,
   UsersRound,
 } from "lucide-react"
-import { NavLink } from "react-router"
+import { Link, NavLink, useLocation } from "react-router"
 import type { EffectiveMenu } from "../lib/iam-api"
 import {
   effectiveMenuPaths,
@@ -27,6 +28,10 @@ import {
   tenantNavigation,
   tenantSystemNavigation,
   entityNavigation,
+  firstEffectiveMenuPath,
+  workspaceArea,
+  workspaceAreaMenus,
+  workspaceAreas,
 } from "../lib/navigation"
 import { can, type EffectivePermissions } from "../lib/permissions"
 
@@ -37,6 +42,8 @@ const routeIcons: Record<string, ReactElement> = {
   "/service-accounts": <Bot />,
   "/entities": <Network />,
   "/projects": <Boxes />,
+  "/machines": <Bot />,
+  "/executions": <ListChecks />,
   "/departments": <Building2 />,
   "/groups": <UsersRound />,
   "/roles": <KeyRound />,
@@ -59,6 +66,7 @@ export function AppSidebar({
   entityID = "",
   entityType,
   tenantID = "",
+  instanceControl,
 }: {
   permissions?: EffectivePermissions
   menus: EffectiveMenu[]
@@ -68,8 +76,10 @@ export function AppSidebar({
   entityID?: string
   entityType?: string
   tenantID?: string
+  instanceControl?: ReactNode
 }) {
   const t = useTranslations("iam")
+  const area = workspaceArea(useLocation().pathname)
 
   const tenantBase = tenantID ? `/admin/${encodeURIComponent(tenantID)}` : ""
   menus = tenantNavigation(menus)
@@ -79,7 +89,11 @@ export function AppSidebar({
     paths,
     fileAccess,
     fieldPolicyAccess,
-    can(permissions, "project_read")
+    can(permissions, "project_read"),
+    can(permissions, "knowledge_read"),
+    can(permissions, "machine_read"),
+    can(permissions, "agent_read"),
+    permissions ?? []
   )
   if (entityID) {
     const base = `${tenantBase}/entities/${encodeURIComponent(entityID)}`
@@ -92,19 +106,25 @@ export function AppSidebar({
     // took -- three quarters of a second here -- and the links then appeared,
     // which from the outside is the menu changing on its own.
     const entityLinks = permissions
-      ? entityNavigation(permissions, entityType)
+      ? entityNavigation(permissions, entityType).filter(
+          (item) => workspaceArea(item.path) === area
+        )
       : null
     return (
       <aside
         className={`w-64 shrink-0 overflow-y-auto border-e border-sidebar-border bg-sidebar p-3 ${className}`}
       >
+        {instanceControl}
         {/* No group heading: the whole sidebar is this entity's perspective, and
             the switcher above already names which entity. A collapsible group
             labelled after the perspective it is the entirety of is a layer that
             says nothing and can be collapsed to hide everything. */}
         <nav className="space-y-1" aria-label={t("mainNav")}>
           {entityLinks === null && (
-            <p role="status" className="px-3 py-2 text-sm text-sidebar-foreground/70">
+            <p
+              role="status"
+              className="px-3 py-2 text-sm text-sidebar-foreground/70"
+            >
               {t("loading")}
             </p>
           )}
@@ -133,11 +153,12 @@ export function AppSidebar({
     <aside
       className={`w-64 shrink-0 overflow-y-auto border-e border-sidebar-border bg-sidebar p-3 ${className}`}
     >
+      {instanceControl}
       <nav className="space-y-5" aria-label={t("mainNav")}>
-        {menus.length > 0 && (
+        {workspaceAreaMenus(menus, area).length > 0 && (
           <section aria-label={t("tenantMenu")}>
             <ul className="space-y-1">
-              {menus.map((menu) => (
+              {workspaceAreaMenus(menus, area).map((menu) => (
                 <MenuBranch
                   key={menu.id}
                   menu={menu}
@@ -153,17 +174,97 @@ export function AppSidebar({
             is an implementation detail, and a heading that announces it buys a
             collapsible chevron that can hide entries somebody needs. */}
         <div className="space-y-1">
-          {systemLinks.map((item) => (
-            <SideLink
-              key={item.path}
-              to={`${tenantBase}${item.path}`}
-              icon={routeIcons[item.path] ?? <LayoutDashboard />}
-              label={t(item.label)}
-            />
-          ))}
+          {systemLinks
+            .filter((item) => workspaceArea(item.path) === area)
+            .map((item) => (
+              <SideLink
+                key={item.path}
+                to={`${tenantBase}${item.path}`}
+                icon={routeIcons[item.path] ?? <LayoutDashboard />}
+                label={t(item.label)}
+              />
+            ))}
         </div>
       </nav>
     </aside>
+  )
+}
+
+export function WorkspaceAreaNavigation({
+  tenantID,
+  entityID,
+  entityType,
+  permissions,
+  menus,
+  fieldPolicyAccess,
+  externalClient = false,
+}: {
+  tenantID: string
+  entityID: string
+  entityType?: string
+  permissions: EffectivePermissions
+  menus: EffectiveMenu[]
+  fieldPolicyAccess: boolean
+  externalClient?: boolean
+}) {
+  const t = useTranslations("iam")
+  const current = workspaceArea(useLocation().pathname)
+  const configured = entityID ? [] : tenantNavigation(menus)
+  const links = entityID
+    ? entityNavigation(permissions ?? [], entityType)
+    : tenantSystemNavigation(
+        effectiveMenuPaths(configured),
+        can(permissions, "file_view"),
+        fieldPolicyAccess,
+        can(permissions, "project_read"),
+        can(permissions, "knowledge_read"),
+    can(permissions, "machine_read"),
+    can(permissions, "agent_read")
+      )
+  const base = `/admin/${encodeURIComponent(tenantID)}${entityID ? `/entities/${encodeURIComponent(entityID)}` : ""}`
+  const icons = [LayoutDashboard, MessageSquare, Boxes, Users, KeyRound]
+  return (
+    <nav
+      aria-label={t("workspaceAreas")}
+      className="order-last flex w-full min-w-0 gap-1 overflow-x-auto md:order-none md:w-auto"
+    >
+      {workspaceAreas.map((area, index) => {
+        const menuPath = firstEffectiveMenuPath(
+          workspaceAreaMenus(configured, area)
+        )
+        const fallback = links.find((item) => workspaceArea(item.path) === area)
+        const path = menuPath || fallback?.path
+        const Icon = icons[index]!
+        const label = t(`workspaceArea_${area}`)
+        const className = `inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 text-sm ${current === area ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-accent"}`
+        if (externalClient && !path) return null
+        return path !== undefined && tenantID ? (
+          <Link
+            key={area}
+            to={`${base}${path}`}
+            className={className}
+            aria-current={current === area ? "page" : undefined}
+          >
+            <Icon className="size-4" aria-hidden="true" />
+            <span>{label}</span>
+          </Link>
+        ) : (
+          <span
+            key={area}
+            className="inline-flex min-h-11 shrink-0 items-center gap-2 px-3 text-sm text-muted-foreground/60"
+            aria-disabled="true"
+            title={t(
+              area === "conversation"
+                ? "conversationUnavailable"
+                : "workspaceAreaUnavailable"
+            )}
+          >
+            <Icon className="size-4" aria-hidden="true" />
+            <span>{label}</span>
+          </span>
+        )
+      })}
+    </nav>
   )
 }
 
@@ -259,9 +360,7 @@ function SideLink({
     <NavLink
       to={to}
       end={
-        to === "/" ||
-        to === "/system/accounts" ||
-        /^\/admin\/[^/]+$/u.test(to)
+        to === "/" || to === "/system/accounts" || /^\/admin\/[^/]+$/u.test(to)
       }
       aria-current={scopeMatches ? undefined : false}
       className={({ isActive }) =>

@@ -32,6 +32,9 @@ export function loginReturnPath(
   entry: AuthEntrance | null,
   from: string | undefined
 ): string {
+  // A gateway handoff has no workspace entrance. Continue only this exact
+  // local exchange page after sign-in; never accept an external redirect.
+  if (from === "/preview-access" || from?.startsWith("/preview-access?")) return from
   const prefix = entrancePath(entry, "login").replace(/\/login$/, "")
   return from?.startsWith(`${prefix}/`)
     ? from

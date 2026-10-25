@@ -241,7 +241,7 @@ func newBootstrapCLIConfig(t *testing.T) (configPath, passwordPath string) {
 database:
   main:
     type: sqlite
-    dsn: %s
+    dsn: %s?_journal_mode=WAL&_busy_timeout=30000
     writable: true
     readable: true
 authn:

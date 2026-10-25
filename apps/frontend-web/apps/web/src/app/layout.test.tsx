@@ -135,7 +135,7 @@ describe("workspace switcher tenant source", () => {
   // where it sends anybody who asked for nowhere -- so picking a tenant bounced
   // them out of it.
   it("addresses a chosen tenant and leaves the perspective to its route", () => {
-    expect(source).toContain("navigate(`/admin/${encodeURIComponent(next)}`)")
+    expect(source).toContain("workspaceScopePath(location.pathname, next,")
     // The route that address lands on is the one that decides the perspective.
     // The router is built for a browser, so it is read in a process of its own.
     const result = spawnSync(
@@ -168,7 +168,7 @@ describe("workspace switcher tenant source", () => {
   // Entering an entity used to go to its overview, which reads the entity record
   // itself -- tenant-wide entity administration an entity's own member lacks.
   it("enters an entity on the view the account has rather than always the overview", () => {
-    expect(source).toContain("entityWorkspaceView(permissions ?? [])")
+    expect(source).toContain("workspaceScopePath(")
     expect(source).not.toContain("/entities/${encodeURIComponent(id)}/overview")
   })
 })

@@ -1,0 +1,15 @@
+.git
+.agents
+.claude
+.temp
+**/.temp
+**/node_modules
+**/bin
+**/dist
+**/.turbo
+**/coverage*
+**/*.log
+**/*.exe
+**/*.sqlite*
+**/*.db*
+**/.env*

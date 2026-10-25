@@ -6,8 +6,18 @@ import (
 	"testing"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestIsSQLiteBusyRecognizesWrappedContentionWithoutRetryingPermanentFailures(t *testing.T) {
+	for _, err := range []error{sqlite3.Error{Code: sqlite3.ErrBusy}, sqlite3.Error{Code: sqlite3.ErrLocked}, fmt.Errorf("poll: %w", sqlite3.Error{Code: sqlite3.ErrBusy, ExtendedCode: sqlite3.ErrBusySnapshot})} {
+		assert.True(t, IsSQLiteBusy(err))
+	}
+	for _, err := range []error{nil, errors.New("database is locked"), sqlite3.Error{Code: sqlite3.ErrConstraint}, &mysql.MySQLError{Number: 1205}} {
+		assert.False(t, IsSQLiteBusy(err))
+	}
+}
 
 type sqlStateError struct{ state string }
 

@@ -27,3 +27,9 @@
 # Local interpreter caches and editor settings.
 __pycache__/
 *.py[cod]
+
+# Release infrastructure and local session locks.
+!/.github/
+!/.github/**
+!/.dockerignore
+/.claude/scheduled_tasks.lock

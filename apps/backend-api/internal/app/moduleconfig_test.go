@@ -6,6 +6,7 @@ import (
 
 	authnext "7link.com/platform/pkg/extension/authn"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTelemetryConfigMapsOTLPSettings(t *testing.T) {
@@ -25,6 +26,50 @@ func TestTelemetryConfigMapsOTLPSettings(t *testing.T) {
 	assert.True(t, config.OTLP.Insecure)
 	assert.Equal(t, "token", config.OTLP.Headers["authorization"])
 	assert.Equal(t, 5*time.Second, config.OTLP.Timeout)
+}
+
+func TestFileConfigMapsActiveAndLegacyStorage(t *testing.T) {
+	c := AppConfig{}
+	c.Files.Backend = "s3"
+	c.Files.Options = map[string]string{"endpoint": "https://storage.example.test", "bucket": "files"}
+	c.Files.ReadBackends = map[string]FileReadBackendConfig{"local": {Driver: "local", Options: map[string]string{"root": "data/old-files"}}}
+	got := fileConfig(c)
+	assert.Equal(t, "s3", got.Backend)
+	assert.Equal(t, "https://storage.example.test", got.Options["endpoint"])
+	assert.Equal(t, "local", got.ReadBackends["local"].Driver)
+	assert.Equal(t, "data/old-files", got.ReadBackends["local"].Options["root"])
+}
+
+func TestClientworkSubmissionBundlesRequireExplicitDeploymentKeys(t *testing.T) {
+	assert.Empty(t, clientworkConfig(AppConfig{}).SubmissionBundles.SigningKey)
+	c := AppConfig{}
+	c.SubmissionBundles.SigningKey = "explicit-deployment-key"
+	c.SubmissionBundles.PreviousSigningKeys = []string{"previous-deployment-key"}
+	got := clientworkConfig(c)
+	assert.Equal(t, c.SubmissionBundles, got.SubmissionBundles)
+}
+
+func TestKnowledgeRemoteConfigMapsDeploymentSettings(t *testing.T) {
+	input := AppConfig{Knowledge: KnowledgeConfig{Remote: KnowledgeRemoteConfig{Enabled: true, RepositoryHost: "git.example.net", RepositoryAPIBaseURL: "https://api.example.net", RepositoryToken: "deployment-credential"}}}
+	input.Authn.Enabled = true
+	config := knowledgeConfig(input)
+	assert.True(t, config.Enabled)
+	assert.True(t, config.Remote.Enabled)
+	assert.Equal(t, input.Knowledge.Remote.RepositoryHost, config.Remote.RepositoryHost)
+	assert.Equal(t, input.Knowledge.Remote.RepositoryAPIBaseURL, config.Remote.RepositoryAPIBaseURL)
+	assert.Equal(t, input.Knowledge.Remote.RepositoryToken, config.Remote.RepositoryToken)
+}
+
+func TestKnowledgeConfigMapsEmbeddingIsolation(t *testing.T) {
+	input := AppConfig{Knowledge: KnowledgeConfig{Embedding: KnowledgeEmbeddingConfig{Enabled: true, AllowedHosts: []string{"embed.example.net"}, AllowedNetworks: []string{"192.0.2.0/24"}}}}
+	config := knowledgeConfig(input)
+	assert.True(t, config.Embedding.Enabled)
+	assert.Equal(t, input.Knowledge.Embedding.AllowedHosts, config.Embedding.AllowedHosts)
+	assert.Equal(t, input.Knowledge.Embedding.AllowedNetworks, config.Embedding.AllowedNetworks)
+	config.Embedding.AllowedHosts[0] = "changed.example.net"
+	config.Embedding.AllowedNetworks[0] = "198.51.100.0/24"
+	assert.Equal(t, "embed.example.net", input.Knowledge.Embedding.AllowedHosts[0])
+	assert.Equal(t, "192.0.2.0/24", input.Knowledge.Embedding.AllowedNetworks[0])
 }
 
 func TestAuditConfigMapsSettings(t *testing.T) {
@@ -163,4 +208,50 @@ func TestIAMModuleConfigsMapEverySetting(t *testing.T) {
 	assert.True(t, iamOrganizationConfig(registrationConfig).TenantRegistrationEnabled)
 	assert.True(t, iamOAuthConfig(config).Enabled)
 	assert.True(t, iamGovernanceConfig(config).Enabled)
+}
+
+func TestClientworkConfigMapsPrivateVerifierWithoutAliasingArguments(t *testing.T) {
+	c := AppConfig{Authn: IAMAuthn{Enabled: true}, HiddenVerifier: HiddenVerifierConfig{OSUser: "private-verifier", OSDomain: ".", PasswordEnv: "PRIVATE_VERIFIER_PASSWORD", RuntimeAuthEnv: "PRIVATE_VERIFIER_MODEL_KEY", PrincipalID: 91, Executable: "/trusted/runner", Args: []string{"hidden-verifier", "--runtime", "CLAUDE_CODE"}, Model: "available-model", Family: "anthropic", TimeoutSec: 70}}
+	got := clientworkConfig(c)
+	assert.True(t, got.Enabled)
+	assert.EqualValues(t, 91, got.HiddenVerifier.PrincipalID)
+	assert.Equal(t, c.HiddenVerifier.OSUser, got.HiddenVerifier.OSUser)
+	assert.Equal(t, c.HiddenVerifier.OSDomain, got.HiddenVerifier.OSDomain)
+	assert.Equal(t, c.HiddenVerifier.PasswordEnv, got.HiddenVerifier.PasswordEnv)
+	assert.Equal(t, c.HiddenVerifier.RuntimeAuthEnv, got.HiddenVerifier.RuntimeAuthEnv)
+	assert.Equal(t, c.HiddenVerifier.Executable, got.HiddenVerifier.Executable)
+	assert.Equal(t, c.HiddenVerifier.Model, got.HiddenVerifier.Model)
+	assert.Equal(t, c.HiddenVerifier.Family, got.HiddenVerifier.Family)
+	assert.Equal(t, c.HiddenVerifier.TimeoutSec, got.HiddenVerifier.TimeoutSec)
+	assert.Equal(t, c.HiddenVerifier.Args, got.HiddenVerifier.Args)
+	c.HiddenVerifier.Args[0] = "mutated"
+	assert.Equal(t, "hidden-verifier", got.HiddenVerifier.Args[0])
+}
+
+func TestBusinessSecretsConfigurationPreservesActivationAndKeyReferences(t *testing.T) {
+	c := AppConfig{}
+	assert.False(t, businessSecretsConfig(c).Enabled)
+	c.Secrets = BusinessSecretsConfig{Enabled: true, ActiveKeyFile: "active.key", PreviousKeyFiles: []string{"old.key"}}
+	mapped := businessSecretsConfig(c)
+	assert.True(t, mapped.Enabled)
+	assert.Equal(t, "active.key", mapped.ActiveKeyFile)
+	assert.Equal(t, []string{"old.key"}, mapped.PreviousKeyFiles)
+	mapped.PreviousKeyFiles[0] = "changed"
+	assert.Equal(t, "old.key", c.Secrets.PreviousKeyFiles[0])
+}
+
+func TestExecutionModuleConfigPreservesRetentionAndAuthnEnablement(t *testing.T) {
+	config := validTestAppConfig()
+	config.Authn.Enabled = true
+	config.Execution.Config.Enabled = false
+	config.Execution.Terminal.RecordingRetentionDays = 30
+	got := executionModuleConfig(config)
+	require.True(t, got.Enabled)
+	require.Equal(t, 30, got.Terminal.RecordingRetentionDays)
+	require.False(t, config.Execution.Enabled, "composition must not mutate deployment configuration")
+	config.Authn.Enabled = false
+	config.Execution.Config.Enabled = true
+	got = executionModuleConfig(config)
+	require.False(t, got.Enabled)
+	require.Equal(t, 30, got.Terminal.RecordingRetentionDays)
 }

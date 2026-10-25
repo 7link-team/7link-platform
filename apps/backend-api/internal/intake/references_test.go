@@ -3,6 +3,7 @@ package intake
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -79,6 +80,7 @@ func TestContactReferenceErrorsAndProvider(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, reader.ContactsOn)
 	require.NotNil(t, reader.GetOn)
+	require.NotNil(t, reader.ProjectFactsOn)
 	_, err = (*Module)(nil).ContactsOn(t.Context(), nil, 7, nil)
 	require.ErrorIs(t, err, ErrUnavailable)
 	_, err = m.ContactsOn(t.Context(), db, 7, nil)
@@ -96,6 +98,79 @@ func TestContactReferenceErrorsAndProvider(t *testing.T) {
 		require.ErrorIs(t, err, context.Canceled)
 		require.NoError(t, tx.Migrator().DropTable(m.names.Contacts.String()))
 		_, err = m.ContactsOn(t.Context(), tx, 7, []guid.ID{1})
+		require.Error(t, err)
+		return nil
+	}))
+}
+
+func TestProjectFactsAreCurrentScopedAndTransactional(t *testing.T) {
+	m, db := referencesHarness(t)
+	now := time.Now().UTC()
+	for _, row := range []struct {
+		id, tenant     int
+		project, round any
+		status         string
+	}{
+		{10, 7, 20, nil, "CONVERTED"}, {11, 7, 20, 90, "RECEIVED"},
+		{12, 7, nil, 91, "RECEIVED"}, {13, 8, 20, 92, "CONVERTED"},
+		{14, 7, 21, 93, "CONVERTED"}, {15, 7, 22, nil, "RECEIVED"},
+	} {
+		require.NoError(t, db.Table(m.names.Records.String()).Create(map[string]any{"id": row.id, "tenant_id": row.tenant, "ref_no": row.id, "channel_id": 3, "channel_kind": "SHARED_CHANNEL", "contact_id": 1, "title": "Source", "raw_content_hash": strings.Repeat("a", 64), "received_at": now, "reply_token": fmt.Sprintf("token-%d", row.id), "status": row.status, "project_id": row.project, "requirement_id": 100, "open_round_id": row.round, "created_at": now, "updated_at": now}).Error)
+	}
+	abort := errors.New("rollback project facts")
+	require.ErrorIs(t, db.Transaction(func(tx *gorm.DB) error {
+		for _, tc := range []struct {
+			project guid.ID
+			origin  *guid.ID
+			want    ProjectFacts
+		}{
+			{20, nil, ProjectFacts{true, 1}}, {20, ptrID(12), ProjectFacts{true, 2}},
+			{20, ptrID(14), ProjectFacts{true, 1}}, {22, nil, ProjectFacts{}},
+			{99, ptrID(13), ProjectFacts{}}, {99, ptrID(12), ProjectFacts{true, 1}},
+			{99, ptrID(999), ProjectFacts{}}, {99, nil, ProjectFacts{}},
+		} {
+			facts, err := m.ProjectFactsOn(t.Context(), tx, 7, tc.project, tc.origin)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, facts)
+		}
+		require.NoError(t, tx.Table(m.names.Records.String()).Where("id = ?", 11).Update("open_round_id", nil).Error)
+		facts, err := m.ProjectFactsOn(t.Context(), tx, 7, 20, nil)
+		require.NoError(t, err)
+		require.Equal(t, ProjectFacts{HasSource: true}, facts)
+		return abort
+	}), abort)
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+		facts, err := m.ProjectFactsOn(t.Context(), tx, 7, 20, nil)
+		require.NoError(t, err)
+		require.Equal(t, 1, facts.OpenClarifications)
+		return nil
+	}))
+}
+
+func ptrID(id guid.ID) *guid.ID { return &id }
+
+func TestProjectFactsFailClosed(t *testing.T) {
+	m, db := referencesHarness(t)
+	_, err := (*Module)(nil).ProjectFactsOn(t.Context(), nil, 7, 20, nil)
+	require.ErrorIs(t, err, ErrUnavailable)
+	for _, handle := range []*gorm.DB{nil, db} {
+		_, err = m.ProjectFactsOn(t.Context(), handle, 7, 20, nil)
+		require.ErrorIs(t, err, ErrInvalidArgument)
+	}
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+		for _, tc := range []struct {
+			tenant, project guid.ID
+			origin          *guid.ID
+		}{{0, 20, nil}, {7, 0, nil}, {7, 20, ptrID(0)}} {
+			_, err := m.ProjectFactsOn(t.Context(), tx, tc.tenant, tc.project, tc.origin)
+			require.ErrorIs(t, err, ErrInvalidArgument)
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		_, err := m.ProjectFactsOn(ctx, tx, 7, 20, nil)
+		require.ErrorIs(t, err, context.Canceled)
+		require.NoError(t, tx.Migrator().DropTable(m.names.Records.String()))
+		_, err = m.ProjectFactsOn(t.Context(), tx, 7, 20, nil)
 		require.Error(t, err)
 		return nil
 	}))

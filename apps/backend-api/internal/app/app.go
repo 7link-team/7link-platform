@@ -144,6 +144,10 @@ func (app *App) Modules() *module.Registry { return app.modules }
 // graph without opening network listeners.
 func (app *App) Bootstrap(ctx context.Context) error { return app.bootstrap(ctx) }
 
+// PrepareComposition wires the production module inventory without migrating,
+// initializing or starting it. Callers own the remaining lifecycle and Shutdown.
+func (app *App) PrepareComposition(ctx context.Context) error { return app.prepare(ctx) }
+
 // Shutdown stops modules and releases application-lifetime resources.
 func (app *App) Shutdown() error { return app.shutdown() }
 

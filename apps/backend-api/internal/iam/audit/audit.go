@@ -122,7 +122,11 @@ type Event struct {
 
 // Filter selects stored audit events.
 type Filter struct {
-	TenantID guid.ID
+	TenantID        guid.ID
+	ProjectID       guid.ID
+	Module          string
+	ActorKind       string
+	AuthoritySource string
 	// PrincipalID matches the acting operator (Event.PrincipalID). The account
 	// seen through an account view is detail.viewed_principal_id, which this
 	// filter does not match.
@@ -155,13 +159,17 @@ type ExportSnapshot struct {
 }
 
 type exportCriteria struct {
-	PrincipalID guid.ID `json:"principal_id,omitempty"`
-	EventType   string  `json:"event_type,omitempty"`
-	Outcome     string  `json:"outcome,omitempty"`
-	TargetType  string  `json:"target_type,omitempty"`
-	TargetID    guid.ID `json:"target_id,omitempty"`
-	From        string  `json:"from,omitempty"`
-	To          string  `json:"to,omitempty"`
+	ProjectID       guid.ID `json:"project_id,omitempty"`
+	Module          string  `json:"module,omitempty"`
+	ActorKind       string  `json:"actor_kind,omitempty"`
+	AuthoritySource string  `json:"authority_source,omitempty"`
+	PrincipalID     guid.ID `json:"principal_id,omitempty"`
+	EventType       string  `json:"event_type,omitempty"`
+	Outcome         string  `json:"outcome,omitempty"`
+	TargetType      string  `json:"target_type,omitempty"`
+	TargetID        guid.ID `json:"target_id,omitempty"`
+	From            string  `json:"from,omitempty"`
+	To              string  `json:"to,omitempty"`
 }
 
 type exportManifest struct {
@@ -483,6 +491,9 @@ func (s *Service) pinnedRepository() (*Repository, error) {
 }
 
 func validateFilter(filter Filter, paginated bool) error {
+	if err := validateBusinessFilter(filter); err != nil {
+		return err
+	}
 	if len(filter.EventType) > 64 || len(filter.TargetType) > 64 {
 		return ErrInvalidFilter
 	}
@@ -499,7 +510,7 @@ func validateFilter(filter Filter, paginated bool) error {
 }
 
 func exportCriteriaOf(filter Filter) exportCriteria {
-	criteria := exportCriteria{PrincipalID: filter.PrincipalID, EventType: filter.EventType, Outcome: filter.Outcome, TargetType: filter.TargetType, TargetID: filter.TargetID}
+	criteria := exportCriteria{ProjectID: filter.ProjectID, Module: filter.Module, ActorKind: filter.ActorKind, AuthoritySource: filter.AuthoritySource, PrincipalID: filter.PrincipalID, EventType: filter.EventType, Outcome: filter.Outcome, TargetType: filter.TargetType, TargetID: filter.TargetID}
 	if !filter.From.IsZero() {
 		criteria.From = filter.From.UTC().Format(time.RFC3339Nano)
 	}

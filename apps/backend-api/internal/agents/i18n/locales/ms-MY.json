@@ -1,0 +1,14 @@
+{
+  "forbidden": "Akses kerjasama ejen ditolak.",
+  "retirement_name_mismatch": "Masukkan nama semasa ejen dengan tepat untuk mengesahkan persaraan paksa.",
+  "not_found": "Entri kerjasama ejen tidak ditemukan.",
+  "invalid": "Input ejen tidak sah.",
+  "conflict": "Versi atau keadaan ejen telah berubah.",
+  "unavailable": "Kerjasama ejen tidak tersedia buat sementara.",
+  "wake_failed": "Penghantaran bangun Agent bertandatangan gagal 20 kali. Tinjauan kini diaktifkan; semak titik akhir webhook.",
+  "wake_failed_title": "Webhook bangun Agent gagal",
+  "wake_failed_body": "Penghantaran bangun Agent {{.subject_id}} gagal {{.failures}} kali. Tinjauan kini diaktifkan. Semak titik akhir penerima.",
+  "wake_failed_email_subject": "Webhook bangun Agent gagal",
+  "wake_failed_email_text": "Penghantaran bangun Agent {{.subject_id}} gagal {{.failures}} kali. Tinjauan kini diaktifkan. Semak titik akhir penerima.",
+  "wake_failed_email_html": "<p>Penghantaran bangun Agent {{.subject_id}} gagal {{.failures}} kali. Tinjauan kini diaktifkan. Semak titik akhir penerima.</p>"
+}

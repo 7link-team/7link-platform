@@ -143,6 +143,9 @@ func (m *Module) Initialize(context.Context) error {
 
 // ProvideServices exposes the Recorder contract to dependent modules.
 func (m *Module) ProvideServices(services *module.Services) error {
+	if err := module.Provide[CorrelatedOperations](services, m.correlatedOperations); err != nil {
+		return err
+	}
 	return module.Provide[Recorder](services, m.recorder)
 }
 

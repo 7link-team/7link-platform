@@ -1,0 +1,8 @@
+{
+  "invalid": "Check the assessment scope, weights, evidence rules and report template.",
+  "forbidden": "An active tenant owner Human is required.",
+  "unavailable": "Performance configuration is unavailable.",
+  "conflict": "The scheme changed. Reload before revising.",
+  "not_found": "Assessment scheme revision not found.",
+  "failed": "The assessment configuration could not be saved."
+}

@@ -113,8 +113,26 @@ func (s *Service) AvailableReauthenticationMethods(ctx context.Context, cookieHe
 }
 
 func validReauthenticationPurpose(purpose string) bool {
-	return slices.Contains([]string{ReauthenticationIdentityLink, ReauthenticationIdentityUnlink,
-		ReauthenticationPersonalTokenCreate, ReauthenticationPrincipalClose, ReauthenticationTenantLeave}, purpose)
+	if reauthenticationRetirementReauthenticationPurpose(purpose) {
+		return true
+	}
+	if reauthenticationAcceptanceReauthenticationPurpose(purpose) {
+		return true
+	}
+	if reauthenticationModesReauthenticationPurpose(purpose) {
+		return true
+	}
+	if reauthenticationIntakeReauthenticationPurpose(purpose) {
+		return true
+	}
+	if purpose == ReauthenticationExecutionFullAuto || reauthenticationPurpose(purpose) {
+		return true
+	}
+	if purpose == ReauthenticationProjectCancel {
+		return true
+	}
+	return slices.Contains([]string{ReauthenticationTerminalInteractive, ReauthenticationMachineTerminalEnable, ReauthenticationSystemEventReplay, ReauthenticationMachineRevoke, ReauthenticationIdentityLink, ReauthenticationIdentityUnlink,
+		ReauthenticationPersonalTokenCreate, ReauthenticationPrincipalClose, ReauthenticationTenantLeave, ReauthenticationScopeChange, ReauthenticationAgentFullReset, ReauthenticationAgentToolCredentialWrite, ReauthenticationIntegrationCredentials, ReauthenticationAutomaticOverride, ReauthenticationVerificationOverride, ReauthenticationGovernanceSoDRelax, ReauthenticationEscalationRuleRelax}, purpose)
 }
 
 // BeginReauthentication never accepts a bearer in place of the browser session.

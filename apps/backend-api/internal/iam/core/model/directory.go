@@ -19,7 +19,22 @@ type TenantMember struct {
 
 func (TenantMember) TableName() string { return "iam_tenant_members" }
 
+// MembershipPeriod is an observed active interval. A migrated interval starts
+// at observation time; older membership transitions cannot be reconstructed.
+type MembershipPeriod struct {
+	TenantID    guid.ID    `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
+	ID          guid.ID    `gorm:"column:id;primaryKey;autoIncrement:false"`
+	PrincipalID guid.ID    `gorm:"column:principal_id;not null"`
+	StartedAt   time.Time  `gorm:"column:started_at;not null"`
+	EndedAt     *time.Time `gorm:"column:ended_at"`
+}
+
+func (MembershipPeriod) TableName() string { return "iam_membership_periods" }
+
 type Menu struct {
+	App            string    `gorm:"column:app;size:32;not null;default:iam"`
+	Domain         string    `gorm:"column:domain;size:16;not null;default:''"`
+	Space          string    `gorm:"column:space;size:16;not null;default:''"`
 	TenantID       guid.ID   `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
 	ID             guid.ID   `gorm:"column:id;primaryKey;autoIncrement:false"`
 	ParentID       *guid.ID  `gorm:"column:parent_id"`

@@ -60,6 +60,7 @@ type projectPage struct {
 // and configuration fields that do not belong in the list response.
 type ProjectListRecordView struct {
 	ProjectID     guid.ID            `json:"project_id"`
+	ArchivedAt    *time.Time         `json:"archived_at"`
 	Code          string             `json:"code"`
 	Name          string             `json:"name"`
 	Client        *projectClientView `json:"client"`
@@ -92,7 +93,7 @@ func projectListRecord(record ProjectView, name string) ProjectListRecordView {
 		budget.Pct = &pct
 	}
 	return ProjectListRecordView{
-		ProjectID: record.ProjectID, Code: record.Code, Name: name,
+		ProjectID: record.ProjectID, Code: record.Code, Name: name, ArchivedAt: record.ArchivedAt,
 		Stage: record.Stage, TeamMode: record.TeamMode, Health: record.Health,
 		HealthReasons: record.HealthReasons, Budget: budget, TargetDate: record.TargetDate,
 		LeadAgentID: record.LeadAgentID, Version: record.Version, UpdatedAt: record.UpdatedAt,
@@ -146,14 +147,14 @@ func (s *projectService) listRecords(ctx context.Context, db *gorm.DB, access co
 	}
 	archived := false
 	if raw, present := in.RawQuery["archived"]; present {
-		if len(raw) != 1 || (raw[0] != "eq:true" && raw[0] != "eq:false") {
-			return page, platformquery.Error{Field: "archived", Message: "must be eq:true or eq:false"}
+		if len(raw) != 1 || (raw[0] != "eq:true" && raw[0] != "eq:false" && raw[0] != "in:true,false") {
+			return page, platformquery.Error{Field: "archived", Message: "must be eq:true, eq:false or in:true,false"}
 		}
 		archived = raw[0] == "eq:true"
 	}
 	if archived {
 		predicates = append(predicates, p.ArchivedAt.IsNotNull())
-	} else {
+	} else if in.RawQuery.Get("archived") != "in:true,false" {
 		predicates = append(predicates, p.ArchivedAt.IsNull())
 	}
 	parseIDs := func(raw []string) ([]driver.Valuer, error) {

@@ -5,4 +5,6 @@ import (
 	gengorm "7link.com/platform/pkg/extension/gorm/gen"
 )
 
-func main() { gengorm.Generate(model.Contact{}, model.Record{}) }
+func main() {
+	gengorm.Generate(model.Contact{}, model.Record{}, model.SignedBrief{}, model.TriageCard{})
+}

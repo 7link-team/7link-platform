@@ -18,6 +18,7 @@ import (
 	"7link.com/platform/pkg/extension/authz"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -30,6 +31,7 @@ func seedHarness(t *testing.T) (*seedService, *gorm.DB) {
 
 func seedHarnessRuntime(t *testing.T) (*seedService, *gorm.DB, *appenv.Runtime) {
 	t.Helper()
+	require.NoError(t, platformi18n.NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1")), platformi18n.Base).Initialize(t.Context()))
 	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{"primary": {Type: "sqlite", DSN: filepath.Join(t.TempDir(), "seed.sqlite"), Writable: true, Readable: true}})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, router.Close()) })

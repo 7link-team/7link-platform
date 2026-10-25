@@ -158,3 +158,25 @@ func TestRemoveEventuallyReportsADirectoryThatStaysHeld(t *testing.T) {
 	}
 	require.Equal(t, len(remover.slept)+1, remover.calls, "every wait is followed by another attempt")
 }
+
+func TestOpenMySQLRebuildRetainsCurrentForeignKeys(t *testing.T) {
+	db := OpenMySQL(t)
+	for _, statement := range []string{
+		"CREATE TABLE parents (tenant_id BIGINT NOT NULL, id BIGINT NOT NULL, label TEXT, PRIMARY KEY(tenant_id,id))",
+		"CREATE TABLE children (tenant_id BIGINT NOT NULL, id BIGINT NOT NULL, parent_id BIGINT NOT NULL, PRIMARY KEY(tenant_id,id), FOREIGN KEY(tenant_id,parent_id) REFERENCES parents(tenant_id,id))",
+		"INSERT INTO parents VALUES(1,2,'before')",
+		"CREATE TABLE children_next (tenant_id BIGINT NOT NULL, id BIGINT NOT NULL, parent_id BIGINT NOT NULL, PRIMARY KEY(tenant_id,id), FOREIGN KEY(tenant_id,parent_id) REFERENCES parents(tenant_id,id))",
+		"DROP TABLE children",
+		"RENAME TABLE children_next TO children",
+		"INSERT INTO children VALUES(1,3,2)",
+		"UPDATE parents SET label='after' WHERE tenant_id=1 AND id=2",
+	} {
+		_, err := db.ExecContext(t.Context(), statement)
+		require.NoError(t, err, statement)
+	}
+	_, err := db.ExecContext(t.Context(), "INSERT INTO children VALUES(1,4,999)")
+	require.Error(t, err, "renamed table must still enforce its foreign key")
+	var name, definition string
+	require.NoError(t, db.QueryRowContext(t.Context(), "SHOW CREATE TABLE children").Scan(&name, &definition))
+	require.Contains(t, definition, "REFERENCES `parents` (`tenant_id`,`id`)")
+}

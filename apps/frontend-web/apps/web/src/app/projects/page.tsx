@@ -8,6 +8,7 @@ import { PaginationPages } from "@workspace/ui/components/pagination"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
+import { ProjectCreateAction } from "./create"
 import {
   iamApi,
   type ProjectListItem,
@@ -123,7 +124,10 @@ function Projects({ tenantID }: { tenantID: string }) {
     )
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
-      <PageHeader title={t("projects")} />
+      <PageHeader
+        title={t("projects")}
+        action={<ProjectCreateAction tenantID={tenantID} />}
+      />
       {error && <Alert>{error}</Alert>}
       <AutoTable
         fill
@@ -179,6 +183,7 @@ function Projects({ tenantID }: { tenantID: string }) {
                   options: [
                     { value: "false", label: t("projectActiveRecords") },
                     { value: "true", label: t("projectArchivedRecords") },
+                    { value: "all", label: t("archiveAll") },
                   ],
                 },
               },
@@ -202,7 +207,7 @@ function Projects({ tenantID }: { tenantID: string }) {
             onSubmit={(values) => {
               const next: ProjectListQuery = {
                 sort: String(values.sort),
-                archived: `eq:${values.archived}`,
+                archived: values.archived === "all" ? "in:true,false" : `eq:${values.archived}`,
               }
               for (const field of [
                 "name",

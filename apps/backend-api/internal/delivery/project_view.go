@@ -12,6 +12,7 @@ type ProjectView struct {
 	TenantID               guid.ID         `json:"tenant_id"`
 	ProjectID              guid.ID         `json:"project_id"`
 	Code                   string          `json:"code"`
+	ConstitutionVersionNo  *int            `json:"constitution_version_no"`
 	Description            *string         `json:"description"`
 	ClientEntityID         *guid.ID        `json:"client_entity_id"`
 	Stage                  string          `json:"stage"`
@@ -100,6 +101,7 @@ func projectRecordView(p model.Project) (ProjectView, error) {
 		TenantID:               p.TenantID,
 		ProjectID:              p.ProjectID,
 		Code:                   p.Code,
+		ConstitutionVersionNo:  p.ConstitutionVersionNo,
 		Description:            p.Description,
 		ClientEntityID:         p.ClientEntityID,
 		Stage:                  p.Stage,

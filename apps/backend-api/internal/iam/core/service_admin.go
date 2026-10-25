@@ -242,6 +242,9 @@ func (s *Service) CreateMenu(ctx context.Context, menu Menu) (Menu, error) {
 	record := newAuditRecord(ctx, menu.TenantID, "menu_created", "menu", 0)
 	record.PolicyChanged = true
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
+		if err := repo.revisions.Lock(ctx, repo.writer(), menu.TenantID); err != nil {
+			return err
+		}
 		if err := s.validateMenu(ctx, repo, &menu); err != nil {
 			return err
 		}
@@ -321,6 +324,9 @@ func (s *Service) DeleteMenu(ctx context.Context, tenantID, menuID guid.ID) erro
 	record := newAuditRecord(ctx, tenantID, "menu_deleted", "menu", menuID)
 	record.PolicyChanged = true
 	return s.writes.Run(ctx, record, func(repo *Repository) error {
+		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
+			return err
+		}
 		return repo.DeleteMenu(ctx, tenantID, menuID)
 	})
 }
@@ -447,7 +453,7 @@ func (s *Service) EffectiveMenus(
 	codeSet := map[string]struct{}{}
 	routePermissions := map[string]string{}
 	for _, menu := range DefaultMenus() {
-		routePermissions[menu.Route] = menu.PermissionCode
+		routePermissions[menuApp(menu.App)+"\x00"+menu.Route] = menu.PermissionCode
 	}
 	kind, err := s.repo.rootKind(ctx, tenantID)
 	if err != nil {
@@ -455,12 +461,28 @@ func (s *Service) EffectiveMenus(
 	}
 	if kind == "platform" {
 		for _, menu := range bootstrapMenus(kind) {
-			routePermissions[menu.Route] = menu.PermissionCode
+			routePermissions[menuApp(menu.App)+"\x00"+menu.Route] = menu.PermissionCode
 		}
 	}
 	if kind == "system" {
 		for _, menu := range s.repo.systemMenuDefaults() {
-			routePermissions[menu.Route] = menu.PermissionCode
+			routePermissions[menuApp(menu.App)+"\x00"+menu.Route] = menu.PermissionCode
+		}
+	}
+	menus, err = s.repo.activeContributedMenus(ctx, tenantID, menus, kind)
+	if err != nil {
+		return nil, err
+	}
+	contributed := map[string]ownedMenuPage{}
+	for _, p := range s.repo.contributions.snapshot() {
+		if p.Scope == map[string]string{"tenant": "TENANT", "platform": "PLATFORM", "system": "SYSTEM"}[kind] && p.Route != "" {
+			contributed[p.App+"\x00"+p.Route] = p
+			routePermissions[p.App+"\x00"+p.Route] = p.PermissionCode
+		}
+	}
+	for i := range menus {
+		if p, ok := contributed[menuApp(menus[i].App)+"\x00"+menus[i].Route]; ok && !validMenuPlacement(menus[i].App, menus[i].Domain, menus[i].Space, menus[i].Route) {
+			menus[i].Domain, menus[i].Space = p.Domain, p.Space
 		}
 	}
 	pagePermissions := map[guid.ID]string{}
@@ -468,9 +490,9 @@ func (s *Service) EffectiveMenus(
 		// A custom label or permission cannot weaken a built-in page's gate.
 		if parsed, err := url.Parse(menu.Route); err == nil && menu.Route != "" {
 			route := path.Clean(parsed.Path)
-			code := routePermissions[route]
+			code := routePermissions[menuApp(menu.App)+"\x00"+route]
 			if strings.HasPrefix(route, "/entities/") {
-				code = routePermissions["/entities"]
+				code = routePermissions["iam\x00/entities"]
 			}
 			if code != "" {
 				pagePermissions[menu.ID] = code
@@ -531,6 +553,7 @@ func (s *Service) EffectiveMenus(
 			}
 			result = append(result, MenuItem{
 				ID: menu.ID, Label: menu.Label, Path: route,
+				App: menuApp(menu.App), Domain: menu.Domain, Space: menu.Space,
 				Translations: menu.Translations,
 				Icon:         menu.Icon, SortOrder: menu.SortOrder,
 				PermissionCode: menu.PermissionCode, Children: nodes,
@@ -582,6 +605,19 @@ func (s *Service) EffectivePermissions(
 	sort.Strings(platformCodes)
 	granted := make([]string, 0, len(tenantCodes)+len(platformCodes))
 	if !tenantID.Zero() {
+		ordinaryCodes := make([]string, 0, len(tenantCodes))
+		for _, code := range tenantCodes {
+			action, _ := s.registry.Find(code)
+			if !action.DataScoped {
+				ordinaryCodes = append(ordinaryCodes, code)
+			}
+		}
+		// CheckBulk reads membership and effective grants once for this request.
+		// Data-scoped codes still require their compiled tenant-wide constraint.
+		allowed, err := s.checker.CheckBulk(ctx, tenantID, ordinaryCodes, principalID)
+		if err != nil {
+			return nil, fmt.Errorf("check effective tenant permissions: %w", err)
+		}
 		for _, code := range tenantCodes {
 			action, _ := s.registry.Find(code)
 			if action.DataScoped {
@@ -594,11 +630,7 @@ func (s *Service) EffectivePermissions(
 				}
 				continue
 			}
-			allowed, err := s.checker.Check(ctx, tenantID, code, principalID)
-			if err != nil {
-				return nil, fmt.Errorf("check effective tenant permission %s: %w", code, err)
-			}
-			if allowed {
+			if allowed[code] {
 				granted = append(granted, code)
 			}
 		}

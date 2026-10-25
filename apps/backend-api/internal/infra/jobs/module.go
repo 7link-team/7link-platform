@@ -17,8 +17,10 @@ import (
 	"7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/guid"
+	jobsi18n "7link.com/platform/internal/infra/jobs/i18n"
 	"7link.com/platform/internal/infra/jobs/query"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 )
 
@@ -46,6 +48,7 @@ type ScheduleOverride struct {
 
 // Module publishes background execution capabilities through the shared registry.
 type Module struct {
+	admin         adminAccess
 	runtime       *appenv.Runtime
 	config        Config
 	recorder      audit.Recorder
@@ -61,6 +64,7 @@ type Module struct {
 	onDead        func(context.Context, *gorm.DB, DeadLetter) error
 	workers       *workerRun
 	leakedWorkers *prometheus.GaugeVec
+	claimStats    *claimTelemetry
 	activeTenants func(context.Context, guid.ID, int) ([]guid.ID, error)
 }
 
@@ -108,12 +112,23 @@ func NewModule(rt *appenv.Runtime, config Config) *Module {
 	if rt != nil {
 		prefix = rt.TablePrefix()
 	}
-	return &Module{runtime: rt, config: config, names: query.BindNames(prefix), leakedWorkers: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "jobs_leaked_workers", Help: "Handlers still occupying a worker slot after their timeout plus 30-second grace period."}, []string{"queue"})}
+	return (&Module{runtime: rt, config: config, names: query.BindNames(prefix), leakedWorkers: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "jobs_leaked_workers", Help: "Handlers still occupying a worker slot after their timeout plus 30-second grace period."}, []string{"queue"})}).withClaimTelemetry()
 }
-func (*Module) ModuleName() string           { return Name }
-func (*Module) ModuleDependencies() []string { return []string{dlock.Name, guid.Name, audit.Name} }
+func (*Module) ModuleName() string { return Name }
+func (*Module) ModuleDependencies() []string {
+	return []string{dlock.Name, guid.Name, audit.Name, i18n.Name}
+}
 func (m *Module) ProvideServices(services *module.Services) error {
+	if err := m.provideArchiveJobs(services); err != nil {
+		return err
+	}
+	if err := m.provideAdmin(services); err != nil {
+		return err
+	}
 	if err := module.Provide[Singleton](services, m); err != nil {
+		return err
+	}
+	if err := module.Provide[QueueAdmission](services, m.admitQueueOn); err != nil {
 		return err
 	}
 	if err := module.Provide[Catalog](services, m); err != nil {
@@ -145,6 +160,11 @@ func (m *Module) InjectServices(services *module.Services) error {
 	return err
 }
 func (m *Module) Initialize(context.Context) error {
+	if m.admin.registrar != nil {
+		if err := jobsi18n.Register(); err != nil {
+			return err
+		}
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.recorder == nil || m.acquire == nil || m.tryAcquire == nil || m.guard == nil || m.ids == nil || m.config.MaxPendingPerTenant < 1 || m.config.MaxRunningPerTenant < 1 || m.config.Lease < time.Millisecond || m.config.Lease%time.Millisecond != 0 {

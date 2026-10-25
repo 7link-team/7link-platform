@@ -11,6 +11,7 @@ type Project struct {
 	TenantID               guid.ID    `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
 	ProjectID              guid.ID    `gorm:"column:project_id;primaryKey;autoIncrement:false"`
 	Code                   string     `gorm:"column:code;size:16;not null"`
+	ConstitutionVersionNo  *int       `gorm:"column:constitution_version_no"`
 	Description            *string    `gorm:"column:description"`
 	ClientEntityID         *guid.ID   `gorm:"column:client_entity_id"`
 	Stage                  string     `gorm:"column:stage;not null"`
@@ -19,6 +20,7 @@ type Project struct {
 	BlockedReason          *string    `gorm:"column:blocked_reason"`
 	TeamMode               string     `gorm:"column:team_mode;not null"`
 	TeamModeChangedAt      *time.Time `gorm:"column:team_mode_changed_at"`
+	AutonomyVersion        *int64     `gorm:"column:autonomy_version"`
 	LeadAgentID            *guid.ID   `gorm:"column:lead_agent_id"`
 	DispatchPolicy         string     `gorm:"column:dispatch_policy;not null"`
 	DispatchPolicyExplicit bool       `gorm:"column:dispatch_policy_explicit;not null"`

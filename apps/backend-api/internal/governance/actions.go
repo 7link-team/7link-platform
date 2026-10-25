@@ -15,8 +15,8 @@ type ActionRules struct {
 func RulesForAction(code, actorKind string) ActionRules {
 	var rules ActionRules
 	switch code {
-	case "scope_change", "delivery_send", "project_mode_change", "policy_manage",
-		"delegation_grant", "takeover", "machine_revoke", "production_access",
+	case "brief_sign", "workflow_gate_team", "workflow_gate_client", "decision_force_valid", "scope_change", "delivery_send", "project_mode_change", "policy_manage",
+		"delegation_grant", "takeover", "project_takeover", "machine_revoke", "production_access",
 		"intake_decline", "memory_approve", "project_create", "spawn_grant_manage",
 		"exception_decide", "acceptance_suite_manage", "integration_manage",
 		"terminal_interact", "preview_share_approve", "machine_access_manage", "tool_catalog_manage":

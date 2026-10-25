@@ -1,6 +1,8 @@
 package principallifecycle
 
 import (
+	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/module"
 	"context"
 	"fmt"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/internal/notification"
 	"7link.com/platform/pkg/extension/authz"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"gorm.io/gorm"
@@ -50,6 +53,7 @@ func AnonymizePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, reg
 		{provisioning.Name, provisioning.MigrationSource, provisioning.PrincipalErasureVersion, provisioning.ErasePrincipalData},
 		{organization.Name, organization.MigrationSource, organization.PrincipalErasureVersion, organization.ErasePrincipalData},
 		{governance.Name, governance.MigrationSource, governance.PrincipalErasureVersion, governance.ErasePrincipalData},
+		{notification.Name, notification.MigrationSource, notification.PrincipalErasureVersion, notification.ErasePrincipalData},
 	}
 	installed := make([]erasureOwner, 0, len(owners))
 	for _, owner := range owners {
@@ -74,4 +78,27 @@ func AnonymizePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, reg
 		}
 	}
 	return nil
+}
+
+// ProvideAnonymizer registers the principal lifecycle capability.
+func ProvideAnonymizer(services *module.Services, rt *appenv.Runtime) error {
+	anonymize := identity.PrincipalAnonymizer(func(ctx context.Context, tx *gorm.DB, principal identity.Principal, now time.Time) error {
+		if rt == nil {
+			return identity.ErrUnavailable
+		}
+		guard, err := module.Resolve[core.PrincipalPlatformAccessGuard](services)
+		if err != nil {
+			return identity.ErrUnavailable
+		}
+		registrar, err := module.Resolve[*authz.Registrar](services)
+		if err != nil || registrar.Registry() == nil {
+			return identity.ErrUnavailable
+		}
+		if err := guard(ctx, tx, principal.ID); err != nil {
+			return err
+		}
+		return AnonymizePrincipalData(ctx, tx, rt.TablePrefix(), registrar.Registry(), principal, now)
+	})
+	return module.Provide[identity.PrincipalAnonymizer](services, anonymize)
+
 }

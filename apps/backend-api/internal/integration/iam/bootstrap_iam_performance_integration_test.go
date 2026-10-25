@@ -101,6 +101,10 @@ type iamPerformanceSQLCapture struct {
 	queries map[string][]string
 }
 
+// Only queries originating from a measured operation belong to its plan.
+// The composed app also runs scheduler, sequencer and realtime queries.
+type iamPerformanceContextKey struct{}
+
 type iamPerformanceFullScan struct {
 	table     string
 	condition string
@@ -112,11 +116,14 @@ func (*iamPerformanceSQLCapture) Warn(context.Context, string, ...any)          
 func (*iamPerformanceSQLCapture) Error(context.Context, string, ...any)            {}
 
 func (capture *iamPerformanceSQLCapture) Trace(
-	_ context.Context,
+	ctx context.Context,
 	_ time.Time,
 	sqlAndRows func() (string, int64),
 	_ error,
 ) {
+	if ctx.Value(iamPerformanceContextKey{}) != true {
+		return
+	}
 	capture.mu.Lock()
 	path := capture.path
 	capture.mu.Unlock()
@@ -159,6 +166,28 @@ func (capture *iamPerformanceSQLCapture) snapshot() map[string][]string {
 		}
 	}
 	return result
+}
+
+func TestIAMPerformanceCaptureExcludesConcurrentBackgroundQueries(t *testing.T) {
+	capture := &iamPerformanceSQLCapture{queries: make(map[string][]string)}
+	ctx := context.WithValue(t.Context(), iamPerformanceContextKey{}, true)
+	trace := func(ctx context.Context, sql string) {
+		capture.Trace(ctx, time.Now(), func() (string, int64) { return sql, 1 }, nil)
+	}
+	require.NoError(t, capture.during("scim_bulk", func() error {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			trace(t.Context(), `SELECT * FROM "domain_event_cursors"`)
+		}()
+		nested, cancel := context.WithCancel(ctx)
+		defer cancel()
+		trace(nested, "SELECT measured_operation")
+		<-done
+		return nil
+	}))
+	trace(ctx, "SELECT outside_capture")
+	require.Equal(t, map[string][]string{"scim_bulk": {"SELECT measured_operation"}}, capture.snapshot())
 }
 
 func TestIAMPerformanceExternalDatabase(t *testing.T) {
@@ -323,6 +352,7 @@ func TestIAMPerformanceThresholdJudgesTheMedian(t *testing.T) {
 
 func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperations int) iamPerformancePaths {
 	t.Helper()
+	ctx := context.WithValue(t.Context(), iamPerformanceContextKey{}, true)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	roleID := guid.ID(6_500_001)
 	require.NoError(t, fixture.db.Table(fixture.table("iam_roles")).Create(map[string]any{
@@ -362,16 +392,16 @@ func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperati
 		map[string]any{"login_name": "performance-scim-actor", "display_name": "Performance SCIM actor"}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	account := decodeEnvelope[identity.ServiceAccount](t, response)
-	directory, err := scim.CreateDirectory(t.Context(), iamTenantA, "Performance directory", &account.ID)
+	directory, err := scim.CreateDirectory(ctx, iamTenantA, "Performance directory", &account.ID)
 	require.NoError(t, err)
-	credential, err := scim.CreateCredential(t.Context(), iamTenantA, directory.ID, "Performance credential", nil)
+	credential, err := scim.CreateCredential(ctx, iamTenantA, directory.ID, "Performance credential", nil)
 	require.NoError(t, err)
-	scimAuth, err := scim.Authenticate(t.Context(), "Bearer "+credential.Token)
+	scimAuth, err := scim.Authenticate(ctx, "Bearer "+credential.Token)
 	require.NoError(t, err)
 	auditService := iamaudit.NewService(fixture.app.Runtime(), ids)
 	authorizer := newBoundIAMAuthorizer(t, fixture.app.Runtime())
 	authnModule := requireIAMModule[*iamauthn.Module](t, fixture, iamauthn.Name)
-	sessionToken, err := authnModule.CreateSession(t.Context(), fixture.adminA.ID, now, authn.Assurance{
+	sessionToken, err := authnModule.CreateSession(ctx, fixture.adminA.ID, now, authn.Assurance{
 		AuthTime: now, Level: 1, Methods: []string{"pwd"},
 	})
 	require.NoError(t, err)
@@ -387,18 +417,18 @@ func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperati
 	}
 	return iamPerformancePaths{
 		authorization: func() error {
-			allowed, err := authorizer.CheckBulk(t.Context(), iamTenantA, []string{"entity_view", "menu_view"}, fixture.adminA.ID)
+			allowed, err := authorizer.CheckBulk(ctx, iamTenantA, []string{"entity_view", "menu_view"}, fixture.adminA.ID)
 			if err == nil && !allowed["entity_view"] {
 				return errors.New("performance authorization fixture was denied")
 			}
 			return err
 		},
 		session: func() error {
-			_, err := authnModule.Authenticate(t.Context(), "", sessionCookie)
+			_, err := authnModule.Authenticate(ctx, "", sessionCookie)
 			return err
 		},
 		scimBulk: func() error {
-			response, err := scim.Bulk(t.Context(), scimAuth, bulkRequest)
+			response, err := scim.Bulk(ctx, scimAuth, bulkRequest)
 			if err != nil {
 				return err
 			}
@@ -413,7 +443,7 @@ func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperati
 			return nil
 		},
 		auditAppend: func() error {
-			_, err := auditService.Append(t.Context(), iamaudit.EventInput{
+			_, err := auditService.Append(ctx, iamaudit.EventInput{
 				TenantID: iamTenantA, EventType: "performance_probe", Outcome: "success",
 			})
 			return err

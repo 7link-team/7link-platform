@@ -21,10 +21,141 @@ interface RecordedRequest {
 }
 
 describe("IAM API client", () => {
-  it("reads project list totals, exact budgets and tenant query parameters", async () => {
+  it("omits the inbox cursor to resume ACK and preserves explicit replay and kind filters", async () => {
+    const queries: URLSearchParams[] = []
+    server = Bun.serve({port: 0, fetch(request) {
+      queries.push(new URL(request.url).searchParams)
+      return Response.json({code: 0, data: {items: [], head: 8, ack: 7, has_more: false, next: []}})
+    }})
+    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "1")
+    await client.agentInbox("1", "7")
+    await client.agentInbox("1", "7", 0, undefined, "MENTION")
+    await client.agentInbox("1", "7", 2, undefined, "DISPATCH")
+    await client.agentInbox("1", "7", 4, undefined, "REVIEW_FEEDBACK")
+    expect(queries[0]!.has("since")).toBe(false)
+    expect(queries[0]!.has("kind")).toBe(false)
+    expect(queries[1]!.get("since")).toBe("0")
+    expect(queries[1]!.get("kind")).toBe("MENTION")
+    expect(queries[2]!.get("kind")).toBe("DISPATCH")
+    expect(queries[2]!.get("since")).toBe("2")
+    expect(queries[3]!.get("kind")).toBe("REVIEW_FEEDBACK")
+    expect(queries[3]!.get("since")).toBe("4")
+  })
+  it("creates a project under the explicit tenant with the supplied replay key", async () => {
+    const requests: {
+      path: string
+      method: string
+      key: string | null
+      body: unknown
+    }[] = []
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        requests.push({
+          path: new URL(request.url).pathname,
+          method: request.method,
+          key: request.headers.get("Idempotency-Key"),
+          body: await request.json(),
+        })
+        return Response.json(
+          {
+            code: 0,
+            data: {
+              project: { project_id: "12" },
+              entity: { id: "12", parent_id: null },
+            },
+          },
+          { status: 201 }
+        )
+      },
+    })
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "wrong"
+    )
+    const body = {
+      name: "Workspace",
+      code: "WS-1",
+      description: "A real project",
+      client: {entity_id: "9007199254740993"},
+      contacts: [{intake_contact_id: "9007199254740995", role: "CC" as const, receives_deliveries: false, can_accept: false}],
+      repositories: [{name: "Source", remote_url: "git@example.invalid:team/repo.git", default_branch: "release", protected_branches: ["release"], is_primary: true}],
+      members: [{principal_id: "9007199254740997", role_key: "engineer"}],
+      budget_cap_micros: 1000000,
+      budget_notify_pct: 85,
+      target_date: "2040-01-01",
+    }
+    for (let retry = 0; retry < 2; retry++) {
+      expect(
+        (await client.createProject("7", body, "same-draft-key")).project
+          .project_id
+      ).toBe("12")
+    }
+    expect(requests).toEqual(
+      Array.from({ length: 2 }, () => ({
+        path: "/tenants/7/projects",
+        method: "POST",
+        key: "same-draft-key",
+        body,
+      }))
+    )
+  })
+  it("merges admitted instances for existing permissions under the explicitly addressed tenant", async () => {
+    const urls: URL[] = []
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url)
+        if(url.pathname.endsWith("/client-access"))return Response.json({code:0,data:{external:false,projects:{items:[],has_more:false}}})
+        urls.push(url)
+        const permission = url.searchParams.get("permission")
+        return Response.json({
+          code: 0,
+          data:
+            permission === "file_view"
+              ? [{ id: "11" }]
+              : [{ id: "11" }, { id: "12" }],
+        })
+      },
+    })
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "wrong",
+      () => "9"
+    )
+    expect(
+      (await client.memberEntities(["file_view", "project_read"], "7")).map(
+        (entity) => entity.id
+      )
+    ).toEqual(["11", "12"])
+    expect(urls.map((url) => url.pathname)).toEqual([
+      "/tenants/7/principals/9/entities",
+    ])
+    expect(urls[0]!.searchParams.get("permissions")).toBe("file_view,project_read")
+    expect(urls[0]!.searchParams.has("permission")).toBe(false)
+  })
+  it("coalesces concurrent session and tenant directory discovery without caching later reads", async () => {
+    const paths: string[] = []
+    server = Bun.serve({port: 0, async fetch(request) {
+      const path = new URL(request.url).pathname
+      paths.push(path)
+      await new Promise(resolve => setTimeout(resolve, 10))
+      return Response.json({code: 0, data: path === "/me" ? {subject: "9"} : [{id: "7"}]})
+    }})
+    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "7")
+    const [first, second, tenants, again] = await Promise.all([client.session(), client.session(), client.myTenants(), client.myTenants()])
+    expect(first).toEqual(second)
+    expect(tenants).toEqual(again)
+    expect(paths).toEqual(["/me", "/principals/9/tenants"])
+    await client.session()
+    await client.myTenants()
+    expect(paths).toEqual(["/me", "/principals/9/tenants", "/me", "/principals/9/tenants"])
+  })
+  it("reads project list totals, archive markers, exact budgets and tenant query parameters", async () => {
     const urls: URL[] = []
     const item = {
       project_id: "9007199254740993",
+      archived_at: null,
       client: null,
       code: "P1",
       name: "all",
@@ -37,7 +168,17 @@ describe("IAM API client", () => {
       version: 1,
       updated_at: "2026-10-18T00:00:00Z",
       counts: { open_work_items: 2, needs_review: 1, waiting_deliveries: 0 },
-      budget: { cap: null, spent: "9007199254740993", pct: null, state: "NORMAL" },
+      budget: {
+        cap: null,
+        spent: "9007199254740993",
+        pct: null,
+        state: "NORMAL",
+      },
+    }
+    const archivedItem = {
+      ...item,
+      project_id: "9007199254740994",
+      archived_at: "2026-10-22T00:00:00Z",
     }
     server = Bun.serve({
       port: 0,
@@ -46,7 +187,7 @@ describe("IAM API client", () => {
         return urls.length === 1
           ? Response.json({
               code: 0,
-              data: [item],
+              data: [item, archivedItem],
               meta: { page: { total: 147 } },
             })
           : Response.json(
@@ -59,14 +200,16 @@ describe("IAM API client", () => {
     expect(
       await client.projects("11", {
         name: "like:all",
+        archived: "in:true,false",
         offset: 20,
         limit: 10,
         sort: "name",
       })
-    ).toEqual({ items: [item], total: 147 })
+    ).toEqual({ items: [item, archivedItem], total: 147 })
     expect(urls[0]?.pathname).toBe("/tenants/11/projects")
     expect(Object.fromEntries(urls[0]!.searchParams)).toEqual({
       name: "like:all",
+      archived: "in:true,false",
       offset: "20",
       limit: "10",
       sort: "name",
@@ -1476,6 +1619,13 @@ describe("IAM API client", () => {
       message:
         "Pentadbir aktif terakhir penyewa tidak boleh dibuang atau dinyahaktifkan.",
     })
+  })
+
+  it("preserves contributed app, domain, space and exact identities in effective menus", async () => {
+    const page = {id: "9223372036854775806", label: "Project", app: "delivery", domain: "PROJECTS", space: "PROJECT", path: "/t/:tenantID/p/:projectID/work-items", permission_code: "work_item_read", sort_order: 10}
+    server = Bun.serve({port: 0, fetch() { return Response.json({code: 0, data: [page]}) }})
+    const client = createIamApi(`http://127.0.0.1:${server.port}`, undefined, () => "101")
+    expect(await client.effectiveMenus("42")).toEqual([page])
   })
 
   it("normalizes an empty effective menu response", async () => {
@@ -3027,8 +3177,13 @@ describe("IAM API client", () => {
       () => "101"
     )
 
+    const auditQuery = {
+      event_type: "oauth_client_created",
+      project_id: "3", module: "delivery", actor_kind: "AGENT" as const,
+      authority_source: "POLICY:dispatch_auto",
+    }
     expect(
-      await client.auditEvents({ event_type: "oauth_client_created" })
+      await client.auditEvents(auditQuery)
     ).toEqual({
       items: [event],
       total: 7,
@@ -3038,16 +3193,14 @@ describe("IAM API client", () => {
       valid: true,
       head_sequence: 1,
     })
-    const download = await client.auditExport({
-      event_type: "oauth_client_created",
-    })
+    const download = await client.auditExport(auditQuery)
     expect(download.filename).toBe("audit-20260801T150000Z.ndjson")
     expect(await download.blob.text()).toContain('"schema":"audit-export.v1"')
     expect(requests.map(({ path }) => path)).toEqual([
-      "/tenants/tenant-audit/audit/events?event_type=oauth_client_created",
+      "/tenants/tenant-audit/audit/events?event_type=oauth_client_created&project_id=3&module=delivery&actor_kind=AGENT&authority_source=POLICY%3Adispatch_auto",
       "/tenants/tenant-audit/audit/events/event-1",
       "/tenants/tenant-audit/audit/integrity-verifications",
-      "/tenants/tenant-audit/audit/exports?event_type=oauth_client_created",
+      "/tenants/tenant-audit/audit/exports?event_type=oauth_client_created&project_id=3&module=delivery&actor_kind=AGENT&authority_source=POLICY%3Adispatch_auto",
     ])
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBeNull()

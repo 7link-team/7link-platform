@@ -1,0 +1,13 @@
+{
+  "spawn_warning_title": "Bajet penciptaan mencapai 80%",
+  "spawn_warning_body": "Geran {{.grant_id}} telah menyelesaikan kos {{.spent_micros}} daripada {{.cap_micros}} mikro. Semak baki bajet.",
+  "spawn_warning_email_subject": "Bajet penciptaan mencapai 80%",
+  "spawn_warning_email_text": "Geran {{.grant_id}} telah menyelesaikan kos {{.spent_micros}} daripada {{.cap_micros}} mikro.",
+  "spawn_warning_email_html": "<p>Geran {{.grant_id}} telah menyelesaikan kos {{.spent_micros}} daripada {{.cap_micros}} mikro.</p>",
+  "escape_not_found": "Rekod pelepasan kualiti tidak ditemui.",
+  "escape_decided": "Keputusan pembelajaran ini telah direkodkan atau versinya lapuk.",
+  "spawn_invalid": "Skop kebenaran penciptaan atau penyelia tidak sah.",
+  "spawn_quota": "Kuota penciptaan penuh atau lebih rendah daripada penggunaan semasa.",
+  "spawn_budget": "Belanjawan kebenaran penciptaan telah habis.",
+  "spawn_active": "Penyelia ini sudah mempunyai kebenaran penciptaan yang aktif."
+}

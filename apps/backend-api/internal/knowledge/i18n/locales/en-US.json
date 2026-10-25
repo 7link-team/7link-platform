@@ -1,0 +1,13 @@
+{
+  "memory_quota": "The Agent memory quota is exhausted.",
+  "memory_secret": "Memory contains a suspected secret.",
+  "memory_provenance": "Memory requires a recent terminal execution owned by this Agent in the same project.",
+  "skill_frontmatter": "Invalid SKILL.md frontmatter.",
+  "skill_not_mountable": "This skill version cannot be mounted.",
+  "forbidden": "Knowledge access denied.",
+  "not_found": "Knowledge entry not found.",
+  "invalid": "Invalid knowledge input.",
+  "conflict": "The knowledge version or state changed.",
+  "unavailable": "Knowledge is temporarily unavailable.",
+  "skill_distillation_not_accepted": "Skill distillation requires an accepted work item."
+}

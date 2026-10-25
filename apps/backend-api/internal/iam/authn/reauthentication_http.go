@@ -16,7 +16,7 @@ type reauthenticationBeginInput struct {
 	Origin        string `header:"Origin"`
 	Authorization string `header:"Authorization" hidden:"true"`
 	Body          struct {
-		Purpose string `json:"purpose" enum:"identity_link,identity_unlink,personal_token_create,principal_close,tenant_leave"`
+		Purpose string `json:"purpose" enum:"identity_link,identity_unlink,personal_token_create,principal_close,tenant_leave,scope_change,terminal_interactive,machine_terminal_enable,machine_revoke,system_event_replay"`
 		Target  string `json:"target" minLength:"1" maxLength:"512"`
 		Method  string `json:"method" enum:"password,passkey,federation"`
 	}
@@ -78,4 +78,6 @@ func registerReauthenticationHTTP(api huma.API, service *Service) {
 		}
 		return respx.OK(ctx, map[string]bool{"verified": true}), nil
 	})
+	RegisterVerificationReauthentication(api)
+	registerReauthentication(api)
 }

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/agents"
 	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
@@ -414,4 +415,28 @@ func TestHTTPServerDoesNotAuditSkippedRoutes(t *testing.T) {
 	// Give the pipeline a moment; no event should appear for the skipped route.
 	time.Sleep(50 * time.Millisecond)
 	assert.Empty(t, sink.snapshot())
+}
+
+func TestComposedHTTPFinalizesDependentIntakeManifest(t *testing.T) {
+	app := bootstrapComposedApp(t)
+	require.NoError(t, app.RegisterHTTP(t.Context(), chi.NewRouter()))
+	registry, err := module.Resolve[*agents.OperationRegistry](app.modules.Services())
+	require.NoError(t, err)
+	published := map[string]agents.Operation{}
+	for _, op := range registry.List() {
+		published[op.Name] = op
+	}
+	for _, name := range []string{"lookup", "sources", "source", "create", "get", "list"} {
+		op, ok := published["intake_suggestions."+name]
+		require.True(t, ok, name)
+		require.Equal(t, "scope_change", op.RequiredPermission)
+		require.False(t, op.HumanOnly)
+		require.NotEmpty(t, op.OutputSchema)
+	}
+	require.Equal(t, "/tenants/{tenant_id}/intake-suggestion-sources/{id}", published["intake_suggestions.lookup"].Path)
+	require.Equal(t, "/entities/{entity_id}/intake-suggestions", published["intake_suggestions.create"].Path)
+	require.Contains(t, string(published["intake_suggestions.create"].InputSchema), "suggested_project_id")
+	before := registry.List()
+	require.NoError(t, app.RegisterHTTP(t.Context(), chi.NewRouter()))
+	require.Equal(t, before, registry.List())
 }

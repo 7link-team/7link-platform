@@ -3,6 +3,7 @@ import { AuthProvider } from "./components/auth-provider"
 import { PendingRoute } from "./components/pending-route"
 import { RouteError } from "./components/route-error"
 import { authEntrances, entrancePath } from "./lib/auth-entrance"
+import { projectSurfaces } from "./lib/project-surfaces"
 import {
   legacyRouteLoader,
   workspaceHomeLoader,
@@ -65,6 +66,10 @@ export const router = createBrowserRouter([
           </AuthProvider>
         ),
         children: [
+          {
+            path: "/preview-access",
+            lazy: async () => ({Component: (await import("./app/preview-access/page")).default}),
+          },
           ...authEntrances.map((entry) => ({
             path: entrancePath(entry, "login"),
             lazy: async () => ({
@@ -94,6 +99,21 @@ export const router = createBrowserRouter([
                   Component: (await import("./app/system/layout"))
                     .AdministrationWorkspaceHome,
                 }),
+              },
+              {
+                path: "/system/jobs",
+                handle: { layout: "workspace" },
+                lazy: async () => ({ Component: (await import("./app/system/jobs")).default }),
+              },
+              {
+                path: "/system/domain-events",
+                handle: { layout: "workspace" },
+                lazy: async () => ({ Component: (await import("./app/system/domain-events")).default }),
+              },
+              {
+                path: "/system/job-schedules",
+                handle: { layout: "workspace" },
+                lazy: async () => ({ Component: (await import("./app/system/jobs")).PlatformSchedulesPage }),
               },
               {
                 path: "/system/menus",
@@ -283,6 +303,10 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                path: "notifications",
+                lazy: async () => ({ Component: (await import("./app/notifications/page")).default }),
+              },
+              {
                 handle: { layout: "workspace" },
                 path: "memberships",
                 lazy: async () => ({
@@ -372,6 +396,26 @@ export const router = createBrowserRouter([
               },
               {
                 handle: { layout: "workspace" },
+                path: "/admin/:tenantID/machines",
+                lazy: async () => ({Component: (await import("./app/machines/page")).default}),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/machines/:machineID",
+                lazy: async () => ({Component: (await import("./app/machines/detail")).default}),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/entities/:entityID/executions",
+                lazy: async () => ({Component: (await import("./app/executions/page")).default}),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/entities/:entityID/executions/:executionID",
+                lazy: async () => ({Component: (await import("./app/executions/detail")).default}),
+              },
+              {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/projects",
                 lazy: async () => ({
                   Component: (await import("./app/projects/page")).default,
@@ -379,9 +423,85 @@ export const router = createBrowserRouter([
               },
               {
                 handle: { layout: "workspace" },
+                path: "/admin/:tenantID/entities/:entityID/worklogs",
+                lazy: async () => ({ Component: (await import("./app/work-management/page")).WorklogsPage }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/entities/:entityID/workflow-config",
+                lazy: async () => ({ Component: (await import("./app/work-management/page")).WorkflowConfigPage }),
+              },
+              {handle:{layout:"workspace"},path:"/admin/:tenantID/entities/:entityID/plan-review",lazy:async()=>({Component:(await import("./app/work-items/plan-review")).default})},
+              {handle:{layout:"workspace"},path:"/admin/:tenantID/entities/:entityID/escapes",lazy:async()=>({Component:(await import("./app/governance/quality-escapes")).default})},
+              {
+                handle: { layout: "workspace" },
                 path: "/admin/:tenantID/entities/:entityID/project",
                 lazy: async () => ({
                   Component: (await import("./app/projects/detail")).default,
+                }),
+              },
+              {handle: {layout: "workspace"}, path: "/admin/:tenantID/knowledge/settings", lazy: async () => ({Component: (await import("./app/knowledge/settings")).default})},
+              {handle: {layout: "workspace"}, path: "/admin/:tenantID/knowledge/skills", lazy: async () => ({Component: (await import("./app/knowledge/skills")).default})},
+              {handle: {layout: "workspace"}, path: "/admin/:tenantID/knowledge/sources", lazy: async () => ({Component: (await import("./app/knowledge/sources")).default})},
+              {handle: {layout: "workspace"}, path: "/admin/:tenantID/knowledge/sources/:sourceID", lazy: async () => ({Component: (await import("./app/knowledge/source")).default})},
+              {handle: {layout: "workspace"}, path: "/admin/:tenantID/entities/:entityID/knowledge/sources", lazy: async () => ({Component: (await import("./app/knowledge/sources")).default})},
+              {handle: {layout: "workspace"}, path: "/admin/:tenantID/entities/:entityID/knowledge/sources/:sourceID", lazy: async () => ({Component: (await import("./app/knowledge/source")).default})},
+              {handle: {layout: "workspace"}, path: "/admin/:tenantID/entities/:entityID/review-sheet", lazy: async () => ({Component: (await import("./app/review-sheet/page")).default})},
+              {handle: {layout: "workspace"}, path: "/admin/:tenantID/entities/:entityID/intake-channels", lazy: async () => ({Component: (await import("./app/intake-channels/page")).default})},
+              {handle: {layout: "workspace"}, path: "/admin/:tenantID/gateway", lazy: async () => ({Component: (await import("./app/machines/gateway-page")).default})},
+              {handle: {layout: "workspace"}, path: "/admin/:tenantID/tool-catalog", lazy: async () => ({Component: (await import("./app/agents/tool-catalog")).default})},
+              {handle: {layout: "workspace"}, path: "/admin/:tenantID/runners", lazy: async () => ({Component: (await import("./app/runners/page")).default})},
+              {handle: {layout: "workspace"}, path: "/admin/:tenantID/metrics", lazy: async () => ({Component: (await import("./app/metrics/page")).default})},
+              {handle: {layout: "workspace"}, path: "/admin/:tenantID/entities/:entityID/workspace/:executionID", lazy: async () => ({Component: (await import("./app/workspace/page")).default})},
+              {
+                handle: {layout: "workspace"}, path: "/admin/:tenantID/agents",
+                lazy: async () => ({Component: (await import("./app/agents/page")).default}),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/knowledge",
+                lazy: async () => ({ Component: (await import("./app/knowledge/page")).default }),
+              },
+              {
+                handle: {layout: "workspace"}, path: "/admin/:tenantID/knowledge/debug",
+                lazy: async () => ({Component: (await import("./app/knowledge/retrieval-debug")).default}),
+              },
+              {
+                handle: {layout: "workspace"}, path: "/admin/:tenantID/entities/:entityID/knowledge/debug",
+                lazy: async () => ({Component: (await import("./app/knowledge/retrieval-debug")).default}),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/entities/:entityID/knowledge",
+                lazy: async () => ({ Component: (await import("./app/knowledge/page")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/entities/:entityID/governance/memory-review",
+                lazy: async () => ({ Component: (await import("./app/knowledge/page")).MemoryReviewPage }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/entities/:entityID/conversations",
+                lazy: async () => ({ Component: (await import("./app/conversations/page")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/conversations",
+                lazy: async () => ({ Component: (await import("./app/conversations/hub")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/entities/:entityID/work-items",
+                lazy: async () => ({
+                  Component: (await import("./app/work-items/page")).default,
+                }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/entities/:entityID/requirements",
+                lazy: async () => ({
+                  Component: (await import("./app/requirements/page")).default,
                 }),
               },
               {
@@ -390,6 +510,114 @@ export const router = createBrowserRouter([
                   Component: (await import("./app/files/page")).default,
                 }),
               },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/goals",
+                lazy: async () => ({ Component: (await import("./app/goals/page")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/plans/me",
+                lazy: async () => ({ Component: (await import("./app/plans/page")).MyPlansPage }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/plans/:planID",
+                lazy: async () => ({ Component: (await import("./app/plans/page")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/reports",
+                lazy: async () => ({ Component: (await import("./app/reports/page")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/performance",
+                lazy: async () => ({ Component: (await import("./app/performance/page")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/templates",
+                lazy: async () => ({ Component: (await import("./app/templates/page")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/templates/:templateID/workflow",
+                lazy: async () => ({ Component: (await import("./app/templates/page")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/governance/inbox",
+                lazy: async () => ({ Component: (await import("./app/governance/page")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/governance/agent-operations",
+                lazy: async () => ({ Component: (await import("./app/agents/page")).AgentOperationsPage }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/governance/memory-review",
+                lazy: async () => ({ Component: (await import("./app/knowledge/page")).MemoryReviewPage }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/governance/policies",
+                lazy: async () => ({ Component: (await import("./app/governance/policies")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/governance/escapes",
+                lazy: async () => ({Component: (await import("./app/governance/quality-escapes")).default}),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/governance/delegations",
+                lazy: async () => ({ Component: (await import("./app/governance/delegations")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/governance/spawn-grants",
+                lazy: async () => ({ Component: (await import("./app/governance/spawn-grants")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/integrations",
+                lazy: async () => ({ Component: (await import("./app/integrations/page")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/entities/:entityID/goals",
+                lazy: async () => ({ Component: (await import("./app/goals/page")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/entities/:entityID/plans",
+                lazy: async () => ({ Component: (await import("./app/plans/page")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/entities/:entityID/plans/:planID",
+                lazy: async () => ({ Component: (await import("./app/plans/page")).default }),
+              },
+              {
+                handle: { layout: "workspace" },
+                path: "/admin/:tenantID/entities/:entityID/reports",
+                lazy: async () => ({ Component: (await import("./app/reports/page")).default }),
+              },
+              ...["/admin/:tenantID/my-work", "/admin/:tenantID/entities/:entityID/my-work"].map((path) => ({
+                path,
+                handle: { layout: "workspace" },
+                lazy: async () => ({ Component: (await import("./app/my-work/page")).default }),
+              })),
+              ...projectSurfaces.map(({ path }) => ({
+                path: `/admin/:tenantID/entities/:entityID/${path}`,
+                handle: { layout: "workspace" },
+                lazy: async () => {
+                  const Page = (await import("./app/project-views/page")).default
+                  return { Component: () => <Page surface={path} /> }
+                },
+              })),
               // The register of departments, reached from inside an entity. It is
               // the same page as the tenant's, which the service narrows to the
               // departments the caller's grant names; it lives here as well so

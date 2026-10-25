@@ -1,0 +1,14 @@
+{
+  "forbidden": "无权访问此智能体协作范围。",
+  "retirement_name_mismatch": "请输入与智能体当前名称完全一致的文字，以确认强制退役。",
+  "not_found": "智能体协作条目不存在。",
+  "invalid": "智能体请求无效。",
+  "conflict": "智能体状态或版本已变更。",
+  "unavailable": "智能体协作服务暂不可用。",
+  "wake_failed": "Agent 签名唤醒连续失败 20 次，已切换为轮询。请检查 webhook 接收端。",
+  "wake_failed_title": "Agent webhook 唤醒失败",
+  "wake_failed_body": "Agent {{.subject_id}} 唤醒投递连续失败 {{.failures}} 次，已切换为轮询。请检查接收端。",
+  "wake_failed_email_subject": "Agent webhook 唤醒失败",
+  "wake_failed_email_text": "Agent {{.subject_id}} 唤醒投递连续失败 {{.failures}} 次，已切换为轮询。请检查接收端。",
+  "wake_failed_email_html": "<p>Agent {{.subject_id}} 唤醒投递连续失败 {{.failures}} 次，已切换为轮询。请检查接收端。</p>"
+}

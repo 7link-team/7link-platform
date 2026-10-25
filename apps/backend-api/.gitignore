@@ -10,6 +10,7 @@
 *.test
 *.out
 coverage.html
+/notification
 
 # Local SQLite databases
 *.db

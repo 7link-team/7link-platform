@@ -1,0 +1,13 @@
+{
+  "memory_quota": "Agent 记忆配额已用尽。",
+  "memory_secret": "记忆包含疑似密钥。",
+  "memory_provenance": "记忆须关联该 Agent 在同项目内近期结束的执行。",
+  "skill_frontmatter": "SKILL.md frontmatter 无效。",
+  "skill_not_mountable": "此技能版本无法挂载。",
+  "forbidden": "无权访问此知识范围。",
+  "not_found": "知识条目不存在。",
+  "invalid": "知识请求无效。",
+  "conflict": "条目状态或版本已变更。",
+  "unavailable": "知识服务暂不可用。",
+  "skill_distillation_not_accepted": "仅可从已接受的工作项提炼技能。"
+}

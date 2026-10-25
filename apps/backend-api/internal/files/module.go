@@ -29,29 +29,31 @@ type Config struct {
 	LocalRoot        string
 	Backend          string
 	Options          DriverConfig
+	ReadBackends     map[string]BackendConfig
 	LegacyLocalRoots map[string]string
 }
 
 type Module struct {
-	config       Config
-	driver       Driver
-	registry     *Registry
-	runtime      *appenv.Runtime
-	accounts     *AccountObjects
-	bindings     *ResourceBindings
-	resources    *AccountResourceFiles
-	registrar    *authz.Registrar
-	policy       core.EntityConstraintOn
-	subjects     core.AuthorizationSubjectsOn
-	references   core.AuthorizationReferencesOn
-	entityOwner  core.EntityOwnerResolver
-	deptOwner    core.DepartmentOwnerResolver
-	ids          guid.Source
-	appender     audit.Appender
-	operations   *operationService
-	workerMu     sync.Mutex
-	workerCancel context.CancelFunc
-	workerDone   chan struct{}
+	executionArtifacts *ExecutionArtifactFiles
+	config             Config
+	driver             Driver
+	registry           *Registry
+	runtime            *appenv.Runtime
+	accounts           *AccountObjects
+	bindings           *ResourceBindings
+	resources          *AccountResourceFiles
+	registrar          *authz.Registrar
+	policy             core.EntityConstraintOn
+	subjects           core.AuthorizationSubjectsOn
+	references         core.AuthorizationReferencesOn
+	entityOwner        core.EntityOwnerResolver
+	deptOwner          core.DepartmentOwnerResolver
+	ids                guid.Source
+	appender           audit.Appender
+	operations         *operationService
+	workerMu           sync.Mutex
+	workerCancel       context.CancelFunc
+	workerDone         chan struct{}
 	// cleanupFailures counts failed cleanup pages per task, indexed like
 	// cleanupTasks. The loop has no caller, so these are what an alert reads.
 	cleanupFailures [len(cleanupTasks)]atomic.Int64
@@ -76,6 +78,7 @@ func NewModule(runtime *appenv.Runtime, config Config) *Module {
 		panic("files module requires runtime")
 	}
 	registry := NewRegistry()
+	_ = registry.Register("s3", func(c DriverConfig) (Driver, error) { return NewS3(c) })
 	_ = registry.Register("local", func(c DriverConfig) (Driver, error) { return NewLocal(c["root"]) })
 	return &Module{runtime: runtime, config: config, registry: registry}
 }
@@ -95,6 +98,21 @@ func (*Module) ModuleDependencies() []string {
 func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 
 func (m *Module) ProvideServices(services *module.Services) error {
+	if err := m.provideDeliveryBundleFiles(services); err != nil {
+		return err
+	}
+	if err := m.provideObjectMigrator(services); err != nil {
+		return err
+	}
+	if err := m.provideClientResources(services); err != nil {
+		return err
+	}
+	if err := m.provideConversationResources(services); err != nil {
+		return err
+	}
+	if err := m.providePinnedResources(services); err != nil {
+		return err
+	}
 	backend := m.config.Backend
 	if backend == "" {
 		backend = "local"
@@ -109,7 +127,7 @@ func (m *Module) ProvideServices(services *module.Services) error {
 			options["root"] = "data/files"
 		}
 	}
-	driver, err := m.registry.Build(backend, options)
+	driver, err := m.configuredDriver(backend, options)
 	if err != nil {
 		return err
 	}
@@ -129,6 +147,18 @@ func (m *Module) ProvideServices(services *module.Services) error {
 		return err
 	}
 	if err := module.Provide[*ResourceBindings](services, m.bindings); err != nil {
+		return err
+	}
+	if err := m.providePayloads(services); err != nil {
+		return err
+	}
+	if err := m.provideTerminalRecordings(services); err != nil {
+		return err
+	}
+	if err := m.provideExecutionArtifactFiles(services); err != nil {
+		return err
+	}
+	if err := m.provideTenantResourceFiles(services); err != nil {
 		return err
 	}
 	m.resources, err = NewAccountResourceFiles(m.accounts, m.bindings, driver, m.runtime.TablePrefix())

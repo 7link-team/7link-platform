@@ -79,6 +79,63 @@ func TestEffectivePermissionsEndpointAllowsPlatformDiscoveryWithoutTenant(t *tes
 	assert.Equal(t, http.StatusForbidden, harness.api.Get("/tenants/invalid/principals/"+"11"+"/permissions", "Authorization: Bearer test").Code)
 }
 
+type permissionDiscoveryEvaluator struct {
+	AuthorizationEvaluator
+	bulkCalls, singleCalls int
+	bulkError              error
+	requested              []string
+}
+
+func (e *permissionDiscoveryEvaluator) CheckBulk(ctx context.Context, tenant guid.ID, codes []string, principal guid.ID) (map[string]bool, error) {
+	e.bulkCalls++
+	e.requested = append([]string(nil), codes...)
+	if e.bulkError != nil {
+		return nil, e.bulkError
+	}
+	return e.AuthorizationEvaluator.CheckBulk(ctx, tenant, codes, principal)
+}
+
+func (e *permissionDiscoveryEvaluator) Check(ctx context.Context, tenant guid.ID, code string, principal guid.ID) (bool, error) {
+	e.singleCalls++
+	return e.AuthorizationEvaluator.Check(ctx, tenant, code, principal)
+}
+
+func TestEffectivePermissionsBatchTenantChecksWithoutWideningDataScope(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	tenant, principal := guid.ID(40670914005696512), guid.ID(40670914861334528)
+	h.seedMember(t, tenant, principal, MemberActive)
+	role, err := h.service.CreateRole(t.Context(), tenant, "Workspace administrator", "")
+	require.NoError(t, err)
+	for _, code := range []string{"tenant_administer", "role_view", "store_view"} {
+		_, err = h.service.GrantPermission(t.Context(), tenant, role.ID, code)
+		require.NoError(t, err)
+	}
+	_, err = h.service.AddMember(t.Context(), tenant, role.ID, principal, nil)
+	require.NoError(t, err)
+	evaluator := &permissionDiscoveryEvaluator{AuthorizationEvaluator: h.authorizer}
+	h.service.checker = evaluator
+	granted, err := h.service.EffectivePermissions(t.Context(), tenant, principal)
+	require.NoError(t, err)
+	assert.Contains(t, granted, "tenant_administer")
+	assert.Contains(t, granted, "role_view")
+	assert.Contains(t, granted, "store_view")
+	assert.NotContains(t, granted, "platform_administer")
+	assert.Equal(t, 1, evaluator.bulkCalls, "workspace discovery must not issue one membership/grant query per ordinary permission")
+	assert.Zero(t, evaluator.singleCalls)
+	for _, code := range evaluator.requested {
+		action, found := h.service.registry.Find(code)
+		require.True(t, found)
+		assert.False(t, action.DataScoped, "a scoped grant cannot stand in for tenant-wide data authority")
+		assert.NotEqual(t, authz.ActionScopeSystem, action.Scope)
+		assert.NotEqual(t, authz.ActionScopeOperatingPlatform, action.Scope)
+	}
+
+	evaluator.bulkError = assert.AnError
+	granted, err = h.service.EffectivePermissions(t.Context(), tenant, principal)
+	assert.ErrorIs(t, err, assert.AnError)
+	assert.Nil(t, granted, "failed discovery must not publish partial authority")
+}
+
 // entityPermissionEvaluator answers like the permissive stub except for the one
 // kind of check a scenario deliberately breaks, so a reported failure can be
 // traced to the check it came from.

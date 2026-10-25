@@ -21,7 +21,6 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 // Datasource describes one physical database and the roles it may serve.
@@ -96,17 +95,10 @@ func (d Datasource) open(ctx context.Context, debug bool) (*gorm.DB, error) {
 		dialector = postgres.New(postgres.Config{Conn: ownedPool})
 	}
 
-	logLevel := logger.Error
-	if debug {
-		logLevel = logger.Info
-	}
 	db, err := gorm.Open(dialector, &gorm.Config{
 		DisableAutomaticPing: true,
 		TranslateError:       true,
-		Logger: logger.NewSlogLogger(slog.Default(), logger.Config{
-			SlowThreshold: 200 * time.Millisecond,
-			LogLevel:      logLevel,
-		}),
+		Logger:               newSQLLogger(slog.Default(), debug),
 	})
 	if err != nil {
 		if ownedPool != nil {
@@ -126,6 +118,11 @@ func (d Datasource) open(ctx context.Context, debug bool) (*gorm.DB, error) {
 	if err := sqlDB.PingContext(ctx); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("gormx: ping %s datasource: %w", dialect, err)
+	}
+	if dialect == "sqlite" {
+		pool := &sqlitePool{DB: sqlDB, writer: make(chan struct{}, 1)}
+		db.ConnPool = pool
+		db.Statement.ConnPool = pool
 	}
 	return db, nil
 }
@@ -209,6 +206,14 @@ func normalizeSQLiteDSN(dsn string) (string, error) {
 	}
 	if params.Get("_txlock") == "" {
 		params.Set("_txlock", "immediate")
+	}
+	// WAL lets request readers coexist with background job/session writers.
+	// Preserve explicit driver options and never change a read-only database.
+	if !params.Has("_journal_mode") && !params.Has("_journal") && params.Get("mode") != "ro" && params.Get("immutable") != "1" {
+		params.Set("_journal_mode", "WAL")
+	}
+	if !params.Has("_busy_timeout") && !params.Has("_timeout") {
+		params.Set("_busy_timeout", "5000")
 	}
 	return filename + "?" + params.Encode(), nil
 }

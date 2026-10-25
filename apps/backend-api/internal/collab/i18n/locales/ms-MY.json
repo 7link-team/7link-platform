@@ -1,0 +1,8 @@
+{
+  "forbidden": "Akses perbualan ditolak.",
+  "not_found": "Perbualan tidak ditemukan.",
+  "invalid": "Input perbualan tidak sah.",
+  "conflict": "Permintaan bercanggah dengan perbualan semasa.",
+  "unavailable": "Perbualan tidak tersedia buat sementara.",
+  "message_not_editable": "Mesej ini tidak lagi boleh disunting atau ditarik balik."
+}

@@ -9,6 +9,7 @@ import (
 type (
 	Entities               = entity
 	FieldPolicies          = fieldPolicy
+	MenuContributions      = menuContribution
 	Menus                  = menu
 	PlatformAdministrators = platformAdministrator
 	PlatformGrants         = platformGrant
@@ -21,6 +22,7 @@ type (
 	RolePermissions        = rolePermission
 	TemporaryRoleGrants    = temporaryRoleGrant
 	TenantMembers          = tenantMember
+	MembershipPeriods      = membershipPeriod
 )
 
 // Tables is the complete generated query set bound to one deployment prefix.
@@ -29,6 +31,7 @@ type (
 type Tables struct {
 	Entities               *Entities
 	FieldPolicies          *FieldPolicies
+	MenuContributions      *MenuContributions
 	Menus                  *Menus
 	PlatformAdministrators *PlatformAdministrators
 	PlatformGrants         *PlatformGrants
@@ -41,6 +44,7 @@ type Tables struct {
 	RolePermissions        *RolePermissions
 	TemporaryRoleGrants    *TemporaryRoleGrants
 	TenantMembers          *TenantMembers
+	MembershipPeriods      *MembershipPeriods
 }
 
 // TableNames is the physical name of every table core owns under one
@@ -48,6 +52,7 @@ type Tables struct {
 type TableNames struct {
 	Entities               gormx.TableName
 	FieldPolicies          gormx.TableName
+	MenuContributions      gormx.TableName
 	Menus                  gormx.TableName
 	PlatformAdministrators gormx.TableName
 	PlatformGrants         gormx.TableName
@@ -60,6 +65,7 @@ type TableNames struct {
 	RolePermissions        gormx.TableName
 	TemporaryRoleGrants    gormx.TableName
 	TenantMembers          gormx.TableName
+	MembershipPeriods      gormx.TableName
 }
 
 // BindNames returns the physical name of every table core owns. It is the only
@@ -69,6 +75,7 @@ func BindNames(prefix string) TableNames {
 	return TableNames{
 		Entities:               gormx.NewTableName(prefix, model.Entity{}.TableName()),
 		FieldPolicies:          gormx.NewTableName(prefix, model.FieldPolicy{}.TableName()),
+		MenuContributions:      gormx.NewTableName(prefix, model.MenuContribution{}.TableName()),
 		Menus:                  gormx.NewTableName(prefix, model.Menu{}.TableName()),
 		PlatformAdministrators: gormx.NewTableName(prefix, model.PlatformAdministrator{}.TableName()),
 		PlatformGrants:         gormx.NewTableName(prefix, model.PlatformGrant{}.TableName()),
@@ -81,6 +88,7 @@ func BindNames(prefix string) TableNames {
 		RolePermissions:        gormx.NewTableName(prefix, model.RolePermission{}.TableName()),
 		TemporaryRoleGrants:    gormx.NewTableName(prefix, model.TemporaryRoleGrant{}.TableName()),
 		TenantMembers:          gormx.NewTableName(prefix, model.TenantMember{}.TableName()),
+		MembershipPeriods:      gormx.NewTableName(prefix, model.MembershipPeriod{}.TableName()),
 	}
 }
 
@@ -139,6 +147,7 @@ func BindWithNames(db *gorm.DB, names TableNames) *Tables {
 	return &Tables{
 		Entities:               q.Entity.Table(names.Entities.String()),
 		FieldPolicies:          q.FieldPolicy.Table(names.FieldPolicies.String()),
+		MenuContributions:      q.MenuContribution.Table(names.MenuContributions.String()),
 		Menus:                  q.Menu.Table(names.Menus.String()),
 		PlatformAdministrators: q.PlatformAdministrator.Table(names.PlatformAdministrators.String()),
 		PlatformGrants:         q.PlatformGrant.Table(names.PlatformGrants.String()),
@@ -151,6 +160,7 @@ func BindWithNames(db *gorm.DB, names TableNames) *Tables {
 		RolePermissions:        q.RolePermission.Table(names.RolePermissions.String()),
 		TemporaryRoleGrants:    q.TemporaryRoleGrant.Table(names.TemporaryRoleGrants.String()),
 		TenantMembers:          q.TenantMember.Table(names.TenantMembers.String()),
+		MembershipPeriods:      q.MembershipPeriod.Table(names.MembershipPeriods.String()),
 	}
 }
 

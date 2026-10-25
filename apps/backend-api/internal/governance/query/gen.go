@@ -16,26 +16,82 @@ import (
 )
 
 var (
-	Q        = new(Query)
-	RoleSeed *roleSeed
+	Q                     = new(Query)
+	AutomatedDecision     *automatedDecision
+	ClaimEvaluation       *claimEvaluation
+	Delegation            *delegation
+	EscalationIncident    *escalationIncident
+	EscalationRule        *escalationRule
+	InboxAcknowledgement  *inboxAcknowledgement
+	ProjectEscalationRule *projectEscalationRule
+	QualityEscape         *qualityEscape
+	RoleSeed              *roleSeed
+	Settings              *settings
+	SpawnCostCursor       *spawnCostCursor
+	SpawnGrant            *spawnGrant
+	SpawnGrantMember      *spawnGrantMember
+	SpawnRequest          *spawnRequest
+	WorkflowDecision      *workflowDecision
 )
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
+	AutomatedDecision = &Q.AutomatedDecision
+	ClaimEvaluation = &Q.ClaimEvaluation
+	Delegation = &Q.Delegation
+	EscalationIncident = &Q.EscalationIncident
+	EscalationRule = &Q.EscalationRule
+	InboxAcknowledgement = &Q.InboxAcknowledgement
+	ProjectEscalationRule = &Q.ProjectEscalationRule
+	QualityEscape = &Q.QualityEscape
 	RoleSeed = &Q.RoleSeed
+	Settings = &Q.Settings
+	SpawnCostCursor = &Q.SpawnCostCursor
+	SpawnGrant = &Q.SpawnGrant
+	SpawnGrantMember = &Q.SpawnGrantMember
+	SpawnRequest = &Q.SpawnRequest
+	WorkflowDecision = &Q.WorkflowDecision
 }
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:       db,
-		RoleSeed: newRoleSeed(db, opts...),
+		db:                    db,
+		AutomatedDecision:     newAutomatedDecision(db, opts...),
+		ClaimEvaluation:       newClaimEvaluation(db, opts...),
+		Delegation:            newDelegation(db, opts...),
+		EscalationIncident:    newEscalationIncident(db, opts...),
+		EscalationRule:        newEscalationRule(db, opts...),
+		InboxAcknowledgement:  newInboxAcknowledgement(db, opts...),
+		ProjectEscalationRule: newProjectEscalationRule(db, opts...),
+		QualityEscape:         newQualityEscape(db, opts...),
+		RoleSeed:              newRoleSeed(db, opts...),
+		Settings:              newSettings(db, opts...),
+		SpawnCostCursor:       newSpawnCostCursor(db, opts...),
+		SpawnGrant:            newSpawnGrant(db, opts...),
+		SpawnGrantMember:      newSpawnGrantMember(db, opts...),
+		SpawnRequest:          newSpawnRequest(db, opts...),
+		WorkflowDecision:      newWorkflowDecision(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	RoleSeed roleSeed
+	AutomatedDecision     automatedDecision
+	ClaimEvaluation       claimEvaluation
+	Delegation            delegation
+	EscalationIncident    escalationIncident
+	EscalationRule        escalationRule
+	InboxAcknowledgement  inboxAcknowledgement
+	ProjectEscalationRule projectEscalationRule
+	QualityEscape         qualityEscape
+	RoleSeed              roleSeed
+	Settings              settings
+	SpawnCostCursor       spawnCostCursor
+	SpawnGrant            spawnGrant
+	SpawnGrantMember      spawnGrantMember
+	SpawnRequest          spawnRequest
+	WorkflowDecision      workflowDecision
 }
 
 func (q *Query) Available() bool { return q.db != nil }
@@ -44,8 +100,22 @@ func (q *Query) UnderlyingDB() *gorm.DB { return q.db }
 
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:       db,
-		RoleSeed: q.RoleSeed.clone(db),
+		db:                    db,
+		AutomatedDecision:     q.AutomatedDecision.clone(db),
+		ClaimEvaluation:       q.ClaimEvaluation.clone(db),
+		Delegation:            q.Delegation.clone(db),
+		EscalationIncident:    q.EscalationIncident.clone(db),
+		EscalationRule:        q.EscalationRule.clone(db),
+		InboxAcknowledgement:  q.InboxAcknowledgement.clone(db),
+		ProjectEscalationRule: q.ProjectEscalationRule.clone(db),
+		QualityEscape:         q.QualityEscape.clone(db),
+		RoleSeed:              q.RoleSeed.clone(db),
+		Settings:              q.Settings.clone(db),
+		SpawnCostCursor:       q.SpawnCostCursor.clone(db),
+		SpawnGrant:            q.SpawnGrant.clone(db),
+		SpawnGrantMember:      q.SpawnGrantMember.clone(db),
+		SpawnRequest:          q.SpawnRequest.clone(db),
+		WorkflowDecision:      q.WorkflowDecision.clone(db),
 	}
 }
 
@@ -59,18 +129,60 @@ func (q *Query) WriteDB() *Query {
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:       db,
-		RoleSeed: q.RoleSeed.replaceDB(db),
+		db:                    db,
+		AutomatedDecision:     q.AutomatedDecision.replaceDB(db),
+		ClaimEvaluation:       q.ClaimEvaluation.replaceDB(db),
+		Delegation:            q.Delegation.replaceDB(db),
+		EscalationIncident:    q.EscalationIncident.replaceDB(db),
+		EscalationRule:        q.EscalationRule.replaceDB(db),
+		InboxAcknowledgement:  q.InboxAcknowledgement.replaceDB(db),
+		ProjectEscalationRule: q.ProjectEscalationRule.replaceDB(db),
+		QualityEscape:         q.QualityEscape.replaceDB(db),
+		RoleSeed:              q.RoleSeed.replaceDB(db),
+		Settings:              q.Settings.replaceDB(db),
+		SpawnCostCursor:       q.SpawnCostCursor.replaceDB(db),
+		SpawnGrant:            q.SpawnGrant.replaceDB(db),
+		SpawnGrantMember:      q.SpawnGrantMember.replaceDB(db),
+		SpawnRequest:          q.SpawnRequest.replaceDB(db),
+		WorkflowDecision:      q.WorkflowDecision.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	RoleSeed IRoleSeedDo
+	AutomatedDecision     IAutomatedDecisionDo
+	ClaimEvaluation       IClaimEvaluationDo
+	Delegation            IDelegationDo
+	EscalationIncident    IEscalationIncidentDo
+	EscalationRule        IEscalationRuleDo
+	InboxAcknowledgement  IInboxAcknowledgementDo
+	ProjectEscalationRule IProjectEscalationRuleDo
+	QualityEscape         IQualityEscapeDo
+	RoleSeed              IRoleSeedDo
+	Settings              ISettingsDo
+	SpawnCostCursor       ISpawnCostCursorDo
+	SpawnGrant            ISpawnGrantDo
+	SpawnGrantMember      ISpawnGrantMemberDo
+	SpawnRequest          ISpawnRequestDo
+	WorkflowDecision      IWorkflowDecisionDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		RoleSeed: q.RoleSeed.WithContext(ctx),
+		AutomatedDecision:     q.AutomatedDecision.WithContext(ctx),
+		ClaimEvaluation:       q.ClaimEvaluation.WithContext(ctx),
+		Delegation:            q.Delegation.WithContext(ctx),
+		EscalationIncident:    q.EscalationIncident.WithContext(ctx),
+		EscalationRule:        q.EscalationRule.WithContext(ctx),
+		InboxAcknowledgement:  q.InboxAcknowledgement.WithContext(ctx),
+		ProjectEscalationRule: q.ProjectEscalationRule.WithContext(ctx),
+		QualityEscape:         q.QualityEscape.WithContext(ctx),
+		RoleSeed:              q.RoleSeed.WithContext(ctx),
+		Settings:              q.Settings.WithContext(ctx),
+		SpawnCostCursor:       q.SpawnCostCursor.WithContext(ctx),
+		SpawnGrant:            q.SpawnGrant.WithContext(ctx),
+		SpawnGrantMember:      q.SpawnGrantMember.WithContext(ctx),
+		SpawnRequest:          q.SpawnRequest.WithContext(ctx),
+		WorkflowDecision:      q.WorkflowDecision.WithContext(ctx),
 	}
 }
 

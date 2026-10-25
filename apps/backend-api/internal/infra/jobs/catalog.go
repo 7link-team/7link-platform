@@ -230,3 +230,6 @@ func (m *Module) AddSchedules(owner string, schedules ...Schedule) error {
 	}
 	return nil
 }
+
+// NamespaceProvider supplies a frozen job namespace when it differs from ModuleName.
+type NamespaceProvider interface{ JobNamespace() string }

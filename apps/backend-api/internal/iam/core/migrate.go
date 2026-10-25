@@ -38,6 +38,8 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 		// milestone depends on nothing outside core and rolls back by dropping
 		// what it added.
 		{Name: "role-member-expiry", Version: 18},
+		{Name: "membership-periods", Version: 19},
+		{Name: "menu-contributions", Version: 20},
 	}
 }
 

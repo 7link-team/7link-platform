@@ -206,6 +206,9 @@ func (s *Service) CreateSubscription(ctx context.Context, tenantID guid.ID, inpu
 	if err != nil {
 		return Subscription{}, err
 	}
+	if row.PayloadMode == PayloadIntakeMetadata && secret == "" {
+		return Subscription{}, ErrInvalidSubscription
+	}
 	if taken, err := s.repo.nameTaken(ctx, tenantID, row.Name, 0); err != nil {
 		return Subscription{}, err
 	} else if taken {
@@ -256,6 +259,9 @@ func (s *Service) UpdateSubscription(ctx context.Context, tenantID, id guid.ID, 
 	row, secret, err := s.normalize(tenantID, input)
 	if err != nil {
 		return Subscription{}, err
+	}
+	if row.PayloadMode != existing.PayloadMode {
+		return Subscription{}, ErrInvalidSubscription
 	}
 	if taken, err := s.repo.nameTaken(ctx, tenantID, row.Name, id); err != nil {
 		return Subscription{}, err
@@ -339,6 +345,13 @@ func (s *Service) ListDeliveries(ctx context.Context, tenantID, subscriptionID g
 }
 
 func (s *Service) normalize(tenantID guid.ID, input SubscriptionInput) (subscriptionRow, string, error) {
+	mode := strings.TrimSpace(input.PayloadMode)
+	if mode == "" {
+		mode = PayloadAudit
+	}
+	if mode != PayloadAudit && mode != PayloadIntakeMetadata {
+		return subscriptionRow{}, "", ErrInvalidSubscription
+	}
 	name := strings.TrimSpace(input.Name)
 	receiver, urlErr := s.normalizeURL(input.URL)
 	status := strings.TrimSpace(input.Status)
@@ -351,7 +364,7 @@ func (s *Service) normalize(tenantID guid.ID, input SubscriptionInput) (subscrip
 		return subscriptionRow{}, "", ErrInvalidSubscription
 	}
 	return subscriptionRow{
-		TenantID: tenantID, Name: name, URL: receiver, EventTypes: types, Status: status,
+		TenantID: tenantID, Name: name, URL: receiver, EventTypes: types, Status: status, PayloadMode: mode,
 	}, strings.TrimSpace(input.Secret), nil
 }
 
@@ -407,7 +420,8 @@ func projectSubscription(row model.Subscription) Subscription {
 		types = strings.Fields(trimmed)
 	}
 	return Subscription{
-		ID: row.ID, TenantID: row.TenantID, Name: row.Name, URL: row.URL,
+		PayloadMode: row.PayloadMode,
+		ID:          row.ID, TenantID: row.TenantID, Name: row.Name, URL: row.URL,
 		SecretSet: row.SecretCiphertext != "", EventTypes: types, Status: row.Status,
 		AfterSequence: row.AfterSequence, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}

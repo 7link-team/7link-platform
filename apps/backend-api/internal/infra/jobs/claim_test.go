@@ -56,6 +56,18 @@ func TestClaimOrderingEligibilityAndLease(t *testing.T) {
 	require.EqualValues(t, 2, pending)
 }
 
+func TestIdleClaimDoesNotAcquireWriterGuard(t *testing.T) {
+	m, _ := queueHarness(t, 100)
+	var guards int
+	m.guard = func(context.Context, *gorm.DB, string) error { guards++; return errors.New("unexpected idle writer") }
+	for range 5 {
+		rows, err := m.claim(t.Context(), "default", "idle-worker", 1)
+		require.NoError(t, err)
+		require.Empty(t, rows)
+	}
+	require.Zero(t, guards)
+}
+
 func TestClaimTenantCapPlatformExemptionAndConcurrentOwnership(t *testing.T) {
 	m, db := queueHarness(t, 100)
 	m.config.MaxRunningPerTenant = 2
@@ -137,6 +149,8 @@ func TestClaimValidationAndFailure(t *testing.T) {
 	m.sealed = true
 	_, err = (*Module)(nil).claim(t.Context(), "default", "a", 1)
 	require.ErrorIs(t, err, ErrUnavailable)
+	_, err = m.Enqueue(t.Context(), nil, EnqueueRequest{TenantID: 1, Kind: "jobs.work"})
+	require.NoError(t, err)
 	failure := errors.New("claim guard unavailable")
 	m.guard = func(context.Context, *gorm.DB, string) error { return failure }
 	_, err = m.claim(t.Context(), "default", "a", 1)

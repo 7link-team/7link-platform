@@ -9,7 +9,11 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	corei18n "7link.com/platform/internal/iam/core/i18n"
+	infraaudit "7link.com/platform/internal/infra/audit"
+	"7link.com/platform/internal/infra/events"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/internal/infra/idempotency"
+	"7link.com/platform/internal/infra/jobs"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -52,7 +56,9 @@ type Module struct {
 
 	// systemMenus is the default system menu; modules that own a system page
 	// contribute it here, and the repository seeds and upgrades from it.
-	systemMenus SystemMenus
+	systemMenus   SystemMenus
+	contributions menuContributions
+	menuSync      menuSyncRuntime
 
 	// administratorPresent latches the readiness gate. The last-administrator
 	// guard means the count never returns to zero, so once it is satisfied the
@@ -90,12 +96,15 @@ func NewModule(runtime *appenv.Runtime, config Config) *Module {
 func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 
 func (*Module) ModuleDependencies() []string {
-	return []string{platformi18n.Name, guid.Name, audit.Name}
+	return []string{platformi18n.Name, guid.Name, audit.Name, infraaudit.Name, jobs.Name, events.Name, idempotency.Name}
 }
 
 func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[ActiveMemberChecker](services, ActiveMemberChecker(m.members)); err != nil {
 		return fmt.Errorf("provide IAM active member checker: %w", err)
+	}
+	if err := m.provideProjectMembership(services); err != nil {
+		return err
 	}
 	if err := module.Provide[PrincipalLockConnector](services, PrincipalLockConnector{
 		Bind: func(lock func(context.Context, *gorm.DB, guid.ID) error) error {
@@ -163,7 +172,7 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[EntityOwnerResolver](services, entityOwner); err != nil {
 		return fmt.Errorf("provide IAM entity owner resolver: %w", err)
 	}
-	if err := module.Provide[EntityConstraintOn](services, m.checker.EntityConstraintOn); err != nil {
+	if err := m.provideEntityConstraint(services); err != nil {
 		return fmt.Errorf("provide IAM transaction entity authorization: %w", err)
 	}
 	if err := module.Provide[TenantConstraint](services, m.checker.Constraint); err != nil {
@@ -214,10 +223,22 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[RoleSeeder](services, m.roleSeeder()); err != nil {
 		return fmt.Errorf("provide IAM role seeder: %w", err)
 	}
-	return nil
+	if err := m.provideBindingRevoker(services); err != nil {
+		return err
+	}
+	if err := m.provideMenuContributions(services); err != nil {
+		return err
+	}
+	return m.provideTeamRoster(services)
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
+	if err := m.bindJobsAdministration(services); err != nil {
+		return err
+	}
+	if err := m.bindEventsAdministration(services); err != nil {
+		return err
+	}
 	ids, err := module.Resolve[guid.Source](services)
 	if err != nil {
 		return fmt.Errorf("resolve IAM id generator: %w", err)
@@ -242,6 +263,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	repository := NewRepository(m.runtime, ids)
 	repository.foreign = &m.foreign
 	repository.systemMenus = &m.systemMenus
+	repository.contributions = &m.contributions
 	// Keep the provider-phase pointer stable; requests start only after wiring.
 	*m.checker = *NewAuthorizerWithRegistry(m.runtime, m.registrar.Registry())
 	m.checker.foreign = &m.foreign
@@ -301,7 +323,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 		return m.lockPrincipal(ctx, tx, id)
 	}
 	m.grants = NewRoleGrantStore(repository, m.administrators)
-	return nil
+	return m.bindMenuSync(services)
 }
 
 func (m *Module) Initialize(context.Context) error {

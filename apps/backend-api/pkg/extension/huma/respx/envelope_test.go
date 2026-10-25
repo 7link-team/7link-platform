@@ -21,6 +21,31 @@ type countInput struct {
 	Count int `path:"count"`
 }
 
+func TestNextSuggestionsSurviveErrorsAndReplayWithoutSharingCallerStorage(t *testing.T) {
+	steps := []NextStep{{Operation: "work_activity.list", Reason: "refresh"}, {Operation: "defect_from_comment.create"}, {Operation: "a.b"}, {Operation: "c.d"}, {Operation: "e.f"}, {Operation: "g.h"}}
+	ctx := WithNext(t.Context(), steps...)
+	steps[0].Operation = "changed.operation"
+	ok := OK(ctx, "value")
+	require.Len(t, ok.Body.Meta.Next, 5)
+	require.Equal(t, "work_activity.list", ok.Body.Meta.Next[0].Operation)
+	ok.Body.Meta.Next[0].Operation = "also.changed"
+	err := ErrStatus(ctx, 409, 409126061, "domain.stale", nil)
+	raw, marshalErr := MarshalEnvelope(ctx, err)
+	require.NoError(t, marshalErr)
+	var response Envelope[any]
+	require.NoError(t, json.Unmarshal(raw, &response))
+	require.Len(t, response.Meta.Next, 5)
+	require.Equal(t, "work_activity.list", response.Meta.Next[0].Operation)
+	restored, restoreErr := RestoreError(409, raw)
+	require.NoError(t, restoreErr)
+	replayed, marshalErr := MarshalEnvelope(t.Context(), restored)
+	require.NoError(t, marshalErr)
+	require.JSONEq(t, string(raw), string(replayed))
+	plain, marshalErr := json.Marshal(OK(t.Context(), "value").Body)
+	require.NoError(t, marshalErr)
+	require.NotContains(t, string(plain), `"next"`)
+}
+
 // ipInput mirrors a module validator that returns an i18n key as its
 // field-detail message, so the whole error message localizes.
 type ipInput struct {

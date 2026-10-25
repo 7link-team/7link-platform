@@ -26,6 +26,7 @@ func TestIAMCoreModelsMatchMigratedSchemas(t *testing.T) {
 		model.Menu{}, model.Entity{}, model.RoleBinding{}, model.PolicyRevision{},
 		model.PlatformAdministrator{}, model.Relationship{}, model.ResourceRelationship{},
 		model.TemporaryRoleGrant{}, model.PlatformGrant{},
+		model.MembershipPeriod{}, model.MenuContribution{},
 	}
 	engines := []databaseEngine{
 		{name: "sqlite", dialect: "sqlite", open: testdb.OpenSQLite},
@@ -33,7 +34,7 @@ func TestIAMCoreModelsMatchMigratedSchemas(t *testing.T) {
 		{name: "postgres", dialect: "postgres", open: testdb.OpenPostgres},
 	}
 
-	require.Len(t, models, 13)
+	require.Len(t, models, 15)
 	for _, engine := range engines {
 		t.Run(engine.name, func(t *testing.T) {
 			db := engine.open(t)
@@ -54,7 +55,7 @@ func assertModelMatchesTable(t *testing.T, db *sql.DB, dialect string, persisted
 	assertModelMatchesNamedTable(t, db, dialect, persisted, persisted.TableName())
 }
 
-func assertModelMatchesNamedTable(t *testing.T, db *sql.DB, dialect string, persisted tableModel, table string) {
+func assertModelMatchesNamedTable(t *testing.T, db *sql.DB, dialect string, persisted tableModel, table string, notYetAdded ...string) {
 	t.Helper()
 
 	parsed, err := schema.Parse(persisted, &sync.Map{}, schema.NamingStrategy{})
@@ -70,6 +71,11 @@ func assertModelMatchesNamedTable(t *testing.T, db *sql.DB, dialect string, pers
 		}
 	}
 
+	// Historical milestones must exclude only explicitly named later additions.
+	for _, name := range notYetAdded {
+		require.Contains(t, expected, name)
+		delete(expected, name)
+	}
 	actual := readDatabaseColumns(t, db, dialect, table)
 	if dialect == "mysql" && persisted.TableName() == "fleet_agents" {
 		_, exists := actual["active_name_key"]
@@ -146,6 +152,15 @@ func readInformationSchemaColumns(t *testing.T, db *sql.DB, query, table string,
 }
 
 func isTemporalColumn(name string) bool {
+	// Planning schedules are local clock expressions (spec10), not event instants.
+	switch name {
+	case "day_report_at", "week_report_at", "month_report_at", "quarter_report_at", "year_report_at":
+		return false
+	}
+	// State-transition versions describe counters, not timestamps.
+	if name == "version_after" {
+		return false
+	}
 	for _, suffix := range []string{"_at", "_before", "_after", "_time"} {
 		if len(name) >= len(suffix) && name[len(name)-len(suffix):] == suffix {
 			return true

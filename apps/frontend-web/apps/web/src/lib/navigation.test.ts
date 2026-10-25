@@ -14,6 +14,9 @@ import {
   tenantPerspectiveOffered,
   tenantStanding,
   entityNavigation,
+  workspaceArea,
+  workspaceAreaMenus,
+  workspaceScopePath,
 } from "./navigation"
 
 const menus: EffectiveMenu[] = [
@@ -84,6 +87,175 @@ describe("menu subtree movement", () => {
 })
 
 describe("effective navigation", () => {
+  it("keeps work items as the collaboration landing when requirements are also readable", () => {
+    const links = entityNavigation(
+      ["requirement_read", "work_item_read"],
+      "project"
+    ).filter((item) => workspaceArea(item.path) === "collaboration")
+    expect(links.map((item) => item.path)).toEqual([
+      "/work-items",
+      "/requirements",
+      "/review-sheet",
+      "/heavy",
+      "/review",
+      "/defects",
+      "/video",
+      "/novel",
+      "/team-tasks",
+    ])
+  })
+
+  it("offers a requirement-only member a usable instance entry without work or file grants", () => {
+    expect(entityWorkspaceView(["requirement_read"], "project")).toBe(
+      "requirements"
+    )
+    expect(entityNavigation(["requirement_read"], "project")).toEqual([
+      { path: "/requirements", label: "requirements" },
+      { path: "/review-sheet", label: "reviewSheet" },
+    ])
+    expect(entityNavigation(["requirement_read"], "company")).toEqual([])
+    expect(workspaceArea("/admin/7/entities/11/requirements")).toBe(
+      "collaboration"
+    )
+    expect(
+      workspaceScopePath(
+        "/admin/7/entities/11/requirements",
+        "8",
+        "12",
+        ["requirement_read"],
+        "project"
+      )
+    ).toBe("/admin/8/entities/12/requirements")
+    expect(
+      workspaceScopePath(
+        "/admin/7/entities/11/requirements",
+        "7",
+        "12",
+        [],
+        "project"
+      )
+    ).toBeNull()
+    expect(
+      workspaceScopePath(
+        "/admin/7/entities/11/requirements",
+        "7",
+        "",
+        ["requirement_read"],
+        "project"
+      )
+    ).toBeNull()
+  })
+  it("preserves resource pages across scopes and never transfers an object location", () => {
+    for (const resource of ["files", "departments"]) {
+      expect(
+        workspaceScopePath(`/admin/7/entities/11/${resource}`, "7", "12")
+      ).toBe(`/admin/7/entities/12/${resource}`)
+      expect(
+        workspaceScopePath(`/admin/7/entities/11/${resource}`, "8", "")
+      ).toBe(`/admin/8/${resource}`)
+      expect(workspaceScopePath(`/admin/7/${resource}`, "7", "12")).toBe(
+        `/admin/7/entities/12/${resource}`
+      )
+    }
+    expect(
+      workspaceScopePath(
+        "/admin/7/entities/11/project",
+        "7",
+        "12",
+        ["project_read"],
+        "project"
+      )
+    ).toBe("/admin/7/entities/12/project")
+    expect(
+      workspaceScopePath(
+        "/admin/7/projects",
+        "7",
+        "12",
+        ["file_view"],
+        "project"
+      )
+    ).toBe("/admin/7/entities/12/files")
+    expect(workspaceScopePath("/admin/7/users", "7", "12")).toBeNull()
+    expect(workspaceScopePath("/admin/7/users", "8", "")).toBe("/admin/8/users")
+    for (const resource of ["manage", "resources"]) {
+      expect(
+        workspaceScopePath(`/admin/7/entities/11/${resource}`, "8", "")
+      ).toBe("/admin/8/entities")
+      expect(
+        workspaceScopePath(`/admin/7/entities/11/${resource}`, "7", "12")
+      ).toBe(`/admin/7/entities/12/${resource}`)
+    }
+  })
+  it("groups existing menus without losing custom descendants or adding business pages", () => {
+    const tree = [
+      {
+        ...menus[0]!,
+        children: [
+          ...menus[0]!.children!,
+          {
+            ...menus[0]!.children![0]!,
+            id: "custom",
+            path: "/custom-resource",
+          },
+        ],
+      },
+    ]
+    expect([...effectiveMenuPaths(workspaceAreaMenus(tree, "team"))]).toEqual([
+      "/users",
+    ])
+    expect([
+      ...effectiveMenuPaths(workspaceAreaMenus(tree, "governance")),
+    ]).toEqual(["/custom-resource"])
+    expect(workspaceAreaMenus(tree, "conversation")).toEqual([])
+    expect(workspaceArea("/admin/7/entities/11/files")).toBe("collaboration")
+    expect(workspaceArea("/admin/7/projects")).toBe("workbench")
+    expect(workspaceArea("/admin/7/entities/11/roles")).toBe("governance")
+  })
+  it("has one project business overview and keeps IAM controls separate", () => {
+    expect(entityWorkspaceView(["work_item_read"], "project")).toBe(
+      "work-items"
+    )
+    expect(entityNavigation(["work_item_read"], "project")).toEqual([
+      { path: "/plan-review", label: "planReviewTitle" },
+      { path: "/work-items", label: "workItems" },
+      { path: "/my-work", label: "personalWorkTitle" },
+      { path: "/heavy", label: "heavyTitle" },
+      { path: "/review", label: "projectSurfaceReview" },
+      { path: "/defects", label: "projectSurfaceDefects" },
+      { path: "/video", label: "studioVIDEO" },
+      { path: "/novel", label: "studioNOVEL" },
+      { path: "/team-tasks", label: "studioTEAM_TASKS" },
+    ])
+    expect(
+      workspaceScopePath(
+        "/admin/7/entities/11/work-items",
+        "7",
+        "12",
+        ["work_item_read"],
+        "project"
+      )
+    ).toBe("/admin/7/entities/12/work-items")
+    expect(
+      workspaceScopePath(
+        "/admin/7/entities/11/work-items",
+        "7",
+        "12",
+        ["work_item_read"],
+        "company"
+      )
+    ).toBeNull()
+    expect(workspaceArea("/work-items")).toBe("collaboration")
+    const links = entityNavigation(
+      ["project_read", "entity_view", "file_view"],
+      "project"
+    )
+    expect(
+      links.filter((item) => workspaceArea(item.path) === "workbench")
+    ).toEqual([{ path: "/project", label: "instanceOverview" }])
+    expect(links.map((item) => item.path)).toContain("/roles")
+    expect(entityWorkspaceView(["project_read"], "project")).toBe("project")
+    expect(entityWorkspaceView(["dept_view"], "project")).toBe("departments")
+  })
   it("chooses the first admitted destination from the actual persisted tree", () => {
     expect(firstEffectiveMenuPath(menus)).toBe("/users")
     expect(firstEffectiveMenuPath([])).toBe("")
@@ -117,10 +289,12 @@ describe("effective navigation", () => {
         true,
         true
       ).map((item) => item.path)
-    ).toEqual([""])
+    ).toEqual(["", "/conversations", "/governance/inbox", "/governance/agent-operations"])
     expect(
       tenantSystemNavigation(new Set(), false, false).map((item) => item.path)
-    ).toEqual(["", "/access-requests"])
+    ).toEqual(["", "/conversations", "/governance/inbox", "/governance/agent-operations", "/access-requests"])
+    expect(tenantSystemNavigation(new Set(["/conversations"]), false, false).filter(item => item.path === "/conversations")).toEqual([])
+    expect(workspaceScopePath("/admin/7/conversations", "8", "", [], "")).toBe("/admin/8/conversations")
   })
   it("offers the project list only with read access and avoids duplicate entries", () => {
     const paths = (configured: Set<string>, allowed: boolean) =>
@@ -146,9 +320,7 @@ describe("effective navigation", () => {
     ])
   })
   it("returns to the current tenant workspace without capturing startup state", () => {
-    expect(workspacePath("38001505780891648")).toBe(
-      "/admin/38001505780891648"
-    )
+    expect(workspacePath("38001505780891648")).toBe("/admin/38001505780891648")
     expect(workspacePath("tenant / 测试")).toBe(
       "/admin/tenant%20%2F%20%E6%B5%8B%E8%AF%95"
     )
@@ -217,8 +389,14 @@ describe("tenantStanding", () => {
 describe("entityNavigation", () => {
   it("offers project details only with the endpoint's read permission", () => {
     expect(entityNavigation(["project_read"], "project")).toEqual([
-      { path: "/project", label: "projectDetails" },
+      { path: "/project", label: "instanceOverview" },
+      { path: "/test-cases", label: "projectSurfaceTests" },
+      { path: "/pipelines", label: "projectSurfacePipelines" },
+      { path: "/exceptions", label: "projectSurfaceExceptions" },
     ])
+    expect(entityNavigation(["project_manage"], "project")).toContainEqual({
+      path: "/project-settings", label: "projectSurfaceSettings",
+    })
     for (const type of [undefined, "client", "organization"])
       expect(
         entityNavigation(["project_read"], type).some(
@@ -261,4 +439,83 @@ describe("entityNavigation", () => {
       expect(item.path.startsWith("/")).toBe(true)
     expect(entityNavigation(["dept_view"])[0]?.path).toBe("/departments")
   })
+})
+
+
+describe("planning and governance navigation", () => {
+  it("assigns each Lane E page to one top area including detail routes", () => {
+    for (const path of ["/goals", "/templates", "/templates/42/workflow"])
+      expect(workspaceArea(path)).toBe("team")
+    for (const path of ["/plans/me", "/plans", "/plans/9007199254740993", "/reports"])
+      expect(workspaceArea(path)).toBe("workbench")
+    for (const path of ["/governance/inbox", "/governance/policies", "/integrations"])
+      expect(workspaceArea(path)).toBe("governance")
+  })
+  it("offers member inbox and permission gated pages without duplicates", () => {
+    const permissions = ["goal_read", "plan_submit", "report_read", "template_read", "policy_read", "integration_manage"]
+    const paths = tenantSystemNavigation(new Set(), false, false, false, false, false, false, permissions).map(item => item.path)
+    for (const path of ["/goals", "/plans/me", "/reports", "/templates", "/governance/inbox", "/governance/policies", "/integrations"])
+      expect(paths.filter(value => value === path)).toHaveLength(1)
+    expect(tenantSystemNavigation(new Set(["/templates"]), false, false, false, false, false, false, permissions).some(item => item.path === "/templates")).toBe(false)
+    expect(tenantSystemNavigation(new Set(), false, false).some(item => item.path === "/goals")).toBe(false)
+    expect(tenantSystemNavigation(new Set(), false, false).some(item => item.path === "/governance/inbox")).toBe(true)
+  })
+  it("keeps project planning grants inside project scope", () => {
+    expect(entityNavigation(["goal_read", "plan_submit", "report_read"], "project").map(item => item.path)).toEqual(["/goals", "/plans", "/reports"])
+    expect(entityNavigation(["goal_read"], "client")).toEqual([])
+    expect(workspaceScopePath("/admin/1/entities/2/plans", "1", "3", ["plan_submit"], "project")).toBe("/admin/1/entities/3/plans")
+    expect(workspaceScopePath("/admin/1/entities/2/plans", "1", "", ["plan_submit"])).toBe("/admin/1/plans/me")
+    expect(workspaceScopePath("/admin/1/plans/9007199254740993", "1", "3", ["plan_submit"], "project")).toBe("/admin/1/entities/3/plans")
+    expect(workspaceScopePath("/admin/1/entities/2/plans/9007199254740993", "1", "", ["plan_confirm"])).toBe("/admin/1/plans/me")
+    expect(workspaceScopePath("/admin/1/plans/9007199254740993", "1", "3", [], "project")).toBeNull()
+    expect(workspaceScopePath("/admin/1/plans/9007199254740993", "1", "3", ["plan_submit"], "client")).toBeNull()
+    expect(workspaceScopePath("/admin/1/goals", "1", "3", [], "project")).toBeNull()
+  })
+})
+
+it("keeps operation catalogue and pending memory rules in the single governance menu set", () => {
+ const path = "/governance/agent-operations"
+ expect(workspaceArea(path)).toBe("governance")
+ expect(workspaceArea("/governance/memory-review")).toBe("governance")
+ expect(tenantSystemNavigation(new Set(), false, false).filter(item => item.path === path)).toHaveLength(1)
+ expect(tenantSystemNavigation(new Set([path]), false, false).some(item => item.path === path)).toBe(false)
+ const without = tenantSystemNavigation(new Set(), false, false)
+ expect(without.some(item => item.path === "/governance/memory-review")).toBe(false)
+ const withApproval = tenantSystemNavigation(new Set(), false, false, false, false, false, false, ["memory_approve"])
+ expect(withApproval.filter(item => item.path === "/governance/memory-review")).toHaveLength(1)
+ expect(entityNavigation(["memory_approve"], "project").map(item => item.path)).toEqual(["/governance/memory-review"])
+ expect(workspaceScopePath("/admin/1/governance/memory-review", "1", "3", ["memory_approve"], "project")).toBe("/admin/1/entities/3/governance/memory-review")
+ expect(workspaceScopePath("/admin/1/entities/3/governance/memory-review", "1", "", ["memory_approve"])).toBe("/admin/1/governance/memory-review")
+ expect(workspaceScopePath("/admin/1/governance/memory-review", "1", "3", [], "project")).toBeNull()
+})
+
+it("keeps worklogs and workflow configuration in their canonical project areas",()=>{
+ expect(workspaceArea("/worklogs")).toBe("collaboration")
+ expect(workspaceArea("/workflow-config")).toBe("governance")
+ expect(entityNavigation(["workflow_manage"],"project")).toContainEqual({path:"/workflow-config",label:"workflowConfigTitle"})
+ expect(workspaceScopePath("/admin/1/entities/2/worklogs","1","3",["work_item_read"],"project")).toBe("/admin/1/entities/3/worklogs")
+ expect(workspaceScopePath("/admin/1/entities/2/workflow-config","1","3",[],"project")).toBeNull()
+ expect(workspaceScopePath("/admin/1/entities/2/worklogs","1","",["work_item_read"])).toBeNull()
+})
+
+
+describe("Lane L canonical page navigation", () => {
+  it("keeps each dedicated page in one top-menu area and drops execution IDs on scope changes", () => {
+    for (const path of ["/runners", "/tool-catalog"]) expect(workspaceArea(path)).toBe("team")
+    expect(workspaceArea("/gateway")).toBe("governance")
+    expect(workspaceArea("/metrics")).toBe("workbench")
+    expect(workspaceArea("/knowledge/sources/91")).toBe("conversation")
+    expect(workspaceScopePath("/admin/1/entities/2/workspace/9007199254740993", "3", "4", ["execution_read"], "project")).toBe("/admin/3/entities/4/executions")
+    expect(workspaceScopePath("/admin/1/knowledge/sources/91", "3", "4", ["knowledge_read"], "project")).toBe("/admin/3/entities/4/knowledge/sources")
+    expect(workspaceScopePath("/admin/1/gateway", "3", "4", ["gateway_manage"], "project")).toBeNull()
+  })
+})
+
+it("keeps owner performance configuration in one tenant workbench area",()=>{
+ const links=(permissions:string[])=>tenantSystemNavigation(new Set(),false,false,false,false,false,false,permissions).filter(item=>item.path==="/performance")
+ expect(links(["performance_manage"])).toEqual([])
+ expect(links(["tenant_administer"])).toEqual([])
+ expect(links(["tenant_administer","performance_manage"])).toHaveLength(1)
+ expect(workspaceArea("/admin/1/performance")).toBe("workbench")
+ expect(entityNavigation(["tenant_administer","performance_manage"],"project").some(item=>item.path==="/performance")).toBe(false)
 })

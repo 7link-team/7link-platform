@@ -26,6 +26,16 @@ func (r *Repository) PutMember(ctx context.Context, member TenantMember) (Tenant
 }
 
 func (r *Repository) putMember(ctx context.Context, member TenantMember, createOnly bool) (TenantMember, error) {
+	var result TenantMember
+	err := r.runInTx(ctx, func(repo *Repository) error {
+		var err error
+		result, err = repo.putMemberOn(ctx, member, createOnly)
+		return err
+	})
+	return result, err
+}
+
+func (r *Repository) putMemberOn(ctx context.Context, member TenantMember, createOnly bool) (TenantMember, error) {
 	repo, err := r.pinWriter()
 	if err != nil {
 		return TenantMember{}, err
@@ -41,6 +51,14 @@ func (r *Repository) putMember(ctx context.Context, member TenantMember, createO
 		return TenantMember{}, err
 	}
 	now := repo.now().UTC().Truncate(time.Millisecond)
+	previous, readErr := tables.TenantMembers.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where(tables.TenantMembers.TenantID.Eq(member.TenantID), tables.TenantMembers.PrincipalID.Eq(member.PrincipalID)).Take()
+	if readErr != nil && !errors.Is(readErr, gorm.ErrRecordNotFound) {
+		return TenantMember{}, readErr
+	}
+	previousStatus := ""
+	if previous != nil {
+		previousStatus = previous.Status
+	}
 	var disabledAt *time.Time
 	if member.Status == MemberDisabled {
 		disabledAt = &now
@@ -65,6 +83,9 @@ func (r *Repository) putMember(ctx context.Context, member TenantMember, createO
 			return TenantMember{}, ErrMemberConflict
 		}
 		return TenantMember{}, fmt.Errorf("upsert tenant member: %w", result.Error)
+	}
+	if err := repo.recordMembershipTransition(ctx, previousStatus, member, now); err != nil {
+		return TenantMember{}, err
 	}
 	return repo.GetMember(ctx, member.TenantID, member.PrincipalID)
 }
@@ -307,7 +328,8 @@ func (r *Repository) UpdateMenu(ctx context.Context, menu Menu) (Menu, error) {
 		updates := map[string]any{
 			"parent_id": row.ParentID, "label": row.Label, "route": row.Route,
 			"translations": row.Translations,
-			"icon":         row.Icon, "sort_order": row.SortOrder,
+			"app":          row.App, "domain": row.Domain, "space": row.Space,
+			"icon": row.Icon, "sort_order": row.SortOrder,
 			"permission_code": row.PermissionCode, "status": row.Status,
 			"updated_at": repo.now().UTC().Truncate(time.Millisecond),
 		}
@@ -377,6 +399,7 @@ func menuToRow(menu Menu) model.Menu {
 	}
 	return model.Menu{
 		TenantID: menu.TenantID, ID: menu.ID, ParentID: parentID,
+		App: menuApp(menu.App), Domain: menu.Domain, Space: menu.Space,
 		Label: menu.Label, Route: route, Icon: menu.Icon, SortOrder: menu.SortOrder,
 		Translations:   platformi18n.MarshalField(menu.Translations),
 		PermissionCode: menu.PermissionCode, Status: string(menu.Status),
@@ -386,6 +409,7 @@ func menuToRow(menu Menu) model.Menu {
 func menuFromRow(row *model.Menu) Menu {
 	menu := Menu{
 		ID: row.ID, TenantID: row.TenantID, Label: row.Label, Icon: row.Icon,
+		App: row.App, Domain: row.Domain, Space: row.Space,
 		SortOrder: row.SortOrder, PermissionCode: row.PermissionCode, Status: MenuStatus(row.Status),
 		CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(),
 	}
@@ -397,4 +421,11 @@ func menuFromRow(row *model.Menu) Menu {
 		menu.Route = *row.Route
 	}
 	return menu
+}
+
+func menuApp(app string) string {
+	if app == "" {
+		return "iam"
+	}
+	return app
 }

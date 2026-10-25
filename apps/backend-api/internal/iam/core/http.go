@@ -103,6 +103,9 @@ type APITenantMember struct {
 }
 
 type APIMenu struct {
+	App            string            `json:"app,omitempty"`
+	Domain         string            `json:"domain,omitempty"`
+	Space          string            `json:"space,omitempty"`
 	Translations   map[string]string `json:"translations,omitempty"`
 	ID             guid.ID           `json:"id"`
 	TenantID       guid.ID           `json:"tenant_id"`
@@ -459,8 +462,9 @@ type authorizationConstraintInput struct {
 // picking a file workspace and one picking a directory to administer are asking
 // different questions of the same graph.
 type memberEntitiesInput struct {
-	TenantID   string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"tenant authorization boundary"`
-	Permission string `query:"permission" maxLength:"128" doc:"permission code the entity must grant the caller"`
+	TenantID    string   `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"tenant authorization boundary"`
+	Permission  string   `query:"permission" maxLength:"128" doc:"permission code the entity must grant the caller"`
+	Permissions []string `query:"permissions" maxItems:"32" doc:"comma-separated permission codes; returns entities admitted by any code; mutually exclusive with permission"`
 }
 
 type authorizationExplanationInput struct {
@@ -1277,29 +1281,18 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, err
 		}
-		constraint, err := svc.AuthorizationConstraint(ctx, tenantID, in.Permission, claims.PrincipalID)
-		if err != nil {
-			return nil, apiError("list member entities", err)
-		}
-		entities, err := svc.ListEntities(ctx, tenantID)
-		if err != nil {
-			return nil, apiError("list member entities", err)
-		}
-		// A department-scoped grant names departments, not the entities behind
-		// them, so those are resolved before the narrowing.
-		departments := make([]guid.ID, 0, len(constraint.DepartmentIDs))
-		for _, raw := range constraint.DepartmentIDs {
-			id, err := guid.RequireID(raw)
-			if err != nil {
-				return nil, apiError("list member entities", err)
+		codes := in.Permissions
+		if in.Permission != "" {
+			if len(codes) != 0 {
+				return nil, apiError("list member entities", ErrInvalidArgument)
 			}
-			departments = append(departments, id)
+			codes = []string{in.Permission}
 		}
-		throughDepartments, err := svc.EntitiesOwningDepartments(ctx, tenantID, departments)
+		entities, err := svc.MemberEntities(ctx, tenantID, claims.PrincipalID, codes)
 		if err != nil {
 			return nil, apiError("list member entities", err)
 		}
-		return respx.OK(ctx, entitiesFromDomain(admittedEntities(entities, constraint, throughDepartments))), nil
+		return respx.OK(ctx, entitiesFromDomain(entities)), nil
 	})
 
 	authz.RegisterPrincipalTenantMember(registrar, a, huma.Operation{OperationID: "iam-effective-menus", Method: http.MethodGet, Path: "/principals/{principal_id}/menus", Summary: "Return the current member's authorized menu tree", Tags: []string{"access-control"}}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]MenuItem], error) {
@@ -1485,7 +1478,7 @@ func roleDataScopeFromDomain(scope RoleDataScope) APIRoleDataScope {
 }
 
 func menuFromDomain(menu Menu) APIMenu {
-	return APIMenu{ID: menu.ID, TenantID: menu.TenantID, ParentID: menu.ParentID, Label: menu.Label, Translations: menu.Translations, Route: menu.Route, Icon: menu.Icon, SortOrder: menu.SortOrder, PermissionCode: menu.PermissionCode, Status: menu.Status, CreatedAt: menu.CreatedAt, UpdatedAt: menu.UpdatedAt}
+	return APIMenu{App: menuApp(menu.App), Domain: menu.Domain, Space: menu.Space, ID: menu.ID, TenantID: menu.TenantID, ParentID: menu.ParentID, Label: menu.Label, Translations: menu.Translations, Route: menu.Route, Icon: menu.Icon, SortOrder: menu.SortOrder, PermissionCode: menu.PermissionCode, Status: menu.Status, CreatedAt: menu.CreatedAt, UpdatedAt: menu.UpdatedAt}
 }
 func menusFromDomain(menus []Menu) []APIMenu {
 	out := make([]APIMenu, 0, len(menus))

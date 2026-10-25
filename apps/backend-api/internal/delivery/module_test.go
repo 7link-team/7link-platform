@@ -3,18 +3,26 @@ package delivery
 import (
 	"context"
 	"testing"
+	"time"
 
 	"7link.com/platform/internal/collab"
+	"7link.com/platform/internal/files"
 	"7link.com/platform/internal/fleet"
 	"7link.com/platform/internal/governance"
 	"7link.com/platform/internal/iam/audit"
+	iamauthn "7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/events"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/infra/idempotency"
+	"7link.com/platform/internal/infra/jobs"
 	"7link.com/platform/internal/intake"
+	"7link.com/platform/internal/knowledge"
+	"7link.com/platform/internal/performance"
 	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
@@ -30,6 +38,54 @@ func moduleProviders(t *testing.T) []func(*module.Services) error {
 	require.NoError(t, err)
 	eventModule := events.NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1")))
 	return []func(*module.Services) error{
+		consumerProviders,
+		func(s *module.Services) error {
+			if err := module.Provide[intake.DelegatedNewSources](s, intake.DelegatedNewSources{ReadOn: func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (intake.TriageSource, string, error) {
+				return intake.TriageSource{}, "", nil
+			}, ConvertOn: func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, int, int, string, guid.ID) error {
+				return nil
+			}}); err != nil {
+				return err
+			}
+			return module.Provide[intake.DelegatedNewConnector](s, intake.DelegatedNewConnector{Bind: func(check intake.DelegatedNewAuthority) error { require.NotNil(t, check); return nil }})
+		},
+
+		func(s *module.Services) error {
+			return module.Provide[governance.InboxSources](s, inboxTestRegistry{})
+		},
+		func(s *module.Services) error {
+			return module.Provide[collab.MessageWorkConnector](s, collab.MessageWorkConnector{Bind: func(collab.MessageWorkCreator, collab.MessageWorkReplay) error { return nil }})
+		},
+		func(s *module.Services) error {
+			return files.NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1")), files.Config{LocalRoot: t.TempDir()}).ProvideServices(s)
+		},
+		func(s *module.Services) error {
+			return module.Provide[governance.DeliveryAuthority](s, governance.DeliveryAuthority(func(context.Context, *gorm.DB, governance.AuthorityRequest) (governance.AuthorityDecision, error) {
+				return governance.AuthorityDecision{}, nil
+			}))
+		},
+		func(s *module.Services) error {
+			return module.Provide[authnext.ReauthenticationConsumer](s, authnext.ReauthenticationConsumer(func(context.Context, *gorm.DB, guid.ID, string, string, string, string) error { return nil }))
+		},
+
+		func(s *module.Services) error {
+			if err := module.Provide[dlock.TryRenewingLease](s, func(context.Context, string, time.Duration, func(string, error)) (*dlock.Lock, error) {
+				return nil, dlock.ErrDatabaseUnavailable
+			}); err != nil {
+				return err
+			}
+			return module.Provide[dlock.TransactionGuard](s, dlock.TransactionGuard(func(context.Context, *gorm.DB, string) error { return nil }))
+		},
+		func(s *module.Services) error {
+			return module.Provide[governance.ProjectStageAuthority](s, governance.ProjectStageAuthority(func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, string) (governance.AuthorityDecision, error) {
+				return governance.AuthorityDecision{}, nil
+			}))
+		},
+		func(s *module.Services) error {
+			return module.Provide[core.EntityConstraintOn](s, core.EntityConstraintOn(func(context.Context, *gorm.DB, guid.ID, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+				return authz.DataConstraint{}, nil
+			}))
+		},
 		func(s *module.Services) error {
 			return module.Provide[core.AccessTableNames](s, core.PublishedAccessTableNames("test_"))
 		},
@@ -64,7 +120,17 @@ func moduleProviders(t *testing.T) []func(*module.Services) error {
 			}})
 		},
 		func(s *module.Services) error {
+			return module.Provide[fleet.SpawnGrantDirectory](s, fleet.SpawnGrantDirectory{AgentOn: func(context.Context, *gorm.DB, guid.ID, guid.ID) (fleet.AgentIdentity, bool, error) {
+				return fleet.AgentIdentity{}, false, nil
+			}})
+		},
+		func(s *module.Services) error {
 			return module.Provide[core.ActiveMemberChecker](s, memberCheck(func(context.Context, *gorm.DB, guid.ID, guid.ID) (bool, error) { return true, nil }))
+		},
+		func(s *module.Services) error {
+			return module.Provide[core.TenantConstraintOn](s, core.TenantConstraintOn(func(context.Context, *gorm.DB, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+				return authz.DataConstraint{AllowAll: true}, nil
+			}))
 		},
 		func(s *module.Services) error {
 			return module.Provide[identity.PrincipalStateStore](s, identity.PrincipalStateStore{Lock: func(context.Context, *gorm.DB, guid.ID) error { return nil }, ActiveHumanByID: func(context.Context, *gorm.DB, guid.ID) (identity.Principal, bool, error) {
@@ -86,6 +152,8 @@ func moduleProviders(t *testing.T) []func(*module.Services) error {
 		},
 		func(s *module.Services) error { return module.Provide[events.Publisher](s, eventModule) },
 		func(s *module.Services) error { return module.Provide[events.Catalog](s, eventModule) },
+		func(s *module.Services) error { return module.Provide[events.SubscriberCatalog](s, eventModule) },
+		func(s *module.Services) error { return module.Provide[jobs.Queue](s, &autonomyQueueProbe{}) },
 	}
 }
 func TestModuleDeclaresProjectOwnershipPermissionsAndOptionalProvisioning(t *testing.T) {
@@ -94,7 +162,7 @@ func TestModuleDeclaresProjectOwnershipPermissionsAndOptionalProvisioning(t *tes
 	require.True(t, m.Enabled())
 	require.False(t, (*Module)(nil).Enabled())
 	require.Equal(t, Name, m.ModuleName())
-	require.ElementsMatch(t, []string{platformi18n.Name, guid.Name, idempotency.Name, core.Name, identity.Name, fleet.Name, intake.Name, audit.Name, events.Name, governance.Name}, m.ModuleDependencies())
+	require.ElementsMatch(t, []string{performance.Name, knowledge.Name, platformi18n.Name, guid.Name, idempotency.Name, core.Name, identity.Name, fleet.Name, intake.Name, audit.Name, events.Name, governance.Name, jobs.Name, dlock.Name, files.Name, iamauthn.Name}, m.ModuleDependencies())
 	services := module.NewServices()
 	require.NoError(t, m.ProvideServices(services))
 	require.Error(t, m.ProvideServices(services))
@@ -115,7 +183,7 @@ func TestModuleDeclaresProjectOwnershipPermissionsAndOptionalProvisioning(t *tes
 	require.NoError(t, m.InjectServices(services))
 	require.NoError(t, m.Initialize(t.Context()), "missing optional providers must not prevent initialization")
 	require.ErrorIs(t, connector.Bind(core.EntityProvisioner{}, core.EntityRoleBindingStore{}, collab.ChannelProvisioner{}), ErrInvalidArgument)
-	for _, code := range []string{"project_read", "project_manage", "project_stage_change", "project_mode_change"} {
+	for _, code := range []string{"project_read", "project_manage", "project_stage_change", "project_mode_change", "work_item_read", "work_item_write"} {
 		action, ok := m.registrar.Registry().Find(code)
 		require.True(t, ok, code)
 		require.True(t, action.DataScoped)
@@ -125,6 +193,11 @@ func TestModuleDeclaresProjectOwnershipPermissionsAndOptionalProvisioning(t *tes
 	catalog, err := module.Resolve[events.Catalog](services)
 	require.NoError(t, err)
 	require.Error(t, catalog.AddTypes(Name, events.TypeSpec{Name: "project.created", SchemaVersion: 1, SubjectKind: "project", Realtime: events.RealtimeSignal}), "event must already be declared")
+	require.Error(t, catalog.AddTypes(Name, events.TypeSpec{Name: "result.feedback_added", SchemaVersion: 1, SubjectKind: "result", Realtime: events.RealtimeSignal}), "feedback event must already be declared")
+	require.Error(t, catalog.AddTypes(Name, events.TypeSpec{Name: "requirement.scope_changed", SchemaVersion: 1, SubjectKind: "requirement", Realtime: events.RealtimeSignal}), "scope event must already be declared")
+	for _, eventType := range []string{"work_item.ready_checked", "work_item.state_changed"} {
+		require.Error(t, catalog.AddTypes(Name, events.TypeSpec{Name: eventType, SchemaVersion: 1, SubjectKind: "work_item", Realtime: events.RealtimeSignal}), "readiness event must already be declared: %s", eventType)
+	}
 	require.Error(t, m.InjectServices(services), "duplicate declarations fail rather than silently replacing ownership")
 }
 func TestModuleRejectsMissingRequiredServices(t *testing.T) {
@@ -139,7 +212,29 @@ func TestModuleRejectsMissingRequiredServices(t *testing.T) {
 		require.NoError(t, services.Seal())
 		require.Error(t, m.InjectServices(services))
 	}
-	require.ErrorIs(t, (&Module{}).InjectServices(module.NewServices()), ErrUnavailable)
+	sealed := module.NewServices()
+	require.ErrorIs(t, (&Module{}).InjectServices(sealed), module.ErrServicesProviding)
+	require.NoError(t, sealed.Seal())
+	require.ErrorIs(t, (&Module{}).InjectServices(sealed), module.ErrServiceMissing)
+	provided := module.NewServices()
+	for _, provide := range moduleProviders(t) {
+		require.NoError(t, provide(provided))
+	}
+	require.NoError(t, provided.Seal())
+	require.ErrorIs(t, (&Module{}).InjectServices(provided), ErrUnavailable)
 	require.ErrorIs(t, (&Module{}).Initialize(t.Context()), ErrUnavailable)
 	require.ErrorIs(t, (&Module{}).bindProvisioning(core.EntityProvisioner{}, core.EntityRoleBindingStore{}, collab.ChannelProvisioner{}), ErrUnavailable)
+}
+
+func TestModuleRejectsConflictingCapabilityOwnersBeforeOverwriting(t *testing.T) {
+	for _, name := range []string{"archive", "budget_history", "acceptance_reminder", "retirement", "confirmation", "controls", "modes", "holds", "clarification", "verifier_policy", "comments", "cost", "quality", "activities", "history", "hidden", "knowledge", "notifications", "workflow_states", "workflow", "verification", "contacts", "client_work", "execution", "planning_templates", "fleet_repository", "code_links"} {
+		t.Run(name, func(t *testing.T) {
+			m := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1")), Config{})
+			s := module.NewServices()
+			providers := map[string]func(*module.Services) error{"archive": m.provideArchiveReviews, "budget_history": m.provideProjectBudgetHistory, "acceptance_reminder": m.provideAcceptanceReminderProjects, "retirement": m.provideReminderWork, "confirmation": m.provideDeliveryConfirmations, "controls": m.provideProjectControls, "modes": m.provideProjectModes, "holds": m.provideExecutionHolds, "clarification": m.provideClarificationReceipts, "verifier_policy": m.provideVerifierWorkPolicy, "comments": m.provideArtifactComments, "cost": m.provideAcceptanceCost, "quality": m.provideReportQuality, "activities": m.provideWorkActivity, "history": m.provideDispatchHistory, "hidden": m.provideHiddenAcceptance, "knowledge": m.provideKnowledgeContext, "notifications": m.provideNotificationFacts, "workflow_states": m.provideWorkflowStates, "workflow": m.provideWorkflowGovernance, "verification": m.provideVerification, "contacts": m.provideAcceptanceContacts, "client_work": m.provideClientWork, "execution": m.provideExecution, "planning_templates": m.providePlanningTemplates, "fleet_repository": m.provideFleetRepository, "code_links": m.provideCodeLinks}
+			require.NoError(t, providers[name](s))
+			require.ErrorIs(t, m.ProvideServices(s), module.ErrServiceDuplicate)
+			require.NoError(t, s.Seal())
+		})
+	}
 }
