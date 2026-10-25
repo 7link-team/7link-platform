@@ -67,6 +67,8 @@ jobs:
           restore-keys: bun-${{ runner.os }}-
       - name: Install frontend contract tooling
         run: cd ../frontend-web && bun install --frozen-lockfile
+      - name: Install Chromium for browser-backed integration tests
+        run: bun run --cwd ../frontend-web/apps/web playwright install --with-deps chromium
       - name: Existing CI gates (format, lint, schema, coverage, integration, build, OpenAPI and client)
         run: make ci
       - name: Explicit architecture gates

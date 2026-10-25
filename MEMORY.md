@@ -4,10 +4,10 @@
 Deliver the existing implementation batch after recovery, final review and commit hygiene. User authorized this delivery work on 2026-10-24. Full accepted prototype remains incomplete; do not claim full product readiness.
 
 ## Current Phase
-REVIEW
+TESTING
 
 ## Current Step
-Runtime multiple-server desktop change implemented; completing native verification/review before explicit commit/push. User explicitly superseded fixed VITE_API_URL release requirement; no deployment-address input is pending. Bundled chooser navigates to chosen nginx Web origin; native menu returns locally. Scope desktop/release/docs/tests only; shared Web/backend behavior unchanged. Direct implementation plus two bounded read-only deep-review workers.
+Hosted CI40160442566 completed FAILURE at backend integration because backend runner lacked locked Playwright Chromium1208; main Go tests, lint0issues, schema279, total90.6% and all55module floors passed. Frontend/Runner passed. Add same existing Chromium install to backend job, then commit/push including runtime desktop4ecbfe6f. Fixed-address input obsolete; no user decision pending.
 
 ## Overall Progress
 - [x] Read continuation transcript; reconcile Git/source/ADR/final gate evidence.
@@ -28,7 +28,7 @@ Runtime multiple-server desktop change implemented; completing native verificati
 - [ ] Complete latest hosted CI40160442566 and remaining release acceptance.
 
 ## Active Work
-Runtime server chooser local implementation and acceptance PASS; preparing explicit reviewed commit. No fixed API/server input is pending. Old public main ce9c6b40 CI40160442566 backend still active, frontend/Runner success; avoid push cancelling it. No tag/GHCR/official Release yet. Native tests used only owned hidden processes, isolated profiles and random ports.
+Main repairs only evidenced hosted integration environment failure: backend job requires its own Chromium install (frontend runner installation is isolated). No production/test assertion changes. Runtime server chooser4ecbfe6f locally fully verified/reviewed, awaiting push with CI fix. No tag/GHCR/official Release yet.
 
 ## Completed Work / Recovery Evidence
 - HEAD 51d4922, branch chaosplus; origin remains existing Codeup URL. No new commit/staging at recovery.
@@ -79,7 +79,7 @@ Local capability matrix .temp/lanes/final-gaps.md records198rows: DONE157/PARTIA
 Monitor hosted CI40160442566 for ce9c6b40 through full coverage/integration/build/contracts and real MySQL/PostgreSQL gates; repair only evidenced failures. Preserve origin/localchaosplus/upstream. No API URL input required after user decision; after gates pass, release v0.1.0-rc.1 and separately make/verify GHCR public.
 
 ## Last Checkpoint
-Runtime desktop multiple-server change: local Windows release/NSIS build PASS; actual native menu4returns incl connection refusal and remote IPC denial PASS; persisted dual-domain browser test/API/storage/cookie checks PASS; new portable ZIP SHA256 equality/version PASS; desktop unit4tests/21assertions PASS; web typecheck/lint/actionlint/diffcheck PASS. Security/distribution independent deep-review complete, only Cookie docs issue corrected. Original hosted CI40160442566 still backend original gates in progress; no failures reported; frontend/Runner pass. Do not request API URL again. Preparing explicit local commit; delay main push to avoid cancelling old CI. Test processes closed. Auto-review rejected recursive deletion of the6owned isolated WebView profiles, which remain ignored under .temp (no product/user profile touched).
+Runtime desktop multiple-server change: local Windows release/NSIS build PASS; actual native menu4returns incl connection refusal and remote IPC denial PASS; persisted dual-domain browser test/API/storage/cookie checks PASS; new portable ZIP SHA256 equality/version PASS; desktop unit4tests/21assertions PASS; web typecheck/lint/actionlint/diffcheck PASS. Security/distribution independent deep-review complete, only Cookie docs issue corrected. Original hosted CI40160442566 still backend original gates in progress; no failures reported; frontend/Runner pass. Do not request API URL again. Local commit4ecbfe6f complete (13reviewed files, staged diffcheck PASS); delay main push to avoid cancelling old CI. Test processes closed. Auto-review rejected recursive deletion of the6owned isolated WebView profiles, which remain ignored under .temp (no product/user profile touched).
 
 ## Final Review Findings / Evidence
 ### Class1: unexported embedded HTTP path input (4reachable operations)
@@ -164,4 +164,9 @@ Runtime desktop multiple-server change: local Windows release/NSIS build PASS; a
 - New native build resolved actual about:blank return bug. Native helper EXIT0:2hostnames,3same-origin API requests,4native menu returns including refused remote connection, real remote window command denied. Screenshot .temp/delivery-desktop-chooser.png. Browser regression EXIT0 includes persistent multiple saved addresses, remove, storage denial, mobile width, independent-host Cookie/Web storage checks.
 - Fresh executable ProductVersion0.1.0-rc.1,4,231,680bytes; portable ZIP1,689,083bytes with exact EXE SHA256 equality; generated NSIS INSTALLMODEboth and rc version confirmed. Official hosted scope installation remains pending.
 - Final delta security review PASS for first-non-about page-load capture protected by OnceLock. No production shared Web/backend change, no new dependency or generated-source edits. Self-review/requirement acceptance of runtime chooser PASS; overall release NOT READY pending hosted gates/public packages/assets.
-- Next: explicit commit13reviewed files; wait old CI outcome before pushing main; then finish hosted candidate release. Remaining ignored profile cleanup was policy-rejected and must not be silently retried through another deletion mechanism.
+- Next: wait old CI40160442566 outcome before pushing local4ecbfe6f to main; then finish hosted candidate release. Remaining ignored profile cleanup was policy-rejected and must not be silently retried through another deletion mechanism.
+
+### Hosted CI40160442566 completed failure / repair
+- Downloaded full completed backend log to .temp/delivery-hosted-backend-3.log (2,479,037bytes). Actual only named failing test: TestRealtimeCrossReplicaCommitToBrowserLatencyAcrossEngines/mysql and /postgres, events_model_realtime_test.go:148, missing Chromium headless shell1208. These tests deliberately require actual browser; no skip/fallback/assertion weakening.
+- Hosted lint0issues,279published migrations unchanged, main Go tests and total90.6%/all55module floors PASS (module-floor scans took~49min); nested integration failed on missing browser, no evidence of coverage timeout. Job completed05:43:41UTC,~101min.
+- Minimal repair: after existing locked frontend tooling install, backend job runs bun run --cwd ../frontend-web/apps/web playwright install --with-deps chromium. Same pinned dependency and installation already used by passing frontend job. Verify actionlint/diffcheck/CLI then explicit commit/push. Do not optimize coverage or change timeout speculatively.
