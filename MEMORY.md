@@ -7,7 +7,7 @@ Deliver the existing implementation batch after recovery, final review and commi
 TESTING
 
 ## Current Step
-Source04ab3fd9 is public on main. First hosted CI40157294283: Runner PASS, frontend FAIL because locked Playwright Chromium headless shell is absent;815tests pass/10browser-launch failures, no browser assertions ran. Minimal workflow fix installs Chromium with dependencies using the existing pinned Playwright1.58.2 CLI. Actionlint/diffcheck PASS; commit/push this workflow fix and follow the new hosted run. API URL still unanswered; no release tag/GHCR/official assets.
+Hosted40157562412 frontend/Runner SUCCESS; backend FAIL during golangci-lint cold-cache go/packages loading (5m context deadline), before tests. Minimal tool timeout correction5m?15m preserves every check. Local make lint with new config EXIT0/0issues. Commit/push timeout fix, then monitor next hosted CI. API URL still unanswered; no release tag/GHCR/official assets.
 
 ## Overall Progress
 - [x] Read continuation transcript; reconcile Git/source/ADR/final gate evidence.
@@ -75,7 +75,7 @@ Local capability matrix .temp/lanes/final-gaps.md records198rows: DONE157/PARTIA
 - Original two confirmed review defects are fixed and regression-tested. Current blockers are unfinished final gates, Windows real packaging acceptance, deployment API URL and actual anonymous GHCR access after publication.
 
 ## Next Action
-Commit/push the minimal CI browser-provisioning fix and this durable checkpoint, then monitor the latest hosted CI and repair only evidenced failures. Keep origin/localchaosplus/upstream unchanged. Await user deployment VITE_API_URL before tagging/publishing official desktop assets; after gates/input pass, release v0.1.0-rc.1 and separately make/verify both GHCR packages public.
+Commit/push the minimal lint cold-cache timeout correction and updated checkpoint; monitor the newest hosted CI and repair only evidenced failures. Keep origin/localchaosplus/upstream unchanged. Await deployment VITE_API_URL before tagging official desktop release; after gates/input pass, release v0.1.0-rc.1 and separately make/verify both GHCR packages public.
 
 ## Last Checkpoint
 2026-10-24 local technical gates and source-stage reviews PASS; candidate staged, no commit/push/tag yet. Windows actual local NSIS/ZIP verification PASS and copied-runtime326s PASS. API URL, hosted CI, actual hosted installer acceptance and GHCR publication/public visibility remain pending.
@@ -138,3 +138,9 @@ Commit/push the minimal CI browser-provisioning fix and this durable checkpoint,
 - Source publication PASS: commit04ab3fd939ecbbaa2d8495e0fcee0a925d8e5092, git push --quiet github HEAD:main EXIT0. Anonymous repository API confirms public/defaultmain; anonymous commits/main confirms exactSHA. Hosted CI https://github.com/7link-team/7link-platform/actions/runs/40157294283 in_progress. Both workflows active. Local tree was clean immediately after source commit/push; this MEMORY update is intentionally pending until next verified checkpoint. No tag/release created and no claim of public GHCR yet.
 
 - First hosted CI failure evidence saved .temp/delivery-hosted-frontend.log:10browser-backed tests fail at browserType.launch because /home/runner/.cache/ms-playwright/chromium_headless_shell-1208/... is absent;815other Web tests PASS. Same-class scan: only frontend job runs these browser tests; backend contract checks are generation/typecheck and desktop only builds. Added one frontend CI step before test: bun run --cwd apps/web playwright install --with-deps chromium. Local same CLI resolves locked1.58.2; actionlint both workflows/diffcheck PASS. Tests/assertions/production unchanged. First run Runner PASS, backend was still executing; next branch push supersedes it by existing concurrency policy.
+
+- CI fix published:939d534607e535752ca795c9910a5149f602fb8a, push EXIT0. Latest run https://github.com/7link-team/7link-platform/actions/runs/40157562412 in_progress. Prior run40157294283 overall cancelled by preexisting concurrency; its frontend had failed only because browser binary absent, Runner had passed. This local MEMORY-only update is uncommitted while waiting and must be reconciled before final handoff.
+
+- Latest hosted run40157562412 frontend SUCCESS17steps (including pinned Chromium installation, actual browser tests and build), Runner SUCCESS13steps. Backend still inside existing make ci step, no failed job step yet; running log redirect points to an unpublished blob404, so wait for completed-job logs rather than inferring live package outcomes. Anonymous public main exact939d5346 SHA PASS. Only local MEMORY is uncommitted.
+
+- Hosted40157562412 is now FAILURE: frontend SUCCESS17steps and Runner SUCCESS13steps, backend golangci-lint failed before completing package loading at5m context deadline. No lint finding/test assertion failed; complete log .temp/delivery-hosted-backend.log. Minimal .golangci.yml timeout5m?15m with cold-cache/serialized-build comment; no disabled check/budget changes. Local GOFLAGS=-p=1 make lint EXIT0/0issues (delivery-lint-timeout-fix.log). Source-stage self-review on this config-only correction PASS; real hosted rerun pending.
