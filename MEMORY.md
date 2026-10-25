@@ -4,10 +4,10 @@
 Deliver the existing implementation batch after recovery, final review and commit hygiene. User authorized this delivery work on 2026-10-24. Full accepted prototype remains incomplete; do not claim full product readiness.
 
 ## Current Phase
-REVIEW
+TESTING
 
 ## Current Step
-Local source-stage self-review and acceptance PASS; explicit staged candidate ready for commit and HEAD:main push to github. Run hosted CI next. Release acceptance remains pending deployment API URL, hosted both-scope install/uninstall and anonymous GHCR access. No tag/release yet.
+Source04ab3fd9 is public on main. First hosted CI40157294283: Runner PASS, frontend FAIL because locked Playwright Chromium headless shell is absent;815tests pass/10browser-launch failures, no browser assertions ran. Minimal workflow fix installs Chromium with dependencies using the existing pinned Playwright1.58.2 CLI. Actionlint/diffcheck PASS; commit/push this workflow fix and follow the new hosted run. API URL still unanswered; no release tag/GHCR/official assets.
 
 ## Overall Progress
 - [x] Read continuation transcript; reconcile Git/source/ADR/final gate evidence.
@@ -22,8 +22,9 @@ Local source-stage self-review and acceptance PASS; explicit staged candidate re
 - [x] Complete326s copied populated-runtime/browser acceptance and clean all owned runtime resources.
 - [ ] Hosted Windows both-scope install/uninstall and official deployment-configured assets.
 - [ ] Obtain deployment API URL (async question pending), validate public GHCR after first publication.
-- [ ] Review explicit staging manifest/staged diff and commit accepted batch locally.
-- [ ] Push to intended GitHub repository when access is available; never substitute Codeup.
+- [x] Review explicit staging manifest/staged diff and commit candidate04ab3fd9.
+- [x] Push HEAD:main to intended public GitHub repository; anonymous SHA verification PASS; Codeup unchanged.
+- [ ] Complete hosted CI40157294283 and remaining release acceptance.
 
 ## Active Work
 API repair worker complete: real-Huma and required-path collection regressions PASS and reverse mutation killed. Nginx repair/real proxy boundary checks PASS. Data worker runs serial final CI then frontend/Runner checks. Release worker completed Windows NSIS installMode=both/portable ZIP workflow and static verification. Main will run prepared local packaging verifier only after data worker releases heavy-task resources. Main owns integration, deployment API URL/public GHCR handling, final acceptance, commit/tag/push.
@@ -74,7 +75,7 @@ Local capability matrix .temp/lanes/final-gaps.md records198rows: DONE157/PARTIA
 - Original two confirmed review defects are fixed and regression-tested. Current blockers are unfinished final gates, Windows real packaging acceptance, deployment API URL and actual anonymous GHCR access after publication.
 
 ## Next Action
-Commit the explicit reviewed staged candidate, push HEAD:main to github (preserve Codeup origin/local chaosplus/upstream), monitor hosted CI and resolve actual failures minimally. Deployment VITE_API_URL is still requested from user; do not tag/publish a desktop with fabricated or localhost API configuration. After the input and gates pass, release authorized v0.1.0-rc.1 and independently make/verify both GHCR packages public.
+Commit/push the minimal CI browser-provisioning fix and this durable checkpoint, then monitor the latest hosted CI and repair only evidenced failures. Keep origin/localchaosplus/upstream unchanged. Await user deployment VITE_API_URL before tagging/publishing official desktop assets; after gates/input pass, release v0.1.0-rc.1 and separately make/verify both GHCR packages public.
 
 ## Last Checkpoint
 2026-10-24 local technical gates and source-stage reviews PASS; candidate staged, no commit/push/tag yet. Windows actual local NSIS/ZIP verification PASS and copied-runtime326s PASS. API URL, hosted CI, actual hosted installer acceptance and GHCR publication/public visibility remain pending.
@@ -133,3 +134,7 @@ Commit the explicit reviewed staged candidate, push HEAD:main to github (preserv
 - Windows real packaging PASS: Python helper session38472 EXIT0, Rust release4m44s, actual NSIS3.11 generated frontend-app_0.1.0-rc.1_x64-setup.exe5.93MiB. Generated installer.nsi confirms VERSION0.1.0-rc.1/INSTALLMODEboth/MULTIUSER_PAGE_INSTALLMODE. Actual EXE ProductVersion0.1.0-rc.1. Real Compress-Archive ZIP contains exactly that EXE; length/SHA256 equality PASS. Local files are packaging-only and must NOT be uploaded as configured release assets. Hosted installation/uninstallation NOT_RUN.
 - Current copied runtime/browser PASS326s: populated source DB online backup; random API54037/Web54038 ports; real prefilled tenant login/workspace/projects9/work-list/create/detail-refresh PASS; created ID43070307166126080, DRAFT, criterion stable, frozen contract hash recomputed equal, foreign-project404. Source record count0/copy1. Final health200/API5xx0/DBlocks0/ERRORlines0; browser errors0/visible alerts0/disabled navigation0/horizontal overflow0 at1366x768. First-row click initially under sticky header due retained scroll; normal scroll-to-top restored click, no product change. Readonly criterion correctly checked via textarea.readOnly (not disabled). Browser/owned process trees/copy/config/hardlink cleaned; scratch absent and helper EXIT0. Initial helper-only loader/SQLite handle/EOF issues fixed before successful acceptance; no product code involved.
 - Source-stage self-review PASS: scope/reuse/module ownership/regression/complexity/commit hygiene checked; previous bounded deep-review findings fixed and tested. Staged credential-pattern matches only intentional redaction fixtures in clientwork/package_archive_test.go and knowledge/memory_test.go. This is acceptance of the current candidate source stage, NOT full product or published release acceptance. Full known37product gaps remain above.
+
+- Source publication PASS: commit04ab3fd939ecbbaa2d8495e0fcee0a925d8e5092, git push --quiet github HEAD:main EXIT0. Anonymous repository API confirms public/defaultmain; anonymous commits/main confirms exactSHA. Hosted CI https://github.com/7link-team/7link-platform/actions/runs/40157294283 in_progress. Both workflows active. Local tree was clean immediately after source commit/push; this MEMORY update is intentionally pending until next verified checkpoint. No tag/release created and no claim of public GHCR yet.
+
+- First hosted CI failure evidence saved .temp/delivery-hosted-frontend.log:10browser-backed tests fail at browserType.launch because /home/runner/.cache/ms-playwright/chromium_headless_shell-1208/... is absent;815other Web tests PASS. Same-class scan: only frontend job runs these browser tests; backend contract checks are generation/typecheck and desktop only builds. Added one frontend CI step before test: bun run --cwd apps/web playwright install --with-deps chromium. Local same CLI resolves locked1.58.2; actionlint both workflows/diffcheck PASS. Tests/assertions/production unchanged. First run Runner PASS, backend was still executing; next branch push supersedes it by existing concurrency policy.

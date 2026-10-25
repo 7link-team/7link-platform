@@ -123,6 +123,8 @@ jobs:
       - run: bun run check:api-types --force
       - run: bun run typecheck --force
       - run: bun run lint --force
+      - name: Install Chromium for browser-backed tests
+        run: bun run --cwd apps/web playwright install --with-deps chromium
       - run: bun run test --force
       - run: bun run build --force
 
