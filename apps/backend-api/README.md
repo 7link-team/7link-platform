@@ -479,6 +479,22 @@ make ci                # format, lint, migration lock, coverage, integration, bu
 `make test-coverage` enforces 90% overall and 90% for every package listed in
 `MODULE_COVERAGE_PACKAGES`; it fails the build below either threshold.
 
+Full cross-package atomic instrumentation credits code exercised by other test
+packages. Go repeats the same source blocks across those test binaries, so the
+raw profile can be much larger than the unique coverage data. `coverage-check`
+streams that intermediate profile once, sums duplicate atomic counts, checks all
+module floors together, and replaces the raw profile with the compact version.
+The total retains its existing generated-code exclusions and `go tool cover`
+calculation; module floors continue to include their original raw block set.
+Run `make coverage-check` to recheck an existing profile without rerunning tests.
+
+Hosted CI runs independent backend checks, full coverage, and integration in
+parallel on separate runners. Integration includes architecture once, followed
+by the existing real MySQL migration and MySQL/PostgreSQL lifecycle/archive gates.
+Each group has a separate Go cache key; only integration installs Chromium and
+starts database service containers. Local `make ci` remains the full sequential
+entry point, with identical gates and thresholds.
+
 `make test-integration` runs the `tests/` module against an embedded PostgreSQL
 16 server, file-backed SQLite, and the in-process `go-mysql-server` compatibility
 engine. The latter is not MySQL 8 and does not replace the separately pinned

@@ -154,7 +154,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/query
 
 .PHONY: build ci ci-fast dev dev-api dev-status dev-stop fmt-check generate generate-docs golangci iam-preflight lint openapi openapi-check test test-coverage test-integration test-performance test-load test-all test-mysql8 test-mysql8-run
-.PHONY: release-check test-race generate-check frontend-check frontend-contract-check schema-lock-check test-alerts test-redis-security
+.PHONY: coverage-check release-check test-race generate-check frontend-check frontend-contract-check schema-lock-check test-alerts test-redis-security
 # These gates share coverage files and embedded database resources. Even when
 # invoked with -j, execute each prerequisite to completion before starting the next.
 .NOTPARALLEL: ci release-check
@@ -332,33 +332,22 @@ test:
 test-coverage:
 	@packages="$$(go list ./... | grep -Ev '/proto/gen/go/|/node_modules/|/dbgen$$')"; \
 	go test -timeout=60m -count=1 -covermode=atomic -coverpkg="$$(echo $$packages | tr ' ' ',')" -coverprofile="$(COVERAGE_RAW_PROFILE)" $$packages
-	@awk 'NR == 1 || ($$1 !~ /\/cmd\/7link-api\/main.go:/ && $$1 !~ /\/cmd\/infra-api\/main.go:/ && $$1 !~ /\.gen\.go:/ && $$1 !~ /\/query\/gen\.go:/)' \
-		"$(COVERAGE_RAW_PROFILE)" > "$(COVERAGE_PROFILE)"
+	@"$(MAKE)" --no-print-directory coverage-check
+
+# Also usable against an existing profile: avoid rerunning tests when checking
+# aggregation equivalence. The tool keeps module and total filter semantics
+# separate, merging atomic counts before any expensive Go/source processing.
+coverage-check:
+	go -C tools test ./coverage
+	go -C tools run ./coverage -input "$(abspath $(COVERAGE_RAW_PROFILE))" \
+		-output "$(abspath $(COVERAGE_RAW_PROFILE)).merged" \
+		-filtered "$(abspath $(COVERAGE_PROFILE))" -minimum "$(COVERAGE_MIN)" $(MODULE_COVERAGE_PACKAGES)
+	@mv "$(COVERAGE_RAW_PROFILE).merged" "$(COVERAGE_RAW_PROFILE)"
 	@coverage="$$(go tool cover -func="$(COVERAGE_PROFILE)" | awk '/^total:/ {gsub(/%/, "", $$3); print $$3}')"; \
 	awk -v coverage="$$coverage" -v minimum="$(COVERAGE_MIN)" 'BEGIN { \
 		printf "total coverage: %.1f%% (minimum %.1f%%)\n", coverage, minimum; \
 		if (coverage + 0 < minimum + 0) exit 1; \
 	}'
-	@status=0; \
-	for package in $(MODULE_COVERAGE_PACKAGES); do \
-		coverage="$$(awk -v target="$$package" 'NR > 1 { \
-			file = $$1; sub(/:.*/, "", file); directory = file; sub(/\/[^\/]+$$/, "", directory); \
-			if (directory != target) next; \
-			stmts[$$1] = $$2; if ($$3 > 0) hit[$$1] = 1; \
-		} END { \
-			for (block in stmts) { total += stmts[block]; if (block in hit) covered += stmts[block] } \
-			if (total == 0) print "missing"; else printf "%.1f", covered * 100 / total \
-		}' "$(COVERAGE_RAW_PROFILE)")"; \
-		short="$${package#7link.com/platform/}"; \
-		if [ "$$coverage" = "missing" ]; then \
-			printf "module coverage: %-48s MISSING\n" "$$short"; status=1; continue; \
-		fi; \
-		if ! awk -v name="$$short" -v coverage="$$coverage" -v minimum="$(COVERAGE_MIN)" 'BEGIN { \
-			printf "module coverage: %-48s %.1f%% (minimum %.1f%%)\n", name, coverage, minimum; \
-			if (coverage + 0 < minimum + 0) exit 1; \
-		}'; then status=1; fi; \
-	done; \
-	exit $$status
 
 test-integration:
 	go -C tests test ./... -count=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)"

@@ -5472,3 +5472,11 @@ Decision: shared ActionForm focuses and scrolls the inline business error summar
 - Tradeoffs: desktop needs network access to deployed Web; Web storage is separated by origin, while cookies follow browser Domain/Path/Secure rules (ports do not isolate cookies). Switching does not log out another server. Saved addresses live in local WebView storage and are not credentials. No automatic failover between domains.
 - Scope: desktop startup, native return navigation, release configuration, docs and bounded tests; shared Web/backend unchanged. Prior desktop VITE_API_URL release prerequisite is superseded; no deployment URL is required to publish.
 - Status: implemented and locally verified: Windows native return menu including refused remote connection, two server hostnames, same-origin API calls, saved-list persistence and remote native invocation denial PASS. Hosted release acceptance remains pending.
+
+## 2026-10-25 - CI coverage aggregation and independent jobs
+- Decision: preserve full cross-package atomic coverage and all existing thresholds; compact duplicate source blocks before total coverage processing and calculate all registered module floors together. Parallelize independent hosted backend checks, coverage and database integration; run architecture once within the full nested integration suite.
+- Reason: user explicitly requires substantial optimization. Raw coverage contains99.18%duplicate rows;55full-file scans previously cost~49minutes.
+- Alternatives Considered: reduce instrumentation or omit tests (rejected: changes verification); merely raise timeouts (does not improve throughput); keep serial hosted execution (unnecessary dependencies).
+- Tradeoffs: raw Go test generation still produces duplicate intermediate records; compaction occurs immediately afterward. Parallel jobs use independent runner caches/resources and expose individual failures. Local make ci remains sequential and complete.
+- Scope: build tooling, CI workflow and documentation only; no production behavior, migrations, dependencies or test thresholds changed.
+- Status: implemented; all129,126block counts,55module results and filtered bytes match the existing gate. Local full coverage-check9.507s PASS on the1.18GBprofile; hosted full CI verification pending.
