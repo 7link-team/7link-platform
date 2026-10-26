@@ -7,7 +7,7 @@ Current authorized continuation: (1) substantially reduce cold ARM64 image build
 TESTING
 
 ## Current Step
-Implementation and local review complete, hosted acceptance NOT RUN. Native image4matrix+indexmerge/signing, Unix desktop4matrix+actualbundle/startup checks, and append-only publication implemented in existing release.yml. All original Windows build/acceptance body unchanged. Main staging/pushing ONLY5tracked files then dispatching images_only and append_desktop concurrently with existingimmutable v0.1.0-rc.1. Published10original assets/images/tag MUST remain unchanged; successful append yields15assets (4Unix binaries+newUnixchecksum added).
+Hosted acceptance running on pushed main e9f60715. append_desktop run40360550874 builds all four Unix desktop bundles then safely appends missing assets; images_only run40360560870 measures native image builds on unique verification tags. Main CI40360378320 also running. Original10assets/images/tag MUST remain unchanged. No hosted success claimed yet.
 
 ## Implementation Plan
 - Goal/requirements: native amd64+arm64 API/Web cold builds, full multiarch indexes/SBOM/max provenance/keyless signatures unchanged; add real macOS Intel+AppleSilicon and Linux amd64+arm64 desktop packages with versioned names/checksums/public download. Preserve Windows two-scope installer+portableZIP and existing verified candidate assets/tag.
@@ -23,7 +23,7 @@ Implementation and local review complete, hosted acceptance NOT RUN. Native imag
 - [x] Existing architecture/platform prerequisites inspected; officialnativeRunner labels and locked Tauri nativebundles confirmed.
 - [x] Native image pipeline and Unix desktop/append implementation, docs and ADR updated.
 - [x] Local actionlint1.7.12/mode/index/publication invariants and reverse mutations PASS; independent reviews no remaining findings.
-- [ ] Commit/push5delivery files and dispatch images_only+append_desktop without moving candidate/tag.
+- [x] Commit/push5delivery files as e9f6071512ddc960933901898359fe2ba757f8ec; remote main confirmed. Dispatched append_desktop40360550874 and images_only40360560870 (HTTP204), preserving candidate/tag.
 - [ ] Real native coldimage builds/runtime/index/attestation/signature/anonymous checks and measured optimization PASS.
 - [ ] Real fourUnix desktop bundles/startup PASS; appendmissingassets+newUnixchecksum safely.
 - [ ] Verify all15publicassets, original10assetIDs+bytes preserved and existingimage/tag digests unchanged; latestCI and finalacceptance.
@@ -41,7 +41,7 @@ Implementation and local review complete, hosted acceptance NOT RUN. Native imag
 - [x] Latest exact-main CI40330075270 all5jobs SUCCESS; final self-review and candidate acceptance PASS.
 
 ## Active Work / Execution Mode
-Hybrid: main exclusively edited/integrates shared workflow and owns final acceptance. Three bounded read-only reviewers: desktop_platform_plan confirmed nativeSDK/bundles and Unixjob implementation; review_native_images checked native matrix/digest handoff/attestations/failure/permissions; review_desktop_append reproduced and reviewed append/publication invariants. All reviews complete, no remaining code findings. No local heavytests/services active. Hosted runs next.
+Hybrid: main exclusively edited/integrates shared workflow and owns final acceptance. Three bounded read-only reviewers: desktop_platform_plan confirmed nativeSDK/bundles and Unixjob implementation; review_native_images checked native matrix/digest handoff/attestations/failure/permissions; review_desktop_append reproduced and reviewed append/publication invariants. All reviews complete, no remaining code findings. No local heavytests/services active. Hosted append40360550874 and images40360560870 dispatched; mainCI40360378320 in progress.
 
 ## Confirmed Constraints / Important Decisions
 - User already authorized public source/pushes/tag/release, public GHCR and v0.1.0-rc.1; do not ask again. GHCR visibility confirmed anonymous, no login/package permissions needed now.
@@ -151,3 +151,6 @@ Automated candidate Release40330098967 SUCCESS, immutable tag/source verified, a
 - actionlint1.7.12 PASS; oldlocal1.7.7 lacked officialmacos-15-intel label, no fakecustomrunnerconfig introduced. Official1.7.12 assetSHA2566e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9verified beforeexecution; ignored .temp/delivery-tools/actionlint-current/.
 - A-classreview: A1 immutable digestartifactstagingvalidatedbeforepublish; A2 largebundlehashesstreamed+actualhosted volumespending; A3 mode/dependencyguards tested; A4 noappauthchange, leastprivilege workflowpermissions; A5 nofinanciallogic; A6 appendinterruption/replay invariants+no oldclobber tested; A7 oldassets/appsource protected; A8 asyncmatrixfailures preventpublish and sharedperTagpublication lock. SQL/API/schema/budget/businessstatemachines unaffected.
 - Desktopad-hocmacOS is NOT DeveloperID/notarization; Linuxbaseline22.04/runtimeGUI prerequisites documented. No mobile scaffolding/WindowsARM64 expansion.
+
+### Hosted runner correction (2026-10-26)
+- Attempt: append40360550874 AppleSilicon macos-14 remained queued. Cause proven by official actions/runner-images issue13518: Oct26 14:00UTC to Oct27 00:00UTC brownout and Nov2 retirement. Resolution: use supported macos-15 ARM runner (official runner-images README confirms arm64), keeping native assertion and all package checks. Cancel old append run and dispatch corrected workflow; images-only run unaffected.

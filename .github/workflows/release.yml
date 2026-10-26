@@ -483,7 +483,7 @@ jobs:
             arch: amd64
             machine: x86_64
             bundle: dmg
-          - runner: macos-14
+          - runner: macos-15
             target: aarch64-apple-darwin
             platform: macos
             arch: arm64
