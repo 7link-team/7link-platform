@@ -6,7 +6,8 @@ lowercased for GHCR. The runner ships as native binaries, not a container: it
 needs access to the user's local tools, credentials and workspace. Its existing
 npm launcher remains available for local packaging; this workflow does not
 publish the private npm package. The Tauri desktop server launcher also ships as
-a Windows x64 NSIS installer and a portable ZIP.
+a Windows x64 NSIS installer and portable ZIP, macOS Intel/Apple Silicon DMGs,
+and Linux amd64/arm64 AppImages.
 
 ## Cut a release
 
@@ -14,8 +15,8 @@ a Windows x64 NSIS installer and a portable ZIP.
 2. Create and push a tag such as `v0.1.0` or `v0.1.0-rc.1` using your normal
    release approval process. The release workflow also accepts an **existing**
    tag through `workflow_dispatch`; it does not create tags.
-3. Wait for both multi-platform images, all six runner builds and the Windows
-   desktop installer/portable build to succeed.
+3. Wait for both multi-platform images, all six runner builds and all five
+   desktop platform builds to succeed.
    The final job creates a GitHub Release with generated notes and assets.
 
 The exact git tag is the image tag, including its leading `v` and prerelease
@@ -27,6 +28,21 @@ characters; SemVer `+build` metadata is rejected because Docker forbids `+`.
 Use a version tag or digest in deployments. Concurrent releases are serialized
 per tag; release different stable tags in order if you rely on `latest`.
 
+Manual dispatch also provides three mutually exclusive modes:
+
+- `desktop_only`: build and verify desktop bundles without publishing a Release.
+- `images_only`: verify native images under unique `verify-<run>-<attempt>` tags.
+  Application version labels still identify the requested source tag. This mode
+  does not update version tags or `latest`, or build Runner/desktop assets.
+- `append_desktop`: add missing macOS/Linux desktop bundles to an existing
+  Release. The tag, images, Windows/Runner binaries and existing checksum lists
+  remain unchanged. New Unix bundles receive a separate desktop Unix checksum
+  list. Retry a failed publication job with its original build artifacts after
+  an interrupted upload; conflicting unlisted existing binaries are rejected.
+
+Image and desktop verification have separate concurrency groups. Normal Release
+publication and desktop append share the same per-tag publication group.
+
 Images support `linux/amd64` and `linux/arm64`. Both embed the tag in
 `org.opencontainers.image.version`, with source, revision and creation labels.
 The API's existing build-version ldflag also supplies its reported application
@@ -35,6 +51,12 @@ BuildKit publishes SBOM and maximum provenance attestations; cosign signs the
 image index digest with GitHub OIDC (no stored signing key). Verify against the
 repository's release workflow identity and the issuer
 `https://token.actions.githubusercontent.com` using `cosign verify`.
+
+Each component/architecture builds on its matching native Linux runner, with
+separate cache scopes. ARM64 uses `ubuntu-24.04-arm`; no QEMU compiler emulation
+is used. Each image must execute its native smoke check before exporting its
+digest. The merge jobs require both architectures and their attestation
+references before publishing and signing the final indexes.
 
 Native release assets are named:
 
@@ -48,6 +70,10 @@ Native release assets are named:
 <repository>-runner_<tag>_checksums.txt
 <repository>-desktop_<tag>_windows_amd64-setup.exe
 <repository>-desktop_<tag>_windows_amd64_portable.zip
+<repository>-desktop_<tag>_macos_amd64.dmg
+<repository>-desktop_<tag>_macos_arm64.dmg
+<repository>-desktop_<tag>_linux_amd64.AppImage
+<repository>-desktop_<tag>_linux_arm64.AppImage
 <repository>-desktop_<tag>_checksums.txt
 ```
 
@@ -57,8 +83,20 @@ archives with `sha256sum --ignore-missing -c <repository>-runner_<tag>_checksums
 Use `Get-FileHash -Algorithm SHA256` to compare the selected archive on Windows.
 The Runner checksum list covers all six Runner archives; the separate desktop
 checksum list covers its installer and portable ZIP.
+For a complete new release, the desktop list also covers both DMGs and both
+AppImages. When appending Unix bundles to an older Windows-only release, the
+original desktop list is preserved and the four new bundles are listed in
+`<repository>-desktop_<tag>_unix_checksums.txt`.
 Checksums protect download integrity; runner archives are not separately signed,
 and Windows desktop code signing is not configured.
+
+macOS DMGs are built on native Intel and Apple Silicon runners. The mounted app's
+version, architecture, ad-hoc signature and startup are checked. These builds
+have no Apple Developer ID signature or notarization, so Gatekeeper may require
+explicit approval. Linux AppImages use an Ubuntu 22.04 build baseline for both
+architectures; verification extracts the bundle and starts it in a graphical
+session. Downloaded AppImages require executable permission (`chmod +x`). These
+startup checks do not replace UI or login acceptance on the target desktop.
 
 The NSIS installer offers **Only for me / All users**. Tauri's `installMode=both`
 requires Administrator access for either selection; the choice controls the
@@ -91,8 +129,9 @@ version is injected from the tag through a temporary Tauri config.
 - Enable Actions and grant this repository's `GITHUB_TOKEN` permission to publish
   packages and create Releases. No PAT is required. For an existing GHCR package,
   grant this repository Actions access in that package's settings.
-- The image job alone requests `packages: write` and `id-token: write`. The
-  release job alone requests `contents: write`; CI has `contents: read`.
+- Image build and merge jobs request `packages: write`; only index signing jobs
+  request `id-token: write`. Release creation and desktop append jobs request
+  `contents: write`; CI has `contents: read`.
 - Allow the SHA-pinned actions used by the workflows and OIDC access to Sigstore.
   This distribution requires public GHCR packages. After the first image push,
   open each package's **Package settings → Change visibility → Public** and
@@ -286,10 +325,12 @@ collect into a temporary regular profile and compact it before writing
 `coverage.raw.out`. Module floors still include generated blocks, while the
 total uses the existing generated-code exclusions. Test/build/collection
 failures stop the gate, and normal test output remains separate from profile data.
-The release workflow additionally builds the Windows desktop NSIS installer and
-portable ZIP on a Windows runner using locked dependencies and tag-derived app
-versioning; CI configuration checks do not substitute for that hosted build or
-interactive installer acceptance.
+The release workflow additionally builds the Windows NSIS installer/portable
+ZIP, macOS DMGs and Linux AppImages on native runners using locked dependencies
+and tag-derived app versioning. Windows verifies both installation scopes and
+uninstall cleanup; Unix jobs verify bundle architecture/version or extraction
+and native startup. CI configuration checks do not substitute for these hosted
+builds and runtime checks.
 `GOFLAGS=-p=1` bounds Go package parallelism. Performance, whole-tree race,
 external Redis/TLS, deployment acceptance and browser UAT from `release-check`
 remain explicit release-owner gates; they are not silently claimed by CI.

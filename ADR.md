@@ -5491,3 +5491,14 @@ Decision: shared ActionForm focuses and scrolls the inline business error summar
 - Status: implemented; real Linux and Windows cross-package/orphan/subprocess/failure equivalence tests pass. Original1.18GB pipe replay PASS4.051s/52.2MiB RSS/output9.69MB with exact reference SHA. Malformed-producer reverse mutation rejected; Linux and Windows expanded suites pass. Independent review passed; full gates pending.
 
 - CI fixture isolation: migrations retain integration database; lifecycle/archive use a separately created lifecycle database in each ephemeral engine service. Reason: migrated fixture principal101 leaked into application bootstrap and caused audit duplicate keys. Reused archive_ prefix separates archive tables. Original real MySQL8.4.11/PostgreSQL16.15 lifecycle+archive tests allPASS with unchanged assertions; hosted pinned-toolchain verification remains.
+
+## 2026-10-26 - Native image builders and Unix desktop distribution
+- Decision: build each Linux image architecture on its matching native hosted runner; hand off immutable per-platform digests, then merge/validate/sign the multi-platform index. Caches are isolated by component and architecture. Keep original Dockerfile/CGO/toolchain and attestations.
+- Reason: actual ARM64 QEMU cold compilation took2697.9..4566.9s versus amd64306.2..472.8s; user requested substantial optimization and continued the recommended native-builder work.
+- Alternatives Considered: warm cache only (does not fix cold builds), disableCGO/changeSQLite (changes product), hand-built crosscompiler (newtoolchain complexity). Native hostedARM64 is available and reuses existing build mechanisms.
+- Tradeoffs: more independent jobs and small digest artifacts; final index waits all architectures. A verification-only image mode publishes unique verify-run tags, preserving publishedrelease tags/latest during acceptance.
+- Scope: release tooling only, no application/SQL/dependency changes. Status: implementation/hosted acceptance pending.
+- Decision: add native macOS Intel/AppleSilicon and Linux amd64/arm64 desktop bundles alongside existing Windows installer/ZIP. Existing candidate may receive only missingUnix desktop assets and a new separate Unix checksum list after all new bundles pass; existing binaries/tag/images must not change.
+- Reason: user explicitly found missing macOS/Linux desktop assets; prior workflow built desktop only on Windows although app code is generic.
+- Alternatives Considered: move original tag/rebuild all published artifacts (rejected), confuse Runner archives with desktop (incorrect), defer new assets to an unsolicited new version (unnecessary).
+- Tradeoffs: native SDK/runtime requirements and unsigned/unnotarized distribution remain explicit. Scope: packaging/publication and docs, no product/mobile expansion. Status: native package feasibility and acceptance pending.

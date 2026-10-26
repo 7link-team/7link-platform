@@ -14,11 +14,21 @@ on:
         required: false
         default: false
         type: boolean
+      images_only:
+        description: Verify native images with unique verify tags, without changing release tags
+        required: false
+        default: false
+        type: boolean
+      append_desktop:
+        description: Append missing Unix desktop assets to an existing release
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
 concurrency:
-  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  group: release-${{ github.event.inputs.tag || github.ref_name }}-${{ inputs.images_only && 'images' || inputs.desktop_only && 'desktop' || 'publish' }}
   cancel-in-progress: false
 
 jobs:
@@ -33,6 +43,7 @@ jobs:
       repository: ${{ steps.meta.outputs.repository }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
       created: ${{ steps.meta.outputs.created }}
+      image_tag: ${{ steps.meta.outputs.image_tag }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -44,15 +55,25 @@ jobs:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
           OWNER: ${{ github.repository_owner }}
           REPOSITORY: ${{ github.event.repository.name }}
+          DESKTOP_ONLY: ${{ inputs.desktop_only }}
+          IMAGES_ONLY: ${{ inputs.images_only }}
+          APPEND_DESKTOP: ${{ inputs.append_desktop }}
         shell: bash
         run: |
           set -euo pipefail
+          modes=0
+          for mode in "$DESKTOP_ONLY" "$IMAGES_ONLY" "$APPEND_DESKTOP"; do
+            [[ "$mode" != true ]] || modes=$((modes + 1))
+          done
+          if (( modes > 1 )); then echo '::error::Select at most one verification or append mode'; exit 1; fi
           # Docker tags cannot contain SemVer build metadata (+).
           [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]
           (( ${#TAG} <= 128 ))
           sha=$(git rev-parse --verify "refs/tags/$TAG^{commit}")
           prerelease=false
           [[ "$TAG" != *-* ]] || prerelease=true
+          image_tag=$TAG
+          if [[ "$IMAGES_ONLY" == true ]]; then image_tag="verify-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"; fi
           {
             echo "tag=$TAG"
             echo "sha=$sha"
@@ -60,57 +81,56 @@ jobs:
             echo "repository=$REPOSITORY"
             echo "prerelease=$prerelease"
             echo "created=$(git show -s --format=%cI "$sha")"
+            echo "image_tag=$image_tag"
           } >> "$GITHUB_OUTPUT"
 
-  images:
-    if: ${{ !inputs.desktop_only }}
+  image_builds:
+    if: ${{ !inputs.desktop_only && !inputs.append_desktop }}
     needs: metadata
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     permissions:
       contents: read
       packages: write
-      id-token: write
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
+        component: [api, web]
+        arch: [amd64, arm64]
         include:
           - component: api
             context: apps/backend-api
           - component: web
             context: apps/frontend-web
+          - arch: amd64
+            runner: ubuntu-24.04
+            machine: x86_64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            machine: aarch64
+    env:
+      IMAGE: ${{ needs.metadata.outputs.image }}-${{ matrix.component }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ needs.metadata.outputs.sha }}
           persist-credentials: false
-      - uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+      - name: Require a native builder
+        env:
+          MACHINE: ${{ matrix.machine }}
+        run: test "$(uname -m)" = "$MACHINE"
       - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
       - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: tags
-        env:
-          IMAGE: ${{ needs.metadata.outputs.image }}-${{ matrix.component }}
-          TAG: ${{ needs.metadata.outputs.tag }}
-          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
-        run: |
-          {
-            echo 'tags<<IMAGE_TAGS'
-            echo "$IMAGE:$TAG"
-            if [[ "$PRERELEASE" == false ]]; then echo "$IMAGE:latest"; fi
-            echo IMAGE_TAGS
-          } >> "$GITHUB_OUTPUT"
       - id: build
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           context: ${{ matrix.context }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             VERSION=${{ needs.metadata.outputs.tag }}
             REVISION=${{ needs.metadata.outputs.sha }}
@@ -118,19 +138,109 @@ jobs:
             CREATED=${{ needs.metadata.outputs.created }}
           sbom: true
           provenance: mode=max
-          cache-from: type=gha,scope=${{ matrix.component }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+          cache-from: type=gha,scope=${{ matrix.component }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}-${{ matrix.arch }}
+      - name: Run the image on its native architecture
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          ARCH: ${{ matrix.arch }}
+          COMPONENT: ${{ matrix.component }}
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE@$DIGEST"
+          test "$(docker image inspect "$IMAGE@$DIGEST" --format '{{.Architecture}}')" = "$ARCH"
+          if [[ "$COMPONENT" == api ]]; then
+            docker run --rm "$IMAGE@$DIGEST" --help
+          else
+            docker run --rm --env API_UPSTREAM=http://127.0.0.1:8080 "$IMAGE@$DIGEST" nginx -t
+          fi
+      - name: Export immutable image digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: image-digest-${{ matrix.component }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 3
+
+  images:
+    if: ${{ !inputs.desktop_only && !inputs.append_desktop }}
+    needs: [metadata, image_builds]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [api, web]
+    env:
+      IMAGE: ${{ needs.metadata.outputs.image }}-${{ matrix.component }}
+      IMAGE_TAG: ${{ needs.metadata.outputs.image_tag }}
+    steps:
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: image-digest-${{ matrix.component }}-*
+          path: digests
+          merge-multiple: true
+      - id: merge
+        name: Merge both native images with their attestations
+        env:
+          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+          IMAGES_ONLY: ${{ inputs.images_only }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(digests/*)
+          [[ ${#files[@]} == 2 ]]
+          sources=()
+          for file in "${files[@]}"; do
+            digest=${file##*/}
+            [[ "$digest" =~ ^[0-9a-f]{64}$ ]]
+            sources+=("$IMAGE@sha256:$digest")
+          done
+          # Buildx flattens the platform indexes, retaining SBOM/provenance manifests.
+          docker buildx imagetools create --dry-run "${sources[@]}" > index.json
+          python3 - <<'PY'
+          import json
+          data = json.load(open('index.json'))
+          manifests = data['manifests']
+          runtimes = [m for m in manifests if m.get('platform', {}).get('os') == 'linux']
+          assert len(runtimes) == 2
+          assert {m['platform']['architecture'] for m in runtimes} == {'amd64', 'arm64'}
+          attestations = [m for m in manifests if m.get('annotations', {}).get('vnd.docker.reference.type') == 'attestation-manifest']
+          assert len(attestations) == 2 and len(manifests) == 4
+          assert {m['annotations']['vnd.docker.reference.digest'] for m in attestations} == {m['digest'] for m in runtimes}
+          PY
+          tags=(--tag "$IMAGE:$IMAGE_TAG")
+          if [[ "$PRERELEASE" == false && "$IMAGES_ONLY" != true ]]; then tags+=(--tag "$IMAGE:latest"); fi
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+          digest=$(docker buildx imagetools inspect "$IMAGE:$IMAGE_TAG" --format '{{.Manifest.Digest}}')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
       - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
         with:
           cosign-release: v2.5.0
       - name: Sign image index by digest (keyless OIDC)
         env:
-          IMAGE: ${{ needs.metadata.outputs.image }}-${{ matrix.component }}
-          DIGEST: ${{ steps.build.outputs.digest }}
+          DIGEST: ${{ steps.merge.outputs.digest }}
         run: cosign sign --yes "$IMAGE@$DIGEST"
 
   runner:
-    if: ${{ !inputs.desktop_only }}
+    if: ${{ !inputs.desktop_only && !inputs.images_only && !inputs.append_desktop }}
     needs: metadata
     runs-on: ubuntu-24.04
     permissions:
@@ -183,6 +293,7 @@ jobs:
           retention-days: 3
 
   desktop:
+    if: ${{ !inputs.images_only && !inputs.append_desktop }}
     needs: metadata
     runs-on: windows-2022
     timeout-minutes: 60
@@ -355,8 +466,166 @@ jobs:
             }
             Write-Output "Installed and uninstalled $($scope.Flag): scope, executable hash, files and registry cleanup PASS"
           }
+  desktop_unix:
+    if: ${{ !inputs.images_only }}
+    needs: metadata
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            platform: macos
+            arch: amd64
+            machine: x86_64
+            bundle: dmg
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            platform: macos
+            arch: arm64
+            machine: arm64
+            bundle: dmg
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            platform: linux
+            arch: amd64
+            machine: x86_64
+            bundle: appimage
+          - runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            platform: linux
+            arch: arm64
+            machine: aarch64
+            bundle: appimage
+    defaults:
+      run:
+        working-directory: apps/frontend-app
+        shell: bash
+    env:
+      TAG: ${{ needs.metadata.outputs.tag }}
+      REPOSITORY: ${{ needs.metadata.outputs.repository }}
+      TARGET: ${{ matrix.target }}
+      PLATFORM: ${{ matrix.platform }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.metadata.outputs.sha }}
+          persist-credentials: false
+      - name: Require the native desktop architecture
+        env:
+          MACHINE: ${{ matrix.machine }}
+        run: test "$(uname -m)" = "$MACHINE"
+      - name: Install Linux desktop build and startup dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth dbus-x11
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: 1.3.12
+      - name: Install locked desktop dependencies and test address rules
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bun run test
+          rustup target add "$TARGET"
+      - name: Build the versioned native desktop bundle
+        env:
+          BUNDLE: ${{ matrix.bundle }}
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/desktop-release.json"
+          python3 - "$config" <<'PY'
+          import json, os, sys
+          config = {'version': os.environ['TAG'][1:]}
+          if os.environ['PLATFORM'] == 'macos':
+              config['bundle'] = {'macOS': {'signingIdentity': '-'}}
+          with open(sys.argv[1], 'w') as output:
+              json.dump(config, output)
+          PY
+          bun run build --ci --target "$TARGET" --bundles "$BUNDLE" --config "$config" -- --locked
+          shopt -s nullglob
+          mkdir -p dist
+          if [[ "$PLATFORM" == macos ]]; then
+            bundles=(src-tauri/target/"$TARGET"/release/bundle/dmg/*.dmg)
+            extension=dmg
+          else
+            bundles=(src-tauri/target/"$TARGET"/release/bundle/appimage/*.AppImage)
+            extension=AppImage
+          fi
+          [[ ${#bundles[@]} == 1 ]]
+          [[ "${bundles[0]##*/}" == *"_${TAG#v}_"* ]]
+          cp "${bundles[0]}" "dist/${REPOSITORY}-desktop_${TAG}_${PLATFORM}_${ARCH}.${extension}"
+      - name: Verify the mounted macOS app and native startup
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          image="dist/${REPOSITORY}-desktop_${TAG}_${PLATFORM}_${ARCH}.dmg"
+          hdiutil verify "$image"
+          mount="$RUNNER_TEMP/desktop-mount"
+          mkdir "$mount"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$image"
+          desktop_pid=''
+          trap 'if [[ -n "$desktop_pid" ]]; then kill "$desktop_pid" 2>/dev/null || true; fi; hdiutil detach "$mount"' EXIT
+          shopt -s nullglob
+          apps=("$mount"/*.app)
+          [[ ${#apps[@]} == 1 ]]
+          plist="${apps[0]}/Contents/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" = "${TAG#v}"
+          executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")
+          binary="${apps[0]}/Contents/MacOS/$executable"
+          machine=x86_64
+          [[ "$ARCH" != arm64 ]] || machine=arm64
+          test "$(lipo -archs "$binary")" = "$machine"
+          codesign --verify --deep --strict "${apps[0]}"
+          "$binary" > "$RUNNER_TEMP/desktop-startup.log" 2>&1 &
+          desktop_pid=$!
+          sleep 5
+          cat "$RUNNER_TEMP/desktop-startup.log"
+          kill -0 "$desktop_pid"
+          echo 'DMG, version, native architecture, ad-hoc signature and startup PASS'
+      - name: Verify the Linux AppImage and native startup
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          image="$GITHUB_WORKSPACE/apps/frontend-app/dist/${REPOSITORY}-desktop_${TAG}_${PLATFORM}_${ARCH}.AppImage"
+          chmod +x "$image"
+          python3 - "$image" <<'PY'
+          import os, struct, sys
+          with open(sys.argv[1], 'rb') as source:
+              header = source.read(64)
+          assert header[:6] == b'\x7fELF\x02\x01'
+          assert struct.unpack_from('<H', header, 18)[0] == {'amd64': 62, 'arm64': 183}[os.environ['ARCH']]
+          PY
+          mkdir "$RUNNER_TEMP/desktop-appimage"
+          cd "$RUNNER_TEMP/desktop-appimage"
+          "$image" --appimage-extract > /dev/null
+          set +e
+          dbus-run-session -- xvfb-run -a timeout 10s env GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 squashfs-root/AppRun > "$RUNNER_TEMP/desktop-startup.log" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/desktop-startup.log"
+          # A live GUI is terminated only by this test's bounded timeout.
+          test "$status" = 124
+          echo 'AppImage extraction, native architecture and startup PASS'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: apps/frontend-app/dist/*
+          if-no-files-found: error
+          retention-days: 3
+
   release:
-    needs: [metadata, images, runner, desktop]
+    if: ${{ !inputs.desktop_only && !inputs.images_only && !inputs.append_desktop }}
+    needs: [metadata, images, runner, desktop, desktop_unix]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -394,7 +663,8 @@ jobs:
           path: assets
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: desktop-windows-amd64
+          pattern: desktop-*
+          merge-multiple: true
           path: assets
       - name: Checksums and GitHub Release
         env:
@@ -408,7 +678,109 @@ jobs:
           cd assets
           # Keep each product's checksum list scoped to its own native assets.
           sha256sum -- "${REPOSITORY}-runner_${TAG}_"*.zip "${REPOSITORY}-runner_${TAG}_"*.tar.gz > "${REPOSITORY}-runner_${TAG}_checksums.txt"
-          sha256sum -- "${REPOSITORY}-desktop_${TAG}_"*.exe "${REPOSITORY}-desktop_${TAG}_"*.zip > "${REPOSITORY}-desktop_${TAG}_checksums.txt"
+          sha256sum -- "${REPOSITORY}-desktop_${TAG}_"*.exe "${REPOSITORY}-desktop_${TAG}_"*.zip "${REPOSITORY}-desktop_${TAG}_"*.dmg "${REPOSITORY}-desktop_${TAG}_"*.AppImage > "${REPOSITORY}-desktop_${TAG}_checksums.txt"
           args=(--verify-tag --generate-notes --title "$TAG")
           if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease --latest=false); fi
           gh release create "$TAG" "${args[@]}" ./*
+
+  append_desktop:
+    if: ${{ inputs.append_desktop }}
+    needs: [metadata, desktop_unix]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: desktop-assets
+      - name: Preserve published binaries and append verified Unix desktop assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.metadata.outputs.tag }}
+          REPOSITORY: ${{ needs.metadata.outputs.repository }}
+          EXPECTED_SHA: ${{ needs.metadata.outputs.sha }}
+          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, re, subprocess
+          from pathlib import Path
+
+          def gh(*args):
+              return subprocess.check_output(['gh', *args], text=True)
+
+          def sha256(path):
+              digest = hashlib.sha256()
+              with path.open('rb') as source:
+                  for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          tag, repo, name = os.environ['TAG'], os.environ['GH_REPO'], os.environ['REPOSITORY']
+          obj = json.loads(gh('api', f'repos/{repo}/git/ref/tags/{tag}'))['object']
+          while obj['type'] == 'tag':
+              obj = json.loads(gh('api', f'repos/{repo}/git/tags/{obj["sha"]}'))['object']
+          assert obj['type'] == 'commit' and obj['sha'] == os.environ['EXPECTED_SHA'], 'Release tag changed'
+          release = json.loads(gh('release', 'view', tag, '--json', 'tagName,isDraft,isPrerelease,assets'))
+          assert release['tagName'] == tag and not release['isDraft']
+          assert release['isPrerelease'] == (os.environ['PRERELEASE'] == 'true')
+          published = {asset['name'] for asset in release['assets']}
+          prefix = f'{name}-desktop_{tag}_'
+          checksum = prefix + 'checksums.txt'
+          unix_checksum = prefix + 'unix_checksums.txt'
+          windows = {prefix + 'windows_amd64-setup.exe', prefix + 'windows_amd64_portable.zip'}
+          unix = {prefix + f'{platform}_{arch}.{extension}' for platform, extension in [('macos', 'dmg'), ('linux', 'AppImage')] for arch in ['amd64', 'arm64']}
+          expected = windows | unix
+          assert windows | {checksum} <= published, 'Existing Windows release is incomplete'
+          assert {asset for asset in published if asset.startswith(prefix)} <= expected | {checksum, unix_checksum}, 'Unexpected desktop asset'
+          incoming = Path('desktop-assets')
+          assert {path.name for path in incoming.iterdir()} == unix, 'Missing or unexpected Unix build artifacts'
+          existing = Path('published-desktop')
+          existing.mkdir()
+          gh('release', 'download', tag, '--pattern', checksum, '--dir', str(existing))
+          def read_checksums(path, allowed):
+              checksums = {}
+              for line in path.read_text().splitlines():
+                  digest, filename = line.split(maxsplit=1)
+                  filename = filename.lstrip(' *')
+                  assert re.fullmatch(r'[0-9a-f]{64}', digest) and filename in allowed and filename not in checksums
+                  checksums[filename] = digest
+              return checksums
+
+          old = read_checksums(existing / checksum, expected)
+          assert windows <= old.keys() and old.keys() <= published, 'Existing checksum manifest is incomplete'
+          if unix_checksum in published:
+              gh('release', 'download', tag, '--pattern', unix_checksum, '--dir', str(existing))
+              previous_unix = read_checksums(existing / unix_checksum, unix)
+              assert previous_unix.keys() == unix and previous_unix.keys() <= published
+              assert all(filename not in old or old[filename] == digest for filename, digest in previous_unix.items())
+              old.update(previous_unix)
+          final, uploads = {}, []
+          # Validate every existing payload BEFORE making any release changes.
+          for filename in sorted(expected):
+              if filename in published:
+                  gh('release', 'download', tag, '--pattern', filename, '--dir', str(existing))
+                  actual = sha256(existing / filename)
+                  if filename in old:
+                      assert actual == old[filename], f'Published checksum mismatch: {filename}'
+                  else:
+                      assert filename in unix and actual == sha256(incoming / filename), f'Unlisted existing asset differs: {filename}'
+                  final[filename] = actual
+              else:
+                  assert filename in unix, f'Missing published Windows asset: {filename}'
+                  final[filename] = sha256(incoming / filename)
+                  uploads.append(filename)
+          for filename in uploads:
+              # Never overwrite any existing binary, including on a retry.
+              gh('release', 'upload', tag, str(incoming / filename))
+          if not unix <= old.keys():
+              output = Path('checksums')
+              output.mkdir()
+              manifest = ''.join(f'{final[filename]}  {filename}\n' for filename in sorted(unix))
+              (output / unix_checksum).write_text(manifest)
+              # Appending a new list preserves every previously published asset.
+              gh('release', 'upload', tag, str(output / unix_checksum))
+          print(f'Preserved all published assets; added {len(uploads)} Unix assets; Unix desktop checksums verified')
+          PY
