@@ -7,7 +7,7 @@ Deliver authorized public v0.1.0-rc.1 candidate and substantially optimize CI wi
 TESTING
 
 ## Current Step
-Last published source e177147dfb61411ff46c6b99310b5af6c5e5f88d. Seven tracked files currently changed: coverage collect/tool regressions/Makefile, CI fixture database isolation, deployment docs, ADR, MEMORY. Local relevant gates, independent reviews and all4real-engine external gates PASS. Main self-review/acceptance for source change PASS; commit/push now, then exact-head hosted CI before tagging.
+Tagged source5968e701 CI40246546640 allgreen. Release40254999593: six Runner assets built; Windows build PASS but installer hash acceptance FAIL, API image still building and web queued. Actual Tauri binary marker patch proved sole difference; release workflow comparator fixed/reviewed/tested locally. Commit/push ONLY workflow+MEMORY, then dispatch updated main workflow with existing immutable v0.1.0-rc.1 input. Never force-move tag. Build jobs still checkout green taggedSHA5968e701.
 
 ## Overall Progress
 - [x] Public source repository https://github.com/7link-team/7link-platform created and implementation published.
@@ -19,13 +19,16 @@ Last published source e177147dfb61411ff46c6b99310b5af6c5e5f88d. Seven tracked fi
 - [x] New Windows compatibility collection compacts temporary raw before final output; original default raw replaced with9.69MB compact result.
 - [x] Current tools tests/vet/build,55coverage floors/total replay, fmt/schema locks/actionlint/LF checks and independent reviews PASS.
 - [x] Real MySQL/PostgreSQL isolated lifecycle/archive verification: all4original gates PASS; owned resources cleaned.
-- [ ] Commit/push latest optimization + fixture isolation and exact-head full hosted CI green.
-- [ ] Push authorized v0.1.0-rc.1 tag and finish Release workflow.
+- [x] Commit/push latest optimization + fixture isolation as5968e701.
+- [x] Exact-head full hosted CI40246546640 green:checks2.7min/frontend3.2min/Runner1.7min/coverage23.9min/integration26.2min.
+- [x] Push authorized v0.1.0-rc.1 tag at green5968e701.
+- [ ] Finish Release40254999593 workflow.
 - [ ] Hosted Windows /CurrentUser and /AllUsers installation/uninstall plus asset checks.
 - [ ] GHCR API/Web packages PUBLIC; anonymous manifests/architectures/signatures and Release assets/checksums verified.
 
 ## Active Work / Execution Mode
-Main owns implementation and final acceptance. Independent read-only coverage reviewer finished: no remaining findings. Worker /root/real_database_verification completed unchanged original external tests against fresh real MySQL8.4.11/PostgreSQL16.15 in owned remote Docker network: lifecycle7.43s/2.55s,archive0.09s/0.09s, allPASS. All owned containers/network removed and cleanup filters empty. Source archive HEAD e177147d (production/test source unchanged).
+Main owns implementation and final acceptance. Coverage reviewer completed bounded read-only comparison of current23.9min versus previous14.3min coverage runtimes; no causal collector defect found. Current summed Go package times1258.57s vs703.43s, final statistical phase2.78s. Do not assert host load or collector regression without causal evidence.
+ Independent read-only coverage reviewer finished: no remaining findings. Worker /root/real_database_verification completed unchanged original external tests against fresh real MySQL8.4.11/PostgreSQL16.15 in owned remote Docker network: lifecycle7.43s/2.55s,archive0.09s/0.09s, allPASS. All owned containers/network removed and cleanup filters empty. Source archive HEAD e177147d (production/test source unchanged).
 Remote disk-backed attempt hit ENOSPC before tests; tmpfs attempt hit noexec before tests; both cleaned exactly owned resources. Successful rw,exec tmpfs run used Go1.26.6 (image GOTOOLCHAIN=local), -p=1, Go8Gi/no swap/4CPUs and each DB1Gi/no swap. Evidence .temp/delivery-external-real-databases-final.log. Do not run further disk-backed cold builds on full remote root, prune or alter others' resources.
 No local heavy test currently active. Full Windows make test-coverage session4367 was intentionally stopped as redundant; partial execution is NOT PASS. Owned launcher5048 and descendants terminated, unrelated server go5348 untouched. Exact-head hosted Linux run is mandatory for fresh full coverage and full integration.
 
@@ -72,7 +75,7 @@ No local heavy test currently active. Full Windows make test-coverage session436
 ## Remaining Work / Release Acceptance
 1. Finish worker real MySQL/Postgres lifecycle+archive tests; inspect actual assertions and cleanup evidence. Fix only proven in-scope blocker.
 2. Final review/stage only7tracked delivery files; commit/push authorized change and monitor new exact-head full CI. No state-only push while active CI (concurrency cancels main run).
-3. Once ALL gates green, create/push v0.1.0-rc.1 tag; monitor .github/workflows/release.yml. Existing authorization sufficient.
+3. CI green and tag published. Monitor Release40254999593 (.github/workflows/release.yml); existing authorization sufficient.
 4. Verify hosted Windows current-user/all-users install/uninstall, actual EXE ZIP, six Runner archives+checksums, version injection; download/anonymous asset checks.
 5. Ensure both GHCR packages PUBLIC (repo visibility separate); anonymous linux/amd64+arm64 manifests and cosign keyless signatures verified. Credential repo API works; package API403 so visibility may need UI. Never expose credentials.
 6. Final self-review and acceptance; candidate/full-product distinction and actual limitations reported.
@@ -95,10 +98,26 @@ Authoritative requirements docs/PRD_FINAL.md + specifications; .temp/lanes/final
 - PARTIAL cross-cutting: P-R06 repository-event compensation; P-R07 node telemetry/probes; P-R09 native desktop/release proof; P-R12 cross-domain change coordination; P-R13 conversation provenance/exact-position actions; P-R15 organization/invitation/handover; P-R16 multi-Human/Agent teams/history; P-R17 archive/recovery/retention/export/backup.
 
 ## Known Issues / Risks
-Full new hosted CI/release pending; packages/tag/assets not published yet. Full prototype37gaps above remain. Rejected cleanup artifacts retained and must not be retried via alternate deletion. Remote root filesystem full: own bounded tmpfs tests only.
+Full hosted CI40246546640 green; Release40254999593 queued; tag published; packages/assets not published or verified yet. Full prototype37gaps above remain. Rejected cleanup artifacts retained and must not be retried via alternate deletion. Remote root filesystem full: own bounded tmpfs tests only.
 
 ## Next Action
-Real worker4gates/cleanup verified. Final source self-review PASS: exactscope/reuse/architecture/regression/complexity/state/commit hygiene; final acceptance remains conditional on new full hosted CI. Explicitly stage7tracked files, commit/push to github main and fetch new CI run ID. Monitor full exact-head hosted coverage+integration to completion; tag only after all green. No duplicate endpoint/visibility permission question.
+Commit/push release.yml+MEMORY after final staged review; dispatch main release.yml with inputs tag=v0.1.0-rc.1 (existing authorized immutabletag5968e701). Monitor old+new release runs; new same-tag run may queue until old finishes. Verify corrected hosted scope/uninstall, image publication/public status,10assets/checksums/platforms/cosign. No application/tag/SQL change or repeated release-version approval.
+
+## Browser/public package preflight
+agent-browser core skill loaded. Owned candidate-public-5968e701 session opened authorized GitHub organization packages page; page shows Sign in (owned session unauthenticated), existing unrelated public package visible. New candidate packages not yet published. Session closed; no settings/auth changes or messages sent. Do not claim package public until anonymous verification.
 
 ## Last Checkpoint
-Coverage stream implementation, large-input equivalence, failure mutation, Windows/Linux tools and replay floors verified; local full Windows repeat deliberately stopped and recorded; all4real-engine gates and cleanup verified; commit/push ready, full hosted CI/release still pending.
+Coverage stream implementation, large-input equivalence, failure mutation, Windows/Linux tools and replay floors verified; local full Windows repeat deliberately stopped and recorded; all4real-engine gates and cleanup verified; 5968e701 CI allgreen, v0.1.0-rc.1 tag published; Release40254999593 queued, artifact/public package acceptance pending.
+
+## Exact-head hosted acceptance checkpoint
+CI40246546640/5968e701 all5jobs SUCCESS. Fresh full coverage122main test-package summaries;55floors PASS,total90.6%; final statistics00:14:18.826->00:14:21.608=2.781s including tooltests1.419s. .temp/delivery-stream-hosted-coverage.log. Full nested integration17m12s and realMySQL migration6m58s PASS; both lifecycle/archive tests PASS15.36s/0.21s(MySQL),6.45s/0.24s(PG). .temp/delivery-stream-hosted-integration.log. Total integration26.2min/coverage23.9min; no claim that pipe replay4.05s is full test runtime. Final source acceptance PASS, Release acceptance pending.
+
+## Coverage timing comparison limitation
+Independent reviewer: Go1.26.9 calculates reported package duration BEFORE mergeCoverProfile, so final aggregate pipe backpressure cannot directly explain reported package-time increase. Same image/cache867,418,397bytes/flags/dependencies/source, different workers/regions; no CPU telemetry, so host-load explanation unproven. Both runs55floorsPASS/total90.6;53module percentages identical,events90.3->90.5/audit93.2->93.0 differ between fresh runs. Exact statement/count preservation claim applies to the original-input replay and deterministic fixture, NOT to nondeterministic fresh-run counts. No additional gate or source change justified.
+
+## Release installer acceptance correction
+- First desktop job121354869612 logs .temp/delivery-release-desktop.log: build actual NSIS1.29MiB+ZIP PASS; /CurrentUser scope/hive/location/version/uninstall-path checks passed, then installed EXE hash differs fromportable.
+- Reproduced using local matching4,231,680byte portable ZIP .temp/delivery-windows-packaging/desktop-runtime-servers_portable.zip and extracted real NSIS payload .temp/delivery-nsis-payload/frontend-app.exe: portable exactly1__TAURI_BUNDLE_TYPE_VAR_UNK/0NSS, installed0UNK/1NSS; only replacing that fixed-width marker yields byte-identical payload. Older9MB ZIP is unrelated and correctly fails comparator, do not use it.
+- Tauri-utils2.10.1 platform.rs documents binary patch; pinned CLI2.12.2 changelog2.12.0 documents patching beforebundle/restoring raw after. Preserve framework/application behavior; do NOT disable patching or weaken arbitrary byte comparisons.
+- Current release.yml derives installed expected SHA by exactly1UNK->NSS replacement using byte-reversible Latin1; rejects missing/duplicate/already-NSS marker; every other byte must match SHA256. Existing scope/registry/version/uninstaller/cleanup assertions unchanged. Pure actual workflow block extracted in .temp/delivery-installer-hash-probe.ps1 PASS, mutation beyond marker rejected; independent reviewer reproduced. actionlint/diffcheck PASS. Expected local installedSHA D738E9F697F46DC7C828B9FDE07A37D8EEB3ABD230E9F46C9B38FDDFBED15962. No local installation performed.
+- This is harness-only correction on main; immutabletag remains5968e701. workflow_dispatch main + inputtag builds same approved tagged application; old failed-job rerun would reuse old workflow, so use new dispatch after main push. Release same-tag concurrency cancel-in-progress=false will queue until old image build finishes.

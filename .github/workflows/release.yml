@@ -290,8 +290,22 @@ jobs:
           $zip = [System.IO.Compression.ZipFile]::OpenRead($archives[0].FullName)
           try {
             $stream = $zip.GetEntry($env:BINARY_NAME).Open()
-            try { $expectedHash = (Get-FileHash -InputStream $stream -Algorithm SHA256).Hash } finally { $stream.Dispose() }
+            $memory = [System.IO.MemoryStream]::new()
+            try { $stream.CopyTo($memory); $portableBytes = $memory.ToArray() } finally { $stream.Dispose(); $memory.Dispose() }
           } finally { $zip.Dispose() }
+          # Tauri 2.12 patches this one fixed-width marker before NSIS bundling,
+          # then restores the original executable used by the portable archive.
+          # Require exactly that change; every other byte must still match.
+          $encoding = [System.Text.Encoding]::GetEncoding('iso-8859-1')
+          $portableText = $encoding.GetString($portableBytes)
+          $unbundled = '__TAURI_BUNDLE_TYPE_VAR_UNK'
+          $nsis = '__TAURI_BUNDLE_TYPE_VAR_NSS'
+          if ([regex]::Matches($portableText, $unbundled).Count -ne 1 -or $portableText.Contains($nsis)) {
+            throw 'Expected exactly one unbundled Tauri marker in the portable executable'
+          }
+          $expectedBytes = $encoding.GetBytes($portableText.Replace($unbundled, $nsis))
+          $expectedStream = [System.IO.MemoryStream]::new($expectedBytes)
+          try { $expectedHash = (Get-FileHash -InputStream $expectedStream -Algorithm SHA256).Hash } finally { $expectedStream.Dispose() }
           # Tauri CLI 2.12.2 enables NSIS 3.11 MultiUser command-line scope selection:
           # https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.2/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi#L114-L128
           # https://github.com/kichik/nsis/blob/v311/Contrib/MultiUser/MultiUser.nsh#L303-L325
