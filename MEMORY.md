@@ -7,7 +7,7 @@ Deliver authorized public v0.1.0-rc.1 candidate and substantially optimize CI wi
 TESTING
 
 ## Current Step
-Tagged source5968e701 CI40246546640 allgreen. Release40254999593: six Runner assets built; Windows build PASS but installer hash acceptance FAIL, API image still building and web queued. Actual Tauri binary marker patch proved sole difference; release workflow comparator fixed/reviewed/tested locally. Commit/push ONLY workflow+MEMORY, then dispatch updated main workflow with existing immutable v0.1.0-rc.1 input. Never force-move tag. Build jobs still checkout green taggedSHA5968e701.
+Release40256457822 completed FAILURE: BOTH images and all six Runner builds PASS; desktop marker guard fails before installation, release skipped. Both API/Web anonymously public (both architectures,2attestations) and main-workflow cosign identities PASS. Main CI40256421617 allgreen. Diagnose marker guard with local PS7 and preserved hosted artifacts; do not weaken installer/hash/uninstall acceptance or move tag.
 
 ## Overall Progress
 - [x] Public source repository https://github.com/7link-team/7link-platform created and implementation published.
@@ -73,12 +73,10 @@ No local heavy test currently active. Full Windows make test-coverage session436
 - Reachable public history credential scan13,037blobs/424,618,159bytes:6benign fixture/vendor patterns, no credentials exposed/committed.
 
 ## Remaining Work / Release Acceptance
-1. Finish worker real MySQL/Postgres lifecycle+archive tests; inspect actual assertions and cleanup evidence. Fix only proven in-scope blocker.
-2. Final review/stage only7tracked delivery files; commit/push authorized change and monitor new exact-head full CI. No state-only push while active CI (concurrency cancels main run).
-3. CI green and tag published. Monitor Release40254999593 (.github/workflows/release.yml); existing authorization sufficient.
-4. Verify hosted Windows current-user/all-users install/uninstall, actual EXE ZIP, six Runner archives+checksums, version injection; download/anonymous asset checks.
-5. Ensure both GHCR packages PUBLIC (repo visibility separate); anonymous linux/amd64+arm64 manifests and cosign keyless signatures verified. Credential repo API works; package API403 so visibility may need UI. Never expose credentials.
-6. Final self-review and acceptance; candidate/full-product distinction and actual limitations reported.
+1. Monitor original Release40254999593 image jobs and queued corrected Release40256457822; do not duplicate dispatch or move tag. Corrected workflow still builds exact tagged5968e701 source.
+2. Verify corrected hosted Windows current-user/all-users install/uninstall, actual EXE ZIP, six Runner archives+checksums, version injection, anonymous asset downloads.
+3. Ensure both GHCR packages PUBLIC and verify anonymous linux/amd64+arm64 manifests and cosign identities. Current credential scopes confirmed gist,repo,workflow; package-list403 explicitly requires read:packages. Browser session previously unauthenticated. Async user clarification sent: user can set Package settings visibility Public after initial push or provide authenticated browser session. No token/secrets exposed; build/test work continues independently.
+4. Monitor latest main CI40256421617; perform final self-review and acceptance, separating candidate release from remaining prototype gaps.
 
 ## Useful Existing Tools
 - python .temp/delivery-github.py '/repos/7link-team/7link-platform/actions/runs?per_page=3' (stored credential helper, no secrets printed).
@@ -98,10 +96,10 @@ Authoritative requirements docs/PRD_FINAL.md + specifications; .temp/lanes/final
 - PARTIAL cross-cutting: P-R06 repository-event compensation; P-R07 node telemetry/probes; P-R09 native desktop/release proof; P-R12 cross-domain change coordination; P-R13 conversation provenance/exact-position actions; P-R15 organization/invitation/handover; P-R16 multi-Human/Agent teams/history; P-R17 archive/recovery/retention/export/backup.
 
 ## Known Issues / Risks
-Full hosted CI40246546640 green; Release40254999593 queued; tag published; packages/assets not published or verified yet. Full prototype37gaps above remain. Rejected cleanup artifacts retained and must not be retried via alternate deletion. Remote root filesystem full: own bounded tmpfs tests only.
+Full tagged CI40246546640 green; original Release40254999593 API image building and corrected Release40256457822 pending; tag published; packages/assets not public-verified yet. Full prototype37gaps above remain. Rejected cleanup artifacts retained and must not be retried via alternate deletion. Remote root filesystem full: own bounded tmpfs tests only.
 
 ## Next Action
-Commit/push release.yml+MEMORY after final staged review; dispatch main release.yml with inputs tag=v0.1.0-rc.1 (existing authorized immutabletag5968e701). Monitor old+new release runs; new same-tag run may queue until old finishes. Verify corrected hosted scope/uninstall, image publication/public status,10assets/checksums/platforms/cosign. No application/tag/SQL change or repeated release-version approval.
+Review/stage only release.yml+MEMORY diagnostic harness, push authorized main update, dispatch desktop_only=true with existingtag. Inspect hosted marker counts and download retained desktop artifact, compare under PS5 and verified PS7 before changing acceptance. Both images public+signed already PASS; full candidate publish remains blocked by desktop job only.
 
 ## Browser/public package preflight
 agent-browser core skill loaded. Owned candidate-public-5968e701 session opened authorized GitHub organization packages page; page shows Sign in (owned session unauthenticated), existing unrelated public package visible. New candidate packages not yet published. Session closed; no settings/auth changes or messages sent. Do not claim package public until anonymous verification.
@@ -121,3 +119,24 @@ Independent reviewer: Go1.26.9 calculates reported package duration BEFORE merge
 - Tauri-utils2.10.1 platform.rs documents binary patch; pinned CLI2.12.2 changelog2.12.0 documents patching beforebundle/restoring raw after. Preserve framework/application behavior; do NOT disable patching or weaken arbitrary byte comparisons.
 - Current release.yml derives installed expected SHA by exactly1UNK->NSS replacement using byte-reversible Latin1; rejects missing/duplicate/already-NSS marker; every other byte must match SHA256. Existing scope/registry/version/uninstaller/cleanup assertions unchanged. Pure actual workflow block extracted in .temp/delivery-installer-hash-probe.ps1 PASS, mutation beyond marker rejected; independent reviewer reproduced. actionlint/diffcheck PASS. Expected local installedSHA D738E9F697F46DC7C828B9FDE07A37D8EEB3ABD230E9F46C9B38FDDFBED15962. No local installation performed.
 - This is harness-only correction on main; immutabletag remains5968e701. workflow_dispatch main + inputtag builds same approved tagged application; old failed-job rerun would reuse old workflow, so use new dispatch after main push. Release same-tag concurrency cancel-in-progress=false will queue until old image build finishes.
+
+## Recovery / hosted artifact acceptance checkpoint (2026-10-26 02:03 UTC)
+- Reconciled actual Git: b67bf17f already pushed and corrected Release40256457822 already dispatched; prior Next Action was stale. No duplicate dispatch/commit or tag move performed. Only local MEMORY.md updated (not pushed while main CI active).
+- Downloaded original run40254999593's SIX actual Runner artifacts through authenticated API redirects with no credentials forwarded to asset host. Each outer artifact has exactly one expected native archive; each native archive exactly machine-runner(.exe). Windows PE amd64/arm64, Linux ELF amd64/arm64 and macOS Mach-O amd64/arm64 headers PASS; Go build info GOOS/GOARCH matches; all six contain candidate version string. Windows amd64 actual executable --version exited0 and printed v0.1.0-rc.1. Other five binaries were NOT executed. Script .temp/delivery-runner-acceptance.py; downloaded ignored files .temp/delivery-runner-acceptance/. These are workflow artifacts, NOT anonymous published Release assets.
+- First probe incorrectly expected ldflags in Go build info; -trimpath omits them, so corrected the probe to inspect actual embedded version and execute native Windows artifact. This was a verification-script assumption, no application defect or source change.
+- Latest main CI40256421617: checks/frontend/runner SUCCESS; full coverage+integration still running. Original release API build still active; corrected release pending its concurrency slot. Anonymous GHCR token request still403 (not public-ready).
+- Self-review: no production/application/workflow edits this recovery; durable state reconciled. Final release acceptance NOT READY pending hosted desktop scopes/uninstall, both public GHCR images/signatures, anonymous ten Release assets/checksums. Async visibility/login question pending user; existing credential explicitly lacks package scope.
+
+## Public API image verification (2026-10-26 02:30 UTC)
+- User reports packages may already be Public. Anonymous verifier confirms API v0.1.0-rc.1 index public, digest sha256:70419bb78eecf0d4bd25294b732fd5440f69855fa6510157ab21cfe48a72865a, linux/amd64+linux/arm64, two attestation manifests PASS. cosign2.5.0 with empty DOCKER_CONFIG verifies exact tagged Release workflow identity, GitHub OIDC issuer and transparency log PASS. No permission/login action needed for API.
+- Web anonymous token403 while image job actively building (started02:26:48UTC); cannot distinguish unpublished from private until build finishes. Anonymous GitHub Release tag endpoint404; final assets not yet published. Do not tell user both images are private or ask to change API visibility again.
+- Main CI40256421617 completed SUCCESS (all jobs). Original API image job121354869564 SUCCESS; web still running; corrected release40256457822 still pending. Original desktop failure already fixed on main as recorded.
+- Downloaded actual completed API build log .temp/delivery-release-api.log: amd64 compilation306.2s; arm64 compilation2697.9s; build cache export227.8s. Workflow uses QEMU on x64 runner. This is release image build cost, separate from already optimized coverage statistics; no new build architecture change made during verification.
+- Next: finish web image, recheck anonymous access (visibility action only if push succeeds but anonymous pull still fails), let queued corrected release validate Windows scopes/uninstall and publish ten assets; verify final digests/signature identities and all asset checksums before acceptance.
+
+## Desktop diagnostic plan (2026-10-26 recovery)
+- Goal/requirements: finish authorized candidate release and Windows two-scope+portable proof; retain exact hash checks and immutable source5968e701.
+- Reuse/design: existing release.yml desktop job, exact pinned Tauri tooling and test fixture. Add optional desktop_only workflow_dispatch input (defaultfalse), skip image/Runner jobs only in that diagnostic mode; release stays skipped through unmet dependencies. Move existing desktop artifact upload before acceptance so failed acceptance retains bytes; artifact upload is not publication. Emit actual marker counts/hash on failure. No new source/dependency/test architecture.
+- Files: release.yml and MEMORY only. No application/tag/SQL changes. Direct implementation; bounded read-only review delegated to review_installer_marker via deep-review; no reproducible root cause found, local PS5 guards/hash PASS, hosted actual counts unavailable.
+- Testing/acceptance: actionlint/diff/dispatch expressions, official checksum-verified local PS7 comparator, hosted desktop-only exact tagged build/artifact diagnosis; later full release gates and anonymous ten assets. Failure must still block release. Risks: hosted fixture may differ; do not infer cause before bytes/count evidence.
+- Current public digests: API eb036335f405b35a3ab6488ff6d036458dcfca68f9ea4bdb7f722b58965ee4c7; Web ef8d20240d5f35926866328bc6c8b37eb09216ad66fdeabcd73407c6a908b604. Both signed by release.yml@refs/heads/main (dispatch) with GitHub OIDC issuer/transparency PASS; .temp/delivery-api-signature.json and delivery-web-signature.json.

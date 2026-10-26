@@ -9,6 +9,11 @@ on:
         description: Existing release tag (for example v0.1.0 or v0.1.0-rc.1)
         required: true
         type: string
+      desktop_only:
+        description: Build and verify desktop only, without publishing a release
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -58,6 +63,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   images:
+    if: ${{ !inputs.desktop_only }}
     needs: metadata
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -124,6 +130,7 @@ jobs:
         run: cosign sign --yes "$IMAGE@$DIGEST"
 
   runner:
+    if: ${{ !inputs.desktop_only }}
     needs: metadata
     runs-on: ubuntu-24.04
     permissions:
@@ -240,6 +247,12 @@ jobs:
             }
           } finally { $zip.Dispose() }
           "binary-name=$($binary.Name)" >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-windows-amd64
+          path: apps/frontend-app/dist/*
+          if-no-files-found: error
+          retention-days: 3
       - name: Verify both installer scopes and actual uninstall cleanup
         env:
           BINARY_NAME: ${{ steps.desktop-build.outputs.binary-name }}
@@ -300,7 +313,10 @@ jobs:
           $portableText = $encoding.GetString($portableBytes)
           $unbundled = '__TAURI_BUNDLE_TYPE_VAR_UNK'
           $nsis = '__TAURI_BUNDLE_TYPE_VAR_NSS'
-          if ([regex]::Matches($portableText, $unbundled).Count -ne 1 -or $portableText.Contains($nsis)) {
+          $unbundledCount = [regex]::Matches($portableText, $unbundled).Count
+          $nsisCount = [regex]::Matches($portableText, $nsis).Count
+          Write-Output "Portable marker counts: UNK=$unbundledCount NSS=$nsisCount; bytes=$($portableBytes.Length); PowerShell=$($PSVersionTable.PSVersion)"
+          if ($unbundledCount -ne 1 -or $nsisCount -ne 0) {
             throw 'Expected exactly one unbundled Tauri marker in the portable executable'
           }
           $expectedBytes = $encoding.GetBytes($portableText.Replace($unbundled, $nsis))
@@ -337,13 +353,6 @@ jobs:
             }
             Write-Output "Installed and uninstalled $($scope.Flag): scope, executable hash, files and registry cleanup PASS"
           }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: desktop-windows-amd64
-          path: apps/frontend-app/dist/*
-          if-no-files-found: error
-          retention-days: 3
-
   release:
     needs: [metadata, images, runner, desktop]
     runs-on: ubuntu-24.04
