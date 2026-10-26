@@ -316,7 +316,9 @@ jobs:
           $unbundledCount = [regex]::Matches($portableText, $unbundled).Count
           $nsisCount = [regex]::Matches($portableText, $nsis).Count
           Write-Output "Portable marker counts: UNK=$unbundledCount NSS=$nsisCount; bytes=$($portableBytes.Length); PowerShell=$($PSVersionTable.PSVersion)"
-          if ($unbundledCount -ne 1 -or $nsisCount -ne 0) {
+          # The program's bundle-type lookup table may also contain NSS as a
+          # constant. Only the unique UNK marker is patched by the bundler.
+          if ($unbundledCount -ne 1) {
             throw 'Expected exactly one unbundled Tauri marker in the portable executable'
           }
           $expectedBytes = $encoding.GetBytes($portableText.Replace($unbundled, $nsis))
