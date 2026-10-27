@@ -674,7 +674,7 @@ jobs:
           mkdir "$RUNNER_TEMP/desktop-appimage"
           cd "$RUNNER_TEMP/desktop-appimage"
           "$image" --appimage-extract > /dev/null
-          mapfile -t services < <(rg --files --hidden --no-ignore squashfs-root | rg '/local/local-service$')
+          mapfile -t services < <(find squashfs-root -type f -path '*/local/local-service')
           [[ ${#services[@]} == 1 ]]
           product=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["productName"])' "$GITHUB_WORKSPACE/apps/frontend-app/src-tauri/tauri.conf.json")
           python3 "$GITHUB_WORKSPACE/apps/frontend-app/scripts/verify-local.py" "${services[0]}" "$(dirname "${services[0]}")/web" --name "$product"

@@ -4,10 +4,21 @@
 Selectable bundled local desktop service plus existing remote-server mode. User approved implementation and requires formal application name from CURRENT LOCAL branch `chaosplus` (not GitHub main). Product identity remains configuration. Automatic updater is outside scope; no updater currently exists.
 
 ## Current Phase
-REVIEW
+TESTING
+
+## Release Authorization (2026-10-27)
+User approved v0.1.0-rc.2 publication and requested disk cleanup after release. Publish tested source3891020c940027132fa3a2087c6bf51ca79580cd; remote main matches and CI40438325988 all5jobs PASS. Remote rc.2 tag absent. Existing rc.1 tag/assets remain immutable; snapshot15asset IDs/sizes/digests saved in .temp/rc2-rc1-baseline.json. Next: create annotated rc.2 at tested source, push tag, monitor all-platform release and actual installed-scope/service gates, verify anonymous assets/images, then inventory and safely remove generated workspace build/temp outputs. Preserve source, user application data, active services and published artifacts. Disk before cleanup: D free36,677,554,176bytes; C free202,873,425,920bytes. Cleanup is now explicitly requested, but each absolute target must be checked and removed using native PowerShell LiteralPath; no unrelated or remote data.
+
+## Active Release / Cleanup
+- First run40508022245 LinuxARM64 AppImage built115.63MiB but verifier failed BEFORE service startup: runner has no rg. Minimal workflow-only fix replaces discovery with native find; current actionlint PASS. Tag/application source stays3891020c; push corrected workflow to main and dispatch release using existing rc.2 after collecting remaining original platform results. No tag movement or application-source fixes needed.
+- Anonymous new GHCR API/Web multiarch labels/nonroot/SBOM/provenance and tag-OIDC cosign signatures PASS. API digest78e75de23259933345cd8b9bd263e412d5ff3663c83bd91223f4e19faee7f695; Web02fa4f8a01e5a62752ada652e5c9644134e0fea7562250bb73931871eba84316. Rerun workflow may create new attestations/index digests; reverify final tag after publication.
+- Annotated rc.2 created/pushed at tested3891020c. Release40508022245 running: https://github.com/7link-team/7link-platform/actions/runs/40508022245. All6Runner targets + sharedWeb/Web image platforms PASS; nativeAPI and5desktop targets building. No publication complete yet.
+- Anonymous verification prepared: .temp/rc2-public-verify.py (14assets, bothchecksumlists, actualdownloadedportable service, exactsource and immutable15rc1assets); .temp/rc2-image-verify.py and rc2-signature-verify.py (multiarch labels/SBOM/provenance, tag-OIDC signature).
+- Cleanup inventory: Rust target6.86GiB; root .temp8.95GiB logical; backend .temp14.3GiB logical at first scan. Large active logs are compressed/sparse/growing, so logical sizes are not reclaimed-space estimates. Use actual D-volume free bytes before/after.
+- ACTIVE processes MUST remain: api33012 from backend/.temp/lane-b-runtime; api31652 from backend/.temp/lane-t-round10; api-preview43124 from backend/.temp/dev/h2-acceptance; unrelated go5348; Vite instances. Preserve these directories and root .temp/lanes/lane-b-runtime logs. Do not stop services. Cleanup will target ignored Rust/generated resources, downloaded/extracted packages/tools, inactive old test EXEs/coverage and closed old logs, keeping reports/screenshots/configs/databases.
 
 ## Current Step
-Implementation and Windows native UI/extracted NSIS+portable acceptance PASS. Pushed 6b6cc8e7 to GitHub main. CI40437735721 checks failed on6lint findings (ignored root/listener closes, unchecked TCPAddr assertion, missing test response-body close). Minimal two-file fix applied; full pinned local golangci-lint now PASS0issues. Desktop regression rerun PASS5.213s; committing/pushing fix. Previous CI other jobs will be superseded by new push. New release question was presented again with concrete Windows artifacts and recommendation rc.2; no answer yet, do not tag/publish or overwrite rc.1.
+Implementation6b6cc8e7 and lint fix3891020c940027132fa3a2087c6bf51ca79580cd pushed to GitHub main. Exact-source CI40438325988 COMPLETED SUCCESS: all5jobs PASS (https://github.com/7link-team/7link-platform/actions/runs/40438325988). Coverage90.6%, all55module floors PASS; full nested integration including architecture plus real MySQL migration and MySQL/PostgreSQL lifecycle/archive gates PASS. Older CI40437735721 superseded/cancelled after lint failure, fixed locally/pushed. Latest post-fix service verifier and regression tests PASS. Source implementation and Windows native/extracted package acceptance PASS; full new-release acceptance NOT READY until all-platform package/actual installed-scope gates run. New version question still unanswered (recommend v0.1.0-rc.2); do not tag/publish or modify rc.1. Only local MEMORY.md checkpoint dirty; no uncommitted production code or running local tests/services.
 
 ## Overall Progress
 - [x] Approved design persisted in ADR; existing composition/bootstrap/migrations/auth/static Web/Tauri mechanisms reused.
@@ -17,7 +28,8 @@ Implementation and Windows native UI/extracted NSIS+portable acceptance PASS. Pu
 - [x] Read-only reviews completed; backend EOF deadlock and native setup-timeout stale state fixed with regression tests. Packaging review requested actual packaged service verification, now added.
 - [x] Docs updated for local mode, resources, per-user data, application name and no automatic updater.
 - [x] Local Windows release NSIS/portable contents and extracted native service verified.
-- [ ] Current-source hosted CI/all-platform packaging; final acceptance.
+- [x] Exact-source full hosted CI40438325988 all5jobs SUCCESS; coverage90.6% and55floors preserved, real-engine gates PASS.
+- [ ] User version choice, new-tag all-platform packaging/actual installer-scope gates/publication, anonymous distribution acceptance.
 
 ## Verification
 - Go entire command package: PASS 48.065s, repeated after latest fixes. Desktop tests cover setup rejection/success/restart, stable port/collision, Web/API same origin, Host/Origin rejection, missing assets, persistent keys, EOF after repeated setup.
@@ -30,7 +42,7 @@ Implementation and Windows native UI/extracted NSIS+portable acceptance PASS. Pu
 - actionlint current binary1.7.12: PASS; old bundled actionlint lacks already validated macos-15-intel label, use .temp/delivery-tools/actionlint-current/actionlint.exe. git diff --check PASS; LF verified.
 - Full pinned golangci-lint PASS0issues after fixing hosted6lint findings. Backend EOF and native setup-timeout reverse mutations both rejected by regression tests; restored sources byte-for-byte (.temp/desktop-eof-mutation.log and desktop-timeout-mutation.log).
 - Windows release EXE/installer VERSIONINFO ProductName+Description both chaosplus, actual NSIS extracted service hash matches generated resource. Installer34.94MiB; ZIP55,892,863bytes; both extracted native service verifiers PASS. Local packages predate lint-only fix and are local acceptance artifacts, not published candidates.
-- Current-source full hosted CI not yet PASS; actual new NSIS scope installs/macOS/Linux package/service acceptance NOT RUN. Do not claim all-platform delivery complete.
+- Current-source full hosted CI40438325988 all5jobs PASS (coverage90.6%, all55floors); logs .temp/desktop-hosted-coverage.log and desktop-hosted-integration.log. Actual NEW NSIS scope installs/macOS/Linux package/service acceptance NOT RUN; needs new version answer/tag. Do not claim all-platform new-release delivery complete.
 
 ## Important Decisions / Confirmed Constraints
 - Source local branch chaosplus, preserve Codeup origin; authorized GitHub push `git push github HEAD:main`. No force/reset/stash/blind staging. Baseline commit cbd48068 before this uncommitted task.
@@ -53,7 +65,7 @@ Implementation and Windows native UI/extracted NSIS+portable acceptance PASS. Pu
 No updater/mobile; prototype gaps include inbound mail routing, interactive execution/ADHOC association, remote file edit/upload, closed-browser Web Push, Yunxiao MCP, Centrifugo recovery, global search lifecycle, health remediation and actual cc-switch reuse. Do not call rc candidate production-complete.
 
 ## Next Action
-Desktop regression session37998 PASS5.213s. Commit only the two Go lint-fix files and this checkpoint, push github HEAD:main. Monitor new full hosted CI and fix proven failures. New version/tag and all-platform release requires pending user answer (recommended v0.1.0-rc.2). Existing rc.1 immutable. Refresh local generated service after Go lint fix for final package acceptance if needed; do not commit artifacts.
+Await pending version choice: recommend v0.1.0-rc.2, because existing rc.1 is immutable. If user authorizes rc.2, create annotated tag at tested source3891020c, push tag, follow full Release including native all-platform packages and both installed Windows scopes, resolve failures, verify anonymous assets/checksums/images while preserving rc.1. If user chooses no publication, source task is complete with explicit platform-package caveat. Do not request permission again for already-authorized routine fixes/pushes. Only local MEMORY.md differs; avoid a progress-only push that starts another redundant CI.
 
 ## Last Checkpoint
-2026-10-26: initial implementation pushed6b6cc8e7; hosted lint failure reproduced/fixed and local lint0issues, reverse mutations PASS; desktop regression rerun PASS5.213s.
+2026-10-26 final source acceptance: code3891020c pushed; full CI40438325988 all5SUCCESS, local native setup/login/restart/security and Windows extracted NSIS/ZIP PASS; final self-review scope/reuse/architecture/regression/complexity/state PASS. New-release final result NOT READY pending user version choice and hosted platform package gates.
