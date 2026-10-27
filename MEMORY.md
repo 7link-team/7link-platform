@@ -7,7 +7,7 @@ Selectable bundled local desktop service plus existing remote-server mode. User 
 REVIEW
 
 ## Current Step
-Implementation, real Windows native UI and release package acceptance PASS. NSIS chaosplus_0.1.0_x64-setup.exe built34.94MiB; extracted service/Web verification PASS. Actual EXE+local resource ZIP55,892,863bytes created/extracted and verified PASS (.temp/desktop-local-package). No actual system installation performed locally. Self-review scope/reuse/architecture/regression/complexity/durable state PASS; final acceptance remains NOT READY for cross-platform publication until hosted package gates run. Explicit source/docs/state staged; no artifacts or credentials staged. Next commit/push authorized main for full hosted CI. New version rc.2 question remains unanswered; do not tag/publish or overwrite rc.1.
+Implementation and Windows native UI/extracted NSIS+portable acceptance PASS. Pushed 6b6cc8e7 to GitHub main. CI40437735721 checks failed on6lint findings (ignored root/listener closes, unchecked TCPAddr assertion, missing test response-body close). Minimal two-file fix applied; full pinned local golangci-lint now PASS0issues. Desktop regression rerun PASS5.213s; committing/pushing fix. Previous CI other jobs will be superseded by new push. New release question was presented again with concrete Windows artifacts and recommendation rc.2; no answer yet, do not tag/publish or overwrite rc.1.
 
 ## Overall Progress
 - [x] Approved design persisted in ADR; existing composition/bootstrap/migrations/auth/static Web/Tauri mechanisms reused.
@@ -28,7 +28,9 @@ Implementation, real Windows native UI and release package acceptance PASS. NSIS
 - OpenAPI: PASS fresh `make openapi-check OPENAPI_WORK_DIR=.../desktop-openapi-fresh-20261026`; generated contract exactly matches docs/openapi.json; published OpenAPI tests PASS. First run reused old incomplete .temp/openapi DB and failed migration; fresh isolated DB resolved, no migration changes.
 - Full architecture package: PASS `go -C tests test ./architecture -count=1 -timeout 240s`, 115.169s.
 - actionlint current binary1.7.12: PASS; old bundled actionlint lacks already validated macos-15-intel label, use .temp/delivery-tools/actionlint-current/actionlint.exe. git diff --check PASS; LF verified.
-- NOT RUN: current-source hosted full CI, actual new NSIS scope installs, macOS/Linux package/service acceptance. Do not claim all-platform delivery complete.
+- Full pinned golangci-lint PASS0issues after fixing hosted6lint findings. Backend EOF and native setup-timeout reverse mutations both rejected by regression tests; restored sources byte-for-byte (.temp/desktop-eof-mutation.log and desktop-timeout-mutation.log).
+- Windows release EXE/installer VERSIONINFO ProductName+Description both chaosplus, actual NSIS extracted service hash matches generated resource. Installer34.94MiB; ZIP55,892,863bytes; both extracted native service verifiers PASS. Local packages predate lint-only fix and are local acceptance artifacts, not published candidates.
+- Current-source full hosted CI not yet PASS; actual new NSIS scope installs/macOS/Linux package/service acceptance NOT RUN. Do not claim all-platform delivery complete.
 
 ## Important Decisions / Confirmed Constraints
 - Source local branch chaosplus, preserve Codeup origin; authorized GitHub push `git push github HEAD:main`. No force/reset/stash/blind staging. Baseline commit cbd48068 before this uncommitted task.
@@ -51,7 +53,7 @@ Implementation, real Windows native UI and release package acceptance PASS. NSIS
 No updater/mobile; prototype gaps include inbound mail routing, interactive execution/ADHOC association, remote file edit/upload, closed-browser Web Push, Yunxiao MCP, Centrifugo recovery, global search lifecycle, health remediation and actual cc-switch reuse. Do not call rc candidate production-complete.
 
 ## Next Action
-Commit explicitly staged20source/docs/state files and push github HEAD:main; inspect current-source hosted CI and resolve any failures. Hosted all-platform package/new release requires pending version answer (recommend v0.1.0-rc.2). Never overwrite rc.1. Local Windows artifacts remain under .temp and ignored target directories, not committed.
+Desktop regression session37998 PASS5.213s. Commit only the two Go lint-fix files and this checkpoint, push github HEAD:main. Monitor new full hosted CI and fix proven failures. New version/tag and all-platform release requires pending user answer (recommended v0.1.0-rc.2). Existing rc.1 immutable. Refresh local generated service after Go lint fix for final package acceptance if needed; do not commit artifacts.
 
 ## Last Checkpoint
-2026-10-26: Windows release NSIS/portable extraction/runtime acceptance, OpenAPI/architecture/native UI tests and source self-review PASS; current-source hosted CI and new release pending.
+2026-10-26: initial implementation pushed6b6cc8e7; hosted lint failure reproduced/fixed and local lint0issues, reverse mutations PASS; desktop regression rerun PASS5.213s.

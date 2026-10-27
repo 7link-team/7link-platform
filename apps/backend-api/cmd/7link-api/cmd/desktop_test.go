@@ -171,7 +171,10 @@ func TestDesktopFirstSetupRealAPIAndRestartPersistence(t *testing.T) {
 	require.NoError(t, json.NewEncoder(input).Encode(desktopRequest{Command: "setup", Login: "second", Password: "Another-Password-123!"}))
 	assert.Equal(t, "ready", next(events, done).Event)
 	stop(input, done)
-	_, err = http.Get(ready.Origin + "/")
+	response, err = http.Get(ready.Origin + "/")
+	if response != nil {
+		require.NoError(t, response.Body.Close())
+	}
 	assert.Error(t, err, "owned listener must close on parent EOF")
 }
 

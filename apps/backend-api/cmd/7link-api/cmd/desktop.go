@@ -75,7 +75,7 @@ func runDesktop(parent context.Context, options desktopOptions, input io.Reader,
 	if err != nil {
 		return fmt.Errorf("open bundled Web: %w", err)
 	}
-	defer web.Close()
+	defer func() { _ = web.Close() }()
 	if info, err := web.Stat("index.html"); err != nil || !info.Mode().IsRegular() {
 		return errors.New("bundled Web index.html is missing")
 	}
@@ -89,7 +89,7 @@ func runDesktop(parent context.Context, options desktopOptions, input io.Reader,
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	origin := "http://" + listener.Addr().String()
 	settings, err := desktopConfig(options, origin)
 	if err != nil {
@@ -230,15 +230,20 @@ func desktopListener(directory string) (net.Listener, error) {
 		return nil, fmt.Errorf("local service port is occupied; close the other instance or service: %w", err)
 	}
 	if port == 0 {
-		port = listener.Addr().(*net.TCPAddr).Port
+		address, ok := listener.Addr().(*net.TCPAddr)
+		if !ok {
+			_ = listener.Close()
+			return nil, errors.New("local listener has an unexpected address type")
+		}
+		port = address.Port
 		file, err := os.OpenFile(file, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err != nil {
-			listener.Close()
+			_ = listener.Close()
 			return nil, fmt.Errorf("reserve persistent local port: %w", err)
 		}
 		_, writeErr := fmt.Fprintln(file, port)
 		if err := errors.Join(writeErr, file.Sync(), file.Close()); err != nil {
-			listener.Close()
+			_ = listener.Close()
 			return nil, err
 		}
 	}
