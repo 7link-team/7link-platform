@@ -638,7 +638,7 @@ jobs:
           mkdir "$mount"
           hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$image"
           desktop_pid=''
-          trap 'if [[ -n "$desktop_pid" ]]; then kill "$desktop_pid" 2>/dev/null || true; fi; hdiutil detach "$mount"' EXIT
+          trap 'if [[ -n "$desktop_pid" ]]; then kill "$desktop_pid" 2>/dev/null || true; wait "$desktop_pid" 2>/dev/null || true; fi; hdiutil detach "$mount"' EXIT
           shopt -s nullglob
           apps=("$mount"/*.app)
           [[ ${#apps[@]} == 1 ]]
