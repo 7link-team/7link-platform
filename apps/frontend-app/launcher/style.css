@@ -19,4 +19,9 @@ ul { list-style: none; padding: 0; }
 li { border-bottom: 1px solid GrayText; padding: 16px 0; }
 li a { overflow-wrap: anywhere; flex: 1; color: LinkText; padding: 10px 0; }
 footer { margin-top: 36px; }
+#local-status { margin: 12px 0; }
+#local-setup { margin-top: 20px; }
+#local-setup input { box-sizing: border-box; margin-bottom: 14px; }
+button:disabled { cursor: wait; opacity: .65; }
+form[aria-busy="true"] { opacity: .8; }
 @media (max-width: 480px) { main { padding: 24px 16px; } .entry { align-items: stretch; flex-direction: column; } }

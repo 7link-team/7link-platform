@@ -5,7 +5,7 @@ The server ships as two GHCR images, `<owner>/<repository>-api` and
 lowercased for GHCR. The runner ships as native binaries, not a container: it
 needs access to the user's local tools, credentials and workspace. Its existing
 npm launcher remains available for local packaging; this workflow does not
-publish the private npm package. The Tauri desktop server launcher also ships as
+publish the private npm package. The Tauri desktop application offers bundled local service and remote-server modes, and ships as
 a Windows x64 NSIS installer and portable ZIP, macOS Intel/Apple Silicon DMGs,
 and Linux amd64/arm64 AppImages.
 
@@ -104,8 +104,17 @@ installation scope. The portable ZIP contains the actual `frontend-app.exe`
 from that same build and can be extracted and run without installing the app.
 It requires Microsoft Edge WebView2 Runtime to be present; it does not install
 WebView2 or promise that application/WebView state remains beside the executable.
-This packages a server chooser that loads the deployed Web, not a completed native integration
-or an accepted native login flow. See `apps/frontend-app/README.md` for its scope.
+All desktop packages include a production Web build and native Go/SQLite service.
+The portable ZIP must retain its adjacent `local/` directory. Local mode creates
+an explicitly chosen first administrator, stores keys/database in per-user app
+data and serves Web plus `/api` on one persistent loopback origin. Exiting the
+application stops its child service. No external database or development tools
+are needed. Each package acceptance exercises first setup, Web/API, persistence
+and parent-EOF shutdown; platform UI/login acceptance is recorded separately.
+`productName` in Tauri configuration controls application display/install naming
+(currently `chaosplus`, as requested from the local branch name). Existing bundle
+identifier is retained for stored-data compatibility. Automatic version checking
+and updating are not implemented. See `apps/frontend-app/README.md` for scope.
 
 Desktop releases do not embed a server or API address and need no `VITE_API_URL`
 repository variable. At runtime users save and select multiple HTTP(S) server
@@ -120,8 +129,8 @@ menu (`Ctrl+Shift+S`) returns there even if the remote page is unavailable.
 Saved origins live in local WebView storage; remote Web storage is isolated by
 origin. Cookies follow browser Domain/Path/Secure rules: different ports on the
 same host do not isolate cookies. Removing or switching an address does not log out another
-server. This is selection, not automatic failover. The launcher needs a running
-Web deployment; no shared Web assets are embedded for offline use. The app
+server. This is selection, not automatic failover. Remote mode needs a running
+Web deployment; local mode uses the bundled Web and service. The app
 version is injected from the tag through a temporary Tauri config.
 
 ## Repository settings

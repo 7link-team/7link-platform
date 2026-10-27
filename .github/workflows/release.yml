@@ -292,9 +292,41 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  desktop_web:
+    if: ${{ !inputs.images_only }}
+    needs: metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.metadata.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: 1.3.12
+      - name: Build the shared production desktop Web once
+        working-directory: apps/frontend-web
+        env:
+          VITE_API_URL: /api
+        run: |
+          bun install --frozen-lockfile
+          bun run --cwd apps/web build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bundled-web
+          path: apps/frontend-web/apps/web/dist/
+          if-no-files-found: error
+          retention-days: 3
+
   desktop:
     if: ${{ !inputs.images_only && !inputs.append_desktop }}
-    needs: metadata
+    needs: [metadata, desktop_web]
     runs-on: windows-2022
     timeout-minutes: 60
     permissions:
@@ -305,12 +337,21 @@ jobs:
         shell: pwsh
     env:
       TAG: ${{ needs.metadata.outputs.tag }}
+      DESKTOP_WEB_DIST: ${{ github.workspace }}/desktop-web
       REPOSITORY: ${{ needs.metadata.outputs.repository }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ needs.metadata.outputs.sha }}
           persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: apps/backend-api/go.mod
+          cache-dependency-path: apps/backend-api/go.sum
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: bundled-web
+          path: desktop-web
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
@@ -350,13 +391,21 @@ jobs:
           $asset = "$($env:REPOSITORY)-desktop_$($env:TAG)_windows_amd64"
           Copy-Item -LiteralPath $installers[0].FullName -Destination (Join-Path $dist.FullName "$asset-setup.exe")
           $archive = Join-Path $dist.FullName "${asset}_portable.zip"
-          Compress-Archive -LiteralPath $binary.FullName -DestinationPath $archive
+          $portable = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'desktop-portable')
+          Copy-Item -LiteralPath $binary.FullName -Destination $portable.FullName
+          Copy-Item -LiteralPath src-tauri/resources/local -Destination (Join-Path $portable.FullName 'local') -Recurse
+          Compress-Archive -LiteralPath @((Join-Path $portable.FullName $binary.Name), (Join-Path $portable.FullName 'local')) -DestinationPath $archive
           $zip = [System.IO.Compression.ZipFile]::OpenRead($archive)
           try {
-            if ($zip.Entries.Count -ne 1 -or $zip.Entries[0].FullName -ne $binary.Name -or $zip.Entries[0].Length -ne $binary.Length) {
-              throw 'Portable archive must contain the actual desktop executable'
+            $entry = $zip.GetEntry($binary.Name)
+            if (-not $entry -or $entry.Length -ne $binary.Length -or -not $zip.GetEntry('local/local-service.exe') -or -not $zip.GetEntry('local/web/index.html')) {
+              throw 'Portable archive must contain the real desktop, local service and production Web'
             }
           } finally { $zip.Dispose() }
+          $extracted = Join-Path $env:RUNNER_TEMP 'desktop-portable-acceptance'
+          Expand-Archive -LiteralPath $archive -DestinationPath $extracted
+          python scripts/verify-local.py (Join-Path $extracted 'local/local-service.exe') (Join-Path $extracted 'local/web') --name ((Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).productName)
+          if ($LASTEXITCODE -ne 0) { throw 'Portable local service acceptance failed' }
           "binary-name=$($binary.Name)" >> $env:GITHUB_OUTPUT
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -454,6 +503,12 @@ jobs:
             if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -ne $expectedHash) {
               throw 'Installed executable differs from the released portable executable'
             }
+            $service = Join-Path $scope.Directory 'local/local-service.exe'
+            if ((Get-FileHash -LiteralPath $service -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath src-tauri/resources/local/local-service.exe -Algorithm SHA256).Hash) {
+              throw 'Installed local service differs from the bundled service'
+            }
+            python scripts/verify-local.py $service (Join-Path $scope.Directory 'local/web') --name $product
+            if ($LASTEXITCODE -ne 0) { throw "Installed local service acceptance failed for $($scope.Flag)" }
             $removed = Start-Process -FilePath $uninstaller -ArgumentList @('/S', $scope.Flag) -WindowStyle Hidden -Wait -PassThru
             if ($removed.ExitCode -ne 0) { throw "Uninstaller failed for $($scope.Flag): $($removed.ExitCode)" }
             $deadline = [DateTime]::UtcNow.AddSeconds(30)
@@ -468,7 +523,7 @@ jobs:
           }
   desktop_unix:
     if: ${{ !inputs.images_only }}
-    needs: metadata
+    needs: [metadata, desktop_web]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     permissions:
@@ -507,6 +562,7 @@ jobs:
         shell: bash
     env:
       TAG: ${{ needs.metadata.outputs.tag }}
+      DESKTOP_WEB_DIST: ${{ github.workspace }}/desktop-web
       REPOSITORY: ${{ needs.metadata.outputs.repository }}
       TARGET: ${{ matrix.target }}
       PLATFORM: ${{ matrix.platform }}
@@ -525,6 +581,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth dbus-x11
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: apps/backend-api/go.mod
+          cache-dependency-path: apps/backend-api/go.sum
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: bundled-web
+          path: desktop-web
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
@@ -586,6 +650,8 @@ jobs:
           [[ "$ARCH" != arm64 ]] || machine=arm64
           test "$(lipo -archs "$binary")" = "$machine"
           codesign --verify --deep --strict "${apps[0]}"
+          product=$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["productName"])')
+          python3 scripts/verify-local.py "${apps[0]}/Contents/Resources/local/local-service" "${apps[0]}/Contents/Resources/local/web" --name "$product"
           "$binary" > "$RUNNER_TEMP/desktop-startup.log" 2>&1 &
           desktop_pid=$!
           sleep 5
@@ -608,6 +674,10 @@ jobs:
           mkdir "$RUNNER_TEMP/desktop-appimage"
           cd "$RUNNER_TEMP/desktop-appimage"
           "$image" --appimage-extract > /dev/null
+          mapfile -t services < <(rg --files --hidden --no-ignore squashfs-root | rg '/local/local-service$')
+          [[ ${#services[@]} == 1 ]]
+          product=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["productName"])' "$GITHUB_WORKSPACE/apps/frontend-app/src-tauri/tauri.conf.json")
+          python3 "$GITHUB_WORKSPACE/apps/frontend-app/scripts/verify-local.py" "${services[0]}" "$(dirname "${services[0]}")/web" --name "$product"
           set +e
           dbus-run-session -- xvfb-run -a timeout 10s env GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 squashfs-root/AppRun > "$RUNNER_TEMP/desktop-startup.log" 2>&1
           status=$?

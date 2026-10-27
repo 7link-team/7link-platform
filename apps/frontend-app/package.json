@@ -4,9 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
+    "dev": "bun run prepare:local && tauri dev",
     "test": "bun test tests",
-    "build": "tauri build",
+    "build": "bun run prepare:local && tauri build",
+    "prepare:local": "bun scripts/prepare-local.mjs",
     "tauri": "tauri"
   },
   "devDependencies": {

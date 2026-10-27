@@ -8,8 +8,27 @@
   </head>
   <body>
     <main>
-      <h1>连接服务器</h1>
-      <p>添加部署的网页入口，或选择已保存的服务器。</p>
+      <h1>选择运行方式</h1>
+      <section aria-labelledby="local-heading">
+        <h2 id="local-heading">本地运行</h2>
+        <p>使用内置服务，数据保存在这台电脑的当前用户目录，无需填写服务器地址。</p>
+        <button id="start-local" type="button">启动本地服务</button>
+        <p id="local-status" role="status" aria-live="polite"></p>
+        <form id="local-setup" hidden>
+          <h3>设置本地管理员</h3>
+          <p>首次使用需要创建管理员。请保存好账号和密码，不会创建默认账号。</p>
+          <label for="local-login">管理员账号</label>
+          <input id="local-login" name="username" autocomplete="username" required maxlength="256" />
+          <label for="local-password">密码</label>
+          <input id="local-password" name="password" type="password" autocomplete="new-password" required maxlength="4096" />
+          <label for="local-password-confirm">再次输入密码</label>
+          <input id="local-password-confirm" name="password-confirm" type="password" autocomplete="new-password" required maxlength="4096" />
+          <button type="submit">创建管理员并进入</button>
+        </form>
+      </section>
+      <section aria-labelledby="remote-heading">
+      <h2 id="remote-heading">连接服务器</h2>
+      <p>使用已部署的服务，或从保存的列表中选择。</p>
       <form id="server-form">
         <label for="server-address">服务器地址</label>
         <div class="entry">
@@ -24,8 +43,10 @@
         <ul id="servers"></ul>
         <p id="empty">尚未添加服务器。</p>
       </section>
+      </section>
       <footer>连接后，可通过菜单「连接 → 服务器」或 Ctrl+Shift+S 返回此页。移除地址不会退出该服务器的登录。</footer>
     </main>
     <script type="module" src="./servers.mjs"></script>
+    <script type="module" src="./local.mjs"></script>
   </body>
 </html>

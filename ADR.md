@@ -5502,3 +5502,11 @@ Decision: shared ActionForm focuses and scrolls the inline business error summar
 - Reason: user explicitly found missing macOS/Linux desktop assets; prior workflow built desktop only on Windows although app code is generic.
 - Alternatives Considered: move original tag/rebuild all published artifacts (rejected), confuse Runner archives with desktop (incorrect), defer new assets to an unsolicited new version (unnecessary).
 - Tradeoffs: native SDK/runtime requirements and unsigned/unnotarized distribution remain explicit. Scope: packaging/publication and docs, no product/mobile expansion. Status: native package feasibility and acceptance pending.
+
+## 2026-10-26 - Selectable local desktop service and configured product name
+- Decision: user approved Local/Remote desktop modes and named the app after current local branch `chaosplus`. Store this as packaging configuration; native/window/backend identity reuse it. Keep old bundle identifier for data compatibility.
+- Reason: current shell requires a server URL and incorrectly uses scaffold productName for installation directory. Local mode must work without external runtime/toolchain/database installs.
+- Alternatives Considered: remote-only shell (superseded by user); shipping development Vite/server/demo accounts (rejected, development fixtures); replacing existing publicrc1artifacts (rejected, immutable release).
+- Tradeoffs: larger packages include nativeGo+productionWeb; localdata/keys reside under peruserappdata. User explicitly sets first admin; existing auth/persistence semantics remain. External providers still need configuration. Automatic updater is separate and not included.
+- Scope: desktop packaging/launch, existing backendcomposition entrypoint reused through a desktop subcommand, sameoriginloopbackhosting, nativefirstsetup/lifecycle, docs/tests. No production businessAPI/schema changes. Release rc2 choice pending.
+- Status: implemented; local Windows native setup/login/restart/remote boundary and extracted NSIS/portable service acceptance PASS. Full hosted CI and all-platform new-release gates remain pending; new version choice not yet confirmed.

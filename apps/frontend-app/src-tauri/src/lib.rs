@@ -1,10 +1,17 @@
 use std::sync::OnceLock;
 use tauri::Manager;
 
+mod local_service;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(OnceLock::<tauri::Url>::new())
+        .manage(local_service::LocalState::new(None))
+        .invoke_handler(tauri::generate_handler![
+            local_service::start_local,
+            local_service::setup_local
+        ])
         .on_page_load(|webview, payload| {
             // The first real navigation is the bundled chooser. During setup,
             // window.url() can still be about:blank on Windows.
@@ -15,6 +22,9 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_title(&app.package_info().name)?;
+            }
             #[cfg(desktop)]
             {
                 use tauri::menu::{Menu, MenuItem, Submenu};
@@ -51,6 +61,11 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                local_service::stop(app);
+            }
+        });
 }
