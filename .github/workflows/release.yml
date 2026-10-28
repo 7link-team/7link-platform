@@ -630,6 +630,8 @@ jobs:
           else
             node scripts/release-updates.mjs config "$config"
             [[ -n "$TAURI_SIGNING_PRIVATE_KEY" ]]
+            # DMG alone removes the intermediate app and does not emit updater archives.
+            if [[ "$PLATFORM" == macos ]]; then BUNDLE=app,dmg; fi
           fi
           bun run build --ci --target "$TARGET" --bundles "$BUNDLE" --config "$config" -- --locked
           shopt -s nullglob
