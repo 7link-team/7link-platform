@@ -1,0 +1,31 @@
+{
+  "version": "0.1.0-rc.4",
+  "notes": "Release v0.1.0-rc.4",
+  "pub_date": "2026-10-28T15:35:45.000Z",
+  "platforms": {
+    "windows-x86_64": {
+      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.4/7link-platform-desktop_v0.1.0-rc.4_windows_amd64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0xmYURVYnhxamFhN0tDWGE0QzdjVlRmRkJwcUZWQU8zRmJwS0kwMlhTTng4S21aVGpRU3BLbnl5VzdUR2NGMks0Q0kxNGQ0Q3ZueXdDaW9nWDJoL1FJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjA2NzcxCWZpbGU6Y2hhb3NwbHVzXzAuMS4wLXJjLjRfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMS4wLXJjLjQKSGplYkJRWkxmRCtzY2tzYVphdWk4N0ZTQjNvT3VCcitEYWV6a1d5eVNiaVpyZ0ZLQk52eGRBVWNXQXZuSllSNE1PWEx6bjB1U0IrM3I5cVBKK0FsQmc9PQo="
+    },
+    "windows-x86_64-portable": {
+      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.4/7link-platform-desktop_v0.1.0-rc.4_windows_amd64_portable.zip",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0xYSms0NXo1ZnhXK3lvSDF6QXBoSDVpalNqdGJFZzhWUG9jR2ZKY24wWUZGRXZPUlRjL21SZE9uZGF2MUd0NGtLQkxVWmpjc1haVktheFdtWW53Z1E4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjA2Nzc1CWZpbGU6N2xpbmstcGxhdGZvcm0tZGVza3RvcF92MC4xLjAtcmMuNF93aW5kb3dzX2FtZDY0X3BvcnRhYmxlLnppcAl2ZXJzaW9uOjAuMS4wLXJjLjQKc2MrT0hVZFR0a0NIOGNlQVNxVlMwQjF0WXpwcTA4T0puT2NIamxwWHpQYXR5RklSamltbWs2RkgzUEcyZW1uRXNmYnRCWnlIT0ljcCt2Wm94ellXRHc9PQo="
+    },
+    "darwin-x86_64": {
+      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.4/7link-platform-desktop_v0.1.0-rc.4_macos_amd64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0kzdkdXVWQydGJVM0pPS1FldEdFTktOR205K2VlSDZ6ODhOdzRuWC96MnJzU3RZdW1mM2I5Y2RoVFZYNUtsUGtYUlpBQXpCVHBOdVJyWlRpQUpaRHdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjA3MzMyCWZpbGU6Y2hhb3NwbHVzLmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuMC1yYy40Clgrd0t5YkFQTzBKRU9iTnpYdlpTdmdwY0ZlR3dHSDFaTi84WjdCbGpjQ2FQMFArUU1QWWlMT004RzFZamVOUE9PUXlrcVE4bm8rQ0k4VzBaQXRJaUNnPT0K"
+    },
+    "darwin-aarch64": {
+      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.4/7link-platform-desktop_v0.1.0-rc.4_macos_arm64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0MzUUlNRUVtSThBWEV1S3NZU1VOcHB3d05pbGJFM0lmcG41UWlLSU1nYkJncEs5NHNqRGJ4VjczQ2pqYTNGWXc0OTJkNDBPZU5OaU5XT2x3aTlmWWdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjA3MjAyCWZpbGU6Y2hhb3NwbHVzLmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuMC1yYy40CkczeGtqVkRkNUVYZHpjVzRKYkhtSVIzV0lMTno4SmV6V0ZPZHFJTS9uUFNlMWNEeTJxY1F5bW5MUjhEMVNMSHRGenB1T3FqbTZoenhrcUdqYWR5UER3PT0K"
+    },
+    "linux-x86_64": {
+      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.4/7link-platform-desktop_v0.1.0-rc.4_linux_amd64.AppImage",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0pRdStBQ0ZEVlpWa3lNV1NibUxXMDJXTmNtelZzaFFIeFdrcXRaNHg1WW1TZEI0MVRJVFFUOVZORHdWbHZ0dW1kMVorZExiV08yTE0rYzNGSnRwNHd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjA2NjM3CWZpbGU6Y2hhb3NwbHVzXzAuMS4wLXJjLjRfYW1kNjQuQXBwSW1hZ2UJdmVyc2lvbjowLjEuMC1yYy40CnQybmgxT2p2QnlpYWdZSUs0dCswVGUzTFNqYzhFQXRLdVNBWWd2djZlb0xGQVNPK0J6cUgrbmQxanZTa2ZkeGFsNkhwTnd2TjhLVDNDVWJqM3RHcUJBPT0K"
+    },
+    "linux-aarch64": {
+      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.4/7link-platform-desktop_v0.1.0-rc.4_linux_arm64.AppImage",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0RkTEdIN3VCY1ZCUTF6Z0w5Z1hzeFF5Wm1teXhuU0d1K3dTSE13eHMwUElSUGJFY0dBSm82Qk5XcmgzZ0FueDFJRjJMVmxtTVJ0OFlzTkdJZjN1T2dnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjA2NjA4CWZpbGU6Y2hhb3NwbHVzXzAuMS4wLXJjLjRfYWFyY2g2NC5BcHBJbWFnZQl2ZXJzaW9uOjAuMS4wLXJjLjQKbUJWaU9jZnhiYnZTMDRraU5PZlhTSFhHZkRhektmeDA0bzBOLzFtdXI3aGQ4UENYTnlXNnBIK21UNXBKUGZyWkR0bVVkbzlYNm5NMllFNnRtL3puQnc9PQo="
+    }
+  }
+}
