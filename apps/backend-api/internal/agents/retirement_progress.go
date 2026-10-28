@@ -1,6 +1,7 @@
 package agents
 
 import (
+	activityi18n "7link.com/platform/internal/agents/i18n"
 	"context"
 	"errors"
 	"fmt"
@@ -35,7 +36,7 @@ func (m *Module) prepareRetirementHandoverOn(ctx context.Context, tx *gorm.DB, t
 }
 
 func (m *Module) retirementJob() jobs.Handler {
-	return jobs.Handler{Kind: "agents.retirement_progress", Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return jobs.Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_agents_retirement_progress_name", DescriptionKey: activityi18n.Namespace + ".activity_job_agents_retirement_progress_description", Kind: "agents.retirement_progress", Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		if job.TenantID <= 0 {
 			return jobs.Permanent(ErrInvalid)
 		}

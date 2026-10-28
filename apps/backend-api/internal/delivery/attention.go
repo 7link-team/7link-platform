@@ -357,7 +357,7 @@ func (m *Module) closeDecisionAttentionOn(ctx context.Context, tx *gorm.DB, acti
 	return m.attentionEventOn(ctx, tx, &measured, "work_item.attention_decided", false)
 }
 func (m *Module) attentionCloseHandler() jobs.Handler {
-	return jobs.Handler{Kind: attentionJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return jobs.Handler{DisplayNameKey: di.Namespace + ".activity_job_delivery_attention_close_name", DescriptionKey: di.Namespace + ".activity_job_delivery_attention_close_description", Kind: attentionJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		if job.TenantID <= 0 {
 			return jobs.Permanent(ErrInvalidArgument)
 		}

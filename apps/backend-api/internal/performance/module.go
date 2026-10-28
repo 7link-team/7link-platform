@@ -75,11 +75,11 @@ func (m *Module) InjectServices(s *module.Services) error {
 		return e
 	}
 	return catalog.AddTypes(Name,
-		events.TypeSpec{Name: "performance.scheme_revised", SchemaVersion: 1, SubjectKind: "performance_scheme", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "performance.report_generated", SchemaVersion: 1, SubjectKind: "performance_report", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "performance.report_recalculated", SchemaVersion: 1, SubjectKind: "performance_report", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "performance.report_calibrated", SchemaVersion: 1, SubjectKind: "performance_report", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "performance.report_confirmed", SchemaVersion: 1, SubjectKind: "performance_report", Realtime: events.RealtimeSignal})
+		events.TypeSpec{DisplayNameKey: pi.Namespace + ".activity_event_performance_scheme_revised_name", DescriptionKey: pi.Namespace + ".activity_event_performance_scheme_revised_description", Name: "performance.scheme_revised", SchemaVersion: 1, SubjectKind: "performance_scheme", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: pi.Namespace + ".activity_event_performance_report_generated_name", DescriptionKey: pi.Namespace + ".activity_event_performance_report_generated_description", Name: "performance.report_generated", SchemaVersion: 1, SubjectKind: "performance_report", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: pi.Namespace + ".activity_event_performance_report_recalculated_name", DescriptionKey: pi.Namespace + ".activity_event_performance_report_recalculated_description", Name: "performance.report_recalculated", SchemaVersion: 1, SubjectKind: "performance_report", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: pi.Namespace + ".activity_event_performance_report_calibrated_name", DescriptionKey: pi.Namespace + ".activity_event_performance_report_calibrated_description", Name: "performance.report_calibrated", SchemaVersion: 1, SubjectKind: "performance_report", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: pi.Namespace + ".activity_event_performance_report_confirmed_name", DescriptionKey: pi.Namespace + ".activity_event_performance_report_confirmed_description", Name: "performance.report_confirmed", SchemaVersion: 1, SubjectKind: "performance_report", Realtime: events.RealtimeSignal})
 }
 func (m *Module) Initialize(context.Context) error {
 	if m.ids == nil || m.policy == nil || m.principals.Lock == nil || m.principals.ActiveHumanByID == nil || m.audit == nil || m.events == nil || m.idem == nil {

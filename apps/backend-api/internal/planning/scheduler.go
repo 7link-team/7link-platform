@@ -1,6 +1,7 @@
 package planning
 
 import (
+	activityi18n "7link.com/platform/internal/planning/i18n"
 	"context"
 	"errors"
 	"fmt"
@@ -34,12 +35,12 @@ func (m *Module) injectScheduler(s *module.Services) error {
 	return err
 }
 func (m *Module) JobHandlers() []jobs.Handler {
-	return []jobs.Handler{{Kind: "planning.report_overdue", Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return []jobs.Handler{{DisplayNameKey: activityi18n.Namespace + ".activity_job_planning_report_overdue_name", DescriptionKey: activityi18n.Namespace + ".activity_job_planning_report_overdue_description", Kind: "planning.report_overdue", Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		if err := m.scanOverdue(ctx, job.TenantID); err != nil {
 			return err
 		}
 		return m.scanNotificationReminders(ctx, job.TenantID)
-	}}, {Kind: "planning.report_generate", Timeout: 5 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error { return m.generateReports(ctx, job.TenantID) }}, m.loopTimeoutJobHandler(), {Kind: "planning.goal_refresh", Timeout: 5 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error { return m.refreshGoals(ctx, job.TenantID) }}, {Kind: "planning.plan_draft", Timeout: 5 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error { return m.generatePlans(ctx, job.TenantID) }}}
+	}}, {DisplayNameKey: activityi18n.Namespace + ".activity_job_planning_report_generate_name", DescriptionKey: activityi18n.Namespace + ".activity_job_planning_report_generate_description", Kind: "planning.report_generate", Timeout: 5 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error { return m.generateReports(ctx, job.TenantID) }}, m.loopTimeoutJobHandler(), {DisplayNameKey: activityi18n.Namespace + ".activity_job_planning_goal_refresh_name", DescriptionKey: activityi18n.Namespace + ".activity_job_planning_goal_refresh_description", Kind: "planning.goal_refresh", Timeout: 5 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error { return m.refreshGoals(ctx, job.TenantID) }}, {DisplayNameKey: activityi18n.Namespace + ".activity_job_planning_plan_draft_name", DescriptionKey: activityi18n.Namespace + ".activity_job_planning_plan_draft_description", Kind: "planning.plan_draft", Timeout: 5 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error { return m.generatePlans(ctx, job.TenantID) }}}
 }
 func (m *Module) JobSchedules() []jobs.Schedule {
 	return []jobs.Schedule{{Name: "planning.report_overdue", Kind: "planning.report_overdue", Interval: 10 * time.Minute, Timezone: "UTC", TenantScope: jobs.ScopePerTenant, Misfire: jobs.MisfireCoalesce, Payload: map[string]any{}}, {Name: "planning.report_generate", Kind: "planning.report_generate", Interval: 5 * time.Minute, Timezone: "UTC", TenantScope: jobs.ScopePerTenant, Misfire: jobs.MisfireCoalesce, Payload: map[string]any{}}, m.loopTimeoutJobSchedule(), {Name: "planning.goal_refresh", Kind: "planning.goal_refresh", Interval: 15 * time.Minute, Timezone: "UTC", TenantScope: jobs.ScopePerTenant, Misfire: jobs.MisfireCoalesce, Payload: map[string]any{}}, {Name: "planning.plan_draft", Kind: "planning.plan_draft", Interval: 5 * time.Minute, Timezone: "UTC", TenantScope: jobs.ScopePerTenant, Misfire: jobs.MisfireCoalesce, Payload: map[string]any{}}}

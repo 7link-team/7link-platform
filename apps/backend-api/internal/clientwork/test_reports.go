@@ -1,6 +1,7 @@
 package clientwork
 
 import (
+	activityi18n "7link.com/platform/internal/clientwork/i18n"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -186,7 +187,7 @@ func (m *Module) testReportResourceOn(ctx context.Context, tx *gorm.DB, id guid.
 	return nil
 }
 func (m *Module) testReportHandler() jobs.Handler {
-	return jobs.Handler{Kind: testReportJob, Timeout: 3 * time.Minute, MaxAttempts: 4, Run: func(ctx context.Context, job jobs.Job) error {
+	return jobs.Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_clientwork_test_report_name", DescriptionKey: activityi18n.Namespace + ".activity_job_clientwork_test_report_description", Kind: testReportJob, Timeout: 3 * time.Minute, MaxAttempts: 4, Run: func(ctx context.Context, job jobs.Job) error {
 		var in testReportJobBody
 		if json.Unmarshal(job.Payload, &in) != nil || job.TenantID <= 0 || in.ProjectID <= 0 || in.ReportID <= 0 || in.ActorID <= 0 || in.ActorID != job.CreatedBy {
 			return jobs.Permanent(ErrInvalid)

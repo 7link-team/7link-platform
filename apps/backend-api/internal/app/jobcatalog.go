@@ -29,7 +29,11 @@ func wireJobCatalog(registry *module.Registry) error {
 			}
 		}
 		if hasHandlers {
-			if err := catalog.AddHandlers(owner, handlers.JobHandlers()...); err != nil {
+			declared := append([]jobs.Handler(nil), handlers.JobHandlers()...)
+			for i := range declared {
+				declared[i].Module = current.ModuleName()
+			}
+			if err := catalog.AddHandlers(owner, declared...); err != nil {
 				return fmt.Errorf("job handlers from %s: %w", current.ModuleName(), err)
 			}
 		}

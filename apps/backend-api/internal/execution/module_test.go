@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"7link.com/platform/internal/agents"
 	"7link.com/platform/internal/delivery"
+	executioni18n "7link.com/platform/internal/execution/i18n"
 	"7link.com/platform/internal/files"
 	"7link.com/platform/internal/fleet"
 	"7link.com/platform/internal/governance"
@@ -128,7 +130,7 @@ func TestExecutionModuleWiringAndMissingDependencies(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, m.Initialize(context.Background()))
 			require.Equal(t, Name, catalog.owner)
-			require.ElementsMatch(t, []events.TypeSpec{
+			expectedSpecs := []events.TypeSpec{
 				{Name: "execution.merge_requested", SchemaVersion: 1, SubjectKind: "execution", Realtime: events.RealtimeSignal},
 				{Name: "execution.merge_finished", SchemaVersion: 1, SubjectKind: "execution", Realtime: events.RealtimeSignal},
 				{Name: "execution.merged", SchemaVersion: 1, SubjectKind: "execution", Realtime: events.RealtimeSignal},
@@ -148,7 +150,13 @@ func TestExecutionModuleWiringAndMissingDependencies(t *testing.T) {
 				{Name: "execution.evidence_recorded", SchemaVersion: 1, SubjectKind: "execution", Realtime: events.RealtimeSignal},
 				{Name: "execution.verification_queued", SchemaVersion: 1, SubjectKind: "execution", Realtime: events.RealtimeSignal},
 				{Name: "execution.verification_completed", SchemaVersion: 1, SubjectKind: "execution", Realtime: events.RealtimeSignal},
-			}, catalog.specs)
+			}
+			for i := range expectedSpecs {
+				base := executioni18n.Namespace + ".activity_event_" + strings.ReplaceAll(expectedSpecs[i].Name, ".", "_")
+				expectedSpecs[i].DisplayNameKey = base + "_name"
+				expectedSpecs[i].DescriptionKey = base + "_description"
+			}
+			require.ElementsMatch(t, expectedSpecs, catalog.specs)
 			t.Run("TestCodeMergeRealOutboxCatalog", func(t *testing.T) {
 				testCodeMergeRealOutboxCatalog(t, catalog.specs)
 			})

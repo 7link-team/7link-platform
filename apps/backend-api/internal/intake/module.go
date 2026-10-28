@@ -4,9 +4,11 @@ package intake
 //go:generate go run ./dbgen
 
 import (
+	intakei18n "7link.com/platform/internal/intake/i18n"
 	"7link.com/platform/internal/intake/query"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/module"
+	"context"
 )
 
 const Name = "intake"
@@ -31,8 +33,9 @@ type Module struct {
 func NewModule(rt *appenv.Runtime, config Config) *Module {
 	return &Module{config: config, names: query.BindNames(rt.TablePrefix())}
 }
-func (*Module) ModuleName() string { return Name }
-func (m *Module) Enabled() bool    { return m != nil && m.config.Enabled }
+func (*Module) ModuleName() string               { return Name }
+func (m *Module) Enabled() bool                  { return m != nil && m.config.Enabled }
+func (*Module) Initialize(context.Context) error { return intakei18n.Register() }
 func (m *Module) ProvideServices(s *module.Services) error {
 	if err := m.provideSubmissionEvents(s); err != nil {
 		return err
@@ -71,6 +74,7 @@ func (m *Module) ProvideServices(s *module.Services) error {
 }
 
 var (
+	_ module.Initializer             = (*Module)(nil)
 	_ module.Enabler                 = (*Module)(nil)
 	_ module.ServiceProvider         = (*Module)(nil)
 	_ module.MigrationSourceProvider = (*Module)(nil)

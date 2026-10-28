@@ -4,5 +4,9 @@
   "version_required": "Pengepala If-Match diperlukan.",
   "version_conflict": "Tugas atau jadual telah diubah. Muat semula dan cuba lagi.",
   "invalid_transition": "Keadaan semasa tugas atau jadual tidak membenarkan operasi ini.",
-  "schedule_active": "Jadual ini sudah mempunyai tugas yang menunggu atau sedang berjalan."
+  "schedule_active": "Jadual ini sudah mempunyai tugas yang menunggu atau sedang berjalan.",
+  "activity_event_job_dead_lettered_name": "Tugas latar dipindahkan ke barisan gagal",
+  "activity_event_job_dead_lettered_description": "Peristiwa perniagaan: Tugas latar dipindahkan ke barisan gagal. Diterbitkan oleh Tugas latar; pengendali langganan bertindak berdasarkan fakta ini.",
+  "activity_job_jobs_fan_out_name": "Agihkan tugas berjadual kepada penyewa",
+  "activity_job_jobs_fan_out_description": "Tugas latar: Memproses agihkan tugas berjadual kepada penyewa."
 }

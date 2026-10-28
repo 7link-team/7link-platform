@@ -24,6 +24,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 )
 
 const Name = "templates"
@@ -146,29 +147,29 @@ func (m *Module) InjectServices(s *module.Services) error {
 	if e != nil {
 		return e
 	}
-	if e = catalog.AddTypes(Name, events.TypeSpec{Name: "template.loop_escalated", SchemaVersion: 1, SubjectKind: "workflow_binding", Realtime: events.RealtimeSignal}); e != nil {
+	if e = catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: templatesi18n.Namespace + ".activity_event_template_loop_escalated_name", DescriptionKey: templatesi18n.Namespace + ".activity_event_template_loop_escalated_description", Name: "template.loop_escalated", SchemaVersion: 1, SubjectKind: "workflow_binding", Realtime: events.RealtimeSignal}); e != nil {
 		return e
 	}
 	for _, name := range []string{"template.binding_changed", "template.overrides_approved"} {
-		if e = catalog.AddTypes(Name, events.TypeSpec{Name: name, SchemaVersion: 1, SubjectKind: "workflow_binding", Realtime: events.RealtimeSignal}); e != nil {
+		if e = catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: templatesi18n.Namespace + ".activity_event_" + strings.ReplaceAll(name, ".", "_") + "_name", DescriptionKey: templatesi18n.Namespace + ".activity_event_" + strings.ReplaceAll(name, ".", "_") + "_description", Name: name, SchemaVersion: 1, SubjectKind: "workflow_binding", Realtime: events.RealtimeSignal}); e != nil {
 			return e
 		}
 	}
-	if e = catalog.AddTypes(Name, events.TypeSpec{Name: "template.studio_changed", SchemaVersion: 1, SubjectKind: "studio_record", Realtime: events.RealtimeSignal}); e != nil {
+	if e = catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: templatesi18n.Namespace + ".activity_event_template_studio_changed_name", DescriptionKey: templatesi18n.Namespace + ".activity_event_template_studio_changed_description", Name: "template.studio_changed", SchemaVersion: 1, SubjectKind: "studio_record", Realtime: events.RealtimeSignal}); e != nil {
 		return e
 	}
 	for _, name := range []string{"verifier.calibration_changed", "provider.state_changed", "eval.run_changed", "eval.run_completed", "template.eval_case_changed", "rubric.score_recorded", "rubric.scores_compared", "rubric.divergence_detected", "verifier.tool_availability_changed"} {
-		if e = catalog.AddTypes(Name, events.TypeSpec{Name: name, SchemaVersion: 1, SubjectKind: "template_lifecycle", Realtime: events.RealtimeSignal}); e != nil {
+		if e = catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: templatesi18n.Namespace + ".activity_event_" + strings.ReplaceAll(name, ".", "_") + "_name", DescriptionKey: templatesi18n.Namespace + ".activity_event_" + strings.ReplaceAll(name, ".", "_") + "_description", Name: name, SchemaVersion: 1, SubjectKind: "template_lifecycle", Realtime: events.RealtimeSignal}); e != nil {
 			return e
 		}
 	}
 	for _, name := range []string{"template.workflow_proposed", "template.drafted", "template.patched", "template.published", "template.instantiated", "template.advanced", "template.copied", "template.version_deprecated"} {
-		if e = catalog.AddTypes(Name, events.TypeSpec{Name: name, SchemaVersion: 1, SubjectKind: "template_version", Realtime: events.RealtimeSignal}); e != nil {
+		if e = catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: templatesi18n.Namespace + ".activity_event_" + strings.ReplaceAll(name, ".", "_") + "_name", DescriptionKey: templatesi18n.Namespace + ".activity_event_" + strings.ReplaceAll(name, ".", "_") + "_description", Name: name, SchemaVersion: 1, SubjectKind: "template_version", Realtime: events.RealtimeSignal}); e != nil {
 			return e
 		}
 	}
 	for _, name := range []string{"template.calibration_sample_added", "template.calibration_started", "template.calibration_confirmed", "template.calibration_evaluated", "template.calibration_drifted"} {
-		if e = catalog.AddTypes(Name, events.TypeSpec{Name: name, SchemaVersion: 1, SubjectKind: "verifier_calibration", Realtime: events.RealtimeSignal}); e != nil {
+		if e = catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: templatesi18n.Namespace + ".activity_event_" + strings.ReplaceAll(name, ".", "_") + "_name", DescriptionKey: templatesi18n.Namespace + ".activity_event_" + strings.ReplaceAll(name, ".", "_") + "_description", Name: name, SchemaVersion: 1, SubjectKind: "verifier_calibration", Realtime: events.RealtimeSignal}); e != nil {
 			return e
 		}
 	}
@@ -179,7 +180,7 @@ func (m *Module) InjectServices(s *module.Services) error {
 		} else if name == "template.provider_generation_requested" || name == "template.provider_generation_changed" {
 			subject = "template_provider_generation"
 		}
-		if e = catalog.AddTypes(Name, events.TypeSpec{Name: name, SchemaVersion: 1, SubjectKind: subject, Realtime: events.RealtimeSignal}); e != nil {
+		if e = catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: templatesi18n.Namespace + ".activity_event_" + strings.ReplaceAll(name, ".", "_") + "_name", DescriptionKey: templatesi18n.Namespace + ".activity_event_" + strings.ReplaceAll(name, ".", "_") + "_description", Name: name, SchemaVersion: 1, SubjectKind: subject, Realtime: events.RealtimeSignal}); e != nil {
 			return e
 		}
 	}

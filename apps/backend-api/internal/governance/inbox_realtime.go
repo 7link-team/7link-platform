@@ -1,6 +1,7 @@
 package governance
 
 import (
+	activityi18n "7link.com/platform/internal/governance/i18n"
 	"context"
 	"errors"
 	"log/slog"
@@ -40,7 +41,7 @@ func (m *Module) bindInboxRealtime(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	return catalog.AddSubscribers(Name, events.Subscriber{
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_business_governance_inbox_invalidation_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_business_governance_inbox_invalidation_description",
 		Name: "business_governance.inbox_invalidation", Mode: events.Transactional, StartFrom: events.Latest,
 		EventTypes: []string{"work_item.*", "result.*", "execution.*", "intake.*", "clarification.*", "delivery.*", "package.*", "project.*", "plan.*", "report.*", "memory.*", "agent.*", "spawn_request.*", "dispatch_proposal.*", "ensemble.*", "review_sheet.*", "worklog.*", "preview_share.*", "governance.*", "quality.*", "clientwork.*", "planning.*", "knowledge.*", "fleet.*", "agents.*", "yunxiao.*", "delegation.*", "escalation.*", "review_plan.*", "andon.*", "verification.*", "artifact_comment.*", "preview.*"},
 		Handle:     func(context.Context, *gorm.DB, events.Envelope) error { return nil },

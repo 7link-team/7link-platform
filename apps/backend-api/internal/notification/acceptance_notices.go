@@ -1,6 +1,7 @@
 package notification
 
 import (
+	activityi18n "7link.com/platform/internal/notification/i18n"
 	"context"
 	"encoding/json"
 	"errors"
@@ -28,7 +29,7 @@ func (m *Module) injectAcceptance(s *module.Services) error {
 	if e != nil {
 		return e
 	}
-	return catalog.AddSubscribers(Name, events.Subscriber{Name: "notification.acceptance_reminders", EventTypes: []string{"clientwork.acceptance_reminder", "clientwork.acceptance_overdue"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: func(ctx context.Context, tx *gorm.DB, e events.Envelope) error {
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_notification_acceptance_reminders_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_notification_acceptance_reminders_description", Name: "notification.acceptance_reminders", EventTypes: []string{"clientwork.acceptance_reminder", "clientwork.acceptance_overdue"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: func(ctx context.Context, tx *gorm.DB, e events.Envelope) error {
 		eventCtx, changes := collectInboxChanges(ctx)
 		if err := m.acceptanceOn(eventCtx, tx, e, facts); err != nil {
 			return err

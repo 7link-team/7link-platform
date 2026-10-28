@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Link, useSearchParams } from "react-router"
 import { AutoForm } from "@workspace/ui/components/auto-form"
-import { AutoTable } from "@workspace/ui/components/auto-table"
+import { AutoTable, TableFilterBar } from "@workspace/ui/components/auto-table"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Checkbox } from "@workspace/ui/components/checkbox"
@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
+import { ActivityLabel } from "../../components/activity-label"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { useAllowed } from "../../lib/permissions"
@@ -41,7 +42,11 @@ export default function PlatformJobsPage() {
   const [error, setError] = useState("")
   const [refresh, setRefresh] = useState(0)
   const [selected, setSelected] = useState<PlatformJob | null>(null)
-  const [operations, setOperations] = useState<{job: string; rows: CorrelatedOperation[]; offset: number} | null>(null)
+  const [operations, setOperations] = useState<{
+    job: string
+    rows: CorrelatedOperation[]
+    offset: number
+  } | null>(null)
   const [action, setAction] = useState<"retry" | "cancel" | null>(null)
   const [busy, setBusy] = useState(false)
   const [batchIDs, setBatchIDs] = useState<string[]>([])
@@ -165,11 +170,13 @@ export default function PlatformJobsPage() {
       >
         {t(automatic ? "jobsPauseRefresh" : "jobsResumeRefresh")}
       </Button>
-      <AutoForm
+      <TableFilterBar
         key={query}
-        onSubmit={(values) => {
+        defaultValue={Object.fromEntries(params)}
+        onSearch={(values) => {
           setLoading(true)
           setOffset(0)
+          setRefresh((value) => value + 1)
           setParams(
             Object.fromEntries(
               Object.entries(values)
@@ -178,53 +185,59 @@ export default function PlatformJobsPage() {
             )
           )
         }}
-        fields={{
-          state: {
+        filters={[
+          {
+            field: "state",
             name: t("jobsState"),
             type: "select",
-            value: params.get("state") ?? "",
-            config: {
-              options: [
-                "",
-                "PENDING",
-                "RUNNING",
-                "SUCCEEDED",
-                "DEAD",
-                "CANCELLED",
-              ].map((value) => ({
-                value,
-                label: value ? t(`jobsState${value}`) : t("all"),
-              })),
-            },
+            conditions: [],
+            options: [
+              "",
+              "PENDING",
+              "RUNNING",
+              "SUCCEEDED",
+              "DEAD",
+              "CANCELLED",
+            ].map((value) => ({
+              value,
+              label: value ? t(`jobsState${value}`) : t("all"),
+            })),
           },
-          queue: {
+          {
+            field: "queue",
+            maxLength: 64,
             name: t("jobsQueue"),
-            type: "text",
-            value: params.get("queue") ?? "",
-            config: { maxLength: 64 },
+            type: "string",
+            conditions: [],
           },
-          kind: {
+          {
+            field: "kind",
+            maxLength: 128,
             name: t("jobsKind"),
-            type: "text",
-            value: params.get("kind") ?? "",
-            config: { maxLength: 128 },
+            type: "string",
+            conditions: [],
           },
-          tenant_id: {
+          {
+            field: "tenant_id",
+            maxLength: 24,
             name: t("jobsTenantFilter"),
-            type: "text",
-            value: params.get("tenant_id") ?? "",
-            config: { placeholder: "eq:123" },
+            type: "string",
+            conditions: ["eq"],
           },
-          created_at: {
+          {
+            field: "created_at",
             name: t("jobsCreatedFilter"),
-            type: "text",
-            value: params.get("created_at") ?? "",
-            config: { placeholder: "gte:2026-01-01T00:00:00Z" },
+            type: "datetime",
+            conditions: ["gte", "lte", "gt", "lt"],
           },
+        ]}
+        onReset={() => {
+          setParams({})
+          setOffset(0)
+          setLoading(true)
+          setRefresh((value) => value + 1)
         }}
-      >
-        <Button type="submit">{t("query")}</Button>
-      </AutoForm>
+      />
       <div className="space-y-3 md:hidden">
         {!rows.length && (
           <p className="text-sm text-muted-foreground">
@@ -240,7 +253,7 @@ export default function PlatformJobsPage() {
             onClick={() => void details(row)}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="font-medium">{row.kind}</span>
+              <ActivityLabel {...row} code={row.kind} />
               <Badge
                 variant={row.state === "DEAD" ? "destructive" : "secondary"}
               >
@@ -330,7 +343,11 @@ export default function PlatformJobsPage() {
               </Button>
             ),
           },
-          { field: "kind", name: t("jobsKind") },
+          {
+            field: "kind",
+            name: t("jobsKind"),
+            render: (_, row) => <ActivityLabel {...row} code={row.kind} />,
+          },
           { field: "tenant_id", name: t("jobsTenant") },
           {
             field: "state",
@@ -474,6 +491,7 @@ export default function PlatformJobsPage() {
           )}
           {selected && (
             <>
+              <ActivityLabel {...selected} code={selected.kind} />
               <dl className="grid grid-cols-2 gap-2 text-sm">
                 <dt>{t("jobsState")}</dt>
                 <dd>{t(`jobsState${selected.state}`)}</dd>
@@ -482,31 +500,65 @@ export default function PlatformJobsPage() {
                   {selected.attempts}/{selected.max_attempts}
                 </dd>
               </dl>
-              {selected.correlation_id && allowed("system_audit_event_view") && (
-                <Button variant="outline" disabled={busy} onClick={async () => {
-                  setBusy(true)
-                  setError("")
-                  try {
-                    const rows = await platformJobsApi.operations(selected.correlation_id!)
-                    setOperations({job: selected.id!, rows, offset: 0})
-                  } catch (cause) { setError((cause as Error).message) }
-                  finally { setBusy(false) }
-                }}>{t("jobsCorrelatedOperations")}</Button>
-              )}
-              {selected.id && operations?.job === selected.id && (
-                <section aria-label={t("jobsCorrelatedOperations")}>
-                  <pre className="max-h-60 overflow-auto rounded-md bg-muted p-3 text-xs break-all whitespace-pre-wrap">{JSON.stringify(operations.rows, null, 2)}</pre>
-                  <div className="flex gap-2">
-                    {[-50, 50].map(delta => <Button key={delta} variant="outline" disabled={busy || (delta < 0 ? operations.offset === 0 : operations.rows.length < 50)} onClick={async () => {
+              {selected.correlation_id &&
+                allowed("system_audit_event_view") && (
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={async () => {
                       setBusy(true)
                       setError("")
                       try {
-                        const offset = operations.offset + delta
-                        const rows = await platformJobsApi.operations(selected.correlation_id!, offset)
-                        setOperations({job: selected.id!, rows, offset})
-                      } catch (cause) { setError((cause as Error).message) }
-                      finally { setBusy(false) }
-                    }}>{t(delta < 0 ? "previousPage" : "nextPage")}</Button>)}
+                        const rows = await platformJobsApi.operations(
+                          selected.correlation_id!
+                        )
+                        setOperations({ job: selected.id!, rows, offset: 0 })
+                      } catch (cause) {
+                        setError((cause as Error).message)
+                      } finally {
+                        setBusy(false)
+                      }
+                    }}
+                  >
+                    {t("jobsCorrelatedOperations")}
+                  </Button>
+                )}
+              {selected.id && operations?.job === selected.id && (
+                <section aria-label={t("jobsCorrelatedOperations")}>
+                  <pre className="max-h-60 overflow-auto rounded-md bg-muted p-3 text-xs break-all whitespace-pre-wrap">
+                    {JSON.stringify(operations.rows, null, 2)}
+                  </pre>
+                  <div className="flex gap-2">
+                    {[-50, 50].map((delta) => (
+                      <Button
+                        key={delta}
+                        variant="outline"
+                        disabled={
+                          busy ||
+                          (delta < 0
+                            ? operations.offset === 0
+                            : operations.rows.length < 50)
+                        }
+                        onClick={async () => {
+                          setBusy(true)
+                          setError("")
+                          try {
+                            const offset = operations.offset + delta
+                            const rows = await platformJobsApi.operations(
+                              selected.correlation_id!,
+                              offset
+                            )
+                            setOperations({ job: selected.id!, rows, offset })
+                          } catch (cause) {
+                            setError((cause as Error).message)
+                          } finally {
+                            setBusy(false)
+                          }
+                        }}
+                      >
+                        {t(delta < 0 ? "previousPage" : "nextPage")}
+                      </Button>
+                    ))}
                   </div>
                 </section>
               )}
@@ -678,7 +730,11 @@ export function PlatformSchedulesPage() {
         pagination={false}
         emptyContent={t("jobsEmpty")}
         columns={[
-          { field: "name", name: t("name") },
+          {
+            field: "name",
+            name: t("name"),
+            render: (_, row) => <ActivityLabel {...row} code={row.name} />,
+          },
           { field: "kind", name: t("jobsKind") },
           { field: "queue", name: t("jobsQueue") },
           {
@@ -695,7 +751,17 @@ export function PlatformSchedulesPage() {
             field: "cron",
             name: t("jobsScheduleRule"),
             render: (_, row) =>
-              `${row.cron ?? `${row.interval_ms} ms`} · ${row.timezone}`,
+              `${row.cron || (row.interval_ms ? t("activityEverySeconds", { seconds: row.interval_ms / 1000 }) : "—")} · ${row.timezone}`,
+          },
+          {
+            field: "tenant_scope",
+            name: t("activityScope"),
+            render: (_, row) =>
+              t(
+                row.tenant_scope === "PER_TENANT"
+                  ? "activityEachTenant"
+                  : "activityPlatform"
+              ),
           },
           { field: "next_run_at", name: t("jobsNextRun") },
           {

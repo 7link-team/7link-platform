@@ -157,7 +157,14 @@
       "reset": "Reset",
       "search": "Search",
       "condition": "Condition",
-      "value": "Value"
+      "value": "Value",
+      "op_like": "Contains",
+      "op_eq": "Equals",
+      "op_ne": "Does not equal",
+      "op_gt": "Greater than / after",
+      "op_gte": "At least / on or after",
+      "op_lt": "Less than / before",
+      "op_lte": "At most / on or before"
     }
   },
   "form": {

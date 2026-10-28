@@ -1,6 +1,7 @@
 package clientwork
 
 import (
+	activityi18n "7link.com/platform/internal/clientwork/i18n"
 	"context"
 	"encoding/json"
 	"errors"
@@ -36,7 +37,7 @@ func (m *Module) injectDispatchScheduling(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	return catalog.AddSubscribers(Name, events.Subscriber{Name: dispatchCycleJob, EventTypes: []string{"work_item.created", "work_item.state_changed", "work_item.assigned", "project.stage_changed", "agents.changed", "fleet.agent_presence", "machine.state_changed"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: m.dispatchScheduleEventOn})
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_clientwork_dispatch_cycle_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_clientwork_dispatch_cycle_description", Name: dispatchCycleJob, EventTypes: []string{"work_item.created", "work_item.state_changed", "work_item.assigned", "project.stage_changed", "agents.changed", "fleet.agent_presence", "machine.state_changed"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: m.dispatchScheduleEventOn})
 }
 func (m *Module) queueDispatchOn(ctx context.Context, tx *gorm.DB, tenant, project guid.ID, at time.Time) error {
 	if m.forecastQueue == nil {
@@ -57,11 +58,11 @@ func (m *Module) dispatchScheduleEventOn(ctx context.Context, tx *gorm.DB, event
 }
 func (m *Module) dispatchHandlers() []jobs.Handler {
 	return []jobs.Handler{
-		{Kind: dispatchStarvationJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+		{DisplayNameKey: activityi18n.Namespace + ".activity_job_clientwork_dispatch_starvation_name", DescriptionKey: activityi18n.Namespace + ".activity_job_clientwork_dispatch_starvation_description", Kind: dispatchStarvationJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 			return m.scanDispatchStarvation(ctx, job.TenantID, now())
 		}},
-		{Kind: dispatchScanJob, Timeout: 5 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error { return m.scanDispatch(ctx, job.TenantID, now()) }},
-		{Kind: dispatchCycleJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+		{DisplayNameKey: activityi18n.Namespace + ".activity_job_clientwork_dispatch_scan_name", DescriptionKey: activityi18n.Namespace + ".activity_job_clientwork_dispatch_scan_description", Kind: dispatchScanJob, Timeout: 5 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error { return m.scanDispatch(ctx, job.TenantID, now()) }},
+		{DisplayNameKey: activityi18n.Namespace + ".activity_job_clientwork_dispatch_cycle_name", DescriptionKey: activityi18n.Namespace + ".activity_job_clientwork_dispatch_cycle_description", Kind: dispatchCycleJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 			var body dispatchCycleBody
 			if err := json.Unmarshal(job.Payload, &body); err != nil || job.TenantID <= 0 || body.ProjectID <= 0 {
 				return jobs.Permanent(ErrInvalid)

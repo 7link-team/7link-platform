@@ -1,6 +1,7 @@
 package clientwork
 
 import (
+	activityi18n "7link.com/platform/internal/clientwork/i18n"
 	"7link.com/platform/internal/clientwork/model"
 	"7link.com/platform/internal/clientwork/query"
 	"7link.com/platform/internal/delivery"
@@ -351,7 +352,7 @@ func (m *Module) packageBundleContentHTTP(ctx context.Context, in *ObjectInput) 
 	})
 }
 func (m *Module) packageBundleHandler() jobs.Handler {
-	return jobs.Handler{Kind: packageBundleJob, Timeout: 10 * time.Minute, MaxAttempts: 4, BackoffBase: 30 * time.Second, BackoffMax: 10 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return jobs.Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_clientwork_bundle_build_name", DescriptionKey: activityi18n.Namespace + ".activity_job_clientwork_bundle_build_description", Kind: packageBundleJob, Timeout: 10 * time.Minute, MaxAttempts: 4, BackoffBase: 30 * time.Second, BackoffMax: 10 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		var in packageBundleJobBody
 		if json.Unmarshal(job.Payload, &in) != nil || job.TenantID <= 0 || in.ProjectID <= 0 || in.PackageID <= 0 || in.ActorID <= 0 || job.CreatedBy != in.ActorID || len(in.Fingerprint) != 64 {
 			return jobs.Permanent(ErrInvalid)

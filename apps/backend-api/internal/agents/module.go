@@ -224,9 +224,9 @@ func (m *Module) InjectServices(s *module.Services) error {
 		return err
 	}
 	return catalog.AddTypes(Name,
-		events.TypeSpec{Name: "agents.manifest_published", SchemaVersion: 1, SubjectKind: "operation_manifest", Realtime: events.RealtimeNone},
-		events.TypeSpec{Name: "agents.changed", SchemaVersion: 1, SubjectKind: "agent", Realtime: events.RealtimeNone},
-		events.TypeSpec{Name: "agents.wake", SchemaVersion: 1, SubjectKind: "agent", Realtime: events.RealtimeNone})
+		events.TypeSpec{DisplayNameKey: agentsi18n.Namespace + ".activity_event_agents_manifest_published_name", DescriptionKey: agentsi18n.Namespace + ".activity_event_agents_manifest_published_description", Name: "agents.manifest_published", SchemaVersion: 1, SubjectKind: "operation_manifest", Realtime: events.RealtimeNone},
+		events.TypeSpec{DisplayNameKey: agentsi18n.Namespace + ".activity_event_agents_changed_name", DescriptionKey: agentsi18n.Namespace + ".activity_event_agents_changed_description", Name: "agents.changed", SchemaVersion: 1, SubjectKind: "agent", Realtime: events.RealtimeNone},
+		events.TypeSpec{DisplayNameKey: agentsi18n.Namespace + ".activity_event_agents_wake_name", DescriptionKey: agentsi18n.Namespace + ".activity_event_agents_wake_description", Name: "agents.wake", SchemaVersion: 1, SubjectKind: "agent", Realtime: events.RealtimeNone})
 }
 
 func (m *Module) observeMessageOn(ctx context.Context, tx *gorm.DB, r collab.MessageReference) error {

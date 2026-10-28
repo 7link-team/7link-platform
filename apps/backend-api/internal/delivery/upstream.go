@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	activityi18n "7link.com/platform/internal/delivery/i18n"
 	"7link.com/platform/internal/delivery/model"
 	"7link.com/platform/internal/delivery/query"
 	"7link.com/platform/internal/iam/audit"
@@ -210,7 +211,7 @@ func (m *Module) requireCurrentUpstreamOn(ctx context.Context, tx *gorm.DB, work
 const artifactReconcileJob = "delivery.artifact_reconcile"
 
 func (m *Module) artifactReconcileHandler() jobs.Handler {
-	return jobs.Handler{Kind: artifactReconcileJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return jobs.Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_delivery_artifact_reconcile_name", DescriptionKey: activityi18n.Namespace + ".activity_job_delivery_artifact_reconcile_description", Kind: artifactReconcileJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		if job.TenantID <= 0 {
 			return jobs.Permanent(ErrInvalidArgument)
 		}

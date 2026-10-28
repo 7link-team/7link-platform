@@ -1,6 +1,7 @@
 package templates
 
 import (
+	activityi18n "7link.com/platform/internal/templates/i18n"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -20,10 +21,10 @@ import (
 
 func (m *Module) JobHandlers() []jobs.Handler {
 	return []jobs.Handler{
-		{Kind: "templates.provider_generation", Timeout: 11 * time.Minute, MaxAttempts: 1, Run: m.providerGenerationJob},
-		{Kind: "templates.eval_run", Timeout: 11 * time.Minute, MaxAttempts: 1, Run: m.evaluateEvalJob},
-		{Kind: "templates.calibration_evaluate", Timeout: 11 * time.Minute, MaxAttempts: 1, Run: m.evaluateCalibrationJob},
-		{Kind: "templates.calibration_review", Timeout: time.Minute, MaxAttempts: 1, Run: m.reviewCalibrationJob},
+		{DisplayNameKey: activityi18n.Namespace + ".activity_job_templates_provider_generation_name", DescriptionKey: activityi18n.Namespace + ".activity_job_templates_provider_generation_description", Kind: "templates.provider_generation", Timeout: 11 * time.Minute, MaxAttempts: 1, Run: m.providerGenerationJob},
+		{DisplayNameKey: activityi18n.Namespace + ".activity_job_templates_eval_run_name", DescriptionKey: activityi18n.Namespace + ".activity_job_templates_eval_run_description", Kind: "templates.eval_run", Timeout: 11 * time.Minute, MaxAttempts: 1, Run: m.evaluateEvalJob},
+		{DisplayNameKey: activityi18n.Namespace + ".activity_job_templates_calibration_evaluate_name", DescriptionKey: activityi18n.Namespace + ".activity_job_templates_calibration_evaluate_description", Kind: "templates.calibration_evaluate", Timeout: 11 * time.Minute, MaxAttempts: 1, Run: m.evaluateCalibrationJob},
+		{DisplayNameKey: activityi18n.Namespace + ".activity_job_templates_calibration_review_name", DescriptionKey: activityi18n.Namespace + ".activity_job_templates_calibration_review_description", Kind: "templates.calibration_review", Timeout: time.Minute, MaxAttempts: 1, Run: m.reviewCalibrationJob},
 	}
 }
 func (m *Module) JobSchedules() []jobs.Schedule {

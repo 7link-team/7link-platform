@@ -1,6 +1,7 @@
 package yunxiao
 
 import (
+	activityi18n "7link.com/platform/internal/yunxiao/i18n"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -270,5 +271,5 @@ func (m *Module) ingressChangedOn(ctx context.Context, tx *gorm.DB, row *model.I
 }
 
 func ingressHandler(m *Module) jobs.Handler {
-	return jobs.Handler{Kind: "yunxiao.ingress", Queue: "default", Timeout: time.Minute, MaxAttempts: 5, BackoffBase: time.Second, BackoffMax: time.Minute, Run: m.processIngressJob}
+	return jobs.Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_yunxiao_ingress_name", DescriptionKey: activityi18n.Namespace + ".activity_job_yunxiao_ingress_description", Kind: "yunxiao.ingress", Queue: "default", Timeout: time.Minute, MaxAttempts: 5, BackoffBase: time.Second, BackoffMax: time.Minute, Run: m.processIngressJob}
 }

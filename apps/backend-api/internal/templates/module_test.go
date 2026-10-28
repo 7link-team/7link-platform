@@ -12,19 +12,29 @@ import (
 	"7link.com/platform/internal/infra/idempotency"
 	"7link.com/platform/internal/infra/secrets"
 	"7link.com/platform/internal/intake"
+	templatesi18n "7link.com/platform/internal/templates/i18n"
 	"7link.com/platform/pkg/extension/authz"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"context"
 	"errors"
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"strings"
 	"testing"
 )
 
 type testCatalog struct{ fail bool }
 
-func (c testCatalog) AddTypes(string, ...events.TypeSpec) error {
+func (c testCatalog) AddTypes(_ string, specs ...events.TypeSpec) error {
+	for _, spec := range specs {
+		base := templatesi18n.Namespace + ".activity_event_" + strings.ReplaceAll(spec.Name, ".", "_")
+		if spec.DisplayNameKey != base+"_name" || spec.DescriptionKey != base+"_description" {
+			return fmt.Errorf("event presentation does not describe %s", spec.Name)
+		}
+	}
+
 	if c.fail {
 		return errors.New("catalog failed")
 	}

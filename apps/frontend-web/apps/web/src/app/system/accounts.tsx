@@ -1,6 +1,10 @@
 import { PaginationPages } from "@workspace/ui/components/pagination"
 import { AutoForm } from "@workspace/ui/components/auto-form"
-import { AutoTable } from "@workspace/ui/components/auto-table"
+import {
+  AutoTable,
+  TableFilterBar,
+  type FilterOption,
+} from "@workspace/ui/components/auto-table"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Plus, Pencil, Loader2, UserCog, ExternalLink } from "lucide-react"
 import { Link } from "react-router"
@@ -192,101 +196,100 @@ export default function SystemAccountsPage({
         fill
         onRefresh={refresh}
         rowOffset={offset}
+        toolbarActions={
+          category === "user" && allowed("system_account_create") ? (
+            <Button
+              onClick={() => {
+                setEditing(null)
+                setOpen(true)
+              }}
+            >
+              <Plus className="size-4" />
+              {t("createAccount")}
+            </Button>
+          ) : category === "system" && allowed("system_member_create") ? (
+            <Button
+              onClick={() => {
+                setAccessAccount(null)
+                setAccessOpen(true)
+              }}
+            >
+              <Plus />
+              {t("addSystemAccount")}
+            </Button>
+          ) : ownerBase ? (
+            <Button asChild variant="outline">
+              <Link to={ownerBase}>
+                <ExternalLink />
+                {t("manageMemberships")}
+              </Link>
+            </Button>
+          ) : undefined
+        }
         toolbar={
           <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
-            {category === "user" && allowed("system_account_create") ? (
-              <Button
-                onClick={() => {
-                  setEditing(null)
-                  setOpen(true)
-                }}
-              >
-                <Plus className="size-4" />
-                {t("createAccount")}
-              </Button>
-            ) : category === "system" && allowed("system_member_create") ? (
-              <Button
-                onClick={() => {
-                  setAccessAccount(null)
-                  setAccessOpen(true)
-                }}
-              >
-                <Plus />
-                {t("addSystemAccount")}
-              </Button>
-            ) : ownerBase ? (
-              <Button asChild variant="outline">
-                <Link to={ownerBase}>
-                  <ExternalLink />
-                  {t("manageMemberships")}
-                </Link>
-              </Button>
-            ) : undefined}
-            <AutoForm
-              className="min-w-0 flex-1 lg:grid-cols-3"
-              fields={{
-                search: {
+            <TableFilterBar
+              key={`${category}:${search}:${owner}:${status}`}
+              className="min-w-0 flex-1 border-0 p-0"
+              defaultValue={{ search, owner, status }}
+              filters={[
+                {
+                  field: "search",
                   name: t("searchPrincipals"),
-                  type: "text",
-                  value: search,
+                  type: "string",
+                  conditions: [],
                 },
-                owner: {
-                  name: t(
-                    category === "platform" ? "allPlatforms" : "allTenants"
-                  ),
-                  type: "select",
-                  value: owner || "__all__",
-                  show: category === "platform" || category === "tenant",
-                  config: {
-                    id: "account-owner",
-                    options: [
+                ...(category === "platform" || category === "tenant"
+                  ? ([
                       {
-                        value: "__all__",
-                        label: t(
+                        field: "owner",
+                        name: t(
                           category === "platform"
                             ? "allPlatforms"
                             : "allTenants"
                         ),
+                        type: "select",
+                        conditions: [],
+                        options: [
+                          {
+                            value: "",
+                            label: t(
+                              category === "platform"
+                                ? "allPlatforms"
+                                : "allTenants"
+                            ),
+                          },
+                          ...owners.map((item) => ({
+                            value: item.id,
+                            label: item.name,
+                          })),
+                        ],
                       },
-                      ...owners.map((item) => ({
-                        value: item.id,
-                        label: item.name,
-                      })),
-                    ],
-                  },
-                },
-                status: {
+                    ] satisfies FilterOption[])
+                  : []),
+                {
+                  field: "status",
                   name: t("status"),
                   type: "select",
-                  value: status || "__all__",
-                  config: {
-                    id: "account-status",
-                    options: {
-                      __all__: t("allStatuses"),
-                      active: t("active"),
-                      disabled: t("disable"),
-                    },
-                  },
+                  conditions: [],
+                  options: [
+                    { value: "", label: t("allStatuses") },
+                    { value: "active", label: t("active") },
+                    { value: "disabled", label: t("disable") },
+                  ],
                 },
+              ]}
+              onSearch={(values) => {
+                setSearch(values.search ?? "")
+                setOwner(values.owner ?? "")
+                setStatus((values.status ?? "") as typeof status)
+                setOffset(0)
               }}
-              onChange={(values) => {
-                const nextSearch = String(values.search)
-                const nextOwner =
-                  values.owner === "__all__" ? "" : String(values.owner)
-                const nextStatus =
-                  values.status === "__all__"
-                    ? ""
-                    : (values.status as typeof status)
-                if (
-                  nextSearch !== search ||
-                  nextOwner !== owner ||
-                  nextStatus !== status
-                ) {
-                  setSearch(nextSearch)
-                  setOwner(nextOwner)
-                  setStatus(nextStatus)
-                  setOffset(0)
-                }
+              onReset={() => {
+                setSearch("")
+                setOwner("")
+                setStatus("")
+                setOffset(0)
               }}
             />
           </div>

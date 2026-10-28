@@ -21,6 +21,7 @@ func registerTestSubscriber(t *testing.T, m *Module, s Subscriber) {
 	t.Helper()
 	m.sealed = false
 	require.NoError(t, m.AddSubscribers("test", s))
+	require.Equal(t, "test", m.subscribers[s.Name].Module)
 	m.sealed = true
 }
 

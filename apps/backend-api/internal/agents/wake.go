@@ -1,6 +1,7 @@
 package agents
 
 import (
+	activityi18n "7link.com/platform/internal/agents/i18n"
 	"bytes"
 	"context"
 	"crypto/hmac"
@@ -282,7 +283,7 @@ func (m *Module) deliverWake(ctx context.Context, tenant, agent guid.ID, client 
 	})
 }
 func (m *Module) wakeJob() jobs.Handler {
-	return jobs.Handler{Kind: "agents.webhook_wake", Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return jobs.Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_agents_webhook_wake_name", DescriptionKey: activityi18n.Namespace + ".activity_job_agents_webhook_wake_description", Kind: "agents.webhook_wake", Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		if job.TenantID <= 0 {
 			return jobs.Permanent(ErrInvalid)
 		}

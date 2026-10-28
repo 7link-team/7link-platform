@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	activityi18n "7link.com/platform/internal/infra/jobs/i18n"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -32,7 +33,7 @@ func (m *Module) bindTenantFanout(enumerate func(context.Context, guid.ID, int) 
 	if _, exists := m.handlers[fanoutKind]; exists {
 		return ErrInvalidDeclaration
 	}
-	handler, err := normalizeHandler(Name, Handler{Kind: fanoutKind, Run: m.fanOut})
+	handler, err := normalizeHandler(Name, Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_jobs_fan_out_name", DescriptionKey: activityi18n.Namespace + ".activity_job_jobs_fan_out_description", Kind: fanoutKind, Run: m.fanOut})
 	if err != nil {
 		return err
 	}

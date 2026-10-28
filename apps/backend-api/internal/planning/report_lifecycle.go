@@ -1,6 +1,7 @@
 package planning
 
 import (
+	activityi18n "7link.com/platform/internal/planning/i18n"
 	"context"
 	"encoding/json"
 	"errors"
@@ -33,7 +34,7 @@ func (m *Module) injectReportLifecycle(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	return catalog.AddSubscribers(Name, events.Subscriber{Name: "planning.recheck_on_change", Mode: events.Transactional, StartFrom: events.Earliest, Partitions: 1, EventTypes: []string{"work_item.*", "decision.*", "delivery.*", "acceptance.*", "project.stage_changed", "execution.cost_updated", "agent.*", "planning.changed"}, Handle: m.recheckReportsOn})
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_planning_recheck_on_change_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_planning_recheck_on_change_description", Name: "planning.recheck_on_change", Mode: events.Transactional, StartFrom: events.Earliest, Partitions: 1, EventTypes: []string{"work_item.*", "decision.*", "delivery.*", "acceptance.*", "project.stage_changed", "execution.cost_updated", "agent.*", "planning.changed"}, Handle: m.recheckReportsOn})
 }
 
 // Confirmation is a relationship, in addition to current IAM permission.

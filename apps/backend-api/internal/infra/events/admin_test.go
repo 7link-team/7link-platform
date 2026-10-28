@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"7link.com/platform/internal/infra/events/model"
 	"7link.com/platform/internal/infra/events/query"
@@ -22,6 +23,37 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestAdminActivityPresentationUsesDeclaringModuleAndCopiesTriggers(t *testing.T) {
+	require.NoError(t, platformi18n.NewModule(nil, "en-US").Initialize(t.Context()))
+	require.NoError(t, platformi18n.RegisterFS("event-activity-test", fstest.MapFS{
+		"locales/en-US.json": {Data: []byte(`{"name":"Project created","purpose":"Records a newly created project."}`)},
+		"locales/zh-CN.json": {Data: []byte(`{"name":"项目已创建","purpose":"记录新建的项目。"}`)},
+		"locales/ms-MY.json": {Data: []byte(`{"name":"Projek dicipta","purpose":"Merekodkan projek yang baru dicipta."}`)},
+	}, "locales"))
+	m := &Module{types: map[string]TypeSpec{}, subscribers: map[string]Subscriber{}}
+	require.NoError(t, m.AddTypes("delivery", TypeSpec{Name: "project.created", SchemaVersion: 1, SubjectKind: "project", Realtime: RealtimeNone, DisplayNameKey: "event-activity-test.name", DescriptionKey: "event-activity-test.purpose"}))
+	require.NoError(t, m.AddSubscribers("delivery", Subscriber{Name: "delivery.projector", EventTypes: []string{"project.*"}, DisplayNameKey: "event-activity-test.name", DescriptionKey: "event-activity-test.purpose", Handle: func(context.Context, *gorm.DB, Envelope) error { return nil }}))
+	for locale, name := range map[string]string{"en-US": "Project created", "zh-CN": "项目已创建", "ms-MY": "Projek dicipta"} {
+		ctx := platformi18n.WithLocale(t.Context(), locale)
+		view, err := m.adminEvent(ctx, &model.EventRow{EventType: "project.created", Topics: "[]"}, false)
+		require.NoError(t, err)
+		require.Equal(t, "delivery", view.Module, "project is a namespace, not the declaring module")
+		require.Equal(t, name, view.DisplayName)
+		require.NotEmpty(t, view.Description)
+		subscriber := m.adminSubscriber(ctx, SubscriberStatus{Name: "delivery.projector"})
+		require.Equal(t, "delivery", subscriber.Module)
+		require.Equal(t, name, subscriber.DisplayName)
+		require.Equal(t, []string{"project.*"}, subscriber.EventTypes)
+		subscriber.EventTypes[0] = "changed.*"
+		require.Equal(t, []string{"project.*"}, m.subscribers["delivery.projector"].EventTypes)
+	}
+	unknown, err := m.adminEvent(t.Context(), &model.EventRow{EventType: "retired.event", Topics: "[]"}, false)
+	require.NoError(t, err)
+	require.Empty(t, unknown.Module)
+	require.Empty(t, unknown.DisplayName)
+	require.Empty(t, unknown.Description)
+}
 
 type adminAuthority struct{ current bool }
 
@@ -298,6 +330,7 @@ func TestEventsAdminFilterBoundsMissingResourcesAndStorageFailure(t *testing.T) 
 }
 
 func TestEventsAdminDomainValidationRefusesInvalidRequestsAndCorruptData(t *testing.T) {
+	m := &Module{}
 	for _, v := range []struct{ offset, limit int }{{-1, 1}, {0, 201}} {
 		_, err := adminLimit(v.offset, v.limit)
 		require.ErrorIs(t, err, errAdminInvalid)
@@ -305,9 +338,9 @@ func TestEventsAdminDomainValidationRefusesInvalidRequestsAndCorruptData(t *test
 	limit, err := adminLimit(0, 0)
 	require.NoError(t, err)
 	require.Equal(t, 50, limit)
-	_, err = adminEvent(&model.EventRow{Topics: "invalid"}, false)
+	_, err = m.adminEvent(t.Context(), &model.EventRow{Topics: "invalid"}, false)
 	require.Error(t, err)
-	_, err = adminEvent(&model.EventRow{Topics: "[]", Data: "invalid"}, true)
+	_, err = m.adminEvent(t.Context(), &model.EventRow{Topics: "[]", Data: "invalid"}, true)
 	require.Error(t, err)
 	f := newAdminFixture(t)
 	_, err = f.m.listAdminEvents(t.Context(), &adminEventListInput{Offset: -1})

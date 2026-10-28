@@ -1,6 +1,7 @@
 package collab
 
 import (
+	activityi18n "7link.com/platform/internal/collab/i18n"
 	"7link.com/platform/internal/collab/model"
 	"7link.com/platform/internal/collab/query"
 	"7link.com/platform/internal/infra/events"
@@ -157,7 +158,7 @@ func (m *Module) injectSystemProjector(s *module.Services) error {
 	if e != nil {
 		return e
 	}
-	return catalog.AddSubscribers(Name, events.Subscriber{Name: "collab.event_projector", EventTypes: []string{"execution.state_changed", "execution.verification_completed", "work_item.state_changed", "work_item.attention_started", "budget.threshold_reached", "clientwork.dispatch_proposed", "clientwork.dispatch_decided", "clientwork.dispatch_expired"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: m.projectSystemEventOn})
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_collab_event_projector_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_collab_event_projector_description", Name: "collab.event_projector", EventTypes: []string{"execution.state_changed", "execution.verification_completed", "work_item.state_changed", "work_item.attention_started", "budget.threshold_reached", "clientwork.dispatch_proposed", "clientwork.dispatch_decided", "clientwork.dispatch_expired"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: m.projectSystemEventOn})
 }
 func (m *Module) projectSystemEventOn(ctx context.Context, tx *gorm.DB, event events.Envelope) error {
 	if event.ProjectID <= 0 || event.TenantID <= 0 {

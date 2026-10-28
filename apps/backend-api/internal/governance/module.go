@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -235,16 +236,16 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if subscriberErr != nil {
 		return subscriberErr
 	}
-	if subscriberErr = subscribers.AddSubscribers(Name, events.Subscriber{Name: "business_governance.automated_decisions", EventTypes: []string{"work_item.state_changed"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: m.consumeAutomatedDecision}); subscriberErr != nil {
+	if subscriberErr = subscribers.AddSubscribers(Name, events.Subscriber{DisplayNameKey: governancei18n.Namespace + ".activity_subscriber_business_governance_automated_decisions_name", DescriptionKey: governancei18n.Namespace + ".activity_subscriber_business_governance_automated_decisions_description", Name: "business_governance.automated_decisions", EventTypes: []string{"work_item.state_changed"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: m.consumeAutomatedDecision}); subscriberErr != nil {
 		return subscriberErr
 	}
-	if subscriberErr = subscribers.AddSubscribers(Name, events.Subscriber{Name: "business_governance.quality_escapes", EventTypes: []string{"quality.escaped", "quality.escape_learning_proposed"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: m.consumeQualityEscape}); subscriberErr != nil {
+	if subscriberErr = subscribers.AddSubscribers(Name, events.Subscriber{DisplayNameKey: governancei18n.Namespace + ".activity_subscriber_business_governance_quality_escapes_name", DescriptionKey: governancei18n.Namespace + ".activity_subscriber_business_governance_quality_escapes_description", Name: "business_governance.quality_escapes", EventTypes: []string{"quality.escaped", "quality.escape_learning_proposed"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: m.consumeQualityEscape}); subscriberErr != nil {
 		return subscriberErr
 	}
-	if subscriberErr = subscribers.AddSubscribers(Name, events.Subscriber{Name: "business_governance.spawn_settlements", EventTypes: []string{"budget.settled"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: m.consumeSpawnSettlement}); subscriberErr != nil {
+	if subscriberErr = subscribers.AddSubscribers(Name, events.Subscriber{DisplayNameKey: governancei18n.Namespace + ".activity_subscriber_business_governance_spawn_settlements_name", DescriptionKey: governancei18n.Namespace + ".activity_subscriber_business_governance_spawn_settlements_description", Name: "business_governance.spawn_settlements", EventTypes: []string{"budget.settled"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: m.consumeSpawnSettlement}); subscriberErr != nil {
 		return subscriberErr
 	}
-	if subscriberErr = subscribers.AddSubscribers(Name, events.Subscriber{Name: "business_governance.escalation_evaluator", EventTypes: []string{"claim.submitted", "work_item.state_changed"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: m.evaluateClaimEvent}); subscriberErr != nil {
+	if subscriberErr = subscribers.AddSubscribers(Name, events.Subscriber{DisplayNameKey: governancei18n.Namespace + ".activity_subscriber_business_governance_escalation_evaluator_name", DescriptionKey: governancei18n.Namespace + ".activity_subscriber_business_governance_escalation_evaluator_description", Name: "business_governance.escalation_evaluator", EventTypes: []string{"claim.submitted", "work_item.state_changed"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: m.evaluateClaimEvent}); subscriberErr != nil {
 		return subscriberErr
 	}
 	var err error
@@ -261,15 +262,15 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return err
 	}
-	if err = catalog.AddTypes(Name, events.TypeSpec{Name: "governance.inbox_acknowledged", SchemaVersion: 1, SubjectKind: "inbox_item", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "governance.spawn_request_changed", SchemaVersion: 1, SubjectKind: "spawn_request", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "governance.automated_decision_recorded", SchemaVersion: 1, SubjectKind: "automated_decision", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "governance.workflow_decided", SchemaVersion: 1, SubjectKind: "workflow_decision", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "governance.settings_updated", SchemaVersion: 1, SubjectKind: "governance_settings", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "governance.rule_updated", SchemaVersion: 1, SubjectKind: "escalation_rule", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "governance.incident_changed", SchemaVersion: 1, SubjectKind: "escalation_incident", Realtime: events.RealtimeSignal}); err != nil {
+	if err = catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: governancei18n.Namespace + ".activity_event_governance_inbox_acknowledged_name", DescriptionKey: governancei18n.Namespace + ".activity_event_governance_inbox_acknowledged_description", Name: "governance.inbox_acknowledged", SchemaVersion: 1, SubjectKind: "inbox_item", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: governancei18n.Namespace + ".activity_event_governance_spawn_request_changed_name", DescriptionKey: governancei18n.Namespace + ".activity_event_governance_spawn_request_changed_description", Name: "governance.spawn_request_changed", SchemaVersion: 1, SubjectKind: "spawn_request", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: governancei18n.Namespace + ".activity_event_governance_automated_decision_recorded_name", DescriptionKey: governancei18n.Namespace + ".activity_event_governance_automated_decision_recorded_description", Name: "governance.automated_decision_recorded", SchemaVersion: 1, SubjectKind: "automated_decision", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: governancei18n.Namespace + ".activity_event_governance_workflow_decided_name", DescriptionKey: governancei18n.Namespace + ".activity_event_governance_workflow_decided_description", Name: "governance.workflow_decided", SchemaVersion: 1, SubjectKind: "workflow_decision", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: governancei18n.Namespace + ".activity_event_governance_settings_updated_name", DescriptionKey: governancei18n.Namespace + ".activity_event_governance_settings_updated_description", Name: "governance.settings_updated", SchemaVersion: 1, SubjectKind: "governance_settings", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: governancei18n.Namespace + ".activity_event_governance_rule_updated_name", DescriptionKey: governancei18n.Namespace + ".activity_event_governance_rule_updated_description", Name: "governance.rule_updated", SchemaVersion: 1, SubjectKind: "escalation_rule", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: governancei18n.Namespace + ".activity_event_governance_incident_changed_name", DescriptionKey: governancei18n.Namespace + ".activity_event_governance_incident_changed_description", Name: "governance.incident_changed", SchemaVersion: 1, SubjectKind: "escalation_incident", Realtime: events.RealtimeSignal}); err != nil {
 		return err
 	}
 	for _, kind := range []string{"spawn_grant.granted", "spawn_grant.updated", "spawn_grant.exhausted", "spawn_grant.revoked", "spawn_grant.expired", "spawn_grant.budget_threshold"} {
-		if err = catalog.AddTypes(Name, events.TypeSpec{Name: kind, SchemaVersion: 1, SubjectKind: "spawn_grant", Realtime: events.RealtimeSignal}); err != nil {
+		if err = catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: governancei18n.Namespace + ".activity_event_" + strings.ReplaceAll(kind, ".", "_") + "_name", DescriptionKey: governancei18n.Namespace + ".activity_event_" + strings.ReplaceAll(kind, ".", "_") + "_description", Name: kind, SchemaVersion: 1, SubjectKind: "spawn_grant", Realtime: events.RealtimeSignal}); err != nil {
 			return err
 		}
 	}
-	if err = catalog.AddTypes(Name, events.TypeSpec{Name: "quality.escape_recorded", SchemaVersion: 1, SubjectKind: "quality_escape", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "quality.escape_learning_decided", SchemaVersion: 1, SubjectKind: "quality_escape", Realtime: events.RealtimeSignal}); err != nil {
+	if err = catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: governancei18n.Namespace + ".activity_event_quality_escape_recorded_name", DescriptionKey: governancei18n.Namespace + ".activity_event_quality_escape_recorded_description", Name: "quality.escape_recorded", SchemaVersion: 1, SubjectKind: "quality_escape", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: governancei18n.Namespace + ".activity_event_quality_escape_learning_decided_name", DescriptionKey: governancei18n.Namespace + ".activity_event_quality_escape_learning_decided_description", Name: "quality.escape_learning_decided", SchemaVersion: 1, SubjectKind: "quality_escape", Realtime: events.RealtimeSignal}); err != nil {
 		return err
 	}
 	if m.seed.ids, err = module.Resolve[guid.Source](services); err != nil {
@@ -336,12 +337,12 @@ func (m *Module) Initialize(context.Context) error {
 
 // JobHandlers contributes the platform-wide role reconciliation sweep.
 func (m *Module) JobHandlers() []jobs.Handler {
-	return []jobs.Handler{{Kind: JobNamespace + ".seed_reconcile", Run: func(ctx context.Context, job jobs.Job) error {
+	return []jobs.Handler{{DisplayNameKey: governancei18n.Namespace + ".activity_job_governance_seed_reconcile_name", DescriptionKey: governancei18n.Namespace + ".activity_job_governance_seed_reconcile_description", Kind: JobNamespace + ".seed_reconcile", Run: func(ctx context.Context, job jobs.Job) error {
 		if job.TenantID != 0 {
 			return jobs.Permanent(ErrInvalidArgument)
 		}
 		return m.reconcileTenants(ctx)
-	}}, {Kind: JobNamespace + ".delegation_expiry", Run: m.expireDelegations}, {Kind: JobNamespace + ".spawn_grant_reconcile", Run: m.reconcileSpawnGrants}, {Kind: JobNamespace + ".spawn_request_reconcile", Run: m.reconcileAgentSpawnRequests}, {Kind: JobNamespace + ".delegation_activation", Run: m.activateScheduledDelegations}}
+	}}, {DisplayNameKey: governancei18n.Namespace + ".activity_job_governance_delegation_expiry_name", DescriptionKey: governancei18n.Namespace + ".activity_job_governance_delegation_expiry_description", Kind: JobNamespace + ".delegation_expiry", Run: m.expireDelegations}, {DisplayNameKey: governancei18n.Namespace + ".activity_job_governance_spawn_grant_reconcile_name", DescriptionKey: governancei18n.Namespace + ".activity_job_governance_spawn_grant_reconcile_description", Kind: JobNamespace + ".spawn_grant_reconcile", Run: m.reconcileSpawnGrants}, {DisplayNameKey: governancei18n.Namespace + ".activity_job_governance_spawn_request_reconcile_name", DescriptionKey: governancei18n.Namespace + ".activity_job_governance_spawn_request_reconcile_description", Kind: JobNamespace + ".spawn_request_reconcile", Run: m.reconcileAgentSpawnRequests}, {DisplayNameKey: governancei18n.Namespace + ".activity_job_governance_delegation_activation_name", DescriptionKey: governancei18n.Namespace + ".activity_job_governance_delegation_activation_description", Kind: JobNamespace + ".delegation_activation", Run: m.activateScheduledDelegations}}
 }
 
 // JobSchedules declares hourly tenant role reconciliation. The platform sweep

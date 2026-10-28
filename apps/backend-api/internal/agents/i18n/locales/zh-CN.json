@@ -10,5 +10,17 @@
   "wake_failed_body": "Agent {{.subject_id}} 唤醒投递连续失败 {{.failures}} 次，已切换为轮询。请检查接收端。",
   "wake_failed_email_subject": "Agent webhook 唤醒失败",
   "wake_failed_email_text": "Agent {{.subject_id}} 唤醒投递连续失败 {{.failures}} 次，已切换为轮询。请检查接收端。",
-  "wake_failed_email_html": "<p>Agent {{.subject_id}} 唤醒投递连续失败 {{.failures}} 次，已切换为轮询。请检查接收端。</p>"
+  "wake_failed_email_html": "<p>Agent {{.subject_id}} 唤醒投递连续失败 {{.failures}} 次，已切换为轮询。请检查接收端。</p>",
+  "activity_event_agents_changed_name": "智能体：已变化",
+  "activity_event_agents_changed_description": "业务事件：智能体：已变化。由智能体服务模块发布，订阅处理器据此响应业务变化。",
+  "activity_event_agents_manifest_published_name": "智能体 · 清单：已发布",
+  "activity_event_agents_manifest_published_description": "业务事件：智能体 · 清单：已发布。由智能体服务模块发布，订阅处理器据此响应业务变化。",
+  "activity_event_agents_wake_name": "智能体：已请求唤醒",
+  "activity_event_agents_wake_description": "业务事件：智能体：已请求唤醒。由智能体服务模块发布，订阅处理器据此响应业务变化。",
+  "activity_job_agents_reminder_fire_name": "发送到期智能体提醒",
+  "activity_job_agents_reminder_fire_description": "智能体服务：处理已到发送时间的智能体提醒。",
+  "activity_job_agents_retirement_progress_name": "推进智能体退役",
+  "activity_job_agents_retirement_progress_description": "智能体服务：推进待完成的智能体退役及清理流程。",
+  "activity_job_agents_webhook_wake_name": "通过 Webhook 唤醒智能体",
+  "activity_job_agents_webhook_wake_description": "智能体服务：处理排队的 Webhook 智能体唤醒请求。"
 }

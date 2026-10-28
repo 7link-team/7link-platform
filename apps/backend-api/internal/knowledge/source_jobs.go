@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	activityi18n "7link.com/platform/internal/knowledge/i18n"
 	"context"
 	"database/sql/driver"
 	"encoding/json"
@@ -28,13 +29,13 @@ type sourceIndexJob struct {
 // one transaction, so a killed worker leaves PENDING, never a stranded INDEXING.
 func (m *Module) JobHandlers() []jobs.Handler {
 	handlers := []jobs.Handler{
-		{Kind: "knowledge.memory_forgetting", Timeout: 5 * time.Minute, Run: m.memoryForgetJob},
-		{Kind: "knowledge.index_source", MaxAttempts: 5, Timeout: 5 * time.Minute, BackoffBase: 30 * time.Second, BackoffMax: 30 * time.Minute, Run: m.indexSourceJob},
-		{Kind: "knowledge.index_reconcile", Timeout: 5 * time.Minute, Run: m.reconcileSourcesJob},
-		{Kind: "knowledge.chunk_purge", Timeout: 5 * time.Minute, Run: m.purgeChunksJob},
+		{DisplayNameKey: activityi18n.Namespace + ".activity_job_knowledge_memory_forgetting_name", DescriptionKey: activityi18n.Namespace + ".activity_job_knowledge_memory_forgetting_description", Kind: "knowledge.memory_forgetting", Timeout: 5 * time.Minute, Run: m.memoryForgetJob},
+		{DisplayNameKey: activityi18n.Namespace + ".activity_job_knowledge_index_source_name", DescriptionKey: activityi18n.Namespace + ".activity_job_knowledge_index_source_description", Kind: "knowledge.index_source", MaxAttempts: 5, Timeout: 5 * time.Minute, BackoffBase: 30 * time.Second, BackoffMax: 30 * time.Minute, Run: m.indexSourceJob},
+		{DisplayNameKey: activityi18n.Namespace + ".activity_job_knowledge_index_reconcile_name", DescriptionKey: activityi18n.Namespace + ".activity_job_knowledge_index_reconcile_description", Kind: "knowledge.index_reconcile", Timeout: 5 * time.Minute, Run: m.reconcileSourcesJob},
+		{DisplayNameKey: activityi18n.Namespace + ".activity_job_knowledge_chunk_purge_name", DescriptionKey: activityi18n.Namespace + ".activity_job_knowledge_chunk_purge_description", Kind: "knowledge.chunk_purge", Timeout: 5 * time.Minute, Run: m.purgeChunksJob},
 	}
 	if m.config.Embedding.Enabled {
-		handlers = append(handlers, jobs.Handler{Kind: "knowledge.embedding_backfill", Timeout: 3 * time.Minute, MaxAttempts: 5, BackoffBase: time.Minute, BackoffMax: 8 * time.Minute, Run: m.embeddingBackfillJob})
+		handlers = append(handlers, jobs.Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_knowledge_embedding_backfill_name", DescriptionKey: activityi18n.Namespace + ".activity_job_knowledge_embedding_backfill_description", Kind: "knowledge.embedding_backfill", Timeout: 3 * time.Minute, MaxAttempts: 5, BackoffBase: time.Minute, BackoffMax: 8 * time.Minute, Run: m.embeddingBackfillJob})
 	}
 	return handlers
 }

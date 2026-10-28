@@ -79,5 +79,9 @@
   "last_platform_administrator": "此变更会导致平台不再有完整管理员。请先将其他主体提升为平台管理员。",
   "platform_permission_scope": "只有平台作用域的权限才能授予平台管理员。请从平台权限目录中选择权限码。",
   "privilege_escalation_denied": "不能授予自己并不拥有的权限。请联系租户管理员执行此项授权。",
-  "unavailable": "IAM 服务当前不可用，请在数据库及其依赖恢复后重试。"
+  "unavailable": "IAM 服务当前不可用，请在数据库及其依赖恢复后重试。",
+  "activity_event_iam_core_menus_synced_name": "身份权限 · 菜单：已同步",
+  "activity_event_iam_core_menus_synced_description": "业务事件：身份权限 · 菜单：已同步。由身份与权限模块发布，订阅处理器据此响应业务变化。",
+  "activity_job_iam_core_menu_contributions_sync_name": "同步模块菜单",
+  "activity_job_iam_core_menu_contributions_sync_description": "身份与权限：将模块声明的菜单及其归属同步到已存菜单。"
 }

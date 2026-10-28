@@ -46,13 +46,17 @@ type Envelope struct {
 	CausationID         guid.ID
 }
 type Subscriber struct {
-	Name        string
-	EventTypes  []string
-	Mode        DeliveryMode
-	Partitions  int
-	StartFrom   StartFrom
-	Handle      func(context.Context, *gorm.DB, Envelope) error
-	AfterCommit func(context.Context, Envelope)
+	Name string
+	// Module identifies the declaring module; it defaults to the registration owner.
+	Module         string
+	DisplayNameKey string
+	DescriptionKey string
+	EventTypes     []string
+	Mode           DeliveryMode
+	Partitions     int
+	StartFrom      StartFrom
+	Handle         func(context.Context, *gorm.DB, Envelope) error
+	AfterCommit    func(context.Context, Envelope)
 }
 type commitCallbacksKey struct{}
 
@@ -108,6 +112,9 @@ func (m *Module) AddSubscribers(owner string, subscribers ...Subscriber) error {
 			if !eventPattern.MatchString(pattern) && !(strings.HasSuffix(pattern, ".*") && kindPattern.MatchString(strings.TrimSuffix(pattern, ".*"))) {
 				return ErrInvalidEvent
 			}
+		}
+		if s.Module == "" {
+			s.Module = owner
 		}
 		pending[s.Name] = s
 	}

@@ -2,6 +2,7 @@ package notification
 
 import (
 	"7link.com/platform/internal/governance"
+	activityi18n "7link.com/platform/internal/notification/i18n"
 	"context"
 	"errors"
 
@@ -22,7 +23,7 @@ func (m *Module) injectSpawnBudget(s *module.Services) error {
 	if e != nil {
 		return e
 	}
-	return c.AddSubscribers(Name, events.Subscriber{Name: "notification.spawn_budget", EventTypes: []string{"spawn_grant.budget_threshold", "spawn_grant.exhausted", "spawn_grant.granted", "governance.spawn_request_changed"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: func(ctx context.Context, tx *gorm.DB, e events.Envelope) error {
+	return c.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_notification_spawn_budget_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_notification_spawn_budget_description", Name: "notification.spawn_budget", EventTypes: []string{"spawn_grant.budget_threshold", "spawn_grant.exhausted", "spawn_grant.granted", "governance.spawn_request_changed"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: func(ctx context.Context, tx *gorm.DB, e events.Envelope) error {
 		eventCtx, changes := collectInboxChanges(ctx)
 		if err := m.consumeSpawnEventOn(eventCtx, tx, e); err != nil {
 			return err

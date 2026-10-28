@@ -1,6 +1,7 @@
 package execution
 
 import (
+	activityi18n "7link.com/platform/internal/execution/i18n"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -319,7 +320,7 @@ func (m *Module) registerInteractionExpiry(s *module.Services) error {
 		return err
 	}
 	const kind = "execution.interaction_inbox_expiry"
-	if err = catalog.AddHandlers(Name, jobs.Handler{Kind: kind, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	if err = catalog.AddHandlers(Name, jobs.Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_execution_interaction_inbox_expiry_name", DescriptionKey: activityi18n.Namespace + ".activity_job_execution_interaction_inbox_expiry_description", Kind: kind, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		if job.TenantID <= 0 {
 			return jobs.Permanent(ErrInvalidArgument)
 		}

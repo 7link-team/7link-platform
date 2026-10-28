@@ -10,6 +10,7 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 
 import { Calendar } from "./calendar"
+import { Input } from "../input"
 
 // Match the text Input / Select trigger styling so the picker looks consistent in filter bars and forms.
 const TRIGGER_CLASS =
@@ -191,22 +192,26 @@ function Clock({
 }
 
 export interface DateTimePickerProps {
+  "aria-label"?: string
   value?: string
   onChange?: (value: string) => void
   disabled?: boolean
   placeholder?: string
   showSeconds?: boolean
+  editableTime?: boolean
   fromDate?: Date
   toDate?: Date
   className?: string
 }
 
 export function DateTimePicker({
+  "aria-label": ariaLabel,
   value,
   onChange,
   disabled = false,
   placeholder = "Select date & time",
   showSeconds = false,
+  editableTime = false,
   fromDate,
   toDate,
   className,
@@ -226,6 +231,7 @@ export function DateTimePicker({
   return (
     <Popover open={open} onOpenChange={(next) => !disabled && setOpen(next)}>
       <PopoverTrigger
+        aria-label={ariaLabel}
         disabled={disabled}
         className={cn(
           TRIGGER_CLASS,
@@ -260,6 +266,18 @@ export function DateTimePicker({
                 )
               }
             />
+            {editableTime && (
+              <Input
+                type="time"
+                step={showSeconds ? 1 : 60}
+                aria-label={ariaLabel}
+                value={time || defaultTime}
+                onChange={(event) =>
+                  emit(date || formatDateValue(new Date()), event.target.value)
+                }
+                className="mt-2"
+              />
+            )}
           </div>
         </div>
       </PopoverContent>

@@ -4,6 +4,7 @@ package budget
 //go:generate go run ./dbgen
 
 import (
+	activityi18n "7link.com/platform/internal/budget/i18n"
 	"7link.com/platform/internal/budget/query"
 	"7link.com/platform/internal/delivery"
 	"7link.com/platform/internal/fleet"
@@ -79,7 +80,7 @@ func (m *Module) InjectServices(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	return c.AddTypes(Name, events.TypeSpec{Name: "budget.reserved", SchemaVersion: 1, SubjectKind: "budget_reservation", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "budget.settled", SchemaVersion: 1, SubjectKind: "budget_reservation", Realtime: events.RealtimeSignal})
+	return c.AddTypes(Name, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_budget_reserved_name", DescriptionKey: activityi18n.Namespace + ".activity_event_budget_reserved_description", Name: "budget.reserved", SchemaVersion: 1, SubjectKind: "budget_reservation", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_budget_settled_name", DescriptionKey: activityi18n.Namespace + ".activity_event_budget_settled_description", Name: "budget.settled", SchemaVersion: 1, SubjectKind: "budget_reservation", Realtime: events.RealtimeSignal})
 }
 
 func (m *Module) reserveGatewayOn(ctx context.Context, tx *gorm.DB, tenant, project, id guid.ID, amount int64, limit *int64) error {
@@ -107,7 +108,7 @@ func (m *Module) Initialize(context.Context) error {
 	if m == nil || m.names.Reservations.IsZero() || m.projects.LockOn == nil || m.projects.SpendOn == nil || m.ids == nil || m.audit == nil || m.events == nil {
 		return ErrUnavailable
 	}
-	return nil
+	return activityi18n.Register()
 }
 
 var (

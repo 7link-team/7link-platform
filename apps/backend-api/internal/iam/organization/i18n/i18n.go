@@ -35,6 +35,7 @@ const (
 	InvalidTenant               = Namespace + ".invalid_tenant"
 	TenantOwnerNotFound         = Namespace + ".tenant_owner_not_found"
 	TenantOwnerInactive         = Namespace + ".tenant_owner_inactive"
+	PlatformCreationDisabled    = Namespace + ".platform_creation_disabled"
 	InvitationNotFound          = Namespace + ".invitation_not_found"
 	InvalidInvitationCredential = Namespace + ".invalid_invitation_credential"
 	InvitationExpired           = Namespace + ".invitation_expired"

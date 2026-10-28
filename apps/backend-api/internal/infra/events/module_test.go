@@ -60,6 +60,8 @@ func TestCatalogValidatesAtomically(t *testing.T) {
 	require.Error(t, m.AddTypes("delivery", valid, valid))
 	require.Empty(t, m.types)
 	require.NoError(t, m.AddTypes("delivery", valid))
+	require.Equal(t, "delivery", m.types["project.created"].Module,
+		"event namespace must not be mistaken for its declaring module")
 	require.Error(t, m.AddTypes("delivery", valid))
 	for _, mode := range []RealtimeMode{RealtimeNone, RealtimeFull} {
 		m := NewModule(rt)

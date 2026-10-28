@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	activityi18n "7link.com/platform/internal/delivery/i18n"
 	"context"
 	"encoding/json"
 	"errors"
@@ -22,7 +23,7 @@ import (
 const assignmentReclaimJob = "delivery.lease_reclaim"
 
 func (m *Module) JobHandlers() []jobs.Handler {
-	return []jobs.Handler{m.artifactReconcileHandler(), {Kind: assignmentReclaimJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return []jobs.Handler{m.artifactReconcileHandler(), {DisplayNameKey: activityi18n.Namespace + ".activity_job_delivery_lease_reclaim_name", DescriptionKey: activityi18n.Namespace + ".activity_job_delivery_lease_reclaim_description", Kind: assignmentReclaimJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		if job.TenantID <= 0 {
 			return jobs.Permanent(ErrInvalidArgument)
 		}

@@ -1,7 +1,7 @@
 import { AutoForm } from "@workspace/ui/components/auto-form"
 import { AutoTable } from "@workspace/ui/components/auto-table"
 import { useCallback, useEffect, useState } from "react"
-import { Pencil, Plus, Trash2 } from "lucide-react"
+import { Pencil, Trash2 } from "lucide-react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -14,14 +14,12 @@ import {
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { AccountViewDialog } from "../../components/account-view-dialog"
-import { useAuth } from "../../components/auth"
 import { useAllowed } from "../../lib/permissions"
 import { iamApi, type Tenant } from "../../lib/iam-api"
 
 export default function OperatingPlatformsPage() {
   const t = useTranslations("iam")
   const allowed = useAllowed()
-  const { session } = useAuth()
   const [items, setItems] = useState<Tenant[]>([])
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Tenant | null>(null)
@@ -50,21 +48,15 @@ export default function OperatingPlatformsPage() {
     }
   }, [refresh])
   const save = async (data: Record<string, unknown>) => {
+    if (!editing) return
     setBusy(true)
     setError("")
     try {
-      if (editing)
-        await iamApi.updateOperatingPlatform(editing.id, {
-          name: String(data.name),
-          status,
-          version: editing.version,
-        })
-      else
-        await iamApi.createOperatingPlatform({
-          slug: String(data.slug),
-          name: String(data.name),
-          owner_principal_id: String(data.owner_principal_id),
-        })
+      await iamApi.updateOperatingPlatform(editing.id, {
+        name: String(data.name),
+        status,
+        version: editing.version,
+      })
       setOpen(false)
       await refresh()
       window.dispatchEvent(new Event("operating-platform-catalog-change"))
@@ -90,29 +82,16 @@ export default function OperatingPlatformsPage() {
   }
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
-      <PageHeader title={t("operatingPlatforms")} />
+      <PageHeader
+        title={t("operatingPlatforms")}
+        description={t("operatingPlatformSingleAdminDescription")}
+      />
       {error && <Alert>{error}</Alert>}
       <AutoTable
         loading={loading}
         fill
         onRefresh={refresh}
         searchable
-        toolbar={
-          <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
-            {allowed("operating_platform_create") && (
-              <Button
-                onClick={() => {
-                  setEditing(null)
-                  setStatus("active")
-                  setOpen(true)
-                }}
-              >
-                <Plus className="size-4" />
-                {t("createOperatingPlatform")}
-              </Button>
-            )}
-          </div>
-        }
         emptyContent={null}
         data={items}
         rowKey={(item) => item.id}
@@ -183,37 +162,19 @@ export default function OperatingPlatformsPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {t(editing ? "editOperatingPlatform" : "createOperatingPlatform")}
-            </DialogTitle>
+            <DialogTitle>{t("editOperatingPlatform")}</DialogTitle>
           </DialogHeader>
           <AutoForm
-            key={editing?.id ?? "create"}
-            mode={editing ? "edit" : "add"}
+            key={editing?.id ?? "edit"}
+            mode="edit"
             id="system-operating-platforms-form"
             fields={{
-              slug: {
-                name: t("identifier"),
-                type: "text",
-                value: "",
-                required: true,
-                show: !editing,
-                config: { id: "operating-slug", minLength: 3, maxLength: 63 },
-              },
               name: {
                 name: t("name"),
                 type: "text",
                 value: editing?.name ?? "",
                 required: true,
                 config: { id: "operating-name", maxLength: 128 },
-              },
-              owner_principal_id: {
-                name: t("ownerPrincipalID"),
-                type: "text",
-                value: session?.subject ?? "",
-                required: true,
-                show: !editing,
-                config: { id: "operating-owner" },
               },
               status: {
                 name: t("status"),

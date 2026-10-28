@@ -10,6 +10,7 @@ import (
 	"7link.com/platform/pkg/extension/authz"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"context"
 	"encoding/json"
@@ -123,6 +124,9 @@ func adminHTTPError(ctx context.Context, err error) error {
 }
 
 type adminJobView struct {
+	Module        string          `json:"module,omitempty"`
+	DisplayName   string          `json:"display_name,omitempty"`
+	Description   string          `json:"description,omitempty"`
 	ID            guid.ID         `json:"id"`
 	TenantID      guid.ID         `json:"tenant_id"`
 	Kind          string          `json:"kind"`
@@ -144,11 +148,18 @@ type adminJobView struct {
 	ErrorHistory  json.RawMessage `json:"error_history,omitempty"`
 }
 
-func (m *Module) adminJob(row *model.Job, detail bool) (adminJobView, error) {
+func (m *Module) adminJob(ctx context.Context, row *model.Job, detail bool) (adminJobView, error) {
 	m.mu.RLock()
-	_, known := m.handlers[row.Kind]
+	handler, known := m.handlers[row.Kind]
 	m.mu.RUnlock()
 	v := adminJobView{ID: row.ID, TenantID: row.TenantID, Kind: row.Kind, Queue: row.Queue, State: row.State, Priority: row.Priority, Attempts: row.Attempts, MaxAttempts: row.MaxAttempts, ManualRetries: row.ManualRetries, Version: row.Version, HasHandler: known, RunAt: time.UnixMilli(row.RunAtMS).UTC(), CreatedAt: row.CreatedAt, FinishedAt: row.FinishedAt, LastErrorCode: row.LastErrorCode}
+	v.Module = handler.Module
+	if handler.DisplayNameKey != "" {
+		v.DisplayName = platformi18n.TContext(ctx, handler.DisplayNameKey)
+	}
+	if handler.DescriptionKey != "" {
+		v.Description = platformi18n.TContext(ctx, handler.DescriptionKey)
+	}
 	if detail {
 		v.StartedAt = row.StartedAt
 		v.CorrelationID = row.CorrelationID
@@ -255,7 +266,7 @@ func (m *Module) getAdminJob(ctx context.Context, in *AdminJobInput) (*adminJobO
 		if e != nil {
 			return e
 		}
-		out, e = m.adminJob(row, true)
+		out, e = m.adminJob(ctx, row, true)
 		return e
 	})
 	if err != nil {
@@ -330,7 +341,7 @@ func (m *Module) mutateAdminJobOn(ctx context.Context, tx *gorm.DB, id guid.ID, 
 	if err != nil {
 		return adminJobView{}, err
 	}
-	return m.adminJob(row, false)
+	return m.adminJob(ctx, row, false)
 }
 func (m *Module) mutateAdminJobHTTP(ctx context.Context, in *adminJobMutationInput, retry bool) (*adminJobOutput, error) {
 	id, err := guid.RequireID(in.JobID)
@@ -494,7 +505,7 @@ func (m *Module) listAdminJobs(ctx context.Context, in *adminJobListInput) (*res
 			rows = rows[:limit]
 		}
 		for _, row := range rows {
-			v, e := m.adminJob(row, false)
+			v, e := m.adminJob(ctx, row, false)
 			if e != nil {
 				return e
 			}
@@ -570,6 +581,9 @@ func (m *Module) batchAdminJobs(ctx context.Context, in *adminBatchInput) (*resp
 }
 
 type adminScheduleView struct {
+	Module      string    `json:"module,omitempty"`
+	DisplayName string    `json:"display_name,omitempty"`
+	Description string    `json:"description,omitempty"`
 	ID          guid.ID   `json:"id"`
 	Name        string    `json:"name"`
 	Kind        string    `json:"kind"`
@@ -585,11 +599,20 @@ type adminScheduleView struct {
 	Version     int       `json:"version"`
 }
 
-func (m *Module) adminSchedule(row *model.Schedule) adminScheduleView {
+func (m *Module) adminSchedule(ctx context.Context, row *model.Schedule) adminScheduleView {
 	m.mu.RLock()
 	_, known := m.schedules[row.Name]
+	handler := m.handlers[row.Kind]
 	m.mu.RUnlock()
-	return adminScheduleView{ID: row.ID, Name: row.Name, Kind: row.Kind, Queue: row.Queue, Enabled: row.Enabled, Orphaned: !known, TenantScope: row.TenantScope, IntervalMS: row.IntervalMS, Cron: row.Cron, Timezone: row.Timezone, NextRunAt: time.UnixMilli(row.NextRunAtMS).UTC(), LastJobID: row.LastJobID, Version: row.Version}
+	v := adminScheduleView{ID: row.ID, Name: row.Name, Kind: row.Kind, Queue: row.Queue, Enabled: row.Enabled, Orphaned: !known, TenantScope: row.TenantScope, IntervalMS: row.IntervalMS, Cron: row.Cron, Timezone: row.Timezone, NextRunAt: time.UnixMilli(row.NextRunAtMS).UTC(), LastJobID: row.LastJobID, Version: row.Version}
+	v.Module = handler.Module
+	if handler.DisplayNameKey != "" {
+		v.DisplayName = platformi18n.TContext(ctx, handler.DisplayNameKey)
+	}
+	if handler.DescriptionKey != "" {
+		v.Description = platformi18n.TContext(ctx, handler.DescriptionKey)
+	}
+	return v
 }
 func (m *Module) listAdminSchedules(ctx context.Context, _ *struct{}) (*respx.Body[[]adminScheduleView], error) {
 	out := []adminScheduleView{}
@@ -603,7 +626,7 @@ func (m *Module) listAdminSchedules(ctx context.Context, _ *struct{}) (*respx.Bo
 			return e
 		}
 		for _, r := range rows {
-			out = append(out, m.adminSchedule(r))
+			out = append(out, m.adminSchedule(ctx, r))
 		}
 		return nil
 	})
@@ -656,7 +679,7 @@ func (m *Module) patchAdminSchedule(ctx context.Context, in *adminSchedulePatchI
 		if row.Version != v {
 			return errAdminVersion
 		}
-		if m.adminSchedule(row).Orphaned {
+		if m.adminSchedule(ctx, row).Orphaned {
 			return errAdminTransition
 		}
 		ms, e := gormx.DatabaseClockMillis(ctx, tx)
@@ -672,7 +695,7 @@ func (m *Module) patchAdminSchedule(ctx context.Context, in *adminSchedulePatchI
 		}
 		row.Enabled = in.Body.Enabled
 		row.Version++
-		out = m.adminSchedule(row)
+		out = m.adminSchedule(ctx, row)
 		return m.adminAuditOn(ctx, tx, "jobs.schedule_updated", 0, "job_schedule", id, map[string]any{"enabled": row.Enabled, "version": row.Version})
 	})
 	if err != nil {

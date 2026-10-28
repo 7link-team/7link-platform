@@ -4,5 +4,17 @@
   "unavailable": "绩效配置暂不可用。",
   "conflict": "方案已变更，请重新加载后修订。",
   "not_found": "未找到考核方案修订。",
-  "failed": "无法保存绩效配置。"
+  "failed": "无法保存绩效配置。",
+  "activity_event_performance_report_calibrated_name": "绩效 · 报告：已校准",
+  "activity_event_performance_report_calibrated_description": "业务事件：绩效 · 报告：已校准。由绩效管理模块发布，订阅处理器据此响应业务变化。",
+  "activity_event_performance_report_confirmed_name": "绩效 · 报告：已确认",
+  "activity_event_performance_report_confirmed_description": "业务事件：绩效 · 报告：已确认。由绩效管理模块发布，订阅处理器据此响应业务变化。",
+  "activity_event_performance_report_generated_name": "绩效 · 报告：已生成",
+  "activity_event_performance_report_generated_description": "业务事件：绩效 · 报告：已生成。由绩效管理模块发布，订阅处理器据此响应业务变化。",
+  "activity_event_performance_report_recalculated_name": "绩效 · 报告：已重新计算",
+  "activity_event_performance_report_recalculated_description": "业务事件：绩效 · 报告：已重新计算。由绩效管理模块发布，订阅处理器据此响应业务变化。",
+  "activity_event_performance_scheme_revised_name": "绩效 · 方案：已修订",
+  "activity_event_performance_scheme_revised_description": "业务事件：绩效 · 方案：已修订。由绩效管理模块发布，订阅处理器据此响应业务变化。",
+  "activity_job_performance_generate_due_name": "生成到期绩效报告",
+  "activity_job_performance_generate_due_description": "绩效管理：查找并生成已到计划生成时间的绩效报告。"
 }

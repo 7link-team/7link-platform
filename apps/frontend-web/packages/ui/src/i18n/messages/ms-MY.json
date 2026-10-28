@@ -157,7 +157,14 @@
       "reset": "Tetapkan semula",
       "search": "Cari",
       "condition": "Syarat",
-      "value": "Nilai"
+      "value": "Nilai",
+      "op_like": "Mengandungi",
+      "op_eq": "Sama dengan",
+      "op_ne": "Tidak sama dengan",
+      "op_gt": "Lebih besar / selepas",
+      "op_gte": "Sekurang-kurangnya / pada atau selepas",
+      "op_lt": "Lebih kecil / sebelum",
+      "op_lte": "Paling banyak / pada atau sebelum"
     }
   },
   "form": {

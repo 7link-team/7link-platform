@@ -129,6 +129,9 @@ func (m *Module) AddTypes(owner string, specs ...TypeSpec) error {
 		if _, exists := pending[spec.Name]; exists {
 			return fmt.Errorf("%w: duplicate %s", ErrInvalidEvent, spec.Name)
 		}
+		if spec.Module == "" {
+			spec.Module = owner
+		}
 		pending[spec.Name] = spec
 	}
 	for name, spec := range pending {

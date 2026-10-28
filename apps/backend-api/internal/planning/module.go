@@ -215,19 +215,19 @@ func (m *Module) InjectServices(s *module.Services) error {
 	if e != nil {
 		return e
 	}
-	if e = cat.AddTypes(Name, events.TypeSpec{Name: "loop_run.completed", SchemaVersion: 1, SubjectKind: "loop_run", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "loop_run.escalated", SchemaVersion: 1, SubjectKind: "loop_run", Realtime: events.RealtimeSignal}); e != nil {
+	if e = cat.AddTypes(Name, events.TypeSpec{DisplayNameKey: planningi18n.Namespace + ".activity_event_loop_run_completed_name", DescriptionKey: planningi18n.Namespace + ".activity_event_loop_run_completed_description", Name: "loop_run.completed", SchemaVersion: 1, SubjectKind: "loop_run", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: planningi18n.Namespace + ".activity_event_loop_run_escalated_name", DescriptionKey: planningi18n.Namespace + ".activity_event_loop_run_escalated_description", Name: "loop_run.escalated", SchemaVersion: 1, SubjectKind: "loop_run", Realtime: events.RealtimeSignal}); e != nil {
 		return e
 	}
-	if e = cat.AddTypes(Name, events.TypeSpec{Name: "planning.report_checked", SchemaVersion: 1, SubjectKind: "planning_report", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "planning.report_overdue", SchemaVersion: 1, SubjectKind: "planning_report", Realtime: events.RealtimeSignal}); e != nil {
+	if e = cat.AddTypes(Name, events.TypeSpec{DisplayNameKey: planningi18n.Namespace + ".activity_event_planning_report_checked_name", DescriptionKey: planningi18n.Namespace + ".activity_event_planning_report_checked_description", Name: "planning.report_checked", SchemaVersion: 1, SubjectKind: "planning_report", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: planningi18n.Namespace + ".activity_event_planning_report_overdue_name", DescriptionKey: planningi18n.Namespace + ".activity_event_planning_report_overdue_description", Name: "planning.report_overdue", SchemaVersion: 1, SubjectKind: "planning_report", Realtime: events.RealtimeSignal}); e != nil {
 		return e
 	}
-	if e = cat.AddTypes(Name, events.TypeSpec{Name: "planning.settings_updated", SchemaVersion: 1, SubjectKind: "planning_settings", Realtime: events.RealtimeSignal}); e != nil {
+	if e = cat.AddTypes(Name, events.TypeSpec{DisplayNameKey: planningi18n.Namespace + ".activity_event_planning_settings_updated_name", DescriptionKey: planningi18n.Namespace + ".activity_event_planning_settings_updated_description", Name: "planning.settings_updated", SchemaVersion: 1, SubjectKind: "planning_settings", Realtime: events.RealtimeSignal}); e != nil {
 		return e
 	}
-	if e = cat.AddTypes(Name, events.TypeSpec{Name: "loop_contract.state_changed", SchemaVersion: 1, SubjectKind: "loop_contract", Realtime: events.RealtimeSignal}); e != nil {
+	if e = cat.AddTypes(Name, events.TypeSpec{DisplayNameKey: planningi18n.Namespace + ".activity_event_loop_contract_state_changed_name", DescriptionKey: planningi18n.Namespace + ".activity_event_loop_contract_state_changed_description", Name: "loop_contract.state_changed", SchemaVersion: 1, SubjectKind: "loop_contract", Realtime: events.RealtimeSignal}); e != nil {
 		return e
 	}
-	return cat.AddTypes(Name, events.TypeSpec{Name: "planning.heavy_changed", SchemaVersion: 1, SubjectKind: "heavy_run", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "planning.changed", SchemaVersion: 1, SubjectKind: "planning_record", Realtime: events.RealtimeSignal})
+	return cat.AddTypes(Name, events.TypeSpec{DisplayNameKey: planningi18n.Namespace + ".activity_event_planning_heavy_changed_name", DescriptionKey: planningi18n.Namespace + ".activity_event_planning_heavy_changed_description", Name: "planning.heavy_changed", SchemaVersion: 1, SubjectKind: "heavy_run", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: planningi18n.Namespace + ".activity_event_planning_changed_name", DescriptionKey: planningi18n.Namespace + ".activity_event_planning_changed_description", Name: "planning.changed", SchemaVersion: 1, SubjectKind: "planning_record", Realtime: events.RealtimeSignal})
 }
 
 var (

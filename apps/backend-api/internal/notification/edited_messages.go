@@ -1,6 +1,7 @@
 package notification
 
 import (
+	activityi18n "7link.com/platform/internal/notification/i18n"
 	"context"
 	"encoding/json"
 	"slices"
@@ -13,7 +14,7 @@ import (
 // Edits have a separate transactional subscription so the existing posted
 // projector cannot notify every previously mentioned participant again.
 func (m *Module) messageEditedSubscriber() events.Subscriber {
-	return events.Subscriber{Name: Name + ".message_edits", EventTypes: []string{"collab.message_edited"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: func(ctx context.Context, tx *gorm.DB, envelope events.Envelope) error {
+	return events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_notification_message_edits_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_notification_message_edits_description", Name: Name + ".message_edits", EventTypes: []string{"collab.message_edited"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: func(ctx context.Context, tx *gorm.DB, envelope events.Envelope) error {
 		eventCtx, changes := collectInboxChanges(ctx)
 		if err := m.projectMessageEditedOn(eventCtx, tx, envelope); err != nil {
 			return err

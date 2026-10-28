@@ -28,7 +28,11 @@ const permissions = new Set(
 const subscribers: EventSubscriber[] = [
   {
     name: "notification.projector",
-    mode: "Atomic",
+    display_name: "Prepare business notifications",
+    description: "Notifications: prepare messages from business events.",
+    module: "notification",
+    event_types: ["work_item.*"],
+    mode: "Transactional",
     partitions: 1,
     cursors: [{ p: 0, last_seq: 5, lag: 2 }],
     parked: 1,
@@ -40,6 +44,9 @@ const events = [
   {
     event_id: "123",
     event_type: "work_item.state_changed",
+    display_name: "Work item state changed",
+    description: "Project delivery: records a work item state change.",
+    module: "delivery",
     stream_seq: 7,
     tenant_id: "42",
     schema_version: 1,

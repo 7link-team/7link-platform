@@ -4,5 +4,17 @@
   "unavailable": "Konfigurasi prestasi tidak tersedia.",
   "conflict": "Skim telah berubah. Muat semula sebelum menyemak.",
   "not_found": "Semakan skim penilaian tidak ditemui.",
-  "failed": "Konfigurasi penilaian tidak dapat disimpan."
+  "failed": "Konfigurasi penilaian tidak dapat disimpan.",
+  "activity_event_performance_report_calibrated_name": "Prestasi · laporan: ditentukur",
+  "activity_event_performance_report_calibrated_description": "Peristiwa perniagaan: Prestasi · laporan: ditentukur. Diterbitkan oleh Laporan prestasi; pengendali langganan bertindak berdasarkan fakta ini.",
+  "activity_event_performance_report_confirmed_name": "Prestasi · laporan: disahkan",
+  "activity_event_performance_report_confirmed_description": "Peristiwa perniagaan: Prestasi · laporan: disahkan. Diterbitkan oleh Laporan prestasi; pengendali langganan bertindak berdasarkan fakta ini.",
+  "activity_event_performance_report_generated_name": "Prestasi · laporan: dijana",
+  "activity_event_performance_report_generated_description": "Peristiwa perniagaan: Prestasi · laporan: dijana. Diterbitkan oleh Laporan prestasi; pengendali langganan bertindak berdasarkan fakta ini.",
+  "activity_event_performance_report_recalculated_name": "Prestasi · laporan: dikira semula",
+  "activity_event_performance_report_recalculated_description": "Peristiwa perniagaan: Prestasi · laporan: dikira semula. Diterbitkan oleh Laporan prestasi; pengendali langganan bertindak berdasarkan fakta ini.",
+  "activity_event_performance_scheme_revised_name": "Prestasi · skim: disemak semula",
+  "activity_event_performance_scheme_revised_description": "Peristiwa perniagaan: Prestasi · skim: disemak semula. Diterbitkan oleh Laporan prestasi; pengendali langganan bertindak berdasarkan fakta ini.",
+  "activity_job_performance_generate_due_name": "Jana laporan prestasi matang",
+  "activity_job_performance_generate_due_description": "Laporan prestasi: Memproses jana laporan prestasi matang."
 }

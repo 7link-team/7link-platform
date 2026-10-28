@@ -1626,6 +1626,12 @@
             "type": "string"
           },
           "data": {},
+          "description": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
           "event_id": {
             "pattern": "^[1-9][0-9]*$",
             "type": [
@@ -1634,6 +1640,9 @@
             ]
           },
           "event_type": {
+            "type": "string"
+          },
+          "module": {
             "type": "string"
           },
           "occurred_at": {
@@ -1787,6 +1796,12 @@
             "format": "date-time",
             "type": "string"
           },
+          "description": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
           "error_history": {},
           "finished_at": {
             "format": "date-time",
@@ -1815,6 +1830,9 @@
           "max_attempts": {
             "format": "int64",
             "type": "integer"
+          },
+          "module": {
+            "type": "string"
           },
           "payload": {},
           "priority": {
@@ -2080,6 +2098,12 @@
           "cron": {
             "type": "string"
           },
+          "description": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
           "enabled": {
             "type": "boolean"
           },
@@ -2099,6 +2123,9 @@
           },
           "last_job_id": {
             "pattern": "^[1-9][0-9]*$",
+            "type": "string"
+          },
+          "module": {
             "type": "string"
           },
           "name": {
@@ -2167,7 +2194,25 @@
               "null"
             ]
           },
+          "description": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "event_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "mode": {
+            "type": "string"
+          },
+          "module": {
             "type": "string"
           },
           "name": {
@@ -2186,6 +2231,7 @@
           }
         },
         "required": [
+          "event_types",
           "name",
           "mode",
           "partitions",
@@ -151130,6 +151176,7 @@
         "x-authz-permission": "operating_platform_view"
       },
       "post": {
+        "deprecated": true,
         "operationId": "organization-create-operating-platform",
         "requestBody": {
           "content": {
@@ -151142,16 +151189,6 @@
           "required": true
         },
         "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeTenant"
-                }
-              }
-            },
-            "description": "Created"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -151228,7 +151265,7 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Create an operating platform",
+        "summary": "Operating platform creation is no longer supported",
         "tags": [
           "operating-platforms"
         ],

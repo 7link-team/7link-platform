@@ -79,5 +79,9 @@
   "last_platform_administrator": "Perubahan ini akan meninggalkan platform tanpa pentadbir penuh. Naikkan pangkat prinsipal lain terlebih dahulu.",
   "platform_permission_scope": "Hanya kebenaran berskop platform boleh diberikan kepada pentadbir platform. Pilih kod daripada katalog kebenaran platform.",
   "privilege_escalation_denied": "Anda tidak boleh memberikan kebenaran yang anda sendiri tidak miliki. Minta pentadbir penyewa melaksanakan tugasan ini.",
-  "unavailable": "Perkhidmatan IAM tidak tersedia. Cuba lagi selepas pangkalan data dan kebergantungannya pulih."
+  "unavailable": "Perkhidmatan IAM tidak tersedia. Cuba lagi selepas pangkalan data dan kebergantungannya pulih.",
+  "activity_event_iam_core_menus_synced_name": "Identiti dan akses · menu: disegerakkan",
+  "activity_event_iam_core_menus_synced_description": "Peristiwa perniagaan: Identiti dan akses · menu: disegerakkan. Diterbitkan oleh Identiti dan akses; pengendali langganan bertindak berdasarkan fakta ini.",
+  "activity_job_iam_core_menu_contributions_sync_name": "Segerakkan menu modul",
+  "activity_job_iam_core_menu_contributions_sync_description": "Identiti dan akses: Memproses segerakkan menu modul."
 }

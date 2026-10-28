@@ -68,7 +68,7 @@ func TestMenuSyncBindsOnlyCompleteDependenciesAndRegistersDurableEvent(t *testin
 				require.NotNil(t, m.menuSync.leader)
 				require.NotNil(t, m.menuSync.publisher)
 				require.Equal(t, MenuJobNamespace, catalog.namespace)
-				require.Equal(t, []events.TypeSpec{{Name: MenuJobNamespace + ".menus_synced", SchemaVersion: 1, SubjectKind: "menu_owner", Realtime: events.RealtimeSignal}}, catalog.specs)
+				require.Equal(t, []events.TypeSpec{{Name: MenuJobNamespace + ".menus_synced", Module: Name, DisplayNameKey: "iam.activity_event_iam_core_menus_synced_name", DescriptionKey: "iam.activity_event_iam_core_menus_synced_description", SchemaVersion: 1, SubjectKind: "menu_owner", Realtime: events.RealtimeSignal}}, catalog.specs)
 				return
 			}
 			require.Nil(t, m.menuSync.queue, "failed wiring must not publish partial runtime")

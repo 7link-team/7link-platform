@@ -7,6 +7,7 @@ import (
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/infra/events"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"context"
 	"errors"
@@ -68,6 +69,7 @@ func TestModuleLifecycleBindsGatewayAndFailsMissingDependencies(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, bound.ReserveOn)
 			require.NotNil(t, bound.SettleOn)
+			require.NoError(t, i18n.NewModule(nil, i18n.Base).Initialize(t.Context()))
 			require.NoError(t, m.Initialize(t.Context()))
 			provider, err := module.Resolve[Provider](s)
 			require.NoError(t, err)

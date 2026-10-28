@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	activityi18n "7link.com/platform/internal/knowledge/i18n"
 	"context"
 	"encoding/json"
 	"errors"
@@ -92,7 +93,7 @@ func (m *Module) registerEventIngestion(s *module.Services) error {
 	}
 	// Transactional mode owns event receipts, rollback, aggregate parking and
 	// replay. No second receipt or retry implementation belongs in this module.
-	return catalog.AddSubscribers(Name, events.Subscriber{Name: "knowledge.source_ingest", Mode: events.Transactional, StartFrom: events.Earliest,
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_knowledge_source_ingest_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_knowledge_source_ingest_description", Name: "knowledge.source_ingest", Mode: events.Transactional, StartFrom: events.Earliest,
 		EventTypes: []string{"requirement.versioned", "requirement.scope_changed", "work_item.state_changed", "project.stage_changed", "result.feedback_added", "agent.retired", "clientwork.package_decided"}, Handle: m.ingestEventOn})
 }
 func structuredSource(kind string) bool {

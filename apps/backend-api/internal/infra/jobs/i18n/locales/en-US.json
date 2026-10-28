@@ -4,5 +4,9 @@
   "version_required": "The If-Match header is required.",
   "version_conflict": "The job or schedule was modified. Reload it and try again.",
   "invalid_transition": "The job or schedule does not allow this operation in its current state.",
-  "schedule_active": "This schedule already has a pending or running job."
+  "schedule_active": "This schedule already has a pending or running job.",
+  "activity_event_job_dead_lettered_name": "Background job moved to dead letters",
+  "activity_event_job_dead_lettered_description": "Business event: Background job moved to dead letters. Published by Background jobs; subscribed handlers react to this fact.",
+  "activity_job_jobs_fan_out_name": "Dispatch scheduled work to tenants",
+  "activity_job_jobs_fan_out_description": "Background jobs: Enumerates active tenants and queues a child job for each eligible tenant."
 }

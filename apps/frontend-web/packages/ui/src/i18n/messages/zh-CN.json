@@ -157,7 +157,14 @@
       "reset": "重置",
       "search": "搜索",
       "condition": "条件",
-      "value": "值"
+      "value": "值",
+      "op_like": "包含",
+      "op_eq": "等于",
+      "op_ne": "不等于",
+      "op_gt": "大于／晚于",
+      "op_gte": "大于等于／不早于",
+      "op_lt": "小于／早于",
+      "op_lte": "小于等于／不晚于"
     }
   },
   "form": {

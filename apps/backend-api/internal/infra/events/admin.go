@@ -21,6 +21,7 @@ import (
 	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
 	"gorm.io/gorm"
@@ -89,6 +90,9 @@ type adminEventSubject struct {
 	ID   guid.ID `json:"id"`
 }
 type adminEventView struct {
+	Module         string            `json:"module,omitempty"`
+	DisplayName    string            `json:"display_name,omitempty"`
+	Description    string            `json:"description,omitempty"`
 	EventID        guid.ID           `json:"event_id"`
 	EventType      string            `json:"event_type"`
 	SchemaVersion  int               `json:"schema_version"`
@@ -105,8 +109,18 @@ type adminEventView struct {
 	CausationID    *guid.ID          `json:"causation_id,omitempty"`
 }
 
-func adminEvent(row *model.EventRow, detail bool) (adminEventView, error) {
+func (m *Module) adminEvent(ctx context.Context, row *model.EventRow, detail bool) (adminEventView, error) {
 	v := adminEventView{EventID: row.ID, EventType: row.EventType, SchemaVersion: row.SchemaVersion, StreamSeq: row.StreamSeq, TenantID: row.TenantID, ProjectID: row.ProjectID, OccurredAt: row.OccurredAt, Actor: adminEventActor{row.ActorKind, row.ActorID, row.AuthoritySource}, Subject: adminEventSubject{row.SubjectKind, row.SubjectID}, SubjectVersion: row.SubjectVersion, Topics: []string{}, CorrelationID: row.CorrelationID, CausationID: row.CausationID}
+	m.mu.RLock()
+	spec := m.types[row.EventType]
+	m.mu.RUnlock()
+	v.Module = spec.Module
+	if spec.DisplayNameKey != "" {
+		v.DisplayName = platformi18n.TContext(ctx, spec.DisplayNameKey)
+	}
+	if spec.DescriptionKey != "" {
+		v.Description = platformi18n.TContext(ctx, spec.DescriptionKey)
+	}
 	if err := json.Unmarshal([]byte(row.Topics), &v.Topics); err != nil {
 		return v, err
 	}
@@ -228,7 +242,7 @@ func (m *Module) listAdminEvents(ctx context.Context, in *adminEventListInput) (
 			return e
 		}
 		for _, row := range rows {
-			v, e := adminEvent(row, false)
+			v, e := m.adminEvent(ctx, row, false)
 			if e != nil {
 				return e
 			}
@@ -259,7 +273,7 @@ func (m *Module) getAdminEvent(ctx context.Context, in *adminEventInput) (*respx
 		if e != nil {
 			return e
 		}
-		out, e = adminEvent(r, true)
+		out, e = m.adminEvent(ctx, r, true)
 		if e != nil {
 			return e
 		}
@@ -280,17 +294,32 @@ type adminCursorView struct {
 	Lag       int64 `json:"lag"`
 }
 type adminSubscriberView struct {
-	Name       string            `json:"name"`
-	Mode       DeliveryMode      `json:"mode"`
-	Partitions int               `json:"partitions"`
-	Cursors    []adminCursorView `json:"cursors"`
-	Parked     int64             `json:"parked"`
-	Blocked    int64             `json:"blocked"`
-	Paused     bool              `json:"paused"`
+	Module      string            `json:"module,omitempty"`
+	DisplayName string            `json:"display_name,omitempty"`
+	Description string            `json:"description,omitempty"`
+	EventTypes  []string          `json:"event_types"`
+	Name        string            `json:"name"`
+	Mode        DeliveryMode      `json:"mode"`
+	Partitions  int               `json:"partitions"`
+	Cursors     []adminCursorView `json:"cursors"`
+	Parked      int64             `json:"parked"`
+	Blocked     int64             `json:"blocked"`
+	Paused      bool              `json:"paused"`
 }
 
-func adminSubscriber(s SubscriberStatus) adminSubscriberView {
+func (m *Module) adminSubscriber(ctx context.Context, s SubscriberStatus) adminSubscriberView {
 	v := adminSubscriberView{Name: s.Name, Mode: s.Mode, Partitions: s.Partitions, Cursors: []adminCursorView{}, Parked: s.Parked, Blocked: s.Blocked, Paused: s.Paused}
+	m.mu.RLock()
+	declaration := m.subscribers[s.Name]
+	m.mu.RUnlock()
+	v.Module = declaration.Module
+	v.EventTypes = append([]string{}, declaration.EventTypes...)
+	if declaration.DisplayNameKey != "" {
+		v.DisplayName = platformi18n.TContext(ctx, declaration.DisplayNameKey)
+	}
+	if declaration.DescriptionKey != "" {
+		v.Description = platformi18n.TContext(ctx, declaration.DescriptionKey)
+	}
 	for _, c := range s.Cursors {
 		v.Cursors = append(v.Cursors, adminCursorView(c))
 	}
@@ -304,7 +333,7 @@ func (m *Module) listAdminSubscribers(ctx context.Context, _ *struct{}) (*respx.
 			return e
 		}
 		for _, r := range rows {
-			out = append(out, adminSubscriber(r))
+			out = append(out, m.adminSubscriber(ctx, r))
 		}
 		return nil
 	})
@@ -333,7 +362,7 @@ func (m *Module) patchAdminSubscriber(ctx context.Context, in *adminSubscriberPa
 		}
 		for _, r := range rows {
 			if r.Name == in.Subscriber {
-				out = adminSubscriber(r)
+				out = m.adminSubscriber(ctx, r)
 				return m.adminAuditOn(ctx, tx, "events.subscriber_paused", 0, "domain_event_subscriber", 0, map[string]any{"subscriber": in.Subscriber, "paused": in.Body.Paused})
 			}
 		}

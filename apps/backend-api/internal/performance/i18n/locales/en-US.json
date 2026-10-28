@@ -4,5 +4,17 @@
   "unavailable": "Performance configuration is unavailable.",
   "conflict": "The scheme changed. Reload before revising.",
   "not_found": "Assessment scheme revision not found.",
-  "failed": "The assessment configuration could not be saved."
+  "failed": "The assessment configuration could not be saved.",
+  "activity_event_performance_report_calibrated_name": "Performance · report: calibrated",
+  "activity_event_performance_report_calibrated_description": "Business event: Performance · report: calibrated. Published by Performance reports; subscribed handlers react to this fact.",
+  "activity_event_performance_report_confirmed_name": "Performance · report: confirmed",
+  "activity_event_performance_report_confirmed_description": "Business event: Performance · report: confirmed. Published by Performance reports; subscribed handlers react to this fact.",
+  "activity_event_performance_report_generated_name": "Performance · report: generated",
+  "activity_event_performance_report_generated_description": "Business event: Performance · report: generated. Published by Performance reports; subscribed handlers react to this fact.",
+  "activity_event_performance_report_recalculated_name": "Performance · report: recalculated",
+  "activity_event_performance_report_recalculated_description": "Business event: Performance · report: recalculated. Published by Performance reports; subscribed handlers react to this fact.",
+  "activity_event_performance_scheme_revised_name": "Performance · scheme: revised",
+  "activity_event_performance_scheme_revised_description": "Business event: Performance · scheme: revised. Published by Performance reports; subscribed handlers react to this fact.",
+  "activity_job_performance_generate_due_name": "Generate due performance reports",
+  "activity_job_performance_generate_due_description": "Performance reports: Finds and generates performance reports whose generation time has arrived."
 }

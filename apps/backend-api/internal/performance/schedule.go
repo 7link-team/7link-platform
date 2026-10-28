@@ -1,6 +1,7 @@
 package performance
 
 import (
+	activityi18n "7link.com/platform/internal/performance/i18n"
 	"context"
 	"encoding/json"
 	"slices"
@@ -226,7 +227,7 @@ func (m *Module) runSchedule(ctx context.Context, job jobs.Job) error {
 }
 
 func (m *Module) JobHandlers() []jobs.Handler {
-	return []jobs.Handler{{Kind: "performance.generate_due", Timeout: 5 * time.Minute, Run: m.runSchedule}}
+	return []jobs.Handler{{DisplayNameKey: activityi18n.Namespace + ".activity_job_performance_generate_due_name", DescriptionKey: activityi18n.Namespace + ".activity_job_performance_generate_due_description", Kind: "performance.generate_due", Timeout: 5 * time.Minute, Run: m.runSchedule}}
 }
 func (m *Module) JobSchedules() []jobs.Schedule {
 	return []jobs.Schedule{{Name: "performance.generate_due", Kind: "performance.generate_due", Cron: "* * * * *", Timezone: "UTC", TenantScope: jobs.ScopePerTenant, Misfire: jobs.MisfireCoalesce, Payload: map[string]any{}}}

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"7link.com/platform/pkg/extension/authn"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
+	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -130,6 +132,34 @@ func TestJobCatalogPreservesGovernanceLogicalNamespace(t *testing.T) {
 	// Preparation succeeded with the real business_governance module even
 	// though its handler and schedule names use the frozen governance prefix.
 	require.Equal(t, "governance.seed_reconcile", governance.JobHandlers()[0].Kind)
+}
+
+func TestProductionJobProvidersHaveLocalizedNamesAndPurposes(t *testing.T) {
+	app := bootstrapComposedApp(t)
+	_, api := humatest.New(t)
+	require.NoError(t, app.modules.RegisterHTTP(t.Context(), api))
+	count := 0
+	for _, current := range app.modules.Modules() {
+		provider, ok := current.(jobs.HandlerProvider)
+		if !ok {
+			continue
+		}
+		for _, handler := range provider.JobHandlers() {
+			count++
+			identity := ".activity_job_" + strings.ReplaceAll(handler.Kind, ".", "_")
+			require.True(t, strings.HasSuffix(handler.DisplayNameKey, identity+"_name"), handler.Kind)
+			require.True(t, strings.HasSuffix(handler.DescriptionKey, identity+"_description"), handler.Kind)
+			for _, key := range []string{handler.DisplayNameKey, handler.DescriptionKey} {
+				require.NotEmpty(t, key, "%s: %s", current.ModuleName(), handler.Kind)
+				for _, locale := range []string{"en-US", "zh-CN", "ms-MY"} {
+					text := platformi18n.TContext(platformi18n.WithLocale(t.Context(), locale), key)
+					require.NotEqual(t, key, text, "%s: %s in %s", handler.Kind, key, locale)
+					require.NotEmpty(t, text)
+				}
+			}
+		}
+	}
+	require.Greater(t, count, 50, "exercise the production providers, not only test declarations")
 }
 
 func TestGovernanceSeedUsesRealIAMTransactionsAndAudit(t *testing.T) {

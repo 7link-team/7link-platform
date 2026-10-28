@@ -6,11 +6,13 @@ import (
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/events"
 	"7link.com/platform/internal/infra/guid"
+	intakei18n "7link.com/platform/internal/intake/i18n"
 	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/module"
 	"context"
 	"errors"
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"strings"
@@ -85,7 +87,15 @@ func TestSignedBriefPersistsImmutableSourceAndReauthorizes(t *testing.T) {
 	}))
 }
 
-func (*briefTestPublisher) AddTypes(string, ...events.TypeSpec) error { return nil }
+func (*briefTestPublisher) AddTypes(_ string, specs ...events.TypeSpec) error {
+	for _, spec := range specs {
+		base := intakei18n.Namespace + ".activity_event_" + strings.ReplaceAll(spec.Name, ".", "_")
+		if spec.DisplayNameKey != base+"_name" || spec.DescriptionKey != base+"_description" {
+			return fmt.Errorf("event presentation does not describe %s", spec.Name)
+		}
+	}
+	return nil
+}
 func TestBriefServiceInjectionRequiresAllSources(t *testing.T) {
 	m, _ := referencesHarness(t)
 	pub := &briefTestPublisher{}

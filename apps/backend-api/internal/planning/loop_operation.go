@@ -1,6 +1,7 @@
 package planning
 
 import (
+	activityi18n "7link.com/platform/internal/planning/i18n"
 	"context"
 	"encoding/json"
 	"errors"
@@ -448,7 +449,7 @@ func (m *Module) recordLoopResultHTTP(ctx context.Context, in *LoopResultInput) 
 	return respx.OK(ctx, out), nil
 }
 func (m *Module) loopTimeoutJobHandler() jobs.Handler {
-	return jobs.Handler{Kind: "planning.loop_run_timeout", Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error { return m.scanLoopTimeouts(ctx, job.TenantID) }}
+	return jobs.Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_planning_loop_run_timeout_name", DescriptionKey: activityi18n.Namespace + ".activity_job_planning_loop_run_timeout_description", Kind: "planning.loop_run_timeout", Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error { return m.scanLoopTimeouts(ctx, job.TenantID) }}
 }
 func (*Module) loopTimeoutJobSchedule() jobs.Schedule {
 	return jobs.Schedule{Name: "planning.loop_run_timeout", Kind: "planning.loop_run_timeout", Interval: time.Minute, Timezone: "UTC", TenantScope: jobs.ScopePerTenant, Misfire: jobs.MisfireCoalesce, Payload: map[string]any{}}

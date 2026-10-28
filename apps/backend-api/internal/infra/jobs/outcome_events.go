@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	activityi18n "7link.com/platform/internal/infra/jobs/i18n"
 	"context"
 	"errors"
 
@@ -32,7 +33,7 @@ func WireJobEvents(services *module.Services) error {
 	if err != nil {
 		return err
 	}
-	if err := catalog.AddTypes(Name, events.TypeSpec{Name: "job.dead_lettered", SchemaVersion: 1, SubjectKind: "background_job", Realtime: events.RealtimeNone}); err != nil {
+	if err := catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_job_dead_lettered_name", DescriptionKey: activityi18n.Namespace + ".activity_event_job_dead_lettered_description", Name: "job.dead_lettered", SchemaVersion: 1, SubjectKind: "background_job", Realtime: events.RealtimeNone}); err != nil {
 		return err
 	}
 	return connector.Bind(func(ctx context.Context, tx *gorm.DB, dead DeadLetter) error {

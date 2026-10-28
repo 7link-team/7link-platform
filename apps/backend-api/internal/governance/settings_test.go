@@ -1,9 +1,12 @@
 package governance
 
 import (
+	governancei18n "7link.com/platform/internal/governance/i18n"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"7link.com/platform/internal/governance/query"
@@ -20,7 +23,15 @@ import (
 
 type moduleGovernanceEvents struct{}
 
-func (moduleGovernanceEvents) AddTypes(string, ...events.TypeSpec) error         { return nil }
+func (moduleGovernanceEvents) AddTypes(_ string, specs ...events.TypeSpec) error {
+	for _, spec := range specs {
+		base := governancei18n.Namespace + ".activity_event_" + strings.ReplaceAll(spec.Name, ".", "_")
+		if spec.DisplayNameKey != base+"_name" || spec.DescriptionKey != base+"_description" {
+			return fmt.Errorf("event presentation does not describe %s", spec.Name)
+		}
+	}
+	return nil
+}
 func (moduleGovernanceEvents) AddSubscribers(string, ...events.Subscriber) error { return nil }
 func (moduleGovernanceEvents) Publish(context.Context, *gorm.DB, events.Event) (guid.ID, error) {
 	return 1, nil

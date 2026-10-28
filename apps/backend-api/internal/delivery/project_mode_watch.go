@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	activityi18n "7link.com/platform/internal/delivery/i18n"
 	"context"
 	"encoding/json"
 	"errors"
@@ -34,7 +35,7 @@ func (m *Module) injectAutonomyWatch(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	return catalog.AddSubscribers(Name, events.Subscriber{Name: autonomyWatchJob, EventTypes: []string{"delegation.granted", "delegation.activated", "delegation.revoked", "delegation.expired", "governance.rule_updated", "governance.settings_updated", "fleet.agent_registered", "fleet.agent_presence", "agent.spawned", "agent.retired", "budget.threshold_reached", "budget.settled", "project.mode_changed"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: m.autonomyWatchEventOn})
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_delivery_autonomy_watch_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_delivery_autonomy_watch_description", Name: autonomyWatchJob, EventTypes: []string{"delegation.granted", "delegation.activated", "delegation.revoked", "delegation.expired", "governance.rule_updated", "governance.settings_updated", "fleet.agent_registered", "fleet.agent_presence", "agent.spawned", "agent.retired", "budget.threshold_reached", "budget.settled", "project.mode_changed"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: m.autonomyWatchEventOn})
 }
 
 func (m *Module) autonomyWatchEventOn(ctx context.Context, tx *gorm.DB, e events.Envelope) error {
@@ -51,7 +52,7 @@ func (m *Module) autonomyWatchEventOn(ctx context.Context, tx *gorm.DB, e events
 }
 
 func (m *Module) autonomyWatchHandler() jobs.Handler {
-	return jobs.Handler{Kind: autonomyWatchJob, Timeout: 5 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return jobs.Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_delivery_autonomy_watch_name", DescriptionKey: activityi18n.Namespace + ".activity_job_delivery_autonomy_watch_description", Kind: autonomyWatchJob, Timeout: 5 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		var body autonomyWatchBody
 		if job.TenantID <= 0 || (len(job.Payload) > 0 && json.Unmarshal(job.Payload, &body) != nil) || body.ProjectID < 0 {
 			return jobs.Permanent(ErrInvalidArgument)

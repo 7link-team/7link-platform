@@ -2,6 +2,7 @@ package clientwork
 
 import (
 	"7link.com/platform/internal/agents"
+	activityi18n "7link.com/platform/internal/clientwork/i18n"
 	"7link.com/platform/internal/delivery"
 	"7link.com/platform/internal/fleet"
 	"7link.com/platform/internal/infra/events"
@@ -41,7 +42,7 @@ func (m *Module) injectIntakeWake(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	return catalog.AddSubscribers(Name, events.Subscriber{Name: "clientwork.intake_triage_wake", EventTypes: []string{"intake.received", "intake.triage_requested"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: m.intakeWakeOn})
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_clientwork_intake_triage_wake_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_clientwork_intake_triage_wake_description", Name: "clientwork.intake_triage_wake", EventTypes: []string{"intake.received", "intake.triage_requested"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: m.intakeWakeOn})
 }
 
 func (m *Module) intakeWakeOn(ctx context.Context, tx *gorm.DB, event events.Envelope) error {

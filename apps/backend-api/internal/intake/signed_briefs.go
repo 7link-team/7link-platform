@@ -1,6 +1,7 @@
 package intake
 
 import (
+	activityi18n "7link.com/platform/internal/intake/i18n"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -84,11 +85,11 @@ func (m *Module) InjectServices(s *module.Services) error {
 		return e
 	}
 	for _, kind := range []string{"intake.clarification_requested", "intake.clarification_answered", "intake.clarification_cancelled", "intake.delivery_published"} { //nolint:misspell // Preserve the published domain or serialized contract spelling.
-		if err := catalog.AddTypes(Name, events.TypeSpec{Name: kind, SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone}); err != nil {
+		if err := catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_" + strings.ReplaceAll(kind, ".", "_") + "_name", DescriptionKey: activityi18n.Namespace + ".activity_event_" + strings.ReplaceAll(kind, ".", "_") + "_description", Name: kind, SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone}); err != nil {
 			return err
 		}
 	}
-	return catalog.AddTypes(Name, events.TypeSpec{Name: "intake.triage_requested", SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone}, events.TypeSpec{Name: "intake.merged", SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone}, events.TypeSpec{Name: "intake.declined", SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone}, events.TypeSpec{Name: "intake.brief_signed", SchemaVersion: 1, SubjectKind: "signed_brief", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "intake.triaged", SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone}, events.TypeSpec{Name: "intake.converted", SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone}, events.TypeSpec{Name: "intake.received", SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone})
+	return catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_intake_triage_requested_name", DescriptionKey: activityi18n.Namespace + ".activity_event_intake_triage_requested_description", Name: "intake.triage_requested", SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone}, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_intake_merged_name", DescriptionKey: activityi18n.Namespace + ".activity_event_intake_merged_description", Name: "intake.merged", SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone}, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_intake_declined_name", DescriptionKey: activityi18n.Namespace + ".activity_event_intake_declined_description", Name: "intake.declined", SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone}, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_intake_brief_signed_name", DescriptionKey: activityi18n.Namespace + ".activity_event_intake_brief_signed_description", Name: "intake.brief_signed", SchemaVersion: 1, SubjectKind: "signed_brief", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_intake_triaged_name", DescriptionKey: activityi18n.Namespace + ".activity_event_intake_triaged_description", Name: "intake.triaged", SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone}, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_intake_converted_name", DescriptionKey: activityi18n.Namespace + ".activity_event_intake_converted_description", Name: "intake.converted", SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone}, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_intake_received_name", DescriptionKey: activityi18n.Namespace + ".activity_event_intake_received_description", Name: "intake.received", SchemaVersion: 1, SubjectKind: "intake", Realtime: events.RealtimeNone})
 }
 func briefFact(r *model.SignedBrief) (SignedBriefFact, error) {
 	out := SignedBriefFact{ID: r.ID, SignedBriefInput: SignedBriefInput{TenantID: r.TenantID, ProjectID: r.ProjectID, BindingID: r.BindingID, IntakeID: r.IntakeID}, Hash: r.SHA256, SignedBy: r.SignedBy, SignedAt: r.SignedAt}

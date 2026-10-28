@@ -1,6 +1,7 @@
 package clientwork
 
 import (
+	activityi18n "7link.com/platform/internal/clientwork/i18n"
 	"context"
 	"encoding/json"
 	"errors"
@@ -42,7 +43,7 @@ func (m *Module) injectForecastServices(s *module.Services) error {
 	if e != nil {
 		return e
 	}
-	return catalog.AddSubscribers(Name, events.Subscriber{Name: "clientwork.tolerance_forecast", EventTypes: []string{"work_item.created", "work_item.state_changed", "requirement.created", "requirement.versioned", "execution.state_changed", "budget.settled", "clientwork.tolerance_changed"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: m.forecastEventOn})
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_clientwork_tolerance_forecast_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_clientwork_tolerance_forecast_description", Name: "clientwork.tolerance_forecast", EventTypes: []string{"work_item.created", "work_item.state_changed", "requirement.created", "requirement.versioned", "execution.state_changed", "budget.settled", "clientwork.tolerance_changed"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: m.forecastEventOn})
 }
 func (m *Module) forecastEventOn(ctx context.Context, tx *gorm.DB, event events.Envelope) error {
 	if event.TenantID <= 0 || event.ProjectID <= 0 {
@@ -57,7 +58,7 @@ func (m *Module) forecastEventOn(ctx context.Context, tx *gorm.DB, event events.
 	return e
 }
 func (m *Module) forecastHandler() jobs.Handler {
-	return jobs.Handler{Kind: toleranceForecastJob, Timeout: 5 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return jobs.Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_clientwork_tolerance_forecast_name", DescriptionKey: activityi18n.Namespace + ".activity_job_clientwork_tolerance_forecast_description", Kind: toleranceForecastJob, Timeout: 5 * time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		if job.TenantID <= 0 {
 			return jobs.Permanent(ErrInvalid)
 		}

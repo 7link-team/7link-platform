@@ -1,6 +1,7 @@
 package yunxiao
 
 import (
+	activityi18n "7link.com/platform/internal/yunxiao/i18n"
 	"context"
 	"encoding/json"
 	"errors"
@@ -549,7 +550,7 @@ func (*Module) JobSchedules() []jobs.Schedule {
 	return []jobs.Schedule{{Name: "yunxiao.automation_schedule", Kind: "yunxiao.automation_schedule", Interval: time.Minute, Timezone: "UTC", TenantScope: jobs.ScopePerTenant, Misfire: jobs.MisfireSkip, Payload: map[string]any{}}}
 }
 func (m *Module) JobHandlers() []jobs.Handler {
-	return []jobs.Handler{ingressHandler(m), {Kind: "yunxiao.automation_schedule", Queue: "default", Timeout: time.Minute, MaxAttempts: 3, Run: m.automationScheduleJob}}
+	return []jobs.Handler{ingressHandler(m), {DisplayNameKey: activityi18n.Namespace + ".activity_job_yunxiao_automation_schedule_name", DescriptionKey: activityi18n.Namespace + ".activity_job_yunxiao_automation_schedule_description", Kind: "yunxiao.automation_schedule", Queue: "default", Timeout: time.Minute, MaxAttempts: 3, Run: m.automationScheduleJob}}
 }
 func (m *Module) automationScheduleJob(ctx context.Context, job jobs.Job) error {
 	if job.TenantID <= 0 {

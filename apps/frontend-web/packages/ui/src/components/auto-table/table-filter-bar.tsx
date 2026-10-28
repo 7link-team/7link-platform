@@ -11,34 +11,33 @@ import {
   SelectValue,
 } from "../select"
 import { evaluate, normalizeOptions, type SelectOption } from "../auto-form"
+import { DateTimePicker } from "../pickers/date-time-picker"
+import { cn } from "@workspace/ui/lib/utils"
 
 export interface FilterOption {
   field: string
   name: React.ReactNode | (() => React.ReactNode)
-  type: "string" | "select" | "boolean" | "date" | "datetime" | "time"
+  type:
+    "string" | "number" | "select" | "boolean" | "date" | "datetime" | "time"
   conditions?: string[]
   options?: SelectOption[]
   defaultCondition?: string
+  maxLength?: number
 }
 
 export interface TableFilterBarProps {
+  className?: string
   filters: FilterOption[]
   value?: Record<string, string>
+  defaultValue?: Record<string, string>
   onChange?: (filters: Record<string, string>) => void
   onSearch?: (filters: Record<string, string>) => void
   onReset?: () => void
 }
 
 const DEFAULT_CONDITIONS = ["like", "eq", "ne", "gt", "lt"]
-const CONDITION_LABELS: Record<string, string> = {
-  like: "~",
-  eq: "=",
-  ne: "!=",
-  gt: ">",
-  lt: "<",
-  gte: ">=",
-  lte: "<=",
-}
+
+type FilterState = { condition: string; value: string; instant?: string }
 
 function getTextLabel(value: React.ReactNode): string | undefined {
   if (typeof value === "string" || typeof value === "number")
@@ -68,32 +67,52 @@ function buildFilterState(
   filters: FilterOption[],
   value?: Record<string, string>
 ) {
-  const initial: Record<string, { condition: string; value: string }> = {}
+  const initial: Record<string, FilterState> = {}
   for (const filter of filters) {
-    const parsed = parseFilterValue(value?.[filter.field])
+    const raw = value?.[filter.field]
+    const parsed = parseFilterValue(raw)
+    const conditions = filter.conditions ?? DEFAULT_CONDITIONS
+    const encoded = conditions.includes(parsed.condition)
+    let input = encoded ? parsed.value : (raw ?? "")
+    let instant: string | undefined
+    if (filter.type === "datetime" && /(?:Z|[+-]\d{2}:\d{2})$/.test(input)) {
+      const date = new Date(input)
+      if (!Number.isNaN(date.getTime())) {
+        // Keep the original instant until the user changes this field. Local
+        // clock time alone is ambiguous during the repeated hour at DST end.
+        instant = input
+        const local = new Date(
+          date.getTime() - date.getTimezoneOffset() * 60_000
+        )
+        input = local.toISOString().slice(0, -1)
+      }
+    }
     initial[filter.field] = {
       condition:
-        parsed.condition ||
+        (encoded ? parsed.condition : "") ||
         filter.defaultCondition ||
-        filter.conditions?.[0] ||
+        conditions[0] ||
         "",
-      value: parsed.value,
+      value: input,
+      instant,
     }
   }
   return initial
 }
 
 export function TableFilterBar({
+  className,
   filters,
   value,
+  defaultValue,
   onChange,
   onSearch,
   onReset,
 }: TableFilterBarProps) {
   const t = useTranslations("table.filter")
-  const [internal, setInternal] = useState<
-    Record<string, { condition: string; value: string }>
-  >(() => buildFilterState(filters, value))
+  const [internal, setInternal] = useState<Record<string, FilterState>>(() =>
+    buildFilterState(filters, value ?? defaultValue)
+  )
   const isControlled = value !== undefined
   const currentState = isControlled
     ? buildFilterState(filters, value)
@@ -108,11 +127,21 @@ export function TableFilterBar({
   }, [filters])
 
   const toEncoded = (
-    state: Record<string, { condition: string; value: string }>
+    state: Record<string, FilterState>
   ): Record<string, string> => {
     const encoded: Record<string, string> = {}
-    for (const [field, { condition, value }] of Object.entries(state)) {
-      const encodedValue = encodeFilterValue(condition, value)
+    for (const [field, { condition, value, instant }] of Object.entries(
+      state
+    )) {
+      let input = instant ?? value
+      if (
+        input &&
+        filters.find((filter) => filter.field === field)?.type === "datetime"
+      ) {
+        const date = new Date(input)
+        if (!Number.isNaN(date.getTime())) input = date.toISOString()
+      }
+      const encodedValue = encodeFilterValue(condition, input)
       if (encodedValue) encoded[field] = encodedValue
     }
     return encoded
@@ -125,9 +154,13 @@ export function TableFilterBar({
     setInternal((prev) => {
       const source = isControlled ? currentState : prev
       const state = source[field] ?? { condition: "", value: "" }
-      const next: Record<string, { condition: string; value: string }> = {
+      const next: Record<string, FilterState> = {
         ...source,
-        [field]: { ...state, ...patch },
+        [field]: {
+          ...state,
+          ...patch,
+          ...(patch.value !== undefined ? { instant: undefined } : {}),
+        },
       }
       onChange?.(toEncoded(next))
       return next
@@ -142,7 +175,10 @@ export function TableFilterBar({
     const reset: Record<string, { condition: string; value: string }> = {}
     for (const filter of filters) {
       reset[filter.field] = {
-        condition: filter.defaultCondition || filter.conditions?.[0] || "",
+        condition:
+          filter.defaultCondition ||
+          (filter.conditions ?? DEFAULT_CONDITIONS)[0] ||
+          "",
         value: "",
       }
     }
@@ -152,7 +188,7 @@ export function TableFilterBar({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border p-4">
+    <div className={cn("space-y-3 rounded-lg border p-4", className)}>
       <div className="flex flex-wrap gap-3">
         {filters.map((filter) => {
           const state = currentState[filter.field] ?? {
@@ -170,7 +206,7 @@ export function TableFilterBar({
             : t("value")
           const conditionItems = conditions.map((condition) => ({
             value: condition,
-            label: CONDITION_LABELS[condition] ?? condition,
+            label: t.has(`op_${condition}`) ? t(`op_${condition}`) : condition,
           }))
           const filterOptions = normalizeOptions(filter.options)
           const booleanOptions = [
@@ -194,7 +230,7 @@ export function TableFilterBar({
                   }
                 >
                   <SelectTrigger
-                    className="w-[100px]"
+                    className="w-[140px]"
                     aria-label={conditionLabel}
                   >
                     <SelectValue />
@@ -246,13 +282,24 @@ export function TableFilterBar({
                     ))}
                   </SelectContent>
                 </Select>
+              ) : filter.type === "datetime" ? (
+                <DateTimePicker
+                  editableTime
+                  showSeconds
+                  value={state.value}
+                  onChange={(value) => update(filter.field, { value })}
+                  aria-label={valueLabel}
+                  placeholder={t("selectPlaceholder")}
+                  className="min-w-0 flex-1"
+                />
               ) : (
                 <Input
+                  maxLength={filter.maxLength}
                   type={
                     filter.type === "date"
                       ? "date"
-                      : filter.type === "datetime"
-                        ? "datetime-local"
+                      : filter.type === "number"
+                        ? "number"
                         : filter.type === "time"
                           ? "time"
                           : "text"

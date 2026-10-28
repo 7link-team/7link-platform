@@ -1,6 +1,7 @@
 package notification
 
 import (
+	activityi18n "7link.com/platform/internal/notification/i18n"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -44,7 +45,7 @@ func (m *Module) injectTemplateLifecycle(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	return catalog.AddSubscribers(Name, events.Subscriber{Name: "notification.template_lifecycle", EventTypes: []string{"verifier.calibration_changed", "provider.state_changed", "eval.run_completed", "rubric.divergence_detected", "verifier.tool_availability_changed"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: func(ctx context.Context, tx *gorm.DB, e events.Envelope) error {
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_notification_template_lifecycle_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_notification_template_lifecycle_description", Name: "notification.template_lifecycle", EventTypes: []string{"verifier.calibration_changed", "provider.state_changed", "eval.run_completed", "rubric.divergence_detected", "verifier.tool_availability_changed"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: func(ctx context.Context, tx *gorm.DB, e events.Envelope) error {
 		eventCtx, changes := collectInboxChanges(ctx)
 		if err := m.projectTemplateLifecycleOn(eventCtx, tx, events.RecordedEvent{ID: e.EventID, TenantID: e.TenantID, ProjectID: e.ProjectID, Type: e.EventType, SubjectID: e.Subject.ID, SubjectKind: e.Subject.Kind}); err != nil {
 			return err

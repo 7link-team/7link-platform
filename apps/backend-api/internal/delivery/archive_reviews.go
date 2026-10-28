@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	activityi18n "7link.com/platform/internal/delivery/i18n"
 	"context"
 	"crypto/sha256"
 	"database/sql/driver"
@@ -183,7 +184,7 @@ func (m *Module) injectArchiveReviews(s *module.Services) error {
 	if e != nil {
 		return e
 	}
-	return catalog.AddTypes(Name, events.TypeSpec{Name: "project.archived", SchemaVersion: 1, SubjectKind: "project", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "project.restored", SchemaVersion: 1, SubjectKind: "project", Realtime: events.RealtimeSignal})
+	return catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_project_archived_name", DescriptionKey: activityi18n.Namespace + ".activity_event_project_archived_description", Name: "project.archived", SchemaVersion: 1, SubjectKind: "project", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_project_restored_name", DescriptionKey: activityi18n.Namespace + ".activity_event_project_restored_description", Name: "project.restored", SchemaVersion: 1, SubjectKind: "project", Realtime: events.RealtimeSignal})
 }
 
 // performanceSubjectOn validates the report subject, independently of the

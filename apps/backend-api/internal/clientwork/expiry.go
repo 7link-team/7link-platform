@@ -1,6 +1,7 @@
 package clientwork
 
 import (
+	activityi18n "7link.com/platform/internal/clientwork/i18n"
 	"context"
 	"errors"
 	"time"
@@ -16,7 +17,7 @@ import (
 const expiryJob = "clientwork.expiry"
 
 func (m *Module) JobHandlers() []jobs.Handler {
-	return append(append([]jobs.Handler{{Kind: expiryJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return append(append([]jobs.Handler{{DisplayNameKey: activityi18n.Namespace + ".activity_job_clientwork_expiry_name", DescriptionKey: activityi18n.Namespace + ".activity_job_clientwork_expiry_description", Kind: expiryJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		if job.TenantID <= 0 {
 			return jobs.Permanent(ErrInvalid)
 		}

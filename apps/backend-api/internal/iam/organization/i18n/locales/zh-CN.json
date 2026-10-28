@@ -31,5 +31,6 @@
   "invitation_login_name_exists": "该登录名已被使用，请选择其他登录名后重新接受邀请。",
   "invitation_binding_not_found": "邀请中的默认角色或部门已不存在，请联系管理员更新或重新创建邀请。",
   "invitation_binding_inactive": "租户或默认部门已停用，请联系管理员启用或更新邀请。",
-  "invalid_invitation": "邀请数据无效，请检查邮箱、有效期、部门、角色、登录名和密码要求。"
+  "invalid_invitation": "邀请数据无效，请检查邮箱、有效期、部门、角色、登录名和密码要求。",
+  "platform_creation_disabled": "本系统不再创建额外运营平台，请使用现有运营后台。"
 }

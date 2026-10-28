@@ -848,6 +848,12 @@ func TestComposedOpenAPICreatesAnswer201(t *testing.T) {
 		}
 		slices.Sort(success)
 		expected := []string{want}
+		if entry.operation.OperationID == "organization-create-operating-platform" {
+			// Retired creation remains guarded for compatibility and always conflicts.
+			assert.True(t, entry.operation.Deprecated)
+			assert.Contains(t, entry.operation.Responses, "409")
+			expected = nil
+		}
 		if entry.operation.OperationID == "knowledge.create" {
 			// Spec06 BR-06-35 / AC-06-22: duplicate memory returns its existing entry.
 			expected = []string{"200", "201"}

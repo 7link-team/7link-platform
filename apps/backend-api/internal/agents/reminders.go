@@ -1,6 +1,7 @@
 package agents
 
 import (
+	activityi18n "7link.com/platform/internal/agents/i18n"
 	"7link.com/platform/internal/agents/model"
 	"7link.com/platform/internal/agents/query"
 	"7link.com/platform/internal/delivery"
@@ -350,7 +351,7 @@ func (m *Module) checkReminderAccess(ctx context.Context, tx *gorm.DB, tenant, a
 	return err
 }
 func (m *Module) JobHandlers() []jobs.Handler {
-	return []jobs.Handler{{Kind: "agents.reminder_fire", Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return []jobs.Handler{{DisplayNameKey: activityi18n.Namespace + ".activity_job_agents_reminder_fire_name", DescriptionKey: activityi18n.Namespace + ".activity_job_agents_reminder_fire_description", Kind: "agents.reminder_fire", Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		if job.TenantID <= 0 {
 			return jobs.Permanent(ErrInvalid)
 		}

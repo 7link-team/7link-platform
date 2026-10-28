@@ -1,6 +1,7 @@
 package collab
 
 import (
+	activityi18n "7link.com/platform/internal/collab/i18n"
 	"bytes"
 	"context"
 	"crypto/hmac"
@@ -276,7 +277,7 @@ func (m *Module) cancelDeliveryOn(tx *gorm.DB, id guid.ID) error {
 	return query.BindDeliveries(tx, m.names).Where(&model.ChannelDelivery{ID: id}).Updates(map[string]any{"state": "CANCELLED", "updated_at": m.now()}).Error //nolint:misspell // Preserve the published domain or serialized contract spelling.
 }
 func (m *Module) JobHandlers() []jobs.Handler {
-	return []jobs.Handler{{Kind: "collab.connector_delivery", Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return []jobs.Handler{{DisplayNameKey: activityi18n.Namespace + ".activity_job_collab_connector_delivery_name", DescriptionKey: activityi18n.Namespace + ".activity_job_collab_connector_delivery_description", Kind: "collab.connector_delivery", Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		db, e := m.database()
 		if e != nil {
 			return e

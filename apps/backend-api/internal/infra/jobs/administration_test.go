@@ -21,8 +21,42 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 )
+
+func TestAdminActivityPresentationUsesRequestLocaleAndExplicitModule(t *testing.T) {
+	require.NoError(t, i18n.NewModule(nil, "en-US").Initialize(t.Context()))
+	require.NoError(t, i18n.RegisterFS("job-activity-test", fstest.MapFS{
+		"locales/en-US.json": {Data: []byte(`{"name":"Reconcile roles","purpose":"Apply declared role seeds."}`)},
+		"locales/zh-CN.json": {Data: []byte(`{"name":"同步角色","purpose":"应用已声明的角色种子。"}`)},
+		"locales/ms-MY.json": {Data: []byte(`{"name":"Segerakkan peranan","purpose":"Gunakan benih peranan yang diisytiharkan."}`)},
+	}, "locales"))
+	m := catalogModule()
+	handler := catalogHandler("governance.seed_reconcile")
+	handler.Module = "business_governance"
+	handler.DisplayNameKey = "job-activity-test.name"
+	handler.DescriptionKey = "job-activity-test.purpose"
+	require.NoError(t, m.AddHandlers("governance", handler))
+	for locale, name := range map[string]string{"en-US": "Reconcile roles", "zh-CN": "同步角色", "ms-MY": "Segerakkan peranan"} {
+		ctx := i18n.WithLocale(t.Context(), locale)
+		view, err := m.adminJob(ctx, &model.Job{Kind: handler.Kind}, false)
+		require.NoError(t, err)
+		require.Equal(t, "business_governance", view.Module)
+		require.Equal(t, name, view.DisplayName)
+		require.NotEmpty(t, view.Description)
+		schedule := m.adminSchedule(ctx, &model.Schedule{Kind: handler.Kind})
+		require.Equal(t, view.Module, schedule.Module)
+		require.Equal(t, view.DisplayName, schedule.DisplayName)
+		require.Equal(t, view.Description, schedule.Description)
+	}
+	unknown, err := m.adminJob(t.Context(), &model.Job{Kind: "retired.handler"}, false)
+	require.NoError(t, err)
+	require.False(t, unknown.HasHandler)
+	require.Empty(t, unknown.Module)
+	require.Empty(t, unknown.DisplayName)
+	require.Empty(t, unknown.Description)
+}
 
 type adminHTTPAuthority struct{ current bool }
 
@@ -274,11 +308,11 @@ func TestAdminJobDetailKeepsRecordedTraceAndStart(t *testing.T) {
 	m := &Module{handlers: map[string]Handler{}}
 	started := time.Date(2026, 10, 20, 1, 2, 3, 0, time.UTC)
 	row := &model.Job{ID: 91, Kind: "example", Payload: `{}`, ErrorHistory: `[]`, CorrelationID: "recorded-correlation", StartedAt: &started}
-	detail, err := m.adminJob(row, true)
+	detail, err := m.adminJob(t.Context(), row, true)
 	require.NoError(t, err)
 	require.Equal(t, "recorded-correlation", detail.CorrelationID)
 	require.Equal(t, &started, detail.StartedAt)
-	list, err := m.adminJob(row, false)
+	list, err := m.adminJob(t.Context(), row, false)
 	require.NoError(t, err)
 	require.Empty(t, list.CorrelationID)
 	require.Nil(t, list.StartedAt)

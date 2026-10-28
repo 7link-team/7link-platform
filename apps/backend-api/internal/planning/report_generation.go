@@ -1,6 +1,7 @@
 package planning
 
 import (
+	activityi18n "7link.com/platform/internal/planning/i18n"
 	"context"
 	"slices"
 	"strconv"
@@ -42,7 +43,7 @@ func (m *Module) injectReportGeneration(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	return cat.AddTypes(Name, events.TypeSpec{Name: "planning.report_generated", SchemaVersion: 1, SubjectKind: "planning_report", Realtime: events.RealtimeSignal})
+	return cat.AddTypes(Name, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_planning_report_generated_name", DescriptionKey: activityi18n.Namespace + ".activity_event_planning_report_generated_description", Name: "planning.report_generated", SchemaVersion: 1, SubjectKind: "planning_report", Realtime: events.RealtimeSignal})
 }
 
 // scheduledReportDue parses the configured due instant and calendar anchor

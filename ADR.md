@@ -5510,3 +5510,12 @@ Decision: shared ActionForm focuses and scrolls the inline business error summar
 - Tradeoffs: larger packages include nativeGo+productionWeb; localdata/keys reside under peruserappdata. User explicitly sets first admin; existing auth/persistence semantics remain. External providers still need configuration. Automatic updater is separate and not included.
 - Scope: desktop packaging/launch, existing backendcomposition entrypoint reused through a desktop subcommand, sameoriginloopbackhosting, nativefirstsetup/lifecycle, docs/tests. No production businessAPI/schema changes. Release rc2 choice pending.
 - Status: implemented; local Windows native setup/login/restart/remote boundary and extracted NSIS/portable service acceptance PASS. Full hosted CI and all-platform new-release gates remain pending; new version choice not yet confirmed.
+
+## 2026-10-27 ? Single operational administration; preserve legacy scopes
+
+- Decision: user approved one operational administration and retirement of additional operating-platform creation, superseding D89's multi-platform product direction.
+- Reason: operators expect one administration per deployment.
+- Alternatives Considered: automatically merge grants or delete old scopes (rejected); continue creating independent platforms (superseded).
+- Tradeoffs: old scopes and access controls remain usable during incremental convergence. Disabling creation is not a complete authorization/data migration.
+- Scope: retire public creation workflow/API; preserve stored scopes, members and grants, without automatic migration or permission merging.
+- Status: implemented and verified for this bounded step; public creation retired, legacy scopes and permissions preserved. Full singleton authorization/data convergence remains separate.

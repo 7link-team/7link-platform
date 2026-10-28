@@ -79,5 +79,9 @@
   "last_platform_administrator": "This change would leave the platform without a full administrator. Promote another principal first.",
   "platform_permission_scope": "Only platform-scope permissions can be granted to a platform administrator. Choose a code from the platform permission catalog.",
   "privilege_escalation_denied": "You cannot grant a permission you do not hold yourself. Ask a tenant administrator to perform this assignment.",
-  "unavailable": "The IAM service is unavailable. Retry after the database and its dependencies recover."
+  "unavailable": "The IAM service is unavailable. Retry after the database and its dependencies recover.",
+  "activity_event_iam_core_menus_synced_name": "Identity and access · menus: synchronized",
+  "activity_event_iam_core_menus_synced_description": "Business event: Identity and access · menus: synchronized. Published by Identity and access; subscribed handlers react to this fact.",
+  "activity_job_iam_core_menu_contributions_sync_name": "Synchronize module menus",
+  "activity_job_iam_core_menu_contributions_sync_description": "Identity and access: Synchronizes module-declared menus with stored menus and their ownership."
 }

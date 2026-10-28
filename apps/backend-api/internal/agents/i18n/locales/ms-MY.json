@@ -10,5 +10,17 @@
   "wake_failed_body": "Penghantaran bangun Agent {{.subject_id}} gagal {{.failures}} kali. Tinjauan kini diaktifkan. Semak titik akhir penerima.",
   "wake_failed_email_subject": "Webhook bangun Agent gagal",
   "wake_failed_email_text": "Penghantaran bangun Agent {{.subject_id}} gagal {{.failures}} kali. Tinjauan kini diaktifkan. Semak titik akhir penerima.",
-  "wake_failed_email_html": "<p>Penghantaran bangun Agent {{.subject_id}} gagal {{.failures}} kali. Tinjauan kini diaktifkan. Semak titik akhir penerima.</p>"
+  "wake_failed_email_html": "<p>Penghantaran bangun Agent {{.subject_id}} gagal {{.failures}} kali. Tinjauan kini diaktifkan. Semak titik akhir penerima.</p>",
+  "activity_event_agents_changed_name": "Ejen: berubah",
+  "activity_event_agents_changed_description": "Peristiwa perniagaan: Ejen: berubah. Diterbitkan oleh Perkhidmatan ejen; pengendali langganan bertindak berdasarkan fakta ini.",
+  "activity_event_agents_manifest_published_name": "Ejen · manifes: diterbitkan",
+  "activity_event_agents_manifest_published_description": "Peristiwa perniagaan: Ejen · manifes: diterbitkan. Diterbitkan oleh Perkhidmatan ejen; pengendali langganan bertindak berdasarkan fakta ini.",
+  "activity_event_agents_wake_name": "Ejen: kebangkitan diminta",
+  "activity_event_agents_wake_description": "Peristiwa perniagaan: Ejen: kebangkitan diminta. Diterbitkan oleh Perkhidmatan ejen; pengendali langganan bertindak berdasarkan fakta ini.",
+  "activity_job_agents_reminder_fire_name": "Hantar peringatan ejen",
+  "activity_job_agents_reminder_fire_description": "Perkhidmatan ejen: Memproses hantar peringatan ejen.",
+  "activity_job_agents_retirement_progress_name": "Teruskan persaraan ejen",
+  "activity_job_agents_retirement_progress_description": "Perkhidmatan ejen: Memproses teruskan persaraan ejen.",
+  "activity_job_agents_webhook_wake_name": "Bangunkan ejen melalui webhook",
+  "activity_job_agents_webhook_wake_description": "Perkhidmatan ejen: Memproses bangunkan ejen melalui webhook."
 }

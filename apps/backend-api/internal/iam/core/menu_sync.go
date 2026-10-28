@@ -1,6 +1,7 @@
 package core
 
 import (
+	activityi18n "7link.com/platform/internal/iam/core/i18n"
 	"context"
 	"errors"
 	"fmt"
@@ -53,7 +54,7 @@ func (m *Module) bindMenuSync(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	if err = c.AddTypes(MenuJobNamespace, events.TypeSpec{Name: MenuJobNamespace + ".menus_synced", SchemaVersion: 1, SubjectKind: "menu_owner", Realtime: events.RealtimeSignal}); err != nil {
+	if err = c.AddTypes(MenuJobNamespace, events.TypeSpec{Module: Name, DisplayNameKey: activityi18n.Namespace + ".activity_event_iam_core_menus_synced_name", DescriptionKey: activityi18n.Namespace + ".activity_event_iam_core_menus_synced_description", Name: MenuJobNamespace + ".menus_synced", SchemaVersion: 1, SubjectKind: "menu_owner", Realtime: events.RealtimeSignal}); err != nil {
 		return err
 	}
 	m.menuSync.queue, m.menuSync.leader, m.menuSync.publisher = q, l, p
@@ -61,7 +62,7 @@ func (m *Module) bindMenuSync(s *module.Services) error {
 }
 
 func (m *Module) JobHandlers() []jobs.Handler {
-	return []jobs.Handler{{Kind: menuSyncKind, Timeout: 15 * time.Minute, Run: m.runMenuSync}}
+	return []jobs.Handler{{DisplayNameKey: activityi18n.Namespace + ".activity_job_iam_core_menu_contributions_sync_name", DescriptionKey: activityi18n.Namespace + ".activity_job_iam_core_menu_contributions_sync_description", Kind: menuSyncKind, Timeout: 15 * time.Minute, Run: m.runMenuSync}}
 }
 func (m *Module) JobSchedules() []jobs.Schedule {
 	return []jobs.Schedule{{Name: menuSyncKind, Kind: menuSyncKind, Interval: 24 * time.Hour, TenantScope: jobs.ScopePlatform}}

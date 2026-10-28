@@ -1,6 +1,7 @@
 package notification
 
 import (
+	activityi18n "7link.com/platform/internal/notification/i18n"
 	"context"
 	"errors"
 
@@ -24,7 +25,7 @@ func (m *Module) injectIngress(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	return catalog.AddSubscribers(Name, events.Subscriber{Name: "notification.integration_ingress", EventTypes: []string{"integration.ingress_changed"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: func(ctx context.Context, tx *gorm.DB, e events.Envelope) error {
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_notification_integration_ingress_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_notification_integration_ingress_description", Name: "notification.integration_ingress", EventTypes: []string{"integration.ingress_changed"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: func(ctx context.Context, tx *gorm.DB, e events.Envelope) error {
 		eventCtx, changes := collectInboxChanges(ctx)
 		if err := m.ingressOn(eventCtx, tx, e, facts); err != nil {
 			return err

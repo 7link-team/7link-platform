@@ -1,0 +1,6 @@
+{
+  "activity_event_budget_reserved_name": "预算：已预留",
+  "activity_event_budget_reserved_description": "业务事件：预算：已预留。由预算管理模块发布，订阅处理器据此响应业务变化。",
+  "activity_event_budget_settled_name": "预算：已结算",
+  "activity_event_budget_settled_description": "业务事件：预算：已结算。由预算管理模块发布，订阅处理器据此响应业务变化。"
+}

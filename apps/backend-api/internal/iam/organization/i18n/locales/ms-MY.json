@@ -31,5 +31,6 @@
   "invitation_login_name_exists": "Nama log masuk yang diminta telah digunakan. Pilih nama lain dan terima jemputan sekali lagi.",
   "invitation_binding_not_found": "Peranan atau jabatan lalai tidak lagi wujud dalam penyewa ini. Minta pentadbir mengemas kini atau mencipta semula jemputan.",
   "invitation_binding_inactive": "Penyewa atau jabatan lalai tidak aktif. Minta pentadbir mengaktifkannya atau mengemas kini jemputan.",
-  "invalid_invitation": "Data jemputan tidak sah. Semak e-mel, tempoh, jabatan, peranan, nama log masuk dan keperluan kata laluan."
+  "invalid_invitation": "Data jemputan tidak sah. Semak e-mel, tempoh, jabatan, peranan, nama log masuk dan keperluan kata laluan.",
+  "platform_creation_disabled": "Penciptaan platform operasi tambahan dinyahdayakan. Gunakan pentadbiran operasi sedia ada."
 }

@@ -5746,7 +5746,10 @@ export interface paths {
         /** List operating platforms */
         get: operations["organization-list-operating-platforms"];
         put?: never;
-        /** Create an operating platform */
+        /**
+         * Operating platform creation is no longer supported
+         * @deprecated
+         */
         post: operations["organization-create-operating-platform"];
         delete?: never;
         options?: never;
@@ -15429,8 +15432,11 @@ export interface components {
             causation_id?: string;
             correlation_id: string;
             data?: unknown;
+            description?: string;
+            display_name?: string;
             event_id: string | null;
             event_type: string;
+            module?: string;
             /** Format: date-time */
             occurred_at: string;
             project_id?: string;
@@ -15472,6 +15478,8 @@ export interface components {
             correlation_id?: string;
             /** Format: date-time */
             created_at: string;
+            description?: string;
+            display_name?: string;
             error_history?: unknown;
             /** Format: date-time */
             finished_at?: string;
@@ -15483,6 +15491,7 @@ export interface components {
             manual_retries: number;
             /** Format: int64 */
             max_attempts: number;
+            module?: string;
             payload?: unknown;
             /** Format: int64 */
             priority: number;
@@ -15554,12 +15563,15 @@ export interface components {
         };
         AdminScheduleView: {
             cron?: string;
+            description?: string;
+            display_name?: string;
             enabled: boolean;
             id: string | null;
             /** Format: int64 */
             interval_ms?: number;
             kind: string;
             last_job_id?: string;
+            module?: string;
             name: string;
             /** Format: date-time */
             next_run_at: string;
@@ -15577,7 +15589,11 @@ export interface components {
             /** Format: int64 */
             blocked: number;
             cursors: components["schemas"]["AdminCursorView"][] | null;
+            description?: string;
+            display_name?: string;
+            event_types: string[] | null;
             mode: string;
+            module?: string;
             name: string;
             /** Format: int64 */
             parked: number;
@@ -84167,15 +84183,6 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvelopeTenant"];
-                };
-            };
             /** @description Unauthorized */
             401: {
                 headers: {

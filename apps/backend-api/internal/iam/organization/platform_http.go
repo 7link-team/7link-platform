@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	organizationi18n "7link.com/platform/internal/iam/organization/i18n"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -58,20 +59,20 @@ func registerPlatformHTTP(api huma.API, service *PlatformService, registrar *aut
 
 	authz.RegisterPlatform(registrar, api, huma.Operation{
 		OperationID: "organization-create-operating-platform", Method: http.MethodPost, Path: "/operating-platforms",
-		Summary: "Create an operating platform", Tags: []string{"directory"}, DefaultStatus: http.StatusCreated,
+		Summary: "Operating platform creation is no longer supported", Tags: []string{"directory"}, Deprecated: true,
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "operating_platform", Verb: "create"},
-		func(ctx context.Context, in *createTenantInput) (*respx.Body[Platform], error) {
-			owner, err := guid.RequireID(in.Body.OwnerPrincipalID)
-			if err != nil {
+		func(_ context.Context, in *createTenantInput) (*respx.Body[Platform], error) {
+			if _, err := guid.RequireID(in.Body.OwnerPrincipalID); err != nil {
 				return nil, err
 			}
-			item, err := service.Create(ctx, CreatePlatform{Slug: in.Body.Slug, Name: in.Body.Name, OwnerPrincipalID: owner})
-			if err != nil {
-				return nil, tenantError(err)
-			}
-			return respx.OK(ctx, item), nil
+			// Keep the guarded route for older clients without creating new scopes
+			// or changing any existing scope's memberships and grants.
+			return nil, huma.Error409Conflict(organizationi18n.PlatformCreationDisabled)
 		})
+	// Huma infers a success response from the retained output type. This retired
+	// operation has no success path, so publish only its actual error responses.
+	delete(api.OpenAPI().Paths["/operating-platforms"].Post.Responses, "200")
 
 	authz.RegisterPlatform(registrar, api, huma.Operation{
 		OperationID: "organization-get-operating-platform", Method: http.MethodGet, Path: "/operating-platforms/{platform_id}",

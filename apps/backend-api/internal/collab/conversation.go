@@ -1,6 +1,7 @@
 package collab
 
 import (
+	activityi18n "7link.com/platform/internal/collab/i18n"
 	"context"
 	"encoding/json"
 	"errors"
@@ -59,17 +60,17 @@ func (m *Module) injectConversations(s *module.Services) error {
 		return err
 	}
 	if err = catalog.AddTypes(Name,
-		events.TypeSpec{Name: "collab.system_updated", SchemaVersion: 1, SubjectKind: "message", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "collab.system_posted", SchemaVersion: 1, SubjectKind: "message", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "collab.media_requested", SchemaVersion: 1, SubjectKind: "channel", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "collab.media_completed", SchemaVersion: 1, SubjectKind: "channel", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "collab.message_edited", SchemaVersion: 1, SubjectKind: "message", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "collab.message_retracted", SchemaVersion: 1, SubjectKind: "message", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "collab.read_updated", SchemaVersion: 1, SubjectKind: "inbox", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "collab.saved_updated", SchemaVersion: 1, SubjectKind: "inbox", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "collab.message_posted", SchemaVersion: 1, SubjectKind: "message", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "collab.channel_updated", SchemaVersion: 1, SubjectKind: "channel", Realtime: events.RealtimeSignal},
-		events.TypeSpec{Name: "collab.member_updated", SchemaVersion: 1, SubjectKind: "channel", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_collab_system_updated_name", DescriptionKey: activityi18n.Namespace + ".activity_event_collab_system_updated_description", Name: "collab.system_updated", SchemaVersion: 1, SubjectKind: "message", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_collab_system_posted_name", DescriptionKey: activityi18n.Namespace + ".activity_event_collab_system_posted_description", Name: "collab.system_posted", SchemaVersion: 1, SubjectKind: "message", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_collab_media_requested_name", DescriptionKey: activityi18n.Namespace + ".activity_event_collab_media_requested_description", Name: "collab.media_requested", SchemaVersion: 1, SubjectKind: "channel", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_collab_media_completed_name", DescriptionKey: activityi18n.Namespace + ".activity_event_collab_media_completed_description", Name: "collab.media_completed", SchemaVersion: 1, SubjectKind: "channel", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_collab_message_edited_name", DescriptionKey: activityi18n.Namespace + ".activity_event_collab_message_edited_description", Name: "collab.message_edited", SchemaVersion: 1, SubjectKind: "message", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_collab_message_retracted_name", DescriptionKey: activityi18n.Namespace + ".activity_event_collab_message_retracted_description", Name: "collab.message_retracted", SchemaVersion: 1, SubjectKind: "message", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_collab_read_updated_name", DescriptionKey: activityi18n.Namespace + ".activity_event_collab_read_updated_description", Name: "collab.read_updated", SchemaVersion: 1, SubjectKind: "inbox", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_collab_saved_updated_name", DescriptionKey: activityi18n.Namespace + ".activity_event_collab_saved_updated_description", Name: "collab.saved_updated", SchemaVersion: 1, SubjectKind: "inbox", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_collab_message_posted_name", DescriptionKey: activityi18n.Namespace + ".activity_event_collab_message_posted_description", Name: "collab.message_posted", SchemaVersion: 1, SubjectKind: "message", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_collab_channel_updated_name", DescriptionKey: activityi18n.Namespace + ".activity_event_collab_channel_updated_description", Name: "collab.channel_updated", SchemaVersion: 1, SubjectKind: "channel", Realtime: events.RealtimeSignal},
+		events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_collab_member_updated_name", DescriptionKey: activityi18n.Namespace + ".activity_event_collab_member_updated_description", Name: "collab.member_updated", SchemaVersion: 1, SubjectKind: "channel", Realtime: events.RealtimeSignal},
 	); err != nil {
 		return err
 	}

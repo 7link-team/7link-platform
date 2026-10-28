@@ -4,5 +4,9 @@
   "version_required": "必须提供 If-Match 请求头。",
   "version_conflict": "任务或调度已被修改，请刷新后重试。",
   "invalid_transition": "任务或调度的当前状态不允许此操作。",
-  "schedule_active": "此调度已有待处理或运行中的任务。"
+  "schedule_active": "此调度已有待处理或运行中的任务。",
+  "activity_event_job_dead_lettered_name": "后台任务已进入死信",
+  "activity_event_job_dead_lettered_description": "业务事件：后台任务已进入死信。由后台任务模块发布，订阅处理器据此响应业务变化。",
+  "activity_job_jobs_fan_out_name": "向租户分发定时任务",
+  "activity_job_jobs_fan_out_description": "后台任务：枚举活动租户，为符合条件的租户加入子任务。"
 }

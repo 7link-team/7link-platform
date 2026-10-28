@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	activityi18n "7link.com/platform/internal/delivery/i18n"
 	"context"
 	"encoding/json"
 	"slices"
@@ -136,7 +137,7 @@ const projectBudgetEnforceJob = "delivery.budget_enforce"
 // Enforce persistent budget holds through the execution owner's existing
 // control protocol. A requested pause never represents a Runner ACK.
 func (m *Module) projectBudgetEnforceHandler() jobs.Handler {
-	return jobs.Handler{Kind: projectBudgetEnforceJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return jobs.Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_delivery_budget_enforce_name", DescriptionKey: activityi18n.Namespace + ".activity_job_delivery_budget_enforce_description", Kind: projectBudgetEnforceJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		if job.TenantID <= 0 {
 			return jobs.Permanent(ErrInvalidArgument)
 		}

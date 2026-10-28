@@ -45,6 +45,7 @@ func TestCatalogDefaultsReferencesAndSeal(t *testing.T) {
 	require.NoError(t, catalog.AddHandlers("governance", catalogHandler("governance.seed_reconcile")))
 	require.NoError(t, m.Initialize(t.Context()))
 	h := m.handlers["governance.seed_reconcile"]
+	require.Equal(t, "governance", h.Module)
 	require.Equal(t, "default", h.Queue)
 	require.Equal(t, 5, h.Priority)
 	require.Equal(t, 5*time.Minute, h.Timeout)

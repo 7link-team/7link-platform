@@ -14,8 +14,9 @@ import {
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
 import { useAuth } from "./auth"
-import { iamApi, type AvatarSettings, type Session } from "../lib/iam-api"
+import { iamApi, type AvatarSettings } from "../lib/iam-api"
 import { getAccountView } from "../lib/account-view"
+import { selfProfileApi, type SelfProfile } from "../app/security/profile-api"
 
 export function UserMenu(props: Parameters<typeof AccountUserMenu>[0]) {
   const view = getAccountView()
@@ -24,7 +25,6 @@ export function UserMenu(props: Parameters<typeof AccountUserMenu>[0]) {
 }
 
 function AccountUserMenu({
-  tenantID,
   platformTenantAccess = false,
   platformAuditAccess = false,
 }: {
@@ -64,30 +64,27 @@ function AccountUserMenu({
     }
   }, [subject])
   const [profile, setProfile] = useState<{
-    tenant: string
     subject: string
-    session: Session | null
+    value: SelfProfile
   } | null>(null)
   useEffect(() => {
-    if (!subject || !tenantID) return
-    let current = true
-    void iamApi.sessionForTenant(tenantID).then(
+    // Account views use scoped bearer credentials; self profile requires the
+    // principal's own browser session. Use the view's session labels instead.
+    if (!session?.subject || getAccountView()) return
+    const controller = new AbortController()
+    const subject = session.subject
+    void selfProfileApi.get(subject, controller.signal).then(
       (next) => {
-        if (current)
-          setProfile({
-            tenant: tenantID,
-            subject,
-            session: next.subject === subject ? next : null,
-          })
+        if (!controller.signal.aborted) setProfile({ subject, value: next })
       },
       () => {
-        if (current) setProfile({ tenant: tenantID, subject, session: null })
+        if (!controller.signal.aborted) setProfile(null)
       }
     )
     return () => {
-      current = false
+      controller.abort()
     }
-  }, [subject, tenantID])
+  }, [session])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
   const signOut = async () => {
@@ -102,15 +99,15 @@ function AccountUserMenu({
     }
   }
   if (!session) return null
-  const displaySession = tenantID
-    ? profile?.tenant === tenantID && profile.subject === subject
-      ? profile.session
-      : null
-    : session
+  const selfProfile =
+    !getAccountView() && profile?.subject === subject ? profile.value : null
   const name =
-    displaySession?.preferred_username?.trim() ||
-    displaySession?.email?.trim() ||
-    session.subject
+    selfProfile?.display_name?.trim() ||
+    session.preferred_username?.trim() ||
+    selfProfile?.email?.trim() ||
+    session.email?.trim() ||
+    t("accountMenu")
+  const email = selfProfile?.email?.trim() || session.email?.trim()
 
   return (
     <>
@@ -143,9 +140,11 @@ function AccountUserMenu({
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuLabel className="font-normal">
             <p className="truncate text-sm font-medium">{name}</p>
-            <p className="mt-1 truncate text-xs text-muted-foreground">
-              {displaySession?.email?.trim() || session.subject}
-            </p>
+            {email && (
+              <p className="mt-1 truncate text-xs text-muted-foreground">
+                {email}
+              </p>
+            )}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => navigate("/user/profile")}>

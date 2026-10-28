@@ -31,5 +31,6 @@
   "invitation_login_name_exists": "The requested login name is already in use. Choose a different login name and accept the invitation again.",
   "invitation_binding_not_found": "A default role or department no longer exists in this tenant. Ask an administrator to update or recreate the invitation.",
   "invitation_binding_inactive": "The tenant or default department is inactive. Ask an administrator to activate it or update the invitation.",
-  "invalid_invitation": "The invitation data is invalid. Check the email, expiry, department, roles, login name, and password requirements."
+  "invalid_invitation": "The invitation data is invalid. Check the email, expiry, department, roles, login name, and password requirements.",
+  "platform_creation_disabled": "Creating additional operating platforms is disabled. Use the existing operational administration."
 }

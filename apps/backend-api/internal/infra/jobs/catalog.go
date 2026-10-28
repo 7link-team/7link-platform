@@ -36,7 +36,11 @@ type Job struct {
 // Handler declares execution limits. Zero values select the documented defaults.
 // Executions are audited; declarations normalize Audit to true.
 type Handler struct {
-	Kind, Queue             string
+	Kind, Queue string
+	// Module identifies the contributing module, which may use another job namespace.
+	Module                  string
+	DisplayNameKey          string
+	DescriptionKey          string
 	Priority                int
 	Timeout                 time.Duration
 	MaxAttempts             int
@@ -89,6 +93,9 @@ func ownedName(owner, name string) bool {
 }
 
 func normalizeHandler(owner string, h Handler) (Handler, error) {
+	if h.Module == "" {
+		h.Module = owner
+	}
 	if h.Queue == "" {
 		h.Queue = "default"
 	}

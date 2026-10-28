@@ -1,6 +1,7 @@
 package fleet
 
 import (
+	activityi18n "7link.com/platform/internal/fleet/i18n"
 	"context"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 const watchdogJob = "fleet.heartbeat_watchdog"
 
 func (m *Module) JobHandlers() []jobs.Handler {
-	return []jobs.Handler{{Kind: watchdogJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return []jobs.Handler{{DisplayNameKey: activityi18n.Namespace + ".activity_job_fleet_heartbeat_watchdog_name", DescriptionKey: activityi18n.Namespace + ".activity_job_fleet_heartbeat_watchdog_description", Kind: watchdogJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		if job.TenantID <= 0 {
 			return jobs.Permanent(ErrInvalidArgument)
 		}

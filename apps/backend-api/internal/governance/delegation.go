@@ -1,6 +1,7 @@
 package governance
 
 import (
+	activityi18n "7link.com/platform/internal/governance/i18n"
 	"context"
 	"encoding/json"
 	"errors"
@@ -77,7 +78,7 @@ func (m *Module) injectDelegations(s *module.Services) error {
 	if e != nil {
 		return e
 	}
-	return catalog.AddTypes(Name, events.TypeSpec{Name: "delegation.scheduled", SchemaVersion: 1, SubjectKind: "delegation", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "delegation.activated", SchemaVersion: 1, SubjectKind: "delegation", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "delegation.granted", SchemaVersion: 1, SubjectKind: "delegation", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "delegation.revoked", SchemaVersion: 1, SubjectKind: "delegation", Realtime: events.RealtimeSignal}, events.TypeSpec{Name: "delegation.expired", SchemaVersion: 1, SubjectKind: "delegation", Realtime: events.RealtimeSignal})
+	return catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_delegation_scheduled_name", DescriptionKey: activityi18n.Namespace + ".activity_event_delegation_scheduled_description", Name: "delegation.scheduled", SchemaVersion: 1, SubjectKind: "delegation", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_delegation_activated_name", DescriptionKey: activityi18n.Namespace + ".activity_event_delegation_activated_description", Name: "delegation.activated", SchemaVersion: 1, SubjectKind: "delegation", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_delegation_granted_name", DescriptionKey: activityi18n.Namespace + ".activity_event_delegation_granted_description", Name: "delegation.granted", SchemaVersion: 1, SubjectKind: "delegation", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_delegation_revoked_name", DescriptionKey: activityi18n.Namespace + ".activity_event_delegation_revoked_description", Name: "delegation.revoked", SchemaVersion: 1, SubjectKind: "delegation", Realtime: events.RealtimeSignal}, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_delegation_expired_name", DescriptionKey: activityi18n.Namespace + ".activity_event_delegation_expired_description", Name: "delegation.expired", SchemaVersion: 1, SubjectKind: "delegation", Realtime: events.RealtimeSignal})
 }
 
 type DelegationBinding struct {

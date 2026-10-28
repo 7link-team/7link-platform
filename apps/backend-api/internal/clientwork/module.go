@@ -272,11 +272,11 @@ func (m *Module) InjectServices(s *module.Services) error {
 		return e
 	}
 	for _, kind := range []string{"package_bundle_requested", "package_bundle_built", "package_bundle_failed", "package_bundle_stale", "package_sent", "package_send_failed", "acceptance_reminder", "acceptance_overdue", "release_note_requested", "release_note_drafted", "release_note_adopted", "intake_suggested", "intake_thread_linked", "intake_thread_replied", "dispatch_starved", "rework_disposed", "clarification_drafted", "clarification_expired", "clarification_reminder", "hidden_verified", "clarification_requested", "clarification_answered", "sheet_drafted", "sheet_published", "sheet_decided", "change_requested", "change_decided", "issue_created", "issue_updated", "package_drafted", "package_published", "package_decided", "package_archived", "preview_created", "annotation_created", "test_report_requested", "test_report_built", "test_report_failed", "test_case_written", "test_plan_created", "test_run_recorded", "settings_changed", "tolerance_changed", "tolerance_forecasted", "exception_raised", "exception_reported", "exception_decided", "preview_share_requested", "preview_share_decided", "preview_share_ended", "dispatch_proposed", "dispatch_decided", "dispatch_expired"} {
-		if e = catalog.AddTypes(Name, events.TypeSpec{Name: "clientwork." + kind, SchemaVersion: 1, SubjectKind: Name, Realtime: events.RealtimeNone}); e != nil {
+		if e = catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: clienti18n.Namespace + ".activity_event_clientwork_" + kind + "_name", DescriptionKey: clienti18n.Namespace + ".activity_event_clientwork_" + kind + "_description", Name: "clientwork." + kind, SchemaVersion: 1, SubjectKind: Name, Realtime: events.RealtimeNone}); e != nil {
 			return e
 		}
 	}
-	if e = catalog.AddTypes(Name, events.TypeSpec{Name: "clientwork.clarification_cancelled", SchemaVersion: 1, SubjectKind: Name, Realtime: events.RealtimeNone}); e != nil { //nolint:misspell // Frozen event name.
+	if e = catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: clienti18n.Namespace + ".activity_event_clientwork_clarification_cancelled_name", DescriptionKey: clienti18n.Namespace + ".activity_event_clientwork_clarification_cancelled_description", Name: "clientwork.clarification_cancelled", SchemaVersion: 1, SubjectKind: Name, Realtime: events.RealtimeNone}); e != nil { //nolint:misspell // Frozen event name.
 		return e
 	}
 	if e = m.injectForecastServices(s); e != nil {

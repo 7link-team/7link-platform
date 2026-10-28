@@ -5,6 +5,7 @@ import (
 	"7link.com/platform/internal/delivery"
 	"7link.com/platform/internal/infra/events"
 	"7link.com/platform/internal/infra/guid"
+	activityi18n "7link.com/platform/internal/notification/i18n"
 	"7link.com/platform/internal/notification/query"
 	"7link.com/platform/pkg/module"
 	"context"
@@ -30,7 +31,7 @@ func (m *Module) injectReminder(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	if err = catalog.AddSubscribers(Name, events.Subscriber{Name: "notification.clarification_reminder", EventTypes: []string{"clientwork.clarification_reminder"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: func(ctx context.Context, tx *gorm.DB, e events.Envelope) error {
+	if err = catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_notification_clarification_reminder_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_notification_clarification_reminder_description", Name: "notification.clarification_reminder", EventTypes: []string{"clientwork.clarification_reminder"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: func(ctx context.Context, tx *gorm.DB, e events.Envelope) error {
 		eventCtx, changes := collectInboxChanges(ctx)
 		if err := m.reminderOn(eventCtx, tx, e, facts); err != nil {
 			return err
@@ -67,7 +68,7 @@ func (m *Module) injectStarvation(s *module.Services, catalog events.SubscriberC
 	if err != nil {
 		return err
 	}
-	return catalog.AddSubscribers(Name, events.Subscriber{Name: "notification.dispatch_starvation", EventTypes: []string{"clientwork.dispatch_starved"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: func(ctx context.Context, tx *gorm.DB, e events.Envelope) error {
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_notification_dispatch_starvation_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_notification_dispatch_starvation_description", Name: "notification.dispatch_starvation", EventTypes: []string{"clientwork.dispatch_starved"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: func(ctx context.Context, tx *gorm.DB, e events.Envelope) error {
 		eventCtx, changes := collectInboxChanges(ctx)
 		if err := m.starvationOn(eventCtx, tx, e, facts); err != nil {
 			return err

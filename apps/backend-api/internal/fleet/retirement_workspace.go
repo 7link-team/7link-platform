@@ -1,6 +1,7 @@
 package fleet
 
 import (
+	activityi18n "7link.com/platform/internal/fleet/i18n"
 	"context"
 	"encoding/json"
 	"errors"
@@ -202,7 +203,7 @@ func (m *Module) injectRetirement(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	return catalog.AddTypes(Name, events.TypeSpec{Name: "agent.state_changed", SchemaVersion: 1, SubjectKind: "agent", Realtime: events.RealtimeSignal})
+	return catalog.AddTypes(Name, events.TypeSpec{DisplayNameKey: activityi18n.Namespace + ".activity_event_agent_state_changed_name", DescriptionKey: activityi18n.Namespace + ".activity_event_agent_state_changed_description", Name: "agent.state_changed", SchemaVersion: 1, SubjectKind: "agent", Realtime: events.RealtimeSignal})
 }
 
 type AgentRetirementBinding struct {

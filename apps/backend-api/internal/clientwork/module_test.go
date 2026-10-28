@@ -3,6 +3,7 @@ package clientwork
 import (
 	"7link.com/platform/internal/agents"
 	"7link.com/platform/internal/budget"
+	clienti18n "7link.com/platform/internal/clientwork/i18n"
 	"7link.com/platform/internal/clientwork/query"
 	"7link.com/platform/internal/collab"
 	"7link.com/platform/internal/delivery"
@@ -23,9 +24,27 @@ import (
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"strings"
 	"testing"
 	"time"
 )
+
+type clientworkActivityCatalog struct {
+	t *testing.T
+	events.Catalog
+}
+
+func (c clientworkActivityCatalog) AddTypes(owner string, specs ...events.TypeSpec) error {
+	if err := c.Catalog.AddTypes(owner, specs...); err != nil {
+		return err
+	}
+	for _, spec := range specs {
+		base := clienti18n.Namespace + ".activity_event_" + strings.ReplaceAll(spec.Name, ".", "_")
+		require.Equal(c.t, base+"_name", spec.DisplayNameKey, spec.Name)
+		require.Equal(c.t, base+"_description", spec.DescriptionKey, spec.Name)
+	}
+	return nil
+}
 
 func TestModuleWiringAndRouteContracts(t *testing.T) {
 	original, _, _, _ := harness(t)
@@ -121,7 +140,7 @@ func TestModuleWiringAndRouteContracts(t *testing.T) {
 	require.NoError(t, catalogServices.Seal())
 	c, e := module.Resolve[events.Catalog](catalogServices)
 	require.NoError(t, e)
-	require.NoError(t, module.Provide[events.Catalog](services, c))
+	require.NoError(t, module.Provide[events.Catalog](services, clientworkActivityCatalog{t: t, Catalog: c}))
 	require.NoError(t, module.Provide[events.SubscriberCatalog](services, catalog))
 	require.NoError(t, module.Provide[delivery.ForecastWorkFacts](services, delivery.ForecastWorkFacts{}))
 	require.NoError(t, module.Provide[execution.ForecastFacts](services, execution.ForecastFacts{}))

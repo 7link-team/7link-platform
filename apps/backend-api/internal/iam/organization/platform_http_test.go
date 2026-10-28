@@ -30,7 +30,7 @@ func (c *operatingPlatformHTTPChecker) CheckPlatform(_ context.Context, code str
 	return c.allow, nil
 }
 
-func TestOperatingPlatformHTTPCRUDAndOwnerKindIsolation(t *testing.T) {
+func TestOperatingPlatformHTTPPreservesLegacyCRUDAndRejectsCreation(t *testing.T) {
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	require.NoError(t, respx.NewModule(nil).Initialize(t.Context()))
 	require.NoError(t, organizationi18n.Register())
@@ -43,17 +43,27 @@ func TestOperatingPlatformHTTPCRUDAndOwnerKindIsolation(t *testing.T) {
 	registrar := authz.NewRegistrar(authz.DefaultRegistry(), organizationHTTPTokenVerifier{}, checker, organizationHTTPMembershipChecker{})
 	api := humax.New(chi.NewRouter(), humax.DefaultConfig("operating-platform-http", "1.0.0"))
 	registerPlatformHTTP(api, service, registrar)
+	createOperation := api.OpenAPI().Paths["/operating-platforms"].Post
+	require.True(t, createOperation.Deprecated)
+	require.Contains(t, createOperation.Responses, "409")
+	for status := range createOperation.Responses {
+		require.NotEqual(t, byte('2'), status[0], "retired creation has no success response")
+	}
 	client := humatest.Wrap(t, api)
 	auth := "Authorization: Bearer test"
 
+	// Seed a pre-upgrade scope through the existing internal provisioning workflow.
+	legacy, err := service.Create(t.Context(), newTenantForTest("operator-one", "Operator One"))
+	require.NoError(t, err)
 	created := client.Post("/operating-platforms", auth, map[string]any{
-		"slug": "operator-one", "name": "Operator One", "owner_principal_id": organizationTestOwnerID.String(),
+		"slug": "operator-two", "name": "Operator Two", "owner_principal_id": organizationTestOwnerID.String(),
 	})
-	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	require.Equal(t, http.StatusConflict, created.Code, created.Body.String())
+	require.Contains(t, created.Body.String(), "Creating additional operating platforms is disabled")
 	var body struct {
 		Data Platform `json:"data"`
 	}
-	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &body))
+	body.Data = legacy
 	item := body.Data
 	require.False(t, item.ID.Zero())
 	require.Len(t, bootstrap.inputs, 1)
@@ -140,7 +150,7 @@ func TestOperatingPlatformHTTPRejectsInvalidInputsAndReportsStorageFailures(t *t
 	}
 
 	assert.Equal(t, http.StatusUnprocessableEntity, client.Post("/operating-platforms", auth, map[string]any{"slug": "operator", "name": "Operator", "owner_principal_id": "not-a-snowflake"}).Code)
-	assert.Equal(t, http.StatusConflict, client.Post("/operating-platforms", auth, map[string]any{"slug": "tenant-2", "name": "Taken", "owner_principal_id": organizationTestOwnerID.String()}).Code, "platform slugs share the root namespace with tenants")
+	assert.Equal(t, http.StatusConflict, client.Post("/operating-platforms", auth, map[string]any{"slug": "tenant-2", "name": "Taken", "owner_principal_id": organizationTestOwnerID.String()}).Code, "new platform creation is disabled")
 	assert.Equal(t, http.StatusUnprocessableEntity, client.Patch("/operating-platforms/bad", auth, map[string]any{"name": "Renamed", "version": 1}).Code)
 	assert.Equal(t, http.StatusUnprocessableEntity, client.Delete("/operating-platforms/bad?version=1", auth).Code)
 	assert.Equal(t, int64(1), roots(), "rejected creates must not add a root")
@@ -149,10 +159,10 @@ func TestOperatingPlatformHTTPRejectsInvalidInputsAndReportsStorageFailures(t *t
 	sqlDB, err := h.db.DB()
 	require.NoError(t, err)
 	require.NoError(t, sqlDB.Close())
+	assert.Equal(t, http.StatusConflict, client.Post("/operating-platforms", auth, map[string]any{"slug": "offline", "name": "Offline", "owner_principal_id": organizationTestOwnerID.String()}).Code, "disabled creation must not access storage")
 	for _, response := range []int{
 		client.Get("/principals/1/operating-platforms", auth).Code,
 		client.Get("/operating-platforms", auth).Code,
-		client.Post("/operating-platforms", auth, map[string]any{"slug": "offline", "name": "Offline", "owner_principal_id": organizationTestOwnerID.String()}).Code,
 		client.Get("/operating-platforms/2", auth).Code,
 	} {
 		assert.Equal(t, http.StatusInternalServerError, response)

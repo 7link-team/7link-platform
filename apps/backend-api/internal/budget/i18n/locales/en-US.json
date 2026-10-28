@@ -1,0 +1,6 @@
+{
+  "activity_event_budget_reserved_name": "Budget: reserved",
+  "activity_event_budget_reserved_description": "Business event: Budget: reserved. Published by Budget; subscribed handlers react to this fact.",
+  "activity_event_budget_settled_name": "Budget: settled",
+  "activity_event_budget_settled_description": "Business event: Budget: settled. Published by Budget; subscribed handlers react to this fact."
+}

@@ -284,6 +284,7 @@ export function AutoTable<T>(options: TableOptions<T>) {
             </div>
           )}
           <div className="ms-auto flex shrink-0 flex-wrap items-center gap-2">
+            {options.toolbarActions}
             {(options.onRefresh || options.fetch) && (
               <RefreshButton
                 disabled={toolsDisabled}

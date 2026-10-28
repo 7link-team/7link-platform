@@ -65,6 +65,8 @@ export interface TableOptions<T = unknown> {
   rowOffset?: number
   /** Existing page filters and permission-aware create/domain buttons. */
   toolbar?: ReactNode | false
+  /** Primary page actions beside refresh/export, after the search and filters. */
+  toolbarActions?: ReactNode
   onRefresh?: () => void | Promise<void>
   onExport?: () => void | Promise<void>
   onImport?: () => void | Promise<void>

@@ -47,10 +47,14 @@ const (
 )
 
 type TypeSpec struct {
-	Name          string
-	SchemaVersion int
-	SubjectKind   string
-	Realtime      RealtimeMode
+	Name string
+	// Module identifies the declaring module; it defaults to the registration owner.
+	Module         string
+	DisplayNameKey string
+	DescriptionKey string
+	SchemaVersion  int
+	SubjectKind    string
+	Realtime       RealtimeMode
 }
 
 // Publisher must participate in the caller's active transaction. Any error must

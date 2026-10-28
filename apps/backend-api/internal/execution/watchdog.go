@@ -1,6 +1,7 @@
 package execution
 
 import (
+	activityi18n "7link.com/platform/internal/execution/i18n"
 	"7link.com/platform/internal/execution/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/infra/jobs"
@@ -12,7 +13,7 @@ import (
 const watchdogJob = "execution.lease_watchdog"
 
 func (m *Module) JobHandlers() []jobs.Handler {
-	return []jobs.Handler{{Kind: watchdogJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
+	return []jobs.Handler{{DisplayNameKey: activityi18n.Namespace + ".activity_job_execution_lease_watchdog_name", DescriptionKey: activityi18n.Namespace + ".activity_job_execution_lease_watchdog_description", Kind: watchdogJob, Timeout: time.Minute, Run: func(ctx context.Context, job jobs.Job) error {
 		if job.TenantID <= 0 {
 			return jobs.Permanent(ErrInvalidArgument)
 		}

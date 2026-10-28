@@ -1,6 +1,7 @@
 package clientwork
 
 import (
+	activityi18n "7link.com/platform/internal/clientwork/i18n"
 	"context"
 	"database/sql/driver"
 	"encoding/json"
@@ -61,7 +62,7 @@ func (m *Module) injectDisposition(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	return catalog.AddSubscribers(Name, events.Subscriber{Name: "clientwork.merged_source_replies", EventTypes: []string{"collab.message_posted"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: m.routeMergedReplyOn})
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_clientwork_merged_source_replies_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_clientwork_merged_source_replies_description", Name: "clientwork.merged_source_replies", EventTypes: []string{"collab.message_posted"}, Mode: events.Transactional, StartFrom: events.Latest, Handle: m.routeMergedReplyOn})
 }
 
 func (m *Module) routeMergedReplyOn(ctx context.Context, tx *gorm.DB, e events.Envelope) error {

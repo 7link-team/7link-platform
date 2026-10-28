@@ -1,7 +1,9 @@
 package delivery
 
 import (
+	deliveryi18n "7link.com/platform/internal/delivery/i18n"
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,6 +33,24 @@ import (
 )
 
 type projectChecker struct{ core.AuthorizationEvaluator }
+
+// Validate the actual declarations as injection contributes them, including loops.
+type deliveryActivityCatalog struct {
+	t *testing.T
+	events.Catalog
+}
+
+func (c deliveryActivityCatalog) AddTypes(owner string, specs ...events.TypeSpec) error {
+	if err := c.Catalog.AddTypes(owner, specs...); err != nil {
+		return err
+	}
+	for _, spec := range specs {
+		base := deliveryi18n.Namespace + ".activity_event_" + strings.ReplaceAll(spec.Name, ".", "_")
+		require.Equal(c.t, base+"_name", spec.DisplayNameKey, spec.Name)
+		require.Equal(c.t, base+"_description", spec.DescriptionKey, spec.Name)
+	}
+	return nil
+}
 
 func moduleProviders(t *testing.T) []func(*module.Services) error {
 	t.Helper()
@@ -151,7 +171,9 @@ func moduleProviders(t *testing.T) []func(*module.Services) error {
 			return module.Provide[audit.Appender](s, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })
 		},
 		func(s *module.Services) error { return module.Provide[events.Publisher](s, eventModule) },
-		func(s *module.Services) error { return module.Provide[events.Catalog](s, eventModule) },
+		func(s *module.Services) error {
+			return module.Provide[events.Catalog](s, deliveryActivityCatalog{t: t, Catalog: eventModule})
+		},
 		func(s *module.Services) error { return module.Provide[events.SubscriberCatalog](s, eventModule) },
 		func(s *module.Services) error { return module.Provide[jobs.Queue](s, &autonomyQueueProbe{}) },
 	}

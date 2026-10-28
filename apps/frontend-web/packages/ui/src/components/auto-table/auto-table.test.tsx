@@ -5,6 +5,26 @@ import { AutoTable } from "./auto-table"
 import messages from "../../i18n/messages/en-US.json"
 
 describe("AutoTable externally managed rows", () => {
+  it("places primary actions after filters and beside the shared table tools", () => {
+    const html = renderToStaticMarkup(
+      <IntlProvider locale="en-US" timeZone="UTC" messages={messages}>
+        <AutoTable
+          data={[]}
+          columns={[{ field: "id", name: "ID" }]}
+          toolbar={<input aria-label="Account search" />}
+          toolbarActions={<button type="button">Create account</button>}
+          onRefresh={() => {}}
+        />
+      </IntlProvider>
+    )
+    expect(html.indexOf('aria-label="Account search"')).toBeLessThan(
+      html.indexOf(">Create account</button>")
+    )
+    expect(html.indexOf(">Create account</button>")).toBeLessThan(
+      html.indexOf('aria-label="Refresh"')
+    )
+  })
+
   it("preserves row metadata and omits duplicate pagination", () => {
     const html = renderToStaticMarkup(
       <IntlProvider locale="en-US" timeZone="UTC" messages={messages}>

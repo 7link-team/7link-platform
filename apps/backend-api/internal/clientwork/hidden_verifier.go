@@ -1,6 +1,7 @@
 package clientwork
 
 import (
+	activityi18n "7link.com/platform/internal/clientwork/i18n"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -86,7 +87,7 @@ func (m *Module) injectHiddenAcceptance(s *module.Services) error {
 	if err != nil {
 		return err
 	}
-	return catalog.AddSubscribers(Name, events.Subscriber{Name: "clientwork.hidden_verification_reconcile", EventTypes: []string{"clientwork.hidden_verified"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: func(ctx context.Context, tx *gorm.DB, event events.Envelope) error {
+	return catalog.AddSubscribers(Name, events.Subscriber{DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_clientwork_hidden_verification_reconcile_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_clientwork_hidden_verification_reconcile_description", Name: "clientwork.hidden_verification_reconcile", EventTypes: []string{"clientwork.hidden_verified"}, Mode: events.Transactional, StartFrom: events.Earliest, Handle: func(ctx context.Context, tx *gorm.DB, event events.Envelope) error {
 		var data struct {
 			WorkItemID guid.ID `json:"work_item_id"`
 			ResultID   guid.ID `json:"result_id"`
@@ -207,7 +208,7 @@ func (m *Module) dispatchHiddenOn(ctx context.Context, tx *gorm.DB, in delivery.
 }
 
 func (m *Module) hiddenVerifierHandler() jobs.Handler {
-	return jobs.Handler{Kind: hiddenVerificationJob, Timeout: time.Hour, Run: func(ctx context.Context, job jobs.Job) error {
+	return jobs.Handler{DisplayNameKey: activityi18n.Namespace + ".activity_job_clientwork_hidden_verification_name", DescriptionKey: activityi18n.Namespace + ".activity_job_clientwork_hidden_verification_description", Kind: hiddenVerificationJob, Timeout: time.Hour, Run: func(ctx context.Context, job jobs.Job) error {
 		var in delivery.HiddenAcceptanceRequest
 		if job.TenantID <= 0 || json.Unmarshal(job.Payload, &in) != nil || in.ProjectID <= 0 || in.WorkItemID <= 0 || in.ResultID <= 0 {
 			return jobs.Permanent(ErrInvalid)

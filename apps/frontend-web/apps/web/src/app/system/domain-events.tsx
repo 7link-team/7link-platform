@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react"
 import { AutoForm } from "@workspace/ui/components/auto-form"
-import { AutoTable } from "@workspace/ui/components/auto-table"
+import {
+  AutoTable,
+  TableFilterBar,
+  type FilterOption,
+} from "@workspace/ui/components/auto-table"
 import { Button } from "@workspace/ui/components/button"
 import {
   Dialog,
@@ -10,6 +14,7 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
+import { ActivityLabel } from "../../components/activity-label"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { ReauthenticationDialog } from "../../components/reauthentication-dialog"
@@ -171,7 +176,16 @@ export default function PlatformDomainEventsPage() {
           pagination={false}
           emptyContent={t("eventsEmpty")}
           columns={[
-            { field: "name", name: t("name") },
+            {
+              field: "name",
+              name: t("name"),
+              render: (_, row) => <ActivityLabel {...row} code={row.name} />,
+            },
+            {
+              field: "event_types",
+              name: t("activityTriggers"),
+              render: (_, row) => (row.event_types ?? []).join(", "),
+            },
             { field: "mode", name: t("eventsMode") },
             { field: "partitions", name: t("eventsPartitions") },
             {
@@ -242,90 +256,107 @@ export default function PlatformDomainEventsPage() {
       )}
       {tab !== "subscribers" && (
         <>
-          <AutoForm
-            key={`${tab}:${subscriber}`}
-            fields={{
+          <TableFilterBar
+            key={`${tab}:${subscriber}:${JSON.stringify(filters)}`}
+            defaultValue={{ ...filters, subscriber }}
+            filters={[
               ...(tab === "parked"
-                ? {
-                    subscriber: {
+                ? ([
+                    {
+                      field: "subscriber",
                       name: t("eventsSubscriber"),
-                      type: "select" as const,
-                      required: true,
-                      value: subscriber,
-                      config: {
-                        options: subscribers.map((row) => ({
-                          value: row.name,
-                          label: row.name,
-                        })),
-                      },
+                      type: "select",
+                      conditions: [],
+                      options: subscribers.map((row) => ({
+                        value: row.name,
+                        label: row.display_name
+                          ? `${row.display_name} (${row.name})`
+                          : row.name,
+                      })),
                     },
-                    state: {
+                    {
+                      field: "state",
                       name: t("jobsState"),
-                      type: "select" as const,
-                      config: {
-                        options: [
-                          "",
-                          "PARKED",
-                          "REDELIVERING",
-                          "DELIVERED",
-                          "DISCARDED",
-                        ].map((value) => ({ value, label: value || t("all") })),
-                      },
+                      type: "select",
+                      conditions: [],
+                      options: [
+                        "",
+                        "PARKED",
+                        "REDELIVERING",
+                        "DELIVERED",
+                        "DISCARDED",
+                      ].map((value) => ({
+                        value,
+                        label: value ? t(`eventsState${value}`) : t("all"),
+                      })),
                     },
-                    reason: {
+                    {
+                      field: "reason",
                       name: t("eventsReason"),
-                      type: "select" as const,
-                      config: {
-                        options: ["", "FAILED", "BLOCKED"].map((value) => ({
-                          value,
-                          label: value || t("all"),
-                        })),
-                      },
+                      type: "select",
+                      conditions: [],
+                      options: ["", "FAILED", "BLOCKED"].map((value) => ({
+                        value,
+                        label: value ? t(`eventsReason${value}`) : t("all"),
+                      })),
                     },
-                  }
-                : {
-                    event_type: {
+                  ] satisfies FilterOption[])
+                : ([
+                    {
+                      field: "event_type",
                       name: t("eventsType"),
-                      type: "text" as const,
+                      type: "string",
+                      conditions: ["eq"],
                     },
-                    tenant_id: {
+                    {
+                      field: "tenant_id",
                       name: t("jobsTenantFilter"),
-                      type: "text" as const,
+                      type: "string",
+                      conditions: ["eq"],
                     },
-                    subject_id: {
+                    {
+                      field: "subject_id",
                       name: t("eventsSubjectID"),
-                      type: "text" as const,
+                      type: "string",
+                      conditions: ["eq"],
                     },
-                    stream_seq: {
+                    {
+                      field: "stream_seq",
                       name: t("eventsSequenceFilter"),
-                      type: "text" as const,
-                      config: { placeholder: "gt:1" },
+                      type: "number",
+                      conditions: ["gt", "lt"],
                     },
-                    occurred_at: {
+                    {
+                      field: "occurred_at",
                       name: t("eventsOccurredFilter"),
-                      type: "text" as const,
-                      config: { placeholder: "gte:2026-01-01T00:00:00Z" },
+                      type: "datetime",
+                      conditions: ["gte", "lte", "gt", "lt"],
                     },
-                  }),
-              subject_kind: { name: t("eventsSubjectKind"), type: "text" },
-            }}
-            onSubmit={(values) => {
-              const next = Object.fromEntries(
-                Object.entries(values)
-                  .filter(([, value]) => value)
-                  .map(([key, value]) => [key, String(value)])
-              )
+                  ] satisfies FilterOption[])),
+              {
+                field: "subject_kind",
+                name: t("eventsSubjectKind"),
+                type: "string",
+                conditions: [],
+              },
+            ]}
+            onSearch={(values) => {
+              const next = { ...values }
               if (tab === "parked") {
                 setSubscriber(next.subscriber ?? "")
                 delete next.subscriber
               }
               setFilters(next)
               setOffset(0)
-              setLoading(true)
+              setLoading(tab === "events" || !!values.subscriber)
             }}
-          >
-            <Button type="submit">{t("query")}</Button>
-          </AutoForm>
+            onReset={() => {
+              setFilters({})
+              setSubscriber("")
+              setOffset(0)
+              setLoading(tab === "events")
+            }}
+          />
           {tab === "events" ? (
             <AutoTable
               data={events}
@@ -348,7 +379,13 @@ export default function PlatformDomainEventsPage() {
                   ),
                 },
                 { field: "stream_seq", name: t("eventsSequence") },
-                { field: "event_type", name: t("eventsType") },
+                {
+                  field: "event_type",
+                  name: t("eventsType"),
+                  render: (_, row) => (
+                    <ActivityLabel {...row} code={row.event_type} />
+                  ),
+                },
                 { field: "tenant_id", name: t("jobsTenant") },
                 {
                   field: "subject",
@@ -439,6 +476,7 @@ export default function PlatformDomainEventsPage() {
             <DialogTitle>{t("eventsDetail")}</DialogTitle>
             <DialogDescription>{t("eventsReadAudited")}</DialogDescription>
           </DialogHeader>
+          {detail && <ActivityLabel {...detail} code={detail.event_type} />}
           <pre className="max-h-96 overflow-auto text-xs break-all whitespace-pre-wrap">
             {JSON.stringify(detail, null, 2)}
           </pre>

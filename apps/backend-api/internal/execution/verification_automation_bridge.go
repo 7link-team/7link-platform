@@ -1,6 +1,7 @@
 package execution
 
 import (
+	activityi18n "7link.com/platform/internal/execution/i18n"
 	"context"
 	"encoding/json"
 
@@ -36,7 +37,7 @@ func (*verificationAutomationAdapter) InjectServices(s *module.Services) error {
 	if facts.ReadOn == nil || automation.QueueOn == nil || automation.CollectOn == nil {
 		return delivery.ErrUnavailable
 	}
-	return catalog.AddSubscribers(delivery.Name, events.Subscriber{
+	return catalog.AddSubscribers(delivery.Name, events.Subscriber{Module: Name, DisplayNameKey: activityi18n.Namespace + ".activity_subscriber_delivery_verification_automation_name", DescriptionKey: activityi18n.Namespace + ".activity_subscriber_delivery_verification_automation_description",
 		Name:       "delivery.verification_automation",
 		EventTypes: []string{"execution.state_changed", "execution.verification_completed", "execution.merged"},
 		Mode:       events.Transactional, StartFrom: events.Earliest,
