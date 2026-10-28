@@ -29,6 +29,33 @@ import {
   type CorrelatedOperation,
 } from "../../lib/platform-jobs-api"
 
+function JobFanoutContext({ job }: { job: PlatformJob }) {
+  const t = useTranslations("iam")
+  if (!job.fanout_kind) return null
+  return (
+    <dl className="mt-3 space-y-2 text-sm whitespace-normal">
+      <div>
+        <dt className="text-muted-foreground">{t("jobsFanoutSchedule")}</dt>
+        <dd className="break-all">{job.fanout_schedule_name || "—"}</dd>
+      </div>
+      <div>
+        <dt className="text-muted-foreground">{t("jobsFanoutTarget")}</dt>
+        <dd>
+          <ActivityLabel
+            code={job.fanout_kind}
+            display_name={job.fanout_display_name}
+            description={job.fanout_description}
+          />
+        </dd>
+      </div>
+      <div>
+        <dt className="text-muted-foreground">{t("jobsFanoutFireAt")}</dt>
+        <dd className="break-all">{job.fanout_fire_at || "—"}</dd>
+      </div>
+    </dl>
+  )
+}
+
 export default function PlatformJobsPage() {
   const t = useTranslations("iam")
   const allowed = useAllowed()
@@ -163,13 +190,36 @@ export default function PlatformJobsPage() {
           </div>
         ))}
       </div>
-      <Button
-        variant="outline"
-        aria-pressed={automatic}
-        onClick={() => setAutomatic((value) => !value)}
-      >
-        {t(automatic ? "jobsPauseRefresh" : "jobsResumeRefresh")}
-      </Button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          variant="outline"
+          aria-pressed={automatic}
+          onClick={() => setAutomatic((value) => !value)}
+        >
+          {t(automatic ? "jobsPauseRefresh" : "jobsResumeRefresh")}
+        </Button>
+        {allowed("system_job_manage") && (
+          <Button
+            className="hidden md:inline-flex"
+            disabled={busy || !batchIDs.length}
+            aria-describedby="jobs-retry-selection-help"
+            onClick={() => {
+              setBatchResult("")
+              setBatchOpen(true)
+            }}
+          >
+            {t("jobsBatchRetry")} ({batchIDs.length}/100)
+          </Button>
+        )}
+      </div>
+      {allowed("system_job_manage") && (
+        <p
+          id="jobs-retry-selection-help"
+          className="hidden text-sm text-muted-foreground md:block"
+        >
+          {t("jobsRetrySelectionHelp")}
+        </p>
+      )}
       <TableFilterBar
         key={query}
         defaultValue={Object.fromEntries(params)}
@@ -260,11 +310,12 @@ export default function PlatformJobsPage() {
                 {t(`jobsState${row.state}`)}
               </Badge>
             </div>
+            <JobFanoutContext job={row} />
             <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
               <dt>{t("id")}</dt>
               <dd>{row.id}</dd>
               <dt>{t("jobsTenant")}</dt>
-              <dd>{row.tenant_id}</dd>
+              <dd>{row.tenant_id || t("activityPlatform")}</dd>
               <dt>{t("jobsAttempts")}</dt>
               <dd>
                 {row.attempts}/{row.max_attempts}
@@ -309,11 +360,12 @@ export default function PlatformJobsPage() {
             ? [
                 {
                   field: "selection",
-                  name: t("jobsSelect"),
+                  name: t("jobsSelectRetry"),
                   render: (_: unknown, row: PlatformJob) => (
                     <Checkbox
                       className="hidden md:inline-flex"
-                      aria-label={`${t("jobsSelect")} ${row.id}`}
+                      aria-label={`${t("jobsSelectRetry")} ${row.id}`}
+                      aria-describedby="jobs-retry-selection-help"
                       disabled={busy || !jobCanRetry(row)}
                       checked={!!row.id && batchIDs.includes(row.id)}
                       onCheckedChange={(checked) => {
@@ -346,9 +398,18 @@ export default function PlatformJobsPage() {
           {
             field: "kind",
             name: t("jobsKind"),
-            render: (_, row) => <ActivityLabel {...row} code={row.kind} />,
+            render: (_, row) => (
+              <>
+                <ActivityLabel {...row} code={row.kind} />
+                <JobFanoutContext job={row} />
+              </>
+            ),
           },
-          { field: "tenant_id", name: t("jobsTenant") },
+          {
+            field: "tenant_id",
+            name: t("jobsTenant"),
+            render: (_, row) => row.tenant_id || t("activityPlatform"),
+          },
           {
             field: "state",
             name: t("jobsState"),
@@ -372,20 +433,22 @@ export default function PlatformJobsPage() {
             name: t("jobsLastError"),
             render: (_, row) => errorLabel(row.last_error_code),
           },
+          {
+            field: "actions",
+            name: t("actions"),
+            type: "actions",
+            render: (_, row) => (
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => void details(row)}
+              >
+                {t("details")}
+              </Button>
+            ),
+          },
         ]}
       />
-      {allowed("system_job_manage") && (
-        <Button
-          className="hidden md:inline-flex"
-          disabled={busy || !batchIDs.length}
-          onClick={() => {
-            setBatchResult("")
-            setBatchOpen(true)
-          }}
-        >
-          {t("jobsBatchRetry")} ({batchIDs.length}/100)
-        </Button>
-      )}
       {batchResult && (
         <p role="status" className="text-sm">
           {batchResult}
@@ -492,7 +555,10 @@ export default function PlatformJobsPage() {
           {selected && (
             <>
               <ActivityLabel {...selected} code={selected.kind} />
+              <JobFanoutContext job={selected} />
               <dl className="grid grid-cols-2 gap-2 text-sm">
+                <dt>{t("jobsTenant")}</dt>
+                <dd>{selected.tenant_id || t("activityPlatform")}</dd>
                 <dt>{t("jobsState")}</dt>
                 <dd>{t(`jobsState${selected.state}`)}</dd>
                 <dt>{t("jobsAttempts")}</dt>

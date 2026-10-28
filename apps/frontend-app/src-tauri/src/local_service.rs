@@ -72,7 +72,8 @@ impl Drop for LocalService {
 }
 
 fn require_chooser(window: &tauri::WebviewWindow) -> Result<(), String> {
-    let current = window.url().map_err(|error| error.to_string())?;
+    let mut current = window.url().map_err(|error| error.to_string())?;
+    current.set_fragment(None);
     let launcher = window.state::<OnceLock<tauri::Url>>();
     if window.label() != "main" || launcher.get() != Some(&current) {
         return Err("本地服务只能从应用内置启动页操作。".to_string());
@@ -227,6 +228,12 @@ fn finish_setup(state: &mut Option<LocalService>, timeout: Duration) -> Result<V
     result
 }
 
+pub(crate) fn stop(app: &tauri::AppHandle) {
+    if let Ok(mut state) = app.state::<LocalState>().lock() {
+        *state = None;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,11 +265,5 @@ mod tests {
             state.is_none(),
             "retry must start from persisted backend state, not cached setup"
         );
-    }
-}
-
-pub(crate) fn stop(app: &tauri::AppHandle) {
-    if let Ok(mut state) = app.state::<LocalState>().lock() {
-        *state = None;
     }
 }

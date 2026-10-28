@@ -1803,6 +1803,22 @@
             "type": "string"
           },
           "error_history": {},
+          "fanout_description": {
+            "type": "string"
+          },
+          "fanout_display_name": {
+            "type": "string"
+          },
+          "fanout_fire_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "fanout_kind": {
+            "type": "string"
+          },
+          "fanout_schedule_name": {
+            "type": "string"
+          },
           "finished_at": {
             "format": "date-time",
             "type": "string"
@@ -5745,10 +5761,14 @@
           },
           "registration": {
             "type": "boolean"
+          },
+          "registration_email_verification": {
+            "type": "boolean"
           }
         },
         "required": [
           "registration",
+          "registration_email_verification",
           "password_recovery",
           "passkey",
           "phone_login",
@@ -28352,6 +28372,35 @@
         ],
         "type": "object"
       },
+      "EnvelopeRegistrationPolicyView": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/RegistrationPolicyView",
+            "description": "response payload; null on error unless validation or business details are supplied"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeRemoteCapabilityView": {
         "additionalProperties": false,
         "properties": {
@@ -32142,6 +32191,10 @@
       "Event": {
         "additionalProperties": false,
         "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/PrincipalLabel",
+            "description": "Current authorized identity; not covered by event_hash"
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -32187,6 +32240,10 @@
               "null"
             ]
           },
+          "target_principal": {
+            "$ref": "#/components/schemas/PrincipalLabel",
+            "description": "Current authorized principal target identity; not covered by event_hash"
+          },
           "target_type": {
             "type": "string"
           },
@@ -32199,6 +32256,10 @@
           },
           "user_agent": {
             "type": "string"
+          },
+          "viewed_principal": {
+            "$ref": "#/components/schemas/PrincipalLabel",
+            "description": "Current authorized viewed account identity; not covered by event_hash"
           }
         },
         "required": [
@@ -48993,6 +49054,21 @@
         ],
         "type": "object"
       },
+      "PrincipalLabel": {
+        "additionalProperties": false,
+        "properties": {
+          "anonymized": {
+            "type": "boolean"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "login_name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "PrincipalLifecycle": {
         "additionalProperties": false,
         "properties": {
@@ -53700,6 +53776,10 @@
             ],
             "type": "string"
           },
+          "login_name": {
+            "maxLength": 200,
+            "type": "string"
+          },
           "password": {
             "maxLength": 1024,
             "minLength": 8,
@@ -53707,11 +53787,38 @@
           }
         },
         "required": [
-          "email",
           "password",
           "captcha_type",
           "captcha_id",
           "captcha_answer"
+        ],
+        "type": "object"
+      },
+      "RegistrationPolicyInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "RegistrationPolicyView": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "available"
         ],
         "type": "object"
       },
@@ -165174,7 +165281,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Register a global principal pending email verification",
+        "summary": "Register a global account using the deployment email verification policy",
         "tags": [
           "registrations"
         ]
@@ -188564,6 +188671,171 @@
           }
         ],
         "summary": "Rotate the platform-wide SAML identity provider signing key",
+        "tags": [
+          "system"
+        ],
+        "x-authz-permission": "platform_administer"
+      }
+    },
+    "/system/settings/registration": {
+      "get": {
+        "operationId": "authn-get-registration-policy",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeRegistrationPolicyView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get account registration policy",
+        "tags": [
+          "system"
+        ],
+        "x-authz-permission": "platform_administer"
+      },
+      "put": {
+        "operationId": "authn-put-registration-policy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationPolicyInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeRegistrationPolicyView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EnvelopeValidationErrorData"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Set account registration policy",
         "tags": [
           "system"
         ],

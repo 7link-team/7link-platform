@@ -57,7 +57,7 @@ it("sends the console home to the view the caller can use", () => {
     const {activateAccountView,exitAccountView}=await import("./lib/account-view.ts");
     let access;
     Object.assign(iamApi,{
-      myTenants:async()=>access.memberships,
+      myTenants:async()=>{if(access.tenantFail)throw new Error("tenant unavailable");return access.memberships},
       myPermissions:async()=>access.permissions,
       myOperatingPlatforms:async()=>access.platforms,
       systemPermissions:async()=>{if(access.fail)throw new Error("offline");return access.system},
@@ -70,6 +70,7 @@ it("sends the console home to the view the caller can use", () => {
     };
     const active=(id)=>({id,status:"active"});
     assert.equal(await home({system:["system_view"],memberships:[active("7")]},"7"),"/system");
+    assert.equal(await home({system:["system_view"],tenantFail:true}),"/system");
     assert.equal(await home({platforms:[{id:"3"}],memberships:[active("7")]},"8"),"/platform/3");
     assert.equal(await home({platforms:[{id:"3"}],memberships:[{id:"7",status:"suspended"}]},"7"),"/platform/3");
     assert.equal(await home({platforms:[{id:"3"}],memberships:[active("7")]},"7"),"/admin/7");

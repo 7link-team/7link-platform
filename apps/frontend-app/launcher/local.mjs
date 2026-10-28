@@ -1,3 +1,5 @@
+import { resumeConnection, rememberConnection } from "./servers.mjs"
+
 // Native commands validate that the caller is the bundled chooser. Remote Web
 // and the locally served Web receive no process or setup capability.
 export function startLocal(doc, invoke, navigate) {
@@ -50,12 +52,25 @@ export function startLocal(doc, invoke, navigate) {
     await perform("setup_local", args)
     args.password = ""
   })
+  return () => perform("start_local")
 }
 
 if (typeof document !== "undefined") {
-  startLocal(document, (command, args) => {
+  const start = startLocal(document, (command, args) => {
     const native = window.__TAURI_INTERNALS__
     if (!native?.invoke) throw new Error("本地服务需要从桌面应用启动。")
     return native.invoke(command, args)
-  }, origin => window.location.assign(origin))
+  }, origin => {
+    try { rememberConnection(window.localStorage, { mode: "local" }) } catch {
+      document.querySelector("#local-status").textContent = "无法保存连接方式，下次启动需要重新选择。"
+    }
+    window.location.assign(origin)
+  })
+  // Returning through the native menu is an explicit request to choose again.
+  // Keep that request in the URL so reloading this page cannot reconnect it.
+  try {
+    void resumeConnection(window.localStorage, window.location, start)
+  } catch {
+    document.querySelector("#status").textContent = "无法恢复上次连接，请重新选择运行方式。"
+  }
 }

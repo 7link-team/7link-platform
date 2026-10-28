@@ -1,3 +1,13 @@
+## 2026-10-28 - Account registration policy and optional email proof
+
+- Decision: new deployments allow account registration by default; preserve explicitly disabled configuration and any persisted policy. System administrators can enable/disable registration through a guarded settings interface. Tenant self-registration remains separate.
+- Reason: user confirmed registration should be available, manageable in the administration UI, and usable with an embedded service without mail delivery.
+- Decision: support account/password signup when email verification is disabled; email remains optional and unverified. When verification is enabled, retain the existing email proof/activation flow. Registration grants no administrator role or tenant membership.
+- Alternatives Considered: requiring mail delivery for every deployment (rejected by user); marking supplied addresses verified without proof (rejected).
+- Tradeoffs: deployments that require mailbox proof must configure verification and delivery. Persisted registration policy survives service restarts. Storage or audit failure must not silently enable registration.
+- Scope: existing authentication/identity modules, additive policy migrations, public capability response, registration form and system settings; existing verification and authorization boundaries retained.
+- Status: implemented and verified; composition, security review, actual no-email browser registration/login, policy toggle, real three-engine migrations and all applicable CI targets PASS. Initial CI failures were fixed and their targets rerun; no public release published in this step.
+
 ## 2026-10-20 - Real constitution lifecycle on the existing project aggregate
 
 - Decision: implement manual immutable constitution proposal, proposer-only submission, current Human project_manage review, atomic ACTIVE replacement and durable project version pointer. ProjectID remains the existing Entity identity. Reuse current principal locking/IAM fence, project serialization, scoped constraints, delivery command idempotency, audit/outbox and generated model queries.
@@ -5519,3 +5529,12 @@ Decision: shared ActionForm focuses and scrolls the inline business error summar
 - Tradeoffs: old scopes and access controls remain usable during incremental convergence. Disabling creation is not a complete authorization/data migration.
 - Scope: retire public creation workflow/API; preserve stored scopes, members and grants, without automatic migration or permission merging.
 - Status: implemented and verified for this bounded step; public creation retired, legacy scopes and permissions preserved. Full singleton authorization/data convergence remains separate.
+
+
+## 2026-10-28 - Native desktop updates with signed version binding
+- Decision: reuse official Tauri updater for startup/manual checks, signature verification and installed formats. Require signed version metadata. A guarded built-in update window owns installation; a business server page cannot invoke it. Users explicitly trigger download/install/restart.
+- Reason: the user repeatedly requested automatic updates, including a functional delivery path rather than a check-only link.
+- Alternatives Considered: GitHub latest endpoint (omits candidate releases); unverified downloads (rejected); routing portable builds into NSIS (changes distribution semantics). Portable Windows uses a signed complete ZIP with bounded staging, resource replacement and rollback.
+- Tradeoffs: pre-updater clients require one manual install. Native OS permissions still apply. Local data and existing bundle identity remain unchanged; updates stop the owned local service before installation.
+- Scope: desktop client, release signing/artifacts/channel feeds and related verification only. Feed URLs derive from repository configuration independently of business server origins. Stable and candidate feeds advance monotonically; feed publication is a separate retryable job after immutable release creation. No published old assets are replaced.
+- Status: client/release implementation present; Windows portable real upgrade and security/error paths PASS. Windows installed current-user upgrade also PASS under isolated RunAsInvoker acceptance; real UAC/all-users and macOS/Linux runtime installation not exercised on this host. Release signing configured in protected external storage and repository Secrets; no private key committed and no new release published.

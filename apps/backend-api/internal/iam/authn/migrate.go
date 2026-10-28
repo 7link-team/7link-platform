@@ -51,6 +51,7 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "base"}}},
 		// One column on this module's own challenge table.
 		{Name: "mfa-first-factor", Version: 20},
+		{Name: "registration-policy", Version: 21},
 	}
 }
 

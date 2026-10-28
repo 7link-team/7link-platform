@@ -52,6 +52,8 @@ const (
 	InvalidPersonalToken               = Namespace + ".invalid_personal_token"
 )
 
+const MenuSystemSettings = "menu_system_settings"
+
 //go:embed locales/*.json
 var locales embed.FS
 
@@ -59,3 +61,7 @@ var locales embed.FS
 func Register() error {
 	return platformi18n.RegisterFS(Namespace, locales, "locales")
 }
+
+var labels = platformi18n.NewModuleI18nFS(platformi18n.Base, locales, "locales")
+
+func Translations(key string) map[string]string { return labels.Translations(key) }

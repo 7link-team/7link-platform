@@ -118,6 +118,10 @@
       "sha256": "147b92aa119e720749e5c361e97cde87fde13b8cf1af3083b5dbb5d8650aeb49"
     },
     {
+      "path": "authn/sql/mysql/00021_registration_policy.sql",
+      "sha256": "40d0e362c09e2eb88adce411da523ef00faf65cb702ab13a06d28a7236daebc2"
+    },
+    {
       "path": "authn/sql/postgres/00001_credentials.sql",
       "sha256": "6205f24b9ee17a83d86bab761386e461a2e2150fb154131aacd498fb216c14b0"
     },
@@ -196,6 +200,10 @@
     {
       "path": "authn/sql/postgres/00020_mfa_first_factor.sql",
       "sha256": "a097e01f2a73e6f315ada856309ddfb026f37915f1d82ef7c36048d64a478aff"
+    },
+    {
+      "path": "authn/sql/postgres/00021_registration_policy.sql",
+      "sha256": "b80fa0d4bc08e12156f5afa97ae06c3e138cb5116ccaff5ef77048d017153cb5"
     },
     {
       "path": "authn/sql/sqlite/00001_credentials.sql",
@@ -278,6 +286,10 @@
       "sha256": "f2f6f35240860dd005d626cb895a5b1c39226c48cd3dded336fc2731dfee5993"
     },
     {
+      "path": "authn/sql/sqlite/00021_registration_policy.sql",
+      "sha256": "b92f4b34c0757558efc1db1538c3be558d9e39bd4475fcd177eb22a0dcfb6234"
+    },
+    {
       "path": "core/sql/mysql/00001_authorization.sql",
       "sha256": "8400daf3b100140f9c3faf002e31845742e7f526053db375624641ebf15a889b"
     },
@@ -352,6 +364,10 @@
     {
       "path": "core/sql/mysql/00019_membership_periods.sql",
       "sha256": "52befe2cbd599b42d74ccb23d3c5ede9cbe1e98771af1363ae23991014585998"
+    },
+    {
+      "path": "core/sql/mysql/00020_menu_contributions.sql",
+      "sha256": "fa3c6623e662b73171a86866832cf844846a5b932928ef4ca7c72994d4a47cb1"
     },
     {
       "path": "core/sql/postgres/00001_authorization.sql",
@@ -430,6 +446,10 @@
       "sha256": "212a96515a05ebe9e3aac0c4fe4a56307f2ef4086230971826599d8657ec4ce8"
     },
     {
+      "path": "core/sql/postgres/00020_menu_contributions.sql",
+      "sha256": "47ec90e3b2e8ea521e1d5c6e5ad803020316654c5dd78b781ba6d11be5d2e673"
+    },
+    {
       "path": "core/sql/sqlite/00001_authorization.sql",
       "sha256": "bfbb1d550ddf6754f801350ed0629c9fe5f97804690d4a045246662f6ab13bd8"
     },
@@ -504,6 +524,10 @@
     {
       "path": "core/sql/sqlite/00019_membership_periods.sql",
       "sha256": "a827dc7ce332ffd17089daa5e640e4232e258204e19735ab2df24338c2bb8c9c"
+    },
+    {
+      "path": "core/sql/sqlite/00020_menu_contributions.sql",
+      "sha256": "39d42c62b7626cc22e1c1a9e749cb23cae4f005832ba13a1501d178b7b52c6bc"
     },
     {
       "path": "federation/sql/mysql/00001_identity_providers.sql",
@@ -1110,12 +1134,24 @@
       "sha256": "ed35efeda3fd4245ec66940800e53c76259a756ba9a6e457167139a2ac7bc458"
     },
     {
+      "path": "webhook/sql/mysql/00002_intake_metadata.sql",
+      "sha256": "4ee9b7c6ae8cace7bcbc2d3570fd05096f902fddde2cd756cc04df60b58a0c96"
+    },
+    {
       "path": "webhook/sql/postgres/00001_webhooks.sql",
       "sha256": "eccc8de7b0a73cc8b5be0f6d039d3fb356239b1ee8181ca7882458a05b368e48"
     },
     {
+      "path": "webhook/sql/postgres/00002_intake_metadata.sql",
+      "sha256": "ff6606540883eece749d2910c3fc7d1041dbea187a386d8c0601b2bc6e99aaa0"
+    },
+    {
       "path": "webhook/sql/sqlite/00001_webhooks.sql",
       "sha256": "9d6119f709da45e5a5e45bb571f61aa03f85dcab95d203361aa096557d6ab96d"
+    },
+    {
+      "path": "webhook/sql/sqlite/00002_intake_metadata.sql",
+      "sha256": "b14976480e838d3baa11aa128eadfc0ad89918b5eeb7ac7ebd0610988f9339c0"
     }
   ]
 }

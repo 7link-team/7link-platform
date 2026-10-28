@@ -106,18 +106,21 @@ type Event struct {
 	// PrincipalID is the acting operator: under an account view, the operator
 	// who opened it, not the viewed account (recorded as
 	// detail.viewed_principal_id).
-	PrincipalID  guid.ID         `json:"principal_id,omitempty"`
-	EventType    string          `json:"event_type"`
-	TargetType   string          `json:"target_type,omitempty"`
-	TargetID     guid.ID         `json:"target_id,omitempty"`
-	Outcome      string          `json:"outcome"`
-	IPAddress    string          `json:"ip_address,omitempty"`
-	UserAgent    string          `json:"user_agent,omitempty"`
-	Detail       json.RawMessage `json:"detail"`
-	Sequence     int64           `json:"sequence"`
-	PreviousHash string          `json:"previous_hash,omitempty"`
-	EventHash    string          `json:"event_hash"`
-	CreatedAt    time.Time       `json:"created_at"`
+	PrincipalID     guid.ID         `json:"principal_id,omitempty"`
+	EventType       string          `json:"event_type"`
+	TargetType      string          `json:"target_type,omitempty"`
+	TargetID        guid.ID         `json:"target_id,omitempty"`
+	Outcome         string          `json:"outcome"`
+	IPAddress       string          `json:"ip_address,omitempty"`
+	UserAgent       string          `json:"user_agent,omitempty"`
+	Detail          json.RawMessage `json:"detail"`
+	Sequence        int64           `json:"sequence"`
+	PreviousHash    string          `json:"previous_hash,omitempty"`
+	EventHash       string          `json:"event_hash"`
+	CreatedAt       time.Time       `json:"created_at"`
+	Actor           *PrincipalLabel `json:"actor,omitempty" doc:"Current authorized identity; not covered by event_hash"`
+	TargetPrincipal *PrincipalLabel `json:"target_principal,omitempty" doc:"Current authorized principal target identity; not covered by event_hash"`
+	ViewedPrincipal *PrincipalLabel `json:"viewed_principal,omitempty" doc:"Current authorized viewed account identity; not covered by event_hash"`
 }
 
 // Filter selects stored audit events.
@@ -197,13 +200,14 @@ type exportComplete struct {
 }
 
 type Service struct {
-	repo           *Repository
-	now            func() time.Time
-	anchor         *AnchorStore
-	signer         *RootSigner
-	archive        *AnchorStore
-	erasureLedger  *ErasureLedger
-	erasureTimeout time.Duration
+	principalLabels PrincipalLabelLookup
+	repo            *Repository
+	now             func() time.Time
+	anchor          *AnchorStore
+	signer          *RootSigner
+	archive         *AnchorStore
+	erasureLedger   *ErasureLedger
+	erasureTimeout  time.Duration
 
 	archiveSweepFailures   atomic.Int64
 	archiveAttemptFailures atomic.Int64
@@ -290,6 +294,9 @@ func (s *Service) List(ctx context.Context, filter Filter) ([]Event, int64, erro
 	for _, row := range rows {
 		events = append(events, eventFromRow(row))
 	}
+	if err := s.labelEvents(ctx, filter.TenantID, events); err != nil {
+		return nil, 0, err
+	}
 	return events, total, nil
 }
 
@@ -302,7 +309,11 @@ func (s *Service) Get(ctx context.Context, tenantID, id guid.ID) (Event, error) 
 	if err != nil {
 		return Event{}, err
 	}
-	return eventFromRow(row), nil
+	events := []Event{eventFromRow(row)}
+	if err := s.labelEvents(ctx, tenantID, events); err != nil {
+		return Event{}, err
+	}
+	return events[0], nil
 }
 
 func (s *Service) Verify(ctx context.Context, tenantID guid.ID) (Integrity, error) {
@@ -459,11 +470,18 @@ func (s *Service) WriteExport(ctx context.Context, snapshot ExportSnapshot, writ
 		if len(rows) == 0 {
 			break
 		}
-		for _, row := range rows {
+		events := make([]Event, len(rows))
+		for i, row := range rows {
+			events[i] = eventFromRow(row)
+		}
+		if err := s.labelEvents(ctx, snapshot.Filter.TenantID, events); err != nil {
+			return err
+		}
+		for i, row := range rows {
 			if row.Sequence <= cursor || !validEventHash(row) {
 				return ErrIntegrity
 			}
-			line, marshalErr := json.Marshal(exportEvent{Type: "event", Event: eventFromRow(row)})
+			line, marshalErr := json.Marshal(exportEvent{Type: "event", Event: events[i]})
 			if marshalErr != nil {
 				return fmt.Errorf("encode audit export event: %w", marshalErr)
 			}

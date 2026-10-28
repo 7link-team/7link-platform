@@ -40,5 +40,6 @@
   "registration_unavailable": "自助注册当前不可用，请联系管理员获取访问权限或稍后重试。",
   "return_url_not_allowed": "返回地址未列入允许名单，请使用已批准的应用地址或联系管理员。",
   "session_not_found": "指定的浏览器会话不存在或已失效，请刷新会话列表后重试。",
-  "sms_factor_unavailable": "本次登录不能用手机验证码完成,请使用其他第二因子。"
+  "sms_factor_unavailable": "本次登录不能用手机验证码完成,请使用其他第二因子。",
+  "menu_system_settings": "\u7cfb\u7edf\u8bbe\u7f6e"
 }

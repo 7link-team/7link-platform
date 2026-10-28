@@ -34,6 +34,7 @@ export default function RegisterPage() {
 
   const [busy, setBusy] = useState(false)
   const [complete, setComplete] = useState(false)
+  const [verificationRequired, setVerificationRequired] = useState(true)
   const [visible, setVisible] = useState(false)
   const [error, setError] = useState("")
   const [captcha, setCaptcha] = useState<Captcha | null>(null)
@@ -42,15 +43,20 @@ export default function RegisterPage() {
     null
   )
   const [widget, setWidget] = useState(0)
+  const [capabilitiesFailed, setCapabilitiesFailed] = useState(false)
+  const [capabilitiesRevision, setCapabilitiesRevision] = useState(0)
   // Which challenge exists is the service's to say. Asking a deployment that
   // delegates to Cloudflare for a drawn one gets nothing, repeatedly.
   const delegated = capabilities?.captcha.provider === "turnstile"
+  const verifyEmail = capabilities?.registration_email_verification ?? true
 
   useEffect(() => {
+    let active = true
     void iamApi
       .capabilities()
-      .then(setCapabilities, () => setCapabilities(null))
-  }, [])
+      .then(next => { if (active) setCapabilities(next) }, () => { if (active) setCapabilitiesFailed(true) })
+    return () => { active = false }
+  }, [capabilitiesRevision])
 
   const loadCaptcha = () => {
     void issueRegistrationCaptcha().then(setCaptcha, () =>
@@ -88,9 +94,10 @@ export default function RegisterPage() {
       return
     }
     try {
-      await iamApi.register({
+      const result = await iamApi.register({
         ...(entry ? { entry } : {}),
-        email: String(values.email ?? "").trim(),
+        ...(verifyEmail ? {} : { login_name: String(values.login_name ?? "").trim() }),
+        ...(String(values.email ?? "").trim() ? { email: String(values.email).trim() } : {}),
         password,
         display_name: String(values.display_name ?? "").trim(),
         ...(delegated
@@ -98,6 +105,7 @@ export default function RegisterPage() {
           : { captcha_type: captcha!.type, captcha_id: captcha!.captcha_id }),
         captcha_answer: answer.trim(),
       })
+      setVerificationRequired(result.verification_required ?? true)
       setComplete(true)
     } catch (cause) {
       setError(t(registrationError(cause)))
@@ -131,7 +139,7 @@ export default function RegisterPage() {
               )}
             </h1>
             <p className="text-sm text-muted-foreground">
-              {t("verifyEmailToSignIn")}
+              {t(verifyEmail ? "verifyEmailToSignIn" : "registerWithAccount")}
             </p>
           </header>
 
@@ -142,25 +150,40 @@ export default function RegisterPage() {
             >
               <MailCheck className="mt-0.5 size-5 shrink-0 text-primary" />
               <div>
-                <p className="font-medium">{t("checkEmail")}</p>
+                <p className="font-medium">{t(verificationRequired ? "checkEmail" : "registrationComplete")}</p>
                 <p className="mt-1 text-muted-foreground">
-                  {t("registrationEmailQueued")}
+                  {t(verificationRequired ? "registrationEmailQueued" : "registrationReadyToSignIn")}
                 </p>
               </div>
             </div>
+          ) : !capabilities ? (
+            <div className="mt-5 space-y-3">
+              <p className="text-sm" role="status">{t(capabilitiesFailed ? "identityUnavailable" : "loading")}</p>
+              {capabilitiesFailed && <Button variant="outline" onClick={() => { setCapabilitiesFailed(false); setCapabilitiesRevision(value => value + 1) }}>{t("retry")}</Button>}
+            </div>
+          ) : !capabilities.registration ? (
+            <p className="mt-5 text-sm" role="status">{t("registrationClosed")}</p>
           ) : (
             <AutoForm
               className="mt-5 md:grid-cols-1 [&>*]:col-span-1"
               onSubmit={submit}
               fields={{
+                ...(!verifyEmail ? {
+                  login_name: {
+                    name: t("loginName"),
+                    type: "text" as const,
+                    required: true,
+                    config: { id: "registration-login", autoComplete: "username", autoFocus: true, maxLength: 200 },
+                  },
+                } : {}),
                 email: {
                   name: t("email"),
                   type: "email",
-                  required: true,
+                  required: verifyEmail,
                   config: {
                     id: "registration-email",
                     autoComplete: "email",
-                    autoFocus: true,
+                    autoFocus: verifyEmail,
                     maxLength: 320,
                   },
                 },
@@ -270,7 +293,7 @@ export default function RegisterPage() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={busy || !captcha}
+                disabled={busy || (delegated ? !answer.trim() : !captcha)}
               >
                 {busy ? t("submitting") : t("createAccount")}
               </Button>

@@ -15,6 +15,7 @@ import (
 	"7link.com/platform/internal/iam/federation"
 	"7link.com/platform/internal/iam/governance"
 	"7link.com/platform/internal/iam/identity"
+	identitymodel "7link.com/platform/internal/iam/identity/model"
 	"7link.com/platform/internal/iam/organization"
 	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/dlock"
@@ -538,4 +539,33 @@ func TestAuthenticationStartupRequiresDisabledFederationQuarantine(t *testing.T)
 			require.True(t, probe.initialized)
 		})
 	}
+}
+
+// Exercise the actual module inventory and identity/authn capability wiring,
+// using the same parsed default as a new built-in service installation.
+func TestComposedDefaultRegistrationCreatesAnUnverifiedLoginWithoutEmailDelivery(t *testing.T) {
+	var defaults AppConfig
+	require.NoError(t, configx.New().Parse(&defaults, "--authn.enabled=true"))
+	application := bootstrapComposedAppConfigured(t, func(cfg *AppConfig) {
+		cfg.Authn.Registration = defaults.Authn.Registration
+		cfg.Secrets = BusinessSecretsConfig{Enabled: false}
+	})
+	owner, found := application.modules.ByName(iamauthn.Name)
+	require.True(t, found)
+	authentication, ok := owner.(*iamauthn.Module)
+	require.True(t, ok)
+	require.True(t, authentication.Capabilities().Registration)
+	const password = "registered account password"
+	require.NoError(t, authentication.RegisterAccountForEntry(t.Context(), "new-account", "", password, "New Account", "user"))
+	_, err := authentication.BeginLogin(t.Context(), "new-account", password, "")
+	require.NoError(t, err)
+	var principal identitymodel.Principal
+	require.NoError(t, application.runtime.Database().Write().Table(application.runtime.TablePrefix()+principal.TableName()).Where("login_name = ?", "new-account").First(&principal).Error)
+	assert.False(t, principal.EmailVerified)
+	assert.False(t, principal.ActivationRequired)
+	assert.True(t, principal.SelfRegistered)
+	assert.Empty(t, principal.Email)
+	_, err = authentication.SetRegistrationPolicy(t.Context(), false)
+	require.NoError(t, err)
+	assert.False(t, authentication.Capabilities().Registration)
 }

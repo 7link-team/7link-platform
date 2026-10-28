@@ -17,7 +17,13 @@ import (
 const registrationVerificationCooldown = time.Minute
 
 func (s *Service) configureRegistration() error {
-	if !s.cfg.Registration.Enabled {
+	if !s.cfg.Registration.Enabled || !s.web.Enabled {
+		return nil
+	}
+	if !s.cfg.EmailVerification.Enabled {
+		if s.directRegistrationCreator == nil {
+			return errors.New("authn registration requires an identity creator")
+		}
 		return nil
 	}
 	if !s.Enabled() || !s.EmailVerificationEnabled() || !s.NotificationEnabled() || s.registrationCreator == nil {
@@ -27,8 +33,11 @@ func (s *Service) configureRegistration() error {
 }
 
 func (s *Service) RegistrationEnabled() bool {
-	return s != nil && s.Enabled() && s.cfg.Registration.Enabled &&
-		s.EmailVerificationEnabled() && s.NotificationEnabled() && s.registrationCreator != nil
+	if !s.registrationReady() {
+		return false
+	}
+	enabled, err := s.registrationPolicy(context.Background())
+	return err == nil && enabled
 }
 
 func (s *Service) Capabilities() authnext.Capabilities {
@@ -36,7 +45,7 @@ func (s *Service) Capabilities() authnext.Capabilities {
 		return authnext.Capabilities{}
 	}
 	return authnext.Capabilities{
-		Registration: s.RegistrationEnabled(), PasswordRecovery: s.RecoveryEnabled(),
+		Registration: s.RegistrationEnabled(), RegistrationEmailVerification: s.cfg.EmailVerification.Enabled, PasswordRecovery: s.RecoveryEnabled(),
 		Passkey:    s.cfg.Enabled && s.web.Enabled && s.cfg.Passkey.Enabled && s.passkeys != nil,
 		PhoneLogin: s.PhoneLoginEnabled(),
 	}
@@ -47,8 +56,25 @@ func (s *Service) Register(ctx context.Context, email, password, displayName str
 }
 
 func (s *Service) RegisterForEntry(ctx context.Context, email, password, displayName, entry string) error {
-	if !s.RegistrationEnabled() {
+	return s.RegisterAccountForEntry(ctx, "", email, password, displayName, entry)
+}
+
+func (s *Service) RegisterAccountForEntry(ctx context.Context, loginName, email, password, displayName, entry string) error {
+	if !s.registrationReady() {
 		return authnext.ErrRegistrationDisabled
+	}
+	enabled, err := s.registrationPolicy(ctx)
+	if err != nil {
+		return authnext.ErrUnavailable
+	}
+	if !enabled {
+		return authnext.ErrRegistrationDisabled
+	}
+	if !s.cfg.EmailVerification.Enabled {
+		return s.registerUnverifiedAccount(ctx, loginName, email, password, displayName)
+	}
+	if strings.TrimSpace(loginName) != "" && !strings.EqualFold(strings.TrimSpace(loginName), strings.TrimSpace(email)) {
+		return authnext.ErrInvalidRegistration
 	}
 	email = strings.ToLower(strings.TrimSpace(email))
 	displayName = strings.TrimSpace(displayName)

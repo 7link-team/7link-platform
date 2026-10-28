@@ -128,10 +128,10 @@ type SharedSecurityConfig struct {
 	OAuthGlobal       int           `mapstructure:"oauth_global" description:"maximum POST /oauth token, revocation and introspection requests across all replicas per window" default:"30000"`
 }
 
-// RegistrationConfig enables email-verified self-service global principals.
-// Tenant membership is deliberately granted only through invitations.
+// RegistrationConfig controls self-service global accounts. Email verification
+// follows EmailVerification.Enabled; signup grants no tenant membership.
 type RegistrationConfig struct {
-	Enabled bool `mapstructure:"enabled" description:"enable email-verified self-service registration" default:"false"`
+	Enabled bool `mapstructure:"enabled" description:"enable self-service account registration" default:"true"`
 }
 
 // CaptchaConfig is which challenge this deployment presents, and, for an
@@ -192,9 +192,10 @@ type TurnstileConfig struct {
 }
 
 type Capabilities struct {
-	Registration     bool `json:"registration"`
-	PasswordRecovery bool `json:"password_recovery"`
-	Passkey          bool `json:"passkey"`
+	Registration                  bool `json:"registration"`
+	RegistrationEmailVerification bool `json:"registration_email_verification"`
+	PasswordRecovery              bool `json:"password_recovery"`
+	Passkey                       bool `json:"passkey"`
 	// PhoneLogin says whether a code sent to a proven number signs anybody in
 	// here. A client that offers it regardless leads somebody through typing a
 	// number to a refusal, which is the deployment's configuration showing

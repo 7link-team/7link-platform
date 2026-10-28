@@ -112,14 +112,15 @@ export async function workspaceHomeLoader() {
   const view = getAccountView()
   if (view) return redirect(accountViewPath(view, getTenant()))
   try {
-    const [memberships, permissions, platforms, systemPermissions] =
+    // A system administrator need not belong to a tenant. Its landing must not
+    // depend on tenant-scoped discovery succeeding first.
+    const systemPermissions = await iamApi.systemPermissions().catch(() => [])
+    if (systemPermissions.length > 0) return redirect("/system")
+    const [memberships, platforms] =
       await Promise.all([
         iamApi.myTenants(),
-        iamApi.myPermissions(),
-        iamApi.myOperatingPlatforms(),
-        iamApi.systemPermissions(),
+        iamApi.myOperatingPlatforms().catch(() => []),
       ])
-    if (systemPermissions.length > 0) return redirect("/system")
     if (
       platforms.length &&
       !memberships.some(
@@ -135,6 +136,7 @@ export async function workspaceHomeLoader() {
     if (tenantID) setTenant(tenantID)
     const entityHome = await entityWorkspacePath(tenantID)
     if (entityHome) return redirect(entityHome)
+    const permissions = await iamApi.myPermissions(tenantID || undefined).catch(() => [])
     return redirect(defaultWorkspacePath(tenantID, new Set(permissions)))
   } catch {
     return redirect("/user")

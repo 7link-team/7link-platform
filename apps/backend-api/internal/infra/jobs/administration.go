@@ -124,33 +124,42 @@ func adminHTTPError(ctx context.Context, err error) error {
 }
 
 type adminJobView struct {
-	Module        string          `json:"module,omitempty"`
-	DisplayName   string          `json:"display_name,omitempty"`
-	Description   string          `json:"description,omitempty"`
-	ID            guid.ID         `json:"id"`
-	TenantID      guid.ID         `json:"tenant_id"`
-	Kind          string          `json:"kind"`
-	Queue         string          `json:"queue"`
-	State         string          `json:"state"`
-	Priority      int             `json:"priority"`
-	Attempts      int             `json:"attempts"`
-	MaxAttempts   int             `json:"max_attempts"`
-	ManualRetries int             `json:"manual_retries"`
-	Version       int             `json:"version"`
-	HasHandler    bool            `json:"has_handler"`
-	RunAt         time.Time       `json:"run_at"`
-	CreatedAt     time.Time       `json:"created_at"`
-	FinishedAt    *time.Time      `json:"finished_at,omitempty"`
-	StartedAt     *time.Time      `json:"started_at,omitempty"`
-	CorrelationID string          `json:"correlation_id,omitempty"`
-	LastErrorCode string          `json:"last_error_code"`
-	Payload       json.RawMessage `json:"payload,omitempty"`
-	ErrorHistory  json.RawMessage `json:"error_history,omitempty"`
+	Module             string          `json:"module,omitempty"`
+	DisplayName        string          `json:"display_name,omitempty"`
+	Description        string          `json:"description,omitempty"`
+	ID                 guid.ID         `json:"id"`
+	TenantID           guid.ID         `json:"tenant_id"`
+	Kind               string          `json:"kind"`
+	Queue              string          `json:"queue"`
+	State              string          `json:"state"`
+	Priority           int             `json:"priority"`
+	Attempts           int             `json:"attempts"`
+	MaxAttempts        int             `json:"max_attempts"`
+	ManualRetries      int             `json:"manual_retries"`
+	Version            int             `json:"version"`
+	HasHandler         bool            `json:"has_handler"`
+	RunAt              time.Time       `json:"run_at"`
+	CreatedAt          time.Time       `json:"created_at"`
+	FinishedAt         *time.Time      `json:"finished_at,omitempty"`
+	StartedAt          *time.Time      `json:"started_at,omitempty"`
+	CorrelationID      string          `json:"correlation_id,omitempty"`
+	LastErrorCode      string          `json:"last_error_code"`
+	Payload            json.RawMessage `json:"payload,omitempty"`
+	ErrorHistory       json.RawMessage `json:"error_history,omitempty"`
+	FanoutScheduleName string          `json:"fanout_schedule_name,omitempty"`
+	FanoutKind         string          `json:"fanout_kind,omitempty"`
+	FanoutDisplayName  string          `json:"fanout_display_name,omitempty"`
+	FanoutDescription  string          `json:"fanout_description,omitempty"`
+	FanoutFireAt       *time.Time      `json:"fanout_fire_at,omitempty"`
 }
 
 func (m *Module) adminJob(ctx context.Context, row *model.Job, detail bool) (adminJobView, error) {
 	m.mu.RLock()
 	handler, known := m.handlers[row.Kind]
+	var target Handler
+	if row.Kind == fanoutKind && row.FanoutKind != nil {
+		target = m.handlers[*row.FanoutKind]
+	}
 	m.mu.RUnlock()
 	v := adminJobView{ID: row.ID, TenantID: row.TenantID, Kind: row.Kind, Queue: row.Queue, State: row.State, Priority: row.Priority, Attempts: row.Attempts, MaxAttempts: row.MaxAttempts, ManualRetries: row.ManualRetries, Version: row.Version, HasHandler: known, RunAt: time.UnixMilli(row.RunAtMS).UTC(), CreatedAt: row.CreatedAt, FinishedAt: row.FinishedAt, LastErrorCode: row.LastErrorCode}
 	v.Module = handler.Module
@@ -159,6 +168,20 @@ func (m *Module) adminJob(ctx context.Context, row *model.Job, detail bool) (adm
 	}
 	if handler.DescriptionKey != "" {
 		v.Description = platformi18n.TContext(ctx, handler.DescriptionKey)
+	}
+	// Dispatch identity comes from the frozen job snapshot, never a schedule
+	// whose declaration may have changed since this occurrence was queued.
+	if row.Kind == fanoutKind && row.FanoutKind != nil && row.FanoutFireMS != nil && row.ConcurrencyKey != nil {
+		v.FanoutScheduleName = *row.ConcurrencyKey
+		v.FanoutKind = *row.FanoutKind
+		fireAt := time.UnixMilli(*row.FanoutFireMS).UTC()
+		v.FanoutFireAt = &fireAt
+		if target.DisplayNameKey != "" {
+			v.FanoutDisplayName = platformi18n.TContext(ctx, target.DisplayNameKey)
+		}
+		if target.DescriptionKey != "" {
+			v.FanoutDescription = platformi18n.TContext(ctx, target.DescriptionKey)
+		}
 	}
 	if detail {
 		v.StartedAt = row.StartedAt

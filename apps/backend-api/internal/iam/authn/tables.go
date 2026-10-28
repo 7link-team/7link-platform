@@ -11,6 +11,7 @@ import (
 // The fields are named, not looked up by string, so a consumer cannot ask for a
 // table authn does not have and cannot misspell the one it wants.
 type CredentialTableNames struct {
+	RegistrationPolicy         gormx.TableName
 	Credentials                gormx.TableName
 	Sessions                   gormx.TableName
 	PasswordHistory            gormx.TableName
@@ -37,6 +38,7 @@ type CredentialTableNames struct {
 func PublishedCredentialTableNames(prefix string) CredentialTableNames {
 	names := query.BindNames(prefix)
 	return CredentialTableNames{
+		RegistrationPolicy:         names.RegistrationPolicy,
 		Credentials:                names.Credentials,
 		Sessions:                   names.Sessions,
 		PasswordHistory:            names.PasswordHistory,

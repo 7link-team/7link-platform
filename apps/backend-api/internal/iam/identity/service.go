@@ -243,6 +243,43 @@ func (s *Service) CreatePendingPrincipal(
 	return id, nil
 }
 
+// CreateUnverifiedRegistration creates a self-registered account that can log in
+// without claiming mailbox ownership. It grants no memberships or permissions.
+func (s *Service) CreateUnverifiedRegistration(ctx context.Context, db *gorm.DB, loginName, email, hash, name string, now time.Time, ids guid.Source) (guid.ID, error) {
+	loginName = normalizeLogin(loginName)
+	email = strings.ToLower(strings.TrimSpace(email))
+	name = strings.TrimSpace(name)
+	if s == nil || s.repo == nil || db == nil || ids == nil || loginName == "" || len(loginName) > 200 || hash == "" || len(email) > 320 || len(name) > 128 {
+		return 0, ErrInvalid
+	}
+	if email != "" {
+		parsed, err := mail.ParseAddress(email)
+		if err != nil || !strings.EqualFold(parsed.Address, email) {
+			return 0, ErrInvalid
+		}
+	}
+	if name == "" {
+		name = loginName
+	}
+	id, err := nextIdentityID(ids)
+	if err != nil {
+		return 0, err
+	}
+	repo, err := s.repo.on(db)
+	if err != nil {
+		return 0, err
+	}
+	now = identityTime(now)
+	row := model.Principal{ID: id, LoginName: loginName, Email: email, DisplayName: name, SelfRegistered: true, Status: "active", CreatedAt: now, UpdatedAt: now}
+	if err := repo.insertPrincipal(ctx, &row); err != nil {
+		return 0, err
+	}
+	if err := repo.createCredential(ctx, id, hash, now); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
 // EnsureExternalPrincipal creates a new external principal and membership.
 // An asserted email never proves ownership of an existing global account.
 func (s *Service) EnsureExternalPrincipal(

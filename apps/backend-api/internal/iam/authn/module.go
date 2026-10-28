@@ -24,19 +24,21 @@ import (
 // browser authentication HTTP operations, and their worker lifecycle.
 type Module struct {
 	*Service
-	runtime               *appenv.Runtime
-	config                Config
-	registrationCreator   RegistrationPrincipalCreator
-	ids                   guid.Source
-	appender              audit.Appender
-	memberTenant          core.MemberTenantResolver
-	fields                authz.FieldPermissionChecker
-	oauthGrants           OAuthGrantValidator
-	personalPermissions   func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
-	personalRegistry      *authz.Registry
-	recoveryEligibility   func(context.Context, *gorm.DB, guid.ID) error
-	federatedProofTrust   func(context.Context, *gorm.DB, guid.ID, string, string) error
-	accountViewAuthorizer AccountViewAuthorizer
+	runtime                   *appenv.Runtime
+	config                    Config
+	registrationCreator       RegistrationPrincipalCreator
+	directRegistrationCreator DirectRegistrationPrincipalCreator
+	ids                       guid.Source
+	appender                  audit.Appender
+	memberTenant              core.MemberTenantResolver
+	fields                    authz.FieldPermissionChecker
+	oauthGrants               OAuthGrantValidator
+	personalPermissions       func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
+	personalRegistry          *authz.Registry
+	registrar                 *authz.Registrar
+	recoveryEligibility       func(context.Context, *gorm.DB, guid.ID) error
+	federatedProofTrust       func(context.Context, *gorm.DB, guid.ID, string, string) error
+	accountViewAuthorizer     AccountViewAuthorizer
 
 	// foreign is the one holder of the table names the modules that own them
 	// publish to authn. The connectors below bind it, and every repository the
@@ -256,6 +258,14 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	if registrar != nil {
 		m.personalRegistry = registrar.Registry()
+		m.registrar = registrar
+		menus, err := module.Resolve[*core.SystemMenus](services)
+		if err != nil {
+			return err
+		}
+		if err := menus.Contribute(registrationPolicyMenu()); err != nil {
+			return err
+		}
 	}
 	grants, grantErr := module.Resolve[OAuthGrantValidator](services)
 	if grantErr != nil && !errors.Is(grantErr, module.ErrServiceMissing) {
@@ -294,6 +304,23 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	m.ids = ids
 	m.appender = appender
+	directCreator, err := module.Resolve[identity.DirectRegistrationPrincipalCreator](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	if directCreator != nil {
+		m.directRegistrationCreator = func(ctx context.Context, db *gorm.DB, login, email, hash, name string, now time.Time, _ guid.Source) (guid.ID, error) {
+			id, err := directCreator(ctx, db, login, email, hash, name, now)
+			switch {
+			case errors.Is(err, identity.ErrLoginConflict):
+				return 0, authnext.ErrRegistrationConflict
+			case errors.Is(err, identity.ErrInvalid):
+				return 0, authnext.ErrInvalidRegistration
+			default:
+				return id, err
+			}
+		}
+	}
 	m.registrationCreator = func(
 		ctx context.Context,
 		db *gorm.DB,
@@ -335,6 +362,7 @@ func (m *Module) Initialize(context.Context) error {
 		m.config.Service,
 		repository,
 		WithRegistrationPrincipalCreator(m.registrationCreator),
+		WithDirectRegistrationPrincipalCreator(m.directRegistrationCreator),
 		WithMemberTenantResolver(m.memberTenant),
 		WithFieldPermissionChecker(m.fields),
 		WithAccountViewAuthorizer(m.accountViewAuthorizer),
@@ -393,6 +421,9 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 		return fmt.Errorf("register authn: service is unavailable")
 	}
 	RegisterHTTP(api, m.Service, m.Service)
+	if m.registrar != nil {
+		registerRegistrationPolicyHTTP(api, m.Service, m.registrar)
+	}
 	return nil
 }
 

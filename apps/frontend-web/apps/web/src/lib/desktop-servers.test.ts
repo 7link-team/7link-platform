@@ -26,7 +26,7 @@ test("desktop chooser persists multiple origins and connects Web and API on each
     port: 0,
     fetch(request) {
       const path = new URL(request.url).pathname
-      const file = path === "/servers.mjs" ? "servers.mjs" : path === "/style.css" ? "style.css" : "index.html"
+      const file = path === "/servers.mjs" ? "servers.mjs" : path === "/local.mjs" ? "local.mjs" : path === "/style.css" ? "style.css" : "index.html"
       return new Response(readFileSync(resolve(launcher, file)), {
         headers: { "Content-Type": file.endsWith("mjs") ? "text/javascript" : file.endsWith("css") ? "text/css" : "text/html" },
       })
@@ -63,7 +63,7 @@ test("desktop chooser persists multiple origins and connects Web and API on each
             assert.equal(await page.evaluate(() => localStorage.getItem("server-marker")), null);
             assert.equal(await page.evaluate(() => document.cookie.includes("serverSession=first")), false);
           }
-          await page.goto(chooser);
+          await page.goto(chooser + "/#choose");
           assert.equal(await page.locator("#servers a").count(), index + 1);
         }
         await page.reload();
@@ -74,6 +74,9 @@ test("desktop chooser persists multiple origins and connects Web and API on each
         assert.equal(await page.evaluate(() => localStorage.getItem("server-marker")), "first");
         assert.equal(await page.evaluate(() => document.cookie.includes("serverSession=first")), true);
         await page.goto(chooser);
+        await page.waitForURL(origins[0] + "/");
+        await page.getByText("first", {exact:true}).waitFor();
+        await page.goto(chooser + "/#choose");
         await page.getByLabel("服务器地址", {exact:true}).fill("https://user:secret@example.com");
         await page.getByRole("button", {name:"保存并连接", exact:true}).click();
         assert.equal(new URL(page.url()).origin, chooser);
@@ -88,6 +91,30 @@ test("desktop chooser persists multiple origins and connects Web and API on each
         assert.equal(await page.locator("#servers a").count(), 1);
         assert.ok(await page.getByRole("alert").textContent());
         assert.deepEqual(errors, []);
+        const local = await browser.newPage();
+        let localStarts = 0;
+        await local.exposeFunction("recordLocalStart", () => { localStarts++; });
+        await local.addInitScript(({origin}) => {
+          window.__TAURI_INTERNALS__ = {invoke: async command => {
+            if (command !== "start_local") throw new Error("Unexpected local command");
+            await window.recordLocalStart();
+            return {event:"ready",origin};
+          }};
+        }, {origin:origins[0]});
+        await local.goto(chooser);
+        await local.getByRole("button", {name:"启动本地服务",exact:true}).click();
+        await local.waitForURL(origins[0] + "/");
+        await local.getByText("first", {exact:true}).waitFor();
+        await local.goto(chooser);
+        await local.waitForURL(origins[0] + "/");
+        await local.getByText("first", {exact:true}).waitFor();
+        assert.equal(localStarts, 2);
+        await local.goto(chooser + "/#choose");
+        await local.getByRole("button", {name:"启动本地服务",exact:true}).waitFor();
+        await local.reload();
+        await local.getByRole("button", {name:"启动本地服务",exact:true}).waitFor();
+        assert.equal(localStarts, 2);
+        await local.close();
       } finally { await browser.close(); }
     })().catch(error => {console.error(error); process.exitCode = 1});
   `
@@ -100,7 +127,7 @@ test("desktop chooser persists multiple origins and connects Web and API on each
       child.on("error", reject)
       child.on("exit", code => code === 0 ? done() : reject(new Error(output || `Browser exit ${code}`)))
     })
-    expect(calls).toEqual(["first", "second", "first"])
+    expect(calls).toEqual(["first", "second", "first", "first", "first", "first"])
   } finally {
     await chooser.stop(true)
     for (const server of servers) await server.stop(true)

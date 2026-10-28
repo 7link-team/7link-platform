@@ -538,7 +538,10 @@ func inspectCall(call *ast.CallExpr, aliases map[string]string, owner, importPat
 }
 
 func TestStableWiringCapabilitiesRemainNarrow(t *testing.T) {
-	aliases := map[string]string{"authnext": "7link.com/platform/pkg/extension/authn"}
+	aliases := map[string]string{
+		"authnext": "7link.com/platform/pkg/extension/authn",
+		"identity": iamImportPrefix + "/identity",
+	}
 	for _, testCase := range []struct {
 		expression string
 		want       bool
@@ -547,6 +550,10 @@ func TestStableWiringCapabilitiesRemainNarrow(t *testing.T) {
 		{"authnext.ReauthenticationConsumer", true},
 		{"authnext.Claims", false},
 		{"authnext.UnknownProvider", false},
+		{"identity.RegistrationPrincipalCreator", true},
+		{"identity.DirectRegistrationPrincipalCreator", true},
+		{"identity.PrincipalStateStore", false},
+		{"identity.UnknownProvider", false},
 	} {
 		expression, err := parser.ParseExpr(testCase.expression)
 		require.NoError(t, err)
@@ -580,7 +587,8 @@ func isStableWiringCapability(expression ast.Expr, aliases map[string]string) bo
 				return selector.Sel.Name == "BrowserSessionSecurity" || selector.Sel.Name == "ReauthenticationConsumer" ||
 					selector.Sel.Name == "AccountViewAuthorizerConnector"
 			}
-			return importPath == iamImportPrefix+"/identity" && selector.Sel.Name == "RegistrationPrincipalCreator"
+			return importPath == iamImportPrefix+"/identity" &&
+				(selector.Sel.Name == "RegistrationPrincipalCreator" || selector.Sel.Name == "DirectRegistrationPrincipalCreator")
 		}
 	}
 }

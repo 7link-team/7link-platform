@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>软件更新</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>软件更新</h1>
+      <p id="version">正在读取应用版本…</p>
+      <p id="update-status" role="status" aria-live="polite">正在检查更新…</p>
+      <progress id="update-progress" hidden aria-label="更新下载进度"></progress>
+      <section id="release-notes" hidden aria-labelledby="notes-heading">
+        <h2 id="notes-heading">版本说明</h2>
+        <p id="notes" style="white-space:pre-wrap;overflow-wrap:anywhere"></p>
+      </section>
+      <p id="update-error" role="alert"></p>
+      <button id="check-update" type="button">重新检查</button>
+      <button id="install-update" type="button" hidden>下载更新并重启</button>
+      <footer>安装更新会关闭应用并重新启动。请先保存正在编辑的内容；本地账号和数据会保留。</footer>
+    </main>
+    <script type="module" src="./update.mjs"></script>
+  </body>
+</html>

@@ -40,5 +40,6 @@
   "registration_unavailable": "Pendaftaran layan diri tidak tersedia. Hubungi pentadbir untuk mendapatkan akses atau cuba lagi kemudian.",
   "return_url_not_allowed": "URL kembali tiada dalam senarai dibenarkan. Gunakan alamat aplikasi yang diluluskan atau hubungi pentadbir.",
   "session_not_found": "Sesi pelayar tidak ditemui atau tidak lagi aktif. Muat semula senarai sesi sebelum mencuba lagi.",
-  "sms_factor_unavailable": "Kod telefon tidak boleh melengkapkan masuk ini. Guna faktor kedua yang lain."
+  "sms_factor_unavailable": "Kod telefon tidak boleh melengkapkan masuk ini. Guna faktor kedua yang lain.",
+  "menu_system_settings": "Tetapan sistem"
 }

@@ -28,3 +28,10 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-updater = "2"
+
+[target.'cfg(windows)'.dependencies]
+tempfile = "3"
+zip = { version = "9", default-features = false, features = ["deflate"] }

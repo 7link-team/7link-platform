@@ -106,6 +106,10 @@ export const router = createBrowserRouter([
                 lazy: async () => ({ Component: (await import("./app/system/jobs")).default }),
               },
               {
+                path: "/system/settings",
+                lazy: async () => ({ Component: (await import("./app/system/settings")).default }),
+              },
+              {
                 path: "/system/domain-events",
                 handle: { layout: "workspace" },
                 lazy: async () => ({ Component: (await import("./app/system/domain-events")).default }),

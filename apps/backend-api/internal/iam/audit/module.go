@@ -22,14 +22,15 @@ var ErrUnavailable = errors.New("audit service unavailable")
 // Module owns the IAM append-only audit chain, retention policy, anchoring,
 // HTTP operations, and the Appender capability consumed by other IAM modules.
 type Module struct {
-	service      *Service
-	runtime      *appenv.Runtime
-	registrar    *authz.Registrar
-	config       Config
-	ids          guid.Source
-	workerMu     sync.Mutex
-	workerCancel context.CancelFunc
-	workerDone   chan struct{}
+	principalLabels PrincipalLabelLookup
+	service         *Service
+	runtime         *appenv.Runtime
+	registrar       *authz.Registrar
+	config          Config
+	ids             guid.Source
+	workerMu        sync.Mutex
+	workerCancel    context.CancelFunc
+	workerDone      chan struct{}
 }
 
 func NewModule(runtime *appenv.Runtime, config Config) *Module {
@@ -58,7 +59,13 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := m.provideBusinessEvents(services); err != nil {
 		return err
 	}
-	return nil
+	return module.Provide[PrincipalLabelConnector](services, PrincipalLabelConnector{Bind: func(lookup PrincipalLabelLookup) error {
+		if lookup == nil || m.principalLabels != nil {
+			return errors.New("audit principal label lookup must be supplied once")
+		}
+		m.principalLabels = lookup
+		return nil
+	}})
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
@@ -85,6 +92,7 @@ func (m *Module) Initialize(context.Context) error {
 		return errors.New("initialize audit: runtime database, authz registrar, and id generator are required")
 	}
 	m.service = NewService(m.runtime, m.ids)
+	m.service.principalLabels = m.principalLabels
 	return nil
 }
 
@@ -105,6 +113,7 @@ func (m *Module) Start(ctx context.Context) error {
 		return fmt.Errorf("audit anchor configuration: %w", err)
 	}
 	service := NewService(m.runtime, m.ids)
+	service.principalLabels = m.principalLabels
 	if m.config.Anchor.Enabled {
 		service.anchor = store
 	}

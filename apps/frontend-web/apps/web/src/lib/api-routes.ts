@@ -504,6 +504,7 @@ export const publishedRoutes: readonly string[] = [
   "/system/roles/{role_id}/permission-grants",
   "/system/roles/{role_id}/permissions/{permission_code}",
   "/system/saml-signing-keys",
+  "/system/settings/registration",
   "/system/tenants/{owner_id}/departments",
   "/system/tenants/{owner_id}/members",
   "/system/tenants/{owner_id}/members/{principal_id}",

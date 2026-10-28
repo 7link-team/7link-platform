@@ -177,6 +177,8 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 	require.NoError(t, err)
 	registrationCreator, err := module.Resolve[RegistrationPrincipalCreator](registry.Services())
 	require.NoError(t, err)
+	directCreator, err := module.Resolve[DirectRegistrationPrincipalCreator](registry.Services())
+	require.NoError(t, err)
 	accountValidator, err := module.Resolve[ServiceAccountValidator](registry.Services())
 	require.NoError(t, err)
 	_, err = accountValidator(t.Context(), harness.db, 7, 1, time.Now())
@@ -187,6 +189,8 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 	_, err = creator(t.Context(), harness.db, 7, "alice", testPassword, "Alice", "alice@example.test")
 	assert.ErrorIs(t, err, ErrUnavailable)
 	_, err = registrationCreator(t.Context(), harness.db, "pending@example.test", "hash", "Pending", time.Now())
+	assert.ErrorIs(t, err, ErrUnavailable)
+	_, err = directCreator(t.Context(), harness.db, "direct", "", "hash", "Direct", time.Now())
 	assert.ErrorIs(t, err, ErrUnavailable)
 
 	require.NoError(t, registry.Initialize(t.Context()))
@@ -204,6 +208,10 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 	pending, err := registrationCreator(t.Context(), harness.db, "pending@example.test", "hash", "Pending", time.Now())
 	require.NoError(t, err)
 	assert.Equal(t, "pending@example.test", harness.principal(t, pending).LoginName)
+	direct, err := directCreator(t.Context(), harness.db, "direct", "", "hash", "Direct", time.Now())
+	require.NoError(t, err)
+	assert.False(t, harness.principal(t, direct).EmailVerified)
+	assert.False(t, harness.principal(t, direct).ActivationRequired)
 
 	principal, err := provisioner.CreateProvisionedTo(t.Context(), harness.db, 7, provisionedInput("scim.user"))
 	require.NoError(t, err)

@@ -58,6 +58,60 @@ func TestAdminActivityPresentationUsesRequestLocaleAndExplicitModule(t *testing.
 	require.Empty(t, unknown.Description)
 }
 
+func TestAdminFanoutContextUsesFrozenSnapshotAndLocalizedTarget(t *testing.T) {
+	m, _, source := fanoutHarness(t, func(context.Context, guid.ID, int) ([]guid.ID, error) { return nil, nil }, map[string]any{"client_secret": "private-credential"})
+	api, _ := adminAPI(t, m)
+	require.NoError(t, i18n.RegisterFS("fanout-admin-test", fstest.MapFS{
+		"locales/en-US.json": {Data: []byte(`{"name":"Reconcile work","purpose":"Apply pending work."}`)},
+		"locales/zh-CN.json": {Data: []byte(`{"name":"同步任务","purpose":"应用待处理工作。"}`)},
+		"locales/ms-MY.json": {Data: []byte(`{"name":"Segerakkan tugas","purpose":"Gunakan tugas tertunda."}`)},
+	}, "locales"))
+	m.mu.Lock()
+	handler := m.handlers["jobs.work"]
+	handler.DisplayNameKey, handler.DescriptionKey = "fanout-admin-test.name", "fanout-admin-test.purpose"
+	m.handlers["jobs.work"] = handler
+	// A changed declaration must not relabel an already queued occurrence.
+	declaration := m.schedules["jobs.tenants"]
+	declaration.Kind = "jobs.other"
+	m.schedules["jobs.tenants"] = declaration
+	m.mu.Unlock()
+
+	for _, detail := range []bool{false, true} {
+		view, err := m.adminJob(i18n.WithLocale(t.Context(), "zh-CN"), &source, detail)
+		require.NoError(t, err)
+		require.Equal(t, "jobs.tenants", view.FanoutScheduleName)
+		require.Equal(t, "jobs.work", view.FanoutKind)
+		require.Equal(t, "同步任务", view.FanoutDisplayName)
+		require.Equal(t, "应用待处理工作。", view.FanoutDescription)
+		require.Equal(t, time.UnixMilli(*source.FanoutFireMS).UTC(), *view.FanoutFireAt)
+	}
+	for _, path := range []string{"/platform/jobs", "/platform/jobs/" + source.ID.String()} {
+		response := api.Get(path, "Authorization: Bearer viewer")
+		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+		for _, fragment := range []string{`"id":"` + source.ID.String() + `"`, `"tenant_id":null`, `"fanout_schedule_name":"jobs.tenants"`, `"fanout_kind":"jobs.work"`, `"fanout_display_name":"Reconcile work"`, `"fanout_description":"Apply pending work."`, `"fanout_fire_at":"` + time.UnixMilli(*source.FanoutFireMS).UTC().Format(time.RFC3339Nano) + `"`} {
+			require.Contains(t, response.Body.String(), fragment)
+		}
+		require.NotContains(t, response.Body.String(), "private-credential")
+	}
+	m.mu.Lock()
+	delete(m.handlers, "jobs.work")
+	m.mu.Unlock()
+	view, err := m.adminJob(t.Context(), &source, false)
+	require.NoError(t, err)
+	require.Equal(t, "jobs.work", view.FanoutKind)
+	require.Equal(t, "jobs.tenants", view.FanoutScheduleName)
+	require.NotNil(t, view.FanoutFireAt)
+	require.Empty(t, view.FanoutDisplayName)
+	require.Empty(t, view.FanoutDescription)
+	ordinary := source
+	ordinary.Kind = "jobs.other"
+	view, err = m.adminJob(t.Context(), &ordinary, false)
+	require.NoError(t, err)
+	require.Empty(t, view.FanoutKind)
+	require.Empty(t, view.FanoutScheduleName)
+	require.Nil(t, view.FanoutFireAt)
+}
+
 type adminHTTPAuthority struct{ current bool }
 
 func (a *adminHTTPAuthority) Authenticate(_ context.Context, authorization, _ string) (*authn.Claims, error) {

@@ -207,7 +207,7 @@ func TestOpenAPIExportKeepsTheVersionStableWhenNoneIsConfigured(t *testing.T) {
 		"the build stamp belongs to the running process, not to a document in a repository")
 }
 
-const iamHTTPMappingCount = 366
+const iamHTTPMappingCount = 368
 
 type iamHTTPMapping struct {
 	sourceOperation string

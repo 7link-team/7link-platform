@@ -365,3 +365,5 @@ webhook-delete-subscription => owned-resource|webhook_subscription_delete
 webhook-list-deliveries => owned-resource|webhook_subscription_view
 webhook-list-subscriptions => tenant|webhook_subscription_view
 webhook-update-subscription => owned-resource|webhook_subscription_update
+authn-get-registration-policy => platform|platform_administer
+authn-put-registration-policy => platform|platform_administer

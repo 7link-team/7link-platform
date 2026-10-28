@@ -370,6 +370,10 @@ jobs:
         run: rustup target add x86_64-pc-windows-msvc
       - id: desktop-build
         name: Build versioned NSIS installer and portable archive
+        env:
+          DESKTOP_UPDATE_PUBLIC_KEY: ${{ vars.DESKTOP_UPDATE_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           $metadataJSON = cargo metadata --no-deps --locked --format-version 1 --manifest-path src-tauri/Cargo.toml
           if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve desktop Cargo metadata' }
@@ -378,9 +382,9 @@ jobs:
           $binaries = @($packages.targets | Where-Object { $_.kind -contains 'bin' })
           if ($packages.Count -ne 1 -or $binaries.Count -ne 1) { throw 'Expected one desktop package and binary' }
           $config = Join-Path $env:RUNNER_TEMP 'desktop-release.json'
-          @{
-            version = $env:TAG.Substring(1)
-          } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $config -Encoding utf8
+          node scripts/release-updates.mjs config $config
+          if ($LASTEXITCODE -ne 0) { throw 'Updater release configuration failed' }
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Updater signing key is required' }
           bun run build --ci --target x86_64-pc-windows-msvc --bundles nsis --config $config -- --locked
           if ($LASTEXITCODE -ne 0) { throw 'Desktop build failed' }
           $releaseDir = Join-Path $metadata.target_directory 'x86_64-pc-windows-msvc/release'
@@ -390,11 +394,14 @@ jobs:
           $dist = New-Item -ItemType Directory -Path dist -Force
           $asset = "$($env:REPOSITORY)-desktop_$($env:TAG)_windows_amd64"
           Copy-Item -LiteralPath $installers[0].FullName -Destination (Join-Path $dist.FullName "$asset-setup.exe")
+          Copy-Item -LiteralPath ($installers[0].FullName + '.sig') -Destination (Join-Path $dist.FullName "$asset-setup.exe.sig")
           $archive = Join-Path $dist.FullName "${asset}_portable.zip"
           $portable = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'desktop-portable')
           Copy-Item -LiteralPath $binary.FullName -Destination $portable.FullName
           Copy-Item -LiteralPath src-tauri/resources/local -Destination (Join-Path $portable.FullName 'local') -Recurse
           Compress-Archive -LiteralPath @((Join-Path $portable.FullName $binary.Name), (Join-Path $portable.FullName 'local')) -DestinationPath $archive
+          bun run tauri signer sign --app-version $env:TAG.Substring(1) $archive
+          if ($LASTEXITCODE -ne 0) { throw 'Portable update signing failed' }
           $zip = [System.IO.Compression.ZipFile]::OpenRead($archive)
           try {
             $entry = $zip.GetEntry($binary.Name)
@@ -604,9 +611,14 @@ jobs:
       - name: Build the versioned native desktop bundle
         env:
           BUNDLE: ${{ matrix.bundle }}
+          APPEND_DESKTOP: ${{ inputs.append_desktop }}
+          DESKTOP_UPDATE_PUBLIC_KEY: ${{ vars.DESKTOP_UPDATE_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           config="$RUNNER_TEMP/desktop-release.json"
+          if [[ "$APPEND_DESKTOP" == true ]]; then
           python3 - "$config" <<'PY'
           import json, os, sys
           config = {'version': os.environ['TAG'][1:]}
@@ -615,6 +627,10 @@ jobs:
           with open(sys.argv[1], 'w') as output:
               json.dump(config, output)
           PY
+          else
+            node scripts/release-updates.mjs config "$config"
+            [[ -n "$TAURI_SIGNING_PRIVATE_KEY" ]]
+          fi
           bun run build --ci --target "$TARGET" --bundles "$BUNDLE" --config "$config" -- --locked
           shopt -s nullglob
           mkdir -p dist
@@ -628,6 +644,16 @@ jobs:
           [[ ${#bundles[@]} == 1 ]]
           [[ "${bundles[0]##*/}" == *"_${TAG#v}_"* ]]
           cp "${bundles[0]}" "dist/${REPOSITORY}-desktop_${TAG}_${PLATFORM}_${ARCH}.${extension}"
+          if [[ "$APPEND_DESKTOP" != true ]]; then
+            if [[ "$PLATFORM" == macos ]]; then
+              updates=(src-tauri/target/"$TARGET"/release/bundle/macos/*.app.tar.gz)
+              [[ ${#updates[@]} == 1 ]]
+              cp "${updates[0]}" "dist/${REPOSITORY}-desktop_${TAG}_${PLATFORM}_${ARCH}.app.tar.gz"
+              cp "${updates[0]}.sig" "dist/${REPOSITORY}-desktop_${TAG}_${PLATFORM}_${ARCH}.app.tar.gz.sig"
+            else
+              cp "${bundles[0]}.sig" "dist/${REPOSITORY}-desktop_${TAG}_${PLATFORM}_${ARCH}.AppImage.sig"
+            fi
+          fi
       - name: Verify the mounted macOS app and native startup
         if: runner.os == 'macOS'
         run: |
@@ -700,6 +726,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.metadata.outputs.sha }}
+          persist-credentials: false
       - name: Require anonymous access to both public GHCR images
         env:
           IMAGE: ${{ needs.metadata.outputs.image }}
@@ -743,15 +773,39 @@ jobs:
           TAG: ${{ needs.metadata.outputs.tag }}
           REPOSITORY: ${{ needs.metadata.outputs.repository }}
           PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+          CREATED: ${{ needs.metadata.outputs.created }}
         run: |
           set -euo pipefail
+          node apps/frontend-app/scripts/release-updates.mjs manifest assets
           cd assets
           # Keep each product's checksum list scoped to its own native assets.
           sha256sum -- "${REPOSITORY}-runner_${TAG}_"*.zip "${REPOSITORY}-runner_${TAG}_"*.tar.gz > "${REPOSITORY}-runner_${TAG}_checksums.txt"
-          sha256sum -- "${REPOSITORY}-desktop_${TAG}_"*.exe "${REPOSITORY}-desktop_${TAG}_"*.zip "${REPOSITORY}-desktop_${TAG}_"*.dmg "${REPOSITORY}-desktop_${TAG}_"*.AppImage > "${REPOSITORY}-desktop_${TAG}_checksums.txt"
+          find . -maxdepth 1 -type f -name "${REPOSITORY}-desktop_${TAG}_*" ! -name '*checksums.txt' -print0 | sort -z | xargs -0 sha256sum > "${REPOSITORY}-desktop_${TAG}_checksums.txt"
           args=(--verify-tag --generate-notes --title "$TAG")
           if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease --latest=false); fi
           gh release create "$TAG" "${args[@]}" ./*
+  desktop_update_feed:
+    if: ${{ !inputs.desktop_only && !inputs.images_only && !inputs.append_desktop }}
+    needs: [metadata, release]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.metadata.outputs.sha }}
+          persist-credentials: false
+      - name: Publish signed desktop update feed after the release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.metadata.outputs.tag }}
+          REPOSITORY: ${{ needs.metadata.outputs.repository }}
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/desktop-update-feed"
+          gh release download "$TAG" --pattern "${REPOSITORY}-desktop_${TAG}_updates.json" --dir "$RUNNER_TEMP/desktop-update-feed"
+          node apps/frontend-app/scripts/release-updates.mjs publish "$RUNNER_TEMP/desktop-update-feed/${REPOSITORY}-desktop_${TAG}_updates.json"
 
   append_desktop:
     if: ${{ inputs.append_desktop }}

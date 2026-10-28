@@ -87,7 +87,8 @@ type registrationInput struct {
 	Origin string `header:"Origin" hidden:"true"`
 	Body   struct {
 		Entry         string `json:"entry,omitempty" enum:"user,tenant" doc:"Public entrance to resume after email verification"`
-		Email         string `json:"email" format:"email" maxLength:"320"`
+		Email         string `json:"email,omitempty" format:"email" maxLength:"320"`
+		LoginName     string `json:"login_name,omitempty" maxLength:"200"`
 		Password      string `json:"password" minLength:"8" maxLength:"1024"`
 		DisplayName   string `json:"display_name,omitempty" maxLength:"128"`
 		CaptchaType   string `json:"captcha_type" minLength:"1"`
@@ -99,9 +100,10 @@ type registrationInput struct {
 type captchaInput struct{}
 
 type AuthenticationCapabilities struct {
-	Registration     bool `json:"registration"`
-	PasswordRecovery bool `json:"password_recovery"`
-	Passkey          bool `json:"passkey"`
+	Registration                  bool `json:"registration"`
+	RegistrationEmailVerification bool `json:"registration_email_verification"`
+	PasswordRecovery              bool `json:"password_recovery"`
+	Passkey                       bool `json:"passkey"`
 	// PhoneLogin keeps a client from offering a way in this deployment refuses.
 	PhoneLogin bool `json:"phone_login"`
 	// Captcha tells a client what to render. Without it the client has to guess
@@ -526,7 +528,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	}, func(ctx context.Context, _ *struct{}) (*respx.Body[AuthenticationCapabilities], error) {
 		capabilities := web.Capabilities()
 		return respx.OK(ctx, AuthenticationCapabilities{
-			Registration: capabilities.Registration, PasswordRecovery: capabilities.PasswordRecovery,
+			Registration: capabilities.Registration, RegistrationEmailVerification: capabilities.RegistrationEmailVerification, PasswordRecovery: capabilities.PasswordRecovery,
 			Passkey: capabilities.Passkey, PhoneLogin: capabilities.PhoneLogin,
 			Captcha: web.CaptchaCapability(),
 		}), nil
@@ -558,7 +560,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	authz.RegisterPublic(a, huma.Operation{
 		OperationID: "authn-create-registration", Method: http.MethodPost, Path: "/registrations",
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
-		Summary:  "Register a global principal pending email verification", Tags: []string{"authentication"}, DefaultStatus: http.StatusAccepted,
+		Summary:  "Register a global account using the deployment email verification policy", Tags: []string{"authentication"}, DefaultStatus: http.StatusAccepted,
 		Errors: []int{http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusServiceUnavailable, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *registrationInput) (*respx.Body[map[string]bool], error) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
@@ -568,19 +570,19 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		if refusal := refuseUnansweredCaptcha(ctx, solved, captchaErr); refusal != nil {
 			return nil, refusal
 		}
-		if err := web.RegisterForEntry(ctx, in.Body.Email, in.Body.Password, in.Body.DisplayName, in.Body.Entry); err != nil {
+		if err := web.RegisterAccountForEntry(ctx, in.Body.LoginName, in.Body.Email, in.Body.Password, in.Body.DisplayName, in.Body.Entry); err != nil {
 			switch {
 			case errors.Is(err, authnext.ErrInvalidRegistration):
 				return nil, huma.Error422UnprocessableEntity(authni18n.InvalidRegistration)
-			case errors.Is(err, authnext.ErrRegistrationDisabled):
+			case errors.Is(err, authnext.ErrRegistrationDisabled), errors.Is(err, authnext.ErrUnavailable):
 				return nil, huma.Error503ServiceUnavailable(authni18n.RegistrationUnavailable)
 			case errors.Is(err, authnext.ErrRegistrationConflict):
-				return respx.OK(ctx, map[string]bool{"accepted": true}), nil
+				return respx.OK(ctx, map[string]bool{"accepted": true, "verification_required": web.cfg.EmailVerification.Enabled}), nil
 			default:
 				return nil, huma.Error500InternalServerError(authni18n.AuthenticationUnavailable, err)
 			}
 		}
-		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
+		return respx.OK(ctx, map[string]bool{"accepted": true, "verification_required": web.cfg.EmailVerification.Enabled}), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
 		OperationID: "authn-create-session", Method: http.MethodPost, DefaultStatus: http.StatusCreated, Path: "/login",

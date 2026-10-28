@@ -32,6 +32,7 @@ var (
 	PhoneVerificationCode     *phoneVerificationCode
 	ReauthenticationChallenge *reauthenticationChallenge
 	RecoveryCode              *recoveryCode
+	RegistrationPolicy        *registrationPolicy
 	Session                   *session
 	StepUpChallenge           *stepUpChallenge
 )
@@ -53,6 +54,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	PhoneVerificationCode = &Q.PhoneVerificationCode
 	ReauthenticationChallenge = &Q.ReauthenticationChallenge
 	RecoveryCode = &Q.RecoveryCode
+	RegistrationPolicy = &Q.RegistrationPolicy
 	Session = &Q.Session
 	StepUpChallenge = &Q.StepUpChallenge
 }
@@ -75,6 +77,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		PhoneVerificationCode:     newPhoneVerificationCode(db, opts...),
 		ReauthenticationChallenge: newReauthenticationChallenge(db, opts...),
 		RecoveryCode:              newRecoveryCode(db, opts...),
+		RegistrationPolicy:        newRegistrationPolicy(db, opts...),
 		Session:                   newSession(db, opts...),
 		StepUpChallenge:           newStepUpChallenge(db, opts...),
 	}
@@ -98,6 +101,7 @@ type Query struct {
 	PhoneVerificationCode     phoneVerificationCode
 	ReauthenticationChallenge reauthenticationChallenge
 	RecoveryCode              recoveryCode
+	RegistrationPolicy        registrationPolicy
 	Session                   session
 	StepUpChallenge           stepUpChallenge
 }
@@ -124,6 +128,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		PhoneVerificationCode:     q.PhoneVerificationCode.clone(db),
 		ReauthenticationChallenge: q.ReauthenticationChallenge.clone(db),
 		RecoveryCode:              q.RecoveryCode.clone(db),
+		RegistrationPolicy:        q.RegistrationPolicy.clone(db),
 		Session:                   q.Session.clone(db),
 		StepUpChallenge:           q.StepUpChallenge.clone(db),
 	}
@@ -155,6 +160,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		PhoneVerificationCode:     q.PhoneVerificationCode.replaceDB(db),
 		ReauthenticationChallenge: q.ReauthenticationChallenge.replaceDB(db),
 		RecoveryCode:              q.RecoveryCode.replaceDB(db),
+		RegistrationPolicy:        q.RegistrationPolicy.replaceDB(db),
 		Session:                   q.Session.replaceDB(db),
 		StepUpChallenge:           q.StepUpChallenge.replaceDB(db),
 	}
@@ -176,6 +182,7 @@ type queryCtx struct {
 	PhoneVerificationCode     IPhoneVerificationCodeDo
 	ReauthenticationChallenge IReauthenticationChallengeDo
 	RecoveryCode              IRecoveryCodeDo
+	RegistrationPolicy        IRegistrationPolicyDo
 	Session                   ISessionDo
 	StepUpChallenge           IStepUpChallengeDo
 }
@@ -197,6 +204,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		PhoneVerificationCode:     q.PhoneVerificationCode.WithContext(ctx),
 		ReauthenticationChallenge: q.ReauthenticationChallenge.WithContext(ctx),
 		RecoveryCode:              q.RecoveryCode.WithContext(ctx),
+		RegistrationPolicy:        q.RegistrationPolicy.WithContext(ctx),
 		Session:                   q.Session.WithContext(ctx),
 		StepUpChallenge:           q.StepUpChallenge.WithContext(ctx),
 	}

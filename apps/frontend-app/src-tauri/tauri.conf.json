@@ -3,6 +3,13 @@
   "productName": "chaosplus",
   "version": "0.1.0",
   "identifier": "com.example.frontendapp",
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [],
+      "requireSignedVersion": true
+    }
+  },
   "build": {
     "frontendDist": "../launcher"
   },

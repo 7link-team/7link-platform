@@ -292,6 +292,7 @@ export interface CaptchaCapability {
 
 export interface AuthnCapabilities {
   registration: boolean
+  registration_email_verification?: boolean
   password_recovery: boolean
   passkey: boolean
   /** Whether a code sent to a proven number signs anybody in on this
@@ -1082,6 +1083,9 @@ export interface AuditEvent {
   previous_hash?: string
   event_hash: string
   created_at: string
+  actor?: { login_name?: string; display_name?: string; anonymized?: boolean }
+  target_principal?: { login_name?: string; display_name?: string; anonymized?: boolean }
+  viewed_principal?: { login_name?: string; display_name?: string; anonymized?: boolean }
 }
 
 export interface AuditIntegrity {
@@ -2535,16 +2539,23 @@ export function createIamApi(
       request<Captcha>(apiRoute("post", "/registrations/captchas")),
     createLoginCaptcha: () =>
       request<Captcha>(apiRoute("post", "/login/captchas")),
+    registrationPolicy: () =>
+      request<{ enabled: boolean; available: boolean }>(apiRoute("get", "/system/settings/registration")),
+    setRegistrationPolicy: (enabled: boolean) =>
+      request<{ enabled: boolean; available: boolean }>(apiRoute("put", "/system/settings/registration"), {
+        body: JSON.stringify({ enabled }),
+      }),
     register: (body: {
       entry?: "tenant" | "user"
-      email: string
+      email?: string
+      login_name?: string
       password: string
       display_name?: string
       captcha_type: string
       captcha_id: string
       captcha_answer: string
     }) =>
-      request<{ accepted: boolean }>(apiRoute("post", "/registrations"), {
+      request<{ accepted: boolean; verification_required?: boolean }>(apiRoute("post", "/registrations"), {
         body: JSON.stringify(body),
       }),
     session: discoverSession,

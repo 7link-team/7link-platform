@@ -1,4 +1,30 @@
 const storageKey = "desktop-server-origins"
+const connectionKey = "desktop-last-connection"
+
+export function rememberConnection(storage, connection) {
+  const value = connection.mode === "local"
+    ? { mode: "local" }
+    : { mode: "remote", origin: serverOrigin(connection.origin) }
+  storage.setItem(connectionKey, JSON.stringify(value))
+}
+
+export function lastConnection(storage) {
+  const value = JSON.parse(storage.getItem(connectionKey) ?? "null")
+  if (value === null) return null
+  if (value.mode === "local") return { mode: "local" }
+  if (value.mode === "remote") {
+    const origin = serverOrigin(value.origin)
+    if (savedServers(storage).includes(origin)) return { mode: "remote", origin }
+  }
+  throw new Error("上次连接记录无效，请重新选择运行方式。")
+}
+
+export function resumeConnection(storage, location, startLocal) {
+  if (location.hash === "#choose") return
+  const connection = lastConnection(storage)
+  if (connection?.mode === "local") return startLocal()
+  if (connection?.mode === "remote") location.replace(connection.origin)
+}
 
 export function serverOrigin(value) {
   const url = new URL(value.trim())
@@ -33,6 +59,15 @@ export function startChooser(doc, storage) {
       const link = doc.createElement("a")
       link.href = origin
       link.textContent = origin
+      link.addEventListener("click", event => {
+        event.preventDefault()
+        try {
+          rememberConnection(storage, { mode: "remote", origin })
+          doc.defaultView.location.assign(origin)
+        } catch {
+          status.textContent = "无法保存连接方式。请检查本地存储后重试。"
+        }
+      })
       const remove = doc.createElement("button")
       remove.type = "button"
       remove.textContent = "移除"
@@ -40,7 +75,10 @@ export function startChooser(doc, storage) {
       remove.addEventListener("click", () => {
         try {
           const next = servers.filter(value => value !== origin)
+          let removeLast = false
+          try { removeLast = lastConnection(storage)?.origin === origin } catch { /* Invalid history must not prevent removing a saved server. */ }
           storage.setItem(storageKey, JSON.stringify(next))
+          if (removeLast) storage.removeItem(connectionKey)
           servers = next
           status.textContent = ""
           render()
@@ -65,6 +103,7 @@ export function startChooser(doc, storage) {
     }
     try {
       storage.setItem(storageKey, JSON.stringify([...new Set([...servers, origin])]))
+      rememberConnection(storage, { mode: "remote", origin })
     } catch {
       status.textContent = "无法保存服务器地址。请检查本地存储后重试。"
       return

@@ -368,3 +368,5 @@ webhook-delete-subscription => webhook-delete-subscription|DELETE|/webhook-subsc
 webhook-list-deliveries => webhook-list-deliveries|GET|/webhook-subscriptions/{subscription_id}/deliveries
 webhook-list-subscriptions => webhook-list-subscriptions|GET|/tenants/{tenant_id}/webhook-subscriptions
 webhook-update-subscription => webhook-update-subscription|PUT|/webhook-subscriptions/{subscription_id}
+authn-get-registration-policy => authn-get-registration-policy|GET|/system/settings/registration
+authn-put-registration-policy => authn-put-registration-policy|PUT|/system/settings/registration

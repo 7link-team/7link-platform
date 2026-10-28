@@ -19,7 +19,7 @@ import (
 
 const (
 	lockVersion            = 1
-	expectedIAMTables      = 80
+	expectedIAMTables      = 81
 	expectedCrossModuleFKs = 37
 )
 

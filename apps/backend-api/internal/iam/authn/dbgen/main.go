@@ -8,6 +8,7 @@ import (
 
 func main() {
 	gengorm.Generate(
+		model.RegistrationPolicy{},
 		model.Credential{},
 		model.Session{},
 		model.PasswordHistory{},

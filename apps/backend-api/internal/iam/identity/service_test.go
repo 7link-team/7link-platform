@@ -17,6 +17,66 @@ import (
 
 const testPassword = "correct-horse-battery"
 
+func TestUnverifiedRegistrationRejectsInvalidInputWithoutWriting(t *testing.T) {
+	h := newIdentityHarness(t, "direct_invalid_")
+	for _, tc := range []struct{ name, login, email, hash, display string }{
+		{"blank login", " ", "", "hash", ""},
+		{"long login", strings.Repeat("a", 201), "", "hash", ""},
+		{"missing hash", "alice", "", "", ""},
+		{"long email", "alice", strings.Repeat("a", 321), "hash", ""},
+		{"invalid email", "alice", "broken@", "hash", ""},
+		{"mailbox display syntax", "alice", "Alice <alice@example.test>", "hash", ""},
+		{"long display", "alice", "", "hash", strings.Repeat("a", 129)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			id, err := h.service.CreateUnverifiedRegistration(t.Context(), h.db, tc.login, tc.email, tc.hash, tc.display, identityTestNow, newIdentityTestIDs(5000))
+			assert.ErrorIs(t, err, ErrInvalid)
+			assert.Zero(t, id)
+			assert.Zero(t, h.principalCount(t))
+		})
+	}
+}
+
+func TestUnverifiedRegistrationPropagatesFailuresAndRollsBackCredentialFailure(t *testing.T) {
+	h := newIdentityHarness(t, "direct_failure_")
+	_, err := h.service.CreateUnverifiedRegistration(t.Context(), h.db, "alice", "", "hash", "", identityTestNow, failingIDSource{})
+	assert.EqualError(t, err, "id source down")
+	assert.Zero(t, h.principalCount(t))
+	ids := newIdentityTestIDs(5000)
+	_, err = h.service.CreateUnverifiedRegistration(t.Context(), h.db, "alice", "", "hash", "", identityTestNow, ids)
+	require.NoError(t, err)
+	_, err = h.service.CreateUnverifiedRegistration(t.Context(), h.db, "alice", "", "hash", "", identityTestNow, ids)
+	require.Error(t, err, "a duplicate login must not report successful registration")
+	assert.EqualValues(t, 1, h.principalCount(t))
+	want := errors.New("credential store unavailable")
+	h.repository.credentials.CreateHashed = func(context.Context, *gorm.DB, guid.ID, string, time.Time) error { return want }
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		id, err := h.service.CreateUnverifiedRegistration(t.Context(), tx, "bob", "", "hash", "", identityTestNow, ids)
+		assert.Zero(t, id)
+		return err
+	})
+	assert.ErrorIs(t, err, want)
+	assert.EqualValues(t, 1, h.principalCount(t), "the caller transaction must leave no account without its login credential")
+}
+
+func TestUnverifiedRegistrationCreatesLoginWithoutMailboxProofOrMembership(t *testing.T) {
+	h := newIdentityHarness(t, "direct_")
+	ids := newIdentityTestIDs(5000)
+	for _, email := range []string{"", "unverified@example.test"} {
+		login := "account" + email
+		id, err := h.service.CreateUnverifiedRegistration(t.Context(), h.db, login, email, "hash", "", identityTestNow, ids)
+		require.NoError(t, err)
+		row := h.principal(t, id)
+		assert.Equal(t, login, row.LoginName)
+		assert.Equal(t, email, row.Email)
+		assert.False(t, row.EmailVerified)
+		assert.False(t, row.ActivationRequired)
+		assert.True(t, row.SelfRegistered)
+		assert.Equal(t, int64(1), h.credentialVersion(t, id))
+		assert.Zero(t, h.memberCount(t, 7, id))
+	}
+}
+
 func TestCreateRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 

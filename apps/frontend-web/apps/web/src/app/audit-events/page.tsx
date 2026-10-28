@@ -26,6 +26,7 @@ import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { iamApi, type AuditEvent, type AuditIntegrity } from "../../lib/iam-api"
 import { useAllowed } from "../../lib/permissions"
+import { principalLabel } from "../../lib/principal-label"
 
 const pageSize = 50
 
@@ -395,7 +396,9 @@ export default function AuditEventsPage({
             name: t("event"),
             render: (_, event) => (
               <>
-                <code className="font-mono text-xs">{event.event_type}</code>
+                <span className="text-xs" title={event.event_type}>
+                  {t.has(`auditEvent_${event.event_type}`) ? t(`auditEvent_${event.event_type}`) : event.event_type}
+                </span>
               </>
             ),
           },
@@ -404,9 +407,10 @@ export default function AuditEventsPage({
             name: t("auditActor"),
             render: (_, event) => (
               <>
-                <code className="block max-w-48 truncate font-mono text-xs text-muted-foreground">
-                  {event.principal_id || "system"}
-                </code>
+                <span className="block max-w-48 truncate text-xs">
+                  {event.principal_id ? principalLabel(event.actor, t("accountUnavailable"), t("accountAnonymized")) : t("auditActor_SYSTEM")}
+                </span>
+                {event.principal_id && <code className="block truncate text-xs text-muted-foreground">{event.principal_id}</code>}
               </>
             ),
           },
@@ -416,7 +420,9 @@ export default function AuditEventsPage({
             render: (_, event) => (
               <>
                 <span className="block text-xs">
-                  {event.target_type || "-"}
+                  {event.target_principal
+                    ? principalLabel(event.target_principal, t("accountUnavailable"), t("accountAnonymized"))
+                    : t.has(`auditTarget_${event.target_type}`) ? t(`auditTarget_${event.target_type}`) : event.target_type || "-"}
                 </span>
                 <code className="mt-1 block max-w-56 truncate font-mono text-xs text-muted-foreground">
                   {event.target_id || "-"}
@@ -543,7 +549,7 @@ function DetailButton({
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { event: AuditEvent }) {
   const t = useTranslations("iam")
 
-  const label = t("eventDetailsNamed", { event: event.event_type })
+  const label = t("eventDetailsNamed", { event: t.has(`auditEvent_${event.event_type}`) ? t(`auditEvent_${event.event_type}`) : event.event_type })
   return (
     <TooltipProvider>
       <Tooltip>
@@ -582,7 +588,7 @@ function EventDetail({
           <DialogTitle>{t("auditEventDetails")}</DialogTitle>
           <DialogDescription>
             {value
-              ? `${value.event_type} · ${formatTime(value.created_at, locale)}`
+              ? `${t.has(`auditEvent_${value.event_type}`) ? t(`auditEvent_${value.event_type}`) : value.event_type} · ${formatTime(value.created_at, locale)}`
               : ""}
           </DialogDescription>
         </DialogHeader>
@@ -619,13 +625,17 @@ function DetailGrid({ event }: { event: AuditEvent }) {
   const items = [
     [t("eventId"), event.id],
     [t("tenant"), event.tenant_id],
-    [t("auditActor"), event.principal_id || "system"],
+    [t("auditActor"), event.principal_id
+      ? `${principalLabel(event.actor, t("accountUnavailable"), t("accountAnonymized"))} · ${event.principal_id}`
+      : t("auditActor_SYSTEM")],
     // principal_id is the acting operator; an account view records the
     // account it looked at separately.
     ...(typeof event.detail?.viewed_principal_id === "string"
-      ? [[t("viewedAccount"), event.detail.viewed_principal_id]]
+      ? [[t("viewedAccount"), `${principalLabel(event.viewed_principal, t("accountUnavailable"), t("accountAnonymized"))} · ${event.detail.viewed_principal_id}`]]
       : []),
-    [t("target"), `${event.target_type || "-"}:${event.target_id || "-"}`],
+    [t("target"), `${event.target_principal
+      ? principalLabel(event.target_principal, t("accountUnavailable"), t("accountAnonymized"))
+      : t.has(`auditTarget_${event.target_type}`) ? t(`auditTarget_${event.target_type}`) : event.target_type || "-"} · ${event.target_id || "-"}`],
     [t("outcome"), event.outcome],
     [t("sequence"), event.sequence > 0 ? String(event.sequence) : "legacy"],
     ["IP", event.ip_address || "-"],

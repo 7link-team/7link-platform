@@ -7115,7 +7115,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register a global principal pending email verification */
+        /** Register a global account using the deployment email verification policy */
         post: operations["authn-create-registration"];
         delete?: never;
         options?: never;
@@ -8877,6 +8877,24 @@ export interface paths {
         put?: never;
         /** Rotate the platform-wide SAML identity provider signing key */
         post: operations["federation-rotate-saml-signing-key"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/system/settings/registration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get account registration policy */
+        get: operations["authn-get-registration-policy"];
+        /** Set account registration policy */
+        put: operations["authn-put-registration-policy"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -15481,6 +15499,12 @@ export interface components {
             description?: string;
             display_name?: string;
             error_history?: unknown;
+            fanout_description?: string;
+            fanout_display_name?: string;
+            /** Format: date-time */
+            fanout_fire_at?: string;
+            fanout_kind?: string;
+            fanout_schedule_name?: string;
             /** Format: date-time */
             finished_at?: string;
             has_handler: boolean;
@@ -16440,6 +16464,7 @@ export interface components {
             password_recovery: boolean;
             phone_login: boolean;
             registration: boolean;
+            registration_email_verification: boolean;
         };
         AuthenticatorAssertionResponse: {
             authenticatorData: string;
@@ -24175,6 +24200,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeRegistrationPolicyView: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error unless validation or business details are supplied */
+            data: components["schemas"]["RegistrationPolicyView"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeRemoteCapabilityView: {
             /**
              * Format: int64
@@ -25744,6 +25782,8 @@ export interface components {
             verifier_key: string;
         };
         Event: {
+            /** @description Current authorized identity; not covered by event_hash */
+            actor?: components["schemas"]["PrincipalLabel"];
             /** Format: date-time */
             created_at: string;
             detail: unknown;
@@ -25757,9 +25797,13 @@ export interface components {
             /** Format: int64 */
             sequence: number;
             target_id?: string | null;
+            /** @description Current authorized principal target identity; not covered by event_hash */
+            target_principal?: components["schemas"]["PrincipalLabel"];
             target_type?: string;
             tenant_id: string | null;
             user_agent?: string;
+            /** @description Current authorized viewed account identity; not covered by event_hash */
+            viewed_principal?: components["schemas"]["PrincipalLabel"];
         };
         EvidenceCreate: {
             /** @description ID of an existing pinned FILE evidence artifact from this execution. */
@@ -29711,6 +29755,11 @@ export interface components {
             login_name: string;
             password: string;
         };
+        PrincipalLabel: {
+            anonymized?: boolean;
+            display_name?: string;
+            login_name?: string;
+        };
         PrincipalLifecycle: {
             /** Format: date-time */
             anonymized_at: string | null;
@@ -30889,13 +30938,21 @@ export interface components {
             captcha_type: string;
             display_name?: string;
             /** Format: email */
-            email: string;
+            email?: string;
             /**
              * @description Public entrance to resume after email verification
              * @enum {string}
              */
             entry?: "user" | "tenant";
+            login_name?: string;
             password: string;
+        };
+        RegistrationPolicyInputBody: {
+            enabled: boolean;
+        };
+        RegistrationPolicyView: {
+            available: boolean;
+            enabled: boolean;
         };
         RegistryVerifierPin: {
             definition_hash: string;
@@ -106986,6 +107043,131 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "authn-get-registration-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeRegistrationPolicyView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "authn-put-registration-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationPolicyInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeRegistrationPolicyView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"] | components["schemas"]["EnvelopeValidationErrorData"];
                 };
             };
             /** @description Internal Server Error */

@@ -40,5 +40,6 @@
   "registration_unavailable": "Self-service registration is not available. Contact an administrator for access or try again later.",
   "return_url_not_allowed": "The return URL is not allowlisted. Use an approved application address or contact an administrator.",
   "session_not_found": "The browser session was not found or is no longer active. Refresh the session list before trying again.",
-  "sms_factor_unavailable": "A phone code cannot complete this sign-in. Use another second factor."
+  "sms_factor_unavailable": "A phone code cannot complete this sign-in. Use another second factor.",
+  "menu_system_settings": "System settings"
 }

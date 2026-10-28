@@ -75,6 +75,10 @@ type RegistrationPrincipalCreator func(
 	time.Time,
 ) (guid.ID, error)
 
+// DirectRegistrationPrincipalCreator creates an unverified account without a
+// mailbox activation requirement when deployment email verification is disabled.
+type DirectRegistrationPrincipalCreator func(context.Context, *gorm.DB, string, string, string, string, time.Time) (guid.ID, error)
+
 // NewModule builds the identity module from construction-owned inputs. Shared
 // capabilities are resolved during module wiring.
 func NewModule(runtime *appenv.Runtime, config Config) *Module {
@@ -144,6 +148,15 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	})
 	if err := module.Provide[RegistrationPrincipalCreator](services, registrationCreator); err != nil {
 		return fmt.Errorf("provide identity registration principal creator: %w", err)
+	}
+	directCreator := DirectRegistrationPrincipalCreator(func(ctx context.Context, db *gorm.DB, login, email, hash, name string, now time.Time) (guid.ID, error) {
+		if m == nil || m.Service == nil {
+			return 0, ErrUnavailable
+		}
+		return m.Service.CreateUnverifiedRegistration(ctx, db, login, email, hash, name, now, m.ids)
+	})
+	if err := module.Provide[DirectRegistrationPrincipalCreator](services, directCreator); err != nil {
+		return err
 	}
 	if err := module.Provide[BootstrapPrincipalStore](services, m.bootstrapPrincipalStore()); err != nil {
 		return fmt.Errorf("provide identity bootstrap principal store: %w", err)
@@ -248,6 +261,23 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	m.fields = fields
 	m.avatarPermissions = fields
+	labels, err := module.Resolve[audit.PrincipalLabelConnector](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	if err == nil {
+		if labels.Bind == nil {
+			return errors.New("resolve audit principal labels: bind is required")
+		}
+		if err := labels.Bind(func(ctx context.Context, tenant guid.ID, ids []guid.ID) (map[guid.ID]audit.PrincipalLabel, error) {
+			if m.Service == nil {
+				return nil, ErrUnavailable
+			}
+			return m.Service.auditPrincipalLabels(ctx, tenant, ids)
+		}); err != nil {
+			return fmt.Errorf("bind audit principal labels: %w", err)
+		}
+	}
 	m.resourceFiles, err = module.Resolve[*files.AccountResourceFiles](services)
 	if err != nil {
 		return fmt.Errorf("resolve identity resource files: %w", err)

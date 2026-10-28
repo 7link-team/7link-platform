@@ -89,7 +89,7 @@ function WorkspaceOptions() {
   if (status === "anonymous")
     return <Navigate to={entranceLoginPath(entry)} replace />
   if (status !== "authenticated") return <SessionVerification />
-  if (entry === "user") return <Navigate to="/user/files" replace />
+  if (entry === "user") return <Navigate to="/" replace />
   if (items && entry === "system" && system)
     return <Navigate to="/system" replace />
   if ((items?.length === 1 && !creating) || navigation.state !== "idle") {

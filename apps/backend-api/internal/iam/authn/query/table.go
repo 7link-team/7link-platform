@@ -7,6 +7,7 @@ import (
 )
 
 type (
+	RegistrationPolicies       = registrationPolicy
 	Credentials                = credential
 	Sessions                   = session
 	PasswordHistoryTable       = passwordHistory
@@ -28,6 +29,7 @@ type (
 
 // Tables is the complete generated query set bound to one deployment prefix.
 type Tables struct {
+	RegistrationPolicy         *RegistrationPolicies
 	Credentials                *Credentials
 	Sessions                   *Sessions
 	PasswordHistory            *PasswordHistoryTable
@@ -50,6 +52,7 @@ type Tables struct {
 // TableNames is the physical name of every table authn owns under one
 // deployment prefix.
 type TableNames struct {
+	RegistrationPolicy         gormx.TableName
 	Credentials                gormx.TableName
 	Sessions                   gormx.TableName
 	PasswordHistory            gormx.TableName
@@ -74,6 +77,7 @@ type TableNames struct {
 // cannot end up with half of authn's tables prefixed.
 func BindNames(prefix string) TableNames {
 	return TableNames{
+		RegistrationPolicy:         gormx.NewTableName(prefix, model.RegistrationPolicy{}.TableName()),
 		Credentials:                gormx.NewTableName(prefix, model.Credential{}.TableName()),
 		Sessions:                   gormx.NewTableName(prefix, model.Session{}.TableName()),
 		PasswordHistory:            gormx.NewTableName(prefix, model.PasswordHistory{}.TableName()),
@@ -100,6 +104,7 @@ func BindNames(prefix string) TableNames {
 func BindWithNames(db *gorm.DB, names TableNames) *Tables {
 	q := Use(db)
 	return &Tables{
+		RegistrationPolicy:         q.RegistrationPolicy.Table(names.RegistrationPolicy.String()),
 		Credentials:                q.Credential.Table(names.Credentials.String()),
 		Sessions:                   q.Session.Table(names.Sessions.String()),
 		PasswordHistory:            q.PasswordHistory.Table(names.PasswordHistory.String()),

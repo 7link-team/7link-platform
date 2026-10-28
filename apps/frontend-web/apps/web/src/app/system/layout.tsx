@@ -10,7 +10,7 @@ import {
   useNavigate,
   useOutletContext,
 } from "react-router"
-import { ShieldCheck, Menu, UserRound } from "lucide-react"
+import { ArrowRight, ShieldCheck, Menu, UserRound } from "lucide-react"
 import { useTranslations, useLocale } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -277,6 +277,7 @@ export default function AdministrationLayout() {
 
 export function AdministrationWorkspaceHome() {
   const t = useTranslations("iam")
+  const locale = useLocale()
   const { platformID = "" } = useParams<{ platformID: string }>()
   const { menus, permissionsResolved } =
     useOutletContext<ConsoleOutletContext>()
@@ -286,6 +287,50 @@ export function AdministrationWorkspaceHome() {
     return (
       <p className="text-sm text-muted-foreground">{t("noTokenPermissions")}</p>
     )
+  if (!platformID) {
+    const actions = new Map<string, EffectiveMenu>()
+    const collect = (items: EffectiveMenu[]) => {
+      for (const item of items) {
+        if (item.path) {
+          const destination = item.path.startsWith("/system/")
+            ? item.path
+            : "/system/" + item.path.replace(/^\//, "")
+          if (destination !== "/system/") actions.set(destination, item)
+        }
+        collect(item.children ?? [])
+      }
+    }
+    collect(menus ?? [])
+    const descriptions: Record<string, string> = {
+      "/system/accounts": "systemHomeAccounts",
+      "/system/accounts/system": "systemHomeAdministrators",
+      "/system/tenants": "systemHomeTenants",
+      "/system/settings": "systemHomeSettings",
+      "/system/audit/events": "systemHomeAudit",
+      "/system/jobs": "systemHomeJobs",
+      "/system/job-schedules": "systemHomeSchedules",
+      "/system/domain-events": "systemHomeEvents",
+    }
+    return (
+      <section className="mx-auto w-full max-w-5xl">
+        <header className="border-b pb-5">
+          <h1 className="text-2xl font-semibold">{t("systemAdministration")}</h1>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{t("systemHomeDescription")}</p>
+        </header>
+        <nav aria-label={t("systemHomeActions")} className="mt-4 grid gap-x-8 sm:grid-cols-2">
+          {[...actions].map(([destination, item]) => (
+            <Link key={destination} to={destination} className="group flex min-h-20 items-center justify-between gap-4 border-b py-4 focus-visible:outline-2 focus-visible:outline-ring">
+              <span>
+                <span className="font-medium group-hover:text-primary">{menuLabel(item, locale)}</span>
+                <span className="mt-1 block text-sm text-muted-foreground">{t(descriptions[destination] ?? "systemHomeManage")}</span>
+              </span>
+              <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
+            </Link>
+          ))}
+        </nav>
+      </section>
+    )
+  }
   const base = platformID
     ? `/platform/${encodeURIComponent(platformID)}`
     : "/system"

@@ -56,28 +56,29 @@ type RegistrationPrincipalCreator func(
 // Service coordinates local credentials, sessions, tokens, MFA, passkeys, and
 // account recovery through the authn module's repository.
 type Service struct {
-	cfg                   authnext.Config
-	web                   authnext.WebConfig
-	repo                  *Repository
-	signingKeys           *signingKeyring
-	mfaKeys               *keyringx.Keyring
-	returnURLs            returnURLAllowlist
-	captcha               *captchaOffering
-	sharedSecurity        *sharedSecurity
-	securityServer        *developmentSecurityServer
-	oauthGrants           OAuthGrantValidator
-	personalPermissions   func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
-	personalRegistry      *authz.Registry
-	passkeys              *webauthnx.Adapter
-	now                   func() time.Time
-	enricher              claimEnricher
-	registrationCreator   RegistrationPrincipalCreator
-	memberTenant          core.MemberTenantResolver
-	fields                authz.FieldPermissionChecker
-	verifiedHook          func(context.Context, *gorm.DB, guid.ID, string, time.Time) error
-	recoveryEligibility   func(context.Context, *gorm.DB, guid.ID) error
-	federatedProofTrust   func(context.Context, *gorm.DB, guid.ID, string, string) error
-	accountViewAuthorizer AccountViewAuthorizer
+	cfg                       authnext.Config
+	web                       authnext.WebConfig
+	repo                      *Repository
+	signingKeys               *signingKeyring
+	mfaKeys                   *keyringx.Keyring
+	returnURLs                returnURLAllowlist
+	captcha                   *captchaOffering
+	sharedSecurity            *sharedSecurity
+	securityServer            *developmentSecurityServer
+	oauthGrants               OAuthGrantValidator
+	personalPermissions       func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
+	personalRegistry          *authz.Registry
+	passkeys                  *webauthnx.Adapter
+	now                       func() time.Time
+	enricher                  claimEnricher
+	registrationCreator       RegistrationPrincipalCreator
+	directRegistrationCreator DirectRegistrationPrincipalCreator
+	memberTenant              core.MemberTenantResolver
+	fields                    authz.FieldPermissionChecker
+	verifiedHook              func(context.Context, *gorm.DB, guid.ID, string, time.Time) error
+	recoveryEligibility       func(context.Context, *gorm.DB, guid.ID) error
+	federatedProofTrust       func(context.Context, *gorm.DB, guid.ID, string, string) error
+	accountViewAuthorizer     AccountViewAuthorizer
 
 	notificationAuthorization string
 	notificationClient        *http.Client
@@ -100,6 +101,12 @@ type ClaimContext struct {
 
 type claimEnricher interface {
 	Enrich(context.Context, ClaimContext) (map[string]any, error)
+}
+
+type DirectRegistrationPrincipalCreator func(context.Context, *gorm.DB, string, string, string, string, time.Time, guid.Source) (guid.ID, error)
+
+func WithDirectRegistrationPrincipalCreator(creator DirectRegistrationPrincipalCreator) WebOption {
+	return func(s *Service) { s.directRegistrationCreator = creator }
 }
 
 type WebOption func(*Service)

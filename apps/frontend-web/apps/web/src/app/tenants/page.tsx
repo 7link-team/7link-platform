@@ -24,12 +24,13 @@ import { PageHeader } from "../../components/page-header"
 const tenantPageSize = 50
 import {
   iamApi,
-  getTenant,
   type Principal,
   type Tenant,
   type TenantUpdate,
 } from "../../lib/iam-api"
 import { useAllowed } from "../../lib/permissions"
+import { principalLabel } from "../../lib/principal-label"
+import { selfProfileApi } from "../security/profile-api"
 
 const statusLabels: Record<Tenant["status"], string> = {
   active: "active",
@@ -57,6 +58,11 @@ export default function TenantsPage() {
     Pick<Principal, "id" | "display_name" | "login_name">[]
   >([])
   const [ownerID, setOwnerID] = useState("")
+  const [ownerSearch, setOwnerSearch] = useState("")
+  const [ownerOffset, setOwnerOffset] = useState(0)
+  const [ownerTotal, setOwnerTotal] = useState(0)
+  const [ownersLoading, setOwnersLoading] = useState(false)
+  const canListOwners = allowed("system_account_view")
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -94,28 +100,62 @@ export default function TenantsPage() {
     const owner = session
       ? {
           id: session.subject,
-          display_name: session.preferred_username ?? session.subject,
-          login_name: session.preferred_username ?? session.subject,
+          login_name: session.preferred_username,
         }
       : null
     setPrincipals(owner ? [owner] : [])
     setOwnerID(owner?.id ?? "")
+    setOwnerSearch("")
+    setOwnerOffset(0)
+    setOwnerTotal(0)
+    setOwnersLoading(canListOwners)
+    setError("")
     setOpen(true)
-    if (!getTenant()) return
-    iamApi
-      .principals()
-      .then((list) =>
-        setPrincipals([
-          ...new Map(
-            [
-              ...(owner ? [owner] : []),
-              ...list.items.filter((item) => item.status === "active"),
-            ].map((item) => [item.id, item])
-          ).values(),
-        ])
-      )
-      .catch((cause: Error) => setError(cause.message))
   }
+
+  useEffect(() => {
+    if (!open || editing || !session?.subject) return
+    const subject = session.subject
+    const controller = new AbortController()
+    void selfProfileApi.get(subject, controller.signal).then(
+      (profile) => {
+        if (controller.signal.aborted) return
+        setPrincipals((current) => {
+          const existing = current.find((item) => item.id === subject)
+          return [
+            { ...existing, id: subject, display_name: profile.display_name },
+            ...current.filter((item) => item.id !== subject),
+          ]
+        })
+      },
+      (cause: Error) => { if (!controller.signal.aborted) setError(cause.message) }
+    )
+    return () => controller.abort()
+  }, [open, editing, session?.subject])
+
+  useEffect(() => {
+    if (!open || editing || !canListOwners) return
+    let active = true
+    void iamApi.systemPrincipals(ownerSearch, ownerOffset, { category: "user", status: "active" }).then(
+      (page) => {
+        if (!active) return
+        setPrincipals((current) => [
+          ...new Map([
+            ...current.filter((item) => item.id === ownerID || item.id === session?.subject),
+            ...page.items,
+          ].map((item) => [item.id, item])).values(),
+        ])
+        setOwnerTotal(page.total)
+        setOwnersLoading(false)
+      },
+      (cause: Error) => {
+        if (!active) return
+        setError(cause.message)
+        setOwnersLoading(false)
+      }
+    )
+    return () => { active = false }
+  }, [open, editing, canListOwners, ownerSearch, ownerOffset, ownerID, session?.subject])
 
   const openEdit = (tenant: Tenant) => {
     setEditing(tenant)
@@ -445,7 +485,7 @@ export default function TenantsPage() {
                   id: "tenant-owner",
                   options: principals.map((principal) => ({
                     value: principal.id,
-                    label: `${principal.display_name}（${principal.login_name}）`,
+                    label: principalLabel(principal, t("accountUnavailable"), t("accountAnonymized")),
                   })),
                   placeholder: t("selectTenantAdmin"),
                   suffix: t("tenantAdminDescription"),
@@ -468,6 +508,26 @@ export default function TenantsPage() {
               setOwnerID(String(values.owner_principal_id ?? ""))
             }}
           ></AutoForm>
+          {!editing && canListOwners && (
+            <div className="grid gap-2">
+              <AutoForm
+                fields={{ search: { name: t("loginNameOrEmail"), type: "text", value: ownerSearch } }}
+                onChange={(values) => {
+                  const next = String(values.search ?? "")
+                  if (next === ownerSearch) return
+                  setOwnersLoading(true)
+                  setOwnerSearch(next)
+                  setOwnerOffset(0)
+                }}
+              />
+              <PaginationPages
+                page={Math.floor(ownerOffset / 50) + 1}
+                totalPages={Math.max(1, Math.ceil(ownerTotal / 50))}
+                disabled={ownersLoading}
+                onPageChange={(page) => { setOwnersLoading(true); setOwnerOffset((page - 1) * 50) }}
+              />
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               {t("cancel")}
