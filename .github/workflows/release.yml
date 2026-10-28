@@ -666,7 +666,8 @@ jobs:
           mkdir "$mount"
           hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$image"
           desktop_pid=''
-          trap 'if [[ -n "$desktop_pid" ]]; then kill "$desktop_pid" 2>/dev/null || true; wait "$desktop_pid" 2>/dev/null || true; fi; hdiutil detach "$mount"' EXIT
+          # WebKit helpers can briefly retain the owned read-only volume after the app exits.
+          trap 'if [[ -n "$desktop_pid" ]]; then kill "$desktop_pid" 2>/dev/null || true; wait "$desktop_pid" 2>/dev/null || true; fi; hdiutil detach "$mount" || hdiutil detach -force "$mount"' EXIT
           shopt -s nullglob
           apps=("$mount"/*.app)
           [[ ${#apps[@]} == 1 ]]
