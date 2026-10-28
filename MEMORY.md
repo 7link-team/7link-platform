@@ -1,16 +1,31 @@
-# Active Release v0.1.0-rc.4
+# Release v0.1.0-rc.4 - Delivery Receipt
 
-## Authorization / Scope
-User explicitly authorized publication after implementation/Windows acceptance. Publish the previously verified product-flow repair and updater together; preserve all prior release/tag/assets. GitHub repository and both GHCR packages must remain public. After successful release, clean only owned regenerable build/test artifacts, preserving protected signing backups and durable verification receipts.
+## Objective / Authorization
+User authorized publication of the verified product-flow repair and signed desktop updater, followed by disk cleanup. Repository and GHCR remain public. Prior releases are immutable.
 
 ## Phase / Current Step
-RELEASE RECOVERY / application tag rc.4 unchanged at dbbc936aae77513ee798b7cd98fd735e8b53714c. Both full hosted CI40717585189 and40723975366 PASS (all5 jobs). First packaging attempt40721436123 failed because DMG-only omitted updater archive; fixed main9b59ec7a uses app,dmg. Corrected run40723982854: Windows/Linux2/Runner6/both signed images PASS; mac Intel generated signed archive and passed all app/service/startup checks but EXIT hdiutil detach failed16 due busy volume; mac ARM cancelled with runner_id0 due GitHub hosted ARM capacity (check-run annotations, no code ran). Final cleanup fix: normal detach then force only own read-only temp mount; actionlint + five actual Bash trap failure-path probes + independent review PASS. Push workflow-only fix with [skip ci] to avoid irrelevant duplicate Go/TS CI; native release gates WILL run fully. No executable-source changes. Public GHCR indexes and anonymous keyless cosign check on corrected-run images PASS; refresh after final remerge.
+ACCEPTANCE COMPLETE / PASS. Release: https://github.com/7link-team/7link-platform/releases/tag/v0.1.0-rc.4
+Application tag remains dbbc936aae77513ee798b7cd98fd735e8b53714c. Workflow commit930d517f1b0cb50ec451a446f018148ed70775d3. Final Release40729416854 SUCCESS:21applicable jobs passed, one append-only job intentionally skipped.
 
-## Verification
-Previous product-flow full local gates and updater native tests remain applicable (details below). Independent focused desktop/release deep-audit in progress; earlier security/recovery reviews PASS. No new product behavior changes planned.
+## Completed Work / Verification
+- Full hosted CI40717585189 and40723975366: all5jobs PASS; coverage90.6%, real database gates included.
+- Windows installed/portable, macOS Intel/AppleSilicon, Linux amd64/arm64 desktop native packaging/startup/service acceptance PASS;6Runner targets PASS. Final Windows/macIntel/macARM logs: .temp/rc4-final-*.log.
+- Public Release23assets: anonymous complete downloads, exact SHA256/GitHub digests, formats,6signed target signatures/version binding and candidate feed equality PASS (.temp/rc4-public-release.json). Reviewed UTF-8 release notes published.
+- Actual public-feed Windows portable upgrade PASS: discovered rc4, downloaded actual signed public ZIP, replaced executable/full resources, restarted, preserved remote choice/data, reported rc4/current. Receipt .temp/rc4-production-upgrade/receipt.json. Existing Windows current-user installed upgrade/security/failure-path acceptance remains PASS.
+- Public API/Web GHCR indexes both amd64/arm64 and matching attestations; anonymous cosign keyless signatures PASS (.temp/rc4-public-images.json, rc4-cosign-api.json, rc4-cosign-web.json).
+- Final baseline compare: rc1/rc2/rc3 release IDs, asset IDs/sizes/digests and tag objects unchanged.
+- Guarded cleanup31targets:11,919,891,520logical bytes removed (11.10GiB); D-volume free increased from37,008,351,232to46,084,018,176bytes (9,075,666,944physical bytes reclaimed). Generated build resources, task payloads/tools/profiles removed. Protected signing backup, logs/receipts and unknown development databases preserved. No frontend-app/local-service/product-flow-api processes remain.
+- Earlier packaging recovery: DMG-only omitted updater archive, fixed app,dmg; busy read-only acceptance mount fixed owned-volume normal/force detach. Focused actionlint/Bash probes and independent reviews PASS. First ARM capacity cancellation resolved in final run; no application tag moved.
+- Independent scoped release/security/recovery reviews and final main self-review/acceptance PASS. Only state documentation changed after executable verification; final state commit uses [skip ci] to avoid duplicate executable gates.
+
+## Known Limits / Confirmed Constraints
+Old clients lacking updater require one manual installation of rc4. Real Windows UAC/all-users upgrade and complete macOS/Linux upgrade UI paths remain NOT_TESTED; hosted installation/startup checks passed. macOS ad-hoc signed, not Apple notarized; Windows has no publisher code signature. Sudden power loss/helper termination and future database rollback not verified. No new behavior or unrelated cleanup added.
 
 ## Next Action
-Commit workflow-only DMG cleanup+state and push main; dispatch release.yml ref=main for unchanged rc4 tag. Monitor new release run through all native gates. If ARM queue capacity cancels again, after parent ends retry only that job+dependents (rc4-delivery.py rerun-job); do NOT alter source tag. After creation: rc4-delivery.py notes; rc4-public-verify.py release/images; rc4-production-upgrade.py; rc4-cosign.py (official202MB verifier downloaded and checksum-verified). Prior baseline compare rc4-delivery.py verify-prior. Then rc4-cleanup.py deletes only owned regenerable artifacts after required final receipts; protected production key/logs/receipts and unknown development data preserved. No GitHub Release yet.
+Nothing outstanding for approved release/public verification/cleanup. Final state documentation committed/pushed to GitHub main; working tree clean. Do not recreate deleted caches without a new task. Historical checkpoints below are superseded by this receipt.
+
+## Last Checkpoint
+2026-10-28 release/public update acceptance/cleanup COMPLETE.
 
 ---
 # Active Desktop Updater
