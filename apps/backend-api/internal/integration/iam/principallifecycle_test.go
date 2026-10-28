@@ -52,6 +52,13 @@ func runComposedPrincipalErasure(t *testing.T, external *app.Database) {
 			if external != nil {
 				database = *external
 			}
+			if database.Type == "sqlite" && scenario == "legacy-notification" {
+				// This fixture temporarily removes and restores authn columns.
+				// Another SQLite connection can report its old SELECT * columns
+				// before the first step refreshes its schema, losing NULL keys.
+				// Keep DDL and snapshots on one connection; retain full equality.
+				database.MaxOpenConns = 1
+			}
 			prefix := ""
 			if external != nil {
 				prefix = fmt.Sprintf("pe%d_", index)
