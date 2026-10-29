@@ -1,31 +1,31 @@
 {
-  "version": "0.1.0-rc.4",
-  "notes": "Release v0.1.0-rc.4",
-  "pub_date": "2026-10-28T15:35:45.000Z",
+  "version": "0.1.0-rc.5",
+  "notes": "Release v0.1.0-rc.5",
+  "pub_date": "2026-10-29T15:01:06.000Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.4/7link-platform-desktop_v0.1.0-rc.4_windows_amd64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0xmYURVYnhxamFhN0tDWGE0QzdjVlRmRkJwcUZWQU8zRmJwS0kwMlhTTng4S21aVGpRU3BLbnl5VzdUR2NGMks0Q0kxNGQ0Q3ZueXdDaW9nWDJoL1FJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjA2NzcxCWZpbGU6Y2hhb3NwbHVzXzAuMS4wLXJjLjRfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMS4wLXJjLjQKSGplYkJRWkxmRCtzY2tzYVphdWk4N0ZTQjNvT3VCcitEYWV6a1d5eVNiaVpyZ0ZLQk52eGRBVWNXQXZuSllSNE1PWEx6bjB1U0IrM3I5cVBKK0FsQmc9PQo="
+      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.5/7link-platform-desktop_v0.1.0-rc.5_windows_amd64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0dyanBVZVg0eGxKL1RFUE03ZHFsSUJDYVg2NmIxUGlLcmZoSkhubW41d0owZ0xhZ29ZdE9LS01rYU0rZE5QUEt5Wk5ZN04zbWtzWWo5OUgrcWNIUkFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjg3MjUzCWZpbGU6Y2hhb3NwbHVzXzAuMS4wLXJjLjVfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMS4wLXJjLjUKcGJLQ1laVFVQSU4xMmFtVThHaThaZytNWUZpQ3NzVExMdjFmZEtEcXkzOSthUHlwWW54S1dyQWlKZlZyK0xER0dFVGVKenZicnBrSEZUTGhCb0twRGc9PQo="
     },
     "windows-x86_64-portable": {
-      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.4/7link-platform-desktop_v0.1.0-rc.4_windows_amd64_portable.zip",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0xYSms0NXo1ZnhXK3lvSDF6QXBoSDVpalNqdGJFZzhWUG9jR2ZKY24wWUZGRXZPUlRjL21SZE9uZGF2MUd0NGtLQkxVWmpjc1haVktheFdtWW53Z1E4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjA2Nzc1CWZpbGU6N2xpbmstcGxhdGZvcm0tZGVza3RvcF92MC4xLjAtcmMuNF93aW5kb3dzX2FtZDY0X3BvcnRhYmxlLnppcAl2ZXJzaW9uOjAuMS4wLXJjLjQKc2MrT0hVZFR0a0NIOGNlQVNxVlMwQjF0WXpwcTA4T0puT2NIamxwWHpQYXR5RklSamltbWs2RkgzUEcyZW1uRXNmYnRCWnlIT0ljcCt2Wm94ellXRHc9PQo="
+      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.5/7link-platform-desktop_v0.1.0-rc.5_windows_amd64_portable.zip",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc1BkNllGUis3VHZQNVpZMjRQV1J5UVZaMjJDcFVtMW9jWFdtQnQ4SXM0OC9ReEVCNUJDK0hKeG9samFHbmhJZk9xU25DS3k1VlQxdzFicCs5a05SaFFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjg3MjU3CWZpbGU6N2xpbmstcGxhdGZvcm0tZGVza3RvcF92MC4xLjAtcmMuNV93aW5kb3dzX2FtZDY0X3BvcnRhYmxlLnppcAl2ZXJzaW9uOjAuMS4wLXJjLjUKM0RXbUk5RTNXTVZMdWdTYXR2c3lwYU5DVEZoYnFzUFBRaHpNcTZieDdwZGMyai9lRTkyMHhZV1ZRM1JZbWpMWXl5em5uOVhIZCtuanFyekRDREloQ2c9PQo="
     },
     "darwin-x86_64": {
-      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.4/7link-platform-desktop_v0.1.0-rc.4_macos_amd64.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0kzdkdXVWQydGJVM0pPS1FldEdFTktOR205K2VlSDZ6ODhOdzRuWC96MnJzU3RZdW1mM2I5Y2RoVFZYNUtsUGtYUlpBQXpCVHBOdVJyWlRpQUpaRHdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjA3MzMyCWZpbGU6Y2hhb3NwbHVzLmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuMC1yYy40Clgrd0t5YkFQTzBKRU9iTnpYdlpTdmdwY0ZlR3dHSDFaTi84WjdCbGpjQ2FQMFArUU1QWWlMT004RzFZamVOUE9PUXlrcVE4bm8rQ0k4VzBaQXRJaUNnPT0K"
+      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.5/7link-platform-desktop_v0.1.0-rc.5_macos_amd64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0VHQ2o1d3ZOTGdtdkFGblh0UFQ1MU0yNWtUcCtGRlJvc0NianF4MkZRQUxZeDMvZUlicS9mdjBpM2hOZ3c1by9WN1Z3SW5xSFRwbmdsVHdoZUlZNEE4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjg3OTMzCWZpbGU6Y2hhb3NwbHVzLmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuMC1yYy41ClNBa0ZYRmQrK201ckxFd0hyT0djbFhRekxWUE8rSjhScXhvelIwd0hvT2trT0FKdDVmL1kxVnM5UGxrdjhvRmZvMWM0ZVpkWlAvNEJmVHJrUzRQaEJ3PT0K"
     },
     "darwin-aarch64": {
-      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.4/7link-platform-desktop_v0.1.0-rc.4_macos_arm64.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0MzUUlNRUVtSThBWEV1S3NZU1VOcHB3d05pbGJFM0lmcG41UWlLSU1nYkJncEs5NHNqRGJ4VjczQ2pqYTNGWXc0OTJkNDBPZU5OaU5XT2x3aTlmWWdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjA3MjAyCWZpbGU6Y2hhb3NwbHVzLmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuMC1yYy40CkczeGtqVkRkNUVYZHpjVzRKYkhtSVIzV0lMTno4SmV6V0ZPZHFJTS9uUFNlMWNEeTJxY1F5bW5MUjhEMVNMSHRGenB1T3FqbTZoenhrcUdqYWR5UER3PT0K"
+      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.5/7link-platform-desktop_v0.1.0-rc.5_macos_arm64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0pzRUx6R0xXdTdhL1hITUZRanBZZlJZVHA0NU9JVE9vLzNrM0MwMk9adDVOSWJOOEhZRkJIdTNTUXF0bGw4NXZxVlRTTEJNT1lOdi9iWG5lbWIvb2dnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjg3NzkwCWZpbGU6Y2hhb3NwbHVzLmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuMC1yYy41Ck9HUmMxbHhqeEFoSHFYUStEVEg0K212SFY3dTR4dG5USGI5L3pBUmxxMzVXcEJvT283WUZvUFRyWDNxaWFDWDU5M3B3c3lVakRxRTJBZ1F0WWFYTEJBPT0K"
     },
     "linux-x86_64": {
-      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.4/7link-platform-desktop_v0.1.0-rc.4_linux_amd64.AppImage",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0pRdStBQ0ZEVlpWa3lNV1NibUxXMDJXTmNtelZzaFFIeFdrcXRaNHg1WW1TZEI0MVRJVFFUOVZORHdWbHZ0dW1kMVorZExiV08yTE0rYzNGSnRwNHd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjA2NjM3CWZpbGU6Y2hhb3NwbHVzXzAuMS4wLXJjLjRfYW1kNjQuQXBwSW1hZ2UJdmVyc2lvbjowLjEuMC1yYy40CnQybmgxT2p2QnlpYWdZSUs0dCswVGUzTFNqYzhFQXRLdVNBWWd2djZlb0xGQVNPK0J6cUgrbmQxanZTa2ZkeGFsNkhwTnd2TjhLVDNDVWJqM3RHcUJBPT0K"
+      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.5/7link-platform-desktop_v0.1.0-rc.5_linux_amd64.AppImage",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0FZdFpjclMvOW5hYW9lZ3o0UFk0TmlQbithKzRtS2haSzZIbDlqNnpweElzck1tdm55Ujd0V3c0UTNBUm05V0VnRUJqZDJjYTlIaitUV05VUWlVYXcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjg3MzI3CWZpbGU6Y2hhb3NwbHVzXzAuMS4wLXJjLjVfYW1kNjQuQXBwSW1hZ2UJdmVyc2lvbjowLjEuMC1yYy41CnBDeVpqajJzRkwycUFYaVora3AzNmRkWUh3L2JQVlcvZDlnNmxUNG5hck9ON2pqck9SKzhVU3ROS0hWdy9XWHd2WVFUVDY4WmExa1oxVWpkU1VCSUJRPT0K"
     },
     "linux-aarch64": {
-      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.4/7link-platform-desktop_v0.1.0-rc.4_linux_arm64.AppImage",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0RkTEdIN3VCY1ZCUTF6Z0w5Z1hzeFF5Wm1teXhuU0d1K3dTSE13eHMwUElSUGJFY0dBSm82Qk5XcmgzZ0FueDFJRjJMVmxtTVJ0OFlzTkdJZjN1T2dnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjA2NjA4CWZpbGU6Y2hhb3NwbHVzXzAuMS4wLXJjLjRfYWFyY2g2NC5BcHBJbWFnZQl2ZXJzaW9uOjAuMS4wLXJjLjQKbUJWaU9jZnhiYnZTMDRraU5PZlhTSFhHZkRhektmeDA0bzBOLzFtdXI3aGQ4UENYTnlXNnBIK21UNXBKUGZyWkR0bVVkbzlYNm5NMllFNnRtL3puQnc9PQo="
+      "url": "https://github.com/7link-team/7link-platform/releases/download/v0.1.0-rc.5/7link-platform-desktop_v0.1.0-rc.5_linux_arm64.AppImage",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQnoxUzlWbmxmc0ovN25vS0syRVBHd3FtZ3h0aUgwejZMeHcyYkdjWWI0V1NScVkzNUFVaVQrK3FlMlRRc1gzTlFPK3dJNi9vcTVZdkc1dEpRRVRhOS9zazgyS1VzK3dZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjg3MTk2CWZpbGU6Y2hhb3NwbHVzXzAuMS4wLXJjLjVfYWFyY2g2NC5BcHBJbWFnZQl2ZXJzaW9uOjAuMS4wLXJjLjUKWE9yUFlNREZ5ZjIrTXpabEN0akhLeHQ4cklzcW1lY1JteURRcVVzUU1rY3Jsb0tFMVV6TytxQkhzZG9Yc1F0aEcyWGR6T3hmV2tuejNJY1lFTmRwQ2c9PQo="
     }
   }
 }
