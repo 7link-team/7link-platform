@@ -1,13 +1,37 @@
-# Active Release v0.1.0-rc.5
+# Release v0.1.0-rc.5 - Final Delivery Receipt
 
 ## Objective / Authorization
-User said continue after the proposed rc5 publication next step. Publish the verified in-place Windows installation and startup chooser-flash fixes, keep repository/GHCR public, preserve rc1 through rc4 artifacts/tags, and clean owned generated files after final acceptance.
+User continued the proposed rc5 publication. Publish the verified in-place Windows installation and startup chooser-flash fixes; keep GitHub/GHCR public, preserve prior releases, verify actual updater delivery, and clean owned generated files.
 
-## Phase / Plan
-RELEASE PREPARATION. Source reconciled against prior verified diff and native/browser receipts. Bun19tests/116assertions rerun PASS; independent install/startup reviews remain applicable. Direct execution; no source changes planned. Commit exact desktop sources/docs, push GitHub main, wait full source CI, then push immutable annotated rc5 tag. Native release gates must pass for all supported platforms; publicly verify23assets/six signed update targets/feed/images/signatures. Exercise actual released rc4 portable client upgrading through public candidate feed to rc5. Final cleanup and durable receipt, self-review/acceptance.
+## Phase / Current Step
+ACCEPTANCE COMPLETE / PASS. Release: https://github.com/7link-team/7link-platform/releases/tag/v0.1.0-rc.5
+Immutable annotated tag source2903f3aa1764776b3e6381d2aeb2064ac6fdbaa1; main receives a final state-only documentation commit after verification, without moving the tag.
 
-## Current Step / Next Action
-Prior4release baseline being captured by .temp/rc5-delivery.py baseline; reviewed release notes and helper scripts being prepared. Commit/push only intended files, obtain full SHA, discover/monitor CI. No rc5 tag or release exists yet. Do not republish rc4 or change its tag.
+## Completed Work / Verification
+- Required behavior: NSIS installation upgrades/repairs in place without uninstall-first maintenance choices; both scopes and original location/data handling retained. Initial launcher hides chooser, shows startup feedback during restore, reveals controls only for first run/explicit switch/setup/failure. Existing preference format/data identity unchanged.
+- Bun19tests/116assertions PASS. Earlier actual browser delayed-script comparison: old41visible chooser frames, new0. Interactive Windows current-user cross-version upgrade/reinstall preserved remote/local choices, installation/user-data sentinels and production local database. Two independent install/startup reviews PASS. Prior receipts .temp/install-startup-acceptance/ retained.
+- Full exact-source CI40897293670:all5jobs PASS, total coverage90.6%/all module floors, real MySQL/PostgreSQL integration included. Logs .temp/rc5-ci-coverage.log and rc5-ci-integration.log.
+- Release40898953799 SUCCESS:all21applicable jobs PASS, append-only job intentionally skipped. Windows both-scope installation/uninstallation, macOS Intel/AppleSilicon and Linux amd64/arm64 native desktop packaging/startup/service acceptance PASS;6Runner targets PASS. Final native logs .temp/rc5-final-*.log.
+- Public23asset set complete; anonymous full downloads, exact GitHub/SHA256 checksums, formats, six signature/version bindings, complete portable resources and candidate feed equality PASS (.temp/rc5-public-release.json). Reviewed UTF-8 release notes published, including actual public upgrade receipt.
+- Actual public rc4 portable client verified against published hash/signature/version, then discovered rc5 public feed, downloaded real signed ZIP, installed exact rc5 executable/full resources, restarted, retained saved remote connection and data sentinel, and reported rc5/current. PASS .temp/rc5-production-upgrade/receipt.json. No real account database initialized or user service contacted.
+- Anonymous public API/Web GHCR dualarch indexes, matching attestations and both keyless cosign signatures PASS. Identity release.yml@refs/tags/v0.1.0-rc.5. Receipts .temp/rc5-public-images.json, rc5-cosign-api.json, rc5-cosign-web.json.
+- Prior rc1/rc2/rc3/rc4 release IDs, asset IDs/sizes/digests and annotated tag objects unchanged (final baseline comparison PASS).
+- Guarded cleanup21targets PASS:1,120,908,129logical bytes removed; measured D-volume free38,830,731,264to39,952,453,632bytes (1,121,722,368physical bytes reclaimed). Removed downloaded payloads/tools and owned native profiles/data; production signing backup, scripts/logs/receipts and unknown development data preserved. No owned desktop/service processes remain.
+
+## Execution / Recovery Notes
+Direct release execution; reused prior independent reviews, no new application edits. Native release ran in parallel with remaining source CI after observing prior coverage27.6min/packaging20min; both passed before publication completion. Whole-file prerequisite downloads were slow, switched owned tools to resumable512KiB ranges with final full hashes; no shipped downloader changes. Public checks and actual native upgrade ran in parallel after independently verifying the new ZIP. No source/tag recovery or artifact replacement required.
+
+## Known Limits
+Real UAC/all-users upgrade and full macOS/Linux upgrade UI flows NOT_TESTED; hosted initial install/startup checks passed. macOS ad-hoc signed/not Apple notarized; Windows lacks publisher code signing. Older pre-updater versions still need one manual installation. No claim of power-loss/helper-kill recovery or database rollback verification.
+
+## Self-Review / Final Acceptance
+Requirement/Scope/Reuse/Architecture/Regression/Complexity/DurableState/Testing/CommitHygiene PASS. Only state docs changed after executable verification; final docs commit uses [skip ci] to avoid rerunning executable CI. All cleanup paths owned/ignored/checked, no binaries/keys/reports staged. Historical checkpoints below are superseded by this receipt.
+
+## Next Action
+Nothing outstanding for approved rc5 release/public verification/cleanup. Final receipt committed/pushed to GitHub main, working tree clean. Installed rc4 clients can use native Help/Check for updates. Do not recreate deleted downloads/build caches or move published tags without a new task.
+
+## Last Checkpoint
+2026-10-29 rc5 publication, actual rc4-to-rc5 upgrade, public integrity checks and owned cleanup PASS.
 
 ---
 # Previous Local Task - In-place installation and startup chooser flash

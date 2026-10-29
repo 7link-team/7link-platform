@@ -5,7 +5,7 @@
 - Alternatives Considered: silently choose the old destructive default (rejected); alter application identity/storage paths (unnecessary); preprocessor hooks that bypass unrelated pages (unsupported for this page).
 - Tradeoffs: vendored installer template must track upstream changes. Old application versions without remembered connection state cannot reconstruct missing history; existing records retain their format and location.
 - Scope: Windows installer maintenance policy and launcher first-paint visibility only. During restoration show neutral startup status; reveal chooser only for first run, explicit switch, local setup, or restoration failure.
-- Status: implemented; nineteen desktop tests, actual browser before/after frame capture, interactive current-user upgrade/reinstall with retained remote/local state and production local database PASS. Independent compatibility/startup reviews PASS. Actual UAC/all-users and native macOS/Linux not rerun; no new release published.
+- Status: published immutable v0.1.0-rc.5. Nineteen desktop tests, browser before/after frame capture, interactive current-user upgrade/reinstall with retained remote/local state/database, independent compatibility/startup reviews, full hosted CI and all-platform packaging/startup gates PASS. Actual public rc4 portable client upgraded to rc5 with retained connection and complete resources, then reported rc5/current. Real UAC/all-users upgrade and complete macOS/Linux upgrade UI paths remain untested; hosted initial install/startup checks passed.
 
 ## 2026-10-28 - Account registration policy and optional email proof
 
