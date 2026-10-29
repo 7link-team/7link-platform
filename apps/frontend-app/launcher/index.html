@@ -7,7 +7,10 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <main>
+    <main id="connection-progress" role="status" aria-live="polite">
+      <p>正在启动，请稍候……</p>
+    </main>
+    <main id="connection-chooser" hidden>
       <h1>选择运行方式</h1>
       <section aria-labelledby="local-heading">
         <h2 id="local-heading">本地运行</h2>

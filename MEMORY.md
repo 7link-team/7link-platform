@@ -1,3 +1,43 @@
+# Active Release v0.1.0-rc.5
+
+## Objective / Authorization
+User said continue after the proposed rc5 publication next step. Publish the verified in-place Windows installation and startup chooser-flash fixes, keep repository/GHCR public, preserve rc1 through rc4 artifacts/tags, and clean owned generated files after final acceptance.
+
+## Phase / Plan
+RELEASE PREPARATION. Source reconciled against prior verified diff and native/browser receipts. Bun19tests/116assertions rerun PASS; independent install/startup reviews remain applicable. Direct execution; no source changes planned. Commit exact desktop sources/docs, push GitHub main, wait full source CI, then push immutable annotated rc5 tag. Native release gates must pass for all supported platforms; publicly verify23assets/six signed update targets/feed/images/signatures. Exercise actual released rc4 portable client upgrading through public candidate feed to rc5. Final cleanup and durable receipt, self-review/acceptance.
+
+## Current Step / Next Action
+Prior4release baseline being captured by .temp/rc5-delivery.py baseline; reviewed release notes and helper scripts being prepared. Commit/push only intended files, obtain full SHA, discover/monitor CI. No rc5 tag or release exists yet. Do not republish rc4 or change its tag.
+
+---
+# Previous Local Task - In-place installation and startup chooser flash
+
+## Objective / Confirmed Requirements
+User requests no uninstall-first choice in Windows installation, preservation of the last connection after installing a new version, and no connection-page flash on every startup. Prior rc4 release is immutable. No new publication authorized for this revision.
+
+## Phase / Current Step
+ACCEPTANCE COMPLETE / PASS for local implementation, NOT_PUBLISHED. NSIS maintenance page defaulted to uninstall-first; launcher rendered chooser before restoring browser-local connection. Fixed with Tauri custom template pinned to upstream2.12.2, changing only NSIS maintenance policy; WiX compatibility/both scopes retained. Initial HTML hides chooser; neutral progress during restore, chooser only on first run/explicit switch/setup/failure. Identity/data paths, preferences format and native permissions unchanged.
+
+## Execution Mode / Scope
+Direct implementation plus two independent read-only reviewers under deep-review. Existing launcher storage/startLocal and official NSIS lifecycle reused. No backend/business API/schema/dependency or published artifact changes. Template provenance/hash and synchronization instructions recorded in template and desktop README.
+
+## Verification
+- Bun19tests/116assertions PASS. Actual old/new Windows NSIS builds PASS with locked dependencies/production local resources. Only desktop affected; unrelated backend/Web business CI not repeated. No Rust source changes.
+- Independent install_compat_review and startup_flash_review PASS: NSIS Abort skips leave callback, scope/location/data/IPC behavior preserved. Official NSIS callback source/local MultiUser implementation checked; no confirmed findings.
+- Actual browser first-paint regression with800ms delayed modules: old chooser41visible frames, new0. Evidence .temp/install-startup-acceptance/first-paint-receipt.json PASS.
+- Real interactive Windows upgrade old0.0.2-rc.1 to new0.0.2-rc.2 and same-version reinstall PASS: no uninstall maintenance choices; original install-directory/user-data sentinels preserved; new client restores old remote selection; local admin setup/production login succeeds; reinstall restores same local login/database; explicit native menu reveals chooser and hides progress. Three controlled main processes exit0. Evidence .temp/install-startup-acceptance/native-receipt.json, installer-pages.json.
+- Windows fixture uses isolated neutral identity/current-user scope and process-local RunAsInvoker. Actual UAC/all-users and native macOS/Linux NOT_RERUN; unchanged both-scope paths reviewed and both-mode installer compiled. Do not claim new all-users/UAC acceptance.
+- Tooling retries: absolute fixture frontendDist parsed as file URL (fixed relative directory); NSIS moved window to Default desktop (fixed owned-window enumeration/hiding). Aborted receipts marked ABORTED_TOOLING, not product failures/passes. Installer finish auto-launched owned fixture processes; both closed before final cleanup. No unrelated process stopped.
+- Cleanup PASS: fixture uninstalled/registry removed; sentinel retained by uninstaller before owned cleanup. Five generated targets removed,5,092,073,114logical bytes. Build/resources, fixture installers/data removed; scripts/logs/receipts retained (.temp/install-startup-acceptance/cleanup-receipt.json). Production key/real data untouched. No owned app/service/installer processes remain.
+- Self-review and original-requirement acceptance Scope/Reuse/Architecture/Regression/Complexity/DurableState/TestEvidence PASS. git diff --check PASS; no staged build artifacts. No unnecessary dependency/native privilege/storage system added.
+
+## Next Action
+Deliver local fix and verification; no implementation work outstanding. Source changes uncommitted, no new public release. Public rc4 remains immutable with previous installer/startup behavior. Future authorized publication must use a new version (recommend rc5), never replace rc4 assets/tag. No new publication/version decision requested for this revision.
+
+## Last Checkpoint
+2026-10-28 local installation/startup acceptance and owned cleanup PASS.
+
+---
 # Release v0.1.0-rc.4 - Delivery Receipt
 
 ## Objective / Authorization

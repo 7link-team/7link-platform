@@ -74,4 +74,24 @@ describe("restart restores the last chosen connection", () => {
       expect(() => resumeConnection(saved, { hash: "", replace() { throw new Error("unsafe navigation") } }, () => {})).toThrow()
     }
   })
+
+  test("only first run and an explicit switch reveal the chooser during startup", async () => {
+    const saved = storage()
+    let reveals = 0
+    const show = () => { reveals++ }
+    const location = { hash: "", replace() {} }
+    const start = async () => {}
+    resumeConnection(saved, location, start, show)
+    expect(reveals).toBe(1)
+    rememberConnection(saved, { mode: "local" })
+    await resumeConnection(saved, location, start, show)
+    expect(reveals).toBe(1)
+    saved.setItem("desktop-server-origins", '["https://saved.example"]')
+    rememberConnection(saved, { mode: "remote", origin: "https://saved.example" })
+    resumeConnection(saved, location, start, show)
+    expect(reveals).toBe(1)
+    location.hash = "#choose"
+    resumeConnection(saved, location, start, show)
+    expect(reveals).toBe(2)
+  })
 })

@@ -1,3 +1,12 @@
+## 2026-10-28 - In-place Windows installation and chooser visibility
+
+- Decision: existing NSIS installations upgrade or repair in place, without an uninstall-first maintenance choice. Keep both install scopes, existing installation-directory restoration, explicit system uninstall, and upstream WiX migration compatibility. Use Tauri's supported custom-template configuration; record the pinned upstream version/hash and synchronize on CLI upgrades.
+- Reason: user explicitly requests removal of the uninstall-first option and preservation of connection settings across upgrades.
+- Alternatives Considered: silently choose the old destructive default (rejected); alter application identity/storage paths (unnecessary); preprocessor hooks that bypass unrelated pages (unsupported for this page).
+- Tradeoffs: vendored installer template must track upstream changes. Old application versions without remembered connection state cannot reconstruct missing history; existing records retain their format and location.
+- Scope: Windows installer maintenance policy and launcher first-paint visibility only. During restoration show neutral startup status; reveal chooser only for first run, explicit switch, local setup, or restoration failure.
+- Status: implemented; nineteen desktop tests, actual browser before/after frame capture, interactive current-user upgrade/reinstall with retained remote/local state and production local database PASS. Independent compatibility/startup reviews PASS. Actual UAC/all-users and native macOS/Linux not rerun; no new release published.
+
 ## 2026-10-28 - Account registration policy and optional email proof
 
 - Decision: new deployments allow account registration by default; preserve explicitly disabled configuration and any persisted policy. System administrators can enable/disable registration through a guarded settings interface. Tenant self-registration remains separate.

@@ -1,8 +1,13 @@
 import { resumeConnection, rememberConnection } from "./servers.mjs"
 
+export function showChooser(doc) {
+  doc.querySelector("#connection-progress").hidden = true
+  doc.querySelector("#connection-chooser").hidden = false
+}
+
 // Native commands validate that the caller is the bundled chooser. Remote Web
 // and the locally served Web receive no process or setup capability.
-export function startLocal(doc, invoke, navigate) {
+export function startLocal(doc, invoke, navigate, reveal = () => {}) {
   const start = doc.querySelector("#start-local")
   const form = doc.querySelector("#local-setup")
   const status = doc.querySelector("#local-status")
@@ -17,6 +22,7 @@ export function startLocal(doc, invoke, navigate) {
     try {
       const event = await invoke(command, args)
       if (event.event === "setup") {
+        reveal()
         const wasHidden = form.hidden
         form.hidden = false
         status.textContent = event.message || "请设置本地管理员账号和密码。"
@@ -29,6 +35,7 @@ export function startLocal(doc, invoke, navigate) {
       }
     } catch (error) {
       status.textContent = `无法进入本地服务：${error instanceof Error ? error.message : String(error)}`
+      reveal()
     } finally {
       busy = false
       start.disabled = false
@@ -65,12 +72,13 @@ if (typeof document !== "undefined") {
       document.querySelector("#local-status").textContent = "无法保存连接方式，下次启动需要重新选择。"
     }
     window.location.assign(origin)
-  })
+  }, () => showChooser(document))
   // Returning through the native menu is an explicit request to choose again.
   // Keep that request in the URL so reloading this page cannot reconnect it.
   try {
-    void resumeConnection(window.localStorage, window.location, start)
+    void resumeConnection(window.localStorage, window.location, start, () => showChooser(document))
   } catch {
     document.querySelector("#status").textContent = "无法恢复上次连接，请重新选择运行方式。"
+    showChooser(document)
   }
 }

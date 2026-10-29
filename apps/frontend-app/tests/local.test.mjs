@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { startLocal } from "../launcher/local.mjs"
+import { showChooser, startLocal } from "../launcher/local.mjs"
 
 function chooser() {
   const fields = new Map()
@@ -71,4 +71,35 @@ test("backend initialization refusal remains setup and does not navigate", async
   await settle()
   expect(fields.get("local-setup").hidden).toBe(false)
   expect(fields.get("local-status").textContent).toBe("password policy refused")
+})
+
+test("restoring local mode hides connection controls until setup or a recoverable error", async () => {
+  const { doc } = chooser()
+  let revealCount = 0
+  const destinations = []
+  let complete
+  const start = startLocal(doc, () => new Promise(resolve => { complete = resolve }),
+    origin => destinations.push(origin), () => { revealCount++ })
+  const pending = start()
+  expect(revealCount).toBe(0)
+  complete({ event: "ready", origin: "http://127.0.0.1:32123" })
+  await pending
+  expect(revealCount).toBe(0)
+  expect(destinations).toEqual(["http://127.0.0.1:32123"])
+
+  for (const response of [{ event: "setup" }, { event: "invalid" }, new Error("start failed")]) {
+    const retry = startLocal(doc, async () => {
+      if (response instanceof Error) throw response
+      return response
+    }, () => { throw new Error("unexpected navigation") }, () => { revealCount++ })
+    await retry()
+  }
+  expect(revealCount).toBe(3)
+})
+
+test("revealing the chooser removes startup feedback and exposes connection controls", () => {
+  const progress = { hidden: false }, controls = { hidden: true }
+  showChooser({ querySelector: selector => selector === "#connection-progress" ? progress : controls })
+  expect(progress.hidden).toBe(true)
+  expect(controls.hidden).toBe(false)
 })

@@ -19,11 +19,12 @@ export function lastConnection(storage) {
   throw new Error("上次连接记录无效，请重新选择运行方式。")
 }
 
-export function resumeConnection(storage, location, startLocal) {
-  if (location.hash === "#choose") return
+export function resumeConnection(storage, location, startLocal, showChooser = () => {}) {
+  if (location.hash === "#choose") return showChooser()
   const connection = lastConnection(storage)
   if (connection?.mode === "local") return startLocal()
-  if (connection?.mode === "remote") location.replace(connection.origin)
+  if (connection?.mode === "remote") return location.replace(connection.origin)
+  showChooser()
 }
 
 export function serverOrigin(value) {
