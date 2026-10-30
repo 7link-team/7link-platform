@@ -46,6 +46,10 @@ type ProvisioningPrincipal struct {
 // through the organization's caller-owned transaction.
 type InvitationPrincipalCreator func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error)
 
+// InvitationMemberAcceptor attaches an existing active human account in the
+// invitation owner's transaction. It does not replace credentials or profile.
+type InvitationMemberAcceptor func(context.Context, *gorm.DB, guid.ID, guid.ID) error
+
 // ServiceAccountValidator checks a real automation principal's tenant ownership,
 // membership, status and expiry using the caller's database transaction.
 type ServiceAccountValidator func(context.Context, *gorm.DB, guid.ID, guid.ID, time.Time) (bool, error)

@@ -201,6 +201,28 @@ func (s *Service) CreateInvitedPrincipal(
 	return id, nil
 }
 
+// AcceptInvitationMember joins an existing human without changing its profile,
+// mailbox verification or credentials. The caller validates and consumes the
+// single-use invitation in this same transaction.
+func (s *Service) AcceptInvitationMember(ctx context.Context, db *gorm.DB, tenantID, principalID guid.ID) error {
+	if s == nil || s.repo == nil || db == nil || tenantID.Zero() || principalID.Zero() {
+		return ErrInvalid
+	}
+	repo, err := s.repo.on(db)
+	if err != nil {
+		return err
+	}
+	principal, err := repo.lifecyclePrincipal(ctx, principalID, true)
+	if err != nil {
+		return err
+	}
+	if principal.Status != "active" || principal.ActivationRequired {
+		return ErrPrincipalInactive
+	}
+	_, err = repo.ensureTenantMember(ctx, tenantID, principal, identityTime(s.now()))
+	return err
+}
+
 // CreatePendingPrincipal writes a self-registration identity and pre-hashed
 // credential through the authentication workflow's transaction. It grants no
 // tenant membership.

@@ -1,4 +1,17 @@
 export const authEntrances = ["system", "platform", "tenant", "user"] as const
+
+// Extract a credential only; never navigate to or fetch an entered URL.
+export function workspaceInvitationToken(value: string): string | null {
+  let token = value.trim()
+  if (!token.startsWith("inv1_")) {
+    try {
+      const link = new URL(token, "https://workspace.invalid")
+      if (!["http:", "https:"].includes(link.protocol) || !["/admin/accept-invitation", "/accept-invitation"].includes(link.pathname)) return null
+      token = link.searchParams.get("token") ?? ""
+    } catch { return null }
+  }
+  return token.length >= 40 && token.length <= 256 && /^inv1_[1-9][0-9]*\.[A-Za-z0-9_-]+$/.test(token) ? token : null
+}
 export type AuthEntrance = (typeof authEntrances)[number]
 
 export function authEntrance(

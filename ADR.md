@@ -1,3 +1,13 @@
+## 2026-10-29 - Workspace entry and existing-account invitation joining
+
+- Decision: login without a workspace opens the existing workspace picker with working create and join actions. New deployments enable workspace self-registration; explicit false configuration remains authoritative. Active human accounts may create their own workspace without mailbox verification; account verification and system privileges remain unchanged.
+- Reason: the user requests restoring access to projects, conversations and collaboration, and explicitly requests a create-or-join page when there is no workspace.
+- Decision: authenticated invitation joining derives the account solely from session claims and reuses the existing invitation transaction plus an identity-owned membership capability. Preserve credentials/profile, disabled membership/account restrictions, invitation role scope and single-use consumption. Business area links prefer their authorized conversation/work-item pages.
+- Alternatives Considered: returning new accounts to personal settings (does not satisfy the business entry); requiring another account for invitation acceptance (duplicates identity); automatic membership or old-data merging (outside scope).
+- Tradeoffs: invitations remain bearer credentials, and channel visibility still follows existing channel membership rules. No project recovery or migration is inferred from a workspace entry fix.
+- Scope: existing registration defaults, workspace picker/navigation and invitation flow; no schema, dependency, production data or release changes.
+- Status: verified locally. Real isolated signup/create/project/message, existing-account invitation join/project/message/work-item creation, canonical area navigation and account-return/root reload PASS. Full CI/frontend gates and final independent reviews PASS. Composed invitation tests PASS on SQLite, actual MySQL8.4 and PostgreSQL16; explicit composite-key conflict assignment preserves role membership when the same role is already held. No public release in this step; see MEMORY.md.
+
 ## 2026-10-28 - In-place Windows installation and chooser visibility
 
 - Decision: existing NSIS installations upgrade or repair in place, without an uninstall-first maintenance choice. Keep both install scopes, existing installation-directory restoration, explicit system uninstall, and upstream WiX migration compatibility. Use Tauri's supported custom-template configuration; record the pinned upstream version/hash and synchronize on CLI upgrades.

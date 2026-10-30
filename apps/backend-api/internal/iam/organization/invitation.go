@@ -76,6 +76,8 @@ type AcceptInvitation struct {
 	LoginName   string
 	Password    string
 	DisplayName string
+	// PrincipalID is set only by the authenticated join handler, never by JSON.
+	PrincipalID guid.ID
 }
 
 type InvitationCredentials = authn.InvitationCredentials
@@ -86,6 +88,7 @@ type InvitationService struct {
 	administrators  core.AdministratorGuard
 	credentials     InvitationCredentials
 	createPrincipal InvitationPrincipalCreator
+	acceptMember    identity.InvitationMemberAcceptor
 	now             func() time.Time
 }
 
@@ -323,7 +326,7 @@ func (s *InvitationService) Resend(ctx context.Context, tenantID, id guid.ID, tt
 func (s *InvitationService) Accept(ctx context.Context, input AcceptInvitation) (InvitationAcceptance, error) {
 	input.Token, input.LoginName, input.DisplayName = strings.TrimSpace(input.Token), strings.TrimSpace(input.LoginName), strings.TrimSpace(input.DisplayName)
 	id, err := invitationIDFromToken(input.Token)
-	if err != nil || input.LoginName == "" || len(input.LoginName) > 200 || len(input.Password) < 12 || len(input.Password) > 1024 || len(input.DisplayName) > 128 {
+	if err != nil || (input.PrincipalID.Zero() && (input.LoginName == "" || len(input.LoginName) > 200 || len(input.Password) < 12 || len(input.Password) > 1024 || len(input.DisplayName) > 128)) {
 		return InvitationAcceptance{}, ErrInvitationCredential
 	}
 	now := organizationTime(s.now())
@@ -344,6 +347,9 @@ func (s *InvitationService) Accept(ctx context.Context, input AcceptInvitation) 
 			return err
 		}
 		if row.Status == InvitationAccepted {
+			if !input.PrincipalID.Zero() && optionalID(row.AcceptedBy) != input.PrincipalID {
+				return ErrInvitationCredential
+			}
 			accepted = InvitationAcceptance{InvitationID: row.ID, TenantID: row.TenantID, PrincipalID: optionalID(row.AcceptedBy), Email: row.Email, AlreadyAccepted: true}
 			return nil
 		}
@@ -360,19 +366,35 @@ func (s *InvitationService) Accept(ctx context.Context, input AcceptInvitation) 
 		if err := validateInvitationBindings(ctx, repo, row.TenantID, optionalID(row.DepartmentID), roles); err != nil {
 			return err
 		}
-		principalID, err := s.createPrincipal(ctx, repo.writer(), row.TenantID, input.LoginName, input.Password, input.DisplayName, row.Email)
+		principalID := input.PrincipalID
+		if principalID.Zero() {
+			principalID, err = s.createPrincipal(ctx, repo.writer(), row.TenantID, input.LoginName, input.Password, input.DisplayName, row.Email)
+		} else if s.acceptMember == nil {
+			err = ErrUnavailable
+		} else {
+			err = s.acceptMember(ctx, repo.writer(), row.TenantID, principalID)
+			if errors.Is(err, identity.ErrPrincipalInactive) || errors.Is(err, identity.ErrNotFound) {
+				err = ErrInvitationCredential
+			}
+		}
 		if err != nil {
 			return err
 		}
 		if row.DepartmentID != nil {
 			membership := model.MemberDepartment{TenantID: row.TenantID, PrincipalID: principalID, DepartmentID: *row.DepartmentID, UpdatedAt: now}
-			if err := repo.writer().WithContext(ctx).Table(tables.MemberDepartments.TableName()).Create(&membership).Error; err != nil {
+			if err := repo.writer().WithContext(ctx).Table(tables.MemberDepartments.TableName()).Clauses(clause.OnConflict{DoNothing: true}).Create(&membership).Error; err != nil {
 				return fmt.Errorf("assign invitation department: %w", err)
 			}
 		}
 		roleMembers := repo.foreign.access.RoleMembers.String()
 		for _, roleID := range roles {
-			if err := repo.writer().WithContext(ctx).Table(roleMembers).Create(map[string]any{"tenant_id": row.TenantID, "role_id": roleID, "principal_id": principalID, "created_at": now}).Error; err != nil {
+			// A map has no model schema from which MySQL can infer the no-op
+			// assignment. Name the unchanged key explicitly for all dialects.
+			conflict := clause.OnConflict{
+				Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "role_id"}, {Name: "principal_id"}},
+				DoUpdates: clause.AssignmentColumns([]string{"principal_id"}),
+			}
+			if err := repo.writer().WithContext(ctx).Table(roleMembers).Clauses(conflict).Create(map[string]any{"tenant_id": row.TenantID, "role_id": roleID, "principal_id": principalID, "created_at": now}).Error; err != nil {
 				return fmt.Errorf("assign invitation role: %w", err)
 			}
 		}

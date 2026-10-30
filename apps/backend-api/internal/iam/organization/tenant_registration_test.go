@@ -4,9 +4,31 @@ import (
 	"net/http"
 	"testing"
 
+	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/pkg/extension/authz"
+	"github.com/danielgtaylor/huma/v2/humatest"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestTenantRegistrationAcceptsActiveOwnerWithoutVerifiedMailbox(t *testing.T) {
+	h := newOrganizationHTTPHarness(t)
+	s, bootstrap, owners := newTenantServiceForTest(t, h.organizationHarness, newOrganizationTestIDs(1000))
+	s.registrationEnabled = true
+	owners.principals[1] = identity.Principal{ID: 1, LoginName: "new-account", DisplayName: "New account", Status: "active"}
+	_, api := humatest.New(t)
+	registrar := authz.NewRegistrar(authz.DefaultRegistry(), organizationHTTPTokenVerifier{}, organizationPermissionChecker{}, organizationHTTPMembershipChecker{})
+	registerTenantRegistrationHTTP(api, s, registrar)
+	result := api.Post("/tenant-registrations", "Authorization: Bearer test", map[string]any{"slug": "new-workspace", "name": "New workspace"})
+	require.Equal(t, http.StatusCreated, result.Code, result.Body.String())
+	require.Len(t, bootstrap.inputs, 1)
+	assert.EqualValues(t, 1, bootstrap.inputs[0].OwnerID)
+	assert.False(t, owners.principals[1].EmailVerified)
+	s.registrationEnabled = false
+	result = api.Post("/tenant-registrations", "Authorization: Bearer test", map[string]any{"slug": "disabled-workspace", "name": "Disabled"})
+	assert.Equal(t, http.StatusForbidden, result.Code)
+}
 
 // TestTenantRegistrationPolicyPublishesANamedSchema keeps the availability
 // answer a named component. An anonymous struct would be published under its Go

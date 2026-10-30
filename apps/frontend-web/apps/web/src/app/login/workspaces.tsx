@@ -1,14 +1,14 @@
 import { AutoForm } from "@workspace/ui/components/auto-form/auto-form"
 import { useEffect, useState } from "react"
 import { Link, Navigate, useLocation, useNavigate, useNavigation } from "react-router"
-import { Building2, Landmark, Network, Plus, LogOut } from "lucide-react"
+import { Building2, Landmark, Network, Plus, LogOut, Users } from "lucide-react"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
 import { useAuth } from "../../components/auth"
 import { Alert } from "../../components/alert"
 import { SessionVerification } from "../../components/session-verification"
 import { PendingRoute } from "../../components/pending-route"
-import { authEntrance, entranceLoginPath } from "../../lib/auth-entrance"
+import { authEntrance, entranceLoginPath, workspaceInvitationToken } from "../../lib/auth-entrance"
 import { iamApi, setTenant, type Tenant } from "../../lib/iam-api"
 
 export default function EntranceWorkspaces() {
@@ -34,6 +34,8 @@ function WorkspaceOptions() {
   const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [reload, setReload] = useState(0)
+  const [joining, setJoining] = useState(false)
   useEffect(() => {
     if (status !== "authenticated" || !entry) return
     let active = true
@@ -51,7 +53,10 @@ function WorkspaceOptions() {
       } else if (entry === "tenant") {
         const [tenants, policy] = await Promise.all([
           iamApi.myTenants(),
-          iamApi.tenantRegistrationPolicy(),
+          iamApi.tenantRegistrationPolicy().catch((cause: Error) => {
+            if (active) setError(cause.message)
+            return { enabled: false }
+          }),
         ])
         if (active) {
           setItems(tenants.filter((item) => item.status === "active"))
@@ -69,7 +74,7 @@ function WorkspaceOptions() {
     return () => {
       active = false
     }
-  }, [entry, status, session?.subject, location.search])
+  }, [entry, status, session?.subject, location.search, reload])
 
   useEffect(() => {
     if (status !== "authenticated" || items?.length !== 1 || creating) return
@@ -111,6 +116,19 @@ function WorkspaceOptions() {
       setBusy(false)
     }
   }
+  const joinTenant = async (values: Record<string, unknown>) => {
+    const token = workspaceInvitationToken(String(values.invitation ?? ""))
+    if (!token) { setError(t("workspaceInvitationInvalid")); return }
+    setBusy(true)
+    setError("")
+    try {
+      const accepted = await iamApi.joinInvitation(token)
+      setTenant(accepted.tenant_id)
+      navigate(`/admin/${encodeURIComponent(accepted.tenant_id)}`, { replace: true })
+    } catch (cause) {
+      setError((cause as Error).message)
+    } finally { setBusy(false) }
+  }
   const Icon =
     entry === "platform" ? Network : entry === "system" ? Landmark : Building2
   return (
@@ -122,7 +140,7 @@ function WorkspaceOptions() {
             {t("selectEntranceWorkspace")}
           </h1>
           <p className="mt-2 text-sm break-all text-muted-foreground">
-            {session?.email || session?.subject}
+            {session?.preferred_username || session?.email || t("account")}
           </p>
         </div>
         <Button
@@ -139,7 +157,10 @@ function WorkspaceOptions() {
       </header>
       {error && (
         <div className="mt-4">
-          <Alert>{error}</Alert>
+          <Alert>
+            <p>{error}</p>
+            <Button variant="outline" onClick={() => { setError(""); setReload(value => value + 1) }}>{t("retryNow")}</Button>
+          </Alert>
         </div>
       )}
       {!items && !error && (
@@ -161,26 +182,43 @@ function WorkspaceOptions() {
               <span>{item.name}</span>
             </Link>
           ))}
-          {items.length === 0 && (
+          {items.length === 0 && entry !== "tenant" && (
             <p className="py-4 text-sm text-muted-foreground">
-              {t(
-                entry === "tenant"
-                  ? "noTenantWorkspace"
-                  : "entranceAccessDenied"
-              )}
+              {t("entranceAccessDenied")}
             </p>
           )}
         </div>
       )}
-      {entry === "tenant" && registration && !creating && (
-        <Button className="mt-4" onClick={() => setCreating(true)}>
-          <Plus />
-          {t("registerTenant")}
-        </Button>
+      {entry === "tenant" && items && !creating && (
+        <section className="mt-6 space-y-5" aria-label={t("workspaceGetStarted")}>
+          {items.length === 0 && <div className="space-y-2">
+            <h2 className="text-lg font-semibold">{t("workspaceGetStarted")}</h2>
+            <p className="text-sm text-muted-foreground">{t("workspaceGetStartedDescription")}</p>
+          </div>}
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div className="space-y-3 border-t pt-4">
+              <h3 className="font-medium">{t("workspaceCreate")}</h3>
+              <p className="text-sm text-muted-foreground">{t(registration ? "workspaceCreateDescription" : "workspaceCreateDisabled")}</p>
+              <Button disabled={!registration} onClick={() => setCreating(true)}><Plus />{t("workspaceCreate")}</Button>
+            </div>
+            <div className="space-y-3 border-t pt-4">
+              <h3 className="font-medium">{t("workspaceJoin")}</h3>
+              <p className="text-sm text-muted-foreground">{t("workspaceJoinDescription")}</p>
+              <Button variant="outline" onClick={() => setJoining(value => !value)} aria-expanded={joining}><Users />{t("workspaceJoin")}</Button>
+            </div>
+          </div>
+          {joining && <div className="space-y-3 rounded-md border p-4">
+            <p className="text-sm">{t("workspaceJoinInstructions")}</p>
+            <AutoForm className="md:grid-cols-1 [&>*]:col-span-1" onSubmit={joinTenant} fields={{invitation: {name: t("workspaceInvitation"), type: "text", required: true, config: {id: "workspace-invitation", maxLength: 2048}}}}>
+              <Button type="submit" disabled={busy}>{busy ? t("accepting") : t("workspaceJoin")}</Button>
+            </AutoForm>
+            <Button variant="outline" onClick={() => { setError(""); setReload(value => value + 1) }}>{t("workspaceRefreshMemberships")}</Button>
+          </div>}
+        </section>
       )}
       {creating && (
         <section className="mt-6 space-y-4">
-          <h2 className="text-lg font-semibold">{t("registerTenant")}</h2>
+          <h2 className="text-lg font-semibold">{t("workspaceCreate")}</h2>
           <AutoForm
             className="mt-6 md:grid-cols-1 [&>*]:col-span-1"
             onSubmit={createTenant}
@@ -206,7 +244,7 @@ function WorkspaceOptions() {
           >
             <div className="flex gap-2">
               <Button type="submit" disabled={busy}>
-                {t("registerTenant")}
+                {t("workspaceCreate")}
               </Button>
               <Button
                 type="button"
@@ -220,6 +258,7 @@ function WorkspaceOptions() {
           </AutoForm>
         </section>
       )}
+      {entry === "tenant" && <Link to="/user/profile" className="mt-8 inline-flex min-h-11 items-center text-sm underline underline-offset-4">{t("account")}</Link>}
     </main>
   )
 }

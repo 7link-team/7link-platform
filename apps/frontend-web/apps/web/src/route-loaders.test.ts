@@ -89,8 +89,10 @@ it("sends the console home to the view the caller can use", () => {
     assert.equal(
       await home({memberships:[active("7")],permissions:["role_view"],entities:{entity_view:[{id:"5"}]}},"7"),
       "/admin/7");
-    assert.equal(await home({}),"/user");
-    assert.equal(await home({fail:true}),"/user");
+    assert.equal(await home({}),"/admin/workspaces");
+    assert.equal(await home({fail:true}),"/admin/workspaces");
+    assert.equal(await home({tenantFail:true}),"/admin/workspaces");
+    assert.equal(await home({memberships:[{id:"6",status:"suspended"}]}),"/admin/workspaces");
     globalThis.fetch=async()=>new Response(null,{status:204});
     const token="avt_"+"x".repeat(43);
     const expires=new Date(Date.now()+60000).toISOString();

@@ -262,6 +262,7 @@ oauth-token => public
 oauth-update-client => owned-resource|oauth_client_update
 oauth-userinfo => public
 organization-accept-invitation => public
+organization-join-invitation => authenticated
 organization-create-department => tenant|dept_create
 organization-create-group => tenant|group_create
 organization-create-invitation => tenant|invitation_create

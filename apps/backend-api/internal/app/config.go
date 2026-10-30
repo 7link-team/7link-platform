@@ -93,7 +93,7 @@ type IAMAuthn authnext.Config
 // IAMCore configures platform-wide IAM policy that belongs to no single IAM
 // sub-domain.
 type IAMCore struct {
-	TenantRegistrationEnabled bool `mapstructure:"tenant_registration_enabled" description:"allow verified principals to register their own tenants" default:"false"`
+	TenantRegistrationEnabled bool `mapstructure:"tenant_registration_enabled" description:"allow authenticated principals to register their own tenants" default:"true"`
 	// RequirePlatformAdministrator defaults to true because a freshly migrated
 	// database can serve no platform operation at all. Recovery and migration
 	// tooling can turn it off to reach an otherwise unreachable deployment.

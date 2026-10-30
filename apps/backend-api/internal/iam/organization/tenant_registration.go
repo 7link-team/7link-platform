@@ -34,10 +34,10 @@ func registerTenantRegistrationHTTP(api huma.API, service *TenantService, regist
 		}
 	}) (*respx.Body[Tenant], error) {
 		claims, ok := authnext.FromContext(ctx)
-		if !service.registrationEnabled || !ok || claims == nil || claims.AccountView != nil || !claims.EmailVerified {
+		if !service.registrationEnabled || !ok || claims == nil || claims.AccountView != nil {
 			return nil, huma.Error403Forbidden(respx.Forbidden)
 		}
-		item, err := service.Create(ctx, CreateTenant{Slug: in.Body.Slug, Name: in.Body.Name, OwnerPrincipalID: claims.PrincipalID, requireVerifiedOwner: true})
+		item, err := service.Create(ctx, CreateTenant{Slug: in.Body.Slug, Name: in.Body.Name, OwnerPrincipalID: claims.PrincipalID})
 		if err != nil {
 			return nil, tenantError(err)
 		}

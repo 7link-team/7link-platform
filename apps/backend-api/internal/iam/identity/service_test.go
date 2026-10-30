@@ -17,6 +17,45 @@ import (
 
 const testPassword = "correct-horse-battery"
 
+func TestAcceptInvitationMemberPreservesAccountAndRejectsDisabledMembership(t *testing.T) {
+	h := newIdentityHarness(t, "join_")
+	h.seedTenant(t, 7, "active")
+	h.seedTenant(t, 8, "active")
+	p, err := h.service.Create(t.Context(), 7, "joining", testPassword, "Existing account", "")
+	require.NoError(t, err)
+	before := *h.principal(t, p.ID)
+	version := h.credentialVersion(t, p.ID)
+	join := func() error {
+		return h.db.Transaction(func(tx *gorm.DB) error { return h.service.AcceptInvitationMember(t.Context(), tx, 8, p.ID) })
+	}
+	require.NoError(t, join())
+	require.NoError(t, join(), "active membership is idempotent")
+	assert.Equal(t, "active", h.member(t, 8, p.ID).Status)
+	assert.Equal(t, before, *h.principal(t, p.ID))
+	assert.Equal(t, version, h.credentialVersion(t, p.ID))
+	require.NoError(t, h.db.Table(h.table("iam_tenant_members")).Where("tenant_id = ? AND principal_id = ?", 8, p.ID).Update("status", "disabled").Error)
+	assert.ErrorIs(t, join(), ErrPrincipalInactive)
+	require.NoError(t, h.db.Table(h.table("iam_principals")).Where("id = ?", p.ID).Update("status", "disabled").Error)
+	assert.ErrorIs(t, join(), ErrPrincipalInactive)
+}
+
+func TestAcceptInvitationMemberRollsBackWithInvitation(t *testing.T) {
+	h := newIdentityHarness(t, "join_rollback_")
+	h.seedTenant(t, 7, "active")
+	h.seedTenant(t, 8, "active")
+	p, err := h.service.Create(t.Context(), 7, "joining", testPassword, "Existing", "")
+	require.NoError(t, err)
+	failure := errors.New("invitation consumed concurrently")
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		require.NoError(t, h.service.AcceptInvitationMember(t.Context(), tx, 8, p.ID))
+		return failure
+	})
+	require.ErrorIs(t, err, failure)
+	var count int64
+	require.NoError(t, h.db.Table(h.table("iam_tenant_members")).Where("tenant_id = ? AND principal_id = ?", 8, p.ID).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
 func TestUnverifiedRegistrationRejectsInvalidInputWithoutWriting(t *testing.T) {
 	h := newIdentityHarness(t, "direct_invalid_")
 	for _, tc := range []struct{ name, login, email, hash, display string }{

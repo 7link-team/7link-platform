@@ -413,7 +413,7 @@ export function isSystemRoute(route: string): boolean {
 }
 
 export function workspacePath(tenantID: string): string {
-  return tenantID ? `/admin/${encodeURIComponent(tenantID)}` : "/user"
+  return tenantID ? `/admin/${encodeURIComponent(tenantID)}` : "/admin/workspaces"
 }
 
 export function tenantNavigation(menus: EffectiveMenu[]): EffectiveMenu[] {

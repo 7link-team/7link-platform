@@ -2535,6 +2535,10 @@ export function createIamApi(
       request<Tenant>(apiRoute("post", "/tenant-registrations"), {
         body: JSON.stringify(body),
       }),
+    joinInvitation: (token: string) =>
+      request<InvitationAcceptance>(apiRoute("post", "/membership-invitations/join"), {
+        body: JSON.stringify({ token }),
+      }),
     createRegistrationCaptcha: () =>
       request<Captcha>(apiRoute("post", "/registrations/captchas")),
     createLoginCaptcha: () =>

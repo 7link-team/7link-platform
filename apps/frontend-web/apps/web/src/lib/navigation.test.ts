@@ -280,7 +280,7 @@ describe("effective navigation", () => {
     expect(defaultWorkspacePath("456", new Set(["tenant_administer"]))).toBe(
       "/admin/456"
     )
-    expect(defaultWorkspacePath("", new Set())).toBe("/user")
+    expect(defaultWorkspacePath("", new Set())).toBe("/admin/workspaces")
   })
   it("preserves configured entry placement and supplies missing self-service entries once", () => {
     expect(
@@ -324,7 +324,7 @@ describe("effective navigation", () => {
     expect(workspacePath("tenant / 测试")).toBe(
       "/admin/tenant%20%2F%20%E6%B5%8B%E8%AF%95"
     )
-    expect(workspacePath("")).toBe("/user")
+    expect(workspacePath("")).toBe("/admin/workspaces")
   })
 
   it("flattens nested authorized menu paths", () => {

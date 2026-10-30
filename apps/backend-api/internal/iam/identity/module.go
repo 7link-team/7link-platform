@@ -135,6 +135,14 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[InvitationPrincipalCreator](services, creator); err != nil {
 		return fmt.Errorf("provide identity invitation principal creator: %w", err)
 	}
+	if err := module.Provide[InvitationMemberAcceptor](services, func(ctx context.Context, db *gorm.DB, tenant, principal guid.ID) error {
+		if m == nil || m.Service == nil {
+			return ErrUnavailable
+		}
+		return m.Service.AcceptInvitationMember(ctx, db, tenant, principal)
+	}); err != nil {
+		return fmt.Errorf("provide identity invitation member acceptor: %w", err)
+	}
 	registrationCreator := RegistrationPrincipalCreator(func(
 		ctx context.Context,
 		db *gorm.DB,

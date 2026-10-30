@@ -81,6 +81,7 @@ func TestDesktopConfigPersistsKeysAndIgnoresServerEnvironment(t *testing.T) {
 	assert.False(t, settings.Debug)
 	assert.True(t, settings.Authn.Enabled)
 	assert.False(t, settings.Authn.Web.CookieSecure)
+	assert.True(t, settings.IAM.TenantRegistrationEnabled, "new desktop users must be able to create a business workspace")
 	assert.Empty(t, settings.Authn.Captcha.TestAnswer)
 	assert.False(t, settings.Authn.SharedSecurity.DevelopmentServer)
 	assert.Equal(t, options.Name, settings.Deployment.Name)

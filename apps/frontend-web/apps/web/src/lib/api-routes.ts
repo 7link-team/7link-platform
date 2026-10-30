@@ -309,6 +309,7 @@ export const publishedRoutes: readonly string[] = [
   "/mcp-relay/{entry_key}",
   "/me",
   "/membership-invitations/acceptances",
+  "/membership-invitations/join",
   "/membership-invitations/{invitation_id}",
   "/membership-invitations/{invitation_id}/deliveries",
   "/menus/{menu_id}",

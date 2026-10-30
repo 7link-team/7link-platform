@@ -45,6 +45,7 @@ organization-platform-department-create|POST|/operating-platforms/{platform_id}/
 organization-platform-groups|GET|/operating-platforms/{platform_id}/principal-groups
 organization-platform-group-create|POST|/operating-platforms/{platform_id}/principal-groups
 organization-accept-invitation|POST|/membership-invitations/acceptances
+organization-join-invitation|POST|/membership-invitations/join
 organization-create-department|POST|/tenants/{tenant_id}/departments
 organization-create-group|POST|/tenants/{tenant_id}/principal-groups
 organization-create-invitation|POST|/tenants/{tenant_id}/membership-invitations
@@ -134,6 +135,7 @@ func organizationDeclarationAPI(t *testing.T) huma.API {
 	require.NoError(t, module.Provide[core.TenantConstraint](services, allDepartmentsConstraint))
 	require.NoError(t, module.Provide[authn.InvitationCredentials](services, &invitationCredentialFixture{}))
 	require.NoError(t, module.Provide[identity.InvitationPrincipalCreator](services, creator))
+	require.NoError(t, module.Provide[identity.InvitationMemberAcceptor](services, func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }))
 	require.NoError(t, module.Provide[core.TenantBootstrapper](services, newTenantBootstrapStub().capability()))
 	require.NoError(t, module.Provide[core.DirectoryAuthorizationSourceConnector](services, core.DirectoryAuthorizationSourceConnector{
 		Bind: func(core.DirectoryAuthorizationSourceStore) error { return nil },
@@ -190,7 +192,7 @@ func TestOrganizationRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 43)
+	require.Len(t, got, 44)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 

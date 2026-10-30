@@ -144,6 +144,9 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 			if err := module.Provide[identity.InvitationPrincipalCreator](services, creator); err != nil {
 				return err
 			}
+			if err := module.Provide[identity.InvitationMemberAcceptor](services, func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }); err != nil {
+				return err
+			}
 			if err := module.Provide[identity.TenantOwnerLookup](services, newTenantOwnerStub().capability()); err != nil {
 				return err
 			}
@@ -180,7 +183,7 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 	assert.Equal(t, StatusDisabled, disabled.Status)
 	_, api = humatest.New(t)
 	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
-	assert.Len(t, organizationOperationManifest(api.OpenAPI()), 43)
+	assert.Len(t, organizationOperationManifest(api.OpenAPI()), 44)
 }
 
 func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
@@ -208,6 +211,9 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 		},
 		func(services *module.Services) error {
 			return module.Provide[identity.InvitationPrincipalCreator](services, creator)
+		},
+		func(services *module.Services) error {
+			return module.Provide[identity.InvitationMemberAcceptor](services, func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil })
 		},
 		func(services *module.Services) error {
 			return module.Provide[guid.Source](services, newOrganizationTestIDs(1))
@@ -259,7 +265,7 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 	expected := []string{
 		"authorization registrar", "active member checker", "administrator guard", "tenant constraint",
 		"invitation credentials",
-		"invitation principal creator", "id generator", "audit appender", "tenant bootstrapper",
+		"invitation principal creator", "invitation member acceptor", "id generator", "audit appender", "tenant bootstrapper",
 		"tenant owner lookup", "access tables", "directory authorization source connector", "directory table names connector",
 		"authn directory table names connector", "identity directory table names connector",
 	}
@@ -329,6 +335,7 @@ func TestOrganizationModuleRefusesToStartWithoutThePublishedTableNames(t *testin
 	require.NoError(t, module.Provide[core.AdministratorGuard](services, &organizationAdministratorGuard{}))
 	require.NoError(t, module.Provide[authn.InvitationCredentials](services, &invitationCredentialFixture{}))
 	require.NoError(t, module.Provide[identity.InvitationPrincipalCreator](services, creator))
+	require.NoError(t, module.Provide[identity.InvitationMemberAcceptor](services, func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }))
 	require.NoError(t, module.Provide[guid.Source](services, newOrganizationTestIDs(1)))
 	require.NoError(t, module.Provide[audit.Appender](services,
 		audit.Appender(func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })))

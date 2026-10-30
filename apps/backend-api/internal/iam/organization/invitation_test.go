@@ -126,6 +126,32 @@ func newInvitationService(t *testing.T, h *organizationHarness, credentials Invi
 	return service
 }
 
+func TestInvitationJoinUsesCurrentAccountAndCannotBeReusedByAnother(t *testing.T) {
+	h := newOrganizationHarness(t, "join_")
+	h.seedTenant(t, 1, TenantActive)
+	h.seedRole(t, 1, 10)
+	var calls atomic.Int64
+	s := newInvitationService(t, h, &invitationCredentialFixture{}, &calls)
+	joined := guid.ID(0)
+	s.acceptMember = func(_ context.Context, _ *gorm.DB, tenant, principal guid.ID) error {
+		assert.Equal(t, guid.ID(1), tenant)
+		joined = principal
+		return nil
+	}
+	_, token, err := s.Create(t.Context(), 1, CreateInvitation{Email: "invitee@example.test", RoleIDs: []guid.ID{10}})
+	require.NoError(t, err)
+	accepted, err := s.Accept(t.Context(), AcceptInvitation{Token: token, PrincipalID: 91})
+	require.NoError(t, err)
+	assert.Equal(t, guid.ID(91), joined)
+	assert.Equal(t, guid.ID(91), accepted.PrincipalID)
+	assert.Zero(t, calls.Load(), "joining must not create another account")
+	again, err := s.Accept(t.Context(), AcceptInvitation{Token: token, PrincipalID: 91})
+	require.NoError(t, err)
+	assert.True(t, again.AlreadyAccepted)
+	_, err = s.Accept(t.Context(), AcceptInvitation{Token: token, PrincipalID: 92})
+	assert.ErrorIs(t, err, ErrInvitationCredential)
+}
+
 func TestInvitationLifecycleTenantBindingsAndAcceptance(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
 	h.seedTenant(t, 1, TenantActive)

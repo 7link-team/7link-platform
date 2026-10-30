@@ -1,3 +1,50 @@
+# Task State — Workspace business entry
+
+## Objective / Confirmed Requirements
+Fix functionality first: login reaches existing business workspace; no memberships offers create or join. Account/password registration without email can create a workspace and use projects/conversations/collaboration. Existing accounts join through invitations. No old-data merge, deletion, production database writes or release in this task.
+
+## Current Phase / Step
+ACCEPTANCE COMPLETE / PASS for this functionality repair. User authorized committing all deliverable changes and pushing to the established GitHub main destination on2026-10-30. Git status/log and remote branch SHA are authoritative for delivery completion; no application release or installed application changed.
+
+## Active Local Preview
+2026-10-30 user requested running the repaired version. Started official scripts/dev.mjs in a hidden background process (supervisor PID13436), rebuilding the current backend and retaining existing .temp/dev data. Web http://127.0.0.1:4303/admin/login; API http://127.0.0.1:8080. Official status reports running; Web/login and API/readyz return200. Demo account selector enabled; use tenant-admin@example.test for business workspace preview. Stop with node apps/backend-api/scripts/dev.mjs --stop; leave running for user inspection. Opening the default browser through Start-Process was rejected by automatic policy review; provide clickable URL. This development configuration enables email verification and local development mailbox; no-email signup acceptance above used the isolated desktop configuration.
+
+## Disk Cleanup Receipt — 2026-10-30
+User requested disk cleanup (typed cipan); optional C/D clarification unanswered, limited cleanup to owned historical project artifacts on D. Found old lane-t-round10 PID31652 and lane-b-runtime PID33012 still running, with35.88GB and10.03GB logs. Verified exact executable paths, stopped these owned acceptance services, preserved8KiB head/tail excerpts, removed only the two logs and stopped lane-t/workspace test binaries. Four exact paths guarded/resolved/untracked; no recursive deletion. Physical free bytes34,428,694,528→80,986,234,880:46,557,540,352bytes reclaimed (~43.36GiB). Receipt .temp/disk-cleanup-receipt.json. Acceptance databases and current dev SQLite retained; current Web/API return200 and preview remains running. C drive/global Go cache and unrelated processes/data untouched. Global Go cache39.46GiB inventoried but not removed; retaining it avoids expensive rebuilds. No cleanup work pending for these owned artifacts.
+
+## Execution / Scope
+Direct implementation; completed independent security and API-contract reviews. Reuse existing tenant creation, invitation transaction, identity lifecycle and permission-based business navigation. Authenticated join uses claims principal only; no schema or new dependencies.
+
+## Important Decisions / Constraints
+- New deployments allow workspace self-creation; explicit false configuration honored.
+- Active human accounts may create without verified email; do not change verification or grant system authority.
+- Existing-account invitation join preserves credentials/profile, refuses disabled accounts/memberships and cross-account replay, uses stored invitation role scope and existing single-use transaction.
+- Conversations/Collaboration area tabs prefer authorized conversations/work-items paths.
+- Installed application and real databases untouched; prior public rc5 immutable. User authorized source commit/push; no new release tag, package or image publication is included.
+
+## Completed / Verification
+- Routing/picker/create/join UI and three locales implemented; readable account name, retryable discovery, policy-disabled explanation and invitation parsing.
+- Identity/organization suites PASS; independent reviewers' uncached tests PASS. Contract review found missing404 declaration, fixed and regenerated OpenAPI/types. Final security/SQL and contract/navigation follow-up reviews found no unresolved defects.
+- Isolated real API at127.0.0.1:59836, data .temp/workspace-live-data: workspace-owner registered without email, created Business acceptance workspace, created First real business project and sent conversation message.
+- workspace-member registered without email, logged in to create/join page, joined owner workspace via actual invitation UI and sees same existing project; created channel, sent message and created work item. No mocked API in these paths.
+- Full frontend-check final rerun96943 PASS: API types, lint, typecheck,838Web tests and production build. Rebuilt real browser verifies Conversations/Collaboration canonical pages, personal-account return and root reload to workbench with existing project/work item. Receipt .temp/workspace-live-receipt.json. Read-only fixture check confirms3principals total, both memberships active, no email verification fabrication.
+- Full make ci PASS (result .temp/workspace-backend-ci-result.json): format/lint,288migration locks, all module coverage floors/90.5%total, integration engine matrix, build, OpenAPI and frontend contract checks. After final SQL fix, make fmt-check lint PASS and full identity/organization/composed-IAM suites PASS (IAM112.648s).
+- New composed invitation regression checks repeated invitations/role deduplication, same-account idempotence, cross-account and anonymous rejection, unchanged profile/principal count. SQLite PASS; actual MySQL8.4 and PostgreSQL16 PASS (.temp/workspace-join-*-result.json). Real MySQL exposed map+DoNothing generating empty duplicate-key SQL; fixed with explicit composite-key conflict target and unchanged principal_id assignment. No duplicate account or role member.
+- Initial remote database containers could not initialize because test-host disk was full; removed owned containers and used bounded tmpfs for both successful reruns. All owned remote containers removed. Owned browser and live API stopped; real application/database untouched.
+
+## Reviews / Remaining Work
+Self-review and final acceptance PASS: requirements/scope/reuse/module boundaries/security/compatibility/complexity/testing/durable state. git diff --check PASS; no staged artifacts. No implementation or acceptance work remains for the create/join/business-entry repair. Public packaging/publication is not part of this turn.
+
+## Known Limits
+Old project identity/location remains unresolved and explicitly deferred: installed DB has0projects; old dev acceptance DB has10including123. No recovery/migration claims. Captcha image should be composed on white for manual reading.
+
+## Next Action
+No functionality work remains; leave the current development preview running for inspection. Read hosted CI from GitHub for the current delivered HEAD. Preserve prior public rc5; any future release must use a new version and must not overwrite it. Old-project identification remains a separate deferred investigation.
+
+## Last Checkpoint
+2026-10-30 source delivery checkpoint:36deliverable files reviewed, prior full CI/frontend checks, real signup/create/join/business acceptance, three-engine invitation regression and final independent reviews PASS. Only operational state documentation changed after these checks. Temporary files/build outputs/local data are ignored and excluded; use Git history/remote SHA for the commit/push receipt.
+
+---
 # Release v0.1.0-rc.5 - Final Delivery Receipt
 
 ## Objective / Authorization

@@ -632,7 +632,29 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 		})
 }
 
+type joinInvitationInput struct {
+	Body struct {
+		Token string `json:"token" minLength:"40" maxLength:"256"`
+	}
+}
+
 func registerInvitationHTTP(api huma.API, service *InvitationService, registrar *authz.Registrar) {
+	authz.RegisterAuthenticated(registrar, api, huma.Operation{
+		OperationID: "organization-join-invitation", Method: http.MethodPost,
+		Path: "/membership-invitations/join", Summary: "Join a tenant using an invitation as the current account", Tags: []string{"authentication"},
+		Errors: []int{http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusGone, http.StatusInternalServerError},
+	}, func(ctx context.Context, in *joinInvitationInput) (*respx.Body[InvitationAcceptance], error) {
+		claims, ok := authnext.FromContext(ctx)
+		if !ok || claims == nil || claims.AccountView != nil || claims.PrincipalID.Zero() {
+			return nil, huma.Error403Forbidden(respx.Forbidden)
+		}
+		accepted, err := service.Accept(ctx, AcceptInvitation{Token: in.Body.Token, PrincipalID: claims.PrincipalID})
+		if err != nil {
+			return nil, invitationError(err)
+		}
+		return respx.OK(ctx, accepted), nil
+	})
+
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "organization-list-invitations", Method: http.MethodGet, Path: "/membership-invitations",
 		Summary: "List tenant invitations", Tags: []string{"directory"},
@@ -719,7 +741,7 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 	authz.RegisterPublic(api, huma.Operation{
 		OperationID: "organization-accept-invitation", Method: http.MethodPost, Path: "/membership-invitations/acceptances",
 		Summary: "Accept a tenant invitation and create the local principal", Tags: []string{"authentication"},
-		Errors: []int{http.StatusBadRequest, http.StatusConflict, http.StatusGone, http.StatusInternalServerError},
+		Errors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusGone, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *acceptInvitationInput) (*respx.Body[InvitationAcceptance], error) {
 		accepted, err := service.Accept(ctx, AcceptInvitation{
 			Token: in.Body.Token, LoginName: in.Body.LoginName,

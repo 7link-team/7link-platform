@@ -134,11 +134,12 @@ export async function workspaceHomeLoader() {
       ? selected
       : (tenants[0]?.id ?? "")
     if (tenantID) setTenant(tenantID)
+    if (!tenantID) return redirect("/admin/workspaces")
     const entityHome = await entityWorkspacePath(tenantID)
     if (entityHome) return redirect(entityHome)
     const permissions = await iamApi.myPermissions(tenantID || undefined).catch(() => [])
     return redirect(defaultWorkspacePath(tenantID, new Set(permissions)))
   } catch {
-    return redirect("/user")
+    return redirect("/admin/workspaces")
   }
 }

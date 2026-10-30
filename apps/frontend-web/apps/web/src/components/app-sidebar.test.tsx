@@ -2,9 +2,17 @@ import { describe, expect, it } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
 import { MemoryRouter } from "react-router"
 import type { EffectiveMenu } from "../lib/iam-api"
-import { AppSidebar } from "./app-sidebar"
+import { AppSidebar, WorkspaceAreaNavigation } from "./app-sidebar"
 import { IntlAppProvider } from "@workspace/ui/i18n/intl-provider"
 import zh from "../messages/zh-CN.json"
+
+it("opens conversations and work items directly from their business area tabs", () => {
+  const html = renderToStaticMarkup(<MemoryRouter initialEntries={["/admin/7/entities/8/project"]}><IntlAppProvider initialLocale="zh-CN" initialMessages={{iam: zh}}><WorkspaceAreaNavigation tenantID="7" entityID="8" entityType="project" permissions={new Set(["project_read", "channel_read", "knowledge_read", "execution_read", "work_item_read"])} menus={[]} fieldPolicyAccess={false}/></IntlAppProvider></MemoryRouter>)
+  expect(html).toContain('href="/admin/7/entities/8/conversations"')
+  expect(html).toContain('href="/admin/7/entities/8/work-items"')
+  expect(html).not.toContain('href="/admin/7/entities/8/knowledge"')
+  expect(html).not.toContain('href="/admin/7/entities/8/executions"')
+})
 
 function renderSidebar(
   menus: EffectiveMenu[],

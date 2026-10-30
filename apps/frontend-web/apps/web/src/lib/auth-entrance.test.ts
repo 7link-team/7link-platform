@@ -5,7 +5,16 @@ import {
   loginReturnPath,
   logoutDestination,
   publicAuthEntrance,
+  workspaceInvitationToken,
 } from "./auth-entrance"
+
+it("extracts invitation credentials without following supplied links", () => {
+  const token = `inv1_17.${"x".repeat(43)}`
+  expect(workspaceInvitationToken(` ${token} `)).toBe(token)
+  expect(workspaceInvitationToken(`https://another-domain.example/admin/accept-invitation?token=${token}`)).toBe(token)
+  expect(workspaceInvitationToken(`/accept-invitation?token=${token}`)).toBe(token)
+  for (const bad of ["", "javascript:alert(1)", "https://example.test/other?token=" + token, "inv1_0." + "x".repeat(43), "inv1_17.short", token + "#fragment"]) expect(workspaceInvitationToken(bad)).toBeNull()
+})
 
 it("uses view prefixes while retaining tenant as the authentication scope", () => {
   expect(authEntrance("admin")).toBe("tenant")

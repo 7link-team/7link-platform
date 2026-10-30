@@ -8,6 +8,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -85,6 +86,55 @@ func TestComposedIAMTenantIsolationAcrossModules(t *testing.T) {
 	fixture.assertIAMAuthorizationCannotCrossTenants(t, role, entity)
 	fixture.assertFederationCallbackCannotCrossTenants(t)
 	fixture.assertTenantBAuditTargetsNeverAppearInTenantA(t, invitation.ID, group.ID, request.ID, entity.ID.String())
+}
+
+func TestComposedInvitationJoinPreservesExistingAccount(t *testing.T) {
+	assertInvitationJoinPreservesExistingAccount(t, newIAMTenantFixture(t))
+}
+
+func TestInvitationJoinExternalDatabase(t *testing.T) {
+	databaseType, dsn := strings.TrimSpace(os.Getenv(iamLifecycleDatabaseType)), strings.TrimSpace(os.Getenv(iamLifecycleDatabaseDSN))
+	if databaseType == "" || dsn == "" {
+		t.Skip("external IAM lifecycle database is not configured")
+	}
+	require.Contains(t, []string{"mysql", "postgres"}, databaseType)
+	f := newIAMTenantFixtureWithDatabase(t, app.Database{Type: databaseType, Dsn: dsn, Writable: true, Readable: true}, os.Getenv(iamLifecycleTablePrefix))
+	assertInvitationJoinPreservesExistingAccount(t, f)
+}
+
+func assertInvitationJoinPreservesExistingAccount(t *testing.T, f *iamTenantFixture) {
+	t.Helper()
+	before := f.count(t, "iam_principals", "1 = 1")
+	var profileBefore, profileAfter map[string]any
+	require.NoError(t, f.db.Table(f.table("iam_principals")).Where("id = ?", f.adminA.ID).Take(&profileBefore).Error)
+	roleResponse := f.request(t, http.MethodPost, "/roles", iamTenantB, f.tokenB, map[string]any{"name": "Invited member"}, nil)
+	requireStatus(t, http.StatusCreated, roleResponse)
+	role := decodeEnvelope[core.APIRole](t, roleResponse).ID
+	for attempt := 0; attempt < 2; attempt++ {
+		issuedResponse := f.request(t, http.MethodPost, "/membership-invitations", iamTenantB, f.tokenB, map[string]any{
+			"email": fmt.Sprintf("existing-account-%d@example.test", attempt), "role_ids": []string{role.String()},
+		}, nil)
+		requireStatus(t, http.StatusCreated, issuedResponse)
+		issued := decodeEnvelope[struct {
+			Token string `json:"token"`
+		}](t, issuedResponse)
+		body := map[string]any{"token": issued.Token}
+		requireStatus(t, http.StatusUnauthorized, f.request(t, http.MethodPost, "/membership-invitations/join", 0, "", body, nil))
+		for retry := 0; retry < 2; retry++ {
+			response := f.request(t, http.MethodPost, "/membership-invitations/join", 0, f.tokenA, body, nil)
+			requireStatus(t, http.StatusOK, response)
+			accepted := decodeEnvelope[organization.InvitationAcceptance](t, response)
+			assert.Equal(t, f.adminA.ID, accepted.PrincipalID)
+			assert.Equal(t, iamTenantB, accepted.TenantID)
+			assert.Equal(t, retry > 0, accepted.AlreadyAccepted)
+		}
+		requireStatus(t, http.StatusBadRequest, f.request(t, http.MethodPost, "/membership-invitations/join", 0, f.requester, body, nil))
+	}
+	assert.Equal(t, before, f.count(t, "iam_principals", "1 = 1"))
+	assert.Equal(t, int64(1), f.count(t, "iam_tenant_members", "tenant_id = ? AND principal_id = ? AND status = 'active'", iamTenantB, f.adminA.ID))
+	assert.Equal(t, int64(1), f.count(t, "iam_role_members", "tenant_id = ? AND principal_id = ? AND role_id = ?", iamTenantB, f.adminA.ID, role))
+	require.NoError(t, f.db.Table(f.table("iam_principals")).Where("id = ?", f.adminA.ID).Take(&profileAfter).Error)
+	assert.Equal(t, profileBefore, profileAfter)
 }
 
 func TestComposedGroupMutationsCannotGrantUnheldRoles(t *testing.T) {

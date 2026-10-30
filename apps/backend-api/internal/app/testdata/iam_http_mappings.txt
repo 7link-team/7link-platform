@@ -227,6 +227,7 @@ oauth-token => oauth-token|POST|/oauth/token
 oauth-update-client => oauth-update-client|PUT|/oauth-clients/{client_id}
 oauth-userinfo => oauth-userinfo|GET|/oauth/userinfo
 organization-accept-invitation => organization-accept-invitation|POST|/membership-invitations/acceptances
+organization-join-invitation => organization-join-invitation|POST|/membership-invitations/join
 organization-create-department => organization-create-department|POST|/tenants/{tenant_id}/departments
 organization-create-group => organization-create-group|POST|/tenants/{tenant_id}/principal-groups
 organization-create-invitation => organization-create-invitation|POST|/tenants/{tenant_id}/membership-invitations

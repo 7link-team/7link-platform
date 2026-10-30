@@ -28,7 +28,7 @@ var ErrUnavailable = errors.New("organization service unavailable")
 // the GroupProvisioner capability consumed by provisioning.
 type Config struct {
 	module.Config
-	TenantRegistrationEnabled bool `mapstructure:"tenant_registration_enabled" description:"allow authenticated principals to register their own tenants" default:"false"`
+	TenantRegistrationEnabled bool `mapstructure:"tenant_registration_enabled" description:"allow authenticated principals to register their own tenants" default:"true"`
 }
 
 type Module struct {
@@ -45,6 +45,7 @@ type Module struct {
 	scopes           core.TenantConstraint
 	credentials      authn.InvitationCredentials
 	createPrincipal  identity.InvitationPrincipalCreator
+	acceptMember     identity.InvitationMemberAcceptor
 	ids              guid.Source
 	appender         audit.Appender
 	bootstrap        core.TenantBootstrapper
@@ -131,6 +132,10 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve organization invitation principal creator: %w", err)
 	}
+	acceptMember, err := module.Resolve[identity.InvitationMemberAcceptor](services)
+	if err != nil {
+		return fmt.Errorf("resolve organization invitation member acceptor: %w", err)
+	}
 	ids, err := module.Resolve[guid.Source](services)
 	if err != nil {
 		return fmt.Errorf("resolve organization id generator: %w", err)
@@ -211,6 +216,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	m.members, m.administrators = members, administrators
 	m.scopes = scopes
 	m.credentials, m.createPrincipal = credentials, createPrincipal
+	m.acceptMember = acceptMember
 	m.ids, m.appender = ids, appender
 	m.directorySources = directorySources
 	return nil
@@ -244,6 +250,7 @@ func (m *Module) Initialize(context.Context) error {
 	m.service.scopes = m.scopes
 	m.groups = NewGroupService(m.runtime, m.appender, m.members, m.administrators, m.ids)
 	m.invitations = NewInvitationService(m.runtime, m.appender, m.administrators, m.ids, m.credentials, m.createPrincipal)
+	m.invitations.acceptMember = m.acceptMember
 	for _, repo := range []*Repository{
 		m.service.repo, m.tenants.repo, m.platforms.repo, m.groups.repo, m.invitations.repo,
 	} {

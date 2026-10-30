@@ -233,7 +233,10 @@ export function WorkspaceAreaNavigation({
           workspaceAreaMenus(configured, area)
         )
         const fallback = links.find((item) => workspaceArea(item.path) === area)
-        const path = menuPath || fallback?.path
+        const primary = area === "conversation" ? "/conversations" : area === "collaboration" ? "/work-items" : undefined
+        const path = primary && (effectiveMenuPaths(configured).has(primary) || links.some(item => item.path === primary))
+          ? primary
+          : menuPath || fallback?.path
         const Icon = icons[index]!
         const label = t(`workspaceArea_${area}`)
         const className = `inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 text-sm ${current === area ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-accent"}`
